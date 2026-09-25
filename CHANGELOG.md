@@ -3098,6 +3098,7 @@
   set is now 59.
 
 ### Fixed
+- **Settings → MCP now offers a snippet for the project you are working in.** It opened on whichever project came first in your list. A sentence beside Copy now names the project the snippet configures.
 - **A box running two runners is no longer told the second is serving the first.** Where `forge-runner status` cannot name the daemon's build, it now names a process only if it serves the configuration you asked about, and guesses nothing.
 - **`forge-runner update --restart` now restarts a runner still serving an older build.** It stopped at "up to date" first. It now asks the daemon, never cuts into a restart already under way, and restarts only the unit running that daemon.
 - **A refused release no longer sends you to abort a shipped batch.** A closed issue says it is closed, a leftover claim says the sweep clears it, a release record is named as one. The regression line matches its readings.

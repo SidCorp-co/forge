@@ -27,6 +27,7 @@ import {
   type TabItem,
 } from "@/design";
 import { useProjects } from "@/features/projects/hooks";
+import { useCurrentProject } from "@/features/shell";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import {
@@ -53,10 +54,16 @@ export function McpTab() {
   useEffect(() => setEndpoint(getMcpUrl()), []);
 
   const projects = projectsQ.data ?? [];
+  const currentProject = useCurrentProject();
   const [projectId, setProjectId] = useState<string | null>(null);
+  // A pick, else the project the person is working in — never the list's first
+  // entry: the snippet is pasted unread, so a guessed project is a wrong config.
   const selectedProject = useMemo(
-    () => projects.find((p) => p.id === projectId) ?? projects[0] ?? null,
-    [projects, projectId],
+    () =>
+      projects.find((p) => p.id === projectId) ??
+      projects.find((p) => p.id === currentProject?.id) ??
+      null,
+    [projects, projectId, currentProject?.id],
   );
   const projectSlug = selectedProject?.slug ?? "";
 
@@ -139,44 +146,65 @@ export function McpTab() {
                 options={projectOptions}
                 value={selectedProject?.id ?? ""}
                 onChange={(v) => setProjectId(v)}
+                placeholder="Choose a project…"
               />
             </Field>
           </div>
         </CardContent>
       </Card>
 
-      <Card>
-        <CardContent>
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <SectionTitle className="fg-h3">Config snippet</SectionTitle>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={copySnippet}
-              className="min-h-11"
-              aria-live="polite"
-            >
-              {copied ? "Copied ✓" : "Copy"}
-            </Button>
-          </div>
+      {selectedProject ? (
+        <>
+          <Card>
+            <CardContent>
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <SectionTitle className="fg-h3">Config snippet</SectionTitle>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={copySnippet}
+                  className="min-h-11"
+                  aria-live="polite"
+                >
+                  {copied ? "Copied ✓" : "Copy"}
+                </Button>
+              </div>
+              <p className="fg-body-sm mb-4 text-fg" data-testid="mcp-snippet-target">
+                This snippet configures <strong>{selectedProject.name}</strong>{" "}
+                <MonoTag>{selectedProject.slug}</MonoTag>
+                {currentProject && currentProject.id !== selectedProject.id ? (
+                  <> — not {currentProject.name}, the project you are working in.</>
+                ) : currentProject ? (
+                  <>, the project you are working in.</>
+                ) : (
+                  "."
+                )}
+              </p>
 
-          <div className="mb-3 overflow-x-auto">
-            <Tabs tabs={CLIENT_TABS} value={client} onChange={(v) => setClient(v as ClientKind)} />
-          </div>
+              <div className="mb-3 overflow-x-auto">
+                <Tabs tabs={CLIENT_TABS} value={client} onChange={(v) => setClient(v as ClientKind)} />
+              </div>
 
-          <p className="fg-caption mb-2">
-            Add to <MonoTag>{snippet.filePath}</MonoTag> and replace{" "}
-            <MonoTag hue="flame">{TOKEN_PLACEHOLDER}</MonoTag> with your token.
-          </p>
-          <pre className="overflow-x-auto rounded-md border border-line bg-sunken p-3 text-12-5 leading-relaxed text-fg">
-            <code>
-              <SnippetCode content={snippet.content} />
-            </code>
-          </pre>
-        </CardContent>
-      </Card>
+              <p className="fg-caption mb-2">
+                Add to <MonoTag>{snippet.filePath}</MonoTag> and replace{" "}
+                <MonoTag hue="flame">{TOKEN_PLACEHOLDER}</MonoTag> with your token.
+              </p>
+              <pre className="overflow-x-auto rounded-md border border-line bg-sunken p-3 text-12-5 leading-relaxed text-fg">
+                <code>
+                  <SnippetCode content={snippet.content} />
+                </code>
+              </pre>
+            </CardContent>
+          </Card>
 
-      <TestConnectionPanel mcpUrl={endpoint} projectSlug={projectSlug} />
+          <TestConnectionPanel mcpUrl={endpoint} projectSlug={projectSlug} />
+        </>
+      ) : (
+        <EmptyState
+          title="Choose a project"
+          message="Pick the project this client connects to, and its config snippet appears here."
+        />
+      )}
     </div>
   );
 }

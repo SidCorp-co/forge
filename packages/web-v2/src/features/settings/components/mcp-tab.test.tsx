@@ -1,0 +1,98 @@
+// @vitest-environment jsdom
+//
+// ISS-1167 measured on forge-beta: the rail read Forge Dev, the MCP tab's
+// Project selector read Sidcorp Mail, and the snippet offered for copying was
+// scoped to sidcorp-mail — the first project the list returned. The lists below
+// put the current project second on purpose, so a tab that falls back to the
+// list's first entry names the wrong slug here.
+
+import * as matchers from "@testing-library/jest-dom/matchers";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ProjectListItem } from "@/features/projects/types";
+import { CurrentProjectProvider } from "@/features/shell/current-project";
+
+expect.extend(matchers);
+// jsdom has no layout; the Select scrolls its active option into view on open.
+Element.prototype.scrollIntoView = vi.fn();
+
+const SIDCORP_MAIL = {
+  id: "0b9f3c2e-4d1a-4e6b-9a7c-2f5d8e1b3c40",
+  slug: "sidcorp-mail",
+  name: "Sidcorp Mail",
+} as ProjectListItem;
+const FORGE_DEV = {
+  id: "da368b0a-8e21-4763-9d90-8f7b9d0c7115",
+  slug: "forge-dev",
+  name: "Forge Dev",
+} as ProjectListItem;
+
+let projects: ProjectListItem[] = [];
+vi.mock("@/features/projects/hooks", () => ({
+  useProjects: () => ({ data: projects, isLoading: false, isError: false }),
+}));
+vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast: vi.fn() }) }));
+
+import { McpTab } from "./mcp-tab";
+
+function renderTab(current: ProjectListItem | null) {
+  return render(
+    <CurrentProjectProvider project={current}>
+      <McpTab />
+    </CurrentProjectProvider>,
+  );
+}
+
+const snippetText = () => document.querySelector("pre code")?.textContent ?? "";
+const target = () => screen.getByTestId("mcp-snippet-target");
+
+beforeEach(() => {
+  projects = [SIDCORP_MAIL, FORGE_DEV];
+});
+afterEach(cleanup);
+
+describe("McpTab — the project a snippet configures", () => {
+  it("opens on the project the person is working in, not the list's first entry", () => {
+    renderTab(FORGE_DEV);
+    expect(screen.getByRole("combobox")).toHaveTextContent("Forge Dev · forge-dev");
+    expect(snippetText()).toContain('"X-Forge-Project-Slug": "forge-dev"');
+    expect(snippetText()).not.toContain("sidcorp-mail");
+  });
+
+  it("names the configured project beside Copy, as the one being worked in", () => {
+    renderTab(FORGE_DEV);
+    expect(screen.getByRole("button", { name: "Copy" })).toBeInTheDocument();
+    expect(target()).toHaveTextContent(
+      "This snippet configures Forge Dev forge-dev, the project you are working in.",
+    );
+  });
+
+  it("follows a deliberate pick, and says it is not the project being worked in", () => {
+    renderTab(FORGE_DEV);
+    fireEvent.click(screen.getByRole("combobox"));
+    fireEvent.click(screen.getByRole("option", { name: /Sidcorp Mail/ }));
+    expect(snippetText()).toContain('"X-Forge-Project-Slug": "sidcorp-mail"');
+    expect(target()).toHaveTextContent(
+      "This snippet configures Sidcorp Mail sidcorp-mail — not Forge Dev, the project you are working in.",
+    );
+  });
+
+  it("offers no snippet, Copy or test until a project is chosen when none is current", () => {
+    renderTab(null);
+    expect(document.querySelector("pre")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Copy" })).toBeNull();
+    expect(screen.queryByText("Test connection")).toBeNull();
+    expect(screen.getByText("Choose a project")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("combobox"));
+    fireEvent.click(screen.getByRole("option", { name: /Forge Dev/ }));
+    expect(snippetText()).toContain('"X-Forge-Project-Slug": "forge-dev"');
+    expect(target()).toHaveTextContent("This snippet configures Forge Dev forge-dev.");
+  });
+
+  it("does not trust a current project the list no longer holds", () => {
+    renderTab({ ...FORGE_DEV, id: "5e0c1f2a-7b3d-4c8e-9f60-1a2b3c4d5e6f", slug: "gone" });
+    expect(document.querySelector("pre")).toBeNull();
+    expect(screen.getByText("Choose a project")).toBeInTheDocument();
+  });
+});
