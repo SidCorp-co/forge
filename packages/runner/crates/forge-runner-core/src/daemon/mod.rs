@@ -19,6 +19,7 @@ pub mod control;
 pub mod degraded;
 pub mod dispatch;
 pub mod dispatch_gate;
+pub mod drain;
 pub mod held_report;
 pub mod hook_install;
 pub mod inbox;
@@ -33,6 +34,7 @@ pub mod recovery;
 pub mod recovery_ports;
 pub mod run_exit;
 pub mod run_record;
+pub mod serving;
 pub mod session_tokens;
 pub mod setup_agent;
 pub mod skill_pull;
@@ -165,22 +167,27 @@ impl Drop for InflightGuard {
     }
 }
 
-const DRAIN_TIMEOUT_SECS: u64 = 2 * 3600;
 const CHECKPOINT_BUDGET: std::time::Duration = std::time::Duration::from_secs(120);
-const DRAIN_POLL_SECS: u64 = 30;
 
 const SESSION_LEDGER_INTERVAL: std::time::Duration = std::time::Duration::from_secs(20);
 
-/// What a ledger that will not answer counts as, for the drain that decides
-/// whether a restart would take the box out from under running work.
-const A_LEDGER_THAT_WILL_NOT_ANSWER: usize = 1;
+/// How often the update loop asks whether a newer release exists.
+const UPDATE_CHECK_INTERVAL: std::time::Duration = std::time::Duration::from_secs(6 * 3600);
 
-fn live_run_sessions() -> usize {
-    let runs = crate::runner::ledger::Ledger::default_path()
-        .and_then(|p| crate::runner::ledger::Ledger::open(&p))
-        .and_then(|led| led.unclosed_runs());
+/// Every run session the drain must assume is live, each by name.
+fn live_run_sessions() -> Vec<String> {
     let boot = crate::runner::inflight::boot_identity().unwrap_or_default();
-    live_sessions_from(runs, &boot, pid_alive)
+    let led = match crate::runner::ledger::Ledger::default_path()
+        .and_then(|p| crate::runner::ledger::Ledger::open(&p))
+    {
+        Ok(led) => led,
+        Err(err) => return vec![unreadable_ledger(&err)],
+    };
+    live_sessions_from(led.unclosed_runs(), &boot, pid_alive, |run_id| {
+        led.issues(run_id)
+            .map(|m| m.into_iter().map(|i| i.issue_key).collect())
+            .unwrap_or_default()
+    })
 }
 
 /// Whether a subagent run reads quiet on its own evidence: its last turn ended
@@ -202,43 +209,53 @@ fn reads_quiet(run: &crate::runner::ledger::Run, now: i64) -> bool {
     )
 }
 
-/// How many run sessions the drain must assume are live.
+/// The holder a ledger that will not answer stands for.
 ///
 /// A ledger this cannot read is not an empty one. Answering nought there told
 /// the drain the box was idle, and the drain's whole job is to decide whether a
 /// restart would kill work — so the one reply it could not check became the one
 /// that restarts over every run in flight. The path that reaches it is the
 /// first start after an upgrade, which is exactly where the ledger was
-/// unreadable in the first place (ISS-1201).
-///
-/// So a ledger that will not answer counts as busy. The restart is deferred to
-/// the next idle window, which is what the drain already does with any other
-/// box that is busy, and the reply that cannot be checked no longer reads as
-/// the safest one.
+/// unreadable in the first place (ISS-1201). So it holds the drain like any
+/// other holder, and is named like one.
+fn unreadable_ledger(err: &crate::error::Error) -> String {
+    tracing::error!(
+        "[drain] the run ledger will not answer ({err}) — this box counts as busy rather than idle, so a restart is deferred instead of taken over work nothing can see"
+    );
+    format!("the run ledger, which will not answer ({err})")
+}
+
+/// The live runs among `runs`, each named by id and the issues it was given.
 fn live_sessions_from(
     runs: Result<Vec<crate::runner::ledger::Run>>,
     this_boot: &str,
     alive: impl Fn(u32) -> bool,
-) -> usize {
+    issue_keys: impl Fn(&str) -> Vec<String>,
+) -> Vec<String> {
     match runs {
-        Ok(runs) => count_live_runs(&runs, this_boot, alive, |r| {
+        Ok(runs) => live_runs(&runs, this_boot, alive, |r| {
             reads_quiet(r, agent_activity::now_ms())
-        }),
-        Err(err) => {
-            tracing::error!(
-                "[drain] the run ledger will not answer ({err}) — this box counts as busy rather than idle, so a restart is deferred instead of taken over work nothing can see"
-            );
-            A_LEDGER_THAT_WILL_NOT_ANSWER
-        }
+        })
+        .into_iter()
+        .map(|r| {
+            let keys = issue_keys(&r.run_id);
+            if keys.is_empty() {
+                format!("run {} (no issue recorded)", r.run_id)
+            } else {
+                format!("run {} ({})", r.run_id, keys.join(", "))
+            }
+        })
+        .collect(),
+        Err(err) => vec![unreadable_ledger(&err)],
     }
 }
 
-fn count_live_runs(
-    runs: &[crate::runner::ledger::Run],
+fn live_runs<'a>(
+    runs: &'a [crate::runner::ledger::Run],
     this_boot: &str,
     alive: impl Fn(u32) -> bool,
     quiet: impl Fn(&crate::runner::ledger::Run) -> bool,
-) -> usize {
+) -> Vec<&'a crate::runner::ledger::Run> {
     use crate::runner::ledger::{Ledger, Liveness};
     runs.iter()
         .filter(|r| !r.is_parked_on_human())
@@ -248,19 +265,12 @@ fn count_live_runs(
             let pid_refuted = r.pid.is_some_and(|p| !alive(p));
             !matches!(Ledger::liveness(r, this_boot, pid_refuted), Liveness::Dead)
         })
-        .count()
+        .collect()
 }
 
 #[cfg(unix)]
 fn pid_alive(pid: u32) -> bool {
-    use nix::errno::Errno;
-    use nix::sys::signal::kill;
-    use nix::unistd::Pid;
-
-    let Ok(raw) = i32::try_from(pid) else {
-        return false;
-    };
-    !matches!(kill(Pid::from_raw(raw), None), Err(Errno::ESRCH))
+    serving::pid_alive(pid)
 }
 
 #[cfg(not(unix))]
@@ -268,34 +278,34 @@ fn pid_alive(_pid: u32) -> bool {
     false
 }
 
-async fn drain_to_idle<F, Fut>(
-    inflight: &Arc<AtomicUsize>,
-    what: &str,
-    live: impl Fn() -> usize,
-    close_parked: F,
-) -> bool
-where
-    F: FnOnce() -> Fut,
-    Fut: std::future::Future<Output = usize>,
+/// Run `check` now and then once every `every`, measured from the start of
+/// each check, until `cancel` says stop.
+///
+/// The wait comes before the check, so the interval's first tick — which
+/// completes at once — is the first check and not a second one straight after
+/// it. Checked the other way round, a first check whose drain gave up after two
+/// hours was followed at once by another, which downloaded the release again
+/// and was refused by the reopen interval the line before it had announced
+/// (ISS-1223).
+async fn update_checks<F, Fut>(
+    every: std::time::Duration,
+    mut cancel: watch::Receiver<bool>,
+    mut check: F,
+) where
+    F: FnMut(tokio::time::Instant) -> Fut,
+    Fut: std::future::Future<Output = ()>,
 {
-    let mut waited = 0u64;
+    let mut tick = tokio::time::interval(every);
+    tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     loop {
-        let busy = inflight.load(Ordering::Acquire) + live();
-        if busy == 0 {
-            let closed = close_parked().await;
-            if closed > 0 {
-                tracing::warn!("[{what}] closed {closed} parked session(s) before restarting");
+        tokio::select! {
+            _ = tick.tick() => {}
+            _ = cancel.changed() => {
+                if *cancel.borrow() { break; }
+                continue;
             }
-            return true;
         }
-        if waited >= DRAIN_TIMEOUT_SECS {
-            tracing::warn!(
-                "[{what}] still busy ({busy} in-flight) after {waited}s — deferring restart to the next idle window"
-            );
-            return false;
-        }
-        tokio::time::sleep(std::time::Duration::from_secs(DRAIN_POLL_SECS)).await;
-        waited += DRAIN_POLL_SECS;
+        check(tokio::time::Instant::now()).await;
     }
 }
 
@@ -546,6 +556,10 @@ pub async fn run(
     // work (ISS-392). Created before any spawn so every worker can register.
     let inflight = Arc::new(AtomicUsize::new(0));
 
+    // Whether this daemon admits long work, shared by everything that admits
+    // it, and the record `forge-runner status` reads of the build it serves.
+    let drain = Arc::new(drain::Drain::new(control::config_dir()));
+
     // Update check loop: warn when a newer release exists; auto-apply +
     // restart when `update.auto` is set. Checks ~30s after start, then every 6h.
     if let Some(url) =
@@ -553,14 +567,23 @@ pub async fn run(
     {
         let auto = cfg.update.auto;
         let inflight = inflight.clone();
+        let drain = drain.clone();
         let runner = runner.clone();
         let bound = cfg.clone();
         let assignments = client.clone();
-        let mut cancel_rx = cancel_rx.clone();
+        let cancel_rx = cancel_rx.clone();
         tokio::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_secs(30)).await;
-            let mut tick = tokio::time::interval(std::time::Duration::from_secs(6 * 3600));
-            loop {
+            update_checks(UPDATE_CHECK_INTERVAL, cancel_rx, move |checked_at| {
+                let (url, inflight, drain, runner, bound, assignments) = (
+                    url.clone(),
+                    inflight.clone(),
+                    drain.clone(),
+                    runner.clone(),
+                    bound.clone(),
+                    assignments.clone(),
+                );
+                async move {
                 match crate::update::fetch_manifest(&url).await {
                     Ok(m)
                         if crate::update::is_newer(&m.version, crate::update::CURRENT_VERSION) =>
@@ -600,11 +623,29 @@ pub async fn run(
                                         &bound,
                                         "after an update",
                                     );
-                                    if drain_to_idle(&inflight, "update", live_run_sessions, || {
-                                        close_parked_sessions(&runner)
-                                    })
-                                    .await
-                                    {
+                                    let cause = format!("update {} → {}", o.from, o.to);
+                                    let outcome = drain::drain_to_idle(
+                                        &drain,
+                                        "update",
+                                        &cause,
+                                        &inflight,
+                                        live_run_sessions,
+                                        || close_parked_sessions(&runner),
+                                        || drain::NextAttempt {
+                                            by: "the next update check".into(),
+                                            due_in: UPDATE_CHECK_INTERVAL
+                                                .saturating_sub(checked_at.elapsed()),
+                                        },
+                                    )
+                                    .await;
+                                    if let drain::Drained::NotNow(why) = &outcome {
+                                        tracing::warn!(
+                                            "[update] {} stands on disk and this process keeps serving {} — {why}; the next update check tries again",
+                                            o.to,
+                                            o.from
+                                        );
+                                    }
+                                    if outcome == drain::Drained::Idle {
                                         tracing::warn!(
                                             "[update] idle — restarting to apply update"
                                         );
@@ -630,11 +671,9 @@ pub async fn run(
                     Ok(_) => tracing::debug!("[update] up to date"),
                     Err(e) => tracing::debug!("[update] check failed: {e}"),
                 }
-                tokio::select! {
-                    _ = tick.tick() => {}
-                    _ = cancel_rx.changed() => { if *cancel_rx.borrow() { break; } }
                 }
-            }
+            })
+            .await;
         });
     }
 
@@ -649,11 +688,18 @@ pub async fn run(
     {
         let startup_token = device_token.clone();
         let inflight = inflight.clone();
+        let drain = drain.clone();
         let runner = runner.clone();
         let mut cancel_rx = cancel_rx.clone();
         tokio::spawn(async move {
             let mut tick = tokio::time::interval(std::time::Duration::from_secs(30));
-            tick.tick().await; // skip the immediate tick
+            // The interval's first tick completes at once; this loop waits a
+            // full thirty seconds before its first look.
+            tick.tick().await;
+
+            // What this loop last said about a drain it could not start, so a
+            // refusal it meets every thirty seconds is said once.
+            let mut said: Option<String> = None;
             loop {
                 tokio::select! {
                     _ = tick.tick() => {}
@@ -664,15 +710,45 @@ pub async fn run(
                 // alone so a blip never triggers a restart.
                 if let Ok(Some(current)) = crate::auth::cred_store::load_device_token() {
                     if current != startup_token {
-                        tracing::warn!(
-                            "[cred] device token changed (re-login detected) — draining in-flight work, then restarting to apply it"
-                        );
-                        if !drain_to_idle(&inflight, "cred", live_run_sessions, || {
-                            close_parked_sessions(&runner)
-                        })
+                        if said.is_none() {
+                            tracing::warn!(
+                                "[cred] device token changed (re-login detected) — draining in-flight work, then restarting to apply it"
+                            );
+                        }
+                        match drain::drain_to_idle(
+                            &drain,
+                            "cred",
+                            "a new device token",
+                            &inflight,
+                            live_run_sessions,
+                            || close_parked_sessions(&runner),
+                            || drain::NextAttempt {
+                                by: "this loop's next drain".into(),
+                                due_in: std::time::Duration::from_secs(drain::DRAIN_REOPEN_SECS),
+                            },
+                        )
                         .await
                         {
-                            continue;
+                            drain::Drained::Idle => {}
+                            drain::Drained::GaveUp => {
+                                said = Some("gave up".into());
+                                continue;
+                            }
+                            drain::Drained::NotNow(why) => {
+                                // Keyed on the kind, not the sentence: the
+                                // time remaining in it changes every minute.
+                                let kind = match &why {
+                                    drain::NotNow::UnderWay { cause } => {
+                                        format!("under way: {cause}")
+                                    }
+                                    drain::NotNow::Reopened { .. } => "reopened".to_string(),
+                                };
+                                if said.as_deref() != Some(kind.as_str()) {
+                                    tracing::warn!("[cred] the new device token waits: {why}");
+                                }
+                                said = Some(kind);
+                                continue;
+                            }
                         }
                         tracing::warn!("[cred] restarting to pick up new credentials");
                         // Exit 0 → systemd Restart=always relaunches THIS unit
@@ -944,6 +1020,7 @@ pub async fn run(
             boot_id: crate::runner::inflight::boot_identity().unwrap_or_default(),
             config_dir: control::config_dir(),
             promises: std::sync::Mutex::new(control::GateMemory::default()),
+            drain: drain.clone(),
         });
         let cancel_rx = cancel_rx.clone();
         tokio::spawn(async move {
@@ -961,6 +1038,7 @@ pub async fn run(
         let job_panes = job_panes.clone();
         let job_records = job_records.clone();
         let adopted_rx = adopted_rx.clone();
+        let drain = drain.clone();
         tokio::spawn(async move {
             master::run(
                 client,
@@ -972,6 +1050,7 @@ pub async fn run(
                 adopted_rx,
                 cancel_rx,
                 wake_rx,
+                drain,
             )
             .await
         });
@@ -1244,17 +1323,37 @@ mod tests {
         );
     }
 
-    /// Counts the calls and reports how many sessions it "closed".
-    fn spy(closed: usize) -> (Arc<AtomicUsize>, impl FnOnce() -> std::future::Ready<usize>) {
-        let calls = Arc::new(AtomicUsize::new(0));
-        let seen = calls.clone();
-        (calls, move || {
-            seen.fetch_add(1, Ordering::AcqRel);
-            std::future::ready(closed)
-        })
+    use crate::runner::ledger::{Ledger, NewRun};
+
+    fn count_live_runs(
+        runs: &[crate::runner::ledger::Run],
+        this_boot: &str,
+        alive: impl Fn(u32) -> bool,
+        quiet: impl Fn(&crate::runner::ledger::Run) -> bool,
+    ) -> usize {
+        live_runs(runs, this_boot, alive, quiet).len()
     }
 
-    use crate::runner::ledger::{Ledger, NewRun};
+    /// Each live run is named by its id and the issues it was given, so the
+    /// drain's line says which work it waits on and not only how much.
+    #[test]
+    fn a_live_run_is_named_by_its_id_and_its_issues() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        seeded_run(&mut led, "run-1", "boot-a", Some(4242));
+        let held = live_sessions_from(
+            led.unclosed_runs(),
+            "boot-a",
+            |_| true,
+            |id| {
+                led.issues(id)
+                    .unwrap()
+                    .into_iter()
+                    .map(|i| i.issue_key)
+                    .collect()
+            },
+        );
+        assert_eq!(held, ["run run-1 (ISS-run-1)"]);
+    }
 
     fn seeded_run(led: &mut Ledger, run_id: &str, boot: &str, pid: Option<u32>) {
         led.create_run_group(NewRun {
@@ -1285,19 +1384,21 @@ mod tests {
     /// ledger was unreadable to begin with (ISS-1201).
     #[test]
     fn a_ledger_that_will_not_answer_holds_the_restart_rather_than_clearing_it() {
+        let held = live_sessions_from(
+            Err(crate::error::Error::Other("ledger: no such column".into())),
+            "boot-a",
+            |_| true,
+            |_| Vec::new(),
+        );
         assert_eq!(
-            live_sessions_from(
-                Err(crate::error::Error::Other("ledger: no such column".into())),
-                "boot-a",
-                |_| true
-            ),
-            A_LEDGER_THAT_WILL_NOT_ANSWER,
+            held.len(),
+            1,
             "a ledger nothing can read says nothing about what is running, and the drain's whole \
-             job is to decide whether a restart would kill work"
+             job is to decide whether a restart would kill work — nought is the answer that restarts"
         );
         assert!(
-            A_LEDGER_THAT_WILL_NOT_ANSWER > 0,
-            "counting it as busy is the whole of it: nought is the answer that restarts"
+            held[0].contains("run ledger") && held[0].contains("no such column"),
+            "the holder is named as what it is, so the drain's line says why it waits: {held:?}"
         );
     }
 
@@ -1305,7 +1406,7 @@ mod tests {
     fn a_ledger_that_answers_with_nothing_running_does_clear_the_restart() {
         let led = Ledger::open_in_memory().unwrap();
         assert_eq!(
-            live_sessions_from(led.unclosed_runs(), "boot-a", |_| true),
+            live_sessions_from(led.unclosed_runs(), "boot-a", |_| true, |_| Vec::new()).len(),
             0,
             "an empty ledger is an idle box, and holding the restart for it would pin the box on a \
              stale binary for ever"
@@ -1479,90 +1580,54 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
+    /// Review finding 3: one check per interval, the first at once, however
+    /// long a check (a drain that gives up after two hours) takes.
     #[tokio::test(start_paused = true)]
-    async fn a_box_whose_run_sessions_are_live_defers_even_with_nothing_in_flight() {
-        let inflight = Arc::new(AtomicUsize::new(0));
-        assert!(
-            !drain_to_idle(&inflight, "test", || 1, || std::future::ready(0)).await,
-            "a live run session is busy, however empty the in-flight counter is"
+    async fn the_update_loop_checks_once_per_interval_even_after_a_long_drain() {
+        const EVERY: std::time::Duration = std::time::Duration::from_secs(6 * 3600);
+        const DRAIN: std::time::Duration = std::time::Duration::from_secs(2 * 3600);
+        let started = tokio::time::Instant::now();
+        let at = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let seen = at.clone();
+        let (_cancel_tx, cancel) = watch::channel(false);
+        let _ = tokio::time::timeout(
+            std::time::Duration::from_secs(13 * 3600),
+            update_checks(EVERY, cancel, move |checked_at| {
+                seen.lock().unwrap().push(checked_at - started);
+                tokio::time::sleep(DRAIN)
+            }),
+        )
+        .await;
+        let hours: Vec<u64> = at
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|d| d.as_secs() / 3600)
+            .collect();
+        assert_eq!(
+            hours,
+            [0, 6, 12],
+            "a check at start and one every six hours; a second check straight after the first drain is the double check"
         );
     }
 
-    #[test]
-    fn the_drain_ceiling_clears_the_measured_ninetieth_percentile() {
-        const {
-            assert!(
-                DRAIN_TIMEOUT_SECS >= 45 * 60,
-                "879 completed sessions since 2026-09-01 run p90 at 45 minutes; a ceiling under that gives up on a tenth of all work by construction"
-            )
-        };
-    }
-
     #[tokio::test(start_paused = true)]
-    async fn idle_drains_immediately() {
-        let inflight = Arc::new(AtomicUsize::new(0));
-        let (_calls, close) = spy(0);
-        assert!(drain_to_idle(&inflight, "test", || 0, close).await);
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn an_idle_drain_still_closes_the_parked_sessions() {
-        let inflight = Arc::new(AtomicUsize::new(0));
-        let (calls, close) = spy(2);
-        assert!(drain_to_idle(&inflight, "test", || 0, close).await);
-        assert_eq!(calls.load(Ordering::Acquire), 1);
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn a_refused_drain_closes_nothing() {
-        let inflight = Arc::new(AtomicUsize::new(1));
-        let (calls, close) = spy(1);
-        assert!(!drain_to_idle(&inflight, "test", || 0, close).await);
-        assert_eq!(calls.load(Ordering::Acquire), 0);
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn the_close_waits_for_the_turn_to_finish() {
-        let inflight = Arc::new(AtomicUsize::new(1));
-        let finisher = inflight.clone();
-        let (calls, close) = spy(1);
-        let observed = calls.clone();
-        tokio::spawn(async move {
-            tokio::time::sleep(std::time::Duration::from_secs(DRAIN_POLL_SECS * 3)).await;
-            assert_eq!(observed.load(Ordering::Acquire), 0, "closed mid-turn");
-            finisher.fetch_sub(1, Ordering::AcqRel);
-        });
-        assert!(drain_to_idle(&inflight, "test", || 0, close).await);
-        assert_eq!(calls.load(Ordering::Acquire), 1);
-    }
-
-    // The bug this function was extracted for: the credential path drained,
-    // then exited whether or not anything was still running. A detached agent
-    // child survives that exit and keeps writing the worktree the relaunched
-    // daemon may hand to a second agent.
-    #[tokio::test(start_paused = true)]
-    async fn busy_past_the_ceiling_refuses_the_restart() {
-        let inflight = Arc::new(AtomicUsize::new(1));
-        assert!(!drain_to_idle(&inflight, "test", || 0, || std::future::ready(0)).await);
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn work_that_finishes_inside_the_ceiling_allows_the_restart() {
-        let inflight = Arc::new(AtomicUsize::new(1));
-        let finisher = inflight.clone();
-        tokio::spawn(async move {
-            tokio::time::sleep(std::time::Duration::from_secs(DRAIN_POLL_SECS * 3)).await;
-            finisher.fetch_sub(1, Ordering::AcqRel);
-        });
-        assert!(drain_to_idle(&inflight, "test", || 0, || std::future::ready(0)).await);
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn the_ceiling_is_a_ceiling_and_not_a_wait_forever() {
-        let inflight = Arc::new(AtomicUsize::new(1));
-        let started = tokio::time::Instant::now();
-        let _ = drain_to_idle(&inflight, "test", || 0, || std::future::ready(0)).await;
-        assert!(started.elapsed().as_secs() <= DRAIN_TIMEOUT_SECS + DRAIN_POLL_SECS);
+    async fn the_update_loop_stops_when_cancelled() {
+        let (cancel_tx, cancel) = watch::channel(false);
+        let calls = Arc::new(AtomicUsize::new(0));
+        let n = calls.clone();
+        let run = tokio::spawn(update_checks(
+            std::time::Duration::from_secs(60),
+            cancel,
+            move |_| {
+                n.fetch_add(1, Ordering::AcqRel);
+                std::future::ready(())
+            },
+        ));
+        tokio::time::sleep(std::time::Duration::from_secs(90)).await;
+        cancel_tx.send(true).unwrap();
+        run.await.unwrap();
+        assert_eq!(calls.load(Ordering::Acquire), 2);
     }
 
     #[test]

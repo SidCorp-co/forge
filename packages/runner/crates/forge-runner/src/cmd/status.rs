@@ -19,10 +19,13 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     }
     let cfg = Config::load()?;
     println!(
-        "version    {} ({})",
+        "binary     {} ({}) — the file this command ran",
         forge_runner_core::update::VERSION_LINE,
         forge_runner_core::update::BUILD_TARGET
     );
+    for line in daemon_lines() {
+        println!("{line}");
+    }
     println!(
         "core_url   {}",
         ctx.resolve_core_url(&cfg).unwrap_or_else(|| "—".into())
@@ -57,6 +60,38 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         }
     }
     Ok(())
+}
+
+/// What the running daemon serves, which is not what this binary is once a
+/// self-update has replaced the file under it (ISS-1223).
+fn daemon_lines() -> Vec<String> {
+    use forge_runner_core::daemon::serving;
+    let Some(dir) = forge_runner_core::daemon::control::config_dir() else {
+        return vec![
+            "daemon     no config directory resolves on this box, so no daemon record can be read"
+                .to_string(),
+        ];
+    };
+    serving::lines(
+        &serving::read(&dir),
+        &serving::Probe::this_box(),
+        forge_runner_core::update::CURRENT_VERSION,
+        forge_runner_core::update::BUILD_COMMIT,
+        forge_runner_core::daemon::agent_activity::now_ms(),
+    )
+}
+
+/// The sentence `--version` adds on stderr where a live daemon serves another
+/// build than this binary's.
+pub fn version_note() -> Option<String> {
+    use forge_runner_core::daemon::serving;
+    let dir = forge_runner_core::daemon::control::config_dir()?;
+    serving::version_note(
+        &serving::read(&dir),
+        &serving::Probe::this_box(),
+        forge_runner_core::update::CURRENT_VERSION,
+        forge_runner_core::update::BUILD_COMMIT,
+    )
 }
 
 fn print_gate(cfg: &Config) {

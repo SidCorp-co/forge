@@ -163,6 +163,11 @@ pub(crate) enum Unplaced {
     Draining {
         status: String,
     },
+    /// This daemon is draining before a restart, so it admits no new work for
+    /// any project until it has restarted or the drain gives up (ISS-1223).
+    Restarting {
+        cause: String,
+    },
     /// Core serves this project to this box but nothing here says where the
     /// checkout is.
     NoRepoPath,
@@ -247,6 +252,10 @@ impl std::fmt::Display for Unplaced {
             Self::Draining { status } => write!(
                 f,
                 "this box's runner for it is `{status}`, so it starts no work and places no master until that changes"
+            ),
+            Self::Restarting { cause } => write!(
+                f,
+                "this box is draining before a restart ({cause}), so it starts no work and places no master for any project until it has restarted or the drain gives up"
             ),
             Self::NoRepoPath => write!(
                 f,
@@ -900,6 +909,7 @@ pub async fn run(
     adopted: tokio::sync::watch::Receiver<bool>,
     mut cancel: tokio::sync::watch::Receiver<bool>,
     mut wake: mpsc::Receiver<Wake>,
+    drain: Arc<crate::daemon::drain::Drain>,
 ) {
     let mut delay = POLL_INTERVAL;
     let mut last_sweep = Instant::now();
@@ -920,7 +930,7 @@ pub async fn run(
     loop {
         tokio::select! {
             _ = tokio::time::sleep(delay) => {
-                delay = sweep(&client, &cfg, &masters, &activity, &job_panes, job_records.as_ref(), &adopted, &mut ledger, tokens.as_ref(), &mut account_limit_said)
+                delay = sweep(&client, &cfg, &masters, &activity, &job_panes, job_records.as_ref(), &adopted, &mut ledger, tokens.as_ref(), &mut account_limit_said, &drain)
                     .await;
                 last_sweep = Instant::now();
             }
@@ -930,7 +940,7 @@ pub async fn run(
                     tokio::time::sleep(WAKE_FLOOR - since).await;
                 }
                 tracing::info!("[master] wake ({}) — sweeping now", w.describe());
-                delay = sweep(&client, &cfg, &masters, &activity, &job_panes, job_records.as_ref(), &adopted, &mut ledger, tokens.as_ref(), &mut account_limit_said)
+                delay = sweep(&client, &cfg, &masters, &activity, &job_panes, job_records.as_ref(), &adopted, &mut ledger, tokens.as_ref(), &mut account_limit_said, &drain)
                     .await;
                 last_sweep = Instant::now();
             }
@@ -977,6 +987,7 @@ async fn sweep(
     ledger: &mut Option<Ledger>,
     tokens: Option<&session_tokens::SessionTokens>,
     account_limit_said: &mut Option<String>,
+    drain: &crate::daemon::drain::Drain,
 ) -> Duration {
     let now_unix = master_limit::now_unix();
     let mut account_said: Vec<master_limit::Decisive> = Vec::new();
@@ -1021,6 +1032,27 @@ async fn sweep(
     }
 
     for runner in &served {
+        // Leave is taken per project and held to the end of its iteration, so
+        // a drain that begins part-way through a sweep waits for the project
+        // in hand to finish admitting and stops the sweep at the next one.
+        let _admitting = match drain.admit() {
+            Ok(permit) => permit,
+            Err(closed) => {
+                let read = read_standing(ledger.as_ref(), &runner.project_id);
+                let verdict =
+                    standing_verdict(masters, read, &runner.project_id, &runner.slug).await;
+                if matches!(verdict, Some((Placed::Proceed | Placed::Withheld, _))) {
+                    masters.note_unplaced(
+                        &runner.project_id,
+                        Unplaced::Restarting {
+                            cause: closed.cause,
+                        },
+                    );
+                }
+                supervise(client, masters, tokens, &runner.project_id, &runner.slug).await;
+                continue;
+            }
+        };
         if !accepts_new_work(&runner.status) {
             tracing::info!(
                 "[master] {}: runner is {} — taking no new work; anything already running finishes",
@@ -9615,5 +9647,129 @@ mod own_exe_reporting_tests {
             crate::daemon::hook_install::settings_path(&repo).exists(),
             "the hooks were not written: {said}"
         );
+    }
+}
+
+/// ISS-1223 criterion 3, run rather than read off the source: a sweep taken
+/// while a drain holds admission asks core for no work.
+#[cfg(test)]
+mod drain_sweep_tests {
+    use super::*;
+    use std::sync::Mutex as StdMutex;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    const RUNNERS: &str = r#"[{"projectId":"proj-1","runnerId":"r-1","slug":"drainsweep","baseBranch":null,"repoPath":null,"branch":null,"status":"active"}]"#;
+
+    /// Answers `me/runners` with one active runner and every other path with a
+    /// 404, and records the path of every request it is sent.
+    async fn recording_core() -> (String, Arc<StdMutex<Vec<String>>>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let seen = Arc::new(StdMutex::new(Vec::new()));
+        let log = seen.clone();
+        tokio::spawn(async move {
+            while let Ok((mut sock, _)) = listener.accept().await {
+                let log = log.clone();
+                tokio::spawn(async move {
+                    let mut buf = [0u8; 4096];
+                    let n = sock.read(&mut buf).await.unwrap_or(0);
+                    let head = String::from_utf8_lossy(&buf[..n]).into_owned();
+                    let path = head.split_whitespace().nth(1).unwrap_or("").to_string();
+                    let bare = path.split('?').next().unwrap_or("").to_string();
+                    log.lock().unwrap().push(bare.clone());
+                    let (status, body) = if bare == "/api/devices/me/runners" {
+                        ("200 OK", RUNNERS)
+                    } else {
+                        ("404 Not Found", r#"{"error":"absent","code":"NOT_FOUND"}"#)
+                    };
+                    let resp = format!(
+                        "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    );
+                    let _ = sock.write_all(resp.as_bytes()).await;
+                    let _ = sock.shutdown().await;
+                });
+            }
+        });
+        (format!("http://{addr}"), seen)
+    }
+
+    async fn one_sweep(drain: &crate::daemon::drain::Drain) -> (Vec<String>, Arc<Masters>) {
+        let (core, seen) = recording_core().await;
+        let client = CoreClient::new(core, String::from("tok"));
+        let masters = Arc::new(Masters::new());
+        let (_adopted_tx, adopted) = tokio::sync::watch::channel(true);
+        let mut ledger = Some(Ledger::open_in_memory().unwrap());
+        let mut said = None;
+        let _ = sweep(
+            &client,
+            &Config::default(),
+            &masters,
+            &agent_activity::Activities::new(),
+            &Arc::new(JobPanes::new()),
+            &crate::daemon::pool_jobs::NoRecords,
+            &adopted,
+            &mut ledger,
+            None,
+            &mut said,
+            drain,
+        )
+        .await;
+        let paths = seen.lock().unwrap().clone();
+        (paths, masters)
+    }
+
+    /// Every path a sweep reaches only by admitting work for a project.
+    fn admitting(paths: &[String]) -> Vec<&String> {
+        paths
+            .iter()
+            .filter(|p| p.contains("admissible") || p.contains("/pool") || p.contains("claim"))
+            .collect()
+    }
+
+    // cm:guard not on Windows: the sweep removes rendered MCP session files of projects it
+    // does not serve, under the OS config dir, and this test isolates that dir through
+    // XDG_CONFIG_HOME, which dirs_next reads only on Unix. On Windows it would reach the real
+    // one and delete another project's files on any developer's box.
+    #[cfg(not(windows))]
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_sweep_during_a_drain_asks_core_for_no_work_and_says_why() {
+        let _env = crate::auth::cred_store::ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = crate::test_scratch::Scratch::new("drain-sweep");
+        let _xdg = crate::auth::cred_store::ScopedVar::set("XDG_CONFIG_HOME", home.path());
+
+        // The control: with admission open, the same sweep does ask for work,
+        // so the silence below is the drain's and not this fixture's.
+        let open = crate::daemon::drain::Drain::unrecorded();
+        let (paths, _) = one_sweep(&open).await;
+        assert!(
+            !admitting(&paths).is_empty(),
+            "with admission open the sweep asks core for work: {paths:?}"
+        );
+
+        let drain = crate::daemon::drain::Drain::unrecorded();
+        let _attempt = drain.begin("update 0.1.0 → 0.1.1").unwrap();
+        let (paths, masters) = one_sweep(&drain).await;
+        assert!(
+            paths.iter().any(|p| p == "/api/devices/me/runners"),
+            "the sweep still reads which projects it serves: {paths:?}"
+        );
+        assert!(
+            admitting(&paths).is_empty(),
+            "a draining sweep asked core for work: {:?}",
+            admitting(&paths)
+        );
+        // Asserted on its fragments and never printed whole: the sentence can
+        // carry a master's session id, which is not for a log.
+        let why = masters.why_unplaced("proj-1");
+        for fragment in ["draining before a restart", "update 0.1.0 → 0.1.1"] {
+            assert!(
+                why.contains(fragment),
+                "the project records the drain as why no master was placed, and this fragment is missing: {fragment}"
+            );
+        }
     }
 }
