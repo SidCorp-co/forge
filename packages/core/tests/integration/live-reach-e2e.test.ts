@@ -108,10 +108,14 @@ let encryptSecret: typeof import('../../src/integrations/vault.js').encryptSecre
 let fixtureRoot = '';
 /** The commit on the fixture's staging whose message names no issue: ISS-442's observed merge. */
 let gitObserved = '';
+/** A merge declaring ISS-450, and the commit it brought in that declares nothing. */
+let gitMerge = '';
+let gitCarried = '';
 
 /**
  * sid-desk's shape as a real repository: seven commits naming their keys in their subjects, some
- * citing the shipped ISS-400 in their bodies, and one naming none.
+ * citing the shipped ISS-400 in their bodies, and one naming none; then a merge declaring ISS-450
+ * whose branch holds a commit citing ISS-400 mid-subject and a commit declaring nothing.
  */
 function buildSidDeskRepository(): void {
   fixtureRoot = mkdtempSync(join(tmpdir(), 'forge-sid-desk-'));
@@ -140,7 +144,26 @@ function buildSidDeskRepository(): void {
     head = git('commit-tree', tree, '-p', head, '-m', c.commit.message);
   }
   gitObserved = head;
-  git('update-ref', 'refs/heads/staging', head);
+  const cites = git(
+    'commit-tree',
+    tree,
+    '-p',
+    head,
+    '-m',
+    'feat(logger): say at boot when the window is below the days ISS-400 asks for (ISS-450)',
+  );
+  gitCarried = git('commit-tree', tree, '-p', cites, '-m', 'fix(logger): read the size in bytes');
+  gitMerge = git(
+    'commit-tree',
+    tree,
+    '-p',
+    head,
+    '-p',
+    gitCarried,
+    '-m',
+    'Merge branch ISS-450-logsize into staging (ISS-450)',
+  );
+  git('update-ref', 'refs/heads/staging', gitMerge);
 }
 
 async function gitlabDesk(userId: string, withKey = true) {
@@ -436,5 +459,32 @@ describe('a GitLab-hosted promote project read through its deploy key (ISS-1217 
       expect.objectContaining({ repoUrl: GITLAB, privateKey: DEPLOY_KEY }),
     ]);
     expect(compares).toBe(0);
+  });
+
+  it('places a row on the commits its merge brought in, and never on a subject citing it in passing', async () => {
+    const { user, token } = await signedIn();
+    const desk = await gitlabDesk(user.id);
+    const shipped = await issue({ projectId: desk.id, userId: user.id, seq: 400 });
+    const logsize = await issue({ projectId: desk.id, userId: user.id, seq: 450 });
+
+    expect(
+      (await get<{ liveReach: Reach }>(`/api/issues/${shipped}`, token)).liveReach,
+    ).toMatchObject({ state: 'none_waiting' });
+    const reach = (await get<{ liveReach: Reach }>(`/api/issues/${logsize}`, token)).liveReach;
+    expect(reach?.state).toBe('not_on_live');
+    expect(reach?.evidence).toHaveLength(3);
+    expect(reach?.evidence).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ sha: gitMerge, via: 'declares_issue' }),
+        expect.objectContaining({ sha: gitCarried, via: 'merged_in' }),
+        expect.objectContaining({
+          subject: expect.stringMatching(/\(ISS-450\)$/),
+          via: 'declares_issue',
+        }),
+      ]),
+    );
+
+    const pulse = await get<PulseResponse>('/api/me/pulse', token);
+    expect(pulse.work.notOnLive.shown.map((i) => i.issueRef)).toEqual(['ISS-450']);
   });
 });

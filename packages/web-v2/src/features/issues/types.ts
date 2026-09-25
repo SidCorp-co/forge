@@ -430,7 +430,7 @@ export type { StageKey, StatusKey };
 export interface LiveReachEvidence {
   sha: string;
   subject: string;
-  via: "merged_commit" | "names_issue";
+  via: "merged_commit" | "declares_issue" | "merged_in";
 }
 
 interface LiveReachMeasured {

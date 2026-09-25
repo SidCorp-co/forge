@@ -1,0 +1,165 @@
+import type { WaitingCommit } from '../integrations/github/live-divergence.js';
+
+/**
+ * How a waiting commit counts as an issue's work: its own subject declares the key, or it declares
+ * nothing and a merge declaring the key brought it onto the base branch.
+ */
+export type OwnerVia = 'declares_issue' | 'merged_in';
+
+/** Every issue each waiting commit is the work of, keyed by the commit's lower-cased sha. */
+export type CommitOwners = ReadonlyMap<string, ReadonlyMap<number, OwnerVia>>;
+
+const PR_REF_TAIL = /(?:\s*\(#\d+\))+\s*$/;
+const TRAILER = /\(([^()]*)\)\s*$/;
+const PR_MERGE = /^Merge pull request #\d+ from [^/\s]+\/(\S+)/;
+const BRANCH_MERGE = /^Merge (?:remote-tracking )?branch (?:'([^']+)'|(\S+))/;
+const MERGE_SOURCE = /^Merge (?:remote-tracking )?(?:branch )?'?([^'\s]+)'?/;
+const MERGE_LEAD = /^Merge\s+/;
+const LABEL_LEAD = /^[\w.-]+(?:\([^)]*\))?!?:\s*/;
+
+export function subjectOf(message: string): string {
+  return message.split('\n', 1)[0]?.trim() ?? '';
+}
+
+function lastSegment(ref: string): string {
+  return ref.split('/').pop() ?? '';
+}
+
+function namesBranch(ref: string, branch: string): boolean {
+  return ref === branch || ref.endsWith(`/${branch}`);
+}
+
+function seqsIn(text: string, pattern: RegExp): number[] {
+  return [...text.matchAll(pattern)].map((m) => Number(m[1]));
+}
+
+const leadingLists = new Map<string, RegExp>();
+
+/** The keys that open `text`, joined by `,`, `+`, `&`, `/` or `and`, and none past the first gap. */
+function leadingSeqs(text: string, pattern: RegExp): number[] {
+  let list = leadingLists.get(pattern.source);
+  if (!list) {
+    const ref = pattern.source;
+    list = new RegExp(`^(?:${ref})(?:(?:\\s*[,+&/]\\s*|\\s+and\\s+)(?:${ref}))*`, 'i');
+    leadingLists.set(pattern.source, list);
+  }
+  const m = list.exec(text);
+  return m ? seqsIn(m[0], pattern) : [];
+}
+
+/**
+ * The issues a commit's subject declares. A key is declared in the parenthesised group ending the
+ * subject; failing that, for a merge subject, at the start of the merged branch's name; failing
+ * that, in the keys opening the subject after any `Merge` or `type(scope):` lead. A merge of the
+ * base branch into another branch declares nothing: what it carries is placed by its own commits.
+ * A key anywhere else in the subject, or in the body, is a citation and declares nothing.
+ */
+export function declaredIssueSeqs(message: string, pattern: RegExp, baseBranch: string): number[] {
+  const subject = subjectOf(message);
+  const source = MERGE_SOURCE.exec(subject)?.[1];
+  if (source !== undefined && namesBranch(source, baseBranch)) return [];
+
+  const trailer = TRAILER.exec(subject.replace(PR_REF_TAIL, ''));
+  const trailed = trailer?.[1] ? seqsIn(trailer[1], pattern) : [];
+  if (trailed.length > 0) return trailed;
+
+  const merged = PR_MERGE.exec(subject) ?? BRANCH_MERGE.exec(subject);
+  const branch = merged?.[1] ?? merged?.[2];
+  if (branch) {
+    const fromBranch = leadingSeqs(lastSegment(branch), pattern).slice(0, 1);
+    if (fromBranch.length > 0) return fromBranch;
+  }
+
+  const rest = subject.replace(MERGE_LEAD, '');
+  const opening = leadingSeqs(rest, pattern);
+  return opening.length > 0 ? opening : leadingSeqs(rest.replace(LABEL_LEAD, ''), pattern);
+}
+
+function reachable(start: string, bySha: ReadonlyMap<string, WaitingCommit>): Set<string> {
+  const seen = new Set<string>();
+  const stack = [start.toLowerCase()];
+  while (stack.length > 0) {
+    const sha = stack.pop() as string;
+    const c = bySha.get(sha);
+    if (!c || seen.has(sha)) continue;
+    seen.add(sha);
+    for (const p of c.parents) stack.push(p.toLowerCase());
+  }
+  return seen;
+}
+
+/**
+ * Give each commit that declares nothing the issues of the merge that brought it in: the commits
+ * reachable from the merge's later parents and not from its first. A declaring merge met on the
+ * way keeps its own side, so the walk follows only its first parent.
+ */
+function carry(
+  merge: WaitingCommit,
+  seqs: readonly number[],
+  bySha: ReadonlyMap<string, WaitingCommit>,
+  declared: ReadonlyMap<string, readonly number[]>,
+  owners: Map<string, Map<number, OwnerVia>>,
+): void {
+  const onBase = reachable(merge.parents[0] ?? '', bySha);
+  const seen = new Set<string>();
+  const stack = merge.parents.slice(1).map((p) => p.toLowerCase());
+  while (stack.length > 0) {
+    const sha = stack.pop() as string;
+    const c = bySha.get(sha);
+    if (!c || seen.has(sha) || onBase.has(sha)) continue;
+    seen.add(sha);
+    const own = declared.get(sha) ?? [];
+    if (own.length > 0 && c.parents.length > 1) {
+      if (c.parents[0]) stack.push(c.parents[0].toLowerCase());
+      continue;
+    }
+    if (own.length === 0) {
+      const into = owners.get(sha) ?? new Map<number, OwnerVia>();
+      for (const s of seqs) into.set(s, 'merged_in');
+      owners.set(sha, into);
+    }
+    for (const p of c.parents) stack.push(p.toLowerCase());
+  }
+}
+
+function computeOwners(
+  commits: readonly WaitingCommit[],
+  pattern: RegExp,
+  baseBranch: string,
+): CommitOwners {
+  const bySha = new Map(commits.map((c) => [c.sha.toLowerCase(), c]));
+  const declared = new Map<string, number[]>();
+  const owners = new Map<string, Map<number, OwnerVia>>();
+  for (const [sha, c] of bySha) {
+    const seqs = declaredIssueSeqs(c.message, pattern, baseBranch);
+    declared.set(sha, seqs);
+    if (seqs.length > 0) owners.set(sha, new Map(seqs.map((s) => [s, 'declares_issue'])));
+  }
+  for (const [sha, c] of bySha) {
+    const seqs = declared.get(sha) ?? [];
+    if (c.parents.length > 1 && seqs.length > 0) carry(c, seqs, bySha, declared, owners);
+  }
+  return owners;
+}
+
+const held = new WeakMap<readonly WaitingCommit[], Map<string, CommitOwners>>();
+
+/** Which issues each of a reading's waiting commits is the work of, computed once per reading. */
+export function commitOwners(
+  commits: readonly WaitingCommit[],
+  pattern: RegExp,
+  baseBranch: string,
+): CommitOwners {
+  const key = `${pattern.source}\0${pattern.flags}\0${baseBranch}`;
+  let byKey = held.get(commits);
+  if (!byKey) {
+    byKey = new Map();
+    held.set(commits, byKey);
+  }
+  let owners = byKey.get(key);
+  if (!owners) {
+    owners = computeOwners(commits, pattern, baseBranch);
+    byKey.set(key, owners);
+  }
+  return owners;
+}
