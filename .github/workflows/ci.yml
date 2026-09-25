@@ -429,12 +429,13 @@ jobs:
         with:
           workspaces: packages/runner
       # The tests that drive a master pane through a real tmux server return early where tmux is
-      # absent, and no runner image carries it — so on this gate they passed green having run
-      # nothing, and two mutants of ensure_master that they exist to catch stayed uncaught
-      # (ISS-1235). Linux installs it and promises it: under FORGE_TEST_REQUIRE_TMUX such a test
-      # fails naming what it lacked instead of returning. macOS resolves the config dir, and so
-      # the socket, outside XDG_CONFIG_HOME, so a test there cannot get a server of its own and
-      # still skips; Windows does not compile the module.
+      # absent, and a return passes green having asserted nothing — so whether this gate caught
+      # the ensure_master mutants they exist for rested on what the image happened to carry
+      # (ISS-1235). Linux installs tmux (the ubuntu image carries it today; nothing promises
+      # that) and sets FORGE_TEST_REQUIRE_TMUX, under which such a test fails naming what it
+      # lacked instead of returning. macOS resolves the config dir, and so the socket, outside
+      # XDG_CONFIG_HOME, so a test there cannot get a server of its own and still skips;
+      # Windows does not compile the module.
       - name: Lockfile sync + fmt + clippy + test
         working-directory: packages/runner
         shell: bash
