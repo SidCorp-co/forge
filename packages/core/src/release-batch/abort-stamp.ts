@@ -96,18 +96,20 @@ export async function settleAbortStamp(
   `);
 }
 
-/** The issues the last finish attempt recorded as closed, off the run's finish record. */
-function finishClosed(metadata: unknown): string[] {
-  const closed = (metadata as { finish?: { closed?: unknown } } | null)?.finish?.closed;
-  return Array.isArray(closed) ? closed.filter((id): id is string => typeof id === 'string') : [];
+/** The closed issues the run recorded: its last finish attempt's, and those its claim releases wrote. */
+function recordedClosed(metadata: unknown): string[] {
+  const m = metadata as { finish?: { closed?: unknown }; rosterClosed?: unknown } | null;
+  return [m?.finish?.closed, m?.rosterClosed].flatMap((list) =>
+    Array.isArray(list) ? list.filter((id): id is string => typeof id === 'string') : [],
+  );
 }
 
 function union(...lists: string[][]): string[] {
   return [...new Set(lists.flat())].sort();
 }
 
-/** What the abort did, and the roster issues closed before it: the stamp's, the finish record's,
- *  and a held roster's still-claimed ones; `null` where the stamp never recorded them. */
+/** What the abort did, and the roster issues closed before it: the stamp's, the run's records,
+ *  and a held roster's still-claimed ones; `null` where nothing recorded them. */
 export function abortAccount(run: { metadata: unknown; shipped: boolean; heldClosed: string[] }): {
   account: AbortAccount;
   closed: string[] | null;
@@ -116,7 +118,7 @@ export function abortAccount(run: { metadata: unknown; shipped: boolean; heldClo
   const stamp = readAbortStamp(run.metadata);
   if (!stamp) return { account: 'unrecorded', closed: null };
   if (stamp.roster === 'returning') return { account: 'returning', closed: null };
-  const known = union(stamp.closed ?? [], finishClosed(run.metadata));
+  const known = union(stamp.closed ?? [], recordedClosed(run.metadata));
   if (stamp.roster === 'held') return { account: 'held', closed: union(known, run.heldClosed) };
   return {
     account: 'released',

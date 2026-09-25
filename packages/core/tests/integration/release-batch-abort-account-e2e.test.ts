@@ -226,6 +226,23 @@ describe('a batch aborted after its finish closed part of the roster', () => {
     for (const id of closed) expect(answer.message).toContain(id);
   }, 40_000);
 
+  it('names a closed issue no finish record holds when a second abort runs inside the first', async () => {
+    const { runId, ids } = await batchOf(2);
+    const [closedOne] = ids as [string, string];
+    // A finish that closed one issue and died before it checkpointed: only the claim indexes it.
+    await harness.db.execute(sql`UPDATE issues SET status = 'closed' WHERE id = ${closedOne}`);
+    let inner: Awaited<ReturnType<typeof service.abortReleaseBatch>> | null = null;
+    await abort(runId, {
+      afterRosterRecovered: async () => {
+        inner = await abort(runId);
+      },
+    });
+    expect(inner).toMatchObject({ alreadyClosed: [] });
+    const answer = await refused(runId);
+    expect(answer.details).toEqual({ account: 'released', closed: [closedOne] });
+    expect(answer.message).toContain(closedOne);
+  }, 30_000);
+
   it('names the closed issues when the abort lands after the finish released every claim', async () => {
     const { runId, ids } = await batchOf(2);
     serving = PUSHED;

@@ -157,19 +157,11 @@ export async function recoverStrandedReleasing(
     }
   }
 
-  const clearClaims = sql`
-    UPDATE issues SET release_batch_run_id = NULL, updated_at = now()
-    WHERE release_batch_run_id = ${runId}
-  `;
   const { fence } = options;
-  if (fence) {
-    await db.transaction(async (tx) => {
-      await fence(tx);
-      await tx.execute(clearClaims);
-    });
-  } else {
-    await db.execute(clearClaims);
-  }
+  const released = await db.transaction(async (tx) => {
+    if (fence) await fence(tx);
+    return releaseClaims(tx, runId);
+  });
 
   if (recovered.length > 0) {
     logger.warn(
@@ -181,12 +173,41 @@ export async function recoverStrandedReleasing(
   // `promoted` and not `false`: a settled roster still came off a run that put
   // code on production, and this is the one fact the path exists to keep true.
   return {
-    claimsCleared: claimed.map((r) => r.id),
-    alreadyClosed,
+    claimsCleared: released.cleared,
+    alreadyClosed: released.closed,
     recovered,
     destination: recovered.length > 0 ? destination : null,
     promoted,
   };
+}
+
+/**
+ * Release every claim on `runId`, writing onto the run, in the same transaction, which of the
+ * released issues were closed: once the claim is gone it is the only record that this batch's
+ * finish closed them (`metadata.rosterClosed`, a set).
+ */
+async function releaseClaims(
+  tx: Tx,
+  runId: string,
+): Promise<{ cleared: string[]; closed: string[] }> {
+  const rows = await tx.execute<{ id: string; status: string }>(sql`
+    UPDATE issues SET release_batch_run_id = NULL, updated_at = now()
+    WHERE release_batch_run_id = ${runId}
+    RETURNING id, status
+  `);
+  const closed = rows.filter((r) => r.status === 'closed').map((r) => r.id);
+  if (closed.length > 0) {
+    await tx.execute(sql`
+      UPDATE pipeline_runs
+      SET metadata = jsonb_set(coalesce(metadata, '{}'::jsonb), '{rosterClosed}', (
+            SELECT jsonb_agg(DISTINCT id) FROM jsonb_array_elements_text(
+              coalesce(metadata -> 'rosterClosed', '[]'::jsonb) || ${JSON.stringify(closed)}::jsonb
+            ) AS t(id))),
+          updated_at = now()
+      WHERE id = ${runId}
+    `);
+  }
+  return { cleared: rows.map((r) => r.id), closed };
 }
 
 /** What a roster is told when an operator settles it although this run promoted. */
