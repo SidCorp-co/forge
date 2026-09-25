@@ -201,7 +201,10 @@ describe('the job reaches terminal without the caller', () => {
     const res = await finish(runId, { commit: PUSHED });
     expect(res.status).toBe(202);
 
-    const after = await until(() => state(runId), settled, 20_000);
+    // The run closes in a write after the finished record, so wait for both.
+    const closed = (s: Awaited<ReturnType<typeof state>>) =>
+      settled(s) && s.runStatus !== 'running';
+    const after = await until(() => state(runId), closed, 20_000);
     expect(after.finish?.state).toBe('finished');
     expect(new Set(after.finish?.closed)).toEqual(new Set(ids));
     expect(after.runStatus).toBe('completed');
