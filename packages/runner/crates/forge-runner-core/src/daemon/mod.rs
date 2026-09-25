@@ -912,23 +912,26 @@ pub async fn run(
                     _ = tick.tick() => {
                         // `statvfs` blocks, and a scratch root on an
                         // unresponsive network or FUSE mount blocks for as
-                        // long as that mount does. Taken on a worker that
+                        // long as that mount does. On a worker thread that
                         // stalls the daemon's other tasks, so it goes to the
-                        // blocking pool and cancellation is still answered
-                        // while it is out (consult 404196 F1).
+                        // blocking pool, where waiting on it yields and every
+                        // other task keeps running (consult 404196 F1).
+                        //
+                        // Awaited plainly, so at most one reading is ever out:
+                        // a select that let this task walk away would abandon
+                        // the handle and start another on the next tick, which
+                        // is one hung thread per tick instead of one
+                        // (consult 825bfe F1). What that costs, and why a
+                        // killable probe is not taken here, is priced in
+                        // `headroom`'s own note on `read`.
                         let here = at.clone();
-                        let taken = tokio::task::spawn_blocking(move || headroom::read(&here));
-                        let reading = tokio::select! {
-                            answered = taken => answered.unwrap_or_else(|e| {
-                                headroom::Reading::Refused(
-                                    format!("the reading did not finish ({e})"),
-                                )
-                            }),
-                            _ = cancel_rx.changed() => {
-                                if *cancel_rx.borrow() { break; }
-                                continue;
-                            }
-                        };
+                        let reading = tokio::task::spawn_blocking(move || headroom::read(&here))
+                            .await
+                            .unwrap_or_else(|e| {
+                                headroom::Reading::Refused(format!(
+                                    "the reading did not finish ({e})"
+                                ))
+                            });
                         if let Some(report) =
                             watch.tick(std::time::Instant::now(), reading.verdict())
                         {

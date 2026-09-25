@@ -267,6 +267,18 @@ pub fn scratch_root() -> PathBuf {
 /// widening is real on one of the two platforms this ships to and a no-op on
 /// the other. Dropping it would narrow nothing and would stop compiling on the
 /// platform where it widens.
+///
+/// **Priced, and not taken: this call cannot be killed.** `statvfs` blocks,
+/// and on an unresponsive network or FUSE mount it blocks for as long as that
+/// mount does. The caller runs it on the blocking pool, so no async worker
+/// stalls and every other task keeps running; it awaits it plainly, so at most
+/// one such call is ever out. What is left is that one blocking-pool thread
+/// stays in the syscall, and the runtime's shutdown waits on it. Killing it
+/// needs the probe in a process of its own, which is a subprocess every five
+/// minutes on every box and a new failure surface of its own, to bound a case
+/// that needs the scratch root to be a hung remote mount. That trade is named
+/// here rather than taken, and it ends the day a box is measured running this
+/// against one (consult 825bfe F1).
 #[cfg(unix)]
 #[allow(clippy::useless_conversion)]
 pub fn read(at: &Path) -> Reading {
@@ -321,8 +333,8 @@ fn sweep_wont(min_age: Duration) -> String {
 /// Here rather than in the daemon's tick because that tick is a `tokio` task
 /// inside `daemon::run` with no seam a test can reach, and a source scan for
 /// the three macro names passes while every one of them goes out as `info!` —
-/// the shape the project's own `source-scanning-test-assertions-in-forge-\
-/// runner-core` entry records, and the one consult fa8132 F2 found here.
+/// the shape this project's own `source-scanning-test-assertions` entry
+/// records, and the one consult fa8132 F2 found here.
 pub fn say(at: &Path, reading: &Reading, report: &Report) {
     let line = said(at, reading, report);
     let level = report.level();
