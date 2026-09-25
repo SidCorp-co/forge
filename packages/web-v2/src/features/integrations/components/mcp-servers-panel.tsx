@@ -42,7 +42,13 @@ const REASON_META: Record<
     bg: "var(--amberw-50)",
     icon: "alert",
   },
-  shadowed: { label: "Shadowed", fg: "var(--fg-subtle)", bg: "var(--bg-sunken)", icon: "dot" },
+  shadowed: {
+    label: "Shadowed",
+    fg: "var(--fg-subtle)",
+    bg: "var(--bg-sunken)",
+    icon: "dot",
+    hint: "Another binding of this provider holds the server name an agent would reach it by, so nothing here is wrong with this one. Where a provider serves one binding per project, the oldest granted one takes the slot and a label changes nothing — move the grant to this binding to use it instead. Where a provider serves several, each is named after its label and two labels can resolve to one name, which a label of its own settles.",
+  },
   not_granted: {
     label: "Not granted",
     fg: "var(--amberw-600)",
@@ -55,7 +61,7 @@ const REASON_META: Record<
     fg: "var(--red-600)",
     bg: "var(--red-50)",
     icon: "alert",
-    hint: "Active, credentialed, granted and unshadowed — and the resolver still built no server for it, which is what a credential that will not decrypt looks like from here. Re-enter the credential and Verify.",
+    hint: "Active, credentialed, granted, and holding its own server name — and the resolver still built no server for it. That is either a stored credential that will not decrypt or a binding configuration this provider cannot build a server from. Verify the credential first; if it verifies, the configuration is what to check.",
   },
 };
 

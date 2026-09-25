@@ -121,6 +121,8 @@ interface Delivered {
   bindings: ReadonlySet<string>;
   /** Names that survived into the final map, after the browser dedupe. */
   names: ReadonlySet<string>;
+  /** Which binding holds each produced name; one another holds is shadowed, not unresolved. */
+  heldBy: ReadonlyMap<string, string>;
 }
 
 async function integrationRows(
@@ -147,8 +149,13 @@ async function integrationRows(
     for (const pair of mine) {
       const label = ((pair.binding as Record<string, unknown>).label as string) ?? '';
       const serverName = mcpServerNameFor(decl, label) ?? provider;
-      // Keyed on the binding: two bindings of a single-slot provider carry one server name.
+      // Keyed on the binding, never the name: two bindings of one provider can carry one name, so
+      // one whose name an earlier granted binding holds is shadowed — `multiBinding` included.
       const willInject = delivered.bindings.has(pair.binding.id) && delivered.names.has(serverName);
+      const holder = delivered.heldBy.get(serverName);
+      const wouldWinSlot =
+        (multi || winnerId === pair.binding.id) &&
+        (holder === undefined || holder === pair.binding.id);
       const entry = previewEntryFor(decl, pair);
       rows.push({
         source: 'integration',
@@ -165,7 +172,7 @@ async function integrationRows(
           active: pair.binding.active && pair.connection.active,
           hasSecrets: pair.connection.secretsEnc !== null,
           held: grantHolds(decl, pair.binding),
-          wouldWinSlot: multi || winnerId === pair.binding.id,
+          wouldWinSlot,
         }),
         url: typeof entry?.url === 'string' ? entry.url : null,
         headers: willInject ? { Authorization: 'Bearer [redacted]' } : null,
@@ -197,8 +204,9 @@ export async function buildMcpPreview(projectId: string): Promise<McpPreview> {
 
   const carried = new Set(resolved.resolvedNames);
   const delivered: Delivered = {
-    bindings: new Set(resolved.integrationBindingIds),
+    bindings: new Set(resolved.integrationServers.map((s) => s.bindingId)),
     names: carried,
+    heldBy: new Map(resolved.integrationServers.map((s) => [s.name, s.bindingId])),
   };
 
   const servers = await integrationRows(projectId, pairs, delivered);
