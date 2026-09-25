@@ -1,9 +1,6 @@
 import type { WaitingCommit } from '../integrations/github/live-divergence.js';
 
-/**
- * How a waiting commit counts as an issue's work: its own subject declares the key, or it declares
- * nothing and a merge declaring the key brought it onto the base branch.
- */
+/** `declares_issue` — read by `declaredIssueSeqs`; `merged_in` — given by `carry`. */
 export type OwnerVia = 'declares_issue' | 'merged_in';
 
 /** Every issue each waiting commit is the work of, keyed by the commit's lower-cased sha. */
