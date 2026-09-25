@@ -32,6 +32,7 @@ use crate::error::{Error, Result};
 use crate::runner::close_loop::{self, CloseState, LeaseKeeper, SessionReader};
 use crate::runner::inflight::Reaped;
 use crate::runner::ledger::{Incarnation, Ledger, Run};
+use crate::workspace::repo_cred::RepoCred;
 use crate::workspace::salvage::{self, Outcome, Salvage};
 use crate::workspace::worktree::Residence;
 
@@ -146,13 +147,14 @@ async fn keep_before_release(
     verb: Verb,
     worktree: &Path,
     branch: Option<&str>,
+    cred: &RepoCred,
 ) -> Result<Commits> {
     if let Some(branch) = branch {
         if !matches!(
-            salvage::publication_of(worktree).await,
+            salvage::publication_of(worktree, cred).await,
             salvage::Publication::Published
         ) {
-            let published = salvage::publish(worktree, branch).await;
+            let published = salvage::publish(worktree, branch, cred).await;
             if !matches!(published, salvage::Publication::Published) {
                 tracing::info!(
                     "[terminate] run {run_id}: `{branch}` in {} did not reach a remote ({published:?}) — \
@@ -162,9 +164,9 @@ async fn keep_before_release(
             }
         }
     }
-    match salvage::retention_of(worktree).await {
-        salvage::Retention::Kept => Ok(Commits::AlreadyNamed),
-        salvage::Retention::AtRisk { commits } => salvage::keep_at(worktree, run_id)
+    match salvage::fate_of(worktree).await {
+        salvage::Fate::Named => Ok(Commits::AlreadyNamed),
+        salvage::Fate::NeedsARef { commits } => salvage::keep_at(worktree, run_id)
             .await
             .map(Commits::NamedBy)
             .map_err(|why| {
@@ -176,13 +178,48 @@ async fn keep_before_release(
                     worktree.display()
                 ))
             }),
-        salvage::Retention::Unknown { why } => Err(Error::Other(format!(
+        salvage::Fate::Kept { why } => Err(Error::Other(format!(
             "refusing to {verb:?} run {run_id}: this box cannot tell whether the commits in {} \
              are named by any ref besides this checkout's own HEAD ({why}) — the checkout stays, \
              because not knowing is not the same as knowing it is safe",
             worktree.display()
         ))),
     }
+}
+
+/// Take the directory, having established that the commits do not need it.
+///
+/// The predicate is read once more here, immediately before the removal, and a
+/// checkout it now calls kept is refused by name. A keep decision and a removal
+/// for one path is the failure itself, not a step on the way to one — this box
+/// printed both about the same two directories inside one sweep (ISS-1250) —
+/// and the way a reader tells a real change of state from a contradiction is
+/// that one of them says so.
+async fn take_the_directory(
+    run_id: &str,
+    verb: Verb,
+    repo_root: &Path,
+    worktree: &Path,
+    commits: &Commits,
+) -> Result<()> {
+    if let salvage::Fate::Kept { why } = salvage::fate_of(worktree).await {
+        return Err(Error::Other(format!(
+            "refusing to {verb:?} run {run_id}: this box keeps {} ({why}) and was about to remove \
+             it in the same breath — a keep and a removal for one path is the failure, not a step",
+            worktree.display()
+        )));
+    }
+    let why = match commits {
+        Commits::AlreadyNamed => format!(
+            "run {run_id} is over and every commit at its HEAD is already named by a ref this \
+             repository keeps"
+        ),
+        Commits::NamedBy(name) => format!(
+            "run {run_id} is over and the commits at its HEAD were given {name} first, which \
+             outlives the directory"
+        ),
+    };
+    crate::workspace::worktree::remove_at(&repo_root.to_string_lossy(), worktree, &why).await
 }
 
 /// What this release may do about the path the run names.
@@ -268,6 +305,9 @@ pub async fn force_terminal(
     }
 
     let worktree = Path::new(&run.worktree_path);
+    // One credential for this release, resolved from what this box provisioned
+    // rather than from what a git child happens to read (ISS-1250).
+    let cred = RepoCred::of(run.project_id.as_deref(), worktree).await;
 
     // What is at the path is git's answer and never the filesystem's, asked
     // before anything here is touched. A run declared against the repository's
@@ -305,6 +345,7 @@ pub async fn force_terminal(
                     job_id: run_id,
                     attempt: 0,
                     failure: what.reason,
+                    cred: &cred,
                 })
                 .await,
             ),
@@ -322,13 +363,15 @@ pub async fn force_terminal(
                     .unwrap_or("this checkout is on no branch, so there was no salvage to run")
             )));
         }
-        commits = Some(keep_before_release(run_id, verb, worktree, branch.as_deref()).await?);
-        crate::workspace::worktree::remove_at(&what.repo_root.to_string_lossy(), worktree).await?;
+        let kept = keep_before_release(run_id, verb, worktree, branch.as_deref(), &cred).await?;
+        take_the_directory(run_id, verb, what.repo_root, worktree, &kept).await?;
+        commits = Some(kept);
         report
     } else {
         let branch = branch_of(worktree).await;
-        commits = Some(keep_before_release(run_id, verb, worktree, branch.as_deref()).await?);
-        crate::workspace::worktree::remove_at(&what.repo_root.to_string_lossy(), worktree).await?;
+        let kept = keep_before_release(run_id, verb, worktree, branch.as_deref(), &cred).await?;
+        take_the_directory(run_id, verb, what.repo_root, worktree, &kept).await?;
+        commits = Some(kept);
         None
     };
 
@@ -1248,7 +1291,10 @@ mod tests {
             .nth(1)
             .expect("force_terminal must be findable");
         let salvage = body.find("salvage_wip").expect("the preserve step");
-        let release = body.find("worktree::remove").expect("the release");
+        // The removal moved behind `take_the_directory`, which is where the
+        // keep-and-remove refusal reads the predicate one last time (ISS-1250).
+        // The order this test is about is unchanged; what it names is.
+        let release = body.find("take_the_directory").expect("the release");
         let ended = body.find("end_run").expect("the terminal write");
         assert!(
             salvage < release,
@@ -2094,7 +2140,7 @@ mod tests {
             .expect("force_terminal must be findable");
         let asked = body.find("residence_of").expect("the question put to git");
         let salvage = body.find("salvage_wip").expect("the preserve step");
-        let release = body.find("worktree::remove").expect("the release");
+        let release = body.find("take_the_directory").expect("the release");
         assert!(
             asked < salvage && asked < release,
             "what the path is must be settled BEFORE the preserve step and before \
@@ -2102,10 +2148,112 @@ mod tests {
              (ISS-1183) and reading it off `exists()` is the other (ISS-1193)"
         );
         assert!(
+            !body.contains("worktree::remove_at"),
+            "and the removal itself goes through `take_the_directory`, which refuses a path the \
+             predicate now calls kept — a second call site would be a removal nothing checked \
+             (ISS-1250)"
+        );
+        assert!(
             !body.contains("worktree.exists()"),
             "and it is settled by asking git, never by whether the path resolves: an absent \
              path is a moved checkout as often as a removed one, and the branch it used to \
              skip is the salvage guard (ISS-1193)"
+        );
+    }
+
+    /// ISS-1250's fourth rule, as a refusal rather than a comment.
+    ///
+    /// The directory goes only where the predicate says the commits do not need
+    /// it, and the predicate is read again at the moment of the removal. This
+    /// drives the one input that makes it unreadable — a ref file holding
+    /// something that is not an object, which is what a repository whose refs
+    /// are being rewritten underneath it looks like — and asserts the verb
+    /// refuses by name with the directory still standing.
+    /// The guard on the removal itself, driven at the one moment no other test
+    /// can reach: `keep_before_release` has already answered, and the predicate
+    /// has moved since. That is a real change of state and not a contradiction,
+    /// and what tells the two apart is that this one says so by name instead of
+    /// taking the directory.
+    #[tokio::test]
+    async fn the_removal_reads_the_predicate_once_more_and_refuses_what_it_now_keeps() {
+        let (root, wt) = repo("removeguard").await;
+        git(&wt, &["add", "work.txt"]).await;
+        git(&wt, &["commit", "-qm", "work"]).await;
+
+        // Everything `keep_before_release` needed held a moment ago.
+        let named = keep_before_release(
+            "run-1",
+            Verb::Abandon,
+            &wt,
+            Some("ISS-964"),
+            &no_cred().await,
+        )
+        .await
+        .expect("the commits are named by the branch");
+        assert_eq!(named, Commits::AlreadyNamed);
+
+        // Then the refs move underneath the box.
+        let forge_refs = root.join(".git").join("refs").join("forge");
+        std::fs::create_dir_all(&forge_refs).expect("refs dir");
+        std::fs::write(forge_refs.join("broken"), "not-a-sha\n").expect("ref");
+
+        let out = take_the_directory("run-1", Verb::Abandon, &root, &wt, &named).await;
+        let still_there = wt.exists();
+        let err = out.err().map(|e| e.to_string()).unwrap_or_default();
+        let _ = std::fs::remove_dir_all(&root);
+
+        assert!(
+            still_there,
+            "a directory this box now keeps must outlive the removal that was already in flight"
+        );
+        assert!(
+            err.contains("a keep and a removal for one path is the failure"),
+            "and the refusal names the contradiction rather than reporting a git error: {err}"
+        );
+    }
+
+    async fn no_cred() -> RepoCred {
+        RepoCred::of(None, Path::new(".")).await
+    }
+
+    #[tokio::test]
+    async fn a_checkout_this_box_keeps_is_not_removed_in_the_same_breath() {
+        let (root, wt) = repo("keptandremoved").await;
+        git(&wt, &["add", "work.txt"]).await;
+        git(&wt, &["commit", "-qm", "work"]).await;
+        let forge_refs = root.join(".git").join("refs").join("forge");
+        std::fs::create_dir_all(&forge_refs).expect("refs dir");
+        std::fs::write(forge_refs.join("broken"), "not-a-sha\n").expect("ref");
+
+        let mut led = ledger_for(&wt, Incarnation::Exited, "boot-a");
+        let (p, s, l) = (
+            Procs(Mutex::new(Vec::new())),
+            Sessions,
+            Leases(Mutex::new(HashSet::new())),
+        );
+
+        let out = force_terminal(
+            &mut led,
+            "run-1",
+            forcing(&root, "boot-a"),
+            ports(&p, &s, &l),
+        )
+        .await;
+
+        let err = out
+            .expect_err("a checkout this box keeps must not be removed")
+            .to_string();
+        let still_there = wt.exists();
+        let _ = std::fs::remove_dir_all(&root);
+
+        assert!(
+            still_there,
+            "the whole point of the refusal is that the directory outlives the process that \
+             said it was kept"
+        );
+        assert!(
+            err.contains("cannot tell whether the commits"),
+            "and the refusal names which reading it refused on: {err}"
         );
     }
 

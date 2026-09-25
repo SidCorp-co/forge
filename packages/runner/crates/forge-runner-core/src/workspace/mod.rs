@@ -8,6 +8,8 @@
 //! - `provision`  — workspace provisioning (clone + skills + .mcp.json) on bind
 //! - `plugin_sync`— device-level shared-skill plugin channel (ISS-739)
 //! - `refresh`    — fetch + fast-forward before an agent reads the workspace
+//! - `repo_cred`  — the credential a repository is configured to push with, named
+//!   rather than inherited
 //! - `salvage`    — commit + push a failed job's uncommitted work
 //! - `trust`      — pre-accept Claude Code's workspace-trust dialog for a checkout
 
@@ -15,6 +17,7 @@ pub mod orientation;
 pub mod plugin_sync;
 pub mod provision;
 pub mod refresh;
+pub mod repo_cred;
 pub mod salvage;
 pub mod skill_sync;
 pub mod trust;

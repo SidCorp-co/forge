@@ -1,10 +1,21 @@
 //! Say on the issue when this box is holding a checkout nothing else has.
 //!
-//! `runner/terminate.rs` refuses to release a worktree whose commits it cannot
-//! find on a remote. That refusal is correct and it is silent: the tree stays,
-//! the run stays open, and the only record is a `tracing::warn` in this box's
-//! journal. A hold nobody can see is the same shape as the failure this whole
-//! issue is about — work that exists and no surface says so.
+//! `runner/terminate.rs` refuses to release a worktree when it cannot establish
+//! that the commits there are named by some ref that outlives the directory.
+//! That refusal is correct and it is silent: the tree stays, the run stays
+//! open, and the only record is a `tracing::warn` in this box's journal. A hold
+//! nobody can see is the same shape as the failure this whole issue is about —
+//! work that exists and no surface says so.
+//!
+//! Which question that is matters, and this module got it wrong for a while.
+//! It asked `salvage::publication_of` — is the work on a remote — and wrote
+//! "run X keeps <path>" off the answer. The release stopped turning on that at
+//! ISS-1188 and turns on `salvage::fate_of` instead, so this module was saying
+//! "keeps" about directories the release removed seconds later, and did, twice
+//! in one day (ISS-1250). The directory's fate is read from the predicate the
+//! release reads; publication is still reported, because work on no remote is
+//! exactly the thing this module exists to surface, but it is reported as what
+//! it is and never as a decision to keep anything.
 //!
 //! This pass carries that refusal to the issues the run holds. It reports and
 //! moves nothing: refusing to release is already the strongest act available to
@@ -17,7 +28,8 @@
 
 use crate::runner::ledger::{Incarnation, Ledger, Run};
 use crate::transport::{run_sessions, CoreClient};
-use crate::workspace::salvage::{self, Publication};
+use crate::workspace::repo_cred::RepoCred;
+use crate::workspace::salvage::{self, Fate, Publication};
 
 /// What the box says about a checkout it is keeping.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,6 +39,11 @@ pub struct Held {
     pub head: String,
     pub commits_unpushed: Option<u32>,
     pub reason: String,
+    /// Whether the DIRECTORY stays. Not part of what core declares, and not
+    /// sent: it is what the journal line's verb is read off, and what a test
+    /// asserts so the word "keeps" cannot drift back onto a checkout the
+    /// release takes.
+    pub kept: bool,
 }
 
 impl Held {
@@ -62,34 +79,56 @@ impl HeldReporter for CoreHeld<'_> {
     }
 }
 
-pub async fn at_risk(run: &Run) -> Option<Held> {
+pub async fn at_risk(run: &Run, cred: &RepoCred) -> Option<Held> {
     let worktree = run.worktree_path.as_path();
     if !worktree.is_absolute() || !worktree.exists() {
         return None;
     }
     let head = git_line(worktree, &["rev-parse", "HEAD"]).await?;
     let branch = git_line(worktree, &["rev-parse", "--abbrev-ref", "HEAD"]).await;
-    match salvage::publication_of(worktree).await {
-        Publication::Published => None,
-        Publication::Unpublished { commits } => Some(Held {
-            worktree: worktree.display().to_string(),
-            branch,
-            head,
-            commits_unpushed: Some(commits),
-            reason: format!(
-                "{commits} commit(s) here are on no remote, and the push to publish them did not land"
-            ),
-        }),
-        Publication::Unknown { why } => Some(Held {
-            worktree: worktree.display().to_string(),
-            branch,
-            head,
-            commits_unpushed: None,
-            reason: format!(
-                "this box cannot tell whether the work here is on a remote ({why}), and not knowing is not the same as knowing it is safe"
-            ),
-        }),
+    let fate = salvage::fate_of(worktree).await;
+    let publication = salvage::publication_of(worktree, cred).await;
+    let kept = matches!(fate, Fate::Kept { .. });
+    if !kept && publication == Publication::Published {
+        return None;
     }
+    Some(Held {
+        worktree: worktree.display().to_string(),
+        branch,
+        head,
+        commits_unpushed: match &publication {
+            Publication::Unpublished { commits } => Some(*commits),
+            _ => None,
+        },
+        reason: why(&fate, &publication),
+        kept,
+    })
+}
+
+/// One sentence carrying both facts, in the order a reader needs them: what
+/// happens to the directory first, because that is what the last one of these
+/// got wrong, then what is true of the work.
+fn why(fate: &Fate, publication: &Publication) -> String {
+    let directory = match fate {
+        Fate::Kept { why } => format!(
+            "this box keeps this checkout: it cannot tell whether the commits here are named by \
+             any ref besides this checkout's own HEAD ({why}), and not knowing is not the same as \
+             knowing it is safe"
+        ),
+        _ => "the commits here are named by a ref this repository keeps, so this directory is not \
+              what is holding them and the release may take it"
+            .to_string(),
+    };
+    let work = match publication {
+        Publication::Published => "the work here is on a remote".to_string(),
+        Publication::Unpublished { commits } => format!(
+            "{commits} commit(s) here are on no remote, and the push to publish them did not land"
+        ),
+        Publication::Unknown { why } => {
+            format!("this box cannot tell whether the work here is on a remote ({why})")
+        }
+    };
+    format!("{work} — {directory}")
 }
 
 async fn git_line(dir: &std::path::Path, args: &[&str]) -> Option<String> {
@@ -138,14 +177,16 @@ pub async fn report_held_worktrees(
         let Some(session_id) = run.session_id.clone() else {
             continue;
         };
-        let Some(held) = at_risk(&run).await else {
+        let cred = RepoCred::of(run.project_id.as_deref(), &run.worktree_path).await;
+        let Some(held) = at_risk(&run, &cred).await else {
             continue;
         };
         match reporter.report(&session_id, &held).await {
             Ok(()) => {
                 tracing::warn!(
-                    "[held-report] run {} keeps {} because {}",
+                    "[held-report] run {} {} {} — {}",
                     run.run_id,
+                    if held.kept { "keeps" } else { "releases" },
                     held.worktree,
                     held.reason
                 );
@@ -285,6 +326,12 @@ mod tests {
             "the reason must name what is at risk: {}",
             held.reason
         );
+        assert!(
+            !held.kept,
+            "the branch this commit sits on survives `git worktree remove`, so the release takes \
+             the directory and nothing here may say it is kept: {}",
+            held.reason
+        );
     }
 
     #[tokio::test]
@@ -344,7 +391,8 @@ mod tests {
         let seen = spy.seen.borrow();
         let held = &seen.first().expect("one report").1;
         assert!(
-            held.reason.contains("cannot tell"),
+            held.reason
+                .contains("cannot tell whether the work here is on a remote"),
             "not knowing must not be reported as knowing it is unsafe: {}",
             held.reason
         );
@@ -374,6 +422,95 @@ mod tests {
         assert_eq!(spy.seen.borrow().len(), 1, "but it was attempted");
     }
 
+    /// ISS-1250 — the sentence that cost an operator four hours.
+    ///
+    /// Both checkouts this box reported as kept were gone: the release asks
+    /// whether a surviving ref names HEAD, and a local branch is one, so it
+    /// took the directory in the same sweep. The word has to follow the
+    /// predicate the release reads, and the only way to be sure it does is to
+    /// drive a checkout the release WOULD take and read the word back.
+    #[tokio::test]
+    async fn a_checkout_the_release_may_take_is_never_reported_as_kept() {
+        let (root, wt) = a_box_with_a_worktree("nevekept");
+        std::fs::write(wt.join("work.txt"), "work\n").expect("write");
+        sh(&wt, &["add", "-A"]);
+        sh(&wt, &["commit", "-qm", "work"]);
+        refuse_pushes(&root);
+
+        let run = a_run_at(&wt);
+        let cred = crate::workspace::repo_cred::RepoCred::of(None, &wt).await;
+        let held = at_risk(&run, &cred).await.expect("the work is at risk");
+        let fate = crate::workspace::salvage::fate_of(&wt).await;
+        let _ = std::fs::remove_dir_all(&root);
+
+        assert_eq!(
+            fate,
+            crate::workspace::salvage::Fate::Named,
+            "the premise: the release is entitled to this directory"
+        );
+        assert!(
+            !held.kept,
+            "the release will take this directory, so nothing may say the box keeps it: {}",
+            held.reason
+        );
+        assert!(
+            held.reason.contains("the release may take it"),
+            "and the sentence a person reads has to say so: {}",
+            held.reason
+        );
+    }
+
+    /// The other side of the same rule: where the release really does refuse,
+    /// the word is "keeps" and the directory outlives the sweep.
+    #[tokio::test]
+    async fn a_checkout_whose_retention_cannot_be_read_is_reported_as_kept() {
+        let (root, wt) = a_box_with_a_worktree("unreadable");
+        std::fs::write(wt.join("work.txt"), "work\n").expect("write");
+        sh(&wt, &["add", "-A"]);
+        sh(&wt, &["commit", "-qm", "work"]);
+        // `fate_of` asks `rev-list HEAD --not --branches ... --glob=refs/forge`.
+        // A ref file holding something that is not an object makes that call
+        // fail while `rev-parse HEAD` still answers, which is the shape a box
+        // whose refs are being rewritten underneath it produces.
+        let forge_refs = root.join("work").join(".git").join("refs").join("forge");
+        std::fs::create_dir_all(&forge_refs).expect("refs dir");
+        std::fs::write(forge_refs.join("broken"), "not-a-sha\n").expect("ref");
+
+        let run = a_run_at(&wt);
+        let cred = crate::workspace::repo_cred::RepoCred::of(None, &wt).await;
+        let held = at_risk(&run, &cred)
+            .await
+            .expect("a kept checkout is reported");
+        let _ = std::fs::remove_dir_all(&root);
+
+        assert!(
+            held.kept,
+            "the release refuses this one, so the box really is keeping it: {}",
+            held.reason
+        );
+        assert!(
+            held.reason.contains("this box keeps this checkout"),
+            "and says so in the words that reach the issue: {}",
+            held.reason
+        );
+    }
+
+    /// One `Run` at a path, without the ledger ceremony the reporting loop
+    /// needs — these three assert `at_risk` itself.
+    fn a_run_at(worktree: &Path) -> crate::runner::ledger::Run {
+        let mut led = Ledger::open_in_memory().expect("ledger");
+        led.create_run_group(NewRun {
+            run_id: "run-1".into(),
+            project_id: "proj".into(),
+            master_session_id: "master".into(),
+            worktree_path: worktree.to_path_buf(),
+            boot_id: "boot-a".into(),
+            issue_keys: vec!["ISS-9".into()],
+        })
+        .expect("create");
+        led.run("run-1").expect("read").expect("the row")
+    }
+
     #[test]
     fn the_payload_carries_only_what_core_declares() {
         let held = Held {
@@ -382,6 +519,7 @@ mod tests {
             head: "abc".into(),
             commits_unpushed: Some(2),
             reason: "because".into(),
+            kept: true,
         };
         let json = held.to_json();
         let keys: Vec<&str> = json
@@ -402,6 +540,10 @@ mod tests {
         assert!(
             json.get("recommendation").is_none(),
             "this report decides nothing: {json}"
+        );
+        assert!(
+            json.get("kept").is_none(),
+            "`kept` is this box's own reading and not a field core declares: {json}"
         );
     }
 }
