@@ -140,12 +140,85 @@ pub fn pid_alive(_pid: u32) -> bool {
     false
 }
 
+/// A `forge-runner start` process found on this box without a record.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Running {
+    pub pid: u32,
+    /// Where `/proc/<pid>/exe` points, or why it could not be read.
+    pub exe: String,
+    /// The file it started from has been replaced or removed, which Linux marks
+    /// by suffixing the link with ` (deleted)`.
+    pub replaced: bool,
+}
+
+/// Every `forge-runner start` process under `root` (a `/proc`) other than
+/// `self_pid`. `None` where `root` cannot be listed at all.
+///
+/// A daemon that predates the serving record writes none, and "no record" alone
+/// cannot tell that daemon from no daemon — one of them is a box serving a
+/// deleted binary with nothing saying so, which is the state ISS-1223 exists to
+/// end. So the absent record is read against the processes themselves.
+pub fn scan(root: &Path, self_pid: u32) -> Option<Vec<Running>> {
+    let entries = std::fs::read_dir(root).ok()?;
+    let mut found = Vec::new();
+    for entry in entries.flatten() {
+        let Some(pid) = entry
+            .file_name()
+            .to_str()
+            .and_then(|n| n.parse::<u32>().ok())
+        else {
+            continue;
+        };
+        if pid == self_pid {
+            continue;
+        }
+        let Ok(raw) = std::fs::read(entry.path().join("cmdline")) else {
+            continue;
+        };
+        let args: Vec<String> = raw
+            .split(|b| *b == 0)
+            .filter(|a| !a.is_empty())
+            .map(|a| String::from_utf8_lossy(a).into_owned())
+            .collect();
+        let is_runner = args
+            .first()
+            .and_then(|a0| Path::new(a0).file_name())
+            .is_some_and(|n| n.to_string_lossy().starts_with("forge-runner"));
+        if !is_runner || !args.iter().skip(1).any(|a| a == "start") {
+            continue;
+        }
+        let (exe, replaced) = match std::fs::read_link(entry.path().join("exe")) {
+            Ok(link) => {
+                let text = link.to_string_lossy().into_owned();
+                let replaced = text.ends_with(crate::exe::DELETED_SUFFIX);
+                (text, replaced)
+            }
+            Err(e) => (format!("unreadable ({e})"), false),
+        };
+        found.push(Running { pid, exe, replaced });
+    }
+    found.sort_by_key(|r| r.pid);
+    Some(found)
+}
+
+#[cfg(target_os = "linux")]
+pub fn running_daemons() -> Option<Vec<Running>> {
+    scan(Path::new("/proc"), std::process::id())
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn running_daemons() -> Option<Vec<Running>> {
+    None
+}
+
 /// What this box can see of a pid, so the reading can be asserted against
 /// every case rather than against the one process a test happens to be.
 pub struct Probe {
     pub alive: fn(u32) -> bool,
     pub start_ticks: fn(u32) -> Option<String>,
     pub boot_id: Option<String>,
+    /// The daemons running without a record, where this platform can look.
+    pub daemons: fn() -> Option<Vec<Running>>,
 }
 
 impl Probe {
@@ -154,8 +227,41 @@ impl Probe {
             alive: pid_alive,
             start_ticks,
             boot_id: crate::runner::inflight::boot_identity(),
+            daemons: running_daemons,
         }
     }
+}
+
+fn unrecorded_lines(probe: &Probe) -> Vec<String> {
+    let Some(found) = (probe.daemons)() else {
+        return vec![
+            "daemon     no record — and this platform gives no way to look for a daemon that predates the record, so whether one is running, and on which build, cannot be said from here"
+                .to_string(),
+        ];
+    };
+    if found.is_empty() {
+        return vec![
+            "daemon     no record, and no `forge-runner start` process is running on this box — no daemon is serving"
+                .to_string(),
+        ];
+    }
+    found
+        .iter()
+        .map(|r| {
+            let file = if r.replaced {
+                format!(
+                    "the file it started from, {}, has been replaced on disk, so it is NOT serving this binary — restarting the service turns it over",
+                    r.exe
+                )
+            } else {
+                format!("the file it started from, {}, is still in place", r.exe)
+            };
+            format!(
+                "daemon     no record — pid {} (`forge-runner start`) is running from a build older than the record, so its version cannot be read; {file}",
+                r.pid
+            )
+        })
+        .collect()
 }
 
 /// Whether the recorded daemon is the process holding its pid now.
@@ -268,12 +374,7 @@ pub fn lines(
                 u.reason
             )]
         }
-        Ok(None) => {
-            return vec![
-                "daemon     no record — no daemon that records the build it serves has started with this config directory, so which build is serving cannot be said from here"
-                    .to_string(),
-            ]
-        }
+        Ok(None) => return unrecorded_lines(probe),
         Ok(Some(r)) => r,
     };
     let unverified = match liveness(record, probe) {
@@ -330,7 +431,16 @@ pub fn version_note(
     this_version: &str,
     this_commit: &str,
 ) -> Option<String> {
-    let record = read.as_ref().ok()?.as_ref()?;
+    let record = match read.as_ref().ok()? {
+        Some(r) => r,
+        None => {
+            let stale = (probe.daemons)()?.into_iter().find(|r| r.replaced)?;
+            return Some(format!(
+                "forge-runner: the daemon on this box (pid {}) is running from a file that has since been replaced, so it is not serving this build; `forge-runner status` says more",
+                stale.pid
+            ));
+        }
+    };
     if matches!(liveness(record, probe), Liveness::Gone | Liveness::Reused) {
         return None;
     }
@@ -367,6 +477,7 @@ mod tests {
             alive,
             start_ticks: ticks,
             boot_id: Some("boot-a".into()),
+            daemons: || Some(Vec::new()),
         }
     }
 
@@ -456,7 +567,10 @@ mod tests {
     #[test]
     fn a_build_that_cannot_be_named_says_which_case_holds() {
         let none = joined(Ok(None), &live_same());
-        assert!(none.starts_with("daemon     no record"), "{none}");
+        assert!(
+            none.starts_with("daemon     no record, and no `forge-runner start` process"),
+            "{none}"
+        );
 
         let gone = joined(Ok(Some(rec("0.17.8", None))), &probe(|_| false, |_| None));
         assert!(
@@ -483,6 +597,101 @@ mod tests {
             unreadable.contains("UNREADABLE — /x/serving.json: does not parse: EOF"),
             "{unreadable}"
         );
+    }
+
+    /// Review finding 2: with no record, an older daemon serving a replaced
+    /// binary is told apart from no daemon, and from one whose file stands.
+    #[test]
+    fn no_record_tells_an_older_daemon_on_a_replaced_binary_from_no_daemon() {
+        let mut p = live_same();
+        p.daemons = || {
+            Some(vec![Running {
+                pid: 2946187,
+                exe: "/home/dev/.local/bin/forge-runner (deleted)".into(),
+                replaced: true,
+            }])
+        };
+        let stale = joined(Ok(None), &p);
+        assert!(
+            stale.contains("pid 2946187 (`forge-runner start`) is running"),
+            "{stale}"
+        );
+        assert!(
+            stale.contains("has been replaced on disk, so it is NOT serving this binary"),
+            "{stale}"
+        );
+        let note = version_note(&Ok(None), &p, "0.17.9", "abc1234").expect("--version says it too");
+        assert!(note.contains("pid 2946187"), "{note}");
+
+        p.daemons = || {
+            Some(vec![Running {
+                pid: 7,
+                exe: "/home/dev/.local/bin/forge-runner".into(),
+                replaced: false,
+            }])
+        };
+        let standing = joined(Ok(None), &p);
+        assert!(standing.contains("is still in place"), "{standing}");
+        assert!(!standing.contains("NOT serving"), "{standing}");
+        assert_eq!(version_note(&Ok(None), &p, "0.17.9", "abc1234"), None);
+
+        p.daemons = || None;
+        let blind = joined(Ok(None), &p);
+        assert!(blind.contains("gives no way to look"), "{blind}");
+    }
+
+    /// The scan over a planted `/proc`: a `forge-runner start` whose exe link
+    /// carries the deleted suffix, one whose file stands, a `forge-runner
+    /// status` and an unrelated process, and this process itself.
+    #[cfg(unix)]
+    #[test]
+    fn the_scan_finds_the_daemons_and_reads_which_run_a_replaced_file() {
+        let root = crate::test_scratch::Scratch::new("serving-proc");
+        let plant = |pid: u32, argv: &[&str], exe: &str| {
+            let d = root.join(pid.to_string());
+            std::fs::create_dir_all(&d).unwrap();
+            std::fs::write(d.join("cmdline"), argv.join("\0") + "\0").unwrap();
+            std::os::unix::fs::symlink(exe, d.join("exe")).unwrap();
+        };
+        plant(
+            100,
+            &["/home/dev/.local/bin/forge-runner", "start"],
+            "/home/dev/.local/bin/forge-runner (deleted)",
+        );
+        plant(
+            101,
+            &["forge-runner", "--core-url", "x", "start"],
+            "/home/dev/.local/bin/forge-runner",
+        );
+        plant(
+            102,
+            &["/home/dev/.local/bin/forge-runner", "status"],
+            "/home/dev/.local/bin/forge-runner",
+        );
+        plant(103, &["/usr/bin/sleep", "start"], "/usr/bin/sleep");
+        plant(
+            104,
+            &["/home/dev/.local/bin/forge-runner", "start"],
+            "/home/dev/.local/bin/forge-runner",
+        );
+        std::fs::create_dir_all(root.join("self")).unwrap();
+        let found = scan(&root, 104).expect("the planted root lists");
+        assert_eq!(
+            found,
+            vec![
+                Running {
+                    pid: 100,
+                    exe: "/home/dev/.local/bin/forge-runner (deleted)".into(),
+                    replaced: true
+                },
+                Running {
+                    pid: 101,
+                    exe: "/home/dev/.local/bin/forge-runner".into(),
+                    replaced: false
+                },
+            ]
+        );
+        assert_eq!(scan(&root.join("absent"), 1), None);
     }
 
     /// A record from before a reboot is gone, whatever process holds its pid.
