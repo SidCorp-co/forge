@@ -3098,6 +3098,7 @@
   set is now 59.
 
 ### Fixed
+- **Settings → MCP now offers a snippet for the project you are working in.** It opened on whichever project came first in your list. A sentence beside Copy now names the project the snippet configures.
 - **A refused release no longer sends you to abort a shipped batch.** A closed issue says it is closed, a leftover claim says the sweep clears it, a release record is named as one. The regression line matches its readings.
 - **An abort names every issue its batch already closed, and a refused release says why.** An abort after a finished batch no longer answers that nothing closed. A refused release names each claimed or misplaced issue, and what frees it.
 - **A box running out of room says so before it runs out**, and keeps saying so once that filesystem stops answering. It reads free bytes and free inodes wherever runs write scratch, and says the sweep will not reclaim it.
