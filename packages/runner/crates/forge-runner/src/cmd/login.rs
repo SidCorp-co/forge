@@ -85,6 +85,7 @@ pub async fn pair_device(
         cred_store::store_device_token(&resp.device_token)?;
         cfg.core_url = Some(core_url);
         cfg.device_id = Some(resp.device_id.clone());
+        cfg.device_name = Some(name.to_string());
         cfg.save()?;
         println!(
             "✔ paired device {} (token store: {})",
@@ -139,6 +140,7 @@ pub async fn pair_device(
     cred_store::store_device_token(&approved.device_token)?;
     cfg.core_url = Some(core_url);
     cfg.device_id = Some(approved.device_id.clone());
+    cfg.device_name = Some(name.to_string());
     cfg.save()?;
 
     println!(

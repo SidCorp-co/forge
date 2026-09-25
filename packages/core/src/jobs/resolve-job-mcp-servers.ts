@@ -1,4 +1,4 @@
-import { applyGrantedMcpServers } from '../integrations/mcp-resolver.js';
+import { applyGrantedMcpServers, type ProducedMcpServer } from '../integrations/mcp-resolver.js';
 import { applyStageFalseOptOuts, expandMcpServers } from '../pipeline/mcp-catalog.js';
 import { resolveProjectDefaultMcpServers } from './stage-overrides.js';
 
@@ -21,12 +21,12 @@ export interface ResolvedJobMcpServers {
   /** ISS-623 W2 — declared (project-default or per-state) names that did NOT
    *  survive resolution, minus the intentional playwright browser-dedupe. */
   droppedNames: string[];
-  /** ISS-1191 — the names the granted-integration pass produced, so a reader can
-   *  tell an integration-sourced server from a project-declared one. */
-  integrationNames: string[];
-  /** ISS-1191 — the binding behind each of those names; two bindings of a
-   *  single-slot provider share one name, so the name does not identify one. */
-  integrationBindingIds: string[];
+  /** ISS-1191 — every name the granted-integration pass produced, each carrying
+   *  the binding that produced it, so a reader can tell an integration-sourced
+   *  server from a project-declared one AND which binding holds the name. Two
+   *  bindings of one provider can land on a single name, so the name alone
+   *  identifies neither. */
+  integrationServers: ProducedMcpServer[];
 }
 
 export async function resolveJobMcpServers(args: {
@@ -68,8 +68,7 @@ export async function resolveJobMcpServers(args: {
     mcpServers: map,
     resolvedNames: [...resolvedNames],
     droppedNames,
-    integrationNames: granted.names,
-    integrationBindingIds: granted.bindingIds,
+    integrationServers: granted.produced,
   };
 }
 

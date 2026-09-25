@@ -54,17 +54,45 @@ function sentryPair(over: { id?: string; agentAccess?: string; secretsEnc?: stri
 
 function resolvedAs(args: {
   resolvedNames: string[];
-  integrationNames?: string[];
-  integrationBindingIds?: string[];
+  integrationServers?: { name: string; bindingId: string }[];
   droppedNames?: string[];
 }) {
   resolveSessionMcpServers.mockResolvedValue({
     mcpServers: Object.fromEntries(args.resolvedNames.map((n) => [n, { secret: 'never-read' }])),
     resolvedNames: args.resolvedNames,
-    integrationNames: args.integrationNames ?? [],
-    integrationBindingIds: args.integrationBindingIds ?? [],
+    integrationServers: args.integrationServers ?? [],
     droppedNames: args.droppedNames ?? [],
   });
+}
+
+/** An epodsystem binding: the one direct-mcp provider that declares `multiBinding`. */
+function epodPair(over: { id: string; label: string; agentAccess?: string }) {
+  return {
+    binding: {
+      id: over.id,
+      projectId: PROJECT,
+      provider: 'epodsystem',
+      role: 'service',
+      stages: null,
+      label: over.label,
+      config: { storeSlug: 'acme', storeName: 'Acme' },
+      active: true,
+      agentAccess: over.agentAccess ?? 'all',
+      integrationSecret: null,
+      createdAt: new Date(0),
+      updatedAt: new Date(0),
+    },
+    connection: {
+      id: `c-${over.id}`,
+      provider: 'epodsystem',
+      config: {},
+      active: true,
+      secretsEnc: 'enc',
+      lastHealthStatus: 'ok',
+      lastHealthAt: new Date(0),
+      breakerOpenedAt: null,
+    },
+  } as unknown as BindingWithConnection;
 }
 
 beforeEach(() => {
@@ -119,8 +147,7 @@ describe('buildMcpPreview — every source, or none (ISS-1191)', () => {
     );
     resolvedAs({
       resolvedNames: ['playwright', 'sentry'],
-      integrationNames: ['sentry'],
-      integrationBindingIds: ['b-sentry'],
+      integrationServers: [{ name: 'sentry', bindingId: 'b-sentry' }],
     });
     const { servers } = await buildMcpPreview(PROJECT);
     const reaching = servers.filter((s) => s.willInject).map((s) => s.serverName);
@@ -134,8 +161,7 @@ describe('buildMcpPreview — every source, or none (ISS-1191)', () => {
     );
     resolvedAs({
       resolvedNames: ['sentry'],
-      integrationNames: ['sentry'],
-      integrationBindingIds: ['b-sentry'],
+      integrationServers: [{ name: 'sentry', bindingId: 'b-sentry' }],
     });
     const { servers } = await buildMcpPreview(PROJECT);
     expect(servers.filter((s) => s.serverName === 'sentry')).toHaveLength(1);
@@ -148,7 +174,7 @@ describe('buildMcpPreview — every source, or none (ISS-1191)', () => {
     listAgentGrantedBindings.mockImplementation(async (_p: string, provider: string) =>
       provider === 'sentry' ? [sentryPair()] : [],
     );
-    resolvedAs({ resolvedNames: [], integrationNames: [] });
+    resolvedAs({ resolvedNames: [] });
     const { servers } = await buildMcpPreview(PROJECT);
     const row = servers.find((s) => s.serverName === 'sentry');
     expect(row?.willInject).toBe(false);
@@ -157,7 +183,7 @@ describe('buildMcpPreview — every source, or none (ISS-1191)', () => {
 
   it('still names the first unmet condition ahead of not_resolved', async () => {
     listBindingsForProject.mockResolvedValue([sentryPair({ agentAccess: 'none' })]);
-    resolvedAs({ resolvedNames: [], integrationNames: [] });
+    resolvedAs({ resolvedNames: [] });
     const { servers } = await buildMcpPreview(PROJECT);
     expect(servers.find((s) => s.serverName === 'sentry')?.reason).toBe('not_granted');
   });
@@ -167,7 +193,7 @@ describe('buildMcpPreview — every source, or none (ISS-1191)', () => {
     // is ungranted, the other 32 carry none. The two states are one observation on every surface
     // that reports a count, and telling them apart is the whole of what this issue was filed for.
     listBindingsForProject.mockResolvedValue([sentryPair({ agentAccess: 'none' })]);
-    resolvedAs({ resolvedNames: [], integrationNames: [] });
+    resolvedAs({ resolvedNames: [] });
     const { servers } = await buildMcpPreview(PROJECT);
     const ungranted = servers.find((s) => s.provider === 'sentry');
     const missing = servers.find((s) => s.provider === 'postman');
@@ -177,7 +203,7 @@ describe('buildMcpPreview — every source, or none (ISS-1191)', () => {
 
   it('shows the ungranted binding as connected and healthy while it reaches no agent', async () => {
     listBindingsForProject.mockResolvedValue([sentryPair({ agentAccess: 'none' })]);
-    resolvedAs({ resolvedNames: [], integrationNames: [] });
+    resolvedAs({ resolvedNames: [] });
     const row = (await buildMcpPreview(PROJECT)).servers.find((s) => s.provider === 'sentry');
     expect(row).toMatchObject({ configured: true, active: true, lastHealthStatus: 'ok' });
     expect(row?.willInject).toBe(false);
@@ -194,8 +220,7 @@ describe('buildMcpPreview — every source, or none (ISS-1191)', () => {
     );
     resolvedAs({
       resolvedNames: ['sentry'],
-      integrationNames: ['sentry'],
-      integrationBindingIds: ['b-win'],
+      integrationServers: [{ name: 'sentry', bindingId: 'b-win' }],
     });
     const { servers } = await buildMcpPreview(PROJECT);
     expect(servers.find((s) => s.bindingId === 'b-win')?.willInject).toBe(true);
@@ -211,8 +236,7 @@ describe('buildMcpPreview — every source, or none (ISS-1191)', () => {
     );
     resolvedAs({
       resolvedNames: ['sentry'],
-      integrationNames: ['sentry'],
-      integrationBindingIds: ['b-win'],
+      integrationServers: [{ name: 'sentry', bindingId: 'b-win' }],
     });
     const { servers } = await buildMcpPreview(PROJECT);
     expect(servers.find((s) => s.bindingId === 'b-lose')?.reason).toBe('shadowed');
@@ -226,11 +250,43 @@ describe('buildMcpPreview — every source, or none (ISS-1191)', () => {
     );
     resolvedAs({
       resolvedNames: ['sentry'],
-      integrationNames: ['sentry'],
-      integrationBindingIds: ['b-win'],
+      integrationServers: [{ name: 'sentry', bindingId: 'b-win' }],
     });
     const { servers } = await buildMcpPreview(PROJECT);
     expect(servers.filter((s) => s.source === 'project')).toEqual([]);
+  });
+
+  it('calls a multiBinding binding whose name another binding holds shadowed, not not_resolved', async () => {
+    // `mcpServerNameFor` maps `-` to `_`, so two epodsystem labels differing only there land on one
+    // server name. The resolver keeps the first claim; the second is shadowed BY it. Read as
+    // not_resolved, the panel tells the operator to re-enter a credential that is working.
+    const winner = epodPair({ id: 'b-first', label: 'north-shop' });
+    const loser = epodPair({ id: 'b-second', label: 'north_shop' });
+    listBindingsForProject.mockResolvedValue([winner, loser]);
+    listAgentGrantedBindings.mockImplementation(async (_p: string, provider: string) =>
+      provider === 'epodsystem' ? [winner, loser] : [],
+    );
+    resolvedAs({
+      resolvedNames: ['epodsystem_north_shop'],
+      integrationServers: [{ name: 'epodsystem_north_shop', bindingId: 'b-first' }],
+    });
+    const { servers } = await buildMcpPreview(PROJECT);
+    expect(servers.find((s) => s.bindingId === 'b-first')?.reason).toBe('ok');
+    expect(servers.find((s) => s.bindingId === 'b-second')?.reason).toBe('shadowed');
+  });
+
+  it('still calls a multiBinding binding under a name nobody holds not_resolved', async () => {
+    // The boundary the test above must not swallow: a granted, credentialed epodsystem binding
+    // whose own name the resolver produced for nobody is the decrypt-or-buildEntry failure, and
+    // `not_resolved` is exactly right for it.
+    const only = epodPair({ id: 'b-only', label: 'south-shop' });
+    listBindingsForProject.mockResolvedValue([only]);
+    listAgentGrantedBindings.mockImplementation(async (_p: string, provider: string) =>
+      provider === 'epodsystem' ? [only] : [],
+    );
+    resolvedAs({ resolvedNames: [] });
+    const { servers } = await buildMcpPreview(PROJECT);
+    expect(servers.find((s) => s.bindingId === 'b-only')?.reason).toBe('not_resolved');
   });
 
   it('never reads a spec out of the credential-bearing map the resolver returns', async () => {
