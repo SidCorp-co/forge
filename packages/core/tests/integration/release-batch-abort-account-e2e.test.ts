@@ -258,7 +258,7 @@ describe('a batch aborted after its finish closed part of the roster', () => {
     expect(inner).toMatchObject({ alreadyClosed: [] });
     const answer = await refused(runId);
     expect(answer.details).toEqual({ account: 'released', closed: [closedOne] });
-    expect(answer.message).toContain(closedOne);
+    expect(answer.message).toMatch(named(await keyOf(closedOne)));
   }, 30_000);
 
   it('names the closed issues when the abort lands after the finish released every claim', async () => {
