@@ -105,6 +105,21 @@ impl LeaseKeeper for CoreRunState<'_> {
                 .held_by_this_device,
         )
     }
+
+    async fn issue_is_over(
+        &self,
+        project_id: Option<&str>,
+        issue_key: &str,
+    ) -> Result<Option<bool>> {
+        // The same call `is_returned` makes, which is why the question lives on
+        // this trait: the issue's own status rides back on the lease read
+        // rather than costing a route of its own (ISS-1245).
+        Ok(
+            run_sessions::lease_state(self.client, project_id, issue_key)
+                .await?
+                .issue_over,
+        )
+    }
 }
 
 /// Telling core this box still holds a run.

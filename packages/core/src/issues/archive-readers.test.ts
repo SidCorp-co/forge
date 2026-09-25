@@ -54,6 +54,8 @@ const NOT_DISCOVERY: Record<string, string> = {
   'issues/attributes/read.ts': 'the ids attribute values reference',
   'issues/attributes/routes.ts': 'by issue id',
   'issues/create-service.ts': 'the existing row a dedup names',
+  'issues/issue-lease.ts':
+    'the one issue a lease key names; a run holding an archived issue is still holding it, and its status is what says whether it is over',
   'issues/criteria-verdicts.ts': 'the ids passed in',
   'issues/dependency-routes.ts': 'the two ends of the edge being written',
   'issues/dependency-service.ts': 'the two ends of the edge being written, refused when archived',

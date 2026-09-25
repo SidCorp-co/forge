@@ -226,6 +226,12 @@ pub async fn is_terminal(client: &CoreClient, session_id: &str) -> Result<bool> 
 pub struct LeaseState {
     pub held: bool,
     pub held_by_this_device: bool,
+    /// The issue itself has reached a terminal status at core. `None` is *not
+    /// known to be over* — an older core that does not send the field, or a key
+    /// that reaches no issue — and a box reads it as the run carrying on
+    /// (ISS-1245).
+    #[serde(default)]
+    pub issue_over: Option<bool>,
 }
 
 /// Where one lease lives, named by the project it was taken for.
@@ -300,6 +306,7 @@ pub async fn lease_state(
             return Ok(LeaseState {
                 held: false,
                 held_by_this_device: false,
+                issue_over: None,
             });
         }
         return Err(Error::Other(format!("issue-lease read: {status}: {text}")));
@@ -380,6 +387,37 @@ mod tests {
             lease_path(None, "ISS-880"),
             "/api/devices/me/issue-leases/ISS-880",
             "a run whose ledger row carries no project still asks, and core narrows by the device alone"
+        );
+    }
+
+    /// ISS-1245 — an answer with no such field is *not known to be over*.
+    ///
+    /// Core and the runner ship on different clocks, and a box running ahead of
+    /// its core must read the silence as the run carrying on rather than as the
+    /// issue being live or over. `false` here would be a claim nothing made.
+    #[test]
+    fn an_answer_that_names_no_issue_status_leaves_it_unknown() {
+        let state: LeaseState =
+            serde_json::from_str(r#"{"held":true,"heldByThisDevice":true,"holder":null}"#)
+                .expect("a core that does not send the field still answers the lease question");
+
+        assert_eq!(
+            state.issue_over, None,
+            "an older core says nothing about the issue, and a box that reads that as an answer              closes a run on evidence nobody gave it"
+        );
+    }
+
+    #[test]
+    fn an_over_issue_is_carried_back_on_the_lease_answer() {
+        let state: LeaseState = serde_json::from_str(
+            r#"{"held":false,"heldByThisDevice":false,"holder":null,"issueOver":true}"#,
+        )
+        .expect("the field rides on the call the close loop already makes");
+
+        assert_eq!(
+            state.issue_over,
+            Some(true),
+            "and it is answered off the ISSUE, so a lease core already freed still carries it"
         );
     }
 

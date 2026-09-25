@@ -44,6 +44,23 @@ pub trait RunCloser: Send + Sync {
 pub trait LeaseKeeper: Send + Sync {
     async fn release(&self, project_id: Option<&str>, issue_key: &str) -> Result<()>;
     async fn is_returned(&self, project_id: Option<&str>, issue_key: &str) -> Result<bool>;
+
+    /// Whether the ISSUE that key names is over — `closed` or `dropped` — as
+    /// opposed to whether its lease is back. The two are different questions
+    /// and a run outlives its issue by exactly the gap between them (ISS-1245).
+    ///
+    /// `None` says *not known to be over*, which is the answer a keeper that
+    /// cannot ask gives and the answer an older core's reply carries. It is a
+    /// refusal to claim, not a softened `false`: every caller here keeps the
+    /// run it would otherwise have closed, so the default below changes no
+    /// behaviour and a keeper that never overrides it behaves as it does today.
+    async fn issue_is_over(
+        &self,
+        _project_id: Option<&str>,
+        _issue_key: &str,
+    ) -> Result<Option<bool>> {
+        Ok(None)
+    }
 }
 
 /// What the ledger says, with no process inspected.
@@ -122,6 +139,18 @@ async fn checkout_returned(repo: Option<&Path>, path: &Path) -> Option<CheckoutR
     }
 }
 
+/// Wall-clock seconds, for the one stamp this module writes.
+///
+/// The settle below is a record of when an observation was made, not a
+/// deadline anything is measured against, so a clock that moves cannot hold it
+/// off or bring it on the way `note_release_refusal`'s window can.
+fn now_secs() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
 pub async fn close(
     ledger: &mut Ledger,
     run_id: &str,
@@ -141,10 +170,31 @@ pub async fn close(
         ledger.mark_session_terminal_observed(run_id)?;
     }
 
-    if run.released_as.is_none() {
+    let mut checkout_is_back = run.released_as.is_some();
+    if !checkout_is_back {
         if let Some(how) = checkout_returned(repo, Path::new(&run.worktree_path)).await {
             ledger.mark_checkout_returned_observed(run_id, how)?;
+            checkout_is_back = true;
         }
+    }
+
+    // A checkout that is back overtakes a refusal the release left standing:
+    // the thing the refusal was about is gone, so the refusal will never be
+    // taken again and will never reach its own decision. The condition is that
+    // the checkout IS back, not that this call was the one that saw it — the
+    // rows ISS-1242 names were all marked returned by an earlier sweep, so a
+    // settle guarded by the observation would miss every one of them.
+    if checkout_is_back
+        && run.release_refused_at.is_some()
+        && run.release_terminal_at.is_none()
+        && ledger.settle_release_refusal(run_id, now_secs())?
+    {
+        tracing::info!(
+            "[close] run={run_id}: its checkout is back, so the release refusal standing over \
+                 it ({}) is settled rather than left open — it was never decided and will never \
+                 be taken again",
+            run.release_refusal.as_deref().unwrap_or("no text recorded")
+        );
     }
 
     let project = run.project_id.clone();
@@ -657,6 +707,149 @@ mod tests {
                 .iter()
                 .all(|(p, _)| p.as_deref() == Some("proj-1")),
             "a read-back against another project answers about a lease this run never held"
+        );
+    }
+
+    /// ISS-1242 — `f0c38b4e`, one minute later.
+    ///
+    /// A release is refused over a checkout, and a minute afterwards the
+    /// checkout goes: the master pruned its own worktree after the merge. The
+    /// refusal will never be taken again, so it never reaches its own decision,
+    /// and the row kept `release_refused_at` with a null `release_terminal_at`
+    /// for ever. Measured on this box 2026-09-25: three closed runs in that
+    /// shape, the oldest two days old.
+    #[tokio::test]
+    async fn a_refusal_the_returned_checkout_overtook_is_settled_and_keeps_its_text() {
+        let mut led = seeded(&["ISS-308"], gone());
+        led.note_release_refusal(
+            "run-1",
+            "the diff in /home/dev/... was not preserved (this checkout is on no branch)",
+            1_790_000_000,
+        )
+        .unwrap();
+        led.end_run("run-1", "subagent", "its subagent ended its turn")
+            .unwrap();
+
+        let leases = Leases::new(false, &["ISS-308"]);
+        close(
+            &mut led,
+            "run-1",
+            Some(&a_repository()),
+            &Sessions(true),
+            &leases,
+        )
+        .await
+        .unwrap();
+
+        let run = led.run("run-1").unwrap().unwrap();
+        assert!(
+            run.released_as.is_some(),
+            "the case under test is a checkout observed back: {run:?}"
+        );
+        assert!(
+            run.release_terminal_at.is_some(),
+            "a refusal that can never be taken again is settled here, or the row reports one that was never decided for ever: {run:?}"
+        );
+        assert_eq!(
+            run.release_refusal.as_deref(),
+            Some("the diff in /home/dev/... was not preserved (this checkout is on no branch)"),
+            "and what was refused stays on the row verbatim — an operator reading it is owed the text, not a cleared column"
+        );
+        assert_eq!(
+            run.ended_by.as_deref(),
+            Some("subagent"),
+            "the ending another path already wrote is not overwritten by the settle"
+        );
+    }
+
+    /// ISS-1242 — the boundary. A refusal over a checkout that has NOT come
+    /// back is still live: the next sweep takes it again and the window or the
+    /// attempt bound decides it. Settling it here would end a retry that was
+    /// still working.
+    #[tokio::test]
+    async fn a_refusal_over_a_checkout_still_held_is_not_settled() {
+        let held = crate::test_scratch::Scratch::new("close-loop-still-held");
+        let root = a_repository();
+        let _ = std::process::Command::new("git")
+            .args([
+                "worktree",
+                "add",
+                "-q",
+                "--detach",
+                &held.to_path_buf().to_string_lossy(),
+            ])
+            .current_dir(&root)
+            .output();
+        let mut led = seeded(&["ISS-957"], held.to_path_buf());
+        led.note_release_refusal("run-1", "git worktree remove failed", 1_790_000_000)
+            .unwrap();
+
+        close(
+            &mut led,
+            "run-1",
+            Some(&root),
+            &Sessions(true),
+            &Leases::new(false, &["ISS-957"]),
+        )
+        .await
+        .unwrap();
+
+        let run = led.run("run-1").unwrap().unwrap();
+        assert!(
+            run.released_as.is_none(),
+            "the case under test is a checkout git still registers: {run:?}"
+        );
+        assert!(
+            run.release_terminal_at.is_none(),
+            "nothing overtook this refusal, so the retry that would decide it must still be owed: {run:?}"
+        );
+    }
+
+    /// ISS-1242's own rows, which a settle guarded by the OBSERVATION misses.
+    ///
+    /// `f0c38b4e`, `af39c60d` and `daff6570` were all marked `released_as` by
+    /// the sweep that came after their refusal, days before any fix runs. A
+    /// settle that only fires on the call that first sees the checkout back
+    /// therefore never fires for any of them, and the rows the issue is about
+    /// stay unsettled for ever. The condition is that the checkout IS back.
+    #[tokio::test]
+    async fn a_checkout_marked_back_by_an_earlier_sweep_still_settles_its_refusal() {
+        let mut led = seeded(&["ISS-308"], gone());
+        led.note_release_refusal("run-1", "the diff was not preserved", 1_790_000_000)
+            .unwrap();
+        led.end_run("run-1", "subagent", "its subagent ended its turn")
+            .unwrap();
+        led.mark_checkout_returned_observed("run-1", crate::runner::ledger::CheckoutReturn::Gone)
+            .unwrap();
+        assert!(
+            led.run("run-1")
+                .unwrap()
+                .unwrap()
+                .release_terminal_at
+                .is_none(),
+            "the case under test starts unsettled"
+        );
+
+        close(
+            &mut led,
+            "run-1",
+            Some(&a_repository()),
+            &Sessions(true),
+            &Leases::new(false, &["ISS-308"]),
+        )
+        .await
+        .unwrap();
+
+        let run = led.run("run-1").unwrap().unwrap();
+        assert!(
+            run.release_terminal_at.is_some(),
+            "a row whose checkout an EARLIER sweep marked back is exactly the row this issue is \
+             about, and a settle it cannot reach settles nothing: {run:?}"
+        );
+        assert_eq!(
+            run.release_refusal.as_deref(),
+            Some("the diff was not preserved"),
+            "and the refusal text is still the evidence"
         );
     }
 }

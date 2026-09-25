@@ -27,6 +27,7 @@ import {
 } from '../lib/issue-ref.js';
 import { LIVE_PIPELINE_RUN_STATUSES } from '../pipeline/status-sets.js';
 import { issuePrefixHolder } from './issue-prefix-read.js';
+import { ISSUE_TERMINAL_STATUSES } from './status-sets.js';
 
 const terminalSessionList = sql.join(
   terminalAgentSessionStatuses.map((s) => sql`${s}`),
@@ -248,6 +249,42 @@ export interface DeviceIssueLease {
   /** Held by THIS box. What a close loop asking "have I given this back" means. */
   heldByThisDevice: boolean;
   holder: IssueLeaseHolder | null;
+  /**
+   * The issue has reached a terminal status. `null` is *not known to be over* —
+   * no issue was reached — which a box keeps its run on (ISS-1245).
+   */
+  issueOver: boolean | null;
+}
+
+/**
+ * Whether that pair's issue is over, read off the ISSUE and not the lease row:
+ * the rows that most need the fact are the ones whose lease core already freed.
+ * `iss_seq` restarts per project, so a request naming none is answered `null`
+ * rather than tie-broken — a guess there closes the wrong project's run.
+ */
+async function readIssueOver(args: {
+  deviceId: string;
+  issueKey: string;
+  projectId?: string | null;
+}): Promise<boolean | null> {
+  if (!args.projectId) return null;
+  const parsed = parseIssueRef(args.issueKey);
+  if (!parsed.ok) return null;
+  const terminal = sql.join(
+    ISSUE_TERMINAL_STATUSES.map((s) => sql`${s}`),
+    sql`, `,
+  );
+  const rows = (await db.execute(sql`
+    SELECT (i.status IN (${terminal})) AS over
+      FROM issues i
+     WHERE i.project_id = ${args.projectId}
+       AND i.iss_seq = ${parsed.issSeq}
+       AND i.project_id IN ${reachableProjects(args.deviceId)}
+     LIMIT 1
+  `)) as unknown as Array<Record<string, unknown>>;
+  const row = rows[0];
+  if (!row) return null;
+  return row.over === true;
 }
 
 /** One issue's lease as one box sees it. */
@@ -270,8 +307,9 @@ export async function readDeviceIssueLease(args: {
      ORDER BY (l.device_id = ${args.deviceId}) DESC, l.acquired_at ASC
      LIMIT 1
   `)) as unknown as Array<Record<string, unknown>>;
+  const issueOver = await readIssueOver(args);
   const row = rows[0];
-  if (!row) return { held: false, heldByThisDevice: false, holder: null };
+  if (!row) return { held: false, heldByThisDevice: false, holder: null, issueOver };
   const holder: IssueLeaseHolder = {
     issueKey: String(row.issue_key),
     deviceId: String(row.device_id),
@@ -279,7 +317,7 @@ export async function readDeviceIssueLease(args: {
     runId: String(row.run_id),
     acquiredAt: new Date(String(row.acquired_at)).toISOString(),
   };
-  return { held: true, heldByThisDevice: holder.deviceId === args.deviceId, holder };
+  return { held: true, heldByThisDevice: holder.deviceId === args.deviceId, holder, issueOver };
 }
 
 /** A key that reaches no lease, with the status that says which way. */
