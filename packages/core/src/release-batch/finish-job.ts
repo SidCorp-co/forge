@@ -20,6 +20,7 @@ import { logger } from '../logger.js';
 import { closeRunIfOneShot } from '../pipeline/runs.js';
 import { abortedError, batchAborted } from './abort-stamp.js';
 import {
+  ReleaseFinishedForOtherCommitError,
   ReleaseFinishFenceLostError,
   ReleaseFinishInFlightError,
   ReleaseNotVerifiedError,
@@ -104,6 +105,13 @@ export async function acceptReleaseBatchFinish(
     }
     if (current?.state === 'finished') {
       if (run.status === 'running' || run.status === 'paused') await enqueue(runId);
+      // A named commit the record never verified is refused, not answered with its 200.
+      if (commit !== null && current.commit !== commit) {
+        throw new ReleaseFinishedForOtherCommitError(current.requestId, current.commit, commit, {
+          projectId: run.projectId,
+          runId,
+        });
+      }
       return { runId, finish: current, started: false };
     }
 

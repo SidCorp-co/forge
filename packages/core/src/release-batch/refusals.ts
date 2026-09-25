@@ -24,6 +24,7 @@ import {
   ClaimConflictError,
   NoReleaseGateError,
   ReleaseBatchAbortedError,
+  ReleaseFinishedForOtherCommitError,
   ReleaseFinishInFlightError,
   ReleaseNotVerifiedError,
   ReleaseProbesUndeclaredError,
@@ -252,7 +253,24 @@ export function finishRefusal(err: unknown): HTTPException | null {
       { requestId: err.requestId, inFlightCommit: err.inFlightCommit },
     );
   }
+  if (err instanceof ReleaseFinishedForOtherCommitError) {
+    const { projectId, runId } = err.where;
+    return conflict(
+      'RELEASE_FINISHED_FOR_OTHER_COMMIT',
+      `${finishedForSentence(err)} Read what it recorded with GET /api/projects/${projectId}/release-batches/${runId}/state (\`finish\`).`,
+      { requestId: err.requestId, finishedCommit: err.finishedCommit },
+    );
+  }
   return methodRefusal(err);
+}
+
+/** Which commit a finished batch verified, against the one a later finish names; both doors say it. */
+export function finishedForSentence(err: ReleaseFinishedForOtherCommitError): string {
+  const verified =
+    err.finishedCommit === null
+      ? 'finished with no named commit, on a live build that had changed from what was serving when it opened'
+      : `finished for ${err.finishedCommit}`;
+  return `This batch already ${verified}, and this call names ${err.askedCommit}, which that finish never verified. A finished batch is not verified again, so its issues' closes say nothing about ${err.askedCommit}; a release of ${err.askedCommit} is a batch of its own.`;
 }
 
 /** What a finish on an aborted batch is told, by what the abort did to that batch. */

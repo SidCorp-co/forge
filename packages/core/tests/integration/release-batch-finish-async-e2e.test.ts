@@ -248,6 +248,45 @@ describe('the job reaches terminal without the caller', () => {
   }, 45_000);
 });
 
+describe('a finished batch is not asked about another commit in silence', () => {
+  it('refuses a finish naming another commit than the one the batch finished for', async () => {
+    const { runId, ids } = await batch(1, 20);
+    serving = PUSHED;
+    await finish(runId, { commit: PUSHED });
+    const done = await until(() => state(runId), settled, 20_000);
+    expect(done.finish?.state).toBe('finished');
+    const recorded = await rawFinish(runId);
+
+    const other = await finish(runId, { commit: OTHER });
+
+    expect(other.status).toBe(409);
+    expect(other.body.code).toBe('RELEASE_FINISHED_FOR_OTHER_COMMIT');
+    expect(other.body.message).toContain(`already finished for ${PUSHED}`);
+    expect(other.body.message).toContain(`this call names ${OTHER}`);
+    expect(await rawFinish(runId)).toEqual(recorded);
+    expect(await closesOf(ids[0] as string)).toBe(1);
+
+    const claimless = await finish(runId);
+    expect(claimless.status).toBe(200);
+    expect(claimless.body.finish?.commit).toBe(PUSHED);
+  }, 45_000);
+
+  it('refuses a finish naming a commit on a batch that finished with none named', async () => {
+    const { runId } = await batch(1, 20);
+    serving = PUSHED;
+    await finish(runId);
+    const done = await until(() => state(runId), settled, 20_000);
+    expect(done.finish?.state).toBe('finished');
+    expect(done.finish?.commit).toBeNull();
+
+    const named = await finish(runId, { commit: PUSHED });
+
+    expect(named.status).toBe(409);
+    expect(named.body.code).toBe('RELEASE_FINISHED_FOR_OTHER_COMMIT');
+    expect(named.body.message).toContain('already finished with no named commit');
+  }, 45_000);
+});
+
 describe('the door refuses what the database can refuse, and records nothing', () => {
   it('refuses a commit that is not a whole sha with the whole-commit sentence', async () => {
     const { runId } = await batch(1, 20);

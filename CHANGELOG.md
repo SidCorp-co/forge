@@ -3114,6 +3114,10 @@
 - **A master stopped by a usage limit is asked again every five minutes.** It no longer sleeps until
   the reset hour, so capacity restored by swapping or adding an account is used on the next pass.
 
+- **A release of any size finishes.** Finishing is taken at once and confirmed in the
+  background, so a large release no longer strands its issues. A release that failed to confirm can
+  be finished again once the deploy is up.
+
 - **A release recorded after it shipped can now be finished.** A batch opened once the deploy was
   already live could never pass its own check. What proves a release now is that production is
   serving the commit the release names.
