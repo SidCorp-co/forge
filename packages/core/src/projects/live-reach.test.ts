@@ -147,6 +147,7 @@ describe('liveReachOf', () => {
       measuredAt: STARTED.toISOString(),
       baseSha: 'b'.repeat(40),
       liveSha: '52c66950'.padEnd(40, '0'),
+      unowned: [{ sha: OWN, subject: 'Merge pull request #88 from sid/feature-x' }],
     });
   });
 
@@ -204,5 +205,80 @@ describe('liveReachOf', () => {
   it('gives nothing for a project with no reading or an issue with no merged mark', () => {
     expect(liveReachOf(issue(), null, pattern)).toBeNull();
     expect(liveReachOf(issue({ mergedAt: null }), measured(), pattern)).toBeNull();
+  });
+});
+
+describe('liveReachOf over the recorded work heads', () => {
+  it('places an issue on its recorded work head where no subject or merge gives that commit to anyone', () => {
+    const record = {
+      issSeq: 71,
+      mergedCommitSha: null,
+      head: OWN,
+      base: 'a'.repeat(40),
+      branch: 'SD-71-work',
+    };
+    const r = liveReachOf(issue({ issSeq: 71 }), measured(), pattern, [record]);
+    expect(r).toMatchObject({
+      state: 'not_on_live',
+      evidence: [{ sha: OWN, via: 'recorded_head' }],
+    });
+    expect(liveReachOf(issue(), measured(), pattern, [record])).toMatchObject({
+      state: 'none_waiting',
+      unowned: [],
+    });
+  });
+
+  it('never places an issue on a recorded head that a waiting subject declares for another', () => {
+    const record = {
+      issSeq: 71,
+      mergedCommitSha: null,
+      head: 'e'.repeat(40),
+      base: 'a'.repeat(40),
+      branch: 'SD-71-work',
+    };
+    expect(liveReachOf(issue({ issSeq: 71 }), measured(), pattern, [record])).toMatchObject({
+      state: 'none_waiting',
+    });
+  });
+
+  it('places a body-cited or mid-subject-cited issue only on its own recorded head, never on the citing commit', () => {
+    const body = 'c'.repeat(40);
+    const mid = 'd7'.padEnd(40, '0');
+    const own = 'a1'.padEnd(40, '0');
+    const cites = measured({
+      commits: [
+        { sha: own, message: 'fix(deploy): report the running commit', parents: [] },
+        {
+          sha: body,
+          message: 'fix(qc-agent): strip brackets (SD-451)\n\ncopy of safeField (SD-170 keeps it)',
+          parents: [],
+        },
+        {
+          sha: mid,
+          message: 'feat(logger): below the seven days SD-401 asks for (SD-435)',
+          parents: [],
+        },
+      ],
+    });
+    const head = (issSeq: number, sha: string) => ({
+      issSeq,
+      mergedCommitSha: null,
+      head: sha,
+      base: 'b0'.padEnd(40, '0'),
+      branch: 'topic-work',
+    });
+    for (const seq of [170, 401]) {
+      expect(liveReachOf(issue({ issSeq: seq }), cites, pattern)?.state).toBe('none_waiting');
+      expect(liveReachOf(issue({ issSeq: seq }), cites, pattern, [head(seq, own)])).toMatchObject({
+        state: 'not_on_live',
+        evidence: [{ sha: own, via: 'recorded_head' }],
+      });
+    }
+    expect(liveReachOf(issue({ issSeq: 170 }), cites, pattern, [head(170, body)])?.state).toBe(
+      'none_waiting',
+    );
+    expect(liveReachOf(issue({ issSeq: 401 }), cites, pattern, [head(401, mid)])?.state).toBe(
+      'none_waiting',
+    );
   });
 });

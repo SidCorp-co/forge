@@ -427,10 +427,13 @@ export type CommentKind =
 
 export type { StageKey, StatusKey };
 
-export interface LiveReachEvidence {
+export interface LiveReachCommit {
   sha: string;
   subject: string;
-  via: "merged_commit" | "declares_issue" | "merged_in";
+}
+
+export interface LiveReachEvidence extends LiveReachCommit {
+  via: "merged_commit" | "declares_issue" | "merged_in" | "recorded_head";
 }
 
 interface LiveReachMeasured {
@@ -443,7 +446,7 @@ interface LiveReachMeasured {
 
 export type LiveReach =
   | (LiveReachMeasured & { state: "not_on_live"; evidence: LiveReachEvidence[] })
-  | (LiveReachMeasured & { state: "none_waiting" })
+  | (LiveReachMeasured & { state: "none_waiting"; unowned: LiveReachCommit[] })
   | {
       state: "unmeasured";
       baseBranch: string | null;

@@ -122,6 +122,8 @@ const NOT_DISCOVERY: Record<string, string> = {
   'pm/snapshot-service.ts': 'status counts; stalled rows read only active statuses',
   'projects/health-aggregates.ts':
     'counts and timings; blockers read only `on_hold` and `needs_info`',
+  'projects/issue-work-records.ts':
+    "which issue a waiting commit is the work of; an archived issue still owns its commits, or they would read as nobody's",
   'projects/routes.ts': 'by issue id',
   'projects/service.ts': 'by issue id',
   'prompt/issue-snapshot.ts':
