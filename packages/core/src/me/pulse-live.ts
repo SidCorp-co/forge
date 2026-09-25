@@ -7,7 +7,7 @@ import {
   evidenceFor,
   issueRefPattern,
   type LiveReading,
-  namedIssueSeqs,
+  subjectIssueSeqs,
 } from '../projects/live-reach.js';
 import { liveReadingForRow, projectReleaseRows } from '../projects/live-reading.js';
 import { ageSeconds } from './pulse-folds.js';
@@ -33,7 +33,9 @@ async function closedNotOnLive(
   if (reading.commits.length === 0) return [];
   const pattern = issueRefPattern(await heldIssuePrefixes(project.id));
   const seqs = new Set<number>();
-  for (const c of reading.commits) for (const s of namedIssueSeqs(c.message, pattern)) seqs.add(s);
+  for (const c of reading.commits) {
+    for (const s of subjectIssueSeqs(c.message, pattern)) seqs.add(s);
+  }
   const shas = reading.commits.map((c) => c.sha);
   const match =
     seqs.size > 0
