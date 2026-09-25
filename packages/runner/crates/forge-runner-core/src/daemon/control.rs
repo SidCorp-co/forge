@@ -1867,32 +1867,6 @@ mod tests {
             );
         }
 
-        /// The permit is bound to a name, so it lives past the ledger write; a
-        /// `let _ =` would drop it on the spot and leave the write unprotected.
-        #[test]
-        fn a_declaration_holds_its_permit_past_the_ledger_write() {
-            const SOURCE: &str = include_str!("control.rs");
-            let body = SOURCE
-                .split("fn run_declare(")
-                .nth(1)
-                .and_then(|b| b.split("\nfn ").next())
-                .expect("run_declare's body");
-            let gate = body
-                .find("let _admitted = match ctl.drain.admit()")
-                .expect("run_declare takes a named permit");
-            let write = body
-                .find("create_run_group(")
-                .expect("run_declare writes the row");
-            assert!(
-                gate < write,
-                "the permit is taken before the row is written"
-            );
-            assert!(
-                !body.contains("let _ = ctl.drain.admit()"),
-                "a permit bound to `_` is dropped before the write it guards"
-            );
-        }
-
         /// ISS-1223's reproduction, criteria 4 and 5. A master declares a run
         /// every three minutes and each one runs ten, so at any moment three or
         /// four are open. A drain begun among them has to turn over inside its

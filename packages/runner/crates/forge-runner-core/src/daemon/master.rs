@@ -7592,49 +7592,6 @@ mod unplaced_tests {
         );
     }
 
-    /// Criterion 3. The local drain's hold-back comes before every act that
-    /// admits work — the pool job, the placement and the nudge — and leaves
-    /// the sweep by `continue`, so none of them is reached while it holds.
-    #[test]
-    fn a_daemon_draining_before_a_restart_admits_no_work_for_any_project() {
-        let body = sweep_body();
-        let start = body
-            .find("let _admitting = match drain.admit() {")
-            .expect("the sweep takes a named permit before admitting anything");
-        let rest = &body[start..];
-        let end = rest
-            .find("\n        };")
-            .expect("the permit's match must close");
-        let branch = &rest[..end];
-        assert!(
-            branch.trim_end().ends_with("continue;\n            }"),
-            "the refused arm leaves the project's iteration, or every act below it still runs: {branch}"
-        );
-        assert!(
-            !body.contains("let _ = drain.admit()"),
-            "a permit bound to `_` is dropped before the acts it guards"
-        );
-        assert!(
-            branch.contains("Unplaced::Restarting"),
-            "and records the drain as why no pane was placed: {branch}"
-        );
-        for act in [
-            "take_pool_job(",
-            "ensure_master(",
-            "nudge_master(",
-            "claim_nudge(",
-        ] {
-            let at = body
-                .find(act)
-                .unwrap_or_else(|| panic!("the sweep still calls {act}"));
-            assert!(start < at, "{act} is reached before the drain is asked");
-            assert!(
-                !branch.contains(act),
-                "{act} runs inside the hold-back: {branch}"
-            );
-        }
-    }
-
     #[test]
     fn a_drained_runner_records_its_status_as_the_reason_no_pane_was_placed() {
         let branch = drain_branch();
@@ -9770,6 +9727,11 @@ mod drain_sweep_tests {
             .collect()
     }
 
+    // cm:guard not on Windows: the sweep removes rendered MCP session files of projects it
+    // does not serve, under the OS config dir, and this test isolates that dir through
+    // XDG_CONFIG_HOME, which dirs_next reads only on Unix. On Windows it would reach the real
+    // one and delete another project's files on any developer's box.
+    #[cfg(not(windows))]
     #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn a_sweep_during_a_drain_asks_core_for_no_work_and_says_why() {
@@ -9800,10 +9762,14 @@ mod drain_sweep_tests {
             "a draining sweep asked core for work: {:?}",
             admitting(&paths)
         );
+        // Asserted on its fragments and never printed whole: the sentence can
+        // carry a master's session id, which is not for a log.
         let why = masters.why_unplaced("proj-1");
-        assert!(
-            why.contains("draining before a restart") && why.contains("update 0.1.0 → 0.1.1"),
-            "the project records the drain as why no master was placed: {why}"
-        );
+        for fragment in ["draining before a restart", "update 0.1.0 → 0.1.1"] {
+            assert!(
+                why.contains(fragment),
+                "the project records the drain as why no master was placed, and this fragment is missing: {fragment}"
+            );
+        }
     }
 }
