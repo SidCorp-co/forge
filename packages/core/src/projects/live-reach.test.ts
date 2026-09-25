@@ -151,6 +151,64 @@ describe('liveReachOf', () => {
     });
   });
 
+  it('carries a refusal reason rather than a verdict', () => {
+    const refused: LiveReading = {
+      kind: 'refused',
+      baseBranch: 'staging',
+      liveBranch: 'master',
+      reason: 'this project has no active GitHub binding',
+      startedAt: STARTED,
+    };
+    expect(liveReachOf(issue(), refused, pattern)).toEqual({
+      state: 'unmeasured',
+      baseBranch: 'staging',
+      liveBranch: 'master',
+      measuredAt: STARTED.toISOString(),
+      reason: 'this project has no active GitHub binding',
+    });
+  });
+
+  it('does not call an unnamed issue clear when the list was cut short', () => {
+    const r = liveReachOf(issue(), measured({ aheadBy: 400, complete: false }), pattern);
+    expect(r).toMatchObject({ state: 'unmeasured' });
+    expect(r?.state === 'unmeasured' && r.reason).toMatch(/400 commits ahead .* listed only 2/);
+  });
+
+  it('still places a named issue from a cut-short list', () => {
+    const r = liveReachOf(
+      issue({ issSeq: 442 }),
+      measured({ aheadBy: 400, complete: false }),
+      pattern,
+    );
+    expect(r?.state).toBe('not_on_live');
+  });
+
+  it('does not call an issue clear when it merged after the reading started', () => {
+    const r = liveReachOf(issue({ mergedAt: AFTER }), measured(), pattern);
+    expect(r?.state === 'unmeasured' && r.reason).toMatch(/merged after the last reading/);
+  });
+
+  it('answers a pending reading as unmeasured with no time', () => {
+    const pending: LiveReading = {
+      kind: 'pending',
+      baseBranch: 'staging',
+      liveBranch: 'master',
+      reason: 'still being taken',
+    };
+    expect(liveReachOf(issue(), pending, pattern)).toMatchObject({
+      state: 'unmeasured',
+      measuredAt: null,
+      reason: 'still being taken',
+    });
+  });
+
+  it('gives nothing for a project with no reading or an issue with no merged mark', () => {
+    expect(liveReachOf(issue(), null, pattern)).toBeNull();
+    expect(liveReachOf(issue({ mergedAt: null }), measured(), pattern)).toBeNull();
+  });
+});
+
+describe('liveReachOf over the recorded work heads', () => {
   it('places an issue on its recorded work head where no subject or merge gives that commit to anyone', () => {
     const record = {
       issSeq: 71,
@@ -222,61 +280,5 @@ describe('liveReachOf', () => {
     expect(liveReachOf(issue({ issSeq: 401 }), cites, pattern, [head(401, mid)])?.state).toBe(
       'none_waiting',
     );
-  });
-
-  it('carries a refusal reason rather than a verdict', () => {
-    const refused: LiveReading = {
-      kind: 'refused',
-      baseBranch: 'staging',
-      liveBranch: 'master',
-      reason: 'this project has no active GitHub binding',
-      startedAt: STARTED,
-    };
-    expect(liveReachOf(issue(), refused, pattern)).toEqual({
-      state: 'unmeasured',
-      baseBranch: 'staging',
-      liveBranch: 'master',
-      measuredAt: STARTED.toISOString(),
-      reason: 'this project has no active GitHub binding',
-    });
-  });
-
-  it('does not call an unnamed issue clear when the list was cut short', () => {
-    const r = liveReachOf(issue(), measured({ aheadBy: 400, complete: false }), pattern);
-    expect(r).toMatchObject({ state: 'unmeasured' });
-    expect(r?.state === 'unmeasured' && r.reason).toMatch(/400 commits ahead .* listed only 2/);
-  });
-
-  it('still places a named issue from a cut-short list', () => {
-    const r = liveReachOf(
-      issue({ issSeq: 442 }),
-      measured({ aheadBy: 400, complete: false }),
-      pattern,
-    );
-    expect(r?.state).toBe('not_on_live');
-  });
-
-  it('does not call an issue clear when it merged after the reading started', () => {
-    const r = liveReachOf(issue({ mergedAt: AFTER }), measured(), pattern);
-    expect(r?.state === 'unmeasured' && r.reason).toMatch(/merged after the last reading/);
-  });
-
-  it('answers a pending reading as unmeasured with no time', () => {
-    const pending: LiveReading = {
-      kind: 'pending',
-      baseBranch: 'staging',
-      liveBranch: 'master',
-      reason: 'still being taken',
-    };
-    expect(liveReachOf(issue(), pending, pattern)).toMatchObject({
-      state: 'unmeasured',
-      measuredAt: null,
-      reason: 'still being taken',
-    });
-  });
-
-  it('gives nothing for a project with no reading or an issue with no merged mark', () => {
-    expect(liveReachOf(issue(), null, pattern)).toBeNull();
-    expect(liveReachOf(issue({ mergedAt: null }), measured(), pattern)).toBeNull();
   });
 });
