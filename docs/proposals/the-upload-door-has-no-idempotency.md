@@ -40,3 +40,18 @@ An `operationId` on the mint, carried by the PUT, with the door answering a repl
 attachment it already stored rather than storing another. The condition that makes it worth taking
 is a second reason to want it: a size cap that a duplicate pushes a project past, a quota, or a
 count of orphans large enough to read in the storage bill.
+
+## Honest costs
+
+- **Leaving it costs storage, silently.** Every lost PUT response since the ticket service was
+  written has stored a second copy that nothing cites, and nobody has counted them — the number in
+  the storage bill is the only place the cost is visible, and nothing attributes it to this.
+- **Taking it costs a migration and a decision about time.** An `operationId` needs a column, a
+  uniqueness rule and an answer to how long a replay stays answerable; a window too short refuses a
+  legitimate retry, and one too long keeps dead tickets alive.
+- **Taking it touches four callers at once.** `issue`, `comment`, `session` and `conversation`
+  share this door, so the change lands under three callers whose owners did not ask for it, which
+  is exactly why ISS-1146 did not take it as a side effect of adding the fourth.
+- **The residual is easy to lose.** This file is the only thing carrying it; no gate measures the
+  defect and no row ages it, so a reader who never opens `docs/proposals/` will meet it as a
+  surprise in a storage report rather than as a known trade.
