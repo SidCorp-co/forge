@@ -52,15 +52,20 @@ export async function readClaimConflicts(
     .innerJoin(projects, eq(projects.id, issues.projectId))
     .leftJoin(pipelineRuns, eq(pipelineRuns.id, issues.releaseBatchRunId))
     .where(and(eq(issues.projectId, projectId), inArray(issues.id, issueIds)));
-  const found = new Map(rows.map((r) => [r.id, r]));
+  // A uuid is one id in either letter case; the rows carry it lower-case.
+  const found = new Map(rows.map((r) => [r.id.toLowerCase(), r]));
   const ended = new Set<string>(TERMINAL_PIPELINE_RUN_STATUSES);
+  const seen = new Set<string>();
   const out: ClaimConflict[] = [];
-  for (const id of new Set(issueIds)) {
-    const row = found.get(id);
+  for (const sent of issueIds) {
+    if (seen.has(sent.toLowerCase())) continue;
+    seen.add(sent.toLowerCase());
+    const row = found.get(sent.toLowerCase());
     if (!row) {
-      out.push({ id, key: id, standing: 'absent' });
+      out.push({ id: sent, key: sent, standing: 'absent' });
       continue;
     }
+    const id = row.id;
     const key = formatIssueRef(row.issuePrefix, row.issSeq);
     const freeable = row.status === gateStatus || row.status === 'releasing';
     if (row.claimed !== null && freeable) {
@@ -132,6 +137,18 @@ function claimedSentences(projectId: string, runId: string, list: Standing<'clai
   return out;
 }
 
+function statusSentence(status: string, gateStatus: string, list: ClaimConflict[]): string {
+  const subject = `${keys(list)} ${isAre(list)} at \`${status}\``;
+  if (status === 'closed') {
+    const it = list.length === 1 ? 'one' : 'any of them';
+    return `${subject}: already shipped, and a release carries an issue once. If ${it} has to ship again, reopen it and bring it back through the pipeline to the release gate.`;
+  }
+  if (status === 'dropped') {
+    return `${subject}: set down as not work, so no release carries ${list.length === 1 ? 'it' : 'them'}.`;
+  }
+  return `${subject}, not \`${gateStatus}\`: a release carries an issue only once it reaches the release gate.`;
+}
+
 /** The refusal, one sentence per reason, each naming its issues by key. */
 export function claimConflictSentence(
   projectId: string,
@@ -144,9 +161,7 @@ export function claimConflictSentence(
     parts.push(...claimedSentences(projectId, runId, list));
   }
   for (const [status, list] of groupBy(ofStanding(conflicts, 'status'), (c) => c.status)) {
-    parts.push(
-      `${keys(list)} ${isAre(list)} at \`${status}\`, not \`${gateStatus}\`: a release carries an issue only once it reaches the release gate.`,
-    );
+    parts.push(statusSentence(status, gateStatus, list));
   }
   const absent = ofStanding(conflicts, 'absent');
   if (absent.length > 0) {

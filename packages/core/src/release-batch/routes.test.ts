@@ -41,6 +41,12 @@ vi.mock('./service.js', async (importOriginal) => ({
   findReleaseBatchRun: (a: unknown) => findRunMock(a),
 }));
 
+const recordReleaseMock = vi.fn();
+vi.mock('./recorded.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./recorded.js')>()),
+  recordPerformedRelease: (a: unknown) => recordReleaseMock(a),
+}));
+
 vi.mock('./finish-job.js', () => ({
   acceptReleaseBatchFinish: (...a: unknown[]) => acceptFinishMock(...a),
 }));
@@ -442,5 +448,46 @@ describe('POST /:projectId/release-batches/:runId/finish — the door answers th
       code: 'RELEASE_NOT_VERIFIED',
       message: '`abc` is not a whole commit',
     });
+  });
+});
+
+describe('a roster naming one issue twice', () => {
+  const LETTERED = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+  const twice = [LETTERED, LETTERED.toUpperCase()];
+
+  async function post(path: string, body: Record<string, unknown>) {
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    const res = await buildApp().request(`/api/projects/${PROJECT_ID}/${path}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${await token()}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return { status: res.status, text: JSON.stringify(await res.json()) };
+  }
+
+  it('is refused 400 at the batch door, naming the repeated id, and opens no batch', async () => {
+    const answer = await post('release-batches', { issueIds: twice });
+    expect(answer.status).toBe(400);
+    expect(answer.text).toContain(`issueIds names ${LETTERED.toUpperCase()} more than once`);
+    expect(createReleaseBatchMock).not.toHaveBeenCalled();
+  });
+
+  it('is refused 400 at the record door, naming the repeated id, and claims nothing', async () => {
+    const answer = await post('release-records', {
+      issueIds: [ISSUE_ID, ISSUE_ID],
+      commit: 'a'.repeat(40),
+      account: 'Promoted by hand; production serves this commit.',
+    });
+    expect(answer.status).toBe(400);
+    expect(answer.text).toContain(`issueIds names ${ISSUE_ID} more than once`);
+    expect(recordReleaseMock).not.toHaveBeenCalled();
+  });
+
+  it('lets a roster naming each issue once through to the door', async () => {
+    mockAdmin();
+    createReleaseBatchMock.mockResolvedValueOnce({ runId: 'r', issueIds: [ISSUE_ID] });
+    const res = await createReq();
+    expect(res.status).toBe(201);
+    expect(createReleaseBatchMock).toHaveBeenCalledOnce();
   });
 });
