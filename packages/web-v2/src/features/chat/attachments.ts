@@ -12,7 +12,7 @@ import {
   CONVERSATION_MIMES,
   safeAttachmentName,
   SESSION_MIMES,
-} from "@forge/contracts";
+} from "@forge/contracts/attachments";
 
 export interface AttachmentPolicy {
   /** The target this surface uploads under, named in the refusal. */

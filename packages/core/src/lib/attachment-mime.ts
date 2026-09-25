@@ -4,7 +4,7 @@ import {
   CONVERSATION_MIMES,
   SESSION_MIMES,
   safeAttachmentName,
-} from '@forge/contracts';
+} from '@forge/contracts/attachments';
 
 export type AttachmentTarget = 'issue' | 'comment' | 'session' | 'conversation';
 

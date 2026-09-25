@@ -13,9 +13,22 @@ import { ConversationModeControl, modePlaceholder } from "./mode-control";
 expect.extend(matchers);
 afterEach(cleanup);
 
+// next/link forwards its ref to the anchor, and the blocked panel puts the
+// keyboard on that anchor — a mock that drops the ref would fail the case it is
+// standing in for rather than the code.
 vi.mock("next/link", () => ({
-  default: ({ href, children }: { href: string; children: React.ReactNode }) => (
-    <a href={href}>{children}</a>
+  default: ({
+    href,
+    children,
+    ref,
+  }: {
+    href: string;
+    children: React.ReactNode;
+    ref?: React.Ref<HTMLAnchorElement>;
+  }) => (
+    <a href={href} ref={ref}>
+      {children}
+    </a>
   ),
 }));
 
@@ -134,6 +147,13 @@ describe("below 480 pixels of composer width", () => {
     fireEvent.keyDown(screen.getByRole("menuitemradio", { name: /Assistant/ }), { key: "Escape" });
     expect(screen.queryByTestId("conversation-mode-menu")).not.toBeInTheDocument();
     expect(trigger).toHaveFocus();
+  });
+
+  it("gives the keyboard the way out when the option it stood on disappears", () => {
+    renderControl({ narrow: true, offer: BLOCKED });
+    fireEvent.click(screen.getByTestId("conversation-mode-menu-trigger"));
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /Agent/ }));
+    expect(screen.getByRole("link", { name: /Pair a box/ })).toHaveFocus();
   });
 
   it("still refuses the blocked mode, with the same panel", () => {

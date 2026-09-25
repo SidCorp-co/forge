@@ -325,7 +325,7 @@ export function ConversationChat({
           sticky={false}
           attachments={CONVERSATION_ATTACHMENTS}
           placeholder={modePlaceholder(settledMode ?? pick)}
-          {...(streaming && resolvedId
+          {...(progress && resolvedId
             ? { onStop: () => stop.mutate(resolvedId), stopping: stop.isPending }
             : {})}
           footerControl={

@@ -26,6 +26,7 @@ const uploadOne = vi.fn(async ({ file }: { file: File }) => ({ id: `att-${file.n
 const stop = vi.fn();
 let room: ConversationDetail | undefined;
 let progress: { entry: string; replaced?: boolean } | null = null;
+let sendPending = false;
 
 function detail(over: Partial<ConversationDetail> = {}): ConversationDetail {
   return {
@@ -68,7 +69,7 @@ vi.mock("../hooks", () => ({
   useWithdrawnDrafts: () => ({}),
   useDraftAgentMode: () => ({ data: { available: true, reason: null } }),
   useOpenConversation: () => ({ isPending: false, mutateAsync: vi.fn() }),
-  useSendMessage: () => ({ isPending: false, mutateAsync: send }),
+  useSendMessage: () => ({ isPending: sendPending, mutateAsync: send }),
   useUploadAttachment: () => ({ mutateAsync: uploadOne }),
   useStopConversation: () => ({ mutate: stop, isPending: false }),
   useRemoveParticipant: () => ({ mutate: vi.fn(), isPending: false }),
@@ -85,6 +86,7 @@ beforeEach(() => {
   stop.mockClear();
   room = detail();
   progress = null;
+  sendPending = false;
 });
 
 function fileOf(name: string, type: string): File {
@@ -185,6 +187,16 @@ describe("stopping an answer", () => {
   it("offers no stop in a room that is answering nothing", () => {
     open();
     expect(screen.queryByLabelText("Stop answering")).not.toBeInTheDocument();
+  });
+
+  it("keeps Send until an answer is actually running, not while its own send is in flight", () => {
+    // The window between this browser's send and the first progress the server
+    // publishes: there is no turn to stop yet, whatever this mutation is doing.
+    sendPending = true;
+    progress = null;
+    open();
+    expect(screen.queryByLabelText("Stop answering")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Send message")).toBeInTheDocument();
   });
 
   it("offers it to whoever is in the room, not only to whoever asked", () => {

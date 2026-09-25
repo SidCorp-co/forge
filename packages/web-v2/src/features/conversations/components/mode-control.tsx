@@ -61,6 +61,13 @@ function labelOf(mode: ConversationMode): string {
  */
 function BlockedPanel({ reason, onClose }: { reason: string | null; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
+  const wayOut = useRef<HTMLAnchorElement>(null);
+  // The control that opened this may have just been unmounted with the menu it
+  // was in, so the keyboard has nowhere to stand unless this takes it. It lands
+  // on the way out the panel offers rather than on the explanation.
+  useEffect(() => {
+    wayOut.current?.focus();
+  }, []);
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) onClose();
@@ -89,6 +96,7 @@ function BlockedPanel({ reason, onClose }: { reason: string | null; onClose: () 
         {reason ?? "no box is paired with this project"}.
       </p>
       <Link
+        ref={wayOut}
         href="/pair"
         className="fg-body-sm mt-2.5 inline-flex items-center gap-1.5 rounded-sm text-link hover:underline"
       >
