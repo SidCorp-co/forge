@@ -175,13 +175,7 @@ pub async fn reconcile(
                 .into_iter()
                 .map(|m| m.issue_key)
                 .collect();
-            every_issue_over(
-                &run.run_id,
-                run.project_id.as_deref(),
-                &keys,
-                closing.leases,
-            )
-            .await
+            every_issue_over(run.project_id.as_deref(), &keys, closing.leases).await
         } else {
             IssuesOver::No
         };
@@ -330,12 +324,17 @@ pub async fn reconcile(
 /// keeper cannot answer for answers `false` the same way, because *not known to
 /// be over* is not *over* and a guess here closes a run somebody is using
 /// (ISS-1245).
+/// Measures and says nothing. Both populations it separates are already
+/// reported by a LATCHED line, and `kept_notice` holds one notice per run, so
+/// a second writer on the same sweep would reset the first and make both
+/// repeat for ever: a run released on this sweep is named by
+/// [`release_reason`], and one measured over but released anyway never —
+/// its checkout already back — by the standing line (ISS-1245 F1).
 /// `keys` is read off the ledger BEFORE this is called and the handle is not
 /// held across the awaits below: `Ledger` wraps a `rusqlite` connection, which
 /// is not `Sync`, so a future holding `&Ledger` over an await is not `Send` and
 /// the daemon's own `tokio::spawn` refuses it.
 async fn every_issue_over(
-    run_id: &str,
     project_id: Option<&str>,
     keys: &[String],
     leases: &dyn LeaseKeeper,
@@ -358,11 +357,6 @@ async fn every_issue_over(
             }
         }
     }
-    tracing::info!(
-        "[recovery] run {run_id}: every issue it holds ({}) is over at core, so the keep its live \
-         master gives it ends here — its leases go back and its checkout is asked for (ISS-1245)",
-        keys.join(", ")
-    );
     IssuesOver::Yes
 }
 
@@ -3023,6 +3017,54 @@ mod tests {
         assert!(
             led.run("run-1").unwrap().unwrap().released_as.is_none(),
             "its checkout was never even asked about"
+        );
+    }
+
+    /// ISS-1245 F1 — the measurement is taken every sweep; the REPORT is one
+    /// per condition, which is the rule ISS-1239 is about.
+    ///
+    /// The run below is measured issues-over on every sweep and released on
+    /// none of them, because its checkout came back by another route and
+    /// `owed_release` will not ask for one that is already back. It is the one
+    /// population that stays and keeps being measured, so it is where an
+    /// unlatched line becomes exactly the every-sweep noise this change
+    /// exists to end. Counted over the whole journal rather than over one
+    /// wording: `kept_notice` holds ONE notice per run, so two writers on a
+    /// sweep reset each other and BOTH repeat for ever — a second latched
+    /// line would pass a test that named only the first.
+    #[test]
+    fn the_line_saying_a_keep_ends_is_said_once_not_once_a_sweep() {
+        let said = logged_while(|| {
+            block_on(async {
+                let mut led = seeded("run-1", MASTER, "boot-a", &["ISS-1217"]);
+                assert!(led.bind_agent("run-1", "a1217judge").unwrap());
+                led.mark_checkout_returned_observed(
+                    "run-1",
+                    crate::runner::ledger::CheckoutReturn::Gone,
+                )
+                .unwrap();
+                let beats = Beats::default();
+                let leases = LeasesOver::with(&["ISS-1217"]);
+
+                for sweep in 1..=3 {
+                    let r = sweep_under_a_live_master(&mut led, &leases, &beats).await;
+                    assert!(
+                        r.is_some_and(|r| r.issues_over && !r.owed_release),
+                        "sweep {sweep}: the state under test is the one that is measured over and \
+                         released anyway never — its checkout is already back"
+                    );
+                }
+            })
+        });
+        let lines = said.lines().filter(|l| l.contains("run run-1")).count();
+        assert_eq!(
+            lines, 1,
+            "three sweeps over one unchanged condition say one line, not one a sweep: {said}"
+        );
+        assert!(
+            said.contains("is partially closed"),
+            "and the line they say is the standing one, which names what is outstanding and the \
+             act that ends it: {said}"
         );
     }
 
