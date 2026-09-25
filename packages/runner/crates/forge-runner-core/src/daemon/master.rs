@@ -223,8 +223,20 @@ pub(crate) enum Unplaced {
         detail: String,
     },
     /// The project declares MCP servers and the file handing them to a pane
-    /// could not be written, so no pane was started for the same reason.
+    /// could not be written into `dir`, so no pane was started for the same
+    /// reason. `dir` is what an operator has to make writable.
     ServersUnwritable {
+        detail: String,
+        dir: std::path::PathBuf,
+    },
+    /// Everything before the pane was in place and the capability it would
+    /// carry could not be minted, so no pane was started: one without it has
+    /// every declaration refused.
+    CapabilityUnminted {
+        detail: String,
+    },
+    /// Everything was in place and tmux did not start the pane.
+    PaneUnstarted {
         detail: String,
     },
 }
@@ -285,9 +297,19 @@ impl std::fmt::Display for Unplaced {
                 f,
                 "this box could not read which MCP servers this project declares ({detail}), so it started no master rather than one carrying none of them. The next sweep whose read succeeds places one"
             ),
-            Self::ServersUnwritable { detail } => write!(
+            Self::ServersUnwritable { detail, dir } => write!(
                 f,
-                "it declares MCP servers and the file that hands them to a pane could not be written ({detail}), so this box started no master rather than one carrying none of them"
+                "it declares MCP servers and the file that hands them to a pane could not be written into {} ({detail}), so this box started no master rather than one carrying none of them. Make {} writable and the next sweep starts one",
+                dir.display(),
+                dir.display()
+            ),
+            Self::CapabilityUnminted { detail } => write!(
+                f,
+                "the control capability its pane would carry could not be minted ({detail}), so this box started no master rather than one whose every declaration is refused"
+            ),
+            Self::PaneUnstarted { detail } => write!(
+                f,
+                "everything it needs was in place and the pane itself did not start ({detail})"
             ),
             Self::StaleCapability { session, pane } => write!(
                 f,
@@ -319,12 +341,14 @@ impl Unplaced {
     /// Whether this is a state an operator has to act on before the box's two
     /// answers agree.
     ///
-    /// Three of them are. A pane running against a stand-down is the nine-hour
-    /// silence ISS-1118 was filed over; a standing this box could not read is a
-    /// box that cannot say what it is doing; a pane whose capability is stale
-    /// is the four-hour silence ISS-1099 was filed over, and no sweep resolves
-    /// it. Everything else here is a pane absent for a reason the box is
-    /// content with.
+    /// A pane running against a stand-down is the nine-hour silence ISS-1118
+    /// was filed over; a standing this box could not read is a box that cannot
+    /// say what it is doing; a pane whose capability is stale is the four-hour
+    /// silence ISS-1099 was filed over, and no sweep resolves it. The four that
+    /// refuse a start the project wanted — its servers unreadable or
+    /// unwritable, its capability unminted, its pane unstarted — leave it with
+    /// no master for a fault on this box. Everything else here is a pane absent
+    /// for a reason the box is content with.
     fn is_error(&self) -> bool {
         matches!(
             self,
@@ -333,6 +357,8 @@ impl Unplaced {
                 | Self::StaleCapability { .. }
                 | Self::ServersUnreadable { .. }
                 | Self::ServersUnwritable { .. }
+                | Self::CapabilityUnminted { .. }
+                | Self::PaneUnstarted { .. }
         )
     }
 }
@@ -2620,17 +2646,15 @@ async fn ensure_master(
                 &cleared,
             ) {
                 (LaunchRecord::Lying, Err(ce)) => {
-                    tracing::error!(
-                        "[master] {}: could not write the pane's MCP config ({e}) and could not remove the previous one either: refusing to start a master this box could not describe: {ce} — a pane started now would carry none of this project's servers while the file on disk still claims it carries them, so no later sweep could report it. Make {} writable and the next sweep starts one.",
-                        resolved.slug,
-                        crate::mcp::config::session_dir().display()
-                    );
                     say_unplaced(
                         masters,
                         project_id,
                         &resolved.slug,
                         Unplaced::ServersUnwritable {
-                            detail: format!("{e}; the previous config could not be removed: {ce}"),
+                            detail: format!(
+                                "{e}; the previous config could not be removed either ({ce}), and it still claims servers a pane started now would not carry"
+                            ),
+                            dir: crate::mcp::config::session_dir(),
                         },
                     );
                     return PaneState::Absent;
@@ -2645,6 +2669,7 @@ async fn ensure_master(
                                 "{e}; declared: {}",
                                 declared.resolved_names.join(", ")
                             ),
+                            dir: crate::mcp::config::session_dir(),
                         },
                     );
                     return PaneState::Absent;
@@ -2673,17 +2698,25 @@ async fn ensure_master(
         Some(store) => match store.mint(&session.session_id) {
             Ok(token) => env.push((session_tokens::TOKEN_ENV.to_string(), token)),
             Err(e) => {
-                tracing::error!(
-                    "[master] {}: cannot mint a control capability: {e} — not starting a master",
-                    resolved.slug
+                say_unplaced(
+                    masters,
+                    project_id,
+                    &resolved.slug,
+                    Unplaced::CapabilityUnminted {
+                        detail: e.to_string(),
+                    },
                 );
                 return PaneState::Absent;
             }
         },
         None => {
-            tracing::error!(
-                "[master] {}: cannot resolve the control token map — not starting a master",
-                resolved.slug
+            say_unplaced(
+                masters,
+                project_id,
+                &resolved.slug,
+                Unplaced::CapabilityUnminted {
+                    detail: "this box cannot resolve where its control token map lives".into(),
+                },
             );
             return PaneState::Absent;
         }
@@ -2700,7 +2733,7 @@ async fn ensure_master(
     {
         Ok(started) => started,
         Err(e) => {
-            tracing::error!("[master] {}: could not start {name}: {e}", resolved.slug);
+            let detail = format!("could not start {name}: {e}");
             // No pane holds the capability minted for it, so it is taken back
             // rather than left in the map as proof of a pane that never started.
             let withdrawn = withdraw_unplaced_mint(tokens, &session.session_id);
@@ -2718,6 +2751,12 @@ async fn ensure_master(
                     session.session_id
                 );
             }
+            say_unplaced(
+                masters,
+                project_id,
+                &resolved.slug,
+                Unplaced::PaneUnstarted { detail },
+            );
             return PaneState::Absent;
         }
     };
@@ -6711,6 +6750,11 @@ mod unplaced_tests {
             "a pane that could not be started gives back the capability minted for it"
         );
         assert!(
+            ensure_failed[..ensure_failed.find("return PaneState::Absent;").unwrap()]
+                .contains("Unplaced::PaneUnstarted { detail }"),
+            "a pane that could not be started replaces whatever reason an earlier sweep recorded (criterion 19)"
+        );
+        assert!(
             !body.contains("unwrap_or_default()"),
             "a failed read must never become an empty declaration"
         );
@@ -6761,17 +6805,26 @@ mod unplaced_tests {
         assert!(masters.note_unplaced("proj-1", why));
     }
 
-    /// Criterion 7.
+    /// Criteria 7 and 17: the write, the directory it could not write, and
+    /// the act that lets the next sweep start one.
     #[test]
     fn an_unwritable_config_is_recorded_naming_the_write() {
         let why = Unplaced::ServersUnwritable {
             detail: "permission denied; declared: playwright".into(),
+            dir: std::path::PathBuf::from("/srv/forge-runner/mcp"),
         };
         let said = why.to_string();
-        assert!(said.contains("could not be written"), "{said}");
+        assert!(
+            said.contains("could not be written into /srv/forge-runner/mcp"),
+            "{said}"
+        );
         assert!(
             said.contains("permission denied; declared: playwright"),
             "{said}"
+        );
+        assert!(
+            said.contains("Make /srv/forge-runner/mcp writable and the next sweep starts one"),
+            "the refusal says what an operator does about it: {said}"
         );
         assert!(why.is_error());
     }
@@ -7769,11 +7822,13 @@ mod unplaced_tests {
             .unwrap_or_else(|e| e.into_inner());
         let iso = terminal::testing::IsolatedServer::new("deafkill");
         if !terminal::available() {
-            eprintln!("tmux is not installed here — the transport this rests on cannot run");
+            terminal::testing::cannot_run(
+                "tmux is not installed here — the transport this rests on cannot run",
+            );
             return;
         }
         if !iso.took() {
-            eprintln!("this box does not resolve its tmux socket from the config dir, so the only server here is its own — not starting a pane on it");
+            terminal::testing::cannot_run("this box does not resolve its tmux socket from the config dir, so the only server here is its own — not starting a pane on it");
             return;
         }
         let dir = crate::test_scratch::Scratch::new("deafkill");
@@ -8518,11 +8573,13 @@ mod servers_refusal_walk_tests {
             .unwrap_or_else(|e| e.into_inner());
         let iso = terminal::testing::IsolatedServer::new("walkdeaf");
         if !terminal::available() {
-            eprintln!("tmux is not installed here — the transport this rests on cannot run");
+            terminal::testing::cannot_run(
+                "tmux is not installed here — the transport this rests on cannot run",
+            );
             return;
         }
         if !iso.took() {
-            eprintln!("this box does not resolve its tmux socket from the config dir, so the only server here is its own — not starting a pane on it");
+            terminal::testing::cannot_run("this box does not resolve its tmux socket from the config dir, so the only server here is its own — not starting a pane on it");
             return;
         }
         let repo = crate::test_scratch::Scratch::new("walkdeaf-repo");
@@ -8594,11 +8651,13 @@ mod servers_refusal_walk_tests {
             .unwrap_or_else(|e| e.into_inner());
         let iso = terminal::testing::IsolatedServer::new("walkwrite");
         if !terminal::available() {
-            eprintln!("tmux is not installed here — the transport this rests on cannot run");
+            terminal::testing::cannot_run(
+                "tmux is not installed here — the transport this rests on cannot run",
+            );
             return;
         }
         if !iso.took() {
-            eprintln!("this box does not resolve its tmux socket from the config dir, so the only server here is its own — not asking it about a pane");
+            terminal::testing::cannot_run("this box does not resolve its tmux socket from the config dir, so the only server here is its own — not asking it about a pane");
             return;
         }
         let claude_home = crate::test_scratch::Scratch::new("walkwrite-claude");
@@ -8635,16 +8694,90 @@ mod servers_refusal_walk_tests {
             "no pane is started for a project whose servers could not be handed to it"
         );
         match recorded(&masters) {
-            Some(Unplaced::ServersUnwritable { detail }) => assert!(
-                detail.contains("declared: playwright"),
-                "the refusal names what the pane would have lacked: {detail}"
-            ),
+            Some(Unplaced::ServersUnwritable { detail, dir: at }) => {
+                assert!(
+                    detail.contains("declared: playwright"),
+                    "the refusal names what the pane would have lacked: {detail}"
+                );
+                assert_eq!(at, dir, "the refusal names the directory the write met");
+            }
             other => panic!(
                 "a declaring project whose config could not be written was recorded as {:?} — the refusal was not taken, and with a capability map to mint into the pane would have started carrying none of its servers",
                 other.map(|why| why.to_string())
             ),
         }
         let _ = std::fs::remove_dir(&blocked);
+    }
+
+    /// Criterion 18: a sweep refused at the mint after one refused at the read
+    /// records the mint's reason. The first reason promises that "the next
+    /// sweep whose read succeeds places one"; left standing once the read has
+    /// succeeded, it names a fault this box no longer has and hides the one it
+    /// does.
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_later_refusal_at_the_mint_replaces_the_read_it_followed() {
+        let _serialised = terminal::testing::ONE_AT_A_TIME.lock().await;
+        let _env = crate::auth::cred_store::ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let iso = terminal::testing::IsolatedServer::new("walkmint");
+        if !terminal::available() {
+            terminal::testing::cannot_run(
+                "tmux is not installed here — the transport this rests on cannot run",
+            );
+            return;
+        }
+        if !iso.took() {
+            terminal::testing::cannot_run("this box does not resolve its tmux socket from the config dir, so the only server here is its own — not asking it about a pane");
+            return;
+        }
+        let claude_home = crate::test_scratch::Scratch::new("walkmint-claude");
+        let _trust = ScopedVar::set("CLAUDE_CONFIG_DIR", claude_home.path());
+        let repo = crate::test_scratch::Scratch::new("walkmint-repo");
+        let masters = Arc::new(Masters::new());
+        let deaf = DeafSink::default();
+
+        let failing = fake_core::serve_routes(&[
+            (REGISTER, "200 OK", SESSION),
+            (SERVERS, "520 Origin Error", GATEWAY_PAGE),
+        ])
+        .await;
+        let first = walk(failing, &masters, &resolved("walkmint", &repo), None, &deaf).await;
+        assert_eq!(first, PaneState::Absent);
+        assert!(
+            matches!(recorded(&masters), Some(Unplaced::ServersUnreadable { .. })),
+            "the plant is only the plant once the read's refusal is on the record"
+        );
+
+        let answering = fake_core::serve_routes(&[
+            (REGISTER, "200 OK", SESSION),
+            (SERVERS, "200 OK", DECLARES),
+        ])
+        .await;
+        let second = walk(
+            answering,
+            &masters,
+            &resolved("walkmint", &repo),
+            None,
+            &deaf,
+        )
+        .await;
+        assert_eq!(second, PaneState::Absent);
+        match recorded(&masters) {
+            Some(why @ Unplaced::CapabilityUnminted { .. }) => {
+                let said = why.to_string();
+                assert!(
+                    said.contains("control token map") && why.is_error(),
+                    "the recorded reason names the mint's fault: {said}"
+                );
+            }
+            other => panic!(
+                "a sweep refused at the mint still reads {:?}",
+                other.map(|why| why.to_string())
+            ),
+        }
+        let _ = crate::mcp::config::clear_session("walkmint");
     }
 }
 
