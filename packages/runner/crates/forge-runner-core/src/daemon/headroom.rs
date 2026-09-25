@@ -160,13 +160,19 @@ impl Reading {
     fn figures(&self) -> String {
         match self {
             Self::Took(room) => format!(
-                "{} of {} bytes free ({}), {} of {} inodes free ({})",
-                gib(room.bytes_free),
-                gib(room.bytes_total),
-                said_percent(room.bytes_free_percent()),
-                room.inodes_free,
-                room.inodes_total,
-                said_percent(room.inodes_free_percent()),
+                "{}, {}",
+                figure(
+                    "bytes",
+                    said_bytes(room.bytes_free),
+                    said_bytes(room.bytes_total),
+                    room.bytes_free_percent(),
+                ),
+                figure(
+                    "inodes",
+                    room.inodes_free.to_string(),
+                    room.inodes_total.to_string(),
+                    room.inodes_free_percent(),
+                ),
             ),
             Self::Refused(why) => format!("no reading ({why})"),
         }
@@ -198,6 +204,17 @@ pub enum Report {
     Stands { verdict: Verdict, held: Duration },
     /// A return to `Clear`, with how long the pressure it replaces stood.
     Cleared { was: Verdict, stood: Duration },
+    /// A reading that could not be taken while a pressure stood, with that
+    /// pressure and how long it had stood when the box last answered.
+    ///
+    /// Apart from `Entered(Unmeasurable)`, which is a box nothing was known
+    /// about, because the two earn different levels. This one is no less full
+    /// than it was five minutes ago (ISS-1260 F4).
+    Blinded {
+        was: Verdict,
+        why: String,
+        held: Duration,
+    },
 }
 
 impl Report {
@@ -205,6 +222,14 @@ impl Report {
     pub fn level(&self) -> tracing::Level {
         match self {
             Self::Entered(Verdict::Critical(_)) | Self::Stands { .. } => tracing::Level::ERROR,
+            // The level the pressure it replaces had, never a lower one: an
+            // alert routed on ERROR must not go quiet at the moment the
+            // filesystem stops answering, which on a filling box is not an
+            // unlikely moment (ISS-1260 F4).
+            Self::Blinded { was, .. } => match was {
+                Verdict::Critical(_) => tracing::Level::ERROR,
+                _ => tracing::Level::WARN,
+            },
             Self::Entered(Verdict::Tight(_) | Verdict::Unmeasurable(_)) => tracing::Level::WARN,
             Self::Entered(Verdict::Clear) | Self::Cleared { .. } => tracing::Level::INFO,
         }
@@ -221,11 +246,21 @@ pub struct Watch {
     said: Option<Verdict>,
     said_at: Option<Instant>,
     since: Option<Instant>,
+    /// The pressure that stood when the box stopped answering, held for as
+    /// long as it goes on not answering. Without it the second blind tick has
+    /// nothing to read the level off but the unreadable verdict itself.
+    blinding: Option<Verdict>,
 }
 
 impl Watch {
     /// What this tick owes the journal.
     pub fn tick(&mut self, now: Instant, verdict: Verdict) -> Option<Report> {
+        if let Verdict::Unmeasurable(why) = &verdict {
+            if let Some(was) = self.blinding.clone().or_else(|| self.pressure()) {
+                return self.blinded(now, was, why.clone());
+            }
+        }
+        self.blinding = None;
         if self.said.as_ref() == Some(&verdict) {
             if !matches!(verdict, Verdict::Critical(_)) {
                 return None;
@@ -250,6 +285,42 @@ impl Watch {
             }
             _ => Some(Report::Entered(verdict)),
         }
+    }
+
+    /// The pressure the last line reported, where it reported one.
+    fn pressure(&self) -> Option<Verdict> {
+        match self.said.clone() {
+            Some(v @ (Verdict::Critical(_) | Verdict::Tight(_))) => Some(v),
+            _ => None,
+        }
+    }
+
+    /// A box that stopped answering while `was` stood.
+    ///
+    /// `since` is left where the pressure set it, so the duration on the line
+    /// is how long that pressure has stood rather than how long the box has
+    /// been unreadable. `said_at` moves, because the hour the repeat is
+    /// measured from runs from the line that was actually written: taking it
+    /// from the critical line before would put two lines five minutes apart.
+    fn blinded(&mut self, now: Instant, was: Verdict, why: String) -> Option<Report> {
+        let first = self.blinding.is_none();
+        self.blinding = Some(was.clone());
+        self.said = Some(Verdict::Unmeasurable(why.clone()));
+        if !first {
+            if !matches!(was, Verdict::Critical(_)) {
+                return None;
+            }
+            let said_at = self.said_at?;
+            if now.duration_since(said_at) < SAY_CRITICAL_AGAIN {
+                return None;
+            }
+        }
+        self.said_at = Some(now);
+        Some(Report::Blinded {
+            was,
+            why,
+            held: self.since.map_or(Duration::ZERO, |s| now.duration_since(s)),
+        })
     }
 }
 
@@ -506,9 +577,17 @@ pub fn said(
             format!("[headroom] {where_and_what} — clear on both axes")
         }
         Report::Cleared { was, stood } => format!(
-            "[headroom] {where_and_what} — clear on both axes again after {}s of {}",
-            stood.as_secs(),
-            crossed(was),
+            "[headroom] {where_and_what} — clear on both axes again after {}: {}",
+            lasted(*stood),
+            had_crossed(was),
+        ),
+        Report::Blinded { was, why, held } => format!(
+            "[headroom] {}: no reading could be taken ({why}) — {} when the box last answered, \
+             {} ago, and a box that stops answering is not a box that has emptied. {COSTS}. {}",
+            at.display(),
+            had_crossed(was),
+            lasted(*held),
+            sweep_wont(crate::workspace::worktree_reap::MIN_AGE)
         ),
         Report::Entered(Verdict::Unmeasurable(why)) => format!(
             "[headroom] {}: no reading could be taken ({why}) — a box that cannot be read is not \
@@ -521,9 +600,9 @@ pub fn said(
             sweep_wont(crate::workspace::worktree_reap::MIN_AGE)
         ),
         Report::Stands { verdict, held } => format!(
-            "[headroom] {where_and_what} — {} and has stood for {}s. {COSTS}. {}",
+            "[headroom] {where_and_what} — {} and has stood for {}. {COSTS}. {}",
             crossed(verdict),
-            held.as_secs(),
+            lasted(*held),
             sweep_wont(crate::workspace::worktree_reap::MIN_AGE)
         ),
     };
@@ -561,15 +640,90 @@ fn crossed(verdict: &Verdict) -> String {
     }
 }
 
-/// An axis the filesystem states no total for is named on the line rather than
-/// left off it: a figure missing from a diagnostic reads as a figure nobody
-/// thought to take.
-fn said_percent(percent: Option<u64>) -> String {
-    percent.map_or_else(|| "no total stated".to_string(), |p| format!("{p}%"))
+/// The same clause as [`crossed`], about a pressure that is over.
+///
+/// `crossed` is a present-tense predicate, and a line that puts it in a noun
+/// slot — `after 8220s of bytes is CRITICAL, under 8% free` — is the one line
+/// of this module that did not read as English (ISS-1260 F1).
+fn had_crossed(verdict: &Verdict) -> String {
+    match verdict {
+        Verdict::Critical(axis) => format!(
+            "{} was CRITICAL, under {CRITICAL_FREE_PERCENT}% free",
+            axis.name()
+        ),
+        Verdict::Tight(axis) => {
+            format!(
+                "{} was TIGHT, under {TIGHT_FREE_PERCENT}% free",
+                axis.name()
+            )
+        }
+        Verdict::Clear => "clear".to_string(),
+        Verdict::Unmeasurable(why) => format!("unreadable ({why})"),
+    }
 }
 
-fn gib(bytes: u64) -> String {
-    format!("{:.1}G", bytes as f64 / (1024.0 * 1024.0 * 1024.0))
+/// One axis's counts, or the fact that the filesystem states no total for it.
+///
+/// An axis with no total used to print `0 of 0 inodes free (no total stated)`,
+/// and `0 inodes free` is precisely the reading [`free_percent`]'s refusal
+/// exists to stop anyone believing. The arithmetic refused it and the line
+/// printed it anyway, leaving two zeros and a parenthetical to reconcile
+/// mid-incident (ISS-1260 F2).
+fn figure(axis: &str, free: String, total: String, percent: Option<u64>) -> String {
+    match percent {
+        Some(p) => format!("{free} of {total} {axis} free ({p}%)"),
+        None => format!("{axis}: no total stated"),
+    }
+}
+
+/// Bytes in the largest binary unit that leaves the figure at or above one,
+/// and a plain count below a kibibyte so zero has a unit to be rendered in.
+///
+/// Always dividing by 1024^3 put `0.0G of 0.2G bytes free (3%)` at the head of
+/// an ERROR line on a 200M tmpfs — a headline figure contradicting the
+/// percentage beside it, on exactly the shape of scratch root a container
+/// gives a run (ISS-1260 F3).
+fn said_bytes(bytes: u64) -> String {
+    const K: u64 = 1024;
+    for (unit, scale) in [
+        ("T", K * K * K * K),
+        ("G", K * K * K),
+        ("M", K * K),
+        ("K", K),
+    ] {
+        if bytes >= scale {
+            return format!("{:.1}{unit}", bytes as f64 / scale as f64);
+        }
+    }
+    format!("{bytes}B")
+}
+
+/// How long something stood, in a form a reader takes at a glance, with the
+/// raw seconds beside it.
+///
+/// Seconds alone are the figure the line used to carry, and at three days they
+/// come back as `273600s` for the reader to divide by 86,400 themselves. Under
+/// a minute there is nothing to divide and `0h 0m` is noise, so that case is
+/// the seconds alone (ISS-1260 F1).
+fn lasted(stood: Duration) -> String {
+    let seconds = stood.as_secs();
+    if seconds < 60 {
+        return format!("{seconds}s");
+    }
+    let (days, hours, minutes) = (
+        seconds / (24 * 3600),
+        (seconds % (24 * 3600)) / 3600,
+        (seconds % 3600) / 60,
+    );
+    let mut said = String::new();
+    if days > 0 {
+        said.push_str(&format!("{days}d "));
+    }
+    if days > 0 || hours > 0 {
+        said.push_str(&format!("{hours}h "));
+    }
+    said.push_str(&format!("{minutes}m"));
+    format!("{said} ({seconds}s)")
 }
 
 #[cfg(test)]
@@ -748,12 +902,26 @@ mod tests {
         watch.tick(t0, critical.clone());
 
         let stood = SAY_CRITICAL_AGAIN * 3;
+        let report = watch
+            .tick(t0 + stood, Verdict::Clear)
+            .expect("a return to clear is reported");
         assert_eq!(
-            watch.tick(t0 + stood, Verdict::Clear),
-            Some(Report::Cleared {
+            report,
+            Report::Cleared {
                 was: critical,
                 stood,
-            })
+            }
+        );
+        assert!(
+            said(
+                Path::new("/tmp"),
+                &Reading::Took(the_measured_box()),
+                &report,
+                &[],
+            )
+            .contains("(10800s)"),
+            "this used to assert the Report value alone, which is how an unreadable sentence \
+             shipped under a passing criterion"
         );
     }
 
@@ -774,7 +942,10 @@ mod tests {
         assert_eq!(
             report.level(),
             tracing::Level::WARN,
-            "it is not an error that a platform cannot be measured, and it is not nothing"
+            "it is not an error that a platform cannot be measured, and it is not nothing. This \
+             is the no-pressure plant, and it was the only one: what a box already critical does \
+             when it stops answering is \
+             `a_critical_box_that_stops_answering_keeps_its_level_and_its_repeat`"
         );
         assert!(
             said(Path::new("/tmp"), &reading, &report, &[]).contains("is not a box that is fine"),
@@ -833,9 +1004,214 @@ mod tests {
         );
         assert!(line.contains("bytes is CRITICAL"), "{line}");
         assert!(
-            line.contains("inodes free (no total stated)"),
+            line.contains("inodes: no total stated"),
             "the axis that could not be measured is named on the line rather than left off it: \
              {line}"
+        );
+        assert!(
+            !line.contains("0 of 0"),
+            "and named without the count nobody took. The assertion above used to be a substring \
+             of `0 of 0 inodes free (no total stated)`, so it could only go red on the axis being \
+             dropped from the line entirely: {line}"
+        );
+    }
+
+    /// The line a pressure's end goes out as, which no assertion here read
+    /// until now: `crossed` is a present-tense predicate and `said` dropped it
+    /// into a noun slot, so a Critical that cleared after 2h17m went out as
+    /// `after 8220s of bytes is CRITICAL, under 8% free` (ISS-1260 F1).
+    #[test]
+    fn a_pressure_that_ended_is_named_in_the_past_tense_and_timed_in_both_forms() {
+        let mut watch = Watch::default();
+        let t0 = Instant::now();
+        watch.tick(t0, Verdict::Critical(Axis::Bytes));
+        let stood = Duration::from_secs(8_220);
+        let report = watch
+            .tick(t0 + stood, Verdict::Clear)
+            .expect("a return to clear is reported");
+
+        let line = said(
+            Path::new("/tmp"),
+            &Reading::Took(the_measured_box()),
+            &report,
+            &[],
+        );
+        assert!(
+            line.contains("clear on both axes again after 2h 17m (8220s): bytes was CRITICAL"),
+            "the pressure that ended belongs in the sentence rather than in a noun slot, and \
+             three days of it must not be read off a count of seconds: {line}"
+        );
+        assert!(
+            !line.contains("of bytes is CRITICAL"),
+            "a present-tense predicate after `of` is the clause this replaces: {line}"
+        );
+    }
+
+    /// Under a minute there is nothing to divide, and `0h 0m (45s)` is noise.
+    #[test]
+    fn a_duration_under_a_minute_is_stated_in_seconds_alone() {
+        assert_eq!(lasted(Duration::from_secs(45)), "45s");
+        assert_eq!(lasted(Duration::from_secs(60)), "1m (60s)");
+        assert_eq!(lasted(Duration::from_secs(273_600)), "3d 4h 0m (273600s)");
+    }
+
+    /// `0 of 0 inodes free` is exactly the reading `free_percent` refuses, and
+    /// the line printed it anyway beside the parenthetical that refuses it
+    /// (ISS-1260 F2).
+    #[test]
+    fn an_axis_with_no_stated_total_carries_no_count_nobody_took() {
+        let room = Headroom {
+            bytes_free: 2 * 1024 * 1024 * 1024,
+            bytes_total: 61 * 1024 * 1024 * 1024,
+            inodes_free: 0,
+            inodes_total: 0,
+        };
+        let reading = Reading::Took(room);
+        let line = said(
+            Path::new("/data"),
+            &reading,
+            &Report::Entered(reading.verdict()),
+            &[],
+        );
+        assert!(line.contains("inodes: no total stated"), "{line}");
+        assert!(
+            !line.contains("0 of 0"),
+            "two zeros and a parenthetical for an operator to reconcile mid-incident: {line}"
+        );
+    }
+
+    /// A small tmpfs is the ordinary shape of a container's scratch root, and
+    /// `0.0G of 0.2G bytes free (3%)` contradicts itself at the head of an
+    /// ERROR line (ISS-1260 F3).
+    #[test]
+    fn a_filesystem_under_a_gibibyte_does_not_report_its_free_bytes_as_zero() {
+        let room = Headroom {
+            bytes_free: 6 * 1024 * 1024,
+            bytes_total: 200 * 1024 * 1024,
+            inodes_free: 300,
+            inodes_total: 12_800,
+        };
+        let reading = Reading::Took(room);
+        let line = said(
+            Path::new("/tmp"),
+            &reading,
+            &Report::Entered(reading.verdict()),
+            &[],
+        );
+        assert!(line.contains("6.0M of 200.0M bytes free (3%)"), "{line}");
+        assert!(
+            !line.contains("0.0G"),
+            "a reader who takes the headline bytes at face value reaches for the wrong axis: \
+             {line}"
+        );
+        assert_eq!(said_bytes(0), "0B", "zero has no unit to be rendered in");
+        assert_eq!(said_bytes(1023), "1023B");
+        assert_eq!(said_bytes(1024), "1.0K");
+    }
+
+    /// The box is no less full than it was five minutes ago. Levelling an
+    /// unreadable reading at WARN unconditionally, and guarding the hourly
+    /// repeat on `Verdict::Critical`, took an ERROR line away at the moment
+    /// the filesystem stopped answering (ISS-1260 F4).
+    #[test]
+    fn a_critical_box_that_stops_answering_keeps_its_level_and_its_repeat() {
+        let mut watch = Watch::default();
+        let t0 = Instant::now();
+        let critical = Verdict::Critical(Axis::Bytes);
+        let why = "statvfs on /tmp answered EIO".to_string();
+        let blind = Verdict::Unmeasurable(why.clone());
+
+        assert_eq!(
+            watch.tick(t0, critical.clone()),
+            Some(Report::Entered(critical.clone()))
+        );
+        let entered = watch
+            .tick(t0 + TICK, blind.clone())
+            .expect("a box that stops answering under a standing critical is said");
+        assert_eq!(
+            entered,
+            Report::Blinded {
+                was: critical.clone(),
+                why: why.clone(),
+                held: TICK,
+            }
+        );
+        assert_eq!(
+            entered.level(),
+            tracing::Level::ERROR,
+            "an alert routed on ERROR going quiet the moment the filesystem stops answering is \
+             the silence this module exists to refuse"
+        );
+
+        assert_eq!(
+            watch.tick(t0 + TICK * 2, blind.clone()),
+            None,
+            "and it is not said again on every tick"
+        );
+        let again = watch
+            .tick(t0 + TICK + SAY_CRITICAL_AGAIN, blind)
+            .expect("the hourly repeat survives the box going unreadable");
+        assert_eq!(again.level(), tracing::Level::ERROR);
+
+        let line = said(
+            Path::new("/tmp"),
+            &Reading::Refused("statvfs on /tmp answered EIO".to_string()),
+            &again,
+            &[],
+        );
+        assert!(line.contains("no reading could be taken"), "{line}");
+        assert!(
+            line.contains("bytes was CRITICAL"),
+            "the pressure that stood when the box last answered is what the operator acts on: \
+             {line}"
+        );
+    }
+
+    /// A tight box that stops answering is news once. Giving it the critical
+    /// repeat would put an hourly line on every box whose `statvfs` is slow,
+    /// which is the alarm nobody reads from the other end.
+    #[test]
+    fn a_tight_box_that_stops_answering_keeps_warn_and_is_said_once() {
+        let mut watch = Watch::default();
+        let t0 = Instant::now();
+        let tight = Verdict::Tight(Axis::Inodes);
+        let blind = Verdict::Unmeasurable("statvfs answered EIO".to_string());
+
+        watch.tick(t0, tight.clone());
+        let entered = watch
+            .tick(t0 + TICK, blind.clone())
+            .expect("the change of level is reported on the tick it arrives");
+        assert_eq!(entered.level(), tracing::Level::WARN);
+        assert!(matches!(entered, Report::Blinded { ref was, .. } if *was == tight));
+        assert_eq!(
+            watch.tick(t0 + TICK + SAY_CRITICAL_AGAIN, blind),
+            None,
+            "only a critical verdict is worth saying twice, blind or not"
+        );
+    }
+
+    /// Minute 0 critical, minute 55 unreadable: the unreadable reading is a
+    /// report of its own, so the hour runs from it. Criterion 15 is about the
+    /// gap between two lines, and minute 60 would put two five minutes apart.
+    #[test]
+    fn going_blind_restarts_the_clock_the_hourly_repeat_is_measured_from() {
+        let mut watch = Watch::default();
+        let t0 = Instant::now();
+        let critical = Verdict::Critical(Axis::Bytes);
+        let blind = Verdict::Unmeasurable("statvfs answered EIO".to_string());
+
+        watch.tick(t0, critical);
+        watch.tick(t0 + Duration::from_secs(55 * 60), blind.clone());
+        assert_eq!(
+            watch.tick(t0 + Duration::from_secs(60 * 60), blind.clone()),
+            None,
+            "an hour after the critical line, but five minutes after the blind one"
+        );
+        assert!(
+            watch
+                .tick(t0 + Duration::from_secs(115 * 60), blind)
+                .is_some(),
+            "an hour after the line that was actually written"
         );
     }
 
