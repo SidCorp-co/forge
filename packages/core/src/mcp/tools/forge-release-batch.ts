@@ -29,6 +29,7 @@ import {
   ReleaseBranchesUndeclaredError,
 } from '../../release-batch/plan.js';
 import {
+  finishedForSentence,
   finishRefusal as finishHttpRefusal,
   recordRefusal,
   undeclaredBranches,
@@ -38,6 +39,7 @@ import {
   findReleaseBatchRun,
   loadReleaseBatchContext,
   ReleaseBatchAbortedError,
+  ReleaseFinishedForOtherCommitError,
   ReleaseFinishInFlightError,
   ReleaseNotVerifiedError,
   ReleaseProbesUndeclaredError,
@@ -145,6 +147,13 @@ function finishRefusal(err: unknown): Error {
       { requestId: err.requestId, inFlightCommit: err.inFlightCommit },
     );
   }
+  if (err instanceof ReleaseFinishedForOtherCommitError) {
+    return refusal(
+      'RELEASE_FINISHED_FOR_OTHER_COMMIT',
+      `${finishedForSentence(err)} Read what it recorded with ${RELEASE_BATCH_TOOL} action=state runId=${err.where.runId}.`,
+      { requestId: err.requestId, finishedCommit: err.finishedCommit },
+    );
+  }
   if (err instanceof ReleaseBatchAbortedError) {
     // The same account the REST door gives and the finish record stores: one sentence per abort.
     const http = finishHttpRefusal(err);
@@ -219,7 +228,8 @@ export const forgeReleaseBatchTool: ContextScopedMcpToolFactory = (ctx) => ({
     'call it FIRST), `state` (roster, attempts, live reading, bounds, announced method), `method` (announce the method loaded: ' +
     '`skill` + `loaded`, optional `detail`; finish refuses a run that announced none), `finish` (`commit` = the SHA pushed to ' +
     'production; answers at once with the attempt at `accepted`, and the server then reads the probes and closes every claimed issue ' +
-    'on its own — read `state` → `finish.state` for `finished` or `failed`, whose `refusal` says why), `abort` (`reason`; releases every claim, closes nothing, ' +
+    'on its own — read `state` → `finish.state` for `finished` or `failed`, whose `refusal` says why; a new `finish` after a `failed` one ' +
+    'starts a new attempt), `abort` (`reason`; releases every claim, closes nothing, ' +
     'and leaves closed the issues a finish already closed, which it answers as `alreadyClosed` beside the `recovered` it moved — ' +
     'a roster whose run already promoted is left at `releasing` still claimed unless `promotedRoster: "return-to-gate"` names the settlement, which returns it ' +
     'to the release gate for `POST /release-records` to close against what production is serving). ' +

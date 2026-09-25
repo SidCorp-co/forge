@@ -122,6 +122,23 @@ export class ReleaseFinishInFlightError extends Error {
   }
 }
 
+/**
+ * The batch already finished, and not for the commit this call names. Its record
+ * verified one commit (or, claimless, only that the build changed); a finish
+ * naming another is a claim that record never checked.
+ */
+export class ReleaseFinishedForOtherCommitError extends Error {
+  constructor(
+    public readonly requestId: string,
+    public readonly finishedCommit: string | null,
+    public readonly askedCommit: string,
+    public readonly where: { projectId: string; runId: string },
+  ) {
+    super('RELEASE_FINISHED_FOR_OTHER_COMMIT');
+    this.name = 'ReleaseFinishedForOtherCommitError';
+  }
+}
+
 /** A finish worker's hold on its attempt was taken over; it must write nothing more. */
 export class ReleaseFinishFenceLostError extends Error {
   constructor() {

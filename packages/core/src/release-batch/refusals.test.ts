@@ -6,6 +6,7 @@ import { ReleaseRunnerAmbiguousError } from './channel.js';
 import {
   type AbortAccount,
   ReleaseBatchAbortedError,
+  ReleaseFinishedForOtherCommitError,
   ReleaseFinishInFlightError,
   ReleaseVersionMissingError,
 } from './errors.js';
@@ -275,5 +276,40 @@ describe('finishRefusal — a finish already in flight', () => {
     );
     expect(refusal?.message).toContain('GET /api/projects/proj-7/release-batches/run-7/state');
     expect(refusal?.message).not.toMatch(/\{projectId\}|\{runId\}/);
+  });
+});
+
+describe('finishRefusal — a finished batch asked about another commit', () => {
+  const asked = 'b'.repeat(40);
+
+  it('names the commit the batch finished for, the one asked, and the real state path', () => {
+    const finished = 'a'.repeat(40);
+    const refusal = finishRefusal(
+      new ReleaseFinishedForOtherCommitError('r-1', finished, asked, {
+        projectId: 'proj-7',
+        runId: 'run-7',
+      }),
+    ) as HTTPException;
+
+    expect(refusal.status).toBe(409);
+    expect(refusal.cause).toEqual({
+      code: 'RELEASE_FINISHED_FOR_OTHER_COMMIT',
+      details: { requestId: 'r-1', finishedCommit: finished },
+    });
+    expect(refusal.message).toContain(`already finished for ${finished}`);
+    expect(refusal.message).toContain(`this call names ${asked}`);
+    expect(refusal.message).toContain('GET /api/projects/proj-7/release-batches/run-7/state');
+  });
+
+  it('says a claimless finish verified no commit at all', () => {
+    const refusal = finishRefusal(
+      new ReleaseFinishedForOtherCommitError('r-1', null, asked, {
+        projectId: 'proj-7',
+        runId: 'run-7',
+      }),
+    ) as HTTPException;
+
+    expect(refusal.message).toContain('already finished with no named commit');
+    expect(refusal.message).not.toContain('finished for null');
   });
 });
