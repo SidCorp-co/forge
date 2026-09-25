@@ -238,7 +238,7 @@ describe('a batch aborted after its finish closed part of the roster', () => {
     await abortInsideSecondClose(runId);
     const { closed } = await split(ids);
     const again = await abort(runId);
-    expect(again.alreadyClosed).toEqual([]);
+    expect(again.alreadyClosed).toEqual(closed);
     const answer = await refused(runId);
     expect(answer.details).toEqual({ account: 'released', closed });
     for (const id of closed) expect(answer.message).toMatch(named(await keyOf(id)));
@@ -255,7 +255,7 @@ describe('a batch aborted after its finish closed part of the roster', () => {
         inner = await abort(runId);
       },
     });
-    expect(inner).toMatchObject({ alreadyClosed: [] });
+    expect(inner).toMatchObject({ alreadyClosed: [closedOne] });
     const answer = await refused(runId);
     expect(answer.details).toEqual({ account: 'released', closed: [closedOne] });
     expect(answer.message).toMatch(named(await keyOf(closedOne)));
@@ -279,7 +279,7 @@ describe('a batch aborted after its finish closed part of the roster', () => {
     });
     if (!aborting) throw new Error('the abort never started');
     const aborted = await (aborting as ReturnType<typeof service.abortReleaseBatch>);
-    expect(aborted.alreadyClosed).toEqual([]);
+    expect(aborted.alreadyClosed).toEqual([...ids].sort());
     for (const id of ids)
       expect(await fx.stored(id)).toMatchObject({ status: 'closed', claim: null });
     expect(await storedFinish(runId)).toMatchObject({ refusal: { code: 'RELEASE_BATCH_ABORTED' } });
