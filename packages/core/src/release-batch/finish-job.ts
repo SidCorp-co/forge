@@ -18,8 +18,8 @@ import { issues, pipelineRuns } from '../db/schema.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { logger } from '../logger.js';
 import { closeRunIfOneShot } from '../pipeline/runs.js';
+import { abortedError, batchAborted } from './abort-stamp.js';
 import {
-  ReleaseBatchAbortedError,
   ReleaseFinishFenceLostError,
   ReleaseFinishInFlightError,
   ReleaseNotVerifiedError,
@@ -90,12 +90,15 @@ export async function acceptReleaseBatchFinish(
     if (!run) throw new Error(`release batch ${runId} not found`);
     // Before any record is answered: an aborted batch answers as aborted whatever its last
     // attempt wrote, so a record cannot stand in for the abort.
-    if (run.status === 'cancelled') throw new ReleaseBatchAbortedError();
+    if (batchAborted(run)) throw await abortedError(runId);
     const current = readFinishRecord(run.metadata);
 
     if (current && isInFlight(current)) {
       if (current.commit !== commit) {
-        throw new ReleaseFinishInFlightError(current.requestId, current.commit, commit);
+        throw new ReleaseFinishInFlightError(current.requestId, current.commit, commit, {
+          projectId: run.projectId,
+          runId,
+        });
       }
       return { runId, finish: current, started: false };
     }
@@ -150,16 +153,18 @@ function holdAttempt(runId: string, start: ReleaseFinishRecord, hooks: FinishWor
   let lost = false;
   let chain: Promise<unknown> = Promise.resolve();
 
-  type Patch = (r: ReleaseFinishRecord) => Partial<ReleaseFinishRecord>;
+  type Patch = (
+    r: ReleaseFinishRecord,
+  ) => Partial<ReleaseFinishRecord> | Promise<Partial<ReleaseFinishRecord>>;
 
-  /** With `ifCancelled`, `patch` lands only on an open run and `ifCancelled` on a cancelled one. */
+  /** With `ifCancelled`, `patch` lands only on a run not aborted and `ifCancelled` on an aborted one. */
   function commit(patch: Patch, ifCancelled?: Patch) {
     const step = chain.then(async () => {
       if (lost) throw new ReleaseFinishFenceLostError();
-      let next = stamp(current, patch(current));
+      let next = stamp(current, await patch(current));
       let landed = await compareAndSet(runId, current.version, next, { runOpen: !!ifCancelled });
       if (!landed && ifCancelled) {
-        next = stamp(current, ifCancelled(current));
+        next = stamp(current, await ifCancelled(current));
         landed = await compareAndSet(runId, current.version, next);
       }
       if (!landed) {
@@ -179,16 +184,18 @@ function holdAttempt(runId: string, start: ReleaseFinishRecord, hooks: FinishWor
    */
   async function fence(tx: Tx): Promise<void> {
     if (lost) throw new ReleaseFinishFenceLostError();
-    const rows = await tx.execute<{ owner: string | null; status: string }>(sql`
-      SELECT ${pipelineRuns.metadata} -> 'finish' ->> 'owner' AS owner, ${pipelineRuns.status} AS status
+    const rows = await tx.execute<{ owner: string | null; status: string; metadata: unknown }>(sql`
+      SELECT ${pipelineRuns.metadata} -> 'finish' ->> 'owner' AS owner, ${pipelineRuns.status} AS status,
+        ${pipelineRuns.metadata} AS metadata
       FROM ${pipelineRuns} WHERE ${pipelineRuns.id} = ${runId}
       FOR UPDATE
     `);
-    if (rows[0]?.owner !== current.owner) {
+    const row = rows[0];
+    if (row?.owner !== current.owner) {
       lost = true;
       throw new ReleaseFinishFenceLostError();
     }
-    if (rows[0]?.status === 'cancelled') throw new ReleaseBatchAbortedError();
+    if (row && batchAborted(row)) throw await abortedError(runId, tx);
     await hooks.afterFence?.();
   }
 
@@ -257,9 +264,10 @@ function mergeOutcome(
   return { closed, failed };
 }
 
-/** Whether somebody aborted this attempt's batch while it worked. */
-async function wasAborted(runId: string): Promise<boolean> {
-  return (await readReleaseRun(runId))?.status === 'cancelled';
+/** Throws the abort's refusal if somebody aborted this attempt's batch while it worked. */
+async function refuseIfAborted(runId: string): Promise<void> {
+  const run = await readReleaseRun(runId);
+  if (run && batchAborted(run)) throw await abortedError(runId);
 }
 
 export async function runReleaseBatchFinish(
@@ -301,18 +309,20 @@ export async function runReleaseBatchFinish(
     await finishReleaseBatch(runId, record.requestedBy, {
       commit: record.commit ?? undefined,
       alreadyVerified: record.state === 'closing',
+      whileVerifying: () => refuseIfAborted(runId),
       onVerified: async () => {
-        if (await wasAborted(runId)) throw new ReleaseBatchAbortedError();
+        await refuseIfAborted(runId);
         await hold.commit(() => ({ state: 'closing' }));
         await hooks.afterVerified?.();
       },
       fence: hold.fence,
       onRosterClosed: async (result) => {
-        const aborted = await wasAborted(runId);
+        const run = await readReleaseRun(runId);
+        const aborted = run !== undefined && batchAborted(run);
         // On an aborted batch the issues this pass could not close are where the abort put them,
         // not failures of the release, so only what truly closed is kept.
         await hold.commit((r) => mergeOutcome(r, aborted ? { ...result, failed: [] } : result));
-        if (aborted) throw new ReleaseBatchAbortedError();
+        if (aborted) throw await abortedError(runId);
       },
       onClosed: async (result) => {
         await hooks.beforeFinishedWrite?.();
@@ -343,9 +353,10 @@ export async function runReleaseBatchFinish(
       leaseUntil: null,
       finishedAt: new Date().toISOString(),
     });
-    // The write reads the run's status itself, so an abort landing just before it still wins.
+    // The write reads the run itself, so an abort landing just before it still wins, and the
+    // abort's account is read only once that write has missed.
     await hold
-      .commit(failed(own), failed(refusalOf(new ReleaseBatchAbortedError())))
+      .commit(failed(own), async () => failed(refusalOf(await abortedError(runId)))())
       .catch(() => {});
   } finally {
     clearInterval(heartbeat);

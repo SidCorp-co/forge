@@ -137,15 +137,18 @@ function finishRefusal(err: unknown): Error {
     return refusal('RELEASE_VERSION_MISSING', err.message);
   }
   if (err instanceof ReleaseFinishInFlightError) {
-    const http = finishHttpRefusal(err);
-    if (http) return fromHttp(http);
+    return refusal(
+      'RELEASE_FINISH_IN_FLIGHT',
+      `a finish for ${err.inFlightCommit ?? 'no named commit'} is already running on this batch, and this call names ` +
+        `${err.askedCommit ?? 'no commit'}. Read it with ${RELEASE_BATCH_TOOL} action=state runId=${err.where.runId}: ` +
+        '`finish.state` ends at `finished` or `failed`, and a new finish is taken once that one has failed.',
+      { requestId: err.requestId, inFlightCommit: err.inFlightCommit },
+    );
   }
   if (err instanceof ReleaseBatchAbortedError) {
-    return refusal(
-      'RELEASE_BATCH_ABORTED',
-      'this batch was aborted, so there is nothing left to finish: its claims were released. ' +
-        'If the release did land after all, that is a person’s call to make on each issue.',
-    );
+    // The same account the REST door gives and the finish record stores: one sentence per abort.
+    const http = finishHttpRefusal(err);
+    if (http) return fromHttp(http);
   }
   return err instanceof Error ? err : new Error(String(err));
 }
