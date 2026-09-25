@@ -181,11 +181,8 @@ export async function recoverStrandedReleasing(
   };
 }
 
-/**
- * Release every claim on `runId`, writing onto the run, in the same transaction, which of the
- * released issues were closed: once the claim is gone it is the only record that this batch's
- * finish closed them (`metadata.rosterClosed`, a set).
- */
+/** Release every claim on `runId`, and in the same transaction add the closed ones to the run's
+ *  `metadata.rosterClosed`: without the claim, that is the only record this batch closed them. */
 async function releaseClaims(
   tx: Tx,
   runId: string,
