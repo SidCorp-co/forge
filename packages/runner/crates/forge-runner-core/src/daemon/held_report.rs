@@ -92,8 +92,16 @@ pub async fn at_risk(run: &Run, cred: &RepoCred) -> Option<Held> {
     }
     let head = git_line(worktree, &["rev-parse", "HEAD"]).await?;
     let branch = git_line(worktree, &["rev-parse", "--abbrev-ref", "HEAD"]).await;
-    let fate = salvage::fate_of(worktree).await;
+    // Publication first, and the order is load-bearing rather than incidental.
+    // `publication_of` runs `git fetch --prune --all`, which writes exactly the
+    // `refs/remotes/*` that retention counts against, so a fate read before it
+    // answers about a ref state the very next line replaces: a fetch can name
+    // HEAD that nothing named a moment ago, and `--prune` can unname it. Read
+    // the other way round, the sentence pairs a stale directory reading with a
+    // fresh one about the work — two readings taken at different times, which
+    // is the defect this issue exists to remove, wearing its reporting face.
     let publication = salvage::publication_of(worktree, cred).await;
+    let fate = salvage::fate_of(worktree).await;
     let kept = matches!(fate, Fate::Kept { .. });
     if !kept && publication == Publication::Published {
         return None;
@@ -320,6 +328,63 @@ mod tests {
                 Some(e) => Err(crate::error::Error::Other(e.into())),
             }
         }
+    }
+
+    /// The fate in the sentence must be read AFTER the fetch that publication
+    /// runs, because that fetch writes the very refs retention counts against.
+    ///
+    /// A stale `refs/remotes/origin/ISS-9` names the only commit in this
+    /// checkout, and the remote has no such branch, so the fetch's `--prune`
+    /// takes that ref away. Read before the fetch, the fate says the commit is
+    /// named by a ref this repository keeps — reassurance about a ref the very
+    /// next line deleted, in the report whose whole job is to say whether this
+    /// work can survive losing the directory.
+    #[tokio::test]
+    async fn the_fate_is_read_after_the_fetch_that_can_unname_head() {
+        let (root, wt) = a_box_with_a_worktree("order");
+        std::fs::write(wt.join("work.txt"), "work\n").expect("write");
+        sh(&wt, &["add", "-A"]);
+        sh(&wt, &["commit", "-qm", "work"]);
+        // A tracking ref for a branch the remote does not have, and no local
+        // branch of its own: before the fetch this ref is all that names HEAD.
+        sh(&wt, &["update-ref", "refs/remotes/origin/ISS-9", "HEAD"]);
+        sh(&wt, &["checkout", "-q", "--detach"]);
+        sh(&wt, &["branch", "-qD", "ISS-9"]);
+
+        // Control: the pre-fetch reading really does say the commit is named,
+        // so a fate taken before the fetch would report exactly that.
+        let before = salvage::retention_of(&wt).await;
+        assert!(
+            matches!(before, salvage::Retention::Kept),
+            "fixture must start named, not {before:?}"
+        );
+
+        let mut led = a_ledger_holding(&wt, Incarnation::Exited);
+        let spy = Spy::default();
+        let said = report_held_worktrees(&spy, &mut led, "boot-a").await;
+
+        let after = salvage::retention_of(&wt).await;
+        assert!(
+            matches!(after, salvage::Retention::AtRisk { commits: 1 }),
+            "the fetch should have pruned the tracking ref, not {after:?}"
+        );
+
+        assert_eq!(said, 1, "an unpublished checkout is reported");
+        let seen = spy.seen.borrow();
+        let (_, held) = seen.first().expect("one report").clone();
+        drop(seen);
+        let _ = std::fs::remove_dir_all(&root);
+
+        assert!(
+            held.reason.contains("ref of their own"),
+            "the fate must be the post-fetch one: {}",
+            held.reason
+        );
+        assert!(
+            !held.reason.contains("named by a ref this repository keeps"),
+            "a pruned ref must not be reported as keeping the commit: {}",
+            held.reason
+        );
     }
 
     #[tokio::test]
