@@ -40,7 +40,7 @@ fn decide_job_credential(
         "the runner box `{box_name}` cannot start this job: the job's Forge tools need a personal access token"
     );
     // `load_pat` reads `$FORGE_PAT` first and swallows a keychain miss, so an
-    // error here is always the credential file failing to read or parse.
+    // error here is the credential file's: its path, its read or its parse.
     let pat = pat.map_err(|e| {
         let file = file.map_or_else(
             || "its credential file".to_string(),
