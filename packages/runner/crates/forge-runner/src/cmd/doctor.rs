@@ -532,6 +532,34 @@ enum SessionFile {
     Differs,
 }
 
+/// Why a write could never place the session file at `path`, where it could not.
+///
+/// `write_session` creates the directory, writes a temporary file beside the target and renames it
+/// over. None of that works where the target is itself a directory, or where the nearest existing
+/// ancestor of it is not one — `create_dir_all` cannot make a directory under a regular file, and
+/// `mcp_config_dir` ignores that failure. A box in either state starts no pane at all
+/// (`Unplaced::ServersUnwritable`), so "no pane" can BE this condition, and reporting it as an
+/// idle box promises a launch the servers it can never be handed (ISS-1191).
+///
+/// The target is read with `symlink_metadata` and the ancestors with `metadata`: a rename replaces
+/// a symlink rather than what it points at, while a symlink to a directory is a perfectly good
+/// parent. An ancestor that cannot be read at all is left alone rather than named, because a
+/// failure nothing established is the shape this whole row was rewritten to stop printing.
+fn write_obstruction(path: &std::path::Path) -> Option<String> {
+    if std::fs::symlink_metadata(path).is_ok_and(|m| m.is_dir()) {
+        return Some(String::from("it is a directory"));
+    }
+    let mut ancestor = path.parent();
+    while let Some(dir) = ancestor {
+        match std::fs::metadata(dir) {
+            Ok(meta) if meta.is_dir() => return None,
+            Ok(_) => return Some(format!("`{}` is not a directory", dir.display())),
+            Err(_) => ancestor = dir.parent(),
+        }
+    }
+    None
+}
+
 /// Classify the file at `path` — from the bytes THIS function read, never from a second read.
 ///
 /// The master sweep rewrites that file on every pass for a live pane, so reading it here and
@@ -541,10 +569,10 @@ fn session_file(
     path: &std::path::Path,
     servers: &serde_json::Map<String, serde_json::Value>,
 ) -> SessionFile {
-    // Asked before the read, because a directory reads as an error that looks like any other and
-    // is the one this box cannot write its way out of.
-    if std::fs::symlink_metadata(path).is_ok_and(|m| m.is_dir()) {
-        return SessionFile::Obstructed(String::from("it is a directory"));
+    // Asked before the read, because an obstruction reads as an error that looks like any other
+    // and is the one this box cannot write its way out of.
+    if let Some(why) = write_obstruction(path) {
+        return SessionFile::Obstructed(why);
     }
     let bytes = match std::fs::read(path) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return SessionFile::Absent,
@@ -606,7 +634,7 @@ fn mcp_verdict(
     if let SessionFile::Obstructed(why) = disk {
         return (
             Mark::Fail,
-            format!("{file} cannot be written ({why}), so nothing this box does puts this project's MCP servers there — and no pane started here ever carries them"),
+            format!("{file} cannot be written: {why} — nothing this box does puts this project's MCP servers there, and no pane started here ever carries them"),
         );
     }
     if pane == Pane::None {
@@ -675,7 +703,7 @@ fn no_pane_line(
     let file = path.display();
     let holds = match disk {
         SessionFile::Absent => String::from("does not exist yet"),
-        SessionFile::Obstructed(why) => format!("cannot be written ({why})"),
+        SessionFile::Obstructed(why) => format!("cannot be written: {why}"),
         SessionFile::Unreadable(why) => format!("cannot be read ({why})"),
         SessionFile::Unparseable => String::from("is not a document this box wrote"),
         SessionFile::Matches => String::from("already holds them"),
@@ -1036,6 +1064,51 @@ mod tests {
             session_file(&path, &declared),
             SessionFile::Obstructed(_)
         ));
+    }
+
+    /// ISS-1191 — the obstruction is the WRITE's, not only the target's: `write_session` puts its
+    /// temporary file in the parent and `mcp_config_dir` swallows the `create_dir_all` that cannot
+    /// make one under a regular file. A run reading only the target called this an idle box.
+    #[test]
+    fn a_regular_file_where_the_session_directory_belongs_is_an_obstruction_too() {
+        let scratch = forge_runner_core::test_scratch::Scratch::new("doctor-session-parent");
+        let blocker = scratch.path().join("mcp");
+        std::fs::write(&blocker, "not a directory").expect("a file where the directory belongs");
+        let declared: serde_json::Map<String, serde_json::Value> =
+            serde_json::from_str(r#"{"playwright":{"type":"stdio"}}"#).expect("a server map");
+
+        let path = blocker.join("forge-master-mcp-mowment.json");
+        let disk = session_file(&path, &declared);
+        assert!(matches!(disk, SessionFile::Obstructed(_)));
+
+        let (mark, line) = mcp_verdict(&found(&["playwright"], &[]), &path, &disk, Pane::None);
+        assert!(mark.failed(), "{line}");
+        assert!(line.contains("is not a directory"), "{line}");
+        assert!(
+            !line.contains("is handed them"),
+            "no pane is handed servers the write can never place: {line}"
+        );
+    }
+
+    /// The boundary that must not be swallowed: an ordinary missing file under a directory that
+    /// exists is NOT an obstruction, and an absent directory the write can still create is not one
+    /// either — both are what a box that has simply never started a pane looks like.
+    #[test]
+    fn an_absent_file_under_a_creatable_directory_is_no_obstruction() {
+        let scratch = forge_runner_core::test_scratch::Scratch::new("doctor-session-clear");
+        assert_eq!(
+            write_obstruction(&scratch.path().join("forge-master-mcp-mowment.json")),
+            None
+        );
+        assert_eq!(
+            write_obstruction(
+                &scratch
+                    .path()
+                    .join("not-made-yet")
+                    .join("forge-master-mcp-mowment.json")
+            ),
+            None
+        );
     }
 
     /// ISS-1191 F1, the boundary the fix must not swallow: what core could not supply is core's
