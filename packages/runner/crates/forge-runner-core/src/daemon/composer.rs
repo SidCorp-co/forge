@@ -77,8 +77,11 @@ struct Line {
     visible: String,
 }
 
+/// A rule starts at the left edge. Text typed into the composer never does:
+/// its continuation lines are indented, so a line of `─` somebody typed is a
+/// line of the draft and not a boundary.
 fn is_rule(line: &str) -> bool {
-    let t = line.trim();
+    let t = line.trim_end();
     t.chars().count() >= SHORTEST_RULE && t.chars().all(|c| c == RULE)
 }
 
@@ -226,6 +229,22 @@ mod tests {
             read(&coloured),
             Composer::Holds("typed".into()),
             "256-colour index 2 is a colour, not SGR 2"
+        );
+    }
+
+    #[test]
+    fn a_line_of_rule_characters_typed_into_the_draft_is_part_of_it() {
+        let drawn = frame(&[
+            "\u{276f}\u{a0}first",
+            "  \u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}",
+            "  last",
+        ]);
+        assert_eq!(
+            read(&drawn),
+            Composer::Holds(
+                "first\n\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\nlast"
+                    .into()
+            )
         );
     }
 

@@ -522,6 +522,8 @@ async fn read_prompt(target: &str) -> composer::Composer {
 ///
 /// Enter submits the whole composer, so a composer already holding text is
 /// refused, quoting it: typing there would send that text as part of this one.
+/// The read comes a few milliseconds before the paste, and tmux has no lock
+/// over a pane's input, so a keystroke landing in between is not seen.
 pub async fn send_line(name: &str, text: &str) -> Result<Prompt> {
     if !alive(name).await {
         return Err(Error::Other(format!("no session named {name}")));
