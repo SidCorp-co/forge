@@ -237,10 +237,8 @@ mod tests {
     use super::*;
 
     /// Each test owns its directory, so the suite never races on prune.
-    fn scratch() -> PathBuf {
-        let d = std::env::temp_dir().join(format!("forge-inflight-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&d).expect("mkdir scratch");
-        d
+    fn scratch() -> crate::test_scratch::Scratch {
+        crate::test_scratch::Scratch::new("inflight")
     }
 
     const JOB: &str = "6c0cd286-7428-4795-8dbb-e4a9377e5fe5";

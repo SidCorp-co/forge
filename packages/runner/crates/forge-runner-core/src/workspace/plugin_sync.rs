@@ -412,8 +412,7 @@ mod tests {
 
     #[tokio::test]
     async fn sync_clone_pins_moves_follows_and_freezes() {
-        let tmp = std::env::temp_dir().join(format!("plugin-sync-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&tmp);
+        let tmp = crate::test_scratch::Scratch::new("plugin-sync");
         let origin = tmp.join("origin");
         std::fs::create_dir_all(&origin).unwrap();
         sh(&origin, &["init", "-q", "-b", "master"]);
@@ -444,14 +443,11 @@ mod tests {
             head, four,
             "a pin the clone has never fetched is fetched by name"
         );
-
-        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     #[tokio::test]
     async fn sync_clone_pin_to_an_unknown_sha_is_an_error_not_a_silent_tip() {
-        let tmp = std::env::temp_dir().join(format!("plugin-sync-bad-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&tmp);
+        let tmp = crate::test_scratch::Scratch::new("plugin-sync-bad");
         let origin = tmp.join("origin");
         std::fs::create_dir_all(&origin).unwrap();
         sh(&origin, &["init", "-q", "-b", "master"]);
@@ -468,7 +464,6 @@ mod tests {
         .await
         .unwrap_err();
         assert!(err.contains("git"), "{err}");
-        let _ = std::fs::remove_dir_all(&tmp);
     }
 
     #[test]
@@ -559,19 +554,48 @@ mod tests {
         ));
     }
 
-    #[tokio::test]
-    async fn ensure_plugins_noop_when_disabled() {
-        // Disabled settings must never spawn a `claude` process, and that has to hold even when
-        // the server designates something — `enabled = false` is the operator's kill switch above
-        // both sources.
-        let settings = PluginSettings::default();
+    /// Disabled settings must never clone a marketplace or spawn a `claude` process, and that has
+    /// to hold even when the server designates something — `enabled = false` is the operator's
+    /// kill switch above both sources.
+    ///
+    /// Both places a sweep writes are pointed at one scratch dir, so a sweep that ran anyway shows
+    /// up there instead of in the box's own runner config and `~/.claude`: the clone lands under
+    /// `XDG_CONFIG_HOME`, and `claude plugin …` writes under `CLAUDE_CONFIG_DIR`. `HOME` stays put,
+    /// because tests that take no lock read it.
+    #[test]
+    fn ensure_plugins_noop_when_disabled() {
+        use crate::auth::cred_store::{ScopedVar, ENV_TEST_LOCK};
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let home = crate::test_scratch::Scratch::new("plugin-noop");
+        let _xdg = ScopedVar::set("XDG_CONFIG_HOME", home.join("config"));
+        let _claude = ScopedVar::set("CLAUDE_CONFIG_DIR", home.join("claude"));
+
+        let settings = PluginSettings {
+            enabled: false,
+            ..PluginSettings::default()
+        };
         let server = vec![PluginTarget {
             marketplace: "owner/repo".into(),
             name: "forge-codemap".into(),
             pinned_ref: None,
             auto_update: true,
         }];
-        ensure_plugins(&settings, &server).await; // must return promptly, no panic
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("a runtime")
+            .block_on(ensure_plugins(&settings, &server));
+
+        let left: Vec<_> = std::fs::read_dir(home.path())
+            .expect("the scratch dir")
+            .flatten()
+            .map(|e| e.path())
+            .collect();
+        assert!(
+            left.is_empty(),
+            "a disabled sweep wrote {left:?} — it cloned a marketplace or ran `claude plugin`, and \
+             on a box without the redirect that lands in the operator's own config"
+        );
     }
 
     fn target(name: &str, pin: Option<&str>, auto: bool) -> PluginTarget {

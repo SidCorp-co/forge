@@ -404,16 +404,9 @@ mod tests {
         at
     }
 
-    /// Unique temp repo per test on `main` with one commit (no tempfile dep in
-    /// this crate — same pattern as `refresh.rs` and `salvage.rs`).
-    async fn repo(tag: &str) -> PathBuf {
-        let root = std::env::temp_dir().join(format!(
-            "forge-worktree-{tag}-{}-{:?}",
-            std::process::id(),
-            std::thread::current().id()
-        ));
-        let _ = std::fs::remove_dir_all(&root);
-        std::fs::create_dir_all(&root).unwrap();
+    /// A repo of this test's own on `main` with one commit, removed when it drops.
+    async fn repo(tag: &str) -> crate::test_scratch::Scratch {
+        let root = crate::test_scratch::Scratch::new(&format!("worktree-{tag}"));
         run(&root, &["init", "-b", "main"]).await;
         run(&root, &["config", "user.email", "t@t"]).await;
         run(&root, &["config", "user.name", "t"]).await;
@@ -489,13 +482,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_directory_that_is_no_repository_is_named_as_such_and_an_absent_one_too() {
-        let plain = std::env::temp_dir().join(format!(
-            "forge-worktree-kind-plain-{}-{:?}",
-            std::process::id(),
-            std::thread::current().id()
-        ));
-        let _ = std::fs::remove_dir_all(&plain);
-        std::fs::create_dir_all(&plain).unwrap();
+        let plain = crate::test_scratch::Scratch::new("worktree-kind-plain");
 
         assert_eq!(kind_at(&plain).await, Kind::NotAWorktree);
         assert_eq!(kind_at(&plain.join("nope")).await, Kind::NotAWorktree);
@@ -577,13 +564,7 @@ mod tests {
     async fn a_repository_that_cannot_be_asked_answers_unknown_and_never_gone() {
         let root = repo("noregistry").await;
         let absent = root.join(".worktrees/ISS-7");
-        let not_a_repo = std::env::temp_dir().join(format!(
-            "forge-worktree-notarepo-{}-{:?}",
-            std::process::id(),
-            std::thread::current().id()
-        ));
-        let _ = std::fs::remove_dir_all(&not_a_repo);
-        std::fs::create_dir_all(&not_a_repo).unwrap();
+        let not_a_repo = crate::test_scratch::Scratch::new("worktree-notarepo");
 
         assert!(matches!(
             residence_of(&not_a_repo, &absent).await,
@@ -609,13 +590,7 @@ mod tests {
             "the repository's own checkout is nobody's to give back"
         );
 
-        let outside = std::env::temp_dir().join(format!(
-            "forge-worktree-outside-{}-{:?}",
-            std::process::id(),
-            std::thread::current().id()
-        ));
-        let _ = std::fs::remove_dir_all(&outside);
-        std::fs::create_dir_all(&outside).unwrap();
+        let outside = crate::test_scratch::Scratch::new("worktree-outside");
         assert_eq!(
             residence_of(&root, &outside).await,
             Residence::NotAWorktree,
@@ -742,12 +717,7 @@ mod tests {
     }
     #[test]
     fn two_spellings_of_one_path_resolve_together_even_where_the_leaf_is_gone() {
-        let base = std::env::temp_dir().join(format!(
-            "forge-worktree-spelling-{}-{:?}",
-            std::process::id(),
-            std::thread::current().id()
-        ));
-        let _ = std::fs::remove_dir_all(&base);
+        let base = crate::test_scratch::Scratch::new("worktree-spelling");
         let real = base.join("real");
         std::fs::create_dir_all(&real).unwrap();
 
@@ -834,13 +804,7 @@ mod tests {
         // different strings for one checkout. Neither happens under /tmp on
         // Linux, so the shape is built by hand here rather than left to the
         // platform that ships it (ISS-1193).
-        let base = std::env::temp_dir().join(format!(
-            "forge-worktree-linkedroot-{}-{:?}",
-            std::process::id(),
-            std::thread::current().id()
-        ));
-        let _ = std::fs::remove_dir_all(&base);
-        std::fs::create_dir_all(&base).unwrap();
+        let base = crate::test_scratch::Scratch::new("worktree-linkedroot");
         let real = base.join("real");
         std::fs::create_dir_all(&real).unwrap();
         for args in [

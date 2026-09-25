@@ -32,26 +32,18 @@ struct Replaced {
     raw: PathBuf,
     /// The build standing at that path instead, as an updater leaves it.
     installed: PathBuf,
-    dir: PathBuf,
+    dir: forge_runner_core::test_scratch::Scratch,
 }
 
 impl Drop for Replaced {
     fn drop(&mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();
-        let _ = std::fs::remove_dir_all(&self.dir);
     }
 }
 
-fn scratch(label: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-        "forge-replaced-{label}-{}-{:?}",
-        std::process::id(),
-        std::thread::current().id()
-    ));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).expect("scratch dir");
-    dir
+fn scratch(label: &str) -> forge_runner_core::test_scratch::Scratch {
+    forge_runner_core::test_scratch::Scratch::new(&format!("replaced-{label}"))
 }
 
 /// A real ELF this file may copy under a name of its own.

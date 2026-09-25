@@ -192,45 +192,24 @@ mod tests {
     /// A directory of this test's own, by the idiom this crate already uses
     /// (`daemon/held_report.rs`): keyed on pid and thread so two `cargo test`
     /// runs on one box cannot take each other's, and removed on the way out.
-    struct Scratch(std::path::PathBuf);
+    struct Scratch(forge_runner_core::test_scratch::Scratch);
 
     /// The `sockaddr_un.sun_path` budget: 104 bytes on macOS against 108 on Linux.
     const SUN_LEN: usize = 104;
 
     impl Scratch {
-        fn new(name: &str) -> Self {
-            let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-            for b in name
-                .as_bytes()
-                .iter()
-                .chain(format!("{:?}", std::thread::current().id()).as_bytes())
-            {
-                h ^= u64::from(*b);
-                h = h.wrapping_mul(0x0000_0100_0000_01b3);
-            }
-            let base = if std::path::Path::new("/tmp").is_dir() {
-                std::path::PathBuf::from("/tmp")
-            } else {
-                std::env::temp_dir()
-            };
-            let p = base.join(format!("fgg-{}-{h:x}", std::process::id()));
+        /// `name` is for the reader of the test: the shared counter is what keeps two apart.
+        fn new(_name: &str) -> Self {
+            let p = forge_runner_core::test_scratch::Scratch::short("gg");
             assert!(
                 p.join("control.sock").as_os_str().len() < SUN_LEN,
                 "a socket under this scratch would not fit in sun_path ({SUN_LEN}): {}",
                 p.display()
             );
-            let _ = std::fs::remove_dir_all(&p);
-            std::fs::create_dir_all(&p).expect("scratch");
             Self(p)
         }
         fn path(&self) -> &std::path::Path {
-            &self.0
-        }
-    }
-
-    impl Drop for Scratch {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
+            self.0.path()
         }
     }
 

@@ -235,12 +235,8 @@ mod tests {
     use crate::runner::ledger::{Incarnation, Run, Work};
     use std::path::PathBuf;
 
-    fn temp_path(name: &str) -> PathBuf {
-        std::env::temp_dir().join(format!(
-            "forge-checkpoint-{name}-{}-{:?}",
-            std::process::id(),
-            std::thread::current().id()
-        ))
+    fn temp_path(name: &str) -> crate::test_scratch::InScratch {
+        crate::test_scratch::Scratch::new(&format!("checkpoint-{name}")).at(name)
     }
 
     fn cleanup(path: &Path) {
@@ -265,7 +261,7 @@ mod tests {
     }
 
     /// A repo with a remote, a base commit pushed to it, and a branch cut from it.
-    fn a_repo_with_a_remote(name: &str) -> (PathBuf, PathBuf) {
+    fn a_repo_with_a_remote(name: &str) -> (crate::test_scratch::InScratch, PathBuf) {
         let root = temp_path(name);
         cleanup(&root);
         let remote = root.join("remote.git");

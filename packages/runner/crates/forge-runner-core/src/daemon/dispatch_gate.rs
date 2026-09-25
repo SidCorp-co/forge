@@ -157,32 +157,7 @@ pub fn shipped_roles(config_dir: &Path) -> Option<BTreeSet<String>> {
 mod tests {
     use super::*;
 
-    /// A directory of this test's own, by the idiom this crate already uses
-    /// (`daemon/held_report.rs`): keyed on pid and thread so two `cargo test`
-    /// runs on one box cannot take each other's, and removed on the way out.
-    struct Scratch(std::path::PathBuf);
-
-    impl Scratch {
-        fn new(name: &str) -> Self {
-            let p = std::env::temp_dir().join(format!(
-                "forge-{name}-{}-{:?}",
-                std::process::id(),
-                std::thread::current().id()
-            ));
-            let _ = std::fs::remove_dir_all(&p);
-            std::fs::create_dir_all(&p).expect("scratch");
-            Self(p)
-        }
-        fn path(&self) -> &std::path::Path {
-            &self.0
-        }
-    }
-
-    impl Drop for Scratch {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
-    }
+    use crate::test_scratch::Scratch;
 
     fn roles() -> BTreeSet<String> {
         ["runner", "reviewer", "qa", "triage", "evaluator"]

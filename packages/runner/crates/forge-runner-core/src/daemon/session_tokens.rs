@@ -217,17 +217,11 @@ mod tests {
         String::from_utf8_lossy(&out).into_owned()
     }
 
-    struct TempDir(PathBuf);
+    struct TempDir(crate::test_scratch::Scratch);
 
     impl TempDir {
         fn new() -> Self {
-            let dir = std::env::temp_dir().join(format!(
-                "ft-{}-{}",
-                std::process::id(),
-                uuid::Uuid::new_v4().simple()
-            ));
-            std::fs::create_dir_all(&dir).expect("temp dir");
-            Self(dir)
+            Self(crate::test_scratch::Scratch::new("ft"))
         }
 
         /// The map's path. NEVER this box's own: the defect under test is that a
@@ -238,15 +232,9 @@ mod tests {
         }
     }
 
-    impl Drop for TempDir {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
-    }
-
     #[test]
     fn a_token_names_exactly_one_session() {
-        let dir = std::env::temp_dir().join(format!("ft-{}", uuid::Uuid::new_v4()));
+        let dir = crate::test_scratch::Scratch::new("ft");
         let store = SessionTokens::at(dir.join("control-tokens.json"));
         let a = store.mint("sess-a").unwrap();
         let b = store.mint("sess-b").unwrap();
@@ -258,7 +246,7 @@ mod tests {
 
     #[test]
     fn a_token_survives_the_daemon_that_minted_it() {
-        let dir = std::env::temp_dir().join(format!("ft-{}", uuid::Uuid::new_v4()));
+        let dir = crate::test_scratch::Scratch::new("ft");
         let path = dir.join("control-tokens.json");
         let token = SessionTokens::at(path.clone()).mint("sess-a").unwrap();
         assert_eq!(
@@ -270,7 +258,7 @@ mod tests {
 
     #[test]
     fn retiring_a_session_retires_its_token() {
-        let dir = std::env::temp_dir().join(format!("ft-{}", uuid::Uuid::new_v4()));
+        let dir = crate::test_scratch::Scratch::new("ft");
         let store = SessionTokens::at(dir.join("control-tokens.json"));
         let a = store.mint("sess-a").unwrap();
         store.retire("sess-a");
@@ -279,7 +267,7 @@ mod tests {
 
     #[test]
     fn re_minting_replaces_the_previous_token_for_that_session() {
-        let dir = std::env::temp_dir().join(format!("ft-{}", uuid::Uuid::new_v4()));
+        let dir = crate::test_scratch::Scratch::new("ft");
         let store = SessionTokens::at(dir.join("control-tokens.json"));
         let first = store.mint("sess-a").unwrap();
         let second = store.mint("sess-a").unwrap();

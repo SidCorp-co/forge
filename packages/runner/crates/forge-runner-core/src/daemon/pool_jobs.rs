@@ -1158,18 +1158,29 @@ mod tests {
         }
     }
 
+    thread_local! {
+        /// The two checkouts below, one pair per test: libtest runs every test on a thread of its
+        /// own, so this is removed when the test's thread ends, and the daemon's writes into a
+        /// checkout (`.claude/settings.local.json`) go with it.
+        static REPOS: crate::test_scratch::Scratch = crate::test_scratch::Scratch::new("pool-repos");
+    }
+
+    fn repo_of_this_test(name: &str) -> PathBuf {
+        REPOS.with(|s| {
+            let p = s.join(name);
+            std::fs::create_dir_all(&p).expect("temp dir");
+            p
+        })
+    }
+
     /// A directory that exists, standing in for what core believes the checkout is.
     fn core_repo() -> PathBuf {
-        let p = std::env::temp_dir().join("forge-pool-core-repo");
-        std::fs::create_dir_all(&p).expect("temp dir");
-        p
+        repo_of_this_test("core")
     }
 
     /// A directory that exists, standing in for THIS box's own binding.
     fn box_repo() -> PathBuf {
-        let p = std::env::temp_dir().join("forge-pool-box-repo");
-        std::fs::create_dir_all(&p).expect("temp dir");
-        p
+        repo_of_this_test("box")
     }
 
     struct FakePanes {
@@ -1305,29 +1316,7 @@ mod tests {
         _home: TempHome,
     }
 
-    struct TempHome(PathBuf);
-
-    impl TempHome {
-        fn new(label: &str) -> Self {
-            let dir = std::env::temp_dir().join(format!(
-                "forge-pool-{label}-{}-{}",
-                std::process::id(),
-                uuid::Uuid::new_v4().simple()
-            ));
-            std::fs::create_dir_all(&dir).expect("temp home");
-            Self(dir)
-        }
-
-        fn path(&self) -> &Path {
-            &self.0
-        }
-    }
-
-    impl Drop for TempHome {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
-    }
+    use crate::test_scratch::Scratch as TempHome;
 
     fn world(entries: Vec<PoolEntry>, prep: Option<Prepared>, start: Option<Started>) -> World {
         let rec = Arc::new(Recorder::default());
@@ -3528,14 +3517,8 @@ mod own_exe_reporting_tests {
         String::from_utf8_lossy(&out).into_owned()
     }
 
-    fn scratch(label: &str) -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "forge-pool-exe-{label}-{}-{}",
-            std::process::id(),
-            uuid::Uuid::new_v4().simple()
-        ));
-        std::fs::create_dir_all(&dir).expect("scratch");
-        dir
+    fn scratch(label: &str) -> crate::test_scratch::Scratch {
+        crate::test_scratch::Scratch::new(&format!("pool-exe-{label}"))
     }
 
     /// A file `is_runnable` accepts, on every platform this crate builds for:
