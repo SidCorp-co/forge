@@ -139,8 +139,13 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         }
         Command::Say(a) => {
             let name = terminal::session_name(terminal::MASTER_PREFIX, &a.slug);
-            terminal::send_line(&name, &a.text).await?;
-            println!("typed into {name}");
+            match terminal::send_line(&name, &a.text).await? {
+                terminal::Prompt::Empty => println!("typed into {name}"),
+                terminal::Prompt::Unread => println!(
+                    "typed into {name}, but no Claude Code composer could be read there, so \
+nothing confirmed its prompt was empty: what was already at it, if anything, went with this"
+                ),
+            }
         }
         Command::Kill(a) => {
             let Some(slug) = a.slug else {
