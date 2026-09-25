@@ -19,6 +19,14 @@ pub struct Config {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub device_id: Option<String>,
 
+    /// The label this box paired under — what the web app's device list calls
+    /// it. A refusal that has to name the box to whoever reads it names this,
+    /// because the hostname it falls back to is not what a box paired with
+    /// `forge-runner login --name X` is listed as, and naming the wrong one
+    /// sends a reader looking for a device that is not in the list (ISS-1235).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub device_name: Option<String>,
+
     /// Parent dir where repos are placed/cloned when a binding has no explicit path.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub projects_root: Option<PathBuf>,

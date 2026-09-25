@@ -4,9 +4,14 @@ import { directMcpIntegrations, mcpServerNameFor } from './registry.js';
 import { decryptConnectionSecrets, effectiveConfig } from './store.js';
 import type { IntegrationDeclaration } from './types.js';
 
+export interface ProducedMcpServer {
+  name: string;
+  bindingId: string;
+}
+
 export async function resolveGrantedMcpEntries(
   projectId: string,
-  producedBy?: Map<string, string>,
+  produced?: ProducedMcpServer[],
 ): Promise<Record<string, Record<string, unknown>>> {
   const entries: Record<string, Record<string, unknown>> = {};
   for (const decl of directMcpIntegrations()) {
@@ -36,6 +41,9 @@ export async function resolveGrantedMcpEntries(
       const label = ((pair.binding as Record<string, unknown>).label as string) ?? '';
       const serverName = mcpServerNameFor(decl, label);
       if (!serverName) continue;
+      // First claim on a name keeps it: `usable` is granted order, oldest first, so a colliding
+      // binding never displaces the one already serving agents. The preview calls it `shadowed`.
+      if (serverName in entries) continue;
       try {
         const secrets = decryptConnectionSecrets<Record<string, unknown>>(pair.connection);
         if (!secrets) continue;
@@ -44,7 +52,7 @@ export async function resolveGrantedMcpEntries(
         const entry = path.buildEntry(effectiveConfig(pair), secrets);
         if (entry) {
           entries[serverName] = entry;
-          producedBy?.set(serverName, pair.binding.id);
+          produced?.push({ name: serverName, bindingId: pair.binding.id });
         }
       } catch (err) {
         logger.warn(
@@ -67,17 +75,10 @@ export async function resolveGrantedMcpEntries(
 /** What {@link applyGrantedMcpServers} laid down, and under which names. */
 export interface GrantedMcpApplication {
   map: Record<string, unknown> | null;
-  /**
-   * The names this pass produced. A binding that is active, credentialed, granted and unshadowed
-   * can still yield nothing here — an undecryptable credential, a `buildEntry` returning null — so
-   * this is the answer to "did it deliver" and those four conditions are only the explanation.
-   */
-  names: string[];
-  /**
-   * The binding behind each produced name. Two bindings of a single-slot provider share one server
-   * name, so a name alone says that the provider delivered and not which binding did.
-   */
-  bindingIds: string[];
+  /** Every name this pass produced, each carrying the binding that produced it. One can be absent
+   *  though its binding is active, credentialed, granted and unshadowed, and two bindings of one
+   *  provider can land on one name, so neither a name nor its absence identifies a binding. */
+  produced: ProducedMcpServer[];
 }
 
 /**
@@ -90,12 +91,10 @@ export async function applyGrantedMcpServers(
   projectId: string,
   current: Record<string, unknown> | null,
 ): Promise<GrantedMcpApplication> {
-  const producedBy = new Map<string, string>();
-  const entries = await resolveGrantedMcpEntries(projectId, producedBy);
-  const names = Object.keys(entries);
-  const bindingIds = names.map((name) => producedBy.get(name)).filter((id) => id !== undefined);
-  if (names.length === 0) return { map: current, names, bindingIds };
-  return { map: { ...(current ?? {}), ...entries }, names, bindingIds };
+  const produced: ProducedMcpServer[] = [];
+  const entries = await resolveGrantedMcpEntries(projectId, produced);
+  if (produced.length === 0) return { map: current, produced };
+  return { map: { ...(current ?? {}), ...entries }, produced };
 }
 
 export function declaredServerNames(

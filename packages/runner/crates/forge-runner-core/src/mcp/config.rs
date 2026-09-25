@@ -20,8 +20,21 @@ pub fn job_credential() -> Result<String> {
         load_pat(),
         load_device_token(),
         file.as_deref(),
-        &crate::auth::pairing::default_device_name(),
+        &box_name(),
     )
+}
+
+/// What to call this box to whoever reads a refusal: the label it paired under,
+/// which is what the web app's device list shows, and the hostname only where
+/// nothing recorded one. A box paired as `forge-runner login --name X` is `X`
+/// in that list, so naming its hostname sends a reader looking for a device
+/// that is not there (ISS-1235).
+fn box_name() -> String {
+    crate::config::Config::load()
+        .ok()
+        .and_then(|cfg| cfg.device_name)
+        .filter(|n| !n.trim().is_empty())
+        .unwrap_or_else(crate::auth::pairing::default_device_name)
 }
 
 /// Where a person gets the token the refusals below ask for.
@@ -310,12 +323,25 @@ fn session_matches_in(dir: &Path, slug: &str, servers: &serde_json::Map<String, 
         (None, true) => true,
         (None, false) => false,
         (Some(_), true) => false,
-        (Some(text), false) => {
-            serde_json::from_str::<Value>(&text)
-                .ok()
-                .and_then(|doc| doc.get("mcpServers").cloned())
-                == Some(Value::Object(servers.clone()))
-        }
+        (Some(text), false) => session_servers(&text).as_ref() == Some(servers),
+    }
+}
+
+/// The `mcpServers` map a session config document holds, or `None` where the
+/// text is not the document [`write_session`] writes.
+///
+/// Takes the TEXT and not a path, so a caller that has already read the file
+/// judges the bytes it read. [`session_matches`] reads by path, and the master
+/// sweep rewrites that file on every pass for a live pane, so two reads of one
+/// path can answer about two different files (ISS-1191). `None` and a map that
+/// differs are also two answers here rather than one: a pane started from a
+/// document this cannot parse carries nothing, which is not the same as
+/// carrying something else.
+pub fn session_servers(text: &str) -> Option<serde_json::Map<String, Value>> {
+    let doc: Value = serde_json::from_str(text).ok()?;
+    match doc.get("mcpServers") {
+        Some(Value::Object(map)) => Some(map.clone()),
+        _ => None,
     }
 }
 
@@ -1689,6 +1715,27 @@ mod tests {
         // a different project is a different file and is unaffected
         assert!(session_matches_in(&dir, "forge-dev", &none));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// ISS-1191 — the map is read out of TEXT a caller already holds, so a caller judging a file
+    /// judges the bytes it read rather than whatever a second read by path finds. A document this
+    /// cannot parse, and one holding no `mcpServers` object, are `None` rather than an empty map:
+    /// a pane started from either carries nothing, which is not the same as carrying no servers on
+    /// purpose.
+    #[test]
+    fn the_servers_come_out_of_the_text_and_an_unparseable_document_is_not_an_empty_one() {
+        let decl = servers(&[("playwright", "npx")]);
+        let doc =
+            serde_json::to_string(&serde_json::json!({ "mcpServers": decl.clone() })).unwrap();
+
+        assert_eq!(session_servers(&doc), Some(decl));
+        assert_eq!(session_servers("not json at all"), None);
+        assert_eq!(session_servers("{}"), None);
+        assert_eq!(session_servers(r#"{"mcpServers":[]}"#), None);
+        assert_eq!(
+            session_servers(r#"{"mcpServers":{}}"#),
+            Some(serde_json::Map::new())
+        );
     }
 
     /// A pane whose file was swept out from under it reads as stale rather than
