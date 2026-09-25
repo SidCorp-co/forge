@@ -2512,7 +2512,7 @@ async fn ensure_master(
             masters.unwithdrawn_for(project_id).as_deref(),
             &session.session_id,
         );
-        let act = replacement_gate(capability_act(&verdict, placement), asked.is_ok());
+        let act = replacement_gate(capability_act(&verdict, placement), true);
         if let CapabilityAct::LeaveDeaf(why) = act {
             ports.deaf.set(
                 &resolved.slug,
