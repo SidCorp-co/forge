@@ -259,19 +259,21 @@ export function finishRefusal(err: unknown): HTTPException | null {
 export function abortedSentence(err: ReleaseBatchAbortedError): string {
   const none = 'This batch was aborted, so there is nothing left to finish';
   const closed = err.closed ?? [];
-  const kept = closedBeforeAbort(closed);
+  const kept = closed.length > 0 ? ` ${closedBeforeAbort(closed)}` : '';
   switch (err.account) {
     case 'shipped':
       return `${none}: its release had already shipped, so the issues its finish closed stay closed, and the abort moved none of them.`;
     case 'held': {
-      const rest = closed.length > 0 ? `${kept}, and every other issue stays` : 'its issues stay';
-      return `${none}: it recorded a promotion, so the abort kept its claims, and ${rest} at \`releasing\` for a person to settle. Record the release that happened with POST /api/projects/${err.projectId}/release-records, or abort again with \`promotedRoster: "return-to-gate"\` to put them back at the release gate.`;
+      const rest = closed.length > 0 ? 'Every other issue stays' : 'Its issues stay';
+      // `release-records` takes only issues at the gate that no batch claims, so the abort that
+      // puts them there comes first and is never offered beside it.
+      return `${none}: it recorded a promotion, so the abort kept its claims.${kept} ${rest} at \`releasing\`, still claimed, for a person to settle. To settle them, abort this batch again with \`promotedRoster: "return-to-gate"\`, which puts them back at the release gate; once they are there, record the release that happened with POST /api/projects/${err.projectId}/release-records, naming the commit production is serving.`;
     }
     case 'returning':
       return `${none}. The abort had not finished putting its roster back at the release gate when this was read, so each issue’s own status says whether its claim is released yet.`;
     case 'released':
       if (closed.length > 0) {
-        return `${none}: ${kept}; its claims were released and the rest of its roster is back where the abort put it. If the release did land after all, that is a person’s call to make on each of those.`;
+        return `${none}.${kept} Its claims were released and the rest of its roster is back where the abort put it. If the release did land after all, that is a person’s call to make on each of those.`;
       }
       return `${none}: its claims were released and its roster is back where the abort put it. If the release did land after all, that is a person’s call to make on each issue.`;
     case 'unrecorded':
@@ -282,5 +284,5 @@ export function abortedSentence(err: ReleaseBatchAbortedError): string {
 /** The issues a finish closed before the abort landed, which the abort did not move. */
 function closedBeforeAbort(ids: string[]): string {
   const one = ids.length === 1;
-  return `its finish had already closed ${one ? 'issue' : 'issues'} ${ids.join(', ')} before the abort, and ${one ? 'it stays' : 'they stay'} closed`;
+  return `Its finish had already closed ${one ? 'issue' : 'issues'} ${ids.join(', ')} before the abort, and ${one ? 'it stays' : 'they stay'} closed.`;
 }

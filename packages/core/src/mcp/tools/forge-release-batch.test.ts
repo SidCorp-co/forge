@@ -89,8 +89,10 @@ describe('forge_release_batch refusals', () => {
   it('carries a missing version under its own code', async () => {
     acceptFinish.mockRejectedValue(new ReleaseVersionMissingError(RUN_ID));
 
-    await expect(tool().handler({ action: 'finish', runId: RUN_ID })).rejects.toThrow(
-      /^RELEASE_VERSION_MISSING: /,
+    const refused = tool().handler({ action: 'finish', runId: RUN_ID });
+    await expect(refused).rejects.toThrow(/^RELEASE_VERSION_MISSING: Release run /);
+    await expect(refused).rejects.not.toThrow(
+      /RELEASE_VERSION_MISSING[\s\S]*RELEASE_VERSION_MISSING/,
     );
   });
 

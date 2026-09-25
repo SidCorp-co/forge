@@ -35,7 +35,7 @@ import {
 } from './finish-record.js';
 import { finishRefusal } from './refusals.js';
 import { assertFinishable, finishReleaseBatch, readReleaseRun } from './service.js';
-import { claimedCommit, notAWholeCommit } from './verify.js';
+import { claimedCommit, NOTHING_TO_COMPARE, notAWholeCommit } from './verify.js';
 
 /** How long a worker's claim on an attempt stands without a renewal. */
 export const FINISH_LEASE_MS = 120_000;
@@ -113,7 +113,13 @@ export async function acceptReleaseBatchFinish(
       .select({ n: sql<number>`count(*)::int` })
       .from(issues)
       .where(eq(issues.releaseBatchRunId, runId));
-    if (!(run.status === 'completed' && (left?.n ?? 0) === 0)) await assertFinishable(runId, run);
+    if (!(run.status === 'completed' && (left?.n ?? 0) === 0)) {
+      await assertFinishable(runId, run);
+      const before = (run.metadata as { commitBefore?: unknown } | null)?.commitBefore;
+      if (commit === null && typeof before !== 'string') {
+        throw new ReleaseNotVerifiedError(NOTHING_TO_COMPARE, null);
+      }
+    }
 
     const now = new Date().toISOString();
     const record: ReleaseFinishRecord = {

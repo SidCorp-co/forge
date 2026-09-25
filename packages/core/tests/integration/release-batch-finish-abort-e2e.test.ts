@@ -384,7 +384,7 @@ describe('a batch aborted after its verification went green', () => {
     });
     expect(await shipped(runId)).toBeNull();
     const reason = await storedReason(runId);
-    expect(reason).toMatch(/the abort kept its claims, and its issues stay at `releasing`/);
+    expect(reason).toMatch(/the abort kept its claims\. Its issues stay at `releasing`/);
     expect(reason).not.toMatch(/claims were released/);
     expect(await refusalMessage(() => accept(runId, PUSHED))).toBe(reason);
     for (const [i, id] of issueIds.entries()) {

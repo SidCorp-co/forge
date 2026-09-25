@@ -279,4 +279,11 @@ describe('where a release run reads its verdict (ISS-1190)', () => {
       expect(text).toMatch(/`finish\.state`[^\n]*`finished`/);
     }
   });
+
+  // Since ISS-1199 a claim is the whole proof; the paragraph still asked for a change as well.
+  it('says a finish naming a commit goes green on that commit alone', () => {
+    const text = buildReleaseBatchPrompt({ ...BASE, plan: probed });
+    expect(text).toMatch(/goes green when the live build matches your `commit`/);
+    expect(text).not.toMatch(/CHANGED from what was serving before this batch started AND/);
+  });
 });

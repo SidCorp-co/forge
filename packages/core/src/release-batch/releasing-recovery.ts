@@ -220,7 +220,7 @@ function settledNote(projectId: string, destination: IssueStatus): string {
 
 function promotedNote(runId: string): (projectId: string) => string {
   return (projectId) =>
-    `This batch recorded a promotion, so its issues stay at \`releasing\` and stay claimed: the code is on production and no status here is true except that one. Read the run with \`GET /api/projects/${projectId}/release-batches/${runId}/state\`, then either finish it if the release did land or settle each issue by hand.`;
+    `This batch recorded a promotion, so its issues stay at \`releasing\` and stay claimed: the code is on production and no status here is true except that one. Read the run with \`GET /api/projects/${projectId}/release-batches/${runId}/state\`. To settle the issues, abort the batch with POST /api/projects/${projectId}/release-batches/${runId}/abort and a body of {"promotedRoster":"return-to-gate"}, which puts them back at the release gate, and then record the release that happened with POST /api/projects/${projectId}/release-records; or settle each issue by hand.`;
 }
 
 /**
