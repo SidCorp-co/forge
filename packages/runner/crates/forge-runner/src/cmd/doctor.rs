@@ -128,12 +128,9 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         _ => println!("✔ cred store   {backend}"),
     }
 
-    match cred_store::load_pat() {
-        Ok(Some(_)) => println!("✔ rest token   personal access token present (`forge-runner api`)"),
-        _ => println!(
-            "• rest token   none — `forge-runner api` needs one (`forge-runner login --pat <token>` or $FORGE_PAT)"
-        ),
-    }
+    let (row, token_failed) = access_token_row(&cred_store::load_pat());
+    println!("{row}");
+    failed |= token_failed;
 
     // Best-effort update check (3s budget — never blocks doctor).
     if let Some(url) = update::manifest_url(
@@ -204,6 +201,26 @@ fn repo_mcp_state(repo_path: &std::path::Path) -> RepoMcp {
         Ok(doc) if doc.pointer("/mcpServers/forge").is_some() => RepoMcp::HasForge,
         Ok(_) => RepoMcp::NoForgeEntry,
         Err(e) => RepoMcp::Unreadable(format!("{} is not valid JSON ({e})", path.display())),
+    }
+}
+
+/// The personal access token row, and whether it fails the run. Every job this
+/// box starts is refused without one (ISS-1218), so its absence is a failure,
+/// and a store that could not be read is not reported as holding nothing.
+fn access_token_row(pat: &forge_runner_core::error::Result<Option<String>>) -> (String, bool) {
+    match pat {
+        Ok(Some(t)) if !t.trim().is_empty() => (
+            "✔ access token personal access token present — jobs' Forge tools and `forge-runner api` use it".to_string(),
+            false,
+        ),
+        Ok(_) => (
+            "✖ access token none — every job this box starts is refused until one is stored: create one in Forge's web app under Settings → API Tokens, then `forge-runner login --pat <token>` (or set $FORGE_PAT for the runner)".to_string(),
+            true,
+        ),
+        Err(e) => (
+            format!("✖ access token the credential store could not be read ({e}) — every job this box starts is refused until it can"),
+            true,
+        ),
     }
 }
 
@@ -452,6 +469,50 @@ fn check_bin(bin: &str, label: &str) -> bool {
 mod tests {
     use super::*;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    /// A box with no personal access token refuses every job it starts, so
+    /// doctor fails on it, and says where a token comes from.
+    #[test]
+    fn a_box_with_no_access_token_fails_doctor_and_is_told_where_to_get_one() {
+        let (row, failed) = access_token_row(&Ok(None));
+        assert!(failed, "{row}");
+        assert!(row.starts_with("✖ access token none"), "{row}");
+        assert!(
+            row.contains("every job this box starts is refused"),
+            "{row}"
+        );
+        assert!(row.contains("Settings → API Tokens"), "{row}");
+        assert!(row.contains("forge-runner login --pat <token>"), "{row}");
+        assert!(
+            access_token_row(&Ok(Some("  ".into()))).1,
+            "a blank token is none"
+        );
+
+        let (held, held_failed) = access_token_row(&Ok(Some("forge_pat_dev_op".into())));
+        assert!(!held_failed, "{held}");
+        assert!(held.starts_with("✔ access token"), "{held}");
+        assert!(
+            !held.contains("forge_pat_dev_op"),
+            "the row prints no credential"
+        );
+    }
+
+    /// An unreadable store used to print the same `none` as an empty one.
+    #[test]
+    fn an_unreadable_credential_store_is_its_own_failure_rather_than_none() {
+        let (row, failed) = access_token_row(&Err(Error::Other(
+            "expected ident at line 1 column 2".into(),
+        )));
+        assert!(failed, "{row}");
+        assert!(
+            row.contains("could not be read (expected ident at line 1 column 2)"),
+            "{row}"
+        );
+        assert!(
+            !row.contains(" none "),
+            "a read error is not an absence: {row}"
+        );
+    }
 
     /// ISS-1234 criterion 12.
     #[test]

@@ -23,8 +23,11 @@ pub struct Args {
     /// Accepted and ignored — printing the URL is now the default.
     #[arg(long, hide = true)]
     pub no_browser: bool,
-    /// Store a Personal Access Token for `forge-runner api`. Used alone, this
-    /// stores the token and does not pair a device.
+    /// Store a personal access token, created in Forge's web app under
+    /// Settings → API Tokens. Every job this box starts hands it to the job's
+    /// Forge tools, and a box holding none refuses its jobs; `forge-runner api`
+    /// speaks with it too. Used alone, this stores the token and does not pair
+    /// a device.
     #[arg(long)]
     pub pat: Option<String>,
 }
@@ -40,7 +43,8 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
             "✔ stored personal access token (store: {})",
             cred_store::active_backend()
         );
-        println!("  next: forge-runner api issues");
+        println!("  jobs this box starts from now on carry it; no restart is needed");
+        println!("  next: forge-runner doctor");
         return Ok(());
     }
 
