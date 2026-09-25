@@ -124,17 +124,8 @@ fn write_atomic(json_path: &Path, root: &serde_json::Value) -> Result<(), String
 mod tests {
     use super::*;
 
-    fn temp(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "forge-trust-{name}-{}-{:?}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_nanos())
-                .unwrap_or(0)
-        ));
-        std::fs::create_dir_all(&dir).expect("temp dir");
-        dir
+    fn temp(name: &str) -> crate::test_scratch::Scratch {
+        crate::test_scratch::Scratch::new(&format!("trust-{name}"))
     }
 
     fn read(path: &Path) -> serde_json::Value {

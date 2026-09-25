@@ -2049,11 +2049,10 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn a_second_run_at_the_same_tree_by_another_name_is_refused() {
-        let real = std::env::temp_dir().join(format!("forge-ledger-path-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&real);
+        let scratch = crate::test_scratch::Scratch::new("ledger-path");
+        let real = scratch.join("real");
         std::fs::create_dir_all(&real).unwrap();
-        let link = real.with_extension("served");
-        let _ = std::fs::remove_file(&link);
+        let link = scratch.join("served");
         std::os::unix::fs::symlink(&real, &link).unwrap();
 
         let mut led = Ledger::open_in_memory().unwrap();
@@ -2143,8 +2142,7 @@ mod tests {
 
     #[test]
     fn a_decision_outlives_the_process_that_took_it() {
-        let dir = std::env::temp_dir().join(format!("forge-dec-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = crate::test_scratch::Scratch::new("dec");
         let path = dir.join("ledger.sqlite");
         {
             let led = Ledger::open(&path).unwrap();
@@ -2256,8 +2254,7 @@ mod tests {
         assert_eq!(run.resume_id.as_deref(), Some("r-1"));
 
         for kind in [BlockerKind::Machine, BlockerKind::MasterOrPeer] {
-            let dir = std::env::temp_dir().join(format!("led-{}", uuid::Uuid::new_v4()));
-            std::fs::create_dir_all(&dir).unwrap();
+            let dir = crate::test_scratch::Scratch::new("led");
             let mut other = Ledger::open_in_memory().unwrap();
             other.create_run_group(seed(&["ISS-2"])).unwrap();
             let (_ear, inc) = crate::runner::blocked::arm_bounded(
@@ -2281,9 +2278,10 @@ mod tests {
     fn a_blocker_nobody_could_resolve_is_refused_and_writes_no_question() {
         let mut led = Ledger::open_in_memory().unwrap();
         led.create_run_group(seed(&["ISS-1"])).unwrap();
+        let scratch = crate::test_scratch::Scratch::new("arm-nobody");
         assert!(crate::runner::blocked::arm_bounded(
             &mut led,
-            std::env::temp_dir().as_path(),
+            scratch.path(),
             Wait {
                 run_id: "run-1",
                 question_id: "q-1",
@@ -2302,9 +2300,10 @@ mod tests {
     fn the_bounded_arm_refuses_a_human_block_by_name() {
         let mut led = Ledger::open_in_memory().unwrap();
         led.create_run_group(seed(&["ISS-1"])).unwrap();
+        let scratch = crate::test_scratch::Scratch::new("arm-human");
         let err = crate::runner::blocked::arm_bounded(
             &mut led,
-            std::env::temp_dir().as_path(),
+            scratch.path(),
             Wait {
                 run_id: "run-1",
                 question_id: "q-1",
@@ -2535,7 +2534,7 @@ mod tests {
 
     #[test]
     fn a_park_survives_the_ledger_being_closed_and_reopened() {
-        let dir = std::env::temp_dir().join(format!("forge-ledger-{}", std::process::id()));
+        let dir = crate::test_scratch::Scratch::new("ledger");
         let path = dir.join("ledger.sqlite");
         let _ = std::fs::remove_file(&path);
         {
@@ -2641,8 +2640,7 @@ mod tests {
 
     #[test]
     fn a_master_pane_and_its_conversation_survive_the_ledger_being_closed_and_reopened() {
-        let dir = std::env::temp_dir().join(format!("forge-ledger-masters-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = crate::test_scratch::Scratch::new("ledger-masters");
         let path = dir.join("ledger.sqlite");
         let _ = std::fs::remove_file(&path);
         {
@@ -2690,8 +2688,7 @@ mod tests {
 
     #[test]
     fn a_ledger_written_by_an_earlier_build_gains_the_masters_table_and_the_agent_column() {
-        let dir = std::env::temp_dir().join(format!("forge-ledger-1050-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = crate::test_scratch::Scratch::new("ledger-1050");
         let path = dir.join("ledger.sqlite");
         let _ = std::fs::remove_file(&path);
         {
@@ -2773,8 +2770,7 @@ mod tests {
     /// process the owner's act outlives (ISS-1118 criterion 2).
     #[test]
     fn a_stand_down_outlives_the_process_that_recorded_it() {
-        let dir = std::env::temp_dir().join(format!("forge-ledger-1118-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = crate::test_scratch::Scratch::new("ledger-1118");
         let path = dir.join("ledger.sqlite");
         let _ = std::fs::remove_file(&path);
         {
@@ -2877,8 +2873,7 @@ mod tests {
     /// (ISS-1118 criterion 18).
     #[test]
     fn a_masters_table_written_before_session_id_gains_the_column_on_open() {
-        let dir = std::env::temp_dir().join(format!("forge-ledger-1118m-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = crate::test_scratch::Scratch::new("ledger-1118m");
         let path = dir.join("ledger.sqlite");
         let _ = std::fs::remove_file(&path);
         {
@@ -2971,8 +2966,7 @@ mod tests {
     /// erased the record of it (ISS-1099 criterion 10).
     #[test]
     fn an_authority_verdict_outlives_the_process_that_reached_it() {
-        let dir = std::env::temp_dir().join(format!("forge-ledger-1099a-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = crate::test_scratch::Scratch::new("ledger-1099a");
         let path = dir.join("ledger.sqlite");
         let _ = std::fs::remove_file(&path);
         {
@@ -3275,16 +3269,8 @@ mod tests {
     }
 
     /// A directory of this test's own, so two of them never share a ledger.
-    fn a_ledger_path(what: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "forge-ledger-{what}-{}-{:?}",
-            std::process::id(),
-            std::thread::current().id()
-        ));
-        std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("ledger.sqlite");
-        let _ = std::fs::remove_file(&path);
-        path
+    fn a_ledger_path(what: &str) -> crate::test_scratch::InScratch {
+        crate::test_scratch::Scratch::new(&format!("ledger-{what}")).at("ledger.sqlite")
     }
 
     /// The `ALTER` statements a build applies to a ledger missing the release
@@ -3317,7 +3303,7 @@ mod tests {
         let ready = std::sync::Arc::new(std::sync::Barrier::new(8));
         let openers: Vec<_> = (0..8)
             .map(|_| {
-                let path = path.clone();
+                let path = path.to_path_buf();
                 let ready = ready.clone();
                 std::thread::spawn(move || {
                     ready.wait();
@@ -3460,7 +3446,7 @@ mod tests {
 
         let (arrived_tx, arrived_rx) = std::sync::mpsc::channel();
         let opener = {
-            let path = path.clone();
+            let path = path.to_path_buf();
             std::thread::spawn(move || {
                 let opened = Ledger::open(&path).map(|_| ());
                 arrived_tx.send(()).unwrap();
@@ -3588,8 +3574,7 @@ mod tests {
              that loses is whichever build is older: {SELECT_RUN}"
         );
 
-        let dir = std::env::temp_dir().join(format!("forge-ledger-newer-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = crate::test_scratch::Scratch::new("ledger-newer");
         let path = dir.join("ledger.sqlite");
         let _ = std::fs::remove_file(&path);
         {
@@ -3784,8 +3769,7 @@ mod tests {
 
     #[test]
     fn a_ledger_written_by_an_earlier_build_gains_the_new_columns_on_open() {
-        let dir = std::env::temp_dir().join(format!("forge-ledger-old-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = crate::test_scratch::Scratch::new("ledger-old");
         let path = dir.join("ledger.sqlite");
         let _ = std::fs::remove_file(&path);
         {
@@ -3824,8 +3808,7 @@ mod tests {
     }
     #[test]
     fn a_run_an_earlier_build_closed_keeps_its_close_rather_than_being_reopened() {
-        let dir = std::env::temp_dir().join(format!("forge-ledger-carry-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = crate::test_scratch::Scratch::new("ledger-carry");
         let path = dir.join("ledger.sqlite");
         let _ = std::fs::remove_file(&path);
         {

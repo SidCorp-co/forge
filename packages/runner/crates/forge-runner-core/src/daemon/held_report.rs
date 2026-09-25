@@ -167,12 +167,8 @@ mod tests {
     use std::cell::RefCell;
     use std::path::{Path, PathBuf};
 
-    fn temp_path(name: &str) -> PathBuf {
-        std::env::temp_dir().join(format!(
-            "forge-held-{name}-{}-{:?}",
-            std::process::id(),
-            std::thread::current().id()
-        ))
+    fn temp_path(name: &str) -> crate::test_scratch::InScratch {
+        crate::test_scratch::Scratch::new(&format!("held-{name}")).at(name)
     }
 
     fn sh(dir: &Path, args: &[&str]) {
@@ -189,7 +185,7 @@ mod tests {
     }
 
     /// A repo with a bare remote, a pushed main, and a worktree branch of its own.
-    fn a_box_with_a_worktree(name: &str) -> (PathBuf, PathBuf) {
+    fn a_box_with_a_worktree(name: &str) -> (crate::test_scratch::InScratch, PathBuf) {
         let root = temp_path(name);
         let _ = std::fs::remove_dir_all(&root);
         let remote = root.join("remote.git");

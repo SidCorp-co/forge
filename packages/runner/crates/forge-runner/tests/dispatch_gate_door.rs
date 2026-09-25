@@ -39,7 +39,7 @@ use forge_runner_core::daemon::hook_install;
 
 const DISPATCH_PAYLOAD: &str = r#"{"session_id":"d5953edb-97bc-42b8-891d-206e105903d7","transcript_path":"/x.jsonl","cwd":"/tmp/x","prompt_id":"5f063c37","permission_mode":"bypassPermissions","effort":{"level":"medium"},"hook_event_name":"PreToolUse","tool_name":"Agent","tool_input":{"description":"Take ISS-12","prompt":"work it","subagent_type":"runner","run_in_background":false},"tool_use_id":"toolu_01WFynvjwEmYFcgyKTMn4J91"}"#;
 
-struct Scratch(PathBuf);
+struct Scratch(forge_runner_core::test_scratch::Scratch);
 
 /// The `sockaddr_un.sun_path` budget. macOS gives 104 bytes where Linux gives 108, and a unix
 /// socket whose path does not fit fails at `bind` with `InvalidInput`, before a single assertion in
@@ -47,37 +47,15 @@ struct Scratch(PathBuf);
 const SUN_LEN: usize = 104;
 
 impl Scratch {
-    fn new(name: &str) -> Self {
-        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-        for b in name
-            .as_bytes()
-            .iter()
-            .chain(format!("{:?}", std::thread::current().id()).as_bytes())
-        {
-            h ^= u64::from(*b);
-            h = h.wrapping_mul(0x0000_0100_0000_01b3);
-        }
-        let base = if Path::new("/tmp").is_dir() {
-            PathBuf::from("/tmp")
-        } else {
-            std::env::temp_dir()
-        };
+    /// `name` is for the reader of the test: the shared counter is what keeps two apart.
+    fn new(_name: &str) -> Self {
         // The budget is asserted in `config_dir_at`, against the path a socket is ACTUALLY bound
         // at — this root plus whatever the platform's config layout adds to it. Checking it here,
         // against the root alone, would pass while the real path was 28 bytes longer on macos.
-        let p = base.join(format!("fgd-{}-{h:x}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&p);
-        std::fs::create_dir_all(&p).expect("scratch");
-        Self(p)
+        Self(forge_runner_core::test_scratch::Scratch::short("gd"))
     }
     fn path(&self) -> &Path {
-        &self.0
-    }
-}
-
-impl Drop for Scratch {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
+        self.0.path()
     }
 }
 

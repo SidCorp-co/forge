@@ -241,9 +241,9 @@ mod tests {
         assert!(!FORGE_OWNED_PATHS.contains(&"packages/core/src/index.ts"));
     }
 
-    /// Unique temp dir per test (no tempfile dep in this crate).
-    fn temp_path(name: &str) -> std::path::PathBuf {
-        std::env::temp_dir().join(format!("forge-refresh-{name}-{}", std::process::id()))
+    /// A path under a scratch dir of its own, not yet created.
+    fn temp_path(name: &str) -> crate::test_scratch::InScratch {
+        crate::test_scratch::Scratch::new(&format!("refresh-{name}")).at(name)
     }
 
     fn git_ok(dir: &Path, args: &[&str]) {

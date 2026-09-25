@@ -21,3 +21,6 @@ tracing-subscriber = { workspace = true }
 which = { workspace = true }
 dirs-next = { workspace = true }
 webbrowser = { workspace = true }
+
+[dev-dependencies]
+forge-runner-core = { path = "../forge-runner-core", features = ["test-support"] }

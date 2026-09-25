@@ -1334,8 +1334,7 @@ mod tests {
     fn a_box_holding_only_its_device_token_refuses_the_spawn_naming_both_credentials() {
         use crate::auth::cred_store::{ScopedVar, ENV_TEST_LOCK};
         let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let home = std::env::temp_dir().join(format!("forge-1218-spawn-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&home);
+        let home = crate::test_scratch::Scratch::new("1218-spawn");
         std::fs::create_dir_all(home.join("forge-runner")).unwrap();
         std::fs::write(
             home.join("forge-runner/credentials.json"),

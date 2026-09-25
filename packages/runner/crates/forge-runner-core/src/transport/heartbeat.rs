@@ -304,13 +304,7 @@ mod tests {
     /// shape somebody wrote by hand that the writer never produces.
     #[test]
     fn a_planted_marks_file_yields_the_same_verdict_and_rate() {
-        let dir = std::env::temp_dir().join(format!(
-            "forge-gate-body-{}-{:?}",
-            std::process::id(),
-            std::thread::current().id()
-        ));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).expect("scratch");
+        let dir = crate::test_scratch::Scratch::new("gate-body");
         for _ in 0..24 {
             crate::daemon::degraded::mark(
                 &dir,
@@ -345,15 +339,8 @@ mod tests {
     pub(crate) const BLIND_PROJECT: &str = "68567cd4-0000-4000-8000-000000000001";
     pub(crate) const INTERMITTENT_PROJECT: &str = "2126d65a-d732-483b-a0ff-eb74fd88c53f";
 
-    fn scratch(name: &str) -> std::path::PathBuf {
-        let d = std::env::temp_dir().join(format!(
-            "forge-pool-body-{name}-{}-{:?}",
-            std::process::id(),
-            std::thread::current().id()
-        ));
-        let _ = std::fs::remove_dir_all(&d);
-        std::fs::create_dir_all(&d).expect("scratch");
-        d
+    fn scratch(name: &str) -> crate::test_scratch::Scratch {
+        crate::test_scratch::Scratch::new(&format!("pool-body-{name}"))
     }
 
     /// The planted record the fixture is of: one project blind on 525 for three

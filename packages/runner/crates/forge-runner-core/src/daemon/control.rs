@@ -1030,7 +1030,7 @@ mod tests {
 
     #[test]
     fn a_frame_naming_another_session_is_served_as_the_token_owner() {
-        let dir = std::env::temp_dir().join(format!("ct-{}", uuid::Uuid::new_v4()));
+        let dir = crate::test_scratch::Scratch::new("ct");
         let tokens = SessionTokens::at(dir.join("control-tokens.json"));
         let a = tokens.mint("sess-a").unwrap();
         tokens.mint("sess-b").unwrap();
@@ -1092,9 +1092,12 @@ mod tests {
         assert!(transcript_path.is_none());
     }
 
-    fn declaring_control(session_id: &str, project_id: &str) -> (Arc<Control>, String) {
-        let dir = std::env::temp_dir().join(format!("ct-decl-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
+    /// The third value is the control's config dir, which the caller holds for the test's life.
+    fn declaring_control(
+        session_id: &str,
+        project_id: &str,
+    ) -> (Arc<Control>, String, crate::test_scratch::Scratch) {
+        let dir = crate::test_scratch::Scratch::new("ct-decl");
         let tokens = SessionTokens::at(dir.join("control-tokens.json"));
         let token = tokens.mint(session_id).unwrap();
         let masters = Arc::new(crate::daemon::master::Masters::new());
@@ -1108,10 +1111,11 @@ mod tests {
                     crate::runner::ledger::Ledger::open_in_memory().unwrap(),
                 ))),
                 boot_id: "boot-a".into(),
-                config_dir: Some(dir),
+                config_dir: Some(dir.to_path_buf()),
                 promises: std::sync::Mutex::new(GateMemory::default()),
             }),
             token,
+            dir,
         )
     }
 
@@ -1159,7 +1163,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn one_declaration_authorises_one_dispatch_and_is_freed_when_its_subagent_starts() {
-        let (ctl, _t) = declaring_control("sess-a", "proj-1");
+        let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
         ship_roles(&ctl, &["runner", "reviewer"]);
 
         // 1. Nothing declared: refused, in the declaration's own words.
@@ -1225,7 +1229,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn a_daemon_restart_leaves_the_declaration_standing_and_the_second_child_is_named() {
-        let (ctl, _t) = declaring_control("sess-a", "proj-1");
+        let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
         let dir = ship_roles(&ctl, &["runner"]);
         let run_id = run_declare(&ctl, "proj-1", &["ISS-7".into()], "/w/seven", "sess-a")
             .job_id
@@ -1240,8 +1244,12 @@ mod tests {
         // file, the same pane. Only what was held in memory is gone.
         let restarted = Arc::new(Control {
             tokens: SessionTokens::at(
-                std::env::temp_dir().join(format!("ct-restart-{}.json", uuid::Uuid::new_v4())),
+                ctl.config_dir
+                    .as_deref()
+                    .expect("declaring_control gives one")
+                    .join("ct-restart.json"),
             ),
+
             activity: ctl.activity.clone(),
             masters: ctl.masters.clone(),
             ledger: ctl.ledger.clone(),
@@ -1287,7 +1295,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn a_replayed_hook_gets_its_answer_back_even_after_its_subagent_started() {
-        let (ctl, _t) = declaring_control("sess-a", "proj-1");
+        let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
         ship_roles(&ctl, &["runner"]);
         let _ = run_declare(&ctl, "proj-1", &["ISS-7".into()], "/w/seven", "sess-a")
             .job_id
@@ -1321,7 +1329,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn a_box_that_cannot_read_its_own_registry_allows_and_marks() {
-        let (ctl, _t) = declaring_control("sess-a", "proj-1");
+        let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
         let dir = ship_roles(&ctl, &["runner"]);
         *ctl.ledger.lock().unwrap() = None;
 
@@ -1354,7 +1362,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn a_subagent_started_under_a_shipped_role_with_nothing_declared_is_named_and_counted() {
-        let (ctl, _t) = declaring_control("sess-a", "proj-1");
+        let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
         let dir = ship_roles(&ctl, &["runner", "reviewer"]);
 
         bind_declared(
@@ -1383,7 +1391,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn a_subagent_that_is_not_a_shipped_role_stays_silent() {
-        let (ctl, _t) = declaring_control("sess-a", "proj-1");
+        let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
         let dir = ship_roles(&ctl, &["runner", "reviewer"]);
 
         for role in [Some("general-purpose"), Some("Explore"), None] {
@@ -1424,7 +1432,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn a_replayed_start_for_an_already_bound_child_raises_no_alarm() {
-        let (ctl, _t) = declaring_control("sess-a", "proj-1");
+        let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
         let dir = ship_roles(&ctl, &["runner"]);
         let _ = run_declare(&ctl, "proj-1", &["ISS-7".into()], "/w/seven", "sess-a")
             .job_id
@@ -1445,7 +1453,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn a_declared_hand_off_is_bound_and_nothing_is_counted_against_it() {
-        let (ctl, _t) = declaring_control("sess-a", "proj-1");
+        let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
         let dir = ship_roles(&ctl, &["runner"]);
         let _ = run_declare(&ctl, "proj-1", &["ISS-7".into()], "/w/seven", "sess-a")
             .job_id
@@ -1580,7 +1588,7 @@ mod tests {
 
         #[test]
         fn a_choice_outside_the_three_words_is_refused_naming_them() {
-            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
             let run_id = declared_and_inherited(&ctl, "proj-1", "sess-a");
 
             let reply = run_choice(&ctl, &run_id, "contineu", "typo", "sess-a");
@@ -1594,7 +1602,7 @@ mod tests {
 
         #[test]
         fn a_choice_with_no_reason_is_refused() {
-            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
             let run_id = declared_and_inherited(&ctl, "proj-1", "sess-a");
 
             let reply = run_choice(&ctl, &run_id, "leave", "   ", "sess-a");
@@ -1604,7 +1612,7 @@ mod tests {
 
         #[test]
         fn a_pane_cannot_answer_for_a_run_it_did_not_inherit() {
-            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
             let run_id = declared_and_inherited(&ctl, "proj-1", "sess-a");
 
             let reply = run_choice(&ctl, &run_id, "leave", "not mine", "some-other-session");
@@ -1617,14 +1625,14 @@ mod tests {
 
         #[test]
         fn a_frame_carrying_no_known_token_names_nobody() {
-            let dir = std::env::temp_dir().join(format!("ct-{}", uuid::Uuid::new_v4()));
+            let dir = crate::test_scratch::Scratch::new("ct");
             let tokens = SessionTokens::at(dir.join("control-tokens.json"));
             tokens.mint("sess-a").unwrap();
             assert_eq!(tokens.session_for("forged"), None);
         }
         #[test]
         fn a_declaration_writes_a_row_and_answers_its_id() {
-            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
             let reply = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a");
             assert!(reply.ok, "{:?}", reply.reason);
             let run_id = reply.job_id.expect("the declaration answers the row's id");
@@ -1649,7 +1657,7 @@ mod tests {
         }
         #[test]
         fn a_declaration_for_a_project_this_pane_is_not_master_of_is_refused_and_writes_nothing() {
-            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
             let reply = run_declare(&ctl, "proj-OTHER", &["ISS-1".into()], "/w/one", "sess-a");
             assert!(!reply.ok);
             let why = reply.reason.unwrap_or_default();
@@ -1671,7 +1679,7 @@ mod tests {
         }
         #[test]
         fn a_pane_this_daemon_has_not_adopted_is_refused_with_what_the_sweep_recorded() {
-            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
             let reply = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-UNKNOWN");
             assert!(!reply.ok);
             let why = reply.reason.unwrap_or_default();
@@ -1688,7 +1696,7 @@ mod tests {
 
         #[test]
         fn no_refusal_for_an_unplaced_pane_promises_a_number_of_seconds() {
-            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
             ctl.masters
                 .note_served(crate::daemon::master::Served::Read(vec!["proj-9".into()]));
             for project in ["proj-1", "proj-9", "proj-ABSENT"] {
@@ -1702,7 +1710,7 @@ mod tests {
         }
         #[test]
         fn a_second_declaration_while_one_is_unbound_is_refused_naming_the_pending_row() {
-            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
             let first = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a");
             let pending = first.job_id.unwrap();
             let second = run_declare(&ctl, "proj-1", &["ISS-2".into()], "/w/two", "sess-a");
@@ -1715,7 +1723,7 @@ mod tests {
         }
         #[test]
         fn a_master_closing_its_own_unbound_declaration_may_declare_again() {
-            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
             let first = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a");
             let run_id = first.job_id.unwrap();
             assert!(run_close(&ctl, &run_id, Some("it never started"), "sess-a").ok);
@@ -1724,7 +1732,7 @@ mod tests {
         }
         #[test]
         fn one_master_cannot_close_another_masters_run() {
-            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
             let run_id = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a")
                 .job_id
                 .unwrap();
@@ -1762,7 +1770,7 @@ mod tests {
         }
         #[test]
         fn a_key_that_is_not_an_issue_key_is_refused_by_name_and_writes_no_row() {
-            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
 
             let reply = run_declare(
                 &ctl,
@@ -1817,7 +1825,7 @@ mod tests {
 
         #[test]
         fn a_resumed_pane_cannot_declare_new_work_before_answering_for_what_it_inherited() {
-            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
             declared_and_inherited(&ctl, "proj-1", "sess-a");
 
             let reply = run_declare(&ctl, "proj-1", &["ISS-8".into()], "/w/eight", "sess-a");
@@ -1832,7 +1840,7 @@ mod tests {
         }
         #[test]
         fn the_refusal_names_the_command_that_answers_it() {
-            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
             declared_and_inherited(&ctl, "proj-1", "sess-a");
 
             let reply = run_declare(&ctl, "proj-1", &["ISS-8".into()], "/w/eight", "sess-a");
@@ -1849,7 +1857,7 @@ mod tests {
 
         #[test]
         fn closing_an_inherited_run_does_not_discharge_the_choice_it_owes() {
-            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
             let run_id = declared_and_inherited(&ctl, "proj-1", "sess-a");
 
             let closed = run_close(
@@ -1875,7 +1883,7 @@ mod tests {
         }
         #[test]
         fn a_choice_recorded_after_the_close_releases_the_gate() {
-            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
             let run_id = declared_and_inherited(&ctl, "proj-1", "sess-a");
             run_close(
                 &ctl,
@@ -1898,7 +1906,7 @@ mod tests {
         }
         #[test]
         fn a_closed_runs_choice_is_still_owed_to_the_issue() {
-            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
             let run_id = declared_and_inherited(&ctl, "proj-1", "sess-a");
             run_close(
                 &ctl,
@@ -1921,7 +1929,7 @@ mod tests {
         }
         #[test]
         fn once_every_inherited_run_is_answered_for_the_next_declaration_is_allowed() {
-            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
             let run_id = declared_and_inherited(&ctl, "proj-1", "sess-a");
 
             let choice = run_choice(&ctl, &run_id, "restart", "the branch is empty", "sess-a");
@@ -1935,7 +1943,7 @@ mod tests {
         }
         #[test]
         fn a_pane_that_was_never_resumed_declares_freely() {
-            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
             let first = run_declare(&ctl, "proj-1", &["ISS-7".into()], "/w/seven", "sess-a");
             assert!(first.ok, "{:?}", first.reason);
             bind_declared(&ctl, Some("child-1"), None, "sess-a");
@@ -1946,7 +1954,7 @@ mod tests {
         }
         #[test]
         fn a_master_pane_event_puts_that_pane_and_its_conversation_in_the_ledger() {
-            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
 
             agent_event(&ctl, "Stop", None, &conv("conv-abc"), "sess-a");
 
@@ -1962,7 +1970,7 @@ mod tests {
         }
         #[test]
         fn an_event_without_a_conversation_leaves_the_stored_one_alone() {
-            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
 
             agent_event(&ctl, "Stop", None, &conv("conv-abc"), "sess-a");
             agent_event(&ctl, "Stop", None, &HookNames::default(), "sess-a");
@@ -1982,7 +1990,7 @@ mod tests {
         }
         #[test]
         fn an_event_puts_the_transcript_its_hook_named_on_that_sessions_activity() {
-            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
             let names = HookNames {
                 transcript_path: Some("/h/.claude/projects/-w/conv-abc.jsonl".into()),
                 ..conv("conv-abc")
@@ -2000,7 +2008,7 @@ mod tests {
         }
         #[test]
         fn a_session_that_is_not_a_registered_master_writes_no_row() {
-            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
 
             agent_event(&ctl, "Stop", None, &conv("conv-zzz"), "some-other-session");
 
@@ -2023,7 +2031,7 @@ mod tests {
         }
         #[test]
         fn a_subagent_starting_binds_the_row_its_master_declared_and_stopping_leaves_it_open() {
-            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
             let run_id = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a")
                 .job_id
                 .unwrap();
@@ -2061,7 +2069,7 @@ mod tests {
         }
         #[test]
         fn each_stop_moves_the_turn_end_forward_and_a_replayed_older_one_does_not_move_it_back() {
-            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
             let run_id = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a")
                 .job_id
                 .unwrap();
@@ -2080,7 +2088,7 @@ mod tests {
         }
         #[test]
         fn a_stop_naming_a_relative_lead_records_no_transcript_it_would_misread() {
-            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
             let run_id = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a")
                 .job_id
                 .unwrap();
@@ -2092,7 +2100,7 @@ mod tests {
         }
         #[test]
         fn a_stop_heard_through_the_socket_reaches_the_run_with_its_time_and_path() {
-            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
             let run_id = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a")
                 .job_id
                 .unwrap();
@@ -2116,7 +2124,7 @@ mod tests {
         }
         #[test]
         fn a_replayed_start_from_a_child_already_bound_never_takes_the_next_row() {
-            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
             let run_a = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a")
                 .job_id
                 .unwrap();
@@ -2139,7 +2147,7 @@ mod tests {
         }
         #[test]
         fn a_start_replayed_after_its_own_run_ended_takes_no_other_row() {
-            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
             let run_a = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a")
                 .job_id
                 .unwrap();
@@ -2164,7 +2172,7 @@ mod tests {
         }
         #[test]
         fn a_subagent_answering_to_no_declared_run_binds_nothing_and_ends_nothing() {
-            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
             bind_declared(&ctl, Some("stranger"), None, "sess-a");
             note_subagent_stop(&ctl, "stranger", 1_790_000_000_000, None);
             assert!(ctl

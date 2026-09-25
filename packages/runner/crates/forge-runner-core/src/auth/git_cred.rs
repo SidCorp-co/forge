@@ -362,13 +362,8 @@ mod tests {
         );
     }
 
-    fn tmp_repo(tag: &str) -> PathBuf {
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let dir = std::env::temp_dir().join(format!("forge-gitcred-{tag}-{nanos}"));
-        std::fs::create_dir_all(&dir).unwrap();
+    fn tmp_repo(tag: &str) -> crate::test_scratch::Scratch {
+        let dir = crate::test_scratch::Scratch::new(&format!("gitcred-{tag}"));
         let out = Command::new("git")
             .arg("-C")
             .arg(&dir)
@@ -410,8 +405,6 @@ mod tests {
             local_config(&repo, &["credential.https://github.com.useHttpPath"]),
             vec!["true".to_string()]
         );
-
-        std::fs::remove_dir_all(&repo).ok();
     }
 
     #[test]
@@ -470,7 +463,5 @@ mod tests {
             !answer.contains("ambient"),
             "the global helper was asked first: {answer}"
         );
-
-        std::fs::remove_dir_all(&repo).ok();
     }
 }

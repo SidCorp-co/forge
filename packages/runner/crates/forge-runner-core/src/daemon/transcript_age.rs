@@ -99,30 +99,7 @@ mod tests {
             .expect("set mtime");
     }
 
-    /// A directory of this test's own, removed when it drops.
-    struct Scratch(std::path::PathBuf);
-
-    impl Scratch {
-        fn new() -> Self {
-            let dir = std::env::temp_dir().join(format!(
-                "forge-transcript-age-{}-{}",
-                std::process::id(),
-                uuid::Uuid::new_v4().simple()
-            ));
-            std::fs::create_dir_all(&dir).expect("scratch");
-            Self(dir)
-        }
-
-        fn path(&self) -> &Path {
-            &self.0
-        }
-    }
-
-    impl Drop for Scratch {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
-    }
+    use crate::test_scratch::Scratch;
 
     fn file(path: &Path, secs: u64) {
         std::fs::create_dir_all(path.parent().expect("parent")).expect("mkdir");
@@ -132,7 +109,7 @@ mod tests {
 
     #[test]
     fn a_lead_transcript_alone_answers_its_own_write() {
-        let dir = Scratch::new();
+        let dir = Scratch::new("transcript-age");
         let lead = dir.path().join("conv.jsonl");
         file(&lead, 1_800_000_000);
         assert_eq!(last_written(&lead), Some(1_800_000_000_000));
@@ -140,7 +117,7 @@ mod tests {
 
     #[test]
     fn a_child_writing_under_the_same_conversation_is_the_newer_evidence() {
-        let dir = Scratch::new();
+        let dir = Scratch::new("transcript-age");
         let lead = dir.path().join("conv.jsonl");
         file(&lead, 1_800_000_000);
         file(
@@ -159,7 +136,7 @@ mod tests {
 
     #[test]
     fn what_is_not_a_child_transcript_is_not_evidence() {
-        let dir = Scratch::new();
+        let dir = Scratch::new("transcript-age");
         let lead = dir.path().join("conv.jsonl");
         file(&lead, 1_800_000_000);
         file(
@@ -181,7 +158,7 @@ mod tests {
 
     #[test]
     fn a_missing_transcript_is_no_evidence_rather_than_silence() {
-        let dir = Scratch::new();
+        let dir = Scratch::new("transcript-age");
         assert_eq!(last_written(&dir.path().join("gone.jsonl")), None);
         assert_eq!(
             last_written(dir.path()),
@@ -192,7 +169,7 @@ mod tests {
 
     #[test]
     fn children_still_answer_where_the_lead_file_cannot_be_read() {
-        let dir = Scratch::new();
+        let dir = Scratch::new("transcript-age");
         let child = dir
             .path()
             .join("conv")
@@ -207,7 +184,7 @@ mod tests {
 
     #[test]
     fn a_subagent_transcript_sits_where_last_written_reads_children_from() {
-        let dir = Scratch::new();
+        let dir = Scratch::new("transcript-age");
         let lead = dir.path().join("conv.jsonl");
         let child = child_transcript(&lead, "a13e68aaf656d6502").expect("a plain id");
         assert_eq!(
@@ -236,7 +213,7 @@ mod tests {
 
     #[test]
     fn one_file_answers_for_itself_and_not_for_its_siblings() {
-        let dir = Scratch::new();
+        let dir = Scratch::new("transcript-age");
         let mine = dir
             .path()
             .join("conv")
@@ -264,7 +241,7 @@ mod tests {
 
     #[test]
     fn a_file_written_now_reads_as_now() {
-        let dir = Scratch::new();
+        let dir = Scratch::new("transcript-age");
         let lead = dir.path().join("conv.jsonl");
         std::fs::write(&lead, "{}\n").expect("write");
         let now = SystemTime::now()

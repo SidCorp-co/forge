@@ -341,15 +341,8 @@ mod tests {
         super::report(d, now_ms).expect("a record this module wrote")
     }
 
-    fn dir(name: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!(
-            "forge-pool-reads-{name}-{}-{:?}",
-            std::process::id(),
-            std::thread::current().id()
-        ));
-        let _ = std::fs::remove_dir_all(&d);
-        std::fs::create_dir_all(&d).expect("scratch");
-        d
+    fn dir(name: &str) -> crate::test_scratch::Scratch {
+        crate::test_scratch::Scratch::new(&format!("pool-reads-{name}"))
     }
 
     fn unread(status: Option<u16>, reason: &str) -> Took {
