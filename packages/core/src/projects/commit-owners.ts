@@ -198,7 +198,7 @@ function headOf(r: IssueWorkRecord, branches: readonly string[]): string | null 
   const head = r.head?.trim().toLowerCase();
   const base = r.base?.trim().toLowerCase();
   if (!head || !base || head === base) return null;
-  if (r.branch && branches.includes(r.branch)) return null;
+  if (!r.branch || branches.includes(r.branch)) return null;
   return head;
 }
 

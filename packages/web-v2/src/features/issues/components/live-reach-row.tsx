@@ -19,15 +19,23 @@ function Compared({ reach }: { reach: Extract<LiveReach, { baseSha: string }> })
 
 /**
  * Waiting commits core could give to no issue. "Nothing waiting" is only as good as that
- * attribution, so a reader is told how many commits it could not attribute, and which.
+ * attribution, so a reader is told how many commits it could not attribute and can open the list;
+ * a native summary opens by Enter, Space or pointer.
  */
 function Unowned({ commits }: { commits: LiveReachCommit[] }) {
   if (commits.length === 0) return null;
   const n = commits.length;
   return (
-    <span className="fg-caption" title={commits.map((c) => `${short(c.sha)} ${c.subject}`).join("\n")}>
-      {n} waiting commit{n === 1 ? "" : "s"} belong{n === 1 ? "s" : ""} to no issue
-    </span>
+    <details className="flex flex-col items-end gap-1">
+      <summary className="fg-caption cursor-pointer">
+        {n} waiting commit{n === 1 ? "" : "s"} belong{n === 1 ? "s" : ""} to no issue
+      </summary>
+      {commits.map((c) => (
+        <span key={c.sha} className="fg-caption font-mono block" title={c.subject}>
+          {short(c.sha)} {c.subject}
+        </span>
+      ))}
+    </details>
   );
 }
 

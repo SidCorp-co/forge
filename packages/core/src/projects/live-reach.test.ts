@@ -183,6 +183,47 @@ describe('liveReachOf', () => {
     });
   });
 
+  it('places a body-cited or mid-subject-cited issue only on its own recorded head, never on the citing commit', () => {
+    const body = 'c'.repeat(40);
+    const mid = 'd7'.padEnd(40, '0');
+    const own = 'a1'.padEnd(40, '0');
+    const cites = measured({
+      commits: [
+        { sha: own, message: 'fix(deploy): report the running commit', parents: [] },
+        {
+          sha: body,
+          message: 'fix(qc-agent): strip brackets (SD-451)\n\ncopy of safeField (SD-170 keeps it)',
+          parents: [],
+        },
+        {
+          sha: mid,
+          message: 'feat(logger): below the seven days SD-401 asks for (SD-435)',
+          parents: [],
+        },
+      ],
+    });
+    const head = (issSeq: number, sha: string) => ({
+      issSeq,
+      mergedCommitSha: null,
+      head: sha,
+      base: 'b0'.padEnd(40, '0'),
+      branch: 'topic-work',
+    });
+    for (const seq of [170, 401]) {
+      expect(liveReachOf(issue({ issSeq: seq }), cites, pattern)?.state).toBe('none_waiting');
+      expect(liveReachOf(issue({ issSeq: seq }), cites, pattern, [head(seq, own)])).toMatchObject({
+        state: 'not_on_live',
+        evidence: [{ sha: own, via: 'recorded_head' }],
+      });
+    }
+    expect(liveReachOf(issue({ issSeq: 170 }), cites, pattern, [head(170, body)])?.state).toBe(
+      'none_waiting',
+    );
+    expect(liveReachOf(issue({ issSeq: 401 }), cites, pattern, [head(401, mid)])?.state).toBe(
+      'none_waiting',
+    );
+  });
+
   it('carries a refusal reason rather than a verdict', () => {
     const refused: LiveReading = {
       kind: 'refused',

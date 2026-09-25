@@ -3,7 +3,7 @@
 // ISS-1217 — the rail says whether a merged issue's work reached the live branch.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { IssueDetail, LiveReach } from "../types";
@@ -102,7 +102,7 @@ describe("the Production row", () => {
     expect(screen.queryByText(/belongs? to no issue/)).not.toBeInTheDocument();
   });
 
-  it("counts the waiting commits that belong to no issue, and names them on hover", () => {
+  it("counts the waiting commits that belong to no issue, and opens onto them from its summary", () => {
     render(
       rail({
         ...measured,
@@ -114,11 +114,14 @@ describe("the Production row", () => {
       }),
     );
     expect(screen.getByText("Nothing waiting for master")).toBeInTheDocument();
-    const count = screen.getByText("2 waiting commits belong to no issue");
-    expect(count).toHaveAttribute(
-      "title",
-      "d06bf1db style(client): satisfy pint\n07002be8 fix(campaign): stop resetting status",
-    );
+    const summary = screen.getByText("2 waiting commits belong to no issue");
+    expect(summary.tagName).toBe("SUMMARY");
+    const disclosure = summary.closest("details") as HTMLDetailsElement;
+    expect(disclosure.open).toBe(false);
+    fireEvent.click(summary);
+    expect(disclosure.open).toBe(true);
+    expect(screen.getByText("d06bf1db style(client): satisfy pint")).toBeVisible();
+    expect(screen.getByText("07002be8 fix(campaign): stop resetting status")).toBeVisible();
     expect(screen.queryByText(/on production/i)).not.toBeInTheDocument();
   });
 

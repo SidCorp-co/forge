@@ -215,7 +215,7 @@ const rec = (over: Partial<IssueWorkRecord> & { issSeq: number }): IssueWorkReco
   mergedCommitSha: null,
   head: null,
   base: 'cut',
-  branch: `ISS-${over.issSeq}-work`,
+  branch: 'topic-work',
   ...over,
 });
 const portal = [
@@ -274,6 +274,8 @@ describe('readingOwnership', () => {
       rec({ issSeq: 72, head: 'bb4', base: null }),
       rec({ issSeq: 73, head: 'bb4', branch: 'stg' }),
       rec({ issSeq: 74, head: 'bb4', branch: 'master' }),
+      rec({ issSeq: 75, head: 'bb4', branch: null }),
+      rec({ issSeq: 76, head: 'bb4', branch: '' }),
     ]);
     expect(got.owners.bb4).toBeUndefined();
     expect(got.ownerless).toEqual(['bb4', 'd06']);
