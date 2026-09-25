@@ -125,7 +125,6 @@ async function refusalCode(call: () => Promise<unknown>): Promise<string | null>
   }
 }
 
-/** The sentence a finish call is refused with, or `null` when it answered. */
 async function refusalMessage(call: () => Promise<unknown>): Promise<string | null> {
   const { finishRefusal } = await import('../../src/release-batch/refusals.js');
   try {

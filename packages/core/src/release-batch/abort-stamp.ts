@@ -1,10 +1,7 @@
-// The abort stamp a release run carries (`pipeline_runs.metadata.abort`), and the one
-// predicate every finish-side check reads to ask whether a batch was aborted.
-//
-// An abort cannot cancel its run before it recovers the roster: the run-close hook in
-// `claim-subscriber.ts` recovers it too, and would race the abort for the roster and for
-// the account the abort answers with. So the abort writes this stamp first, and a batch
-// is aborted to a finish from that write on, before its status moves.
+// The abort stamp on a release run (`pipeline_runs.metadata.abort`), and the one predicate every
+// finish-side check reads. An abort cannot cancel before it recovers the roster — the run-close
+// hook in `claim-subscriber.ts` would race it — so it writes this stamp first, and a batch is
+// aborted to a finish from that write on.
 
 import { sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
@@ -38,7 +35,6 @@ export function batchAborted(run: { status: string; metadata: unknown }): boolea
   return run.status === 'cancelled' || readAbortStamp(run.metadata) !== null;
 }
 
-/** The same predicate, negated, as a condition on a `pipeline_runs` write. */
 export const RUN_NOT_ABORTED = sql`(${pipelineRuns.status} <> 'cancelled' AND ${pipelineRuns.metadata} -> 'abort' IS NULL)`;
 
 /**
@@ -64,7 +60,6 @@ export async function stampAbort(
   `);
 }
 
-/** What an abort did to this batch, read off the run. */
 export function abortAccount(run: { metadata: unknown; shipped: boolean }): AbortAccount {
   if (run.shipped) return 'shipped';
   return readAbortStamp(run.metadata)?.roster ?? 'unrecorded';

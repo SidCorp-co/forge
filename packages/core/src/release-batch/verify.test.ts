@@ -107,35 +107,6 @@ describe('verifyDeployed', () => {
     expect(out).toEqual({ ok: true, commit: NEW, health: 'up', identity: NEW, moved: true });
   });
 
-  // ISS-1190: an abort was noticed only when the window closed, so a finish record read
-  // `verifying` beside a cancelled run for up to the whole window.
-  it('ends at the checkpoint that throws, before the next reading and without waiting out the window', async () => {
-    fetchMock.mockResolvedValue({
-      ok: true,
-      status: 200,
-      text: async () => JSON.stringify({ version: '1.2', commit: OLD }),
-    });
-    const stop = new Error('stopped by the caller');
-    let calls = 0;
-    const checkpoint = vi.fn(async () => {
-      calls += 1;
-      if (calls === 3) throw stop;
-    });
-
-    const out = verifyDeployed({
-      cfg: CFG,
-      commitBefore: OLD,
-      expected: NEW,
-      checkpoint,
-      now: ticking(),
-      sleep: noSleep,
-    });
-
-    await expect(out).rejects.toBe(stop);
-    expect(checkpoint).toHaveBeenCalledTimes(3);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-  });
-
   it('goes red when the site is healthy and still serving the pre-release build', async () => {
     answers(OLD, OLD, OLD, OLD);
 

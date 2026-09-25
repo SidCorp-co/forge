@@ -266,7 +266,6 @@ export interface FinishReleaseBatchOptions {
   commit?: string | undefined;
   /** An earlier worker on this same attempt already saw the probes go green, so they are not read again. */
   alreadyVerified?: boolean | undefined;
-  /** Awaited before each probe read while verifying; throws to stop the verification there. */
   whileVerifying?: (() => Promise<void>) | undefined;
   /** Called once verification is green, before the first issue closes. */
   onVerified?: (() => Promise<void>) | undefined;
@@ -477,8 +476,7 @@ export async function abortReleaseBatch(
   actorUserId: string,
   options: AbortReleaseBatchOptions = {},
 ): Promise<AbortReleaseBatchResult> {
-  // First, so a finish attempt sees the abort from here on: the run is cancelled only after the
-  // roster is recovered, because the run-close hook would otherwise race this recovery.
+  // First, so a finish sees the abort before the recovery and the cancel below (abort-stamp.ts).
   await stampAbort(runId, {
     reason,
     by: actorUserId,
