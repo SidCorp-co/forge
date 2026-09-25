@@ -339,10 +339,13 @@ fn run_declare(
     session_id: &str,
 ) -> ClaimReply {
     // First, before anything is read or written: a drain that admits a run is
-    // waiting on a queue it keeps refilling (ISS-1223).
-    if let Some(why) = ctl.drain.refusal() {
-        return ClaimReply::refused(why);
-    }
+    // waiting on a queue it keeps refilling (ISS-1223). The permit is held to
+    // the end of this function, past the ledger write, so a drain that begins
+    // meanwhile waits for this row rather than reading the box idle without it.
+    let _admitted = match ctl.drain.admit() {
+        Ok(permit) => permit,
+        Err(closed) => return ClaimReply::refused(closed.refusal),
+    };
     let Some(serves) = ctl.masters.project_for_session(session_id) else {
         return ClaimReply::refused(ctl.masters.why_unplaced(project_id));
     };
@@ -1621,6 +1624,32 @@ mod tests {
                     .unwrap()
                     .is_empty(),
                 "a refused declaration writes no row"
+            );
+        }
+
+        /// The permit is bound to a name, so it lives past the ledger write; a
+        /// `let _ =` would drop it on the spot and leave the write unprotected.
+        #[test]
+        fn a_declaration_holds_its_permit_past_the_ledger_write() {
+            const SOURCE: &str = include_str!("control.rs");
+            let body = SOURCE
+                .split("fn run_declare(")
+                .nth(1)
+                .and_then(|b| b.split("\nfn ").next())
+                .expect("run_declare's body");
+            let gate = body
+                .find("let _admitted = match ctl.drain.admit()")
+                .expect("run_declare takes a named permit");
+            let write = body
+                .find("create_run_group(")
+                .expect("run_declare writes the row");
+            assert!(
+                gate < write,
+                "the permit is taken before the row is written"
+            );
+            assert!(
+                !body.contains("let _ = ctl.drain.admit()"),
+                "a permit bound to `_` is dropped before the write it guards"
             );
         }
 

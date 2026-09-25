@@ -74,6 +74,32 @@ struct Inner {
     next_id: u64,
     reopened_at: Option<Instant>,
     state: Option<DrainState>,
+    /// Admissions past the gate whose work is not yet where the holder scan
+    /// can see it. The drain counts them as holders, so a declaration that
+    /// passed the gate an instant before the attempt began is waited for
+    /// rather than restarted over.
+    admitting: usize,
+}
+
+/// Leave to admit one piece of work, held until that work is recorded where
+/// the drain's holder scan reads it. Taken under the same lock `begin` takes,
+/// so no admission passes the gate once an attempt holds it.
+#[must_use = "a permit dropped at once admits nothing and protects nothing"]
+pub struct Permit<'a>(&'a Drain);
+
+impl Drop for Permit<'_> {
+    fn drop(&mut self) {
+        let mut inner = self.0.lock();
+        inner.admitting = inner.admitting.saturating_sub(1);
+    }
+}
+
+/// Why admission is closed, for the two readers that report it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Closed {
+    pub cause: String,
+    /// The sentence a refused declaration carries.
+    pub refusal: String,
 }
 
 /// Whether this daemon is admitting work, and the record it keeps of that.
@@ -93,6 +119,7 @@ impl Drain {
                 next_id: 1,
                 reopened_at: None,
                 state: None,
+                admitting: 0,
             }),
             record_dir,
             identity: Record::this_process(now_ms()),
@@ -150,20 +177,7 @@ impl Drain {
         })
     }
 
-    /// The cause of the drain holding admission closed, where one is.
-    pub fn restarting(&self) -> Option<String> {
-        let inner = self.lock();
-        inner.attempt?;
-        match &inner.state {
-            Some(DrainState::Draining { cause, .. }) => Some(cause.clone()),
-            _ => None,
-        }
-    }
-
-    /// The sentence a refused declaration carries, or `None` while admission
-    /// is open.
-    pub fn refusal(&self) -> Option<String> {
-        let inner = self.lock();
+    fn closed_in(inner: &Inner) -> Option<Closed> {
         inner.attempt?;
         let Some(DrainState::Draining {
             cause, since_ms, ..
@@ -172,11 +186,33 @@ impl Drain {
             return None;
         };
         let waited = ((now_ms() - since_ms).max(0) / 1000) as u64;
-        Some(format!(
-            "this box is draining before a restart ({cause}, {} so far) and declares no new run until it has restarted or the drain gives up, at most {} after it began. Nothing was recorded — declare it again once the box has turned over",
-            serving::span_secs(waited),
-            serving::span_secs(DRAIN_TIMEOUT_SECS)
-        ))
+        Some(Closed {
+            cause: cause.clone(),
+            refusal: format!(
+                "this box is draining before a restart ({cause}, {} so far) and declares no new run until it has restarted or the drain gives up, at most {} after it began. Nothing was recorded — declare it again once the box has turned over",
+                serving::span_secs(waited),
+                serving::span_secs(DRAIN_TIMEOUT_SECS)
+            ),
+        })
+    }
+
+    /// Leave to admit one piece of work, or why there is none.
+    pub fn admit(&self) -> Result<Permit<'_>, Closed> {
+        let mut inner = self.lock();
+        if let Some(closed) = Self::closed_in(&inner) {
+            return Err(closed);
+        }
+        inner.admitting += 1;
+        Ok(Permit(self))
+    }
+
+    /// Why admission is closed, where it is, without taking leave.
+    pub fn refusal(&self) -> Option<String> {
+        Self::closed_in(&self.lock()).map(|c| c.refusal)
+    }
+
+    fn admitting(&self) -> usize {
+        self.lock().admitting
     }
 
     fn report(&self, attempt: &Attempt, outstanding: &[String]) {
@@ -254,8 +290,18 @@ pub(crate) enum Drained {
     NotNow(NotNow),
 }
 
-fn holders(inflight: &Arc<AtomicUsize>, live: &impl Fn() -> Vec<String>) -> Vec<String> {
+fn holders(
+    drain: &Drain,
+    inflight: &Arc<AtomicUsize>,
+    live: &impl Fn() -> Vec<String>,
+) -> Vec<String> {
     let mut out = Vec::new();
+    let admitting = drain.admitting();
+    if admitting > 0 {
+        out.push(format!(
+            "{admitting} admission(s) that passed the gate before the drain began and are not yet recorded"
+        ));
+    }
     let turns = inflight.load(Ordering::Acquire);
     if turns > 0 {
         out.push(format!(
@@ -309,14 +355,23 @@ where
     };
     let mut waited = 0u64;
     let mut report_at = 0u64;
+    let mut close_parked = Some(close_parked);
     loop {
-        let holding = holders(inflight, &live);
+        let mut holding = holders(drain, inflight, &live);
         if holding.is_empty() {
-            let closed = close_parked().await;
-            if closed > 0 {
-                tracing::warn!("[{what}] closed {closed} parked session(s) before restarting");
+            if let Some(close) = close_parked.take() {
+                let closed = close().await;
+                if closed > 0 {
+                    tracing::warn!("[{what}] closed {closed} parked session(s) before restarting");
+                }
+                // Closing takes up to the checkpoint budget, and an
+                // interactive turn is admitted meanwhile; the restart would
+                // take it, so the box is read again before the exit.
+                holding = holders(drain, inflight, &live);
             }
-            return Drained::Idle;
+            if holding.is_empty() {
+                return Drained::Idle;
+            }
         }
         if waited >= DRAIN_TIMEOUT_SECS {
             let next = next();
@@ -538,7 +593,7 @@ mod tests {
             drain.refusal().is_none(),
             "criterion 8: the give-up reopens admission"
         );
-        assert!(drain.restarting().is_none());
+        assert!(drain.admit().is_ok(), "and a permit is granted again");
     }
 
     /// Criteria 6 and 7, 9: a line at the start, one at least every ten
@@ -637,6 +692,59 @@ mod tests {
             Err(NotNow::UnderWay { cause }) => assert_eq!(cause, "update 0.1.0 → 0.1.1"),
             other => panic!("a second request must be refused naming the first: {other:?}"),
         }
+    }
+
+    /// An admission that passed the gate before the attempt began holds the
+    /// drain until its work is recorded: the drain cannot read the box idle
+    /// between the gate and the write, and no admission passes after `begin`.
+    #[tokio::test(start_paused = true)]
+    async fn an_admission_already_past_the_gate_holds_the_drain_until_it_lands() {
+        let drain = Arc::new(Drain::unrecorded());
+        let permit_holder = drain.clone();
+        let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+        let landed = tokio::spawn(async move {
+            let permit = permit_holder
+                .admit()
+                .expect("the gate is open before the drain");
+            let _ = rx.await;
+            drop(permit);
+        });
+        tokio::task::yield_now().await;
+        let d = drain.clone();
+        let inflight = Arc::new(AtomicUsize::new(0));
+        let draining = tokio::spawn(async move { drain_with(&d, &inflight, none).await });
+        tokio::time::sleep(Duration::from_secs(5 * 60)).await;
+        assert!(
+            !draining.is_finished(),
+            "the drain may not read the box idle while an admission is between the gate and its write"
+        );
+        let refused = drain
+            .admit()
+            .err()
+            .expect("no admission passes once the attempt began");
+        assert_eq!(refused.cause, "update 0.1.0 → 0.1.1");
+        tx.send(()).unwrap();
+        landed.await.unwrap();
+        assert_eq!(draining.await.unwrap(), Drained::Idle);
+    }
+
+    /// An interactive turn arriving while parked sessions close is read before
+    /// the exit that would take it.
+    #[tokio::test(start_paused = true)]
+    async fn a_turn_that_arrives_while_parked_sessions_close_is_not_restarted_over() {
+        let drain = Drain::unrecorded();
+        let inflight = Arc::new(AtomicUsize::new(0));
+        let arriving = inflight.clone();
+        let close = move || {
+            arriving.fetch_add(1, Ordering::AcqRel);
+            std::future::ready(0)
+        };
+        let out = drain_to_idle(&drain, "test", "c", &inflight, none, close, next).await;
+        assert_eq!(
+            out,
+            Drained::GaveUp,
+            "a turn that stays past the bound holds the restart it arrived during"
+        );
     }
 
     #[test]

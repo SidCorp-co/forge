@@ -1032,17 +1032,27 @@ async fn sweep(
     }
 
     for runner in &served {
-        // Asked per project rather than once per sweep, so a drain that begins
-        // while this sweep is part-way through stops it at the next project.
-        if let Some(cause) = drain.restarting() {
-            let read = read_standing(ledger.as_ref(), &runner.project_id);
-            let verdict = standing_verdict(masters, read, &runner.project_id, &runner.slug).await;
-            if matches!(verdict, Some((Placed::Proceed | Placed::Withheld, _))) {
-                masters.note_unplaced(&runner.project_id, Unplaced::Restarting { cause });
+        // Leave is taken per project and held to the end of its iteration, so
+        // a drain that begins part-way through a sweep waits for the project
+        // in hand to finish admitting and stops the sweep at the next one.
+        let _admitting = match drain.admit() {
+            Ok(permit) => permit,
+            Err(closed) => {
+                let read = read_standing(ledger.as_ref(), &runner.project_id);
+                let verdict =
+                    standing_verdict(masters, read, &runner.project_id, &runner.slug).await;
+                if matches!(verdict, Some((Placed::Proceed | Placed::Withheld, _))) {
+                    masters.note_unplaced(
+                        &runner.project_id,
+                        Unplaced::Restarting {
+                            cause: closed.cause,
+                        },
+                    );
+                }
+                supervise(client, masters, tokens, &runner.project_id, &runner.slug).await;
+                continue;
             }
-            supervise(client, masters, tokens, &runner.project_id, &runner.slug).await;
-            continue;
-        }
+        };
         if !accepts_new_work(&runner.status) {
             tracing::info!(
                 "[master] {}: runner is {} — taking no new work; anything already running finishes",
@@ -7589,14 +7599,20 @@ mod unplaced_tests {
     fn a_daemon_draining_before_a_restart_admits_no_work_for_any_project() {
         let body = sweep_body();
         let start = body
-            .find("if let Some(cause) = drain.restarting() {")
-            .expect("the sweep asks the drain before admitting anything");
+            .find("let _admitting = match drain.admit() {")
+            .expect("the sweep takes a named permit before admitting anything");
         let rest = &body[start..];
-        let end = block_end(rest, 8).expect("the restarting branch must close");
+        let end = rest
+            .find("\n        };")
+            .expect("the permit's match must close");
         let branch = &rest[..end];
         assert!(
-            branch.trim_end().ends_with("continue;"),
-            "the branch leaves the project's iteration, or every act below it still runs: {branch}"
+            branch.trim_end().ends_with("continue;\n            }"),
+            "the refused arm leaves the project's iteration, or every act below it still runs: {branch}"
+        );
+        assert!(
+            !body.contains("let _ = drain.admit()"),
+            "a permit bound to `_` is dropped before the acts it guards"
         );
         assert!(
             branch.contains("Unplaced::Restarting"),
