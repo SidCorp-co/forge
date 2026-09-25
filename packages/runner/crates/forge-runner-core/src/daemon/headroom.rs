@@ -236,6 +236,17 @@ impl Report {
     }
 }
 
+/// The verdict where it is a pressure, and nothing where it is not.
+///
+/// `Clear` and `Unmeasurable` are both states a box passes through without
+/// anything being short, and only a short box has a pressure to clear.
+fn pressure(verdict: Verdict) -> Option<Verdict> {
+    match verdict {
+        v @ (Verdict::Critical(_) | Verdict::Tight(_)) => Some(v),
+        _ => None,
+    }
+}
+
 /// The levels a verdict has already been reported at, and when.
 ///
 /// The shape is `worktree_reap::SweepClock`'s and for the same reason: a
@@ -256,14 +267,14 @@ impl Watch {
     /// What this tick owes the journal.
     pub fn tick(&mut self, now: Instant, verdict: Verdict) -> Option<Report> {
         if let Verdict::Unmeasurable(why) = &verdict {
-            if let Some(was) = self.blinding.clone().or_else(|| self.pressure()) {
+            if let Some(was) = self.blinding.clone().or_else(|| self.standing()) {
                 return self.blinded(now, was, why.clone());
             }
         }
         // Taken rather than dropped: a clear reading arriving straight out of
         // blindness replaces the pressure that was standing, not the
         // unreadable verdict that stood in for it, and `said` holds the
-        // latter (consult ba0b62 F1).
+        // latter (consult f45b6d F1).
         let blinded_over = self.blinding.take();
         if self.said.as_ref() == Some(&verdict) {
             if !matches!(verdict, Verdict::Critical(_)) {
@@ -284,20 +295,22 @@ impl Watch {
         self.said_at = Some(now);
         self.since = Some(now);
         match (was, &verdict) {
-            (Some(was), Verdict::Clear) if was != Verdict::Clear => Some(Report::Cleared {
-                was: blinded_over.unwrap_or(was),
-                stood,
-            }),
+            // Only a pressure clears. An unreadable reading that nothing stood
+            // behind is an outage ending, and reporting it as
+            // `clear on both axes again after 5m: unreadable (...)` tells an
+            // operator the box had been filling when it had not
+            // (consult cc9900 F1).
+            (Some(was), Verdict::Clear) => match blinded_over.or_else(|| pressure(was)) {
+                Some(was) => Some(Report::Cleared { was, stood }),
+                None => Some(Report::Entered(verdict)),
+            },
             _ => Some(Report::Entered(verdict)),
         }
     }
 
     /// The pressure the last line reported, where it reported one.
-    fn pressure(&self) -> Option<Verdict> {
-        match self.said.clone() {
-            Some(v @ (Verdict::Critical(_) | Verdict::Tight(_))) => Some(v),
-            _ => None,
-        }
+    fn standing(&self) -> Option<Verdict> {
+        pressure(self.said.clone()?)
     }
 
     /// A box that stopped answering while `was` stood.
@@ -693,7 +706,7 @@ fn said_bytes(bytes: u64) -> String {
     const K: u64 = 1024;
     // Up to exbibytes because `u64::MAX` is about 16 of them. A table
     // stopping at T renders a pebibyte as `1024.0T`, which is not the largest
-    // unit that leaves the figure at or above one (consult ba0b62 F3).
+    // unit that leaves the figure at or above one (consult f45b6d F3).
     for (unit, scale) in [
         ("E", K * K * K * K * K * K),
         ("P", K * K * K * K * K),
@@ -1179,15 +1192,46 @@ mod tests {
         assert!(
             line.contains("that verdict has stood 1h 5m (3900s)"),
             "the duration is how long the verdict has stood, not how long ago the box last \
-             answered — the two differ by every successful tick in between (consult ba0b62 F2): \
+             answered — the two differ by every successful tick in between (consult f45b6d F2): \
              {line}"
+        );
+    }
+
+    /// An outage ending is not a pressure clearing. `Cleared` used to be built
+    /// from any verdict that was not `Clear`, so a box that merely stopped
+    /// answering for five minutes came back as
+    /// `clear on both axes again after 5m (300s): unreadable (...)` — the
+    /// recovery sentence of a box that had been filling (consult cc9900 F1).
+    #[test]
+    fn a_box_that_was_only_unreadable_comes_back_without_a_pressure_to_clear() {
+        let mut watch = Watch::default();
+        let t0 = Instant::now();
+        watch.tick(t0, Verdict::Clear);
+        watch.tick(
+            t0 + TICK,
+            Verdict::Unmeasurable("statvfs answered EIO".to_string()),
+        );
+        let back = watch
+            .tick(t0 + TICK * 2, Verdict::Clear)
+            .expect("a box that answers again is reported");
+        assert_eq!(back, Report::Entered(Verdict::Clear));
+
+        let line = said(
+            Path::new("/tmp"),
+            &Reading::Took(the_measured_box()),
+            &back,
+            &[],
+        );
+        assert!(
+            !line.contains("again after"),
+            "nothing was short, so nothing cleared: {line}"
         );
     }
 
     /// A pressure that ends while the box is still unreadable is still that
     /// pressure ending. Reporting `unreadable (...)` as the thing that
     /// cleared loses the axis an operator acts on, and `said` holds the
-    /// unreadable verdict rather than the pressure by then (consult ba0b62
+    /// unreadable verdict rather than the pressure by then (consult f45b6d
     /// F1).
     #[test]
     fn a_clear_reading_out_of_blindness_names_the_pressure_and_not_the_blindness() {
@@ -1223,7 +1267,7 @@ mod tests {
     }
 
     /// `u64::MAX` is about sixteen exbibytes, so a table ending at T renders a
-    /// pebibyte as `1024.0T` (consult ba0b62 F3).
+    /// pebibyte as `1024.0T` (consult f45b6d F3).
     #[test]
     fn a_byte_figure_is_rendered_in_the_largest_unit_the_type_can_reach() {
         const K: u64 = 1024;
@@ -1325,6 +1369,43 @@ mod tests {
         });
         assert!(clear.contains("INFO"), "{clear}");
         assert!(!clear.contains("WARN"), "{clear}");
+
+        // `say` routes on `Report::level()` but is a `match` of its own, so a
+        // blinded report can be sent out at the wrong macro while
+        // `Report::level()` stays right — the shape consult fa8132 F2 found
+        // here once already, and consult cc9900 F2 found again for these two
+        // (criteria 48 and 49).
+        let blind = Reading::Refused("statvfs answered EIO".to_string());
+        let over_critical = logged_while(|| {
+            say(
+                &one_root(at, &blind),
+                &Report::Blinded {
+                    was: Verdict::Critical(Axis::Bytes),
+                    why: "statvfs answered EIO".to_string(),
+                    held: SAY_CRITICAL_AGAIN,
+                },
+            );
+        });
+        assert!(
+            over_critical.contains("ERROR"),
+            "a critical box that stops answering is no less full: {over_critical}"
+        );
+
+        let over_tight = logged_while(|| {
+            say(
+                &one_root(at, &blind),
+                &Report::Blinded {
+                    was: Verdict::Tight(Axis::Inodes),
+                    why: "statvfs answered EIO".to_string(),
+                    held: SAY_CRITICAL_AGAIN,
+                },
+            );
+        });
+        assert!(over_tight.contains("WARN"), "{over_tight}");
+        assert!(
+            !over_tight.contains("ERROR"),
+            "and a tight one does not become an error by going quiet: {over_tight}"
+        );
     }
 
     /// A third copy of this crate's log-capture helper, beside `master.rs`'s
