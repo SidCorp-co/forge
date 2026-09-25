@@ -10,7 +10,9 @@ const PR_REF_TAIL = /(?:\s*\(#\d+\))+\s*$/;
 const TRAILER = /\(([^()]*)\)\s*$/;
 const PR_MERGE = /^Merge pull request #\d+ from [^/\s]+\/(\S+)/;
 const BRANCH_MERGE = /^Merge (?:remote-tracking )?branch (?:'([^']+)'|(\S+))/;
-const MERGE_SOURCE = /^Merge (?:remote-tracking )?(?:branch )?'?([^'\s]+)'?/;
+const LOCAL_MERGE = /^Merge branch '?([^'\s]+)'?/;
+const REMOTE_MERGE = /^Merge remote-tracking branch '([^'\s]+)'/;
+const BARE_MERGE = /^Merge (?!branch |remote-tracking |pull request )([^'\s]+)/;
 const MERGE_LEAD = /^Merge\s+/;
 const LABEL_LEAD = /^[\w.-]+(?:\([^)]*\))?!?:\s*/;
 
@@ -22,8 +24,16 @@ function lastSegment(ref: string): string {
   return ref.split('/').pop() ?? '';
 }
 
-function namesBranch(ref: string, branch: string): boolean {
-  return ref === branch || ref.endsWith(`/${branch}`);
+/**
+ * Whether the subject merges the base branch into another one. Git names a local branch as it is
+ * and a remote-tracking one as `<remote>/<name>`; a hand-written `Merge <ref> into …` is read as
+ * local unless it is qualified by `origin`, since a topic branch may itself end in the base's name.
+ */
+function mergesBase(subject: string, base: string): boolean {
+  const remote = REMOTE_MERGE.exec(subject)?.[1];
+  if (remote !== undefined) return remote.slice(remote.indexOf('/') + 1) === base;
+  const local = LOCAL_MERGE.exec(subject)?.[1] ?? BARE_MERGE.exec(subject)?.[1];
+  return local === base || local === `origin/${base}`;
 }
 
 function seqsIn(text: string, pattern: RegExp): number[] {
@@ -53,8 +63,7 @@ function leadingSeqs(text: string, pattern: RegExp): number[] {
  */
 export function declaredIssueSeqs(message: string, pattern: RegExp, baseBranch: string): number[] {
   const subject = subjectOf(message);
-  const source = MERGE_SOURCE.exec(subject)?.[1];
-  if (source !== undefined && namesBranch(source, baseBranch)) return [];
+  if (mergesBase(subject, baseBranch)) return [];
 
   const trailer = TRAILER.exec(subject.replace(PR_REF_TAIL, ''));
   const trailed = trailer?.[1] ? seqsIn(trailer[1], pattern) : [];

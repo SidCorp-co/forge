@@ -79,7 +79,21 @@ describe('declaredIssueSeqs', () => {
     ).toEqual([]);
     expect(declared("Merge branch 'staging' into ISS-220")).toEqual([]);
     expect(declared('Merge origin/release/rc into SD-4 (SD-4)', 'release/rc')).toEqual([]);
+    expect(declared("Merge remote-tracking branch 'upstream/staging' into SD-4 (SD-4)")).toEqual(
+      [],
+    );
     expect(declared('Merge origin/main into SD-4 (SD-4)')).toEqual([4]);
+  });
+
+  it('reads a topic branch whose name ends in the base branch as a topic branch', () => {
+    expect(declared("Merge branch 'feature/staging' into staging (ISS-450)")).toEqual([450]);
+    expect(declared('Merge feature/staging into staging (ISS-450)')).toEqual([450]);
+    const got = owners([
+      c('m1', "Merge branch 'feature/staging' into staging (ISS-450)", 'live', 'work'),
+      c('work', 'fix(logger): read the size in bytes', 'live'),
+    ]);
+    expect(got.m1).toEqual({ 450: 'declares_issue' });
+    expect(got.work).toEqual({ 450: 'merged_in' });
   });
 
   it('keeps the whole-reference boundary of the key pattern', () => {
