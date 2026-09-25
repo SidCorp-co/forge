@@ -211,7 +211,7 @@ impl Drain {
         Self::closed_in(&self.lock()).map(|c| c.refusal)
     }
 
-    fn admitting(&self) -> usize {
+    pub(crate) fn admitting(&self) -> usize {
         self.lock().admitting
     }
 

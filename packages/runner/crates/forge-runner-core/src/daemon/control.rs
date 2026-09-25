@@ -1730,6 +1730,46 @@ mod tests {
             );
         }
 
+        /// The permit's lifetime, run: a declaration stuck between the gate and
+        /// its ledger write still holds its permit when a drain begins, so the
+        /// drain counts it, and the row it then writes is not one the drain
+        /// read the box idle without.
+        #[test]
+        fn a_declaration_between_the_gate_and_its_write_holds_its_permit() {
+            let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
+            let held = ctl.ledger.lock().unwrap();
+            let declaring = {
+                let ctl = ctl.clone();
+                std::thread::spawn(move || {
+                    run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a")
+                })
+            };
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+            while ctl.drain.admitting() == 0 {
+                assert!(std::time::Instant::now() < deadline, "the declaration waiting on the ledger holds no permit, so a drain would read the box idle without its row");
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            let _attempt = ctl.drain.begin("update 0.1.0 → 0.1.1").unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            assert_eq!(
+                ctl.drain.admitting(),
+                1,
+                "the declaration blocked on the ledger still holds its permit once the drain has begun"
+            );
+            drop(held);
+            let reply = declaring.join().unwrap();
+            assert!(
+                reply.ok,
+                "it was admitted before the drain: {:?}",
+                reply.reason
+            );
+            assert_eq!(
+                ctl.drain.admitting(),
+                0,
+                "and the permit goes once the row is written"
+            );
+        }
+
         /// The permit is bound to a name, so it lives past the ledger write; a
         /// `let _ =` would drop it on the spot and leave the write unprotected.
         #[test]

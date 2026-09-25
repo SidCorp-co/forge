@@ -9692,3 +9692,118 @@ mod own_exe_reporting_tests {
         );
     }
 }
+
+/// ISS-1223 criterion 3, run rather than read off the source: a sweep taken
+/// while a drain holds admission asks core for no work.
+#[cfg(test)]
+mod drain_sweep_tests {
+    use super::*;
+    use std::sync::Mutex as StdMutex;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    const RUNNERS: &str = r#"[{"projectId":"proj-1","runnerId":"r-1","slug":"drainsweep","baseBranch":null,"repoPath":null,"branch":null,"status":"active"}]"#;
+
+    /// Answers `me/runners` with one active runner and every other path with a
+    /// 404, and records the path of every request it is sent.
+    async fn recording_core() -> (String, Arc<StdMutex<Vec<String>>>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let seen = Arc::new(StdMutex::new(Vec::new()));
+        let log = seen.clone();
+        tokio::spawn(async move {
+            while let Ok((mut sock, _)) = listener.accept().await {
+                let log = log.clone();
+                tokio::spawn(async move {
+                    let mut buf = [0u8; 4096];
+                    let n = sock.read(&mut buf).await.unwrap_or(0);
+                    let head = String::from_utf8_lossy(&buf[..n]).into_owned();
+                    let path = head.split_whitespace().nth(1).unwrap_or("").to_string();
+                    let bare = path.split('?').next().unwrap_or("").to_string();
+                    log.lock().unwrap().push(bare.clone());
+                    let (status, body) = if bare == "/api/devices/me/runners" {
+                        ("200 OK", RUNNERS)
+                    } else {
+                        ("404 Not Found", r#"{"error":"absent","code":"NOT_FOUND"}"#)
+                    };
+                    let resp = format!(
+                        "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    );
+                    let _ = sock.write_all(resp.as_bytes()).await;
+                    let _ = sock.shutdown().await;
+                });
+            }
+        });
+        (format!("http://{addr}"), seen)
+    }
+
+    async fn one_sweep(drain: &crate::daemon::drain::Drain) -> (Vec<String>, Arc<Masters>) {
+        let (core, seen) = recording_core().await;
+        let client = CoreClient::new(core, String::from("tok"));
+        let masters = Arc::new(Masters::new());
+        let (_adopted_tx, adopted) = tokio::sync::watch::channel(true);
+        let mut ledger = Some(Ledger::open_in_memory().unwrap());
+        let mut said = None;
+        let _ = sweep(
+            &client,
+            &Config::default(),
+            &masters,
+            &agent_activity::Activities::new(),
+            &Arc::new(JobPanes::new()),
+            &crate::daemon::pool_jobs::NoRecords,
+            &adopted,
+            &mut ledger,
+            None,
+            &mut said,
+            drain,
+        )
+        .await;
+        let paths = seen.lock().unwrap().clone();
+        (paths, masters)
+    }
+
+    /// Every path a sweep reaches only by admitting work for a project.
+    fn admitting(paths: &[String]) -> Vec<&String> {
+        paths
+            .iter()
+            .filter(|p| p.contains("admissible") || p.contains("/pool") || p.contains("claim"))
+            .collect()
+    }
+
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_sweep_during_a_drain_asks_core_for_no_work_and_says_why() {
+        let _env = crate::auth::cred_store::ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = crate::test_scratch::Scratch::new("drain-sweep");
+        let _xdg = crate::auth::cred_store::ScopedVar::set("XDG_CONFIG_HOME", home.path());
+
+        // The control: with admission open, the same sweep does ask for work,
+        // so the silence below is the drain's and not this fixture's.
+        let open = crate::daemon::drain::Drain::unrecorded();
+        let (paths, _) = one_sweep(&open).await;
+        assert!(
+            !admitting(&paths).is_empty(),
+            "with admission open the sweep asks core for work: {paths:?}"
+        );
+
+        let drain = crate::daemon::drain::Drain::unrecorded();
+        let _attempt = drain.begin("update 0.1.0 → 0.1.1").unwrap();
+        let (paths, masters) = one_sweep(&drain).await;
+        assert!(
+            paths.iter().any(|p| p == "/api/devices/me/runners"),
+            "the sweep still reads which projects it serves: {paths:?}"
+        );
+        assert!(
+            admitting(&paths).is_empty(),
+            "a draining sweep asked core for work: {:?}",
+            admitting(&paths)
+        );
+        let why = masters.why_unplaced("proj-1");
+        assert!(
+            why.contains("draining before a restart") && why.contains("update 0.1.0 → 0.1.1"),
+            "the project records the drain as why no master was placed: {why}"
+        );
+    }
+}
