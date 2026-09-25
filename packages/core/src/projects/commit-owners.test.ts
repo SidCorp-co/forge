@@ -88,6 +88,7 @@ describe('declaredIssueSeqs', () => {
   it('reads a topic branch whose name ends in the base branch as a topic branch', () => {
     expect(declared("Merge branch 'feature/staging' into staging (ISS-450)")).toEqual([450]);
     expect(declared('Merge feature/staging into staging (ISS-450)')).toEqual([450]);
+    expect(declared("Merge branch 'origin/staging' into staging (ISS-450)")).toEqual([450]);
     const got = owners([
       c('m1', "Merge branch 'feature/staging' into staging (ISS-450)", 'live', 'work'),
       c('work', 'fix(logger): read the size in bytes', 'live'),

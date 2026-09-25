@@ -32,8 +32,10 @@ function lastSegment(ref: string): string {
 function mergesBase(subject: string, base: string): boolean {
   const remote = REMOTE_MERGE.exec(subject)?.[1];
   if (remote !== undefined) return remote.slice(remote.indexOf('/') + 1) === base;
-  const local = LOCAL_MERGE.exec(subject)?.[1] ?? BARE_MERGE.exec(subject)?.[1];
-  return local === base || local === `origin/${base}`;
+  const local = LOCAL_MERGE.exec(subject)?.[1];
+  if (local !== undefined) return local === base;
+  const bare = BARE_MERGE.exec(subject)?.[1];
+  return bare === base || bare === `origin/${base}`;
 }
 
 function seqsIn(text: string, pattern: RegExp): number[] {
