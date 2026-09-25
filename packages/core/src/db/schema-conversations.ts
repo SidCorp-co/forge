@@ -212,6 +212,8 @@ export const conversationWindowDecisions = [
   'unreachable',
   'undetermined',
   'handed-off',
+  /** A person ended the turn this window was for, before it had an answer (ISS-1146). */
+  'stopped',
 ] as const;
 export type ConversationWindowDecision = (typeof conversationWindowDecisions)[number];
 
@@ -278,7 +280,7 @@ export const conversationWindows = pgTable(
     ),
     decisionKnown: check(
       'conversation_windows_decision_known',
-      sql`${t.decision} IS NULL OR ${t.decision} IN ('answered','nothing-to-say','guard-backoff','guard-agent-loop','guard-dormant','authority-refused','unreachable','undetermined','handed-off')`,
+      sql`${t.decision} IS NULL OR ${t.decision} IN ('answered','nothing-to-say','guard-backoff','guard-agent-loop','guard-dormant','authority-refused','unreachable','undetermined','handed-off','stopped')`,
     ),
     closedHasDecision: check(
       'conversation_windows_closed_has_decision',
@@ -292,10 +294,47 @@ export const conversationWindows = pgTable(
   }),
 );
 
+/**
+ * A file staged in a room's composer and sent with one of its messages. Its own
+ * table rather than a fourth use of `session_attachments`, so the cascade a
+ * room's deletion owes its files is the room's and not a run's. What a message
+ * CARRIES is `conversation_messages.images`; this is where its bytes are found.
+ */
+export const conversationAttachments = pgTable(
+  'conversation_attachments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    conversationId: uuid('conversation_id')
+      .notNull()
+      .references(() => conversations.id, { onDelete: 'cascade' }),
+    uploaderId: uuid('uploader_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    name: text('name').notNull(),
+    path: text('path').notNull(),
+    mime: text('mime').notNull(),
+    size: integer('size').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    conversationIdx: index('conversation_attachments_conversation_idx').on(t.conversationId),
+    uploaderIdx: index('conversation_attachments_uploader_idx').on(t.uploaderId),
+  }),
+);
+
 export const conversationsRelations = relations(conversations, ({ many }) => ({
   participants: many(conversationParticipants),
   messages: many(conversationMessages),
   windows: many(conversationWindows),
+  attachments: many(conversationAttachments),
+}));
+
+export const conversationAttachmentsRelations = relations(conversationAttachments, ({ one }) => ({
+  conversation: one(conversations, {
+    fields: [conversationAttachments.conversationId],
+    references: [conversations.id],
+  }),
+  uploader: one(users, { fields: [conversationAttachments.uploaderId], references: [users.id] }),
 }));
 
 export const conversationWindowsRelations = relations(conversationWindows, ({ one }) => ({

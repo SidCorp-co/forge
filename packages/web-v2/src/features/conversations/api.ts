@@ -1,5 +1,5 @@
 
-import { apiClient, apiClientList } from "@/lib/api/client";
+import { apiClient, apiClientList, apiPutBytes } from "@/lib/api/client";
 import type {
   AgentModeOffer,
   ConversationCandidates,
@@ -24,6 +24,24 @@ export interface SendResult
   decision: string | null;
   /** What the room answers in, read back off the row rather than echoed from the request. */
   mode: ConversationMode;
+}
+
+export interface UploadTicket {
+  uploadId: string;
+  method: "PUT";
+  uploadPath: string;
+  maxBytes: number;
+  expiresAt: string;
+}
+
+/** One stored file, as the PUT answers and as a message then cites it. */
+export interface ConversationAttachment {
+  id: string;
+  conversationId: string;
+  name: string;
+  mime: string;
+  size: number;
+  url: string;
 }
 
 export const conversationsApi = {
@@ -91,14 +109,40 @@ export const conversationsApi = {
     }),
 
   /** `POST /api/conversations/:id/messages` — say something, and get the room back. */
-  send: (id: string, content: string, mode?: ConversationMode, clientToken?: string) =>
+  send: (
+    id: string,
+    content: string,
+    mode?: ConversationMode,
+    clientToken?: string,
+    attachmentIds?: string[],
+  ) =>
     apiClient<SendResult>(`/conversations/${id}/messages`, {
       method: "POST",
       body: JSON.stringify({
         content,
         ...(mode ? { mode } : {}),
         ...(clientToken ? { clientToken } : {}),
+        ...(attachmentIds?.length ? { attachmentIds } : {}),
       }),
+    }),
+
+  /**
+   * Mint a ticket, then stream the bytes to the capability URL it names — two
+   * calls because the second carries no credential (ISS-1146).
+   */
+  upload: async (id: string, file: File): Promise<ConversationAttachment> => {
+    const ticket = await apiClient<UploadTicket>(`/conversations/${id}/attachments`, {
+      method: "POST",
+      // A browser naming no type gets a refusal that names one, not a schema error.
+      body: JSON.stringify({ name: file.name, mime: file.type || "application/octet-stream" }),
+    });
+    return apiPutBytes<ConversationAttachment>(`/uploads/${ticket.uploadId}`, file);
+  },
+
+  /** `POST /api/conversations/:id/stop` — end the turn this room is answering. */
+  stop: (id: string) =>
+    apiClient<{ conversationId: string; stopped: number }>(`/conversations/${id}/stop`, {
+      method: "POST",
     }),
 
   /** `GET /api/conversations/agent-mode` — could a new room here be opened in Agent mode? */

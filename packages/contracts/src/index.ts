@@ -1,5 +1,6 @@
 export * from "./admin.js";
 export * from "./assistant-self.js";
+export * from "./attachments.js";
 export * from "./body-components.js";
 export * from "./deploy-capability.js";
 export * from "./divergence-charters.js";

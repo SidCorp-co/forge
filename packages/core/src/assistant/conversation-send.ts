@@ -20,6 +20,7 @@ import { type ProjectHandle, resolveProjectHandle } from '../conversations/handl
 import { type ConversationVenue, codeAuthored } from '../conversations/ports.js';
 import { routeWindow, type WindowTurnInputs } from '../conversations/route-window.js';
 import {
+  type ConversationImage,
   effectiveConversationMode,
   getConversation,
   readMessages,
@@ -43,7 +44,9 @@ import {
   type WebConversationFrame,
   webConversationPorts,
 } from './conversation-adapter.js';
+import { makeConversationImageResolver } from './conversation-images.js';
 import { type ConversationProgress, startConversationProgress } from './conversation-progress.js';
+import { registerTurnStop } from './conversation-stops.js';
 import { webAgentConversationPersona, webConversationPersona } from './door-persona.js';
 import { buildChatToolContext } from './tools/principal.js';
 import { buildProjectToolset } from './tools/registry.js';
@@ -70,6 +73,8 @@ export function webConversationTurn(args: {
     deliveryKey: string;
     mode: ConversationMode;
     question: string;
+    /** The pictures this window's messages carry, for a turn answered on a box. */
+    images: readonly ConversationImage[];
     /**
      * What was said in this room BEFORE this window, for a turn answered out of reach.
      */
@@ -80,9 +85,12 @@ export function webConversationTurn(args: {
    * The watcher this turn publishes to while it runs.
    */
   progress: ConversationProgress;
+  /** A person ending this turn from the room it runs in. */
+  externalStop: AbortSignal;
 }): WindowTurnInputs {
   return {
     door: 'web-chat-reply',
+    externalStop: args.externalStop,
     handleName: args.handleName,
     log: { adapter: 'web', projectId: args.project.id, mode: args.window.mode },
 
@@ -111,6 +119,7 @@ export function webConversationTurn(args: {
         question: args.window.question,
         askedByLabel: args.askedBy,
         conversationContext: await args.window.conversationContext(),
+        ...(args.window.images.length ? { images: args.window.images } : {}),
         persona: webAgentConversationPersona(args.project.name, args.project.slug, args.askedBy),
         door: 'web-agent-completion',
         replies: WEB_AGENT_REPLIES,
@@ -129,11 +138,20 @@ export function webConversationTurn(args: {
           message: codeAuthored(WEB_AGENT_REPLIES.noDevice),
           screenReplaced: false,
         };
+      if (started.reason === 'attachment-unreadable')
+        return {
+          send: true,
+          message: codeAuthored(
+            `I could not send ${started.file ?? 'the file you attached'} to the box that answers in Agent mode, so I have not answered rather than answering without it. Attach it again, or ask in Assistant mode, where I read it here.`,
+          ),
+          screenReplaced: false,
+        };
       return { send: false, reason: 'agent-turn-dispatch-failed' };
     },
 
     prepare: async ({ principalUserId, speakerUserId, conversationId, handleUserId }) => ({
       persona: webConversationPersona(args.project.name, args.project.slug, args.askedBy),
+      resolveImage: makeConversationImageResolver(conversationId),
       tools: buildProjectToolset(
         buildChatToolContext({
           userId: principalUserId,
@@ -200,6 +218,8 @@ export async function sendWebConversationMessage(args: {
   namedMode: boolean;
   /** The sender's own id for this message, echoed on the accepted event (ISS-1078). */
   clientToken?: string | undefined;
+  /** The files staged with this message, as references the turn re-reads (ISS-1146). */
+  images?: readonly ConversationImage[] | undefined;
 }): Promise<WebSendResult> {
   const frame: WebConversationFrame = {
     conversation: args.room,
@@ -213,6 +233,7 @@ export async function sendWebConversationMessage(args: {
     speakerKey: args.userId,
     speakerLabel: args.userLabel,
     manySpeakersPrincipalUserId: args.userId,
+    ...(args.images && args.images.length > 0 ? { images: args.images } : {}),
     withinCollection: async (tx, { conversationId, seq }) => {
       if (seq === 0 && (await settleConversationMode(tx, conversationId, args.mode))) return;
       if (seq !== 0 && !args.namedMode) return;
@@ -309,31 +330,39 @@ export async function routeWebWindow(
     entryId: randomUUID(),
   });
 
-  const outcome = await routeWindow({
-    window,
-    manySpeakersPrincipalUserId: subject.handle.userId,
-    handoffFor: async (windowId) =>
-      (await import('../agent-sessions/conversation-agent.js')).conversationAgentTurnForWindow(
-        windowId,
-      ),
-    inputs: ({ venue, conversationId, windowId, deliveryKey, mode, messages, reserve }) =>
-      webConversationTurn({
-        project: subject.project,
-        handleName: subject.handle.handle,
-        askedBy: messages.filter((m) => m.role === 'user').at(-1)?.authorLabel ?? null,
-        window: {
-          venue,
-          conversationId,
+  const stop = registerTurnStop(window.conversationId);
+  let outcome: Awaited<ReturnType<typeof routeWindow>>;
+  try {
+    outcome = await routeWindow({
+      window,
+      manySpeakersPrincipalUserId: subject.handle.userId,
+      handoffFor: async (windowId) =>
+        (await import('../agent-sessions/conversation-agent.js')).conversationAgentTurnForWindow(
           windowId,
-          deliveryKey,
-          mode,
-          question: messages.map((m) => m.content).join('\n'),
-          conversationContext: () => agentConversationContext(window),
-          reserve,
-        },
-        progress,
-      }),
-  });
+        ),
+      inputs: ({ venue, conversationId, windowId, deliveryKey, mode, messages, reserve }) =>
+        webConversationTurn({
+          project: subject.project,
+          handleName: subject.handle.handle,
+          askedBy: messages.filter((m) => m.role === 'user').at(-1)?.authorLabel ?? null,
+          window: {
+            venue,
+            conversationId,
+            windowId,
+            deliveryKey,
+            mode,
+            question: messages.map((m) => m.content).join('\n'),
+            images: messages.flatMap((m) => m.images ?? []),
+            conversationContext: () => agentConversationContext(window),
+            reserve,
+          },
+          progress,
+          externalStop: stop.signal,
+        }),
+    });
+  } finally {
+    stop.release();
+  }
   await progress.close();
 
   await publishToConversationReaders(window.conversationId, {

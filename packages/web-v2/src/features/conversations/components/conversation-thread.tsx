@@ -13,6 +13,7 @@
 // drawn by it: a person's own bubble, which carries an `authorLabel` a session
 // has no notion of, and the four non-message entries below.
 
+import { useState } from "react";
 import { Icon } from "@/design";
 import { Conversation } from "@/features/session/components/conversation";
 import { DisclosureScope } from "@/features/session/disclosure";
@@ -20,6 +21,7 @@ import { USER_BUBBLE } from "@/features/session/layout";
 import { type MessageEntry, parseMessages } from "@/features/session/types";
 import {
   AGENT_TURN_LABEL,
+  type ConversationImage,
   SILENCE_REASON,
   type AgentTurn,
   type AgentTurnState,
@@ -85,6 +87,72 @@ function WithdrawnDraft({ draft }: { draft: string }) {
   );
 }
 
+/** The clock a reader needs beside a turn: when, in their own locale. */
+function spokenAt(iso: string): { label: string; title: string } {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return { label: "", title: iso };
+  return {
+    label: at.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }),
+    title: at.toLocaleString(),
+  };
+}
+
+/**
+ * Who said it, when, and a way to take the text away.
+ *
+ * Read-only affordances only: a conversation is an append-only log, so nothing
+ * here rewrites a turn (ISS-1004's rule, which stands).
+ */
+function MessageActions({ message }: { message: ConversationMessage }) {
+  const [copied, setCopied] = useState(false);
+  const when = spokenAt(message.createdAt);
+  const copy = () => {
+    navigator.clipboard?.writeText(message.content).then(
+      () => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      },
+      () => setCopied(false),
+    );
+  };
+  return (
+    <div
+      className="fg-caption flex items-center gap-2 text-subtle"
+      data-testid="message-actions"
+    >
+      <span>{message.authorLabel ?? (message.role === "user" ? "You" : "Assistant")}</span>
+      <span aria-hidden="true">·</span>
+      <time dateTime={message.createdAt} title={when.title}>
+        {when.label}
+      </time>
+      <button
+        type="button"
+        onClick={copy}
+        className="rounded-sm underline-offset-2 hover:text-fg hover:underline"
+      >
+        {copied ? "Copied" : "Copy"}
+      </button>
+    </div>
+  );
+}
+
+/** The files a person sent with a turn, as the thread shows them. */
+function SentFiles({ images }: { images: readonly ConversationImage[] }) {
+  return (
+    <ul className="mt-1 flex flex-wrap justify-end gap-1.5" data-testid="message-files">
+      {images.map((image) => (
+        <li
+          key={image.ref}
+          className="flex max-w-60 items-center gap-1.5 rounded-md border border-line-subtle bg-surface px-2 py-1"
+        >
+          <Icon name="grid" size={13} className="flex-none text-subtle" />
+          <span className="fg-caption truncate text-fg">{image.name}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function Said({
   message,
   withdrawn,
@@ -117,12 +185,15 @@ function Said({
   if (message.role === "user") {
     return (
       <div className="flex flex-col items-end">
-        <div className={`${USER_BUBBLE} rounded-lg rounded-br-sm bg-accent px-3.5 py-2.5 text-on-accent`}>
-          <p className="fg-body whitespace-pre-wrap text-on-accent">{message.content}</p>
-        </div>
-        {message.authorLabel && (
-          <span className="fg-caption mt-1 text-subtle">{message.authorLabel}</span>
+        {message.content && (
+          <div className={`${USER_BUBBLE} rounded-lg rounded-br-sm bg-accent px-3.5 py-2.5 text-on-accent`}>
+            <p className="fg-body whitespace-pre-wrap text-on-accent">{message.content}</p>
+          </div>
         )}
+        {message.images && message.images.length > 0 && <SentFiles images={message.images} />}
+        <div className="mt-1">
+          <MessageActions message={message} />
+        </div>
       </div>
     );
   }
@@ -130,6 +201,7 @@ function Said({
     <div className="flex flex-col gap-2">
       {withdrawn && <WithdrawnDraft draft={withdrawn} />}
       <AssistantTurn entry={entryOf(message)} {...(newestAgentId ? { newestAgentId } : {})} />
+      <MessageActions message={message} />
     </div>
   );
 }

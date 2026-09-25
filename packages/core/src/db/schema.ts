@@ -2631,7 +2631,7 @@ export const uploadTickets = pgTable(
   'upload_tickets',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    targetType: text('target_type').notNull(), // 'issue' | 'comment'
+    targetType: text('target_type').notNull(),
     targetId: uuid('target_id').notNull(),
     uploaderId: uuid('uploader_id')
       .notNull()
