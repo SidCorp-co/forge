@@ -157,6 +157,8 @@ pub struct Control {
     pub boot_id: String,
     pub config_dir: Option<PathBuf>,
     pub promises: std::sync::Mutex<GateMemory>,
+    /// Whether this daemon is admitting new runs at all.
+    pub drain: Arc<crate::daemon::drain::Drain>,
 }
 
 #[derive(Default)]
@@ -336,6 +338,11 @@ fn run_declare(
     worktree_path: &str,
     session_id: &str,
 ) -> ClaimReply {
+    // First, before anything is read or written: a drain that admits a run is
+    // waiting on a queue it keeps refilling (ISS-1223).
+    if let Some(why) = ctl.drain.refusal() {
+        return ClaimReply::refused(why);
+    }
     let Some(serves) = ctl.masters.project_for_session(session_id) else {
         return ClaimReply::refused(ctl.masters.why_unplaced(project_id));
     };
@@ -1113,6 +1120,7 @@ mod tests {
                 boot_id: "boot-a".into(),
                 config_dir: Some(dir.to_path_buf()),
                 promises: std::sync::Mutex::new(GateMemory::default()),
+                drain: Arc::new(crate::daemon::drain::Drain::unrecorded()),
             }),
             token,
             dir,
@@ -1256,6 +1264,7 @@ mod tests {
             boot_id: ctl.boot_id.clone(),
             config_dir: ctl.config_dir.clone(),
             promises: std::sync::Mutex::new(GateMemory::default()),
+            drain: Arc::new(crate::daemon::drain::Drain::unrecorded()),
         });
 
         // The declaration is still the master's, so the dispatch is allowed.
@@ -1585,6 +1594,140 @@ mod tests {
     #[cfg(unix)]
     mod unix {
         use super::*;
+
+        /// Criteria 1 and 2: a declaration made while a drain holds admission
+        /// is refused naming the drain, and leaves nothing on the ledger.
+        #[test]
+        fn a_declaration_during_a_drain_is_refused_naming_it_and_writes_nothing() {
+            let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
+            let _attempt = ctl.drain.begin("update 0.1.0 → 0.1.1").unwrap();
+            let reply = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a");
+            assert!(
+                !reply.ok,
+                "a drain that admits a run is waiting on a queue it refills"
+            );
+            let why = reply.reason.unwrap_or_default();
+            assert!(
+                why.contains("draining before a restart") && why.contains("update 0.1.0 → 0.1.1"),
+                "the refusal names the drain and its cause: {why}"
+            );
+            assert!(
+                ctl.ledger
+                    .lock()
+                    .unwrap()
+                    .as_ref()
+                    .unwrap()
+                    .unclosed_runs()
+                    .unwrap()
+                    .is_empty(),
+                "a refused declaration writes no row"
+            );
+        }
+
+        /// ISS-1223's reproduction, criteria 4 and 5. A master declares a run
+        /// every three minutes and each one runs ten, so at any moment three or
+        /// four are open. A drain begun among them has to turn over inside its
+        /// bound, and nothing may be declared once it has begun. Against the
+        /// drain as it was — one that only polled — the queue refilled faster
+        /// than it emptied, the drain gave up at two hours, and runs went on
+        /// being declared after its line (measured 2026-09-23 on sid-xeon-1).
+        #[tokio::test(start_paused = true)]
+        async fn a_drain_among_a_declaring_master_turns_over_and_admits_nothing_after_it_began() {
+            use crate::daemon::drain::{self, Drained, NextAttempt};
+            use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+            use std::time::Duration;
+            use tokio::time::Instant;
+
+            const EVERY: Duration = Duration::from_secs(3 * 60);
+            const LASTS: Duration = Duration::from_secs(10 * 60);
+
+            let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
+            let began = Arc::new(AtomicBool::new(false));
+            let after = Arc::new(AtomicUsize::new(0));
+            {
+                let (ctl, began, after) = (ctl.clone(), began.clone(), after.clone());
+                tokio::spawn(async move {
+                    let mut open: Vec<(String, Instant)> = Vec::new();
+                    let mut n = 0u32;
+                    loop {
+                        n += 1;
+                        {
+                            let held = ctl.ledger.lock().unwrap();
+                            let led = held.as_ref().unwrap();
+                            open.retain(|(id, at)| {
+                                if at.elapsed() >= LASTS {
+                                    led.end_run(id, "master", "its report is in").unwrap();
+                                    false
+                                } else {
+                                    true
+                                }
+                            });
+                        }
+                        let reply = run_declare(
+                            &ctl,
+                            "proj-1",
+                            &[format!("ISS-{n}")],
+                            &format!("/w/{n}"),
+                            "sess-a",
+                        );
+                        if let (true, Some(id)) = (reply.ok, reply.job_id) {
+                            let held = ctl.ledger.lock().unwrap();
+                            held.as_ref()
+                                .unwrap()
+                                .bind_agent(&id, &format!("child-{n}"))
+                                .unwrap();
+                            open.push((id, Instant::now()));
+                            if began.load(Ordering::Acquire) {
+                                after.fetch_add(1, Ordering::AcqRel);
+                            }
+                        }
+                        tokio::time::sleep(EVERY).await;
+                    }
+                });
+            }
+            tokio::time::sleep(Duration::from_secs(30 * 60)).await;
+
+            let ledger = ctl.ledger.clone();
+            // The daemon's own reading of what holds a drain, over this ledger.
+            let live = move || -> Vec<String> {
+                let held = ledger.lock().unwrap();
+                crate::daemon::live_sessions_from(
+                    held.as_ref().unwrap().unclosed_runs(),
+                    "boot-a",
+                    |_| true,
+                    |_| Vec::new(),
+                )
+            };
+            assert!(
+                !live().is_empty(),
+                "the fleet is busy when the drain begins"
+            );
+            began.store(true, Ordering::Release);
+            let started = Instant::now();
+            let out = drain::drain_to_idle(
+                &ctl.drain,
+                "update",
+                "update 0.1.0 → 0.1.1",
+                &Arc::new(AtomicUsize::new(0)),
+                live,
+                || std::future::ready(0),
+                || NextAttempt {
+                    by: "the next update check".into(),
+                    due_in: Duration::from_secs(4 * 3600),
+                },
+            )
+            .await;
+            assert_eq!(
+                (out, after.load(Ordering::Acquire)),
+                (Drained::Idle, 0),
+                "the process turns over, and no run is declared once the drain has begun"
+            );
+            assert!(
+                started.elapsed() <= Duration::from_secs(drain::DRAIN_TIMEOUT_SECS),
+                "inside the bound: {:?}",
+                started.elapsed()
+            );
+        }
 
         #[test]
         fn a_choice_outside_the_three_words_is_refused_naming_them() {

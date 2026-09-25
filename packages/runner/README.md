@@ -166,10 +166,26 @@ The daemon checks `{core}/api/install/latest.json` ~30s after start and every 6h
 When a newer release is published it downloads the matching binary, verifies its
 sha256, swaps the executable, and restarts the systemd service.
 
-Auto-update is **ON by default**. The restart **drains to idle first** — it waits
-for in-flight pipeline jobs and chat sessions to finish (up to 30 min) before
-restarting, so an update never kills running work. Control it without editing
-TOML:
+Auto-update is **ON by default**. The restart **drains to idle first**, so an
+update never kills running work:
+
+- **Admission closes for the drain.** From the moment it begins the daemon
+  declares no new run, takes no pool job, and places or nudges no master, for
+  every project it serves — a drain that went on admitting work waited on a
+  queue it kept refilling (ISS-1223). Chat turns and messages into a master pane
+  are still taken, and counted as holders, because they have no way to tell the
+  person waiting that they were refused.
+- **It speaks while it waits**: a line at the start and every 10 minutes naming
+  each run, by id and issue key, and each interactive turn still holding it.
+- **It is bounded at 2h.** Past that it does not restart: it names what still holds
+  it, reopens admission, and no drain may close it again for another 2h. The
+  next attempt is the next update check.
+
+Until the restart, the daemon serves the build it started on while the newer
+file stands on disk. `forge-runner status` prints both — `binary` for the file,
+`daemon` for what the running daemon recorded it serves, with its drain — and
+`forge-runner --version` adds a line on stderr when the two differ, leaving its
+stdout unchanged. Control it without editing TOML:
 
 ```bash
 forge-runner config set update.auto false   # opt this device out

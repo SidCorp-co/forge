@@ -75,7 +75,20 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
 
-    let cli = Cli::parse();
+    // `--version` answers for this file, and its stdout stays exactly what
+    // clap prints because something may parse it. Where a live daemon serves
+    // another build, that is said on stderr beside it (ISS-1223).
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(e) if e.kind() == clap::error::ErrorKind::DisplayVersion => {
+            e.print()?;
+            if let Some(note) = cmd::status::version_note() {
+                eprintln!("{note}");
+            }
+            return Ok(());
+        }
+        Err(e) => e.exit(),
+    };
     let ctx = cmd::Ctx {
         core_url_override: cli.core_url,
     };

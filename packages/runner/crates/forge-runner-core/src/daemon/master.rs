@@ -163,6 +163,11 @@ pub(crate) enum Unplaced {
     Draining {
         status: String,
     },
+    /// This daemon is draining before a restart, so it admits no new work for
+    /// any project until it has restarted or the drain gives up (ISS-1223).
+    Restarting {
+        cause: String,
+    },
     /// Core serves this project to this box but nothing here says where the
     /// checkout is.
     NoRepoPath,
@@ -247,6 +252,10 @@ impl std::fmt::Display for Unplaced {
             Self::Draining { status } => write!(
                 f,
                 "this box's runner for it is `{status}`, so it starts no work and places no master until that changes"
+            ),
+            Self::Restarting { cause } => write!(
+                f,
+                "this box is draining before a restart ({cause}), so it starts no work and places no master for any project until it has restarted or the drain gives up"
             ),
             Self::NoRepoPath => write!(
                 f,
@@ -900,6 +909,7 @@ pub async fn run(
     adopted: tokio::sync::watch::Receiver<bool>,
     mut cancel: tokio::sync::watch::Receiver<bool>,
     mut wake: mpsc::Receiver<Wake>,
+    drain: Arc<crate::daemon::drain::Drain>,
 ) {
     let mut delay = POLL_INTERVAL;
     let mut last_sweep = Instant::now();
@@ -920,7 +930,7 @@ pub async fn run(
     loop {
         tokio::select! {
             _ = tokio::time::sleep(delay) => {
-                delay = sweep(&client, &cfg, &masters, &activity, &job_panes, job_records.as_ref(), &adopted, &mut ledger, tokens.as_ref(), &mut account_limit_said)
+                delay = sweep(&client, &cfg, &masters, &activity, &job_panes, job_records.as_ref(), &adopted, &mut ledger, tokens.as_ref(), &mut account_limit_said, &drain)
                     .await;
                 last_sweep = Instant::now();
             }
@@ -930,7 +940,7 @@ pub async fn run(
                     tokio::time::sleep(WAKE_FLOOR - since).await;
                 }
                 tracing::info!("[master] wake ({}) — sweeping now", w.describe());
-                delay = sweep(&client, &cfg, &masters, &activity, &job_panes, job_records.as_ref(), &adopted, &mut ledger, tokens.as_ref(), &mut account_limit_said)
+                delay = sweep(&client, &cfg, &masters, &activity, &job_panes, job_records.as_ref(), &adopted, &mut ledger, tokens.as_ref(), &mut account_limit_said, &drain)
                     .await;
                 last_sweep = Instant::now();
             }
@@ -977,6 +987,7 @@ async fn sweep(
     ledger: &mut Option<Ledger>,
     tokens: Option<&session_tokens::SessionTokens>,
     account_limit_said: &mut Option<String>,
+    drain: &crate::daemon::drain::Drain,
 ) -> Duration {
     let now_unix = master_limit::now_unix();
     let mut account_said: Vec<master_limit::Decisive> = Vec::new();
@@ -1021,6 +1032,17 @@ async fn sweep(
     }
 
     for runner in &served {
+        // Asked per project rather than once per sweep, so a drain that begins
+        // while this sweep is part-way through stops it at the next project.
+        if let Some(cause) = drain.restarting() {
+            let read = read_standing(ledger.as_ref(), &runner.project_id);
+            let verdict = standing_verdict(masters, read, &runner.project_id, &runner.slug).await;
+            if matches!(verdict, Some((Placed::Proceed | Placed::Withheld, _))) {
+                masters.note_unplaced(&runner.project_id, Unplaced::Restarting { cause });
+            }
+            supervise(client, masters, tokens, &runner.project_id, &runner.slug).await;
+            continue;
+        }
         if !accepts_new_work(&runner.status) {
             tracing::info!(
                 "[master] {}: runner is {} — taking no new work; anything already running finishes",
@@ -7558,6 +7580,43 @@ mod unplaced_tests {
             drain < ensure,
             "the drain branch has to be reached before placement, or it decides nothing"
         );
+    }
+
+    /// Criterion 3. The local drain's hold-back comes before every act that
+    /// admits work — the pool job, the placement and the nudge — and leaves
+    /// the sweep by `continue`, so none of them is reached while it holds.
+    #[test]
+    fn a_daemon_draining_before_a_restart_admits_no_work_for_any_project() {
+        let body = sweep_body();
+        let start = body
+            .find("if let Some(cause) = drain.restarting() {")
+            .expect("the sweep asks the drain before admitting anything");
+        let rest = &body[start..];
+        let end = block_end(rest, 8).expect("the restarting branch must close");
+        let branch = &rest[..end];
+        assert!(
+            branch.trim_end().ends_with("continue;"),
+            "the branch leaves the project's iteration, or every act below it still runs: {branch}"
+        );
+        assert!(
+            branch.contains("Unplaced::Restarting"),
+            "and records the drain as why no pane was placed: {branch}"
+        );
+        for act in [
+            "take_pool_job(",
+            "ensure_master(",
+            "nudge_master(",
+            "claim_nudge(",
+        ] {
+            let at = body
+                .find(act)
+                .unwrap_or_else(|| panic!("the sweep still calls {act}"));
+            assert!(start < at, "{act} is reached before the drain is asked");
+            assert!(
+                !branch.contains(act),
+                "{act} runs inside the hold-back: {branch}"
+            );
+        }
     }
 
     #[test]
