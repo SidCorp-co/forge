@@ -7,5 +7,5 @@
     "rootDir": "./src",
     "moduleResolution": "Bundler"
   },
-  "include": ["src/document-patch.ts"]
+  "include": ["src/document-patch.ts", "src/attachments.ts"]
 }
