@@ -293,7 +293,14 @@ impl Watch {
         let was = self.said.replace(verdict.clone());
         let stood = self.since.map_or(Duration::ZERO, |s| now.duration_since(s));
         self.said_at = Some(now);
-        self.since = Some(now);
+        // A pressure that comes back from blindness unchanged never left, and
+        // criterion 17 restarts the clock on a change of level or of axis
+        // rather than on the box having gone quiet in between. Restarting it
+        // here reported five minutes of a pressure that had stood fifteen
+        // (consult 09a28d F1).
+        if blinded_over.as_ref() != Some(&verdict) {
+            self.since = Some(now);
+        }
         match (was, &verdict) {
             // Only a pressure clears. An unreadable reading that nothing stood
             // behind is an outage ending, and reporting it as
@@ -1194,6 +1201,54 @@ mod tests {
             "the duration is how long the verdict has stood, not how long ago the box last \
              answered — the two differ by every successful tick in between (consult f45b6d F2): \
              {line}"
+        );
+    }
+
+    /// Criterion 17 restarts a pressure's clock on a change of level or of
+    /// axis. A box going quiet and coming back on the same verdict is neither,
+    /// so the fifteen minutes that pressure stood must not be reported as the
+    /// five since it answered again (consult 09a28d F1).
+    #[test]
+    fn a_pressure_that_comes_back_from_blindness_unchanged_keeps_its_clock() {
+        let mut watch = Watch::default();
+        let t0 = Instant::now();
+        let critical = Verdict::Critical(Axis::Bytes);
+        let blind = Verdict::Unmeasurable("statvfs answered EIO".to_string());
+
+        watch.tick(t0, critical.clone());
+        watch.tick(t0 + TICK, blind.clone());
+        assert_eq!(
+            watch.tick(t0 + TICK * 2, critical.clone()),
+            Some(Report::Entered(critical.clone())),
+            "the box answering again is a line of its own"
+        );
+        assert_eq!(
+            watch.tick(t0 + TICK * 3, Verdict::Clear),
+            Some(Report::Cleared {
+                was: critical,
+                stood: TICK * 3,
+            }),
+            "the pressure stood across the blindness, not from the tick it was read again"
+        );
+    }
+
+    /// The other half of the same rule: a different axis coming back IS a
+    /// change of axis, and its clock starts there.
+    #[test]
+    fn a_different_pressure_coming_back_from_blindness_starts_its_own_clock() {
+        let mut watch = Watch::default();
+        let t0 = Instant::now();
+        let blind = Verdict::Unmeasurable("statvfs answered EIO".to_string());
+
+        watch.tick(t0, Verdict::Critical(Axis::Bytes));
+        watch.tick(t0 + TICK, blind);
+        watch.tick(t0 + TICK * 2, Verdict::Critical(Axis::Inodes));
+        assert_eq!(
+            watch.tick(t0 + TICK * 3, Verdict::Clear),
+            Some(Report::Cleared {
+                was: Verdict::Critical(Axis::Inodes),
+                stood: TICK,
+            })
         );
     }
 
