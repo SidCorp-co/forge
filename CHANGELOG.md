@@ -3094,6 +3094,7 @@
   set is now 59.
 
 ### Fixed
+- **A job a runner refuses for want of a personal access token now names the box and where to create one.** `forge-runner doctor` fails on a box holding none, and reports an unreadable credential file as such.
 - **A runner no longer starts a project's master without the MCP servers the project declares.** When it cannot read them, or cannot hand them over, it starts none and says why, naming the request and its status.
 - **A master stopped by a usage limit is asked again every five minutes.** It no longer sleeps until
   the reset hour, so capacity restored by swapping or adding an account is used on the next pass.
