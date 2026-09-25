@@ -450,16 +450,25 @@ fn say_standing(
                 run.master_session_id
             )
         }
-        Standing::ForeignBoot => tracing::error!(
-            "[recovery] run {} ({issues}) is partially closed ({holds}) and will stay so: it was \
-             declared under boot {} and this box is boot {}, and a run from another boot is never \
-             reclaimed here, because its process and its pane cannot be read from this one. Its \
-             checkout {} is still held. Said once, not every sweep",
-            run.run_id,
-            run.boot_id,
-            boot_id,
-            run.worktree_path.display()
-        ),
+        Standing::ForeignBoot => {
+            let left = if state.checkout_returned {
+                format!(
+                    "Its checkout is back, {}/{} of its leases are back and the rest stay held",
+                    state.leases_returned, state.leases_total
+                )
+            } else {
+                format!("Its checkout {} is still held", run.worktree_path.display())
+            };
+            tracing::error!(
+                "[recovery] run {} ({issues}) is partially closed ({holds}) and will stay so: it \
+                 was declared under boot {} and this box is boot {}, and a run from another boot \
+                 is never reclaimed here, because its process and its pane cannot be read from \
+                 this one. {left}. Said once, not every sweep",
+                run.run_id,
+                run.boot_id,
+                boot_id
+            )
+        }
         Standing::Decided => {
             tracing::warn!(
             "[recovery] run {} ({issues}) is partially closed ({holds}): its release was decided \
@@ -2418,6 +2427,43 @@ mod tests {
         assert!(
             said.contains("the session's clock alone decides") && !said.contains("stayed silent"),
             "a standing with no readable transcript claims no silence: {said}"
+        );
+    }
+
+    #[test]
+    fn a_run_from_another_boot_whose_checkout_is_back_is_not_said_to_hold_one() {
+        let mut led = seeded("run-1", "master-unknown", "boot-a", &["ISS-1220"]);
+        let said = logged_while(|| {
+            block_on(async {
+                let done = reconcile(
+                    &mut led,
+                    "boot-later",
+                    &NoRegistryEntry,
+                    &nothing_refuted(),
+                    Closing {
+                        sessions: &Sessions,
+                        leases: &LeasesRefused,
+                        roots: &Roots,
+                    },
+                    RunWatch {
+                        beat: &Beats::default(),
+                        idle: &NeverReports,
+                    },
+                )
+                .await
+                .unwrap();
+                assert!(
+                    done[0].state.checkout_returned && done[0].standing_said,
+                    "{:?}",
+                    done[0]
+                );
+            })
+        });
+        assert!(
+            said.contains(
+                "Its checkout is back, 0/1 of its leases are back and the rest stay held"
+            ) && !said.contains("is still held"),
+            "the line says what is left, not a checkout it gave back: {said}"
         );
     }
 
