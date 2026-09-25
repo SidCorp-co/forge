@@ -1755,7 +1755,9 @@ async fn give_back_lost_runs(
                 {
                     continue;
                 }
-                if r.state.is_closed() {
+                // Recovery has said once why this run stands and what ends
+                // it; a line per sweep would only repeat that (ISS-1220).
+                if r.state.is_closed() || r.standing_said {
                     continue;
                 }
                 tracing::warn!(
@@ -5354,6 +5356,77 @@ mod give_back_tests {
         );
         let _ = std::fs::remove_dir_all(&repo);
         let _ = std::fs::remove_dir_all(repo.with_extension("remote.git"));
+    }
+
+    /// ISS-1220: the sweep's own `partially closed` line stands down once
+    /// recovery has said why the run stands, so the second identical sweep is
+    /// silent rather than the thousandth.
+    #[test]
+    fn a_standing_recovery_has_named_is_not_repeated_every_sweep() {
+        use std::sync::Arc;
+        #[derive(Clone)]
+        struct Buf(Arc<Mutex<Vec<u8>>>);
+        impl std::io::Write for Buf {
+            fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(b);
+                Ok(b.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let buf = Buf(Arc::new(Mutex::new(Vec::new())));
+        let made = buf.clone();
+        let sub = tracing_subscriber::fmt()
+            .with_writer(move || made.clone())
+            .with_ansi(false)
+            .finish();
+        crate::daemon::keep_tracing_capturable();
+        tracing::subscriber::with_default(sub, || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(async {
+                    let mut led = a_ledger_holding_one_run();
+                    assert!(led.bind_agent("run-1", "a-sub").unwrap());
+                    led.backdate_session_terminal("run-1", now_secs() - 300)
+                        .unwrap();
+                    let mut ledger = Some(led);
+                    let cfg = Config::default();
+                    for _ in 0..3 {
+                        give_back_lost_runs(
+                            BOOT,
+                            &NobodyKnows,
+                            &Reclaim {
+                                served: &[],
+                                cfg: &cfg,
+                                procs: &NoPids,
+                                killer: &NoKill,
+                                closer: &Closes::default(),
+                            },
+                            &Terminal(true),
+                            &Leases::default(),
+                            recovery::RunWatch {
+                                beat: &Beats::default(),
+                                idle: &NeverReports,
+                            },
+                            &mut ledger,
+                        )
+                        .await;
+                    }
+                });
+        });
+        let out = String::from_utf8_lossy(&buf.0.lock().unwrap()).into_owned();
+        assert_eq!(
+            out.matches("is partially closed").count(),
+            1,
+            "three sweeps over one unchanged standing say it once: {out}"
+        );
+        assert!(
+            !out.contains("[master] run run-1 is partially closed"),
+            "and the once is recovery's, which names what ends it: {out}"
+        );
     }
 
     #[tokio::test]

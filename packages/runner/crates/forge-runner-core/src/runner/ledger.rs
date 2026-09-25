@@ -191,9 +191,11 @@ pub struct Run {
     /// Where this run's subagent writes its own transcript.
     pub agent_transcript: Option<String>,
     /// What the box last said about this run's standing: `quiet` or
-    /// `unreadable` for a run it keeps, `unanswered` for one it is releasing
-    /// because no master here answers for it (ISS-1220). Cleared by the next
-    /// turn-end, so each silence is said once.
+    /// `unreadable` for a run it keeps; `awaiting` for one no master here
+    /// answers for whose bound has not yet run out, `unanswered` once that bound
+    /// licenses its release, and `foreign-boot` for one this boot may not
+    /// reclaim (ISS-1220). Cleared by the next turn-end, so each silence is
+    /// said once.
     pub kept_notice: Option<String>,
 }
 
@@ -1833,6 +1835,22 @@ impl Ledger {
             .execute(
                 "UPDATE runs SET kept_notice = ?2
                   WHERE run_id = ?1 AND ended_by IS NULL AND kept_notice IS NOT ?2",
+                params![run_id, notice],
+            )
+            .map_err(sql_err)?;
+        Ok(n == 1)
+    }
+
+    /// Record what the sweep last said about why an unclosed run stands, and
+    /// answer whether that is new. Unlike [`Ledger::note_kept`] it holds for an
+    /// ended run too: a run that ended under another boot is still standing,
+    /// and is exactly the one whose standing must be said once and not for
+    /// ever (ISS-1220).
+    pub fn note_standing(&self, run_id: &str, notice: &str) -> Result<bool> {
+        let n = self
+            .conn
+            .execute(
+                "UPDATE runs SET kept_notice = ?2 WHERE run_id = ?1 AND kept_notice IS NOT ?2",
                 params![run_id, notice],
             )
             .map_err(sql_err)?;
