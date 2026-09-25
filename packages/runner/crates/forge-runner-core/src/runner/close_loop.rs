@@ -184,15 +184,17 @@ pub async fn close(
     // the checkout IS back, not that this call was the one that saw it — the
     // rows ISS-1242 names were all marked returned by an earlier sweep, so a
     // settle guarded by the observation would miss every one of them.
-    if checkout_is_back && run.release_refused_at.is_some() && run.release_terminal_at.is_none() {
-        if ledger.settle_release_refusal(run_id, now_secs())? {
-            tracing::info!(
-                "[close] run={run_id}: its checkout is back, so the release refusal standing over \
+    if checkout_is_back
+        && run.release_refused_at.is_some()
+        && run.release_terminal_at.is_none()
+        && ledger.settle_release_refusal(run_id, now_secs())?
+    {
+        tracing::info!(
+            "[close] run={run_id}: its checkout is back, so the release refusal standing over \
                  it ({}) is settled rather than left open — it was never decided and will never \
                  be taken again",
-                run.release_refusal.as_deref().unwrap_or("no text recorded")
-            );
-        }
+            run.release_refusal.as_deref().unwrap_or("no text recorded")
+        );
     }
 
     let project = run.project_id.clone();

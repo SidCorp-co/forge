@@ -91,6 +91,10 @@ pub struct Recovered {
     /// That release rests on the session's clock alone: no readable transcript
     /// said anything about the subagent either way.
     pub clock_alone: bool,
+    /// The release was licensed by every issue this run holds being over at
+    /// core, which is a different fact from either of the two above and is
+    /// what its ended row has to say (ISS-1245).
+    pub issues_over: bool,
     /// Recovery has said, once, why this run still stands and what ends it,
     /// so a per-sweep line about it would only repeat that (ISS-1220).
     pub standing_said: bool,
@@ -103,7 +107,10 @@ impl Recovered {
     /// Why this run's release is owed, in the words its ended row keeps. A run
     /// released on the bound was not seen to end, and its row says so.
     pub fn release_reason(&self) -> &'static str {
-        if self.unanswered && self.clock_alone {
+        if self.issues_over {
+            "every issue this run holds has reached a terminal status at core, so nothing \
+             further will be done on any of them"
+        } else if self.unanswered && self.clock_alone {
             "no master on this box answers for it and core's session row has been terminal for \
              the whole bound; no readable transcript was recorded, so the clock alone decided"
         } else if self.unanswered {
@@ -176,8 +183,13 @@ pub async fn reconcile(
             )
             .await
         } else {
-            false
+            IssuesOver::No
         };
+        let unreadable = match &issues_over {
+            IssuesOver::Unreadable(why) => Some(why.clone()),
+            _ => None,
+        };
+        let issues_over = matches!(issues_over, IssuesOver::Yes);
         if !orphaned && !issues_over {
             // A subagent run under a live master is only ever kept here: its
             // turn-ends and its silence end nothing, because a subagent that
@@ -185,7 +197,10 @@ pub async fn reconcile(
             // still be resumed. Its master's close or its master's death ends
             // it, and both reach the branch below (ISS-1246).
             if kept_subagent {
-                say_why_kept(ledger, &run, now_ms());
+                match unreadable.as_deref() {
+                    Some(why) => say_issue_status_unreadable(ledger, &run, why),
+                    None => say_why_kept(ledger, &run, now_ms()),
+                }
                 if let Some(id) = run.session_id.as_deref() {
                     let _ = watch.beat.beat(id).await;
                 }
@@ -204,6 +219,7 @@ pub async fn reconcile(
                     owed_release: false,
                     unanswered: false,
                     clock_alone: false,
+                    issues_over: false,
                     standing_said: false,
                     owed_exit: Some(cause),
                     owed_death_report: false,
@@ -294,8 +310,9 @@ pub async fn reconcile(
             session_id,
             state,
             owed_release,
-            unanswered: owed_release && !agent_gone,
+            unanswered: owed_release && !agent_gone && !issues_over,
             clock_alone,
+            issues_over,
             standing_said,
             owed_exit: None,
             owed_death_report,
@@ -322,14 +339,23 @@ async fn every_issue_over(
     project_id: Option<&str>,
     keys: &[String],
     leases: &dyn LeaseKeeper,
-) -> bool {
+) -> IssuesOver {
     if keys.is_empty() {
-        return false;
+        return IssuesOver::No;
     }
     for key in keys {
         match leases.issue_is_over(project_id, key).await {
             Ok(Some(true)) => {}
-            _ => return false,
+            Ok(_) => return IssuesOver::No,
+            // A core that answered `not over` and a core that could not be
+            // asked both leave the run kept, and only one of them is a fact.
+            // Read the same way, the second is a measurement that did not
+            // happen wearing the shape of one that did (ISS-1245 F2).
+            Err(e) => {
+                return IssuesOver::Unreadable(format!(
+                    "the status of {key} could not be read from core ({e})"
+                ))
+            }
         }
     }
     tracing::info!(
@@ -337,7 +363,36 @@ async fn every_issue_over(
          master gives it ends here — its leases go back and its checkout is asked for (ISS-1245)",
         keys.join(", ")
     );
-    true
+    IssuesOver::Yes
+}
+
+/// What the sweep could establish about the issues one kept run holds.
+enum IssuesOver {
+    /// Every one of them is over at core.
+    Yes,
+    /// At least one is not, which core answered for.
+    No,
+    /// Core could not be asked, which is not the same answer and is said once.
+    Unreadable(String),
+}
+
+/// Say, once per unchanged failure, that the fact this keep now turns on could
+/// not be read. The notice shares `kept_notice` with [`say_why_kept`], and only
+/// one of the two writes on a sweep, so a transport that keeps failing says
+/// this once and a transport that recovers hands the latch back.
+fn say_issue_status_unreadable(ledger: &mut Ledger, run: &Run, why: &str) {
+    if !matches!(
+        ledger.note_kept(&run.run_id, "issue-status-unreadable"),
+        Ok(true)
+    ) {
+        return;
+    }
+    tracing::warn!(
+        "[recovery] run {} is kept because {why} — not because its issues are live. It ends when \
+         core answers that read, and until then nothing here can tell a run still working from \
+         one whose issues closed. Said once, not every sweep",
+        run.run_id
+    );
 }
 
 /// How long a run no master on this box answers for may stand with its session
@@ -3083,6 +3138,167 @@ mod tests {
             beats.0.lock().unwrap().is_empty(),
             "and nothing is kept alive on the strength of a read that did not happen: {:?}",
             beats.0.lock().unwrap()
+        );
+    }
+
+    /// A keeper core refuses to answer for, which is not a keeper that says
+    /// the issue is live.
+    struct LeasesUnreadable;
+    #[async_trait::async_trait]
+    impl LeaseKeeper for LeasesUnreadable {
+        async fn release(&self, _: Option<&str>, _: &str) -> Result<()> {
+            Ok(())
+        }
+        async fn is_returned(&self, _: Option<&str>, _: &str) -> Result<bool> {
+            Ok(false)
+        }
+        async fn issue_is_over(&self, _: Option<&str>, _: &str) -> Result<Option<bool>> {
+            Err(crate::error::Error::Other(
+                "500: issue-lease read failed".into(),
+            ))
+        }
+    }
+
+    /// ISS-1245 F2 — a read that failed is not a status that is live.
+    ///
+    /// The run stays kept either way, and that is right; what must differ is
+    /// what is SAID. A core answering *not over* is a fact the keep rests on;
+    /// a core that could not be asked is a measurement that did not happen, and
+    /// reading the two the same way is how a closed issue stays held with
+    /// nothing to explain it. Said once per unchanged failure, not per sweep.
+    #[test]
+    fn an_issue_status_that_could_not_be_read_is_said_once_and_keeps_the_run() {
+        let said = logged_while(|| {
+            block_on(async {
+                let mut led = seeded("run-1", MASTER, "boot-a", &["ISS-1217"]);
+                assert!(led.bind_agent("run-1", "a1217judge").unwrap());
+                let beats = Beats::default();
+                for _ in 0..3 {
+                    let r = sweep_under_a_live_master(&mut led, &LeasesUnreadable, &beats).await;
+                    assert!(r.is_none(), "the run is kept, conservatively: {r:?}");
+                }
+                assert_eq!(
+                    beats.0.lock().unwrap().len(),
+                    3,
+                    "and beaten every sweep, because nothing established that it may be let go"
+                );
+                assert!(
+                    led.run("run-1").unwrap().unwrap().released_as.is_none(),
+                    "its checkout was never asked about"
+                );
+            })
+        });
+        assert_eq!(
+            said.matches("could not be read from core").count(),
+            1,
+            "three sweeps over one unchanged failure say it once: {said}"
+        );
+        assert!(
+            said.contains("not because its issues are live"),
+            "and the line separates the read that failed from the answer it did not get: {said}"
+        );
+    }
+
+    /// ISS-1245 F3 — the row an issues-over release ends says what licensed it.
+    ///
+    /// `unanswered` was derived as `owed_release && !agent_gone`, which the new
+    /// licence also satisfies, so the ended row would have claimed that no
+    /// master answered and that the silence bound elapsed. A master DID answer
+    /// — it is alive — and no bound ran. That reason reaches `ended_reason` and
+    /// the salvage, so it is not cosmetic.
+    #[tokio::test]
+    async fn an_issues_over_release_names_the_issues_and_not_an_absent_master() {
+        let scratch = Scratch::new("issues-over-reason");
+        let (mut led, _root, _wt, transcript) = a_subagent_run_in_a_worktree(&scratch);
+        stop_at(&led, now_ms() - HOUR_MS, Some(&transcript));
+
+        let r = sweep_under_a_live_master(
+            &mut led,
+            &LeasesOver::with(&["ISS-1217"]),
+            &Beats::default(),
+        )
+        .await
+        .expect("its issues are over, so it is no longer kept");
+
+        assert!(r.owed_release && r.issues_over, "{r:?}");
+        assert!(
+            !r.unanswered,
+            "a master that is alive answered for it, whatever licensed the release: {r:?}"
+        );
+        let why = r.release_reason();
+        assert!(
+            why.contains("terminal status at core"),
+            "the row says what licensed it: {why}"
+        );
+        assert!(
+            !why.contains("no master on this box answers") && !why.contains("clock alone"),
+            "and never a licence that was not taken: {why}"
+        );
+    }
+
+    /// ISS-1242 F1 — the settle has to be REACHED, not only be correct.
+    ///
+    /// `f0c38b4e`, `af39c60d` and `daff6570` are each session-terminal,
+    /// checkout-returned and lease-returned: `unclosed_runs` excluded every one
+    /// of them, so no sweep ever called `close` over them and a settle inside
+    /// `close` settled nothing in production however right it was. This is the
+    /// whole path — ledger to sweep to row — and not the close loop on its own.
+    #[tokio::test]
+    async fn a_closed_run_whose_refusal_was_never_decided_is_swept_once_and_settled() {
+        let mut led = seeded("run-1", "master-gone", "boot-a", &["ISS-308"]);
+        led.note_release_refusal("run-1", "the diff was not preserved", 1_790_000_000)
+            .unwrap();
+        led.end_run("run-1", "subagent", "its subagent ended its turn")
+            .unwrap();
+        // The three marks every stranded row carries, set before this sweep.
+        led.mark_session_terminal_observed("run-1").unwrap();
+        led.mark_checkout_returned_observed("run-1", crate::runner::ledger::CheckoutReturn::Gone)
+            .unwrap();
+        led.mark_lease_returned_observed("run-1", "ISS-308")
+            .unwrap();
+
+        assert_eq!(
+            led.unclosed_runs().unwrap().len(),
+            1,
+            "a row carrying a refusal nothing decided is owed one more pass, or the settle is \
+             unreachable from the sweep"
+        );
+
+        let done = reconcile(
+            &mut led,
+            "boot-a",
+            &Masters(HashSet::new()),
+            &nothing_refuted(),
+            Closing {
+                sessions: &Sessions,
+                leases: &Leases(Mutex::new(HashSet::new())),
+                roots: &Roots,
+            },
+            RunWatch {
+                beat: &Beats::default(),
+                idle: &NeverReports,
+            },
+        )
+        .await
+        .unwrap();
+        assert!(
+            done.first().is_some_and(|r| r.state.is_closed()),
+            "nothing is owed on it but the settle: {done:?}"
+        );
+
+        let run = led.run("run-1").unwrap().unwrap();
+        assert!(
+            run.release_terminal_at.is_some(),
+            "the sweep reached it and settled it: {run:?}"
+        );
+        assert_eq!(
+            run.release_refusal.as_deref(),
+            Some("the diff was not preserved"),
+            "keeping the evidence"
+        );
+        assert!(
+            led.unclosed_runs().unwrap().is_empty(),
+            "and the one extra pass is one, not one per sweep for ever"
         );
     }
 }

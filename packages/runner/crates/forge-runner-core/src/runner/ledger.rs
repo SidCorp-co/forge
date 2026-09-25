@@ -983,12 +983,20 @@ impl Ledger {
     /// alone would keep answering "still owed" every sweep for ever. The leases
     /// are the half that must still be chased, because a lease nobody returns
     /// is an issue no run on this box can take (ISS-1188).
+    ///
+    /// A row whose three marks are all set but whose refusal was never decided
+    /// is owed one more pass, and that disjunct is what gives it one: the rows
+    /// ISS-1242 names were every one of them closed by the sweep AFTER their
+    /// refusal, so a settle nothing selects them for settles nothing. The pass
+    /// terminates because the settle stamps `release_terminal_at`, which the
+    /// second clause then excludes on.
     pub fn unclosed_runs(&self) -> Result<Vec<Run>> {
         let mut stmt = self
             .conn
             .prepare(&format!(
                 "{SELECT_RUN} WHERE (session_terminal_at IS NULL OR released_as IS NULL
-                 OR run_id IN (SELECT run_id FROM run_issues WHERE lease_returned_at IS NULL))
+                 OR run_id IN (SELECT run_id FROM run_issues WHERE lease_returned_at IS NULL)
+                 OR (release_refused_at IS NOT NULL AND release_terminal_at IS NULL))
                  AND (release_terminal_at IS NULL
                  OR run_id IN (SELECT run_id FROM run_issues WHERE lease_returned_at IS NULL))
                  ORDER BY created_at"
