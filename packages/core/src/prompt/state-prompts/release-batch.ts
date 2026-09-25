@@ -37,7 +37,7 @@ the attempt \`failed\` with RELEASE_NOT_VERIFIED unless the live build matches y
 before its window closes. You cannot assert your way past it, and you must not: that refusal means
 the deploy had not landed when the window closed. It is not the end of the batch — once the deploy
 has landed (it was still coming up, or you repaired forward and deployed again), call \`finish\`
-again with the same \`commit\`, which starts a new attempt. A deploy that will not land inside
+again with the commit you last pushed, which starts a new attempt. A deploy that will not land inside
 this run is a failure, below.
 
 On a failure you cannot repair forward inside this run — a conflict, a deploy that will not land,

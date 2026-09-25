@@ -293,9 +293,9 @@ describe('where a release run reads its verdict (ISS-1190)', () => {
       buildReleaseBatchPrompt({ ...BASE, plan: probed }),
       releaseBatchStatePrompt,
     ]) {
-      expect(text).toMatch(
-        /call\s+`finish`\s+again\s+with\s+(the commit you pushed|the same\s+`commit`)/,
-      );
+      // A repair forward pushes a new commit, so the retry names the last one, not the first.
+      expect(text).toMatch(/call\s+`finish`\s+again\s+with\s+the\s+commit\s+you\s+last\s+pushed/);
+      expect(text).not.toMatch(/`finish`\s+again\s+with\s+the\s+same\s+`commit`/);
       expect(text).toMatch(/starts\s+a\s+new\s+attempt/);
       expect(text).not.toMatch(/not something to retry/i);
       expect(text).not.toMatch(/means\s+the\s+deploy\s+did\s+not\s+land/);
