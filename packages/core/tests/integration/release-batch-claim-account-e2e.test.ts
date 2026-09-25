@@ -186,7 +186,14 @@ describe('CLAIM_CONFLICT names what refused each issue, and what frees it', () =
     expect(answer.details.conflicts).toEqual(
       expect.arrayContaining(
         ids.map((id) =>
-          expect.objectContaining({ id, standing: 'claimed', runId, runEnded: true }),
+          expect.objectContaining({
+            id,
+            standing: 'claimed',
+            runId,
+            runEnded: true,
+            claimer: 'batch',
+            status: 'releasing',
+          }),
         ),
       ),
     );
@@ -219,8 +226,85 @@ describe('CLAIM_CONFLICT names what refused each issue, and what frees it', () =
     );
     expect(answer.message).not.toMatch(/abort/i);
     expect(answer.details.conflicts).toEqual([
-      expect.objectContaining({ id: claimed, standing: 'claimed', runId, runEnded: false }),
+      expect.objectContaining({
+        id: claimed,
+        standing: 'claimed',
+        runId,
+        runEnded: false,
+        claimer: 'batch',
+      }),
     ]);
+  }, 30_000);
+
+  it('names a closed issue a shipped batch still claims by its status, and offers no abort', async () => {
+    const { runId, ids } = await batchOf(2);
+    await promoted(runId);
+    serving = PUSHED;
+    await accept(runId);
+    await job.runReleaseBatchFinish(runId);
+    const [shipped] = ids as [string];
+    // The minutely sweep has not run: a promoted roster keeps its claims past a green finish.
+    expect(await fx.stored(shipped)).toMatchObject({ status: 'closed', claim: runId });
+    expect(await fx.runStatus(runId)).toBe('completed');
+    const answer = await recordRefused([shipped]);
+    expect(answer.code).toBe('CLAIM_CONFLICT');
+    expect(answer.message).toMatch(
+      new RegExp(`\\b${await keyOf(shipped)} is at \`closed\`, not \`awaiting_release\``),
+    );
+    expect(answer.message).not.toMatch(/abort/i);
+    expect(answer.details.conflicts).toEqual([
+      expect.objectContaining({ id: shipped, standing: 'status', status: 'closed' }),
+    ]);
+    expect(await fx.runStatus(runId)).toBe('completed');
+  }, 40_000);
+
+  it('tells an issue at the gate that an ended run still claims the sweep clears it, not an abort', async () => {
+    const { runId, ids } = await batchOf(1);
+    const [stale] = ids as [string];
+    // PLANTED: a run that ended leaving its claim on an issue back at the gate, before the sweep.
+    await harness.db.execute(
+      sql`UPDATE issues SET status = 'awaiting_release' WHERE id = ${stale}`,
+    );
+    await harness.db.execute(sql`UPDATE pipeline_runs SET status = 'failed' WHERE id = ${runId}`);
+    const answer = await recordRefused([stale]);
+    expect(answer.message).toMatch(named(await keyOf(stale)));
+    expect(answer.message).toContain('the pipeline sweep clears');
+    expect(answer.message).not.toMatch(/abort/i);
+    expect(answer.details.conflicts).toEqual([
+      expect.objectContaining({
+        id: stale,
+        standing: 'claimed',
+        runId,
+        runEnded: true,
+        claimer: 'batch',
+        status: 'awaiting_release',
+      }),
+    ]);
+  }, 30_000);
+
+  it('names a release record claiming an issue as a record, by a path that answers', async () => {
+    const { openOneShotRun } = await import('../../src/pipeline/runs.js');
+    const gate = await fx.insertIssue();
+    const run = await openOneShotRun({
+      projectId,
+      kind: 'system',
+      metadata: { source: 'release-record', gateStatus: 'awaiting_release', issueIds: [gate] },
+    });
+    // PLANTED: another caller's record holding its claim mid-close, as the race arm reads it.
+    await harness.db.execute(
+      sql`UPDATE issues SET release_batch_run_id = ${run.id} WHERE id = ${gate}`,
+    );
+    const answer = await recordRefused([gate]);
+    expect(answer.message).toMatch(named(await keyOf(gate)));
+    expect(answer.message).toContain(`GET /api/projects/${projectId}/release-records/${run.id}`);
+    expect(answer.message).toContain('release record');
+    expect(answer.message).not.toContain('release-batches');
+    expect(answer.message).not.toContain('release batch');
+    expect(answer.message).not.toMatch(/abort/i);
+    expect(answer.details.conflicts).toEqual([
+      expect.objectContaining({ id: gate, standing: 'claimed', runId: run.id, claimer: 'record' }),
+    ]);
+    expect(await recorded.readReleaseRecord(projectId, run.id)).toMatchObject({ runId: run.id });
   }, 30_000);
 
   it('names a status short of the gate, and an id that is no issue here as it was sent', async () => {

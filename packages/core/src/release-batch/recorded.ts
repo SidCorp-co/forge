@@ -18,7 +18,7 @@ import { logger } from '../logger.js';
 import { closeRunIfOneShot, openOneShotRun } from '../pipeline/runs.js';
 import { collectReleaseBlockers, releaseBlockerError } from './blockers.js';
 import type { ReleaseChannel } from './channel.js';
-import { claimConflictAt } from './claim-conflicts.js';
+import { claimConflictAt, RELEASE_RECORD_SOURCE } from './claim-conflicts.js';
 import {
   NoReleaseGateError,
   ReleaseNotVerifiedError,
@@ -26,9 +26,6 @@ import {
 } from './errors.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
 import { type ServingNowOutcome, verifyServingNow } from './verify.js';
-
-/** What `metadata.source` reads on the run a recorded release writes. */
-export const RELEASE_RECORD_SOURCE = 'release-record';
 
 /** The one ledger key a recorded release writes under. */
 const RECORD_ATTEMPT_KEY = 'release-record';

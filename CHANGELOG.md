@@ -3098,6 +3098,7 @@
   set is now 59.
 
 ### Fixed
+- **A refused release no longer sends you to abort a shipped batch.** A closed issue says it is closed, a leftover claim says the sweep clears it, a release record is named as one. The regression line matches its readings.
 - **An abort names every issue its batch already closed, and a refused release says why.** An abort after a finished batch no longer answers that nothing closed. A refused release names each claimed or misplaced issue, and what frees it.
 - **A box running out of room now says so before it runs out.** It reads free bytes and free inodes on every filesystem runs write scratch to, names the shortest, and says the worktree sweep will not reclaim it.
 - **A release agent is told what an abort really does.** Closed issues stay closed, and a promoted roster stays held for a person. A failed deploy is repaired forward before any abort, and refusals name closed issues by key.
