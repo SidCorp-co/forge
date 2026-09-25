@@ -495,6 +495,9 @@ fn dispatch_gate_reply(
             Err(e) => {
                 let why = "this box's own registry of declared runs could not be read";
                 tracing::error!("[control] the dispatch gate could not decide: {why}: {e}");
+                if let Some(refused) = refused_while_draining(ctl, why) {
+                    return refused;
+                }
                 if let Some(dir) = dir.as_deref() {
                     crate::daemon::degraded::mark(
                         dir,
@@ -512,6 +515,9 @@ fn dispatch_gate_reply(
         },
         None => {
             let why = "this box holds no registry of declared runs";
+            if let Some(refused) = refused_while_draining(ctl, why) {
+                return refused;
+            }
             if let Some(dir) = dir.as_deref() {
                 crate::daemon::degraded::mark(
                     dir,
@@ -568,6 +574,9 @@ fn dispatch_gate_reply(
             ClaimReply::refused(REFUSAL)
         }
         Verdict::Unknown(why) => {
+            if let Some(refused) = refused_while_draining(ctl, why) {
+                return refused;
+            }
             if let Some(dir) = dir.as_deref() {
                 // The registry answered here, so the run this dispatch belonged
                 // to is known even though the verdict is not.
@@ -592,6 +601,20 @@ fn dispatch_gate_reply(
             gate_allows(Some(why))
         }
     }
+}
+
+/// Where the gate cannot decide it fails open, and a draining box does not: an
+/// undeclared subagent let through there is new work the drain never counted
+/// (ISS-1223). The refusal names the drain and why the gate could not decide,
+/// and no degraded mark is written, since nothing went through.
+fn refused_while_draining(ctl: &Arc<Control>, why: &str) -> Option<ClaimReply> {
+    let drain = ctl.drain.refusal()?;
+    tracing::warn!(
+        "[control] refusing a hand-off the gate could not decide ({why}): the box is draining"
+    );
+    Some(ClaimReply::refused(format!(
+        "the dispatch gate could not check this hand-off against a declaration ({why}), and {drain}"
+    )))
 }
 
 /// The gate's "go ahead", with an optional reason it could not do better.
@@ -1356,6 +1379,86 @@ mod tests {
         );
         assert!(reply.ok, "an uncertain box must not refuse: {reply:?}");
         assert_eq!(crate::daemon::degraded::tally(&dir).0.count, 1);
+    }
+
+    /// Review finding 5: each door where the gate fails open refuses while a
+    /// drain holds admission, names the drain, and marks nothing as admitted.
+    #[cfg(unix)]
+    #[test]
+    fn a_draining_box_refuses_at_every_door_the_gate_fails_open() {
+        fn asked(tool: &str, role: &str) -> crate::daemon::dispatch_gate::Dispatch {
+            crate::daemon::dispatch_gate::Dispatch {
+                agent_id: None,
+                subagent_type: Some(role.into()),
+                tool_use_id: Some(tool.into()),
+            }
+        }
+        let refused_naming_the_drain = |r: &ClaimReply, door: &str| {
+            assert!(
+                !r.ok,
+                "{door}: a draining box let an undecided hand-off through"
+            );
+            let why = r.reason.clone().unwrap_or_default();
+            assert!(
+                why.contains("draining before a restart") && why.contains("could not check"),
+                "{door}: the refusal names the drain and why the gate could not decide: {why}"
+            );
+        };
+
+        // No registry at all.
+        let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
+        let dir = ship_roles(&ctl, &["runner"]);
+        *ctl.ledger.lock().unwrap() = None;
+        let _attempt = ctl.drain.begin("update 0.1.0 → 0.1.1").unwrap();
+        refused_naming_the_drain(
+            &gate_on(&ctl, &asked("toolu_1", "runner"), "sess-a"),
+            "no registry",
+        );
+        assert_eq!(
+            crate::daemon::degraded::tally(&dir).0.count,
+            0,
+            "nothing went through, so nothing is marked"
+        );
+
+        // Roles unreadable: `decide` answers Unknown.
+        let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
+        let _attempt = ctl.drain.begin("update 0.1.0 → 0.1.1").unwrap();
+        refused_naming_the_drain(
+            &gate_on(&ctl, &asked("toolu_2", "runner"), "sess-a"),
+            "unknown verdict",
+        );
+
+        // A dispatch with no tool call id: Unknown on the second branch.
+        let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
+        ship_roles(&ctl, &["runner"]);
+        let declared = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a");
+        assert!(declared.ok, "{:?}", declared.reason);
+        let _attempt = ctl.drain.begin("update 0.1.0 → 0.1.1").unwrap();
+        let mut no_id = asked("unused", "runner");
+        no_id.tool_use_id = None;
+        refused_naming_the_drain(&gate_on(&ctl, &no_id, "sess-a"), "no tool call id");
+    }
+
+    /// A hand-off covered by a declaration made before the drain is work the
+    /// drain already counts, so it still goes through.
+    #[cfg(unix)]
+    #[test]
+    fn a_hand_off_declared_before_the_drain_still_goes_through() {
+        let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
+        ship_roles(&ctl, &["runner"]);
+        let declared = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a");
+        assert!(declared.ok, "{:?}", declared.reason);
+        let _attempt = ctl.drain.begin("update 0.1.0 → 0.1.1").unwrap();
+        let r = gate_on(
+            &ctl,
+            &crate::daemon::dispatch_gate::Dispatch {
+                agent_id: None,
+                subagent_type: Some("runner".into()),
+                tool_use_id: Some("toolu_1".into()),
+            },
+            "sess-a",
+        );
+        assert!(allowed(&r), "{r:?}");
     }
 
     /// Put a plugin clone shipping these roles inside this Control's own config
