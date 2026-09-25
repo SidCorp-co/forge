@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { abortAccount, batchAborted, readAbortStamp } from './abort-stamp.js';
 
 const stamp = (roster: unknown) => ({
-  abort: { at: '2026-09-25T00:00:00.000Z', reason: 'stopped', by: 'u-1', roster },
+  abort: { id: 's-1', at: '2026-09-25T00:00:00.000Z', reason: 'stopped', by: 'u-1', roster },
 });
 
 describe('batchAborted — the one question every finish-side check asks', () => {
@@ -27,6 +27,7 @@ describe('batchAborted — the one question every finish-side check asks', () =>
 describe('readAbortStamp', () => {
   it('reads a stamp whose roster it knows', () => {
     expect(readAbortStamp(stamp('held'))).toEqual({
+      id: 's-1',
       at: '2026-09-25T00:00:00.000Z',
       reason: 'stopped',
       by: 'u-1',

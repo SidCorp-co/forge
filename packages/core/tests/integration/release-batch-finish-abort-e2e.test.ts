@@ -246,6 +246,27 @@ describe('a batch aborted while its finish attempt is verifying', () => {
   }, 60_000);
 });
 
+describe('two aborts overlapping on one promoted batch', () => {
+  it('keeps the later abort’s account when the earlier one settles after it', async () => {
+    const { openAttempt } = await import('../../src/release-batch/ledger.js');
+    const { runId, issueIds } = await twoIssueBatch();
+    await openAttempt({ runId, stage: 'promote', idempotencyKey: 'promote-1', commit: PUSHED });
+
+    // The first abort holds the roster and pauses before it settles; a second one returns the
+    // roster to the gate in full inside that pause.
+    await abort(runId, {
+      afterRosterRecovered: async () => {
+        await abort(runId, { promotedRoster: 'return-to-gate' });
+      },
+    });
+
+    const said = await refusalMessage(() => accept(runId, PUSHED));
+    expect(said).toMatch(/its claims were released/);
+    expect(said).not.toMatch(/stay at `releasing`/);
+    for (const id of issueIds) expect((await fx.stored(id)).status).toBe('awaiting_release');
+  }, 30_000);
+});
+
 describe('a batch whose abort has begun and not yet cancelled its run', () => {
   it('claims no released roster while the abort stands stamped and unrecovered', async () => {
     const { stampAbort } = await import('../../src/release-batch/abort-stamp.js');

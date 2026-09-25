@@ -466,7 +466,7 @@ export type PromotedRosterSettlement = 'hold' | 'return-to-gate';
 
 export interface AbortReleaseBatchOptions {
   promotedRoster?: PromotedRosterSettlement | undefined;
-  /** Test seam: runs after the roster is recovered and before the run is cancelled. */
+  /** Test seam: runs after the roster is recovered and before its account is settled. */
   afterRosterRecovered?: (() => Promise<void>) | undefined;
 }
 
@@ -477,7 +477,7 @@ export async function abortReleaseBatch(
   options: AbortReleaseBatchOptions = {},
 ): Promise<AbortReleaseBatchResult> {
   // First, so a finish sees the abort before the recovery and the cancel below (abort-stamp.ts).
-  await stampAbort(runId, {
+  const stampId = await stampAbort(runId, {
     reason,
     by: actorUserId,
     holdPromotedRoster: options.promotedRoster !== 'return-to-gate',
@@ -488,9 +488,9 @@ export async function abortReleaseBatch(
     comment: true,
     settlePromotedRoster: options.promotedRoster === 'return-to-gate',
   });
-  const held = promoted && options.promotedRoster !== 'return-to-gate';
-  await settleAbortStamp(runId, held ? 'held' : 'released');
   await options.afterRosterRecovered?.();
+  const held = promoted && options.promotedRoster !== 'return-to-gate';
+  await settleAbortStamp(runId, stampId, held ? 'held' : 'released');
 
   await closeRunIfOneShot(runId, 'cancelled');
 

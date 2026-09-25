@@ -3,6 +3,7 @@
 // hook in `claim-subscriber.ts` would race it — so it writes this stamp first, and a batch is
 // aborted to a finish from that write on.
 
+import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
@@ -10,6 +11,7 @@ import { type AbortAccount, ReleaseBatchAbortedError } from './errors.js';
 import { runRecordedPromotion } from './releasing-recovery.js';
 
 export interface AbortStamp {
+  id: string;
   at: string;
   reason: string;
   by: string;
@@ -23,6 +25,7 @@ export function readAbortStamp(metadata: unknown): AbortStamp | null {
   const r = raw as Record<string, unknown>;
   if (r.roster !== 'held' && r.roster !== 'returning' && r.roster !== 'released') return null;
   return {
+    id: typeof r.id === 'string' ? r.id : '',
     at: typeof r.at === 'string' ? r.at : '',
     reason: typeof r.reason === 'string' ? r.reason : '',
     by: typeof r.by === 'string' ? r.by : '',
@@ -44,9 +47,10 @@ export const RUN_NOT_ABORTED = sql`(${pipelineRuns.status} <> 'cancelled' AND ${
 export async function stampAbort(
   runId: string,
   stamp: { reason: string; by: string; holdPromotedRoster: boolean },
-): Promise<void> {
+): Promise<string> {
   const held = stamp.holdPromotedRoster && (await runRecordedPromotion(runId));
   const record: AbortStamp = {
+    id: randomUUID(),
     at: new Date().toISOString(),
     reason: stamp.reason,
     by: stamp.by,
@@ -58,15 +62,20 @@ export async function stampAbort(
         updated_at = now()
     WHERE id = ${runId}
   `);
+  return record.id;
 }
 
-/** Once the recovery has returned: what it did to the roster, in its own result. */
-export async function settleAbortStamp(runId: string, roster: 'held' | 'released'): Promise<void> {
+/** Once the recovery has returned, what it did — onto its own stamp only, never a later abort's. */
+export async function settleAbortStamp(
+  runId: string,
+  stampId: string,
+  roster: 'held' | 'released',
+): Promise<void> {
   await db.execute(sql`
     UPDATE pipeline_runs
     SET metadata = jsonb_set(metadata, '{abort,roster}', ${JSON.stringify(roster)}::jsonb),
         updated_at = now()
-    WHERE id = ${runId} AND metadata ? 'abort'
+    WHERE id = ${runId} AND metadata -> 'abort' ->> 'id' = ${stampId}
   `);
 }
 
