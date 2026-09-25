@@ -286,4 +286,29 @@ describe('where a release run reads its verdict (ISS-1190)', () => {
     expect(text).toMatch(/goes green when the live build matches your `commit`/);
     expect(text).not.toMatch(/CHANGED from what was serving before this batch started AND/);
   });
+
+  // Criterion 9 made a new finish after a failed one the route back; the paragraph forbade it.
+  it('sends a failed attempt back through a new finish once the deploy has landed', () => {
+    for (const text of [
+      buildReleaseBatchPrompt({ ...BASE, plan: probed }),
+      releaseBatchStatePrompt,
+    ]) {
+      expect(text).toMatch(
+        /call\s+`finish`\s+again\s+with\s+(the commit you pushed|the same\s+`commit`)/,
+      );
+      expect(text).toMatch(/starts\s+a\s+new\s+attempt/);
+      expect(text).not.toMatch(/not something to retry/i);
+      expect(text).not.toMatch(/means\s+the\s+deploy\s+did\s+not\s+land/);
+    }
+  });
+
+  it('asks the state block for a match with the commit, not a change as well', () => {
+    expect(releaseBatchStatePrompt).toMatch(/unless the live build matches your `commit`/);
+    expect(releaseBatchStatePrompt).not.toMatch(/both changed and matches/);
+  });
+
+  it('keeps abort for a deploy that will not land, not for one that missed its window', () => {
+    expect(releaseBatchStatePrompt).toMatch(/a deploy that will not land,/);
+    expect(releaseBatchStatePrompt).not.toMatch(/On ANY failure|a failed deploy/);
+  });
 });
