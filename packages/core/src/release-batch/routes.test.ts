@@ -452,7 +452,8 @@ describe('POST /:projectId/release-batches/:runId/finish — the door answers th
 });
 
 describe('a roster naming one issue twice', () => {
-  const twice = [ISSUE_ID, ISSUE_ID.toUpperCase()];
+  const LETTERED = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+  const twice = [LETTERED, LETTERED.toUpperCase()];
 
   async function post(path: string, body: Record<string, unknown>) {
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
@@ -467,7 +468,7 @@ describe('a roster naming one issue twice', () => {
   it('is refused 400 at the batch door, naming the repeated id, and opens no batch', async () => {
     const answer = await post('release-batches', { issueIds: twice });
     expect(answer.status).toBe(400);
-    expect(answer.text).toContain(`issueIds names ${ISSUE_ID.toUpperCase()} more than once`);
+    expect(answer.text).toContain(`issueIds names ${LETTERED.toUpperCase()} more than once`);
     expect(createReleaseBatchMock).not.toHaveBeenCalled();
   });
 
