@@ -2641,10 +2641,7 @@ async fn ensure_master(
         Ok(path) => path,
         Err(e) => {
             let cleared = crate::mcp::config::clear_session(&resolved.slug);
-            match (
-                launch_record(false, cleared.is_ok(), !declared.mcp_servers.is_empty()),
-                &cleared,
-            ) {
+            match (launch_record(false, cleared.is_ok(), false), &cleared) {
                 (LaunchRecord::Lying, Err(ce)) => {
                     say_unplaced(
                         masters,
