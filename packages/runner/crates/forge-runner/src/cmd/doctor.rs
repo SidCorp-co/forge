@@ -509,6 +509,16 @@ mod tests {
 
     /// A core that answers `body` after `delay`, for `n` requests.
     async fn slow_core_body(n: usize, delay: std::time::Duration, body: &'static str) -> String {
+        core_answering(n, delay, "200 OK", body).await
+    }
+
+    /// A core that answers `status` with `body` after `delay`, for `n` requests.
+    async fn core_answering(
+        n: usize,
+        delay: std::time::Duration,
+        status: &'static str,
+        body: &'static str,
+    ) -> String {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move {
@@ -521,7 +531,7 @@ mod tests {
                     let _ = sock.read(&mut buf).await;
                     tokio::time::sleep(delay).await;
                     let resp = format!(
-                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
                         body.len()
                     );
                     let _ = sock.write_all(resp.as_bytes()).await;
@@ -606,6 +616,25 @@ mod tests {
         );
         assert!(line.contains("epodsystem"), "{line}");
         assert!(print_mcp_row(Some((ok, line))));
+    }
+
+    /// ISS-1235: a 404 is a read that did not happen, so the project owes a
+    /// failing row rather than the silence of one that declares nothing.
+    #[tokio::test]
+    async fn a_404_from_the_declared_servers_route_is_a_failed_read_row() {
+        let missing = core_answering(1, std::time::Duration::ZERO, "404 Not Found", "").await;
+        let (ok, line) = mcp_servers_line(
+            &CoreClient::new(missing, String::from("tok")),
+            "p-3",
+            "gone",
+        )
+        .await
+        .expect("a 404 owes a row");
+        assert!(!ok, "{line}");
+        assert_eq!(
+            line,
+            "gone: could not read the declared MCP servers: me/mcp-servers 404 Not Found"
+        );
     }
 
     fn found(resolved: &[&str], dropped: &[&str]) -> mcp_servers::ProjectMcpServers {
