@@ -316,7 +316,9 @@ describe('where a release run reads its verdict (ISS-1190)', () => {
   // the agent the abort released every claim and left each issue where it was — the opposite of
   // what a promoted roster and a part-closed one get.
   it('describes the abort the way it answers: closed stay closed, a promoted roster held', () => {
-    expect(releaseBatchStatePrompt).toMatch(/finish already closed stays closed \(`alreadyClosed`\)/);
+    expect(releaseBatchStatePrompt).toMatch(
+      /finish already closed stays closed \(`alreadyClosed`\)/,
+    );
     expect(releaseBatchStatePrompt).toMatch(
       /recorded a promotion, the code may already be on\s+production, so the roster keeps its claims and stays at `releasing`/,
     );

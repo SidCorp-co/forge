@@ -214,7 +214,9 @@ describe('finishRefusal — what the abort did to this batch', () => {
     const refusal = finishRefusal(
       new ReleaseBatchAbortedError('held', 'proj-7', ['u-12', 'u-9'], shown),
     );
-    expect(refusal?.message).toMatch(/already closed ISS-9, ISS-12 before the abort, and they stay/);
+    expect(refusal?.message).toMatch(
+      /already closed ISS-9, ISS-12 before the abort, and they stay/,
+    );
     expect(refusal?.message).not.toMatch(/u-12|u-9/);
     expect(refusal?.cause).toEqual({
       code: 'RELEASE_BATCH_ABORTED',
