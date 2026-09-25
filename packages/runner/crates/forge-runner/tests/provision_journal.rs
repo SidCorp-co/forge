@@ -111,7 +111,11 @@ async fn the_sweep_reports_a_refusal_once_escalates_once_and_says_when_it_clears
         "{:?}",
         lines[0]
     );
-    assert!(lines[0].contains("500 Internal Server Error"), "{:?}", lines[0]);
+    assert!(
+        lines[0].contains("500 Internal Server Error"),
+        "{:?}",
+        lines[0]
+    );
     assert!(
         lines[0].contains(r#"{"error":"provision rows could not be listed"}"#),
         "{:?}",

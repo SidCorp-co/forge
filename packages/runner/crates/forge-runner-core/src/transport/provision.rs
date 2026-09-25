@@ -136,15 +136,20 @@ pub async fn pull_pending(client: &CoreClient) -> Result<Pending> {
         .bearer_auth(client.device_token())
         .send()
         .await
-        .map_err(|e| Error::Other(format!("provisions request to GET {url} never got an answer: {e}")))?;
+        .map_err(|e| {
+            Error::Other(format!(
+                "provisions request to GET {url} never got an answer: {e}"
+            ))
+        })?;
     let status = resp.status();
     if !status.is_success() {
-        let body = match resp.text().await {
-            Ok(raw) => body_excerpt(&raw),
-            Err(e) => format!("<could not be read: {e}>"),
+        let body = match tokio::time::timeout(BODY_DEADLINE, resp.text()).await {
+            Ok(Ok(raw)) => body_excerpt(&raw),
+            Ok(Err(e)) => format!("<could not be read: {e}>"),
+            Err(_) => format!("<not sent within {}s>", BODY_DEADLINE.as_secs()),
         };
         return Err(Error::Other(format!(
-            "provisions failed: GET {url} answered {status}, body: {body}"
+            "provisions failed: GET {url} answered {status}{BODY_MARK}{body}"
         )));
     }
     let reported = parse_failures(
@@ -156,7 +161,8 @@ pub async fn pull_pending(client: &CoreClient) -> Result<Pending> {
         .json::<Vec<Provision>>()
         .await
         .map_err(|e| Error::Other(format!("provisions decode from GET {url}: {e}")))?;
-    journal(streak().succeeded(Instant::now()));
+    let recovery = streak().succeeded(Instant::now());
+    journal(recovery);
     Ok(Pending {
         provisions,
         failures: reported.failures,
@@ -169,10 +175,40 @@ pub async fn pull_pending(client: &CoreClient) -> Result<Pending> {
 /// enough that a refusal repeating for a day cannot fill a disk.
 const BODY_CAP: usize = 400;
 
-/// Consecutive refusals of ONE subject before the condition stops being a
-/// warning. Chosen so a deploy window — a few polls of `503` while core
-/// restarts — passes without an error, and a real outage does not.
+/// Consecutive refusals of ONE condition before it stops being a warning.
+/// Chosen so a deploy window — a few polls of `503` while core restarts —
+/// passes without an error, and a real outage does not.
 const ESCALATE_AFTER: u32 = 5;
+
+/// How long the body of an already-known refusal may take to arrive.
+///
+/// [`CoreClient`] builds its http client with no timeout, so a peer that sends
+/// non-2xx headers and then stalls would hold this read open for as long as it
+/// holds the socket. The refusal is known from the status line: reading the
+/// body is diagnosis, and diagnosis must not be what stops the operator
+/// hearing about the refusal at all.
+const BODY_DEADLINE: Duration = Duration::from_secs(5);
+
+/// What separates a refusal's condition from the body that came with it.
+///
+/// Both sides of that split are this module's: `pull_pending` writes it and
+/// [`condition`] reads it back, so the streak can be keyed on the stable half
+/// of a refusal without a second channel carrying the status alongside.
+const BODY_MARK: &str = ", body: ";
+
+/// The stable half of one refusal — the endpoint and the status, or for a
+/// failure that never got an answer, the endpoint and the transport error.
+///
+/// This is what a streak is keyed on, and keying it on the WHOLE refusal was a
+/// defect caught in review: Cloudflare's 5xx pages carry a Ray ID that changes
+/// every request, so a body-sensitive key would have made every poll of a `520`
+/// storm a brand-new condition and restored the flood this change exists to
+/// stop. The cost is that two refusals sharing a status and differing only in
+/// body are one streak, so the second body is not written — the escalation
+/// carries the body of the refusal that escalated, which is the current one.
+fn condition(subject: &str) -> &str {
+    subject.split(BODY_MARK).next().unwrap_or(subject)
+}
 
 /// One poll's response body as a log line carries it: whitespace collapsed so
 /// a multi-line HTML error page stays one journal entry, and cut at
@@ -233,16 +269,18 @@ enum Entry {
     },
 }
 
-/// Consecutive refusals carrying one subject.
+/// Consecutive refusals of one condition.
 ///
-/// The subject IS the error's own text, which after `pull_pending` above
-/// carries the endpoint, the status and the body: two refusals differing in
-/// any of those are different conditions and each earns its own line. That is
-/// what separates a `502` from the edge from a `500` from a handler, which on
-/// this box alternated for days behind one indistinguishable warning.
+/// A `502` from the edge and a `500` from a handler are different conditions
+/// and each earns its own line — on this box they alternated for days behind
+/// one indistinguishable warning. The body is carried on the line and not in
+/// the key, for the reason [`condition`] gives.
 #[derive(Debug, Default)]
 struct Streak {
-    subject: Option<String>,
+    condition: Option<String>,
+    /// The most recent refusal whole, body included: what an escalation or a
+    /// recovery names, so neither reports a count with nothing attached.
+    subject: String,
     count: u32,
     first: Option<Instant>,
 }
@@ -250,7 +288,8 @@ struct Streak {
 impl Streak {
     const fn new() -> Self {
         Self {
-            subject: None,
+            condition: None,
+            subject: String::new(),
             count: 0,
             first: None,
         }
@@ -258,13 +297,19 @@ impl Streak {
 
     /// Record one refusal and say what the journal owes for it.
     fn refused(&mut self, subject: &str, now: Instant) -> Entry {
-        if self.subject.as_deref() != Some(subject) {
-            self.subject = Some(subject.to_string());
+        let cond = condition(subject);
+        let same = self.condition.as_deref() == Some(cond);
+        if !same {
+            self.condition = Some(cond.to_string());
             self.count = 1;
             self.first = Some(now);
+        } else {
+            self.count = self.count.saturating_add(1);
+        }
+        self.subject = subject.to_string();
+        if !same {
             return Entry::Refused(subject.to_string());
         }
-        self.count = self.count.saturating_add(1);
         if self.count == ESCALATE_AFTER {
             return Entry::Escalated {
                 subject: subject.to_string(),
@@ -283,7 +328,8 @@ impl Streak {
             return Entry::Nothing;
         };
         let count = std::mem::take(&mut self.count);
-        let subject = self.subject.take().unwrap_or_default();
+        let subject = std::mem::take(&mut self.subject);
+        self.condition = None;
         Entry::Recovered {
             subject,
             count,
@@ -424,9 +470,15 @@ mod tests {
     fn a_body_over_the_cap_is_cut_and_says_so() {
         let raw = "y".repeat(BODY_CAP + 2048);
         let out = body_excerpt(&raw);
-        assert_eq!(out.chars().take(BODY_CAP).collect::<String>(), "y".repeat(BODY_CAP));
+        assert_eq!(
+            out.chars().take(BODY_CAP).collect::<String>(),
+            "y".repeat(BODY_CAP)
+        );
         assert!(
-            out.ends_with(&format!("… (cut at {BODY_CAP} of {} characters)", BODY_CAP + 2048)),
+            out.ends_with(&format!(
+                "… (cut at {BODY_CAP} of {} characters)",
+                BODY_CAP + 2048
+            )),
             "{out}"
         );
     }
@@ -441,7 +493,7 @@ mod tests {
     }
 
     fn refusal(status: &str) -> String {
-        format!("provisions failed: GET http://core/api/devices/me/provisions answered {status}, body: <none>")
+        format!("provisions failed: GET http://core/api/devices/me/provisions answered {status}{BODY_MARK}<none>")
     }
 
     #[test]
@@ -523,7 +575,10 @@ mod tests {
         );
         for n in 6..9 {
             assert_eq!(
-                s.refused(&refusal("502 Bad Gateway"), now + Duration::from_secs(90 * n)),
+                s.refused(
+                    &refusal("502 Bad Gateway"),
+                    now + Duration::from_secs(90 * n)
+                ),
                 Entry::Nothing,
                 "poll {n}"
             );
@@ -539,21 +594,53 @@ mod tests {
         );
     }
 
-    /// Two refusals sharing a status but not a body are two conditions: core
-    /// answering `503` because it is restarting and an edge answering `503`
-    /// with nothing behind it are not the same incident.
+    /// The case this streak was re-keyed for. Cloudflare's 5xx pages carry a
+    /// Ray ID that is different on every request, and this box met `520` twice
+    /// in one afternoon: keyed on the whole refusal, a `520` storm would have
+    /// been a fresh condition every ninety seconds and written a line every
+    /// ninety seconds, which is the defect wearing the other sign.
     #[test]
-    fn two_refusals_sharing_a_status_but_not_a_body_are_different_subjects() {
+    fn a_body_that_is_different_every_poll_is_still_one_streak() {
         let mut s = Streak::new();
         let now = Instant::now();
-        s.refused("provisions failed: GET u answered 503, body: core restarting", now);
-        assert!(matches!(
-            s.refused(
-                "provisions failed: GET u answered 503, body: no healthy upstream",
-                now + Duration::from_secs(90)
-            ),
-            Entry::Refused(_)
-        ));
+        let ray = |n: u32| {
+            format!(
+                "provisions failed: GET http://core/api/devices/me/provisions answered 520 <unknown status code>{BODY_MARK}error 520 Ray ID: 8f2c{n:04x} Web server is returning an unknown error"
+            )
+        };
+        assert!(matches!(s.refused(&ray(0), now), Entry::Refused(_),));
+        for n in 1..=3 {
+            assert_eq!(
+                s.refused(&ray(n), now + Duration::from_secs(90 * u64::from(n))),
+                Entry::Nothing,
+                "poll {n}"
+            );
+        }
+        let fifth = s.refused(&ray(4), now + Duration::from_secs(360));
+        let Entry::Escalated { subject, count, .. } = fifth else {
+            panic!("the fifth refusal of one condition escalates: {fifth:?}");
+        };
+        assert_eq!(count, 5);
+        assert!(
+            subject.contains("Ray ID: 8f2c0004"),
+            "the escalation carries the body of the refusal that escalated: {subject}"
+        );
+    }
+
+    /// A failure that never got an answer has no status and no body, so its
+    /// condition is the whole error. Two of them are one streak.
+    #[test]
+    fn a_streak_of_unanswered_pulls_is_one_streak() {
+        let mut s = Streak::new();
+        let now = Instant::now();
+        let unanswered =
+            "provisions request to GET http://core/api/devices/me/provisions never got an answer: error sending request";
+        assert!(matches!(s.refused(unanswered, now), Entry::Refused(_)));
+        assert_eq!(
+            s.refused(unanswered, now + Duration::from_secs(90)),
+            Entry::Nothing
+        );
+        assert_eq!(condition(unanswered), unanswered);
     }
 
     #[test]
@@ -629,7 +716,10 @@ mod tests {
         let out = logged_while(|| journal(Entry::Refused(refusal("500 Internal Server Error"))));
         assert!(out.contains("WARN"), "{out}");
         assert!(out.contains("[provision] pull failed:"), "{out}");
-        assert!(out.contains("GET http://core/api/devices/me/provisions"), "{out}");
+        assert!(
+            out.contains("GET http://core/api/devices/me/provisions"),
+            "{out}"
+        );
         assert!(out.contains("500 Internal Server Error"), "{out}");
     }
 
@@ -645,7 +735,10 @@ mod tests {
         assert!(out.contains("ERROR"), "{out}");
         assert!(out.contains("5 consecutive times"), "{out}");
         assert!(out.contains("21h 0m"), "{out}");
-        assert!(out.contains("GET http://core/api/devices/me/provisions"), "{out}");
+        assert!(
+            out.contains("GET http://core/api/devices/me/provisions"),
+            "{out}"
+        );
     }
 
     #[test]
@@ -660,7 +753,10 @@ mod tests {
         assert!(out.contains("INFO"), "{out}");
         assert!(out.contains("685 consecutive refusal(s)"), "{out}");
         assert!(out.contains("21h 0m"), "{out}");
-        assert!(out.contains("GET http://core/api/devices/me/provisions"), "{out}");
+        assert!(
+            out.contains("GET http://core/api/devices/me/provisions"),
+            "{out}"
+        );
     }
 
     #[test]
@@ -715,6 +811,32 @@ mod tests {
         );
     }
 
+    /// Reading the body is diagnosis, and the refusal is already known from
+    /// the status line. A peer that sends `503` headers and then stalls held
+    /// this read open for as long as it held the socket — `CoreClient` sets no
+    /// timeout — so neither the warning nor the escalation was ever written.
+    #[tokio::test]
+    async fn a_body_that_never_finishes_does_not_hold_the_refusal_back() {
+        let base = crate::transport::fake_core::serve_stalled_body("503 Service Unavailable").await;
+        let client = CoreClient::new(&base, "device-token");
+        let began = Instant::now();
+        let err = pull_pending(&client).await.unwrap_err().to_string();
+        assert!(
+            began.elapsed() < BODY_DEADLINE + Duration::from_secs(3),
+            "the refusal waited {:?} on a body nobody was going to finish",
+            began.elapsed()
+        );
+        assert!(err.contains("503 Service Unavailable"), "{err}");
+        assert!(
+            err.contains(&format!("GET {base}/api/devices/me/provisions")),
+            "{err}"
+        );
+        assert!(
+            err.contains(&format!("<not sent within {}s>", BODY_DEADLINE.as_secs())),
+            "{err}"
+        );
+    }
+
     /// A pull that never got an answer at all. The endpoint is the one thing
     /// this box can still say, and it says it.
     #[tokio::test]
@@ -728,4 +850,3 @@ mod tests {
         );
     }
 }
-
