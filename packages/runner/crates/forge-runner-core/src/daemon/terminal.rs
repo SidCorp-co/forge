@@ -644,7 +644,9 @@ pub(crate) mod testing {
 
     impl IsolatedServer {
         pub(crate) fn new(label: &str) -> Self {
-            let dir = crate::test_scratch::Scratch::new(&format!("iso-{label}"));
+            // `short`: the socket is `<dir>/forge-runner/tmux.sock`, and a path past the 100-byte
+            // limit resolves no socket at all, which would send tmux to the box's own server.
+            let dir = crate::test_scratch::Scratch::short(&format!("iso-{label}"));
             std::fs::create_dir_all(dir.join("forge-runner")).expect("isolated config dir");
             let xdg = ScopedVar::set("XDG_CONFIG_HOME", &dir);
             Self { _xdg: xdg, dir }
@@ -768,7 +770,8 @@ mod tests {
 
     impl ConfigHome {
         fn new(label: &str) -> Self {
-            let dir = crate::test_scratch::Scratch::new(label);
+            // `short` for the reason `IsolatedServer::new` gives: the socket lives under it.
+            let dir = crate::test_scratch::Scratch::short(label);
             std::fs::create_dir_all(dir.join("forge-runner")).expect("temp config dir");
             Self(dir)
         }

@@ -60,7 +60,18 @@ impl Scratch {
 
     /// One path inside this scratch, for a helper whose callers want a file or a subdirectory
     /// rather than the root. The root lives exactly as long as the returned value.
+    ///
+    /// `rel` must stay inside the scratch: an absolute path or a `..` would hand out a place the
+    /// drop does not remove, so either is refused by name.
     pub fn at(self, rel: impl AsRef<Path>) -> InScratch {
+        let rel = rel.as_ref();
+        assert!(
+            rel.components()
+                .all(|c| matches!(c, std::path::Component::Normal(_))),
+            "Scratch::at({}) leaves the scratch dir, and the drop would not remove what is made \
+             there: give a relative path with no `..`",
+            rel.display()
+        );
         let path = self.0.join(rel);
         InScratch { path, root: self }
     }
@@ -171,6 +182,16 @@ mod tests {
             "{} outlived the path holding it",
             root.display()
         );
+    }
+
+    #[test]
+    fn a_path_that_leaves_the_scratch_is_refused_by_name() {
+        for escaping in ["../outside", "/etc", "a/../../b"] {
+            let refused = std::panic::catch_unwind(|| Scratch::new("escape").at(escaping));
+            let why = refused.expect_err(escaping);
+            let msg = why.downcast_ref::<String>().cloned().unwrap_or_default();
+            assert!(msg.contains("leaves the scratch dir"), "{escaping}: {msg}");
+        }
     }
 
     #[test]
