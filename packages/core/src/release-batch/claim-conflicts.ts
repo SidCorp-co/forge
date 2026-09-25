@@ -84,7 +84,7 @@ function ofStanding<S extends ClaimConflict['standing']>(
 function claimedSentence(projectId: string, runId: string, list: Standing<'claimed'>[]): string {
   const batch = `/api/projects/${projectId}/release-batches/${runId}`;
   if (!list.some((c) => c.runEnded)) {
-    return `${keys(list)} ${isAre(list)} claimed by release batch ${runId}, which is still running: read it with GET ${batch}/state, and its claims are released when it ends.`;
+    return `${keys(list)} ${isAre(list)} claimed by release batch ${runId}, which is still running: read where it stands with GET ${batch}/state. An issue comes free once that batch releases its claim.`;
   }
   const them = list.length === 1 ? 'it' : 'them';
   return `${keys(list)} ${isAre(list)} still claimed by release batch ${runId}, which has ended: abort it with POST ${batch}/abort and a body of {"promotedRoster":"return-to-gate"}, which releases the claim and puts an issue still at \`releasing\` back at the release gate, then send ${them} again.`;
