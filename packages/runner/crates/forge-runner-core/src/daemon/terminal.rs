@@ -639,16 +639,14 @@ pub(crate) mod testing {
     /// keeps a test off the server this box's live masters are running on.
     pub(crate) struct IsolatedServer {
         _xdg: ScopedVar,
-        dir: std::path::PathBuf,
+        dir: crate::test_scratch::Scratch,
     }
 
     impl IsolatedServer {
         pub(crate) fn new(label: &str) -> Self {
-            let dir = std::env::temp_dir().join(format!(
-                "forge-iso-{label}-{}-{:?}",
-                std::process::id(),
-                std::thread::current().id()
-            ));
+            // `short`: the socket is `<dir>/forge-runner/tmux.sock`, and a path past the 100-byte
+            // limit resolves no socket at all, which would send tmux to the box's own server.
+            let dir = crate::test_scratch::Scratch::short(&format!("iso-{label}"));
             std::fs::create_dir_all(dir.join("forge-runner")).expect("isolated config dir");
             let xdg = ScopedVar::set("XDG_CONFIG_HOME", &dir);
             Self { _xdg: xdg, dir }
@@ -676,7 +674,6 @@ pub(crate) mod testing {
                         .output();
                 }
             }
-            let _ = std::fs::remove_dir_all(&self.dir);
         }
     }
 
@@ -688,27 +685,20 @@ pub(crate) mod testing {
     /// the strength of a question nobody answered.
     pub(crate) struct UnaskableTmux {
         _path: ScopedVar,
-        dir: std::path::PathBuf,
+        _dir: crate::test_scratch::Scratch,
     }
 
     impl UnaskableTmux {
         pub(crate) fn installed() -> Self {
-            let dir = std::env::temp_dir().join(format!("forge-unaskable-{}", std::process::id()));
-            std::fs::create_dir_all(&dir).expect("shim dir");
+            let dir = crate::test_scratch::Scratch::new("unaskable");
             // An empty PATH, so the spawn fails rather than the command
             // answering something. `available()` was resolved at startup and
             // is cached, which is the production shape of this: tmux was there
             // when the daemon started and cannot be run now.
             Self {
                 _path: ScopedVar::set("PATH", &dir),
-                dir,
+                _dir: dir,
             }
-        }
-    }
-
-    impl Drop for UnaskableTmux {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.dir);
         }
     }
 
@@ -721,14 +711,13 @@ pub(crate) mod testing {
     /// session is still there — is the fault, not a model of it.
     pub(crate) struct RefusingKill {
         _path: ScopedVar,
-        dir: std::path::PathBuf,
+        _dir: crate::test_scratch::Scratch,
     }
 
     impl RefusingKill {
         pub(crate) fn installed() -> Self {
             let real = which::which("tmux").expect("a real tmux to pass everything else to");
-            let dir = std::env::temp_dir().join(format!("forge-refuse-{}", std::process::id()));
-            std::fs::create_dir_all(&dir).expect("shim dir");
+            let dir = crate::test_scratch::Scratch::new("refuse");
             let shim = dir.join("tmux");
             std::fs::write(
             &shim,
@@ -750,14 +739,8 @@ pub(crate) mod testing {
             };
             Self {
                 _path: ScopedVar::set("PATH", ahead),
-                dir,
+                _dir: dir,
             }
-        }
-    }
-
-    impl Drop for RefusingKill {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.dir);
         }
     }
 
@@ -783,23 +766,18 @@ mod tests {
             .unwrap_or_else(|| SESSION_UNIT.to_string())
     }
 
-    struct ConfigHome(std::path::PathBuf);
+    struct ConfigHome(crate::test_scratch::Scratch);
 
     impl ConfigHome {
         fn new(label: &str) -> Self {
-            let dir = std::env::temp_dir().join(format!("forge-{label}-{}", std::process::id()));
+            // `short` for the reason `IsolatedServer::new` gives: the socket lives under it.
+            let dir = crate::test_scratch::Scratch::short(label);
             std::fs::create_dir_all(dir.join("forge-runner")).expect("temp config dir");
             Self(dir)
         }
 
         fn path(&self) -> &std::path::Path {
-            &self.0
-        }
-    }
-
-    impl Drop for ConfigHome {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
+            self.0.path()
         }
     }
 
@@ -852,17 +830,21 @@ mod tests {
     }
 
     impl Sandbox {
-        fn new(label: &str) -> Self {
+        /// `None` where this box cannot give the test a tmux server of its own.
+        fn new(label: &str) -> Option<Self> {
             let home = ConfigHome::new(label);
             let xdg = ScopedVar::set("XDG_CONFIG_HOME", home.path());
-            let placed = socket_path()
-                .filter(|sock| sock.starts_with(home.path()))
-                .map(|sock| PlacedUnit::guarding(session_unit(), sock));
-            Self {
+            // A socket that does not resolve under this home means every tmux call after this
+            // one reaches the box's own server, where live masters run. Off Linux the variable
+            // steers nothing, so that is the platform's answer and not a fault: the caller is
+            // told, and runs no tmux at all.
+            let sock = socket_path().filter(|sock| sock.starts_with(home.path()))?;
+            let placed = Some(PlacedUnit::guarding(session_unit(), sock));
+            Some(Self {
                 _placed: placed,
                 _xdg: xdg,
                 _home: home,
-            }
+            })
         }
     }
 
@@ -927,13 +909,15 @@ mod tests {
     async fn a_pane_and_its_same_second_replacement_are_told_apart() {
         let _serialised = ONE_AT_A_TIME.lock().await;
         let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let _sandbox = Sandbox::new("incarnation");
+        let Some(_sandbox) = Sandbox::new("incarnation") else {
+            eprintln!("this box gives a test no tmux server of its own — nothing runs rather than reaching its real one");
+            return;
+        };
         if !available() {
             eprintln!("tmux is not installed here — the transport test cannot run");
             return;
         }
-        let dir = std::env::temp_dir().join(format!("forge-terminal-inc-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).expect("temp dir");
+        let dir = crate::test_scratch::Scratch::new("terminal-inc");
         let name = session_name("forge-test", &format!("inc{}", std::process::id()));
         let sleep = ["sleep".to_string(), "60".to_string()];
         let _ = kill(&name).await;
@@ -1016,13 +1000,15 @@ mod tests {
     async fn a_kill_tmux_refused_is_never_answered_as_one_that_took() {
         let _serialised = ONE_AT_A_TIME.lock().await;
         let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let _sandbox = Sandbox::new("kill-refused");
+        let Some(_sandbox) = Sandbox::new("kill-refused") else {
+            eprintln!("this box gives a test no tmux server of its own — nothing runs rather than reaching its real one");
+            return;
+        };
         if !available() {
             eprintln!("tmux is not installed here — the transport test cannot run");
             return;
         }
-        let dir = std::env::temp_dir().join(format!("forge-terminal-kr-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).expect("temp dir");
+        let dir = crate::test_scratch::Scratch::new("terminal-kr");
         let name = session_name("forge-test", &format!("kr{}", std::process::id()));
         let sleep = ["sleep".to_string(), "60".to_string()];
         let _ = kill(&name).await;
@@ -1076,13 +1062,15 @@ mod tests {
     async fn a_pane_receives_what_is_typed_at_it_and_the_transcript_keeps_it() {
         let _serialised = ONE_AT_A_TIME.lock().await;
         let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let _sandbox = Sandbox::new("panes");
+        let Some(_sandbox) = Sandbox::new("panes") else {
+            eprintln!("this box gives a test no tmux server of its own — nothing runs rather than reaching its real one");
+            return;
+        };
         if !available() {
             eprintln!("tmux is not installed here — the transport test cannot run");
             return;
         }
-        let dir = std::env::temp_dir().join(format!("forge-terminal-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).expect("temp dir");
+        let dir = crate::test_scratch::Scratch::new("terminal");
         let log = dir.join("transcript.log");
         let name = session_name("forge-test", &format!("t{}", std::process::id()));
         let _ = kill(&name).await;
@@ -1148,13 +1136,15 @@ mod tests {
     async fn a_restart_re_enters_the_pane_it_left_rather_than_starting_a_second_one() {
         let _serialised = ONE_AT_A_TIME.lock().await;
         let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let _sandbox = Sandbox::new("panes");
+        let Some(_sandbox) = Sandbox::new("panes") else {
+            eprintln!("this box gives a test no tmux server of its own — nothing runs rather than reaching its real one");
+            return;
+        };
         if !available() {
             eprintln!("tmux is not installed here — the residency test cannot run");
             return;
         }
-        let dir = std::env::temp_dir().join(format!("forge-resident-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).expect("temp dir");
+        let dir = crate::test_scratch::Scratch::new("resident");
         let name = session_name("forge-test", &format!("r{}", std::process::id()));
         let _ = kill(&name).await;
 
@@ -1255,9 +1245,7 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn a_killed_pane_is_rebuilt_on_the_conversation_it_had() {
-        let root =
-            std::env::temp_dir().join(format!("forge-iss1050-step19-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
+        let root = crate::test_scratch::Scratch::new("iss1050-step19");
         let sock = root.join("tmux");
         let bin = root.join("bin");
         let repo = root.join("repo");
@@ -1525,10 +1513,13 @@ mod tests {
         use std::os::unix::ffi::OsStringExt as _;
         let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
+        // Rooted in a scratch dir rather than at a literal `/tmp` path: resolving a socket creates
+        // the config dir, and a literal path is one no drop ever removes.
+        let bytes_home = crate::test_scratch::Scratch::short("bytes");
         let mut units = Vec::new();
         let mut sockets = Vec::new();
         for tail in [b"\xf0".to_vec(), b"\xf1".to_vec()] {
-            let mut raw = format!("/tmp/forge-bytes-{}-", std::process::id()).into_bytes();
+            let mut raw = bytes_home.join("config-").into_os_string().into_vec();
             raw.extend(tail);
             let dir = std::path::PathBuf::from(std::ffi::OsString::from_vec(raw));
             let _xdg = ScopedVar::set("XDG_CONFIG_HOME", &dir);
@@ -1799,8 +1790,7 @@ mod tests {
             "six panes starting at once must never have two placements in flight together"
         );
 
-        let dir = std::env::temp_dir().join(format!("forge-race-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).expect("temp dir");
+        let dir = crate::test_scratch::Scratch::new("race");
         let names: Vec<String> = (0..4)
             .map(|i| session_name("forge-test", &format!("race{}-{i}", std::process::id())))
             .collect();
@@ -1808,7 +1798,7 @@ mod tests {
             let _ = kill(n).await;
         }
         futures_util::future::join_all(names.iter().map(|n| {
-            let dir = dir.clone();
+            let dir = dir.to_path_buf();
             async move {
                 ensure(n, &dir, &["sleep".to_string(), "60".to_string()], &[], None)
                     .await

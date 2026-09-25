@@ -656,14 +656,8 @@ mod tests {
         );
     }
 
-    fn scratch_dir(label: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "forge-hookq-{label}-{}-{}",
-            std::process::id(),
-            uuid::Uuid::new_v4().simple()
-        ));
-        std::fs::create_dir_all(&dir).expect("scratch");
-        dir
+    fn scratch_dir(label: &str) -> crate::test_scratch::Scratch {
+        crate::test_scratch::Scratch::new(&format!("hookq-{label}"))
     }
 
     /// A directory named `label`, holding a file `is_runnable` accepts.
@@ -675,8 +669,11 @@ mod tests {
     /// Windows job. On unix it is a real shell script, which is what the two
     /// cases that actually invoke it need; elsewhere it is a regular file,
     /// which is the whole of what `is_runnable` asks there.
-    fn scratch_runner(label: &str) -> (PathBuf, PathBuf) {
-        let home = scratch_dir("run").join(label);
+    ///
+    /// The first value owns the scratch dir; the caller binds it for the test's life.
+    fn scratch_runner(label: &str) -> (crate::test_scratch::InScratch, PathBuf) {
+        let home = scratch_dir("run").at(label);
+
         std::fs::create_dir_all(&home).expect("scratch");
         let exe = home.join("forge-runner");
         std::fs::write(&exe, "#!/bin/sh\necho ran > \"$FORGE_HOOK_MARKER\"\n").expect("runner");

@@ -790,19 +790,12 @@ mod tests {
     use super::*;
     use crate::auth::cred_store::ScopedVar;
 
-    fn tmp_repo(tag: &str) -> PathBuf {
-        let dir =
-            std::env::temp_dir().join(format!("forge-mcp-persist-{tag}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        dir
+    fn tmp_repo(tag: &str) -> crate::test_scratch::Scratch {
+        crate::test_scratch::Scratch::new(&format!("mcp-persist-{tag}"))
     }
 
-    fn tmp_mcp_dir(tag: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("forge-mcp-cfg-{tag}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        dir
+    fn tmp_mcp_dir(tag: &str) -> crate::test_scratch::Scratch {
+        crate::test_scratch::Scratch::new(&format!("mcp-cfg-{tag}"))
     }
 
     fn read_doc(repo: &Path) -> Value {
@@ -859,7 +852,7 @@ mod tests {
     #[test]
     fn the_directory_isolates_runs_and_the_file_name_stays_stable() {
         let one = tmp_mcp_dir("iso-one");
-        let two = tmp_mcp_dir("iso-two").join("second");
+        let two = tmp_mcp_dir("iso-two").at("second");
         std::fs::create_dir_all(&two).unwrap();
 
         let a = write_in(
@@ -940,8 +933,9 @@ mod tests {
             "chrome-devtools-mcp": true,
             "playwright": { "type": "stdio", "command": "npx" },
         });
+        let scratch = tmp_mcp_dir("skip-non-object");
         let path = write_in(
-            &tmp_mcp_dir("skip-non-object"),
+            &scratch,
             "https://core.example",
             "forge_pat_dev_boxcred",
             "skip-non-object-slug",
@@ -1037,8 +1031,9 @@ mod tests {
     #[test]
     fn a_pat_writes_the_forge_entry_it_always_wrote_and_overrides_merge_on_top() {
         let overrides = serde_json::json!({ "playwright": { "type": "stdio", "command": "npx" } });
+        let scratch = tmp_mcp_dir("same-entry");
         let path = write_in(
-            &tmp_mcp_dir("same-entry"),
+            &scratch,
             "https://core.example/",
             "forge_pat_dev_op",
             "proj",
@@ -1146,8 +1141,10 @@ mod tests {
         assert_eq!(forge["headers"]["X-Forge-Project-Slug"], "proj");
         let _ = std::fs::remove_dir_all(&repo);
 
+        let scratch = tmp_mcp_dir("box-cred");
+
         let path = write_in(
-            &tmp_mcp_dir("box-cred"),
+            &scratch,
             "https://core.example",
             "forge_pat_dev_boxcred",
             "box-cred-slug",
@@ -1209,9 +1206,7 @@ mod tests {
         // -- with no PAT the provisioned folder keeps whatever was there --
         pat.move_to("");
         let _store = ScopedVar::set("FORGE_RUNNER_CRED_STORE", "file");
-        let empty = std::env::temp_dir().join(format!("forge-mcp-nocred-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&empty);
-        std::fs::create_dir_all(&empty).unwrap();
+        let empty = crate::test_scratch::Scratch::new("mcp-nocred");
         let _xdg = ScopedVar::set("XDG_CONFIG_HOME", &empty);
 
         let repo = tmp_repo("no-pat");
@@ -1253,7 +1248,7 @@ mod tests {
             path.file_name().unwrap().to_str().unwrap(),
             "forge-master-mcp-mowment.json"
         );
-        assert_eq!(path.parent().unwrap(), dir.as_path());
+        assert_eq!(path.parent().unwrap(), dir.path());
 
         #[cfg(unix)]
         {
@@ -1654,11 +1649,8 @@ mod tests {
 
     // ---- ISS-1114: what a pane will actually be able to see --------------
 
-    fn reach_dir(tag: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("forge-reach-{tag}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        dir
+    fn reach_dir(tag: &str) -> crate::test_scratch::Scratch {
+        crate::test_scratch::Scratch::new(&format!("reach-{tag}"))
     }
 
     /// A `.mcp.json` shaped exactly as [`write_persistent`] writes one, bearer

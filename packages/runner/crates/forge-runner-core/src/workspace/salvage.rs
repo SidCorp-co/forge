@@ -574,13 +574,11 @@ mod tests {
 
     /// A repo root on `main` with a bare remote, plus one agent worktree under
     /// `.claude/worktrees/` on its own branch — the shape a code job leaves.
-    async fn repo(tag: &str, branch: &str) -> (PathBuf, PathBuf) {
-        let root = std::env::temp_dir().join(format!(
-            "forge-salvage-{tag}-{}-{:?}",
-            std::process::id(),
-            std::thread::current().id()
-        ));
-        let _ = std::fs::remove_dir_all(&root);
+    ///
+    /// The root sits one level inside its scratch so the bare remote beside it
+    /// (`root.with_extension("remote.git")`) goes with the scratch too.
+    async fn repo(tag: &str, branch: &str) -> (crate::test_scratch::InScratch, PathBuf) {
+        let root = crate::test_scratch::Scratch::new(&format!("salvage-{tag}")).at("repo");
         std::fs::create_dir_all(&root).unwrap();
         run(&root, &["init", "-b", "main"]).await;
         run(&root, &["config", "user.email", "t@t"]).await;
@@ -638,14 +636,10 @@ mod tests {
 
         /// A repo with NO remote configured, one commit, and one worktree on
         /// its own branch — the shape every MCP-only storefront project has.
-        async fn local_only(tag: &str, branch: &str) -> (PathBuf, PathBuf) {
-            let root = std::env::temp_dir().join(format!(
-                "forge-retention-{tag}-{}-{:?}",
-                std::process::id(),
-                std::thread::current().id()
-            ));
-            let _ = std::fs::remove_dir_all(&root);
+        async fn local_only(tag: &str, branch: &str) -> (crate::test_scratch::InScratch, PathBuf) {
+            let root = crate::test_scratch::Scratch::new(&format!("retention-{tag}")).at("repo");
             std::fs::create_dir_all(&root).unwrap();
+
             run(&root, &["init", "-b", "main"]).await;
             run(&root, &["config", "user.email", "t@t"]).await;
             run(&root, &["config", "user.name", "t"]).await;
@@ -775,13 +769,7 @@ mod tests {
 
         #[tokio::test]
         async fn a_path_git_cannot_answer_for_is_unknown_and_never_kept() {
-            let dir = std::env::temp_dir().join(format!(
-                "forge-retention-notarepo-{}-{:?}",
-                std::process::id(),
-                std::thread::current().id()
-            ));
-            let _ = std::fs::remove_dir_all(&dir);
-            std::fs::create_dir_all(&dir).unwrap();
+            let dir = crate::test_scratch::Scratch::new("retention-notarepo");
             assert!(
                 matches!(retention_of(&dir).await, Retention::Unknown { .. }),
                 "a directory that is no repository cannot answer, and not knowing is not Kept"

@@ -126,10 +126,8 @@ mod tests {
     use crate::runner::doorbell::{ring, Ring};
     use crate::runner::ledger::{NewRun, Work};
 
-    fn dir() -> std::path::PathBuf {
-        let d = std::env::temp_dir().join(format!("blk-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&d).unwrap();
-        d
+    fn dir() -> crate::test_scratch::Scratch {
+        crate::test_scratch::Scratch::new("blk")
     }
 
     fn run_on(led: &mut Ledger) {

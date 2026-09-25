@@ -118,17 +118,11 @@ fn strip_deleted(raw: &Path) -> Option<PathBuf> {
 mod tests {
     use super::*;
 
-    struct Scratch(PathBuf);
+    struct Scratch(crate::test_scratch::Scratch);
 
     impl Scratch {
         fn new(label: &str) -> Self {
-            let dir = std::env::temp_dir().join(format!(
-                "forge-exe-{label}-{}-{}",
-                std::process::id(),
-                uuid::Uuid::new_v4().simple()
-            ));
-            std::fs::create_dir_all(&dir).expect("scratch");
-            Self(dir)
+            Self(crate::test_scratch::Scratch::new(&format!("exe-{label}")))
         }
 
         /// A file at `name` that a shell could run.
@@ -142,12 +136,6 @@ mod tests {
                     .expect("chmod");
             }
             p
-        }
-    }
-
-    impl Drop for Scratch {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
         }
     }
 

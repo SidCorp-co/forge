@@ -377,11 +377,8 @@ mod tests {
         );
     }
 
-    fn tmp_repo(tag: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("forge-orient-{tag}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        dir
+    fn tmp_repo(tag: &str) -> crate::test_scratch::Scratch {
+        crate::test_scratch::Scratch::new(&format!("orient-{tag}"))
     }
 
     #[test]

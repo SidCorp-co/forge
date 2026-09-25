@@ -1379,13 +1379,13 @@ mod tests {
     /// A subagent run bound to its child, with that child's transcript last
     /// written at `written_ms` (`None`: no file at all) and its turn ended at
     /// `stop_ms`.
-    fn a_stopped_subagent(stop_ms: i64, written_ms: Option<i64>) -> (Ledger, std::path::PathBuf) {
+    fn a_stopped_subagent(
+        stop_ms: i64,
+        written_ms: Option<i64>,
+    ) -> (Ledger, crate::test_scratch::InScratch) {
         let mut led = Ledger::open_in_memory().unwrap();
         seeded_run(&mut led, "run-1", "boot-a", None);
-        let dir = std::env::temp_dir().join(format!(
-            "forge-drain-transcript-{}",
-            uuid::Uuid::new_v4().simple()
-        ));
+        let dir = crate::test_scratch::Scratch::new("drain-transcript").at("transcripts");
         let transcript = dir.join("agent-child-run-1.jsonl");
         if let Some(at) = written_ms {
             std::fs::create_dir_all(&dir).unwrap();
@@ -1591,14 +1591,8 @@ mod hook_repair_tests {
         SOURCE.split("\nmod hook_repair_tests {").next().unwrap()
     }
 
-    fn scratch(label: &str) -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "forge-hook-repair-{label}-{}-{}",
-            std::process::id(),
-            uuid::Uuid::new_v4().simple()
-        ));
-        std::fs::create_dir_all(&dir).expect("scratch");
-        dir
+    fn scratch(label: &str) -> crate::test_scratch::Scratch {
+        crate::test_scratch::Scratch::new(&format!("hook-repair-{label}"))
     }
 
     /// A file `is_runnable` accepts, on every platform this crate builds for:

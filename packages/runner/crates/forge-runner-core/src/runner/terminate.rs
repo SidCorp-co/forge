@@ -547,13 +547,12 @@ mod tests {
     }
 
     /// A repo with a remote and one agent worktree on `ISS-964`, dirty.
-    async fn repo(tag: &str) -> (PathBuf, PathBuf) {
-        let root = std::env::temp_dir().join(format!(
-            "forge-terminate-{tag}-{}-{:?}",
-            std::process::id(),
-            std::thread::current().id()
-        ));
-        let _ = std::fs::remove_dir_all(&root);
+    ///
+    /// The root sits one level inside its scratch so the bare remote beside it
+    /// (`root.with_extension("remote.git")`) goes with the scratch, on a pass
+    /// and on the unwind a failing assertion causes alike.
+    async fn repo(tag: &str) -> (crate::test_scratch::InScratch, PathBuf) {
+        let root = crate::test_scratch::Scratch::new(&format!("terminate-{tag}")).at("repo");
         std::fs::create_dir_all(&root).unwrap();
         git(&root, &["init", "-b", "main"]).await;
         git(&root, &["config", "user.email", "t@t"]).await;
@@ -852,7 +851,9 @@ mod tests {
     /// around it: a dirty checkout, and a repo root that is no repository, so
     /// the preserve step can neither find nor commit the tree holding the diff.
     /// It is the shape the window exists for — a refusal no retry gets past.
-    async fn a_release_that_will_never_succeed(tag: &str) -> (PathBuf, PathBuf, PathBuf) {
+    async fn a_release_that_will_never_succeed(
+        tag: &str,
+    ) -> (crate::test_scratch::InScratch, PathBuf, PathBuf) {
         let (root, wt) = repo(tag).await;
         git(&wt, &["add", "work.txt"]).await;
         let not_a_repo = root.with_extension("not-a-repo");
@@ -1366,7 +1367,6 @@ mod tests {
     #[tokio::test]
     async fn a_run_whose_tree_is_already_gone_still_reaches_terminal() {
         let (root, wt) = repo("alreadygone").await;
-        let _fx = Fixture(root.clone());
         git(
             &root,
             &["worktree", "remove", &wt.to_string_lossy(), "--force"],
@@ -1408,8 +1408,8 @@ mod tests {
 
     #[tokio::test]
     async fn a_repository_this_box_cannot_ask_decides_nothing_about_the_checkout() {
-        let gone = std::env::temp_dir().join("forge-terminate-absent-by-construction");
-        let _ = std::fs::remove_dir_all(&gone);
+        let scratch = crate::test_scratch::Scratch::new("terminate-absent");
+        let gone = scratch.join("absent-by-construction");
         let mut led = ledger_for(&gone, Incarnation::Exited, "boot-a");
         let (p, s, l) = (
             Procs(Mutex::new(Vec::new())),
@@ -1621,13 +1621,8 @@ mod tests {
 
     /// A repository with NO remote configured — the shape every MCP-only
     /// storefront project on the fleet has, and one no push can ever satisfy.
-    async fn local_only_repo(tag: &str) -> (PathBuf, PathBuf) {
-        let root = std::env::temp_dir().join(format!(
-            "forge-terminate-{tag}-{}-{:?}",
-            std::process::id(),
-            std::thread::current().id()
-        ));
-        let _ = std::fs::remove_dir_all(&root);
+    async fn local_only_repo(tag: &str) -> (crate::test_scratch::InScratch, PathBuf) {
+        let root = crate::test_scratch::Scratch::new(&format!("terminate-{tag}")).at("repo");
         std::fs::create_dir_all(&root).unwrap();
         git(&root, &["init", "-b", "main"]).await;
         git(&root, &["config", "user.email", "t@t"]).await;
@@ -1747,17 +1742,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// The fixture's repo root and its bare remote, both removed when this
-    /// goes out of scope — including on the unwind a failing assertion causes.
-    struct Fixture(PathBuf);
-
-    impl Drop for Fixture {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-            let _ = std::fs::remove_dir_all(self.0.with_extension("remote.git"));
-        }
-    }
-
     /// Everything about a checkout that releasing a run must not disturb.
     #[derive(Debug, PartialEq, Eq)]
     struct Snapshot {
@@ -1796,22 +1780,18 @@ mod tests {
     /// ignoring `.worktrees/`, so this shape reaches the release by the
     /// PRESERVE branch: the root reads as holding work, and the salvage guard
     /// is what refuses it.
-    async fn main_tree_run(tag: &str) -> (Fixture, PathBuf, Ledger) {
+    async fn main_tree_run(tag: &str) -> (crate::test_scratch::InScratch, PathBuf, Ledger) {
         let (root, _wt) = repo(tag).await;
-        let led = ledger_for(&root, Incarnation::Exited, "boot-a");
-        (Fixture(root.clone()), root, led)
+        let path = root.to_path_buf();
+        let led = ledger_for(&path, Incarnation::Exited, "boot-a");
+        (root, path, led)
     }
 
     /// The incident's own shape: a main checkout with nothing uncommitted and
     /// no agent worktree under it, so the release reads it as clean and walks
     /// straight into `git worktree remove` — the call git refuses by design.
-    async fn clean_main_tree_run(tag: &str) -> (Fixture, PathBuf, Ledger) {
-        let root = std::env::temp_dir().join(format!(
-            "forge-terminate-{tag}-{}-{:?}",
-            std::process::id(),
-            std::thread::current().id()
-        ));
-        let _ = std::fs::remove_dir_all(&root);
+    async fn clean_main_tree_run(tag: &str) -> (crate::test_scratch::InScratch, PathBuf, Ledger) {
+        let root = crate::test_scratch::Scratch::new(&format!("terminate-{tag}")).at("repo");
         std::fs::create_dir_all(&root).unwrap();
         git(&root, &["init", "-b", "main"]).await;
         git(&root, &["config", "user.email", "t@t"]).await;
@@ -1831,8 +1811,9 @@ mod tests {
         .await;
         git(&root, &["push", "-u", "origin", "main"]).await;
 
-        let led = ledger_for(&root, Incarnation::Exited, "boot-a");
-        (Fixture(root.clone()), root, led)
+        let path = root.to_path_buf();
+        let led = ledger_for(&path, Incarnation::Exited, "boot-a");
+        (root, path, led)
     }
 
     #[tokio::test]
@@ -1985,7 +1966,6 @@ mod tests {
     #[tokio::test]
     async fn a_worktree_nested_under_claude_worktrees_is_released_like_any_other() {
         let (root, _other) = repo("nested").await;
-        let _fx = Fixture(root.clone());
         let wt = root.join(".claude/worktrees/ISS-970");
         std::fs::create_dir_all(wt.parent().unwrap()).unwrap();
         git(
@@ -2024,7 +2004,6 @@ mod tests {
     #[tokio::test]
     async fn a_linked_worktree_still_standing_is_not_declared_released() {
         let (root, wt) = repo("stillthere").await;
-        let _fx = Fixture(root.clone());
         let mut led = ledger_for(&wt, Incarnation::Exited, "boot-a");
         let (_p, s, l) = (
             Procs(Mutex::new(Vec::new())),
@@ -2173,7 +2152,7 @@ mod tests {
     /// holding a salvage commit and an unpreserved file, moved with `git
     /// worktree move` into a canonical location. Git's registry follows the
     /// move and the ledger still names the old path.
-    async fn moved_worktree(tag: &str) -> (PathBuf, PathBuf, PathBuf) {
+    async fn moved_worktree(tag: &str) -> (crate::test_scratch::InScratch, PathBuf, PathBuf) {
         let (root, wt) = repo(tag).await;
         git(&wt, &["add", "work.txt"]).await;
         git(&wt, &["commit", "-qm", "wip(salvage)"]).await;
@@ -2262,7 +2241,6 @@ mod tests {
     #[tokio::test]
     async fn a_path_that_never_held_anything_is_released_because_git_says_so() {
         let (root, _wt) = repo("neverwas").await;
-        let _fx = Fixture(root.clone());
         let never = root.join(".worktrees/ISS-no-such-run");
         let mut led = ledger_for(&never, Incarnation::Exited, "boot-a");
         let (p, s, l) = (
@@ -2287,7 +2265,6 @@ mod tests {
     #[tokio::test]
     async fn a_checkout_deleted_by_hand_is_still_registered_and_is_refused() {
         let (root, wt) = repo("byhand").await;
-        let _fx = Fixture(root.clone());
         std::fs::remove_dir_all(&wt).expect("the operator's rm -rf");
         let mut led = ledger_for(&wt, Incarnation::Exited, "boot-a");
         let (p, s, l) = (
@@ -2359,7 +2336,6 @@ mod tests {
     async fn worktree_gone_at_is_stamped_exactly_where_the_checkout_left_the_disk() {
         // Released: a linked checkout, preserved and removed.
         let (root, wt) = repo("rule-released").await;
-        let _fx = Fixture(root.clone());
         let mut led = ledger_for(&wt, Incarnation::Exited, "boot-a");
         let (p, s, l) = (
             Procs(Mutex::new(Vec::new())),
@@ -2393,7 +2369,6 @@ mod tests {
 
         // Moved: alive on disk under another path, and refused.
         let (root3, old, moved) = moved_worktree("rule-moved").await;
-        let _fx3 = Fixture(root3.clone());
         let mut led3 = ledger_for(&old, Incarnation::Exited, "boot-a");
         force_terminal(
             &mut led3,

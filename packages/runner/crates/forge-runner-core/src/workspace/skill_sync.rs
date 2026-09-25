@@ -436,19 +436,22 @@ mod tests {
     /// another test has moved the variable locks a different file, and two
     /// threads enter the critical section together (seen as `DirectoryNotEmpty`
     /// on ISS-1234's gate, and reproduced by flipping the variable).
-    fn own_config_home() -> (std::sync::MutexGuard<'static, ()>, ScopedVar) {
+    /// A tuple drops first to last, so the variable is put back and its root removed while the
+    /// lock is still held, and only then is the lock released.
+    fn own_config_home() -> (
+        ScopedVar,
+        crate::test_scratch::InScratch,
+        std::sync::MutexGuard<'static, ()>,
+    ) {
         let env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let xdg = tmp_root("xdg");
         std::fs::create_dir_all(&xdg).unwrap();
-        (env, ScopedVar::set("XDG_CONFIG_HOME", &xdg))
+        (ScopedVar::set("XDG_CONFIG_HOME", &xdg), xdg, env)
     }
 
-    fn tmp_root(tag: &str) -> PathBuf {
-        std::env::temp_dir().join(format!(
-            "forge-{tag}-{}-{}",
-            std::process::id(),
-            Uuid::new_v4()
-        ))
+    /// A path under a scratch dir of its own, not yet created.
+    fn tmp_root(tag: &str) -> crate::test_scratch::InScratch {
+        crate::test_scratch::Scratch::new(tag).at(tag)
     }
 
     #[test]

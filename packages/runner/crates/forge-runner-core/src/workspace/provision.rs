@@ -513,10 +513,9 @@ mod tests {
     use super::*;
     use std::fs;
 
-    fn tmp(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("forge-provision-{name}"));
-        let _ = fs::remove_dir_all(&dir);
-        dir
+    /// A path under a scratch dir of its own, not yet created.
+    fn tmp(name: &str) -> crate::test_scratch::InScratch {
+        crate::test_scratch::Scratch::new(&format!("provision-{name}")).at(name)
     }
 
     #[test]
@@ -597,9 +596,8 @@ mod tests {
         let _env = crate::auth::cred_store::ENV_TEST_LOCK
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        let dir = std::env::temp_dir().join(format!("forge-bind-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
+        let dir = crate::test_scratch::Scratch::new("bind");
+
         let _xdg = crate::auth::cred_store::ScopedVar::set("XDG_CONFIG_HOME", &dir);
 
         let mut p = provision(Some("/srv/checkouts/butlocs"));
@@ -675,7 +673,8 @@ mod tests {
     /// side effect of something downstream.
     #[test]
     fn provisioning_a_repo_less_project_creates_the_folder_that_was_not_there() {
-        let dir = tmp("repo-less-mkdir").join("nested").join("butlocs");
+        let root = tmp("repo-less-mkdir");
+        let dir = root.join("nested").join("butlocs");
         assert!(!dir.exists(), "the absent case must actually be absent");
         assert_eq!(classify_workspace(&dir, None), WorkspaceMode::RepoLess);
 
@@ -687,7 +686,6 @@ mod tests {
 
         // the folder now exists, so it classifies exactly as it did before.
         assert_eq!(classify_workspace(&dir, None), WorkspaceMode::RepoLess);
-        let _ = fs::remove_dir_all(tmp("repo-less-mkdir"));
     }
 
     #[cfg(unix)]

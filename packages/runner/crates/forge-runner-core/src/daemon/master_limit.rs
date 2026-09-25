@@ -674,8 +674,8 @@ mod tests {
 
     #[test]
     fn a_partial_first_line_is_dropped_rather_than_parsed() {
-        let dir = std::env::temp_dir().join(format!("forge-tail-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = crate::test_scratch::Scratch::new("tail");
+
         let path = dir.join("c.jsonl");
         std::fs::write(
             &path,

@@ -499,21 +499,25 @@ mod tests {
         let _ = std::fs::remove_dir_all(&repo);
     }
 
-    async fn repo_with_worktree(tag: &str) -> (PathBuf, PathBuf) {
+    async fn repo_with_worktree(tag: &str) -> (crate::test_scratch::InScratch, PathBuf) {
         repo_with_worktree_in(tag, WORKTREE_ROOTS[0]).await
     }
 
-    async fn repo_with_worktree_in(tag: &str, root: &str) -> (PathBuf, PathBuf) {
+    async fn repo_with_worktree_in(
+        tag: &str,
+        root: &str,
+    ) -> (crate::test_scratch::InScratch, PathBuf) {
         repo_with_worktree_pushed(tag, root, true).await
     }
 
-    async fn repo_with_worktree_pushed(tag: &str, root: &str, push: bool) -> (PathBuf, PathBuf) {
-        let repo = std::env::temp_dir().join(format!(
-            "forge-wt-reap-{tag}-{}-{:?}",
-            std::process::id(),
-            std::thread::current().id()
-        ));
-        let _ = std::fs::remove_dir_all(&repo);
+    /// The repo sits one level inside its scratch so the bare remote beside it
+    /// (`repo.with_extension("remote.git")`) goes with the scratch too.
+    async fn repo_with_worktree_pushed(
+        tag: &str,
+        root: &str,
+        push: bool,
+    ) -> (crate::test_scratch::InScratch, PathBuf) {
+        let repo = crate::test_scratch::Scratch::new(&format!("wt-reap-{tag}")).at("repo");
         std::fs::create_dir_all(&repo).unwrap();
         run(&repo, &["init", "-b", "main"]).await;
         run(&repo, &["config", "user.email", "t@t"]).await;
@@ -613,8 +617,8 @@ mod tests {
 
     #[tokio::test]
     async fn a_repo_with_no_agent_worktrees_is_a_no_op() {
-        let repo = std::env::temp_dir().join(format!("forge-wt-none-{}", std::process::id()));
-        std::fs::create_dir_all(&repo).unwrap();
+        let repo = crate::test_scratch::Scratch::new("wt-none");
+
         assert!(reap_repo(&repo, NOW, &led()).await.removed.is_empty());
         let _ = std::fs::remove_dir_all(&repo);
     }

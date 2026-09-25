@@ -14,6 +14,8 @@ pub mod observability;
 #[cfg(test)]
 pub mod platform_scope;
 pub mod runner;
+#[cfg(any(test, feature = "test-support"))]
+pub mod test_scratch;
 pub mod transport;
 pub mod update;
 pub mod workspace;

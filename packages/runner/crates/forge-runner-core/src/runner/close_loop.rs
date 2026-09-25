@@ -279,20 +279,21 @@ mod tests {
     /// The repository whose registry answers *do you register a worktree at
     /// this path?*. An absent path is a question for it and not an answer on
     /// its own (ISS-1193), so every close here has one to ask.
+    ///
+    /// One per test rather than one per process: a process-wide fixture has no drop, so it would
+    /// outlive the run. libtest gives every test a thread of its own, and this goes with it.
     fn a_repository() -> PathBuf {
-        static ONCE: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
-        ONCE.get_or_init(|| {
-            let root =
-                std::env::temp_dir().join(format!("forge-close-loop-repo-{}", std::process::id()));
-            let _ = std::fs::remove_dir_all(&root);
-            std::fs::create_dir_all(&root).unwrap();
-            let _ = std::process::Command::new("git")
-                .args(["init", "-q", "-b", "main"])
-                .current_dir(&root)
-                .output();
-            root
-        })
-        .clone()
+        thread_local! {
+            static REPO: crate::test_scratch::Scratch = {
+                let root = crate::test_scratch::Scratch::new("close-loop-repo");
+                let _ = std::process::Command::new("git")
+                    .args(["init", "-q", "-b", "main"])
+                    .current_dir(&root)
+                    .output();
+                root
+            };
+        }
+        REPO.with(|r| r.to_path_buf())
     }
 
     #[tokio::test]
@@ -374,9 +375,9 @@ mod tests {
 
     #[tokio::test]
     async fn a_worktree_still_on_disk_leaves_its_mark_unset() {
-        let dir = std::env::temp_dir().join(format!("forge-cl-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let mut led = seeded(&["ISS-957"], dir.clone());
+        let dir = crate::test_scratch::Scratch::new("cl");
+        let mut led = seeded(&["ISS-957"], dir.to_path_buf());
+
         let st = close(
             &mut led,
             "run-1",

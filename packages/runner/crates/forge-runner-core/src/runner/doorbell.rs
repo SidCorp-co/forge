@@ -276,10 +276,8 @@ mod tests {
     use std::os::fd::{AsFd, AsRawFd};
     use std::time::{Duration, Instant};
 
-    fn led_path() -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("door-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&dir).unwrap();
-        dir.join("ledger.sqlite")
+    fn led_path() -> crate::test_scratch::InScratch {
+        crate::test_scratch::Scratch::new("door").at("ledger.sqlite")
     }
 
     fn is_cloexec(fd: std::os::fd::BorrowedFd<'_>) -> bool {
@@ -688,7 +686,7 @@ mod tests {
     fn neither_arming_nor_ringing_waits_on_the_other_side() {
         let p = led_path();
         let (tx, rx) = std::sync::mpsc::channel();
-        let door = p.clone();
+        let door = p.to_path_buf();
         let ringer = std::thread::spawn(move || {
             // The ringer reports its own Result rather than unwrapping on its
             // thread: a panic over there reaches the test only as a dropped
