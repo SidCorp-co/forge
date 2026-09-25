@@ -159,7 +159,7 @@ describe('finishRefusal — what the abort did to this batch', () => {
     finishRefusal(new ReleaseBatchAbortedError(account, 'proj-7'))?.message ?? '';
 
   it('answers every account under RELEASE_BATCH_ABORTED, carrying the account', () => {
-    for (const account of ['shipped', 'held', 'released', 'unrecorded'] as const) {
+    for (const account of ['shipped', 'held', 'returning', 'released', 'unrecorded'] as const) {
       const refusal = finishRefusal(new ReleaseBatchAbortedError(account, 'proj-7'));
       expect(refusal?.status).toBe(409);
       expect(refusal?.cause).toEqual({ code: 'RELEASE_BATCH_ABORTED', details: { account } });
@@ -176,6 +176,11 @@ describe('finishRefusal — what the abort did to this batch', () => {
   it('says a batch that shipped before the abort keeps the issues its finish closed', () => {
     expect(said('shipped')).toMatch(/already shipped, so the issues its finish closed stay closed/);
     expect(said('shipped')).not.toMatch(/claims were released/);
+  });
+
+  it('says a roster the abort is still returning has not been released yet', () => {
+    expect(said('returning')).toMatch(/had not finished putting its roster back/);
+    expect(said('returning')).not.toMatch(/claims were released/);
   });
 
   it('says a released roster had its claims released', () => {

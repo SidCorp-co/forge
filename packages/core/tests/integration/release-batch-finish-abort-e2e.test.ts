@@ -247,6 +247,21 @@ describe('a batch aborted while its finish attempt is verifying', () => {
 });
 
 describe('a batch whose abort has begun and not yet cancelled its run', () => {
+  it('claims no released roster while the abort stands stamped and unrecovered', async () => {
+    const { stampAbort } = await import('../../src/release-batch/abort-stamp.js');
+    const { runId, issueIds } = await twoIssueBatch();
+    // What an abort that died after its first write leaves: the stamp, and nothing moved.
+    await stampAbort(runId, { reason: 'stopped', by: ownerId, holdPromotedRoster: true });
+
+    const said = await refusalMessage(() => accept(runId, PUSHED));
+    expect(said).toMatch(/had not finished putting its roster back/);
+    expect(said).not.toMatch(/claims were released/);
+    for (const id of issueIds) expect((await fx.stored(id)).status).toBe('releasing');
+
+    await abort(runId);
+    expect(await refusalMessage(() => accept(runId, PUSHED))).toMatch(/its claims were released/);
+  }, 30_000);
+
   it('stamps no release and ends the attempt aborted when verification goes green in that gap', async () => {
     const { runId, issueIds } = await twoIssueBatch();
     await accept(runId, PUSHED);
@@ -357,6 +372,12 @@ describe('a batch aborted after its verification went green', () => {
       // The abort's own note is the roster's last word: the worker adds no recovery note after it.
       expect(await fx.commentCount(id)).toBe(notesAfterAbort[i]);
     }
+
+    // A second abort settles the roster: a later finish is told that, and the attempt keeps the
+    // account that stood when it ended.
+    await abort(runId, { promotedRoster: 'return-to-gate' });
+    expect(await refusalMessage(() => accept(runId, PUSHED))).toMatch(/its claims were released/);
+    expect(await storedReason(runId)).toBe(reason);
   }, 30_000);
 
   it('records no per-issue failure for a roster the abort moved back', async () => {

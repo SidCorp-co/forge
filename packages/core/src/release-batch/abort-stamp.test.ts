@@ -50,6 +50,7 @@ describe('abortAccount — what the abort did, off the run', () => {
 
   it('takes the roster off the stamp for a release that never shipped', () => {
     expect(abortAccount({ shipped: false, metadata: stamp('held') })).toBe('held');
+    expect(abortAccount({ shipped: false, metadata: stamp('returning') })).toBe('returning');
     expect(abortAccount({ shipped: false, metadata: stamp('released') })).toBe('released');
   });
 

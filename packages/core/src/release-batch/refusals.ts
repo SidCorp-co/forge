@@ -259,6 +259,8 @@ export function abortedSentence(err: ReleaseBatchAbortedError): string {
       return `${none}: its release had already shipped, so the issues its finish closed stay closed, and the abort moved none of them.`;
     case 'held':
       return `${none}: it recorded a promotion, so the abort kept its claims, and its issues stay at \`releasing\` for a person to settle. Record the release that happened with POST /api/projects/${err.projectId}/release-records, or abort again with \`promotedRoster: "return-to-gate"\` to put them back at the release gate.`;
+    case 'returning':
+      return `${none}. The abort had not finished putting its roster back at the release gate when this was read, so each issue’s own status says whether its claim is released yet.`;
     case 'released':
       return `${none}: its claims were released and its roster is back where the abort put it. If the release did land after all, that is a person’s call to make on each issue.`;
     case 'unrecorded':

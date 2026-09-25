@@ -13,15 +13,15 @@ export interface AbortStamp {
   at: string;
   reason: string;
   by: string;
-  /** `held` where the run recorded a promotion and the abort kept the roster claimed. */
-  roster: 'held' | 'released';
+  /** `returning` until the recovery has put the roster back and released its claims. */
+  roster: 'held' | 'returning' | 'released';
 }
 
 export function readAbortStamp(metadata: unknown): AbortStamp | null {
   const raw = (metadata as { abort?: unknown } | null)?.abort;
   if (typeof raw !== 'object' || raw === null) return null;
   const r = raw as Record<string, unknown>;
-  if (r.roster !== 'held' && r.roster !== 'released') return null;
+  if (r.roster !== 'held' && r.roster !== 'returning' && r.roster !== 'released') return null;
   return {
     at: typeof r.at === 'string' ? r.at : '',
     reason: typeof r.reason === 'string' ? r.reason : '',
@@ -50,13 +50,23 @@ export async function stampAbort(
     at: new Date().toISOString(),
     reason: stamp.reason,
     by: stamp.by,
-    roster: held ? 'held' : 'released',
+    roster: held ? 'held' : 'returning',
   };
   await db.execute(sql`
     UPDATE pipeline_runs
     SET metadata = coalesce(metadata, '{}'::jsonb) || ${JSON.stringify({ abort: record })}::jsonb,
         updated_at = now()
     WHERE id = ${runId}
+  `);
+}
+
+/** Once the recovery has returned: what it did to the roster, in its own result. */
+export async function settleAbortStamp(runId: string, roster: 'held' | 'released'): Promise<void> {
+  await db.execute(sql`
+    UPDATE pipeline_runs
+    SET metadata = jsonb_set(metadata, '{abort,roster}', ${JSON.stringify(roster)}::jsonb),
+        updated_at = now()
+    WHERE id = ${runId} AND metadata ? 'abort'
   `);
 }
 

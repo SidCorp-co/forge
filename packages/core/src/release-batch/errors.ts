@@ -87,9 +87,9 @@ export class ReleaseNotVerifiedError extends Error {
 
 /**
  * What an abort did to a batch, as the run records it: its release had `shipped`, it `held` a
- * promoted roster, it `released` the roster, or no abort recorded anything (`unrecorded`).
+ * promoted roster, it is still `returning` the roster, it `released` it, or nothing recorded it.
  */
-export type AbortAccount = 'shipped' | 'held' | 'released' | 'unrecorded';
+export type AbortAccount = 'shipped' | 'held' | 'returning' | 'released' | 'unrecorded';
 
 /**
  * `finish` was called on a run somebody aborted. Built by `abortedError`, which reads the account.

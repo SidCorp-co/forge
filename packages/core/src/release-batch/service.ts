@@ -35,7 +35,7 @@ import {
   type OneShotRunSpec,
 } from '../pipeline/runs.js';
 import { readProjectBranches } from '../projects/service.js';
-import { abortedError, batchAborted, stampAbort } from './abort-stamp.js';
+import { abortedError, batchAborted, settleAbortStamp, stampAbort } from './abort-stamp.js';
 import { collectReleaseBlockers, releaseBlockerError } from './blockers.js';
 import { resolveReleaseChannels, resolveReleasePlan } from './channel.js';
 import {
@@ -488,6 +488,8 @@ export async function abortReleaseBatch(
     comment: true,
     settlePromotedRoster: options.promotedRoster === 'return-to-gate',
   });
+  const held = promoted && options.promotedRoster !== 'return-to-gate';
+  await settleAbortStamp(runId, held ? 'held' : 'released');
   await options.afterRosterRecovered?.();
 
   await closeRunIfOneShot(runId, 'cancelled');
