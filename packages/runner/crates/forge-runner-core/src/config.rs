@@ -306,6 +306,11 @@ pub const DIR_NAME: &str = "forge-runner";
 /// environment (ISS-1223). Linux only: `/proc/<pid>/environ` is the only place
 /// that environment can be read from, and elsewhere `dirs_next` follows the
 /// platform's own convention rather than this one.
+///
+/// One case parts from `dirs_next` deliberately: with neither variable set it
+/// falls back to the passwd entry, and this returns `None`. A caller cannot
+/// read another process's passwd lookup, and answering `None` there makes the
+/// scan say it cannot attribute that process rather than attribute it wrongly.
 #[cfg(target_os = "linux")]
 pub fn config_dir_in(var: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
     let base = match var("XDG_CONFIG_HOME") {
@@ -509,12 +514,32 @@ chat_max_concurrent = 5
     /// The rule that reads another process's environment has to be the rule
     /// this process's own config path follows, or attributing a daemon to a
     /// configuration is a second convention that agrees until it does not.
+    ///
+    /// Sibling tests in this binary move `XDG_CONFIG_HOME` process-wide through
+    /// `ScopedVar`, and `dirs_next` reads it afresh on every call, so the two
+    /// reads below can straddle such a move. That is the environment changing
+    /// and not the rule disagreeing, so the read is bracketed and retried; a
+    /// window that never settles fails loudly rather than passing unmeasured.
     #[cfg(target_os = "linux")]
     #[test]
     fn the_environment_rule_lands_where_this_process_own_config_path_does() {
-        let ours = Config::path().unwrap();
-        let dir = config_dir_in(|k| std::env::var(k).ok()).expect("this process has a HOME");
-        assert_eq!(Some(dir.as_path()), ours.parent());
+        let snapshot = || {
+            (
+                std::env::var_os("XDG_CONFIG_HOME"),
+                std::env::var_os("HOME"),
+            )
+        };
+        for _ in 0..64 {
+            let before = snapshot();
+            let ours = Config::path().unwrap();
+            let dir = config_dir_in(|k| std::env::var(k).ok()).expect("this process has a HOME");
+            if before != snapshot() {
+                continue;
+            }
+            assert_eq!(Some(dir.as_path()), ours.parent());
+            return;
+        }
+        panic!("the environment moved under every one of 64 reads, so nothing was measured");
     }
 
     #[cfg(target_os = "linux")]
