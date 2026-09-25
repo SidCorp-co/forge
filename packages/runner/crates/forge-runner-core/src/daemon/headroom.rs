@@ -260,7 +260,11 @@ impl Watch {
                 return self.blinded(now, was, why.clone());
             }
         }
-        self.blinding = None;
+        // Taken rather than dropped: a clear reading arriving straight out of
+        // blindness replaces the pressure that was standing, not the
+        // unreadable verdict that stood in for it, and `said` holds the
+        // latter (consult ba0b62 F1).
+        let blinded_over = self.blinding.take();
         if self.said.as_ref() == Some(&verdict) {
             if !matches!(verdict, Verdict::Critical(_)) {
                 return None;
@@ -280,9 +284,10 @@ impl Watch {
         self.said_at = Some(now);
         self.since = Some(now);
         match (was, &verdict) {
-            (Some(was), Verdict::Clear) if was != Verdict::Clear => {
-                Some(Report::Cleared { was, stood })
-            }
+            (Some(was), Verdict::Clear) if was != Verdict::Clear => Some(Report::Cleared {
+                was: blinded_over.unwrap_or(was),
+                stood,
+            }),
             _ => Some(Report::Entered(verdict)),
         }
     }
@@ -583,7 +588,8 @@ pub fn said(
         ),
         Report::Blinded { was, why, held } => format!(
             "[headroom] {}: no reading could be taken ({why}) — {} when the box last answered, \
-             {} ago, and a box that stops answering is not a box that has emptied. {COSTS}. {}",
+             and that verdict has stood {}. A box that stops answering is not a box that has \
+             emptied. {COSTS}. {}",
             at.display(),
             had_crossed(was),
             lasted(*held),
@@ -685,7 +691,12 @@ fn figure(axis: &str, free: String, total: String, percent: Option<u64>) -> Stri
 /// gives a run (ISS-1260 F3).
 fn said_bytes(bytes: u64) -> String {
     const K: u64 = 1024;
+    // Up to exbibytes because `u64::MAX` is about 16 of them. A table
+    // stopping at T renders a pebibyte as `1024.0T`, which is not the largest
+    // unit that leaves the figure at or above one (consult ba0b62 F3).
     for (unit, scale) in [
+        ("E", K * K * K * K * K * K),
+        ("P", K * K * K * K * K),
         ("T", K * K * K * K),
         ("G", K * K * K),
         ("M", K * K),
@@ -1165,6 +1176,60 @@ mod tests {
             "the pressure that stood when the box last answered is what the operator acts on: \
              {line}"
         );
+        assert!(
+            line.contains("that verdict has stood 1h 5m (3900s)"),
+            "the duration is how long the verdict has stood, not how long ago the box last \
+             answered — the two differ by every successful tick in between (consult ba0b62 F2): \
+             {line}"
+        );
+    }
+
+    /// A pressure that ends while the box is still unreadable is still that
+    /// pressure ending. Reporting `unreadable (...)` as the thing that
+    /// cleared loses the axis an operator acts on, and `said` holds the
+    /// unreadable verdict rather than the pressure by then (consult ba0b62
+    /// F1).
+    #[test]
+    fn a_clear_reading_out_of_blindness_names_the_pressure_and_not_the_blindness() {
+        let mut watch = Watch::default();
+        let t0 = Instant::now();
+        let critical = Verdict::Critical(Axis::Bytes);
+        let blind = Verdict::Unmeasurable("statvfs answered EIO".to_string());
+
+        watch.tick(t0, critical.clone());
+        watch.tick(t0 + TICK, blind);
+        let cleared = watch
+            .tick(t0 + TICK * 2, Verdict::Clear)
+            .expect("a return to clear is reported");
+        assert_eq!(
+            cleared,
+            Report::Cleared {
+                was: critical,
+                stood: TICK * 2,
+            },
+            "the duration runs from the pressure, not from the tick the box stopped answering"
+        );
+
+        let line = said(
+            Path::new("/tmp"),
+            &Reading::Took(the_measured_box()),
+            &cleared,
+            &[],
+        );
+        assert!(
+            line.contains("bytes was CRITICAL"),
+            "the axis that was short is what a reader came for: {line}"
+        );
+    }
+
+    /// `u64::MAX` is about sixteen exbibytes, so a table ending at T renders a
+    /// pebibyte as `1024.0T` (consult ba0b62 F3).
+    #[test]
+    fn a_byte_figure_is_rendered_in_the_largest_unit_the_type_can_reach() {
+        const K: u64 = 1024;
+        assert_eq!(said_bytes(K * K * K * K * K), "1.0P");
+        assert_eq!(said_bytes(K * K * K * K * K * K), "1.0E");
+        assert_eq!(said_bytes(u64::MAX), "16.0E");
     }
 
     /// A tight box that stops answering is news once. Giving it the critical
