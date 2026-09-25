@@ -193,8 +193,9 @@ pub struct Run {
     /// What the box last said about this run's standing: `quiet` or
     /// `unreadable` for a run it keeps; `awaiting` for one no master here
     /// answers for whose bound has not yet run out, `unanswered` once that bound
-    /// licenses its release, and `foreign-boot` for one this boot may not
-    /// reclaim (ISS-1220). Cleared by the next turn-end, so each silence is
+    /// licenses its release, `foreign-boot` for one this boot may not
+    /// reclaim, and `decided` for one whose release was decided terminal while
+    /// its leases are still chased (ISS-1220). Cleared by the next turn-end, so each silence is
     /// said once.
     pub kept_notice: Option<String>,
 }

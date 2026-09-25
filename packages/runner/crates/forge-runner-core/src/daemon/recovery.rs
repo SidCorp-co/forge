@@ -223,6 +223,8 @@ pub async fn reconcile(
             && !state.session_terminal;
         let standing = if owed_release || owed_death_report || state.is_closed() {
             None
+        } else if run.release_terminal_at.is_some() {
+            Some(Standing::Decided)
         } else if run.boot_id != boot_id {
             Some(Standing::ForeignBoot)
         } else if master == MasterPresence::Unknown
@@ -355,6 +357,9 @@ enum Standing {
     AwaitingBound,
     /// Declared under another boot, which nothing on this one may reclaim.
     ForeignBoot,
+    /// Its release was decided terminal and its checkout stays by decision;
+    /// only its leases are still being chased.
+    Decided,
 }
 
 /// Say once, in the journal and on the row, why this run stands and what ends
@@ -371,6 +376,7 @@ fn say_standing(
     let notice = match standing {
         Standing::AwaitingBound => "awaiting",
         Standing::ForeignBoot => "foreign-boot",
+        Standing::Decided => "decided",
     };
     match ledger.note_standing(&run.run_id, notice) {
         Ok(false) => return true,
@@ -417,6 +423,18 @@ fn say_standing(
             boot_id,
             run.worktree_path.display()
         ),
+        Standing::Decided => {
+            tracing::warn!(
+            "[recovery] run {} ({issues}) is partially closed ({holds}): its release was decided \
+             terminal ({}), so its checkout {} stays on disk by decision and only its leases are \
+             still being asked back. `forge-runner run release {}` has the next sweep try the \
+             release again. Said once, not every sweep",
+            run.run_id,
+            run.release_refusal.as_deref().unwrap_or("no refusal was recorded"),
+            run.worktree_path.display(),
+            run.run_id
+        )
+        }
     }
     true
 }
@@ -2232,6 +2250,74 @@ mod tests {
         assert!(
             said.contains("no master on this box answers"),
             "an older keep notice does not swallow the release's own: {said}"
+        );
+    }
+
+    /// Core will not take a lease back, so a run whose release was decided
+    /// stays in the sweep for its leases alone.
+    struct LeasesRefused;
+    #[async_trait::async_trait]
+    impl LeaseKeeper for LeasesRefused {
+        async fn release(&self, _: Option<&str>, _: &str) -> Result<()> {
+            Err(crate::error::Error::Other(
+                "409: lease held elsewhere".into(),
+            ))
+        }
+        async fn is_returned(&self, _: Option<&str>, _: &str) -> Result<bool> {
+            Ok(false)
+        }
+    }
+
+    #[test]
+    fn a_run_whose_release_was_decided_is_named_once_while_its_leases_are_chased() {
+        let scratch = Scratch::new("decided");
+        let (mut led, _root, wt, _transcript) = a_subagent_run_in_a_worktree(&scratch);
+        led.note_release_refusal("run-1", "the diff was not preserved", 1_790_000_000)
+            .unwrap();
+        led.conclude_release_refusal(
+            "run-1",
+            1_790_000_300,
+            "recovery",
+            "the diff was not preserved",
+        )
+        .unwrap();
+        let mut sweep_once = || {
+            logged_while(|| {
+                block_on(async {
+                    let done = reconcile(
+                        &mut led,
+                        "boot-a",
+                        &NoRegistryEntry,
+                        &nothing_refuted(),
+                        Closing {
+                            sessions: &Sessions,
+                            leases: &LeasesRefused,
+                            roots: &Roots,
+                        },
+                        RunWatch {
+                            beat: &Beats::default(),
+                            idle: &NeverReports,
+                        },
+                    )
+                    .await
+                    .unwrap();
+                    assert_eq!(done.len(), 1, "its leases keep it in the sweep");
+                    assert!(!done[0].owed_release, "a decided release is not retried");
+                    assert!(done[0].standing_said, "{:?}", done[0]);
+                })
+            })
+        };
+        let first = sweep_once();
+        assert!(
+            first.contains("decided terminal (the diff was not preserved)")
+                && first.contains(&wt.display().to_string())
+                && first.contains("forge-runner run release run-1"),
+            "the decision, the checkout it left and the way back are named: {first}"
+        );
+        let second = sweep_once();
+        assert!(
+            !second.contains("partially closed"),
+            "said once, not on every sweep of the lease chase: {second}"
         );
     }
 
