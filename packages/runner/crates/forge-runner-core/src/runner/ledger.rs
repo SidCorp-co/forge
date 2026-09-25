@@ -191,9 +191,9 @@ pub struct Run {
     /// Where this run's subagent writes its own transcript.
     pub agent_transcript: Option<String>,
     /// What the box last said about this run's standing: `quiet` or
-    /// `unreadable` for a run it keeps; `awaiting` for one no master here
-    /// answers for whose bound has not yet run out, `unanswered` once that bound
-    /// licenses its release, `foreign-boot` for one this boot may not
+    /// `unreadable` for a run it keeps; `awaiting-session`, `awaiting` and
+    /// `awaiting-leases` for one no master here answers for, by what it still
+    /// waits on, `unanswered` once the bound licenses its release, `foreign-boot` for one this boot may not
     /// reclaim, and `decided` for one whose release was decided terminal while
     /// its leases are still chased (ISS-1220). Cleared by the next turn-end, so each silence is
     /// said once.

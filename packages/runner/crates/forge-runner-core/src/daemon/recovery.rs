@@ -88,6 +88,9 @@ pub struct Recovered {
     /// The release is owed on the bound alone: no master here answers for the
     /// run, so its agent being gone is concluded from the silence, never seen.
     pub unanswered: bool,
+    /// That release rests on the session's clock alone: no readable transcript
+    /// said anything about the subagent either way.
+    pub clock_alone: bool,
     /// Recovery has said, once, why this run still stands and what ends it,
     /// so a per-sweep line about it would only repeat that (ISS-1220).
     pub standing_said: bool,
@@ -100,7 +103,10 @@ impl Recovered {
     /// Why this run's release is owed, in the words its ended row keeps. A run
     /// released on the bound was not seen to end, and its row says so.
     pub fn release_reason(&self) -> &'static str {
-        if self.unanswered {
+        if self.unanswered && self.clock_alone {
+            "no master on this box answers for it and core's session row has been terminal for \
+             the whole bound; no readable transcript was recorded, so the clock alone decided"
+        } else if self.unanswered {
             "no master on this box answers for it, core's session row is terminal, and its \
              subagent wrote nothing for the whole bound"
         } else {
@@ -167,6 +173,7 @@ pub async fn reconcile(
                     state: close_loop::state(ledger, &run.run_id)?,
                     owed_release: false,
                     unanswered: false,
+                    clock_alone: false,
                     standing_said: false,
                     owed_exit: Some(cause),
                     owed_death_report: false,
@@ -227,18 +234,15 @@ pub async fn reconcile(
             Some(Standing::Decided)
         } else if run.boot_id != boot_id {
             Some(Standing::ForeignBoot)
-        } else if master == MasterPresence::Unknown
-            && state.session_terminal
-            && !state.checkout_returned
-            && run.release_terminal_at.is_none()
-        {
-            Some(Standing::AwaitingBound)
+        } else if master == MasterPresence::Unknown {
+            Some(Standing::Unanswered)
         } else {
             None
         };
         let standing_said =
             standing.is_some_and(|s| say_standing(ledger, &run, boot_id, &state, s));
         let session_id = run.session_id.clone();
+        let clock_alone = transcript_written(&run).is_none();
         out.push(Recovered {
             run_id: run.run_id,
             project_id: run.project_id,
@@ -246,6 +250,7 @@ pub async fn reconcile(
             state,
             owed_release,
             unanswered: owed_release && !agent_gone,
+            clock_alone,
             standing_said,
             owed_exit: None,
             owed_death_report,
@@ -284,14 +289,36 @@ fn over_and_silent(run: &Run, now_ms: i64) -> Option<i64> {
     if over_ms < bound {
         return None;
     }
-    let written = run
-        .agent_transcript
-        .as_deref()
-        .and_then(|p| transcript_age::written_at(Path::new(p)));
-    if written.is_some_and(|w| now_ms.saturating_sub(w) < bound) {
+    if transcript_written(run).is_some_and(|w| now_ms.saturating_sub(w) < bound) {
         return None;
     }
     Some(over_ms)
+}
+
+/// When the run's subagent last wrote its own transcript, or `None` where no
+/// path is recorded or the recorded one cannot be read.
+fn transcript_written(run: &Run) -> Option<i64> {
+    run.agent_transcript
+        .as_deref()
+        .and_then(|p| transcript_age::written_at(Path::new(p)))
+}
+
+/// What a silence rests on, in the words a journal line needs.
+fn silence_evidence(run: &Run) -> String {
+    match (run.agent_transcript.as_deref(), transcript_written(run)) {
+        (_, Some(w)) => format!(
+            "its subagent last wrote {}m ago",
+            now_ms().saturating_sub(w) / 60_000
+        ),
+        (Some(path), None) => format!(
+            "its subagent's transcript at {path} cannot be read, so the session's clock alone \
+             decides"
+        ),
+        (None, None) => {
+            "no transcript was recorded for its subagent, so the session's clock alone decides"
+                .to_string()
+        }
+    }
 }
 
 /// Say, on the sweep that first owes it, why a run nobody here answers for is
@@ -322,21 +349,7 @@ fn say_why_released(ledger: &Ledger, run: &Run, over_ms: i64) {
         .unwrap_or_default();
     // What the silence rests on, said as it is: a transcript nobody could read
     // decided nothing, and the line must not read as if it had.
-    let silence = match run.agent_transcript.as_deref() {
-        Some(path) => match transcript_age::written_at(Path::new(path)) {
-            Some(w) => format!(
-                "its subagent last wrote {}m ago",
-                now_ms().saturating_sub(w) / 60_000
-            ),
-            None => format!(
-                "its subagent's transcript at {path} cannot be read, so the session's clock \
-                 alone decided"
-            ),
-        },
-        None => "no transcript was recorded for its subagent, so the session's clock alone \
-                 decided"
-            .to_string(),
-    };
+    let silence = silence_evidence(run);
     tracing::warn!(
         "[recovery] run {} ({issues}): no master on this box answers for it (it answered to {}), \
          core has called its session over for {}m and {silence} — releasing {} now. Its commits \
@@ -353,8 +366,10 @@ fn say_why_released(ledger: &Ledger, run: &Run, over_ms: i64) {
 /// Why an orphaned run nothing can close this sweep is still standing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Standing {
-    /// No master here answers for it and the bound has not yet run out.
-    AwaitingBound,
+    /// No master here answers for it and nothing on this sweep can close it:
+    /// its session still open at core, its bound not yet run out, or only its
+    /// leases left to be taken back.
+    Unanswered,
     /// Declared under another boot, which nothing on this one may reclaim.
     ForeignBoot,
     /// Its release was decided terminal and its checkout stays by decision;
@@ -374,7 +389,9 @@ fn say_standing(
     standing: Standing,
 ) -> bool {
     let notice = match standing {
-        Standing::AwaitingBound => "awaiting",
+        Standing::Unanswered if !state.session_terminal => "awaiting-session",
+        Standing::Unanswered if !state.checkout_returned => "awaiting",
+        Standing::Unanswered => "awaiting-leases",
         Standing::ForeignBoot => "foreign-boot",
         Standing::Decided => "decided",
     };
@@ -403,16 +420,36 @@ fn say_standing(
         state.session_terminal, state.checkout_returned, state.leases_returned, state.leases_total
     );
     match standing {
-        Standing::AwaitingBound => tracing::warn!(
-            "[recovery] run {} ({issues}) is partially closed ({holds}): no master on this box \
-             answers for it (it answered to {}), so its checkout {} is released once core has \
-             called its session over for {}m and its subagent has stayed silent as long. Said \
-             once; the release says itself when it comes",
-            run.run_id,
-            run.master_session_id,
-            run.worktree_path.display(),
-            UNANSWERED_RELEASE_AFTER.as_secs() / 60
-        ),
+        Standing::Unanswered => {
+            let what_ends_it = if !state.session_terminal {
+                format!(
+                    "core still holds its session open, and the bound of {}m starts when core \
+                     calls it over",
+                    UNANSWERED_RELEASE_AFTER.as_secs() / 60
+                )
+            } else if !state.checkout_returned {
+                format!(
+                    "its checkout {} is released once core has called its session over for {}m \
+                     ({}, now)",
+                    run.worktree_path.display(),
+                    UNANSWERED_RELEASE_AFTER.as_secs() / 60,
+                    silence_evidence(run)
+                )
+            } else {
+                format!(
+                    "its checkout is back and only its leases ({}/{} returned) are still being \
+                     asked back",
+                    state.leases_returned, state.leases_total
+                )
+            };
+            tracing::warn!(
+                "[recovery] run {} ({issues}) is partially closed ({holds}): no master on this box \
+                 answers for it (it answered to {}), so {what_ends_it}. Said once; what ends it \
+                 says itself when it comes",
+                run.run_id,
+                run.master_session_id
+            )
+        }
         Standing::ForeignBoot => tracing::error!(
             "[recovery] run {} ({issues}) is partially closed ({holds}) and will stay so: it was \
              declared under boot {} and this box is boot {}, and a run from another boot is never \
@@ -2191,10 +2228,14 @@ mod tests {
                     .await
                     .expect("answered");
                 assert!(r.owed_release, "{r:?}");
+                assert!(
+                    r.clock_alone && r.release_reason().contains("the clock alone decided"),
+                    "and the row it ends keeps the same account, never 'wrote nothing': {r:?}"
+                );
             })
         });
         assert!(
-            said.contains("cannot be read, so the session's clock alone decided")
+            said.contains("cannot be read, so the session's clock alone decides")
                 && said.contains(&missing.display().to_string()),
             "a transcript nobody could read is named as deciding nothing, never passed off as silence: {said}"
         );
@@ -2337,7 +2378,8 @@ mod tests {
         });
         assert!(
             first.contains("released once core has called its session over for 60m")
-                && first.contains(&wt.display().to_string()),
+                && first.contains(&wt.display().to_string())
+                && first.contains("its subagent last wrote 5m ago"),
             "the first sweep names the checkout and the bound that ends it: {first}"
         );
         let second = logged_while(|| {
@@ -2355,6 +2397,73 @@ mod tests {
             !second.contains("partially closed"),
             "the second identical sweep says nothing new: {second}"
         );
+    }
+
+    #[test]
+    fn a_run_awaiting_the_bound_with_no_readable_transcript_says_the_clock_alone_decides() {
+        let scratch = Scratch::new("awaiting-unread");
+        let (mut led, _root, _wt, _transcript) = a_subagent_run_in_a_worktree(&scratch);
+        let missing = scratch.0.join("pruned").join("agent-gone.jsonl");
+        stop_at(&led, now_ms() - 30 * MIN_MS, Some(&missing));
+        led.backdate_session_terminal("run-1", (now_ms() - 30 * MIN_MS) / 1000)
+            .unwrap();
+        let said = logged_while(|| {
+            block_on(async {
+                let r = sweep(&mut led, &NoRegistryEntry, &Beats::default())
+                    .await
+                    .expect("answered");
+                assert!(!r.owed_release && r.standing_said, "{r:?}");
+            })
+        });
+        assert!(
+            said.contains("the session's clock alone decides") && !said.contains("stayed silent"),
+            "a standing with no readable transcript claims no silence: {said}"
+        );
+    }
+
+    #[test]
+    fn a_run_left_only_its_leases_is_named_once_and_not_every_sweep() {
+        let mut led = seeded("run-1", "master-unknown", "boot-a", &["ISS-1220"]);
+        let mut sweep_once = || {
+            logged_while(|| {
+                block_on(async {
+                    let done = reconcile(
+                        &mut led,
+                        "boot-a",
+                        &NoRegistryEntry,
+                        &nothing_refuted(),
+                        Closing {
+                            sessions: &Sessions,
+                            leases: &LeasesRefused,
+                            roots: &Roots,
+                        },
+                        RunWatch {
+                            beat: &Beats::default(),
+                            idle: &NeverReports,
+                        },
+                    )
+                    .await
+                    .unwrap();
+                    let r = &done[0];
+                    assert!(
+                        r.state.session_terminal
+                            && r.state.checkout_returned
+                            && !r.state.is_closed(),
+                        "the state under test holds only a lease: {r:?}"
+                    );
+                    assert!(r.standing_said, "{r:?}");
+                })
+            })
+        };
+        let first = sweep_once();
+        assert!(
+            first.contains("only its leases (0/1 returned)"),
+            "the line says what is left, not a checkout it no longer holds: {first}"
+        );
+        for _ in 0..2 {
+            let again = sweep_once();
+            assert!(!again.contains("partially closed"), "said once: {again}");
+        }
     }
 
     #[test]
