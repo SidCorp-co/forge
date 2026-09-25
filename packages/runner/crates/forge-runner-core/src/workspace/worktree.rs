@@ -626,7 +626,13 @@ pub(crate) mod tests {
         let held = root.join(".worktrees/ISS-locked");
         rt.block_on(run(
             &root,
-            &["worktree", "add", &held.to_string_lossy(), "-b", "ISS-locked"],
+            &[
+                "worktree",
+                "add",
+                &held.to_string_lossy(),
+                "-b",
+                "ISS-locked",
+            ],
         ));
         rt.block_on(run(&root, &["worktree", "lock", &held.to_string_lossy()]));
 
@@ -635,7 +641,7 @@ pub(crate) mod tests {
             assert!(out.is_err(), "git will not remove a locked checkout");
         });
         let there = held.exists();
-        let _ = rt.block_on(run(&root, &["worktree", "unlock", &held.to_string_lossy()]));
+        rt.block_on(run(&root, &["worktree", "unlock", &held.to_string_lossy()]));
         let _ = std::fs::remove_dir_all(&root);
 
         assert!(there, "the fixture must leave the directory standing");
