@@ -3098,7 +3098,7 @@
 ### Fixed
 - **`forge-runner doctor` no longer fails a box whose projects have no master pane running.** A second integration binding sharing a server name reads Shadowed, instead of asking you to replace a credential that works.
 - **A runner whose credential file cannot be read is told to repair it, not to sign in again.** `doctor` names that file, and the network checks stop rather than reporting the box as never paired.
-- **A box that could not reach a repository's remote said your work might be lost, and it was wrong.** The check signs in as the repository is configured to push, and a removed worktree says so in the log.
+- **A box's report on a held checkout could be wrong in both directions.** The publish check signs in as the repository pushes, the retention reading follows the fetch that moves it, and a removal is logged.
 - **A job a runner refuses for want of a personal access token now names the box and where to create one.** `forge-runner doctor` fails on a box holding none, and reports an unreadable credential file as such.
 - **The Agent MCP servers panel lists every server an agent receives, not only the ones integrations supply.** A connected integration reaching no agent now says which condition it fails, and binding lists answer under `bindings`.
 - **A runner no longer starts a project's master without the MCP servers the project declares.** When it cannot read or hand them over, it starts none and says why: request and status, a gateway page's title, the directory to fix.
