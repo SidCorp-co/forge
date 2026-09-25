@@ -146,9 +146,10 @@ pub struct Running {
     pub pid: u32,
     /// Where `/proc/<pid>/exe` points, or why it could not be read.
     pub exe: String,
-    /// The file it started from has been replaced or removed, which Linux marks
-    /// by suffixing the link with ` (deleted)`.
-    pub replaced: bool,
+    /// Whether the file it started from has been replaced or removed, which
+    /// Linux marks by suffixing the link with ` (deleted)`. `None` where the
+    /// link could not be read, which says nothing either way.
+    pub replaced: Option<bool>,
 }
 
 /// Every `forge-runner start` process under `root` (a `/proc`) other than
@@ -191,9 +192,9 @@ pub fn scan(root: &Path, self_pid: u32) -> Option<Vec<Running>> {
             Ok(link) => {
                 let text = link.to_string_lossy().into_owned();
                 let replaced = text.ends_with(crate::exe::DELETED_SUFFIX);
-                (text, replaced)
+                (text, Some(replaced))
             }
-            Err(e) => (format!("unreadable ({e})"), false),
+            Err(e) => (format!("unreadable ({e})"), None),
         };
         found.push(Running { pid, exe, replaced });
     }
@@ -248,13 +249,16 @@ fn unrecorded_lines(probe: &Probe) -> Vec<String> {
     found
         .iter()
         .map(|r| {
-            let file = if r.replaced {
-                format!(
+            let file = match r.replaced {
+                Some(true) => format!(
                     "the file it started from, {}, has been replaced on disk, so it is NOT serving this binary — restarting the service turns it over",
                     r.exe
-                )
-            } else {
-                format!("the file it started from, {}, is still in place", r.exe)
+                ),
+                Some(false) => format!("the file it started from, {}, is still in place", r.exe),
+                None => format!(
+                    "whether the file it started from has been replaced cannot be told: its exe link is {}",
+                    r.exe
+                ),
             };
             format!(
                 "daemon     no record — pid {} (`forge-runner start`) is running from a build older than the record, so its version cannot be read; {file}",
@@ -358,6 +362,25 @@ fn listed(names: &[String]) -> String {
     }
 }
 
+/// A record whose daemon is gone is not a box with no daemon: after a rollback
+/// an older daemon that writes no record can be serving beside a newer record
+/// it never wrote. So the processes are read here too.
+fn beside_a_gone_record(gone: String, probe: &Probe) -> Vec<String> {
+    match (probe.daemons)() {
+        Some(found) if !found.is_empty() => {
+            let mut out = vec![format!(
+                "daemon     the record is stale — {gone}; a daemon that wrote no record is running instead:"
+            )];
+            out.extend(unrecorded_lines(probe));
+            out
+        }
+        Some(_) => vec![format!(
+            "daemon     not running — {gone}, and no `forge-runner start` process is running on this box"
+        )],
+        None => vec![format!("daemon     not running — {gone}")],
+    }
+}
+
 /// The `daemon` lines of `forge-runner status`.
 pub fn lines(
     read: &Result<Option<Record>, Unreadable>,
@@ -379,18 +402,24 @@ pub fn lines(
     };
     let unverified = match liveness(record, probe) {
         Liveness::Gone => {
-            return vec![format!(
-                "daemon     not running — the last daemon recorded, pid {} serving {}, is gone",
-                record.pid,
-                record.build()
-            )]
+            return beside_a_gone_record(
+                format!(
+                    "the last daemon recorded, pid {} serving {}, is gone",
+                    record.pid,
+                    record.build()
+                ),
+                probe,
+            )
         }
         Liveness::Reused => {
-            return vec![format!(
-                "daemon     not running — pid {} is now a different process from the daemon recorded there (serving {}), so that daemon is gone",
-                record.pid,
-                record.build()
-            )]
+            return beside_a_gone_record(
+                format!(
+                    "pid {} is now a different process from the daemon recorded there (serving {}), so that daemon is gone",
+                    record.pid,
+                    record.build()
+                ),
+                probe,
+            )
         }
         Liveness::Unverified => format!(
             " (this platform cannot confirm pid {} is still that daemon)",
@@ -434,7 +463,9 @@ pub fn version_note(
     let record = match read.as_ref().ok()? {
         Some(r) => r,
         None => {
-            let stale = (probe.daemons)()?.into_iter().find(|r| r.replaced)?;
+            let stale = (probe.daemons)()?
+                .into_iter()
+                .find(|r| r.replaced == Some(true))?;
             return Some(format!(
                 "forge-runner: the daemon on this box (pid {}) is running from a file that has since been replaced, so it is not serving this build; `forge-runner status` says more",
                 stale.pid
@@ -442,7 +473,13 @@ pub fn version_note(
         }
     };
     if matches!(liveness(record, probe), Liveness::Gone | Liveness::Reused) {
-        return None;
+        let stale = (probe.daemons)()?
+            .into_iter()
+            .find(|r| r.replaced == Some(true))?;
+        return Some(format!(
+            "forge-runner: the daemon on this box (pid {}) wrote no record and is running from a file that has since been replaced, so it is not serving this build; `forge-runner status` says more",
+            stale.pid
+        ));
     }
     if record.version == this_version && record.commit == this_commit {
         return None;
@@ -608,7 +645,7 @@ mod tests {
             Some(vec![Running {
                 pid: 2946187,
                 exe: "/home/dev/.local/bin/forge-runner (deleted)".into(),
-                replaced: true,
+                replaced: Some(true),
             }])
         };
         let stale = joined(Ok(None), &p);
@@ -627,7 +664,7 @@ mod tests {
             Some(vec![Running {
                 pid: 7,
                 exe: "/home/dev/.local/bin/forge-runner".into(),
-                replaced: false,
+                replaced: Some(false),
             }])
         };
         let standing = joined(Ok(None), &p);
@@ -638,6 +675,56 @@ mod tests {
         p.daemons = || None;
         let blind = joined(Ok(None), &p);
         assert!(blind.contains("gives no way to look"), "{blind}");
+
+        // Delta review (a): an exe link that cannot be read says nothing either way.
+        p.daemons = || {
+            Some(vec![Running {
+                pid: 8,
+                exe: "unreadable (Permission denied (os error 13))".into(),
+                replaced: None,
+            }])
+        };
+        let unknown = joined(Ok(None), &p);
+        assert!(unknown.contains("cannot be told"), "{unknown}");
+        assert!(
+            !unknown.contains("still in place") && !unknown.contains("NOT serving"),
+            "{unknown}"
+        );
+    }
+
+    /// Delta review (b): after a rollback, a newer record whose daemon is gone
+    /// sits beside an older daemon that writes none. That is not "not running".
+    #[test]
+    fn a_gone_record_beside_a_running_unrecorded_daemon_names_that_daemon() {
+        let mut p = probe(|_| false, |_| None);
+        p.daemons = || {
+            Some(vec![Running {
+                pid: 2946187,
+                exe: "/home/dev/.local/bin/forge-runner (deleted)".into(),
+                replaced: Some(true),
+            }])
+        };
+        let out = joined(Ok(Some(rec("0.17.9", None))), &p);
+        assert!(out.contains("the record is stale"), "{out}");
+        assert!(
+            out.contains("pid 2946187 (`forge-runner start`) is running"),
+            "{out}"
+        );
+        assert!(!out.contains("daemon     not running"), "{out}");
+        let note = version_note(&Ok(Some(rec("0.17.9", None))), &p, "0.17.9", "abc1234")
+            .expect("--version says it too");
+        assert!(note.contains("pid 2946187"), "{note}");
+
+        let mut reused = probe(|_| true, |_| Some("999".into()));
+        reused.daemons = p.daemons;
+        assert!(joined(Ok(Some(rec("0.17.9", None))), &reused).contains("the record is stale"));
+
+        p.daemons = || Some(Vec::new());
+        let none = joined(Ok(Some(rec("0.17.9", None))), &p);
+        assert!(
+            none.contains("not running") && none.contains("no `forge-runner start` process"),
+            "{none}"
+        );
     }
 
     /// The scan over a planted `/proc`: a `forge-runner start` whose exe link
@@ -682,12 +769,12 @@ mod tests {
                 Running {
                     pid: 100,
                     exe: "/home/dev/.local/bin/forge-runner (deleted)".into(),
-                    replaced: true
+                    replaced: Some(true)
                 },
                 Running {
                     pid: 101,
                     exe: "/home/dev/.local/bin/forge-runner".into(),
-                    replaced: false
+                    replaced: Some(false)
                 },
             ]
         );
