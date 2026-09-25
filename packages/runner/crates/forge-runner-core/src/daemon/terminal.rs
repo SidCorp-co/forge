@@ -833,9 +833,19 @@ mod tests {
         fn new(label: &str) -> Self {
             let home = ConfigHome::new(label);
             let xdg = ScopedVar::set("XDG_CONFIG_HOME", home.path());
-            let placed = socket_path()
+            // A socket that does not resolve under this home means every tmux call after this
+            // one reaches the box's own server, where live masters run: refuse rather than go on.
+            let sock = socket_path()
                 .filter(|sock| sock.starts_with(home.path()))
-                .map(|sock| PlacedUnit::guarding(session_unit(), sock));
+                .unwrap_or_else(|| {
+                    panic!(
+                        "the sandbox under {} resolved no socket of its own ({:?}), so tmux \
+                         would reach this box's own server",
+                        home.path().display(),
+                        socket_path()
+                    )
+                });
+            let placed = Some(PlacedUnit::guarding(session_unit(), sock));
             Self {
                 _placed: placed,
                 _xdg: xdg,

@@ -104,7 +104,43 @@ impl AsRef<OsStr> for Scratch {
 
 impl Drop for Scratch {
     fn drop(&mut self) {
+        if std::fs::remove_dir_all(&self.0).is_ok() || !self.0.exists() {
+            return;
+        }
+        // A test that took write permission away from a directory and then panicked before
+        // giving it back leaves a tree nothing can unlink; give it back and try once more.
+        writable(&self.0);
         let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+#[cfg(unix)]
+fn writable(dir: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+    let _ = std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700));
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            if entry.file_type().is_ok_and(|t| t.is_dir()) {
+                writable(&entry.path());
+            }
+        }
+    }
+}
+
+#[cfg(not(unix))]
+fn writable(dir: &Path) {
+    if let Ok(meta) = std::fs::metadata(dir) {
+        let mut perms = meta.permissions();
+        #[allow(clippy::permissions_set_readonly_false)]
+        perms.set_readonly(false);
+        let _ = std::fs::set_permissions(dir, perms);
+    }
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            if entry.file_type().is_ok_and(|t| t.is_dir()) {
+                writable(&entry.path());
+            }
+        }
     }
 }
 
@@ -175,6 +211,30 @@ mod tests {
         assert!(outcome.is_err(), "the closure must actually have panicked");
         let root = seen.lock().unwrap().clone().expect("the scratch was made");
         assert!(!root.exists(), "{} survived the unwind", root.display());
+    }
+
+    /// The shape an MCP permission test leaves when its assertion fails mid-way: a populated
+    /// directory set to `0500`, never set back.
+    #[cfg(unix)]
+    #[test]
+    fn a_tree_left_read_only_by_a_panicking_test_is_still_removed() {
+        use std::os::unix::fs::PermissionsExt;
+        let seen = std::sync::Mutex::new(None::<PathBuf>);
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let s = populated("readonly");
+            *seen.lock().unwrap() = Some(s.to_path_buf());
+            std::fs::set_permissions(s.join("a/b"), std::fs::Permissions::from_mode(0o500))
+                .unwrap();
+            std::fs::set_permissions(s.join("a"), std::fs::Permissions::from_mode(0o500)).unwrap();
+            panic!("the assertion before the permissions are put back");
+        }));
+        assert!(outcome.is_err());
+        let root = seen.lock().unwrap().clone().expect("the scratch was made");
+        assert!(
+            !root.exists(),
+            "{} survived with its permissions taken away",
+            root.display()
+        );
     }
 
     #[test]
