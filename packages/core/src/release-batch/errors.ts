@@ -100,6 +100,8 @@ export class ReleaseBatchAbortedError extends Error {
     public readonly projectId: string,
     /** The roster issues its finish had closed before the abort; `null` where nothing recorded it. */
     public readonly closed: string[] | null = null,
+    /** The key each of `closed` is shown under; an issue missing here is named by its id. */
+    public readonly shown: ReadonlyMap<string, string> = new Map(),
   ) {
     super('RELEASE_BATCH_ABORTED');
     this.name = 'ReleaseBatchAbortedError';
@@ -182,8 +184,8 @@ export class ReleaseVersionMissingError extends Error {
     super(
       `Release run ${runId} carries no version on its row, so it has no ` +
         'identity and nothing afterwards could name which release carried these issues. A release ' +
-        'is versioned at the instant it is created; a row without one was not opened by ' +
-        '`createReleaseBatch`. Abort this run and cut a new release.',
+        'is given its version at the instant it is cut, so a run without one was never cut as a ' +
+        'release. Abort this run and cut a new release.',
     );
     this.name = 'ReleaseVersionMissingError';
   }

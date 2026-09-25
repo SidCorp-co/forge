@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
+import { issueDisplayIds } from '../issues/display-ids.js';
 import { type AbortAccount, ReleaseBatchAbortedError } from './errors.js';
 import { closedOnRoster, runRecordedPromotion } from './releasing-recovery.js';
 
@@ -141,5 +142,6 @@ export async function abortedError(
   if (!row) throw new Error(`release batch ${runId} not found`);
   const heldClosed = await closedOnRoster(runId, executor);
   const { account, closed } = abortAccount({ ...row, heldClosed });
-  return new ReleaseBatchAbortedError(account, row.project_id, closed);
+  const shown = await issueDisplayIds(closed ?? [], executor);
+  return new ReleaseBatchAbortedError(account, row.project_id, closed, shown);
 }

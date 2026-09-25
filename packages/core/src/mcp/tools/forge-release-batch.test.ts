@@ -82,11 +82,13 @@ describe('forge_release_batch refusals', () => {
   });
 
   it('names the issues a finish closed before the abort, in the sentence and the details', async () => {
-    acceptFinish.mockRejectedValue(new ReleaseBatchAbortedError('released', 'p-1', ['i-1']));
+    acceptFinish.mockRejectedValue(
+      new ReleaseBatchAbortedError('released', 'p-1', ['i-1'], new Map([['i-1', 'ISS-41']])),
+    );
 
     const refused = tool().handler({ action: 'finish', runId: RUN_ID });
 
-    await expect(refused).rejects.toThrow(/closed issue i-1 before the abort, and it stays closed/);
+    await expect(refused).rejects.toThrow(/closed ISS-41 before the abort, and it stays closed/);
     await expect(refused).rejects.toThrow(/"closed":\["i-1"\]/);
   });
 

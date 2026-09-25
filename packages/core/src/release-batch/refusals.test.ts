@@ -200,18 +200,43 @@ describe('finishRefusal — what the abort did to this batch', () => {
       details: { account: 'released', closed: ['iss-a', 'iss-b'] },
     });
     expect(refusal?.message).toMatch(
-      /already closed issues iss-a, iss-b before the abort, and they stay closed/,
+      /already closed iss-a, iss-b before the abort, and they stay closed/,
     );
     expect(refusal?.message).toMatch(/the rest of its roster is back/);
+  });
+
+  // The judge at 93e2f8e: a person settling the batch had to look each uuid up before acting.
+  it('names each closed issue by its key in the sentence, keeping the ids in the details', () => {
+    const shown = new Map([
+      ['u-12', 'ISS-12'],
+      ['u-9', 'ISS-9'],
+    ]);
+    const refusal = finishRefusal(
+      new ReleaseBatchAbortedError('held', 'proj-7', ['u-12', 'u-9'], shown),
+    );
+    expect(refusal?.message).toMatch(
+      /already closed ISS-9, ISS-12 before the abort, and they stay/,
+    );
+    expect(refusal?.message).not.toMatch(/u-12|u-9/);
+    expect(refusal?.cause).toEqual({
+      code: 'RELEASE_BATCH_ABORTED',
+      details: { account: 'held', closed: ['u-12', 'u-9'] },
+    });
+  });
+
+  it('names a closed issue whose key was not read by its id, never dropping it', () => {
+    const shown = new Map([['u-1', 'ISS-1']]);
+    const message =
+      finishRefusal(new ReleaseBatchAbortedError('released', 'proj-7', ['u-1', 'u-gone'], shown))
+        ?.message ?? '';
+    expect(message).toMatch(/already closed ISS-1, u-gone before the abort/);
   });
 
   it('names the one issue a finish closed beside a held roster, and the rest at releasing', () => {
     const message =
       finishRefusal(new ReleaseBatchAbortedError('held', 'proj-7', ['iss-a']))?.message ?? '';
-    expect(message).toMatch(/closed issue iss-a before the abort, and it stays closed/);
-    expect(message).toMatch(
-      /closed issue iss-a before the abort, and it stays closed\. Every other/,
-    );
+    expect(message).toMatch(/closed iss-a before the abort, and it stays closed/);
+    expect(message).toMatch(/closed iss-a before the abort, and it stays closed\. Every other/);
   });
 
   // release-records takes only unclaimed issues at the gate, so offering it beside the
@@ -245,6 +270,12 @@ describe('finishRefusal — a release row carrying no version', () => {
     expect(refusal?.cause).toEqual({ code: 'RELEASE_VERSION_MISSING' });
     expect(refusal?.message).not.toContain('RELEASE_VERSION_MISSING');
     expect(refusal?.message).toMatch(/^Release run run-7 carries no version/);
+  });
+
+  it('names no internal function its reader could not act on', () => {
+    const message = finishRefusal(new ReleaseVersionMissingError('run-7'))?.message ?? '';
+    expect(message).not.toMatch(/createReleaseBatch|`[a-z]+[A-Z]\w*`/);
+    expect(message).toMatch(/Abort this run and cut a new release\.$/);
   });
 });
 
