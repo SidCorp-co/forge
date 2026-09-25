@@ -250,24 +250,17 @@ export interface DeviceIssueLease {
   heldByThisDevice: boolean;
   holder: IssueLeaseHolder | null;
   /**
-   * The issue itself has reached a terminal status, so nothing further will be
-   * done on it. `null` where this request reaches no issue at all, which is not
-   * the same claim and must not be read as one: a box treats it as *not known
-   * to be over* and keeps the run it would otherwise have closed (ISS-1245).
+   * The issue has reached a terminal status. `null` is *not known to be over* —
+   * no issue was reached — which a box keeps its run on (ISS-1245).
    */
   issueOver: boolean | null;
 }
 
 /**
- * Whether the issue that pair names has reached a terminal status, or `null`
- * where it names no issue this device reaches.
- *
- * Read off the ISSUE and never off the lease row: a box has to be able to close
- * a run whose lease core already freed, and those are exactly the rows that
- * most need the fact (ISS-1245). `iss_seq` restarts per project, so a request
- * naming no project identifies no issue and is answered `null` rather than
- * tie-broken across the projects this box reaches — a guess here closes the
- * wrong box's run.
+ * Whether that pair's issue is over, read off the ISSUE and not the lease row:
+ * the rows that most need the fact are the ones whose lease core already freed.
+ * `iss_seq` restarts per project, so a request naming none is answered `null`
+ * rather than tie-broken — a guess there closes the wrong project's run.
  */
 async function readIssueOver(args: {
   deviceId: string;
