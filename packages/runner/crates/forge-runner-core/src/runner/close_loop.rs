@@ -170,26 +170,28 @@ pub async fn close(
         ledger.mark_session_terminal_observed(run_id)?;
     }
 
-    if run.released_as.is_none() {
+    let mut checkout_is_back = run.released_as.is_some();
+    if !checkout_is_back {
         if let Some(how) = checkout_returned(repo, Path::new(&run.worktree_path)).await {
             ledger.mark_checkout_returned_observed(run_id, how)?;
-            // This observation IS what overtakes a refusal the release left
-            // standing: the checkout the refusal was about is back, so the
-            // refusal will never be taken again and will never reach its own
-            // decision. Settled here, at the moment the fact is in hand, rather
-            // than re-derived by a sweep that would have to read it again
-            // (ISS-1242).
-            if run.release_refused_at.is_some() && run.release_terminal_at.is_none() {
-                let settled = ledger.settle_release_refusal(run_id, now_secs())?;
-                if settled {
-                    tracing::info!(
-                        "[close] run={run_id}: its checkout is back, so the release refusal \
-                         standing over it ({}) is settled rather than left open — it was never \
-                         decided and will never be taken again",
-                        run.release_refusal.as_deref().unwrap_or("no text recorded")
-                    );
-                }
-            }
+            checkout_is_back = true;
+        }
+    }
+
+    // A checkout that is back overtakes a refusal the release left standing:
+    // the thing the refusal was about is gone, so the refusal will never be
+    // taken again and will never reach its own decision. The condition is that
+    // the checkout IS back, not that this call was the one that saw it — the
+    // rows ISS-1242 names were all marked returned by an earlier sweep, so a
+    // settle guarded by the observation would miss every one of them.
+    if checkout_is_back && run.release_refused_at.is_some() && run.release_terminal_at.is_none() {
+        if ledger.settle_release_refusal(run_id, now_secs())? {
+            tracing::info!(
+                "[close] run={run_id}: its checkout is back, so the release refusal standing over \
+                 it ({}) is settled rather than left open — it was never decided and will never \
+                 be taken again",
+                run.release_refusal.as_deref().unwrap_or("no text recorded")
+            );
         }
     }
 
@@ -798,6 +800,54 @@ mod tests {
         assert!(
             run.release_terminal_at.is_none(),
             "nothing overtook this refusal, so the retry that would decide it must still be owed: {run:?}"
+        );
+    }
+
+    /// ISS-1242's own rows, which a settle guarded by the OBSERVATION misses.
+    ///
+    /// `f0c38b4e`, `af39c60d` and `daff6570` were all marked `released_as` by
+    /// the sweep that came after their refusal, days before any fix runs. A
+    /// settle that only fires on the call that first sees the checkout back
+    /// therefore never fires for any of them, and the rows the issue is about
+    /// stay unsettled for ever. The condition is that the checkout IS back.
+    #[tokio::test]
+    async fn a_checkout_marked_back_by_an_earlier_sweep_still_settles_its_refusal() {
+        let mut led = seeded(&["ISS-308"], gone());
+        led.note_release_refusal("run-1", "the diff was not preserved", 1_790_000_000)
+            .unwrap();
+        led.end_run("run-1", "subagent", "its subagent ended its turn")
+            .unwrap();
+        led.mark_checkout_returned_observed("run-1", crate::runner::ledger::CheckoutReturn::Gone)
+            .unwrap();
+        assert!(
+            led.run("run-1")
+                .unwrap()
+                .unwrap()
+                .release_terminal_at
+                .is_none(),
+            "the case under test starts unsettled"
+        );
+
+        close(
+            &mut led,
+            "run-1",
+            Some(&a_repository()),
+            &Sessions(true),
+            &Leases::new(false, &["ISS-308"]),
+        )
+        .await
+        .unwrap();
+
+        let run = led.run("run-1").unwrap().unwrap();
+        assert!(
+            run.release_terminal_at.is_some(),
+            "a row whose checkout an EARLIER sweep marked back is exactly the row this issue is \
+             about, and a settle it cannot reach settles nothing: {run:?}"
+        );
+        assert_eq!(
+            run.release_refusal.as_deref(),
+            Some("the diff was not preserved"),
+            "and the refusal text is still the evidence"
         );
     }
 }
