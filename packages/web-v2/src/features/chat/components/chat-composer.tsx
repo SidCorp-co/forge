@@ -11,9 +11,11 @@
 
 import {
   type ClipboardEvent,
+  createContext,
   type KeyboardEvent,
   type ReactNode,
   useCallback,
+  useEffect,
   useRef,
   useState,
 } from "react";
@@ -38,6 +40,15 @@ import {
 
 /** How tall the box may grow before it scrolls instead. */
 const MAX_ROWS = 8;
+
+/**
+ * How wide the composer's own frame is, for a control in the footer slot that
+ * has to shrink with it. Null until it has been measured — and in a runtime
+ * with no `ResizeObserver`, which is what a reader of this value renders for.
+ * The frame is the subject rather than the viewport: this composer is as wide
+ * as the pane it is in, and the dock is 420px inside a 1440px window.
+ */
+export const ComposerWidthContext = createContext<number | null>(null);
 
 interface StagedFile {
   id: string;
@@ -119,6 +130,19 @@ export function ChatComposer({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const rowRef = useRef<HTMLDivElement>(null);
   const slashPanelRef = useRef<HTMLDivElement>(null);
+  const [frameWidth, setFrameWidth] = useState<number | null>(null);
+
+  useEffect(() => {
+    const node = rowRef.current;
+    if (!node || typeof ResizeObserver === "undefined") return;
+    setFrameWidth(node.getBoundingClientRect().width);
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width;
+      if (width !== undefined) setFrameWidth(width);
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
 
   const canSend =
     !disabled && (queueWhileBusy || !busy) && (value.trim().length > 0 || files.length > 0);
@@ -324,164 +348,166 @@ export function ChatComposer({
       : "Enter sends · Shift+Enter for a new line";
 
   return (
-    <div className={bandClass(sticky, "px-4 py-3 sm:px-6")} onPaste={attachments ? onPaste : undefined}>
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-2 xl:max-w-4xl">
-        {refusals.length > 0 && (
-          <Banner tone="attention">
-            <ul className="space-y-0.5">
-              {refusals.map((refusal) => (
-                <li key={`${refusal.name}-${refusal.reason}`}>{refusalSentence(refusal)}</li>
-              ))}
-            </ul>
-          </Banner>
-        )}
-
-        <div
-          {...getRootProps({
-            ref: rowRef,
-            "data-testid": "chat-composer",
-            className: [
-              "flex w-full flex-col rounded-2xl border bg-surface transition-shadow",
-              "focus-within:border-[color:var(--link)] focus-within:shadow-[var(--shadow-focus)]",
-              isDragActive ? "border-dashed border-[color:var(--link)]" : "border-line-strong",
-            ].join(" "),
-          })}
-        >
-          {attachments && <input {...getInputProps({ accept: acceptAttribute(attachments) })} />}
-
-          {files.length > 0 && (
-            <ul className="flex flex-wrap gap-1.5 px-2.5 pt-2.5" data-testid="composer-chips">
-              {files.map(({ id, file }) => (
-                <li
-                  key={id}
-                  className="flex max-w-60 items-center gap-2 rounded-md border border-line-subtle bg-sunken py-1 pl-2 pr-1"
-                >
-                  <Icon
-                    name={file.type.startsWith("image/") ? "grid" : "folder"}
-                    size={14}
-                    className="flex-none text-subtle"
-                  />
-                  <span className="fg-caption min-w-0 flex-1 truncate text-fg" title={file.name}>
-                    {file.name}
-                  </span>
-                  <span className="fg-caption flex-none">{formatSize(file.size)}</span>
-                  <IconButton
-                    type="button"
-                    icon="x"
-                    size="sm"
-                    aria-label={`Remove ${file.name}`}
-                    disabled={busy}
-                    onClick={() => removeFile(id)}
-                  />
-                </li>
-              ))}
-            </ul>
+    <ComposerWidthContext.Provider value={frameWidth}>
+      <div className={bandClass(sticky, "px-4 py-3 sm:px-6")} onPaste={attachments ? onPaste : undefined}>
+        <div className="mx-auto flex w-full max-w-3xl flex-col gap-2 xl:max-w-4xl">
+          {refusals.length > 0 && (
+            <Banner tone="attention">
+              <ul className="space-y-0.5">
+                {refusals.map((refusal) => (
+                  <li key={`${refusal.name}-${refusal.reason}`}>{refusalSentence(refusal)}</li>
+                ))}
+              </ul>
+            </Banner>
           )}
 
-          <TextareaAutosize
-            ref={textareaRef}
-            value={value}
-            onChange={(e) => {
-              setValue(e.target.value);
-              syncSlash(e.target.value, e.target.selectionStart ?? 0, true);
-            }}
-            onKeyDown={onKeyDown}
-            onSelect={(e) => {
-              const el = e.currentTarget;
-              syncSlash(el.value, el.selectionStart ?? 0, false);
-            }}
-            onBlur={(e) => {
-              if (slashPanelRef.current?.contains(e.relatedTarget as Node | null)) return;
-              setSlashOpen(false);
-            }}
-            disabled={disabled}
-            minRows={1}
-            maxRows={MAX_ROWS}
-            placeholder={disabled ? "No device online — start a runner to chat." : placeholder}
-            aria-label="Message"
-            className="w-full resize-none border-0 bg-transparent px-4 pb-1 pt-3.5 text-base text-fg outline-none placeholder:text-disabled disabled:cursor-not-allowed md:text-sm"
-          />
+          <div
+            {...getRootProps({
+              ref: rowRef,
+              "data-testid": "chat-composer",
+              className: [
+                "flex w-full flex-col rounded-2xl border bg-surface transition-shadow",
+                "focus-within:border-[color:var(--link)] focus-within:shadow-[var(--shadow-focus)]",
+                isDragActive ? "border-dashed border-[color:var(--link)]" : "border-line-strong",
+              ].join(" "),
+            })}
+          >
+            {attachments && <input {...getInputProps({ accept: acceptAttribute(attachments) })} />}
 
-          <div className="flex items-center gap-1 px-2 pb-2">
-            {attachments && (
-              <IconButton
-                type="button"
-                variant="ghost"
-                icon="plus"
-                aria-label="Attach files"
-                className="h-11 w-11 flex-none"
-                disabled={disabled || busy}
-                onClick={openPicker}
-              />
+            {files.length > 0 && (
+              <ul className="flex flex-wrap gap-1.5 px-2.5 pt-2.5" data-testid="composer-chips">
+                {files.map(({ id, file }) => (
+                  <li
+                    key={id}
+                    className="flex max-w-60 items-center gap-2 rounded-md border border-line-subtle bg-sunken py-1 pl-2 pr-1"
+                  >
+                    <Icon
+                      name={file.type.startsWith("image/") ? "grid" : "folder"}
+                      size={14}
+                      className="flex-none text-subtle"
+                    />
+                    <span className="fg-caption min-w-0 flex-1 truncate text-fg" title={file.name}>
+                      {file.name}
+                    </span>
+                    <span className="fg-caption flex-none">{formatSize(file.size)}</span>
+                    <IconButton
+                      type="button"
+                      icon="x"
+                      size="sm"
+                      aria-label={`Remove ${file.name}`}
+                      disabled={busy}
+                      onClick={() => removeFile(id)}
+                    />
+                  </li>
+                ))}
+              </ul>
             )}
-            {hasSkills && (
-              <IconButton
-                type="button"
-                variant="ghost"
-                icon="command"
-                aria-label="Insert a skill"
-                aria-haspopup="listbox"
-                aria-expanded={slashMenuOpen}
-                className="h-11 w-11 flex-none"
-                disabled={disabled}
-                onClick={openSlashMenu}
-              />
-            )}
-            {footerControl}
-            <div className="ml-auto flex items-center gap-2.5">
-              <span className="fg-caption hidden text-disabled sm:inline">{hint}</span>
-              {showStop ? (
-                <Button
-                  variant="secondary"
-                  size="md"
-                  icon="stop"
-                  aria-label="Stop answering"
-                  className="h-11 w-11 flex-none rounded-full p-0"
-                  loading={stopping}
-                  onClick={onStop}
-                />
-              ) : (
-                <Button
-                  variant="primary"
-                  size="md"
-                  icon="arrowRight"
-                  aria-label="Send message"
-                  className="h-11 w-11 flex-none rounded-full p-0"
-                  loading={busy}
-                  disabled={!canSend}
-                  onClick={submit}
+
+            <TextareaAutosize
+              ref={textareaRef}
+              value={value}
+              onChange={(e) => {
+                setValue(e.target.value);
+                syncSlash(e.target.value, e.target.selectionStart ?? 0, true);
+              }}
+              onKeyDown={onKeyDown}
+              onSelect={(e) => {
+                const el = e.currentTarget;
+                syncSlash(el.value, el.selectionStart ?? 0, false);
+              }}
+              onBlur={(e) => {
+                if (slashPanelRef.current?.contains(e.relatedTarget as Node | null)) return;
+                setSlashOpen(false);
+              }}
+              disabled={disabled}
+              minRows={1}
+              maxRows={MAX_ROWS}
+              placeholder={disabled ? "No device online — start a runner to chat." : placeholder}
+              aria-label="Message"
+              className="w-full resize-none border-0 bg-transparent px-4 pb-1 pt-3.5 text-base text-fg outline-none placeholder:text-disabled disabled:cursor-not-allowed md:text-sm"
+            />
+
+            <div className="flex items-center gap-1 px-2 pb-2">
+              {attachments && (
+                <IconButton
+                  type="button"
+                  variant="ghost"
+                  icon="plus"
+                  aria-label="Attach files"
+                  className="h-11 w-11 flex-none"
+                  disabled={disabled || busy}
+                  onClick={openPicker}
                 />
               )}
+              {hasSkills && (
+                <IconButton
+                  type="button"
+                  variant="ghost"
+                  icon="command"
+                  aria-label="Insert a skill"
+                  aria-haspopup="listbox"
+                  aria-expanded={slashMenuOpen}
+                  className="h-11 w-11 flex-none"
+                  disabled={disabled}
+                  onClick={openSlashMenu}
+                />
+              )}
+              {footerControl}
+              <div className="ml-auto flex items-center gap-2.5">
+                <span className="fg-caption hidden text-disabled sm:inline">{hint}</span>
+                {showStop ? (
+                  <Button
+                    variant="secondary"
+                    size="md"
+                    icon="stop"
+                    aria-label="Stop answering"
+                    className="h-11 w-11 flex-none rounded-full p-0"
+                    loading={stopping}
+                    onClick={onStop}
+                  />
+                ) : (
+                  <Button
+                    variant="primary"
+                    size="md"
+                    icon="arrowRight"
+                    aria-label="Send message"
+                    className="h-11 w-11 flex-none rounded-full p-0"
+                    loading={busy}
+                    disabled={!canSend}
+                    onClick={submit}
+                  />
+                )}
+              </div>
             </div>
           </div>
-        </div>
 
-        {slashSkills && (
-          <SlashSkillsMenu
-            open={slashMenuOpen}
-            onClose={() => setSlashOpen(false)}
-            query={slashToken?.query ?? ""}
-            matches={slashMatches}
-            highlight={slashHighlight}
-            onHighlight={setSlashHighlight}
-            onPick={insertSkill}
-            anchorRef={rowRef}
-            panelRef={slashPanelRef}
-            onLeave={(dismissed) => {
-              setSlashOpen(false);
-              if (dismissed) slashDismissedAt.current = slashToken?.start ?? null;
-              textareaRef.current?.focus();
-            }}
-            onReturnFocus={() => textareaRef.current?.focus()}
-            homeRef={textareaRef}
-            items={slashSkills.items}
-            loading={slashSkills.loading}
-            error={slashSkills.error}
-            fetching={slashSkills.fetching}
-            retry={slashSkills.retry}
-          />
-        )}
+          {slashSkills && (
+            <SlashSkillsMenu
+              open={slashMenuOpen}
+              onClose={() => setSlashOpen(false)}
+              query={slashToken?.query ?? ""}
+              matches={slashMatches}
+              highlight={slashHighlight}
+              onHighlight={setSlashHighlight}
+              onPick={insertSkill}
+              anchorRef={rowRef}
+              panelRef={slashPanelRef}
+              onLeave={(dismissed) => {
+                setSlashOpen(false);
+                if (dismissed) slashDismissedAt.current = slashToken?.start ?? null;
+                textareaRef.current?.focus();
+              }}
+              onReturnFocus={() => textareaRef.current?.focus()}
+              homeRef={textareaRef}
+              items={slashSkills.items}
+              loading={slashSkills.loading}
+              error={slashSkills.error}
+              fetching={slashSkills.fetching}
+              retry={slashSkills.retry}
+            />
+          )}
+        </div>
       </div>
-    </div>
+    </ComposerWidthContext.Provider>
   );
 }

@@ -7,6 +7,7 @@ import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentModeOffer } from "../types";
+import { ComposerWidthContext } from "@/features/chat/components/chat-composer";
 import { ConversationModeControl, modePlaceholder } from "./mode-control";
 
 expect.extend(matchers);
@@ -118,6 +119,37 @@ describe("below 480 pixels of composer width", () => {
     fireEvent.click(screen.getByRole("menuitemradio", { name: /Agent/ }));
     expect(onChange).not.toHaveBeenCalled();
     expect(screen.getByTestId("mode-blocked-panel")).toBeInTheDocument();
+  });
+});
+
+describe("the width it reads that form from", () => {
+  function atWidth(width: number | null) {
+    render(
+      <ComposerWidthContext.Provider value={width}>
+        <ConversationModeControl
+          value="assistant"
+          onChange={vi.fn()}
+          offer={FREE}
+          settled={null}
+        />
+      </ComposerWidthContext.Provider>,
+    );
+  }
+
+  it("takes the menu form from the composer's own width, with nothing passed", () => {
+    atWidth(420);
+    expect(screen.getByTestId("conversation-mode-menu-trigger")).toBeInTheDocument();
+  });
+
+  it("keeps the track where the composer is wide enough for it", () => {
+    atWidth(896);
+    expect(screen.getByRole("group")).toBeInTheDocument();
+    expect(screen.queryByTestId("conversation-mode-menu-trigger")).not.toBeInTheDocument();
+  });
+
+  it("draws the track until a width has been measured", () => {
+    atWidth(null);
+    expect(screen.getByRole("group")).toBeInTheDocument();
   });
 });
 

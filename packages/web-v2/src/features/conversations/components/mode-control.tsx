@@ -11,10 +11,18 @@
 // The markup is a radiogroup and stays one: `fieldset` + `legend.sr-only` +
 // `input[type=radio]`, one tab stop with the arrows moving between options.
 
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Icon } from "@/design";
+import { ComposerWidthContext } from "@/features/chat/components/chat-composer";
 import type { AgentModeOffer, ConversationMode } from "../types";
+
+/**
+ * The composer width below which both modes will not sit side by side without
+ * crowding the attach button and the send button off their own row. Measured
+ * on the pane, not the window: the dock is 420px inside a 1440px one.
+ */
+const TRACK_MIN_WIDTH = 480;
 
 interface ModeMeta {
   mode: ConversationMode;
@@ -228,12 +236,18 @@ export function ConversationModeControl({
   offer: AgentModeOffer;
   /** The mode this room already answers in, or null while it is still a choice. */
   settled: ConversationMode | null;
-  /** The composer is too narrow for a track, so the choice becomes a menu. */
+  /**
+   * Force the menu form. Left out, the control reads the composer's own width
+   * and takes the menu below `TRACK_MIN_WIDTH` — a pane is not a viewport, and
+   * the ask-agent dock is 420px inside a full-width window.
+   */
   narrow?: boolean;
   /** The whole control, while a send is in flight. */
   disabled?: boolean;
 }) {
   const [blockedOpen, setBlockedOpen] = useState(false);
+  const composerWidth = useContext(ComposerWidthContext);
+  const asMenu = narrow ?? (composerWidth !== null && composerWidth < TRACK_MIN_WIDTH);
 
   if (settled) {
     return (
@@ -250,7 +264,7 @@ export function ConversationModeControl({
   const blocked = !offer.available;
   return (
     <div className="relative">
-      {narrow ? (
+      {asMenu ? (
         <ModeMenu
           value={value}
           onChange={onChange}
