@@ -61,6 +61,20 @@ export function conversationAttachmentUrl(conversationId: string, id: string): s
 }
 
 /**
+ * The attachment a stored `ref` names, or null where it names none of this
+ * room's. It reads the shape the line above writes rather than parsing a URL,
+ * so a ref another venue wrote — Rocket.Chat's, a runner's — resolves to
+ * nothing here instead of to a row.
+ */
+export function attachmentIdFromRef(conversationId: string, ref: string): string | null {
+  const prefix = `/api/conversations/${conversationId}/attachments/`;
+  const suffix = '/download';
+  if (!ref.startsWith(prefix) || !ref.endsWith(suffix)) return null;
+  const id = ref.slice(prefix.length, ref.length - suffix.length);
+  return /^[0-9a-f-]{36}$/i.test(id) ? id : null;
+}
+
+/**
  * Validate and store one staged file. The type is decided from the BYTES, so a
  * `.png` that is not one is refused here rather than reaching the model as
  * something it cannot read.
@@ -158,6 +172,8 @@ export interface ConversationAttachmentForFetch {
   mime: string;
   size: number;
   path: string;
+  /** Who put it here — carried when a copy of it is made under another owner. */
+  uploaderId: string;
 }
 
 /** One attachment, for the download route and for the turn that re-reads it. */
@@ -173,6 +189,7 @@ export async function loadConversationAttachment(
       mime: conversationAttachments.mime,
       size: conversationAttachments.size,
       path: conversationAttachments.path,
+      uploaderId: conversationAttachments.uploaderId,
     })
     .from(conversationAttachments)
     .where(

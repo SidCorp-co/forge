@@ -5,6 +5,7 @@
  */
 
 import {
+  attachmentIdFromRef,
   type ConversationAttachmentRef,
   loadConversationAttachment,
 } from '../conversations/attachment-service.js';
@@ -46,13 +47,4 @@ export function makeConversationImageResolver(conversationId: string): ImageReso
       return null;
     }
   };
-}
-
-/** The attachment a `ref` names — another venue's ref shape resolves to nothing. */
-function attachmentIdFromRef(conversationId: string, ref: string): string | null {
-  const prefix = `/api/conversations/${conversationId}/attachments/`;
-  const suffix = '/download';
-  if (!ref.startsWith(prefix) || !ref.endsWith(suffix)) return null;
-  const id = ref.slice(prefix.length, ref.length - suffix.length);
-  return /^[0-9a-f-]{36}$/i.test(id) ? id : null;
 }

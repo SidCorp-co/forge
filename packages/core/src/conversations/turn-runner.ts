@@ -11,6 +11,7 @@
  * this.
  */
 
+import { STOPPED_BY_A_PERSON } from '../assistant/conversation-stops.js';
 import { type ExternalChatTurnResult, runExternalChatTurn } from '../assistant/external-chat.js';
 import type { ChatStreamEvent } from '../assistant/providers/types.js';
 import { type ChatToolset, mergeToolsets } from '../assistant/tools/mcp-adapter.js';
@@ -236,6 +237,12 @@ async function composeReply(ctx: TurnContext): Promise<TurnReply> {
     ...(req.onTurnEvent && !capture ? { onTurnEvent: req.onTurnEvent } : {}),
   });
 
+  // A stop that landed while the model was answering. Everything below this
+  // line either records a silence, screens a reply or delivers one, and a turn
+  // a person ended does none of the three: `runConversationTurn` reads the same
+  // signal and closes the window as stopped.
+  if (req.externalStop?.aborted) return { send: false, reason: STOPPED_BY_A_PERSON };
+
   const late = await req.divertAfterTurn?.(result, hook);
   if (late) return late;
 
@@ -345,11 +352,18 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
   const abort = new AbortController();
   const timer = setTimeout(() => abort.abort(), TURN_TIMEOUT_MS);
   timer.unref?.();
-  const onExternalStop = () => abort.abort();
+  const onExternalStop = () => abort.abort(STOPPED_BY_A_PERSON);
   req.externalStop?.addEventListener('abort', onExternalStop, { once: true });
   let phase = 'start';
   let reply: TurnReply;
   try {
+    // Already stopped before the turn began: the person pressed Stop while the
+    // window was still being claimed, and composing anything now is work whose
+    // answer nobody will be shown.
+    if (req.externalStop?.aborted) {
+      logger.info({ ...req.log, phase }, 'conversations: a person stopped this turn');
+      return { kind: 'stopped', reason: STOPPED_BY_A_PERSON };
+    }
     reply = await withTimeout(
       composeReply({
         req,
@@ -361,13 +375,20 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
       }),
       HANDLE_TIMEOUT_MS,
     );
+    // Composition can END on a cancellation rather than throw on it — a
+    // provider that answers with an error result instead of raising. The reply
+    // it produced is not delivered, and the window closes stopped.
+    if (req.externalStop?.aborted) {
+      logger.info({ ...req.log, phase }, 'conversations: a person stopped this turn');
+      return { kind: 'stopped', reason: STOPPED_BY_A_PERSON };
+    }
   } catch (err) {
     abort.abort();
     if (req.externalStop?.aborted) {
-      clearTimeout(timer);
-      await req.dispose?.();
+      // The `finally` below clears the timer and disposes: returning from here
+      // does not skip it, and doing either twice is doing it twice.
       logger.info({ ...req.log, phase }, 'conversations: a person stopped this turn');
-      return { kind: 'stopped', reason: 'stopped-by-a-person' };
+      return { kind: 'stopped', reason: STOPPED_BY_A_PERSON };
     }
     const timedOut = err instanceof TurnTimeoutError;
     logger.error({ err, ...req.log, phase, timedOut }, 'conversations: turn failed');

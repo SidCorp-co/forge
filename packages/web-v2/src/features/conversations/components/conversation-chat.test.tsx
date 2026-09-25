@@ -25,6 +25,7 @@ const send = vi.fn(async (_args: SendArgs) => undefined);
 const uploadOne = vi.fn(async ({ file }: { file: File }) => ({ id: `att-${file.name}` }));
 const stop = vi.fn();
 let room: ConversationDetail | undefined;
+let progress: { entry: string; replaced?: boolean } | null = null;
 
 function detail(over: Partial<ConversationDetail> = {}): ConversationDetail {
   return {
@@ -63,7 +64,7 @@ vi.mock("./conversation-members", () => ({ ConversationMembers: () => null }));
 vi.mock("../hooks", () => ({
   useConversation: () => ({ data: room, isLoading: false, isError: false, isSuccess: true }),
   useAcceptedMessages: () => ({}),
-  useConversationProgress: () => null,
+  useConversationProgress: () => progress,
   useWithdrawnDrafts: () => ({}),
   useDraftAgentMode: () => ({ data: { available: true, reason: null } }),
   useOpenConversation: () => ({ isPending: false, mutateAsync: vi.fn() }),
@@ -81,7 +82,9 @@ const { ConversationChat } = await import("./conversation-chat");
 beforeEach(() => {
   send.mockClear();
   uploadOne.mockClear();
+  stop.mockClear();
   room = detail();
+  progress = null;
 });
 
 function fileOf(name: string, type: string): File {
@@ -175,5 +178,20 @@ describe("a message with a file on it", () => {
     await waitFor(() => expect(send).toHaveBeenCalled());
     expect(uploadOne).not.toHaveBeenCalled();
     expect(send.mock.calls[0]?.[0]).not.toHaveProperty("attachmentIds");
+  });
+});
+
+describe("stopping an answer", () => {
+  it("offers no stop in a room that is answering nothing", () => {
+    open();
+    expect(screen.queryByLabelText("Stop answering")).not.toBeInTheDocument();
+  });
+
+  it("offers it to whoever is in the room, not only to whoever asked", () => {
+    // This browser sent nothing: the answer is arriving over the socket.
+    progress = { entry: "the agent is typing" };
+    open();
+    fireEvent.click(screen.getByLabelText("Stop answering"));
+    expect(stop).toHaveBeenCalledWith("c1");
   });
 });

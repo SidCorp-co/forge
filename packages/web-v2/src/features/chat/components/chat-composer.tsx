@@ -86,9 +86,9 @@ export interface ChatComposerProps {
    */
   slashSkills?: SlashSkillsSource;
   /**
-   * End the turn that is running. Given, and while `busy`, the send button is
-   * a stop button instead. Absent, and no stop is offered — which is the state
-   * a turn already handed to a paired box is in.
+   * End the turn that is running. Given, the send button IS the stop button, so
+   * a caller passes it only while there is a turn to end. Absent, and no stop
+   * is offered — which is the state a turn handed to a paired box is in.
    */
   onStop?: () => void;
   /** A stop is in flight. */
@@ -146,7 +146,10 @@ export function ChatComposer({
 
   const canSend =
     !disabled && (queueWhileBusy || !busy) && (value.trim().length > 0 || files.length > 0);
-  const showStop = Boolean(onStop) && Boolean(busy);
+  // Stop is offered on the turn, not on this browser's own send: anyone in the
+  // room watching an answer arrive may end it, and `onStop` is given only while
+  // there is a turn to end, so its presence is the whole condition.
+  const showStop = Boolean(onStop);
 
   const [slashOpen, setSlashOpen] = useState(false);
   const [slashHighlight, setSlashHighlight] = useState(0);

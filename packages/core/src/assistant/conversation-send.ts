@@ -73,6 +73,8 @@ export function webConversationTurn(args: {
     deliveryKey: string;
     mode: ConversationMode;
     question: string;
+    /** The pictures this window's messages carry, for a turn answered on a box. */
+    images: readonly ConversationImage[];
     /**
      * What was said in this room BEFORE this window, for a turn answered out of reach.
      */
@@ -117,6 +119,7 @@ export function webConversationTurn(args: {
         question: args.window.question,
         askedByLabel: args.askedBy,
         conversationContext: await args.window.conversationContext(),
+        ...(args.window.images.length ? { images: args.window.images } : {}),
         persona: webAgentConversationPersona(args.project.name, args.project.slug, args.askedBy),
         door: 'web-agent-completion',
         replies: WEB_AGENT_REPLIES,
@@ -133,6 +136,14 @@ export function webConversationTurn(args: {
         return {
           send: true,
           message: codeAuthored(WEB_AGENT_REPLIES.noDevice),
+          screenReplaced: false,
+        };
+      if (started.reason === 'attachment-unreadable')
+        return {
+          send: true,
+          message: codeAuthored(
+            `I could not send ${started.file ?? 'the file you attached'} to the box that answers in Agent mode, so I have not answered rather than answering without it. Attach it again, or ask in Assistant mode, where I read it here.`,
+          ),
           screenReplaced: false,
         };
       return { send: false, reason: 'agent-turn-dispatch-failed' };
@@ -341,6 +352,7 @@ export async function routeWebWindow(
             deliveryKey,
             mode,
             question: messages.map((m) => m.content).join('\n'),
+            images: messages.flatMap((m) => m.images ?? []),
             conversationContext: () => agentConversationContext(window),
             reserve,
           },

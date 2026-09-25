@@ -132,3 +132,23 @@ describe("formatSize", () => {
     expect(formatSize(3 * 1024 * 1024)).toBe("3.0 MB");
   });
 });
+
+describe("the name the server would refuse", () => {
+  it("refuses it here instead, naming the rule, so it is not lost at the upload", () => {
+    const long = `${"a".repeat(177)}.png`;
+    const out = stageFiles([file(long, "image/png", 4096)], CONVERSATION_ATTACHMENTS, 0);
+    expect(out.accepted).toEqual([]);
+    expect(out.refused[0]?.reason).toContain("180 bytes");
+  });
+
+  it("counts the bytes of the name, not its characters", () => {
+    const long = `${"\u00e9".repeat(91)}.png`;
+    const out = stageFiles([file(long, "image/png", 4096)], CONVERSATION_ATTACHMENTS, 0);
+    expect(out.accepted).toEqual([]);
+  });
+
+  it("takes a name that fits once punctuation is cleaned out of it", () => {
+    const out = stageFiles([file("a photo (1).png", "image/png", 4096)], CONVERSATION_ATTACHMENTS, 0);
+    expect(out.accepted).toHaveLength(1);
+  });
+});

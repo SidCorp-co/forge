@@ -113,6 +113,29 @@ describe("below 480 pixels of composer width", () => {
     expect(menu).toHaveTextContent("Agent");
   });
 
+  it("puts the keyboard on the option already chosen when it opens", () => {
+    renderControl({ narrow: true, value: "agent" });
+    fireEvent.click(screen.getByTestId("conversation-mode-menu-trigger"));
+    expect(screen.getByRole("menuitemradio", { name: /Agent/ })).toHaveFocus();
+  });
+
+  it("moves between the options with the arrow keys", () => {
+    renderControl({ narrow: true, value: "assistant" });
+    fireEvent.click(screen.getByTestId("conversation-mode-menu-trigger"));
+    const assistant = screen.getByRole("menuitemradio", { name: /Assistant/ });
+    fireEvent.keyDown(assistant, { key: "ArrowDown" });
+    expect(screen.getByRole("menuitemradio", { name: /Agent/ })).toHaveFocus();
+  });
+
+  it("closes on Escape and gives the caret back to the button that opened it", () => {
+    renderControl({ narrow: true });
+    const trigger = screen.getByTestId("conversation-mode-menu-trigger");
+    fireEvent.click(trigger);
+    fireEvent.keyDown(screen.getByRole("menuitemradio", { name: /Assistant/ }), { key: "Escape" });
+    expect(screen.queryByTestId("conversation-mode-menu")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
   it("still refuses the blocked mode, with the same panel", () => {
     const { onChange } = renderControl({ narrow: true, offer: BLOCKED });
     fireEvent.click(screen.getByTestId("conversation-mode-menu-trigger"));

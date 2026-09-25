@@ -6,7 +6,13 @@
  * staged and the person never loses a file to a rule nobody printed.
  */
 
-import { CONVERSATION_MIMES, SESSION_MIMES } from "@forge/contracts";
+import {
+  ATTACHMENT_NAME_MAX_BYTES,
+  attachmentNameExceedsBudget,
+  CONVERSATION_MIMES,
+  safeAttachmentName,
+  SESSION_MIMES,
+} from "@forge/contracts";
 
 export interface AttachmentPolicy {
   /** The target this surface uploads under, named in the refusal. */
@@ -15,6 +21,11 @@ export interface AttachmentPolicy {
   mimes: readonly string[];
   /** Advisory only — `accept` hints the native dialog and guarantees nothing. */
   extensions: readonly string[];
+  /**
+   * Mirrors `UPLOADS_MAX_BYTES`'s default. A deployment configured lower still
+   * refuses at the PUT, by name and in the send's own error — this number is
+   * what the composer can say before the bytes are sent, not a second rule.
+   */
   maxBytes: number;
   maxFiles: number;
   /** How the refusal names what IS taken. */
@@ -47,7 +58,7 @@ export const SESSION_ATTACHMENTS: AttachmentPolicy = {
   ],
   maxBytes: 10 * 1024 * 1024,
   maxFiles: 10,
-  takes: "an image, a PDF, or plain or markdown text",
+  takes: "an image, a PDF, an HTML page, or plain or markdown text",
 };
 
 /** The `accept` attribute for a policy's native file dialog. */
@@ -108,6 +119,13 @@ export function stageFiles(
       refused.push({
         name: named(file),
         reason: `${typeOf(file)} is not a type a ${policy.target} takes — attach ${policy.takes}`,
+      });
+      continue;
+    }
+    if (attachmentNameExceedsBudget(safeAttachmentName(file.name))) {
+      refused.push({
+        name: named(file),
+        reason: `its name is longer than ${ATTACHMENT_NAME_MAX_BYTES} bytes once punctuation is cleaned out of it — rename the file and attach it again`,
       });
       continue;
     }

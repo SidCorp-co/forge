@@ -1,4 +1,10 @@
-import { CONVERSATION_MIMES, SESSION_MIMES } from '@forge/contracts';
+import {
+  ATTACHMENT_NAME_MAX_BYTES,
+  attachmentNameExceedsBudget,
+  CONVERSATION_MIMES,
+  SESSION_MIMES,
+  safeAttachmentName,
+} from '@forge/contracts';
 
 export type AttachmentTarget = 'issue' | 'comment' | 'session' | 'conversation';
 
@@ -67,19 +73,9 @@ export function mimeFromName(name: string): string {
 }
 
 /** Strip path separators and anything that is not part of a name; keep the extension. */
-export function safeName(name: string): string {
-  const cleaned = name
-    .normalize('NFC')
-    .replace(/[\\/]+/g, '_')
-    .replace(/[\p{C}\p{Z}]/gu, '_')
-    .replace(/[^\p{L}\p{M}\p{N}._-]/gu, '_');
-  return cleaned || 'file';
-}
-
-export const NAME_MAX_BYTES = 180;
-export function nameExceedsByteBudget(name: string): boolean {
-  return new TextEncoder().encode(name).length > NAME_MAX_BYTES;
-}
+export const safeName = safeAttachmentName;
+export const NAME_MAX_BYTES = ATTACHMENT_NAME_MAX_BYTES;
+export const nameExceedsByteBudget = attachmentNameExceedsBudget;
 
 const TEXT_CONTROLS = new Set([0x08, 0x09, 0x0a, 0x0c, 0x0d, 0x1b]);
 function isBinaryControl(codePoint: number): boolean {

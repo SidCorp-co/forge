@@ -325,7 +325,9 @@ export function ConversationChat({
           sticky={false}
           attachments={CONVERSATION_ATTACHMENTS}
           placeholder={modePlaceholder(settledMode ?? pick)}
-          {...(progress ? { onStop: () => stop.mutate(resolvedId as string), stopping: stop.isPending } : {})}
+          {...(streaming && resolvedId
+            ? { onStop: () => stop.mutate(resolvedId), stopping: stop.isPending }
+            : {})}
           footerControl={
             <ConversationModeControl
               value={pick}

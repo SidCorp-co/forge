@@ -11,7 +11,7 @@
 // The markup is a radiogroup and stays one: `fieldset` + `legend.sr-only` +
 // `input[type=radio]`, one tab stop with the arrows moving between options.
 
-import { useContext, useEffect, useRef, useState } from "react";
+import { type KeyboardEvent as ReactKeyboardEvent, useContext, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Icon } from "@/design";
 import { ComposerWidthContext } from "@/features/chat/components/chat-composer";
@@ -176,14 +176,51 @@ function ModeMenu({
   onBlockedPress: () => void;
 }) {
   const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  /** Close, and put the caret back where the person left it. */
+  const close = (returnFocus: boolean) => {
+    setOpen(false);
+    if (returnFocus) triggerRef.current?.focus();
+  };
+
+  // Opening a menu that keeps the keyboard outside it is a menu a keyboard
+  // cannot use: focus lands on the option already chosen.
+  useEffect(() => {
+    if (!open) return;
+    const checked = MODES.findIndex((m) => m.mode === value);
+    itemRefs.current[checked < 0 ? 0 : checked]?.focus();
+  }, [open, value]);
+
+  const onItemKeyDown = (e: ReactKeyboardEvent<HTMLButtonElement>, index: number) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      close(true);
+      return;
+    }
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    e.preventDefault();
+    const step = e.key === "ArrowDown" ? 1 : -1;
+    const next = (index + step + MODES.length) % MODES.length;
+    itemRefs.current[next]?.focus();
+  };
+
   return (
     <div className="relative">
       <button
         type="button"
+        ref={triggerRef}
         disabled={disabled}
         data-testid="conversation-mode-menu-trigger"
         aria-haspopup="menu"
         aria-expanded={open}
+        onKeyDown={(e) => {
+          if (e.key === "Escape" && open) {
+            e.preventDefault();
+            close(true);
+          }
+        }}
         onClick={() => setOpen((o) => !o)}
         className="inline-flex items-center gap-1.5 rounded-md border border-line bg-sunken px-2.5 py-1.5 text-13 font-semibold text-fg"
       >
@@ -194,9 +231,14 @@ function ModeMenu({
         <div
           role="menu"
           data-testid="conversation-mode-menu"
+          onBlur={(e) => {
+            // The keyboard left the menu for something outside it: close, and
+            // do not drag the caret back to the trigger it is leaving.
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) close(false);
+          }}
           className="absolute bottom-full left-0 z-20 mb-2 w-64 rounded-md border border-line bg-surface p-1 shadow-lg"
         >
-          {MODES.map(({ mode, label, hint }) => {
+          {MODES.map(({ mode, label, hint }, index) => {
             const isBlocked = mode === "agent" && blocked;
             return (
               <button
@@ -204,8 +246,12 @@ function ModeMenu({
                 type="button"
                 role="menuitemradio"
                 aria-checked={value === mode}
+                ref={(node) => {
+                  itemRefs.current[index] = node;
+                }}
+                onKeyDown={(e) => onItemKeyDown(e, index)}
                 onClick={() => {
-                  setOpen(false);
+                  close(!isBlocked);
                   if (isBlocked) onBlockedPress();
                   else onChange(mode);
                 }}

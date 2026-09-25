@@ -149,9 +149,11 @@ describe("ChatComposer — stopping what is running", () => {
     expect(screen.queryByLabelText("Stop answering")).not.toBeInTheDocument();
   });
 
-  it("offers no stop while nothing is running", () => {
+  it("offers the stop whenever the surface hands it one, busy here or not", () => {
+    // The surface passes `onStop` only while there is a turn to end, and the
+    // person watching an answer arrive is not always the one who asked for it.
     render(<ChatComposer onSend={vi.fn()} onStop={vi.fn()} />);
-    expect(screen.queryByLabelText("Stop answering")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Stop answering")).toBeInTheDocument();
   });
 
   it("ends the turn when it is pressed", () => {

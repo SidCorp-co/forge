@@ -27,13 +27,11 @@ import { isTurnRunning, stopConversationTurns } from './conversation-stops.js';
 const idParamSchema = z.object({ id: z.uuid() });
 
 /**
- * Why this core cannot stop this room's turn. The abort registry is this
- * process's own, so three answers are possible and only one of them is "nothing
- * is running": the turn may belong to a paired box, or to a window some other
- * core still holds open. Answering "idle" to either would be this door telling
- * the caller something it never read.
+ * Why this core cannot stop this room's turn. The registry is this process's
+ * own, so the turn may be a paired box's or another core's, and answering
+ * "idle" to either tells the caller something this door never read.
  */
-async function nothingHereToStop(id: string): Promise<HTTPException> {
+async function nothingHereToStop(id: string): Promise<HTTPException | null> {
   const handed = (await readConversationAgentTurns(id)).find(
     (t) => t.state === 'dispatched' || t.state === 'running',
   );
@@ -50,6 +48,8 @@ async function nothingHereToStop(id: string): Promise<HTTPException> {
   const elsewhere = (await listWindowsForConversation(id, 5)).find(
     (w) => w.claimedAt !== null && w.closedAt === null && w.claimedBy !== null,
   );
+  // A turn that registered during those reads is this core's to stop after all.
+  if (isTurnRunning(id)) return null;
   if (elsewhere) {
     return new HTTPException(409, {
       message: `conversation ${id} has window ${elsewhere.id} still open under claim "${elsewhere.claimedBy}", and no turn for it is running on this core — a stop reaches only the core running the turn, so this one cannot end it`,
@@ -176,7 +176,10 @@ conversationAttachmentRoutes.post(
     const { id } = c.req.valid('param');
     await writableConversation(id, c.get('userId'));
 
-    if (!isTurnRunning(id)) throw await nothingHereToStop(id);
+    if (!isTurnRunning(id)) {
+      const refusal = await nothingHereToStop(id);
+      if (refusal) throw refusal;
+    }
 
     return c.json({ conversationId: id, stopped: stopConversationTurns(id) }, 200);
   },

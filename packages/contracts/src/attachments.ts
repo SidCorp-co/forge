@@ -1,23 +1,6 @@
-/**
- * The two allow-lists a browser stages files against, so there is one of each
- * rather than one per package.
- *
- * A composer decides what it will stage before it uploads anything, and it has
- * to decide it against the same list the server enforces: a second copy drifts
- * in the direction that costs the person the file, staging a type core no
- * longer takes and losing it at the PUT under a refusal the composer never
- * printed (ISS-1146).
- *
- * The issue and comment lists stay in core, where they are enforced: nothing in
- * a browser stages against them.
- */
+// One copy of each list a browser stages against: a second drifts, and staging
+// what the PUT then refuses costs the person the file (ISS-1146).
 
-/**
- * What a conversation takes: pictures and nothing else, because
- * `assistant/vision.ts` is what reads a conversation's files and it re-sends
- * images. `image/svg+xml` is out — markup rather than a picture, and it carries
- * script.
- */
 export const CONVERSATION_MIMES = [
 	"image/png",
 	"image/jpeg",
@@ -25,7 +8,6 @@ export const CONVERSATION_MIMES = [
 	"image/webp",
 ] as const;
 
-/** What an agent session takes: what a runner can open on the box. */
 export const SESSION_MIMES = [
 	"image/png",
 	"image/jpeg",
@@ -37,3 +19,20 @@ export const SESSION_MIMES = [
 	"text/plain",
 	"text/markdown",
 ] as const;
+
+// The stored name a file gets and the budget it fits in: the browser refuses
+// the name the server would, when the file is picked rather than after the PUT.
+export function safeAttachmentName(name: string): string {
+  const cleaned = name
+    .normalize("NFC")
+    .replace(/[\\/]+/g, "_")
+    .replace(/[\p{C}\p{Z}]/gu, "_")
+    .replace(/[^\p{L}\p{M}\p{N}._-]/gu, "_");
+  return cleaned || "file";
+}
+
+export const ATTACHMENT_NAME_MAX_BYTES = 180;
+
+export function attachmentNameExceedsBudget(name: string): boolean {
+  return new TextEncoder().encode(name).length > ATTACHMENT_NAME_MAX_BYTES;
+}
