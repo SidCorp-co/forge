@@ -253,12 +253,158 @@ impl Watch {
     }
 }
 
-/// The directory a run on this box writes its scratch into.
+/// Every distinct filesystem a run on this box writes its scratch into.
 ///
-/// One site, and it creates nothing: the whole of this module's business with
-/// the temp directory is asking the filesystem under it how much it has left.
-pub fn scratch_root() -> PathBuf {
-    std::env::temp_dir()
+/// The process temp directory is where this process's own tooling writes, and for
+/// a long time this module read only that. It is not the only place scratch
+/// lands. A daemon started with `TMPDIR` pointing at one filesystem still
+/// shares the box with every tool that ignores `TMPDIR` and writes under
+/// `/tmp`, and those are the tools that fill it.
+///
+/// Measured 2026-09-26 on the box that raised ISS-1260, whose daemon runs with
+/// `TMPDIR=/home/dev/.cache/forge-tmp`: that path is on the root disk, which
+/// stood at 88% of its 62,447,616 inodes free, while `/tmp` — a tmpfs whose
+/// 1,048,576 inodes are exactly the ceiling the incident hit — stood at 40%,
+/// 461,000 of its used inodes belonging to agent scratch trees. Reading the
+/// first alone reports `Clear` for a box whose other half is the one filling,
+/// which is the silent substitution this module exists to refuse.
+///
+/// Creates nothing, on any root: the whole of this module's business with a
+/// temp directory is asking the filesystem under it how much it has left.
+#[cfg(unix)]
+pub fn scratch_roots() -> Vec<PathBuf> {
+    roots_for(std::env::temp_dir(), Path::new("/tmp"), |at| {
+        use std::os::unix::fs::MetadataExt;
+        std::fs::metadata(at).ok().map(|m| m.dev())
+    })
+}
+
+#[cfg(not(unix))]
+pub fn scratch_roots() -> Vec<PathBuf> {
+    vec![std::env::temp_dir()]
+}
+
+/// The configured root, plus `shared` when that is a filesystem of its own.
+///
+/// `device` is the caller's, so the rule can be tested without a box that
+/// happens to mount the two apart.
+///
+/// The configured root is kept whatever `device` says about it: a `TMPDIR`
+/// that cannot be stat'd is news, and [`read`] refuses it by name. `shared` is
+/// added only when both devices are known and differ, so a box that cannot
+/// read `/tmp`, or that already writes there, warns about neither.
+fn roots_for(
+    configured: PathBuf,
+    shared: &Path,
+    device: impl Fn(&Path) -> Option<u64>,
+) -> Vec<PathBuf> {
+    let mut roots = vec![configured.clone()];
+    // Added whenever `shared` can be read and is not already the configured
+    // root's own filesystem. An UNKNOWN configured device is not equality:
+    // dropping `/tmp` because `TMPDIR` could not be stat'd is how a box loses
+    // the reading of the one filesystem that is actually filling
+    // (consult F1 on this change).
+    if let Some(there) = device(shared) {
+        if device(&configured) != Some(there) {
+            roots.push(shared.to_path_buf());
+        }
+    }
+    roots
+}
+
+/// Read every root and keep the one with least left, naming which it was.
+///
+/// The box is as short as its shortest filesystem, so a reading that averaged
+/// them, or took the first, would report room the box does not have.
+pub fn tightest(roots: &[PathBuf]) -> (PathBuf, Reading) {
+    pick(roots.iter().map(|at| (at.clone(), read(at))).collect())
+}
+
+/// One tick's reading of the box: the root with least left, and every other
+/// root that is also not clear.
+///
+/// The worst root alone decides the verdict and the level. The others are
+/// carried because ranking one above another does not make the second one's
+/// pressure go away: an operator told only that `/tmp` is critical cleans
+/// `/tmp`, and learns five minutes later that the other root was critical too.
+/// This module already prints the axis that did NOT cross beside the one that
+/// did, for the same reason (consult F3 on this change).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Survey {
+    pub at: PathBuf,
+    pub reading: Reading,
+    pub beside: Vec<(PathBuf, Reading)>,
+}
+
+/// Read every root and sort out which is the headline.
+pub fn survey(roots: &[PathBuf]) -> Survey {
+    surveyed(roots.iter().map(|at| (at.clone(), read(at))).collect())
+}
+
+/// The survey a set of readings makes, kept apart from taking them so the
+/// sorting can be tested against planted readings.
+fn surveyed(all: Vec<(PathBuf, Reading)>) -> Survey {
+    let (at, reading) = pick(all.clone());
+    let beside = all
+        .into_iter()
+        .filter(|(root, other)| *root != at && !matches!(other.verdict(), Verdict::Clear))
+        .collect();
+    Survey {
+        at,
+        reading,
+        beside,
+    }
+}
+
+/// The worst of what was read, kept apart from the reading itself so the
+/// choosing can be tested against planted readings rather than against
+/// whatever the box running the tests happens to have left.
+///
+/// No roots at all refuses. It would be a shorter function that returned
+/// `Clear` for a box it never looked at, and that is the reading this module
+/// must never produce.
+fn pick(readings: Vec<(PathBuf, Reading)>) -> (PathBuf, Reading) {
+    let mut worst: Option<(PathBuf, Reading)> = None;
+    for (root, reading) in readings {
+        let takes_it = match &worst {
+            None => true,
+            Some((_, held)) => ranked(&reading) > ranked(held),
+        };
+        if takes_it {
+            worst = Some((root, reading));
+        }
+    }
+    worst.unwrap_or_else(|| {
+        (
+            PathBuf::from("<none>"),
+            Reading::Refused("this box names no scratch root to read".to_string()),
+        )
+    })
+}
+
+/// How bad a reading is, larger being worse: the severity of its verdict, then
+/// how little is left on its shortest measurable axis.
+///
+/// `Unmeasurable` sits above `Clear` on purpose and below real pressure: a
+/// root that cannot be read is not a root that is fine, and it is not evidence
+/// of a fuller one either.
+fn ranked(reading: &Reading) -> (u8, u64) {
+    let severity = match reading.verdict() {
+        Verdict::Clear => 0,
+        Verdict::Unmeasurable(_) => 1,
+        Verdict::Tight(_) => 2,
+        Verdict::Critical(_) => 3,
+    };
+    let shortest = match reading {
+        Reading::Took(room) => room
+            .bytes_free_percent()
+            .into_iter()
+            .chain(room.inodes_free_percent())
+            .min()
+            .unwrap_or(100),
+        Reading::Refused(_) => 100,
+    };
+    (severity, 100 - shortest.min(100))
 }
 
 /// Ask the filesystem holding `at` what it has left.
@@ -335,8 +481,8 @@ fn sweep_wont(min_age: Duration) -> String {
 /// the three macro names passes while every one of them goes out as `info!` —
 /// the shape this project's own `source-scanning-test-assertions` entry
 /// records, and the one consult fa8132 F2 found here.
-pub fn say(at: &Path, reading: &Reading, report: &Report) {
-    let line = said(at, reading, report);
+pub fn say(survey: &Survey, report: &Report) {
+    let line = said(&survey.at, &survey.reading, report, &survey.beside);
     let level = report.level();
     if level == tracing::Level::ERROR {
         tracing::error!("{line}");
@@ -348,9 +494,14 @@ pub fn say(at: &Path, reading: &Reading, report: &Report) {
 }
 
 /// The line one report goes into the journal as.
-pub fn said(at: &Path, reading: &Reading, report: &Report) -> String {
+pub fn said(
+    at: &Path,
+    reading: &Reading,
+    report: &Report,
+    beside: &[(PathBuf, Reading)],
+) -> String {
     let where_and_what = format!("{}: {}", at.display(), reading.figures());
-    match report {
+    let line = match report {
         Report::Entered(Verdict::Clear) => {
             format!("[headroom] {where_and_what} — clear on both axes")
         }
@@ -375,7 +526,23 @@ pub fn said(at: &Path, reading: &Reading, report: &Report) -> String {
             held.as_secs(),
             sweep_wont(crate::workspace::worktree_reap::MIN_AGE)
         ),
+    };
+    if beside.is_empty() {
+        return line;
     }
+    let others = beside
+        .iter()
+        .map(|(root, other)| {
+            format!(
+                "{}: {} — {}",
+                root.display(),
+                other.figures(),
+                crossed(&other.verdict())
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("; ");
+    format!("{line} Also short, and not fixed by clearing the above: {others}")
 }
 
 /// Which axis crossed which threshold, named so that the axis that did not is
@@ -455,6 +622,7 @@ mod tests {
             Path::new("/tmp"),
             &reading,
             &Report::Entered(reading.verdict()),
+            &[],
         );
         assert!(
             line.contains("bytes is CRITICAL"),
@@ -469,6 +637,7 @@ mod tests {
             Path::new("/tmp"),
             &reading,
             &Report::Entered(reading.verdict()),
+            &[],
         );
         assert!(line.contains("/tmp"), "{line}");
         assert!(line.contains("51843 of 1048576 inodes free (4%)"), "{line}");
@@ -608,7 +777,7 @@ mod tests {
             "it is not an error that a platform cannot be measured, and it is not nothing"
         );
         assert!(
-            said(Path::new("/tmp"), &reading, &report).contains("is not a box that is fine"),
+            said(Path::new("/tmp"), &reading, &report, &[]).contains("is not a box that is fine"),
             "the line has to say what the silence would otherwise mean"
         );
     }
@@ -660,6 +829,7 @@ mod tests {
             Path::new("/tmp"),
             &reading,
             &Report::Entered(reading.verdict()),
+            &[],
         );
         assert!(line.contains("bytes is CRITICAL"), "{line}");
         assert!(
@@ -690,8 +860,7 @@ mod tests {
 
         let critical = logged_while(|| {
             say(
-                at,
-                &reading,
+                &one_root(at, &reading),
                 &Report::Entered(Verdict::Critical(Axis::Inodes)),
             );
         });
@@ -702,13 +871,16 @@ mod tests {
         );
 
         let tight = logged_while(|| {
-            say(at, &reading, &Report::Entered(Verdict::Tight(Axis::Inodes)));
+            say(
+                &one_root(at, &reading),
+                &Report::Entered(Verdict::Tight(Axis::Inodes)),
+            );
         });
         assert!(tight.contains("WARN"), "{tight}");
         assert!(!tight.contains("ERROR"), "{tight}");
 
         let clear = logged_while(|| {
-            say(at, &reading, &Report::Entered(Verdict::Clear));
+            say(&one_root(at, &reading), &Report::Entered(Verdict::Clear));
         });
         assert!(clear.contains("INFO"), "{clear}");
         assert!(!clear.contains("WARN"), "{clear}");
@@ -770,8 +942,13 @@ mod tests {
         const DAEMON: &str = include_str!("mod.rs");
 
         assert!(
-            DAEMON.contains("spawn_blocking(move || headroom::read(&here))"),
+            DAEMON.contains("spawn_blocking(move || headroom::survey(&here))"),
             "`statvfs` blocks, so a scratch root on a hung mount would take a daemon worker with it"
+        );
+        assert!(
+            DAEMON.contains("headroom::scratch_roots()"),
+            "a tick reading one root reports the configured filesystem and stays silent about the \
+             one the box is actually filling"
         );
         assert!(
             DAEMON.contains("tokio::time::interval(TICK)"),
@@ -779,9 +956,260 @@ mod tests {
              cross both thresholds and the ceiling between two of them"
         );
         assert!(
-            DAEMON.contains("headroom::say(&at, &reading, &report)"),
+            DAEMON.contains("headroom::say(&survey, &report)"),
             "the level is this module's, where a subscriber reads it back; a tick building its \
              own line is a level nothing checks"
+        );
+    }
+
+    /// A survey of one root, for the assertions that are about the level or
+    /// the line rather than about choosing between roots.
+    fn one_root(at: &Path, reading: &Reading) -> Survey {
+        Survey {
+            at: at.to_path_buf(),
+            reading: reading.clone(),
+            beside: Vec::new(),
+        }
+    }
+
+    /// A device lookup that answers from a table, so the rule under
+    /// `roots_for` is measured rather than the mount table of whatever box
+    /// runs the suite.
+    fn devices(table: &[(&'static str, u64)]) -> impl Fn(&Path) -> Option<u64> {
+        let owned: Vec<(String, u64)> = table
+            .iter()
+            .map(|(at, dev)| ((*at).to_string(), *dev))
+            .collect();
+        move |at: &Path| {
+            owned
+                .iter()
+                .find(|(known, _)| Path::new(known) == at)
+                .map(|(_, dev)| *dev)
+        }
+    }
+
+    #[test]
+    fn a_tmp_on_a_filesystem_of_its_own_is_read_beside_the_configured_root() {
+        let roots = roots_for(
+            PathBuf::from("/home/dev/.cache/forge-tmp"),
+            Path::new("/tmp"),
+            devices(&[("/home/dev/.cache/forge-tmp", 66306), ("/tmp", 47)]),
+        );
+        assert_eq!(
+            roots,
+            vec![
+                PathBuf::from("/home/dev/.cache/forge-tmp"),
+                PathBuf::from("/tmp")
+            ],
+            "this is the box that raised ISS-1260: reading only the configured root reports the \
+             disk at 88% free and says nothing about the tmpfs at 40%"
+        );
+    }
+
+    #[test]
+    fn a_configured_root_already_on_tmp_is_read_once_and_not_twice() {
+        let roots = roots_for(
+            PathBuf::from("/tmp/forge"),
+            Path::new("/tmp"),
+            devices(&[("/tmp/forge", 47), ("/tmp", 47)]),
+        );
+        assert_eq!(
+            roots,
+            vec![PathBuf::from("/tmp/forge")],
+            "one filesystem read twice is one pressure reported as two"
+        );
+    }
+
+    #[test]
+    fn a_tmp_that_cannot_be_stated_is_left_alone_rather_than_warned_about() {
+        let roots = roots_for(
+            PathBuf::from("/scratch"),
+            Path::new("/tmp"),
+            devices(&[("/scratch", 9)]),
+        );
+        assert_eq!(
+            roots,
+            vec![PathBuf::from("/scratch")],
+            "a box with no /tmp to read must not be told every five minutes that it cannot read it"
+        );
+    }
+
+    #[test]
+    fn a_configured_root_that_cannot_be_stated_is_kept_and_costs_tmp_nothing() {
+        let roots = roots_for(
+            PathBuf::from("/gone"),
+            Path::new("/tmp"),
+            devices(&[("/tmp", 47)]),
+        );
+        assert_eq!(
+            roots,
+            vec![PathBuf::from("/gone"), PathBuf::from("/tmp")],
+            "a TMPDIR that cannot be stat'd is news, so it is kept and `read` refuses it by name; \
+             and an unknown device is not proof that /tmp is the same filesystem, so dropping /tmp \
+             here loses the reading of the one that is actually filling"
+        );
+    }
+
+    /// A filesystem with `percent` of both axes free.
+    fn with_free(percent: u64) -> Reading {
+        Reading::Took(Headroom {
+            bytes_free: percent,
+            bytes_total: 100,
+            inodes_free: percent,
+            inodes_total: 100,
+        })
+    }
+
+    #[test]
+    fn the_root_with_least_left_is_the_one_reported() {
+        let (at, reading) = pick(vec![
+            (PathBuf::from("/roomy"), with_free(90)),
+            (PathBuf::from("/filling"), with_free(5)),
+        ]);
+        assert_eq!(
+            at,
+            PathBuf::from("/filling"),
+            "the box is as short as its shortest filesystem; taking the first reports room it \
+             does not have"
+        );
+        assert_eq!(reading.verdict(), Verdict::Critical(Axis::Bytes));
+    }
+
+    #[test]
+    fn the_shortest_root_is_reported_whichever_order_it_was_read_in() {
+        let (at, _) = pick(vec![
+            (PathBuf::from("/filling"), with_free(5)),
+            (PathBuf::from("/roomy"), with_free(90)),
+        ]);
+        assert_eq!(
+            at,
+            PathBuf::from("/filling"),
+            "a later clear root must not displace the pressure already found"
+        );
+    }
+
+    #[test]
+    fn between_two_roots_under_the_same_verdict_the_shorter_one_is_reported() {
+        let (at, _) = pick(vec![
+            (PathBuf::from("/tight"), with_free(19)),
+            (PathBuf::from("/tighter"), with_free(10)),
+        ]);
+        assert_eq!(
+            at,
+            PathBuf::from("/tighter"),
+            "both are Tight, so the severity alone cannot separate them and the figures must"
+        );
+    }
+
+    #[test]
+    fn a_root_that_cannot_be_read_outranks_a_clear_one() {
+        let (at, reading) = pick(vec![
+            (PathBuf::from("/roomy"), with_free(90)),
+            (
+                PathBuf::from("/unreadable"),
+                Reading::Refused("statvfs said no".to_string()),
+            ),
+        ]);
+        assert_eq!(
+            at,
+            PathBuf::from("/unreadable"),
+            "a root that cannot be read is not a root that is fine"
+        );
+        assert!(matches!(reading.verdict(), Verdict::Unmeasurable(_)));
+    }
+
+    #[test]
+    fn a_root_that_cannot_be_read_does_not_outrank_one_under_real_pressure() {
+        let (at, _) = pick(vec![
+            (
+                PathBuf::from("/unreadable"),
+                Reading::Refused("statvfs said no".to_string()),
+            ),
+            (PathBuf::from("/filling"), with_free(5)),
+        ]);
+        assert_eq!(
+            at,
+            PathBuf::from("/filling"),
+            "a measured failure is the one to put in front of an operator, not the guess beside it"
+        );
+    }
+
+    #[test]
+    fn reading_no_roots_at_all_refuses_rather_than_reporting_clear() {
+        let (_, reading) = pick(Vec::new());
+        assert!(
+            matches!(reading.verdict(), Verdict::Unmeasurable(_)),
+            "a box nothing looked at is not a box with room: {:?}",
+            reading.verdict()
+        );
+    }
+
+    #[test]
+    fn a_second_root_that_is_also_short_is_carried_beside_the_headline() {
+        let taken = surveyed(vec![
+            (PathBuf::from("/configured"), with_free(4)),
+            (PathBuf::from("/tmp"), with_free(5)),
+        ]);
+        assert_eq!(taken.at, PathBuf::from("/configured"));
+        assert_eq!(
+            taken.beside,
+            vec![(PathBuf::from("/tmp"), with_free(5))],
+            "ranking one root above another does not make the second one's pressure go away"
+        );
+    }
+
+    #[test]
+    fn a_clear_root_is_not_carried_beside_the_headline() {
+        let taken = surveyed(vec![
+            (PathBuf::from("/filling"), with_free(4)),
+            (PathBuf::from("/roomy"), with_free(90)),
+        ]);
+        assert!(
+            taken.beside.is_empty(),
+            "a root with room is not a second thing to go and clear: {:?}",
+            taken.beside
+        );
+    }
+
+    #[test]
+    fn the_line_names_every_root_that_is_also_short() {
+        let taken = surveyed(vec![
+            (PathBuf::from("/configured"), with_free(4)),
+            (PathBuf::from("/tmp"), with_free(5)),
+        ]);
+        let line = said(
+            &taken.at,
+            &taken.reading,
+            &Report::Entered(taken.reading.verdict()),
+            &taken.beside,
+        );
+        assert!(line.contains("/configured"), "{line}");
+        assert!(
+            line.contains("/tmp"),
+            "an operator told only the worst root cleans it and learns about the other one five \
+             minutes later: {line}"
+        );
+        assert!(
+            line.contains("Also short"),
+            "the second root has to read as a second thing to go and do: {line}"
+        );
+    }
+
+    #[test]
+    fn a_line_with_nothing_else_short_says_nothing_about_other_roots() {
+        let taken = surveyed(vec![
+            (PathBuf::from("/filling"), with_free(4)),
+            (PathBuf::from("/roomy"), with_free(90)),
+        ]);
+        let line = said(
+            &taken.at,
+            &taken.reading,
+            &Report::Entered(taken.reading.verdict()),
+            &taken.beside,
+        );
+        assert!(
+            !line.contains("Also short"),
+            "a box with one pressure must not read as a box with two: {line}"
         );
     }
 }

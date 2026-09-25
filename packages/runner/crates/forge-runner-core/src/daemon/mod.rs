@@ -904,7 +904,7 @@ pub async fn run(
         let mut cancel_rx = cancel_rx.clone();
         tokio::spawn(async move {
             use crate::daemon::headroom::{self, TICK};
-            let at = headroom::scratch_root();
+            let roots = headroom::scratch_roots();
             let mut watch = headroom::Watch::default();
             let mut tick = tokio::time::interval(TICK);
             loop {
@@ -924,18 +924,21 @@ pub async fn run(
                         // (consult 825bfe F1). What that costs, and why a
                         // killable probe is not taken here, is priced in
                         // `headroom`'s own note on `read`.
-                        let here = at.clone();
-                        let reading = tokio::task::spawn_blocking(move || headroom::read(&here))
-                            .await
-                            .unwrap_or_else(|e| {
-                                headroom::Reading::Refused(format!(
-                                    "the reading did not finish ({e})"
-                                ))
-                            });
+                        let here = roots.clone();
+                        let survey =
+                            tokio::task::spawn_blocking(move || headroom::survey(&here))
+                                .await
+                                .unwrap_or_else(|e| headroom::Survey {
+                                    at: std::path::PathBuf::from("<none>"),
+                                    reading: headroom::Reading::Refused(format!(
+                                        "the reading did not finish ({e})"
+                                    )),
+                                    beside: Vec::new(),
+                                });
                         if let Some(report) =
-                            watch.tick(std::time::Instant::now(), reading.verdict())
+                            watch.tick(std::time::Instant::now(), survey.reading.verdict())
                         {
-                            headroom::say(&at, &reading, &report);
+                            headroom::say(&survey, &report);
                         }
                     }
                     _ = cancel_rx.changed() => { if *cancel_rx.borrow() { break; } }

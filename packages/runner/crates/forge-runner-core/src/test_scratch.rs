@@ -292,8 +292,9 @@ mod tests {
         ),
         (
             "forge-runner-core/src/daemon/headroom.rs",
-            1,
-            "runtime: the scratch root whose free space it reads, and creates nothing",
+            2,
+            "runtime: the scratch roots whose free space it reads, once under each of the unix \
+             and non-unix `scratch_roots`, and creates nothing on either",
         ),
         (
             "forge-runner-core/src/mcp/config.rs",

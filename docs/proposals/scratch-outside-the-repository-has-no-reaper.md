@@ -35,6 +35,22 @@ repository is in its reach by construction, and every tree that filled the box w
 per-judgement checkouts inside one live session's scratchpad at about 66,000 inodes each, and 115
 `/tmp/iss1153-XXXXXX` directories from a single run.
 
+**What is on the box is agent scratch, not the runner's.** Re-measured 2026-09-26, `/tmp` stood at
+622,848 of its 1,048,576 inodes used. `/tmp/claude-1000` held 383,375 of them and per-judgement
+trees — `iss1190-judge8`, `judge-iss488`, `judge-1218` — another 88,132, so 461,507 of the 622,848
+belong to agent scratch. The 290 `/tmp/forge-*` directories on the box are a separate and much
+smaller population: 6,946 inodes and 42M between them, test fixtures left by `cargo test` under
+prefixes (`forge-inflight`, `forge-ledger`, `forge-terminate-*`, `forge-wt-reap-*`) that no longer
+appear anywhere in the tree, so they are litter from code that has since moved rather than evidence
+of the mechanism this names. Counting them as scratch accumulation reads the number the wrong way.
+
+**The reporting half reads both filesystems, and had to be corrected to.** A daemon here runs with
+`TMPDIR=/home/dev/.cache/forge-tmp`, which is on the root disk at 88% of its inodes free, while the
+tmpfs above is at 40%. `headroom::scratch_roots` therefore reads the configured root *and* `/tmp`
+when the two are different filesystems, and reports the shorter. Reading only the configured one —
+which is what it did when first written — reports `Clear` for this box while the filesystem that
+actually fills is the one nobody is looking at.
+
 ## Why this repository could not close it
 
 A reaper needs an owner and a condition, and outside a repository this box has neither. Nothing in

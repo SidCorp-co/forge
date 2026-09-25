@@ -8,7 +8,9 @@
 
 #![cfg(unix)]
 
-use forge_runner_core::daemon::headroom::{read, said, Reading, Report, Verdict};
+use forge_runner_core::daemon::headroom::{
+    read, said, scratch_roots, survey, Reading, Report, Verdict,
+};
 
 #[test]
 fn the_box_this_runs_on_answers_with_both_axes_and_a_line_naming_the_path() {
@@ -38,9 +40,52 @@ fn the_box_this_runs_on_answers_with_both_axes_and_a_line_naming_the_path() {
         "a real filesystem states at least one total: {verdict:?}"
     );
 
-    let line = said(&at, &reading, &Report::Entered(verdict));
+    let line = said(&at, &reading, &Report::Entered(verdict), &[]);
     assert!(line.contains(&at.display().to_string()), "{line}");
     assert!(line.contains("bytes free"), "{line}");
     assert!(line.contains("inodes free"), "{line}");
     println!("{line}");
+}
+
+/// The roots this box actually reads, against its real mount table.
+///
+/// The unit tests hand `roots_for` a device table, which proves the rule and
+/// nothing about whether a real box's `TMPDIR` and `/tmp` come back as one
+/// filesystem or two. Measured 2026-09-26: a daemon here runs with
+/// `TMPDIR=/home/dev/.cache/forge-tmp`, on the root disk, while `/tmp` is a
+/// tmpfs — the filesystem whose 1,048,576 inodes are the ceiling ISS-1260 hit.
+#[test]
+fn every_root_this_box_writes_scratch_to_is_read_and_the_shortest_is_reported() {
+    let roots = scratch_roots();
+    assert!(
+        !roots.is_empty(),
+        "a box with no scratch root to read is a box this reports nothing about"
+    );
+    let taken = survey(&roots);
+    assert!(
+        roots.contains(&taken.at),
+        "the root reported must be one of the roots read: {:?} not in {roots:?}",
+        taken.at
+    );
+    assert!(
+        !matches!(taken.reading.verdict(), Verdict::Unmeasurable(_)),
+        "every root this box names answers statvfs: {:?}",
+        taken.reading
+    );
+    for (other, _) in &taken.beside {
+        assert!(
+            roots.contains(other) && other != &taken.at,
+            "a root carried beside the headline must be another of the roots read: {other:?}"
+        );
+    }
+
+    println!(
+        "roots: {roots:?}\nreported: {}",
+        said(
+            &taken.at,
+            &taken.reading,
+            &Report::Entered(taken.reading.verdict()),
+            &taken.beside,
+        )
+    );
 }
