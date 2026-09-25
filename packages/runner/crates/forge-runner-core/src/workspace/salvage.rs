@@ -9,14 +9,12 @@
 //! next agent.
 //!
 //! The dirty checkout is FOUND, never assumed. Measured on dev1 2026-08-26:
-//! `<repo>/.worktrees/` — the directory `worktree::create` owns — did not exist
-//! at all, while six agent worktrees sat under `.claude/worktrees/`, one of them
-//! the very job this work came from — core sent no `worktreeBranch` then, so
-//! every job ran in the repo root and the agent cut its own checkout wherever it
-//! liked. A salvage that derived a path from a branch name would have been a
-//! silent no-op on the whole fleet. Core drives `.worktrees/` now, but the
-//! finding stays: both conventions can be live on one box at once, and only
-//! `git worktree list` sees both.
+//! `<repo>/.worktrees/` did not exist at all, while six agent worktrees sat
+//! under `.claude/worktrees/`, one of them the very job this work came from. A
+//! salvage that derived a path from a branch name would have been a silent
+//! no-op on the whole fleet. This box cuts no checkout of its own, so where a
+//! run's worktree sits is whatever its dispatcher chose, several conventions
+//! can be live on one box at once, and only `git worktree list` sees them all.
 
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
