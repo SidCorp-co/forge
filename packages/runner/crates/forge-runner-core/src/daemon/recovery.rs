@@ -85,9 +85,34 @@ pub struct Recovered {
     /// This run's own close loop cannot advance without someone taking its
     /// worktree back first, and nothing else on the box will.
     pub owed_release: bool,
+    /// The release is owed on the bound alone: no master here answers for the
+    /// run, so its agent being gone is concluded from the silence, never seen.
+    pub unanswered: bool,
+    /// That release rests on the session's clock alone: no readable transcript
+    /// said anything about the subagent either way.
+    pub clock_alone: bool,
+    /// Recovery has said, once, why this run still stands and what ends it,
+    /// so a per-sweep line about it would only repeat that (ISS-1220).
+    pub standing_said: bool,
     /// The box may end this run itself, for the cause named.
     pub owed_exit: Option<run_exit::ExitCause>,
     pub owed_death_report: bool,
+}
+
+impl Recovered {
+    /// Why this run's release is owed, in the words its ended row keeps. A run
+    /// released on the bound was not seen to end, and its row says so.
+    pub fn release_reason(&self) -> &'static str {
+        if self.unanswered && self.clock_alone {
+            "no master on this box answers for it and core's session row has been terminal for \
+             the whole bound; no readable transcript was recorded, so the clock alone decided"
+        } else if self.unanswered {
+            "no master on this box answers for it, core's session row is terminal, and its \
+             subagent wrote nothing for the whole bound"
+        } else {
+            "the run's process is gone and core's session row is terminal"
+        }
+    }
 }
 
 pub async fn reconcile(
@@ -147,6 +172,9 @@ pub async fn reconcile(
                     session_id: Some(id.to_string()),
                     state: close_loop::state(ledger, &run.run_id)?,
                     owed_release: false,
+                    unanswered: false,
+                    clock_alone: false,
+                    standing_said: false,
                     owed_exit: Some(cause),
                     owed_death_report: false,
                 });
@@ -173,27 +201,288 @@ pub async fn reconcile(
         // release path every sweep for ever — which is the loop that held its
         // leases in the first place (ISS-1188). The one act that puts it back
         // is an operator's `run release`.
-        let owed_release = agent_gone
+        //
+        // A master this box has no entry for is never read as gone, so on its
+        // own it licenses nothing, and nothing else on the box can close a run
+        // it declared: the pane that could is not here and no other project's
+        // pane may. The bound is the way out, and it licenses only the
+        // release, which keeps the work before the checkout goes (ISS-1220).
+        let unanswered = if master == MasterPresence::Unknown {
+            over_and_silent(&run, now_ms())
+        } else {
+            None
+        };
+        let owed_release = (agent_gone || unanswered.is_some())
             && run.boot_id == boot_id
             && state.session_terminal
             && !state.checkout_returned
             && run.release_terminal_at.is_none();
+        // A refusal streak already standing, opened while this master still
+        // read as gone before a restart emptied the registry, says its own
+        // piece; announcing a release it is already retrying would be noise.
+        let announce = owed_release && !agent_gone && run.release_refused_at.is_none();
+        if let Some(over_ms) = unanswered.filter(|_| announce) {
+            say_why_released(ledger, &run, over_ms);
+        }
         let owed_death_report = agent_gone
             && run.ended_by.is_none()
             && run.boot_id == boot_id
             && !state.session_terminal;
+        let standing = if owed_release || owed_death_report || state.is_closed() {
+            None
+        } else if run.release_terminal_at.is_some() {
+            Some(Standing::Decided)
+        } else if run.boot_id != boot_id {
+            Some(Standing::ForeignBoot)
+        } else if master == MasterPresence::Unknown {
+            Some(Standing::Unanswered)
+        } else {
+            None
+        };
+        let standing_said =
+            standing.is_some_and(|s| say_standing(ledger, &run, boot_id, &state, s));
         let session_id = run.session_id.clone();
+        let clock_alone = transcript_written(&run).is_none();
         out.push(Recovered {
             run_id: run.run_id,
             project_id: run.project_id,
             session_id,
             state,
             owed_release,
+            unanswered: owed_release && !agent_gone,
+            clock_alone,
+            standing_said,
             owed_exit: None,
             owed_death_report,
         });
     }
     Ok(out)
+}
+
+/// How long a run no master on this box answers for may stand with its session
+/// over at core, and its subagent silent, before it is released.
+///
+/// A registry miss is not a pane that ended: a daemon restart empties the
+/// registry until adoption refills it, and a project that left `/me/runners`
+/// is never re-adopted while its pane may still run (c41f9e7a3). So the miss
+/// alone licenses nothing, and an hour is the price of waiting it out: the
+/// same hour `run_exit` already reads as a silent run being over. What it
+/// costs the other way is bounded by what the release does — a subagent still
+/// working in a pane this box cannot see, past an hour of both silences, has
+/// its branch published, its commits named by a ref and an unsaved diff
+/// salvaged or refused, never dropped. Its leases were already back: the close
+/// loop returns them for every orphaned run. The trade ends when this box keeps
+/// a durable record of the master sessions it ended, so a miss can be told
+/// apart from an ending and positive evidence replaces the clock.
+pub const UNANSWERED_RELEASE_AFTER: std::time::Duration = subagent_end::SUBAGENT_QUIET;
+
+/// How long `run`'s session has been over at core, where that is at least
+/// [`UNANSWERED_RELEASE_AFTER`] and its subagent's own transcript was not
+/// written inside the same window. `None` otherwise.
+///
+/// The session is read off the stamp an earlier sweep wrote, never this
+/// sweep's: the sweep that first sees it over starts the clock. An unreadable
+/// transcript is no evidence either way, so only the session's clock decides.
+fn over_and_silent(run: &Run, now_ms: i64) -> Option<i64> {
+    let bound = UNANSWERED_RELEASE_AFTER.as_millis() as i64;
+    let over_ms = now_ms.saturating_sub(run.session_terminal_at?.saturating_mul(1000));
+    if over_ms < bound {
+        return None;
+    }
+    if transcript_written(run).is_some_and(|w| now_ms.saturating_sub(w) < bound) {
+        return None;
+    }
+    Some(over_ms)
+}
+
+/// When the run's subagent last wrote its own transcript, or `None` where no
+/// path is recorded or the recorded one cannot be read.
+fn transcript_written(run: &Run) -> Option<i64> {
+    run.agent_transcript
+        .as_deref()
+        .and_then(|p| transcript_age::written_at(Path::new(p)))
+}
+
+/// What a silence rests on, in the words a journal line needs.
+fn silence_evidence(run: &Run) -> String {
+    match (run.agent_transcript.as_deref(), transcript_written(run)) {
+        (_, Some(w)) => format!(
+            "its subagent last wrote {}m ago",
+            now_ms().saturating_sub(w) / 60_000
+        ),
+        (Some(path), None) => format!(
+            "its subagent's transcript at {path} cannot be read, so the session's clock alone \
+             decides"
+        ),
+        (None, None) => {
+            "no transcript was recorded for its subagent, so the session's clock alone decides"
+                .to_string()
+        }
+    }
+}
+
+/// Say, on the sweep that first owes it, why a run nobody here answers for is
+/// being released and what it holds. Said once, on the row as well as in the
+/// journal: a release that cannot even start — a project with no repo path on
+/// this box — is owed again every sweep, and the reason it is owed is not news
+/// the second time.
+fn say_why_released(ledger: &Ledger, run: &Run, over_ms: i64) {
+    match ledger.note_standing(&run.run_id, "unanswered") {
+        Ok(true) => {}
+        Ok(false) => return,
+        Err(e) => {
+            tracing::warn!(
+                "[recovery] run {}: cannot record why it is being released: {e}",
+                run.run_id
+            );
+            return;
+        }
+    }
+    let issues = ledger
+        .issues(&run.run_id)
+        .map(|m| {
+            m.iter()
+                .map(|i| i.issue_key.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        })
+        .unwrap_or_default();
+    // What the silence rests on, said as it is: a transcript nobody could read
+    // decided nothing, and the line must not read as if it had.
+    let silence = silence_evidence(run);
+    tracing::warn!(
+        "[recovery] run {} ({issues}): no master on this box answers for it (it answered to {}), \
+         core has called its session over for {}m and {silence} — releasing {} now. Its commits \
+         are kept before the checkout goes; a release that refuses says why next, and is decided \
+         after {}s",
+        run.run_id,
+        run.master_session_id,
+        over_ms / 60_000,
+        run.worktree_path.display(),
+        crate::runner::terminate::RELEASE_GRACE_SECS
+    );
+}
+
+/// Why an orphaned run nothing can close this sweep is still standing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Standing {
+    /// No master here answers for it and nothing on this sweep can close it:
+    /// its session still open at core, its bound not yet run out, or only its
+    /// leases left to be taken back.
+    Unanswered,
+    /// Declared under another boot, which nothing on this one may reclaim.
+    ForeignBoot,
+    /// Its release was decided terminal and its checkout stays by decision;
+    /// only its leases are still being chased.
+    Decided,
+}
+
+/// Say once, in the journal and on the row, why this run stands and what ends
+/// it. Answers whether it has been said, now or on an earlier sweep, so the
+/// sweep's own per-sweep line can stand down; a notice that could not be
+/// recorded answers `false` and leaves that line to speak.
+fn say_standing(
+    ledger: &Ledger,
+    run: &Run,
+    boot_id: &str,
+    state: &CloseState,
+    standing: Standing,
+) -> bool {
+    let notice = match standing {
+        Standing::Unanswered if !state.session_terminal => "awaiting-session",
+        Standing::Unanswered if !state.checkout_returned => "awaiting",
+        Standing::Unanswered => "awaiting-leases",
+        Standing::ForeignBoot => "foreign-boot",
+        Standing::Decided => "decided",
+    };
+    match ledger.note_standing(&run.run_id, notice) {
+        Ok(false) => return true,
+        Ok(true) => {}
+        Err(e) => {
+            tracing::warn!(
+                "[recovery] run {}: cannot record why it stands: {e}",
+                run.run_id
+            );
+            return false;
+        }
+    }
+    let issues = ledger
+        .issues(&run.run_id)
+        .map(|m| {
+            m.iter()
+                .map(|i| i.issue_key.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        })
+        .unwrap_or_default();
+    let holds = format!(
+        "session_terminal={} checkout_returned={} leases={}/{}",
+        state.session_terminal, state.checkout_returned, state.leases_returned, state.leases_total
+    );
+    match standing {
+        Standing::Unanswered => {
+            let what_ends_it = if !state.session_terminal {
+                format!(
+                    "core still holds its session open, and the bound of {}m starts when core \
+                     calls it over",
+                    UNANSWERED_RELEASE_AFTER.as_secs() / 60
+                )
+            } else if !state.checkout_returned {
+                format!(
+                    "its checkout {} is released once core has called its session over for {}m \
+                     ({}, now)",
+                    run.worktree_path.display(),
+                    UNANSWERED_RELEASE_AFTER.as_secs() / 60,
+                    silence_evidence(run)
+                )
+            } else {
+                format!(
+                    "its checkout is back and only its leases ({}/{} returned) are still being \
+                     asked back",
+                    state.leases_returned, state.leases_total
+                )
+            };
+            tracing::warn!(
+                "[recovery] run {} ({issues}) is partially closed ({holds}): no master on this box \
+                 answers for it (it answered to {}), so {what_ends_it}. Said once; what ends it \
+                 says itself when it comes",
+                run.run_id,
+                run.master_session_id
+            )
+        }
+        Standing::ForeignBoot => {
+            let left = if state.checkout_returned {
+                format!(
+                    "Its checkout is back, {}/{} of its leases are back and the rest stay held",
+                    state.leases_returned, state.leases_total
+                )
+            } else {
+                format!("Its checkout {} is still held", run.worktree_path.display())
+            };
+            tracing::error!(
+                "[recovery] run {} ({issues}) is partially closed ({holds}) and will stay so: it \
+                 was declared under boot {} and this box is boot {}, and a run from another boot \
+                 is never reclaimed here, because its process and its pane cannot be read from \
+                 this one. {left}. Said once, not every sweep",
+                run.run_id,
+                run.boot_id,
+                boot_id
+            )
+        }
+        Standing::Decided => {
+            tracing::warn!(
+            "[recovery] run {} ({issues}) is partially closed ({holds}): its release was decided \
+             terminal ({}), so its checkout {} stays on disk by decision and only its leases are \
+             still being asked back. `forge-runner run release {}` has the next sweep try the \
+             release again. Said once, not every sweep",
+            run.run_id,
+            run.release_refusal.as_deref().unwrap_or("no refusal was recorded"),
+            run.worktree_path.display(),
+            run.run_id
+        )
+        }
+    }
+    true
 }
 
 /// Say once, in the journal and on the row, why a subagent run that looks
@@ -1659,6 +1948,10 @@ mod tests {
             r.owed_release,
             "a subagent runs inside its master's process and cannot outlive the pane: {r:?}"
         );
+        assert!(
+            !r.unanswered && r.release_reason().contains("process is gone"),
+            "a pane observed gone is an observation, and its reason says so: {r:?}"
+        );
     }
 
     #[tokio::test]
@@ -1674,6 +1967,654 @@ mod tests {
             kept(&led),
             None,
             "nothing is said about keeping a run the box is giving back"
+        );
+    }
+
+    // ISS-1220: a subagent run whose master this box holds no registry entry
+    // for. Nothing on the box can close it, so the bound is what does.
+
+    const HOUR_MS: i64 = 60 * MIN_MS;
+
+    /// A run past the bound: its session was seen over `over_ms` ago and its
+    /// subagent last wrote `silent_ms` ago.
+    fn over_for(led: &Ledger, transcript: &Path, over_ms: i64, silent_ms: i64) {
+        let written = now_ms() - silent_ms;
+        transcript_written_at(transcript, written);
+        stop_at(led, written, Some(transcript));
+        led.backdate_session_terminal("run-1", (now_ms() - over_ms) / 1000)
+            .unwrap();
+    }
+
+    async fn release_at(
+        led: &mut Ledger,
+        root: &Path,
+        at_secs: i64,
+    ) -> crate::runner::terminate::Release {
+        crate::runner::terminate::release(
+            led,
+            "run-1",
+            crate::runner::terminate::Forcing {
+                this_boot: "boot-a",
+                repo_root: root,
+                base_branch: Some("main"),
+                by: "recovery",
+                reason: "no master answers for it",
+            },
+            crate::runner::terminate::Ports {
+                procs: &NoProcess,
+                sessions: &Sessions,
+                leases: &Leases(Mutex::new(HashSet::new())),
+            },
+            at_secs,
+        )
+        .await
+        .unwrap()
+    }
+
+    /// The same capture `close_loop.rs` carries, local to the log it reads.
+    fn logged_while(f: impl FnOnce()) -> String {
+        use std::sync::Arc;
+        #[derive(Clone)]
+        struct Buf(Arc<Mutex<Vec<u8>>>);
+        impl std::io::Write for Buf {
+            fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(b);
+                Ok(b.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let buf = Buf(Arc::new(Mutex::new(Vec::new())));
+        let made = buf.clone();
+        let sub = tracing_subscriber::fmt()
+            .with_writer(move || made.clone())
+            .with_ansi(false)
+            .finish();
+        crate::daemon::keep_tracing_capturable();
+        tracing::subscriber::with_default(sub, f);
+        let out = buf.0.lock().unwrap().clone();
+        String::from_utf8_lossy(&out).into_owned()
+    }
+
+    fn block_on<F: std::future::Future>(f: F) -> F::Output {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
+    }
+
+    #[tokio::test]
+    async fn an_unanswered_run_over_at_core_and_silent_past_the_bound_is_owed_its_release() {
+        let scratch = Scratch::new("unanswered");
+        let (mut led, _root, _wt, transcript) = a_subagent_run_in_a_worktree(&scratch);
+        over_for(&led, &transcript, 2 * HOUR_MS, 2 * HOUR_MS);
+        let r = sweep(&mut led, &NoRegistryEntry, &Beats::default())
+            .await
+            .expect("an orphan is always answered for");
+        assert!(
+            r.state.session_terminal && !r.state.checkout_returned,
+            "the state under test is b4e955c2's, got {:?}",
+            r.state
+        );
+        assert!(
+            r.owed_release,
+            "no master on this box answers for it, core ended its session two hours ago and its subagent has written nothing since, so nothing but this sweep will ever give its checkout back: {r:?}"
+        );
+        assert!(
+            !r.owed_death_report,
+            "the bound licenses the release, which keeps the work, and never a death"
+        );
+        assert!(
+            r.unanswered && r.release_reason().contains("no master on this box answers"),
+            "and the row it ends says the agent's end was concluded from silence, not seen: {r:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_unanswered_run_inside_the_bound_is_owed_nothing_yet() {
+        let scratch = Scratch::new("unanswered-young");
+        let (mut led, _root, _wt, transcript) = a_subagent_run_in_a_worktree(&scratch);
+        let r = sweep(&mut led, &NoRegistryEntry, &Beats::default())
+            .await
+            .expect("answered");
+        assert!(
+            !r.owed_release,
+            "the sweep that first sees the session over starts the clock and is not past it: {r:?}"
+        );
+        over_for(
+            &led,
+            &transcript,
+            UNANSWERED_RELEASE_AFTER.as_millis() as i64 - MIN_MS,
+            2 * HOUR_MS,
+        );
+        let r = sweep(&mut led, &NoRegistryEntry, &Beats::default())
+            .await
+            .expect("answered");
+        assert!(
+            !r.owed_release,
+            "a minute short of the bound is short of it: {r:?}"
+        );
+        over_for(
+            &led,
+            &transcript,
+            UNANSWERED_RELEASE_AFTER.as_millis() as i64,
+            2 * HOUR_MS,
+        );
+        let r = sweep(&mut led, &NoRegistryEntry, &Beats::default())
+            .await
+            .expect("answered");
+        assert!(r.owed_release, "and at the bound it is owed: {r:?}");
+    }
+
+    #[tokio::test]
+    async fn an_unanswered_run_whose_subagent_wrote_inside_the_bound_is_kept() {
+        let scratch = Scratch::new("unanswered-writing");
+        let (mut led, _root, wt, transcript) = a_subagent_run_in_a_worktree(&scratch);
+        over_for(&led, &transcript, 3 * HOUR_MS, 5 * MIN_MS);
+        let r = sweep(&mut led, &NoRegistryEntry, &Beats::default())
+            .await
+            .expect("answered");
+        assert!(
+            !r.owed_release,
+            "a subagent that wrote five minutes ago is working in a pane this box cannot see, however long core has called its session over: {r:?}"
+        );
+        assert!(wt.is_dir());
+    }
+
+    #[tokio::test]
+    async fn a_subagent_run_under_a_live_master_is_kept_however_long_its_session_is_over() {
+        let scratch = Scratch::new("live-master-over");
+        let (mut led, _root, wt, transcript) = a_subagent_run_in_a_worktree(&scratch);
+        over_for(&led, &transcript, 30 * 24 * HOUR_MS, 30 * 24 * HOUR_MS);
+        let r = sweep(&mut led, &master_alive(), &Beats::default()).await;
+        assert_still_held(&led, &r, &wt, "thirty days over under a live master");
+    }
+
+    #[test]
+    fn the_release_the_bound_licenses_is_said_once_naming_what_it_holds() {
+        let scratch = Scratch::new("unanswered-said");
+        let (mut led, root, wt, transcript) = a_subagent_run_in_a_worktree(&scratch);
+        git(&wt, &["checkout", "-q", "--detach"]);
+        std::fs::write(wt.join("jest-results.json"), "{}").unwrap();
+        over_for(&led, &transcript, 2 * HOUR_MS, 2 * HOUR_MS);
+
+        let first = logged_while(|| {
+            block_on(async {
+                let r = sweep(&mut led, &NoRegistryEntry, &Beats::default())
+                    .await
+                    .expect("answered");
+                assert!(r.owed_release, "{r:?}");
+            })
+        });
+        for said in [
+            "run-1",
+            "ISS-1217",
+            &wt.display().to_string(),
+            MASTER,
+            "120m",
+            "its subagent last wrote 120m ago",
+        ] {
+            assert!(
+                first.contains(said),
+                "the line an operator reads names {said:?}, so nobody greps `worktree-reap` to find the tree: {first}"
+            );
+        }
+
+        let again = logged_while(|| {
+            block_on(async {
+                let r = sweep(&mut led, &NoRegistryEntry, &Beats::default())
+                    .await
+                    .expect("answered");
+                assert!(r.owed_release, "{r:?}");
+            })
+        });
+        assert!(
+            !again.contains("no master on this box answers"),
+            "a release that never started — a project with no repo path here — is owed again next sweep, and its reason is said once: {again}"
+        );
+        assert_eq!(
+            led.run("run-1").unwrap().unwrap().kept_notice.as_deref(),
+            Some("unanswered"),
+            "and the row says what the box said"
+        );
+
+        let now = now_ms() / 1000;
+        let refused = block_on(release_at(&mut led, &root, now));
+        assert!(
+            matches!(
+                refused,
+                crate::runner::terminate::Release::Refusing { .. }
+            ),
+            "a detached checkout with an unsaved file has no salvage to run, so the release refuses rather than dropping it: {refused:?}"
+        );
+        assert!(wt.is_dir(), "and the checkout stays");
+
+        let second = logged_while(|| {
+            block_on(async {
+                let r = sweep(&mut led, &NoRegistryEntry, &Beats::default())
+                    .await
+                    .expect("answered");
+                assert!(r.owed_release, "still owed while the refusal stands: {r:?}");
+            })
+        });
+        assert!(
+            !second.contains("no master on this box answers"),
+            "still said once while the refusal streak stands and says its own piece: {second}"
+        );
+
+        let decided = block_on(release_at(
+            &mut led,
+            &root,
+            now + crate::runner::terminate::RELEASE_GRACE_SECS,
+        ));
+        assert!(
+            matches!(decided, crate::runner::terminate::Release::Terminal { .. }),
+            "past the window the refusal is decided, not retried for ever: {decided:?}"
+        );
+        assert!(
+            wt.join("jest-results.json").is_file(),
+            "decided terminal with the unsaved file still on disk"
+        );
+        assert!(
+            led.unclosed_runs().unwrap().is_empty(),
+            "and the run leaves the sweep, so nothing logs about it again"
+        );
+    }
+
+    #[test]
+    fn a_release_decided_without_a_readable_transcript_says_the_clock_alone_decided() {
+        let scratch = Scratch::new("unanswered-unread");
+        let (mut led, _root, _wt, _transcript) = a_subagent_run_in_a_worktree(&scratch);
+        let missing = scratch.0.join("pruned").join("agent-gone.jsonl");
+        stop_at(&led, now_ms() - 2 * HOUR_MS, Some(&missing));
+        led.backdate_session_terminal("run-1", (now_ms() - 2 * HOUR_MS) / 1000)
+            .unwrap();
+        let said = logged_while(|| {
+            block_on(async {
+                let r = sweep(&mut led, &NoRegistryEntry, &Beats::default())
+                    .await
+                    .expect("answered");
+                assert!(r.owed_release, "{r:?}");
+                assert!(
+                    r.clock_alone && r.release_reason().contains("the clock alone decided"),
+                    "and the row it ends keeps the same account, never 'wrote nothing': {r:?}"
+                );
+            })
+        });
+        assert!(
+            said.contains("cannot be read, so the session's clock alone decides")
+                && said.contains(&missing.display().to_string()),
+            "a transcript nobody could read is named as deciding nothing, never passed off as silence: {said}"
+        );
+    }
+
+    #[test]
+    fn a_refusal_already_standing_is_not_announced_again_as_a_fresh_release() {
+        let scratch = Scratch::new("unanswered-refusing");
+        let (mut led, _root, _wt, transcript) = a_subagent_run_in_a_worktree(&scratch);
+        over_for(&led, &transcript, 2 * HOUR_MS, 2 * HOUR_MS);
+        led.note_release_refusal(
+            "run-1",
+            "git worktree remove: permission denied",
+            now_ms() / 1000,
+        )
+        .unwrap();
+        let said = logged_while(|| {
+            block_on(async {
+                let r = sweep(&mut led, &NoRegistryEntry, &Beats::default())
+                    .await
+                    .expect("answered");
+                assert!(
+                    r.owed_release,
+                    "still owed, so the streak runs to its decision: {r:?}"
+                );
+            })
+        });
+        assert!(
+            !said.contains("no master on this box answers"),
+            "a streak opened while the master read as gone, before a restart emptied the registry, is already speaking for this release: {said}"
+        );
+    }
+
+    #[test]
+    fn a_run_kept_as_quiet_under_its_master_is_still_announced_when_the_bound_releases_it() {
+        let scratch = Scratch::new("quiet-then-unanswered");
+        let (mut led, _root, _wt, transcript) = a_subagent_run_in_a_worktree(&scratch);
+        over_for(&led, &transcript, 2 * HOUR_MS, 2 * HOUR_MS);
+        block_on(sweep(&mut led, &master_alive(), &Beats::default()));
+        assert_eq!(
+            led.run("run-1").unwrap().unwrap().kept_notice.as_deref(),
+            Some("quiet"),
+            "kept, and said quiet, while its master was here"
+        );
+        let said = logged_while(|| {
+            block_on(async {
+                let r = sweep(&mut led, &NoRegistryEntry, &Beats::default())
+                    .await
+                    .expect("answered");
+                assert!(r.owed_release, "{r:?}");
+            })
+        });
+        assert!(
+            said.contains("no master on this box answers"),
+            "an older keep notice does not swallow the release's own: {said}"
+        );
+    }
+
+    /// Core will not take a lease back, so a run whose release was decided
+    /// stays in the sweep for its leases alone.
+    struct LeasesRefused;
+    #[async_trait::async_trait]
+    impl LeaseKeeper for LeasesRefused {
+        async fn release(&self, _: Option<&str>, _: &str) -> Result<()> {
+            Err(crate::error::Error::Other(
+                "409: lease held elsewhere".into(),
+            ))
+        }
+        async fn is_returned(&self, _: Option<&str>, _: &str) -> Result<bool> {
+            Ok(false)
+        }
+    }
+
+    #[test]
+    fn a_run_whose_release_was_decided_is_named_once_while_its_leases_are_chased() {
+        let scratch = Scratch::new("decided");
+        let (mut led, _root, wt, _transcript) = a_subagent_run_in_a_worktree(&scratch);
+        led.note_release_refusal("run-1", "the diff was not preserved", 1_790_000_000)
+            .unwrap();
+        led.conclude_release_refusal(
+            "run-1",
+            1_790_000_300,
+            "recovery",
+            "the diff was not preserved",
+        )
+        .unwrap();
+        let mut sweep_once = || {
+            logged_while(|| {
+                block_on(async {
+                    let done = reconcile(
+                        &mut led,
+                        "boot-a",
+                        &NoRegistryEntry,
+                        &nothing_refuted(),
+                        Closing {
+                            sessions: &Sessions,
+                            leases: &LeasesRefused,
+                            roots: &Roots,
+                        },
+                        RunWatch {
+                            beat: &Beats::default(),
+                            idle: &NeverReports,
+                        },
+                    )
+                    .await
+                    .unwrap();
+                    assert_eq!(done.len(), 1, "its leases keep it in the sweep");
+                    assert!(!done[0].owed_release, "a decided release is not retried");
+                    assert!(done[0].standing_said, "{:?}", done[0]);
+                })
+            })
+        };
+        let first = sweep_once();
+        assert!(
+            first.contains("decided terminal (the diff was not preserved)")
+                && first.contains(&wt.display().to_string())
+                && first.contains("forge-runner run release run-1"),
+            "the decision, the checkout it left and the way back are named: {first}"
+        );
+        let second = sweep_once();
+        assert!(
+            !second.contains("partially closed"),
+            "said once, not on every sweep of the lease chase: {second}"
+        );
+    }
+
+    #[test]
+    fn a_run_awaiting_the_bound_says_so_once_and_what_ends_it() {
+        let scratch = Scratch::new("unanswered-awaiting");
+        let (mut led, _root, wt, transcript) = a_subagent_run_in_a_worktree(&scratch);
+        over_for(&led, &transcript, 5 * MIN_MS, 5 * MIN_MS);
+        let first = logged_while(|| {
+            block_on(async {
+                let r = sweep(&mut led, &NoRegistryEntry, &Beats::default())
+                    .await
+                    .expect("answered");
+                assert!(!r.owed_release, "inside the bound: {r:?}");
+                assert!(r.standing_said, "and why it stands has been said: {r:?}");
+            })
+        });
+        assert!(
+            first.contains("released once core has called its session over for 60m")
+                && first.contains(&wt.display().to_string())
+                && first.contains("its subagent last wrote 5m ago"),
+            "the first sweep names the checkout and the bound that ends it: {first}"
+        );
+        let second = logged_while(|| {
+            block_on(async {
+                let r = sweep(&mut led, &NoRegistryEntry, &Beats::default())
+                    .await
+                    .expect("answered");
+                assert!(
+                    r.standing_said,
+                    "still said, so the sweep's own line stays down: {r:?}"
+                );
+            })
+        });
+        assert!(
+            !second.contains("partially closed"),
+            "the second identical sweep says nothing new: {second}"
+        );
+    }
+
+    #[test]
+    fn a_run_awaiting_the_bound_with_no_readable_transcript_says_the_clock_alone_decides() {
+        let scratch = Scratch::new("awaiting-unread");
+        let (mut led, _root, _wt, _transcript) = a_subagent_run_in_a_worktree(&scratch);
+        let missing = scratch.0.join("pruned").join("agent-gone.jsonl");
+        stop_at(&led, now_ms() - 30 * MIN_MS, Some(&missing));
+        led.backdate_session_terminal("run-1", (now_ms() - 30 * MIN_MS) / 1000)
+            .unwrap();
+        let said = logged_while(|| {
+            block_on(async {
+                let r = sweep(&mut led, &NoRegistryEntry, &Beats::default())
+                    .await
+                    .expect("answered");
+                assert!(!r.owed_release && r.standing_said, "{r:?}");
+            })
+        });
+        assert!(
+            said.contains("the session's clock alone decides") && !said.contains("stayed silent"),
+            "a standing with no readable transcript claims no silence: {said}"
+        );
+    }
+
+    #[test]
+    fn a_run_from_another_boot_whose_checkout_is_back_is_not_said_to_hold_one() {
+        let mut led = seeded("run-1", "master-unknown", "boot-a", &["ISS-1220"]);
+        let said = logged_while(|| {
+            block_on(async {
+                let done = reconcile(
+                    &mut led,
+                    "boot-later",
+                    &NoRegistryEntry,
+                    &nothing_refuted(),
+                    Closing {
+                        sessions: &Sessions,
+                        leases: &LeasesRefused,
+                        roots: &Roots,
+                    },
+                    RunWatch {
+                        beat: &Beats::default(),
+                        idle: &NeverReports,
+                    },
+                )
+                .await
+                .unwrap();
+                assert!(
+                    done[0].state.checkout_returned && done[0].standing_said,
+                    "{:?}",
+                    done[0]
+                );
+            })
+        });
+        assert!(
+            said.contains(
+                "Its checkout is back, 0/1 of its leases are back and the rest stay held"
+            ) && !said.contains("is still held"),
+            "the line says what is left, not a checkout it gave back: {said}"
+        );
+    }
+
+    #[test]
+    fn a_run_left_only_its_leases_is_named_once_and_not_every_sweep() {
+        let mut led = seeded("run-1", "master-unknown", "boot-a", &["ISS-1220"]);
+        let mut sweep_once = || {
+            logged_while(|| {
+                block_on(async {
+                    let done = reconcile(
+                        &mut led,
+                        "boot-a",
+                        &NoRegistryEntry,
+                        &nothing_refuted(),
+                        Closing {
+                            sessions: &Sessions,
+                            leases: &LeasesRefused,
+                            roots: &Roots,
+                        },
+                        RunWatch {
+                            beat: &Beats::default(),
+                            idle: &NeverReports,
+                        },
+                    )
+                    .await
+                    .unwrap();
+                    let r = &done[0];
+                    assert!(
+                        r.state.session_terminal
+                            && r.state.checkout_returned
+                            && !r.state.is_closed(),
+                        "the state under test holds only a lease: {r:?}"
+                    );
+                    assert!(r.standing_said, "{r:?}");
+                })
+            })
+        };
+        let first = sweep_once();
+        assert!(
+            first.contains("only its leases (0/1 returned)"),
+            "the line says what is left, not a checkout it no longer holds: {first}"
+        );
+        for _ in 0..2 {
+            let again = sweep_once();
+            assert!(!again.contains("partially closed"), "said once: {again}");
+        }
+    }
+
+    #[test]
+    fn a_run_from_another_boot_is_named_stuck_once_and_not_every_sweep() {
+        let scratch = Scratch::new("foreign-boot");
+        let (mut led, _root, wt, _transcript) = a_subagent_run_in_a_worktree(&scratch);
+        let first = logged_while(|| {
+            block_on(async {
+                let done = reconcile(
+                    &mut led,
+                    "boot-later",
+                    &NoRegistryEntry,
+                    &nothing_refuted(),
+                    Closing {
+                        sessions: &Sessions,
+                        leases: &Leases(Mutex::new(HashSet::new())),
+                        roots: &Roots,
+                    },
+                    RunWatch {
+                        beat: &Beats::default(),
+                        idle: &NeverReports,
+                    },
+                )
+                .await
+                .unwrap();
+                assert!(
+                    !done[0].owed_release,
+                    "another boot is never reclaimed here"
+                );
+                assert!(done[0].standing_said, "{:?}", done[0]);
+            })
+        });
+        for said in [
+            "boot-a",
+            "boot-later",
+            "will stay so",
+            &wt.display().to_string(),
+        ] {
+            assert!(
+                first.contains(said),
+                "a run nothing here will ever close is named stuck with {said:?}: {first}"
+            );
+        }
+        let second = logged_while(|| {
+            block_on(async {
+                let done = reconcile(
+                    &mut led,
+                    "boot-later",
+                    &NoRegistryEntry,
+                    &nothing_refuted(),
+                    Closing {
+                        sessions: &Sessions,
+                        leases: &Leases(Mutex::new(HashSet::new())),
+                        roots: &Roots,
+                    },
+                    RunWatch {
+                        beat: &Beats::default(),
+                        idle: &NeverReports,
+                    },
+                )
+                .await
+                .unwrap();
+                assert!(done[0].standing_said);
+            })
+        });
+        assert!(
+            !second.contains("partially closed"),
+            "said once, not every sweep: {second}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_run_released_on_the_bound_gives_its_checkout_back_and_keeps_its_commits() {
+        let scratch = Scratch::new("unanswered-release");
+        let (mut led, root, wt, transcript) = a_subagent_run_in_a_worktree(&scratch);
+        git(&wt, &["checkout", "-q", "--detach"]);
+        std::fs::write(wt.join("unpushed.md"), "local only").unwrap();
+        git(&wt, &["add", "."]);
+        git(&wt, &["commit", "-q", "-m", "on no remote, on no branch"]);
+        let unpushed = git(&wt, &["rev-parse", "HEAD"]).trim().to_string();
+        over_for(&led, &transcript, 2 * HOUR_MS, 2 * HOUR_MS);
+
+        let r = sweep(&mut led, &NoRegistryEntry, &Beats::default())
+            .await
+            .expect("answered");
+        assert!(r.owed_release, "{r:?}");
+        let released = release_at(&mut led, &root, now_ms() / 1000).await;
+        assert!(
+            matches!(released, crate::runner::terminate::Release::Done(_)),
+            "the release the bound licensed is taken: {released:?}"
+        );
+        assert!(!wt.exists(), "the tree is off the disk");
+        assert!(!registered(&root, &wt), "and out of git's registry");
+        assert!(
+            git(&root, &["branch", "--list", "ISS-1217"]).contains("ISS-1217"),
+            "the pushed branch is kept"
+        );
+        let holders = git(&root, &["for-each-ref", "--contains", &unpushed]);
+        assert!(
+            !holders.trim().is_empty(),
+            "the commit only the checkout's own HEAD named is given a ref before the checkout goes: {holders}"
+        );
+        assert!(
+            led.unclosed_runs().unwrap().is_empty(),
+            "and the run is closed, so the partially-closed line has nothing left to say"
         );
     }
 }

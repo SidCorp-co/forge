@@ -190,8 +190,13 @@ pub struct Run {
     pub turn_ended_at_ms: Option<i64>,
     /// Where this run's subagent writes its own transcript.
     pub agent_transcript: Option<String>,
-    /// What the box last said about keeping this run open: `quiet` or
-    /// `unreadable`. Cleared by the next turn-end, so each silence is said once.
+    /// What the box last said about this run's standing: `quiet` or
+    /// `unreadable` for a run it keeps; `awaiting-session`, `awaiting` and
+    /// `awaiting-leases` for one no master here answers for, by what it still
+    /// waits on, `unanswered` once the bound licenses its release, `foreign-boot` for one this boot may not
+    /// reclaim, and `decided` for one whose release was decided terminal while
+    /// its leases are still chased (ISS-1220). Cleared by the next turn-end, so each silence is
+    /// said once.
     pub kept_notice: Option<String>,
 }
 
@@ -1279,6 +1284,19 @@ impl Ledger {
         Ok(())
     }
 
+    /// Stand a run's terminal-session observation at `at_secs`, so a test can
+    /// put a run past a bound measured from it without waiting that long.
+    #[cfg(test)]
+    pub fn backdate_session_terminal(&self, run_id: &str, at_secs: i64) -> Result<()> {
+        self.conn
+            .execute(
+                "UPDATE runs SET session_terminal_at = ?2 WHERE run_id = ?1",
+                params![run_id, at_secs],
+            )
+            .map_err(sql_err)?;
+        Ok(())
+    }
+
     pub fn mark_session_terminal_observed(&self, run_id: &str) -> Result<()> {
         self.stamp("session_terminal_at", run_id)
     }
@@ -1818,6 +1836,22 @@ impl Ledger {
             .execute(
                 "UPDATE runs SET kept_notice = ?2
                   WHERE run_id = ?1 AND ended_by IS NULL AND kept_notice IS NOT ?2",
+                params![run_id, notice],
+            )
+            .map_err(sql_err)?;
+        Ok(n == 1)
+    }
+
+    /// Record what the sweep last said about why an unclosed run stands, and
+    /// answer whether that is new. Unlike [`Ledger::note_kept`] it holds for an
+    /// ended run too: a run that ended under another boot is still standing,
+    /// and is exactly the one whose standing must be said once and not for
+    /// ever (ISS-1220).
+    pub fn note_standing(&self, run_id: &str, notice: &str) -> Result<bool> {
+        let n = self
+            .conn
+            .execute(
+                "UPDATE runs SET kept_notice = ?2 WHERE run_id = ?1 AND kept_notice IS NOT ?2",
                 params![run_id, notice],
             )
             .map_err(sql_err)?;

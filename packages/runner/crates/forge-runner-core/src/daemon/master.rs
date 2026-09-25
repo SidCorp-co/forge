@@ -1571,7 +1571,7 @@ async fn release_held_tree(
             repo_root: &resolved.repo_path,
             base_branch: resolved.base_branch.as_deref(),
             by: "recovery",
-            reason: "the run's process is gone and core's session row is terminal",
+            reason: r.release_reason(),
         },
         terminate::Ports {
             procs: world.killer,
@@ -1750,12 +1750,16 @@ async fn give_back_lost_runs(
                 if r.owed_death_report {
                     report_run_death(led.run(&r.run_id).ok().flatten(), &r, world).await;
                 }
-                if r.owed_release
-                    && release_held_tree(led, &r, boot_id, world, sessions, leases).await
-                {
+                // A release owed and not finished has already said why: its
+                // refusal at the head of its window, its decision at the end,
+                // or the binding it could not resolve. Recovery has said once
+                // why any other standing run stands. A line per sweep beside
+                // either only repeats it (ISS-1220).
+                if r.owed_release {
+                    release_held_tree(led, &r, boot_id, world, sessions, leases).await;
                     continue;
                 }
-                if r.state.is_closed() {
+                if r.state.is_closed() || r.standing_said {
                     continue;
                 }
                 tracing::warn!(
@@ -5264,6 +5268,243 @@ mod give_back_tests {
         );
         let _ = std::fs::remove_dir_all(&repo);
         let _ = std::fs::remove_dir_all(repo.with_extension("remote.git"));
+    }
+
+    /// A registry that has never heard of the run's master: a retired one,
+    /// a replaced one, or a project that left `/me/runners`.
+    struct NobodyKnows;
+    #[async_trait::async_trait]
+    impl recovery::MasterLiveness for NobodyKnows {
+        async fn state(&self, _id: &str) -> recovery::MasterPresence {
+            recovery::MasterPresence::Unknown
+        }
+        async fn live_master_for_project(&self, _: &str) -> Option<String> {
+            None
+        }
+    }
+
+    /// ISS-1220's b4e955c2, through the sweep: a subagent run whose master this
+    /// box no longer registers, core's session over for longer than the bound,
+    /// its checkout clean on a pushed branch. Before, every sweep printed
+    /// `partially closed` over it for as long as the box lived.
+    #[tokio::test]
+    async fn a_run_no_master_answers_for_is_given_back_on_the_bound_and_says_why() {
+        let (repo, wt) = a_repo_with_a_live_worktree().await;
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(NewRun {
+            run_id: "run-1".into(),
+            project_id: "proj-1".into(),
+            master_session_id: "master-retired".into(),
+            worktree_path: wt.clone(),
+            boot_id: BOOT.into(),
+            issue_keys: vec!["ISS-957".into()],
+        })
+        .unwrap();
+        led.attach_session("run-1", "core-sess-1").unwrap();
+        assert!(led.bind_agent("run-1", "a497qa").unwrap());
+        let over = recovery::UNANSWERED_RELEASE_AFTER.as_secs() as i64 + 60;
+        led.backdate_session_terminal("run-1", now_secs() - over)
+            .unwrap();
+
+        let mut cfg = Config::default();
+        cfg.bindings.insert(
+            "proj-1".into(),
+            crate::config::Binding {
+                repo_path: repo.clone(),
+                branch: None,
+                project_id: Some("proj-1".into()),
+            },
+        );
+        let leases = Leases::default();
+        let mut ledger = Some(led);
+
+        give_back_lost_runs(
+            BOOT,
+            &NobodyKnows,
+            &Reclaim {
+                served: &[],
+                cfg: &cfg,
+                procs: &NoPids,
+                killer: &NoKill,
+                closer: &Closes::default(),
+            },
+            &Terminal(true),
+            &leases,
+            recovery::RunWatch {
+                beat: &Beats::default(),
+                idle: &NeverReports,
+            },
+            &mut ledger,
+        )
+        .await;
+
+        assert!(
+            !wt.exists(),
+            "the checkout goes back on the bound, since no pane on this box can close the run"
+        );
+        let led = ledger.as_ref().unwrap();
+        let run = led.run("run-1").unwrap().unwrap();
+        assert_eq!(run.ended_by.as_deref(), Some("recovery"));
+        assert!(
+            run.ended_reason
+                .as_deref()
+                .is_some_and(|r| r.contains("no master on this box answers")),
+            "the row says the agent's end was concluded from silence, never that its process was seen gone: {:?}",
+            run.ended_reason
+        );
+        assert!(
+            led.unclosed_runs().unwrap().is_empty(),
+            "and nothing is left for the next sweep to call partially closed"
+        );
+        let _ = std::fs::remove_dir_all(&repo);
+        let _ = std::fs::remove_dir_all(repo.with_extension("remote.git"));
+    }
+
+    /// ISS-1220: the sweep's own `partially closed` line stands down once
+    /// recovery has said why the run stands, so the second identical sweep is
+    /// silent rather than the thousandth.
+    #[test]
+    fn a_standing_recovery_has_named_is_not_repeated_every_sweep() {
+        use std::sync::Arc;
+        #[derive(Clone)]
+        struct Buf(Arc<Mutex<Vec<u8>>>);
+        impl std::io::Write for Buf {
+            fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(b);
+                Ok(b.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let buf = Buf(Arc::new(Mutex::new(Vec::new())));
+        let made = buf.clone();
+        let sub = tracing_subscriber::fmt()
+            .with_writer(move || made.clone())
+            .with_ansi(false)
+            .finish();
+        crate::daemon::keep_tracing_capturable();
+        tracing::subscriber::with_default(sub, || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(async {
+                    let led = a_ledger_holding_one_run();
+                    assert!(led.bind_agent("run-1", "a-sub").unwrap());
+                    led.backdate_session_terminal("run-1", now_secs() - 300)
+                        .unwrap();
+                    let mut ledger = Some(led);
+                    let cfg = Config::default();
+                    for _ in 0..3 {
+                        give_back_lost_runs(
+                            BOOT,
+                            &NobodyKnows,
+                            &Reclaim {
+                                served: &[],
+                                cfg: &cfg,
+                                procs: &NoPids,
+                                killer: &NoKill,
+                                closer: &Closes::default(),
+                            },
+                            &Terminal(true),
+                            &Leases::default(),
+                            recovery::RunWatch {
+                                beat: &Beats::default(),
+                                idle: &NeverReports,
+                            },
+                            &mut ledger,
+                        )
+                        .await;
+                    }
+                });
+        });
+        let out = String::from_utf8_lossy(&buf.0.lock().unwrap()).into_owned();
+        assert_eq!(
+            out.matches("is partially closed").count(),
+            1,
+            "three sweeps over one unchanged standing say it once: {out}"
+        );
+        assert!(
+            !out.contains("[master] run run-1 is partially closed"),
+            "and the once is recovery's, which names what ends it: {out}"
+        );
+    }
+
+    /// ISS-1220: a release owed and not finished — here its project has no
+    /// repository on this box — has said why itself, so the sweep adds no
+    /// `partially closed` line on top of it, on this sweep or the next.
+    #[test]
+    fn a_release_that_cannot_finish_is_not_followed_by_a_partially_closed_line() {
+        use std::sync::Arc;
+        #[derive(Clone)]
+        struct Buf(Arc<Mutex<Vec<u8>>>);
+        impl std::io::Write for Buf {
+            fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(b);
+                Ok(b.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let buf = Buf(Arc::new(Mutex::new(Vec::new())));
+        let made = buf.clone();
+        let sub = tracing_subscriber::fmt()
+            .with_writer(move || made.clone())
+            .with_ansi(false)
+            .finish();
+        crate::daemon::keep_tracing_capturable();
+        tracing::subscriber::with_default(sub, || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(async {
+                    let led = a_ledger_holding_one_run();
+                    assert!(led.bind_agent("run-1", "a-sub").unwrap());
+                    let over = recovery::UNANSWERED_RELEASE_AFTER.as_secs() as i64 + 60;
+                    led.backdate_session_terminal("run-1", now_secs() - over)
+                        .unwrap();
+                    let mut ledger = Some(led);
+                    let cfg = Config::default();
+                    for _ in 0..2 {
+                        give_back_lost_runs(
+                            BOOT,
+                            &NobodyKnows,
+                            &Reclaim {
+                                served: &[],
+                                cfg: &cfg,
+                                procs: &NoPids,
+                                killer: &NoKill,
+                                closer: &Closes::default(),
+                            },
+                            &Terminal(true),
+                            &Leases::default(),
+                            recovery::RunWatch {
+                                beat: &Beats::default(),
+                                idle: &NeverReports,
+                            },
+                            &mut ledger,
+                        )
+                        .await;
+                    }
+                });
+        });
+        let out = String::from_utf8_lossy(&buf.0.lock().unwrap()).into_owned();
+        assert_eq!(
+            out.matches("no master on this box answers").count(),
+            1,
+            "the licence is said once: {out}"
+        );
+        assert!(
+            out.contains("no repo path on this box"),
+            "the release says why it could not start: {out}"
+        );
+        assert!(
+            !out.contains("is partially closed"),
+            "and no per-sweep line repeats either: {out}"
+        );
     }
 
     #[tokio::test]
