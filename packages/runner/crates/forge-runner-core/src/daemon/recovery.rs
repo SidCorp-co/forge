@@ -189,8 +189,7 @@ pub async fn reconcile(
             && state.session_terminal
             && !state.checkout_returned
             && run.release_terminal_at.is_none();
-        let first_owed = owed_release && !agent_gone && run.release_refused_at.is_none();
-        if let Some(over_ms) = unanswered.filter(|_| first_owed) {
+        if let Some(over_ms) = unanswered.filter(|_| owed_release && !agent_gone) {
             say_why_released(ledger, &run, over_ms);
         }
         let owed_death_report = agent_gone
@@ -252,9 +251,22 @@ fn over_and_silent(run: &Run, now_ms: i64) -> Option<i64> {
 }
 
 /// Say, on the sweep that first owes it, why a run nobody here answers for is
-/// being released and what it holds. Said once: from the next sweep either the
-/// run is closed or its refusal streak is standing and says its own piece.
+/// being released and what it holds. Said once, on the row as well as in the
+/// journal: a release that cannot even start — a project with no repo path on
+/// this box — is owed again every sweep, and the reason it is owed is not news
+/// the second time.
 fn say_why_released(ledger: &Ledger, run: &Run, over_ms: i64) {
+    match ledger.note_kept(&run.run_id, "unanswered") {
+        Ok(true) => {}
+        Ok(false) => return,
+        Err(e) => {
+            tracing::warn!(
+                "[recovery] run {}: cannot record why it is being released: {e}",
+                run.run_id
+            );
+            return;
+        }
+    }
     let issues = ledger
         .issues(&run.run_id)
         .map(|m| {
@@ -1946,6 +1958,24 @@ mod tests {
             );
         }
 
+        let again = logged_while(|| {
+            block_on(async {
+                let r = sweep(&mut led, &NoRegistryEntry, &Beats::default())
+                    .await
+                    .expect("answered");
+                assert!(r.owed_release, "{r:?}");
+            })
+        });
+        assert!(
+            !again.contains("no master on this box answers"),
+            "a release that never started — a project with no repo path here — is owed again next sweep, and its reason is said once: {again}"
+        );
+        assert_eq!(
+            led.run("run-1").unwrap().unwrap().kept_notice.as_deref(),
+            Some("unanswered"),
+            "and the row says what the box said"
+        );
+
         let now = now_ms() / 1000;
         let refused = block_on(release_at(&mut led, &root, now));
         assert!(
@@ -1967,7 +1997,7 @@ mod tests {
         });
         assert!(
             !second.contains("no master on this box answers"),
-            "said once: the refusal streak is standing and says its own piece: {second}"
+            "still said once while the refusal streak stands and says its own piece: {second}"
         );
 
         let decided = block_on(release_at(

@@ -190,8 +190,10 @@ pub struct Run {
     pub turn_ended_at_ms: Option<i64>,
     /// Where this run's subagent writes its own transcript.
     pub agent_transcript: Option<String>,
-    /// What the box last said about keeping this run open: `quiet` or
-    /// `unreadable`. Cleared by the next turn-end, so each silence is said once.
+    /// What the box last said about this run's standing: `quiet` or
+    /// `unreadable` for a run it keeps, `unanswered` for one it is releasing
+    /// because no master here answers for it (ISS-1220). Cleared by the next
+    /// turn-end, so each silence is said once.
     pub kept_notice: Option<String>,
 }
 
