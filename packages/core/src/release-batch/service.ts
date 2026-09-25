@@ -54,7 +54,7 @@ import { RELEASE_BATCH_SKILL, ReleaseBranchesUndeclaredError, releaseBranches } 
 import { buildReleaseBatchPrompt } from './prompt.js';
 import { recoverStrandedReleasing } from './releasing-recovery.js';
 import { RELEASE_UNSTARTED_DEADLINE_MS } from './unstarted-recovery.js';
-import { readLiveCommit, type VerifyConfig, verifyDeployed } from './verify.js';
+import { liveCarriesRoster, readLiveCommit, type VerifyConfig, verifyDeployed } from './verify.js';
 import { cutReleaseVersion, markReleaseShipped } from './version-store.js';
 
 export * from './errors.js';
@@ -79,6 +79,12 @@ export interface CreateReleaseBatchResult {
   version: string;
   /** When this batch must have an owner, or it is cancelled and its roster handed back. */
   ownerDeadlineAt: string;
+  /**
+   * Whether what was already serving when this batch opened carries a roster issue's merge — so
+   * this release shipped before the batch recording it existed, and its finish will be earned by
+   * identity rather than by a transition. Said here and not at the fifth finish (ISS-1199).
+   */
+  openedAfterRelease: boolean;
 }
 
 export async function createReleaseBatch(
@@ -120,6 +126,20 @@ export async function createReleaseBatch(
   const firstVerify = plan.channels[0]?.verify ?? null;
   const commitBefore = firstVerify ? await readLiveCommit(firstVerify) : null;
 
+  const issueRows = await db
+    .select({
+      id: issues.id,
+      issSeq: issues.issSeq,
+      title: issues.title,
+      mergedCommitSha: issues.mergedCommitSha,
+    })
+    .from(issues)
+    .where(inArray(issues.id, issueIds));
+  const openedAfterRelease = liveCarriesRoster(
+    commitBefore,
+    issueRows.map((r) => r.mergedCommitSha),
+  );
+
   // The row and its version in ONE transaction, and the announcement after it commits. Cutting
   // the number after `openOneShotRun` returned would leave a window — a crash in it, and a
   // subscriber reading the announcement during it — in which a committed release row has no
@@ -134,6 +154,7 @@ export async function createReleaseBatch(
       deployPlanned,
       promotePlanned,
       commitBefore,
+      openedAfterRelease,
       releaseRunner: { label: plan.releaseRunnerLabel, preferenceMet },
     },
   };
@@ -176,11 +197,6 @@ export async function createReleaseBatch(
       }
     }
   }
-
-  const issueRows = await db
-    .select({ id: issues.id, issSeq: issues.issSeq, title: issues.title })
-    .from(issues)
-    .where(inArray(issues.id, issueIds));
 
   const batchPrefix = await activeIssuePrefix(projectId);
   const promptString = buildReleaseBatchPrompt({
@@ -236,6 +252,7 @@ export async function createReleaseBatch(
     gateStatus,
     version,
     ownerDeadlineAt: new Date(Date.now() + RELEASE_UNSTARTED_DEADLINE_MS).toISOString(),
+    openedAfterRelease,
   };
 }
 
@@ -353,6 +370,12 @@ export async function finishReleaseBatch(
         expected: options.commit ?? null,
       });
       if (!outcome.ok) throw new ReleaseNotVerifiedError(outcome.reason, outcome.live);
+      if (!outcome.moved) {
+        logger.warn(
+          { runId, identity: outcome.identity },
+          'release-batch: the deployment was already serving this commit when the batch opened, so this is a release recorded after the fact rather than one this batch watched arrive',
+        );
+      }
     }
     await options.onVerified?.();
   }
@@ -417,7 +440,8 @@ export interface AbortReleaseBatchResult {
   claimsCleared: string[];
   /** Where the roster went, or `null` when nothing moved. */
   destination: IssueStatus | null;
-  /** True when the run had promoted, so the roster stayed at `releasing`. */
+  /** True when the run had promoted. On its own it no longer says the roster stayed put:
+   *  `promotedRoster: 'return-to-gate'` settles one anyway, and `destination` is what moved. */
   promoted: boolean;
   /** What the abort did to the run row, in its own words. */
   run: {
@@ -427,15 +451,32 @@ export interface AbortReleaseBatchResult {
   };
 }
 
+/**
+ * What an abort does with a roster whose run already promoted.
+ *
+ * `hold` is the default: the code is on production and no status here is true
+ * except `releasing`. `return-to-gate` is the operator's route to terminal for
+ * a batch that promoted and cannot verify, putting the roster back where
+ * `POST /release-records` closes it against what production serves, with an
+ * account (ISS-1199).
+ */
+export type PromotedRosterSettlement = 'hold' | 'return-to-gate';
+
+export interface AbortReleaseBatchOptions {
+  promotedRoster?: PromotedRosterSettlement | undefined;
+}
+
 export async function abortReleaseBatch(
   runId: string,
   reason: string,
   actorUserId: string,
+  options: AbortReleaseBatchOptions = {},
 ): Promise<AbortReleaseBatchResult> {
   const { claimsCleared, destination, promoted } = await recoverStrandedReleasing(runId, {
     reason: `batch release aborted: ${reason}`,
     actorUserId,
     comment: true,
+    settlePromotedRoster: options.promotedRoster === 'return-to-gate',
   });
 
   await closeRunIfOneShot(runId, 'cancelled');
