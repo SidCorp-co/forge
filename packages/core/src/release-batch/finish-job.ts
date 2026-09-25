@@ -343,8 +343,7 @@ export async function runReleaseBatchFinish(
       leaseUntil: null,
       finishedAt: new Date().toISOString(),
     });
-    // An abort is why an aborted batch's attempt ended, whatever else it met first, and the
-    // run's status is read by the write itself, so an abort landing just before it still wins.
+    // The write reads the run's status itself, so an abort landing just before it still wins.
     await hold
       .commit(failed(own), failed(refusalOf(new ReleaseBatchAbortedError())))
       .catch(() => {});

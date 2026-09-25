@@ -291,8 +291,7 @@ describe('a batch aborted while the door is taking its finish', () => {
     serving = PUSHED;
     let answer: Promise<string | null> | null = null;
 
-    // The run row is held while the door reads, so its write waits behind the lock; the
-    // cancel then commits first, as an abort landing between the door's read and write does.
+    // An abort landing between the door's read of the run and its write of the attempt.
     await harness.db.transaction(async (tx) => {
       await tx.execute(sql`SELECT id FROM pipeline_runs WHERE id = ${runId} FOR UPDATE`);
       answer = refusalCode(() => accept(runId, PUSHED));
