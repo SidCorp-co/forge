@@ -11,6 +11,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { readConversationAgentTurns } from '../agent-sessions/conversation-agent.js';
 import { loadConversationAttachment } from '../conversations/attachment-service.js';
+import { listWindowsForConversation } from '../conversations/windows.js';
 import { contentDisposition } from '../lib/attachment-headers.js';
 import { allowedSetForTarget } from '../lib/attachment-mime.js';
 import type { AuthVars } from '../middleware/auth.js';
@@ -24,6 +25,46 @@ import { readableConversation, writableConversation } from './conversation-acces
 import { isTurnRunning, stopConversationTurns } from './conversation-stops.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
+
+/**
+ * Why this core cannot stop this room's turn. The abort registry is this
+ * process's own, so three answers are possible and only one of them is "nothing
+ * is running": the turn may belong to a paired box, or to a window some other
+ * core still holds open. Answering "idle" to either would be this door telling
+ * the caller something it never read.
+ */
+async function nothingHereToStop(id: string): Promise<HTTPException> {
+  const handed = (await readConversationAgentTurns(id)).find(
+    (t) => t.state === 'dispatched' || t.state === 'running',
+  );
+  if (handed) {
+    return new HTTPException(409, {
+      message: `conversation ${id} handed this turn to a paired box, so there is nothing here to stop — end agent session ${handed.sessionId} instead`,
+      cause: {
+        code: 'CONVERSATION_TURN_HANDED_OFF',
+        details: { sessionId: handed.sessionId },
+      },
+    });
+  }
+
+  const elsewhere = (await listWindowsForConversation(id, 5)).find(
+    (w) => w.claimedAt !== null && w.closedAt === null && w.claimedBy !== null,
+  );
+  if (elsewhere) {
+    return new HTTPException(409, {
+      message: `conversation ${id} has window ${elsewhere.id} still open under claim "${elsewhere.claimedBy}", and no turn for it is running on this core — a stop reaches only the core running the turn, so this one cannot end it`,
+      cause: {
+        code: 'CONVERSATION_TURN_ON_ANOTHER_CORE',
+        details: { windowId: elsewhere.id, claimedBy: elsewhere.claimedBy },
+      },
+    });
+  }
+
+  return new HTTPException(409, {
+    message: `conversation ${id} is not answering anything right now, so there was nothing to stop`,
+    cause: { code: 'CONVERSATION_NOTHING_RUNNING', details: {} },
+  });
+}
 
 const attachmentTicketSchema = z
   .object({
@@ -135,20 +176,7 @@ conversationAttachmentRoutes.post(
     const { id } = c.req.valid('param');
     await writableConversation(id, c.get('userId'));
 
-    if (!isTurnRunning(id)) {
-      const handed = (await readConversationAgentTurns(id)).find(
-        (t) => t.state === 'dispatched' || t.state === 'running',
-      );
-      throw new HTTPException(409, {
-        message: handed
-          ? `conversation ${id} handed this turn to a paired box, so there is nothing here to stop — end agent session ${handed.sessionId} instead`
-          : `conversation ${id} is not answering anything right now, so there was nothing to stop`,
-        cause: {
-          code: handed ? 'CONVERSATION_TURN_HANDED_OFF' : 'CONVERSATION_NOTHING_RUNNING',
-          details: handed ? { sessionId: handed.sessionId } : {},
-        },
-      });
-    }
+    if (!isTurnRunning(id)) throw await nothingHereToStop(id);
 
     return c.json({ conversationId: id, stopped: stopConversationTurns(id) }, 200);
   },

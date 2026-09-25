@@ -151,6 +151,23 @@ describe("a message with a file on it", () => {
     });
   });
 
+  it("does not store the same picture twice when a failed send is retried", async () => {
+    send.mockRejectedValueOnce(new Error("network"));
+    open();
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [fileOf("shot.png", "image/png")] } });
+    await screen.findByText("shot.png");
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "what is this" } });
+    fireEvent.click(screen.getByLabelText("Send message"));
+
+    await waitFor(() => expect(uploadOne).toHaveBeenCalledTimes(1));
+    fireEvent.click(await screen.findByText("Try again"));
+
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(2));
+    expect(uploadOne).toHaveBeenCalledTimes(1);
+    expect(send.mock.calls[1]?.[0]).toMatchObject({ attachmentIds: ["att-shot.png"] });
+  });
+
   it("sends no attachmentIds at all where nothing was staged", async () => {
     open();
     fireEvent.change(screen.getByLabelText("Message"), { target: { value: "plain question" } });

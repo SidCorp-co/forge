@@ -315,12 +315,14 @@ describe('stopping a turn in a web conversation', () => {
 
   let token: string;
   let conversationId: string;
+  let projectId: string;
 
   beforeEach(async () => {
     await truncateAll(harness.db);
     const user = await createTestUser(harness.db);
     await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`);
     const project = await createTestProject(harness.db, user.id);
+    projectId = project.id;
     await createTestProjectMember(harness.db, {
       userId: user.id,
       projectId: project.id,
@@ -349,6 +351,19 @@ describe('stopping a turn in a web conversation', () => {
     const body = (await res.json()) as { message: string; code: string };
     expect(body.code).toBe('CONVERSATION_NOTHING_RUNNING');
     expect(body.message).toContain('nothing to stop');
+  });
+
+  it('names the window another core still holds rather than calling the room idle', async () => {
+    await harness.db.execute(sql`
+      INSERT INTO conversation_windows
+        (conversation_id, project_id, adapter, first_seq, last_seq, claimed_at, claimed_by)
+      VALUES (${conversationId}, ${projectId}, 'web', 1, 1, now(), 'core-b')
+    `);
+    const res = await stop();
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { message: string; code: string };
+    expect(body.code).toBe('CONVERSATION_TURN_ON_ANOTHER_CORE');
+    expect(body.message).toContain('core-b');
   });
 
   it('ends the turn this core is holding open, and says it did', async () => {

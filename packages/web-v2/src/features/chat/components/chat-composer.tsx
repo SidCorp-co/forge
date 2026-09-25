@@ -202,17 +202,15 @@ export function ChatComposer({
   const take = useCallback(
     (picked: readonly File[]) => {
       if (!attachments) return;
-      setFiles((prev) => {
-        const outcome = stageFiles(picked, attachments, prev.length);
-        setRefusals(outcome.refused);
-        if (outcome.accepted.length === 0) return prev;
-        return [
-          ...prev,
-          ...outcome.accepted.map((file) => ({ id: `file-${nextFileId.current++}`, file })),
-        ];
-      });
+      const outcome = stageFiles(picked, attachments, files.length);
+      setRefusals(outcome.refused);
+      if (outcome.accepted.length === 0) return;
+      setFiles((prev) => [
+        ...prev,
+        ...outcome.accepted.map((file) => ({ id: `file-${nextFileId.current++}`, file })),
+      ]);
     },
-    [attachments],
+    [attachments, files.length],
   );
 
   const { getRootProps, getInputProps, open: openPicker, isDragActive } = useDropzone({

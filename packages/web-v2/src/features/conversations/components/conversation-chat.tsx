@@ -89,6 +89,12 @@ export function ConversationChat({
 
   const [outbox, setOutbox] = useState<OutboxMessage[]>([]);
   const sending = useRef(false);
+  /**
+   * What a queued message has already put in storage, kept so a retry after a
+   * failed send does not upload the same picture twice and leave the first copy
+   * stored and cited by nothing.
+   */
+  const stored = useRef(new Map<string, string[]>());
 
   const [pick, setPick] = useState<ConversationMode>("assistant");
 
@@ -171,10 +177,11 @@ export function ConversationChat({
           onConversationActive?.(id);
         }
         const fresh = !settled && messages.length === 0;
-        const attachmentIds: string[] = [];
-        for (const file of next.files ?? []) {
-          const stored = await upload.mutateAsync({ conversationId: id, file });
-          attachmentIds.push(stored.id);
+        const attachmentIds = [...(stored.current.get(next.id) ?? [])];
+        for (const file of (next.files ?? []).slice(attachmentIds.length)) {
+          const put = await upload.mutateAsync({ conversationId: id, file });
+          attachmentIds.push(put.id);
+          stored.current.set(next.id, [...attachmentIds]);
         }
         await send.mutateAsync({
           conversationId: id,
@@ -183,6 +190,7 @@ export function ConversationChat({
           clientToken: next.id,
           ...(attachmentIds.length ? { attachmentIds } : {}),
         });
+        stored.current.delete(next.id);
         setOutbox((o) => o.filter((m) => m.id !== next.id));
       } catch (err) {
         setOutbox((o) =>
