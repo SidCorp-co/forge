@@ -107,14 +107,19 @@ function issueNote(args: {
 export async function recordPerformedRelease(
   args: RecordPerformedReleaseArgs,
 ): Promise<RecordPerformedReleaseResult> {
-  const { projectId, issueIds, commit, account, userId } = args;
+  const { projectId, commit, account, userId } = args;
   const providerRef = args.providerRef ?? null;
 
   // ONE pass before anything refuses, so probes, notes and merges arrive together (ISS-1127).
-  const report = await collectReleaseBlockers(projectId, { issueIds, door: 'record' });
+  const report = await collectReleaseBlockers(projectId, {
+    issueIds: args.issueIds,
+    door: 'record',
+  });
   if (!report.projectExists) throw new NoReleaseGateError();
   const refusal = releaseBlockerError(report);
   if (refusal) throw refusal;
+  // Every id is now an issue at this project's gate, so its lower-case spelling is the row's own.
+  const issueIds = args.issueIds.map((id) => id.toLowerCase());
 
   const gateStatus = RELEASE_GATE_STATUS;
   const verify = soleVerifyConfig(report.channels);

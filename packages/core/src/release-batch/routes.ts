@@ -47,6 +47,21 @@ import { readLiveState } from './verify.js';
 
 const projectParamSchema = z.object({ projectId: z.uuid() });
 
+/** A roster names each issue once; a uuid is one id in either letter case. */
+const rosterIdsSchema = z.array(z.uuid()).superRefine((ids, ctx) => {
+  const seen = new Set<string>();
+  for (const id of ids) {
+    if (seen.has(id.toLowerCase())) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `issueIds names ${id} more than once, counting either letter case as the same id: send each issue once.`,
+      });
+      return;
+    }
+    seen.add(id.toLowerCase());
+  }
+});
+
 const createBodySchema = z
   .object({
     /**
@@ -54,7 +69,7 @@ const createBodySchema = z
      * so both are refused by the code readiness lists them under rather than as
      * a schema's `Invalid input` (ISS-1127 criterion 1).
      */
-    issueIds: z.array(z.uuid()),
+    issueIds: rosterIdsSchema,
     /**
      * The version of a FAILED release being cut again, which raises the patch digit instead of the
      * minor. Not validated for shape here: `cutReleaseVersion` refuses a value that is not a
@@ -220,7 +235,7 @@ const abortBodySchema = z
  */
 const releaseRecordBodySchema = z
   .object({
-    issueIds: z.array(z.uuid()).min(1),
+    issueIds: rosterIdsSchema.min(1),
     commit: z.string().trim().min(1).max(200),
     account: z.string().trim().min(20).max(20_000),
     providerRef: z.string().trim().max(500).optional(),

@@ -249,7 +249,7 @@ describe('CLAIM_CONFLICT names what refused each issue, and what frees it', () =
     const answer = await recordRefused([shipped]);
     expect(answer.code).toBe('CLAIM_CONFLICT');
     expect(answer.message).toMatch(
-      new RegExp(`\\b${await keyOf(shipped)} is at \`closed\`, not \`awaiting_release\``),
+      new RegExp(`\\b${await keyOf(shipped)} is at \`closed\`: already shipped`),
     );
     expect(answer.message).not.toMatch(/abort/i);
     expect(answer.details.conflicts).toEqual([
@@ -336,4 +336,110 @@ describe('CLAIM_CONFLICT names what refused each issue, and what frees it', () =
     expect(fromBatch?.code).toBe('CLAIM_CONFLICT');
     expect(fromBatch?.message).toBe(fromRecord.message);
   }, 30_000);
+});
+
+describe('an issue id is the same id in either case', () => {
+  it('names a project issue sent with an upper-case id by its key, under its reason', async () => {
+    const testing = await fx.insertIssue('testing');
+    const answer = await recordRefused([testing.toUpperCase()]);
+    expect(answer.code).toBe('CLAIM_CONFLICT');
+    expect(answer.message).toMatch(
+      new RegExp(`\\b${await keyOf(testing)} is at \`testing\`, not \`awaiting_release\``),
+    );
+    expect(answer.message).not.toMatch(/no issues? on this project/);
+    expect(answer.details.conflicts).toEqual([
+      expect.objectContaining({ id: testing, standing: 'status', status: 'testing' }),
+    ]);
+  }, 30_000);
+
+  it('names an id no issue has as it was sent, upper-case and all', async () => {
+    const stranger = randomUUID().toUpperCase();
+    const answer = await recordRefused([stranger]);
+    expect(answer.message).toContain(`${stranger} is no issue on this project`);
+    expect(answer.details.conflicts).toEqual([{ id: stranger, key: stranger, standing: 'absent' }]);
+  }, 30_000);
+
+  it('records a release of an eligible issue sent with an upper-case id, and closes it', async () => {
+    const gate = await fx.insertIssue();
+    const result = await recorded.recordPerformedRelease({
+      projectId,
+      userId: ownerId,
+      issueIds: [gate.toUpperCase()],
+      commit: serving,
+      account: 'Promoted by hand; production serves this commit.',
+    });
+    expect(result.closed).toEqual([gate]);
+    expect(await fx.stored(gate)).toMatchObject({ status: 'closed', claim: null });
+    const rows = await harness.db.execute(
+      sql`SELECT metadata -> 'issueIds' AS ids FROM pipeline_runs WHERE id = ${result.runId}`,
+    );
+    expect(rows[0]?.ids).toEqual([gate]);
+  }, 30_000);
+
+  it('claims an eligible issue sent with an upper-case id for a new batch', async () => {
+    const gate = await fx.insertIssue();
+    const result = await service.createReleaseBatch({
+      projectId,
+      issueIds: [gate.toUpperCase()],
+      userId: ownerId,
+    });
+    expect(result.issueIds).toEqual([gate]);
+    expect(await fx.stored(gate)).toMatchObject({ status: 'releasing', claim: result.runId });
+  }, 30_000);
+});
+
+describe('an issue past the release gate is not told to wait for it', () => {
+  it('says an issue at closed has already shipped', async () => {
+    const closed = await fx.insertIssue('closed');
+    const answer = await recordRefused([closed]);
+    expect(answer.message).toMatch(new RegExp(`\\b${await keyOf(closed)} is at \`closed\``));
+    expect(answer.message).toContain('already shipped');
+    expect(answer.message).not.toContain('only once it reaches the release gate');
+  }, 30_000);
+
+  it('says an issue at dropped was set down as not work', async () => {
+    const dropped = await fx.insertIssue('dropped');
+    const answer = await recordRefused([dropped]);
+    expect(answer.message).toMatch(new RegExp(`\\b${await keyOf(dropped)} is at \`dropped\``));
+    expect(answer.message).toContain('not work');
+    expect(answer.message).not.toContain('only once it reaches the release gate');
+  }, 30_000);
+});
+
+describe('an issue on another project reads as an id no issue here has', () => {
+  async function foreignIssue(): Promise<string> {
+    const home = projectId;
+    projectId = (await createTestProject(harness.db, ownerId)).id;
+    // Without a note and without a merge, so a read that crossed projects would report both.
+    const id = await fx.insertIssue('awaiting_release', null, false);
+    projectId = home;
+    return id;
+  }
+
+  it.each(['record', 'batch'] as const)(
+    'draws nothing at the %s door that a made-up id does not',
+    async (door) => {
+      const foreign = await foreignIssue();
+      const stranger = randomUUID();
+      const refusedAt = async (id: string): Promise<Refusal> => {
+        if (door === 'record') return recordRefused([id]);
+        try {
+          await service.createReleaseBatch({ projectId, issueIds: [id], userId: ownerId });
+        } catch (err) {
+          const http = refusals.reportedRefusal(err);
+          if (http) return asRefusal(http);
+          throw err;
+        }
+        throw new Error('the batch was not refused');
+      };
+      const fromForeign = await refusedAt(foreign);
+      const fromStranger = await refusedAt(stranger);
+      expect(fromForeign.code).toBe('CLAIM_CONFLICT');
+      expect(fromForeign.message).toContain(`${foreign} is no issue on this project`);
+      expect(JSON.stringify(fromForeign.details).replaceAll(foreign, '<id>')).toBe(
+        JSON.stringify(fromStranger.details).replaceAll(stranger, '<id>'),
+      );
+    },
+    30_000,
+  );
 });

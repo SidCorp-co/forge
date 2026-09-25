@@ -50,7 +50,7 @@ const recording = (key: string, runId = 'run-rec'): ClaimConflict => ({
   claimer: 'record',
   status: 'awaiting_release',
 });
-const at = (key: string, status: 'testing' | 'closed'): ClaimConflict => ({
+const at = (key: string, status: 'testing' | 'closed' | 'dropped'): ClaimConflict => ({
   id: `id-${key}`,
   key,
   standing: 'status',
@@ -120,7 +120,28 @@ describe('claimConflictSentence', () => {
       at('ISS-6', 'testing'),
     ]);
     expect(s).toContain('ISS-4, ISS-6 are at `testing`, not `awaiting_release`');
-    expect(s).toContain('ISS-5 is at `closed`, not `awaiting_release`');
+    expect(s).toContain('ISS-5 is at `closed`: already shipped');
+  });
+
+  it('tells an issue at closed it already shipped, and not to wait for the gate', () => {
+    const one = claimConflictSentence(P, GATE, [at('ISS-5', 'closed')]);
+    expect(one).toContain(
+      'ISS-5 is at `closed`: already shipped, and a release carries an issue once. If one has to ship again, reopen it',
+    );
+    expect(one).not.toContain('only once it reaches the release gate');
+    const two = claimConflictSentence(P, GATE, [at('ISS-5', 'closed'), at('ISS-7', 'closed')]);
+    expect(two).toContain('ISS-5, ISS-7 are at `closed`: already shipped');
+    expect(two).toContain('If any of them has to ship again');
+  });
+
+  it('tells an issue at dropped it was set down as not work, and not to wait for the gate', () => {
+    const one = claimConflictSentence(P, GATE, [at('ISS-8', 'dropped')]);
+    expect(one).toContain('ISS-8 is at `dropped`: set down as not work, so no release carries it.');
+    expect(one).not.toContain('release gate');
+    const two = claimConflictSentence(P, GATE, [at('ISS-8', 'dropped'), at('ISS-9', 'dropped')]);
+    expect(two).toContain(
+      'ISS-8, ISS-9 are at `dropped`: set down as not work, so no release carries them.',
+    );
   });
 
   it('names an id that is no issue on the project as it was sent', () => {

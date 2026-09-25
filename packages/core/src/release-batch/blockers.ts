@@ -80,7 +80,18 @@ async function resolveRoster(
   // Sized like the roster; an empty named list falls through to read the gate.
   if (issueIds && issueIds.length > 0) {
     if (issueIds.length > RELEASE_ROSTER_LIMIT) out.push(oversize(issueIds.length));
-    return { ids: issueIds, unclaimed: issueIds };
+    const named = await evaluate(
+      'roster',
+      async () =>
+        await db
+          .select({ id: issues.id })
+          .from(issues)
+          .where(and(eq(issues.projectId, projectId), inArray(issues.id, issueIds))),
+      out,
+    );
+    if (!named) return undefined;
+    const ids = named.map((r) => r.id);
+    return { ids, unclaimed: ids };
   }
   const rows = await evaluate(
     'roster',

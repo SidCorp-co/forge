@@ -99,16 +99,21 @@ export interface CreateReleaseBatchResult {
 export async function createReleaseBatch(
   args: CreateReleaseBatchArgs,
 ): Promise<CreateReleaseBatchResult> {
-  const { projectId, issueIds, userId, recutOf } = args;
+  const { projectId, userId, recutOf } = args;
 
   // ISS-1127 — one enumerator, and this door throws its FIRST answer. Every
   // refusal keeps the class, the code and the wording it had; what is new is
   // that the error carries the rest of the list, so an operator clearing this
   // one already knows what else is standing.
-  const report = await collectReleaseBlockers(projectId, { issueIds, door: 'batch' });
+  const report = await collectReleaseBlockers(projectId, {
+    issueIds: args.issueIds,
+    door: 'batch',
+  });
   if (!report.projectExists) throw new NoReleaseGateError();
   const refusal = releaseBlockerError(report);
   if (refusal) throw refusal;
+  // Every id is now an issue at this project's gate, so its lower-case spelling is the row's own.
+  const issueIds = args.issueIds.map((id) => id.toLowerCase());
   // After the report, so every project reason outranks it. An empty gate is
   // already `RELEASE_ROSTER_EMPTY` above; reaching here, issues are waiting and
   // this call named none of them, which is the caller's list to fix.
