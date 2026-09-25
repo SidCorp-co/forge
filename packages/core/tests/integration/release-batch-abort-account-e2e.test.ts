@@ -212,7 +212,7 @@ describe('a batch aborted after its finish closed part of the roster', () => {
     const answer = await refused(runId);
     expect(answer.details).toEqual({ account: 'held', closed });
     for (const id of closed) expect(answer.message).toContain(id);
-    expect(answer.message).toMatch(/they stay closed, and every other issue stays at `releasing`/);
+    expect(answer.message).toMatch(/they stay closed\. Every other issue stays at `releasing`/);
   }, 40_000);
 
   it('still names the closed issues after a second abort, whose recovery finds no claim', async () => {
@@ -371,5 +371,119 @@ describe('state read behind a probe that never answers', () => {
     expect(state?.live?.health).toBe('down');
     expect(state?.runStatus).toBe('cancelled');
     expect(state?.finish?.state).toBe('failed');
+  }, 30_000);
+});
+
+describe('the route a held promoted roster is told to take, followed in its order', () => {
+  async function heldBatch() {
+    const { runId, ids } = await batchOf(2);
+    await promoted(runId);
+    await abort(runId);
+    for (const id of ids) expect(await fx.stored(id)).toMatchObject({ status: 'releasing' });
+    return { runId, ids };
+  }
+
+  async function recordRelease(ids: string[]) {
+    const { recordPerformedRelease } = await import('../../src/release-batch/recorded.js');
+    return recordPerformedRelease({
+      projectId,
+      userId: ownerId,
+      issueIds: ids,
+      commit: serving,
+      account: 'Promoted by the batch before it was aborted; production serves this commit.',
+    });
+  }
+
+  it('names the return-to-gate abort before release-records, which is refused until it has run', async () => {
+    const { ids, runId } = await heldBatch();
+    const { message } = await refused(runId);
+    const abortAt = message.indexOf('"return-to-gate"');
+    const recordAt = message.indexOf(`POST /api/projects/${projectId}/release-records`);
+    expect(abortAt).toBeGreaterThan(-1);
+    expect(recordAt).toBeGreaterThan(abortAt);
+    expect(message).not.toMatch(/release-records, or abort/);
+
+    serving = PUSHED;
+    const { ClaimConflictError } = await import('../../src/release-batch/errors.js');
+    await expect(recordRelease(ids)).rejects.toBeInstanceOf(ClaimConflictError);
+  }, 30_000);
+
+  it('closes the held roster when the refusal’s route is taken in its order', async () => {
+    const { ids, runId } = await heldBatch();
+    serving = PUSHED;
+    await abort(runId, { promotedRoster: 'return-to-gate' });
+    await recordRelease(ids);
+    for (const id of ids) expect((await fx.stored(id)).status).toBe('closed');
+  }, 30_000);
+
+  it('gives the held note no finish, and the abort then release-records as its route', async () => {
+    const { ids, runId } = await heldBatch();
+    const note = (await promotionNote(ids[0] as string)) ?? '';
+    expect(note).not.toMatch(/finish/i);
+    const abortAt = note.indexOf(`POST /api/projects/${projectId}/release-batches/${runId}/abort`);
+    const recordAt = note.indexOf(`POST /api/projects/${projectId}/release-records`);
+    expect(abortAt).toBeGreaterThan(-1);
+    expect(note.indexOf('"return-to-gate"')).toBeGreaterThan(abortAt);
+    expect(recordAt).toBeGreaterThan(abortAt);
+  }, 30_000);
+});
+
+describe('a finish naming no commit on a batch that recorded nothing serving when it opened', () => {
+  async function blindBatch() {
+    // A probe answering with no commit leaves the batch's `commitBefore` null.
+    serving = '';
+    const { runId, ids } = await batchOf(1);
+    const rows = await harness.db.execute(sql`
+      SELECT metadata -> 'commitBefore' AS before FROM pipeline_runs WHERE id = ${runId}
+    `);
+    expect(rows[0]?.before ?? null).toBeNull();
+    // Production still serves the build it served before anything moved.
+    serving = BEFORE;
+    return { runId, ids };
+  }
+
+  it('is refused at the door, telling the caller to send commit, with no attempt recorded', async () => {
+    const { runId } = await blindBatch();
+    let caught: unknown = null;
+    try {
+      await job.acceptReleaseBatchFinish(runId, actor(), {}, async () => {});
+    } catch (err) {
+      caught = err;
+    }
+    const http = refusals.finishRefusal(caught);
+    expect((http?.cause as { code?: string } | undefined)?.code).toBe('RELEASE_NOT_VERIFIED');
+    expect(http?.message).toMatch(/`commit`/);
+    expect(await storedFinish(runId)).toBeNull();
+  }, 30_000);
+
+  it('never closes the roster from a claimless attempt already standing', async () => {
+    const { runId, ids } = await blindBatch();
+    // An attempt accepted before the door refused this shape.
+    await harness.db.execute(sql`
+      UPDATE pipeline_runs SET metadata = metadata || ${JSON.stringify({
+        finish: {
+          requestId: '00000000-0000-4000-8000-000000000001',
+          state: 'accepted',
+          commit: null,
+          requestedBy: actor(),
+          acceptedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          version: 1,
+          owner: null,
+          leaseUntil: null,
+          workerStarts: 0,
+          closed: null,
+          failed: null,
+          refusal: null,
+          finishedAt: null,
+        },
+      })}::jsonb WHERE id = ${runId}
+    `);
+    await job.runReleaseBatchFinish(runId);
+    expect(await storedFinish(runId)).toMatchObject({
+      state: 'failed',
+      refusal: { code: 'RELEASE_NOT_VERIFIED' },
+    });
+    expect((await fx.stored(ids[0] as string)).status).toBe('releasing');
   }, 30_000);
 });

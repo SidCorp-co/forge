@@ -111,7 +111,7 @@ async function seed(opts: { probes?: boolean } = {}): Promise<World> {
   await harness.db.execute(sql`
     INSERT INTO pipeline_runs (id, project_id, kind, status, metadata, release_version)
     VALUES (${runId}, ${project.id}, 'system', 'running',
-            ${JSON.stringify({ source: 'release-batch' })}::jsonb, '0.1.0')
+            ${JSON.stringify({ source: 'release-batch', commitBefore: 'commit-before' })}::jsonb, '0.1.0')
   `);
   return { projectId: project.id, userId: user.id, token: await signUserToken(user.id), runId };
 }

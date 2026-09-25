@@ -2,7 +2,7 @@
 // `verifying` beside a cancelled run for up to the whole window.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { verifyDeployed } from './verify.js';
+import { NOTHING_TO_COMPARE, verifyDeployed } from './verify.js';
 
 const fetchMock = vi.fn();
 
@@ -50,5 +50,27 @@ describe('verifyDeployed — the checkpoint', () => {
     await expect(out).rejects.toBe(stop);
     expect(checkpoint).toHaveBeenCalledTimes(3);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('verifyDeployed — a claimless window with nothing recorded before', () => {
+  it('ends red at its first reading, whatever the live build reports', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ version: '1.2', commit: NEW }),
+    });
+    let t = 0;
+
+    const out = await verifyDeployed({
+      cfg: CFG,
+      commitBefore: null,
+      expected: null,
+      now: () => (t += 600),
+      sleep: async () => undefined,
+    });
+
+    expect(out).toMatchObject({ ok: false, reason: NOTHING_TO_COMPARE, identity: NEW });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

@@ -222,7 +222,9 @@ export function readingSatisfies(
   claim: string | null,
 ): boolean {
   if (live === null) return false;
-  return claim === null ? live !== commitBefore : deploymentConfirms(claim, live);
+  // With no claim and nothing recorded before, every reading would look like a move.
+  if (claim === null) return commitBefore !== null && live !== commitBefore;
+  return deploymentConfirms(claim, live);
 }
 
 export async function verifyDeployed(args: VerifyArgs): Promise<VerifyOutcome> {
@@ -247,9 +249,13 @@ export async function verifyDeployed(args: VerifyArgs): Promise<VerifyOutcome> {
   while (now() < deadline) {
     await args.checkpoint?.();
     state = await readLiveState(cfg, deadline - now());
-    // The one gate no reading could satisfy, closed here, not at the deadline.
+    // The gates no reading could satisfy, closed here, not at the deadline.
     if (expected != null && claim === null) {
       return { ...failureFor(state, commitBefore, null, expected), readings: state.readings };
+    }
+    if (claim === null && commitBefore === null) {
+      const { health, identity, readings } = state;
+      return { ok: false, reason: NOTHING_TO_COMPARE, live: identity, health, identity, readings };
     }
     const live = state.identity;
     const acceptable = readingSatisfies(live, commitBefore, claim);
@@ -366,6 +372,12 @@ export function deploymentConfirms(claimed: string, reported: string): boolean {
   if (claim === null || reading === null) return false;
   return claim.startsWith(reading);
 }
+
+/** Why a finish naming no commit is refused on a batch that recorded nothing serving when it opened. */
+export const NOTHING_TO_COMPARE =
+  'nothing recorded what was serving when this batch opened, so a finish naming no commit has ' +
+  'nothing to compare the live build against — call finish again with `commit`, the whole sha ' +
+  'you pushed.';
 
 /** The one sentence a claim that is not a whole object name is refused with. */
 export function notAWholeCommit(raw: string, identity: string | null): string {

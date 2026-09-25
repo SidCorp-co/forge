@@ -163,7 +163,7 @@ export class BatchInFlightError extends Error {
 export class ReleaseVersionMissingError extends Error {
   constructor(public readonly runId: string) {
     super(
-      `RELEASE_VERSION_MISSING: release run ${runId} carries no version on its row, so it has no ` +
+      `Release run ${runId} carries no version on its row, so it has no ` +
         'identity and nothing afterwards could name which release carried these issues. A release ' +
         'is versioned at the instant it is created; a row without one was not opened by ' +
         '`createReleaseBatch`. Abort this run and cut a new release.',

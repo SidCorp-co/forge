@@ -7,6 +7,7 @@ import {
   type AbortAccount,
   ReleaseBatchAbortedError,
   ReleaseFinishInFlightError,
+  ReleaseVersionMissingError,
 } from './errors.js';
 import { ReleaseTargetUndeclaredError } from './gate.js';
 import { MethodNotAnnouncedError } from './method.js';
@@ -169,7 +170,7 @@ describe('finishRefusal — what the abort did to this batch', () => {
   });
 
   it('says a held promoted roster stays at releasing, claimed, with the routes to settle it', () => {
-    expect(said('held')).toMatch(/kept its claims, and its issues stay at `releasing`/);
+    expect(said('held')).toMatch(/kept its claims\. Its issues stay at `releasing`, still claimed/);
     expect(said('held')).toContain('POST /api/projects/proj-7/release-records');
     expect(said('held')).toContain('"return-to-gate"');
     expect(said('held')).not.toMatch(/claims were released/);
@@ -207,7 +208,19 @@ describe('finishRefusal — what the abort did to this batch', () => {
     const message =
       finishRefusal(new ReleaseBatchAbortedError('held', 'proj-7', ['iss-a']))?.message ?? '';
     expect(message).toMatch(/closed issue iss-a before the abort, and it stays closed/);
-    expect(message).toMatch(/every other issue stays at `releasing`/);
+    expect(message).toMatch(
+      /closed issue iss-a before the abort, and it stays closed\. Every other/,
+    );
+  });
+
+  // release-records takes only unclaimed issues at the gate, so offering it beside the
+  // return-to-gate abort sent a person to a 409 (the judge at 06bf45b90).
+  it('gives a held roster the return-to-gate abort first and release-records after it', () => {
+    const message = said('held');
+    const abortAt = message.indexOf('"return-to-gate"');
+    expect(abortAt).toBeGreaterThan(-1);
+    expect(message.indexOf('/release-records')).toBeGreaterThan(abortAt);
+    expect(message).not.toMatch(/release-records, or abort/);
   });
 
   it('keeps the whole-roster sentence and carries an empty list where nothing had closed', () => {
@@ -222,6 +235,15 @@ describe('finishRefusal — what the abort did to this batch', () => {
   it('names no destination for a roster when no abort recorded one', () => {
     expect(said('unrecorded')).not.toMatch(/released|`releasing`|closed|gate/);
     expect(said('unrecorded')).toMatch(/each issue’s own status and notes are the account/);
+  });
+});
+
+describe('finishRefusal — a release row carrying no version', () => {
+  it('names RELEASE_VERSION_MISSING once, in the code', () => {
+    const refusal = finishRefusal(new ReleaseVersionMissingError('run-7'));
+    expect(refusal?.cause).toEqual({ code: 'RELEASE_VERSION_MISSING' });
+    expect(refusal?.message).not.toContain('RELEASE_VERSION_MISSING');
+    expect(refusal?.message).toMatch(/^Release run run-7 carries no version/);
   });
 });
 
