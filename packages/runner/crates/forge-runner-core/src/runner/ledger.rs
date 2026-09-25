@@ -214,26 +214,70 @@ pub struct MasterRow {
     pub last_seen_at: i64,
 }
 
-/// An owner's standing decision about one project's resident master on this
-/// box: stood down until stood up again (ISS-1118).
+/// One episode of an owner's standing decision about a project's resident
+/// master on this box: stood down at a moment, for a reason, until stood up
+/// again on an argument (ISS-1118, ISS-1238).
 ///
-/// A lifted row outlives the lifting so the next pane placed can be told the
-/// interval, and is removed once it has been.
+/// The table is append-only and a project has as many rows as it has been
+/// stood down. It held one row per project until ISS-1238: a second stand-down
+/// overwrote the first, and a lifted row was DELETEd as soon as a pane had been
+/// told its interval, so the record of what a box had been waiting for outlived
+/// the wait by one placement. That is why forge-dev's two idle days could not be
+/// accounted for afterwards from anything but unrelated evidence.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MasterStanding {
+    /// This episode's own identity. The rows for one project read newest-first
+    /// by it, and it is what makes two stand-downs two things rather than one
+    /// row written twice.
+    pub episode: i64,
     pub project_id: String,
     pub slug: String,
     pub stood_down_at: i64,
     pub stood_down_by: String,
+    /// `None` only on an episode a binary older than ISS-1238 wrote, where the
+    /// reason was optional. Those rows are carried through the migration with
+    /// their NULL rather than given an invented reason — the emptiness is the
+    /// only evidence that the gap existed — and every surface that prints a
+    /// standing says so in as many words rather than printing nothing.
     pub why: Option<String>,
     /// `None` while the stand-down stands.
     pub stood_up_at: Option<i64>,
+    /// Who lifted it, and on what argument. Both `None` while it stands, and
+    /// both `None` on an episode lifted by a binary older than ISS-1238, which
+    /// took no argument to record.
+    pub stood_up_by: Option<String>,
+    pub stood_up_why: Option<String>,
+    /// When a master pane placed after the lift was told about this episode.
+    /// `None` until one has been, and what stops the next pane being told the
+    /// same gap again. It replaced deleting the row, which is what made the
+    /// lifted half of the record unreadable a placement later.
+    pub told_at: Option<i64>,
 }
 
 impl MasterStanding {
-    /// Whether this row withholds a pane right now.
+    /// Whether this episode withholds a pane right now.
     pub fn stands(&self) -> bool {
         self.stood_up_at.is_none()
+    }
+
+    /// What a reader is told in place of a reason that was never recorded.
+    ///
+    /// One sentence, here, because the CLI's standing line and the daemon's
+    /// unplaced reason both have to say it and two wordings for one state is
+    /// how a reader learns to distrust both.
+    pub const NO_REASON: &'static str = "no reason was recorded — this predates the requirement";
+
+    /// The reason this project was stood down, or the sentence that says none
+    /// was recorded. Never an empty string and never nothing at all: a blank
+    /// where a sentence belongs is what a reader cannot tell from a reason
+    /// nobody thought to print.
+    pub fn reason(&self) -> &str {
+        self.why.as_deref().unwrap_or(Self::NO_REASON)
+    }
+
+    /// The argument this stand-down was lifted on, where it was lifted at all.
+    pub fn lift_reason(&self) -> Option<&str> {
+        self.stood_up_why.as_deref()
     }
 }
 
@@ -361,12 +405,16 @@ const MASTER_COLUMNS: &[&str] = &[
 
 #[cfg(test)]
 const MASTER_STANDING_COLUMNS: &[&str] = &[
+    "episode",
     "project_id",
     "slug",
     "stood_down_at",
     "stood_down_by",
     "why",
     "stood_up_at",
+    "stood_up_by",
+    "stood_up_why",
+    "told_at",
 ];
 
 #[cfg(test)]
@@ -444,13 +492,19 @@ CREATE TABLE IF NOT EXISTS masters (
   last_seen_at    INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS master_standing (
-  project_id    TEXT PRIMARY KEY,
+  episode       INTEGER PRIMARY KEY AUTOINCREMENT,
+  project_id    TEXT NOT NULL,
   slug          TEXT NOT NULL,
   stood_down_at INTEGER NOT NULL,
   stood_down_by TEXT NOT NULL,
   why           TEXT,
-  stood_up_at   INTEGER
+  stood_up_at   INTEGER,
+  stood_up_by   TEXT,
+  stood_up_why  TEXT,
+  told_at       INTEGER
 );
+CREATE UNIQUE INDEX IF NOT EXISTS master_standing_open
+  ON master_standing (project_id) WHERE stood_up_at IS NULL;
 CREATE TABLE IF NOT EXISTS master_authority (
   project_id      TEXT PRIMARY KEY,
   slug            TEXT NOT NULL,
@@ -519,14 +573,25 @@ const SELECT_RUN: &str = "SELECT run_id, project_id, master_session_id, session_
         turn_ended_at_ms, agent_transcript, kept_notice
  FROM runs";
 
+/// Every read of an episode selects these columns in this order, so one mapper
+/// answers for all of them and a column added later cannot reach one reader and
+/// miss another.
+const SELECT_STANDING: &str = "SELECT episode, project_id, slug, stood_down_at, stood_down_by, why,
+        stood_up_at, stood_up_by, stood_up_why, told_at
+ FROM master_standing";
+
 fn map_standing(row: &rusqlite::Row<'_>) -> rusqlite::Result<MasterStanding> {
     Ok(MasterStanding {
-        project_id: row.get(0)?,
-        slug: row.get(1)?,
-        stood_down_at: row.get(2)?,
-        stood_down_by: row.get(3)?,
-        why: row.get(4)?,
-        stood_up_at: row.get(5)?,
+        episode: row.get(0)?,
+        project_id: row.get(1)?,
+        slug: row.get(2)?,
+        stood_down_at: row.get(3)?,
+        stood_down_by: row.get(4)?,
+        why: row.get(5)?,
+        stood_up_at: row.get(6)?,
+        stood_up_by: row.get(7)?,
+        stood_up_why: row.get(8)?,
+        told_at: row.get(9)?,
     })
 }
 
@@ -685,10 +750,73 @@ impl Ledger {
         let tx = conn
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(sql_err)?;
+        let carried = Self::set_aside_the_one_row_standing(&tx)?;
         tx.execute_batch(SCHEMA).map_err(sql_err)?;
         Self::add_missing_columns(&tx)?;
         Self::carry_the_old_mark_forward(&tx)?;
+        Self::carry_the_standing_forward(&tx, carried)?;
         tx.commit().map_err(sql_err)
+    }
+
+    /// The name an older `master_standing` is parked under while the episode
+    /// table is created beside it.
+    const STANDING_BEFORE_EPISODES: &'static str = "master_standing_one_row_per_project";
+
+    /// Move a pre-ISS-1238 `master_standing` out of the way, so `SCHEMA`'s
+    /// `CREATE TABLE IF NOT EXISTS` builds the episode table rather than
+    /// finding the old one and leaving it alone.
+    ///
+    /// Answers whether anything was parked, because the copy back has to know
+    /// and `PRAGMA table_info` on a table that is not there is not an error.
+    fn set_aside_the_one_row_standing(conn: &Connection) -> Result<bool> {
+        let have = Self::column_names(conn, "master_standing")?;
+        if have.is_empty() || have.iter().any(|c| c == "episode") {
+            return Ok(false);
+        }
+        conn.execute_batch(&format!(
+            "ALTER TABLE master_standing RENAME TO {};",
+            Self::STANDING_BEFORE_EPISODES
+        ))
+        .map_err(|e| {
+            Error::Other(format!(
+                "ledger: the standing table could not be set aside for the episode log ({e})"
+            ))
+        })?;
+        Ok(true)
+    }
+
+    /// Copy every parked row into the episode table and drop the parked table.
+    ///
+    /// Column for column, with no value invented and none dropped: an episode
+    /// whose `why` is NULL keeps its NULL, because that emptiness is the only
+    /// evidence that a stand-down could once be taken in silence, and one that
+    /// was already lifted arrives with `told_at` NULL — under the old code a
+    /// row that survived to be read here had not yet been told to a pane, since
+    /// being told is what deleted it.
+    fn carry_the_standing_forward(conn: &Connection, carried: bool) -> Result<()> {
+        if !carried {
+            return Ok(());
+        }
+        conn.execute_batch(&format!(
+            "INSERT INTO master_standing
+                (project_id, slug, stood_down_at, stood_down_by, why, stood_up_at)
+             SELECT project_id, slug, stood_down_at, stood_down_by, why, stood_up_at
+               FROM {parked};
+             DROP TABLE {parked};",
+            parked = Self::STANDING_BEFORE_EPISODES
+        ))
+        .map_err(|e| {
+            // What the operator is told has to be the state they will actually
+            // find. The whole migration runs in one immediate transaction, so
+            // this failure rolls the rename back with it: the table is under
+            // its own name again and `master_standing_one_row_per_project` is
+            // not there to look in. Saying otherwise sends them hunting for a
+            // table that never survived the error (F2 of the whole-set read).
+            Error::Other(format!(
+                "ledger: the standing rows this box already held could not be carried into the episode log ({e}). The whole migration is one transaction and it has rolled back, so `master_standing` is exactly as it was and no row was lost — this box is running a binary its ledger cannot be brought up to, and the ledger is safe to open with the older one"
+            ))
+        })?;
+        Ok(())
     }
 
     pub fn create_run_group(&mut self, new: NewRun) -> Result<Run> {
@@ -1093,55 +1221,68 @@ impl Ledger {
             .map_err(sql_err)
     }
 
-    /// Record that this project's resident master is stood down until somebody
-    /// stands it up again. Re-recording an already-standing stand-down keeps
-    /// the original timestamp, so the interval a pane is later told is the
-    /// whole of it.
+    /// Open an episode: this project's resident master is stood down until
+    /// somebody stands it up again.
+    ///
+    /// `why` is a `&str` and not an `Option<&str>`, which is the whole of the
+    /// requirement at this boundary: a caller with no reason to give cannot
+    /// reach the table. Nothing else in this crate writes `master_standing`, so
+    /// that signature is the constraint the column cannot carry — `why` stays
+    /// nullable because the episodes an older binary wrote with no reason are
+    /// migrated rather than rewritten, and SQLite will not hold a NOT NULL
+    /// column over a row that already violates it (ISS-1238).
+    ///
+    /// Re-recording an already-standing stand-down updates the open episode
+    /// rather than opening a second one, so the interval a pane is later told
+    /// is the whole of it. The conflict target is the partial index over open
+    /// episodes, which is also what keeps "at most one open episode per
+    /// project" true in the table rather than only in this method.
     pub fn stand_down_master(
         &self,
         project_id: &str,
         slug: &str,
         by: &str,
-        why: Option<&str>,
+        why: &str,
     ) -> Result<()> {
         self.conn
             .execute(
-                "INSERT INTO master_standing (project_id, slug, stood_down_at, stood_down_by, why, stood_up_at)
+                "INSERT INTO master_standing
+                   (project_id, slug, stood_down_at, stood_down_by, why, stood_up_at)
                  VALUES (?1, ?2, ?3, ?4, ?5, NULL)
-                 ON CONFLICT(project_id) DO UPDATE SET
+                 ON CONFLICT(project_id) WHERE stood_up_at IS NULL DO UPDATE SET
                    slug          = excluded.slug,
-                   stood_down_at = CASE WHEN master_standing.stood_up_at IS NULL
-                                        THEN master_standing.stood_down_at
-                                        ELSE excluded.stood_down_at END,
                    stood_down_by = excluded.stood_down_by,
-                   why           = excluded.why,
-                   stood_up_at   = NULL",
+                   why           = excluded.why",
                 params![project_id, slug, now(), by, why],
             )
             .map_err(sql_err)?;
         Ok(())
     }
 
-    /// Lift a stand-down. The row stays, carrying the interval, until a pane
-    /// has been told it. Answers whether a standing stand-down was lifted.
-    pub fn stand_up_master(&self, project_id: &str) -> Result<bool> {
+    /// Close the open episode, recording who ended the wait and on what
+    /// argument. Answers whether a standing stand-down was lifted.
+    ///
+    /// The argument is required for the same reason the reason is: a lift
+    /// overrides somebody's deliberate stop, and the half a later reader needs
+    /// most is why that stop was judged safe to reverse.
+    pub fn stand_up_master(&self, project_id: &str, by: &str, why: &str) -> Result<bool> {
         let changed = self
             .conn
             .execute(
-                "UPDATE master_standing SET stood_up_at = ?2
-                 WHERE project_id = ?1 AND stood_up_at IS NULL",
-                params![project_id, now()],
+                "UPDATE master_standing
+                    SET stood_up_at = ?2, stood_up_by = ?3, stood_up_why = ?4
+                  WHERE project_id = ?1 AND stood_up_at IS NULL",
+                params![project_id, now(), by, why],
             )
             .map_err(sql_err)?;
         Ok(changed > 0)
     }
 
-    /// The standing decision about this project's master, standing or lifted.
+    /// The latest standing episode for this project, standing or lifted.
     pub fn master_standing(&self, project_id: &str) -> Result<Option<MasterStanding>> {
         self.conn
             .query_row(
-                "SELECT project_id, slug, stood_down_at, stood_down_by, why, stood_up_at
-                 FROM master_standing WHERE project_id = ?1",
+                &format!("{SELECT_STANDING} WHERE project_id = ?1 ORDER BY episode DESC LIMIT 1"),
                 params![project_id],
                 map_standing,
             )
@@ -1149,7 +1290,7 @@ impl Ledger {
             .map_err(sql_err)
     }
 
-    /// The standing for the project this box knows by this slug.
+    /// The latest standing episode for the project this box knows by this slug.
     ///
     /// Keyed by slug and not by project id because a command, and `status`,
     /// may hold only the slug — and a stand-down can be recorded for a project
@@ -1158,8 +1299,7 @@ impl Ledger {
     pub fn master_standing_for_slug(&self, slug: &str) -> Result<Option<MasterStanding>> {
         self.conn
             .query_row(
-                "SELECT project_id, slug, stood_down_at, stood_down_by, why, stood_up_at
-                 FROM master_standing WHERE slug = ?1",
+                &format!("{SELECT_STANDING} WHERE slug = ?1 ORDER BY episode DESC LIMIT 1"),
                 params![slug],
                 map_standing,
             )
@@ -1167,14 +1307,33 @@ impl Ledger {
             .map_err(sql_err)
     }
 
-    /// Every project this box is holding a standing decision about.
+    /// Every episode this box has held for one project, newest first.
+    ///
+    /// What the append-only table is for: the current episode says what is
+    /// being waited for, and the ones behind it say what the box was waiting
+    /// for the last three times and what ended each wait.
+    pub fn standing_history(&self, slug: &str) -> Result<Vec<MasterStanding>> {
+        let mut stmt = self
+            .conn
+            .prepare(&format!(
+                "{SELECT_STANDING} WHERE slug = ?1 ORDER BY episode DESC"
+            ))
+            .map_err(sql_err)?;
+        let rows = stmt
+            .query_map(params![slug], map_standing)
+            .map_err(sql_err)?;
+        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(sql_err)
+    }
+
+    /// The latest episode for every project this box has ever held one for.
     pub fn standings(&self) -> Result<Vec<MasterStanding>> {
         let mut stmt = self
             .conn
-            .prepare(
-                "SELECT project_id, slug, stood_down_at, stood_down_by, why, stood_up_at
-                 FROM master_standing ORDER BY slug",
-            )
+            .prepare(&format!(
+                "{SELECT_STANDING}
+                  WHERE episode IN (SELECT MAX(episode) FROM master_standing GROUP BY project_id)
+                  ORDER BY slug"
+            ))
             .map_err(sql_err)?;
         let rows = stmt.query_map([], map_standing).map_err(sql_err)?;
         rows.collect::<rusqlite::Result<Vec<_>>>().map_err(sql_err)
@@ -1249,13 +1408,26 @@ impl Ledger {
         rows.collect::<rusqlite::Result<Vec<_>>>().map_err(sql_err)
     }
 
-    /// Drop a lifted stand-down, once the pane it was kept for has been told
-    /// the interval. A standing one is never dropped by this.
-    pub fn forget_lifted_standing(&self, project_id: &str) -> Result<()> {
+    /// Stamp ONE lifted episode as told, once the pane it was kept for has been
+    /// told the interval. A standing one is never stamped by this.
+    ///
+    /// By episode and not by project. A project can hold an older lifted
+    /// episode no pane was ever placed for, and stamping every untold one
+    /// because a later episode reached a pane would put a delivery on the
+    /// record that never happened.
+    ///
+    /// This replaced a DELETE (ISS-1238). Deleting was enough while the row's
+    /// only job was to carry an interval to the next pane; it also destroyed
+    /// the one account of what the box had been waiting for and what ended the
+    /// wait, one placement after the lift. The stamp does the same job — a pane
+    /// is told once — and keeps the episode.
+    pub fn note_standing_told(&self, project_id: &str, episode: i64) -> Result<()> {
         self.conn
             .execute(
-                "DELETE FROM master_standing WHERE project_id = ?1 AND stood_up_at IS NOT NULL",
-                params![project_id],
+                "UPDATE master_standing SET told_at = ?3
+                  WHERE project_id = ?1 AND episode = ?2
+                    AND stood_up_at IS NOT NULL AND told_at IS NULL",
+                params![project_id, episode, now()],
             )
             .map_err(sql_err)?;
         Ok(())
@@ -2775,13 +2947,8 @@ mod tests {
         let _ = std::fs::remove_file(&path);
         {
             let led = Ledger::open(&path).unwrap();
-            led.stand_down_master(
-                "proj-1",
-                "forge-dev",
-                "owner",
-                Some("a human is driving it"),
-            )
-            .unwrap();
+            led.stand_down_master("proj-1", "forge-dev", "owner", "a human is driving it")
+                .unwrap();
         }
         let led = Ledger::open(&path).unwrap();
         let standing = led
@@ -2798,57 +2965,113 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
+    /// Criteria 15, 16 and 18. The episode is stamped told rather than deleted:
+    /// the interval reaches exactly one pane, and the account of what the box
+    /// was waiting for outlives the pane that read it (ISS-1238).
     #[test]
-    fn standing_a_master_up_leaves_the_interval_behind_until_a_pane_has_been_told_it() {
+    fn standing_a_master_up_records_the_argument_and_the_episode_outlives_the_telling() {
         let led = Ledger::open_in_memory().unwrap();
-        led.stand_down_master("proj-1", "forge-dev", "owner", None)
+        led.stand_down_master("proj-1", "forge-dev", "owner", "four writes outstanding")
             .unwrap();
         assert!(
-            led.stand_up_master("proj-1").unwrap(),
+            led.stand_up_master("proj-1", "owner", "the fourth write landed")
+                .unwrap(),
             "lifting a standing stand-down reports that it lifted one"
         );
         let lifted = led
             .master_standing("proj-1")
             .unwrap()
-            .expect("the row stays so the next pane can be told how long it was down");
+            .expect("the episode stays so the next pane can be told how long it was down");
         assert!(!lifted.stands());
         assert!(lifted.stood_up_at.is_some());
+        assert_eq!(lifted.stood_up_by.as_deref(), Some("owner"));
+        assert_eq!(
+            lifted.lift_reason(),
+            Some("the fourth write landed"),
+            "the argument that ended the wait is the half a later reader needs most"
+        );
         assert!(
-            !led.stand_up_master("proj-1").unwrap(),
+            !led.stand_up_master("proj-1", "owner", "again").unwrap(),
             "standing up a project that is not stood down lifts nothing and says so"
         );
-        led.forget_lifted_standing("proj-1").unwrap();
+        led.note_standing_told("proj-1", lifted.episode).unwrap();
+        let after = led
+            .master_standing("proj-1")
+            .unwrap()
+            .expect("stamping an episode told must not destroy it — deleting it is the defect");
         assert!(
-            led.master_standing("proj-1").unwrap().is_none(),
-            "once the interval has been delivered the row has no reader left"
+            after.told_at.is_some(),
+            "and the stamp is what stops the next pane being told the same gap again"
+        );
+        assert_eq!(after.lift_reason(), Some("the fourth write landed"));
+    }
+
+    /// F1 of the second whole-set read. A project can hold an older lifted
+    /// episode no pane was ever placed for — nothing between the lift and the
+    /// next stand-down obliges one. Stamping every untold episode because a
+    /// later one reached a pane writes a delivery that never happened onto the
+    /// record, which is the class of thing this issue exists to stop.
+    #[test]
+    fn stamping_one_episode_told_says_nothing_about_an_older_one_nobody_read() {
+        let led = Ledger::open_in_memory().unwrap();
+        led.stand_down_master("proj-1", "forge-dev", "dev", "the first wait")
+            .unwrap();
+        led.stand_up_master("proj-1", "dev", "the first wait ended")
+            .unwrap();
+        led.stand_down_master("proj-1", "forge-dev", "dev", "the second wait")
+            .unwrap();
+        led.stand_up_master("proj-1", "dev", "the second wait ended")
+            .unwrap();
+
+        let history = led.standing_history("forge-dev").unwrap();
+        assert_eq!(history.len(), 2, "two lifts, neither of them told");
+        let (newest, older) = (&history[0], &history[1]);
+        assert!(newest.told_at.is_none() && older.told_at.is_none());
+
+        led.note_standing_told("proj-1", newest.episode).unwrap();
+
+        let after = led.standing_history("forge-dev").unwrap();
+        assert!(
+            after[0].told_at.is_some(),
+            "the episode a pane was actually told about is stamped"
+        );
+        assert!(
+            after[1].told_at.is_none(),
+            "and the one no pane was ever placed for is not — the ledger says a pane read it, and none did"
         );
     }
 
     #[test]
-    fn a_standing_stand_down_is_never_forgotten_by_the_delivery_path() {
+    fn a_standing_stand_down_is_never_stamped_told_by_the_delivery_path() {
         let led = Ledger::open_in_memory().unwrap();
-        led.stand_down_master("proj-1", "forge-dev", "owner", None)
+        led.stand_down_master("proj-1", "forge-dev", "owner", "a human is driving it")
             .unwrap();
-        led.forget_lifted_standing("proj-1").unwrap();
+        let standing_episode = led.master_standing("proj-1").unwrap().unwrap().episode;
+        led.note_standing_told("proj-1", standing_episode).unwrap();
+        let standing = led
+            .master_standing("proj-1")
+            .unwrap()
+            .expect("the live stand-down is still there");
         assert!(
-            led.master_standing("proj-1")
-                .unwrap()
-                .is_some_and(|s| s.stands()),
-            "the call that clears a delivered interval must not be able to clear a live stand-down — that would place the pane the owner withheld"
+            standing.stands() && standing.told_at.is_none(),
+            "the call that spends a delivered interval must not be able to touch a live stand-down — that would place the pane the owner withheld"
         );
     }
 
+    /// Criterion 17. A second stand-down over a standing one is the same
+    /// episode; one after a lift is a new episode, and the earlier one stays
+    /// readable behind it.
     #[test]
     fn standing_a_master_down_twice_keeps_the_moment_it_first_went_down() {
         let led = Ledger::open_in_memory().unwrap();
-        led.stand_down_master("proj-1", "forge-dev", "owner", None)
+        led.stand_down_master("proj-1", "forge-dev", "owner", "first reason")
             .unwrap();
         let first = led
             .master_standing("proj-1")
             .unwrap()
             .unwrap()
             .stood_down_at;
-        led.stand_down_master("proj-1", "forge-dev", "someone-else", Some("again"))
+        led.stand_down_master("proj-1", "forge-dev", "someone-else", "again")
             .unwrap();
         let again = led.master_standing("proj-1").unwrap().unwrap();
         assert_eq!(
@@ -2856,8 +3079,14 @@ mod tests {
             "a second stand-down over a standing one must not restart the clock the interval is measured from"
         );
         assert_eq!(again.stood_down_by, "someone-else");
-        led.stand_up_master("proj-1").unwrap();
-        led.stand_down_master("proj-1", "forge-dev", "owner", None)
+        assert_eq!(
+            led.standing_history("forge-dev").unwrap().len(),
+            1,
+            "and it is the same episode written twice, not two"
+        );
+        led.stand_up_master("proj-1", "owner", "the first wait is over")
+            .unwrap();
+        led.stand_down_master("proj-1", "forge-dev", "owner", "a second, unrelated wait")
             .unwrap();
         let fresh = led.master_standing("proj-1").unwrap().unwrap();
         assert!(fresh.stands() && fresh.stood_up_at.is_none());
@@ -2865,6 +3094,14 @@ mod tests {
             fresh.stood_down_at >= first,
             "a stand-down after a stand-up is a new one and takes its own moment"
         );
+        let history = led.standing_history("forge-dev").unwrap();
+        assert_eq!(history.len(), 2, "and it is an episode of its own");
+        assert_eq!(
+            history[1].reason(),
+            "again",
+            "the earlier episode's reason is still readable behind the current one — overwriting it is what left forge-dev's two idle days unaccountable"
+        );
+        assert_eq!(history[1].lift_reason(), Some("the first wait is over"));
     }
 
     /// Criterion 14 asks a stand-down to name the runs the master holds, and
@@ -2925,10 +3162,246 @@ mod tests {
     /// box has ever placed a master for it, and a lookup that needs a pane row
     /// would report "nothing is standing it down" about a project standing
     /// down right there in the ledger.
+    /// The shape `master_standing` had before ISS-1238: one row per project,
+    /// a nullable reason, no lift argument and no episode key. Written by hand
+    /// because no binary in this tree can write it any more, and the migration
+    /// is the only thing that reads it.
+    fn plant_the_one_row_standing(path: &std::path::Path) {
+        let conn = Connection::open(path).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE master_standing (
+               project_id    TEXT PRIMARY KEY,
+               slug          TEXT NOT NULL,
+               stood_down_at INTEGER NOT NULL,
+               stood_down_by TEXT NOT NULL,
+               why           TEXT,
+               stood_up_at   INTEGER
+             );
+             INSERT INTO master_standing VALUES ('p-quiet', 'forge-dev', 1000, 'dev', NULL, NULL);
+             INSERT INTO master_standing VALUES ('p-said', 'portal', 2000, 'dev', 'four writes outstanding', NULL);
+             INSERT INTO master_standing VALUES ('p-lifted', 'sidpeak', 3000, 'sidpeak', 'a human is driving it', 4000);",
+        )
+        .unwrap();
+    }
+
+    /// Criteria 19, 20, 21 and 22. The migration is the one place a row nobody
+    /// can write any more still has to be read, and the empty reason on it is
+    /// the only evidence that this gap ever existed — so it is carried, not
+    /// invented and not dropped.
+    #[test]
+    fn a_ledger_from_before_the_episode_log_is_carried_over_row_for_row() {
+        let dir = crate::test_scratch::Scratch::new("ledger-1238-migrate");
+        let path = dir.join("ledger.sqlite");
+        let _ = std::fs::remove_file(&path);
+        plant_the_one_row_standing(&path);
+
+        let led = Ledger::open(&path).expect("a ledger written by an older binary still opens");
+
+        let quiet = led.master_standing("p-quiet").unwrap().expect("carried");
+        assert_eq!(quiet.slug, "forge-dev");
+        assert_eq!(quiet.stood_down_at, 1000);
+        assert_eq!(quiet.stood_down_by, "dev");
+        assert_eq!(
+            quiet.why, None,
+            "a reason nobody recorded stays unrecorded — inventing one destroys the only evidence that it could be left out"
+        );
+        assert_eq!(
+            quiet.reason(),
+            MasterStanding::NO_REASON,
+            "and every surface reading it is told that in as many words rather than shown a blank"
+        );
+        assert!(quiet.stands());
+
+        let said = led.master_standing("p-said").unwrap().expect("carried");
+        assert_eq!(said.why.as_deref(), Some("four writes outstanding"));
+        assert_eq!(said.stood_down_at, 2000);
+
+        let lifted = led.master_standing("p-lifted").unwrap().expect("carried");
+        assert_eq!(lifted.stood_down_by, "sidpeak");
+        assert_eq!(lifted.stood_up_at, Some(4000));
+        assert_eq!(lifted.why.as_deref(), Some("a human is driving it"));
+        assert_eq!(
+            lifted.stood_up_why, None,
+            "the older binary took no argument for a lift, so there is none to carry"
+        );
+        assert_eq!(
+            lifted.told_at, None,
+            "a lifted row that survived to be read here had not been told to a pane — being told is what deleted it"
+        );
+
+        assert!(
+            columns(&led, Ledger::STANDING_BEFORE_EPISODES).is_empty(),
+            "and the parked table is gone once its rows are across"
+        );
+        assert_eq!(
+            led.standings().unwrap().len(),
+            3,
+            "every project the older ledger held is still listed"
+        );
+
+        // Opening it again is not a second migration.
+        drop(led);
+        let again = Ledger::open(&path).expect("the migrated ledger opens like any other");
+        assert_eq!(again.standings().unwrap().len(), 3);
+        assert_eq!(again.master_standing("p-quiet").unwrap().unwrap().why, None);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// F2 of the whole-set read. The message an operator meets has to describe
+    /// the state they will actually find, and the whole migration is one
+    /// immediate transaction — so a failed copy takes the rename back with it
+    /// and there is no parked table to go looking in.
+    ///
+    /// The copy is forced to fail by planting two open episodes for one
+    /// project, which the new partial unique index refuses and the old primary
+    /// key could not have produced. That is the shape of a ledger somebody has
+    /// edited by hand, which is the case worth failing loudly on.
+    #[test]
+    fn a_migration_that_cannot_carry_the_rows_leaves_the_ledger_as_it_found_it() {
+        let dir = crate::test_scratch::Scratch::new("ledger-1238-rollback");
+        let path = dir.join("ledger.sqlite");
+        let _ = std::fs::remove_file(&path);
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE master_standing (
+                   project_id    TEXT,
+                   slug          TEXT NOT NULL,
+                   stood_down_at INTEGER NOT NULL,
+                   stood_down_by TEXT NOT NULL,
+                   why           TEXT,
+                   stood_up_at   INTEGER
+                 );
+                 INSERT INTO master_standing VALUES ('p', 'forge-dev', 1000, 'dev', 'first', NULL);
+                 INSERT INTO master_standing VALUES ('p', 'forge-dev', 2000, 'dev', 'second', NULL);",
+            )
+            .unwrap();
+        }
+
+        let said = match Ledger::open(&path) {
+            Err(e) => e.to_string(),
+            Ok(_) => panic!("a ledger whose rows cannot be carried must not open"),
+        };
+        assert!(
+            said.contains("rolled back"),
+            "the operator is told what happened to the write: {said}"
+        );
+        assert!(
+            said.contains("`master_standing` is exactly as it was"),
+            "and where their rows are, which is under the name they always had: {said}"
+        );
+        assert!(
+            !said.contains(Ledger::STANDING_BEFORE_EPISODES),
+            "and never sent to a parked table the rollback has already taken away: {said}"
+        );
+
+        let conn = Connection::open(&path).unwrap();
+        let names: Vec<String> = conn
+            .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap();
+        assert!(
+            names.iter().any(|n| n == "master_standing"),
+            "the table is back under its own name: {names:?}"
+        );
+        assert!(
+            !names.iter().any(|n| n == Ledger::STANDING_BEFORE_EPISODES),
+            "and the parked name is not there: {names:?}"
+        );
+        let rows: i64 = conn
+            .query_row("SELECT COUNT(*) FROM master_standing", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(
+            rows, 2,
+            "with every row it held, none of them dropped to make the ALTER succeed"
+        );
+        drop(conn);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Criterion 26. The reason is required by a Rust signature and not by a
+    /// column, because the migrated NULLs above mean SQLite cannot hold a NOT
+    /// NULL there. That trade is only sound while this module is the sole
+    /// writer, so it is the thing measured rather than assumed.
+    #[test]
+    fn nothing_outside_this_module_writes_the_standing_table() {
+        let crates = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("crates/ is above this one");
+        let mut offenders: Vec<String> = Vec::new();
+        let mut seen = 0usize;
+        let mut stack = vec![crates.to_path_buf()];
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).into_iter().flatten().flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    if path.file_name().is_some_and(|n| n == "target") {
+                        continue;
+                    }
+                    stack.push(path);
+                    continue;
+                }
+                if path.extension().is_none_or(|e| e != "rs") {
+                    continue;
+                }
+                seen += 1;
+                if path.ends_with("runner/ledger.rs") {
+                    continue;
+                }
+                let body = std::fs::read_to_string(&path).unwrap_or_default();
+                for write in [
+                    "INTO master_standing",
+                    "UPDATE master_standing",
+                    "FROM master_standing",
+                ] {
+                    if body.contains(write) {
+                        offenders.push(format!("{} holds `{write}`", path.display()));
+                    }
+                }
+            }
+        }
+        assert!(
+            seen > 20,
+            "the walk found almost nothing and has measured nothing: {seen} file(s)"
+        );
+        assert!(
+            offenders.is_empty(),
+            "a second writer makes the reason optional again wherever it is, and the column cannot stop it: {offenders:?}"
+        );
+    }
+
+    /// Criterion 27. The signature is the requirement: a caller holding no
+    /// reason cannot reach the table, whatever the column allows.
+    #[test]
+    fn the_stand_down_entry_point_does_not_admit_an_absent_reason() {
+        let source = include_str!("ledger.rs");
+        let signature = source
+            .split("pub fn stand_down_master(")
+            .nth(1)
+            .and_then(|r| r.split(')').next())
+            .expect("stand_down_master must be findable");
+        assert!(
+            signature.contains("why: &str"),
+            "an `Option<&str>` here is what let a stand-down be taken with nothing said: {signature}"
+        );
+        let lift = source
+            .split("pub fn stand_up_master(")
+            .nth(1)
+            .and_then(|r| r.split(')').next())
+            .expect("stand_up_master must be findable");
+        assert!(
+            lift.contains("why: &str") && lift.contains("by: &str"),
+            "and a lift records who ended the wait and on what argument, by the same rule: {lift}"
+        );
+    }
+
     #[test]
     fn a_standing_is_readable_for_a_project_that_has_no_master_row_at_all() {
         let led = Ledger::open_in_memory().unwrap();
-        led.stand_down_master("proj-1", "forge-dev", "owner", None)
+        led.stand_down_master("proj-1", "forge-dev", "owner", "a human is driving it")
             .unwrap();
         assert!(
             led.master_for_pane("forge-master-forge-dev")
@@ -3182,9 +3655,9 @@ mod tests {
     #[test]
     fn every_project_this_box_holds_a_decision_about_is_listable() {
         let led = Ledger::open_in_memory().unwrap();
-        led.stand_down_master("proj-1", "b-project", "owner", None)
+        led.stand_down_master("proj-1", "b-project", "owner", "waiting on a deploy")
             .unwrap();
-        led.stand_down_master("proj-2", "a-project", "owner", None)
+        led.stand_down_master("proj-2", "a-project", "owner", "a human is driving it")
             .unwrap();
         let slugs: Vec<String> = led
             .standings()

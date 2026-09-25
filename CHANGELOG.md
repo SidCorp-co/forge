@@ -112,6 +112,8 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **Stopping a box driving a project now asks why, and so does starting it again.** Both refuse an
+  empty reason and show the shape of a good one. Every stop a box has held is kept, not overwritten.
 - **An issue can be archived, and unarchived.** It leaves search, recall, the duplicate check and
   every list but the pulse's undeployed work, and opens by key everywhere except the `forge` CLI
   (forge-plugin ISS-2421). Unfinished work cannot be archived.

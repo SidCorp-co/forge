@@ -73,8 +73,9 @@ pub struct ProjectArgs {
 pub struct StandDownArgs {
     /// Project slug.
     pub slug: String,
-    /// What to tell whoever reads the runner log, and the master placed after
-    /// this is lifted.
+    /// Required. What is being waited for, and the condition that ends it —
+    /// read by whoever finds this project idle, and by the master placed after
+    /// it is lifted.
     #[arg(long)]
     pub why: Option<String>,
     /// End the pane even where the runs it holds could not be accounted for.
@@ -86,6 +87,10 @@ pub struct StandDownArgs {
 pub struct StandUpArgs {
     /// Project slug.
     pub slug: String,
+    /// Required. The argument this lift was taken on — what made the wait the
+    /// stand-down recorded safe to end.
+    #[arg(long)]
+    pub why: Option<String>,
     /// Forget the conversation the next pane would resume, so it cold-starts.
     #[arg(long)]
     pub fresh: bool,
@@ -111,6 +116,13 @@ fn transcript(slug: &str) -> anyhow::Result<std::path::PathBuf> {
 }
 
 pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
+    // The reason is checked before tmux is. A box without tmux would otherwise
+    // answer a standing verb given no reason with "tmux is not installed" — a
+    // true sentence about something else, which hides the requirement entirely
+    // and sends the caller after the wrong next step. It also keeps the check
+    // ahead of everything that could write: the ledger, the core lookup and
+    // `--fresh`'s clear of the stored conversation, all of which are below.
+    let standing_reason = standing_reason(&args.cmd)?;
     if !terminal::available() {
         anyhow::bail!("tmux is not installed on this box, so it hosts no masters");
     }
@@ -139,8 +151,8 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
             println!("killed {name}; its runs died with it and their leases lapse.");
             println!("{}", kill_aftermath(&slug));
         }
-        Command::StandDown(a) => stand_down(&ctx, a).await?,
-        Command::StandUp(a) => stand_up(&ctx, a).await?,
+        Command::StandDown(a) => stand_down(&ctx, a, &standing_reason).await?,
+        Command::StandUp(a) => stand_up(&ctx, a, &standing_reason).await?,
     }
     Ok(())
 }
@@ -216,13 +228,102 @@ this device {}. Nothing was recorded.",
     }
 }
 
-async fn stand_down(ctx: &Ctx, a: StandDownArgs) -> anyhow::Result<()> {
+/// The reason a standing verb was given, or `None` where it was given nothing
+/// it can record.
+///
+/// Whitespace is the same answer as an absent flag and is refused the same way.
+/// A required flag with no content check is a required flag in the help and an
+/// optional one in practice, and ` ` is the shortest way past it.
+fn reason(given: Option<&str>) -> Option<&str> {
+    given.map(str::trim).filter(|w| !w.is_empty())
+}
+
+/// How the reason was missing, in the refusal's own first line.
+///
+/// Two states and not one: somebody who left the flag out has not met the
+/// requirement, and somebody who passed an empty string has met it and been
+/// told it is not enough. Reading the same sentence for both leaves the second
+/// one hunting for a flag they already typed.
+fn how_it_was_missing(given: Option<&str>) -> &'static str {
+    match given {
+        None => "was not given",
+        Some(_) => "was given with nothing in it, which records no more than leaving it out",
+    }
+}
+
+/// The reason a standing verb carries, refused here where it carries none.
+///
+/// Taken off the parsed command rather than from inside each verb, so the
+/// refusal is reached before the terminal preflight `run` opens with — and
+/// before the ledger, the core lookup and `--fresh`'s clear, all of which are
+/// further in still. Empty for every verb that asks for no reason.
+fn standing_reason(cmd: &Command) -> anyhow::Result<String> {
+    let (given, slug, refuse): (_, _, fn(Option<&str>, &str) -> String) = match cmd {
+        Command::StandDown(a) => (a.why.as_deref(), a.slug.as_str(), no_reason_to_stand_down),
+        Command::StandUp(a) => (a.why.as_deref(), a.slug.as_str(), no_reason_to_stand_up),
+        _ => return Ok(String::new()),
+    };
+    match reason(given) {
+        Some(why) => Ok(why.to_string()),
+        None => anyhow::bail!(refuse(given, slug)),
+    }
+}
+
+/// What a caller who stood a project down with nothing to say is told instead.
+///
+/// Hand-written rather than clap's `required = true`, because the refusal IS
+/// the deliverable here. `error: the following required arguments were not
+/// provided: --why <WHY>` teaches that a flag exists and nothing about what
+/// belongs in it, and what goes in it then is `stood down` — which answers none
+/// of the questions the reader who finds the project idle actually has
+/// (ISS-1238).
+fn no_reason_to_stand_down(given: Option<&str>, slug: &str) -> String {
+    format!(
+        "`--why` is required on `stand-down` and {missing}. Nothing was recorded.\n\n\
+Standing {slug}'s master down stops this box driving it — no pane placed and no nudge sent, on \
+every sweep and across restarts — until somebody stands it up. No check refuses that, nothing \
+ages it and no run reports it, so the reason you write here is the only thing on the record that \
+says what is being waited for. forge-dev's board dispatched nothing for two days behind a \
+stand-down whose reason was empty, and what ended it had to be reconstructed afterwards from \
+unrelated evidence.\n\n\
+Write the condition that ENDS it, not a label for it:\n\n  \
+forge-runner master stand-down {slug} --why \"Four writes to the release path are outstanding. \
+Stand up when any of the four is done or an issue is opened.\"\n\n\
+`stood down`, `see the channel` and `temporarily` each pass this check and leave the next reader \
+exactly where an empty one does.",
+        missing = how_it_was_missing(given)
+    )
+}
+
+/// What a caller who lifted a stand-down with nothing to say is told instead.
+///
+/// A lift is an override of somebody's deliberate stop and is recorded with the
+/// same weight as the stop. Until ISS-1238 it recorded a timestamp and nothing
+/// else, which left the record able to say what was being waited for and never
+/// why the wait was judged over — the half a later reader needs most.
+fn no_reason_to_stand_up(given: Option<&str>, slug: &str) -> String {
+    format!(
+        "`--why` is required on `stand-up` and {missing}. Nothing was changed.\n\n\
+Standing {slug} up overrides a stop somebody took deliberately, and this is the only place the \
+argument for that override is written down. The episode already says what the box was waiting \
+for; without this it can never say why that wait was judged over, and the next person reading it \
+is left reconstructing your reasoning from whatever else happened that day.\n\n\
+Say what changed, not that you are standing it up:\n\n  \
+forge-runner master stand-up {slug} --why \"The release path the stand-down was waiting on is \
+gone — ISS-1186 removed it in code, so the hazard it guarded is closed.\"\n\n\
+`forge-runner master status {slug}` prints what it was stood down for, which is what this \
+answers.",
+        missing = how_it_was_missing(given)
+    )
+}
+
+async fn stand_down(ctx: &Ctx, a: StandDownArgs, why: &str) -> anyhow::Result<()> {
     let led = open_ledger()?;
     let project_id = project_for_slug(ctx, &led, &a.slug).await?;
     let pane = terminal::session_name(terminal::MASTER_PREFIX, &a.slug);
     let by = whoami();
 
-    led.stand_down_master(&project_id, &a.slug, &by, a.why.as_deref())?;
+    led.stand_down_master(&project_id, &a.slug, &by, why)?;
     println!(
         "{} is stood down: this box places no master for it and nudges none, on every sweep and \
 across restarts, until `forge-runner master stand-up {}`.",
@@ -288,7 +389,7 @@ this pane goes. `forge-runner master stand-down {} --force` ends it anyway.",
     Ok(())
 }
 
-async fn stand_up(ctx: &Ctx, a: StandUpArgs) -> anyhow::Result<()> {
+async fn stand_up(ctx: &Ctx, a: StandUpArgs, why: &str) -> anyhow::Result<()> {
     let led = open_ledger()?;
     let project_id = project_for_slug(ctx, &led, &a.slug).await?;
     // Clear the conversation BEFORE lifting, never after. While the
@@ -299,7 +400,7 @@ async fn stand_up(ctx: &Ctx, a: StandUpArgs) -> anyhow::Result<()> {
     if a.fresh {
         led.forget_master_conversation(&project_id)?;
     }
-    let lifted = led.stand_up_master(&project_id)?;
+    let lifted = led.stand_up_master(&project_id, &whoami(), why)?;
     if lifted {
         println!(
             "{} is stood up. It is placed again on the same terms as any other project — \
@@ -360,6 +461,11 @@ async fn status(ctx: &Ctx, slug: Option<&str>) -> anyhow::Result<()> {
             path.display()
         );
         println!("{:<20} standing  {}", "", standing_line(led.as_ref(), &s));
+        if slug.is_some() {
+            for line in standing_history_lines(led.as_ref(), &s, now_unix()) {
+                println!("{:<20} earlier   {line}", "");
+            }
+        }
         println!("{:<20} runner    {}", "", admission_line(&admission, &s));
         let running = Running {
             name: &name,
@@ -520,21 +626,67 @@ this project cannot be read here"
     };
     match led.master_standing_for_slug(slug) {
         Err(e) => format!("unknown — the standing for {slug} could not be read: {e}"),
-        Ok(Some(s)) if s.stood_up_at.is_none() => format!(
-            "STOOD DOWN by {}{} — this box places no master for it and nudges none. \
+        Ok(Some(s)) if s.stands() => format!(
+            "STOOD DOWN by {} ({}) — this box places no master for it and nudges none. \
 `forge-runner master stand-up {slug}` reverses it",
             s.stood_down_by,
-            s.why
-                .as_deref()
-                .map(|w| format!(" ({w})"))
-                .unwrap_or_default()
+            s.reason()
         ),
-        Ok(_) => format!(
+        Ok(Some(s)) => format!(
+            "not stood down — the last stand-down ({}) was lifted by {} ({}), so nothing this \
+box's owner recorded withholds a master for {slug}. Whether one is placed then answers to the \
+runner line below, admissible work, a repo path and tmux. \
+`forge-runner master stand-down {slug}` is what withholds it",
+            s.reason(),
+            s.stood_up_by.as_deref().unwrap_or("somebody"),
+            s.lift_reason()
+                .unwrap_or("no argument was recorded — that lift predates the requirement"),
+        ),
+        Ok(None) => format!(
             "not stood down — nothing this box's owner recorded withholds a master for {slug}. \
 Whether one is placed then answers to the runner line below, admissible work, a repo path and \
 tmux. `forge-runner master stand-down {slug}` is what withholds it"
         ),
     }
+}
+
+/// The episodes behind the one `standing_line` printed, oldest last.
+///
+/// The current standing says what is being waited for now. These say what the
+/// box was waiting for the last few times and what ended each wait, which is
+/// the question nobody could answer about forge-dev's two idle days because the
+/// row holding it had been overwritten and then deleted (ISS-1238).
+///
+/// Printed only where a slug was named. A bare `status` answers for every
+/// project on the box, and a history under each of them buries the four lines
+/// an operator came for.
+fn standing_history_lines(led: Option<&Ledger>, slug: &str, now: i64) -> Vec<String> {
+    let Some(led) = led else {
+        return Vec::new();
+    };
+    let episodes = match led.standing_history(slug) {
+        Ok(rows) => rows,
+        Err(e) => return vec![format!("the episodes behind it could not be read: {e}")],
+    };
+    episodes
+        .iter()
+        .skip(1)
+        .map(|s| {
+            let held = match s.stood_up_at {
+                Some(up) => span(u64::try_from(up - s.stood_down_at).unwrap_or(0)),
+                None => "still standing".to_string(),
+            };
+            format!(
+                "{} ago, by {}, held {held} — {} · lifted by {} ({})",
+                ago(now - s.stood_down_at),
+                s.stood_down_by,
+                s.reason(),
+                s.stood_up_by.as_deref().unwrap_or("somebody"),
+                s.lift_reason()
+                    .unwrap_or("no argument was recorded — that lift predates the requirement"),
+            )
+        })
+        .collect()
 }
 
 /// The third answer, which neither of the other two gives.
@@ -669,6 +821,7 @@ fn ago(secs: i64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use forge_runner_core::runner::ledger::MasterStanding;
 
     const SOURCE: &str = include_str!("master.rs");
 
@@ -1165,6 +1318,261 @@ mod tests {
         assert_eq!(span(600), "10m");
         assert_eq!(span(4 * 3600 + 12 * 60), "4h12m");
         assert_eq!(ago(-1), "0s", "a clock that went backwards says nothing");
+    }
+
+    /// Criteria 1-5. The refusal is the deliverable: a caller who is told only
+    /// that a required argument was not provided writes `stood down` in it, and
+    /// the record is no better than the empty one this issue was filed from.
+    #[test]
+    fn a_stand_down_with_nothing_to_say_is_refused_and_told_what_to_write() {
+        let said = no_reason_to_stand_down(None, "forge-dev");
+        assert!(
+            said.contains("`--why`"),
+            "the flag a caller has to reach for is named, not implied: {said}"
+        );
+        assert!(
+            said.contains("the only thing on the record that says what is being waited for"),
+            "and what the text is read FOR, or the next caller writes a label: {said}"
+        );
+        assert!(
+            said.contains("Stand up when any of the four is done or an issue is opened"),
+            "and an example carrying the condition that ENDS the stand-down, which is the shape one recorded row already had and the empty one did not: {said}"
+        );
+        assert!(
+            said.contains("Nothing was recorded"),
+            "a caller who has just been refused has to know the box did not half-do it: {said}"
+        );
+        assert!(
+            said.contains("stand-down forge-dev --why"),
+            "and the whole invocation, with the project already in it: {said}"
+        );
+    }
+
+    /// Criterion 5, and the boundary that makes the rule mean anything. A
+    /// required flag with no content check is required in the help and optional
+    /// in practice.
+    #[test]
+    fn a_reason_made_of_whitespace_is_the_same_answer_as_no_reason_at_all() {
+        assert_eq!(
+            reason(Some("  waiting on a deploy  ")),
+            Some("waiting on a deploy")
+        );
+        assert_eq!(reason(Some("   ")), None, "spaces record nothing");
+        assert_eq!(reason(Some("\t\n")), None, "nor does a tab and a newline");
+        assert_eq!(reason(Some("")), None);
+        assert_eq!(reason(None), None);
+        let blank = no_reason_to_stand_down(Some("   "), "forge-dev");
+        assert!(
+            blank.contains("was given with nothing in it"),
+            "somebody who typed the flag is not told they left it out — they are told it is empty: {blank}"
+        );
+        assert!(
+            no_reason_to_stand_down(None, "forge-dev").contains("was not given"),
+            "and somebody who left it out is told that instead"
+        );
+    }
+
+    /// Criteria 7-11. A lift is an override of somebody's deliberate stop and
+    /// is recorded with the same weight as the stop.
+    #[test]
+    fn a_lift_with_nothing_to_say_is_refused_and_told_what_to_write() {
+        let said = no_reason_to_stand_up(None, "forge-dev");
+        assert!(said.contains("`--why`"), "the flag is named: {said}");
+        assert!(
+            said.contains("why that wait was judged over"),
+            "and what the argument is read for — the half a later reader needs most, which the record could never say: {said}"
+        );
+        assert!(
+            said.contains("stand-up forge-dev --why"),
+            "and the whole invocation: {said}"
+        );
+        assert!(
+            said.contains("ISS-1186"),
+            "with an example that is an argument about the world rather than a restatement of the act: {said}"
+        );
+        assert!(
+            said.contains("Nothing was changed"),
+            "and it says the box is as it was: {said}"
+        );
+        assert!(
+            no_reason_to_stand_up(Some(" "), "forge-dev").contains("was given with nothing in it"),
+            "whitespace is refused on the same terms here as on stand-down"
+        );
+    }
+
+    /// Criteria 6, 12 and 13, and F1 of the whole-set read. The reason is
+    /// resolved at the top of `run`, which puts it before every act either verb
+    /// could take — and before the terminal preflight, which on a box with no
+    /// tmux would otherwise answer a missing reason with a true sentence about
+    /// something else and hide the requirement entirely.
+    ///
+    /// `--fresh`'s clear of the stored conversation is in the list below for
+    /// its own reason: it happens BEFORE the lift, deliberately (ISS-1118 F2),
+    /// so a reason checked after it would refuse a lift having already thrown
+    /// away the conversation the caller never got to keep.
+    #[test]
+    fn a_refused_standing_verb_has_touched_nothing_at_all() {
+        let body = SOURCE
+            .split("pub async fn run(")
+            .nth(1)
+            .and_then(|r| r.split("\n}").next())
+            .expect("run must be findable");
+        let refuses = body
+            .find("standing_reason(&args.cmd)")
+            .expect("run must resolve the standing reason");
+        for after in ["terminal::available()", "stand_down(&ctx", "stand_up(&ctx"] {
+            let at = body
+                .find(after)
+                .unwrap_or_else(|| panic!("`{after}` must still be in run"));
+            assert!(
+                refuses < at,
+                "`{after}` runs before the reason is checked, so a call refused for having nothing to say has already been answered by something else, or acted on"
+            );
+        }
+        let resolver = SOURCE
+            .split("fn standing_reason(cmd: &Command)")
+            .nth(1)
+            .and_then(|r| r.split("\n}").next())
+            .expect("the resolver must be findable");
+        assert!(
+            resolver.contains("no_reason_to_stand_down")
+                && resolver.contains("no_reason_to_stand_up"),
+            "both verbs are refused by their own message, never one shared one: {resolver}"
+        );
+        for verb in ["async fn stand_down(", "async fn stand_up("] {
+            let sig = SOURCE
+                .split(verb)
+                .nth(1)
+                .and_then(|r| r.split(')').next())
+                .unwrap_or_else(|| panic!("`{verb}` must be findable"));
+            assert!(
+                sig.contains("why: &str"),
+                "and the verb is handed a reason that cannot be missing rather than looking for one itself: {sig}"
+            );
+        }
+    }
+
+    /// The acts a refused verb must not have reached are still inside it, so
+    /// the ordering above is about something.
+    #[test]
+    fn the_acts_a_refused_standing_verb_would_have_taken_are_still_there() {
+        let down = SOURCE
+            .split("async fn stand_down(")
+            .nth(1)
+            .and_then(|r| r.split("\nasync fn ").next())
+            .expect("stand_down must be findable");
+        for act in ["open_ledger(", "project_for_slug(", "stand_down_master("] {
+            assert!(down.contains(act), "`{act}` must still be in stand_down");
+        }
+        let up = SOURCE
+            .split("async fn stand_up(")
+            .nth(1)
+            .and_then(|r| r.split("\nasync fn ").next())
+            .and_then(|r| r.split("\nfn ").next())
+            .expect("stand_up must be findable");
+        for act in [
+            "open_ledger(",
+            "project_for_slug(",
+            "forget_master_conversation(",
+            "stand_up_master(",
+        ] {
+            assert!(up.contains(act), "`{act}` must still be in stand_up");
+        }
+    }
+
+    /// Criteria 14 and 22. The reason reaches the surface an operator actually
+    /// runs, and an episode that never recorded one says so in as many words
+    /// rather than printing an empty pair of brackets or nothing at all.
+    #[test]
+    fn the_standing_line_carries_the_reason_and_names_the_absence_of_one() {
+        let led = Ledger::open_in_memory().expect("an in-memory ledger opens");
+        led.stand_down_master("proj-1", "forge-dev", "dev", "four writes outstanding")
+            .expect("a stand-down is recorded");
+        let said = standing_line(Some(&led), "forge-dev");
+        assert!(
+            said.contains("four writes outstanding"),
+            "the reason is readable the moment the stand-down is taken, not only once a second one has replaced it: {said}"
+        );
+        assert!(
+            said.contains("STOOD DOWN by dev"),
+            "and who took it: {said}"
+        );
+
+        // An episode whose reason is NULL cannot be planted from this crate —
+        // nothing outside the ledger module writes that table, which is the
+        // point — so the two halves are proved where each of them lives. That
+        // `reason()` answers `NO_REASON` for a NULL is `ledger.rs`'s own test,
+        // planted through the migration from the pre-ISS-1238 shape; that this
+        // line asks `reason()` rather than reading `why` is this one's.
+        let body = SOURCE
+            .split("fn standing_line(")
+            .nth(1)
+            .and_then(|r| r.split("\n/// ").next())
+            .expect("standing_line must be findable");
+        assert!(
+            body.contains("s.reason()"),
+            "reading `why` here would print nothing at all for an episode nobody gave a reason, and a blank is what a reader cannot tell from a reason they have not found yet: {body}"
+        );
+        assert!(
+            !body.contains("unwrap_or_default()"),
+            "which is the shape that used to print an empty string into the line: {body}"
+        );
+        assert_eq!(
+            MasterStanding::NO_REASON,
+            "no reason was recorded — this predates the requirement",
+            "one wording, in one place, because the daemon's unplaced reason has to say the same thing"
+        );
+    }
+
+    /// Criterion 23. The argument that ended the wait is the half a later
+    /// reader needs most, and `master status` is where they look for it.
+    #[test]
+    fn the_standing_line_says_what_ended_the_last_stand_down() {
+        let led = Ledger::open_in_memory().expect("an in-memory ledger opens");
+        led.stand_down_master("proj-1", "forge-dev", "dev", "four writes outstanding")
+            .unwrap();
+        led.stand_up_master("proj-1", "dev", "ISS-1186 removed the path it guarded")
+            .unwrap();
+        let said = standing_line(Some(&led), "forge-dev");
+        assert!(
+            said.contains("not stood down"),
+            "it does not withhold a pane: {said}"
+        );
+        assert!(
+            said.contains("ISS-1186 removed the path it guarded"),
+            "and the record says why the stop was judged safe to reverse: {said}"
+        );
+        assert!(
+            said.contains("four writes outstanding"),
+            "beside what was being waited for, because one without the other is half an account: {said}"
+        );
+    }
+
+    /// What the append-only table buys a person: the episodes behind the
+    /// current one, which a single overwritten row could not hold.
+    #[test]
+    fn the_episodes_behind_the_current_standing_are_printed_under_it() {
+        let led = Ledger::open_in_memory().expect("an in-memory ledger opens");
+        led.stand_down_master("proj-1", "forge-dev", "dev", "the first wait")
+            .unwrap();
+        led.stand_up_master("proj-1", "dev", "the first wait ended")
+            .unwrap();
+        led.stand_down_master("proj-1", "forge-dev", "dev", "the second wait")
+            .unwrap();
+        let lines = standing_history_lines(Some(&led), "forge-dev", now_unix());
+        assert_eq!(
+            lines.len(),
+            1,
+            "one line per episode behind the current one: {lines:?}"
+        );
+        assert!(
+            lines[0].contains("the first wait") && lines[0].contains("the first wait ended"),
+            "each carries both halves — what was waited for and what ended it: {lines:?}"
+        );
+        assert!(
+            standing_history_lines(None, "forge-dev", now_unix()).is_empty(),
+            "a box whose ledger will not open prints no history rather than a wrong one"
+        );
     }
 
     #[test]
