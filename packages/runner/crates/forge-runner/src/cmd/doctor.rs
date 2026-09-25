@@ -431,9 +431,43 @@ async fn mcp_servers_line(
             }
         };
     let path = forge_runner_core::mcp::config::session_path(slug);
-    let on_disk = forge_runner_core::mcp::config::session_matches(slug, &found.mcp_servers);
-    let (ok, line) = mcp_verdict(&found, &path, on_disk);
+    let disk = session_file(slug, &path, &found.mcp_servers);
+    let (ok, line) = mcp_verdict(&found, &path, &disk);
     Some((ok, format!("{slug}: {line}")))
+}
+
+/// What this box's session file holds against what core resolves.
+///
+/// `session_matches` answers one bool, and a file it cannot read answers the same as one that is
+/// not there — which over an empty declaration reads as a tick nobody established. Doctor is the
+/// surface making the claim, so it separates the two here rather than teaching the daemon's own
+/// comparison a third state.
+enum SessionFile {
+    Absent,
+    Unreadable(String),
+    Matches,
+    Differs,
+}
+
+fn session_file(
+    slug: &str,
+    path: &std::path::Path,
+    servers: &serde_json::Map<String, serde_json::Value>,
+) -> SessionFile {
+    match std::fs::read(path) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => SessionFile::Absent,
+        Err(e) => SessionFile::Unreadable(e.to_string()),
+        Ok(bytes) if std::str::from_utf8(&bytes).is_err() => {
+            SessionFile::Unreadable(String::from("it is not valid UTF-8"))
+        }
+        Ok(_) => {
+            if forge_runner_core::mcp::config::session_matches(slug, servers) {
+                SessionFile::Matches
+            } else {
+                SessionFile::Differs
+            }
+        }
+    }
 }
 
 /// One project's MCP row: what core resolves, and what this box's session file holds against it.
@@ -448,29 +482,34 @@ async fn mcp_servers_line(
 fn mcp_verdict(
     found: &mcp_servers::ProjectMcpServers,
     path: &std::path::Path,
-    on_disk: bool,
+    disk: &SessionFile,
 ) -> (bool, String) {
     let file = path.display();
+    if let SessionFile::Unreadable(why) = disk {
+        return (
+            false,
+            format!("{file} cannot be read ({why}), so nothing here says what a pane started from it carries"),
+        );
+    }
     if found.is_empty() {
-        return if on_disk {
-            (
+        return match disk {
+            SessionFile::Absent => (
                 true,
-                format!("no MCP servers declared, and {file} holds none"),
-            )
-        } else {
-            (
+                format!("no MCP servers declared, and nothing is written at {file}"),
+            ),
+            _ => (
                 false,
                 format!(
                     "no MCP servers declared, but {file} still holds a config — a pane started from it carries servers this project no longer declares"
                 ),
-            )
+            ),
         };
     }
     if !found.dropped_names.is_empty() {
         return (
             false,
             format!(
-                "declared but NOT available here: {} — a run on this project gets none of their tools{}",
+                "declared but NOT available here: {} — a run on this project gets none of their tools{} (this box's copy: {file})",
                 found.dropped_names.join(", "),
                 if found.resolved_names.is_empty() {
                     String::new()
@@ -480,22 +519,29 @@ fn mcp_verdict(
             ),
         );
     }
-    if !on_disk {
-        return (
+    match disk {
+        SessionFile::Matches => (
+            true,
+            format!(
+                "{} available, and {file} holds them",
+                found.resolved_names.join(", ")
+            ),
+        ),
+        SessionFile::Absent => (
+            false,
+            format!(
+                "{} resolved by core, and nothing is written at {file} — a pane started here carries none of them",
+                found.resolved_names.join(", ")
+            ),
+        ),
+        _ => (
             false,
             format!(
                 "{} resolved by core, but {file} does not match them — a pane started from it carries something else",
                 found.resolved_names.join(", ")
             ),
-        );
-    }
-    (
-        true,
-        format!(
-            "{} available, and {file} holds them",
-            found.resolved_names.join(", ")
         ),
-    )
+    }
 }
 
 /// Returns `true` when the binary is on PATH.
@@ -732,6 +778,49 @@ mod tests {
         assert!(print_mcp_row("butlocs", Some((ok, line))));
     }
 
+    /// ISS-1191 — a file this box cannot read is not evidence that it holds nothing. Over an empty
+    /// declaration `session_matches` answers the same as an absent file, so doctor separates them
+    /// rather than printing a tick nobody established.
+    #[test]
+    fn a_session_file_that_cannot_be_read_is_a_cross_even_where_nothing_is_declared() {
+        let (ok, line) = mcp_verdict(
+            &mcp_servers::ProjectMcpServers::default(),
+            &a_path(),
+            &SessionFile::Unreadable(String::from("it is not valid UTF-8")),
+        );
+        assert!(!ok, "an unreadable file is not a pass: {line}");
+        assert!(line.contains("cannot be read"), "{line}");
+        assert!(line.contains("not valid UTF-8"), "{line}");
+    }
+
+    /// ISS-1191 — and a resolved set with no file at all is a cross saying so, rather than the
+    /// mismatch sentence, because nothing there is not something else.
+    #[test]
+    fn a_resolved_set_with_no_session_file_says_nothing_is_written() {
+        let (ok, line) = mcp_verdict(
+            &found(&["playwright"], &[]),
+            &a_path(),
+            &SessionFile::Absent,
+        );
+        assert!(!ok, "{line}");
+        assert!(line.contains("nothing is written"), "{line}");
+    }
+
+    /// ISS-1191 criterion 15 — the dropped-name branch is the diagnostic case, and it named no file
+    /// at all while the rest of the row did.
+    #[test]
+    fn the_dropped_name_row_names_the_file_too() {
+        let (_, line) = mcp_verdict(
+            &found(&["playwright"], &["epodsystem"]),
+            &a_path(),
+            &SessionFile::Differs,
+        );
+        assert!(
+            line.contains("forge-master-mcp-mowment.json"),
+            "the diagnostic row must name the file as well: {line}"
+        );
+    }
+
     /// ISS-1191 — a read that never handed a row back is a cross naming the project, not a gap in
     /// the report where a row was due.
     #[test]
@@ -776,7 +865,11 @@ mod tests {
 
     #[test]
     fn a_declared_server_this_box_cannot_supply_is_a_problem_and_is_named() {
-        let (ok, line) = mcp_verdict(&found(&[], &["epodsystem"]), &a_path(), true);
+        let (ok, line) = mcp_verdict(
+            &found(&[], &["epodsystem"]),
+            &a_path(),
+            &SessionFile::Matches,
+        );
         assert!(
             !ok,
             "a server that cannot be supplied is not a pass: {line}"
@@ -789,7 +882,11 @@ mod tests {
     /// operator can tell which work is possible here.
     #[test]
     fn a_project_with_one_server_supplied_and_one_not_reports_the_problem_and_both_names() {
-        let (ok, line) = mcp_verdict(&found(&["playwright"], &["epodsystem"]), &a_path(), true);
+        let (ok, line) = mcp_verdict(
+            &found(&["playwright"], &["epodsystem"]),
+            &a_path(),
+            &SessionFile::Matches,
+        );
         assert!(!ok, "{line}");
         assert!(line.contains("epodsystem"), "{line}");
         assert!(line.contains("playwright"), "{line}");
@@ -797,7 +894,11 @@ mod tests {
 
     #[test]
     fn a_project_whose_declarations_all_resolved_reads_as_a_pass_naming_them() {
-        let (ok, line) = mcp_verdict(&found(&["playwright"], &[]), &a_path(), true);
+        let (ok, line) = mcp_verdict(
+            &found(&["playwright"], &[]),
+            &a_path(),
+            &SessionFile::Matches,
+        );
         assert!(ok, "{line}");
         assert!(line.contains("playwright"), "{line}");
     }
@@ -806,7 +907,11 @@ mod tests {
     /// resolved set the session file does not hold is a cross, not a tick naming a path.
     #[test]
     fn a_resolved_set_the_session_file_does_not_hold_is_a_cross() {
-        let (ok, line) = mcp_verdict(&found(&["playwright"], &[]), &a_path(), false);
+        let (ok, line) = mcp_verdict(
+            &found(&["playwright"], &[]),
+            &a_path(),
+            &SessionFile::Differs,
+        );
         assert!(!ok, "a file that does not match is not a pass: {line}");
         assert!(line.contains("does not match"), "{line}");
     }
@@ -815,7 +920,11 @@ mod tests {
     /// cross too, because a pane started from it carries servers nobody declares any more.
     #[test]
     fn declaring_nothing_over_a_file_that_still_holds_a_config_is_a_cross() {
-        let (ok, line) = mcp_verdict(&mcp_servers::ProjectMcpServers::default(), &a_path(), false);
+        let (ok, line) = mcp_verdict(
+            &mcp_servers::ProjectMcpServers::default(),
+            &a_path(),
+            &SessionFile::Differs,
+        );
         assert!(!ok, "{line}");
         assert!(line.contains("still holds a config"), "{line}");
     }
@@ -824,7 +933,11 @@ mod tests {
     /// above it names a different file and reads as the whole answer.
     #[test]
     fn the_row_names_the_file_this_box_writes_those_servers_to() {
-        let (_, line) = mcp_verdict(&found(&["playwright"], &[]), &a_path(), true);
+        let (_, line) = mcp_verdict(
+            &found(&["playwright"], &[]),
+            &a_path(),
+            &SessionFile::Matches,
+        );
         assert!(
             line.contains("forge-master-mcp-mowment.json"),
             "the row must name the file it is talking about: {line}"
@@ -835,7 +948,11 @@ mod tests {
     /// cannot be read as an empty one.
     #[test]
     fn a_project_that_declares_nothing_still_gets_a_row_saying_so() {
-        let (ok, line) = mcp_verdict(&mcp_servers::ProjectMcpServers::default(), &a_path(), true);
+        let (ok, line) = mcp_verdict(
+            &mcp_servers::ProjectMcpServers::default(),
+            &a_path(),
+            &SessionFile::Absent,
+        );
         assert!(ok, "{line}");
         assert!(line.contains("no MCP servers declared"), "{line}");
     }
