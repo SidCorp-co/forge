@@ -21,6 +21,7 @@ pub mod degraded;
 pub mod dispatch;
 pub mod dispatch_gate;
 pub mod drain;
+pub mod headroom;
 pub mod held_report;
 pub mod hook_install;
 pub mod inbox;
@@ -888,6 +889,56 @@ pub async fn run(
                                     path.display()
                                 );
                             }
+                        }
+                    }
+                    _ = cancel_rx.changed() => { if *cancel_rx.borrow() { break; } }
+                }
+            }
+        });
+    }
+
+    // What the box has left, on its own clock rather than the sweep's: a sweep
+    // period is six hours, and the box that raised ISS-1260 crossed both
+    // thresholds and the ceiling inside four.
+    {
+        let mut cancel_rx = cancel_rx.clone();
+        tokio::spawn(async move {
+            use crate::daemon::headroom::{self, TICK};
+            let roots = headroom::scratch_roots();
+            let mut watch = headroom::Watch::default();
+            let mut tick = tokio::time::interval(TICK);
+            loop {
+                tokio::select! {
+                    _ = tick.tick() => {
+                        // `statvfs` blocks, and a scratch root on an
+                        // unresponsive network or FUSE mount blocks for as
+                        // long as that mount does. On a worker thread that
+                        // stalls the daemon's other tasks, so it goes to the
+                        // blocking pool, where waiting on it yields and every
+                        // other task keeps running (consult 404196 F1).
+                        //
+                        // Awaited plainly, so at most one reading is ever out:
+                        // a select that let this task walk away would abandon
+                        // the handle and start another on the next tick, which
+                        // is one hung thread per tick instead of one
+                        // (consult 825bfe F1). What that costs, and why a
+                        // killable probe is not taken here, is priced in
+                        // `headroom`'s own note on `read`.
+                        let here = roots.clone();
+                        let survey =
+                            tokio::task::spawn_blocking(move || headroom::survey(&here))
+                                .await
+                                .unwrap_or_else(|e| headroom::Survey {
+                                    at: std::path::PathBuf::from("<none>"),
+                                    reading: headroom::Reading::Refused(format!(
+                                        "the reading did not finish ({e})"
+                                    )),
+                                    beside: Vec::new(),
+                                });
+                        if let Some(report) =
+                            watch.tick(std::time::Instant::now(), survey.reading.verdict())
+                        {
+                            headroom::say(&survey, &report);
                         }
                     }
                     _ = cancel_rx.changed() => { if *cancel_rx.borrow() { break; } }
