@@ -39,10 +39,16 @@ pub struct Held {
     pub head: String,
     pub commits_unpushed: Option<u32>,
     pub reason: String,
-    /// Whether the DIRECTORY stays. Not part of what core declares, and not
-    /// sent: it is what the journal line's verb is read off, and what a test
-    /// asserts so the word "keeps" cannot drift back onto a checkout the
-    /// release takes.
+    /// Whether the reading this report took REFUSES the checkout's removal.
+    /// Not part of what core declares, and not sent.
+    ///
+    /// It is one half of the release's decision and never the whole of it:
+    /// `false` says retention does not hold the directory here, not that the
+    /// directory goes. `runner/terminate.rs` preserves a repository's own main
+    /// working tree whatever retention says, and refuses a checkout whose diff
+    /// it could not preserve, so a report that read `false` as "released" would
+    /// be making the opposite mistake to the one this issue is about
+    /// (consult 754b50 F1).
     pub kept: bool,
 }
 
@@ -106,8 +112,14 @@ pub async fn at_risk(run: &Run, cred: &RepoCred) -> Option<Held> {
 }
 
 /// One sentence carrying both facts, in the order a reader needs them: what
-/// happens to the directory first, because that is what the last one of these
-/// got wrong, then what is true of the work.
+/// this box's reading says about the directory first, because that is what the
+/// last one of these got wrong, then what is true of the work.
+///
+/// Every clause here is an observation and none is an outcome. What becomes of
+/// the directory is the release's to say and `worktree::remove_at`'s to log:
+/// this pass runs before it, reads one half of what it decides on, and a
+/// sentence promising a removal would be the same defect wearing the other
+/// face (consult 754b50 F1, F2).
 fn why(fate: &Fate, publication: &Publication) -> String {
     let directory = match fate {
         Fate::Kept { why } => format!(
@@ -115,8 +127,12 @@ fn why(fate: &Fate, publication: &Publication) -> String {
              any ref besides this checkout's own HEAD ({why}), and not knowing is not the same as \
              knowing it is safe"
         ),
-        _ => "the commits here are named by a ref this repository keeps, so this directory is not \
-              what is holding them and the release may take it"
+        Fate::NeedsARef { commits } => format!(
+            "{commits} commit(s) here are named by this checkout's HEAD and by nothing else, so a \
+             release must give them a ref of their own before it may take this directory"
+        ),
+        Fate::Named => "the commits here are named by a ref this repository keeps, so they do not \
+                        depend on this directory"
             .to_string(),
     };
     let work = match publication {
@@ -186,7 +202,11 @@ pub async fn report_held_worktrees(
                 tracing::warn!(
                     "[held-report] run {} {} {} — {}",
                     run.run_id,
-                    if held.kept { "keeps" } else { "releases" },
+                    // "keeps" is a claim about the directory and is made only
+                    // where this reading refuses its removal. Everything else
+                    // "holds", which is the premise of this whole pass and
+                    // promises nothing about what the release then does.
+                    if held.kept { "keeps" } else { "holds" },
                     held.worktree,
                     held.reason
                 );
@@ -454,8 +474,8 @@ mod tests {
             held.reason
         );
         assert!(
-            held.reason.contains("the release may take it"),
-            "and the sentence a person reads has to say so: {}",
+            held.reason.contains("do not depend on this directory"),
+            "and the sentence a person reads says what was read, not what will happen: {}",
             held.reason
         );
     }
@@ -492,6 +512,84 @@ mod tests {
             held.reason.contains("this box keeps this checkout"),
             "and says so in the words that reach the issue: {}",
             held.reason
+        );
+    }
+
+    /// consult 754b50 F2 — the wildcard told an operator a ref already held
+    /// commits that nothing but this checkout's HEAD named.
+    ///
+    /// A detached checkout that committed is the one shape where the release
+    /// has to WRITE a ref before it may take the directory, and a report saying
+    /// the commits are already named is the assurance that stops anybody
+    /// looking when `keep_at` then fails.
+    #[tokio::test]
+    async fn commits_no_ref_yet_names_are_not_reported_as_already_kept_somewhere() {
+        let (root, wt) = a_box_with_a_worktree("needsaref");
+        sh(&wt, &["switch", "--detach", "-q"]);
+        std::fs::write(wt.join("work.txt"), "work\n").expect("write");
+        sh(&wt, &["add", "-A"]);
+        sh(&wt, &["commit", "-qm", "on no branch at all"]);
+
+        let run = a_run_at(&wt);
+        let cred = crate::workspace::repo_cred::RepoCred::of(None, &wt).await;
+        let held = at_risk(&run, &cred).await.expect("the work is at risk");
+        let fate = crate::workspace::salvage::fate_of(&wt).await;
+        let _ = std::fs::remove_dir_all(&root);
+
+        assert_eq!(
+            fate,
+            crate::workspace::salvage::Fate::NeedsARef { commits: 1 },
+            "the premise: nothing but this checkout's HEAD names the commit"
+        );
+        assert!(
+            held.reason
+                .contains("a release must give them a ref of their own"),
+            "the operator must not be told a ref already holds what nothing holds: {}",
+            held.reason
+        );
+        assert!(
+            !held.reason.contains("named by a ref this repository keeps"),
+            "and the sentence for the case where one does must not be reused here: {}",
+            held.reason
+        );
+    }
+
+    /// consult 754b50 F1 — `kept == false` is not a removal.
+    ///
+    /// `terminate::force_terminal` preserves a repository's own main working
+    /// tree whatever retention says, and refuses a checkout whose diff it could
+    /// not preserve. So the journal line for everything that is not kept says
+    /// the run HOLDS the checkout — the premise of this pass — and promises
+    /// nothing about what the release does next.
+    #[test]
+    fn a_report_that_is_not_a_keep_claims_no_removal_either() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        let (root, wt) = a_box_with_a_worktree("noclaim");
+        std::fs::write(wt.join("work.txt"), "work\n").expect("write");
+        sh(&wt, &["add", "-A"]);
+        sh(&wt, &["commit", "-qm", "work"]);
+        refuse_pushes(&root);
+        let mut led = a_ledger_holding(&wt, Incarnation::Exited);
+        let spy = Spy::default();
+
+        let said = crate::workspace::worktree::tests::logged_while(|| {
+            assert_eq!(
+                rt.block_on(report_held_worktrees(&spy, &mut led, "boot-a")),
+                1
+            );
+        });
+        let _ = std::fs::remove_dir_all(&root);
+
+        assert!(
+            said.contains("holds"),
+            "the line says what this pass knows — the run holds the checkout: {said}"
+        );
+        assert!(
+            !said.contains("releases"),
+            "and never what only the release may say: {said}"
         );
     }
 
