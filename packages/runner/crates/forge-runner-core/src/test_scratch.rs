@@ -44,6 +44,12 @@ impl Scratch {
     }
 
     fn under(base: &Path, tag: &str) -> Self {
+        // The tag becomes one path component; a separator or `..` in it would put the
+        // directory, and what the drop removes, somewhere other than under `base`.
+        assert!(
+            !tag.is_empty() && !tag.contains(['/', '\\']) && tag != "." && tag != "..",
+            "Scratch tag {tag:?} is not a single path component: give a plain name"
+        );
         static NEXT: AtomicU64 = AtomicU64::new(0);
         let n = NEXT.fetch_add(1, Ordering::Relaxed);
         let dir = base.join(format!("forge-test-{tag}-{}-{n}", std::process::id()));
@@ -195,15 +201,29 @@ mod tests {
     }
 
     #[test]
+    fn a_tag_that_is_not_one_path_component_is_refused_by_name() {
+        for bad in ["x/../../outside", "a/b", "..", ""] {
+            let refused = std::panic::catch_unwind(|| Scratch::new(bad));
+            let msg = refused
+                .expect_err(bad)
+                .downcast_ref::<String>()
+                .cloned()
+                .unwrap_or_default();
+            assert!(
+                msg.contains("not a single path component"),
+                "{bad:?}: {msg}"
+            );
+        }
+    }
+
+    #[test]
     fn two_scratches_in_one_process_never_share_a_directory() {
         let (a, b) = (Scratch::new("same"), Scratch::new("same"));
         assert_ne!(a.path(), b.path());
     }
 
-    /// Files allowed to name `temp_dir()`, and how many times. A runtime site is production
-    /// scratch the issue puts out of scope; a held one is a test site in a file another run's
-    /// branch held when ISS-1138 landed, and moves onto [`Scratch`] once that branch has landed.
-    /// This list emptying of held rows is what ends that amnesty.
+    /// Files allowed to name `temp_dir()`, and how many times: production scratch the issue puts
+    /// out of scope, and one fixture path nothing creates. A test site has no row here.
     const ALLOWED: &[(&str, usize, &str)] = &[
         (
             "forge-runner-core/src/daemon/chat.rs",
@@ -219,21 +239,6 @@ mod tests {
             "forge-runner-core/src/daemon/transcript_age.rs",
             1,
             "names an absolute path for a fixture nothing creates",
-        ),
-        (
-            "forge-runner-core/src/runner/ledger.rs",
-            15,
-            "held: ISS-1220",
-        ),
-        (
-            "forge-runner-core/src/daemon/recovery.rs",
-            3,
-            "held: ISS-1220",
-        ),
-        (
-            "forge-runner-core/src/daemon/master.rs",
-            10,
-            "held: ISS-1220",
         ),
     ];
 

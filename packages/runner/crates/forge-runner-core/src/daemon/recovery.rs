@@ -663,20 +663,21 @@ mod tests {
     /// A repository whose registry answers. Every test here asks it the same
     /// read-only question — *do you register a worktree at this path?* — so one
     /// serves them all.
+    ///
+    /// One per test rather than one per process: a process-wide fixture has no drop, so it would
+    /// outlive the run. libtest gives every test a thread of its own, and this goes with it.
     fn a_repository() -> PathBuf {
-        static ONCE: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
-        ONCE.get_or_init(|| {
-            let root =
-                std::env::temp_dir().join(format!("forge-recovery-repo-{}", std::process::id()));
-            let _ = std::fs::remove_dir_all(&root);
-            std::fs::create_dir_all(&root).unwrap();
-            let _ = std::process::Command::new("git")
-                .args(["init", "-q", "-b", "main"])
-                .current_dir(&root)
-                .output();
-            root
-        })
-        .clone()
+        thread_local! {
+            static REPO: crate::test_scratch::Scratch = {
+                let root = crate::test_scratch::Scratch::new("recovery-repo");
+                let _ = std::process::Command::new("git")
+                    .args(["init", "-q", "-b", "main"])
+                    .current_dir(&root)
+                    .output();
+                root
+            };
+        }
+        REPO.with(|r| r.to_path_buf())
     }
 
     struct Roots;
@@ -707,19 +708,14 @@ mod tests {
 
     /// A ledger whose run points at a worktree that is REALLY on the disk, and
     /// whose pid is recorded — the shape every stuck run on the fleet has.
-    fn seeded_holding_a_tree(pid: u32, boot: &str) -> (Ledger, PathBuf) {
-        let wt = std::env::temp_dir().join(format!(
-            "forge-recovery-held-{}-{:?}",
-            std::process::id(),
-            std::thread::current().id()
-        ));
-        std::fs::create_dir_all(&wt).unwrap();
+    fn seeded_holding_a_tree(pid: u32, boot: &str) -> (Ledger, crate::test_scratch::Scratch) {
+        let wt = crate::test_scratch::Scratch::new("recovery-held");
         let mut led = Ledger::open_in_memory().unwrap();
         led.create_run_group(NewRun {
             run_id: "run-1".into(),
             project_id: "proj-1".into(),
             master_session_id: "master-dead".into(),
-            worktree_path: wt.clone(),
+            worktree_path: wt.to_path_buf(),
             boot_id: boot.into(),
             issue_keys: vec!["ISS-957".into()],
         })
@@ -1563,22 +1559,13 @@ mod tests {
     const MIN_MS: i64 = 60_000;
 
     /// A directory of this test's own, removed when it drops.
-    struct Scratch(PathBuf);
+    struct Scratch(crate::test_scratch::Scratch);
 
     impl Scratch {
         fn new(what: &str) -> Self {
-            let dir = std::env::temp_dir().join(format!(
-                "forge-recovery-{what}-{}",
-                uuid::Uuid::new_v4().simple()
-            ));
-            std::fs::create_dir_all(&dir).unwrap();
-            Self(dir)
-        }
-    }
-
-    impl Drop for Scratch {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
+            Self(crate::test_scratch::Scratch::new(&format!(
+                "recovery-{what}"
+            )))
         }
     }
 

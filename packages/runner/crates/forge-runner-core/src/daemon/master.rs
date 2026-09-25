@@ -4069,14 +4069,11 @@ mod tests {
     ///
     /// The directory carries the test's own label and this process's id: two
     /// `cargo test` runs on one box must not share a path (ISS-1073).
-    struct ReachFiles(std::path::PathBuf);
+    struct ReachFiles(crate::test_scratch::Scratch);
 
     impl ReachFiles {
         fn new(label: &str, repo: Option<&str>, session: Option<&str>) -> Self {
-            let dir =
-                std::env::temp_dir().join(format!("forge-reach-{label}-{}", std::process::id()));
-            let _ = std::fs::remove_dir_all(&dir);
-            std::fs::create_dir_all(&dir).expect("temp reach dir");
+            let dir = crate::test_scratch::Scratch::new(&format!("reach-{label}"));
             if let Some(body) = repo {
                 std::fs::write(dir.join(".mcp.json"), body).expect("repo .mcp.json");
             }
@@ -4093,12 +4090,6 @@ mod tests {
                 session.exists().then_some(session.as_path()),
                 has_pat,
             )
-        }
-    }
-
-    impl Drop for ReachFiles {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
         }
     }
 
@@ -4717,7 +4708,7 @@ mod give_back_tests {
 
     #[test]
     fn a_conversation_this_box_cannot_reach_is_named_in_the_log_it_starts_cold_from() {
-        let repo = std::env::temp_dir().join(format!("forge-resume-log-{}", std::process::id()));
+        let repo = crate::test_scratch::Scratch::new("resume-log");
         let out = logged_while(|| {
             assert_eq!(
                 resume_for("some-slug", &repo, Some("conv-9f3a-unreachable")),
@@ -4743,8 +4734,7 @@ mod give_back_tests {
 
     #[test]
     fn a_pane_with_nothing_recorded_starts_cold_quietly() {
-        let repo =
-            std::env::temp_dir().join(format!("forge-resume-log-quiet-{}", std::process::id()));
+        let repo = crate::test_scratch::Scratch::new("resume-log-quiet");
         let out = logged_while(|| {
             assert_eq!(resume_for("some-slug", &repo, None), None);
         });
@@ -4756,7 +4746,7 @@ mod give_back_tests {
 
     #[test]
     fn a_conversation_with_no_transcript_on_this_box_starts_cold() {
-        let repo = std::env::temp_dir().join(format!("forge-resume-none-{}", std::process::id()));
+        let repo = crate::test_scratch::Scratch::new("resume-none");
         assert_eq!(
             resume_for("slug", &repo, Some("conv-that-was-never-here")),
             None,
@@ -4766,7 +4756,7 @@ mod give_back_tests {
 
     #[test]
     fn a_conversation_whose_transcript_is_here_is_resumed() {
-        let repo = std::env::temp_dir().join(format!("forge-resume-{}", std::process::id()));
+        let repo = crate::test_scratch::Scratch::new("resume");
         let id = format!("conv-{}", std::process::id());
         let path = conversation_transcript(&repo, &id).expect("a home directory");
         std::fs::create_dir_all(path.parent().expect("parent")).expect("mkdir");
@@ -4780,7 +4770,8 @@ mod give_back_tests {
 
     #[test]
     fn nothing_stored_is_a_cold_start_and_so_is_an_empty_string() {
-        let repo = std::env::temp_dir().join("forge-resume-empty");
+        let scratch = crate::test_scratch::Scratch::new("resume-empty");
+        let repo = scratch.join("never-made");
         assert_eq!(resume_for("slug", &repo, None), None);
         assert_eq!(resume_for("slug", &repo, Some("")), None);
     }
@@ -5097,13 +5088,10 @@ mod give_back_tests {
 
     /// A real repo with a real `git worktree` on a branch — the only way to
     /// watch a checkout actually leave the disk.
-    async fn a_repo_with_a_live_worktree() -> (std::path::PathBuf, std::path::PathBuf) {
-        let repo = std::env::temp_dir().join(format!(
-            "forge-master-reclaim-{}-{:?}",
-            std::process::id(),
-            std::thread::current().id()
-        ));
-        let _ = std::fs::remove_dir_all(&repo);
+    /// The repo sits one level inside its scratch so the bare remote beside it
+    /// (`repo.with_extension("remote.git")`) goes with the scratch too.
+    async fn a_repo_with_a_live_worktree() -> (crate::test_scratch::InScratch, std::path::PathBuf) {
+        let repo = crate::test_scratch::Scratch::new("master-reclaim").at("repo");
         std::fs::create_dir_all(&repo).unwrap();
         git(&repo, &["init", "-b", "main"]).await;
         git(&repo, &["config", "user.email", "t@t"]).await;
@@ -5151,7 +5139,7 @@ mod give_back_tests {
         cfg.bindings.insert(
             "proj-1".into(),
             crate::config::Binding {
-                repo_path: repo.clone(),
+                repo_path: repo.to_path_buf(),
                 branch: None,
                 project_id: Some("proj-1".into()),
             },
@@ -5222,7 +5210,7 @@ mod give_back_tests {
         cfg.bindings.insert(
             "proj-1".into(),
             crate::config::Binding {
-                repo_path: repo.clone(),
+                repo_path: repo.to_path_buf(),
                 branch: None,
                 project_id: Some("proj-1".into()),
             },
@@ -5310,7 +5298,7 @@ mod give_back_tests {
         cfg.bindings.insert(
             "proj-1".into(),
             crate::config::Binding {
-                repo_path: repo.clone(),
+                repo_path: repo.to_path_buf(),
                 branch: None,
                 project_id: Some("proj-1".into()),
             },
@@ -5528,7 +5516,7 @@ mod give_back_tests {
         cfg.bindings.insert(
             "proj-1".into(),
             crate::config::Binding {
-                repo_path: repo.clone(),
+                repo_path: repo.to_path_buf(),
                 branch: None,
                 project_id: Some("proj-1".into()),
             },
@@ -6860,20 +6848,14 @@ mod unplaced_tests {
     }
 
     /// A capability map of this run's own, never this box's.
-    fn temp_map(tag: &str) -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "forge-cap-{tag}-{}-{}",
-            std::process::id(),
-            uuid::Uuid::new_v4().simple()
-        ));
-        std::fs::create_dir_all(&dir).expect("temp dir");
-        dir.join("control-tokens.json")
+    fn temp_map(tag: &str) -> crate::test_scratch::InScratch {
+        crate::test_scratch::Scratch::new(&format!("cap-{tag}")).at("control-tokens.json")
     }
 
     #[test]
     fn a_capability_minted_for_the_session_this_box_holds_reads_current() {
         let path = temp_map("current");
-        let store = session_tokens::SessionTokens::at(path.clone());
+        let store = session_tokens::SessionTokens::at(path.to_path_buf());
         store.mint("sess-A").expect("mint");
         assert_eq!(capability_of(Some(&store), "sess-A"), Capability::Current);
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
@@ -6882,7 +6864,7 @@ mod unplaced_tests {
     #[test]
     fn a_map_that_names_only_other_sessions_reads_stale() {
         let path = temp_map("stale");
-        let store = session_tokens::SessionTokens::at(path.clone());
+        let store = session_tokens::SessionTokens::at(path.to_path_buf());
         store.mint("sess-OLD").expect("mint");
         assert_eq!(
             capability_of(Some(&store), "sess-NEW"),
@@ -6895,7 +6877,7 @@ mod unplaced_tests {
     #[test]
     fn a_map_that_was_never_written_reads_stale_rather_than_current() {
         let path = temp_map("absent");
-        let store = session_tokens::SessionTokens::at(path.clone());
+        let store = session_tokens::SessionTokens::at(path.to_path_buf());
         assert_eq!(
             capability_of(Some(&store), "sess-A"),
             Capability::Stale,
@@ -6908,7 +6890,7 @@ mod unplaced_tests {
     fn a_map_this_box_cannot_read_is_never_reported_as_a_stale_capability() {
         let path = temp_map("torn");
         std::fs::write(&path, b"{\"07ccaad6\": ").expect("plant a half-written map");
-        let store = session_tokens::SessionTokens::at(path.clone());
+        let store = session_tokens::SessionTokens::at(path.to_path_buf());
         match capability_of(Some(&store), "sess-A") {
             Capability::Unknown(why) => assert!(
                 !why.is_empty(),
@@ -7790,8 +7772,7 @@ mod unplaced_tests {
             eprintln!("this box does not resolve its tmux socket from the config dir, so the only server here is its own — not starting a pane on it");
             return;
         }
-        let dir = std::env::temp_dir().join(format!("forge-deafkill-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).expect("temp dir");
+        let dir = crate::test_scratch::Scratch::new("deafkill");
         let name = terminal::session_name(terminal::MASTER_PREFIX, "deafkill");
         terminal::ensure(
             &name,
@@ -7950,7 +7931,7 @@ mod unplaced_tests {
     #[tokio::test]
     async fn a_pane_that_outlived_its_kill_takes_the_minted_capability_back_down_with_it() {
         let path = temp_map("outlived");
-        let store = session_tokens::SessionTokens::at(path.clone());
+        let store = session_tokens::SessionTokens::at(path.to_path_buf());
         store.mint("sess-core-serves-now").expect("mint");
         assert!(
             matches!(
@@ -8016,7 +7997,7 @@ mod unplaced_tests {
     #[test]
     fn a_withdrawal_that_did_not_take_is_never_reported_as_one_that_did() {
         let path = temp_map("withdrawn");
-        let store = session_tokens::SessionTokens::at(path.clone());
+        let store = session_tokens::SessionTokens::at(path.to_path_buf());
         store.mint("sess-core-serves-now").expect("mint");
         assert_eq!(
             withdraw_unplaced_mint(Some(&store), "sess-core-serves-now"),
@@ -8130,7 +8111,7 @@ mod unplaced_tests {
     #[tokio::test]
     async fn a_withdrawal_that_failed_keeps_the_verdict_stale_on_the_sweep_after_it() {
         let path = temp_map("stays-stale");
-        let store = session_tokens::SessionTokens::at(path.clone());
+        let store = session_tokens::SessionTokens::at(path.to_path_buf());
         let masters = Arc::new(Masters::new());
         let dir = path.parent().expect("temp dir").to_path_buf();
 
@@ -8201,7 +8182,8 @@ mod unplaced_tests {
         // A withdrawal that DID take releases it, or the box refuses a project
         // for ever over a mint it successfully took back.
         let took = Arc::new(Masters::new());
-        let store2 = session_tokens::SessionTokens::at(temp_map("released"));
+        let map2 = temp_map("released");
+        let store2 = session_tokens::SessionTokens::at(map2.to_path_buf());
         store2.mint("sess-B").expect("mint");
         deaf_pane_outlived_its_kill(
             &took,
@@ -9035,14 +9017,8 @@ mod own_exe_reporting_tests {
         String::from_utf8_lossy(&out).into_owned()
     }
 
-    fn scratch(label: &str) -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "forge-master-exe-{label}-{}-{}",
-            std::process::id(),
-            uuid::Uuid::new_v4().simple()
-        ));
-        std::fs::create_dir_all(&dir).expect("scratch");
-        dir
+    fn scratch(label: &str) -> crate::test_scratch::Scratch {
+        crate::test_scratch::Scratch::new(&format!("master-exe-{label}"))
     }
 
     /// A file `is_runnable` accepts, on every platform this crate builds for:

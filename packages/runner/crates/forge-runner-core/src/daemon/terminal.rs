@@ -1499,7 +1499,7 @@ mod tests {
 
         // Rooted in a scratch dir rather than at a literal `/tmp` path: resolving a socket creates
         // the config dir, and a literal path is one no drop ever removes.
-        let bytes_home = crate::test_scratch::Scratch::new("bytes");
+        let bytes_home = crate::test_scratch::Scratch::short("bytes");
         let mut units = Vec::new();
         let mut sockets = Vec::new();
         for tail in [b"\xf0".to_vec(), b"\xf1".to_vec()] {
