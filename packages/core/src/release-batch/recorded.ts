@@ -18,8 +18,8 @@ import { logger } from '../logger.js';
 import { closeRunIfOneShot, openOneShotRun } from '../pipeline/runs.js';
 import { collectReleaseBlockers, releaseBlockerError } from './blockers.js';
 import type { ReleaseChannel } from './channel.js';
+import { claimConflictAt } from './claim-conflicts.js';
 import {
-  ClaimConflictError,
   NoReleaseGateError,
   ReleaseNotVerifiedError,
   ReleaseProbesUndeclaredError,
@@ -156,7 +156,7 @@ export async function recordPerformedRelease(
 
   if (claimed.length !== issueIds.length) {
     await closeRunIfOneShot(run.id, 'cancelled');
-    throw new ClaimConflictError(issueIds.filter((id) => !claimed.some((r) => r.id === id)));
+    throw await claimConflictAt(projectId, gateStatus, issueIds, claimed);
   }
 
   await writeLedger(run.id, { commit, outcome, account, providerRef });

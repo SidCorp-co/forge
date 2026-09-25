@@ -132,7 +132,9 @@ const NOT_DISCOVERY: Record<string, string> = {
     'the one issue a job runs on, by id; an archived issue is terminal and runs no job',
   'questions/read.ts': 'by issue id',
   'questions/write.ts': 'by issue id',
+  'release-batch/abort-stamp.ts': 'the closed ids one release run recorded',
   'release-batch/blockers.ts': 'gate statuses, counted; claims by id',
+  'release-batch/claim-conflicts.ts': 'the ids passed in',
   'release-batch/finish-job.ts':
     'counts rows of one release run: releasing, or closed by it, so never archived live work',
   'release-batch/queries.ts': 'reads only the gate status, or rows of one release run',

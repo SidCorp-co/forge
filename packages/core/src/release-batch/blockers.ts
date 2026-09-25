@@ -33,6 +33,7 @@ import {
   resolveReleaseChannels,
   resolveReleaseDeviceIds,
 } from './channel.js';
+import { claimConflictDetails, readClaimConflicts } from './claim-conflicts.js';
 import { criteriaHold } from './criteria-hold.js';
 import { RELEASE_GATE_STATUS, resolveReleaseDeclaration } from './gate.js';
 import { releaseBranches } from './plan.js';
@@ -108,29 +109,19 @@ function oversize(waiting: number): ReleaseBlocker {
   return blocker('RELEASE_ROSTER_OVERSIZE', { waiting, limit: RELEASE_ROSTER_LIMIT }, 'roster');
 }
 
-/** Wrong status, wrong project, already claimed — the caller's own list only. */
 async function claimBlockers(
   projectId: string,
   gateStatus: IssueStatus,
   issueIds: string[],
   out: ReleaseBlocker[],
 ): Promise<void> {
-  const rows = await evaluate(
+  const conflicts = await evaluate(
     'claim',
-    async () =>
-      await db
-        .select({ id: issues.id, status: issues.status, claimed: issues.releaseBatchRunId })
-        .from(issues)
-        .where(and(eq(issues.projectId, projectId), inArray(issues.id, issueIds))),
+    async () => await readClaimConflicts(projectId, gateStatus, issueIds),
     out,
   );
-  if (!rows) return;
-  const found = new Set(rows.map((r) => r.id));
-  const wrong = [
-    ...issueIds.filter((id) => !found.has(id)),
-    ...rows.filter((r) => r.status !== gateStatus || r.claimed !== null).map((r) => r.id),
-  ];
-  if (wrong.length > 0) out.push(blocker('CLAIM_CONFLICT', { issueIds: [...new Set(wrong)] }));
+  if (!conflicts || conflicts.length === 0) return;
+  out.push(blocker('CLAIM_CONFLICT', claimConflictDetails(projectId, gateStatus, conflicts)));
 }
 
 /** What the roster owes before it may be closed: a note, and a merge. */

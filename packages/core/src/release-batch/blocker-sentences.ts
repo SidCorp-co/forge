@@ -6,6 +6,7 @@
 import { RELEASE_RECORD_REMEDY } from '../issues/release-record-required.js';
 import { AGENT_NAMING_MIN_RUNNER } from '../runners/device-cap.js';
 import type { RunnerHold, RunnerHoldReason } from '../runners/ineligible.js';
+import { claimConflictSentence, readClaimConflictDetails } from './claim-conflicts.js';
 import type { ReleaseDeclaration } from './gate.js';
 import type { ReleaseChannel } from './plan.js';
 
@@ -327,6 +328,10 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
   }
   if (code === 'RELEASE_MULTI_CHANNEL_UNSUPPORTED' && typeof details?.count === 'number') {
     return `This project declares ${details.count} live deploy bindings, and a release run records ONE reading used to close the whole roster. Leave exactly one binding carrying the \`live\` stage active, or release them as separate projects.`;
+  }
+  const standings = code === 'CLAIM_CONFLICT' ? readClaimConflictDetails(details) : null;
+  if (standings) {
+    return claimConflictSentence(standings.projectId, standings.gateStatus, standings.conflicts);
   }
   const issueIds = details?.issueIds;
   if (Array.isArray(issueIds)) return remedy.replace('{n}', String(issueIds.length));
