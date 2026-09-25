@@ -116,6 +116,13 @@ fn transcript(slug: &str) -> anyhow::Result<std::path::PathBuf> {
 }
 
 pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
+    // The reason is checked before tmux is. A box without tmux would otherwise
+    // answer a standing verb given no reason with "tmux is not installed" — a
+    // true sentence about something else, which hides the requirement entirely
+    // and sends the caller after the wrong next step. It also keeps the check
+    // ahead of everything that could write: the ledger, the core lookup and
+    // `--fresh`'s clear of the stored conversation, all of which are below.
+    let standing_reason = standing_reason(&args.cmd)?;
     if !terminal::available() {
         anyhow::bail!("tmux is not installed on this box, so it hosts no masters");
     }
@@ -144,8 +151,8 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
             println!("killed {name}; its runs died with it and their leases lapse.");
             println!("{}", kill_aftermath(&slug));
         }
-        Command::StandDown(a) => stand_down(&ctx, a).await?,
-        Command::StandUp(a) => stand_up(&ctx, a).await?,
+        Command::StandDown(a) => stand_down(&ctx, a, &standing_reason).await?,
+        Command::StandUp(a) => stand_up(&ctx, a, &standing_reason).await?,
     }
     Ok(())
 }
@@ -244,6 +251,24 @@ fn how_it_was_missing(given: Option<&str>) -> &'static str {
     }
 }
 
+/// The reason a standing verb carries, refused here where it carries none.
+///
+/// Taken off the parsed command rather than from inside each verb, so the
+/// refusal is reached before the terminal preflight `run` opens with — and
+/// before the ledger, the core lookup and `--fresh`'s clear, all of which are
+/// further in still. Empty for every verb that asks for no reason.
+fn standing_reason(cmd: &Command) -> anyhow::Result<String> {
+    let (given, slug, refuse): (_, _, fn(Option<&str>, &str) -> String) = match cmd {
+        Command::StandDown(a) => (a.why.as_deref(), a.slug.as_str(), no_reason_to_stand_down),
+        Command::StandUp(a) => (a.why.as_deref(), a.slug.as_str(), no_reason_to_stand_up),
+        _ => return Ok(String::new()),
+    };
+    match reason(given) {
+        Some(why) => Ok(why.to_string()),
+        None => anyhow::bail!(refuse(given, slug)),
+    }
+}
+
 /// What a caller who stood a project down with nothing to say is told instead.
 ///
 /// Hand-written rather than clap's `required = true`, because the refusal IS
@@ -292,11 +317,7 @@ answers.",
     )
 }
 
-async fn stand_down(ctx: &Ctx, a: StandDownArgs) -> anyhow::Result<()> {
-    // Before the ledger is opened and before core is asked anything, so a
-    // refused call has touched nothing.
-    let why = reason(a.why.as_deref())
-        .ok_or_else(|| anyhow::anyhow!(no_reason_to_stand_down(a.why.as_deref(), &a.slug)))?;
+async fn stand_down(ctx: &Ctx, a: StandDownArgs, why: &str) -> anyhow::Result<()> {
     let led = open_ledger()?;
     let project_id = project_for_slug(ctx, &led, &a.slug).await?;
     let pane = terminal::session_name(terminal::MASTER_PREFIX, &a.slug);
@@ -368,12 +389,7 @@ this pane goes. `forge-runner master stand-down {} --force` ends it anyway.",
     Ok(())
 }
 
-async fn stand_up(ctx: &Ctx, a: StandUpArgs) -> anyhow::Result<()> {
-    // Before anything is opened, and in particular before `--fresh` clears the
-    // stored conversation: a refused lift must leave the box exactly as it
-    // found it, and that clear happens before the lift itself.
-    let why = reason(a.why.as_deref())
-        .ok_or_else(|| anyhow::anyhow!(no_reason_to_stand_up(a.why.as_deref(), &a.slug)))?;
+async fn stand_up(ctx: &Ctx, a: StandUpArgs, why: &str) -> anyhow::Result<()> {
     let led = open_ledger()?;
     let project_id = project_for_slug(ctx, &led, &a.slug).await?;
     // Clear the conversation BEFORE lifting, never after. While the
@@ -1384,62 +1400,83 @@ mod tests {
         );
     }
 
-    /// Criterion 6. The check runs before the ledger is opened, so a refused
-    /// stand-down cannot have written one.
+    /// Criteria 6, 12 and 13, and F1 of the whole-set read. The reason is
+    /// resolved at the top of `run`, which puts it before every act either verb
+    /// could take — and before the terminal preflight, which on a box with no
+    /// tmux would otherwise answer a missing reason with a true sentence about
+    /// something else and hide the requirement entirely.
+    ///
+    /// `--fresh`'s clear of the stored conversation is in the list below for
+    /// its own reason: it happens BEFORE the lift, deliberately (ISS-1118 F2),
+    /// so a reason checked after it would refuse a lift having already thrown
+    /// away the conversation the caller never got to keep.
     #[test]
-    fn a_refused_stand_down_has_not_opened_the_ledger_or_asked_core_anything() {
+    fn a_refused_standing_verb_has_touched_nothing_at_all() {
         let body = SOURCE
-            .split("async fn stand_down(")
+            .split("pub async fn run(")
             .nth(1)
-            .and_then(|r| r.split("\nasync fn ").next())
-            .expect("stand_down must be findable");
+            .and_then(|r| r.split("\n}").next())
+            .expect("run must be findable");
         let refuses = body
-            .find("no_reason_to_stand_down(")
-            .expect("stand_down must refuse a missing reason");
-        for after in [
-            "open_ledger(",
-            "project_for_slug(",
-            "stand_down_master(",
-            "whoami(",
-        ] {
+            .find("standing_reason(&args.cmd)")
+            .expect("run must resolve the standing reason");
+        for after in ["terminal::available()", "stand_down(&ctx", "stand_up(&ctx"] {
             let at = body
                 .find(after)
-                .unwrap_or_else(|| panic!("`{after}` must still be in stand_down"));
+                .unwrap_or_else(|| panic!("`{after}` must still be in run"));
             assert!(
                 refuses < at,
-                "`{after}` runs before the reason is checked, so a call refused for having nothing to say has already touched the box"
+                "`{after}` runs before the reason is checked, so a call refused for having nothing to say has already been answered by something else, or acted on"
+            );
+        }
+        let resolver = SOURCE
+            .split("fn standing_reason(cmd: &Command)")
+            .nth(1)
+            .and_then(|r| r.split("\n}").next())
+            .expect("the resolver must be findable");
+        assert!(
+            resolver.contains("no_reason_to_stand_down")
+                && resolver.contains("no_reason_to_stand_up"),
+            "both verbs are refused by their own message, never one shared one: {resolver}"
+        );
+        for verb in ["async fn stand_down(", "async fn stand_up("] {
+            let sig = SOURCE
+                .split(verb)
+                .nth(1)
+                .and_then(|r| r.split(')').next())
+                .unwrap_or_else(|| panic!("`{verb}` must be findable"));
+            assert!(
+                sig.contains("why: &str"),
+                "and the verb is handed a reason that cannot be missing rather than looking for one itself: {sig}"
             );
         }
     }
 
-    /// Criteria 12 and 13. `--fresh` clears the stored conversation BEFORE the
-    /// lift, deliberately (ISS-1118 F2) — so a reason check placed after it
-    /// would refuse the lift having already thrown away the conversation the
-    /// caller never got to keep.
+    /// The acts a refused verb must not have reached are still inside it, so
+    /// the ordering above is about something.
     #[test]
-    fn a_refused_lift_has_not_cleared_the_conversation_or_touched_the_standing() {
-        let body = SOURCE
+    fn the_acts_a_refused_standing_verb_would_have_taken_are_still_there() {
+        let down = SOURCE
+            .split("async fn stand_down(")
+            .nth(1)
+            .and_then(|r| r.split("\nasync fn ").next())
+            .expect("stand_down must be findable");
+        for act in ["open_ledger(", "project_for_slug(", "stand_down_master("] {
+            assert!(down.contains(act), "`{act}` must still be in stand_down");
+        }
+        let up = SOURCE
             .split("async fn stand_up(")
             .nth(1)
             .and_then(|r| r.split("\nasync fn ").next())
             .and_then(|r| r.split("\nfn ").next())
             .expect("stand_up must be findable");
-        let refuses = body
-            .find("no_reason_to_stand_up(")
-            .expect("stand_up must refuse a missing reason");
-        for after in [
+        for act in [
             "open_ledger(",
             "project_for_slug(",
             "forget_master_conversation(",
             "stand_up_master(",
         ] {
-            let at = body
-                .find(after)
-                .unwrap_or_else(|| panic!("`{after}` must still be in stand_up"));
-            assert!(
-                refuses < at,
-                "`{after}` runs before the reason is checked: a lift refused for having nothing to say would have done it anyway"
-            );
+            assert!(up.contains(act), "`{act}` must still be in stand_up");
         }
     }
 

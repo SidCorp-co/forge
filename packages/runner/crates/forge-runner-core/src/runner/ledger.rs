@@ -806,9 +806,14 @@ impl Ledger {
             parked = Self::STANDING_BEFORE_EPISODES
         ))
         .map_err(|e| {
+            // What the operator is told has to be the state they will actually
+            // find. The whole migration runs in one immediate transaction, so
+            // this failure rolls the rename back with it: the table is under
+            // its own name again and `master_standing_one_row_per_project` is
+            // not there to look in. Saying otherwise sends them hunting for a
+            // table that never survived the error (F2 of the whole-set read).
             Error::Other(format!(
-                "ledger: the standing rows this box already held could not be carried into the episode log ({e}) — they are still in `{}` and nothing has been dropped",
-                Self::STANDING_BEFORE_EPISODES
+                "ledger: the standing rows this box already held could not be carried into the episode log ({e}). The whole migration is one transaction and it has rolled back, so `master_standing` is exactly as it was and no row was lost — this box is running a binary its ledger cannot be brought up to, and the ledger is safe to open with the older one"
             ))
         })?;
         Ok(())
@@ -3197,6 +3202,81 @@ mod tests {
         let again = Ledger::open(&path).expect("the migrated ledger opens like any other");
         assert_eq!(again.standings().unwrap().len(), 3);
         assert_eq!(again.master_standing("p-quiet").unwrap().unwrap().why, None);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// F2 of the whole-set read. The message an operator meets has to describe
+    /// the state they will actually find, and the whole migration is one
+    /// immediate transaction — so a failed copy takes the rename back with it
+    /// and there is no parked table to go looking in.
+    ///
+    /// The copy is forced to fail by planting two open episodes for one
+    /// project, which the new partial unique index refuses and the old primary
+    /// key could not have produced. That is the shape of a ledger somebody has
+    /// edited by hand, which is the case worth failing loudly on.
+    #[test]
+    fn a_migration_that_cannot_carry_the_rows_leaves_the_ledger_as_it_found_it() {
+        let dir = crate::test_scratch::Scratch::new("ledger-1238-rollback");
+        let path = dir.join("ledger.sqlite");
+        let _ = std::fs::remove_file(&path);
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE master_standing (
+                   project_id    TEXT,
+                   slug          TEXT NOT NULL,
+                   stood_down_at INTEGER NOT NULL,
+                   stood_down_by TEXT NOT NULL,
+                   why           TEXT,
+                   stood_up_at   INTEGER
+                 );
+                 INSERT INTO master_standing VALUES ('p', 'forge-dev', 1000, 'dev', 'first', NULL);
+                 INSERT INTO master_standing VALUES ('p', 'forge-dev', 2000, 'dev', 'second', NULL);",
+            )
+            .unwrap();
+        }
+
+        let said = match Ledger::open(&path) {
+            Err(e) => e.to_string(),
+            Ok(_) => panic!("a ledger whose rows cannot be carried must not open"),
+        };
+        assert!(
+            said.contains("rolled back"),
+            "the operator is told what happened to the write: {said}"
+        );
+        assert!(
+            said.contains("`master_standing` is exactly as it was"),
+            "and where their rows are, which is under the name they always had: {said}"
+        );
+        assert!(
+            !said.contains(Ledger::STANDING_BEFORE_EPISODES),
+            "and never sent to a parked table the rollback has already taken away: {said}"
+        );
+
+        let conn = Connection::open(&path).unwrap();
+        let names: Vec<String> = conn
+            .prepare("SELECT name FROM sqlite_master WHERE type = 'table'")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .unwrap();
+        assert!(
+            names.iter().any(|n| n == "master_standing"),
+            "the table is back under its own name: {names:?}"
+        );
+        assert!(
+            !names.iter().any(|n| n == Ledger::STANDING_BEFORE_EPISODES),
+            "and the parked name is not there: {names:?}"
+        );
+        let rows: i64 = conn
+            .query_row("SELECT COUNT(*) FROM master_standing", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(
+            rows, 2,
+            "with every row it held, none of them dropped to make the ALTER succeed"
+        );
+        drop(conn);
         let _ = std::fs::remove_file(&path);
     }
 
