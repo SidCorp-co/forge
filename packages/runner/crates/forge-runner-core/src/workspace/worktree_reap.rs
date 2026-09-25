@@ -2,8 +2,8 @@
 //!
 //! Two directories, from two different conventions, and nothing used to remove
 //! either: `<repo>/.claude/worktrees/<slug>` is Claude Code's own, and
-//! `<repo>/.worktrees/<branch>` is what `worktree::create` cuts for a job. They
-//! accumulate for the life of the box.
+//! `<repo>/.worktrees/<branch>` is where the retired job pool cut one, which
+//! boxes that ran it still hold. They accumulate for the life of the box.
 //!
 //! A liveness problem rather than tidiness: a full disk fails every job on the
 //! box (ubuntu6, 2026-08-20).
