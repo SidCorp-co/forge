@@ -322,15 +322,23 @@ fn waiting_line(what: &str, cause: &str, waited: u64, holding: &[String]) -> Str
     )
 }
 
+/// The give-up, and what it costs if the work named never ends: every attempt
+/// closes admission for the whole bound again, so a holder that outlives the
+/// box keeps it closed for the bound out of every cycle. Before ISS-1223 a
+/// drain closed nothing and this cost was zero; it is said here, where an
+/// operator reads the give-up, rather than left for them to work out.
 fn give_up_line(what: &str, cause: &str, holding: &[String], next: &NextAttempt) -> String {
     let due_in = next.due_in.max(Duration::from_secs(DRAIN_REOPEN_SECS));
+    let cycle = DRAIN_TIMEOUT_SECS + due_in.as_secs();
     format!(
-        "[{what}] gave up draining for {cause} after {} with {} outstanding — {}. The restart is not taken, because it would stop the work named. Admission is open again, and the next attempt is {}, in {}",
+        "[{what}] gave up draining for {cause} after {} with {} outstanding — {}. The restart is not taken, because it would stop the work named. Admission is open again, and the next attempt is {}, in {}. If that work is still running then, this repeats: the box admits no new run, pool job or master for {} of every {} until it ends or the service is restarted by hand",
         serving::span_secs(DRAIN_TIMEOUT_SECS),
         holding.len(),
         holding.join("; "),
         next.by,
-        serving::span_secs(due_in.as_secs())
+        serving::span_secs(due_in.as_secs()),
+        serving::span_secs(DRAIN_TIMEOUT_SECS),
+        serving::span_secs(cycle)
     )
 }
 
@@ -636,9 +644,28 @@ mod tests {
         );
         assert!(gave_up.contains("Admission is open again"), "{gave_up}");
         assert!(
+            gave_up.contains("for 2h of every 6h until it ends or the service is restarted"),
+            "reviewer finding 1: the recurring cost of a holder that never ends is priced in the line: {gave_up}"
+        );
+        assert!(
             !log.contains("idle window"),
             "no idle watcher exists, so no line may promise one: {log}"
         );
+    }
+
+    /// The credential loop's cycle is the bound plus the reopen interval.
+    #[test]
+    fn the_credential_give_up_prices_two_hours_in_every_four() {
+        let line = give_up_line(
+            "cred",
+            "a new device token",
+            &["run r-1 (ISS-7)".into()],
+            &NextAttempt {
+                by: "this loop's next drain".into(),
+                due_in: Duration::from_secs(DRAIN_REOPEN_SECS),
+            },
+        );
+        assert!(line.contains("for 2h of every 4h"), "{line}");
     }
 
     /// Criterion 11: after a give-up no drain closes admission for the reopen

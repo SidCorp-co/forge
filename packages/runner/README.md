@@ -180,6 +180,13 @@ update never kills running work:
 - **It is bounded at 2h.** Past that it does not restart: it names what still holds
   it, reopens admission, and no drain may close it again for another 2h. The
   next attempt is the next update check.
+- **What that costs when the work never ends.** Each attempt closes admission
+  for the full 2h again. A box holding a run that outlives it stays closed to
+  new runs, pool jobs and masters for 2h of every 6h under a pending update, or
+  2h of every 4h under a pending re-login. Before this, a drain closed nothing
+  and cost no admission time, but it also never turned the box over. The give-up
+  line states the cycle. The cost ends when that work ends, or when an operator
+  restarts the service by hand.
 
 Until the restart, the daemon serves the build it started on while the newer
 file stands on disk. `forge-runner status` prints both — `binary` for the file,
