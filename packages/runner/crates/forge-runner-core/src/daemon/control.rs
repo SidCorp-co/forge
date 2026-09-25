@@ -591,7 +591,7 @@ fn dispatch_gate_reply(
                             "[control] refusing a second hand-off of run {run} while draining: it was spent on {spent}"
                         );
                         return ClaimReply::refused(format!(
-                            "this box is draining before a restart ({cause}) and run {run}, declared before the drain, was already handed off to tool call {spent}; a second subagent against it would be work the drain never counted. Declare it again once the box has turned over"
+                            "this box is draining before a restart ({cause}) and run {run}, declared before the drain, was already handed off to tool call {spent}; a second subagent against it would be work the drain never counted. Declare it again once the box has turned over, or once the drain gives up and admission reopens"
                         ));
                     }
                     memory.promised.insert(run.to_string(), tool_use.clone());
@@ -653,7 +653,7 @@ fn refused_while_draining(
         None => "and whether a run was declared for it cannot be read",
     };
     Some(ClaimReply::refused(format!(
-        "this box is draining before a restart ({cause}) and admits no hand-off it cannot account for: the dispatch gate could not check this one against a declaration ({why}), {known}. Hand it off again once the box has turned over"
+        "this box is draining before a restart ({cause}) and admits no hand-off it cannot account for: the dispatch gate could not check this one against a declaration ({why}), {known}. Hand it off again once the box has turned over, or once the drain gives up and admission reopens"
     )))
 }
 

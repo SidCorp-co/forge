@@ -29,6 +29,9 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
 
     if !update::is_newer(&manifest.version, update::CURRENT_VERSION) {
         println!("✔ up to date (latest {})", manifest.version);
+        if args.restart {
+            restart_if_the_daemon_lags();
+        }
         return Ok(());
     }
     println!(
@@ -56,6 +59,41 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         None => println!("✔ already up to date"),
     }
     Ok(())
+}
+
+/// `--restart` where the file on disk is already the latest.
+///
+/// That state is not the rare one: it is exactly where a self-update applied
+/// and its drain deferred, so the file is current and the daemon is still on
+/// the inode it started from. Returning at `up to date` sent the operator away
+/// with the box still serving the old build — this issue's own rule (a version
+/// claim is about the running process, not the file) broken inside the remedy
+/// `forge-runner status` advertises. So the process is asked, not the manifest.
+fn restart_if_the_daemon_lags() {
+    use forge_runner_core::daemon::serving::{self, Turnover};
+
+    let Some(dir) = forge_runner_core::daemon::control::config_dir() else {
+        println!("  no config directory resolves on this box, so which build the daemon serves cannot be read — restart the service by hand if it lags");
+        return;
+    };
+    match serving::turnover(
+        &serving::read(&dir),
+        &serving::Probe::this_box(),
+        update::CURRENT_VERSION,
+        update::BUILD_COMMIT,
+    ) {
+        Turnover::Already { pid } => {
+            println!("  the daemon on this box (pid {pid}) already serves this build — nothing to restart")
+        }
+        Turnover::Owed { pid, build } => {
+            println!("  but the daemon on this box (pid {pid}) is serving {build}, not this build — restarting it");
+            restart_service();
+        }
+        Turnover::Unknown(why) => {
+            println!("  which build the daemon serves cannot be read from here: {why}");
+            println!("  `forge-runner status` says which case holds; restart the service by hand if it lags");
+        }
+    }
 }
 
 #[cfg(target_os = "linux")]

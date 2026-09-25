@@ -192,7 +192,27 @@ Until the restart, the daemon serves the build it started on while the newer
 file stands on disk. `forge-runner status` prints both — `binary` for the file,
 `daemon` for what the running daemon recorded it serves, with its drain — and
 `forge-runner --version` adds a line on stderr when the two differ, leaving its
-stdout unchanged. Control it without editing TOML:
+stdout unchanged.
+
+**Both lines speak about one configuration: the one this command resolves.** A
+box runs more than one daemon whenever somebody starts a second under its own
+`XDG_CONFIG_HOME`, and the `forge-runner-<id>` units are built for it. Where the
+record names no live daemon — there is none, it is gone, its pid is now another
+process, or the file will not parse — `status` says which of those holds, and
+then looks at the `forge-runner start` processes running here. It names one only
+where that process's own environment resolves to this configuration; one that
+resolves to another is counted and its directory named, as what it is; one whose
+environment cannot be read is named as unattributed rather than claimed either
+way. It never reads a build off a process that wrote no record, because nothing
+can (ISS-1223).
+
+`forge-runner update --restart` asks the daemon, not the file. The file on disk
+being the latest is exactly the state a deferred drain leaves — updated, not yet
+turned over — so `--restart` there restarts the service when the daemon is
+serving an older build, says there is nothing to restart when it already serves
+this one, and says which case holds when it cannot tell.
+
+Control it without editing TOML:
 
 ```bash
 forge-runner config set update.auto false   # opt this device out

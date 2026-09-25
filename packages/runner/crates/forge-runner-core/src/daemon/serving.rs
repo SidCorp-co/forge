@@ -140,6 +140,21 @@ pub fn pid_alive(_pid: u32) -> bool {
     false
 }
 
+/// Which configuration a running process serves, as far as this box can tell.
+///
+/// A box runs more than one daemon whenever somebody starts a second by hand to
+/// see whether theirs is up, and the `forge-runner-<id>` units are built for it.
+/// Without this, every one of them answered for every configuration.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Serves {
+    /// Its environment resolves to the configuration being read.
+    This,
+    /// Its environment resolves to another configuration, named.
+    Other(PathBuf),
+    /// Its environment could not be read, so which one it serves is unknown.
+    Unknown(String),
+}
+
 /// A `forge-runner start` process found on this box without a record.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Running {
@@ -150,16 +165,61 @@ pub struct Running {
     /// Linux marks by suffixing the link with ` (deleted)`. `None` where the
     /// link could not be read, which says nothing either way.
     pub replaced: Option<bool>,
+    /// The configuration it serves, read from its own environment.
+    pub serves: Serves,
+}
+
+/// The configuration a process serves, from `/proc/<pid>/environ`.
+#[cfg(target_os = "linux")]
+fn serves(proc_pid: &Path, ours: Option<&Path>) -> Serves {
+    let Some(ours) = ours else {
+        return Serves::Unknown(
+            "this command resolves no configuration directory of its own to compare against".into(),
+        );
+    };
+    let raw = match std::fs::read(proc_pid.join("environ")) {
+        Ok(raw) => raw,
+        Err(e) => {
+            return Serves::Unknown(format!("its environment cannot be read ({e})"));
+        }
+    };
+    let pairs: Vec<String> = raw
+        .split(|b| *b == 0)
+        .filter(|a| !a.is_empty())
+        .map(|a| String::from_utf8_lossy(a).into_owned())
+        .collect();
+    let var = |key: &str| {
+        pairs
+            .iter()
+            .find_map(|kv| kv.strip_prefix(key)?.strip_prefix('=').map(str::to_string))
+    };
+    match crate::config::config_dir_in(var) {
+        Some(dir) if dir == ours => Serves::This,
+        Some(dir) => Serves::Other(dir),
+        None => Serves::Unknown(
+            "its environment names neither XDG_CONFIG_HOME nor HOME, so it resolves no configuration directory".into(),
+        ),
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn serves(_proc_pid: &Path, _ours: Option<&Path>) -> Serves {
+    Serves::Unknown("this platform cannot read another process's environment".into())
 }
 
 /// Every `forge-runner start` process under `root` (a `/proc`) other than
-/// `self_pid`. `None` where `root` cannot be listed at all.
+/// `self_pid`, each with the configuration directory it serves compared against
+/// `ours`. `None` where `root` cannot be listed at all.
 ///
 /// A daemon that predates the serving record writes none, and "no record" alone
 /// cannot tell that daemon from no daemon — one of them is a box serving a
 /// deleted binary with nothing saying so, which is the state ISS-1223 exists to
-/// end. So the absent record is read against the processes themselves.
-pub fn scan(root: &Path, self_pid: u32) -> Option<Vec<Running>> {
+/// end. So the absent record is read against the processes themselves. Which of
+/// them answers for the configuration being read is the second half of that: a
+/// process serving a different `XDG_CONFIG_HOME` says nothing about this one,
+/// and naming it as this one's daemon tells an operator whose daemon is down
+/// that one is running.
+pub fn scan(root: &Path, self_pid: u32, ours: Option<&Path>) -> Option<Vec<Running>> {
     let entries = std::fs::read_dir(root).ok()?;
     let mut found = Vec::new();
     for entry in entries.flatten() {
@@ -196,7 +256,13 @@ pub fn scan(root: &Path, self_pid: u32) -> Option<Vec<Running>> {
             }
             Err(e) => (format!("unreadable ({e})"), None),
         };
-        found.push(Running { pid, exe, replaced });
+        let serves = serves(&entry.path(), ours);
+        found.push(Running {
+            pid,
+            exe,
+            replaced,
+            serves,
+        });
     }
     found.sort_by_key(|r| r.pid);
     Some(found)
@@ -204,7 +270,8 @@ pub fn scan(root: &Path, self_pid: u32) -> Option<Vec<Running>> {
 
 #[cfg(target_os = "linux")]
 pub fn running_daemons() -> Option<Vec<Running>> {
-    scan(Path::new("/proc"), std::process::id())
+    let ours = crate::daemon::control::config_dir();
+    scan(Path::new("/proc"), std::process::id(), ours.as_deref())
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -233,39 +300,101 @@ impl Probe {
     }
 }
 
-fn unrecorded_lines(probe: &Probe) -> Vec<String> {
+fn file_clause(r: &Running) -> String {
+    match r.replaced {
+        Some(true) => format!(
+            "the file it started from, {}, has been replaced on disk, so it is NOT serving this binary — restarting the service turns it over",
+            r.exe
+        ),
+        Some(false) => format!("the file it started from, {}, is still in place", r.exe),
+        None => format!(
+            "whether the file it started from has been replaced cannot be told: its exe link is {}",
+            r.exe
+        ),
+    }
+}
+
+/// What the `forge-runner start` processes on this box say about the
+/// configuration being read, where its own record names no serving daemon.
+enum Unrecorded {
+    /// This platform has no way to look at all.
+    Blind,
+    /// Processes that answer for this configuration, or that might.
+    Answering(Vec<String>),
+    /// None of them answers for this configuration; the others are named by the
+    /// configuration each serves instead.
+    NoneHere(Vec<PathBuf>),
+}
+
+/// A process is this configuration's daemon only where its own environment
+/// resolves to this configuration. One that serves another is not evidence
+/// about this one, and saying otherwise tells the operator of a box whose
+/// daemon is down that a daemon is up — which is the state ISS-1223 exists to
+/// end, arriving from the other side. One whose environment cannot be read is
+/// named as unattributed rather than claimed either way.
+fn unrecorded(probe: &Probe) -> Unrecorded {
     let Some(found) = (probe.daemons)() else {
-        return vec![
+        return Unrecorded::Blind;
+    };
+    let mut bodies = Vec::new();
+    for r in &found {
+        match &r.serves {
+            Serves::This => bodies.push(format!(
+                "pid {} (`forge-runner start`) serves this configuration and wrote no serving record, so which build it is serving cannot be read from here; {}",
+                r.pid,
+                file_clause(r)
+            )),
+            Serves::Unknown(why) => bodies.push(format!(
+                "pid {} (`forge-runner start`) is running, and whether it serves this configuration cannot be told — {why}; {}",
+                r.pid,
+                file_clause(r)
+            )),
+            Serves::Other(_) => {}
+        }
+    }
+    if bodies.is_empty() {
+        return Unrecorded::NoneHere(
+            found
+                .into_iter()
+                .filter_map(|r| match r.serves {
+                    Serves::Other(dir) => Some(dir),
+                    _ => None,
+                })
+                .collect(),
+        );
+    }
+    Unrecorded::Answering(bodies)
+}
+
+fn elsewhere_clause(dirs: &[PathBuf]) -> String {
+    if dirs.is_empty() {
+        return String::new();
+    }
+    let mut named: Vec<String> = dirs.iter().map(|d| d.display().to_string()).collect();
+    named.sort();
+    named.dedup();
+    format!(
+        ". {} `forge-runner start` process(es) are running here for other configurations: {}",
+        dirs.len(),
+        named.join("; ")
+    )
+}
+
+fn unrecorded_lines(probe: &Probe) -> Vec<String> {
+    match unrecorded(probe) {
+        Unrecorded::Blind => vec![
             "daemon     no record — and this platform gives no way to look for a daemon that predates the record, so whether one is running, and on which build, cannot be said from here"
                 .to_string(),
-        ];
-    };
-    if found.is_empty() {
-        return vec![
-            "daemon     no record, and no `forge-runner start` process is running on this box — no daemon is serving"
-                .to_string(),
-        ];
+        ],
+        Unrecorded::NoneHere(elsewhere) => vec![format!(
+            "daemon     no record, and no `forge-runner start` process on this box serves this configuration — no daemon is serving it{}",
+            elsewhere_clause(&elsewhere)
+        )],
+        Unrecorded::Answering(bodies) => bodies
+            .into_iter()
+            .map(|b| format!("daemon     no record — {b}"))
+            .collect(),
     }
-    found
-        .iter()
-        .map(|r| {
-            let file = match r.replaced {
-                Some(true) => format!(
-                    "the file it started from, {}, has been replaced on disk, so it is NOT serving this binary — restarting the service turns it over",
-                    r.exe
-                ),
-                Some(false) => format!("the file it started from, {}, is still in place", r.exe),
-                None => format!(
-                    "whether the file it started from has been replaced cannot be told: its exe link is {}",
-                    r.exe
-                ),
-            };
-            format!(
-                "daemon     no record — pid {} (`forge-runner start`) is running from a build older than the record, so its version cannot be read; {file}",
-                r.pid
-            )
-        })
-        .collect()
 }
 
 /// Whether the recorded daemon is the process holding its pid now.
@@ -366,18 +495,19 @@ fn listed(names: &[String]) -> String {
 /// an older daemon that writes no record can be serving beside a newer record
 /// it never wrote. So the processes are read here too.
 fn beside_a_gone_record(gone: String, probe: &Probe) -> Vec<String> {
-    match (probe.daemons)() {
-        Some(found) if !found.is_empty() => {
+    match unrecorded(probe) {
+        Unrecorded::Answering(bodies) => {
             let mut out = vec![format!(
-                "daemon     the record is stale — {gone}; a daemon that wrote no record is running instead:"
+                "daemon     the record is stale — {gone}; what is running here instead:"
             )];
-            out.extend(unrecorded_lines(probe));
+            out.extend(bodies.into_iter().map(|b| format!("{INDENT}{b}")));
             out
         }
-        Some(_) => vec![format!(
-            "daemon     not running — {gone}, and no `forge-runner start` process is running on this box"
+        Unrecorded::NoneHere(elsewhere) => vec![format!(
+            "daemon     not running — {gone}, and no `forge-runner start` process on this box serves this configuration{}",
+            elsewhere_clause(&elsewhere)
         )],
-        None => vec![format!("daemon     not running — {gone}")],
+        Unrecorded::Blind => vec![format!("daemon     not running — {gone}")],
     }
 }
 
@@ -451,6 +581,94 @@ pub fn lines(
     out
 }
 
+/// Whether restarting this box would change the build it serves.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Turnover {
+    /// A live daemon of this configuration serves another build.
+    Owed { pid: u32, build: String },
+    /// A live daemon of this configuration already serves this one.
+    Already { pid: u32 },
+    /// It cannot be said from here, and why.
+    Unknown(String),
+}
+
+/// The question `forge-runner update --restart` has to answer, which the update
+/// manifest cannot: the file on disk being the latest says nothing about the
+/// process serving, and after a deferred drain those two differ by definition.
+/// This issue's own rule — a version claim is about the running process, not
+/// the file — reaches the remedy as well as the report.
+pub fn turnover(
+    read: &Result<Option<Record>, Unreadable>,
+    probe: &Probe,
+    this_version: &str,
+    this_commit: &str,
+) -> Turnover {
+    let record = match read {
+        Err(u) => {
+            return Turnover::Unknown(format!(
+                "the daemon record at {} {}",
+                u.path.display(),
+                u.reason
+            ))
+        }
+        Ok(None) => {
+            return Turnover::Unknown(match replaced_daemon(probe) {
+                Some((pid, true)) => format!(
+                    "no daemon record stands for this configuration, and pid {pid} is running from a file that has since been replaced"
+                ),
+                _ => "no daemon record stands for this configuration".to_string(),
+            })
+        }
+        Ok(Some(r)) => r,
+    };
+    match liveness(record, probe) {
+        Liveness::Gone => {
+            Turnover::Unknown(format!("the daemon recorded, pid {}, is gone", record.pid))
+        }
+        Liveness::Reused => Turnover::Unknown(format!(
+            "pid {} is now a different process from the daemon recorded there",
+            record.pid
+        )),
+        Liveness::Same | Liveness::Unverified => {
+            if record.version == this_version && record.commit == this_commit {
+                Turnover::Already { pid: record.pid }
+            } else {
+                Turnover::Owed {
+                    pid: record.pid,
+                    build: record.build(),
+                }
+            }
+        }
+    }
+}
+
+/// A `forge-runner start` process running from a replaced file, and whether it
+/// is certainly this configuration's. One serving another configuration is
+/// never returned: `--version` speaks about the daemon behind THIS
+/// configuration, and a second daemon on the box is not it.
+fn replaced_daemon(probe: &Probe) -> Option<(u32, bool)> {
+    let mut unattributed = None;
+    for r in (probe.daemons)()? {
+        if r.replaced != Some(true) {
+            continue;
+        }
+        match r.serves {
+            Serves::This => return Some((r.pid, true)),
+            Serves::Unknown(_) if unattributed.is_none() => unattributed = Some((r.pid, false)),
+            _ => {}
+        }
+    }
+    unattributed
+}
+
+fn a_daemon(ours: bool) -> &'static str {
+    if ours {
+        "the daemon on this box"
+    } else {
+        "a `forge-runner start` process on this box, which may or may not serve this configuration,"
+    }
+}
+
 /// The sentence `--version` writes to stderr, where a live daemon serves a
 /// build other than this binary's. `None` says nothing, and stdout is never
 /// touched: something may be parsing it.
@@ -463,22 +681,18 @@ pub fn version_note(
     let record = match read.as_ref().ok()? {
         Some(r) => r,
         None => {
-            let stale = (probe.daemons)()?
-                .into_iter()
-                .find(|r| r.replaced == Some(true))?;
+            let (pid, ours) = replaced_daemon(probe)?;
             return Some(format!(
-                "forge-runner: the daemon on this box (pid {}) is running from a file that has since been replaced, so it is not serving this build; `forge-runner status` says more",
-                stale.pid
+                "forge-runner: {} (pid {pid}) is running from a file that has since been replaced, so it is not serving this build; `forge-runner status` says more",
+                a_daemon(ours)
             ));
         }
     };
     if matches!(liveness(record, probe), Liveness::Gone | Liveness::Reused) {
-        let stale = (probe.daemons)()?
-            .into_iter()
-            .find(|r| r.replaced == Some(true))?;
+        let (pid, ours) = replaced_daemon(probe)?;
         return Some(format!(
-            "forge-runner: the daemon on this box (pid {}) wrote no record and is running from a file that has since been replaced, so it is not serving this build; `forge-runner status` says more",
-            stale.pid
+            "forge-runner: {} (pid {pid}) wrote no record and is running from a file that has since been replaced, so it is not serving this build; `forge-runner status` says more",
+            a_daemon(ours)
         ));
     }
     if record.version == this_version && record.commit == this_commit {
@@ -646,11 +860,14 @@ mod tests {
                 pid: 2946187,
                 exe: "/home/dev/.local/bin/forge-runner (deleted)".into(),
                 replaced: Some(true),
+                serves: Serves::This,
             }])
         };
         let stale = joined(Ok(None), &p);
         assert!(
-            stale.contains("pid 2946187 (`forge-runner start`) is running"),
+            stale.contains(
+                "pid 2946187 (`forge-runner start`) serves this configuration and wrote no serving record"
+            ),
             "{stale}"
         );
         assert!(
@@ -665,6 +882,7 @@ mod tests {
                 pid: 7,
                 exe: "/home/dev/.local/bin/forge-runner".into(),
                 replaced: Some(false),
+                serves: Serves::This,
             }])
         };
         let standing = joined(Ok(None), &p);
@@ -682,6 +900,7 @@ mod tests {
                 pid: 8,
                 exe: "unreadable (Permission denied (os error 13))".into(),
                 replaced: None,
+                serves: Serves::This,
             }])
         };
         let unknown = joined(Ok(None), &p);
@@ -690,6 +909,171 @@ mod tests {
             !unknown.contains("still in place") && !unknown.contains("NOT serving"),
             "{unknown}"
         );
+    }
+
+    /// Criterion 18, the failure this repair answers: a second daemon serving
+    /// another configuration answered for this one, so a box whose daemon was
+    /// down was told one was running, on a build the code never read.
+    #[test]
+    fn a_daemon_of_another_configuration_is_never_named_as_this_one() {
+        let mut p = probe(|_| false, |_| None);
+        p.daemons = || {
+            Some(vec![Running {
+                pid: 4126309,
+                exe: "/home/dev/.local/bin/forge-runner".into(),
+                replaced: Some(false),
+                serves: Serves::Other("/srv/other/forge-runner".into()),
+            }])
+        };
+
+        let gone = joined(Ok(Some(rec("0.17.9", None))), &p);
+        assert!(
+            gone.contains("not running") && gone.contains("is gone"),
+            "{gone}"
+        );
+        assert!(
+            !gone.contains("4126309"),
+            "the other daemon is not this one: {gone}"
+        );
+        assert!(!gone.contains("the record is stale"), "{gone}");
+        assert!(
+            gone.contains("no `forge-runner start` process on this box serves this configuration"),
+            "{gone}"
+        );
+        assert!(
+            gone.contains("/srv/other/forge-runner"),
+            "what else runs here is still said, as what it is: {gone}"
+        );
+
+        let mut reused = probe(|_| true, |_| Some("999".into()));
+        reused.daemons = p.daemons;
+        let out = joined(Ok(Some(rec("0.17.9", None))), &reused);
+        assert!(!out.contains("4126309"), "{out}");
+        assert!(out.contains("not running"), "{out}");
+
+        let none = joined(Ok(None), &p);
+        assert!(!none.contains("4126309"), "{none}");
+        assert!(none.contains("no daemon is serving it"), "{none}");
+
+        assert_eq!(
+            version_note(&Ok(None), &p, "0.17.9", "abc1234"),
+            None,
+            "--version says nothing about another configuration's daemon"
+        );
+        assert_eq!(
+            version_note(&Ok(Some(rec("0.17.9", None))), &p, "0.17.9", "abc1234"),
+            None
+        );
+    }
+
+    /// Criterion 18: a process that cannot be attributed is named as that,
+    /// never as this configuration's daemon and never passed over in silence.
+    #[test]
+    fn a_process_that_cannot_be_attributed_is_named_as_unattributed() {
+        let mut p = live_same();
+        p.daemons = || {
+            Some(vec![Running {
+                pid: 5150,
+                exe: "/home/dev/.local/bin/forge-runner (deleted)".into(),
+                replaced: Some(true),
+                serves: Serves::Unknown("its environment cannot be read (os error 13)".into()),
+            }])
+        };
+        let out = joined(Ok(None), &p);
+        assert!(
+            out.contains("whether it serves this configuration cannot be told"),
+            "{out}"
+        );
+        assert!(out.contains("pid 5150"), "{out}");
+        assert!(
+            !out.contains("serves this configuration and wrote no serving record"),
+            "it is not claimed as ours: {out}"
+        );
+        let note = version_note(&Ok(None), &p, "0.17.9", "abc1234").expect("it is still said");
+        assert!(
+            note.contains("may or may not serve this configuration"),
+            "{note}"
+        );
+    }
+
+    /// No line says a process is running from a build older than the record:
+    /// nothing reads either build, and on the box that failed this criterion
+    /// the process named was running the NEWER one.
+    #[test]
+    fn no_line_infers_an_ordering_between_builds_it_never_read() {
+        let mut p = live_same();
+        p.daemons = || {
+            Some(vec![Running {
+                pid: 4126309,
+                exe: "/home/dev/.local/bin/forge-runner".into(),
+                replaced: Some(false),
+                serves: Serves::This,
+            }])
+        };
+        let out = joined(Ok(None), &p);
+        assert!(!out.contains("older than the record"), "{out}");
+        assert!(
+            out.contains("wrote no serving record, so which build it is serving cannot be read"),
+            "{out}"
+        );
+    }
+
+    /// The list under a stale record's line is indented under it, so three
+    /// findings is not what one finding with two entries looks like.
+    #[test]
+    fn the_processes_under_a_stale_record_are_indented_under_its_line() {
+        let mut p = probe(|_| false, |_| None);
+        p.daemons = || {
+            Some(vec![Running {
+                pid: 2946187,
+                exe: "/home/dev/.local/bin/forge-runner (deleted)".into(),
+                replaced: Some(true),
+                serves: Serves::This,
+            }])
+        };
+        let out = lines(&Ok(Some(rec("0.17.9", None))), &p, "0.17.9", "abc1234", NOW);
+        assert_eq!(out.len(), 2, "{out:?}");
+        assert!(
+            out[0].starts_with("daemon     the record is stale"),
+            "{out:?}"
+        );
+        assert!(out[1].starts_with(INDENT), "{out:?}");
+        assert!(!out[1].starts_with("daemon"), "{out:?}");
+    }
+
+    /// What `update --restart` has to ask, which the manifest cannot answer.
+    #[test]
+    fn turnover_answers_from_the_process_and_not_from_the_file() {
+        assert_eq!(
+            turnover(
+                &Ok(Some(rec("0.17.8", None))),
+                &live_same(),
+                "0.17.9",
+                "abc1234"
+            ),
+            Turnover::Owed {
+                pid: 4242,
+                build: "0.17.8 (abc1234)".into()
+            }
+        );
+        assert_eq!(
+            turnover(
+                &Ok(Some(rec("0.17.9", None))),
+                &live_same(),
+                "0.17.9",
+                "abc1234"
+            ),
+            Turnover::Already { pid: 4242 }
+        );
+        let gone = turnover(
+            &Ok(Some(rec("0.17.8", None))),
+            &probe(|_| false, |_| None),
+            "0.17.9",
+            "abc1234",
+        );
+        assert!(matches!(gone, Turnover::Unknown(w) if w.contains("is gone")),);
+        let nothing = turnover(&Ok(None), &live_same(), "0.17.9", "abc1234");
+        assert!(matches!(nothing, Turnover::Unknown(w) if w.contains("no daemon record")));
     }
 
     /// Delta review (b): after a rollback, a newer record whose daemon is gone
@@ -702,12 +1086,15 @@ mod tests {
                 pid: 2946187,
                 exe: "/home/dev/.local/bin/forge-runner (deleted)".into(),
                 replaced: Some(true),
+                serves: Serves::This,
             }])
         };
         let out = joined(Ok(Some(rec("0.17.9", None))), &p);
         assert!(out.contains("the record is stale"), "{out}");
         assert!(
-            out.contains("pid 2946187 (`forge-runner start`) is running"),
+            out.contains(
+                "pid 2946187 (`forge-runner start`) serves this configuration and wrote no serving record"
+            ),
             "{out}"
         );
         assert!(!out.contains("daemon     not running"), "{out}");
@@ -729,56 +1116,88 @@ mod tests {
 
     /// The scan over a planted `/proc`: a `forge-runner start` whose exe link
     /// carries the deleted suffix, one whose file stands, a `forge-runner
-    /// status` and an unrelated process, and this process itself.
-    #[cfg(unix)]
+    /// status` and an unrelated process, and this process itself. Each daemon
+    /// is attributed to the configuration its own environment resolves to.
+    #[cfg(target_os = "linux")]
     #[test]
     fn the_scan_finds_the_daemons_and_reads_which_run_a_replaced_file() {
         let root = crate::test_scratch::Scratch::new("serving-proc");
-        let plant = |pid: u32, argv: &[&str], exe: &str| {
+        let plant = |pid: u32, argv: &[&str], exe: &str, env: &[&str]| {
             let d = root.join(pid.to_string());
             std::fs::create_dir_all(&d).unwrap();
             std::fs::write(d.join("cmdline"), argv.join("\0") + "\0").unwrap();
             std::os::unix::fs::symlink(exe, d.join("exe")).unwrap();
+            if !env.is_empty() {
+                std::fs::write(d.join("environ"), env.join("\0") + "\0").unwrap();
+            }
         };
+        let ours = PathBuf::from("/home/dev/.config/forge-runner");
         plant(
             100,
             &["/home/dev/.local/bin/forge-runner", "start"],
             "/home/dev/.local/bin/forge-runner (deleted)",
+            &["HOME=/home/dev", "LANG=C"],
         );
         plant(
             101,
             &["forge-runner", "--core-url", "x", "start"],
             "/home/dev/.local/bin/forge-runner",
+            &["HOME=/home/dev", "XDG_CONFIG_HOME=/srv/other"],
         );
         plant(
             102,
             &["/home/dev/.local/bin/forge-runner", "status"],
             "/home/dev/.local/bin/forge-runner",
+            &["HOME=/home/dev"],
         );
-        plant(103, &["/usr/bin/sleep", "start"], "/usr/bin/sleep");
+        plant(103, &["/usr/bin/sleep", "start"], "/usr/bin/sleep", &[]);
         plant(
             104,
             &["/home/dev/.local/bin/forge-runner", "start"],
             "/home/dev/.local/bin/forge-runner",
+            &["HOME=/home/dev"],
         );
         std::fs::create_dir_all(root.join("self")).unwrap();
-        let found = scan(&root, 104).expect("the planted root lists");
+        let found = scan(&root, 104, Some(&ours)).expect("the planted root lists");
         assert_eq!(
             found,
             vec![
                 Running {
                     pid: 100,
                     exe: "/home/dev/.local/bin/forge-runner (deleted)".into(),
-                    replaced: Some(true)
+                    replaced: Some(true),
+                    serves: Serves::This,
                 },
                 Running {
                     pid: 101,
                     exe: "/home/dev/.local/bin/forge-runner".into(),
-                    replaced: Some(false)
+                    replaced: Some(false),
+                    serves: Serves::Other("/srv/other/forge-runner".into()),
                 },
             ]
         );
-        assert_eq!(scan(&root.join("absent"), 1), None);
+        assert_eq!(scan(&root.join("absent"), 1, Some(&ours)), None);
+
+        // Criterion 18: a process whose environment cannot be read is named as
+        // unattributed, never as this configuration's daemon.
+        let blind = crate::test_scratch::Scratch::new("serving-proc-blind");
+        let d = blind.join("200");
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("cmdline"), "forge-runner\0start\0").unwrap();
+        std::os::unix::fs::symlink("/x/forge-runner", d.join("exe")).unwrap();
+        let unattributed = scan(&blind, 1, Some(&ours)).expect("the planted root lists");
+        assert!(
+            matches!(unattributed[0].serves, Serves::Unknown(_)),
+            "{:?}",
+            unattributed[0].serves
+        );
+        assert!(
+            matches!(
+                scan(&blind, 1, None).expect("lists")[0].serves,
+                Serves::Unknown(_)
+            ),
+            "a command with no configuration of its own attributes nothing to it"
+        );
     }
 
     /// A record from before a reboot is gone, whatever process holds its pid.

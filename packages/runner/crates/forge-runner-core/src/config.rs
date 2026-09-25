@@ -294,12 +294,33 @@ pub struct Binding {
     pub project_id: Option<String>,
 }
 
+/// The directory the file below lives in, as `dirs_next` resolves it here.
+pub const DIR_NAME: &str = "forge-runner";
+
+/// The `forge-runner` configuration directory an environment resolves to, by
+/// the XDG rule `dirs_next::config_dir` follows on Linux — `XDG_CONFIG_HOME`
+/// where it is set and absolute, else `$HOME/.config`.
+///
+/// This exists so one process can say which configuration ANOTHER process on
+/// the box is serving, which is only answerable from that process's own
+/// environment (ISS-1223). Linux only: `/proc/<pid>/environ` is the only place
+/// that environment can be read from, and elsewhere `dirs_next` follows the
+/// platform's own convention rather than this one.
+#[cfg(target_os = "linux")]
+pub fn config_dir_in(var: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
+    let base = match var("XDG_CONFIG_HOME") {
+        Some(x) if std::path::Path::new(&x).is_absolute() => PathBuf::from(x),
+        _ => PathBuf::from(var("HOME")?).join(".config"),
+    };
+    Some(base.join(DIR_NAME))
+}
+
 impl Config {
     /// `~/.config/forge-runner/config.toml`.
     pub fn path() -> Result<PathBuf> {
         let dir = dirs_next::config_dir()
             .ok_or_else(|| Error::Config("cannot resolve OS config dir".into()))?;
-        Ok(dir.join("forge-runner").join("config.toml"))
+        Ok(dir.join(DIR_NAME).join("config.toml"))
     }
 
     /// Load config, or a default if the file does not exist yet.
@@ -483,5 +504,43 @@ chat_max_concurrent = 5
         );
         assert_eq!(back.plugins.plugin_names, vec!["house-rules"]);
         assert_eq!(back.plugins.pinned_ref.as_deref(), Some("deadbeef"));
+    }
+
+    /// The rule that reads another process's environment has to be the rule
+    /// this process's own config path follows, or attributing a daemon to a
+    /// configuration is a second convention that agrees until it does not.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn the_environment_rule_lands_where_this_process_own_config_path_does() {
+        let ours = Config::path().unwrap();
+        let dir = config_dir_in(|k| std::env::var(k).ok()).expect("this process has a HOME");
+        assert_eq!(Some(dir.as_path()), ours.parent());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn an_absolute_xdg_config_home_wins_and_a_relative_one_is_ignored() {
+        let env = |xdg: Option<&str>| {
+            let xdg = xdg.map(str::to_string);
+            move |k: &str| match k {
+                "XDG_CONFIG_HOME" => xdg.clone(),
+                "HOME" => Some("/home/ada".to_string()),
+                _ => None,
+            }
+        };
+        assert_eq!(
+            config_dir_in(env(Some("/srv/cfg"))),
+            Some(PathBuf::from("/srv/cfg/forge-runner"))
+        );
+        assert_eq!(
+            config_dir_in(env(Some("cfg"))),
+            Some(PathBuf::from("/home/ada/.config/forge-runner")),
+            "a relative XDG_CONFIG_HOME is not a base, the same way dirs_next reads it"
+        );
+        assert_eq!(
+            config_dir_in(env(None)),
+            Some(PathBuf::from("/home/ada/.config/forge-runner"))
+        );
+        assert_eq!(config_dir_in(|_| None), None, "no HOME resolves nothing");
     }
 }
