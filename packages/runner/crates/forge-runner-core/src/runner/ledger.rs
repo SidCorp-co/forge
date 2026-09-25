@@ -940,9 +940,16 @@ impl Ledger {
             // A checkout the release terminally refused to remove is not the
             // reaper's to remove either: the same refusal binds both, and
             // ending the run is what would otherwise hand it over (ISS-1188).
+            //
+            // `released_as IS NULL` narrows that to the refusals it was written
+            // for. A run whose checkout git's registry says is back holds none
+            // to protect, whatever its refusal said, and a settled refusal
+            // (ISS-1242) stamps exactly that row — so without this the stamp
+            // would tell the reaper to keep a checkout that is already gone.
             .prepare(
                 "SELECT worktree_path, run_id FROM runs
-                  WHERE ended_by IS NULL OR release_terminal_at IS NOT NULL",
+                  WHERE ended_by IS NULL
+                     OR (release_terminal_at IS NOT NULL AND released_as IS NULL)",
             )
             .map_err(sql_err)?;
         let rows = stmt
@@ -1933,6 +1940,37 @@ impl Ledger {
         .map_err(sql_err)?;
         tx.commit().map_err(sql_err)?;
         Ok(())
+    }
+
+    /// Say a standing refusal was overtaken by the world rather than decided,
+    /// and answer whether there was one to settle.
+    ///
+    /// A refusal is decided by [`Ledger::conclude_release_refusal`] when the
+    /// same refusal is taken again past its window or its attempt bound. It is
+    /// forgotten by [`Ledger::forget_release_refusal`] when a later release
+    /// gets through. Neither fires when the thing the refusal was about stops
+    /// being true on its own — a master pruning the worktree a minute after the
+    /// release was refused over it, which is `f0c38b4e` — and the row then
+    /// keeps `release_refused_at` with a null `release_terminal_at` for ever,
+    /// so the ledger reports a refusal that was never decided and the question
+    /// "which runs are stranded" has no answer from the row (ISS-1242).
+    ///
+    /// `release_refusal` is kept verbatim, because what was refused is still
+    /// the fact and an operator reading the row is owed it. The ending is left
+    /// alone too: another path may already have written one, and
+    /// `conclude_release_refusal` would overwrite it with this verb's own.
+    pub fn settle_release_refusal(&mut self, run_id: &str, at: i64) -> Result<bool> {
+        let n = self
+            .conn
+            .execute(
+                "UPDATE runs SET release_terminal_at = ?2
+                  WHERE run_id = ?1
+                    AND release_refused_at IS NOT NULL
+                    AND release_terminal_at IS NULL",
+                params![run_id, at],
+            )
+            .map_err(sql_err)?;
+        Ok(n == 1)
     }
 
     /// Forget a refusal a release got past. The run's own ending, if it has
@@ -4363,5 +4401,106 @@ mod tests {
             g.worktree_gone_at.is_some(),
             "and the one reading that does mean removed stamps both, from one writer"
         );
+    }
+
+    /// ISS-1242 — the settle, and the narrowing it cannot land without.
+    ///
+    /// `held_worktrees` answers what the reaper may not touch, and it reads
+    /// `release_terminal_at`. A settled refusal stamps exactly that column on a
+    /// run whose checkout git's registry says is back — so without the
+    /// `released_as IS NULL` half, the settle would tell the reaper to protect
+    /// a checkout that is already gone. The two halves are one change.
+    #[test]
+    fn a_settled_refusal_keeps_its_text_and_stops_protecting_a_checkout_that_came_back() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        let wt = PathBuf::from("/tmp/a-checkout-its-master-pruned");
+        led.create_run_group(NewRun {
+            run_id: "run-1".into(),
+            project_id: "proj-1".into(),
+            master_session_id: "m".into(),
+            worktree_path: wt.clone(),
+            boot_id: "boot-1".into(),
+            issue_keys: vec!["ISS-308".into()],
+        })
+        .unwrap();
+        led.note_release_refusal("run-1", "the diff was not preserved", 1_790_000_000)
+            .unwrap();
+        led.end_run("run-1", "subagent", "its subagent ended its turn")
+            .unwrap();
+
+        led.mark_checkout_returned_observed("run-1", CheckoutReturn::Gone)
+            .unwrap();
+        assert!(
+            led.settle_release_refusal("run-1", 1_790_000_060).unwrap(),
+            "there was a standing refusal to settle"
+        );
+
+        let run = led.run("run-1").unwrap().unwrap();
+        assert_eq!(run.release_terminal_at, Some(1_790_000_060));
+        assert_eq!(
+            run.release_refusal.as_deref(),
+            Some("the diff was not preserved"),
+            "the refusal text is the evidence and stays on the row"
+        );
+        assert_eq!(
+            run.ended_by.as_deref(),
+            Some("subagent"),
+            "and the ending another path wrote is left alone"
+        );
+        assert!(
+            !led.held_worktrees().unwrap().iter().any(|(p, _)| p == &wt),
+            "a run whose checkout the registry says is back holds none to protect, whatever its \
+             refusal said — telling the reaper otherwise is the ledger lying about the one thing \
+             it exists to keep honest"
+        );
+    }
+
+    /// ISS-1242 — a decision taken over a checkout that is STILL HELD is what
+    /// the narrowing must not touch: that is the case ISS-1188 wrote it for.
+    #[test]
+    fn a_decided_refusal_over_a_checkout_still_on_disk_still_protects_it() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        let wt = PathBuf::from("/tmp/a-checkout-the-release-will-not-remove");
+        led.create_run_group(NewRun {
+            run_id: "run-1".into(),
+            project_id: "proj-1".into(),
+            master_session_id: "m".into(),
+            worktree_path: wt.clone(),
+            boot_id: "boot-1".into(),
+            issue_keys: vec!["ISS-1".into()],
+        })
+        .unwrap();
+        led.note_release_refusal("run-1", "git worktree remove failed", 1_790_000_000)
+            .unwrap();
+        led.conclude_release_refusal(
+            "run-1",
+            1_790_000_300,
+            "recovery",
+            "git worktree remove failed",
+        )
+        .unwrap();
+        assert!(
+            led.held_worktrees().unwrap().iter().any(|(p, _)| p == &wt),
+            "its checkout is staying on disk by decision and nothing observed it back, so the \
+             reaper is still barred from it"
+        );
+    }
+
+    /// ISS-1242 — nothing to settle answers so, rather than stamping a
+    /// decision over a run that was never refused.
+    #[test]
+    fn a_run_with_no_standing_refusal_settles_nothing() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(NewRun {
+            run_id: "run-1".into(),
+            project_id: "proj-1".into(),
+            master_session_id: "m".into(),
+            worktree_path: PathBuf::from("/tmp/w"),
+            boot_id: "boot-1".into(),
+            issue_keys: vec!["ISS-1".into()],
+        })
+        .unwrap();
+        assert!(!led.settle_release_refusal("run-1", 1_790_000_060).unwrap());
+        assert_eq!(led.run("run-1").unwrap().unwrap().release_terminal_at, None);
     }
 }

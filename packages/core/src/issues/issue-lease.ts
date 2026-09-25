@@ -27,6 +27,7 @@ import {
 } from '../lib/issue-ref.js';
 import { LIVE_PIPELINE_RUN_STATUSES } from '../pipeline/status-sets.js';
 import { issuePrefixHolder } from './issue-prefix-read.js';
+import { ISSUE_TERMINAL_STATUSES } from './status-sets.js';
 
 const terminalSessionList = sql.join(
   terminalAgentSessionStatuses.map((s) => sql`${s}`),
@@ -248,6 +249,49 @@ export interface DeviceIssueLease {
   /** Held by THIS box. What a close loop asking "have I given this back" means. */
   heldByThisDevice: boolean;
   holder: IssueLeaseHolder | null;
+  /**
+   * The issue itself has reached a terminal status, so nothing further will be
+   * done on it. `null` where this request reaches no issue at all, which is not
+   * the same claim and must not be read as one: a box treats it as *not known
+   * to be over* and keeps the run it would otherwise have closed (ISS-1245).
+   */
+  issueOver: boolean | null;
+}
+
+/**
+ * Whether the issue that pair names has reached a terminal status, or `null`
+ * where it names no issue this device reaches.
+ *
+ * Read off the ISSUE and never off the lease row: a box has to be able to close
+ * a run whose lease core already freed, and those are exactly the rows that
+ * most need the fact (ISS-1245). `iss_seq` restarts per project, so a request
+ * naming no project identifies no issue and is answered `null` rather than
+ * tie-broken across the projects this box reaches — a guess here closes the
+ * wrong box's run.
+ */
+async function readIssueOver(args: {
+  deviceId: string;
+  issueKey: string;
+  projectId?: string | null;
+}): Promise<boolean | null> {
+  if (!args.projectId) return null;
+  const parsed = parseIssueRef(args.issueKey);
+  if (!parsed.ok) return null;
+  const terminal = sql.join(
+    ISSUE_TERMINAL_STATUSES.map((s) => sql`${s}`),
+    sql`, `,
+  );
+  const rows = (await db.execute(sql`
+    SELECT (i.status IN (${terminal})) AS over
+      FROM issues i
+     WHERE i.project_id = ${args.projectId}
+       AND i.iss_seq = ${parsed.issSeq}
+       AND i.project_id IN ${reachableProjects(args.deviceId)}
+     LIMIT 1
+  `)) as unknown as Array<Record<string, unknown>>;
+  const row = rows[0];
+  if (!row) return null;
+  return row.over === true;
 }
 
 /** One issue's lease as one box sees it. */
@@ -270,8 +314,9 @@ export async function readDeviceIssueLease(args: {
      ORDER BY (l.device_id = ${args.deviceId}) DESC, l.acquired_at ASC
      LIMIT 1
   `)) as unknown as Array<Record<string, unknown>>;
+  const issueOver = await readIssueOver(args);
   const row = rows[0];
-  if (!row) return { held: false, heldByThisDevice: false, holder: null };
+  if (!row) return { held: false, heldByThisDevice: false, holder: null, issueOver };
   const holder: IssueLeaseHolder = {
     issueKey: String(row.issue_key),
     deviceId: String(row.device_id),
@@ -279,7 +324,7 @@ export async function readDeviceIssueLease(args: {
     runId: String(row.run_id),
     acquiredAt: new Date(String(row.acquired_at)).toISOString(),
   };
-  return { held: true, heldByThisDevice: holder.deviceId === args.deviceId, holder };
+  return { held: true, heldByThisDevice: holder.deviceId === args.deviceId, holder, issueOver };
 }
 
 /** A key that reaches no lease, with the status that says which way. */

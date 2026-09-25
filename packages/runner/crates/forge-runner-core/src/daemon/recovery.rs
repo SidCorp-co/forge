@@ -148,13 +148,39 @@ pub async fn reconcile(
         let agent_gone = dead_in_the_ledger || master == MasterPresence::Gone;
         let orphaned =
             run.boot_id != boot_id || dead_in_the_ledger || master != MasterPresence::Alive;
-        if !orphaned {
+        // A subagent run under a live master is kept, and what ends that keep
+        // is its issues going over — the one fact outside the loop it is in.
+        // The keep beats the run's session on every sweep, so core's row can
+        // never go stale, so core never calls the session over, so the keep
+        // never ends: the run is alive because this box says so and this box
+        // says so because the run is alive (ISS-1245). Asked only of the
+        // population the keep covers, and only where an issue could have gone
+        // over since the run opened.
+        let kept_subagent = !orphaned && run.agent_id.is_some() && run.pid.is_none();
+        let issues_over = if kept_subagent {
+            let keys: Vec<String> = ledger
+                .issues(&run.run_id)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|m| m.issue_key)
+                .collect();
+            every_issue_over(
+                &run.run_id,
+                run.project_id.as_deref(),
+                &keys,
+                closing.leases,
+            )
+            .await
+        } else {
+            false
+        };
+        if !orphaned && !issues_over {
             // A subagent run under a live master is only ever kept here: its
             // turn-ends and its silence end nothing, because a subagent that
             // stopped may be waiting on its own work and one that finished can
             // still be resumed. Its master's close or its master's death ends
             // it, and both reach the branch below (ISS-1246).
-            if run.agent_id.is_some() && run.pid.is_none() {
+            if kept_subagent {
                 say_why_kept(ledger, &run, now_ms());
                 if let Some(id) = run.session_id.as_deref() {
                     let _ = watch.beat.beat(id).await;
@@ -212,9 +238,17 @@ pub async fn reconcile(
         } else {
             None
         };
-        let owed_release = (agent_gone || unanswered.is_some())
+        // `session_terminal` is NOT conjoined under the issues-over licence,
+        // and that is the whole point of it: the mark can only be set by core
+        // calling the session over, and the beat that would have to stop is the
+        // one this licence stops. Requiring it here would make the licence
+        // unreachable by construction. What guards the release instead is
+        // `terminate::release`, which salvages the diff first and refuses by
+        // name — naming the run, the reason and the path — where it cannot
+        // (ISS-1245).
+        let owed_release = (agent_gone || unanswered.is_some() || issues_over)
             && run.boot_id == boot_id
-            && state.session_terminal
+            && (state.session_terminal || issues_over)
             && !state.checkout_returned
             && run.release_terminal_at.is_none();
         // A refusal streak already standing, opened while this master still
@@ -237,7 +271,14 @@ pub async fn reconcile(
         } else if master == MasterPresence::Unknown {
             Some(Standing::Unanswered)
         } else {
-            None
+            // Total on purpose (ISS-1239). Every orphaned run that is not owed
+            // a release, not owed a death report and not closed now has a
+            // standing, so `master.rs`'s bare `partially closed` line — which
+            // names no branch, no reason and no act — is never the one that
+            // speaks. Before this arm the combination fell here silently and
+            // that line was printed on every sweep for as long as the box
+            // lived: 4,632 times over two days for one run.
+            Some(Standing::OverAtTheBox)
         };
         let standing_said =
             standing.is_some_and(|s| say_standing(ledger, &run, boot_id, &state, s));
@@ -257,6 +298,42 @@ pub async fn reconcile(
         });
     }
     Ok(out)
+}
+
+/// Whether EVERY issue this run holds has reached a terminal status.
+///
+/// Every, not any: a run holding one issue that is over and one that is not is
+/// still working, and closing it would take the live one's checkout with it. A
+/// run holding no issues at all answers `false` — it is not a run whose issues
+/// went over, it is a run there is nothing to conclude from — and an issue the
+/// keeper cannot answer for answers `false` the same way, because *not known to
+/// be over* is not *over* and a guess here closes a run somebody is using
+/// (ISS-1245).
+/// `keys` is read off the ledger BEFORE this is called and the handle is not
+/// held across the awaits below: `Ledger` wraps a `rusqlite` connection, which
+/// is not `Sync`, so a future holding `&Ledger` over an await is not `Send` and
+/// the daemon's own `tokio::spawn` refuses it.
+async fn every_issue_over(
+    run_id: &str,
+    project_id: Option<&str>,
+    keys: &[String],
+    leases: &dyn LeaseKeeper,
+) -> bool {
+    if keys.is_empty() {
+        return false;
+    }
+    for key in keys {
+        match leases.issue_is_over(project_id, key).await {
+            Ok(Some(true)) => {}
+            _ => return false,
+        }
+    }
+    tracing::info!(
+        "[recovery] run {run_id}: every issue it holds ({}) is over at core, so the keep its live \
+         master gives it ends here — its leases go back and its checkout is asked for (ISS-1245)",
+        keys.join(", ")
+    );
+    true
 }
 
 /// How long a run no master on this box answers for may stand with its session
@@ -375,6 +452,10 @@ enum Standing {
     /// Its release was decided terminal and its checkout stays by decision;
     /// only its leases are still being chased.
     Decided,
+    /// This box has nothing left to do for it. What is outstanding is a mark
+    /// somebody else sets — core calling its session over, or a lease core has
+    /// not yet handed back — and no sweep here will move either.
+    OverAtTheBox,
 }
 
 /// Say once, in the journal and on the row, why this run stands and what ends
@@ -394,6 +475,8 @@ fn say_standing(
         Standing::Unanswered => "awaiting-leases",
         Standing::ForeignBoot => "foreign-boot",
         Standing::Decided => "decided",
+        Standing::OverAtTheBox if !state.session_terminal => "over-awaiting-session",
+        Standing::OverAtTheBox => "over-awaiting-leases",
     };
     match ledger.note_standing(&run.run_id, notice) {
         Ok(false) => return true,
@@ -480,6 +563,31 @@ fn say_standing(
             run.worktree_path.display(),
             run.run_id
         )
+        }
+        Standing::OverAtTheBox => {
+            // The two marks this box cannot set itself, said apart: a session
+            // core still holds open and a lease core has not handed back are
+            // different facts and a line covering both names no act (ISS-1239).
+            let what_ends_it = if !state.session_terminal {
+                format!(
+                    "core's session row for {} is still open, and nothing on this box sets that \
+                     mark — it ends when core calls the session over",
+                    run.session_id.as_deref().unwrap_or("this run"),
+                )
+            } else {
+                format!(
+                    "its checkout is back and {}/{} of its leases are; the rest end when core \
+                     hands them back",
+                    state.leases_returned, state.leases_total
+                )
+            };
+            tracing::warn!(
+                "[recovery] run {} ({issues}) is partially closed ({holds}): this box has nothing \
+                 left to do for it — {what_ends_it}. `forge-runner run release {}` is the act that \
+                 takes it up again. Said once, not every sweep",
+                run.run_id,
+                run.run_id
+            )
         }
     }
     true
@@ -2602,6 +2710,331 @@ mod tests {
         assert!(
             led.unclosed_runs().unwrap().is_empty(),
             "and the run is closed, so the partially-closed line has nothing left to say"
+        );
+    }
+
+    /// One sweep over a run this box has ended, with core's session row still
+    /// open, using whichever lease keeper the caller hands in.
+    async fn sweep_ended_run(led: &mut Ledger, leases: &dyn LeaseKeeper) -> Option<Recovered> {
+        let done = reconcile(
+            led,
+            "boot-a",
+            &Masters(HashSet::new()),
+            &nothing_refuted(),
+            Closing {
+                sessions: &SessionCoreStillHolds,
+                leases,
+                roots: &Roots,
+            },
+            RunWatch {
+                beat: &Beats::default(),
+                idle: &NeverReports,
+            },
+        )
+        .await
+        .unwrap();
+        done.into_iter().next()
+    }
+
+    /// ISS-1239 — the combination `Standing` had no arm for.
+    ///
+    /// This box ended the run, so `ended_by` is set and the ledger reads it
+    /// dead; core still holds its session open, so `session_terminal` is false
+    /// and the release is not owed; its close loop is therefore not finished.
+    /// Every branch that names a reason declined, and the one that spoke — the
+    /// sweep's own bare `partially closed` line in `master.rs` — names no
+    /// branch, no reason and no act. It was printed every sweep for as long as
+    /// the box lived: 4,632 times over two days for one run.
+    #[test]
+    fn a_run_this_box_ended_whose_session_core_still_holds_names_itself_once() {
+        let said = logged_while(|| {
+            block_on(async {
+                let mut led = seeded("run-1", "master-gone", "boot-a", &["ISS-1239"]);
+                led.end_run("run-1", "subagent", "its subagent ended its turn")
+                    .unwrap();
+                let leases = Leases(Mutex::new(HashSet::new()));
+                let r = sweep_ended_run(&mut led, &leases)
+                    .await
+                    .expect("an orphaned run is always answered for");
+                assert!(
+                    !r.owed_release && !r.owed_death_report && !r.state.is_closed(),
+                    "the state under test is the one every naming branch declines: {r:?}"
+                );
+                assert!(
+                    r.standing_said,
+                    "recovery says why it stands, which is the whole of what stands the sweep's own line down: {r:?}"
+                );
+                for _ in 0..2 {
+                    let again = sweep_ended_run(&mut led, &leases).await;
+                    assert!(
+                        again.is_some_and(|r| r.standing_said),
+                        "and it keeps standing that line down on every later sweep"
+                    );
+                }
+            })
+        });
+        assert_eq!(
+            said.matches("is partially closed").count(),
+            1,
+            "three sweeps over one unchanged standing say it once: {said}"
+        );
+        assert!(
+            said.contains("this box has nothing left to do for it"),
+            "the line says which branch it took, rather than repeating the three marks: {said}"
+        );
+        assert!(
+            said.contains("core's session row"),
+            "it names the mark that is outstanding: {said}"
+        );
+        assert!(
+            said.contains("forge-runner run release run-1"),
+            "and the act that takes the run up again: {said}"
+        );
+    }
+
+    /// ISS-1239 — said once is not said never. A standing that CHANGES is said
+    /// again: the whole point of latching on the notice rather than on a flag.
+    #[test]
+    fn that_standing_is_said_again_once_it_changes() {
+        let said = logged_while(|| {
+            block_on(async {
+                let mut led = seeded("run-1", "master-gone", "boot-a", &["ISS-1239"]);
+                led.end_run("run-1", "subagent", "its subagent ended its turn")
+                    .unwrap();
+                // The lease is refused throughout, so the run stays unclosed
+                // across both sweeps and the only thing that moves is WHICH
+                // mark is outstanding.
+                assert!(sweep_ended_run(&mut led, &LeasesRefused).await.is_some());
+                // Core calls the session over, so what is outstanding stops
+                // being the session and becomes the lease this keeper refuses.
+                led.backdate_session_terminal("run-1", now_ms() / 1000 - 60)
+                    .unwrap();
+                let r = reconcile(
+                    &mut led,
+                    "boot-a",
+                    &Masters(HashSet::new()),
+                    &nothing_refuted(),
+                    Closing {
+                        sessions: &Sessions,
+                        leases: &LeasesRefused,
+                        roots: &Roots,
+                    },
+                    RunWatch {
+                        beat: &Beats::default(),
+                        idle: &NeverReports,
+                    },
+                )
+                .await
+                .unwrap();
+                assert!(
+                    r.first().is_some_and(|r| r.standing_said),
+                    "the new standing is said, not swallowed by the earlier one: {r:?}"
+                );
+            })
+        });
+        assert_eq!(
+            said.matches("is partially closed").count(),
+            2,
+            "two standings, two lines — a latch that never reopens is a warning nobody can act on: {said}"
+        );
+        assert!(
+            said.contains("leases"),
+            "and the second names the mark that is outstanding now: {said}"
+        );
+    }
+
+    /// A keeper that also answers the issue's own status: the keys in the set
+    /// are over at core, everything else is live.
+    struct LeasesOver {
+        returned: Mutex<HashSet<String>>,
+        over: HashSet<String>,
+    }
+
+    impl LeasesOver {
+        fn with(over: &[&str]) -> Self {
+            Self {
+                returned: Mutex::new(HashSet::new()),
+                over: over.iter().map(|s| (*s).to_string()).collect(),
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl LeaseKeeper for LeasesOver {
+        async fn release(&self, _: Option<&str>, issue_key: &str) -> Result<()> {
+            self.returned.lock().unwrap().insert(issue_key.to_string());
+            Ok(())
+        }
+        async fn is_returned(&self, _: Option<&str>, issue_key: &str) -> Result<bool> {
+            Ok(self.returned.lock().unwrap().contains(issue_key))
+        }
+        async fn issue_is_over(&self, _: Option<&str>, issue_key: &str) -> Result<Option<bool>> {
+            Ok(Some(self.over.contains(issue_key)))
+        }
+    }
+
+    async fn sweep_under_a_live_master(
+        led: &mut Ledger,
+        leases: &dyn LeaseKeeper,
+        beats: &Beats,
+    ) -> Option<Recovered> {
+        reconcile(
+            led,
+            "boot-a",
+            &master_alive(),
+            &nothing_refuted(),
+            Closing {
+                sessions: &SessionCoreStillHolds,
+                leases,
+                roots: &Roots,
+            },
+            RunWatch {
+                beat: beats,
+                idle: &NeverReports,
+            },
+        )
+        .await
+        .unwrap()
+        .into_iter()
+        .next()
+    }
+
+    /// ISS-1245 — the loop the keep is in, and the one fact outside it.
+    ///
+    /// The run's master is alive, so the keep holds; the keep beats the run's
+    /// session on every sweep, so core's row never goes stale; so core never
+    /// calls the session over, so the keep never ends. Measured on this box
+    /// 2026-09-25: two runs holding unreturned leases on ISS-1234 and ISS-1213,
+    /// both issues closed, eight hours after the fact. The issue going over is
+    /// the only thing that can break it, and `session_terminal` is deliberately
+    /// NOT required — the mark this sweep is waiting for is the one the beat it
+    /// stops would have kept from ever arriving.
+    #[tokio::test]
+    async fn a_kept_run_whose_every_issue_is_over_gives_its_leases_back_and_is_no_longer_beaten() {
+        let scratch = Scratch::new("issues-over");
+        let (mut led, _root, _wt, transcript) = a_subagent_run_in_a_worktree(&scratch);
+        stop_at(&led, now_ms() - HOUR_MS, Some(&transcript));
+        let beats = Beats::default();
+        let leases = LeasesOver::with(&["ISS-1217"]);
+
+        let r = sweep_under_a_live_master(&mut led, &leases, &beats)
+            .await
+            .expect("a run whose issues are over is no longer kept, so it is answered for");
+
+        assert!(
+            !r.state.session_terminal,
+            "the state under test is the one the beat keeps alive — core still holds the session open: {r:?}"
+        );
+        assert_eq!(
+            r.state.leases_returned, r.state.leases_total,
+            "the harm is a lease nobody returns: an issue no run on this box can take: {r:?}"
+        );
+        assert!(
+            r.owed_release,
+            "and its checkout is asked for, by the same path an orphan's is: {r:?}"
+        );
+        assert!(
+            beats.0.lock().unwrap().is_empty(),
+            "the sweep no longer beats a run it has stopped keeping — the beat is what held core's \
+             session row open: {:?}",
+            beats.0.lock().unwrap()
+        );
+    }
+
+    /// ISS-1245 — every issue, not any. A run holding one issue that is over
+    /// and one that is not is still working, and closing it would take the live
+    /// one's checkout with it.
+    #[tokio::test]
+    async fn a_kept_run_holding_one_live_issue_is_kept_and_beaten_as_before() {
+        let mut led = seeded("run-1", MASTER, "boot-a", &["ISS-1217", "ISS-1300"]);
+        assert!(led.bind_agent("run-1", "a1217judge").unwrap());
+        let beats = Beats::default();
+
+        let r = sweep_under_a_live_master(&mut led, &LeasesOver::with(&["ISS-1217"]), &beats).await;
+
+        assert!(
+            r.is_none(),
+            "it is kept, so the sweep owes nothing for it: {r:?}"
+        );
+        assert_eq!(
+            beats.0.lock().unwrap().len(),
+            1,
+            "and it is still beaten, because a kept run's session must not go stale under it"
+        );
+        assert!(
+            led.run("run-1").unwrap().unwrap().released_as.is_none(),
+            "its checkout was never even asked about"
+        );
+    }
+
+    /// ISS-1245 — a keeper that cannot answer says so, and *not known to be
+    /// over* is not *over*. An older core sending no such field, or a key that
+    /// reaches no issue, leaves the run exactly as it is today.
+    #[tokio::test]
+    async fn a_kept_run_whose_issue_status_is_unknown_is_kept() {
+        let mut led = seeded("run-1", MASTER, "boot-a", &["ISS-1217"]);
+        assert!(led.bind_agent("run-1", "a1217judge").unwrap());
+        let beats = Beats::default();
+
+        // `Leases` does not override `issue_is_over`, so it answers `None`:
+        // the default every keeper that cannot ask gives.
+        let r =
+            sweep_under_a_live_master(&mut led, &Leases(Mutex::new(HashSet::new())), &beats).await;
+
+        assert!(
+            r.is_none(),
+            "a guess here closes a run somebody is using: {r:?}"
+        );
+        assert_eq!(beats.0.lock().unwrap().len(), 1, "and it is still beaten");
+        assert!(
+            led.run("run-1").unwrap().unwrap().released_as.is_none(),
+            "and its checkout was never asked about"
+        );
+    }
+
+    /// ISS-1245's Rule 2 — the guard that stands in for `session_terminal`.
+    ///
+    /// The licence does not decide what happens to the checkout; `terminate::release`
+    /// does, and a checkout holding work no branch carries is refused by name
+    /// rather than released. So a run whose issues went over while its subagent
+    /// still had an unsaved diff keeps both, and the operator is told which run,
+    /// which reason and which path.
+    #[test]
+    fn a_run_whose_issues_are_over_but_whose_diff_is_unsaved_is_refused_by_name() {
+        let scratch = Scratch::new("issues-over-unsaved");
+        let (mut led, root, wt, transcript) = a_subagent_run_in_a_worktree(&scratch);
+        git(&wt, &["checkout", "-q", "--detach"]);
+        std::fs::write(wt.join("unsaved.txt"), "work nobody committed").unwrap();
+        stop_at(&led, now_ms() - HOUR_MS, Some(&transcript));
+
+        let said = logged_while(|| {
+            block_on(async {
+                let r = sweep_under_a_live_master(
+                    &mut led,
+                    &LeasesOver::with(&["ISS-1217"]),
+                    &Beats::default(),
+                )
+                .await
+                .expect("its issues are over, so it is no longer kept");
+                assert!(r.owed_release, "and its checkout is asked for: {r:?}");
+
+                let refused = release_at(&mut led, &root, now_ms() / 1000).await;
+                match refused {
+                    crate::runner::terminate::Release::Refusing { why, .. } => {
+                        assert!(
+                            why.contains("run-1") && why.contains(&wt.display().to_string()),
+                            "the refusal names the run and the path: {why}"
+                        );
+                        assert!(why.contains("was not preserved"), "and the reason: {why}");
+                    }
+                    other => panic!("the diff must stop the release, got {other:?}"),
+                }
+            })
+        });
+        assert!(wt.exists(), "and the checkout stays on disk: {said}");
+        assert!(
+            wt.join("unsaved.txt").exists(),
+            "with the work still in it: {said}"
         );
     }
 }

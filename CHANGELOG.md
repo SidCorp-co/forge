@@ -3102,6 +3102,12 @@
 - **A runner whose credential file cannot be read is told to repair it, not to sign in again.** `doctor` names that file, and the network checks stop rather than reporting the box as never paired.
 - **A box's report on a held checkout could be wrong in both directions.** The publish check signs in as the repository pushes, the retention reading follows the fetch that moves it, and a removal is logged.
 - **A runner restarting after a self-update stops taking new work while it waits, and says what it is waiting on.** `forge-runner status` now shows the build the daemon is actually serving, not only the file on disk.
+- **A run whose issues have all closed no longer stays open on a box for ever.** Its leases go back and its checkout is asked for, or the release refuses by name and keeps both.
+
+- **A run nothing on the box can close now says so once, naming what is outstanding and the act that ends it**, instead of repeating one unactionable warning every sweep.
+
+- **A release refusal the world overtook is settled on the run's record** rather than standing open for ever, so "which runs are stranded" has an answer.
+
 - **A job a runner refuses for want of a personal access token now names the box and where to create one.** `forge-runner doctor` fails on a box holding none, and reports an unreadable credential file as such.
 - **The Agent MCP servers panel lists every server an agent receives, not only the ones integrations supply.** A connected integration reaching no agent now says which condition it fails, and binding lists answer under `bindings`.
 - **A runner no longer starts a project's master without the MCP servers the project declares.** When it cannot read or hand them over, it starts none and says why: request and status, a gateway page's title, the directory to fix.
