@@ -28,6 +28,36 @@ pub async fn serve_always(status: &'static str, body: &'static str) -> String {
     format!("http://{addr}")
 }
 
+/// Answers each request by its path: the first `(path, status, body)` whose path
+/// the request line names, and `404` where none does. For a caller that makes
+/// two calls which have to be answered differently.
+pub async fn serve_routes(routes: &'static [(&'static str, &'static str, &'static str)]) -> String {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        while let Ok((mut sock, _)) = listener.accept().await {
+            tokio::spawn(async move {
+                let mut buf = [0u8; 4096];
+                let n = sock.read(&mut buf).await.unwrap_or(0);
+                let head = String::from_utf8_lossy(&buf[..n]);
+                let path = head.split_whitespace().nth(1).unwrap_or("");
+                let (status, body) = routes
+                    .iter()
+                    .find(|(route, _, _)| path.split('?').next() == Some(*route))
+                    .map(|(_, status, body)| (*status, *body))
+                    .unwrap_or(("404 Not Found", ROUTE_ABSENT));
+                let resp = format!(
+                    "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = sock.write_all(resp.as_bytes()).await;
+                let _ = sock.shutdown().await;
+            });
+        }
+    });
+    format!("http://{addr}")
+}
+
 /// Accepts every connection and never answers it, holding the socket open for
 /// as long as the test runs: the peer a call with no deadline waits on forever.
 pub async fn serve_silent() -> String {

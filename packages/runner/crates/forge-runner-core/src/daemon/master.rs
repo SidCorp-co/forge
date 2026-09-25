@@ -283,7 +283,7 @@ impl std::fmt::Display for Unplaced {
             ),
             Self::ServersUnreadable { detail } => write!(
                 f,
-                "this box could not read which MCP servers it declares ({detail}), so it started no master rather than one carrying none of them. The next sweep whose read succeeds places one"
+                "this box could not read which MCP servers this project declares ({detail}), so it started no master rather than one carrying none of them. The next sweep whose read succeeds places one"
             ),
             Self::ServersUnwritable { detail } => write!(
                 f,
@@ -6743,6 +6743,10 @@ mod unplaced_tests {
             said.contains("me/mcp-servers 525 (gateway: the TLS handshake"),
             "{said}"
         );
+        assert!(
+            said.contains("which MCP servers this project declares"),
+            "the project declares the servers, not the box the sentence opens on: {said}"
+        );
         assert!(why.is_error());
         assert_eq!(why.lead(), "no master pane placed");
 
@@ -8428,6 +8432,219 @@ async fn deaf_pane_outlived_its_kill(",
             body.contains("\n    report_deaf_fleet("),
             "the record is the BOX's, so it is written once at the sweep's own level; called from inside the per-project loop it is the per-project line again under another name (ISS-1208)"
         );
+    }
+}
+
+/// ISS-1235's two refusals, walked through `ensure_master` itself on a tmux
+/// server of the test's own, against a core answering each route its own way.
+///
+/// The decisions are pure functions with tests of their own, and the order of
+/// the calls is pinned on the source above. Neither can go red for a wrong
+/// ARGUMENT: the independent judgement at 9a7c706 handed `replacement_gate`
+/// `true` and `launch_record` `false` in place of what was read, and every test
+/// stayed green. Only a test over what `ensure_master` then does can tell.
+#[cfg(all(test, unix))]
+mod servers_refusal_walk_tests {
+    use super::*;
+    use crate::auth::cred_store::ScopedVar;
+    use crate::transport::fake_core;
+
+    const REGISTER: &str = "/api/devices/me/master-session";
+    const SERVERS: &str = "/api/devices/me/mcp-servers";
+    const SESSION: &str =
+        r#"{"sessionId":"sess-core-serves-now","name":"forge-master-walk","created":false}"#;
+    const DECLARES: &str = r#"{"mcpServers":{"playwright":{"type":"stdio","command":"true"}},"resolvedNames":["playwright"],"droppedNames":[]}"#;
+    const GATEWAY_PAGE: &str =
+        "<!DOCTYPE html><html><head><title>origin error</title></head><body>error code: 520</body></html>";
+
+    fn resolved(slug: &str, repo: &std::path::Path) -> crate::daemon::dispatch::Resolved {
+        crate::daemon::dispatch::Resolved {
+            slug: slug.to_string(),
+            repo_path: repo.to_path_buf(),
+            base_branch: None,
+            master_policy: None,
+        }
+    }
+
+    async fn walk(
+        core: String,
+        masters: &Arc<Masters>,
+        resolved: &crate::daemon::dispatch::Resolved,
+        tokens: Option<&session_tokens::SessionTokens>,
+        deaf: &DeafSink,
+    ) -> PaneState {
+        let told = std::sync::atomic::AtomicBool::new(false);
+        let authority = AuthoritySink::default();
+        ensure_master(
+            &CoreClient::new(core, "device-token"),
+            masters,
+            "proj-walk",
+            resolved,
+            &Carryover {
+                conversation: None,
+                inherited: &[],
+                stood_down_for: None,
+                stood_down_told: &told,
+            },
+            Placement::AdoptOrStart,
+            &CapabilityPorts {
+                tokens,
+                authority: &authority,
+                deaf,
+            },
+        )
+        .await
+    }
+
+    fn recorded(masters: &Masters) -> Option<Unplaced> {
+        masters
+            .0
+            .lock()
+            .expect("masters poisoned")
+            .unplaced
+            .get("proj-walk")
+            .cloned()
+    }
+
+    /// Criterion 12, against a pane that is up and deaf. Its capability map
+    /// holds nothing for the session core serves, so the rule on its own says
+    /// `Replace`; the read failing is the only thing that says otherwise.
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_deaf_pane_is_left_standing_while_the_declaration_cannot_be_read() {
+        let _serialised = terminal::testing::ONE_AT_A_TIME.lock().await;
+        let _env = crate::auth::cred_store::ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let iso = terminal::testing::IsolatedServer::new("walkdeaf");
+        if !terminal::available() {
+            eprintln!("tmux is not installed here — the transport this rests on cannot run");
+            return;
+        }
+        if !iso.took() {
+            eprintln!("this box does not resolve its tmux socket from the config dir, so the only server here is its own — not starting a pane on it");
+            return;
+        }
+        let repo = crate::test_scratch::Scratch::new("walkdeaf-repo");
+        let map = crate::test_scratch::Scratch::new("walkdeaf-map").at("control-tokens.json");
+        let store = session_tokens::SessionTokens::at(map.to_path_buf());
+        let name = terminal::session_name(terminal::MASTER_PREFIX, "walkdeaf");
+        terminal::ensure(
+            &name,
+            &repo,
+            &["sleep".to_string(), "60".to_string()],
+            &[],
+            None,
+        )
+        .await
+        .expect("the pane standing in for the deaf master must start");
+        assert_eq!(
+            capability_act(
+                &capability_of(Some(&store), "sess-core-serves-now"),
+                Placement::AdoptOrStart
+            ),
+            CapabilityAct::Replace,
+            "the plant is only the plant while the rule alone would end this pane"
+        );
+
+        let core = fake_core::serve_routes(&[
+            (REGISTER, "200 OK", SESSION),
+            (SERVERS, "520 Origin Error", GATEWAY_PAGE),
+        ])
+        .await;
+        let masters = Arc::new(Masters::new());
+        let deaf = DeafSink::default();
+        let state = walk(
+            core,
+            &masters,
+            &resolved("walkdeaf", &repo),
+            Some(&store),
+            &deaf,
+        )
+        .await;
+
+        assert!(
+            terminal::alive(&name).await,
+            "the deaf pane was ended for a replacement the failed read then refused to place, so the project is left with no pane at all"
+        );
+        assert_eq!(state, PaneState::StaleCapability);
+        match deaf.take().expect("the box met a deaf pane").acted {
+            DeafAct::LeftStanding(why) => assert!(
+                why.contains("declared MCP servers"),
+                "the record says it was the read that kept the pane standing: {why}"
+            ),
+            other => panic!("a pane still running was recorded as {other:?}"),
+        }
+        let _ = terminal::kill(&name).await;
+    }
+
+    /// Criteria 6 and 7, against a config write that fails for any user, root
+    /// included: a directory stands where the write's temporary file goes, and
+    /// no previous config exists, so the old one clears and this is `Withheld`
+    /// rather than `Lying`.
+    ///
+    /// `tokens` is `None`, so a placement that got past the refusal stops at
+    /// the mint rather than starting `claude` in a pane.
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_config_that_cannot_be_written_for_a_declaring_project_places_no_pane() {
+        let _serialised = terminal::testing::ONE_AT_A_TIME.lock().await;
+        let _env = crate::auth::cred_store::ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let iso = terminal::testing::IsolatedServer::new("walkwrite");
+        if !terminal::available() {
+            eprintln!("tmux is not installed here — the transport this rests on cannot run");
+            return;
+        }
+        if !iso.took() {
+            eprintln!("this box does not resolve its tmux socket from the config dir, so the only server here is its own — not asking it about a pane");
+            return;
+        }
+        let claude_home = crate::test_scratch::Scratch::new("walkwrite-claude");
+        let _trust = ScopedVar::set("CLAUDE_CONFIG_DIR", claude_home.path());
+        let repo = crate::test_scratch::Scratch::new("walkwrite-repo");
+        let dir = crate::mcp::config::session_dir();
+        assert_eq!(
+            dir.parent(),
+            terminal::socket_path().as_deref().and_then(|s| s.parent()),
+            "the session configs are written beside the isolated server's socket, not under this box's own config"
+        );
+        let blocked = dir.join(format!(
+            "forge-master-mcp-walkwrite.tmp.{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&blocked).expect("the directory the write will meet");
+
+        let core = fake_core::serve_routes(&[
+            (REGISTER, "200 OK", SESSION),
+            (SERVERS, "200 OK", DECLARES),
+        ])
+        .await;
+        let masters = Arc::new(Masters::new());
+        let deaf = DeafSink::default();
+        let state = walk(core, &masters, &resolved("walkwrite", &repo), None, &deaf).await;
+
+        assert_eq!(state, PaneState::Absent);
+        assert!(
+            !terminal::alive(&terminal::session_name(
+                terminal::MASTER_PREFIX,
+                "walkwrite"
+            ))
+            .await,
+            "no pane is started for a project whose servers could not be handed to it"
+        );
+        match recorded(&masters) {
+            Some(Unplaced::ServersUnwritable { detail }) => assert!(
+                detail.contains("declared: playwright"),
+                "the refusal names what the pane would have lacked: {detail}"
+            ),
+            other => panic!(
+                "a declaring project whose config could not be written was recorded as {:?} — the refusal was not taken, and with a capability map to mint into the pane would have started carrying none of its servers",
+                other.map(|why| why.to_string())
+            ),
+        }
+        let _ = std::fs::remove_dir(&blocked);
     }
 }
 
