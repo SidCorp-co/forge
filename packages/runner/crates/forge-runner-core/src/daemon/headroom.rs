@@ -85,13 +85,20 @@ pub struct Headroom {
 ///
 /// A total of zero is not a full filesystem. btrfs and several others report
 /// `f_files` as zero because they hold no fixed inode table, and reading that
-/// as 0% free would put every such box permanently at `Critical` — a alarm
+/// as 0% free would put every such box permanently at `Critical` — an alarm
 /// that is always on is one nobody reads.
+///
+/// The multiply comes before the divide and is taken in `u128`: a saturating
+/// `u64` one turns counts near the type's ceiling into 1% free, which is a
+/// clear filesystem reported as critical (consult fa8132 F1). A reading of
+/// more free than total is capped rather than believed, for the same reason —
+/// it is not a full disk.
 fn free_percent(free: u64, total: u64) -> Option<u64> {
     if total == 0 {
         return None;
     }
-    Some(free.saturating_mul(100) / total)
+    let percent = u128::from(free) * 100 / u128::from(total);
+    Some(u64::try_from(percent.min(100)).unwrap_or(100))
 }
 
 impl Headroom {
@@ -307,6 +314,25 @@ fn sweep_wont(min_age: Duration) -> String {
          only under a repository",
         min_age.as_secs() / (24 * 3600)
     )
+}
+
+/// Put one report in the journal at the level its reading earned.
+///
+/// Here rather than in the daemon's tick because that tick is a `tokio` task
+/// inside `daemon::run` with no seam a test can reach, and a source scan for
+/// the three macro names passes while every one of them goes out as `info!` —
+/// the shape the project's own `source-scanning-test-assertions-in-forge-\
+/// runner-core` entry records, and the one consult fa8132 F2 found here.
+pub fn say(at: &Path, reading: &Reading, report: &Report) {
+    let line = said(at, reading, report);
+    let level = report.level();
+    if level == tracing::Level::ERROR {
+        tracing::error!("{line}");
+    } else if level == tracing::Level::WARN {
+        tracing::warn!("{line}");
+    } else {
+        tracing::info!("{line}");
+    }
 }
 
 /// The line one report goes into the journal as.
@@ -642,20 +668,84 @@ mod tests {
         assert!(matches!(room.verdict(), Verdict::Unmeasurable(_)));
     }
 
+    /// Read back off a real subscriber rather than off `Report::level()`, and
+    /// rather than off a source scan for the three macro names — which passes
+    /// while every one of them goes out as `info!` (consult fa8132 F2).
     #[test]
     fn each_verdict_reaches_the_journal_at_the_level_its_reading_earns() {
-        assert_eq!(
-            Report::Entered(Verdict::Critical(Axis::Bytes)).level(),
-            tracing::Level::ERROR
+        let reading = Reading::Took(the_measured_box());
+        let at = Path::new("/tmp");
+
+        let critical = logged_while(|| {
+            say(
+                at,
+                &reading,
+                &Report::Entered(Verdict::Critical(Axis::Inodes)),
+            );
+        });
+        assert!(
+            critical.contains("ERROR"),
+            "a critical box demoted into the thousands of info lines is the silence this \
+             replaces: {critical}"
         );
-        assert_eq!(
-            Report::Entered(Verdict::Tight(Axis::Bytes)).level(),
-            tracing::Level::WARN
-        );
-        assert_eq!(
-            Report::Entered(Verdict::Clear).level(),
-            tracing::Level::INFO
-        );
+
+        let tight = logged_while(|| {
+            say(at, &reading, &Report::Entered(Verdict::Tight(Axis::Inodes)));
+        });
+        assert!(tight.contains("WARN"), "{tight}");
+        assert!(!tight.contains("ERROR"), "{tight}");
+
+        let clear = logged_while(|| {
+            say(at, &reading, &Report::Entered(Verdict::Clear));
+        });
+        assert!(clear.contains("INFO"), "{clear}");
+        assert!(!clear.contains("WARN"), "{clear}");
+    }
+
+    /// A third copy of this crate's log-capture helper, beside `master.rs`'s
+    /// `give_back_tests::logged_while` and its `own_exe_reporting_tests` one.
+    /// The shared one is `pub(super)` inside a private test module of a file
+    /// this change may not edit, so it is out of reach from here.
+    fn logged_while(f: impl FnOnce()) -> String {
+        use std::sync::{Arc, Mutex};
+        #[derive(Clone)]
+        struct Buf(Arc<Mutex<Vec<u8>>>);
+        impl std::io::Write for Buf {
+            fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(b);
+                Ok(b.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let buf = Buf(Arc::new(Mutex::new(Vec::new())));
+        let made = buf.clone();
+        let sub = tracing_subscriber::fmt()
+            .with_writer(move || made.clone())
+            .with_ansi(false)
+            .finish();
+        crate::daemon::keep_tracing_capturable();
+        tracing::subscriber::with_default(sub, f);
+        let out = buf.0.lock().unwrap().clone();
+        String::from_utf8_lossy(&out).into_owned()
+    }
+
+    /// The counts a filesystem states are whatever it states, and the one
+    /// arithmetic step between them and the verdict is a multiply. Taken in
+    /// `u64` it saturates, and an empty filesystem reads as 1% free — which is
+    /// `Critical` on a box with everything free (consult fa8132 F1).
+    #[test]
+    fn counts_at_the_ceiling_of_their_type_read_as_free_rather_than_as_full() {
+        let room = Headroom {
+            bytes_free: u64::MAX,
+            bytes_total: u64::MAX,
+            inodes_free: u64::MAX,
+            inodes_total: u64::MAX,
+        };
+        assert_eq!(room.bytes_free_percent(), Some(100));
+        assert_eq!(room.inodes_free_percent(), Some(100));
+        assert_eq!(room.verdict(), Verdict::Clear);
     }
 
     /// The tick is a `tokio` task inside `daemon::run` with no seam a test can
@@ -664,28 +754,22 @@ mod tests {
     /// losing a level, which is how a verdict earned at `ERROR` reaches the
     /// journal as one more `info!` among thousands.
     #[test]
-    fn the_tick_puts_each_report_in_the_journal_at_the_level_it_earned() {
+    fn the_tick_reads_off_the_blocking_pool_and_leaves_the_level_to_this_module() {
         const DAEMON: &str = include_str!("mod.rs");
 
         assert!(
-            DAEMON.contains("headroom::read(&at)"),
-            "the tick takes a reading of the filesystem the box writes scratch into"
+            DAEMON.contains("spawn_blocking(move || headroom::read(&here))"),
+            "`statvfs` blocks, so a scratch root on a hung mount would take a daemon worker with it"
         );
         assert!(
             DAEMON.contains("tokio::time::interval(TICK)"),
             "the tick keeps this module's own period: a reading on the sweep's six hours could \
              cross both thresholds and the ceiling between two of them"
         );
-        let at = DAEMON
-            .find("headroom::said(")
-            .expect("the tick puts this module's own line in the journal, not one of its own");
-        let after = &DAEMON[at..DAEMON.len().min(at + 600)];
-        for said in ["tracing::error!", "tracing::warn!", "tracing::info!"] {
-            assert!(
-                after.contains(said),
-                "the tick flattens {said} away, so a level this module earned never reaches the \
-                 journal: {after}"
-            );
-        }
+        assert!(
+            DAEMON.contains("headroom::say(&at, &reading, &report)"),
+            "the level is this module's, where a subscriber reads it back; a tick building its \
+             own line is a level nothing checks"
+        );
     }
 }

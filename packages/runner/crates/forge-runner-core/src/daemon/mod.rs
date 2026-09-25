@@ -910,19 +910,29 @@ pub async fn run(
             loop {
                 tokio::select! {
                     _ = tick.tick() => {
-                        let reading = headroom::read(&at);
-                        let Some(report) = watch.tick(std::time::Instant::now(), reading.verdict())
-                        else {
-                            continue;
+                        // `statvfs` blocks, and a scratch root on an
+                        // unresponsive network or FUSE mount blocks for as
+                        // long as that mount does. Taken on a worker that
+                        // stalls the daemon's other tasks, so it goes to the
+                        // blocking pool and cancellation is still answered
+                        // while it is out (consult 404196 F1).
+                        let here = at.clone();
+                        let taken = tokio::task::spawn_blocking(move || headroom::read(&here));
+                        let reading = tokio::select! {
+                            answered = taken => answered.unwrap_or_else(|e| {
+                                headroom::Reading::Refused(
+                                    format!("the reading did not finish ({e})"),
+                                )
+                            }),
+                            _ = cancel_rx.changed() => {
+                                if *cancel_rx.borrow() { break; }
+                                continue;
+                            }
                         };
-                        let line = headroom::said(&at, &reading, &report);
-                        let level = report.level();
-                        if level == tracing::Level::ERROR {
-                            tracing::error!("{line}");
-                        } else if level == tracing::Level::WARN {
-                            tracing::warn!("{line}");
-                        } else {
-                            tracing::info!("{line}");
+                        if let Some(report) =
+                            watch.tick(std::time::Instant::now(), reading.verdict())
+                        {
+                            headroom::say(&at, &reading, &report);
                         }
                     }
                     _ = cancel_rx.changed() => { if *cancel_rx.borrow() { break; } }
