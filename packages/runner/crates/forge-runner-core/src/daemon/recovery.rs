@@ -222,7 +222,10 @@ pub async fn reconcile(
 /// costs the other way is bounded by what the release does — a subagent still
 /// working in a pane this box cannot see, past an hour of both silences, has
 /// its branch published, its commits named by a ref and an unsaved diff
-/// salvaged or refused, never dropped.
+/// salvaged or refused, never dropped. Its leases were already back: the close
+/// loop returns them for every orphaned run. The trade ends when this box keeps
+/// a durable record of the master sessions it ended, so a miss can be told
+/// apart from an ending and positive evidence replaces the clock.
 pub const UNANSWERED_RELEASE_AFTER: std::time::Duration = subagent_end::SUBAGENT_QUIET;
 
 /// How long `run`'s session has been over at core, where that is at least
