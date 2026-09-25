@@ -198,6 +198,11 @@ struct CredFile {
     pat: Option<String>,
 }
 
+/// The `0600` credential file, for a message that has to name where a token is read from.
+pub fn credential_file_path() -> Result<PathBuf> {
+    file_path()
+}
+
 fn file_path() -> Result<PathBuf> {
     let dir = dirs_next::config_dir()
         .ok_or_else(|| Error::Config("cannot resolve OS config dir".into()))?;

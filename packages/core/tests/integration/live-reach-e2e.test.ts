@@ -34,7 +34,9 @@ const waiting = [
     sha: `${String(i + 1).padStart(2, '0')}`.padEnd(40, 'a'),
     commit: {
       message:
-        i % 2 ? `fix(desk): change (ISS-${n})` : `Merge pull request #${n} from sid/ISS-${n}-slug`,
+        i % 2
+          ? `fix(desk): change (ISS-${n})\n\nkeeps the shape the ISS-400 decision chose`
+          : `Merge pull request #${n} from sid/ISS-${n}-slug`,
     },
   })),
   { sha: OBSERVED, commit: { message: 'a squash whose message names no issue' } },
@@ -107,7 +109,10 @@ let fixtureRoot = '';
 /** The commit on the fixture's staging whose message names no issue: ISS-442's observed merge. */
 let gitObserved = '';
 
-/** sid-desk's shape as a real repository: seven commits naming their keys and one naming none. */
+/**
+ * sid-desk's shape as a real repository: seven commits naming their keys in their subjects, some
+ * citing the shipped ISS-400 in their bodies, and one naming none.
+ */
 function buildSidDeskRepository(): void {
   fixtureRoot = mkdtempSync(join(tmpdir(), 'forge-sid-desk-'));
   const env = {

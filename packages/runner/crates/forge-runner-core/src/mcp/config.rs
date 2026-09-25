@@ -4,11 +4,68 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
-use crate::auth::cred_store::load_pat;
+use crate::auth::cred_store::{credential_file_path, load_device_token, load_pat};
 use crate::error::{Error, Result};
+
+/// The credential a job's `forge` MCP server and its `$FORGE_PAT` carry: the
+/// box's stored personal access token, or a refusal naming what was wanted and
+/// what the box holds.
+///
+/// The device token is refused rather than substituted. It is a PAT since
+/// ISS-932, but fenced to its holder: a box paired by a person is minted one
+/// that reaches no project, and nothing on the box says which kind it holds.
+pub fn job_credential() -> Result<String> {
+    let file = credential_file_path().ok();
+    decide_job_credential(load_pat(), load_device_token(), file.as_deref())
+}
+
+fn decide_job_credential(
+    pat: Result<Option<String>>,
+    device_token: Result<Option<String>>,
+    file: Option<&Path>,
+) -> Result<String> {
+    let sources = pat_sources(file);
+    let pat = pat.map_err(|e| {
+        Error::Other(format!(
+            "this job's `forge` MCP server needs a personal access token, and the credential \
+             store could not be read ({e}). Fix or remove {sources}, then retry."
+        ))
+    })?;
+    if let Some(pat) = pat.map(|p| p.trim().to_string()).filter(|p| !p.is_empty()) {
+        return Ok(pat);
+    }
+    let held = match device_token {
+        Ok(Some(t)) if !t.trim().is_empty() => "a device token from pairing. It authenticates \
+             this daemon's own channel and is not written into a job's config: its project \
+             reach is its holder's, and a box paired by a person reaches no project with it"
+            .to_string(),
+        Ok(_) => "no device token either, so the box is not paired (`forge-runner login` pairs it)"
+            .to_string(),
+        Err(e) => format!("a device token that could not be read ({e})"),
+    };
+    Err(Error::Other(format!(
+        "this job's `forge` MCP server needs a personal access token, and this box holds none \
+         (read from {sources}). What it holds: {held}. Store one with \
+         `forge-runner login --pat <token>`."
+    )))
+}
+
+/// Where `load_pat` looks, in its own order.
+fn pat_sources(file: Option<&Path>) -> String {
+    let file = file.map_or_else(
+        || "the credential file".to_string(),
+        |p| format!("`{}`", p.display()),
+    );
+    if cfg!(any(target_os = "macos", target_os = "windows")) {
+        format!("`$FORGE_PAT`, the OS keychain, or the `pat` key of {file}")
+    } else {
+        format!("`$FORGE_PAT` or the `pat` key of {file}")
+    }
+}
 
 pub fn write(
     core_url: &str,
+    credential: &str,
     project_slug: &str,
     job_id: &str,
     override_servers: Option<&Value>,
@@ -16,7 +73,7 @@ pub fn write(
     write_in(
         &mcp_config_dir(),
         core_url,
-        load_pat().ok().flatten().as_deref(),
+        credential,
         project_slug,
         job_id,
         override_servers,
@@ -26,34 +83,22 @@ pub fn write(
 fn write_in(
     dir: &Path,
     core_url: &str,
-    token: Option<&str>,
+    credential: &str,
     project_slug: &str,
     job_id: &str,
     override_servers: Option<&Value>,
 ) -> Result<PathBuf> {
     let mcp_url = format!("{}/mcp", core_url.trim_end_matches('/'));
-    let token = token.map(str::to_string).filter(|t| !t.trim().is_empty());
-    let mut servers = match token.as_deref() {
-        Some(t) => serde_json::json!({
-            "forge": {
-                "type": "http",
-                "url": mcp_url,
-                "headers": {
-                    "Authorization": format!("Bearer {t}"),
-                    "X-Forge-Project-Slug": project_slug
-                }
+    let mut servers = serde_json::json!({
+        "forge": {
+            "type": "http",
+            "url": mcp_url,
+            "headers": {
+                "Authorization": format!("Bearer {credential}"),
+                "X-Forge-Project-Slug": project_slug
             }
-        }),
-        None => {
-            tracing::warn!(
-                job_id,
-                "mcp config: this box holds no agent credential — omitting the `forge` MCP \
-                 server. Tools that only exist there (forge_uploads, forge_step_start) will be \
-                 absent for this job; run `forge-runner login` to pair the box."
-            );
-            serde_json::json!({})
         }
-    };
+    });
 
     if let Some(extra) = override_servers {
         if let (Some(base), Some(extra)) = (servers.as_object_mut(), extra.as_object()) {
@@ -765,11 +810,6 @@ mod tests {
         serde_json::from_str(&s).unwrap()
     }
 
-    /// The provisioned folder is for a human, and the box's device token is not
-    /// a credential a human holds — `/mcp` refuses it outright (ISS-931). With
-    /// no operator PAT the existing entry is left alone rather than replaced by
-    /// something that answers 401.
-
     #[test]
     fn sanitizes_slug_to_fs_safe_token() {
         assert_eq!(
@@ -788,7 +828,7 @@ mod tests {
         let p1 = write_in(
             &dir,
             "https://core.example",
-            Some("forge_pat_dev_boxcred"),
+            "forge_pat_dev_boxcred",
             slug,
             "job-a",
             None,
@@ -797,7 +837,7 @@ mod tests {
         let p2 = write_in(
             &dir,
             "https://core.example",
-            Some("forge_pat_dev_boxcred"),
+            "forge_pat_dev_boxcred",
             slug,
             "job-a",
             None,
@@ -825,7 +865,7 @@ mod tests {
         let a = write_in(
             &one,
             "https://core.example",
-            Some("forge_pat_dev_boxcred"),
+            "forge_pat_dev_boxcred",
             "iso",
             "job-a",
             None,
@@ -834,7 +874,7 @@ mod tests {
         let b = write_in(
             &two,
             "https://core.example",
-            Some("forge_pat_dev_boxcred"),
+            "forge_pat_dev_boxcred",
             "iso",
             "job-a",
             None,
@@ -867,7 +907,7 @@ mod tests {
         let a = write_in(
             &dir,
             "https://core.example",
-            Some("forge_pat_dev_boxcred"),
+            "forge_pat_dev_boxcred",
             slug,
             "job-a",
             None,
@@ -876,7 +916,7 @@ mod tests {
         let b = write_in(
             &dir,
             "https://core.example",
-            Some("forge_pat_dev_boxcred"),
+            "forge_pat_dev_boxcred",
             slug,
             "job-b",
             None,
@@ -903,7 +943,7 @@ mod tests {
         let path = write_in(
             &tmp_mcp_dir("skip-non-object"),
             "https://core.example",
-            Some("forge_pat_dev_boxcred"),
+            "forge_pat_dev_boxcred",
             "skip-non-object-slug",
             "job-skip",
             Some(&overrides),
@@ -911,6 +951,113 @@ mod tests {
         .unwrap();
         let doc: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         assert!(doc["mcpServers"]["chrome-devtools-mcp"].is_null());
+        assert_eq!(doc["mcpServers"]["playwright"]["command"], "npx");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    const DEVICE: &str = "forge_pat_dev_devicetoken";
+
+    fn refusal(pat: Result<Option<String>>, device: Result<Option<String>>) -> String {
+        let file = Path::new("/box/forge-runner/credentials.json");
+        match decide_job_credential(pat, device, Some(file)) {
+            Ok(tok) => panic!(
+                "expected a refusal, got a credential of {} chars",
+                tok.len()
+            ),
+            Err(e) => e.to_string(),
+        }
+    }
+
+    #[test]
+    fn a_stored_pat_is_the_job_credential_whatever_else_the_box_holds() {
+        let got = decide_job_credential(
+            Ok(Some(" forge_pat_dev_op ".into())),
+            Ok(Some(DEVICE.into())),
+            None,
+        );
+        assert_eq!(got.unwrap(), "forge_pat_dev_op");
+    }
+
+    #[test]
+    fn a_device_token_alone_is_refused_naming_what_was_wanted_and_what_was_found() {
+        let err = refusal(Ok(None), Ok(Some(DEVICE.into())));
+        assert!(err.contains("needs a personal access token"), "{err}");
+        assert!(
+            err.contains("What it holds: a device token from pairing"),
+            "{err}"
+        );
+        assert!(
+            err.contains("`/box/forge-runner/credentials.json`"),
+            "names the file: {err}"
+        );
+        assert!(err.contains("forge-runner login --pat <token>"), "{err}");
+        assert!(!err.contains("to pair the box"), "the box is paired: {err}");
+        assert!(
+            !err.contains(DEVICE),
+            "the refusal carries no credential: {err}"
+        );
+    }
+
+    #[test]
+    fn a_blank_pat_is_no_pat() {
+        let err = refusal(Ok(Some("   ".into())), Ok(Some(DEVICE.into())));
+        assert!(err.contains("What it holds: a device token"), "{err}");
+    }
+
+    #[test]
+    fn a_box_holding_neither_credential_says_it_is_not_paired_either() {
+        let err = refusal(Ok(None), Ok(None));
+        assert!(err.contains("no device token either"), "{err}");
+        assert!(err.contains("forge-runner login --pat <token>"), "{err}");
+        let blank = refusal(Ok(None), Ok(Some(" ".into())));
+        assert!(blank.contains("no device token either"), "{blank}");
+    }
+
+    #[test]
+    fn an_unreadable_store_is_refused_naming_the_read_error_not_read_as_no_pat() {
+        let err = refusal(
+            Err(Error::Other("expected value at line 1 column 1".into())),
+            Ok(None),
+        );
+        assert!(
+            err.contains("could not be read (expected value at line 1 column 1)"),
+            "{err}"
+        );
+        assert!(
+            !err.contains("holds none"),
+            "a read error is not an absence: {err}"
+        );
+        let device = refusal(Ok(None), Err(Error::Other("keychain locked".into())));
+        assert!(
+            device.contains("a device token that could not be read (keychain locked)"),
+            "{device}"
+        );
+    }
+
+    #[test]
+    fn a_pat_writes_the_forge_entry_it_always_wrote_and_overrides_merge_on_top() {
+        let overrides = serde_json::json!({ "playwright": { "type": "stdio", "command": "npx" } });
+        let path = write_in(
+            &tmp_mcp_dir("same-entry"),
+            "https://core.example/",
+            "forge_pat_dev_op",
+            "proj",
+            "job-same",
+            Some(&overrides),
+        )
+        .unwrap();
+        let doc: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(
+            doc["mcpServers"]["forge"],
+            serde_json::json!({
+                "type": "http",
+                "url": "https://core.example/mcp",
+                "headers": {
+                    "Authorization": "Bearer forge_pat_dev_op",
+                    "X-Forge-Project-Slug": "proj"
+                }
+            })
+        );
         assert_eq!(doc["mcpServers"]["playwright"]["command"], "npx");
         let _ = std::fs::remove_file(&path);
     }
@@ -1002,7 +1149,7 @@ mod tests {
         let path = write_in(
             &tmp_mcp_dir("box-cred"),
             "https://core.example",
-            Some("forge_pat_dev_boxcred"),
+            "forge_pat_dev_boxcred",
             "box-cred-slug",
             "job-tok",
             None,
@@ -1059,46 +1206,13 @@ mod tests {
         );
         let _ = std::fs::remove_dir_all(&repo);
 
-        let path = write_in(
-            &tmp_mcp_dir("blank"),
-            "https://core.example",
-            Some("   "),
-            "blank-slug",
-            "job-blank",
-            None,
-        )
-        .unwrap();
-        let doc: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-        assert!(doc["mcpServers"]["forge"].is_null());
-        let _ = std::fs::remove_file(&path);
-
-        // -- with NO credential at all the `forge` server is ABSENT and the
-        //    sibling overrides still come through. Writing an unusable bearer
-        //    would buy a 401 at the first tool call with nothing naming the
-        //    writer; the provisioned folder likewise keeps whatever was there.
+        // -- with no PAT the provisioned folder keeps whatever was there --
         pat.move_to("");
         let _store = ScopedVar::set("FORGE_RUNNER_CRED_STORE", "file");
         let empty = std::env::temp_dir().join(format!("forge-mcp-nocred-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&empty);
         std::fs::create_dir_all(&empty).unwrap();
         let _xdg = ScopedVar::set("XDG_CONFIG_HOME", &empty);
-
-        let overrides = serde_json::json!({
-            "playwright": { "type": "stdio", "command": "npx" },
-        });
-        let path = write_in(
-            &tmp_mcp_dir("no-cred"),
-            "https://core.example",
-            None,
-            "no-cred-slug",
-            "job-nocred",
-            Some(&overrides),
-        )
-        .unwrap();
-        let doc: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-        assert!(doc["mcpServers"]["forge"].is_null());
-        assert_eq!(doc["mcpServers"]["playwright"]["command"], "npx");
-        let _ = std::fs::remove_file(&path);
 
         let repo = tmp_repo("no-pat");
         std::fs::write(

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { issueRefPattern, type LiveReading, liveReachOf, namedIssueSeqs } from './live-reach.js';
+import { issueRefPattern, type LiveReading, liveReachOf, subjectIssueSeqs } from './live-reach.js';
 
 const STARTED = new Date('2026-09-23T14:00:00Z');
 const BEFORE = '2026-09-23T04:22:00Z';
@@ -35,14 +35,20 @@ const issue = (
   ...over,
 });
 
-describe('namedIssueSeqs', () => {
+describe('subjectIssueSeqs', () => {
   it('reads every held prefix and the shared legacy one, case-blind, on whole references only', () => {
-    const msg = 'SD-1 iss-2 Merge from sid/ISS-3-slug; XSD-4 SD-55x SD-6789';
-    expect([...namedIssueSeqs(msg, pattern)].sort((a, b) => a - b)).toEqual([1, 2, 3, 55, 6789]);
+    const msg = 'SD-1 iss-2 Merge from sid/ISS-3-slug; XSD-4 SD-55x SD-6789 (SD-7)';
+    expect([...subjectIssueSeqs(msg, pattern)].sort((a, b) => a - b)).toEqual([1, 2, 3, 7, 6789]);
   });
 
-  it('does not read a reference whose number runs on into more digits as a shorter one', () => {
-    expect(namedIssueSeqs('SD-4420', pattern).has(442)).toBe(false);
+  it('does not read a reference whose number runs on into more digits or a letter as a shorter one', () => {
+    expect(subjectIssueSeqs('SD-4420', pattern).has(442)).toBe(false);
+    expect(subjectIssueSeqs('chore: SD-442X', pattern).has(442)).toBe(false);
+  });
+
+  it('reads the subject line and never the body', () => {
+    const msg = 'fix(desk): the owner (SD-442)\n\nkeeps the SD-170 decision; Refs: SD-9';
+    expect([...subjectIssueSeqs(msg, pattern)]).toEqual([442]);
   });
 });
 
@@ -65,6 +71,37 @@ describe('liveReachOf', () => {
       state: 'not_on_live',
       evidence: [{ subject: 'fix(desk): the queue shows the owner (SD-442)', via: 'names_issue' }],
     });
+  });
+
+  it('does not place an issue whose key a waiting commit mentions only in its body', () => {
+    const cites = measured({
+      commits: [
+        {
+          sha: 'c'.repeat(40),
+          message:
+            'fix(qc-agent): strip every confusable bracket (SD-451)\n\ndeliberately-unshared copy of safeField (SD-170 decision keeps it unshared)',
+        },
+      ],
+    });
+    expect(liveReachOf(issue({ issSeq: 170 }), cites, pattern)?.state).toBe('none_waiting');
+    expect(liveReachOf(issue({ issSeq: 451 }), cites, pattern)).toMatchObject({
+      state: 'not_on_live',
+      evidence: [
+        { subject: 'fix(qc-agent): strip every confusable bracket (SD-451)', via: 'names_issue' },
+      ],
+    });
+  });
+
+  it('places an issue named by the branch in a merge subject', () => {
+    const merge = measured({
+      commits: [
+        {
+          sha: 'c'.repeat(40),
+          message: "Merge branch 'SD-170' into 'staging'\n\nSee merge request sid/desk!42",
+        },
+      ],
+    });
+    expect(liveReachOf(issue({ issSeq: 170 }), merge, pattern)?.state).toBe('not_on_live');
   });
 
   it('answers none_waiting, with what was compared and when, for a merge before a complete reading', () => {
