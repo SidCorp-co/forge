@@ -121,7 +121,7 @@ fn ours() -> std::sync::MutexGuard<'static, BTreeSet<PathBuf>> {
 /// `kill(0)` long after it stopped reading anything, so a registration carries
 /// the incarnation of the process that wrote it where the platform has one.
 #[cfg(target_os = "linux")]
-fn incarnation(pid: i32) -> Option<String> {
+pub(crate) fn incarnation(pid: i32) -> Option<String> {
     let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
     // The command sits in parens and may hold spaces and parens of its own, so
     // the fields are counted from the last `)` rather than from the start.
@@ -133,7 +133,7 @@ fn incarnation(pid: i32) -> Option<String> {
 }
 
 #[cfg(not(target_os = "linux"))]
-fn incarnation(_pid: i32) -> Option<String> {
+pub(crate) fn incarnation(_pid: i32) -> Option<String> {
     None
 }
 

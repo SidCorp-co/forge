@@ -157,6 +157,8 @@ pub struct Control {
     pub boot_id: String,
     pub config_dir: Option<PathBuf>,
     pub promises: std::sync::Mutex<GateMemory>,
+    /// Whether this daemon is admitting new runs at all.
+    pub drain: Arc<crate::daemon::drain::Drain>,
 }
 
 #[derive(Default)]
@@ -336,6 +338,14 @@ fn run_declare(
     worktree_path: &str,
     session_id: &str,
 ) -> ClaimReply {
+    // First, before anything is read or written: a drain that admits a run is
+    // waiting on a queue it keeps refilling (ISS-1223). The permit is held to
+    // the end of this function, past the ledger write, so a drain that begins
+    // meanwhile waits for this row rather than reading the box idle without it.
+    let _admitted = match ctl.drain.admit() {
+        Ok(permit) => permit,
+        Err(closed) => return ClaimReply::refused(closed.refusal),
+    };
     let Some(serves) = ctl.masters.project_for_session(session_id) else {
         return ClaimReply::refused(ctl.masters.why_unplaced(project_id));
     };
@@ -485,6 +495,9 @@ fn dispatch_gate_reply(
             Err(e) => {
                 let why = "this box's own registry of declared runs could not be read";
                 tracing::error!("[control] the dispatch gate could not decide: {why}: {e}");
+                if let Some(refused) = refused_while_draining(ctl, why, None) {
+                    return refused;
+                }
                 if let Some(dir) = dir.as_deref() {
                     crate::daemon::degraded::mark(
                         dir,
@@ -502,6 +515,9 @@ fn dispatch_gate_reply(
         },
         None => {
             let why = "this box holds no registry of declared runs";
+            if let Some(refused) = refused_while_draining(ctl, why, None) {
+                return refused;
+            }
             if let Some(dir) = dir.as_deref() {
                 crate::daemon::degraded::mark(
                     dir,
@@ -558,6 +574,30 @@ fn dispatch_gate_reply(
             ClaimReply::refused(REFUSAL)
         }
         Verdict::Unknown(why) => {
+            if let Some(refused) = refused_while_draining(ctl, why, Some(pending.as_deref())) {
+                return refused;
+            }
+            // Failing open for a run declared before the drain admits nothing
+            // new only while that run is spent once, so while draining the
+            // promise is recorded the way `Covered` records it, and a second
+            // tool call against the same run is refused.
+            if let (Some(run), Some(cause)) = (pending.as_deref(), ctl.drain.draining_for()) {
+                // cm:guard a dispatch carrying no tool call id cannot be limited here: nothing
+                // names it to promise the run to or to tell a second hand-off from a replay, so
+                // that case still fails open once per call, and the drain counts only the one row.
+                if let Some(tool_use) = d.tool_use_id.clone() {
+                    if let Some(spent) = memory.promised.get(run).filter(|t| **t != tool_use) {
+                        tracing::warn!(
+                            "[control] refusing a second hand-off of run {run} while draining: it was spent on {spent}"
+                        );
+                        return ClaimReply::refused(format!(
+                            "this box is draining before a restart ({cause}) and run {run}, declared before the drain, was already handed off to tool call {spent}; a second subagent against it would be work the drain never counted. Declare it again once the box has turned over"
+                        ));
+                    }
+                    memory.promised.insert(run.to_string(), tool_use.clone());
+                    memory.allowed.insert(tool_use);
+                }
+            }
             if let Some(dir) = dir.as_deref() {
                 // The registry answered here, so the run this dispatch belonged
                 // to is known even though the verdict is not.
@@ -582,6 +622,39 @@ fn dispatch_gate_reply(
             gate_allows(Some(why))
         }
     }
+}
+
+/// Where the gate cannot decide it fails open, and a draining box does not
+/// where the hand-off may be new work: an undeclared subagent let through there
+/// is work the drain never counted (ISS-1223).
+///
+/// `declared` is what the registry answered for this master. A run declared
+/// before the drain is already a holder, so failing open for it admits nothing
+/// new, and refusing it would leave a row the drain waits on that no subagent
+/// can ever bind — the drain could then only give up. So only `Some(None)`
+/// (read, and nothing declared) and `None` (the registry could not be read, so
+/// nobody can say) refuse. The sentence claims nothing about what is recorded,
+/// since where the registry could not be read nobody knows. No degraded mark is
+/// written for a refusal: nothing went through.
+fn refused_while_draining(
+    ctl: &Arc<Control>,
+    why: &str,
+    declared: Option<Option<&str>>,
+) -> Option<ClaimReply> {
+    if matches!(declared, Some(Some(_))) {
+        return None;
+    }
+    let cause = ctl.drain.draining_for()?;
+    tracing::warn!(
+        "[control] refusing a hand-off the gate could not decide ({why}): the box is draining for {cause}"
+    );
+    let known = match declared {
+        Some(_) => "and this master has declared no run for it",
+        None => "and whether a run was declared for it cannot be read",
+    };
+    Some(ClaimReply::refused(format!(
+        "this box is draining before a restart ({cause}) and admits no hand-off it cannot account for: the dispatch gate could not check this one against a declaration ({why}), {known}. Hand it off again once the box has turned over"
+    )))
 }
 
 /// The gate's "go ahead", with an optional reason it could not do better.
@@ -1113,6 +1186,7 @@ mod tests {
                 boot_id: "boot-a".into(),
                 config_dir: Some(dir.to_path_buf()),
                 promises: std::sync::Mutex::new(GateMemory::default()),
+                drain: Arc::new(crate::daemon::drain::Drain::unrecorded()),
             }),
             token,
             dir,
@@ -1256,6 +1330,7 @@ mod tests {
             boot_id: ctl.boot_id.clone(),
             config_dir: ctl.config_dir.clone(),
             promises: std::sync::Mutex::new(GateMemory::default()),
+            drain: Arc::new(crate::daemon::drain::Drain::unrecorded()),
         });
 
         // The declaration is still the master's, so the dispatch is allowed.
@@ -1344,6 +1419,143 @@ mod tests {
         );
         assert!(reply.ok, "an uncertain box must not refuse: {reply:?}");
         assert_eq!(crate::daemon::degraded::tally(&dir).0.count, 1);
+    }
+
+    #[cfg(unix)]
+    fn asked(tool: Option<&str>, role: &str) -> crate::daemon::dispatch_gate::Dispatch {
+        crate::daemon::dispatch_gate::Dispatch {
+            agent_id: None,
+            subagent_type: Some(role.into()),
+            tool_use_id: tool.map(str::to_string),
+        }
+    }
+
+    /// Review finding 5, where the hand-off may be new work: a draining box
+    /// refuses where the gate fails open with no declared run to account for
+    /// it, names the drain, claims nothing about what is recorded, and marks
+    /// nothing as admitted.
+    #[cfg(unix)]
+    #[test]
+    fn a_draining_box_refuses_an_undecided_hand_off_nothing_was_declared_for() {
+        let refused_naming_the_drain = |r: &ClaimReply, door: &str| {
+            assert!(
+                !r.ok,
+                "{door}: a draining box let an undecided, undeclared hand-off through"
+            );
+            let why = r.reason.clone().unwrap_or_default();
+            assert!(
+                why.contains("draining before a restart") && why.contains("could not check"),
+                "{door}: the refusal names the drain and why the gate could not decide: {why}"
+            );
+            assert!(
+                !why.contains("Nothing was recorded"),
+                "{door}: the refusal claims nothing about the ledger it could not decide on: {why}"
+            );
+        };
+
+        // No registry at all: whether anything was declared is unknowable.
+        let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
+        let dir = ship_roles(&ctl, &["runner"]);
+        *ctl.ledger.lock().unwrap() = None;
+        let _attempt = ctl.drain.begin("update 0.1.0 → 0.1.1").unwrap();
+        let r = gate_on(&ctl, &asked(Some("toolu_1"), "runner"), "sess-a");
+        refused_naming_the_drain(&r, "no registry");
+        assert!(r.reason.unwrap_or_default().contains("cannot be read"));
+        assert_eq!(
+            crate::daemon::degraded::tally(&dir).0.count,
+            0,
+            "nothing went through, so nothing is marked"
+        );
+
+        // Roles unreadable and nothing declared: Unknown with no run to count.
+        let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
+        let _attempt = ctl.drain.begin("update 0.1.0 → 0.1.1").unwrap();
+        let r = gate_on(&ctl, &asked(Some("toolu_2"), "runner"), "sess-a");
+        refused_naming_the_drain(&r, "unknown verdict, nothing declared");
+        assert!(r.reason.unwrap_or_default().contains("declared no run"));
+    }
+
+    /// The reviewer's probe on the first cut of finding 5: a run declared
+    /// before the drain is a holder already, so an Unknown verdict fails open
+    /// for it exactly as it would without a drain. Refusing it left a row the
+    /// drain waited on that no subagent could ever bind.
+    #[cfg(unix)]
+    #[test]
+    fn a_hand_off_declared_before_the_drain_fails_open_at_an_unknown_verdict() {
+        // Roles unreadable (checked before the pending run is looked at).
+        let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
+        let declared = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a");
+        assert!(declared.ok, "{:?}", declared.reason);
+        let _attempt = ctl.drain.begin("update 0.1.0 → 0.1.1").unwrap();
+        let r = gate_on(&ctl, &asked(Some("toolu_1"), "runner"), "sess-a");
+        assert!(
+            allowed(&r),
+            "roles unreadable, declared before the drain: {r:?}"
+        );
+
+        // No tool call id (checked after the pending run was found).
+        let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
+        ship_roles(&ctl, &["runner"]);
+        let declared = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a");
+        assert!(declared.ok, "{:?}", declared.reason);
+        let _attempt = ctl.drain.begin("update 0.1.0 → 0.1.1").unwrap();
+        let r = gate_on(&ctl, &asked(None, "runner"), "sess-a");
+        assert!(
+            allowed(&r),
+            "no tool call id, declared before the drain: {r:?}"
+        );
+    }
+
+    /// Second delta review F8: a run declared before the drain that the gate
+    /// fails open for is spent once. The same tool call again is a replay and
+    /// goes through; a second tool call against that run is refused, naming the
+    /// drain and the call it was spent on.
+    #[cfg(unix)]
+    #[test]
+    fn a_pre_drain_run_the_gate_fails_open_for_is_handed_off_once() {
+        let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
+        let declared = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a");
+        assert!(declared.ok, "{:?}", declared.reason);
+        let run = declared.job_id.unwrap();
+        let _attempt = ctl.drain.begin("update 0.1.0 → 0.1.1").unwrap();
+
+        let first = gate_on(&ctl, &asked(Some("toolu_1"), "runner"), "sess-a");
+        assert!(
+            allowed(&first),
+            "the declared run's own hand-off: {first:?}"
+        );
+        let replay = gate_on(&ctl, &asked(Some("toolu_1"), "runner"), "sess-a");
+        assert!(
+            allowed(&replay),
+            "the same tool call again is a replay: {replay:?}"
+        );
+
+        let second = gate_on(&ctl, &asked(Some("toolu_2"), "runner"), "sess-a");
+        assert!(
+            !second.ok,
+            "a second subagent against a run spent once is work the drain never counted"
+        );
+        let why = second.reason.unwrap_or_default();
+        assert!(
+            why.contains("draining before a restart")
+                && why.contains(&run)
+                && why.contains("toolu_1"),
+            "the refusal names the drain, the run and the call it was spent on: {why}"
+        );
+    }
+
+    /// A hand-off covered by a declaration made before the drain is work the
+    /// drain already counts, so it still goes through.
+    #[cfg(unix)]
+    #[test]
+    fn a_hand_off_declared_before_the_drain_still_goes_through() {
+        let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
+        ship_roles(&ctl, &["runner"]);
+        let declared = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a");
+        assert!(declared.ok, "{:?}", declared.reason);
+        let _attempt = ctl.drain.begin("update 0.1.0 → 0.1.1").unwrap();
+        let r = gate_on(&ctl, &asked(Some("toolu_1"), "runner"), "sess-a");
+        assert!(allowed(&r), "{r:?}");
     }
 
     /// Put a plugin clone shipping these roles inside this Control's own config
@@ -1585,6 +1797,180 @@ mod tests {
     #[cfg(unix)]
     mod unix {
         use super::*;
+
+        /// Criteria 1 and 2: a declaration made while a drain holds admission
+        /// is refused naming the drain, and leaves nothing on the ledger.
+        #[test]
+        fn a_declaration_during_a_drain_is_refused_naming_it_and_writes_nothing() {
+            let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
+            let _attempt = ctl.drain.begin("update 0.1.0 → 0.1.1").unwrap();
+            let reply = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a");
+            assert!(
+                !reply.ok,
+                "a drain that admits a run is waiting on a queue it refills"
+            );
+            let why = reply.reason.unwrap_or_default();
+            assert!(
+                why.contains("draining before a restart") && why.contains("update 0.1.0 → 0.1.1"),
+                "the refusal names the drain and its cause: {why}"
+            );
+            assert!(
+                ctl.ledger
+                    .lock()
+                    .unwrap()
+                    .as_ref()
+                    .unwrap()
+                    .unclosed_runs()
+                    .unwrap()
+                    .is_empty(),
+                "a refused declaration writes no row"
+            );
+        }
+
+        /// The permit's lifetime, run: a declaration stuck between the gate and
+        /// its ledger write still holds its permit when a drain begins, so the
+        /// drain counts it, and the row it then writes is not one the drain
+        /// read the box idle without.
+        #[test]
+        fn a_declaration_between_the_gate_and_its_write_holds_its_permit() {
+            let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
+            let held = ctl.ledger.lock().unwrap();
+            let declaring = {
+                let ctl = ctl.clone();
+                std::thread::spawn(move || {
+                    run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a")
+                })
+            };
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+            while ctl.drain.admitting() == 0 {
+                assert!(std::time::Instant::now() < deadline, "the declaration waiting on the ledger holds no permit, so a drain would read the box idle without its row");
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            let _attempt = ctl.drain.begin("update 0.1.0 → 0.1.1").unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            assert_eq!(
+                ctl.drain.admitting(),
+                1,
+                "the declaration blocked on the ledger still holds its permit once the drain has begun"
+            );
+            drop(held);
+            let reply = declaring.join().unwrap();
+            assert!(
+                reply.ok,
+                "it was admitted before the drain: {:?}",
+                reply.reason
+            );
+            assert_eq!(
+                ctl.drain.admitting(),
+                0,
+                "and the permit goes once the row is written"
+            );
+        }
+
+        /// ISS-1223's reproduction, criteria 4 and 5. A master declares a run
+        /// every three minutes and each one runs ten, so at any moment three or
+        /// four are open. A drain begun among them has to turn over inside its
+        /// bound, and nothing may be declared once it has begun. Against the
+        /// drain as it was — one that only polled — the queue refilled faster
+        /// than it emptied, the drain gave up at two hours, and runs went on
+        /// being declared after its line (measured 2026-09-23 on sid-xeon-1).
+        #[tokio::test(start_paused = true)]
+        async fn a_drain_among_a_declaring_master_turns_over_and_admits_nothing_after_it_began() {
+            use crate::daemon::drain::{self, Drained, NextAttempt};
+            use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+            use std::time::Duration;
+            use tokio::time::Instant;
+
+            const EVERY: Duration = Duration::from_secs(3 * 60);
+            const LASTS: Duration = Duration::from_secs(10 * 60);
+
+            let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
+            let began = Arc::new(AtomicBool::new(false));
+            let after = Arc::new(AtomicUsize::new(0));
+            {
+                let (ctl, began, after) = (ctl.clone(), began.clone(), after.clone());
+                tokio::spawn(async move {
+                    let mut open: Vec<(String, Instant)> = Vec::new();
+                    let mut n = 0u32;
+                    loop {
+                        n += 1;
+                        {
+                            let held = ctl.ledger.lock().unwrap();
+                            let led = held.as_ref().unwrap();
+                            open.retain(|(id, at)| {
+                                if at.elapsed() >= LASTS {
+                                    led.end_run(id, "master", "its report is in").unwrap();
+                                    false
+                                } else {
+                                    true
+                                }
+                            });
+                        }
+                        let reply = run_declare(
+                            &ctl,
+                            "proj-1",
+                            &[format!("ISS-{n}")],
+                            &format!("/w/{n}"),
+                            "sess-a",
+                        );
+                        if let (true, Some(id)) = (reply.ok, reply.job_id) {
+                            let held = ctl.ledger.lock().unwrap();
+                            held.as_ref()
+                                .unwrap()
+                                .bind_agent(&id, &format!("child-{n}"))
+                                .unwrap();
+                            open.push((id, Instant::now()));
+                            if began.load(Ordering::Acquire) {
+                                after.fetch_add(1, Ordering::AcqRel);
+                            }
+                        }
+                        tokio::time::sleep(EVERY).await;
+                    }
+                });
+            }
+            tokio::time::sleep(Duration::from_secs(30 * 60)).await;
+
+            let ledger = ctl.ledger.clone();
+            // The daemon's own reading of what holds a drain, over this ledger.
+            let live = move || -> Vec<String> {
+                let held = ledger.lock().unwrap();
+                crate::daemon::live_sessions_from(
+                    held.as_ref().unwrap().unclosed_runs(),
+                    "boot-a",
+                    |_| true,
+                    |_| Vec::new(),
+                )
+            };
+            assert!(
+                !live().is_empty(),
+                "the fleet is busy when the drain begins"
+            );
+            began.store(true, Ordering::Release);
+            let started = Instant::now();
+            let out = drain::drain_to_idle(
+                &ctl.drain,
+                "update",
+                "update 0.1.0 → 0.1.1",
+                &Arc::new(AtomicUsize::new(0)),
+                live,
+                || std::future::ready(0),
+                || NextAttempt {
+                    by: "the next update check".into(),
+                    due_in: Duration::from_secs(4 * 3600),
+                },
+            )
+            .await;
+            assert_eq!(
+                (out, after.load(Ordering::Acquire)),
+                (Drained::Idle, 0),
+                "the process turns over, and no run is declared once the drain has begun"
+            );
+            assert!(
+                started.elapsed() <= Duration::from_secs(drain::DRAIN_TIMEOUT_SECS),
+                "inside the bound: {:?}",
+                started.elapsed()
+            );
+        }
 
         #[test]
         fn a_choice_outside_the_three_words_is_refused_naming_them() {
