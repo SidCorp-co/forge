@@ -60,7 +60,6 @@ fn standing_prompt(
     base_branch: Option<&str>,
     master_policy: Option<&str>,
     dropped: &[String],
-    servers_unreadable: bool,
     reach: &crate::mcp::config::PaneReach,
 ) -> String {
     let mut out = format!(
@@ -73,17 +72,10 @@ this box, and you will be woken again in this same session rather than started f
         ));
     }
     // The reach is what this pane HOLDS, read off the two files it will be
-    // started with. `dropped` and `servers_unreadable` below are what core
-    // ASKED for; a pane told only those two still cannot say what it has.
+    // started with. `dropped` below is what core ASKED for and could not
+    // supply; a pane told only that still cannot say what it has. A pane whose
+    // declaration could not be read at all is never started (ISS-1235).
     out.push_str(&reach.brief());
-    if servers_unreadable {
-        out.push_str(
-            "\nThis box could NOT read this project's declared MCP servers from core, so this \
-pane carries none of them whatever the project declares. Treat the tool inventory you can see as \
-incomplete: an issue whose work needs a project MCP server cannot be judged buildable here until a \
-master starts on a pane that could read them.\n",
-        );
-    }
     if !dropped.is_empty() {
         out.push_str(&format!(
             "\nThis project declares MCP server(s) this box could NOT supply: {}. Work you hand \
@@ -223,6 +215,18 @@ pub(crate) enum Unplaced {
         session: String,
         pane: String,
     },
+    /// Core could not be asked which MCP servers this project declares, so no
+    /// pane was started: one started now would carry none of them and no
+    /// record would say why (ISS-1235). `detail` names the route and what it
+    /// met.
+    ServersUnreadable {
+        detail: String,
+    },
+    /// The project declares MCP servers and the file handing them to a pane
+    /// could not be written, so no pane was started for the same reason.
+    ServersUnwritable {
+        detail: String,
+    },
 }
 
 impl std::fmt::Display for Unplaced {
@@ -277,6 +281,14 @@ impl std::fmt::Display for Unplaced {
                 f,
                 "this box cannot read whether its owner stood this project down ({detail}), so it places no master rather than deciding it is driving. A box that cannot tell a stood-down project from a driving one must not decide it is driving"
             ),
+            Self::ServersUnreadable { detail } => write!(
+                f,
+                "this box could not read which MCP servers it declares ({detail}), so it started no master rather than one carrying none of them. The next sweep whose read succeeds places one"
+            ),
+            Self::ServersUnwritable { detail } => write!(
+                f,
+                "it declares MCP servers and the file that hands them to a pane could not be written ({detail}), so this box started no master rather than one carrying none of them"
+            ),
             Self::StaleCapability { session, pane } => write!(
                 f,
                 "its pane {pane} is up but this box cannot hear it — the capability that pane holds names a session core has since replaced, core's session for it is now {session}, and a running pane cannot be handed a new capability. Every declaration it makes is refused and it is not being nudged while it stands like this. `tmux kill-session -t {pane}` ends it, which is what lets a master carrying the current capability be placed — placement itself still answers to the same gates as any other"
@@ -319,6 +331,8 @@ impl Unplaced {
             Self::StoodDown { pane: Some(_), .. }
                 | Self::StandingUnreadable { .. }
                 | Self::StaleCapability { .. }
+                | Self::ServersUnreadable { .. }
+                | Self::ServersUnwritable { .. }
         )
     }
 }
@@ -2046,19 +2060,40 @@ fn transcript_path(slug: &str) -> Option<std::path::PathBuf> {
     Some(dir.join("transcript.log"))
 }
 
-async fn project_mcp_servers(
-    client: &CoreClient,
-    project_id: &str,
-    slug: &str,
-) -> Option<mcp_servers::ProjectMcpServers> {
-    match mcp_servers::fetch(client, project_id).await {
-        Ok(found) => Some(found),
-        Err(e) => {
-            tracing::error!(
-                "[master] {slug}: could not read this project's declared MCP servers from core: {e} — any master started now has NONE of them, whatever the project declares"
-            );
-            None
-        }
+/// What core answered about this project's declared MCP servers, or why it
+/// could not be asked. Kept as the failure's own text so the refusal that
+/// follows can name it.
+type ServersRead = std::result::Result<mcp_servers::ProjectMcpServers, String>;
+
+async fn project_mcp_servers(client: &CoreClient, project_id: &str) -> ServersRead {
+    mcp_servers::fetch(client, project_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// The declaration a new pane may be started with, or the reason none may be.
+///
+/// There is no third answer. Reading a failure as an empty declaration is what
+/// started masters carrying none of their project's servers (ISS-1235).
+fn servers_for_start(
+    asked: &ServersRead,
+) -> std::result::Result<&mcp_servers::ProjectMcpServers, Unplaced> {
+    asked
+        .as_ref()
+        .map_err(|detail| Unplaced::ServersUnreadable {
+            detail: detail.clone(),
+        })
+}
+
+/// ISS-1208 ends a deaf pane only where a replacement would be placed. A
+/// declaration that could not be read withholds the replacement below, so the
+/// pane is left standing rather than ended for a placement that is refused.
+pub(crate) fn replacement_gate(act: CapabilityAct, servers_readable: bool) -> CapabilityAct {
+    match act {
+        CapabilityAct::Replace if !servers_readable => CapabilityAct::LeaveDeaf(
+            "this box could not read the project's declared MCP servers, so no replacement would be placed in its stead",
+        ),
+        other => other,
     }
 }
 
@@ -2067,18 +2102,22 @@ async fn project_mcp_servers(
 enum LaunchRecord {
     /// The file on disk says exactly what the pane will be given.
     Truthful,
-    /// The config could not be written, but the record now says the pane gets
-    /// nothing — which is what will happen.
+    /// The config could not be written, the project declares nothing, and the
+    /// record now says the pane gets nothing — which is what it was owed.
     NoneAndSaysSo,
+    /// The config could not be written and the project declares servers the
+    /// pane would then lack, so no pane is started (ISS-1235).
+    Withheld,
     /// A record of OTHER servers survives that the pane will not carry.
     Lying,
 }
 
-fn launch_record(wrote: bool, cleared: bool) -> LaunchRecord {
-    match (wrote, cleared) {
-        (true, _) => LaunchRecord::Truthful,
-        (false, true) => LaunchRecord::NoneAndSaysSo,
-        (false, false) => LaunchRecord::Lying,
+fn launch_record(wrote: bool, cleared: bool, declares_any: bool) -> LaunchRecord {
+    match (wrote, cleared, declares_any) {
+        (true, _, _) => LaunchRecord::Truthful,
+        (false, false, _) => LaunchRecord::Lying,
+        (false, true, true) => LaunchRecord::Withheld,
+        (false, true, false) => LaunchRecord::NoneAndSaysSo,
     }
 }
 
@@ -2409,8 +2448,7 @@ async fn ensure_master(
         }
     };
 
-    let asked = project_mcp_servers(client, project_id, &resolved.slug).await;
-    let declared = asked.clone().unwrap_or_default();
+    let asked = project_mcp_servers(client, project_id).await;
 
     // Whether the placement path below is a REPLACEMENT or an ordinary cold
     // start, which is the difference between `terminal::ensure` starting
@@ -2418,7 +2456,19 @@ async fn ensure_master(
     // the pane this call ended is still standing (ISS-1208, criterion 7).
     let mut ended_a_deaf_pane = false;
     if terminal::alive(&name).await {
-        report_stale_pane_config(masters, project_id, &name, &resolved.slug, asked.as_ref());
+        if let Err(e) = &asked {
+            tracing::warn!(
+                "[master] {}: could not read this project's declared MCP servers from core ({e}), so whether {name} carries them is not known this sweep",
+                resolved.slug
+            );
+        }
+        report_stale_pane_config(
+            masters,
+            project_id,
+            &name,
+            &resolved.slug,
+            asked.as_ref().ok(),
+        );
         if masters.get(project_id).is_none() {
             tracing::info!(
                 "[master] {}: adopting the resident session {name}",
@@ -2432,7 +2482,7 @@ async fn ensure_master(
             masters.unwithdrawn_for(project_id).as_deref(),
             &session.session_id,
         );
-        let act = capability_act(&verdict, placement);
+        let act = replacement_gate(capability_act(&verdict, placement), asked.is_ok());
         if let CapabilityAct::LeaveDeaf(why) = act {
             ports.deaf.set(
                 &resolved.slug,
@@ -2523,6 +2573,16 @@ async fn ensure_master(
         return PaneState::Absent;
     }
 
+    // Before anything is installed or minted: a pane that will not be started
+    // leaves no capability behind it and nothing to withdraw.
+    let declared = match servers_for_start(&asked) {
+        Ok(declared) => declared,
+        Err(why) => {
+            say_unplaced(masters, project_id, &resolved.slug, why);
+            return PaneState::Absent;
+        }
+    };
+
     if let Err(e) = install_skill(&resolved.repo_path) {
         tracing::error!(
             "[master] {}: could not install the forge-master skill into {}: {e} — not starting a master",
@@ -2546,6 +2606,65 @@ async fn ensure_master(
 
     let transcript = transcript_path(&resolved.slug);
     let mut env = terminal::pane_env();
+    let mcp_config = match crate::mcp::config::write_session(&resolved.slug, &declared.mcp_servers)
+    {
+        Ok(path) => path,
+        Err(e) => {
+            let cleared = crate::mcp::config::clear_session(&resolved.slug);
+            match (
+                launch_record(false, cleared.is_ok(), !declared.mcp_servers.is_empty()),
+                &cleared,
+            ) {
+                (LaunchRecord::Lying, Err(ce)) => {
+                    tracing::error!(
+                        "[master] {}: could not write the pane's MCP config ({e}) and could not remove the previous one either: refusing to start a master this box could not describe: {ce} — a pane started now would carry none of this project's servers while the file on disk still claims it carries them, so no later sweep could report it. Make {} writable and the next sweep starts one.",
+                        resolved.slug,
+                        crate::mcp::config::session_dir().display()
+                    );
+                    say_unplaced(
+                        masters,
+                        project_id,
+                        &resolved.slug,
+                        Unplaced::ServersUnwritable {
+                            detail: format!("{e}; the previous config could not be removed: {ce}"),
+                        },
+                    );
+                    return PaneState::Absent;
+                }
+                (LaunchRecord::Withheld, _) => {
+                    say_unplaced(
+                        masters,
+                        project_id,
+                        &resolved.slug,
+                        Unplaced::ServersUnwritable {
+                            detail: format!(
+                                "{e}; declared: {}",
+                                declared.resolved_names.join(", ")
+                            ),
+                        },
+                    );
+                    return PaneState::Absent;
+                }
+                _ => {
+                    tracing::warn!(
+                        "[master] {}: could not write the pane's MCP config ({e}); the project declares no servers, so the pane is started with none",
+                        resolved.slug
+                    );
+                    None
+                }
+            }
+        }
+    };
+    if let Some(path) = mcp_config.as_deref() {
+        tracing::info!(
+            "[master] {}: pane declares {} from {}",
+            resolved.slug,
+            declared.resolved_names.join(", "),
+            path.display()
+        );
+    }
+    // The mint is the last refusal before the pane. Every refusal above it
+    // leaves no capability behind; one below it has to withdraw what it minted.
     match tokens {
         Some(store) => match store.mint(&session.session_id) {
             Ok(token) => env.push((session_tokens::TOKEN_ENV.to_string(), token)),
@@ -2565,44 +2684,6 @@ async fn ensure_master(
             return PaneState::Absent;
         }
     }
-    let mcp_config = match crate::mcp::config::write_session(&resolved.slug, &declared.mcp_servers)
-    {
-        Ok(path) => path,
-        Err(e) => {
-            let cleared = crate::mcp::config::clear_session(&resolved.slug);
-            tracing::error!(
-                "[master] {}: could not write the pane's MCP config: {e} — {}",
-                resolved.slug,
-                if cleared.is_ok() {
-                    format!(
-                        "starting WITHOUT the project's declared servers ({})",
-                        declared.resolved_names.join(", ")
-                    )
-                } else {
-                    "and the previous config could not be removed either".to_string()
-                }
-            );
-            if let (LaunchRecord::Lying, Err(ce)) =
-                (launch_record(false, cleared.is_ok()), &cleared)
-            {
-                tracing::error!(
-                    "[master] {}: refusing to start a master this box could not describe: {ce} — a pane started now would carry none of this project's servers while the file on disk still claims it carries them, so no later sweep could report it. Make {} writable and the next sweep starts one.",
-                    resolved.slug,
-                    crate::mcp::config::session_dir().display()
-                );
-                return PaneState::Absent;
-            }
-            None
-        }
-    };
-    if let Some(path) = mcp_config.as_deref() {
-        tracing::info!(
-            "[master] {}: pane declares {} from {}",
-            resolved.slug,
-            declared.resolved_names.join(", "),
-            path.display()
-        );
-    }
     let resume = resume_for(&resolved.slug, &resolved.repo_path, stored_conversation);
     let started = match terminal::ensure(
         &name,
@@ -2616,6 +2697,23 @@ async fn ensure_master(
         Ok(started) => started,
         Err(e) => {
             tracing::error!("[master] {}: could not start {name}: {e}", resolved.slug);
+            // No pane holds the capability minted for it, so it is taken back
+            // rather than left in the map as proof of a pane that never started.
+            let withdrawn = withdraw_unplaced_mint(tokens, &session.session_id);
+            masters.note_unwithdrawn(
+                project_id,
+                withdrawn
+                    .as_ref()
+                    .err()
+                    .map(|_| session.session_id.as_str()),
+            );
+            if let Err(why) = withdrawn {
+                tracing::error!(
+                    "[master] {}: the capability minted for {} could NOT be withdrawn: {why}",
+                    resolved.slug,
+                    session.session_id
+                );
+            }
             return PaneState::Absent;
         }
     };
@@ -2682,7 +2780,6 @@ surface it reads",
         resolved.base_branch.as_deref(),
         resolved.master_policy.as_deref(),
         &declared.dropped_names,
-        asked.is_none(),
         &reach,
     );
     let brief = match resume.as_deref() {
@@ -3952,7 +4049,6 @@ mod tests {
             Some("main"),
             Some(policy),
             &[],
-            false,
             &healthy_reach("the_owner_policy_reaches_the_brief_verbatim"),
         );
         assert!(
@@ -4035,7 +4131,7 @@ mod tests {
     #[test]
     fn the_standing_brief_is_only_what_a_wave_cannot_know() {
         let reach = healthy_reach("the_standing_brief_is_only_what_a_wave_cannot_know");
-        let brief = standing_prompt("forge-dev", Some("main"), None, &[], false, &reach);
+        let brief = standing_prompt("forge-dev", Some("main"), None, &[], &reach);
         assert_eq!(
             brief,
             format!("{STANDING_BRIEF}{}", reach.brief()),
@@ -4053,7 +4149,6 @@ mod tests {
             Some("main"),
             None,
             &[],
-            false,
             &healthy_reach(
                 "the_brief_no_longer_carries_the_two_claims_that_stopped_masters_declaring",
             ),
@@ -4075,7 +4170,6 @@ mod tests {
             Some("main"),
             None,
             &["playwright".into()],
-            true,
             &healthy_reach("the_brief_states_no_rule_the_skill_file_owns"),
         )
         .to_lowercase();
@@ -4104,7 +4198,6 @@ mod tests {
             Some("main"),
             Some(policy),
             &[],
-            false,
             &healthy_reach("the_owner_policy_survives_words_the_brief_itself_may_not_use"),
         );
         assert!(
@@ -4113,19 +4206,91 @@ mod tests {
         );
     }
 
+    /// A pane is started only where the record says what it will carry AND it
+    /// carries what the project declares. A config that could not be written
+    /// starts one only for a project that declares nothing (ISS-1235).
     #[test]
-    fn only_a_record_that_would_lie_about_a_pane_refuses_the_spawn() {
-        assert_eq!(launch_record(true, false), LaunchRecord::Truthful);
-        assert_eq!(launch_record(true, true), LaunchRecord::Truthful);
-        assert_eq!(launch_record(false, true), LaunchRecord::NoneAndSaysSo);
-        assert_eq!(launch_record(false, false), LaunchRecord::Lying);
+    fn a_config_that_could_not_be_written_starts_a_pane_only_for_a_project_declaring_nothing() {
+        for (cleared, declares) in [(true, true), (true, false), (false, true), (false, false)] {
+            assert_eq!(
+                launch_record(true, cleared, declares),
+                LaunchRecord::Truthful
+            );
+        }
+        assert_eq!(
+            launch_record(false, true, false),
+            LaunchRecord::NoneAndSaysSo
+        );
+        assert_eq!(launch_record(false, true, true), LaunchRecord::Withheld);
+        assert_eq!(launch_record(false, false, true), LaunchRecord::Lying);
+        assert_eq!(launch_record(false, false, false), LaunchRecord::Lying);
+    }
 
-        // and only `Lying` is the refusal.
-        for (wrote, cleared) in [(true, true), (true, false), (false, true)] {
-            assert_ne!(
-                launch_record(wrote, cleared),
-                LaunchRecord::Lying,
-                "wrote={wrote} cleared={cleared} must still start a master"
+    fn declaring(names: &[&str]) -> mcp_servers::ProjectMcpServers {
+        mcp_servers::ProjectMcpServers {
+            mcp_servers: names
+                .iter()
+                .map(|n| (n.to_string(), serde_json::json!({"type": "stdio"})))
+                .collect(),
+            resolved_names: names.iter().map(|n| n.to_string()).collect(),
+            dropped_names: vec![],
+        }
+    }
+
+    /// Criterion 1: a failed read is a refusal and never an empty declaration.
+    #[test]
+    fn a_failed_read_refuses_the_start_and_never_reads_as_declaring_nothing() {
+        let failed: ServersRead =
+            Err("me/mcp-servers 520 (gateway: the origin returned an unknown error)".into());
+        match servers_for_start(&failed) {
+            Err(Unplaced::ServersUnreadable { detail }) => assert_eq!(
+                detail,
+                "me/mcp-servers 520 (gateway: the origin returned an unknown error)"
+            ),
+            Err(other) => panic!("a failed read must refuse the start by its own reason: {other}"),
+            Ok(_) => panic!("a failed read must refuse the start, not declare nothing"),
+        }
+    }
+
+    /// Criterion 8: a read that succeeded hands the declaration through whole,
+    /// empty or not.
+    #[test]
+    fn a_read_that_succeeded_is_the_declaration_the_pane_is_started_with() {
+        let read: ServersRead = Ok(declaring(&["playwright"]));
+        let declared = match servers_for_start(&read) {
+            Ok(declared) => declared,
+            Err(why) => panic!("a read declaration starts a pane: {why}"),
+        };
+        assert_eq!(declared.resolved_names, vec!["playwright".to_string()]);
+        assert!(declared.mcp_servers.contains_key("playwright"));
+
+        let none: ServersRead = Ok(mcp_servers::ProjectMcpServers::default());
+        assert!(
+            servers_for_start(&none).is_ok(),
+            "declaring nothing is an answer"
+        );
+    }
+
+    /// Criteria 9 and 12: a failed read turns only a replacement into a pane
+    /// left standing; a pane that can be heard is kept either way.
+    #[test]
+    fn a_failed_read_leaves_a_deaf_pane_standing_and_keeps_every_other_act() {
+        match replacement_gate(CapabilityAct::Replace, false) {
+            CapabilityAct::LeaveDeaf(why) => assert!(why.contains("MCP servers"), "{why}"),
+            other => panic!("no replacement would be placed, so none may be ended for: {other:?}"),
+        }
+        assert_eq!(
+            replacement_gate(CapabilityAct::Replace, true),
+            CapabilityAct::Replace
+        );
+        for readable in [true, false] {
+            assert_eq!(
+                replacement_gate(CapabilityAct::Keep, readable),
+                CapabilityAct::Keep
+            );
+            assert_eq!(
+                replacement_gate(CapabilityAct::LeaveDeaf("x"), readable),
+                CapabilityAct::LeaveDeaf("x")
             );
         }
     }
@@ -4158,37 +4323,26 @@ mod tests {
         );
     }
 
+    /// Criterion 10: no pane is started unreadable, so no brief carries the
+    /// paragraph that used to describe one.
     #[test]
-    fn a_box_that_could_not_read_the_declaration_says_so_in_its_own_words() {
-        let unreadable = standing_prompt(
+    fn no_brief_describes_an_unreadable_declaration() {
+        let brief = standing_prompt(
             "mowment",
             Some("main"),
             None,
             &[],
-            true,
-            &healthy_reach("a_box_that_could_not_read_the_declaration_says_so_in_its_own_words"),
+            &healthy_reach("no_brief_describes_an_unreadable_declaration"),
         );
+        assert!(!brief.contains("could NOT read"), "{brief}");
         assert!(
-            unreadable.contains("could NOT read this project's declared MCP servers"),
-            "{unreadable}"
+            !production_source().contains("could NOT read this project's declared MCP servers"),
+            "the paragraph for a pane started without its declaration must be gone"
         );
-        assert!(
-            !unreadable.contains("could NOT supply"),
-            "an unreadable declaration must not be reported as a named shortfall: {unreadable}"
-        );
+    }
 
-        let readable = standing_prompt(
-            "mowment",
-            Some("main"),
-            None,
-            &[],
-            false,
-            &healthy_reach("a_box_that_could_not_read_the_declaration_says_so_in_its_own_words-b"),
-        );
-        assert!(
-            !readable.contains("could NOT read"),
-            "a project core answered for must be told nothing about readability: {readable}"
-        );
+    fn production_source() -> &'static str {
+        THIS_SOURCE.split("#[cfg(test)]").next().unwrap()
     }
 
     /// ISS-1114, the measured state: a checkout with no `.mcp.json`, a session
@@ -4204,7 +4358,7 @@ mod tests {
             Some(&["playwright"]),
             false,
         );
-        let brief = standing_prompt("forge-dev", Some("main"), None, &[], false, &reach);
+        let brief = standing_prompt("forge-dev", Some("main"), None, &[], &reach);
         assert!(
             brief.contains("The `forge` MCP server is in NEITHER half"),
             "a pane whose union holds no `forge` is told nothing about it: {brief}"
@@ -4236,7 +4390,7 @@ mod tests {
     #[test]
     fn a_provisioned_pane_is_told_its_union_and_nothing_is_raised() {
         let reach = healthy_reach("a_provisioned_pane_is_told_its_union_and_nothing_is_raised");
-        let brief = standing_prompt("forge-dev", Some("main"), None, &[], false, &reach);
+        let brief = standing_prompt("forge-dev", Some("main"), None, &[], &reach);
         assert!(
             brief.contains("forge, playwright"),
             "a healthy pane is not told the union it holds: {brief}"
@@ -4261,7 +4415,7 @@ mod tests {
     #[test]
     fn a_declared_forge_is_never_reported_as_a_working_one() {
         let reach = healthy_reach("a_declared_forge_is_never_reported_as_a_working_one");
-        let brief = standing_prompt("forge-dev", Some("main"), None, &[], false, &reach);
+        let brief = standing_prompt("forge-dev", Some("main"), None, &[], &reach);
         assert!(
             brief.contains("That is what those two files DECLARE")
                 && brief.contains("Nothing here has checked that any of them answers"),
@@ -4279,7 +4433,7 @@ mod tests {
             None,
             true,
         );
-        let brief = standing_prompt("forge-dev", Some("main"), None, &[], false, &reach);
+        let brief = standing_prompt("forge-dev", Some("main"), None, &[], &reach);
         assert!(
             brief.contains("The `forge` MCP server is in NEITHER half"),
             "{brief}"
@@ -4306,14 +4460,8 @@ mod tests {
             Some(&declares(&["playwright"])),
         );
         for has_pat in [false, true] {
-            let brief = standing_prompt(
-                "forge-dev",
-                Some("main"),
-                None,
-                &[],
-                false,
-                &files.reach(has_pat),
-            );
+            let brief =
+                standing_prompt("forge-dev", Some("main"), None, &[], &files.reach(has_pat));
             assert!(
                 brief.contains("could NOT be determined"),
                 "an unreadable half must be reported as unknown: {brief}"
@@ -4343,7 +4491,6 @@ mod tests {
             Some("main"),
             None,
             &dropped,
-            false,
             &healthy_reach("a_declared_server_this_box_cannot_supply_is_named_in_the_brief"),
         );
         assert!(brief.contains("epodsystem, postman"), "{brief}");
@@ -6294,6 +6441,106 @@ mod unplaced_tests {
 
     fn block_end(rest: &str, indent: usize) -> Option<usize> {
         rest.find(&format!("\n{}}}", " ".repeat(indent)))
+    }
+
+    /// ISS-1235, criteria 1 and 13: the refusal is taken after the adopt branch
+    /// and before anything is installed or minted, and nothing between the read
+    /// and the placement turns a failed read into an empty declaration.
+    #[test]
+    fn a_failed_read_is_refused_before_the_skill_install_and_the_mint() {
+        let body = ensure_master_body();
+        let at = |needle: &str| {
+            body.find(needle)
+                .unwrap_or_else(|| panic!("`{needle}` must be in ensure_master"))
+        };
+        let refusal = at("servers_for_start(&asked)");
+        assert!(
+            at("if terminal::alive(&name).await {") < refusal,
+            "adoption comes first"
+        );
+        assert!(
+            refusal < at("install_skill("),
+            "nothing is installed for a refused pane"
+        );
+        assert!(
+            refusal < at("store.mint("),
+            "nothing is minted for a refused pane"
+        );
+        assert!(
+            refusal < at("write_session("),
+            "the declaration written is the one read"
+        );
+        assert!(
+            at("write_session(") < at("store.mint(")
+                && at("Unplaced::ServersUnwritable") < at("store.mint("),
+            "an unwritable config is refused before the mint, so no capability is left behind"
+        );
+        let ensure_failed = &body[at("could not start {name}")..];
+        assert!(
+            ensure_failed[..ensure_failed.find("return PaneState::Absent;").unwrap()]
+                .contains("withdraw_unplaced_mint(tokens, &session.session_id)"),
+            "a pane that could not be started gives back the capability minted for it"
+        );
+        assert!(
+            !body.contains("unwrap_or_default()"),
+            "a failed read must never become an empty declaration"
+        );
+        assert!(
+            at("replacement_gate(") < at("end_deaf_pane("),
+            "a deaf pane is gated on the read before it is ended"
+        );
+        let arm = &body[refusal..at("install_skill(")];
+        assert!(
+            arm.contains("say_unplaced(masters, project_id, &resolved.slug, why);")
+                && arm.contains("return PaneState::Absent;"),
+            "the refusal records its reason and places nothing: {arm}"
+        );
+        let started = at("terminal::ensure(");
+        assert!(
+            body[started..].contains("masters.clear_unplaced(project_id);"),
+            "a placement after a refused sweep clears the recorded refusal"
+        );
+    }
+
+    /// Criterion 2: the refusal is the project's recorded reason, carries what
+    /// the read met, and is an error an operator reads.
+    #[test]
+    fn a_refused_start_is_recorded_naming_the_route_and_what_it_met() {
+        let why = Unplaced::ServersUnreadable {
+            detail: "me/mcp-servers 525 (gateway: the TLS handshake with the origin failed)".into(),
+        };
+        let said = why.to_string();
+        assert!(
+            said.contains("me/mcp-servers 525 (gateway: the TLS handshake"),
+            "{said}"
+        );
+        assert!(why.is_error());
+        assert_eq!(why.lead(), "no master pane placed");
+
+        let masters = Arc::new(Masters::default());
+        say_unplaced(&masters, "proj-1", "slug", why.clone());
+        assert!(
+            !masters.note_unplaced("proj-1", why.clone()),
+            "the same reason on the next sweep is already recorded, so it is said once"
+        );
+        // Criterion 13: a placement clears it, as it clears every reason.
+        masters.clear_unplaced("proj-1");
+        assert!(masters.note_unplaced("proj-1", why));
+    }
+
+    /// Criterion 7.
+    #[test]
+    fn an_unwritable_config_is_recorded_naming_the_write() {
+        let why = Unplaced::ServersUnwritable {
+            detail: "permission denied; declared: playwright".into(),
+        };
+        let said = why.to_string();
+        assert!(said.contains("could not be written"), "{said}");
+        assert!(
+            said.contains("permission denied; declared: playwright"),
+            "{said}"
+        );
+        assert!(why.is_error());
     }
 
     /// The drained-runner branch of the sweep, on its own.
