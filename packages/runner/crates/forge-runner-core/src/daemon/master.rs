@@ -432,6 +432,9 @@ fn stood_down_reason(
 /// says a gap happened without saying what the gap was for. The two reasons
 /// travel with it because the pane is the one reader who was not there.
 pub(crate) struct Lifted {
+    /// Which episode this is, so the one a pane is told about is the one
+    /// stamped told and no other.
+    pub episode: i64,
     pub held_for: Duration,
     /// The reason recorded on the way down, or `None` on an episode written
     /// before a reason was required.
@@ -458,6 +461,7 @@ fn lifted_from(standing: &MasterStanding) -> Option<Lifted> {
         .ok()
         .map(Duration::from_secs)?;
     Some(Lifted {
+        episode: standing.episode,
         held_for,
         why: standing.why.clone(),
         lifted_on: standing.stood_up_why.clone(),
@@ -1167,8 +1171,9 @@ async fn sweep(
             continue;
         }
         if told.load(std::sync::atomic::Ordering::Relaxed) {
-            if let Some(led) = ledger.as_ref() {
-                if let Err(e) = led.note_standing_told(&runner.project_id) {
+            let stamped = ledger.as_ref().zip(lifted_episode.as_ref());
+            if let Some((led, lifted)) = stamped {
+                if let Err(e) = led.note_standing_told(&runner.project_id, lifted.episode) {
                     tracing::warn!(
                         "[master] {}: cannot mark the lifted stand-down a pane has now been told about: {e} — the next pane placed will be told the same interval again",
                         resolved.slug
@@ -9370,6 +9375,7 @@ mod stand_down_tests {
     #[test]
     fn a_pane_placed_after_a_lift_is_told_both_halves_of_the_episode() {
         let brief = stood_up_brief(&Lifted {
+            episode: 1,
             held_for: Duration::from_secs(9 * 3600),
             why: Some("four writes to the release path are outstanding".into()),
             lifted_on: Some("ISS-1186 removed the path they guarded".into()),
@@ -9392,6 +9398,7 @@ mod stand_down_tests {
     #[test]
     fn a_pane_following_an_episode_from_before_the_requirement_is_told_so() {
         let brief = stood_up_brief(&Lifted {
+            episode: 1,
             held_for: Duration::from_secs(120),
             why: None,
             lifted_on: None,

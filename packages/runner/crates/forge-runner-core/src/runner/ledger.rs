@@ -1408,20 +1408,26 @@ impl Ledger {
         rows.collect::<rusqlite::Result<Vec<_>>>().map_err(sql_err)
     }
 
-    /// Stamp a lifted episode as told, once the pane it was kept for has been
+    /// Stamp ONE lifted episode as told, once the pane it was kept for has been
     /// told the interval. A standing one is never stamped by this.
+    ///
+    /// By episode and not by project. A project can hold an older lifted
+    /// episode no pane was ever placed for, and stamping every untold one
+    /// because a later episode reached a pane would put a delivery on the
+    /// record that never happened.
     ///
     /// This replaced a DELETE (ISS-1238). Deleting was enough while the row's
     /// only job was to carry an interval to the next pane; it also destroyed
     /// the one account of what the box had been waiting for and what ended the
     /// wait, one placement after the lift. The stamp does the same job — a pane
     /// is told once — and keeps the episode.
-    pub fn note_standing_told(&self, project_id: &str) -> Result<()> {
+    pub fn note_standing_told(&self, project_id: &str, episode: i64) -> Result<()> {
         self.conn
             .execute(
-                "UPDATE master_standing SET told_at = ?2
-                  WHERE project_id = ?1 AND stood_up_at IS NOT NULL AND told_at IS NULL",
-                params![project_id, now()],
+                "UPDATE master_standing SET told_at = ?3
+                  WHERE project_id = ?1 AND episode = ?2
+                    AND stood_up_at IS NOT NULL AND told_at IS NULL",
+                params![project_id, episode, now()],
             )
             .map_err(sql_err)?;
         Ok(())
@@ -2988,7 +2994,7 @@ mod tests {
             !led.stand_up_master("proj-1", "owner", "again").unwrap(),
             "standing up a project that is not stood down lifts nothing and says so"
         );
-        led.note_standing_told("proj-1").unwrap();
+        led.note_standing_told("proj-1", lifted.episode).unwrap();
         let after = led
             .master_standing("proj-1")
             .unwrap()
@@ -3000,12 +3006,48 @@ mod tests {
         assert_eq!(after.lift_reason(), Some("the fourth write landed"));
     }
 
+    /// F1 of the second whole-set read. A project can hold an older lifted
+    /// episode no pane was ever placed for — nothing between the lift and the
+    /// next stand-down obliges one. Stamping every untold episode because a
+    /// later one reached a pane writes a delivery that never happened onto the
+    /// record, which is the class of thing this issue exists to stop.
+    #[test]
+    fn stamping_one_episode_told_says_nothing_about_an_older_one_nobody_read() {
+        let led = Ledger::open_in_memory().unwrap();
+        led.stand_down_master("proj-1", "forge-dev", "dev", "the first wait")
+            .unwrap();
+        led.stand_up_master("proj-1", "dev", "the first wait ended")
+            .unwrap();
+        led.stand_down_master("proj-1", "forge-dev", "dev", "the second wait")
+            .unwrap();
+        led.stand_up_master("proj-1", "dev", "the second wait ended")
+            .unwrap();
+
+        let history = led.standing_history("forge-dev").unwrap();
+        assert_eq!(history.len(), 2, "two lifts, neither of them told");
+        let (newest, older) = (&history[0], &history[1]);
+        assert!(newest.told_at.is_none() && older.told_at.is_none());
+
+        led.note_standing_told("proj-1", newest.episode).unwrap();
+
+        let after = led.standing_history("forge-dev").unwrap();
+        assert!(
+            after[0].told_at.is_some(),
+            "the episode a pane was actually told about is stamped"
+        );
+        assert!(
+            after[1].told_at.is_none(),
+            "and the one no pane was ever placed for is not — the ledger says a pane read it, and none did"
+        );
+    }
+
     #[test]
     fn a_standing_stand_down_is_never_stamped_told_by_the_delivery_path() {
         let led = Ledger::open_in_memory().unwrap();
         led.stand_down_master("proj-1", "forge-dev", "owner", "a human is driving it")
             .unwrap();
-        led.note_standing_told("proj-1").unwrap();
+        let standing_episode = led.master_standing("proj-1").unwrap().unwrap().episode;
+        led.note_standing_told("proj-1", standing_episode).unwrap();
         let standing = led
             .master_standing("proj-1")
             .unwrap()
