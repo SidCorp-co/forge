@@ -190,6 +190,11 @@ mod tests {
             "runtime: attachment downloads",
         ),
         (
+            "forge-runner-core/src/mcp/config.rs",
+            1,
+            "runtime: the config dir's fallback",
+        ),
+        (
             "forge-runner-core/src/daemon/transcript_age.rs",
             1,
             "names an absolute path for a fixture nothing creates",
@@ -207,13 +212,7 @@ mod tests {
         (
             "forge-runner-core/src/daemon/master.rs",
             10,
-            "held: ISS-1235",
-        ),
-        ("forge-runner-core/src/mcp/config.rs", 5, "held: ISS-1218"),
-        (
-            "forge-runner-core/src/auth/cred_store.rs",
-            1,
-            "held: ISS-1218",
+            "held: ISS-1220",
         ),
     ];
 

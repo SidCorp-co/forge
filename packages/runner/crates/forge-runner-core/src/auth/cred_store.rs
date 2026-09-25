@@ -318,8 +318,7 @@ mod tests {
     #[test]
     fn the_two_credentials_do_not_evict_each_other() {
         let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let dir = std::env::temp_dir().join(format!("forge-cred-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
+        let dir = crate::test_scratch::Scratch::new("cred");
         let _xdg = ScopedVar::set("XDG_CONFIG_HOME", &dir);
         let _store = ScopedVar::set("FORGE_RUNNER_CRED_STORE", "file");
         let _pat = ScopedVar::unset("FORGE_PAT");
