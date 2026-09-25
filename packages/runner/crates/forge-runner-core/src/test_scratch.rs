@@ -291,6 +291,11 @@ mod tests {
             "runtime: attachment downloads",
         ),
         (
+            "forge-runner-core/src/daemon/headroom.rs",
+            1,
+            "runtime: the scratch root whose free space it reads, and creates nothing",
+        ),
+        (
             "forge-runner-core/src/mcp/config.rs",
             1,
             "runtime: the config dir's fallback",

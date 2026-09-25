@@ -21,6 +21,7 @@ pub mod degraded;
 pub mod dispatch;
 pub mod dispatch_gate;
 pub mod drain;
+pub mod headroom;
 pub mod held_report;
 pub mod hook_install;
 pub mod inbox;
@@ -888,6 +889,40 @@ pub async fn run(
                                     path.display()
                                 );
                             }
+                        }
+                    }
+                    _ = cancel_rx.changed() => { if *cancel_rx.borrow() { break; } }
+                }
+            }
+        });
+    }
+
+    // What the box has left, on its own clock rather than the sweep's: a sweep
+    // period is six hours, and the box that raised ISS-1260 crossed both
+    // thresholds and the ceiling inside four.
+    {
+        let mut cancel_rx = cancel_rx.clone();
+        tokio::spawn(async move {
+            use crate::daemon::headroom::{self, TICK};
+            let at = headroom::scratch_root();
+            let mut watch = headroom::Watch::default();
+            let mut tick = tokio::time::interval(TICK);
+            loop {
+                tokio::select! {
+                    _ = tick.tick() => {
+                        let reading = headroom::read(&at);
+                        let Some(report) = watch.tick(std::time::Instant::now(), reading.verdict())
+                        else {
+                            continue;
+                        };
+                        let line = headroom::said(&at, &reading, &report);
+                        let level = report.level();
+                        if level == tracing::Level::ERROR {
+                            tracing::error!("{line}");
+                        } else if level == tracing::Level::WARN {
+                            tracing::warn!("{line}");
+                        } else {
+                            tracing::info!("{line}");
                         }
                     }
                     _ = cancel_rx.changed() => { if *cancel_rx.borrow() { break; } }
