@@ -755,6 +755,7 @@ impl Runner for ClaudeCodeRunner {
             .prompt
             .clone()
             .ok_or_else(|| Error::Other("job has no prompt".into()))?;
+        let credential = mcp::config::job_credential()?;
 
         let invoked_with_resume = spec.resume_id.is_some();
         // ISS-570 hard-fail on a down `forge` server is scoped to reconciler-driven
@@ -792,6 +793,7 @@ impl Runner for ClaudeCodeRunner {
         let slug = spec.project_slug.as_deref().unwrap_or("");
         let mcp_path = mcp::config::write(
             &self.core_url,
+            &credential,
             slug,
             &spec.job_id,
             spec.mcp_servers_override.as_ref(),
@@ -802,9 +804,7 @@ impl Runner for ClaudeCodeRunner {
         let residency_secs = spec.session_residency_seconds;
 
         let mut cmd = build_command(&args, &effective_repo);
-        if let Ok(Some(tok)) = crate::auth::cred_store::load_pat() {
-            cmd.env("FORGE_PAT", tok);
-        }
+        cmd.env("FORGE_PAT", &credential);
         for (k, v) in project_env(&spec) {
             cmd.env(k, v);
         }
@@ -1326,6 +1326,72 @@ mod tests {
             takes_session_permit(&spec(true)),
             "a pipeline job is what the ceiling is for"
         );
+    }
+
+    /// ISS-1218: a paired box whose store holds only the device token used to
+    /// write a config with no `forge` server and start the agent anyway.
+    #[test]
+    fn a_box_holding_only_its_device_token_refuses_the_spawn_naming_both_credentials() {
+        use crate::auth::cred_store::{ScopedVar, ENV_TEST_LOCK};
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let home = std::env::temp_dir().join(format!("forge-1218-spawn-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        std::fs::create_dir_all(home.join("forge-runner")).unwrap();
+        std::fs::write(
+            home.join("forge-runner/credentials.json"),
+            format!(r#"{{"device_token":"forge_pat_dev_{}"}}"#, "a".repeat(64)),
+        )
+        .unwrap();
+        let _xdg = ScopedVar::set("XDG_CONFIG_HOME", &home);
+        let _store = ScopedVar::set("FORGE_RUNNER_CRED_STORE", "file");
+        let _pat = ScopedVar::unset("FORGE_PAT");
+
+        let runner = ClaudeCodeRunner::new("http://core.invalid", "tok", 1);
+        let mut job = spec(true);
+        job.project_slug = Some("iss-1218".into());
+        // A directory that is not there, so a build that got past the refusal
+        // fails at `spawn` instead of starting a real `claude`.
+        job.repo_path = home.join("no-such-checkout");
+        let (tx, _rx) = mpsc::channel(4);
+        let started = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(Runner::start(&runner, job, tx));
+        let err = match started {
+            Ok(id) => panic!("the spawn must be refused, and it started session {id}"),
+            Err(e) => e.to_string(),
+        };
+
+        assert!(
+            err.contains("personal access token"),
+            "names what was wanted: {err}"
+        );
+        assert!(
+            err.contains("device token"),
+            "names what the box holds: {err}"
+        );
+        assert!(
+            err.contains("forge-runner login --pat"),
+            "names the way out: {err}"
+        );
+        assert!(
+            !err.contains("failed to spawn claude"),
+            "refused before the spawn: {err}"
+        );
+        let left: Vec<_> = std::fs::read_dir(home.join("forge-runner/mcp"))
+            .map(|d| d.flatten().map(|e| e.file_name()).collect())
+            .unwrap_or_default();
+        assert!(
+            left.is_empty(),
+            "a refused job leaves no config behind: {left:?}"
+        );
+        assert_eq!(
+            runner.session_sem.available_permits(),
+            1,
+            "a refused job holds no permit"
+        );
+        let _ = std::fs::remove_dir_all(&home);
     }
 
     fn args_for(counts_against_session_cap: bool) -> Vec<String> {
