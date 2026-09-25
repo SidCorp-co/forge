@@ -47,7 +47,7 @@ const REASON_META: Record<
     fg: "var(--fg-subtle)",
     bg: "var(--bg-sunken)",
     icon: "dot",
-    hint: "Another binding of this provider holds the server name an agent would reach it by, so nothing here is wrong with this one. Either that binding takes the provider's single slot, or both bindings' labels resolve to the same server name — rename this one's label to give it a name of its own.",
+    hint: "Another binding of this provider holds the server name an agent would reach it by, so nothing here is wrong with this one. Where a provider serves one binding per project, the oldest granted one takes the slot and a label changes nothing — move the grant to this binding to use it instead. Where a provider serves several, each is named after its label and two labels can resolve to one name, which a label of its own settles.",
   },
   not_granted: {
     label: "Not granted",

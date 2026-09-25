@@ -252,7 +252,11 @@ async fn online_checks(ctx: &Ctx, cfg: &Config) -> bool {
         Ok(stored) => stored,
         Err(e) => {
             println!(
-                "✖ online       the credential store could not be read ({e}) — network checks skipped; repair that file rather than re-pairing"
+                "✖ online       {} could not be read ({e}) — network checks skipped; repair that file rather than re-pairing",
+                cred_store::credential_file_path().map_or_else(
+                    |_| String::from("the credential store"),
+                    |p| format!("the credential store `{}`", p.display()),
+                )
             );
             return true;
         }
@@ -517,6 +521,11 @@ enum Pane {
 /// started from a document nothing can parse carries no servers, which is not "something else".
 enum SessionFile {
     Absent,
+    /// A path no write can replace. `write_session` renames a temporary file onto it and
+    /// `clear_session` removes it, and both fail on a directory however many panes are launched,
+    /// so this is a failure with or without one — and `Unplaced::ServersUnwritable` means "no
+    /// pane" can BE this condition rather than an innocent idle box.
+    Obstructed(String),
     Unreadable(String),
     Unparseable,
     Matches,
@@ -532,6 +541,11 @@ fn session_file(
     path: &std::path::Path,
     servers: &serde_json::Map<String, serde_json::Value>,
 ) -> SessionFile {
+    // Asked before the read, because a directory reads as an error that looks like any other and
+    // is the one this box cannot write its way out of.
+    if std::fs::symlink_metadata(path).is_ok_and(|m| m.is_dir()) {
+        return SessionFile::Obstructed(String::from("it is a directory"));
+    }
     let bytes = match std::fs::read(path) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return SessionFile::Absent,
         Err(e) => return SessionFile::Unreadable(e.to_string()),
@@ -587,6 +601,12 @@ fn mcp_verdict(
                     format!(" (available: {})", found.resolved_names.join(", "))
                 }
             ),
+        );
+    }
+    if let SessionFile::Obstructed(why) = disk {
+        return (
+            Mark::Fail,
+            format!("{file} cannot be written ({why}), so nothing this box does puts this project's MCP servers there — and no pane started here ever carries them"),
         );
     }
     if pane == Pane::None {
@@ -655,6 +675,7 @@ fn no_pane_line(
     let file = path.display();
     let holds = match disk {
         SessionFile::Absent => String::from("does not exist yet"),
+        SessionFile::Obstructed(why) => format!("cannot be written ({why})"),
         SessionFile::Unreadable(why) => format!("cannot be read ({why})"),
         SessionFile::Unparseable => String::from("is not a document this box wrote"),
         SessionFile::Matches => String::from("already holds them"),
@@ -979,6 +1000,42 @@ mod tests {
         assert_eq!(mark, Mark::Note, "{line}");
         assert!(line.contains("no master pane here"), "{line}");
         assert!(line.contains("playwright"), "{line}");
+    }
+
+    /// ISS-1191, the second boundary: a session path this box cannot WRITE is a cross with no
+    /// pane too, and the note would have promised the next pane the servers. `write_session`
+    /// renames onto that path, a rename onto a directory fails every time, and the daemon counts
+    /// an unwritable session file as a reason not to start a pane — so "no pane" can be this
+    /// condition rather than an idle box.
+    #[test]
+    fn a_session_path_this_box_cannot_write_is_a_cross_with_no_pane_too() {
+        let (mark, line) = mcp_verdict(
+            &found(&["playwright"], &[]),
+            &a_path(),
+            &SessionFile::Obstructed(String::from("it is a directory")),
+            Pane::None,
+        );
+        assert!(mark.failed(), "{line}");
+        assert!(line.contains("cannot be written"), "{line}");
+        assert!(
+            !line.contains("is rewritten from them"),
+            "nothing rewrites a path the write cannot replace: {line}"
+        );
+    }
+
+    /// ISS-1191 — and a directory at the session path is classified as that rather than as one
+    /// more file this box could not read.
+    #[test]
+    fn a_directory_at_the_session_path_is_an_obstruction_and_not_a_read_error() {
+        let dir = forge_runner_core::test_scratch::Scratch::new("doctor-session-dir");
+        let path = dir.path().join("forge-master-mcp-mowment.json");
+        std::fs::create_dir(&path).expect("a directory where the file belongs");
+        let declared: serde_json::Map<String, serde_json::Value> =
+            serde_json::from_str(r#"{"playwright":{"type":"stdio"}}"#).expect("a server map");
+        assert!(matches!(
+            session_file(&path, &declared),
+            SessionFile::Obstructed(_)
+        ));
     }
 
     /// ISS-1191 F1, the boundary the fix must not swallow: what core could not supply is core's
