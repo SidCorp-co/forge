@@ -6,6 +6,7 @@ import type { IntegrationDeclaration } from './types.js';
 
 export async function resolveGrantedMcpEntries(
   projectId: string,
+  producedBy?: Map<string, string>,
 ): Promise<Record<string, Record<string, unknown>>> {
   const entries: Record<string, Record<string, unknown>> = {};
   for (const decl of directMcpIntegrations()) {
@@ -41,7 +42,10 @@ export async function resolveGrantedMcpEntries(
         const path = decl.capabilities.agentPath;
         if (path.kind !== 'direct-mcp') continue;
         const entry = path.buildEntry(effectiveConfig(pair), secrets);
-        if (entry) entries[serverName] = entry;
+        if (entry) {
+          entries[serverName] = entry;
+          producedBy?.set(serverName, pair.binding.id);
+        }
       } catch (err) {
         logger.warn(
           {
@@ -60,6 +64,22 @@ export async function resolveGrantedMcpEntries(
   return entries;
 }
 
+/** What {@link applyGrantedMcpServers} laid down, and under which names. */
+export interface GrantedMcpApplication {
+  map: Record<string, unknown> | null;
+  /**
+   * The names this pass produced. A binding that is active, credentialed, granted and unshadowed
+   * can still yield nothing here — an undecryptable credential, a `buildEntry` returning null — so
+   * this is the answer to "did it deliver" and those four conditions are only the explanation.
+   */
+  names: string[];
+  /**
+   * The binding behind each produced name. Two bindings of a single-slot provider share one server
+   * name, so a name alone says that the provider delivered and not which binding did.
+   */
+  bindingIds: string[];
+}
+
 /**
  * Lay this project's granted integration entries over a resolved `mcpServers` map.
  *
@@ -69,10 +89,13 @@ export async function resolveGrantedMcpEntries(
 export async function applyGrantedMcpServers(
   projectId: string,
   current: Record<string, unknown> | null,
-): Promise<Record<string, unknown> | null> {
-  const entries = await resolveGrantedMcpEntries(projectId);
-  if (Object.keys(entries).length === 0) return current;
-  return { ...(current ?? {}), ...entries };
+): Promise<GrantedMcpApplication> {
+  const producedBy = new Map<string, string>();
+  const entries = await resolveGrantedMcpEntries(projectId, producedBy);
+  const names = Object.keys(entries);
+  const bindingIds = names.map((name) => producedBy.get(name)).filter((id) => id !== undefined);
+  if (names.length === 0) return { map: current, names, bindingIds };
+  return { map: { ...(current ?? {}), ...entries }, names, bindingIds };
 }
 
 export function declaredServerNames(

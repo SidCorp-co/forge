@@ -46,7 +46,7 @@ async function resolveInjectionStatus(
 ): Promise<{ willInject: boolean; reason: string; serverName: string | null } | null> {
   try {
     const preview = await buildMcpPreview(projectId);
-    const row = preview.find((r) => r.bindingId === bindingId);
+    const row = preview.servers.find((r) => r.bindingId === bindingId);
     if (!row) return null;
     return { willInject: row.willInject, reason: row.reason, serverName: row.serverName };
   } catch {

@@ -3,7 +3,7 @@
  *
  * Split for size (behavior-preserving): per-provider schemas + dispatch tables
  * in `provider-schemas.ts`; shared guards/projections in `route-helpers.ts`;
- * the status aggregation in `status-service.ts`; the MCP injection preview in
+ * the status aggregation in `status-service.ts`; the MCP server preview in
  * `mcp-preview-service.ts`; the owner-scoped connection router in
  * `connection-routes.ts` (re-exported below for `src/index.ts`).
  */
@@ -105,7 +105,9 @@ integrationsRoutes.get('/:projectId/integrations', async (c) => {
   await assertProjectMember(projectId, userId);
 
   const pairs = await listBindingsForProject(projectId);
-  return c.json({ items: pairs.map(summarizeBinding) });
+  // One array under both keys: `items` is the alias the `forge` CLI and the runner read (ISS-1191).
+  const bindings = pairs.map(summarizeBinding);
+  return c.json({ bindings, items: bindings });
 });
 
 integrationsRoutes.post(
@@ -489,13 +491,12 @@ integrationsRoutes.get('/:projectId/integrations/status', async (c) => {
   return c.json({ cards: await buildIntegrationsStatusCards(projectId) });
 });
 
-// MCP injection preview (ISS-429) — mirrors dispatch-time resolution; the
-// projection lives in mcp-preview-service.ts (a documented drift pair with
-// src/jobs/resolve-job-mcp-servers.ts).
+// MCP preview (ISS-429, ISS-1191) — every server a project-wide agent session receives, composed
+// in mcp-preview-service.ts from resolveSessionMcpServers, so nothing here resolves a second time.
 integrationsRoutes.get('/:projectId/integrations/mcp-preview', async (c) => {
   const projectId = c.req.param('projectId');
   const userId = c.get('userId');
   await assertProjectMember(projectId, userId);
 
-  return c.json({ servers: await buildMcpPreview(projectId) });
+  return c.json(await buildMcpPreview(projectId));
 });

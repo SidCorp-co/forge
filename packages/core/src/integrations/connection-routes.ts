@@ -270,7 +270,8 @@ integrationConnectionsRoutes.get('/:id/bindings', async (c) => {
   const userId = c.get('userId');
   await loadVisibleConnection(id, userId);
   const pairs = await listBindingsForConnection(id);
-  return c.json({ items: pairs.map(summarizeBinding) });
+  const bindings = pairs.map(summarizeBinding);
+  return c.json({ bindings, items: bindings });
 });
 
 integrationConnectionsRoutes.post('/:id/test', async (c) => {

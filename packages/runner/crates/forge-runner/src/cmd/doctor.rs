@@ -317,7 +317,7 @@ async fn online_checks(ctx: &Ctx, cfg: &Config) -> bool {
                 }
 
                 if let Some(handle) = mcp_rows.remove(&r.project_id) {
-                    failed |= print_mcp_row(handle.await.unwrap_or(None));
+                    failed |= print_mcp_row(&r.slug, handle.await.unwrap_or(None));
                 }
 
                 let read = tokio::time::timeout(
@@ -388,16 +388,22 @@ fn pool_row(
     }
 }
 
-/// Print one project's MCP row, in the caller's order. `true` when it is a
-/// problem.
-fn print_mcp_row(line: Option<(bool, String)>) -> bool {
-    match line {
-        None => false,
-        Some((ok, text)) => {
-            println!("{} mcp          {text}", if ok { "✔" } else { "✖" });
-            !ok
-        }
-    }
+/// Print one project's MCP row, in the caller's order. `true` when it is a problem.
+///
+/// Every bound project owes a row, so `None` is no longer a project with nothing to declare — it
+/// is the spawned read never handing one back, which is a cross naming itself rather than a blank
+/// where a row was due (ISS-1191).
+fn print_mcp_row(slug: &str, line: Option<(bool, String)>) -> bool {
+    let (ok, text) = line.unwrap_or_else(|| {
+        (
+            false,
+            format!(
+                "{slug}: the MCP read did not finish, so nothing here says what it would carry"
+            ),
+        )
+    });
+    println!("{} mcp          {}", if ok { "✔" } else { "✖" }, text);
+    !ok
 }
 
 async fn mcp_servers_line(
@@ -424,18 +430,86 @@ async fn mcp_servers_line(
                 ));
             }
         };
-    mcp_verdict(&found).map(|(ok, line)| (ok, format!("{slug}: {line}")))
+    let path = forge_runner_core::mcp::config::session_path(slug);
+    let disk = session_file(slug, &path, &found.mcp_servers);
+    let (ok, line) = mcp_verdict(&found, &path, &disk);
+    Some((ok, format!("{slug}: {line}")))
 }
 
-fn mcp_verdict(found: &mcp_servers::ProjectMcpServers) -> Option<(bool, String)> {
+/// What this box's session file holds against what core resolves.
+///
+/// `session_matches` answers one bool, and a file it cannot read answers the same as one that is
+/// not there — which over an empty declaration reads as a tick nobody established. Doctor is the
+/// surface making the claim, so it separates the two here rather than teaching the daemon's own
+/// comparison a third state.
+enum SessionFile {
+    Absent,
+    Unreadable(String),
+    Matches,
+    Differs,
+}
+
+fn session_file(
+    slug: &str,
+    path: &std::path::Path,
+    servers: &serde_json::Map<String, serde_json::Value>,
+) -> SessionFile {
+    match std::fs::read(path) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => SessionFile::Absent,
+        Err(e) => SessionFile::Unreadable(e.to_string()),
+        Ok(bytes) if std::str::from_utf8(&bytes).is_err() => {
+            SessionFile::Unreadable(String::from("it is not valid UTF-8"))
+        }
+        Ok(_) => {
+            if forge_runner_core::mcp::config::session_matches(slug, servers) {
+                SessionFile::Matches
+            } else {
+                SessionFile::Differs
+            }
+        }
+    }
+}
+
+/// One project's MCP row: what core resolves, and what this box's session file holds against it.
+///
+/// Every bound project gets a row. A project that declares nothing owes one too, so "declares
+/// none" and "the row never ran" are not one observation (ISS-1191). The row names `path` because
+/// the servers do not land in the checkout's `.mcp.json`, which is the row directly above this
+/// one, and `on_disk` is [`session_matches`]: the row reports what the file holds rather than
+/// asserting a write it did not perform.
+///
+/// [`session_matches`]: forge_runner_core::mcp::config::session_matches
+fn mcp_verdict(
+    found: &mcp_servers::ProjectMcpServers,
+    path: &std::path::Path,
+    disk: &SessionFile,
+) -> (bool, String) {
+    let file = path.display();
+    if let SessionFile::Unreadable(why) = disk {
+        return (
+            false,
+            format!("{file} cannot be read ({why}), so nothing here says what a pane started from it carries"),
+        );
+    }
     if found.is_empty() {
-        return None;
+        return match disk {
+            SessionFile::Absent => (
+                true,
+                format!("no MCP servers declared, and nothing is written at {file}"),
+            ),
+            _ => (
+                false,
+                format!(
+                    "no MCP servers declared, but {file} still holds a config — a pane started from it carries servers this project no longer declares"
+                ),
+            ),
+        };
     }
     if !found.dropped_names.is_empty() {
-        return Some((
+        return (
             false,
             format!(
-                "declared but NOT available here: {} — a run on this project gets none of their tools{}",
+                "declared but NOT available here: {} — a run on this project gets none of their tools{} (this box's copy: {file})",
                 found.dropped_names.join(", "),
                 if found.resolved_names.is_empty() {
                     String::new()
@@ -443,12 +517,31 @@ fn mcp_verdict(found: &mcp_servers::ProjectMcpServers) -> Option<(bool, String)>
                     format!(" (available: {})", found.resolved_names.join(", "))
                 }
             ),
-        ));
+        );
     }
-    Some((
-        true,
-        format!("{} available", found.resolved_names.join(", ")),
-    ))
+    match disk {
+        SessionFile::Matches => (
+            true,
+            format!(
+                "{} available, and {file} holds them",
+                found.resolved_names.join(", ")
+            ),
+        ),
+        SessionFile::Absent => (
+            false,
+            format!(
+                "{} resolved by core, and nothing is written at {file} — a pane started here carries none of them",
+                found.resolved_names.join(", ")
+            ),
+        ),
+        _ => (
+            false,
+            format!(
+                "{} resolved by core, but {file} does not match them — a pane started from it carries something else",
+                found.resolved_names.join(", ")
+            ),
+        ),
+    }
 }
 
 /// Returns `true` when the binary is on PATH.
@@ -644,16 +737,22 @@ mod tests {
 
     #[tokio::test]
     async fn a_projects_mcp_row_is_handed_back_carrying_its_own_name_not_printed() {
-        // A project that declares nothing owes no line at all.
+        // ISS-1191: a project that declares nothing owes a row saying so, named after itself, so
+        // an absent row cannot be read as an empty one.
         let quiet = slow_core(1, std::time::Duration::ZERO).await;
-        assert!(mcp_servers_line(
+        let (ok, line) = mcp_servers_line(
             &CoreClient::new(quiet, String::from("tok")),
             "p-1",
-            "slug-1"
+            "slug-1",
         )
         .await
-        .is_none());
-        assert!(!print_mcp_row(None), "and no line is not a problem");
+        .expect("a project that declares nothing still owes a row");
+        // Whether that row is a tick turns on this box's own session file, which mcp_verdict's
+        // own tests settle deterministically; what is asserted here is that a row came back at
+        // all, named after its project.
+        let _ = ok;
+        assert!(line.starts_with("slug-1:"), "{line}");
+        assert!(line.contains("no MCP servers declared"), "{line}");
 
         // A project that owes one gets it BACK, with its own name inside the
         // text — the print loop places a line it cannot otherwise attribute.
@@ -676,7 +775,57 @@ mod tests {
             "the row must name its own project, because the loop prints it verbatim: {line}"
         );
         assert!(line.contains("epodsystem"), "{line}");
-        assert!(print_mcp_row(Some((ok, line))));
+        assert!(print_mcp_row("butlocs", Some((ok, line))));
+    }
+
+    /// ISS-1191 — a file this box cannot read is not evidence that it holds nothing. Over an empty
+    /// declaration `session_matches` answers the same as an absent file, so doctor separates them
+    /// rather than printing a tick nobody established.
+    #[test]
+    fn a_session_file_that_cannot_be_read_is_a_cross_even_where_nothing_is_declared() {
+        let (ok, line) = mcp_verdict(
+            &mcp_servers::ProjectMcpServers::default(),
+            &a_path(),
+            &SessionFile::Unreadable(String::from("it is not valid UTF-8")),
+        );
+        assert!(!ok, "an unreadable file is not a pass: {line}");
+        assert!(line.contains("cannot be read"), "{line}");
+        assert!(line.contains("not valid UTF-8"), "{line}");
+    }
+
+    /// ISS-1191 — and a resolved set with no file at all is a cross saying so, rather than the
+    /// mismatch sentence, because nothing there is not something else.
+    #[test]
+    fn a_resolved_set_with_no_session_file_says_nothing_is_written() {
+        let (ok, line) = mcp_verdict(
+            &found(&["playwright"], &[]),
+            &a_path(),
+            &SessionFile::Absent,
+        );
+        assert!(!ok, "{line}");
+        assert!(line.contains("nothing is written"), "{line}");
+    }
+
+    /// ISS-1191 criterion 15 — the dropped-name branch is the diagnostic case, and it named no file
+    /// at all while the rest of the row did.
+    #[test]
+    fn the_dropped_name_row_names_the_file_too() {
+        let (_, line) = mcp_verdict(
+            &found(&["playwright"], &["epodsystem"]),
+            &a_path(),
+            &SessionFile::Differs,
+        );
+        assert!(
+            line.contains("forge-master-mcp-mowment.json"),
+            "the diagnostic row must name the file as well: {line}"
+        );
+    }
+
+    /// ISS-1191 — a read that never handed a row back is a cross naming the project, not a gap in
+    /// the report where a row was due.
+    #[test]
+    fn a_row_that_never_arrived_is_a_cross_naming_its_project() {
+        assert!(print_mcp_row("butlocs", None));
     }
 
     /// ISS-1235: a 404 is a read that did not happen, so the project owes a
@@ -709,9 +858,18 @@ mod tests {
         }
     }
 
+    /// The path the row names, for a test that asserts on its text.
+    fn a_path() -> std::path::PathBuf {
+        std::path::PathBuf::from("/home/o/.config/forge-runner/mcp/forge-master-mcp-mowment.json")
+    }
+
     #[test]
     fn a_declared_server_this_box_cannot_supply_is_a_problem_and_is_named() {
-        let (ok, line) = mcp_verdict(&found(&[], &["epodsystem"])).expect("a row is owed");
+        let (ok, line) = mcp_verdict(
+            &found(&[], &["epodsystem"]),
+            &a_path(),
+            &SessionFile::Matches,
+        );
         assert!(
             !ok,
             "a server that cannot be supplied is not a pass: {line}"
@@ -724,8 +882,11 @@ mod tests {
     /// operator can tell which work is possible here.
     #[test]
     fn a_project_with_one_server_supplied_and_one_not_reports_the_problem_and_both_names() {
-        let (ok, line) =
-            mcp_verdict(&found(&["playwright"], &["epodsystem"])).expect("a row is owed");
+        let (ok, line) = mcp_verdict(
+            &found(&["playwright"], &["epodsystem"]),
+            &a_path(),
+            &SessionFile::Matches,
+        );
         assert!(!ok, "{line}");
         assert!(line.contains("epodsystem"), "{line}");
         assert!(line.contains("playwright"), "{line}");
@@ -733,13 +894,66 @@ mod tests {
 
     #[test]
     fn a_project_whose_declarations_all_resolved_reads_as_a_pass_naming_them() {
-        let (ok, line) = mcp_verdict(&found(&["playwright"], &[])).expect("a row is owed");
+        let (ok, line) = mcp_verdict(
+            &found(&["playwright"], &[]),
+            &a_path(),
+            &SessionFile::Matches,
+        );
         assert!(ok, "{line}");
         assert!(line.contains("playwright"), "{line}");
     }
 
+    /// ISS-1191 — the row reports the file rather than asserting a write it never performed: a
+    /// resolved set the session file does not hold is a cross, not a tick naming a path.
     #[test]
-    fn a_project_that_declares_nothing_gets_no_row_at_all() {
-        assert!(mcp_verdict(&mcp_servers::ProjectMcpServers::default()).is_none());
+    fn a_resolved_set_the_session_file_does_not_hold_is_a_cross() {
+        let (ok, line) = mcp_verdict(
+            &found(&["playwright"], &[]),
+            &a_path(),
+            &SessionFile::Differs,
+        );
+        assert!(!ok, "a file that does not match is not a pass: {line}");
+        assert!(line.contains("does not match"), "{line}");
+    }
+
+    /// ISS-1191 — and a project that declares nothing over a file that still holds a config is a
+    /// cross too, because a pane started from it carries servers nobody declares any more.
+    #[test]
+    fn declaring_nothing_over_a_file_that_still_holds_a_config_is_a_cross() {
+        let (ok, line) = mcp_verdict(
+            &mcp_servers::ProjectMcpServers::default(),
+            &a_path(),
+            &SessionFile::Differs,
+        );
+        assert!(!ok, "{line}");
+        assert!(line.contains("still holds a config"), "{line}");
+    }
+
+    /// ISS-1191 criterion 15 — the row says where the servers land, because the `.mcp.json` row
+    /// above it names a different file and reads as the whole answer.
+    #[test]
+    fn the_row_names_the_file_this_box_writes_those_servers_to() {
+        let (_, line) = mcp_verdict(
+            &found(&["playwright"], &[]),
+            &a_path(),
+            &SessionFile::Matches,
+        );
+        assert!(
+            line.contains("forge-master-mcp-mowment.json"),
+            "the row must name the file it is talking about: {line}"
+        );
+    }
+
+    /// ISS-1191 criterion 14 — a project that declares nothing still reports, so an absent row
+    /// cannot be read as an empty one.
+    #[test]
+    fn a_project_that_declares_nothing_still_gets_a_row_saying_so() {
+        let (ok, line) = mcp_verdict(
+            &mcp_servers::ProjectMcpServers::default(),
+            &a_path(),
+            &SessionFile::Absent,
+        );
+        assert!(ok, "{line}");
+        assert!(line.contains("no MCP servers declared"), "{line}");
     }
 }

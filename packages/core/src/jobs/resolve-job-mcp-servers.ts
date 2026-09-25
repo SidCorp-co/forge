@@ -21,6 +21,12 @@ export interface ResolvedJobMcpServers {
   /** ISS-623 W2 — declared (project-default or per-state) names that did NOT
    *  survive resolution, minus the intentional playwright browser-dedupe. */
   droppedNames: string[];
+  /** ISS-1191 — the names the granted-integration pass produced, so a reader can
+   *  tell an integration-sourced server from a project-declared one. */
+  integrationNames: string[];
+  /** ISS-1191 — the binding behind each of those names; two bindings of a
+   *  single-slot provider share one name, so the name does not identify one. */
+  integrationBindingIds: string[];
 }
 
 export async function resolveJobMcpServers(args: {
@@ -44,7 +50,8 @@ export async function resolveJobMcpServers(args: {
 
   if (map !== null) map = applyStageFalseOptOuts(map, args.stageMcpServers);
 
-  map = await applyGrantedMcpServers(args.projectId, map);
+  const granted = await applyGrantedMcpServers(args.projectId, map);
+  map = granted.map;
 
   // Browser dedupe: prefer chrome-devtools-mcp over playwright when both are present.
   const beforeBrowserDedupe = new Set(Object.keys(map ?? {}));
@@ -57,7 +64,13 @@ export async function resolveJobMcpServers(args: {
     (name) => !resolvedNames.has(name) && !(name === 'playwright' && playwrightDedupedNotDropped),
   );
 
-  return { mcpServers: map, resolvedNames: [...resolvedNames], droppedNames };
+  return {
+    mcpServers: map,
+    resolvedNames: [...resolvedNames],
+    droppedNames,
+    integrationNames: granted.names,
+    integrationBindingIds: granted.bindingIds,
+  };
 }
 
 export async function resolveSessionMcpServers(projectId: string): Promise<ResolvedJobMcpServers> {
