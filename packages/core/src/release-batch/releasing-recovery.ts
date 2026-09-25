@@ -210,9 +210,9 @@ async function releaseClaims(
 /** What a roster is told when an operator settles it although this run promoted. */
 function settledNote(projectId: string, destination: IssueStatus): string {
   return (
-    `This batch recorded a promotion, so the code it carried is on production, and an operator ` +
+    `This batch recorded a promotion, so the code it carried may be on production, and an operator ` +
     `settled the roster rather than leave it at \`releasing\` — the issue is back at ` +
-    `\`${destination}\`. Record the release that happened with ` +
+    `\`${destination}\`. If the release did land, record it with ` +
     `POST /api/projects/${projectId}/release-records, naming the commit production is serving and ` +
     `how it was released; that closes it against evidence instead of by hand.`
   );
@@ -220,7 +220,7 @@ function settledNote(projectId: string, destination: IssueStatus): string {
 
 function promotedNote(runId: string): (projectId: string) => string {
   return (projectId) =>
-    `This batch recorded a promotion, so its issues stay at \`releasing\` and stay claimed: the code is on production and no status here is true except that one. Read the run with \`GET /api/projects/${projectId}/release-batches/${runId}/state\`. To settle the issues, abort the batch with POST /api/projects/${projectId}/release-batches/${runId}/abort and a body of {"promotedRoster":"return-to-gate"}, which puts them back at the release gate, and then record the release that happened with POST /api/projects/${projectId}/release-records; or settle each issue by hand.`;
+    `This batch recorded a promotion, so its issues stay at \`releasing\` and stay claimed: the code may be on production, and no other status here would be safe to claim. Read the run with \`GET /api/projects/${projectId}/release-batches/${runId}/state\`. To settle the issues, abort the batch with POST /api/projects/${projectId}/release-batches/${runId}/abort and a body of {"promotedRoster":"return-to-gate"}, which puts them back at the release gate, and then, if the release did land, record it with POST /api/projects/${projectId}/release-records; or settle each issue by hand.`;
 }
 
 /**

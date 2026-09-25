@@ -267,7 +267,7 @@ export function abortedSentence(err: ReleaseBatchAbortedError): string {
       const rest = closed.length > 0 ? 'Every other issue stays' : 'Its issues stay';
       // `release-records` takes only issues at the gate that no batch claims, so the abort that
       // puts them there comes first and is never offered beside it.
-      return `${none}: it recorded a promotion, so the abort kept its claims.${kept} ${rest} at \`releasing\`, still claimed, for a person to settle. To settle them, abort this batch again with \`promotedRoster: "return-to-gate"\`, which puts them back at the release gate; once they are there, record the release that happened with POST /api/projects/${err.projectId}/release-records, naming the commit production is serving.`;
+      return `${none}: it recorded a promotion, so the abort kept its claims.${kept} ${rest} at \`releasing\`, still claimed, for a person to settle. To settle them, abort this batch again with \`promotedRoster: "return-to-gate"\`, which puts them back at the release gate; once they are there, if the release did land, record it with POST /api/projects/${err.projectId}/release-records, naming the commit production is serving.`;
     }
     case 'returning':
       return `${none}. The abort had not finished putting its roster back at the release gate when this was read, so each issue’s own status says whether its claim is released yet.`;
