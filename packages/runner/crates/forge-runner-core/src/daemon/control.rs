@@ -577,6 +577,27 @@ fn dispatch_gate_reply(
             if let Some(refused) = refused_while_draining(ctl, why, Some(pending.as_deref())) {
                 return refused;
             }
+            // Failing open for a run declared before the drain admits nothing
+            // new only while that run is spent once, so while draining the
+            // promise is recorded the way `Covered` records it, and a second
+            // tool call against the same run is refused.
+            if let (Some(run), Some(cause)) = (pending.as_deref(), ctl.drain.draining_for()) {
+                // cm:guard a dispatch carrying no tool call id cannot be limited here: nothing
+                // names it to promise the run to or to tell a second hand-off from a replay, so
+                // that case still fails open once per call, and the drain counts only the one row.
+                if let Some(tool_use) = d.tool_use_id.clone() {
+                    if let Some(spent) = memory.promised.get(run).filter(|t| **t != tool_use) {
+                        tracing::warn!(
+                            "[control] refusing a second hand-off of run {run} while draining: it was spent on {spent}"
+                        );
+                        return ClaimReply::refused(format!(
+                            "this box is draining before a restart ({cause}) and run {run}, declared before the drain, was already handed off to tool call {spent}; a second subagent against it would be work the drain never counted. Declare it again once the box has turned over"
+                        ));
+                    }
+                    memory.promised.insert(run.to_string(), tool_use.clone());
+                    memory.allowed.insert(tool_use);
+                }
+            }
             if let Some(dir) = dir.as_deref() {
                 // The registry answered here, so the run this dispatch belonged
                 // to is known even though the verdict is not.
@@ -1482,6 +1503,44 @@ mod tests {
         assert!(
             allowed(&r),
             "no tool call id, declared before the drain: {r:?}"
+        );
+    }
+
+    /// Second delta review F8: a run declared before the drain that the gate
+    /// fails open for is spent once. The same tool call again is a replay and
+    /// goes through; a second tool call against that run is refused, naming the
+    /// drain and the call it was spent on.
+    #[cfg(unix)]
+    #[test]
+    fn a_pre_drain_run_the_gate_fails_open_for_is_handed_off_once() {
+        let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
+        let declared = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a");
+        assert!(declared.ok, "{:?}", declared.reason);
+        let run = declared.job_id.unwrap();
+        let _attempt = ctl.drain.begin("update 0.1.0 → 0.1.1").unwrap();
+
+        let first = gate_on(&ctl, &asked(Some("toolu_1"), "runner"), "sess-a");
+        assert!(
+            allowed(&first),
+            "the declared run's own hand-off: {first:?}"
+        );
+        let replay = gate_on(&ctl, &asked(Some("toolu_1"), "runner"), "sess-a");
+        assert!(
+            allowed(&replay),
+            "the same tool call again is a replay: {replay:?}"
+        );
+
+        let second = gate_on(&ctl, &asked(Some("toolu_2"), "runner"), "sess-a");
+        assert!(
+            !second.ok,
+            "a second subagent against a run spent once is work the drain never counted"
+        );
+        let why = second.reason.unwrap_or_default();
+        assert!(
+            why.contains("draining before a restart")
+                && why.contains(&run)
+                && why.contains("toolu_1"),
+            "the refusal names the drain, the run and the call it was spent on: {why}"
         );
     }
 
