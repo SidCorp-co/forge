@@ -201,7 +201,7 @@ export async function fetchDivergence(
       'log',
       '-z',
       `--max-count=${REMOTE_MAX_COMMITS}`,
-      '--format=%H%n%B',
+      '--format=%H %P%n%B',
       range,
     ]);
     const commits: WaitingCommit[] = [];
@@ -209,9 +209,11 @@ export async function fetchDivergence(
       const at = entry.indexOf('\n');
       if (at < 0) continue;
       const message = entry.slice(at + 1);
+      const [sha = '', ...parents] = entry.slice(0, at).trim().split(' ');
       commits.push({
-        sha: entry.slice(0, at),
+        sha,
         message: message.endsWith('\n') ? message.slice(0, -1) : message,
+        parents,
       });
     }
     return { ok: true, baseSha, liveSha, aheadBy, commits, complete: commits.length >= aheadBy };
