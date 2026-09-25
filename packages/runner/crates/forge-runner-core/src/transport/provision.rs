@@ -128,7 +128,7 @@ pub(crate) fn parse_failures(raw: Option<&str>) -> Reported {
 /// Every error out of here names the endpoint it called, so the caller's one
 /// log line is attributable without reading this file: the refusal an operator
 /// meets says `GET <url> answered <status>` and carries the body core sent.
-pub async fn pull_pending(client: &CoreClient) -> Result<Pending> {
+pub async fn pull_pending(client: &CoreClient) -> std::result::Result<Pending, PullRefusal> {
     let url = client.url("/api/devices/me/provisions");
     let resp = client
         .http()
@@ -136,11 +136,7 @@ pub async fn pull_pending(client: &CoreClient) -> Result<Pending> {
         .bearer_auth(client.device_token())
         .send()
         .await
-        .map_err(|e| {
-            Error::Other(format!(
-                "provisions request to GET {url} never got an answer: {e}"
-            ))
-        })?;
+        .map_err(|e| PullRefusal::unanswered(&url, &format!("never got an answer: {e}")))?;
     let status = resp.status();
     if !status.is_success() {
         let body = match tokio::time::timeout(BODY_DEADLINE, resp.text()).await {
@@ -148,19 +144,19 @@ pub async fn pull_pending(client: &CoreClient) -> Result<Pending> {
             Ok(Err(e)) => format!("<could not be read: {e}>"),
             Err(_) => format!("<not sent within {}s>", BODY_DEADLINE.as_secs()),
         };
-        return Err(Error::Other(format!(
-            "provisions failed: GET {url} answered {status}{BODY_MARK}{body}"
-        )));
+        return Err(PullRefusal::answered(&url, status, &body));
     }
     let reported = parse_failures(
         resp.headers()
             .get(FAILURES_HEADER)
             .and_then(|v| v.to_str().ok()),
     );
-    let provisions = resp
-        .json::<Vec<Provision>>()
-        .await
-        .map_err(|e| Error::Other(format!("provisions decode from GET {url}: {e}")))?;
+    let provisions = resp.json::<Vec<Provision>>().await.map_err(|e| {
+        PullRefusal::unanswered(
+            &url,
+            &format!("answered {status} this box could not read: {e}"),
+        )
+    })?;
     let recovery = streak().succeeded(Instant::now());
     journal(recovery);
     Ok(Pending {
@@ -189,25 +185,57 @@ const ESCALATE_AFTER: u32 = 5;
 /// hearing about the refusal at all.
 const BODY_DEADLINE: Duration = Duration::from_secs(5);
 
-/// What separates a refusal's condition from the body that came with it.
+/// Why one provision pull did not come back with rows, in the two halves the
+/// journal needs it in.
 ///
-/// Both sides of that split are this module's: `pull_pending` writes it and
-/// [`condition`] reads it back, so the streak can be keyed on the stable half
-/// of a refusal without a second channel carrying the status alongside.
-const BODY_MARK: &str = ", body: ";
+/// `condition` is the stable half a streak is keyed on — the endpoint and the
+/// status, or for a pull that got no answer, the endpoint and what went wrong.
+/// `subject` is the whole line an operator reads, body included.
+///
+/// They are carried apart rather than encoded in one string and split back out
+/// on a marker: `core_url` is configuration and can hold anything, so a base
+/// URL containing that marker would have moved the split and collapsed two
+/// conditions into one (review c8b010 F1). Nothing here can be broken by what
+/// core sends or by what a person types into a config file.
+#[derive(Debug, Clone)]
+pub struct PullRefusal {
+    condition: String,
+    subject: String,
+}
 
-/// The stable half of one refusal — the endpoint and the status, or for a
-/// failure that never got an answer, the endpoint and the transport error.
-///
-/// This is what a streak is keyed on, and keying it on the WHOLE refusal was a
-/// defect caught in review: Cloudflare's 5xx pages carry a Ray ID that changes
-/// every request, so a body-sensitive key would have made every poll of a `520`
-/// storm a brand-new condition and restored the flood this change exists to
-/// stop. The cost is that two refusals sharing a status and differing only in
-/// body are one streak, so the second body is not written — the escalation
-/// carries the body of the refusal that escalated, which is the current one.
-fn condition(subject: &str) -> &str {
-    subject.split(BODY_MARK).next().unwrap_or(subject)
+impl PullRefusal {
+    /// A pull core answered, with a status this box will not accept.
+    ///
+    /// The body is NOT in the condition. Cloudflare's 5xx pages carry a Ray ID
+    /// that changes every request, so a body-sensitive key would have made
+    /// every poll of a `520` storm a brand-new condition and restored the very
+    /// flood this change exists to stop. The cost is that two refusals sharing
+    /// a status and differing only in body are one streak, so the second body
+    /// is not written — the escalation carries the body of the refusal that
+    /// escalated, which is the current one.
+    fn answered(url: &str, status: reqwest::StatusCode, body: &str) -> Self {
+        let condition = format!("GET {url} answered {status}");
+        Self {
+            subject: format!("provisions failed: {condition}, body: {body}"),
+            condition,
+        }
+    }
+
+    /// A pull that produced no usable answer at all: nothing came back, or
+    /// what came back could not be read as rows.
+    fn unanswered(url: &str, what: &str) -> Self {
+        let condition = format!("GET {url} {what}");
+        Self {
+            subject: format!("provisions failed: {condition}"),
+            condition,
+        }
+    }
+}
+
+impl std::fmt::Display for PullRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.subject)
+    }
 }
 
 /// One poll's response body as a log line carries it: whitespace collapsed so
@@ -296,23 +324,22 @@ impl Streak {
     }
 
     /// Record one refusal and say what the journal owes for it.
-    fn refused(&mut self, subject: &str, now: Instant) -> Entry {
-        let cond = condition(subject);
-        let same = self.condition.as_deref() == Some(cond);
-        if !same {
-            self.condition = Some(cond.to_string());
+    fn refused(&mut self, refusal: &PullRefusal, now: Instant) -> Entry {
+        let same = self.condition.as_deref() == Some(refusal.condition.as_str());
+        if same {
+            self.count = self.count.saturating_add(1);
+        } else {
+            self.condition = Some(refusal.condition.clone());
             self.count = 1;
             self.first = Some(now);
-        } else {
-            self.count = self.count.saturating_add(1);
         }
-        self.subject = subject.to_string();
+        self.subject = refusal.subject.clone();
         if !same {
-            return Entry::Refused(subject.to_string());
+            return Entry::Refused(refusal.subject.clone());
         }
         if self.count == ESCALATE_AFTER {
             return Entry::Escalated {
-                subject: subject.to_string(),
+                subject: refusal.subject.clone(),
                 count: self.count,
                 held: now.saturating_duration_since(self.first.unwrap_or(now)),
             };
@@ -375,8 +402,8 @@ fn journal(entry: Entry) {
 /// triaged. The policy is here rather than at the call site because the
 /// success half of it ([`Streak::succeeded`]) is in `pull_pending` above, and
 /// one piece of state cannot have two owners.
-pub fn report_pull_refusal(e: &Error) {
-    let entry = streak().refused(&e.to_string(), Instant::now());
+pub fn report_pull_refusal(e: &PullRefusal) {
+    let entry = streak().refused(e, Instant::now());
     journal(entry);
 }
 
@@ -492,16 +519,22 @@ mod tests {
         assert!(out.starts_with(&"é".repeat(BODY_CAP)), "{out}");
     }
 
-    fn refusal(status: &str) -> String {
-        format!("provisions failed: GET http://core/api/devices/me/provisions answered {status}{BODY_MARK}<none>")
+    const CORE: &str = "http://core/api/devices/me/provisions";
+
+    fn refusal(status: u16) -> PullRefusal {
+        PullRefusal::answered(
+            CORE,
+            reqwest::StatusCode::from_u16(status).unwrap(),
+            "<none>",
+        )
     }
 
     #[test]
     fn the_first_refusal_of_a_fresh_process_is_reported() {
         let mut s = Streak::new();
         assert_eq!(
-            s.refused(&refusal("500"), Instant::now()),
-            Entry::Refused(refusal("500"))
+            s.refused(&refusal(500), Instant::now()),
+            Entry::Refused(refusal(500).subject)
         );
     }
 
@@ -512,10 +545,10 @@ mod tests {
     fn a_repeat_of_a_reported_refusal_says_nothing() {
         let mut s = Streak::new();
         let now = Instant::now();
-        s.refused(&refusal("500"), now);
+        s.refused(&refusal(500), now);
         for n in 1..=3 {
             assert_eq!(
-                s.refused(&refusal("500"), now + Duration::from_secs(90 * n)),
+                s.refused(&refusal(500), now + Duration::from_secs(90 * n)),
                 Entry::Nothing,
                 "repeat {n}"
             );
@@ -528,12 +561,12 @@ mod tests {
         let now = Instant::now();
         let mut last = Entry::Nothing;
         for n in 0..5 {
-            last = s.refused(&refusal("500"), now + Duration::from_secs(90 * n));
+            last = s.refused(&refusal(500), now + Duration::from_secs(90 * n));
         }
         assert_eq!(
             last,
             Entry::Escalated {
-                subject: refusal("500"),
+                subject: refusal(500).subject,
                 count: 5,
                 held: Duration::from_secs(360),
             }
@@ -548,11 +581,11 @@ mod tests {
         let mut s = Streak::new();
         let now = Instant::now();
         for n in 0..5 {
-            s.refused(&refusal("500"), now + Duration::from_secs(90 * n));
+            s.refused(&refusal(500), now + Duration::from_secs(90 * n));
         }
         for n in 5..40 {
             assert_eq!(
-                s.refused(&refusal("500"), now + Duration::from_secs(90 * n)),
+                s.refused(&refusal(500), now + Duration::from_secs(90 * n)),
                 Entry::Nothing,
                 "poll {n}"
             );
@@ -567,30 +600,27 @@ mod tests {
         let mut s = Streak::new();
         let now = Instant::now();
         for n in 0..5 {
-            s.refused(&refusal("500"), now + Duration::from_secs(90 * n));
+            s.refused(&refusal(500), now + Duration::from_secs(90 * n));
         }
         assert_eq!(
-            s.refused(&refusal("502 Bad Gateway"), now + Duration::from_secs(450)),
-            Entry::Refused(refusal("502 Bad Gateway"))
+            s.refused(&refusal(502), now + Duration::from_secs(450)),
+            Entry::Refused(refusal(502).subject)
         );
         for n in 6..9 {
             assert_eq!(
-                s.refused(
-                    &refusal("502 Bad Gateway"),
-                    now + Duration::from_secs(90 * n)
-                ),
+                s.refused(&refusal(502), now + Duration::from_secs(90 * n)),
                 Entry::Nothing,
                 "poll {n}"
             );
         }
         assert_eq!(
-            s.refused(&refusal("502 Bad Gateway"), now + Duration::from_secs(810)),
+            s.refused(&refusal(502), now + Duration::from_secs(810)),
             Entry::Escalated {
-                subject: refusal("502 Bad Gateway"),
+                subject: refusal(502).subject,
                 count: 5,
                 held: Duration::from_secs(360),
             },
-            "the new subject's streak is counted from its own first refusal"
+            "the new condition's streak is counted from its own first refusal"
         );
     }
 
@@ -604,8 +634,10 @@ mod tests {
         let mut s = Streak::new();
         let now = Instant::now();
         let ray = |n: u32| {
-            format!(
-                "provisions failed: GET http://core/api/devices/me/provisions answered 520 <unknown status code>{BODY_MARK}error 520 Ray ID: 8f2c{n:04x} Web server is returning an unknown error"
+            PullRefusal::answered(
+                CORE,
+                reqwest::StatusCode::from_u16(520).unwrap(),
+                &format!("error 520 Ray ID: 8f2c{n:04x} Web server is returning an unknown error"),
             )
         };
         assert!(matches!(s.refused(&ray(0), now), Entry::Refused(_),));
@@ -627,6 +659,29 @@ mod tests {
         );
     }
 
+    /// `core_url` is configuration and can hold anything, this marker
+    /// included. An earlier revision recovered the condition by splitting the
+    /// refusal text on `", body: "`, which a base URL carrying that string
+    /// would have cut short — collapsing a `500` and a `502` into one
+    /// condition and swallowing the warning a changed status is owed.
+    #[test]
+    fn a_base_url_carrying_the_body_marker_still_tells_two_statuses_apart() {
+        let odd = "http://core/tenant, body: blue/api/devices/me/provisions";
+        let at = |code: u16| {
+            PullRefusal::answered(odd, reqwest::StatusCode::from_u16(code).unwrap(), "<none>")
+        };
+        let mut s = Streak::new();
+        let now = Instant::now();
+        assert!(matches!(s.refused(&at(500), now), Entry::Refused(_)));
+        assert!(
+            matches!(
+                s.refused(&at(502), now + Duration::from_secs(90)),
+                Entry::Refused(_)
+            ),
+            "a status that changed is a condition that changed, whatever the url holds"
+        );
+    }
+
     /// A failure that never got an answer has no status and no body, so its
     /// condition is the whole error. Two of them are one streak.
     #[test]
@@ -634,13 +689,13 @@ mod tests {
         let mut s = Streak::new();
         let now = Instant::now();
         let unanswered =
-            "provisions request to GET http://core/api/devices/me/provisions never got an answer: error sending request";
-        assert!(matches!(s.refused(unanswered, now), Entry::Refused(_)));
+            || PullRefusal::unanswered(CORE, "never got an answer: error sending request");
+        assert!(matches!(s.refused(&unanswered(), now), Entry::Refused(_)));
         assert_eq!(
-            s.refused(unanswered, now + Duration::from_secs(90)),
+            s.refused(&unanswered(), now + Duration::from_secs(90)),
             Entry::Nothing
         );
-        assert_eq!(condition(unanswered), unanswered);
+        assert!(unanswered().subject.contains(CORE));
     }
 
     #[test]
@@ -648,12 +703,12 @@ mod tests {
         let mut s = Streak::new();
         let now = Instant::now();
         for n in 0..7 {
-            s.refused(&refusal("500"), now + Duration::from_secs(90 * n));
+            s.refused(&refusal(500), now + Duration::from_secs(90 * n));
         }
         assert_eq!(
             s.succeeded(now + Duration::from_secs(630)),
             Entry::Recovered {
-                subject: refusal("500"),
+                subject: refusal(500).subject,
                 count: 7,
                 held: Duration::from_secs(630),
             }
@@ -667,7 +722,7 @@ mod tests {
     fn a_success_with_no_streak_standing_says_nothing() {
         let mut s = Streak::new();
         assert_eq!(s.succeeded(Instant::now()), Entry::Nothing);
-        s.refused(&refusal("500"), Instant::now());
+        s.refused(&refusal(500), Instant::now());
         s.succeeded(Instant::now());
         assert_eq!(s.succeeded(Instant::now()), Entry::Nothing);
     }
@@ -713,7 +768,7 @@ mod tests {
 
     #[test]
     fn a_reported_refusal_reaches_the_journal_at_warn_with_its_subject() {
-        let out = logged_while(|| journal(Entry::Refused(refusal("500 Internal Server Error"))));
+        let out = logged_while(|| journal(Entry::Refused(refusal(500).subject)));
         assert!(out.contains("WARN"), "{out}");
         assert!(out.contains("[provision] pull failed:"), "{out}");
         assert!(
@@ -727,7 +782,7 @@ mod tests {
     fn an_escalation_reaches_the_journal_at_error_with_its_count_and_span() {
         let out = logged_while(|| {
             journal(Entry::Escalated {
-                subject: refusal("500 Internal Server Error"),
+                subject: refusal(500).subject,
                 count: 5,
                 held: Duration::from_secs(75_600),
             })
@@ -745,7 +800,7 @@ mod tests {
     fn a_recovery_reaches_the_journal_at_info_naming_what_it_ended() {
         let out = logged_while(|| {
             journal(Entry::Recovered {
-                subject: refusal("500 Internal Server Error"),
+                subject: refusal(500).subject,
                 count: 685,
                 held: Duration::from_secs(75_600),
             })
