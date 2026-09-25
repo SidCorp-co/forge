@@ -55,6 +55,7 @@ import {
   resolveRailSlug,
   useProjectOrgScopeSync,
   useRailProjectData,
+  CurrentProjectProvider,
 } from "@/features/shell";
 
 export default function WorkspaceLayout({ children }: { children: React.ReactNode }) {
@@ -474,7 +475,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
             setScrolled((s) => (s ? top > 4 : top > 8));
           }}
         >
-          {children}
+          <CurrentProjectProvider project={railProject}>{children}</CurrentProjectProvider>
         </main>
       </div>
 
