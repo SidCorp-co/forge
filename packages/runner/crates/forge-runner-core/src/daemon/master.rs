@@ -1571,7 +1571,7 @@ async fn release_held_tree(
             repo_root: &resolved.repo_path,
             base_branch: resolved.base_branch.as_deref(),
             by: "recovery",
-            reason: "the run's process is gone and core's session row is terminal",
+            reason: r.release_reason(),
         },
         terminate::Ports {
             procs: world.killer,
@@ -5261,6 +5261,96 @@ mod give_back_tests {
             leases.0.lock().unwrap().as_slice(),
             ["ISS-957"],
             "the lease is what another box needs back — a reclaimed worktree whose issue stays leased frees disk and no work"
+        );
+        let _ = std::fs::remove_dir_all(&repo);
+        let _ = std::fs::remove_dir_all(repo.with_extension("remote.git"));
+    }
+
+    /// A registry that has never heard of the run's master: a retired one,
+    /// a replaced one, or a project that left `/me/runners`.
+    struct NobodyKnows;
+    #[async_trait::async_trait]
+    impl recovery::MasterLiveness for NobodyKnows {
+        async fn state(&self, _id: &str) -> recovery::MasterPresence {
+            recovery::MasterPresence::Unknown
+        }
+        async fn live_master_for_project(&self, _: &str) -> Option<String> {
+            None
+        }
+    }
+
+    /// ISS-1220's b4e955c2, through the sweep: a subagent run whose master this
+    /// box no longer registers, core's session over for longer than the bound,
+    /// its checkout clean on a pushed branch. Before, every sweep printed
+    /// `partially closed` over it for as long as the box lived.
+    #[tokio::test]
+    async fn a_run_no_master_answers_for_is_given_back_on_the_bound_and_says_why() {
+        let (repo, wt) = a_repo_with_a_live_worktree().await;
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(NewRun {
+            run_id: "run-1".into(),
+            project_id: "proj-1".into(),
+            master_session_id: "master-retired".into(),
+            worktree_path: wt.clone(),
+            boot_id: BOOT.into(),
+            issue_keys: vec!["ISS-957".into()],
+        })
+        .unwrap();
+        led.attach_session("run-1", "core-sess-1").unwrap();
+        assert!(led.bind_agent("run-1", "a497qa").unwrap());
+        let over = recovery::UNANSWERED_RELEASE_AFTER.as_secs() as i64 + 60;
+        led.backdate_session_terminal("run-1", now_secs() - over)
+            .unwrap();
+
+        let mut cfg = Config::default();
+        cfg.bindings.insert(
+            "proj-1".into(),
+            crate::config::Binding {
+                repo_path: repo.clone(),
+                branch: None,
+                project_id: Some("proj-1".into()),
+            },
+        );
+        let leases = Leases::default();
+        let mut ledger = Some(led);
+
+        give_back_lost_runs(
+            BOOT,
+            &NobodyKnows,
+            &Reclaim {
+                served: &[],
+                cfg: &cfg,
+                procs: &NoPids,
+                killer: &NoKill,
+                closer: &Closes::default(),
+            },
+            &Terminal(true),
+            &leases,
+            recovery::RunWatch {
+                beat: &Beats::default(),
+                idle: &NeverReports,
+            },
+            &mut ledger,
+        )
+        .await;
+
+        assert!(
+            !wt.exists(),
+            "the checkout goes back on the bound, since no pane on this box can close the run"
+        );
+        let led = ledger.as_ref().unwrap();
+        let run = led.run("run-1").unwrap().unwrap();
+        assert_eq!(run.ended_by.as_deref(), Some("recovery"));
+        assert!(
+            run.ended_reason
+                .as_deref()
+                .is_some_and(|r| r.contains("no master on this box answers")),
+            "the row says the agent's end was concluded from silence, never that its process was seen gone: {:?}",
+            run.ended_reason
+        );
+        assert!(
+            led.unclosed_runs().unwrap().is_empty(),
+            "and nothing is left for the next sweep to call partially closed"
         );
         let _ = std::fs::remove_dir_all(&repo);
         let _ = std::fs::remove_dir_all(repo.with_extension("remote.git"));

@@ -85,9 +85,25 @@ pub struct Recovered {
     /// This run's own close loop cannot advance without someone taking its
     /// worktree back first, and nothing else on the box will.
     pub owed_release: bool,
+    /// The release is owed on the bound alone: no master here answers for the
+    /// run, so its agent being gone is concluded from the silence, never seen.
+    pub unanswered: bool,
     /// The box may end this run itself, for the cause named.
     pub owed_exit: Option<run_exit::ExitCause>,
     pub owed_death_report: bool,
+}
+
+impl Recovered {
+    /// Why this run's release is owed, in the words its ended row keeps. A run
+    /// released on the bound was not seen to end, and its row says so.
+    pub fn release_reason(&self) -> &'static str {
+        if self.unanswered {
+            "no master on this box answers for it, core's session row is terminal, and its \
+             subagent wrote nothing for the whole bound"
+        } else {
+            "the run's process is gone and core's session row is terminal"
+        }
+    }
 }
 
 pub async fn reconcile(
@@ -147,6 +163,7 @@ pub async fn reconcile(
                     session_id: Some(id.to_string()),
                     state: close_loop::state(ledger, &run.run_id)?,
                     owed_release: false,
+                    unanswered: false,
                     owed_exit: Some(cause),
                     owed_death_report: false,
                 });
@@ -189,7 +206,11 @@ pub async fn reconcile(
             && state.session_terminal
             && !state.checkout_returned
             && run.release_terminal_at.is_none();
-        if let Some(over_ms) = unanswered.filter(|_| owed_release && !agent_gone) {
+        // A refusal streak already standing, opened while this master still
+        // read as gone before a restart emptied the registry, says its own
+        // piece; announcing a release it is already retrying would be noise.
+        let announce = owed_release && !agent_gone && run.release_refused_at.is_none();
+        if let Some(over_ms) = unanswered.filter(|_| announce) {
             say_why_released(ledger, &run, over_ms);
         }
         let owed_death_report = agent_gone
@@ -203,6 +224,7 @@ pub async fn reconcile(
             session_id,
             state,
             owed_release,
+            unanswered: owed_release && !agent_gone,
             owed_exit: None,
             owed_death_report,
         });
@@ -276,15 +298,31 @@ fn say_why_released(ledger: &Ledger, run: &Run, over_ms: i64) {
                 .join(", ")
         })
         .unwrap_or_default();
+    // What the silence rests on, said as it is: a transcript nobody could read
+    // decided nothing, and the line must not read as if it had.
+    let silence = match run.agent_transcript.as_deref() {
+        Some(path) => match transcript_age::written_at(Path::new(path)) {
+            Some(w) => format!(
+                "its subagent last wrote {}m ago",
+                now_ms().saturating_sub(w) / 60_000
+            ),
+            None => format!(
+                "its subagent's transcript at {path} cannot be read, so the session's clock \
+                 alone decided"
+            ),
+        },
+        None => "no transcript was recorded for its subagent, so the session's clock alone \
+                 decided"
+            .to_string(),
+    };
     tracing::warn!(
         "[recovery] run {} ({issues}): no master on this box answers for it (it answered to {}), \
-         core has called its session over for {}m and its subagent has written nothing inside \
-         the last {}m — releasing {} now. Its commits are kept before the checkout goes; a \
-         release that refuses says why next, and is decided after {}s",
+         core has called its session over for {}m and {silence} — releasing {} now. Its commits \
+         are kept before the checkout goes; a release that refuses says why next, and is decided \
+         after {}s",
         run.run_id,
         run.master_session_id,
         over_ms / 60_000,
-        UNANSWERED_RELEASE_AFTER.as_secs() / 60,
         run.worktree_path.display(),
         crate::runner::terminate::RELEASE_GRACE_SECS
     );
@@ -1753,6 +1791,10 @@ mod tests {
             r.owed_release,
             "a subagent runs inside its master's process and cannot outlive the pane: {r:?}"
         );
+        assert!(
+            !r.unanswered && r.release_reason().contains("process is gone"),
+            "a pane observed gone is an observation, and its reason says so: {r:?}"
+        );
     }
 
     #[tokio::test]
@@ -1867,6 +1909,10 @@ mod tests {
             !r.owed_death_report,
             "the bound licenses the release, which keeps the work, and never a death"
         );
+        assert!(
+            r.unanswered && r.release_reason().contains("no master on this box answers"),
+            "and the row it ends says the agent's end was concluded from silence, not seen: {r:?}"
+        );
     }
 
     #[tokio::test]
@@ -1951,6 +1997,7 @@ mod tests {
             &wt.display().to_string(),
             MASTER,
             "120m",
+            "its subagent last wrote 120m ago",
         ] {
             assert!(
                 first.contains(said),
@@ -2016,6 +2063,57 @@ mod tests {
         assert!(
             led.unclosed_runs().unwrap().is_empty(),
             "and the run leaves the sweep, so nothing logs about it again"
+        );
+    }
+
+    #[test]
+    fn a_release_decided_without_a_readable_transcript_says_the_clock_alone_decided() {
+        let scratch = Scratch::new("unanswered-unread");
+        let (mut led, _root, _wt, _transcript) = a_subagent_run_in_a_worktree(&scratch);
+        let missing = scratch.0.join("pruned").join("agent-gone.jsonl");
+        stop_at(&led, now_ms() - 2 * HOUR_MS, Some(&missing));
+        led.backdate_session_terminal("run-1", (now_ms() - 2 * HOUR_MS) / 1000)
+            .unwrap();
+        let said = logged_while(|| {
+            block_on(async {
+                let r = sweep(&mut led, &NoRegistryEntry, &Beats::default())
+                    .await
+                    .expect("answered");
+                assert!(r.owed_release, "{r:?}");
+            })
+        });
+        assert!(
+            said.contains("cannot be read, so the session's clock alone decided")
+                && said.contains(&missing.display().to_string()),
+            "a transcript nobody could read is named as deciding nothing, never passed off as silence: {said}"
+        );
+    }
+
+    #[test]
+    fn a_refusal_already_standing_is_not_announced_again_as_a_fresh_release() {
+        let scratch = Scratch::new("unanswered-refusing");
+        let (mut led, _root, _wt, transcript) = a_subagent_run_in_a_worktree(&scratch);
+        over_for(&led, &transcript, 2 * HOUR_MS, 2 * HOUR_MS);
+        led.note_release_refusal(
+            "run-1",
+            "git worktree remove: permission denied",
+            now_ms() / 1000,
+        )
+        .unwrap();
+        let said = logged_while(|| {
+            block_on(async {
+                let r = sweep(&mut led, &NoRegistryEntry, &Beats::default())
+                    .await
+                    .expect("answered");
+                assert!(
+                    r.owed_release,
+                    "still owed, so the streak runs to its decision: {r:?}"
+                );
+            })
+        });
+        assert!(
+            !said.contains("no master on this box answers"),
+            "a streak opened while the master read as gone, before a restart emptied the registry, is already speaking for this release: {said}"
         );
     }
 
