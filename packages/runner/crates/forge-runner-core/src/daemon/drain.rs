@@ -206,6 +206,11 @@ impl Drain {
         Ok(Permit(self))
     }
 
+    /// The cause of the drain holding admission closed, where one is.
+    pub fn draining_for(&self) -> Option<String> {
+        Self::closed_in(&self.lock()).map(|c| c.cause)
+    }
+
     /// Why admission is closed, where it is, without taking leave.
     pub fn refusal(&self) -> Option<String> {
         Self::closed_in(&self.lock()).map(|c| c.refusal)
