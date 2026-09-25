@@ -25,7 +25,7 @@ export type LiveReading =
 export interface LiveReachEvidence {
   sha: string;
   subject: string;
-  /** `merged_commit` — the issue's own observed merge; `names_issue` — a commit's subject line names its key. */
+  /** `merged_commit` — the issue's own observed merge; `names_issue` — matched by `subjectIssueSeqs`. */
   via: 'merged_commit' | 'names_issue';
 }
 
