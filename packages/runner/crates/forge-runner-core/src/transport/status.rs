@@ -47,14 +47,15 @@ fn body_line(text: &str) -> String {
     html_page(text).unwrap_or_else(|| one_line(text))
 }
 
-/// `Some` where `text` is an HTML document: it opens with a tag, and that tag
-/// is a doctype or the document holds an `<html` element. Case is ignored.
+/// `Some` where `text` is an HTML document: past any leading comments it opens
+/// with a doctype or an `<html` element. Case is ignored, and a mention of
+/// `<html` anywhere else — inside a comment, after other text — is not one.
 fn html_page(text: &str) -> Option<String> {
     let page = text.trim_start();
     // ASCII lowercasing keeps every byte where it was, so an offset found in
     // `lower` indexes `page` too.
     let lower = page.to_ascii_lowercase();
-    if !lower.starts_with('<') || !(lower.starts_with("<!doctype") || lower.contains("<html")) {
+    if !opens_a_document(&lower) {
         return None;
     }
     let title = lower
@@ -69,6 +70,23 @@ fn html_page(text: &str) -> Option<String> {
         Some(t) => format!("an HTML page titled \"{t}\""),
         None => format!("an HTML page ({} bytes)", text.len()),
     })
+}
+
+fn opens_a_document(lower: &str) -> bool {
+    let mut rest = lower.trim_start();
+    while let Some(comment) = rest.strip_prefix("<!--") {
+        let Some(end) = comment.find("-->") else {
+            return false;
+        };
+        rest = comment[end + 3..].trim_start();
+    }
+    rest.starts_with("<!doctype")
+        || rest.strip_prefix("<html").is_some_and(|after| {
+            after
+                .chars()
+                .next()
+                .is_some_and(|c| c == '>' || c == '/' || c.is_whitespace())
+        })
 }
 
 /// Whitespace collapsed and cut at 200 characters.
@@ -202,6 +220,23 @@ mod tests {
             "refused: expected <html> nowhere"
         );
         assert_eq!(body_line("<p>not a document</p>"), "<p>not a document</p>");
+        assert_eq!(
+            body_line("<!-- diagnostic mentions <html --> connection refused"),
+            "<!-- diagnostic mentions <html --> connection refused",
+            "a comment naming the tag opens no document"
+        );
+        assert_eq!(
+            body_line("<htmlish>refused</htmlish>"),
+            "<htmlish>refused</htmlish>"
+        );
+    }
+
+    #[test]
+    fn a_page_behind_leading_comments_is_still_a_page() {
+        assert_eq!(
+            body_line("<!-- edge --> <html><head><title>Bad gateway</title></head></html>"),
+            "an HTML page titled \"Bad gateway\""
+        );
     }
 
     #[test]
