@@ -27,8 +27,8 @@
       "default": "./src/notifications.ts"
     },
     "./attachments": {
-      "types": "./src/attachments.ts",
-      "default": "./src/attachments.ts"
+      "types": "./dist/attachments.d.ts",
+      "default": "./dist/attachments.js"
     },
     "./deploy-capability": {
       "types": "./src/deploy-capability.ts",
