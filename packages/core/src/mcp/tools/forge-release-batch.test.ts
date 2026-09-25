@@ -60,12 +60,21 @@ describe('forge_release_batch refusals', () => {
     );
   });
 
-  it('says an aborted batch has nothing left to finish', async () => {
-    acceptFinish.mockRejectedValue(new ReleaseBatchAbortedError());
+  it('says an aborted batch has nothing left to finish, in the account the REST door gives', async () => {
+    acceptFinish.mockRejectedValue(new ReleaseBatchAbortedError('released', 'p-1'));
 
     await expect(tool().handler({ action: 'finish', runId: RUN_ID })).rejects.toThrow(
-      /^RELEASE_BATCH_ABORTED: this batch was aborted/,
+      /^RELEASE_BATCH_ABORTED: This batch was aborted.*its claims were released/,
     );
+  });
+
+  it('says a promoted roster the abort held stays at releasing, claimed', async () => {
+    acceptFinish.mockRejectedValue(new ReleaseBatchAbortedError('held', 'p-1'));
+
+    const refused = tool().handler({ action: 'finish', runId: RUN_ID });
+
+    await expect(refused).rejects.toThrow(/the abort kept its claims.*stay at `releasing`/);
+    await expect(refused).rejects.not.toThrow(/claims were released/);
   });
 
   it('carries a missing version under its own code', async () => {
@@ -120,10 +129,21 @@ describe('forge_release_batch finish answers the attempt, not the outcome (ISS-1
 
   it('names the commit already in flight when another is claimed', async () => {
     const inFlight = 'a'.repeat(40);
-    acceptFinish.mockRejectedValue(new ReleaseFinishInFlightError('r-1', inFlight, 'b'.repeat(40)));
-
-    await expect(tool().handler({ action: 'finish', runId: RUN_ID })).rejects.toThrow(
-      new RegExp(`^RELEASE_FINISH_IN_FLIGHT: A finish for ${inFlight} is already running`),
+    acceptFinish.mockRejectedValue(
+      new ReleaseFinishInFlightError('r-1', inFlight, 'b'.repeat(40), {
+        projectId: 'p-1',
+        runId: RUN_ID,
+      }),
     );
+
+    const refused = tool().handler({ action: 'finish', runId: RUN_ID });
+
+    await expect(refused).rejects.toThrow(
+      new RegExp(`^RELEASE_FINISH_IN_FLIGHT: a finish for ${inFlight} is already running`),
+    );
+    await expect(refused).rejects.toThrow(
+      new RegExp(`Read it with forge_release_batch action=state runId=${RUN_ID}:`),
+    );
+    await expect(refused).rejects.not.toThrow(/GET \/api|\{projectId\}/);
   });
 });

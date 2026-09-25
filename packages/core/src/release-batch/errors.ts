@@ -86,10 +86,19 @@ export class ReleaseNotVerifiedError extends Error {
 }
 
 /**
- * `finish` was called on a run somebody aborted.
+ * What an abort did to a batch, as the run records it: its release had `shipped`, it `held` a
+ * promoted roster, it `released` the roster, or no abort recorded anything (`unrecorded`).
+ */
+export type AbortAccount = 'shipped' | 'held' | 'released' | 'unrecorded';
+
+/**
+ * `finish` was called on a run somebody aborted. Built by `abortedError`, which reads the account.
  */
 export class ReleaseBatchAbortedError extends Error {
-  constructor() {
+  constructor(
+    public readonly account: AbortAccount,
+    public readonly projectId: string,
+  ) {
     super('RELEASE_BATCH_ABORTED');
     this.name = 'ReleaseBatchAbortedError';
   }
@@ -104,6 +113,7 @@ export class ReleaseFinishInFlightError extends Error {
     public readonly requestId: string,
     public readonly inFlightCommit: string | null,
     public readonly askedCommit: string | null,
+    public readonly where: { projectId: string; runId: string },
   ) {
     super('RELEASE_FINISH_IN_FLIGHT');
     this.name = 'ReleaseFinishInFlightError';

@@ -238,17 +238,30 @@ export function finishRefusal(err: unknown): HTTPException | null {
     return conflict('RELEASE_VERSION_MISSING', err.message);
   }
   if (err instanceof ReleaseBatchAbortedError) {
-    return conflict(
-      'RELEASE_BATCH_ABORTED',
-      'This batch was aborted, so there is nothing left to finish: its claims were released and its roster is back where the abort put it. If the release did land after all, that is a person’s call to make on each issue.',
-    );
+    return conflict('RELEASE_BATCH_ABORTED', abortedSentence(err), { account: err.account });
   }
   if (err instanceof ReleaseFinishInFlightError) {
+    const { projectId, runId } = err.where;
     return conflict(
       'RELEASE_FINISH_IN_FLIGHT',
-      `A finish for ${err.inFlightCommit ?? 'no named commit'} is already running on this batch, and this call names ${err.askedCommit ?? 'no commit'}. Read its outcome with GET /api/projects/{projectId}/release-batches/{runId}/state (\`finish\`); a new finish is taken once that one has failed.`,
+      `A finish for ${err.inFlightCommit ?? 'no named commit'} is already running on this batch, and this call names ${err.askedCommit ?? 'no commit'}. Read its outcome with GET /api/projects/${projectId}/release-batches/${runId}/state (\`finish\`); a new finish is taken once that one has failed.`,
       { requestId: err.requestId, inFlightCommit: err.inFlightCommit },
     );
   }
   return methodRefusal(err);
+}
+
+/** What a finish on an aborted batch is told, by what the abort did to that batch. */
+export function abortedSentence(err: ReleaseBatchAbortedError): string {
+  const none = 'This batch was aborted, so there is nothing left to finish';
+  switch (err.account) {
+    case 'shipped':
+      return `${none}: its release had already shipped, so the issues its finish closed stay closed, and the abort moved none of them.`;
+    case 'held':
+      return `${none}: it recorded a promotion, so the abort kept its claims, and its issues stay at \`releasing\` for a person to settle. Record the release that happened with POST /api/projects/${err.projectId}/release-records, or abort again with \`promotedRoster: "return-to-gate"\` to put them back at the release gate.`;
+    case 'released':
+      return `${none}: its claims were released and its roster is back where the abort put it. If the release did land after all, that is a person’s call to make on each issue.`;
+    case 'unrecorded':
+      return 'This batch’s run was cancelled, so there is nothing left to finish. Nothing on the run records what that did to its issues, so each issue’s own status and notes are the account; if the release did land after all, that is a person’s call to make on each issue.';
+  }
 }

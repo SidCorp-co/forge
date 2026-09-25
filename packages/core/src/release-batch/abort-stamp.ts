@@ -1,0 +1,87 @@
+// The abort stamp a release run carries (`pipeline_runs.metadata.abort`), and the one
+// predicate every finish-side check reads to ask whether a batch was aborted.
+//
+// An abort cannot cancel its run before it recovers the roster: the run-close hook in
+// `claim-subscriber.ts` recovers it too, and would race the abort for the roster and for
+// the account the abort answers with. So the abort writes this stamp first, and a batch
+// is aborted to a finish from that write on, before its status moves.
+
+import { sql } from 'drizzle-orm';
+import { db, type Tx } from '../db/client.js';
+import { pipelineRuns } from '../db/schema.js';
+import { type AbortAccount, ReleaseBatchAbortedError } from './errors.js';
+import { runRecordedPromotion } from './releasing-recovery.js';
+
+export interface AbortStamp {
+  at: string;
+  reason: string;
+  by: string;
+  /** `held` where the run recorded a promotion and the abort kept the roster claimed. */
+  roster: 'held' | 'released';
+}
+
+export function readAbortStamp(metadata: unknown): AbortStamp | null {
+  const raw = (metadata as { abort?: unknown } | null)?.abort;
+  if (typeof raw !== 'object' || raw === null) return null;
+  const r = raw as Record<string, unknown>;
+  if (r.roster !== 'held' && r.roster !== 'released') return null;
+  return {
+    at: typeof r.at === 'string' ? r.at : '',
+    reason: typeof r.reason === 'string' ? r.reason : '',
+    by: typeof r.by === 'string' ? r.by : '',
+    roster: r.roster,
+  };
+}
+
+/** Whether a finish must treat this run as aborted: it is cancelled, or an abort has begun. */
+export function batchAborted(run: { status: string; metadata: unknown }): boolean {
+  return run.status === 'cancelled' || readAbortStamp(run.metadata) !== null;
+}
+
+/** The same predicate, negated, as a condition on a `pipeline_runs` write. */
+export const RUN_NOT_ABORTED = sql`(${pipelineRuns.status} <> 'cancelled' AND ${pipelineRuns.metadata} -> 'abort' IS NULL)`;
+
+/**
+ * Stamp the abort before anything else it does. A later abort rewrites the stamp, because the
+ * last abort is the one that decided where the roster went.
+ */
+export async function stampAbort(
+  runId: string,
+  stamp: { reason: string; by: string; holdPromotedRoster: boolean },
+): Promise<void> {
+  const held = stamp.holdPromotedRoster && (await runRecordedPromotion(runId));
+  const record: AbortStamp = {
+    at: new Date().toISOString(),
+    reason: stamp.reason,
+    by: stamp.by,
+    roster: held ? 'held' : 'released',
+  };
+  await db.execute(sql`
+    UPDATE pipeline_runs
+    SET metadata = coalesce(metadata, '{}'::jsonb) || ${JSON.stringify({ abort: record })}::jsonb,
+        updated_at = now()
+    WHERE id = ${runId}
+  `);
+}
+
+/** What an abort did to this batch, read off the run. */
+export function abortAccount(run: { metadata: unknown; shipped: boolean }): AbortAccount {
+  if (run.shipped) return 'shipped';
+  return readAbortStamp(run.metadata)?.roster ?? 'unrecorded';
+}
+
+/** The refusal for a finish on an aborted batch, carrying what the abort did to it. */
+export async function abortedError(
+  runId: string,
+  executor: Tx = db,
+): Promise<ReleaseBatchAbortedError> {
+  const rows = await executor.execute<{ project_id: string; metadata: unknown; shipped: boolean }>(
+    sql`
+      SELECT project_id, metadata, release_released_at IS NOT NULL AS shipped
+      FROM pipeline_runs WHERE id = ${runId}
+    `,
+  );
+  const row = rows[0];
+  if (!row) throw new Error(`release batch ${runId} not found`);
+  return new ReleaseBatchAbortedError(abortAccount(row), row.project_id);
+}

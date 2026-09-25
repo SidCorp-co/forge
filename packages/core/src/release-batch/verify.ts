@@ -207,6 +207,8 @@ export interface VerifyArgs {
   commitBefore: string | null;
   /** The whole sha the release says it pushed, or `null` to ask only that the deploy arrived. */
   expected: string | null;
+  /** Awaited before each reading; a throw ends the verification there, uncaught. */
+  checkpoint?: (() => Promise<void>) | undefined;
   /** Injected so the poll loop is testable without real time. */
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
@@ -244,6 +246,7 @@ export async function verifyDeployed(args: VerifyArgs): Promise<VerifyOutcome> {
   };
 
   while (now() < deadline) {
+    await args.checkpoint?.();
     state = await readLiveState(cfg, deadline - now());
     // The one gate no reading could satisfy, closed here, not at the deadline.
     if (expected != null && claim === null) {

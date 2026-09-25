@@ -409,7 +409,10 @@ describe('POST /:projectId/release-batches/:runId/finish — the door answers th
     const { ReleaseFinishInFlightError } = await import('./errors.js');
     const inFlight = 'a'.repeat(40);
     acceptFinishMock.mockRejectedValueOnce(
-      new ReleaseFinishInFlightError('r-1', inFlight, 'b'.repeat(40)),
+      new ReleaseFinishInFlightError('r-1', inFlight, 'b'.repeat(40), {
+        projectId: 'proj-9',
+        runId: 'run-9',
+      }),
     );
 
     const res = await finishReq({ commit: 'b'.repeat(40) });
@@ -418,12 +421,14 @@ describe('POST /:projectId/release-batches/:runId/finish — the door answers th
     expect(res.status).toBe(409);
     expect(body.code).toBe('RELEASE_FINISH_IN_FLIGHT');
     expect(body.message).toContain(inFlight);
+    expect(body.message).toContain('GET /api/projects/proj-9/release-batches/run-9/state');
+    expect(body.message).not.toMatch(/\{projectId\}|\{runId\}/);
     expect(body.details).toEqual({ requestId: 'r-1', inFlightCommit: inFlight });
   });
 
   it('answers a refusal the door decided under its existing code', async () => {
     const { ReleaseBatchAbortedError, ReleaseNotVerifiedError } = await import('./errors.js');
-    acceptFinishMock.mockRejectedValueOnce(new ReleaseBatchAbortedError());
+    acceptFinishMock.mockRejectedValueOnce(new ReleaseBatchAbortedError('released', 'proj-9'));
     const aborted = await finishReq();
     expect(aborted.status).toBe(409);
     expect(((await aborted.json()) as { code?: string }).code).toBe('RELEASE_BATCH_ABORTED');

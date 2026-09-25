@@ -87,8 +87,8 @@ async function accept(runId: string, commit?: string) {
   return job.acceptReleaseBatchFinish(runId, actor(), commit ? { commit } : {}, async () => {});
 }
 
-async function abort(runId: string) {
-  return service.abortReleaseBatch(runId, 'a person stopped it', ownerId);
+async function abort(runId: string, options: Parameters<typeof service.abortReleaseBatch>[3] = {}) {
+  return service.abortReleaseBatch(runId, 'a person stopped it', ownerId, options);
 }
 
 async function stored(runId: string): Promise<Record<string, unknown> | null> {
@@ -123,6 +123,21 @@ async function refusalCode(call: () => Promise<unknown>): Promise<string | null>
     const http = finishRefusal(err);
     return (http?.cause as { code?: string } | undefined)?.code ?? String(err);
   }
+}
+
+/** The sentence a finish call is refused with, or `null` when it answered. */
+async function refusalMessage(call: () => Promise<unknown>): Promise<string | null> {
+  const { finishRefusal } = await import('../../src/release-batch/refusals.js');
+  try {
+    await call();
+    return null;
+  } catch (err) {
+    return finishRefusal(err)?.message ?? String(err);
+  }
+}
+
+async function storedReason(runId: string): Promise<string | undefined> {
+  return ((await stored(runId))?.refusal as { reason?: string } | undefined)?.reason;
 }
 
 async function untilState(runId: string, state: string): Promise<void> {
@@ -199,6 +214,115 @@ describe('a batch aborted while its finish attempt is verifying', () => {
     expect(await refusalCode(() => accept(runId))).toBe('RELEASE_BATCH_ABORTED');
     expect(await stored(runId)).toEqual(before);
   }, 30_000);
+
+  it('stores the account a later finish is refused with: the claims were released', async () => {
+    const { runId } = await twoIssueBatch();
+    await abortMidVerify(runId);
+
+    const reason = await storedReason(runId);
+    expect(reason).toMatch(/its claims were released/);
+    expect(await refusalMessage(() => accept(runId, PUSHED))).toBe(reason);
+  }, 30_000);
+
+  it('ends the attempt within one poll of the abort, not at the end of its verify window', async () => {
+    await harness.db.execute(sql`
+      UPDATE integration_bindings
+      SET config = jsonb_set(config, '{verify,timeoutSeconds}', '120'::jsonb)
+      WHERE project_id = ${projectId} AND provider = 'coolify'
+    `);
+    const { runId } = await twoIssueBatch();
+    await accept(runId, PUSHED);
+    const working = job.runReleaseBatchFinish(runId);
+    await untilState(runId, 'verifying');
+
+    await abort(runId);
+    const abortedAt = Date.now();
+    await working;
+
+    expect(Date.now() - abortedAt).toBeLessThan(20_000);
+    expect(await stored(runId)).toMatchObject({
+      state: 'failed',
+      refusal: { code: 'RELEASE_BATCH_ABORTED' },
+    });
+  }, 60_000);
+});
+
+describe('a batch whose abort has begun and not yet cancelled its run', () => {
+  it('stamps no release and ends the attempt aborted when verification goes green in that gap', async () => {
+    const { runId, issueIds } = await twoIssueBatch();
+    await accept(runId, PUSHED);
+    const working = job.runReleaseBatchFinish(runId);
+    await untilState(runId, 'verifying');
+
+    // The roster is recovered and the run is still running: the worker goes green here and is
+    // let finish before the abort cancels.
+    await abort(runId, {
+      afterRosterRecovered: async () => {
+        expect(await fx.runStatus(runId)).toBe('running');
+        serving = PUSHED;
+        await working;
+      },
+    });
+
+    expect(await shipped(runId)).toBeNull();
+    expect(await stored(runId)).toMatchObject({
+      state: 'failed',
+      refusal: { code: 'RELEASE_BATCH_ABORTED' },
+    });
+    expect(await fx.runStatus(runId)).toBe('cancelled');
+    for (const id of issueIds) expect(await closesOf(id)).toBe(0);
+  }, 40_000);
+  it.each([
+    ['a roster the abort moves back', false, 'awaiting_release'],
+    // Held by the abort, so still `releasing` and claimed: only the close fence stands between
+    // the worker and closing it.
+    ['a promoted roster the abort holds', true, 'releasing'],
+  ])(
+    'closes nothing of %s and stamps no release when the worker is already closing as the abort begins',
+    async (_shape, promoted, rests) => {
+      const { runId, issueIds } = await twoIssueBatch();
+      if (promoted) {
+        const { openAttempt } = await import('../../src/release-batch/ledger.js');
+        await openAttempt({ runId, stage: 'promote', idempotencyKey: 'promote-1', commit: PUSHED });
+      }
+      serving = PUSHED;
+      await accept(runId, PUSHED);
+      let aborting: Promise<unknown> | null = null;
+      let working: Promise<void> | null = null;
+
+      working = job.runReleaseBatchFinish(runId, {
+        // Green is committed; the abort runs up to its cancel, and the worker's closes go
+        // through while the run still reads `running`.
+        afterVerified: async () => {
+          let inGap!: () => void;
+          const gap = new Promise<void>((done) => {
+            inGap = done;
+          });
+          aborting = abort(runId, {
+            afterRosterRecovered: async () => {
+              inGap();
+              await working;
+            },
+          });
+          await gap;
+        },
+      });
+      await working;
+      await aborting;
+
+      expect(await shipped(runId)).toBeNull();
+      expect(await stored(runId)).toMatchObject({
+        state: 'failed',
+        refusal: { code: 'RELEASE_BATCH_ABORTED' },
+      });
+      expect(await fx.runStatus(runId)).toBe('cancelled');
+      for (const id of issueIds) {
+        expect(await closesOf(id)).toBe(0);
+        expect((await fx.stored(id)).status).toBe(rests);
+      }
+    },
+    40_000,
+  );
 });
 
 describe('a batch aborted after its verification went green', () => {
@@ -224,6 +348,10 @@ describe('a batch aborted after its verification went green', () => {
       failed: [],
     });
     expect(await shipped(runId)).toBeNull();
+    const reason = await storedReason(runId);
+    expect(reason).toMatch(/the abort kept its claims, and its issues stay at `releasing`/);
+    expect(reason).not.toMatch(/claims were released/);
+    expect(await refusalMessage(() => accept(runId, PUSHED))).toBe(reason);
     for (const [i, id] of issueIds.entries()) {
       expect((await fx.stored(id)).status).toBe('releasing');
       expect(await closesOf(id)).toBe(0);
@@ -301,6 +429,10 @@ describe('a batch aborted while the door is taking its finish', () => {
 
     expect(await (answer as unknown as Promise<string | null>)).toBe('RELEASE_BATCH_ABORTED');
     expect(await stored(runId)).toBeNull();
+    // Cancelled by a write that was not an abort, so nothing records where the roster went.
+    const said = await refusalMessage(() => accept(runId, PUSHED));
+    expect(said).toMatch(/each issue’s own status and notes are the account/);
+    expect(said).not.toMatch(/released|`releasing`|closed|gate/);
   }, 30_000);
 });
 
@@ -317,6 +449,9 @@ describe('a batch that finished and was aborted afterwards', () => {
     await abort(runId);
 
     expect(await refusalCode(() => accept(runId, PUSHED))).toBe('RELEASE_BATCH_ABORTED');
+    const said = await refusalMessage(() => accept(runId, PUSHED));
+    expect(said).toMatch(/already shipped, so the issues its finish closed stay closed/);
+    expect(said).not.toMatch(/claims were released/);
     expect(await stored(runId)).toEqual(finished);
     for (const id of issueIds) expect(await closesOf(id)).toBe(1);
   }, 30_000);
