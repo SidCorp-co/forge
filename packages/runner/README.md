@@ -222,6 +222,9 @@ and says which case holds when it cannot tell. Two things it will not do:
   single `forge-runner*.service` unit need not be it — restarting that one would
   leave the daemon that lagged lagging and stop another mid-job. Where no unit
   answers for the pid, it refuses by name and lists what each unit is running.
+  Where this platform cannot confirm the pid is still that daemon, it restarts
+  nothing at all: `status` declines to assert that identity, and a restart is
+  that assertion with a `systemctl` behind it.
 
 Control it without editing TOML:
 

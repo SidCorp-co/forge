@@ -361,6 +361,33 @@ fn file_clause(r: &Running) -> String {
     }
 }
 
+/// What the caller already knows about the record. It decides what a process
+/// line may say about the build that process serves: where the record is
+/// unreadable, "wrote no serving record" is a claim the command cannot make —
+/// the file it cannot parse may be that very process's.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Premise {
+    /// No record stands here at all.
+    NoRecord,
+    /// A record stands, and the daemon it names is gone.
+    GoneRecord,
+    /// A record stands and cannot be read.
+    UnreadableRecord,
+}
+
+impl Premise {
+    fn why_no_build(self) -> &'static str {
+        match self {
+            Self::NoRecord | Self::GoneRecord => {
+                "and wrote no serving record, so which build it is serving cannot be read from here"
+            }
+            Self::UnreadableRecord => {
+                "and the record here cannot be read, so which build it is serving cannot be read from here"
+            }
+        }
+    }
+}
+
 /// What the `forge-runner start` processes on this box say about the
 /// configuration being read, where its own record names no serving daemon.
 enum Unrecorded {
@@ -380,7 +407,7 @@ enum Unrecorded {
 /// daemon is down that a daemon is up — which is the state ISS-1223 exists to
 /// end, arriving from the other side. One whose environment cannot be read is
 /// named as unattributed rather than claimed either way.
-fn unrecorded(probe: &Probe) -> Unrecorded {
+fn unrecorded(probe: &Probe, premise: Premise) -> Unrecorded {
     let Some(found) = (probe.daemons)() else {
         return Unrecorded::Blind;
     };
@@ -388,8 +415,9 @@ fn unrecorded(probe: &Probe) -> Unrecorded {
     for r in &found {
         match &r.serves {
             Serves::This => bodies.push(format!(
-                "pid {} (`forge-runner start`) serves this configuration and wrote no serving record, so which build it is serving cannot be read from here; {}",
+                "pid {} (`forge-runner start`) serves this configuration {}; {}",
                 r.pid,
+                premise.why_no_build(),
                 file_clause(r)
             )),
             Serves::Unknown(why) => bodies.push(format!(
@@ -413,43 +441,99 @@ fn unrecorded(probe: &Probe) -> Unrecorded {
     Unrecorded::Answering(bodies, elsewhere)
 }
 
-fn elsewhere_clause(dirs: &[PathBuf]) -> String {
+/// The sentence naming the `forge-runner start` processes that serve OTHER
+/// configurations, where any do. It is the same sentence wherever it appears,
+/// and each caller puts it in the column that caller is writing in — built
+/// once here rather than un-prefixed back out of a formatted line.
+fn elsewhere_sentence(dirs: &[PathBuf]) -> Option<String> {
     if dirs.is_empty() {
-        return String::new();
+        return None;
     }
     let mut named: Vec<String> = dirs.iter().map(|d| d.display().to_string()).collect();
     named.sort();
     named.dedup();
-    format!(
-        ". {} `forge-runner start` process(es) are running here for other configurations: {}",
+    Some(format!(
+        "{} `forge-runner start` process(es) are running here for other configurations: {}",
         dirs.len(),
         named.join("; ")
-    )
+    ))
 }
 
+/// The `daemon` lines where no record stands at all.
 fn unrecorded_lines(probe: &Probe) -> Vec<String> {
-    match unrecorded(probe) {
+    match unrecorded(probe, Premise::NoRecord) {
         Unrecorded::Blind => vec![
             "daemon     no record — and this platform gives no way to look for a daemon that predates the record, so whether one is running, and on which build, cannot be said from here"
                 .to_string(),
         ],
         Unrecorded::NoneHere(elsewhere) => vec![format!(
             "daemon     no record, and no `forge-runner start` process on this box serves this configuration — no daemon is serving it{}",
-            elsewhere_clause(&elsewhere)
+            elsewhere_sentence(&elsewhere)
+                .map(|s| format!(". {s}"))
+                .unwrap_or_default()
         )],
         Unrecorded::Answering(bodies, elsewhere) => {
             let mut out: Vec<String> = bodies
                 .into_iter()
                 .map(|b| format!("daemon     no record — {b}"))
                 .collect();
-            if !elsewhere.is_empty() {
-                out.push(format!(
-                    "{INDENT}and{}",
-                    elsewhere_clause(&elsewhere).trim_start_matches('.')
-                ));
-            }
+            out.extend(elsewhere_sentence(&elsewhere).map(|s| format!("{INDENT}and {s}")));
             out
         }
+    }
+}
+
+/// The `daemon` lines under a record that cannot be read. The record was the
+/// only thing naming a build and it is unreadable, so these processes are the
+/// only evidence left that anything is serving — which is why this case needs
+/// them most, and why none of their lines may say the record is absent.
+fn beside_an_unreadable_record(probe: &Probe) -> Vec<String> {
+    match unrecorded(probe, Premise::UnreadableRecord) {
+        Unrecorded::Blind => vec![format!(
+            "{INDENT}and this platform gives no way to look at the `forge-runner start` processes here, so whether one is serving cannot be said from here"
+        )],
+        Unrecorded::NoneHere(elsewhere) => vec![format!(
+            "{INDENT}and no `forge-runner start` process on this box serves this configuration{}",
+            elsewhere_sentence(&elsewhere)
+                .map(|s| format!(" — {s}"))
+                .unwrap_or_default()
+        )],
+        Unrecorded::Answering(bodies, elsewhere) => {
+            let mut out = vec![format!(
+                "{INDENT}what is running here is the only evidence left:"
+            )];
+            out.extend(bodies.into_iter().map(|b| format!("{INDENT}{b}")));
+            out.extend(elsewhere_sentence(&elsewhere).map(|s| format!("{INDENT}and {s}")));
+            out
+        }
+    }
+}
+
+/// A record whose daemon is gone is not a box with no daemon: after a rollback
+/// an older daemon that writes no record can be serving beside a newer record
+/// it never wrote. So the processes are read here too.
+fn beside_a_gone_record(gone: String, probe: &Probe) -> Vec<String> {
+    match unrecorded(probe, Premise::GoneRecord) {
+        Unrecorded::Answering(bodies, elsewhere) => {
+            let mut out = vec![format!(
+                "daemon     the record is stale — {gone}; what else is running on this box:"
+            )];
+            out.extend(bodies.into_iter().map(|b| format!("{INDENT}{b}")));
+            out.extend(elsewhere_sentence(&elsewhere).map(|s| format!("{INDENT}and {s}")));
+            out
+        }
+        Unrecorded::NoneHere(elsewhere) => vec![format!(
+            "daemon     not running — {gone}, and no `forge-runner start` process on this box serves this configuration{}",
+            elsewhere_sentence(&elsewhere)
+                .map(|s| format!(". {s}"))
+                .unwrap_or_default()
+        )],
+        // Nothing was looked at, so "not running" would be a claim about a box
+        // this command never read. A daemon that predates the record is exactly
+        // what would be running here, and it is the state ISS-1223 is about.
+        Unrecorded::Blind => vec![format!(
+            "daemon     the record is stale — {gone}, and this platform gives no way to look for a daemon that predates the record, so whether one is serving cannot be said from here"
+        )],
     }
 }
 
@@ -547,37 +631,6 @@ fn listed(names: &[String]) -> String {
     }
 }
 
-/// A record whose daemon is gone is not a box with no daemon: after a rollback
-/// an older daemon that writes no record can be serving beside a newer record
-/// it never wrote. So the processes are read here too.
-fn beside_a_gone_record(gone: String, probe: &Probe) -> Vec<String> {
-    match unrecorded(probe) {
-        Unrecorded::Answering(bodies, elsewhere) => {
-            let mut out = vec![format!(
-                "daemon     the record is stale — {gone}; what else is running on this box:"
-            )];
-            out.extend(bodies.into_iter().map(|b| format!("{INDENT}{b}")));
-            if !elsewhere.is_empty() {
-                out.push(format!(
-                    "{INDENT}and{}",
-                    elsewhere_clause(&elsewhere).trim_start_matches('.')
-                ));
-            }
-            out
-        }
-        Unrecorded::NoneHere(elsewhere) => vec![format!(
-            "daemon     not running — {gone}, and no `forge-runner start` process on this box serves this configuration{}",
-            elsewhere_clause(&elsewhere)
-        )],
-        // Nothing was looked at, so "not running" would be a claim about a box
-        // this command never read. A daemon that predates the record is exactly
-        // what would be running here, and it is the state ISS-1223 is about.
-        Unrecorded::Blind => vec![format!(
-            "daemon     the record is stale — {gone}, and this platform gives no way to look for a daemon that predates the record, so whether one is serving cannot be said from here"
-        )],
-    }
-}
-
 /// The `daemon` lines of `forge-runner status`.
 pub fn lines(
     read: &Result<Option<Record>, Unreadable>,
@@ -593,14 +646,7 @@ pub fn lines(
                 u.path.display(),
                 u.reason
             )];
-            // The record is the only thing that names a build, and it is gone.
-            // The processes are the only evidence left that anything is
-            // serving at all, so this is the case that needs them most.
-            out.extend(
-                unrecorded_lines(probe)
-                    .into_iter()
-                    .map(|l| format!("{INDENT}{}", l.trim_start_matches("daemon     "))),
-            );
+            out.extend(beside_an_unreadable_record(probe));
             return out;
         }
         Ok(None) => return unrecorded_lines(probe),
@@ -675,6 +721,9 @@ pub enum Turnover {
         pid: u32,
         cause: String,
         outstanding: Vec<String>,
+        /// This platform cannot confirm the pid is still that daemon, so the
+        /// drain read here may be a dead daemon's last word.
+        unverified: bool,
     },
     /// It cannot be said from here, and why.
     Unknown(String),
@@ -738,6 +787,7 @@ pub fn turnover(
             pid: record.pid,
             cause: cause.clone(),
             outstanding: outstanding.clone(),
+            unverified,
         };
     }
     if record.version == this_version && record.commit == this_commit {
@@ -1014,6 +1064,96 @@ mod tests {
             "a platform that cannot look does not report an empty box: {out}"
         );
         assert!(!out.contains("not running —"), "{out}");
+    }
+
+    /// Review finding N1: under an unreadable record, a process line may not
+    /// say the record is absent — the file that will not parse may be that
+    /// very process's — and it may not say the process "wrote no serving
+    /// record", which is the same claim in other words. N2: every line under
+    /// the header sits in one column, built rather than un-prefixed.
+    #[test]
+    fn an_unreadable_record_does_not_say_the_record_is_absent() {
+        let mut p = live_same();
+        p.daemons = || {
+            Some(vec![
+                Running {
+                    pid: 111,
+                    exe: "/home/dev/.local/bin/forge-runner".into(),
+                    replaced: Some(false),
+                    serves: Serves::This,
+                },
+                Running {
+                    pid: 222,
+                    exe: "/home/dev/.local/bin/forge-runner".into(),
+                    replaced: Some(false),
+                    serves: Serves::Other("/srv/other/forge-runner".into()),
+                },
+            ])
+        };
+        let out = lines(
+            &Err(Unreadable {
+                path: "/x/serving.json".into(),
+                reason: "does not parse: EOF".into(),
+            }),
+            &p,
+            "0.17.9",
+            "abc1234",
+            NOW,
+        );
+        let body = out.join("\n");
+        assert!(body.contains("UNREADABLE"), "{body}");
+        assert!(body.contains("pid 111"), "{body}");
+        assert!(
+            body.contains("the record here cannot be read"),
+            "the reason a build cannot be read is the record, not an absence: {body}"
+        );
+        assert!(
+            !body.contains("no record"),
+            "nothing may say the record is absent: {body}"
+        );
+        assert!(
+            !body.contains("wrote no serving record"),
+            "nor that this process wrote none: {body}"
+        );
+        assert!(
+            out[1..]
+                .iter()
+                .all(|l| l.starts_with(INDENT) && !l[INDENT.len()..].starts_with(' ')),
+            "every line under the header sits in one column: {out:#?}"
+        );
+        assert!(
+            body.contains("/srv/other/forge-runner"),
+            "and the other configurations are named here too: {body}"
+        );
+    }
+
+    /// Review finding N5: a drain read off a record whose pid cannot be
+    /// confirmed may be a dead daemon's last word, so declining the restart on
+    /// it is said with the same hedge `status` uses rather than as fact.
+    #[test]
+    fn a_drain_read_at_an_unconfirmable_identity_is_hedged_like_the_rest() {
+        let mut r = rec("0.17.8", None);
+        r.start_ticks = None;
+        r.drain = Some(DrainState::Draining {
+            cause: "a new device token".into(),
+            since_ms: NOW - 60_000,
+            bound_secs: 7200,
+            outstanding: vec!["run r-1 (ISS-7)".into()],
+        });
+        assert_eq!(
+            turnover(
+                &Ok(Some(r)),
+                &probe(|_| true, |_| None),
+                "0.17.9",
+                "abc1234"
+            ),
+            Turnover::Draining {
+                pid: 4242,
+                cause: "a new device token".into(),
+                outstanding: vec!["run r-1 (ISS-7)".into()],
+                unverified: true,
+            }
+        );
     }
 
     /// Review finding 2: with no record, an older daemon serving a replaced
@@ -1402,6 +1542,7 @@ mod tests {
                 pid: 4242,
                 cause: "update 0.17.8 → 0.17.9".into(),
                 outstanding: vec!["run r-1 (ISS-7)".into(), "run r-2 (ISS-8)".into()],
+                unverified: false,
             },
             "a restart here would kill the runs the drain is waiting for"
         );
