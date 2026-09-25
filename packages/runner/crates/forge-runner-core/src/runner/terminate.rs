@@ -187,14 +187,25 @@ async fn keep_before_release(
     }
 }
 
-/// Take the directory, having established that the commits do not need it.
+/// Take the directory, having established at THIS moment that the commits do
+/// not need it.
 ///
-/// The predicate is read once more here, immediately before the removal, and a
-/// checkout it now calls kept is refused by name. A keep decision and a removal
-/// for one path is the failure itself, not a step on the way to one — this box
-/// printed both about the same two directories inside one sweep (ISS-1250) —
-/// and the way a reader tells a real change of state from a contradiction is
-/// that one of them says so.
+/// The predicate is read once more here, immediately before the removal, and
+/// nothing but a fresh `Named` opens the door. A checkout it now calls kept is
+/// refused by name: a keep decision and a removal for one path is the failure
+/// itself, not a step on the way to one — this box printed both about the same
+/// two directories inside one sweep (ISS-1250) — and the way a reader tells a
+/// real change of state from a contradiction is that one of them says so.
+///
+/// `NeedsARef` is the reading `keep_before_release`'s answer cannot cover, and
+/// refusing on a stale `AlreadyNamed` is how the whole guard would have let the
+/// work go: the ref that named these commits a moment ago can be deleted or
+/// rewritten before this line runs, and a removal taken on the older reading
+/// leaves them reachable from the directory being deleted and from nothing else
+/// (consult 653841 F1). So another ref is written, and the reading has to have
+/// settled on `Named` before the directory may go. Writing one rather than
+/// refusing is deliberate: the commits are what must survive, and a refusal
+/// here holds every lease the run took for as long as the box lives (ISS-1188).
 async fn take_the_directory(
     run_id: &str,
     verb: Verb,
@@ -202,19 +213,49 @@ async fn take_the_directory(
     worktree: &Path,
     commits: &Commits,
 ) -> Result<()> {
-    if let salvage::Fate::Kept { why } = salvage::fate_of(worktree).await {
-        return Err(Error::Other(format!(
-            "refusing to {verb:?} run {run_id}: this box keeps {} ({why}) and was about to remove \
-             it in the same breath — a keep and a removal for one path is the failure, not a step",
-            worktree.display()
-        )));
+    let rewritten = match salvage::fate_of(worktree).await {
+        salvage::Fate::Named => None,
+        salvage::Fate::NeedsARef { commits } => Some((
+            commits,
+            salvage::keep_at(worktree, run_id).await.map_err(|why| {
+                Error::Other(format!(
+                    "refusing to {verb:?} run {run_id}: {commits} commit(s) in {} are named by \
+                     this checkout and by nothing else at the moment its removal was reached, \
+                     and they could not be given a ref of their own ({why}) — the checkout stays, \
+                     because removing it is what would lose them",
+                    worktree.display()
+                ))
+            })?,
+        )),
+        salvage::Fate::Kept { why } => {
+            return Err(Error::Other(format!(
+                "refusing to {verb:?} run {run_id}: this box keeps {} ({why}) and was about to \
+                 remove it in the same breath — a keep and a removal for one path is the failure, \
+                 not a step",
+                worktree.display()
+            )))
+        }
+    };
+    if let Some((at_risk, name)) = &rewritten {
+        if salvage::fate_of(worktree).await != salvage::Fate::Named {
+            return Err(Error::Other(format!(
+                "refusing to {verb:?} run {run_id}: {at_risk} commit(s) in {} were given {name}, \
+                 and this repository still does not name them from a ref that outlives the \
+                 directory — the checkout stays",
+                worktree.display()
+            )));
+        }
     }
-    let why = match commits {
-        Commits::AlreadyNamed => format!(
+    let why = match (&rewritten, commits) {
+        (Some((at_risk, name)), _) => format!(
+            "run {run_id} is over and the ref its release wrote no longer named the work, so \
+             {at_risk} commit(s) at its HEAD were given {name} before this"
+        ),
+        (None, Commits::AlreadyNamed) => format!(
             "run {run_id} is over and every commit at its HEAD is already named by a ref this \
              repository keeps"
         ),
-        Commits::NamedBy(name) => format!(
+        (None, Commits::NamedBy(name)) => format!(
             "run {run_id} is over and the commits at its HEAD were given {name} first, which \
              outlives the directory"
         ),
@@ -2210,6 +2251,63 @@ mod tests {
             err.contains("a keep and a removal for one path is the failure"),
             "and the refusal names the contradiction rather than reporting a git error: {err}"
         );
+    }
+
+    /// consult 653841 F1 — a removal taken on a reading that has since moved.
+    ///
+    /// `keep_before_release` answers, the ref that made its answer true is
+    /// deleted, and the removal then runs on the older word. Nothing but a
+    /// fresh `Named` may open that door, and where the reading says the commits
+    /// need a ref the release writes one rather than taking the directory on
+    /// the strength of a ref that is gone.
+    #[tokio::test]
+    async fn a_ref_that_disappears_between_the_decision_and_the_removal_is_written_again() {
+        let (root, wt) = repo("refvanished").await;
+        git(&wt, &["switch", "--detach", "-q"]).await;
+        git(&wt, &["add", "work.txt"]).await;
+        git(&wt, &["commit", "-qm", "on no branch at all"]).await;
+        let head = stdout(&wt, &["rev-parse", "HEAD"]).await;
+
+        let named = keep_before_release("run-1", Verb::Abandon, &wt, None, &no_cred().await)
+            .await
+            .expect("the release writes a ref for a detached checkout");
+        let Commits::NamedBy(first) = &named else {
+            panic!("the premise: this release had to write one: {named:?}");
+        };
+        // Something takes it away before the removal is reached.
+        git(&root, &["update-ref", "-d", first]).await;
+        assert_eq!(
+            salvage::fate_of(&wt).await,
+            salvage::Fate::NeedsARef { commits: 1 },
+            "the premise: nothing names the commit any more"
+        );
+
+        take_the_directory("run-1", Verb::Abandon, &root, &wt, &named)
+            .await
+            .expect("the work is preserved and the run is not wedged");
+
+        let kept = stdout(
+            &root,
+            &["for-each-ref", "--format=%(objectname)", "refs/forge/kept"],
+        )
+        .await;
+        let _ = std::fs::remove_dir_all(&root);
+
+        assert!(
+            kept.lines().any(|l| l == head),
+            "the commit the vanished ref had named must be named again before the directory \
+             goes; refs/forge/kept holds {kept:?} and HEAD was {head}"
+        );
+    }
+
+    async fn stdout(dir: &Path, args: &[&str]) -> String {
+        let out = tokio::process::Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .output()
+            .await
+            .expect("git");
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
     }
 
     async fn no_cred() -> RepoCred {
