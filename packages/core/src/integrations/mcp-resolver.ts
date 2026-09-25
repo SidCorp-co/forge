@@ -6,6 +6,7 @@ import type { IntegrationDeclaration } from './types.js';
 
 export async function resolveGrantedMcpEntries(
   projectId: string,
+  producedBy?: Map<string, string>,
 ): Promise<Record<string, Record<string, unknown>>> {
   const entries: Record<string, Record<string, unknown>> = {};
   for (const decl of directMcpIntegrations()) {
@@ -41,7 +42,10 @@ export async function resolveGrantedMcpEntries(
         const path = decl.capabilities.agentPath;
         if (path.kind !== 'direct-mcp') continue;
         const entry = path.buildEntry(effectiveConfig(pair), secrets);
-        if (entry) entries[serverName] = entry;
+        if (entry) {
+          entries[serverName] = entry;
+          producedBy?.set(serverName, pair.binding.id);
+        }
       } catch (err) {
         logger.warn(
           {
@@ -69,6 +73,11 @@ export interface GrantedMcpApplication {
    * this is the answer to "did it deliver" and those four conditions are only the explanation.
    */
   names: string[];
+  /**
+   * The binding behind each produced name. Two bindings of a single-slot provider share one server
+   * name, so a name alone says that the provider delivered and not which binding did.
+   */
+  bindingIds: string[];
 }
 
 /**
@@ -81,10 +90,12 @@ export async function applyGrantedMcpServers(
   projectId: string,
   current: Record<string, unknown> | null,
 ): Promise<GrantedMcpApplication> {
-  const entries = await resolveGrantedMcpEntries(projectId);
+  const producedBy = new Map<string, string>();
+  const entries = await resolveGrantedMcpEntries(projectId, producedBy);
   const names = Object.keys(entries);
-  if (names.length === 0) return { map: current, names };
-  return { map: { ...(current ?? {}), ...entries }, names };
+  const bindingIds = names.map((name) => producedBy.get(name)).filter((id) => id !== undefined);
+  if (names.length === 0) return { map: current, names, bindingIds };
+  return { map: { ...(current ?? {}), ...entries }, names, bindingIds };
 }
 
 export function declaredServerNames(

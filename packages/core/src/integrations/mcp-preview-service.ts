@@ -74,11 +74,8 @@ function notConfiguredRow(decl: IntegrationDeclaration): McpServerPreviewEntry {
 }
 
 /**
- * A server the project's own `pipelineConfig.mcpServers` put in the set.
- *
- * Nothing here is read off that server's configured spec. The entry is operator-written and may
- * carry `env` or `headers`, so a surface that echoed it would leak whatever an operator put there —
- * a leak this route never had and does not acquire by becoming whole (ISS-1191).
+ * A server the project's own `pipelineConfig.mcpServers` put in the set. Nothing is read off that
+ * server's spec: it is operator-written and may carry `env` or `headers` (ISS-1191).
  */
 function projectRow(serverName: string): McpServerPreviewEntry {
   return {
@@ -119,10 +116,17 @@ function reasonFor(args: {
   return 'not_resolved';
 }
 
+interface Delivered {
+  /** Bindings the resolver actually built an entry for. */
+  bindings: ReadonlySet<string>;
+  /** Names that survived into the final map, after the browser dedupe. */
+  names: ReadonlySet<string>;
+}
+
 async function integrationRows(
   projectId: string,
   pairs: BindingWithConnection[],
-  delivered: ReadonlySet<string>,
+  delivered: Delivered,
 ): Promise<McpServerPreviewEntry[]> {
   const rows: McpServerPreviewEntry[] = [];
   for (const decl of directMcpIntegrations()) {
@@ -143,7 +147,8 @@ async function integrationRows(
     for (const pair of mine) {
       const label = ((pair.binding as Record<string, unknown>).label as string) ?? '';
       const serverName = mcpServerNameFor(decl, label) ?? provider;
-      const willInject = delivered.has(serverName);
+      // Keyed on the binding: two bindings of a single-slot provider carry one server name.
+      const willInject = delivered.bindings.has(pair.binding.id) && delivered.names.has(serverName);
       const entry = previewEntryFor(decl, pair);
       rows.push({
         source: 'integration',
@@ -191,11 +196,17 @@ export async function buildMcpPreview(projectId: string): Promise<McpPreview> {
   ]);
 
   const carried = new Set(resolved.resolvedNames);
-  const delivered = new Set(resolved.integrationNames.filter((name) => carried.has(name)));
+  const delivered: Delivered = {
+    bindings: new Set(resolved.integrationBindingIds),
+    names: carried,
+  };
 
   const servers = await integrationRows(projectId, pairs, delivered);
+  const takenByIntegration = new Set(
+    servers.filter((row) => row.willInject).map((row) => row.serverName),
+  );
   for (const name of resolved.resolvedNames) {
-    if (delivered.has(name)) continue;
+    if (takenByIntegration.has(name)) continue;
     servers.push(projectRow(name));
   }
 

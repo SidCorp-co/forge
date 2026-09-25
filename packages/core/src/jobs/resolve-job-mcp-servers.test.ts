@@ -20,6 +20,7 @@ const applyGrantedMcpServers = vi.fn(
   async (_projectId: string, current: Record<string, unknown> | null) => ({
     map: current,
     names: [] as string[],
+    bindingIds: [] as string[],
   }),
 );
 vi.mock('../integrations/mcp-resolver.js', () => ({ applyGrantedMcpServers }));
@@ -35,6 +36,7 @@ beforeEach(() => {
   applyGrantedMcpServers.mockImplementation(async (_p, current) => ({
     map: current,
     names: [] as string[],
+    bindingIds: [] as string[],
   }));
 });
 
@@ -132,6 +134,7 @@ describe('resolveJobMcpServers (ISS-683)', () => {
     applyGrantedMcpServers.mockImplementation(async (_p, current) => ({
       map: { ...(current ?? {}), sentry: { type: 'http', url: 'https://sentry.example' } },
       names: ['sentry'],
+      bindingIds: ['b-sentry'],
     }));
     const out = await resolveJobMcpServers({
       projectId: 'p-1',
@@ -160,6 +163,7 @@ describe('resolveJobMcpServers (ISS-683)', () => {
     applyGrantedMcpServers.mockImplementation(async (_p, current) => ({
       map: { ...(current ?? {}), sentry: { type: 'http', url: 'https://sentry.example' } },
       names: ['sentry'],
+      bindingIds: ['b-sentry'],
     }));
     const out = await resolveJobMcpServers({
       projectId: 'p-1',

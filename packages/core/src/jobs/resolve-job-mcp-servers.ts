@@ -22,9 +22,11 @@ export interface ResolvedJobMcpServers {
    *  survive resolution, minus the intentional playwright browser-dedupe. */
   droppedNames: string[];
   /** ISS-1191 — the names the granted-integration pass produced, so a reader can
-   *  tell an integration-sourced server from a project-declared one, and can tell
-   *  a binding that delivered from one that only looked as though it would. */
+   *  tell an integration-sourced server from a project-declared one. */
   integrationNames: string[];
+  /** ISS-1191 — the binding behind each of those names; two bindings of a
+   *  single-slot provider share one name, so the name does not identify one. */
+  integrationBindingIds: string[];
 }
 
 export async function resolveJobMcpServers(args: {
@@ -67,6 +69,7 @@ export async function resolveJobMcpServers(args: {
     resolvedNames: [...resolvedNames],
     droppedNames,
     integrationNames: granted.names,
+    integrationBindingIds: granted.bindingIds,
   };
 }
 

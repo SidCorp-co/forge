@@ -23,10 +23,10 @@ const { buildMcpPreview } = await import('./mcp-preview-service.js');
 const PROJECT = 'p-1';
 
 /** A sentry binding: one direct-mcp provider that is not multiBinding. */
-function sentryPair(over: { agentAccess?: string; secretsEnc?: string | null } = {}) {
+function sentryPair(over: { id?: string; agentAccess?: string; secretsEnc?: string | null } = {}) {
   return {
     binding: {
-      id: 'b-sentry',
+      id: over.id ?? 'b-sentry',
       projectId: PROJECT,
       provider: 'sentry',
       role: 'service',
@@ -55,12 +55,14 @@ function sentryPair(over: { agentAccess?: string; secretsEnc?: string | null } =
 function resolvedAs(args: {
   resolvedNames: string[];
   integrationNames?: string[];
+  integrationBindingIds?: string[];
   droppedNames?: string[];
 }) {
   resolveSessionMcpServers.mockResolvedValue({
     mcpServers: Object.fromEntries(args.resolvedNames.map((n) => [n, { secret: 'never-read' }])),
     resolvedNames: args.resolvedNames,
     integrationNames: args.integrationNames ?? [],
+    integrationBindingIds: args.integrationBindingIds ?? [],
     droppedNames: args.droppedNames ?? [],
   });
 }
@@ -115,7 +117,11 @@ describe('buildMcpPreview — every source, or none (ISS-1191)', () => {
     listAgentGrantedBindings.mockImplementation(async (_p: string, provider: string) =>
       provider === 'sentry' ? [sentryPair()] : [],
     );
-    resolvedAs({ resolvedNames: ['playwright', 'sentry'], integrationNames: ['sentry'] });
+    resolvedAs({
+      resolvedNames: ['playwright', 'sentry'],
+      integrationNames: ['sentry'],
+      integrationBindingIds: ['b-sentry'],
+    });
     const { servers } = await buildMcpPreview(PROJECT);
     const reaching = servers.filter((s) => s.willInject).map((s) => s.serverName);
     expect([...new Set(reaching)].sort()).toEqual(['playwright', 'sentry']);
@@ -126,7 +132,11 @@ describe('buildMcpPreview — every source, or none (ISS-1191)', () => {
     listAgentGrantedBindings.mockImplementation(async (_p: string, provider: string) =>
       provider === 'sentry' ? [sentryPair()] : [],
     );
-    resolvedAs({ resolvedNames: ['sentry'], integrationNames: ['sentry'] });
+    resolvedAs({
+      resolvedNames: ['sentry'],
+      integrationNames: ['sentry'],
+      integrationBindingIds: ['b-sentry'],
+    });
     const { servers } = await buildMcpPreview(PROJECT);
     expect(servers.filter((s) => s.serverName === 'sentry')).toHaveLength(1);
   });
@@ -171,6 +181,56 @@ describe('buildMcpPreview — every source, or none (ISS-1191)', () => {
     const row = (await buildMcpPreview(PROJECT)).servers.find((s) => s.provider === 'sentry');
     expect(row).toMatchObject({ configured: true, active: true, lastHealthStatus: 'ok' });
     expect(row?.willInject).toBe(false);
+  });
+
+  it('marks only the binding that delivered, where two share one server name', async () => {
+    // Sentry is single-slot: both bindings carry the name `sentry`, and the resolver builds an
+    // entry for the oldest granted one. Keyed on the name, the loser reads ok too.
+    const winner = sentryPair({ id: 'b-win' });
+    const loser = sentryPair({ id: 'b-lose', agentAccess: 'none' });
+    listBindingsForProject.mockResolvedValue([winner, loser]);
+    listAgentGrantedBindings.mockImplementation(async (_p: string, provider: string) =>
+      provider === 'sentry' ? [winner] : [],
+    );
+    resolvedAs({
+      resolvedNames: ['sentry'],
+      integrationNames: ['sentry'],
+      integrationBindingIds: ['b-win'],
+    });
+    const { servers } = await buildMcpPreview(PROJECT);
+    expect(servers.find((s) => s.bindingId === 'b-win')?.willInject).toBe(true);
+    expect(servers.find((s) => s.bindingId === 'b-lose')?.willInject).toBe(false);
+  });
+
+  it('gives the losing binding its own reason rather than the winner’s verdict', async () => {
+    const winner = sentryPair({ id: 'b-win' });
+    const loser = sentryPair({ id: 'b-lose' });
+    listBindingsForProject.mockResolvedValue([winner, loser]);
+    listAgentGrantedBindings.mockImplementation(async (_p: string, provider: string) =>
+      provider === 'sentry' ? [winner, loser] : [],
+    );
+    resolvedAs({
+      resolvedNames: ['sentry'],
+      integrationNames: ['sentry'],
+      integrationBindingIds: ['b-win'],
+    });
+    const { servers } = await buildMcpPreview(PROJECT);
+    expect(servers.find((s) => s.bindingId === 'b-lose')?.reason).toBe('shadowed');
+  });
+
+  it('adds no project row for a name an integration binding already delivered', async () => {
+    const winner = sentryPair({ id: 'b-win' });
+    listBindingsForProject.mockResolvedValue([winner, sentryPair({ id: 'b-lose' })]);
+    listAgentGrantedBindings.mockImplementation(async (_p: string, provider: string) =>
+      provider === 'sentry' ? [winner] : [],
+    );
+    resolvedAs({
+      resolvedNames: ['sentry'],
+      integrationNames: ['sentry'],
+      integrationBindingIds: ['b-win'],
+    });
+    const { servers } = await buildMcpPreview(PROJECT);
+    expect(servers.filter((s) => s.source === 'project')).toEqual([]);
   });
 
   it('never reads a spec out of the credential-bearing map the resolver returns', async () => {
