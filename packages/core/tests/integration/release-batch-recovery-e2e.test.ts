@@ -65,9 +65,13 @@ const { runStatus, commentCount } = fx;
  * reads is the row that function writes, and a fixture re-issuing the SQL
  * would prove its own INSERT rather than the ledger's.
  */
-async function abort(runId: string, reason: string) {
+async function abort(
+  runId: string,
+  reason: string,
+  options: { promotedRoster?: 'hold' | 'return-to-gate' } = {},
+) {
   const { abortReleaseBatch } = await import('../../src/release-batch/service.js');
-  return abortReleaseBatch(runId, reason, ownerId);
+  return abortReleaseBatch(runId, reason, ownerId, options);
 }
 
 async function recordPromotion(runId: string): Promise<void> {
@@ -200,6 +204,63 @@ describe('where an unfinished batch leaves its roster', () => {
     expect(row?.settled_at).toBeNull();
     await abort(runId, 'the agent was killed');
     expect((await stored(a)).status).toBe('releasing');
+  });
+
+  // ISS-1199 — holding is right by default and was the only thing on offer, so
+  // a batch that promoted and could not verify had no door to terminal at all:
+  // finish refused, abort held, and the roster kept its claim as well as its
+  // status. Naming the settlement is a person's word that the code IS live and
+  // the record should be made where evidence can be attached to it.
+  it('returns a promoted roster to the gate where the operator names the settlement', async () => {
+    const a = await insertIssue();
+    const b = await insertIssue();
+    const { runId } = await claim([a, b]);
+    await recordPromotion(runId);
+
+    const result = await abort(runId, 'this batch cannot verify', {
+      promotedRoster: 'return-to-gate',
+    });
+
+    expect(result).toMatchObject({ promoted: true, destination: 'awaiting_release' });
+    for (const id of [a, b]) {
+      expect(await stored(id)).toMatchObject({ status: 'awaiting_release', claim: null });
+    }
+  });
+
+  it('tells each returned issue that the promotion happened and where to record it', async () => {
+    const a = await insertIssue();
+    const { runId } = await claim([a]);
+    await recordPromotion(runId);
+
+    await abort(runId, 'this batch cannot verify', { promotedRoster: 'return-to-gate' });
+
+    const rows = await harness.db.execute(sql`SELECT body FROM comments WHERE issue_id = ${a}`);
+    const body = String(rows[0]?.body ?? '');
+    expect(body).toContain('recorded a promotion');
+    expect(body).toContain('release-records');
+  });
+
+  it('holds the roster where the settlement is named `hold`', async () => {
+    const a = await insertIssue();
+    const { runId } = await claim([a]);
+    await recordPromotion(runId);
+
+    const result = await abort(runId, 'the deploy half landed', { promotedRoster: 'hold' });
+
+    expect(result).toMatchObject({ promoted: true, destination: null, claimsCleared: [] });
+    expect(await stored(a)).toMatchObject({ status: 'releasing', claim: runId });
+  });
+
+  it('settles nothing extra on a run that never promoted', async () => {
+    const a = await insertIssue();
+    const { runId } = await claim([a]);
+
+    const result = await abort(runId, 'the deploy never landed', {
+      promotedRoster: 'return-to-gate',
+    });
+
+    expect(result).toMatchObject({ promoted: false, destination: 'awaiting_release' });
+    expect(await stored(a)).toMatchObject({ status: 'awaiting_release', claim: null });
   });
 
   it('does not read a deploy attempt as a promotion', async () => {

@@ -200,7 +200,16 @@ releaseBatchRoutes.get(
 const runParamSchema = z.object({ projectId: z.uuid(), runId: z.uuid() });
 
 const finishBodySchema = z.object({ commit: z.string().trim().max(200).optional() }).strict();
-const abortBodySchema = z.object({ reason: z.string().trim().max(2000).optional() }).strict();
+const abortBodySchema = z
+  .object({
+    reason: z.string().trim().max(2000).optional(),
+    /**
+     * What to do with a roster whose run already promoted. Absent is `hold`, which is what this
+     * door did before the choice existed (ISS-1199).
+     */
+    promotedRoster: z.enum(['hold', 'return-to-gate']).optional(),
+  })
+  .strict();
 
 /**
  * `account` has a floor because it is the whole of Rule 2 of ISS-1129: a release
@@ -285,11 +294,13 @@ releaseBatchRoutes.post(
   }),
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
-    const { reason } = c.req.valid('json');
+    const { reason, promotedRoster } = c.req.valid('json');
     const userId = c.get('userId');
     await loadRunForProject(runId, projectId, userId);
 
-    const result = await abortReleaseBatch(runId, reason ?? 'aborted by agent', userId);
+    const result = await abortReleaseBatch(runId, reason ?? 'aborted by agent', userId, {
+      promotedRoster,
+    });
     return c.json({ aborted: true, releasedIds: result.claimsCleared, ...result });
   },
 );

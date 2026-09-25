@@ -67,6 +67,8 @@ const inputSchema = z
     commit: z.string().trim().max(200).optional(),
     /** abort: why. */
     reason: z.string().trim().max(2_000).optional(),
+    /** abort: what to do with a roster whose run already promoted. Absent is `hold` (ISS-1199). */
+    promotedRoster: z.enum(['hold', 'return-to-gate']).optional(),
   })
   .strict();
 
@@ -199,6 +201,7 @@ async function run(principal: McpPrincipal, input: Input, projectId: string): Pr
         runId,
         input.reason ?? 'aborted by agent',
         principal.userId,
+        { promotedRoster: input.promotedRoster },
       );
       return { aborted: true, releasedIds: result.claimsCleared, ...result };
     }
@@ -213,7 +216,9 @@ export const forgeReleaseBatchTool: ContextScopedMcpToolFactory = (ctx) => ({
     'call it FIRST), `state` (roster, attempts, live reading, bounds, announced method), `method` (announce the method loaded: ' +
     '`skill` + `loaded`, optional `detail`; finish refuses a run that announced none), `finish` (`commit` = the SHA pushed to ' +
     'production; answers at once with the attempt at `accepted`, and the server then reads the probes and closes every claimed issue ' +
-    'on its own — read `state` → `finish.state` for `finished` or `failed`, whose `refusal` says why), `abort` (`reason`; releases every claim, closes nothing). ' +
+    'on its own — read `state` → `finish.state` for `finished` or `failed`, whose `refusal` says why), `abort` (`reason`; releases every claim, closes nothing — ' +
+    'a roster whose run already promoted is left at `releasing` still claimed unless `promotedRoster: "return-to-gate"` names the settlement, which returns it ' +
+    'to the release gate for `POST /release-records` to close against what production is serving). ' +
     'Every action needs `runId`, and a token with the write scope: a credential that could read the batch but not record it is ' +
     'refused at `get`, before anything changes.',
   inputSchema: zodToMcpSchema(inputSchema),
