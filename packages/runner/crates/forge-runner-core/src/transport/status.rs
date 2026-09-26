@@ -309,13 +309,18 @@ mod tests {
     }
 
     /// A statement, from a line that opens one to the line that balances it.
+    ///
+    /// Balanced on the code, which is why [`placeholders_only`] runs first: a
+    /// `)` inside a message is not a closing paren, and counting it as one
+    /// ended the statement before the argument that says the status
+    /// (ISS-1233 review F2, the class).
     fn statement_at(lines: &[&str], from: usize) -> String {
-        let mut depth: i32 = 0;
         let mut said = String::new();
         for line in &lines[from..] {
             said.push(' ');
             said.push_str(line.trim());
-            depth += line.matches('(').count() as i32 - line.matches(')').count() as i32;
+            let code = placeholders_only(&said);
+            let depth = code.matches('(').count() as i32 - code.matches(')').count() as i32;
             if depth <= 0 {
                 break;
             }
@@ -324,7 +329,15 @@ mod tests {
     }
 
     /// Every name bound to a `reqwest::StatusCode` or to a response body — the
-    /// two values a refusal is built from, whatever the binding is called.
+    /// two values a refusal is built from, whatever the binding is called and
+    /// however it was narrowed.
+    ///
+    /// Measured on the value once the helpers' own calls are cut out of it, so
+    /// `let said = status::named(r.status().as_u16())` binds what a helper
+    /// answered and not a raw status. The rule this replaces dropped every
+    /// value carrying `.as_u16()`, which excluded by construction the single
+    /// shape every refusal site in this directory is written in — leaving only
+    /// the body binding holding the line (ISS-1233, second judgement).
     fn status_and_body_bindings(shipped: &str) -> Vec<String> {
         let mut names = Vec::new();
         for line in shipped.lines() {
@@ -335,19 +348,192 @@ mod tests {
             let Some((name, value)) = rest.split_once('=') else {
                 continue;
             };
-            let name = name.trim().trim_start_matches("mut ").trim();
+            let name = name.trim().trim_start_matches("mut ");
+            // `let code: u16 = …` declares `code`; the annotation is not part
+            // of what the message will say, and keeping it made every typed
+            // binding fail the character test below and go unread.
+            let name = name.split(':').next().unwrap_or(name).trim();
             if !name.chars().all(|c| c.is_alphanumeric() || c == '_') || name.is_empty() {
                 continue;
             }
-            let holds_status = value.contains(".status()") && !value.contains(".as_u16()");
-            let holds_body = value.contains(".text().await");
-            if holds_status || holds_body {
+            let value = outside_the_helpers(value);
+            if value.contains(".status()") || value.contains(".text().await") {
                 names.push(name.to_string());
             }
         }
         names.sort();
         names.dedup();
         names
+    }
+
+    /// Each `format!` call in a statement, as its own argument region. Read
+    /// after [`placeholders_only`] has emptied the literals, so a `(` inside a
+    /// message cannot throw the paren count.
+    fn format_calls(said: &str) -> Vec<String> {
+        let mut calls = Vec::new();
+        let mut rest = said;
+        while let Some(at) = rest.find("format!(") {
+            let after = &rest[at + "format!(".len()..];
+            let mut depth = 1;
+            let mut end = after.len();
+            for (i, c) in after.char_indices() {
+                match c {
+                    '(' => depth += 1,
+                    ')' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            end = i;
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            calls.push(after[..end].to_string());
+            rest = &after[end..];
+        }
+        calls
+    }
+
+    /// The same text with every literal's prose dropped and only its `{…}`
+    /// placeholders kept, which is the difference between saying a value and
+    /// spelling its name: `no code given`, two lines under `let code = …`, says
+    /// nothing, and `{code}` says the status. It is also what makes a paren
+    /// count answer for the code rather than for the prose.
+    ///
+    /// Raw strings are read as raw strings. Reading `r#"… " …"#` as an ordinary
+    /// literal walks out of it at the quote in the message and back into one at
+    /// its real end, swallowing the argument after it — a shape the guard this
+    /// replaces did catch (ISS-1233 review F2).
+    fn placeholders_only(said: &str) -> String {
+        let src: Vec<char> = said.chars().collect();
+        let mut out = String::with_capacity(said.len());
+        let mut i = 0;
+        while i < src.len() {
+            if src[i] == 'r' && !opens_inside_a_word(&src, i) {
+                let mut h = i + 1;
+                while h < src.len() && src[h] == '#' {
+                    h += 1;
+                }
+                if h < src.len() && src[h] == '"' {
+                    i = literal(&src, h + 1, Some(h - i - 1), &mut out);
+                    continue;
+                }
+            }
+            if src[i] == '"' {
+                i = literal(&src, i + 1, None, &mut out);
+                continue;
+            }
+            out.push(src[i]);
+            i += 1;
+        }
+        out
+    }
+
+    fn opens_inside_a_word(src: &[char], at: usize) -> bool {
+        at > 0 && (src[at - 1].is_alphanumeric() || src[at - 1] == '_')
+    }
+
+    /// One literal, from just past its opening quote, keeping its `{…}`
+    /// placeholders and dropping everything else. `hashes` is `Some` for a raw
+    /// string, whose end is the quote followed by that many `#` and inside
+    /// which nothing escapes. Answers the index just past the literal.
+    fn literal(src: &[char], from: usize, hashes: Option<usize>, out: &mut String) -> usize {
+        let mut i = from;
+        let mut in_placeholder = false;
+        out.push(' ');
+        while i < src.len() {
+            let c = src[i];
+            if c == '\\' && hashes.is_none() {
+                i += 2;
+                continue;
+            }
+            if c == '"' {
+                let closes = match hashes {
+                    None => true,
+                    Some(n) => src[i + 1..].iter().take(n).filter(|h| **h == '#').count() == n,
+                };
+                if closes {
+                    out.push(' ');
+                    return i + 1 + hashes.unwrap_or(0);
+                }
+            }
+            match c {
+                '{' if src.get(i + 1) == Some(&'{') => i += 1,
+                '{' => {
+                    in_placeholder = true;
+                    out.push('{');
+                }
+                '}' if in_placeholder => {
+                    in_placeholder = false;
+                    out.push('}');
+                }
+                '}' if src.get(i + 1) == Some(&'}') => i += 1,
+                _ if in_placeholder => out.push(c),
+                _ => {}
+            }
+            i += 1;
+        }
+        out.push(' ');
+        i
+    }
+
+    /// `name` as a whole word, so `me/runners decode` does not read as saying
+    /// `code`.
+    fn mentions(said: &str, name: &str) -> bool {
+        let bytes = said.as_bytes();
+        let word = |b: u8| b.is_ascii_alphanumeric() || b == b'_';
+        let mut from = 0;
+        while let Some(at) = said[from..].find(name) {
+            let start = from + at;
+            let end = start + name.len();
+            if (start == 0 || !word(bytes[start - 1])) && (end == bytes.len() || !word(bytes[end]))
+            {
+                return true;
+            }
+            from = end;
+        }
+        false
+    }
+
+    /// Every place a module's shipped half says a status or a response body in
+    /// a `format!` of its own — by a binding's name, or inline with no binding
+    /// at all, which is the shape `heartbeat.rs` shipped past the first guard.
+    fn hand_formatted(name: &str, source: &str) -> Vec<String> {
+        let mut offenders = Vec::new();
+        let shipped = shipped(source);
+        let bound = status_and_body_bindings(&shipped);
+        let lines: Vec<&str> = shipped.lines().collect();
+        for (n, line) in lines.iter().enumerate() {
+            if !line.contains("format!(") {
+                continue;
+            }
+            let statement = statement_at(&lines, n);
+            let said = placeholders_only(&outside_the_helpers(&statement));
+            for call in format_calls(&said) {
+                let mut says: Vec<String> = Vec::new();
+                if call.contains(".status()") {
+                    says.push("a status, with no binding".to_string());
+                }
+                if call.contains(".text().await") {
+                    says.push("a response body, with no binding".to_string());
+                }
+                for b in &bound {
+                    if mentions(&call, b) {
+                        says.push(format!("`{b}`"));
+                    }
+                }
+                if !says.is_empty() {
+                    offenders.push(format!(
+                        "{name}:{}: {} — says {}",
+                        n + 1,
+                        statement.trim(),
+                        says.join(", ")
+                    ));
+                }
+            }
+        }
+        offenders
     }
 
     /// What a `format!` still says once the two helpers' own calls are taken
@@ -394,37 +580,153 @@ mod tests {
     ///
     /// Measured on what the value IS and not on what it is called: the guard
     /// this replaces matched `{status}` and `{text}`, so renaming the binding
-    /// or formatting it positionally walked straight past it (review F1).
+    /// or formatting it positionally walked straight past it (review F1), and
+    /// the rewrite after it walked past a status narrowed by `as_u16()` and a
+    /// status formatted with no binding at all (second judgement).
     #[test]
     fn no_transport_module_formats_a_status_or_a_body_into_its_own_message() {
-        let mut offenders = Vec::new();
-        for (name, source) in SOURCES {
-            let shipped = shipped(source);
-            let bound = status_and_body_bindings(&shipped);
-            let lines: Vec<&str> = shipped.lines().collect();
-            for (n, line) in lines.iter().enumerate() {
-                if !line.contains("format!(") {
-                    continue;
-                }
-                let said = outside_the_helpers(&statement_at(&lines, n));
-                for b in &bound {
-                    let printed = said.contains(&format!("{{{b}}}"))
-                        || said.contains(&format!(", {b})"))
-                        || said.contains(&format!(", {b},"))
-                        || said.contains(&format!(", {b} "))
-                        || said.contains(&format!("{b}.as_u16()"));
-                    if printed {
-                        offenders.push(format!("{name}:{}: {} — says `{b}`", n + 1, said.trim()));
-                    }
-                }
-            }
-        }
+        let offenders: Vec<String> = SOURCES
+            .iter()
+            .flat_map(|(name, source)| hand_formatted(name, source))
+            .collect();
         assert!(
             offenders.is_empty(),
             "a status or a body is said by status::named or status::refused, never by a \
              format! of its own:\n{}",
             offenders.join("\n")
         );
+    }
+
+    /// A refusal site as each of the five shapes one gets written in, and the
+    /// three shapes that are not one. Held as source rather than as code so the
+    /// guard is measured on the text it actually reads.
+    const PLANTS: &[(&str, &str)] = &[
+        (
+            "a status and a body, both bound",
+            r#"
+        let code = resp.status().as_u16();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(Error::Other(format!("me/runners failed: {code}: {text}")));
+"#,
+        ),
+        (
+            "a status bound after as_u16",
+            r#"
+        let code = resp.status().as_u16();
+        return Err(Error::Other(format!("me/runners failed: {code}")));
+"#,
+        ),
+        (
+            "a status said with no binding at all",
+            r#"
+        return Err(Error::Other(format!("heartbeat failed: {}", resp.status())));
+"#,
+        ),
+        (
+            "a status renamed and printed positionally",
+            r#"
+        let whatever = resp.status().as_u16();
+        return Err(Error::Other(format!("me/runners failed: {0}", whatever)));
+"#,
+        ),
+        (
+            "a status bound under a type annotation",
+            r#"
+        let code: u16 = resp.status().as_u16();
+        return Err(Error::Other(format!("me/runners failed: {code}")));
+"#,
+        ),
+        (
+            "a status said from a raw string carrying a quote of its own",
+            r##"
+        let code = resp.status();
+        return Err(Error::Other(format!(r#"heartbeat " refused: {}"#, code)));
+"##,
+        ),
+        (
+            "a status behind a message whose own `)` used to end the statement",
+            r#"
+        let code = resp.status().as_u16();
+        let said = format!(
+            "me/runners failed) the gateway answered: {}",
+            code
+        );
+        return Err(Error::Other(said));
+"#,
+        ),
+        (
+            "a body said with no binding at all",
+            r#"
+        return Err(Error::Other(format!(
+            "me/runners failed: {}",
+            resp.text().await.unwrap_or_default()
+        )));
+"#,
+        ),
+    ];
+
+    const NOT_A_REFUSAL_SITE: &[(&str, &str)] = &[
+        (
+            "the helper itself",
+            r#"
+        let code = resp.status().as_u16();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(Error::Other(status::refused("me/runners", code, &text)));
+"#,
+        ),
+        (
+            "a message built from what the helper answered",
+            r#"
+        let said = super::status::named(resp.status().as_u16());
+        return Err(Error::Other(format!("ack session {said}")));
+"#,
+        ),
+        (
+            "a raw-string message naming a binding without interpolating it",
+            r##"
+        let code = resp.status().as_u16();
+        let text = resp.text().await.unwrap_or_default();
+        if code == 404 {
+            return Err(Error::Other(format!(r#"no "code" and no "text" for {url}"#)));
+        }
+        return Err(Error::Other(status::refused("me/runners", code, &text)));
+"##,
+        ),
+        (
+            "a message whose words merely include a binding's name",
+            r#"
+        let code = resp.status().as_u16();
+        let text = resp.text().await.unwrap_or_default();
+        if code == 404 {
+            return Err(Error::Other(format!("no text and no code given for {url}")));
+        }
+        return Err(Error::Other(status::refused("me/runners", code, &text)));
+"#,
+        ),
+    ];
+
+    /// Criterion 12, planted rather than asserted. The guard above is watched
+    /// going red on every shape a refusal site gets written in — including the
+    /// two it shipped blind to at `23b0d882f`, where the binding shape every
+    /// site in this directory uses left all three guards green — and watched
+    /// staying green on the three shapes it exists to leave alone, because a
+    /// guard that fails on the helper is one somebody deletes.
+    #[test]
+    fn the_guard_goes_red_on_every_shape_a_refusal_site_is_written_in() {
+        for (what, planted) in PLANTS {
+            assert!(
+                !hand_formatted("planted.rs", planted).is_empty(),
+                "the guard is blind to {what}, which is how `520 <unknown status code>` went on \
+                 reaching an operator:{planted}"
+            );
+        }
+        for (what, allowed) in NOT_A_REFUSAL_SITE {
+            let found = hand_formatted("planted.rs", allowed);
+            assert!(
+                found.is_empty(),
+                "the guard refuses {what}, which is the shape it exists to leave alone: {found:?}"
+            );
+        }
     }
 
     /// The guard above reads bindings, so a module that reads a response body
