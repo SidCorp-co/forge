@@ -54,7 +54,7 @@ export function WorkspacesTable({
         <CardTitle>Top workspaces</CardTitle>
         <SegmentedControl options={SORTS} value={sort} onChange={onSortChange} />
       </CardHeader>
-      <CardContent className="px-0">
+      <CardContent>
         {rows.length === 0 ? (
           <EmptyState
             title="No workspace activity"
@@ -62,30 +62,28 @@ export function WorkspacesTable({
             mascot={false}
           />
         ) : (
-          <div className="overflow-x-auto">
-            <Table className="min-w-[520px]">
-              <THead>
-                <TR>
-                  <TH scope="col">Workspace</TH>
-                  <TH scope="col" className="text-right">Runs</TH>
-                  <TH scope="col" className="text-right">Spend</TH>
-                  <TH scope="col" className="text-right">Median lead</TH>
-                  <TH scope="col" className="text-right">Open</TH>
+          <Table className="min-w-[520px]">
+            <THead>
+              <TR>
+                <TH scope="col">Workspace</TH>
+                <TH scope="col" className="text-right">Runs</TH>
+                <TH scope="col" className="text-right">Spend</TH>
+                <TH scope="col" className="text-right">Median lead</TH>
+                <TH scope="col" className="text-right">Open</TH>
+              </TR>
+            </THead>
+            <TBody>
+              {rows.slice(0, 10).map((r) => (
+                <TR key={r.projectId}>
+                  <TD className="font-mono">{r.slug}</TD>
+                  <TD className="text-right font-mono tabular-nums">{formatCount(r.runs)}</TD>
+                  <TD className="text-right font-mono tabular-nums">{formatUsd(r.spendUsd)}</TD>
+                  <TD className="text-right font-mono tabular-nums">{formatMinutes(r.medianLeadTimeMin)}</TD>
+                  <TD className="text-right font-mono tabular-nums">{formatCount(r.openIssues)}</TD>
                 </TR>
-              </THead>
-              <TBody>
-                {rows.slice(0, 10).map((r) => (
-                  <TR key={r.projectId}>
-                    <TD className="font-mono">{r.slug}</TD>
-                    <TD className="text-right font-mono tabular-nums">{formatCount(r.runs)}</TD>
-                    <TD className="text-right font-mono tabular-nums">{formatUsd(r.spendUsd)}</TD>
-                    <TD className="text-right font-mono tabular-nums">{formatMinutes(r.medianLeadTimeMin)}</TD>
-                    <TD className="text-right font-mono tabular-nums">{formatCount(r.openIssues)}</TD>
-                  </TR>
-                ))}
-              </TBody>
-            </Table>
-          </div>
+              ))}
+            </TBody>
+          </Table>
         )}
       </CardContent>
     </Card>

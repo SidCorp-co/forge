@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 //
 // ISS-1172: a row menu opened near the bottom of the issues list rendered
-// inside the Table's `overflow-hidden` box and showed 36px of 565px. The panel
+// inside the Table's clipping box and showed 36px of 565px. The panel
 // now leaves for <body>; these tests pin that it does, and that what the menu
 // did inline still holds across the portal: first item focused, an item runs
 // and closes, Escape and Tab close and give focus back to the trigger.
