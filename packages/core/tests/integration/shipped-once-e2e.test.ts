@@ -184,4 +184,22 @@ describe('ISS-1270 · a shipped issue counts once, on its first shipped day', ()
       expect(rows.reduce((a, r) => a + r.count, 0)).toBe(4);
     });
   });
+
+  describe('project health', () => {
+    const aggregates = async () => {
+      const { readHealthAggregates } = await import('../../src/projects/health-aggregates.js');
+      return readHealthAggregates([projectId]);
+    };
+
+    it('reports throughput as the issues whose first shipped transition is in the last seven days', async () => {
+      const { throughputRows } = await aggregates();
+      expect(throughputRows.map((r) => [r.projectId, Number(r.n)])).toEqual([[projectId, 4]]);
+    });
+
+    it('averages one cycle-time sample per issue, measured to its first shipped transition', async () => {
+      const { cycleRows } = await aggregates();
+      expect(cycleRows).toHaveLength(1);
+      expect(Number(cycleRows[0]?.avg_days)).toBeCloseTo(1, 6);
+    });
+  });
 });
