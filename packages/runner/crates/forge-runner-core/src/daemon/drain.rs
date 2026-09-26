@@ -189,7 +189,7 @@ impl Drain {
         Some(Closed {
             cause: cause.clone(),
             refusal: format!(
-                "this box is draining before a restart ({cause}, {} so far) and declares no new run until it has restarted or the drain gives up, at most {} after it began. Nothing was recorded — declare it again once the box has turned over",
+                "this box is draining before a restart ({cause}, {} so far) and declares no new run until it has restarted or the drain gives up, at most {} after it began. Nothing was recorded — declare it again once the box has turned over, or once the drain gives up and admission reopens",
                 serving::span_secs(waited),
                 serving::span_secs(DRAIN_TIMEOUT_SECS)
             ),
