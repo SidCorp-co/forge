@@ -47,6 +47,14 @@ vi.mock('../../pipeline/deploy-confirmations.js', async () => {
   };
 });
 
+// ISS-1279 — the environment hold, freed when the deploy ends. Mocked rather
+// than given a `db`, because what these cases assert is that the release
+// happens on both terminal arms and is keyed on the settling run.
+const releaseLocksMock = vi.fn(async (_runId: string) => 0);
+vi.mock('../../pipeline/deploy-lock.js', () => ({
+  releaseDeployLocksForRun: (runId: string) => releaseLocksMock(runId),
+}));
+
 const closeRunMock = vi.fn(async () => 'settled' as const);
 const setCurrentStepMock = vi.fn();
 vi.mock('../../pipeline/runs.js', () => ({
@@ -165,6 +173,7 @@ describe('runCoolifyConfirm', () => {
     });
     expect(setCurrentStepMock.mock.calls).toEqual([[RUN_ID, 'release.deploy.done']]);
     expect(closeRunMock.mock.calls).toEqual([[RUN_ID, 'completed']]);
+    expect(releaseLocksMock.mock.calls).toEqual([[RUN_ID]]);
   });
 
   it('leaves a run nobody tried to close alone, even with every target confirmed', async () => {
@@ -187,6 +196,7 @@ describe('runCoolifyConfirm', () => {
     });
     expect(recordDeliveryMock.mock.calls[0]?.[0]).toMatchObject({ eventName: 'deploy.failed' });
     expect(closeRunMock.mock.calls).toEqual([[RUN_ID, 'failed']]);
+    expect(releaseLocksMock.mock.calls).toEqual([[RUN_ID]]);
   });
 
   it('re-polls while the deployment is non-terminal and the deadline is ahead', async () => {
@@ -196,6 +206,15 @@ describe('runCoolifyConfirm', () => {
     expect(sendCalls()).toHaveLength(1);
     expect(closeRunMock.mock.calls).toEqual([]);
     expect(recordDeliveryMock.mock.calls).toEqual([]);
+    expect(releaseLocksMock.mock.calls).toEqual([]);
+  });
+
+  it('holds the environment while one target of two is still building', async () => {
+    getDeploymentMock.mockResolvedValue({ status: 'finished' });
+    settleMock.mockResolvedValue(holds('pending'));
+
+    expect(await runCoolifyConfirm(job())).toEqual({ settled: 'succeeded', closedRun: false });
+    expect(releaseLocksMock.mock.calls).toEqual([]);
   });
 
   it('a deploy still non-terminal AT the deadline fails the run, naming what it could not confirm', async () => {

@@ -5,6 +5,7 @@ import {
   resolveDeployGate,
   settleDeployTarget,
 } from '../../pipeline/deploy-confirmations.js';
+import { releaseDeployLocksForRun } from '../../pipeline/deploy-lock.js';
 import { closeRun, RELEASE_DEPLOY_DONE_STEP, setCurrentStep } from '../../pipeline/runs.js';
 import { boss } from '../../queue/boss.js';
 import { recordDelivery } from '../deliveries.js';
@@ -217,6 +218,10 @@ export async function applyDeploySettlement(
       { runId: data.runId, deploymentUuid: data.deploymentUuid, detail },
       'coolify confirm: deploy failed — failing the run',
     );
+    // ISS-1279 — the deploy has ended, so the environment it held is free. By
+    // run id, so a deploy that took no lock frees nothing and a run whose hold
+    // was reclaimed after it expired cannot free the successor that took it.
+    await releaseDeployLocksForRun(data.runId);
     await closeRun(data.runId, 'failed');
     return { settled: 'failed', closedRun: 'failed', ...(detail ? { detail } : {}) };
   }
@@ -224,6 +229,7 @@ export async function applyDeploySettlement(
   const gate = resolveDeployGate(holds);
   if (gate.verdict !== 'clear') return { settled: 'succeeded', closedRun: false };
 
+  await releaseDeployLocksForRun(data.runId);
   await setCurrentStep(data.runId, RELEASE_DEPLOY_DONE_STEP);
   if (!(await isCloseDeferred(data.runId))) return { settled: 'succeeded', closedRun: false };
   await closeRun(data.runId, 'completed');

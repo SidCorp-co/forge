@@ -112,6 +112,9 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **Two releases can no longer deploy to the same environment at once.** The second is refused as
+  `DEPLOY_ENVIRONMENT_LOCKED`, naming the release that holds it, what it is deploying, since when,
+  and when the hold lifts.
 - **Two help pages for people filing work: how to ask for a change, and how to tell it is done.**
   A finished issue's page now shows its release note — what changed, or what will once it ships.
 - **You can now attach a picture when you talk to the agent on the web, see what you are typing as
