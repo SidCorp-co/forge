@@ -201,7 +201,9 @@ describe('what NO_RUNNER_ONLINE says about the fleet', () => {
     onlineIds.mockResolvedValue([]);
     runnerHolds.mockRejectedValue(new Error('runners table unreadable'));
 
-    const codes = (await collectReleaseBlockers(PROJECT_ID, { serving: SERVING })).blockers.map((b) => b.code);
+    const codes = (await collectReleaseBlockers(PROJECT_ID, { serving: SERVING })).blockers.map(
+      (b) => b.code,
+    );
 
     expect(codes).toContain('NO_RUNNER_ONLINE');
     expect(codes).toContain('RELEASE_CHECK_UNEVALUATED');

@@ -6,8 +6,8 @@
  * issue's own source. The shapes an identity may be written in: `messaging/verdict-identity.ts`.
  */
 
-import type { ServingReading } from '../release-batch/serving-reading.js';
 import { sameIdentity } from '../messaging/verdict-identity.js';
+import type { ServingReading } from '../release-batch/serving-reading.js';
 
 /** `source` is a commit that was read, which cannot say the code was ever running. */
 export interface VerdictIdentity {

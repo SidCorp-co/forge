@@ -193,7 +193,11 @@ describe('readServingNow', () => {
   // ISS-1286 — a probe nobody can ask must not silence one somebody can.
   it('asks the probes it can and keeps their commit beside a url that is not a url', async () => {
     resolveReleaseChannelsMock.mockResolvedValue([
-      channel({ verify: { probes: [{ url: 'not-a-url' }, { url: 'https://one.test/health', commitPath: 'commit' }] } }),
+      channel({
+        verify: {
+          probes: [{ url: 'not-a-url' }, { url: 'https://one.test/health', commitPath: 'commit' }],
+        },
+      }),
     ]);
     vi.stubGlobal('fetch', answering({ 'https://one.test/health': `{"commit":"${SERVED}"}` }));
 
@@ -236,4 +240,3 @@ describe('readServingNow', () => {
     expect(reading.kind === 'unreadable' && reading.why).toContain('refused as a declaration');
   });
 });
-

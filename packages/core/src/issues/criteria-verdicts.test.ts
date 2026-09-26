@@ -45,7 +45,6 @@ const LIVE: ServingReading = {
   hosts: ['https://app.test/build-info'],
   readAt: READ_AT,
 };
-const UNDECLARED: ServingReading = { kind: 'undeclared' };
 
 /**
  * An issue carrying a landing block. `deployment` is deliberately a commit NOTHING serves: after

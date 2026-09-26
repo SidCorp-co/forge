@@ -88,7 +88,7 @@ function judgeClause(serving: ServingReading): string {
   const asked = serving.kind === 'undeclared' ? '' : ` (asked at ${serving.hosts.join(', ')})`;
   if (serving.kind === 'serving') {
     const rollout = serving.commits.length > 1 ? ' — a rollout that has not finished' : '';
-    const unread = serving.unread.length === 0 ? '' : ` ${serving.unread.join('; ')}.` ;
+    const unread = serving.unread.length === 0 ? '' : ` ${serving.unread.join('; ')}.`;
     return (
       `record a verdict on each criterion named, judged at what this project is serving${asked}, ` +
       `\`${serving.commits.join('` and `')}\`${rollout}, read at ${serving.readAt}.${unread}`

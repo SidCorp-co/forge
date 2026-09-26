@@ -100,28 +100,28 @@ vi.mock('../release-batch/gate.js', () => ({
   resolveReleaseGate: (projectId: string) => resolveReleaseGateMock(projectId),
 }));
 
-type UnearnedCriterion = { criterion: number; verdict: string | null; standing: string | null; why: string };
+type Unearned = { criterion: number; verdict: string | null; standing: string | null; why: string };
 const READING = { kind: 'serving', commits: ['c0ffee0'], unread: [], hosts: ['h'], readAt: 'T' };
-const none = { unearned: [] as UnearnedCriterion[], serving: READING, uncorroborated: [] as number[] };
+const none = { unearned: [] as Unearned[], serving: READING, uncorroborated: [] as number[] };
 const noneUnearned = async (i: string[]) => i.map((id) => ({ issueId: id, ...none }));
 const unearnedCriteriaReportsMock = vi.fn(noneUnearned);
 vi.mock('../issues/criteria-verdicts.js', () => ({
   unearnedCriteriaReports: (ids: string[]) => unearnedCriteriaReportsMock(ids),
 }));
 
-const readServingNowMock = vi.fn(async (_p: string) => READING as unknown);
 const WHY = 'nothing could be read from the probes it declares — host is down';
 vi.mock('../release-batch/serving-reading.js', () => ({
-  readServingNow: (p: string) => readServingNowMock(p),
+  readServingNow: async () => READING,
   whyUncorroborated: () => WHY,
 }));
 
 /** The report a sweep reads for a roster where `held` are the ones still owing a criterion. */
-const reportsHolding = (all: string[], held: Record<string, UnearnedCriterion[]>) =>
+const reportsHolding = (all: string[], held: Record<string, Unearned[]>) =>
   all.map((id) => ({ ...none, issueId: id, unearned: held[id] ?? [] }));
 
-const SUPERSEDED: UnearnedCriterion = { criterion: 13, verdict: 'pass', standing: 'superseded',
-  why: 'judged at dce6f354c727baa81c681f144cbadf30050eabfc, and this issue now stands at 06fa37c6dfbc841bd75c3898034a53a1529a9c74' };
+const STOOD =
+  'judged at dce6f354c727baa81c681f144cbadf30050eabfc, and this issue now stands at 06fa37c6dfbc841bd75c3898034a53a1529a9c74';
+const SUPERSEDED: Unearned = { criterion: 13, verdict: 'pass', standing: 'superseded', why: STOOD };
 
 const loadCreatedByMock = vi.fn(async (_projectId: string) => 'owner-1' as string | undefined);
 vi.mock('../schedules/release-batch-dispatch.js', () => ({
@@ -191,9 +191,7 @@ beforeEach(() => {
   clearedProjects.length = 0;
   staleClears.mockClear();
   loggerError.mockReset();
-  unearnedCriteriaReportsMock.mockReset();
-  unearnedCriteriaReportsMock.mockImplementation(noneUnearned);
-  readServingNowMock.mockReset().mockResolvedValue(READING);
+  unearnedCriteriaReportsMock.mockReset().mockImplementation(noneUnearned);
   loggerInfo.mockReset();
   loggerWarn.mockReset();
   loadCreatedByMock.mockReset();

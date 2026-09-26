@@ -12,8 +12,8 @@ import {
   releaseBlockerSentence,
 } from './blockers.js';
 import { releaseRunnerLabelOf } from './channel.js';
-import { readServingNow } from './serving-reading.js';
 import type { ReleaseRollback, VerifySource } from './plan.js';
+import { readServingNow } from './serving-reading.js';
 
 export type ReleaseGapKey = string;
 

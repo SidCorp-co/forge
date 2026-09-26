@@ -162,14 +162,17 @@ describe('resolveReleaseChannels — the probe a live address earns', () => {
     ['a verify with an empty probe list', { verify: { probes: [] } }],
     ['probes with no url', { verify: { probes: [{ commitPath: 'commit' }] } }],
     ['a probe whose url is empty', { verify: { probes: [{ url: '' }] } }],
-  ])('takes NO default for a binding declaring %s, and calls it declared-unusable', async (_l, cfg) => {
-    listBindings.mockResolvedValue([binding({ bindingConfig: cfg })]);
-    selectLimit.mockResolvedValue([{ environments: LIVE }]);
+  ])(
+    'takes NO default for a binding declaring %s, and calls it declared-unusable',
+    async (_l, cfg) => {
+      listBindings.mockResolvedValue([binding({ bindingConfig: cfg })]);
+      selectLimit.mockResolvedValue([{ environments: LIVE }]);
 
-    const [channel] = await resolveReleaseChannels(PROJECT_ID);
-    expect(channel?.verify).toBeNull();
-    expect(channel?.verifySource).toBe('declared-unusable');
-  });
+      const [channel] = await resolveReleaseChannels(PROJECT_ID);
+      expect(channel?.verify).toBeNull();
+      expect(channel?.verifySource).toBe('declared-unusable');
+    },
+  );
 
   it('keeps a usable binding declaration whatever environments.live holds', async () => {
     listBindings.mockResolvedValue([
