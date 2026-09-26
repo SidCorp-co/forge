@@ -202,4 +202,29 @@ describe('ISS-1270 · a shipped issue counts once, on its first shipped day', ()
       expect(Number(cycleRows[0]?.avg_days)).toBeCloseTo(1, 6);
     });
   });
+
+  describe('project metrics', () => {
+    const timeseries = async (metric: 'throughput' | 'cycle_time') => {
+      const { runTimeseries } = await import('../../src/metrics/queries.js');
+      return runTimeseries({
+        projectId,
+        metric,
+        days: DAYS,
+        bucket: 'day',
+        groupByStep: false,
+        now: asOf,
+      });
+    };
+
+    it('counts each issue once in the throughput series, on its first shipped day', async () => {
+      const { series } = await timeseries('throughput');
+      expect(series.map((p) => p.resolved)).toEqual(CARD);
+    });
+
+    it('buckets each issue in the cycle_time series on the same day throughput counts it', async () => {
+      const { series } = await timeseries('cycle_time');
+      expect(series.map((p) => p.n)).toEqual(CARD);
+      for (const p of series.filter((q) => q.n === 1)) expect(p.avgDays).toBeCloseTo(1, 6);
+    });
+  });
 });
