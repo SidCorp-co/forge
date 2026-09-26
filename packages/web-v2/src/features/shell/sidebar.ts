@@ -20,7 +20,7 @@ interface Persisted {
   groupOpen: Record<string, boolean>;
 }
 
-// Compact 76px Rail is the default (Concept C); expand opens the labeled rail.
+// Compact 88px Rail is the default (Concept C); expand opens the labeled rail.
 // Config cluster starts collapsed; other clusters open.
 const DEFAULT: Persisted = { collapsed: true, groupOpen: { config: false } };
 

@@ -3098,6 +3098,8 @@
   set is now 59.
 
 ### Fixed
+
+- **The side navigation keeps every label inside its button, an empty release gate is one line, and toasts no longer cover the page.** A long label ends in an ellipsis, its full name on hover; background notifications share one card.
 - **Wide tables scroll sideways inside their card instead of cutting off columns.** A fade marks the side with more to see, keyboard users can tab in and scroll, and the Issues page no longer slides sideways.
 - **A message sent to a master sitting at a Claude Code menu no longer presses Enter on the highlighted choice.** It answered trust and permission dialogs on the master's behalf, once ending the session. The send is now refused.
 - **The 7-day Throughput chart shows seven consecutive days, a zero day drawn at zero.** An empty day vanished and the window slid back a day. Each bar prints its count; the total counts only the days drawn.

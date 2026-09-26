@@ -1,9 +1,10 @@
 'use client';
 
-// Concept C — the compact 76px icon Rail (default nav). Two centered tiers
-// (Workspace · Project) split by a hairline, each item an icon over a 9.5px
-// label. The active row gets a flame tint + a 3px accent bar pinned to the
-// rail's left edge. The project mark opens a searchable switcher flyout on
+// Concept C — the compact 88px icon Rail (default nav). Two centered tiers
+// (Workspace · Project) split by a hairline, each item an icon over a 10px
+// label that truncates inside its 76px button and never runs past it. The
+// active row gets a flame tint + a 3px accent bar pinned to the rail's left
+// edge. The project mark opens a searchable switcher flyout on
 // hover (pinned-first, pin toggles), anchored to the right of the rail.
 //
 // Presentational: all data + navigation handlers are passed in by the workspace
@@ -69,7 +70,7 @@ export interface NavRailCompactProps {
   version?: React.ReactNode;
 }
 
-/** Tiny centered tier label for the 76px rail (ISS-359). The faint hairline
+/** Tiny centered tier label for the compact rail (ISS-359). The faint hairline
  *  alone read as ambiguous, so each tier (Project · Space) gets an uppercase
  *  kicker scaled down to fit the narrow rail. */
 function RailKicker({ label, className }: { label: string; className?: string }) {
@@ -101,8 +102,9 @@ function RailButton({
       onClick={onClick}
       aria-current={active ? 'page' : undefined}
       aria-label={item.label}
+      title={item.label}
       className={cn(
-        'relative flex w-[60px] flex-col items-center gap-1 rounded-md pb-1.5 pt-2 transition-colors duration-[120ms]',
+        'relative flex w-[76px] flex-col items-center gap-1 rounded-md px-1 pb-1.5 pt-2 transition-colors duration-[120ms]',
         'focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]',
         active ? 'bg-accent-tint' : 'text-subtle hover:bg-hover',
       )}
@@ -110,14 +112,14 @@ function RailButton({
       {active && (
         <span
           aria-hidden
-          className="absolute bottom-[9px] left-[-8px] top-[9px] w-[3px] rounded-r-3"
+          className="absolute bottom-[9px] left-[-6px] top-[9px] w-[3px] rounded-r-3"
           style={{ background: 'var(--accent)' }}
         />
       )}
       <Icon name={item.icon} size={20} style={active ? { color: 'var(--accent)' } : undefined} />
       <span
         className={cn(
-          'text-9-5 font-semibold tracking-[-0.01em]',
+          'block min-w-0 max-w-full truncate text-10 font-semibold tracking-[-0.01em]',
           active ? 'text-accent-text' : 'text-muted',
         )}
       >
@@ -191,7 +193,7 @@ export function NavRailCompact({
   };
 
   return (
-    <nav className="flex h-full w-[76px] flex-none flex-col items-center border-r border-line bg-surface pb-3 pt-[14px]">
+    <nav className="flex h-full w-[88px] flex-none flex-col items-center border-r border-line bg-surface pb-3 pt-[14px]">
       {/* Brand — doubles as the expand handle. */}
       <button
         type="button"
@@ -223,7 +225,7 @@ export function NavRailCompact({
             aria-expanded={flyOpen}
             aria-label={`Switch project — current ${activeProject.name}`}
             className={cn(
-              'flex w-[60px] flex-col items-center gap-1 rounded-md pb-1.5 pt-5px transition-colors',
+              'flex w-[76px] flex-col items-center gap-1 rounded-md pb-1.5 pt-5px transition-colors',
               flyOpen ? 'bg-hover' : 'hover:bg-hover',
             )}
           >
@@ -369,7 +371,7 @@ export function NavRailCompact({
               type="button"
               onClick={onNewProject}
               aria-label="Add project"
-              className="flex w-[60px] flex-col items-center gap-1 rounded-md pb-1.5 pt-5px text-subtle transition-colors hover:bg-hover"
+              className="flex w-[76px] flex-col items-center gap-1 rounded-md pb-1.5 pt-5px text-subtle transition-colors hover:bg-hover"
             >
               <span
                 className="inline-flex size-[30px] items-center justify-center rounded-md border border-dashed"
@@ -377,7 +379,7 @@ export function NavRailCompact({
               >
                 <Icon name="plus" size={16} className="text-subtle" />
               </span>
-              <span className="text-9-5 font-semibold tracking-[-0.01em] text-muted">Add</span>
+              <span className="text-10 font-semibold tracking-[-0.01em] text-muted">Add</span>
             </button>
 
             <div className="my-[11px] h-px w-[34px] bg-[color:var(--border-subtle)]" />
