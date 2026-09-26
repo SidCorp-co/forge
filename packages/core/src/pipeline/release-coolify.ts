@@ -8,12 +8,19 @@ import { listActiveDeployBindingsForProvider } from '../integrations/store.js';
 import { logger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { projectAutoProdDeploy } from './auto-prod-deploy.js';
+import { abandonDeployDispatchHold, openDeployDispatchHold } from './deploy-confirmations.js';
 import {
-  abandonDeployDispatchHold,
-  openDeployDispatchHold,
-  readDeployHolds,
-} from './deploy-confirmations.js';
-import { acquireDeployLocks, deployHoldsIdle, releaseDeployLocksForRun } from './deploy-lock.js';
+  acquireDeployLocks,
+  type DeployLockHeld,
+  readDeployLocksHeld,
+  releaseDeployLocksForRun,
+} from './deploy-lock.js';
+import {
+  type DeployLockIntent,
+  deployLockIntent,
+  freeLockIfNothingPending,
+  targetLabelOf,
+} from './release-coolify-hold.js';
 import { RELEASE_DEPLOY_IN_FLIGHT_STEP, setCurrentStep } from './runs.js';
 
 /**
@@ -114,51 +121,6 @@ function resourceUuidsOf(config: unknown): string[] {
     .filter((u): u is string => typeof u === 'string' && u.length > 0);
 }
 
-/** What a locked deploy holds (ISS-1279): each binding's stages, plus `live` for one `reachesLive`
- *  says reaches production whatever its label reads. */
-export interface DeployLockIntent {
-  projectId: string;
-  environments: string[];
-  subject: string;
-}
-
-type LockableBinding = { id: string; stages: string[] | null; role: string; config: unknown };
-
-function deployLockIntent(
-  projectId: string,
-  pairs: ReadonlyArray<{ binding: LockableBinding }>,
-  reachesLive: (binding: { stages: string[] | null; config: unknown }) => boolean,
-): DeployLockIntent {
-  const environments = new Set<string>();
-  for (const { binding } of pairs) {
-    for (const stage of binding.stages ?? []) environments.add(stage);
-    if (reachesLive(binding)) environments.add('live');
-  }
-  const subject = pairs
-    .map(({ binding }) => `${targetLabelOf(binding)} (binding ${binding.id})`)
-    .join(', ');
-  return { projectId, environments: [...environments].sort(), subject };
-}
-
-const targetLabelOf = (binding: { stages: string[] | null; role: string }): string =>
-  `${(binding.stages ?? []).join('+') || binding.role} deploy`;
-
-/**
- * A deploy protects nothing once no target of this run is pending, whatever it enqueued: the holds
- * record what reaches the environment, a count does not, and nothing queued is all a count answers.
- * An empty record behind a dispatch that DID queue is a deploy no hold tracks (ISS-1279).
- */
-async function freeLockIfNothingPending(
-  lock: DeployLockIntent | null,
-  runId: string,
-  dispatched: readonly string[],
-): Promise<void> {
-  if (!lock) return;
-  if (dispatched.length === 0 || deployHoldsIdle(await readDeployHolds(runId))) {
-    await releaseDeployLocksForRun(runId);
-  }
-}
-
 function reportUnwitnessedDeploy(runId: string, issueId: string | null, bindingId?: string): void {
   logger.error(
     { runId, issueId, ...(bindingId ? { bindingId } : {}) },
@@ -249,6 +211,7 @@ export async function tryDispatchCoolifyRelease(args: {
         bindingId: binding.id,
         requestId,
         targetLabel: targetLabelOf(binding),
+        authorisedBySibling: armed.length > 0,
       });
       if (!held) reportUnwitnessedDeploy(runId, issueId, binding.id);
       armed.push({ binding, requestId });
@@ -470,11 +433,14 @@ export async function confirmPendingProdDeploy(
   const confirmedRequestId = `${run.id}:${bindingId}:confirmed`;
   const alreadyEnqueued = await findDeliveryByRequestId(bindingId, confirmedRequestId);
   const took = Boolean(gate.lock) && !alreadyEnqueued;
+  let taken: DeployLockHeld[] = [];
   if (gate.lock && took) {
+    const wanted = gate.lock.environments;
     await acquireDeployLocks(
       { projectId: gate.lock.projectId, runId: run.id, subject: gate.lock.subject },
-      gate.lock.environments,
+      wanted,
     );
+    taken = (await readDeployLocksHeld(run.id)).filter((h) => wanted.includes(h.environment));
   }
 
   let enqueued = false;
@@ -516,7 +482,7 @@ export async function confirmPendingProdDeploy(
     }
   } catch (err) {
     // Left standing, this hold would refuse the person's own next press, in their run's name.
-    if (took && !enqueued) await releaseDeployLocksForRun(run.id);
+    if (took && !enqueued) await releaseDeployLocksForRun(run.id, taken);
     throw err;
   }
 

@@ -23,12 +23,17 @@ vi.mock('../../pipeline/deploy-confirmations.js', () => ({
   replaceDispatchHoldWithTargets: (args: unknown) => replaceHoldsMock(args),
   readDeployHolds: async () => heldNow,
 }));
-const releaseLocksMock = vi.fn(async (_runId: string) => 0);
+const LOCKS = [{ environment: 'live', acquiredAt: '2026-09-27T00:00:00.000Z' }];
+const releaseLocksMock = vi.fn(async (..._a: unknown[]) => 0);
 vi.mock('../../pipeline/deploy-lock.js', async () => {
   const real = await vi.importActual<typeof import('../../pipeline/deploy-lock.js')>(
     '../../pipeline/deploy-lock.js',
   );
-  return { ...real, releaseDeployLocksForRun: (runId: string) => releaseLocksMock(runId) };
+  return {
+    ...real,
+    readDeployLocksHeld: async () => LOCKS,
+    releaseDeployLocksForRun: (...a: unknown[]) => releaseLocksMock(...(a as [string])),
+  };
 });
 const enqueueConfirmMock = vi.fn();
 vi.mock('./confirm.js', () => ({

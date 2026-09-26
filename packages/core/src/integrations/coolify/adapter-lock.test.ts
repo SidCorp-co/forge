@@ -15,9 +15,10 @@ vi.mock('../store.js', () => ({
 vi.mock('../../config/env.js', () => ({ env: { NODE_ENV: 'test' } }));
 vi.mock('../../db/client.js', () => ({ db: {} }));
 const recordDeliveryMock = vi.fn();
+const updateDeliveryMock = vi.fn();
 vi.mock('../deliveries.js', () => ({
   recordDelivery: (...a: unknown[]) => recordDeliveryMock(...(a as [])),
-  updateDelivery: vi.fn(),
+  updateDelivery: (...a: unknown[]) => updateDeliveryMock(...(a as [])),
 }));
 const replaceHoldsMock = vi.fn(async (_args: unknown) => true);
 /** What `readDeployHolds` finds once the dispatch has written its holds. */
@@ -27,12 +28,17 @@ vi.mock('../../pipeline/deploy-confirmations.js', () => ({
   replaceDispatchHoldWithTargets: (args: unknown) => replaceHoldsMock(args),
   readDeployHolds: async () => heldNow,
 }));
-const releaseLocksMock = vi.fn(async (_runId: string) => 0);
+const LOCKS = [{ environment: 'live', acquiredAt: '2026-09-27T00:00:00.000Z' }];
+const releaseLocksMock = vi.fn(async (..._a: unknown[]) => 0);
 vi.mock('../../pipeline/deploy-lock.js', async () => {
   const real = await vi.importActual<typeof import('../../pipeline/deploy-lock.js')>(
     '../../pipeline/deploy-lock.js',
   );
-  return { ...real, releaseDeployLocksForRun: (runId: string) => releaseLocksMock(runId) };
+  return {
+    ...real,
+    readDeployLocksHeld: async () => LOCKS,
+    releaseDeployLocksForRun: (...a: unknown[]) => releaseLocksMock(...(a as [string])),
+  };
 });
 const enqueueConfirmMock = vi.fn();
 vi.mock('./confirm.js', () => ({
@@ -94,7 +100,7 @@ describe('coolifyAdapter.dispatchOutbound — the environment the dispatch no lo
       }),
     ).rejects.toThrow(/coolify deploy failed for 2\/2/);
 
-    expect(releaseLocksMock.mock.calls).toEqual([[RUN_ID]]);
+    expect(releaseLocksMock.mock.calls).toEqual([[RUN_ID, LOCKS]]);
   });
 
   it('holds the environment while one of the two is still building', async () => {
@@ -137,6 +143,41 @@ describe('coolifyAdapter.dispatchOutbound — the environment the dispatch no lo
       }),
     ).rejects.toThrow(/coolify deploy failed/);
 
+    expect(releaseLocksMock).not.toHaveBeenCalled();
+  });
+
+  // Coolify accepted B and is building it; the delivery row is what failed. Recording B only
+  // after that row is persisted leaves the dispatch reporting A alone — one resolved target, a
+  // record that reads idle, and the environment freed under a deploy that is still running.
+  it('records a deploy Coolify accepted even when its delivery row cannot be written', async () => {
+    let n = 0;
+    globalThis.fetch = vi.fn(async () => {
+      n += 1;
+      return n === 1
+        ? new Response('boom', { status: 500 })
+        : new Response(JSON.stringify({ deployment_uuid: 'dep-b' }), { status: 200 });
+    }) as unknown as typeof fetch;
+    updateDeliveryMock.mockImplementation(async (_id: unknown, patch: { status: string }) => {
+      if (patch.status === 'ok') throw new Error('delivery row refused');
+    });
+    heldNow = { 'target:del-1': { status: 'failed' }, 'target:del-2': { status: 'pending' } };
+
+    await expect(
+      coolifyAdapter.dispatchOutbound(twoTargetCtx(), {
+        eventName: 'release.requested',
+        payload: { runId: RUN_ID },
+        requestId: 'req-b',
+      }),
+    ).rejects.toThrow('delivery row refused');
+
+    const args = replaceHoldsMock.mock.calls[0]?.[0] as {
+      targets: { deliveryId: string; status: string }[];
+    };
+    expect(args.targets).toEqual([
+      expect.objectContaining({ deliveryId: 'del-1', status: 'failed' }),
+      expect.objectContaining({ deliveryId: 'del-2', status: 'pending' }),
+    ]);
+    expect(enqueueConfirmMock).toHaveBeenCalledTimes(1);
     expect(releaseLocksMock).not.toHaveBeenCalled();
   });
 

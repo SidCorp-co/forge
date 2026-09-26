@@ -51,9 +51,11 @@ vi.mock('../../pipeline/deploy-confirmations.js', async () => {
 // ISS-1279 — the environment hold, freed when the deploy ends. Mocked rather
 // than given a `db`, because what these cases assert is that the release
 // happens on both terminal arms and is keyed on the settling run.
-const releaseLocksMock = vi.fn(async (_runId: string) => 0);
+const LOCKS = [{ environment: 'live', acquiredAt: '2026-09-27T00:00:00.000Z' }];
+const releaseLocksMock = vi.fn(async (..._a: unknown[]) => 0);
 vi.mock('../../pipeline/deploy-lock.js', () => ({
-  releaseDeployLocksForRun: (runId: string) => releaseLocksMock(runId),
+  readDeployLocksHeld: async () => LOCKS,
+  releaseDeployLocksForRun: (...a: unknown[]) => releaseLocksMock(...(a as [string])),
 }));
 
 const closeRunMock = vi.fn(async () => 'settled' as const);
@@ -181,7 +183,7 @@ describe('runCoolifyConfirm', () => {
     });
     expect(setCurrentStepMock.mock.calls).toEqual([[RUN_ID, 'release.deploy.done']]);
     expect(closeRunMock.mock.calls).toEqual([[RUN_ID, 'completed']]);
-    expect(releaseLocksMock.mock.calls).toEqual([[RUN_ID]]);
+    expect(releaseLocksMock.mock.calls).toEqual([[RUN_ID, LOCKS]]);
   });
 
   it('leaves a run nobody tried to close alone, even with every target confirmed', async () => {
@@ -205,7 +207,7 @@ describe('runCoolifyConfirm', () => {
     });
     expect(recordDeliveryMock.mock.calls[0]?.[0]).toMatchObject({ eventName: 'deploy.failed' });
     expect(closeRunMock.mock.calls).toEqual([[RUN_ID, 'failed']]);
-    expect(releaseLocksMock.mock.calls).toEqual([[RUN_ID]]);
+    expect(releaseLocksMock.mock.calls).toEqual([[RUN_ID, LOCKS]]);
   });
 
   it('holds the environment through a failure while a sibling target is still building', async () => {
@@ -226,7 +228,7 @@ describe('runCoolifyConfirm', () => {
 
     await runCoolifyConfirm(job());
 
-    expect(releaseLocksMock.mock.calls).toEqual([[RUN_ID]]);
+    expect(releaseLocksMock.mock.calls).toEqual([[RUN_ID, LOCKS]]);
   });
 
   // ISS-1279 — a settlement that finds no hold of its OWN knows nothing about its siblings: the

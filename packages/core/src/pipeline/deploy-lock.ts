@@ -9,8 +9,7 @@ import { DEPLOY_CONFIRM_WINDOW_MS, type DeployHolds } from './deploy-confirmatio
 
 export const DEPLOY_ENVIRONMENT_LOCKED = 'DEPLOY_ENVIRONMENT_LOCKED';
 
-/** Expiry does not free a transaction's row lock, so an acquire waiting on one that never commits
- *  needs a bound of its own. */
+/** Expiry frees no transaction's row lock, so an acquire waiting on one needs its own bound. */
 export const DEPLOY_LOCK_WAIT_MS = 3_000;
 
 /** Postgres `lock_not_available`, raised when `lock_timeout` runs out. */
@@ -32,7 +31,7 @@ export interface DeployLockHolder {
 }
 
 /** `holder` is null only where nothing could be read — a concurrent acquire that has not
- *  committed — and the message says so rather than inventing one. */
+ *  committed — and the message says so. */
 export class DeployEnvironmentLockedError extends Error {
   readonly code = DEPLOY_ENVIRONMENT_LOCKED;
 
@@ -158,11 +157,38 @@ function isLockWaitTimeout(err: unknown): boolean {
   return outer?.code === LOCK_NOT_AVAILABLE || outer?.cause?.code === LOCK_NOT_AVAILABLE;
 }
 
-/** Keyed on the run alone: one that took no lock frees nothing, and one whose hold was reclaimed
- *  cannot free the successor. */
-export async function releaseDeployLocksForRun(runId: string): Promise<number> {
+/** One row of the lock table, identified by when it was taken as well as where: a reacquire moves
+ *  `acquired_at`, telling this hold from the next on the same environment. `acquiredAt` is
+ *  Postgres' own rendering, carried back verbatim — a JS `Date` truncates its microseconds. */
+export interface DeployLockHeld {
+  environment: string;
+  acquiredAt: string;
+}
+
+/** What this run holds NOW, read before the deploy-hold record is. */
+export async function readDeployLocksHeld(runId: string): Promise<DeployLockHeld[]> {
+  const rows = await db.execute<{ environment: string; acquired_at: string }>(sql`
+    SELECT environment, acquired_at::text AS acquired_at
+      FROM deploy_locks WHERE run_id = ${runId}
+  `);
+  return rows.map((r) => ({ environment: r.environment, acquiredAt: r.acquired_at }));
+}
+
+/** Keyed on the run: one that took no lock frees nothing, one whose hold was reclaimed cannot free
+ *  the successor, and `held` narrows it to the rows a reading accounted for. */
+export async function releaseDeployLocksForRun(
+  runId: string,
+  held?: readonly DeployLockHeld[],
+): Promise<number> {
+  if (held && held.length === 0) return 0;
+  const only = held
+    ? sql` AND (environment, acquired_at) IN (${sql.join(
+        held.map((h) => sql`(${h.environment}, ${h.acquiredAt}::timestamptz)`),
+        sql`, `,
+      )})`
+    : sql``;
   const freed = await db.execute<{ environment: string }>(sql`
-    DELETE FROM deploy_locks WHERE run_id = ${runId} RETURNING environment
+    DELETE FROM deploy_locks WHERE run_id = ${runId}${only} RETURNING environment
   `);
   return freed.length;
 }

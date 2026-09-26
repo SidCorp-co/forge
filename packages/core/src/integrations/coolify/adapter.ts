@@ -7,7 +7,11 @@ import {
   readDeployHolds,
   replaceDispatchHoldWithTargets,
 } from '../../pipeline/deploy-confirmations.js';
-import { deployHoldsIdle, releaseDeployLocksForRun } from '../../pipeline/deploy-lock.js';
+import {
+  deployHoldsIdle,
+  readDeployLocksHeld,
+  releaseDeployLocksForRun,
+} from '../../pipeline/deploy-lock.js';
 import { recordDelivery, updateDelivery } from '../deliveries.js';
 import { findConnectionById, updateConnection } from '../store.js';
 import {
@@ -98,6 +102,7 @@ interface DispatchOutcome {
  */
 async function recordDispatchOutcome(outcome: DispatchOutcome): Promise<void> {
   const { runId, bindingId, pendingConfirms } = outcome;
+  const heldLocks = runId ? await readDeployLocksHeld(runId) : [];
   let held = false;
   if (runId) {
     held = await replaceDispatchHoldWithTargets({
@@ -137,7 +142,7 @@ async function recordDispatchOutcome(outcome: DispatchOutcome): Promise<void> {
   // nothing is reaching the environment, while a refused hold says nothing at all about what
   // Coolify is running, and freeing on that is how a second deploy joins the first one in flight.
   if (runId && held && deployHoldsIdle(await readDeployHolds(runId))) {
-    await releaseDeployLocksForRun(runId);
+    await releaseDeployLocksForRun(runId, heldLocks);
   }
 }
 
@@ -285,6 +290,7 @@ const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySec
         }
 
         const started = Date.now();
+        let accepted: string | undefined;
         try {
           // Always force-rebuild: a release/re-deploy should produce a fresh build
           // even when Coolify thinks the commit is unchanged (ISS-290).
@@ -295,6 +301,27 @@ const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySec
           if (!deploymentUuid) {
             throw new Error('coolify deploy: response carried no deployment_uuid');
           }
+          // Coolify is building it from here, so the bookkeeping records it BEFORE the delivery
+          // row is persisted: a write that fails afterwards must not leave the dispatch reporting
+          // a set of targets that omits a deploy now running, which reads as an idle environment
+          // and frees the hold under it (ISS-1279). Published only once the holds are installed —
+          // a target settling first is recorded against a hold that does not exist yet.
+          accepted = deploymentUuid;
+          confirmations.push({
+            deliveryId,
+            targetLabel: target.label,
+            deploymentUuid,
+            status: 'pending',
+          });
+          pendingConfirms.push({
+            jobKind: 'coolify.confirm',
+            bindingId: ctx.bindingId,
+            runId,
+            deliveryId,
+            deploymentUuid,
+            targetLabel: target.label,
+            deadlineAt: confirmDeadlineAt,
+          });
           const durationMs = Date.now() - started;
           totalDurationMs += durationMs;
           if (!firstDeploymentUuid) firstDeploymentUuid = deploymentUuid;
@@ -308,26 +335,10 @@ const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySec
             durationMs,
             completedAt: new Date(),
           });
-          confirmations.push({
-            deliveryId,
-            targetLabel: target.label,
-            deploymentUuid,
-            status: 'pending',
-          });
-          // Published after the holds are installed, never here: a target that
-          // settles before `replaceDispatchHoldWithTargets` has run is recorded
-          // against a hold that does not exist yet, and is then installed as
-          // `pending` with nothing left to settle it (ISS-1279).
-          pendingConfirms.push({
-            jobKind: 'coolify.confirm',
-            bindingId: ctx.bindingId,
-            runId,
-            deliveryId,
-            deploymentUuid,
-            targetLabel: target.label,
-            deadlineAt: confirmDeadlineAt,
-          });
         } catch (err) {
+          // A deploy Coolify accepted cannot be re-recorded as a refusal: the failure is the
+          // delivery row's, and it ends the fan-out loudly rather than rewriting what is running.
+          if (accepted) throw err;
           const durationMs = Date.now() - started;
           totalDurationMs += durationMs;
           const status = err instanceof CoolifyApiError ? err.status : null;

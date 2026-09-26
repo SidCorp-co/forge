@@ -6,7 +6,7 @@ import {
   settleDeployTarget,
   targetHoldKey,
 } from '../../pipeline/deploy-confirmations.js';
-import { releaseDeployLocksForRun } from '../../pipeline/deploy-lock.js';
+import { readDeployLocksHeld, releaseDeployLocksForRun } from '../../pipeline/deploy-lock.js';
 import { closeRun, RELEASE_DEPLOY_DONE_STEP, setCurrentStep } from '../../pipeline/runs.js';
 import { boss } from '../../queue/boss.js';
 import { recordDelivery } from '../deliveries.js';
@@ -207,6 +207,9 @@ export async function applyDeploySettlement(
     return { settled: verdict, closedRun: false, ...(detail ? { detail } : {}) };
   }
 
+  // Read BEFORE the record is: a lock this run takes after that reading — the same release
+  // dispatching again — was never what these holds described (ISS-1279).
+  const heldLocks = await readDeployLocksHeld(data.runId);
   const holds = await settleDeployTarget({
     runId: data.runId,
     deliveryId: data.deliveryId,
@@ -222,7 +225,7 @@ export async function applyDeploySettlement(
   // hold was reclaimed cannot free its successor.
   const witnessed = holds[targetHoldKey(data.deliveryId)];
   const stillReaching = Object.values(holds).some((h) => h.status === 'pending');
-  if (witnessed && !stillReaching) await releaseDeployLocksForRun(data.runId);
+  if (witnessed && !stillReaching) await releaseDeployLocksForRun(data.runId, heldLocks);
 
   if (verdict === 'failed') {
     logger.error(

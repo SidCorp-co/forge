@@ -88,16 +88,24 @@ export async function openDeployDispatchHold(args: {
   bindingId: string;
   requestId: string;
   targetLabel: string;
+  /** A sibling of the SAME fan-out already holds a placeholder, so this is work the run authorised
+   *  while live and going terminal midway disowns no half of it (ISS-1279). */
+  authorisedBySibling?: boolean;
   now?: Date;
 }): Promise<boolean> {
   const now = args.now ?? new Date();
-  return writeHold(args.runId, dispatchHoldKey(args.requestId), {
-    bindingId: args.bindingId,
-    deploymentUuid: null,
-    targetLabel: args.targetLabel,
-    status: 'pending',
-    deadlineAt: new Date(now.getTime() + DEPLOY_CONFIRM_WINDOW_MS).toISOString(),
-  });
+  return writeHold(
+    args.runId,
+    dispatchHoldKey(args.requestId),
+    {
+      bindingId: args.bindingId,
+      deploymentUuid: null,
+      targetLabel: args.targetLabel,
+      status: 'pending',
+      deadlineAt: new Date(now.getTime() + DEPLOY_CONFIRM_WINDOW_MS).toISOString(),
+    },
+    args.authorisedBySibling ?? false,
+  );
 }
 
 /**
