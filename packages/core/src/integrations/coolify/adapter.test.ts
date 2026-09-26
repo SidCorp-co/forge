@@ -252,6 +252,31 @@ describe('coolifyAdapter — the deploy is held until Coolify confirms it (ISS-9
     );
   });
 
+  // A confirmation that runs before the holds are installed settles a hold that does not exist,
+  // and the target it names is then installed as `pending` with nothing left to settle it — the
+  // run never closes, and the environment it deployed to stays held to the deadline (ISS-1279).
+  it('installs every hold before it schedules the first confirmation', async () => {
+    const order: string[] = [];
+    replaceHoldsMock.mockImplementation(async () => {
+      order.push('holds');
+      return true;
+    });
+    enqueueConfirmMock.mockImplementation(() => order.push('confirm'));
+    let n = 0;
+    globalThis.fetch = vi.fn(async () => {
+      n += 1;
+      return new Response(JSON.stringify({ deployment_uuid: `dep-${n}` }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    await coolifyAdapter.dispatchOutbound(twoTargetCtx(), {
+      eventName: 'release.requested',
+      payload: { runId: RUN_ID },
+      requestId: 'req-1',
+    });
+
+    expect(order).toEqual(['holds', 'confirm', 'confirm']);
+  });
+
   it('a target that never got a deployment_uuid is already a FAILED hold, not a pending one', async () => {
     let n = 0;
     globalThis.fetch = vi.fn(async () => {

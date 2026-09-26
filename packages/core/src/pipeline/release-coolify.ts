@@ -8,7 +8,7 @@ import { listActiveDeployBindingsForProvider } from '../integrations/store.js';
 import { logger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { projectAutoProdDeploy } from './auto-prod-deploy.js';
-import { openDeployDispatchHold } from './deploy-confirmations.js';
+import { abandonDeployDispatchHold, openDeployDispatchHold } from './deploy-confirmations.js';
 import { acquireDeployLocks, releaseDeployLocksForRun } from './deploy-lock.js';
 import { RELEASE_DEPLOY_IN_FLIGHT_STEP, setCurrentStep } from './runs.js';
 
@@ -264,7 +264,11 @@ export async function tryDispatchCoolifyRelease(args: {
       }
     }
   } catch (err) {
-    // Only where NOTHING reached Coolify: once a binding is on its way, that hold ends at the settlement or the expiry like any other.
+    // A placeholder whose deploy was never queued is a hold nothing can settle.
+    for (const { binding, requestId } of armed) {
+      if (!dispatched.includes(binding.id)) await abandonDeployDispatchHold(runId, requestId);
+    }
+    // The lock goes only where NOTHING reached Coolify: once a binding is on its way, that hold ends at the settlement or the expiry like any other.
     await freeLockIfIdle(lock, runId, dispatched.length);
     throw err;
   }

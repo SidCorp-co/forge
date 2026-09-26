@@ -77,8 +77,10 @@ vi.mock('./runs.js', () => ({
 }));
 
 const openHoldSpy = vi.fn(async (_args: unknown) => true);
+const abandonHoldSpy = vi.fn(async (_runId: string, _requestId: string) => undefined);
 vi.mock('./deploy-confirmations.js', () => ({
   openDeployDispatchHold: (args: unknown) => openHoldSpy(args),
+  abandonDeployDispatchHold: (runId: string, requestId: string) => abandonHoldSpy(runId, requestId),
   DEPLOY_CONFIRM_WINDOW_MS: 30 * 60_000,
 }));
 
@@ -137,6 +139,8 @@ beforeEach(() => {
   releaseLocksMock.mockResolvedValue(0);
   openHoldSpy.mockReset();
   openHoldSpy.mockResolvedValue(true);
+  abandonHoldSpy.mockReset();
+  abandonHoldSpy.mockResolvedValue(undefined);
 });
 
 describe('tryDispatchCoolifyRelease — the environment hold', () => {
@@ -321,6 +325,28 @@ describe('tryDispatchCoolifyRelease — the environment hold', () => {
 
     expect(enqueueSpy).toHaveBeenCalledTimes(2);
     expect(releaseLocksMock).not.toHaveBeenCalled();
+  });
+
+  // A placeholder whose deploy was never queued is a hold nothing can settle: the run cannot
+  // close, and the environment stays held to that hold's deadline with nothing deploying.
+  it('forgets the placeholder of a binding it never managed to enqueue', async () => {
+    listBindingsSpy.mockResolvedValueOnce([stagingPair, pairOf(SECOND_INT, ['preview'])]);
+    enqueueSpy
+      .mockImplementationOnce(() => undefined)
+      .mockImplementationOnce(() => {
+        throw new Error('queue is down');
+      });
+
+    await tryDispatchCoolifyRelease({
+      projectId: PROJECT_ID,
+      issueId: null,
+      runId: RUN_ID,
+      takeEnvironmentLock: true,
+    }).catch(() => undefined);
+
+    expect(abandonHoldSpy.mock.calls.map((c) => c[0])).toEqual([RUN_ID]);
+    const kept = openHoldSpy.mock.calls.map((c) => (c[0] as { requestId: string }).requestId);
+    expect(abandonHoldSpy.mock.calls[0]?.[1]).toBe(kept[1]);
   });
 });
 

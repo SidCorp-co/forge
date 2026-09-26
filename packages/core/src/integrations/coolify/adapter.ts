@@ -17,7 +17,7 @@ import {
 } from '../types.js';
 import { breakerAllowsDispatch, maybeResetBreaker, maybeTripBreaker } from './circuit-breaker.js';
 import { CoolifyApiError, coolifyAbilityForRoute, describeCoolifyForbidden } from './client.js';
-import { enqueueCoolifyConfirm } from './confirm.js';
+import { type CoolifyConfirmJob, enqueueCoolifyConfirm } from './confirm.js';
 import { buildClient } from './log-fetch.js';
 import {
   COOLIFY_BINDING_CONFIG_KEYS,
@@ -179,6 +179,7 @@ const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySec
       status: DeployConfirmationStatus;
       detail?: string;
     }[] = [];
+    const pendingConfirms: CoolifyConfirmJob[] = [];
 
     for (const target of targets) {
       const targetRequestId = input.requestId ? `${input.requestId}:${target.id}` : undefined;
@@ -245,18 +246,19 @@ const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySec
           deploymentUuid,
           status: 'pending',
         });
-        await enqueueCoolifyConfirm(
-          {
-            jobKind: 'coolify.confirm',
-            bindingId: ctx.bindingId,
-            runId,
-            deliveryId,
-            deploymentUuid,
-            targetLabel: target.label,
-            deadlineAt: confirmDeadlineAt,
-          },
-          { startAfterSeconds: 0 },
-        );
+        // Published after the holds are installed, never here: a target that
+        // settles before `replaceDispatchHoldWithTargets` has run is recorded
+        // against a hold that does not exist yet, and is then installed as
+        // `pending` with nothing left to settle it (ISS-1279).
+        pendingConfirms.push({
+          jobKind: 'coolify.confirm',
+          bindingId: ctx.bindingId,
+          runId,
+          deliveryId,
+          deploymentUuid,
+          targetLabel: target.label,
+          deadlineAt: confirmDeadlineAt,
+        });
       } catch (err) {
         const durationMs = Date.now() - started;
         totalDurationMs += durationMs;
@@ -297,6 +299,9 @@ const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySec
         targets: confirmations,
         ...(input.requestId ? { requestId: input.requestId } : {}),
       });
+      for (const job of pendingConfirms) {
+        await enqueueCoolifyConfirm(job, { startAfterSeconds: 0 });
+      }
       if (!held) {
         logger.error(
           { runId, bindingId: ctx.bindingId, targets: confirmations.length },

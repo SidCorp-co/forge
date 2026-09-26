@@ -334,3 +334,74 @@ describe('a hold whose owner is gone reads as free', () => {
     );
   });
 });
+
+// Against the real bookkeeping, not a mock of it: the hold record is what the release decision
+// reads, so a hold that stops telling the truth is an environment held with nothing deploying.
+describe('the hold ends when the last deploy does', () => {
+  const targetsOf = (n: number) =>
+    Array.from({ length: n }, (_, i) => ({
+      deliveryId: `del-${i}`,
+      targetLabel: `Target ${i}`,
+      deploymentUuid: `dep-${i}`,
+      status: 'pending' as const,
+    }));
+
+  async function armed(runId: string, count: number): Promise<void> {
+    const { replaceDispatchHoldWithTargets } = await import(
+      '../../src/pipeline/deploy-confirmations.js'
+    );
+    await replaceDispatchHoldWithTargets({
+      runId,
+      bindingId: '00000000-0000-4000-8000-0000000000b1',
+      targets: targetsOf(count),
+    });
+  }
+
+  const settle = async (
+    runId: string,
+    deliveryId: string,
+    verdict: 'succeeded' | 'failed',
+  ): Promise<void> => {
+    const { applyDeploySettlement } = await import('../../src/integrations/coolify/confirm.js');
+    await applyDeploySettlement(
+      {
+        bindingId: '00000000-0000-4000-8000-0000000000b1',
+        runId,
+        deliveryId,
+        deploymentUuid: `dep-${deliveryId}`,
+        targetLabel: deliveryId,
+      },
+      verdict,
+    );
+  };
+
+  it('frees it only after the last of three targets, though the first failed the run', async () => {
+    const { acquireDeployLocks } = await lockModule();
+    const run = await makeRun();
+    await acquireDeployLocks(request(run), ['live']);
+    await armed(run, 3);
+
+    await settle(run, 'del-0', 'failed');
+    expect((await lockRow('live'))?.run_id).toBe(run);
+
+    await settle(run, 'del-1', 'succeeded');
+    expect((await lockRow('live'))?.run_id).toBe(run);
+
+    await settle(run, 'del-2', 'succeeded');
+    expect(await lockRow('live')).toBeNull();
+  });
+
+  it('lets the next release take the environment the moment that last target ends', async () => {
+    const { acquireDeployLocks } = await lockModule();
+    const run = await makeRun();
+    const next = await makeRun();
+    await acquireDeployLocks(request(run), ['live']);
+    await armed(run, 2);
+    await settle(run, 'del-0', 'failed');
+    await settle(run, 'del-1', 'succeeded');
+
+    await acquireDeployLocks(request(next), ['live']);
+
+    expect((await lockRow('live'))?.run_id).toBe(next);
+  });
+});

@@ -28,16 +28,34 @@ export const targetHoldKey = (deliveryId: string): string => `target:${deliveryI
 
 const holdsParentEnsured = sql`coalesce(${pipelineRuns.metadata}, '{}'::jsonb) || jsonb_build_object('__forge_deploy_confirm', coalesce(${pipelineRuns.metadata} -> '__forge_deploy_confirm', '{}'::jsonb))`;
 
-async function writeHold(runId: string, key: string, hold: DeployConfirmation): Promise<boolean> {
+async function writeHold(
+  runId: string,
+  key: string,
+  hold: DeployConfirmation,
+  /**
+   * Whether a terminal run may still take this write. Only a SETTLEMENT passes
+   * it (ISS-1279): one target failing closes the run while Coolify keeps
+   * building its siblings, and refusing their outcomes leaves the run's record
+   * saying a finished deploy is still pending, for ever. It creates no hold.
+   */
+  evenIfTerminal = false,
+): Promise<boolean> {
+  const live = inArray(pipelineRuns.status, ['running', 'paused']);
   const written = await db
     .update(pipelineRuns)
     .set({
       metadata: sql`jsonb_set(${holdsParentEnsured}, ARRAY['__forge_deploy_confirm', ${key}], ${JSON.stringify(hold)}::jsonb, true)`,
       updatedAt: new Date(),
     })
-    .where(and(eq(pipelineRuns.id, runId), inArray(pipelineRuns.status, ['running', 'paused'])))
+    .where(evenIfTerminal ? eq(pipelineRuns.id, runId) : and(eq(pipelineRuns.id, runId), live))
     .returning({ id: pipelineRuns.id });
   return written.length > 0;
+}
+
+/** Forget a dispatch placeholder whose deploy was never queued (ISS-1279): nothing can settle it,
+ *  so the run cannot close and the environment stays held to that hold's own deadline. */
+export async function abandonDeployDispatchHold(runId: string, requestId: string): Promise<void> {
+  await dropHold(runId, dispatchHoldKey(requestId));
 }
 
 async function dropHold(runId: string, key: string): Promise<void> {
@@ -136,11 +154,12 @@ export async function settleDeployTarget(args: {
   const holds = await readDeployHolds(args.runId);
   const existing = holds[key];
   if (existing) {
-    await writeHold(args.runId, key, {
-      ...existing,
-      status: args.status,
-      ...(args.detail ? { detail: args.detail } : {}),
-    });
+    await writeHold(
+      args.runId,
+      key,
+      { ...existing, status: args.status, ...(args.detail ? { detail: args.detail } : {}) },
+      true,
+    );
   }
   return readDeployHolds(args.runId);
 }
