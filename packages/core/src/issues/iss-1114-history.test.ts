@@ -43,7 +43,8 @@ const LANDING_HEAD = 'dce6f354c727baa81c681f144cbadf30050eabfc';
 /** ISS-1114 names no runtime anywhere, so what a host answers decides none of it. */
 const LIVE: ServingReading = {
   kind: 'serving',
-  commit: '33637c612ef15be6f924520c0d201a0889d8ed7e',
+  commits: ['33637c612ef15be6f924520c0d201a0889d8ed7e'],
+  unread: [],
   hosts: ['https://app.test/build-info'],
   readAt: '2026-09-26T23:55:00.000Z',
 };

@@ -302,7 +302,7 @@ export async function collectReleaseBlockers(
   // and for the judgement that the rest are moot, which cannot be made where it
   // cannot be read. Returning here instead reported one reason, and it was the
   // one reason the operator could not act on (ISS-1127).
-  const channels = await gatedBlockers(projectId, door, options.issueIds, blockers, warnings);
+  const channels = await gatedBlockers(projectId, door, options, blockers, warnings);
   return {
     projectId,
     projectExists: true,
@@ -318,10 +318,11 @@ export async function collectReleaseBlockers(
 async function gatedBlockers(
   projectId: string,
   door: ReleaseDoor,
-  issueIds: string[] | undefined,
+  options: CollectReleaseBlockersOptions,
   out: ReleaseBlocker[],
   warnings: ReleaseWarning[],
 ): Promise<ReleaseChannel[] | null> {
+  const { issueIds } = options;
   // Both groups are READ here and REPORTED in the order the door refuses in.
   // A channel read that failed must not outrank a roster reason the batch door
   // reached first, or a 409 an operator already knows becomes a 503.
@@ -360,7 +361,9 @@ async function gatedBlockers(
       out,
     );
     if (active) out.push(blocker('BATCH_IN_FLIGHT', { runId: active.runId }));
-    if (!issueIds && found) await criteriaHold(projectId, found.unclaimed, out, warnings);
+    if (!issueIds && found) {
+      await criteriaHold(projectId, found.unclaimed, out, warnings, options.serving);
+    }
   }
   return channels;
 }

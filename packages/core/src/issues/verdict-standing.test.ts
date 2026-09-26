@@ -18,16 +18,26 @@ const HOST = 'https://helpdesk-api.musetools.com/api/build-info';
 const at = (kind: 'runtime' | 'source', value: string): VerdictIdentity => ({ kind, value });
 const has = (source: string | null): IssueIdentities => ({ source });
 
-/** The four shapes a reading comes back in, as `readServingNow` builds them. */
+/** The three shapes a reading comes back in, as `readServingNow` builds them. */
 const serving = (commit: string): ServingReading => ({
   kind: 'serving',
-  commit,
+  commits: [commit],
+  unread: [],
   hosts: [HOST],
   readAt: READ_AT,
 });
 const disagreeing = (commits: string[]): ServingReading => ({
-  kind: 'disagreeing',
+  kind: 'serving',
   commits,
+  unread: [],
+  hosts: [HOST, 'https://second.test/health'],
+  readAt: READ_AT,
+});
+/** One probe answered, another gave nothing: an answer, not an absence. */
+const partial = (commit: string): ServingReading => ({
+  kind: 'serving',
+  commits: [commit],
+  unread: ['https://second.test/health is unreachable (ECONNREFUSED)'],
   hosts: [HOST, 'https://second.test/health'],
   readAt: READ_AT,
 });
@@ -102,6 +112,15 @@ describe('verdictStanding — a runtime verdict against a reading (ISS-1286)', (
     expect(verdictStanding(at('runtime', SOURCE), disagreeing([SERVING, OTHER]), has(null))).toBe(
       'superseded',
     );
+  });
+
+  // ISS-1286 F3 — one probe answering beside one that failed is a reading, never an absence.
+  it('stands on the one commit a partly answering fleet reported', () => {
+    expect(verdictStanding(at('runtime', SERVING), partial(SERVING), has(null))).toBe('stands');
+  });
+
+  it('is superseded, not uncorroborated, where a partly answering fleet reported another', () => {
+    expect(verdictStanding(at('runtime', OTHER), partial(SERVING), has(null))).toBe('superseded');
   });
 
   it('resolves against the reading and never against what the issue stored', () => {
@@ -180,6 +199,13 @@ describe('standingSentence', () => {
     expect(line).toContain(SERVING);
     expect(line).toContain(OTHER);
     expect(line).toContain('a rollout that has not finished');
+  });
+
+  it('names the probe that answered nothing beside the commit that was answered', () => {
+    const line = standingSentence('superseded', at('runtime', OTHER), partial(SERVING), has(null));
+    expect(line).toContain(SERVING);
+    expect(line).toContain('ECONNREFUSED');
+    expect(line).not.toContain('a rollout that has not finished');
   });
 
   it('says an uncorroborated verdict is weaker evidence and not a refusal', () => {

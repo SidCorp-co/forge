@@ -106,13 +106,14 @@ describe('readServingNow', () => {
 
     expect(await readServingNow(PROJECT_ID, now)).toEqual({
       kind: 'serving',
-      commit: SERVED,
+      commits: [SERVED],
+      unread: [],
       hosts: ['https://one.test/health'],
       readAt: FROZEN.toISOString(),
     });
   });
 
-  it('reads a fleet that answers two commits as disagreeing, not as an absence', async () => {
+  it('reads a fleet that answers two commits as both of them, not as an absence', async () => {
     resolveReleaseChannelsMock.mockResolvedValue([
       channel(),
       channel({ verify: { probes: [{ url: 'https://two.test/health', commitPath: 'commit' }] } }),
@@ -126,8 +127,23 @@ describe('readServingNow', () => {
     );
 
     const reading = await readServingNow(PROJECT_ID, now);
-    expect(reading.kind).toBe('disagreeing');
-    expect(reading).toMatchObject({ commits: [SERVED, OTHER] });
+    expect(reading).toMatchObject({ kind: 'serving', commits: [SERVED, OTHER], unread: [] });
+  });
+
+  /**
+   * ISS-1286 F3 — `readLiveState` returns neither an identity nor a disagreement here, and reading
+   * that as an absence would earn a verdict naming a commit the answering probe contradicts.
+   */
+  it('keeps the commit one probe answered when another probe answers nothing', async () => {
+    resolveReleaseChannelsMock.mockResolvedValue([
+      channel(),
+      channel({ verify: { probes: [{ url: 'https://down.test/health', commitPath: 'commit' }] } }),
+    ]);
+    vi.stubGlobal('fetch', answering({ 'https://one.test/health': `{"commit":"${SERVED}"}` }));
+
+    const reading = await readServingNow(PROJECT_ID, now);
+    expect(reading).toMatchObject({ kind: 'serving', commits: [SERVED] });
+    expect(reading.kind === 'serving' && reading.unread.join(' ')).toContain('down.test');
   });
 
   it('says undeclared where no channel and no environment declares a probe', async () => {
@@ -147,7 +163,7 @@ describe('readServingNow', () => {
 
     expect(await readServingNow(PROJECT_ID, now)).toMatchObject({
       kind: 'serving',
-      commit: SERVED,
+      commits: [SERVED],
       hosts: ['https://env.test/health'],
     });
   });

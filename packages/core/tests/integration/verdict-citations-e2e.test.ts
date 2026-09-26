@@ -34,7 +34,8 @@ const SERVING = '33637c612ef15be6f924520c0d201a0889d8ed7e';
 /** One reading, shared by every call below, so the only thing that moves is the citation. */
 const LIVE: ServingReading = {
   kind: 'serving',
-  commit: SERVING,
+  commits: [SERVING],
+  unread: [],
   hosts: ['https://app.test/build-info'],
   readAt: '2026-09-26T23:55:00.000Z',
 };

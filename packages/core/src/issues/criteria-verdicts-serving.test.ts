@@ -70,7 +70,8 @@ describe('a runtime verdict against what the host answers (ISS-1286)', () => {
   const SERVED_HEAD = '0d98a6be6d9680b967d3f16542eadd25d02602cb';
   const SERVED: ServingReading = {
     kind: 'serving',
-    commit: SERVED_HEAD,
+    commits: [SERVED_HEAD],
+    unread: [],
     hosts: ['https://helpdesk-api.musetools.com/api/build-info'],
     readAt: READ_AT,
   };
@@ -129,6 +130,22 @@ describe('a runtime verdict against what the host answers (ISS-1286)', () => {
     expect(await issuesWithUnearnedCriteria(['iss-547'], down)).toEqual([]);
   });
 
+  // ISS-1286 F3 — one probe answering beside one that failed refuses a verdict naming neither.
+  it('refuses a verdict against a fleet where one probe answered and another failed', async () => {
+    issueRows = [stale('iss-543')];
+    judgedAt(SERVED_HEAD);
+    const partly: ServingReading = {
+      kind: 'serving',
+      commits: [STORED_ANCESTOR],
+      unread: ['https://two.test/h is unreachable (ECONNREFUSED)'],
+      hosts: ['https://one.test/h', 'https://two.test/h'],
+      readAt: READ_AT,
+    };
+    const [report] = await unearnedCriteriaReports(['iss-543'], partly);
+    expect(report?.unearned[0]?.standing).toBe('superseded');
+    expect(report?.uncorroborated).toEqual([]);
+  });
+
   it('names no criterion uncorroborated where the reading answered a commit', async () => {
     issueRows = [stale('iss-546')];
     judgedAt(SERVED_HEAD);
@@ -150,8 +167,9 @@ describe('a runtime verdict against what the host answers (ISS-1286)', () => {
     issueRows = [stale('iss-543')];
     judgedAt(SERVED_HEAD);
     const rollout: ServingReading = {
-      kind: 'disagreeing',
+      kind: 'serving',
       commits: [STORED_ANCESTOR, '9999999999999999999999999999999999999999'],
+      unread: [],
       hosts: ['https://one.test/h', 'https://two.test/h'],
       readAt: READ_AT,
     };
@@ -164,8 +182,9 @@ describe('a runtime verdict against what the host answers (ISS-1286)', () => {
     issueRows = [stale('iss-543')];
     judgedAt(SERVED_HEAD);
     const rollout: ServingReading = {
-      kind: 'disagreeing',
+      kind: 'serving',
       commits: [STORED_ANCESTOR, SERVED_HEAD],
+      unread: [],
       hosts: ['https://one.test/h', 'https://two.test/h'],
       readAt: READ_AT,
     };

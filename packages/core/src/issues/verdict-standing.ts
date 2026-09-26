@@ -1,13 +1,9 @@
 /**
- * What the identity a verdict names is worth once it is stored: what it resolves against, and what
- * an operator is told when it resolves against nothing.
- *
- * A runtime verdict resolves against a READING of what a project is serving, taken when the verdict
- * is weighed — `release-batch/serving-reading.ts`. `sessionContext.landing.deployment` gates
- * nothing: a commit stored on a row cannot say what a host serves now (ISS-1286). A source verdict
- * resolves against the issue's own source, which is the issue's and does not move on its own.
- *
- * The shapes an identity may be written in live at the write door, `messaging/verdict-identity.ts`.
+ * What the identity a verdict names is worth once it is stored. A runtime verdict resolves against
+ * a READING of what a project is serving — `release-batch/serving-reading.ts` — taken when the
+ * verdict is weighed; `sessionContext.landing.deployment` gates nothing, a commit stored on a row
+ * being unable to say what a host serves now (ISS-1286). A source verdict resolves against the
+ * issue's own source. The shapes an identity may be written in: `messaging/verdict-identity.ts`.
  */
 
 import type { ServingReading } from '../release-batch/serving-reading.js';
@@ -24,11 +20,9 @@ export interface IssueIdentities {
   readonly source: string | null;
 }
 
-/**
- * How a verdict's identity resolves. `stands` and `uncorroborated` are the two a criterion is earned
- * on. `uncorroborated` is a runtime somebody witnessed that nothing here could re-read: absence of a
- * reading is not a failure, so it earns, and it is its own word because it is weaker evidence.
- */
+/** How a verdict's identity resolves; `stands` and `uncorroborated` are the two a criterion is
+ *  earned on. `uncorroborated` is a runtime witnessed that nothing here could re-read: absence of
+ *  a reading is not a failure, so it earns, under its own word because it is weaker evidence. */
 export type VerdictStanding =
   | 'stands'
   | 'superseded'
@@ -61,16 +55,11 @@ export function issueIdentities(row: {
   return { source: textOrNull(row.mergedCommitSha) ?? textOrNull(landing.head) };
 }
 
-/** Whether a runtime verdict names something the reading says is running. */
+/** Whether a runtime verdict names something the reading says is running. Any commit a probe
+ *  answered decides, so a fleet mid-rollout and a fleet one probe of which is down both do. */
 function runtimeStanding(value: string, serving: ServingReading): VerdictStanding {
-  if (serving.kind === 'serving') {
-    return sameIdentity(value, serving.commit) ? 'stands' : 'superseded';
-  }
-  // A fleet mid-rollout answered: those answers decide, exactly as one answer does.
-  if (serving.kind === 'disagreeing') {
-    return serving.commits.some((commit) => sameIdentity(value, commit)) ? 'stands' : 'superseded';
-  }
-  return 'uncorroborated';
+  if (serving.kind !== 'serving') return 'uncorroborated';
+  return serving.commits.some((commit) => sameIdentity(value, commit)) ? 'stands' : 'superseded';
 }
 
 export function verdictStanding(
@@ -105,6 +94,14 @@ function uncorroboratedSentence(at: VerdictIdentity | null, serving: ServingRead
   return `judged at the runtime ${runtime}, and this project declares no way to ask a host what it is serving, so nothing here could check that reading. A verdict nothing could check is weaker evidence than one that was checked, and it is not a refusal`;
 }
 
+/** What a reading of more than one commit, or one taken beside a probe that failed, has to add. */
+function partialClause(serving: ServingReading): string {
+  if (serving.kind !== 'serving') return '';
+  const rollout = serving.commits.length > 1 ? ' — a rollout that has not finished' : '';
+  const unread = serving.unread.length === 0 ? '' : ` (${serving.unread.join('; ')})`;
+  return `${rollout}${unread}`;
+}
+
 function supersededSentence(
   at: VerdictIdentity | null,
   serving: ServingReading,
@@ -114,13 +111,10 @@ function supersededSentence(
   if (at?.kind !== 'runtime') {
     return `judged at ${judged}, and this issue now stands at ${named(identities.source)}`;
   }
-  if (serving.kind === 'serving') {
-    return `judged at ${judged}, and what this project is serving${askedClause(serving)} is ${serving.commit}`;
+  if (serving.kind !== 'serving') {
+    return `judged at ${judged}, and nothing this project declares answered what it is serving`;
   }
-  if (serving.kind === 'disagreeing') {
-    return `judged at ${judged}, and what this project is serving${askedClause(serving)} is ${serving.commits.join(' and ')} — a rollout that has not finished, and neither of those is what this verdict names`;
-  }
-  return `judged at ${judged}, and nothing this project declares answered what it is serving`;
+  return `judged at ${judged}, and what this project is serving${askedClause(serving)} is ${serving.commits.join(' and ')}${partialClause(serving)}`;
 }
 
 export function standingSentence(

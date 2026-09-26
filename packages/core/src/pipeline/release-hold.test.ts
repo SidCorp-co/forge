@@ -19,7 +19,8 @@ const READ_AT = '2026-09-26T23:55:00.000Z';
 
 const live = (readAt = READ_AT): ServingReading => ({
   kind: 'serving',
-  commit: SERVING,
+  commits: [SERVING],
+  unread: [],
   hosts: [HOST],
   readAt,
 });
@@ -108,8 +109,9 @@ describe('the hold a row carries (ISS-1215)', () => {
     const reason = criteriaHold({
       ...REPORT,
       serving: {
-        kind: 'disagreeing',
+        kind: 'serving',
         commits: [SERVING, other],
+        unread: [],
         hosts: [HOST, 'https://two.test/h'],
         readAt: READ_AT,
       },
@@ -154,7 +156,8 @@ describe('the hold a row carries (ISS-1215)', () => {
       ...REPORT,
       serving: {
         kind: 'serving',
-        commit: 'da74b598bcae5a53a1c0f2b9e3d7a41f6c8b2d90',
+        commits: ['da74b598bcae5a53a1c0f2b9e3d7a41f6c8b2d90'],
+        unread: [],
         hosts: [HOST],
         readAt: READ_AT,
       },
@@ -165,7 +168,13 @@ describe('the hold a row carries (ISS-1215)', () => {
   it('reads a reading taken at another host as a different hold', () => {
     const elsewhere = criteriaHold({
       ...REPORT,
-      serving: { kind: 'serving', commit: SERVING, hosts: ['https://other.test/h'], readAt: READ_AT },
+      serving: {
+        kind: 'serving',
+        commits: [SERVING],
+        unread: [],
+        hosts: ['https://other.test/h'],
+        readAt: READ_AT,
+      },
     });
     expect(sameReleaseHold(criteriaHold(REPORT), elsewhere)).toBe(false);
   });

@@ -40,7 +40,8 @@ const READ_AT = '2026-09-26T23:55:00.000Z';
 /** The reading every call below is weighed against, unless a test names another. */
 const LIVE: ServingReading = {
   kind: 'serving',
-  commit: SERVING,
+  commits: [SERVING],
+  unread: [],
   hosts: ['https://app.test/build-info'],
   readAt: READ_AT,
 };

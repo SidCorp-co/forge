@@ -164,6 +164,19 @@ function reportHeldBack(projectId: string, held: readonly IssueCriteriaReport[])
   }
 }
 
+/** An issue cut on a runtime nothing could re-read leaves that on the record, not only the cut. */
+function reportUncorroborated(projectId: string, reports: readonly IssueCriteriaReport[]): void {
+  for (const report of reports) {
+    if (report.uncorroborated.length === 0) continue;
+    logger.warn(
+      { projectId, issueId: report.issueId, criteria: report.uncorroborated },
+      `release-sweep: ${report.issueId} is carried on criterion ${report.uncorroborated.join(', ')} ` +
+        'judged at a runtime nothing here could re-read — the verdict counts, and it is weaker ' +
+        'evidence than a reading would have made it',
+    );
+  }
+}
+
 /** Every issue waiting unclaimed at the gate on this project, oldest merge first. */
 async function waitingIssueIds(projectId: string): Promise<string[]> {
   const rows = await db
@@ -270,6 +283,7 @@ async function sweepProject(
     await hold({ ...base, issueIds: waiting, holdFor: () => reports.hold });
     return;
   }
+  reportUncorroborated(projectId, reports.value);
   const held = reports.value.filter((r) => r.unearned.length > 0);
   const heldById = new Map(held.map((r) => [r.issueId, r]));
   const eligible = waiting.filter((id) => !heldById.has(id));

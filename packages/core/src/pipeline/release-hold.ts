@@ -51,14 +51,10 @@ export function readReleaseHold(value: unknown): ReleaseHold | null {
 }
 
 /**
- * The same reason with the moment a probe was read taken out of it.
- *
- * The host asked and the commit it answered are what the hold SAYS; the clock value beside them
- * moves on every sweep tick while the answer stands still. Left in the comparison it would make a
- * standing hold a new hold each tick, and a rewritten hold is a re-commented hold — a comment a
- * minute for as long as the issue is held. So the stored reason keeps the timestamp of the reading
- * that wrote it, which is what it claims to be, and a reading whose answer has not moved does not
- * replace it (ISS-1215, ISS-1286).
+ * The same reason with the moment a probe was read taken out of it. The host and the commit are
+ * what the hold SAYS; the clock value beside them moves every tick while the answer stands still,
+ * and a rewritten hold is a re-commented hold — a comment a minute for as long as a row is held.
+ * So a stored reason keeps the timestamp of the reading that wrote it (ISS-1215, ISS-1286).
  */
 export function withoutReadingTimes(text: string): string {
   return text.replace(/read at \d{4}-\d{2}-\d{2}T[\d:.]+Z/g, 'read at a moment');
@@ -87,24 +83,15 @@ function reasonsByWhy(report: IssueCriteriaReport): string {
   return [...byWhy].map(([why, numbers]) => `${criteriaNamed(numbers)}: ${why}`).join('; ');
 }
 
-/**
- * Owed by a person: nothing dispatched claims a row at `awaiting_release`, and the release that
- * would is the one holding it, so every act that moves the row from here is somebody's by hand.
- */
 /** Where a verdict has to be judged for it to count, said from the reading rather than from a field. */
 function judgeClause(serving: ServingReading): string {
   const asked = serving.kind === 'undeclared' ? '' : ` (asked at ${serving.hosts.join(', ')})`;
   if (serving.kind === 'serving') {
+    const rollout = serving.commits.length > 1 ? ' — a rollout that has not finished' : '';
+    const unread = serving.unread.length === 0 ? '' : ` ${serving.unread.join('; ')}.` ;
     return (
       `record a verdict on each criterion named, judged at what this project is serving${asked}, ` +
-      `\`${serving.commit}\`, read at ${serving.readAt}`
-    );
-  }
-  if (serving.kind === 'disagreeing') {
-    return (
-      `this project is serving ${serving.commits.join(' and ')} at once${asked}, read at ` +
-      `${serving.readAt} — a rollout that has not finished. Record a verdict on each criterion ` +
-      'named, judged at one of those, or wait for the rollout to settle and judge at what it leaves'
+      `\`${serving.commits.join('` and `')}\`${rollout}, read at ${serving.readAt}.${unread}`
     );
   }
   if (serving.kind === 'unreadable') {
@@ -121,6 +108,10 @@ function judgeClause(serving: ServingReading): string {
   );
 }
 
+/**
+ * Owed by a person: nothing dispatched claims a row at `awaiting_release`, and the release that
+ * would is the one holding it, so every act that moves the row from here is somebody's by hand.
+ */
 export function criteriaHold(report: IssueCriteriaReport): ReleaseHold {
   const judge = judgeClause(report.serving);
   return {

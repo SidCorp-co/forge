@@ -1,7 +1,7 @@
 /** What a project's declared probes answer about the commit it is serving, read when asked and
  *  never stored — a commit on a row is wrong the moment the next deploy lands (ISS-1286).
- *  `serving.ts:readServingDeployment` reads the same probes for its own route; it cannot be called
- *  here, going through `collectReleaseBlockers`, which `criteria-hold.ts` is a part of. */
+ *  `serving.ts:readServingDeployment` shares `readLiveState` with this and neither calls the other,
+ *  nor is either called from `collectReleaseBlockers`, which promises no outbound request. */
 
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -10,13 +10,13 @@ import { liveProbeFrom, resolveReleaseChannels } from './channel.js';
 import type { ReleaseChannel } from './plan.js';
 import { invalidProbeUrls, readLiveState, type VerifyConfig, type VerifyProbe } from './verify.js';
 
-/** One reading. `undeclared` and `unreadable` are an absence, which is not a failure; a
- *  `disagreeing` fleet answered, so its answers decide. */
+/** One reading. `commits` is every distinct commit a probe answered (one settled fleet, more a
+ *  rollout), `unread` a line per probe answering none, and only NO answer at all is an absence. */
 export type ServingReading =
-  | { readonly kind: 'serving'; readonly commit: string; readonly hosts: readonly string[]; readonly readAt: string }
   | {
-      readonly kind: 'disagreeing';
+      readonly kind: 'serving';
       readonly commits: readonly string[];
+      readonly unread: readonly string[];
       readonly hosts: readonly string[];
       readonly readAt: string;
     }
@@ -28,8 +28,8 @@ export type ServingReading =
       readonly readAt: string;
     };
 
-/** The probes the live channels declare, and how many declared a block `parseVerifyConfig`
- *  refused — which decides anything only where `cfg` is null. */
+/** The probes the live channels declare, and how many declared a block `parseVerifyConfig` refused,
+ *  which decides anything only where `cfg` is null. */
 export interface DeclaredProbes {
   readonly cfg: VerifyConfig | null;
   readonly refused: number;
@@ -55,8 +55,7 @@ export function declaredProbesOf(channels: readonly ReleaseChannel[]): DeclaredP
 }
 
 /** The probe a project's own live environment declares. `resolveReleaseChannels` reads no project
- *  row with no live binding, so without this one declaring a live commit url and no binding would
- *  read as one that declared no way to ask. */
+ *  row with no live binding, so a project declaring a commit url and none is not undeclared. */
 async function liveEnvironmentProbe(projectId: string): Promise<VerifyConfig | null> {
   const [row] = await db
     .select({ environments: projects.environments })
@@ -102,11 +101,9 @@ export async function readServingNow(
 
   const state = await readLiveState(declared.cfg);
   const readAt = now().toISOString();
-  if (state.identity !== null) {
-    return { kind: 'serving', commit: state.identity, hosts, readAt };
+  if (state.answeredCommits.length === 0) {
+    return { kind: 'unreadable', why: state.readings.join('; '), hosts, readAt };
   }
-  if (state.disagreement !== null) {
-    return { kind: 'disagreeing', commits: state.disagreement, hosts, readAt };
-  }
-  return { kind: 'unreadable', why: state.readings.join('; '), hosts, readAt };
+  const unread = [...state.unhealthy, ...state.unidentified];
+  return { kind: 'serving', commits: state.answeredCommits, unread, hosts, readAt };
 }

@@ -12,6 +12,7 @@ import {
   releaseBlockerSentence,
 } from './blockers.js';
 import { releaseRunnerLabelOf } from './channel.js';
+import { readServingNow } from './serving-reading.js';
 import type { ReleaseRollback, VerifySource } from './plan.js';
 
 export type ReleaseGapKey = string;
@@ -64,9 +65,10 @@ export interface ReleaseReadiness {
 }
 
 export async function loadReleaseReadiness(projectId: string): Promise<ReleaseReadiness | null> {
-  // ONE pass: the enumerator already guards these reads, and a second unguarded
-  // copy would throw away the report it just produced (ISS-1127).
-  const report = await collectReleaseBlockers(projectId);
+  // ONE pass: the enumerator guards these reads and a second copy would throw away its report
+  // (ISS-1127). The reading is HERE because the enumerator reaches no network (ISS-1286).
+  const serving = await readServingNow(projectId).catch(() => undefined);
+  const report = await collectReleaseBlockers(projectId, { serving });
   if (!report.projectExists) return null;
   const decl = report.declaration;
   const channels = report.channels ?? [];
