@@ -108,9 +108,10 @@ function MethodLine({
 }) {
 	if (!method) {
 		return (
-			<p className="text-sm text-amber" data-testid="method-line">
-				No method announced. This run cannot be finished until it says which
-				skill it loaded.
+			<p className="text-sm text-muted" data-testid="method-line">
+				No method announced. The run can still be finished; what an
+				announcement is needed for is a deploy through Forge, which is refused
+				until this run has recorded something.
 			</p>
 		);
 	}

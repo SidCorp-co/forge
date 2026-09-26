@@ -191,7 +191,8 @@ export const forgeReleaseBatchTool: ContextScopedMcpToolFactory = (ctx) => ({
     'Read and record one release batch from inside the release_batch job that runs it — the calls its prompt names, ' +
     'on the credential the job already holds. Actions: `get` (the batch context: roster, release notes, branches, deploy plan; ' +
     'call it FIRST), `state` (roster, attempts, live reading, bounds, announced method), `method` (announce the method loaded: ' +
-    '`skill` + `loaded`, optional `detail`; finish refuses a run that announced none), `finish` (`commit` = the SHA pushed to ' +
+    '`skill` + `loaded`, optional `detail`; a Coolify deploy is refused until this run has recorded something, and this is the ' +
+    'call that records it first), `finish` (`commit` = the SHA pushed to ' +
     'production; answers at once with the attempt at `accepted`, and the server then reads the probes and closes every claimed issue ' +
     'on its own — read `state` → `finish.state` for `finished` or `failed`, whose `refusal` says why; a new `finish` after a `failed` one ' +
     'starts a new attempt), `abort` (`reason`; closes nothing and leaves closed the issues a finish already closed, answered as `alreadyClosed`; ' +

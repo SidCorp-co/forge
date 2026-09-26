@@ -2488,6 +2488,9 @@
   one that declares none is told where its method lives, instead of being refused for a deploy
   target Forge has no steps for.
 
+- **A release run that never said which method it loaded can now be finished.** The run page no
+  longer says it cannot. What still waits on that announcement is a deploy Forge makes for you.
+
 - **"Deploy when a change lands" is gone from the Coolify settings.** Nothing ever deployed
   through it. A deploy is now only ever something a person or an agent asks for, at the point
   of releasing.
