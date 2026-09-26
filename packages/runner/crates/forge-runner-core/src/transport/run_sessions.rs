@@ -8,6 +8,91 @@ use crate::error::{Error, Result};
 use crate::transport::agent_sessions::{patch_session, SessionPatch};
 use crate::transport::CoreClient;
 
+/// What core's run-session routes accept, as `run-session-routes.ts`'s
+/// `runSessionBodySchema` and `closeBodySchema` state it.
+///
+/// A payload built past one of these earns a `400` naming the field, and that
+/// refusal is terminal for the bytes that earned it, so the caps are built to
+/// here rather than discovered downstream an hour and forty-seven minutes
+/// later (ISS-1284). Whether 16 is the right number is core's question, not
+/// this module's; what this module owes is a payload that obeys whatever
+/// number core states.
+pub const MAX_ISSUE_KEYS: usize = 16;
+pub const MAX_NAME_CODE_UNITS: usize = 60;
+pub const MAX_DETAIL_CODE_UNITS: usize = 500;
+
+/// `text` cut to `max` of the units core counts.
+///
+/// Zod's `.max()` reads JavaScript's `String.length`, which counts UTF-16 code
+/// units, and a `chars()` count agrees with it only until the first character
+/// outside the basic plane — at which point a string this side calls short is
+/// one core refuses. A cut is marked, because a detail silently shortened
+/// reads afterwards as a detail somebody wrote that way.
+pub fn fit(text: &str, max: usize) -> String {
+    if text.encode_utf16().count() <= max {
+        return text.to_string();
+    }
+    if max == 0 {
+        return String::new();
+    }
+    let room = max - '\u{2026}'.len_utf16();
+    let mut out = String::new();
+    let mut units = 0usize;
+    for c in text.chars() {
+        if units + c.len_utf16() > room {
+            break;
+        }
+        out.push(c);
+        units += c.len_utf16();
+    }
+    out.push('\u{2026}');
+    out
+}
+
+/// The name a run carries at core: the keys it was declared over, as many as
+/// fit, and then how many did not.
+///
+/// The name is this box's own label — `forge-runner run declare` takes no name
+/// option, and the daemon composes one from the keys — while the keys are the
+/// run's own. So the label is what gives way when the two cannot both fit, and
+/// it says by how much rather than going quiet. Eight full keys already cross
+/// 60 units, which is what turned five ordinary declarations into five
+/// permanent retry loops on one project in fifty minutes (ISS-1284).
+pub fn session_name(keys: &[String]) -> String {
+    let mut name = String::new();
+    let mut taken = 0usize;
+    for (i, key) in keys.iter().enumerate() {
+        let left = keys.len() - i - 1;
+        let tail = if left == 0 {
+            String::new()
+        } else {
+            format!("+{left} more")
+        };
+        let sep = if name.is_empty() { "" } else { "+" };
+        let would = name.encode_utf16().count()
+            + sep.encode_utf16().count()
+            + key.encode_utf16().count()
+            + tail.encode_utf16().count();
+        if would > MAX_NAME_CODE_UNITS {
+            break;
+        }
+        name.push_str(sep);
+        name.push_str(key);
+        taken += 1;
+    }
+    // Nothing fit beside a count, which takes a single key longer than the
+    // whole name is allowed to be. The run still needs a name core will accept,
+    // so the keys are cut and the cut is marked.
+    if taken == 0 {
+        return fit(&keys.join("+"), MAX_NAME_CODE_UNITS);
+    }
+    let left = keys.len() - taken;
+    if left > 0 {
+        name.push_str(&format!("+{left} more"));
+    }
+    name
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct OpenReply {
@@ -50,11 +135,10 @@ pub async fn open(
     if !resp.status().is_success() {
         let code = resp.status().as_u16();
         let text = resp.text().await.unwrap_or_default();
-        return Err(Error::Other(super::status::refused(
-            "run-session open",
-            code,
-            &text,
-        )));
+        // Classified rather than flattened: the sweep behind this call re-sends
+        // a payload nothing between attempts changes, so it has to be able to
+        // tell a refusal of the bytes from a refusal of the moment (ISS-1284).
+        return Err(super::status::refusal("run-session open", code, &text));
     }
     let parsed: OpenReply = resp
         .json()
@@ -534,5 +618,125 @@ mod tests {
             RECOVERY_PORTS.contains("held_by_this_device"),
             "is_returned reading `held` would wedge this box's close loop on an issue another box legitimately holds (ISS-1109)"
         );
+    }
+
+    fn keys(n: usize) -> Vec<String> {
+        (0..n).map(|i| format!("ISS-{}", 1000 + i)).collect()
+    }
+
+    /// Criterion 8, at the extreme the contract allows: the most keys a
+    /// declaration may legally carry, each as long as `is_issue_key` permits.
+    #[test]
+    fn no_legal_declaration_can_build_a_name_core_refuses() {
+        let longest: Vec<String> = (0..MAX_ISSUE_KEYS)
+            .map(|i| format!("ABCDEF-{}", 1_000_000_000u64 + i as u64))
+            .collect();
+        for set in [keys(1), keys(2), keys(8), keys(MAX_ISSUE_KEYS), longest] {
+            let name = session_name(&set);
+            assert!(
+                name.encode_utf16().count() <= MAX_NAME_CODE_UNITS,
+                "{} keys built a {}-unit name: {name}",
+                set.len(),
+                name.encode_utf16().count()
+            );
+            assert!(!name.is_empty(), "core refuses an empty name too");
+        }
+    }
+
+    /// Criterion 10. The keys that fit are carried whole — a name that drops
+    /// one it had room for is a label nobody can match back to its run.
+    #[test]
+    fn a_name_whose_keys_all_fit_carries_every_one_of_them() {
+        assert_eq!(session_name(&keys(1)), "ISS-1000");
+        assert_eq!(
+            session_name(&keys(6)),
+            "ISS-1000+ISS-1001+ISS-1002+ISS-1003+ISS-1004+ISS-1005"
+        );
+        assert_eq!(
+            session_name(&keys(6)).encode_utf16().count(),
+            53,
+            "six keys is the widest whole set here, and it is under the cap"
+        );
+    }
+
+    /// Criterion 9. What it could not carry is said, not dropped in silence.
+    #[test]
+    fn a_name_that_could_not_carry_every_key_says_how_many_it_left() {
+        let name = session_name(&keys(10));
+        assert!(
+            name.ends_with("+4 more"),
+            "ten keys, six carried, and the name has to account for the other four: {name}"
+        );
+        assert!(name.starts_with("ISS-1000+ISS-1001"));
+        assert!(name.encode_utf16().count() <= MAX_NAME_CODE_UNITS);
+        let count: usize = name
+            .rsplit('+')
+            .next()
+            .and_then(|t| t.trim_end_matches(" more").parse().ok())
+            .expect("the tail is a count");
+        let carried = name.matches("ISS-").count();
+        assert_eq!(
+            carried + count,
+            10,
+            "every key is either carried or counted"
+        );
+    }
+
+    /// Criterion 8 at the other extreme: one key longer than the whole name is
+    /// allowed to be. Unreachable through `run_declare`, which caps a key at
+    /// 17 characters, and still total here — a name builder that can panic or
+    /// return something core refuses is a second way to wedge a run.
+    #[test]
+    fn one_key_too_long_for_any_name_is_cut_rather_than_refused() {
+        let name = session_name(&[format!("ISS-{}", "9".repeat(200))]);
+        assert!(name.encode_utf16().count() <= MAX_NAME_CODE_UNITS);
+        assert!(name.ends_with('\u{2026}'), "the cut is marked: {name}");
+    }
+
+    /// Criterion 18, on both sides of the boundary and on it.
+    #[test]
+    fn a_detail_within_the_cap_reaches_core_unchanged() {
+        for n in [0usize, 1, MAX_DETAIL_CODE_UNITS - 1, MAX_DETAIL_CODE_UNITS] {
+            let said = "r".repeat(n);
+            assert_eq!(fit(&said, MAX_DETAIL_CODE_UNITS), said, "{n} units");
+        }
+    }
+
+    /// Criteria 15 and 19. One unit over the cap is cut, the cut is visible,
+    /// and what survives is the longest prefix that fits beside the mark.
+    #[test]
+    fn a_detail_over_the_cap_keeps_the_longest_prefix_that_fits_and_says_it_was_cut() {
+        let said = "r".repeat(MAX_DETAIL_CODE_UNITS + 1);
+        let cut = fit(&said, MAX_DETAIL_CODE_UNITS);
+        assert_eq!(cut.encode_utf16().count(), MAX_DETAIL_CODE_UNITS);
+        assert!(cut.ends_with('\u{2026}'));
+        assert_eq!(
+            cut.trim_end_matches('\u{2026}'),
+            "r".repeat(MAX_DETAIL_CODE_UNITS - 1),
+            "one unit goes to the mark and every other one is the operator's own text"
+        );
+    }
+
+    /// Criterion 19 where a `chars()` count and core's count disagree. Each
+    /// emoji is two UTF-16 units, so 260 of them are 520 to core and 260 to a
+    /// naive cut — and a cut landing inside a surrogate pair is not a string
+    /// at all.
+    #[test]
+    fn a_cut_outside_the_basic_plane_is_measured_the_way_core_measures_it() {
+        let said = "\u{1f9ff}".repeat(260);
+        assert_eq!(said.chars().count(), 260);
+        assert_eq!(said.encode_utf16().count(), 520);
+        let cut = fit(&said, MAX_DETAIL_CODE_UNITS);
+        assert!(
+            cut.encode_utf16().count() <= MAX_DETAIL_CODE_UNITS,
+            "{} units survived a 500-unit cap",
+            cut.encode_utf16().count()
+        );
+        assert_eq!(
+            cut.chars().filter(|c| *c == '\u{1f9ff}').count(),
+            249,
+            "499 units of room, two units a character, so 249 whole characters and no half of one"
+        );
+        assert!(cut.ends_with('\u{2026}'));
     }
 }

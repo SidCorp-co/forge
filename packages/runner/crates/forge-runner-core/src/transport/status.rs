@@ -112,6 +112,62 @@ pub(crate) fn refused(what: &str, status: u16, text: &str) -> String {
     }
 }
 
+/// The constraints a refusal names, where it names any.
+///
+/// Core validates every device body with zod and answers `z.flattenError`
+/// under `details` (`devices/route-errors.ts:badRequest`), so a violated rule
+/// arrives as `details.fieldErrors.<field>` or as `details.formErrors`. That is
+/// a statement about the bytes that were sent and not about the moment they
+/// were sent in: a caller re-sending them is refused exactly as it was the
+/// first time, which is how one run spent 240 attempts on one declaration
+/// (ISS-1284).
+///
+/// The test is what the answer NAMES rather than the code it carries. A
+/// refusal with no constraint in it leaves a caller nothing to print and
+/// nothing to act on, so it keeps whatever retry it has rather than being
+/// guessed terminal; a `409` or a `5xx` names the world instead of the payload
+/// and is not asked about here at all.
+pub(crate) fn constraints(status: u16, body: &str) -> Option<Vec<String>> {
+    if status != 400 {
+        return None;
+    }
+    let parsed: serde_json::Value = serde_json::from_str(body).ok()?;
+    let details = parsed.get("details")?;
+    let mut named = Vec::new();
+    if let Some(fields) = details.get("fieldErrors").and_then(|v| v.as_object()) {
+        for (field, said) in fields {
+            for one in said.as_array().into_iter().flatten() {
+                if let Some(text) = one.as_str() {
+                    named.push(format!("{field}: {text}"));
+                }
+            }
+        }
+    }
+    for one in details
+        .get("formErrors")
+        .and_then(|v| v.as_array())
+        .into_iter()
+        .flatten()
+    {
+        if let Some(text) = one.as_str() {
+            named.push(format!("the request itself: {text}"));
+        }
+    }
+    (!named.is_empty()).then_some(named)
+}
+
+/// A refused call as the error its caller acts on: `Malformed` where the answer
+/// names a constraint the same bytes can never satisfy, `Other` otherwise.
+/// Both print the sentence `refused` composes, so a caller that only prints it
+/// reads the same line either way.
+pub(crate) fn refusal(what: &str, status: u16, text: &str) -> crate::error::Error {
+    let said = refused(what, status, text);
+    match constraints(status, text) {
+        Some(named) => crate::error::Error::Malformed { said, named },
+        None => crate::error::Error::Other(said),
+    }
+}
+
 /// A call that got no status at all, named by what went wrong and then by the
 /// innermost cause the transport gave. `reqwest::Error`'s `Display` is neither:
 /// it prints `error sending request for url (<the whole url>)` for a refused
@@ -732,6 +788,12 @@ mod tests {
     /// The guard above reads bindings, so a module that reads a response body
     /// and never reaches `refused` is one it cannot see into. Every body read
     /// in the shipped half is answered by a call that says it.
+    ///
+    /// `refusal` counts as saying it: it composes the sentence with `refused`
+    /// and only decides which error variant carries it, so a site that calls it
+    /// prints exactly what a site calling `refused` prints (ISS-1284). What the
+    /// guard is against is a site formatting a body by hand, and neither of
+    /// these is that.
     #[test]
     fn every_module_that_reads_a_refusals_body_says_it_through_the_helper() {
         for (name, source) in SOURCES {
@@ -740,11 +802,12 @@ mod tests {
             if bodies == 0 {
                 continue;
             }
-            let said = shipped.matches("status::refused(").count();
+            let said = shipped.matches("status::refused(").count()
+                + shipped.matches("status::refusal(").count();
             assert!(
                 said >= bodies,
                 "{name} reads {bodies} response body/bodies and says {said} of them through \
-                 status::refused"
+                 status::refused or status::refusal"
             );
         }
     }
@@ -792,6 +855,98 @@ mod tests {
             built.contains("detail: e.to_string()"),
             "the reason an operator reads is no longer the register error itself, so what this \
              module makes legible may not be what reaches them — found: {built}"
+        );
+    }
+
+    /// The body core answered on the run this issue was filed for, copied from
+    /// the daemon journal on `sid-xeon-1`, 2026-09-26.
+    const TWO_FIELDS: &str = r#"{"code":"BAD_REQUEST","message":"Invalid input","details":{"formErrors":[],"fieldErrors":{"issueKeys":["Too big: expected array to have <=16 items"],"name":["Too big: expected string to have <=60 characters"]}}}"#;
+
+    /// The body the five later loops answered with: the name alone.
+    const NAME_ONLY: &str = r#"{"code":"BAD_REQUEST","message":"Invalid input","details":{"formErrors":[],"fieldErrors":{"name":["Too big: expected string to have <=60 characters"]}}}"#;
+
+    /// A zod refusal of the object rather than of any one field.
+    const FORM_ONLY: &str = r#"{"code":"BAD_REQUEST","message":"Invalid input","details":{"formErrors":["Unrecognized key: \"batch\""],"fieldErrors":{}}}"#;
+
+    /// Criteria 1 and 3. Every constraint core named reaches the caller, and
+    /// each is said with the field it was about: a run ended for "the
+    /// declaration was invalid" tells whoever reads the row nothing to act on.
+    #[test]
+    fn every_field_constraint_a_refusal_names_reaches_the_caller() {
+        assert_eq!(
+            constraints(400, TWO_FIELDS),
+            Some(vec![
+                "issueKeys: Too big: expected array to have <=16 items".to_string(),
+                "name: Too big: expected string to have <=60 characters".to_string(),
+            ]),
+            "both violations were in the answer and both are what the payload has to satisfy"
+        );
+    }
+
+    /// Criterion 17. A refusal of the request rather than of a field is as
+    /// fixed as one naming a field, and reading only `fieldErrors` would leave
+    /// it retried for ever — the very loop this is here to end.
+    #[test]
+    fn a_refusal_naming_only_the_request_is_a_constraint_too() {
+        assert_eq!(
+            constraints(400, FORM_ONLY),
+            Some(vec![
+                r#"the request itself: Unrecognized key: "batch""#.to_string()
+            ])
+        );
+    }
+
+    /// Criteria 5, 6 and 7. Three refusals that say nothing about the payload,
+    /// each of which a later sweep may legitimately get past: a lease another
+    /// box holds, core being down, and a `400` that names no constraint.
+    #[test]
+    fn a_refusal_that_names_no_constraint_stays_the_callers_to_retry() {
+        assert_eq!(
+            constraints(409, r#"{"code":"ISSUE_LEASE_HELD","message":"another box holds ISS-1"}"#),
+            None,
+            "a lease conflict clears on its own and was measured clearing twice on the day this was filed"
+        );
+        assert_eq!(constraints(503, r#"{"code":"UNAVAILABLE"}"#), None);
+        assert_eq!(
+            constraints(400, r#"{"code":"BAD_REQUEST","message":"Invalid input"}"#),
+            None,
+            "a 400 with no details names nothing a caller could print or act on"
+        );
+        assert_eq!(
+            constraints(
+                400,
+                r#"{"code":"BAD_REQUEST","details":{"formErrors":[],"fieldErrors":{}}}"#
+            ),
+            None,
+            "empty collections name no constraint either"
+        );
+        assert_eq!(
+            constraints(400, "<!doctype html><html><title>520</title></html>"),
+            None,
+            "a gateway's page is not core's refusal and decides nothing about the payload"
+        );
+        assert_eq!(constraints(400, ""), None, "an empty body names nothing");
+    }
+
+    /// Criterion 1. The classification is what changes; the sentence an
+    /// operator reads does not, so a refusal reads the same in the journal
+    /// whichever variant carried it.
+    #[test]
+    fn a_classified_refusal_still_prints_what_it_always_printed() {
+        let malformed = refusal("run-session open", 400, NAME_ONLY);
+        assert!(
+            matches!(malformed, crate::error::Error::Malformed { .. }),
+            "a named constraint is what a caller has to stop on"
+        );
+        assert_eq!(
+            format!("{malformed}"),
+            refused("run-session open", 400, NAME_ONLY)
+        );
+        let other = refusal("run-session open", 503, r#"{"code":"UNAVAILABLE"}"#);
+        assert!(matches!(other, crate::error::Error::Other(_)));
+        assert_eq!(
+            format!("{other}"),
+            refused("run-session open", 503, r#"{"code":"UNAVAILABLE"}"#)
         );
     }
 }

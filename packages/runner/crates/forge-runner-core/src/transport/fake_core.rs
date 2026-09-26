@@ -151,6 +151,22 @@ pub async fn serve_recording(
     (format!("http://{addr}"), seen)
 }
 
+/// `400` — core's zod refusal of a run-session open, copied from the daemon
+/// journal on `sid-xeon-1`, 2026-09-26. The declaration carried a name built
+/// from eight issue keys, which is 63 characters.
+pub const NAME_TOO_LONG: &str = r#"{"code":"BAD_REQUEST","message":"Invalid input","details":{"formErrors":[],"fieldErrors":{"name":["Too big: expected string to have <=60 characters"]}}}"#;
+
+/// `400` — the same route refusing the object rather than any one field.
+pub const FORM_REFUSED: &str = r#"{"code":"BAD_REQUEST","message":"Invalid input","details":{"formErrors":["Unrecognized key: \"batch\""],"fieldErrors":{}}}"#;
+
+/// `409` — another box holds a lease the open would need. Correct, transient,
+/// and observed clearing on retry within 30 seconds.
+pub const LEASE_HELD: &str =
+    r#"{"code":"ISSUE_LEASE_HELD","message":"ISS-1 is held by device d-2"}"#;
+
+/// `503` — core is not answering. Says nothing about the payload.
+pub const UNAVAILABLE: &str = r#"{"code":"UNAVAILABLE","message":"core is restarting"}"#;
+
 /// `404` — the key names a prefix no project answers to.
 ///
 /// A deleted project leaves this state standing: `issue_prefix_aliases` keeps
