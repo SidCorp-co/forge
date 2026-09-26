@@ -214,27 +214,35 @@ describe("the Claude Desktop page's three ways into a file that already has text
     const section = desktop().slice(desktop().indexOf("## If the file already has text in it"));
     const block = /```json\n([\s\S]*?)```/.exec(section)?.[1] ?? "";
     return block
-      .replace("<ENDPOINT>", "https://forge.example/mcp")
-      .replace("<YOUR_TOKEN_HERE>", "forge_pat_prd_0")
-      .replace("<PROJECT>", "demo")
+      .replaceAll("<ENDPOINT>", "https://forge.example/mcp")
+      .replaceAll("<YOUR_TOKEN_HERE>", "forge_pat_prd_0")
+      .replaceAll("<PROJECT>", "demo")
       .trim();
+  };
+
+  /** What the reader does: put `typed` straight after the first `anchor` in the file. */
+  const typeAfter = (file: string, anchor: string, typed: string) => {
+    const at = file.indexOf(anchor);
+    if (at === -1) throw new Error(`the fixture has no ${anchor} to type after`);
+    const end = at + anchor.length;
+    return file.slice(0, end) + typed + file.slice(end);
   };
 
   const recipes: Array<[string, string, (file: string) => string]> = [
     [
       "other connections listed",
       '{\n  "mcpServers": {\n    "other": { "command": "x" }\n  },\n  "preferences": { "a": 1 }\n}',
-      (f) => f.replace('"mcpServers": {', `"mcpServers": {\n${fragment()},`),
+      (f) => typeAfter(f, '"mcpServers": {', `\n${fragment()},`),
     ],
     [
       "an empty mcpServers",
       '{ "preferences": { "a": 1 }, "mcpServers": {} }',
-      (f) => f.replace('"mcpServers": {}', `"mcpServers": {\n${fragment()}\n}`),
+      (f) => typeAfter(f, '"mcpServers": {', `\n${fragment()}\n`),
     ],
     [
       "no mcpServers at all",
       '{"preferences":{"a":1}}',
-      (f) => f.replace("{", `{\n"mcpServers": {\n${fragment()}\n},`),
+      (f) => typeAfter(f, "{", `\n"mcpServers": {\n${fragment()}\n},`),
     ],
   ];
 
