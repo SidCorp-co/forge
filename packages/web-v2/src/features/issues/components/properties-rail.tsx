@@ -270,8 +270,8 @@ export function PropertiesRail({
       </Row>
       {issue.mergedAt && (
         <Row label="Merged">
-          <div className="flex items-center justify-end gap-2">
-            <span className="fg-body-sm font-mono text-muted">{fmtDate(issue.mergedAt)}</span>
+          <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
+            <span className="fg-body-sm whitespace-nowrap font-mono text-muted">{fmtDate(issue.mergedAt)}</span>
             <MergeMarkBadge mark={issue.mergeMark} commitSha={issue.mergedCommitSha} />
             {canMarkMerged && (
               <MergeMarkerControl
@@ -301,7 +301,7 @@ export function PropertiesRail({
         </Row>
       )}
       <Row label="Created">
-        <span className="fg-body-sm font-mono text-muted">{fmtDate(issue.createdAt)}</span>
+        <span className="fg-body-sm whitespace-nowrap font-mono text-muted">{fmtDate(issue.createdAt)}</span>
       </Row>
       <Row label="Reopens">
         <span className="fg-body-sm font-mono text-muted">{issue.reopenCount}</span>
