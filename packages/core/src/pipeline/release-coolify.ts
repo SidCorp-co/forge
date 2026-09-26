@@ -12,7 +12,6 @@ import { abandonDeployDispatchHold, openDeployDispatchHold } from './deploy-conf
 import {
   acquireDeployLocks,
   type DeployLockHeld,
-  readDeployLocksHeld,
   releaseDeployLocksForRun,
 } from './deploy-lock.js';
 import {
@@ -177,13 +176,9 @@ export async function tryDispatchCoolifyRelease(args: {
 
   const lock = takeEnvironmentLock ? deployLockIntent(projectId, pairs, reachesLive) : null;
   // Each placeholder records the rows its own binding needs (ISS-1279).
-  let takenLocks: DeployLockHeld[] = [];
-  if (lock) {
-    await acquireDeployLocks({ projectId, runId, subject: lock.subject }, lock.environments);
-    takenLocks = (await readDeployLocksHeld(runId)).filter((h) =>
-      lock.environments.includes(h.environment),
-    );
-  }
+  const takenLocks: DeployLockHeld[] = lock
+    ? await acquireDeployLocks({ projectId, runId, subject: lock.subject }, lock.environments)
+    : [];
 
   const dispatched: string[] = [];
   let pendingHumanConfirm = false;
@@ -206,8 +201,7 @@ export async function tryDispatchCoolifyRelease(args: {
             runId,
             issueId,
             bindingId: binding.id,
-            // THIS binding's environments, never the fan-out's: asking for a sibling's is how the
-            // press gets refused in the name of its own run (ISS-1279).
+            // THIS binding's, never the fan-out's: a sibling's would refuse its own press.
             ...(lock ? { lock: deployLockIntent(projectId, [{ binding }], reachesLive) } : {}),
           });
           pendingHumanConfirm = true;
@@ -256,20 +250,20 @@ export async function tryDispatchCoolifyRelease(args: {
     for (const { binding, requestId } of armed) {
       if (!dispatched.includes(binding.id)) await abandonDeployDispatchHold(runId, requestId);
     }
-    await freeLockIfNothingPending(lock, runId, dispatched);
+    await freeLockIfNothingPending(lock, runId, dispatched, takenLocks);
     throw err;
   }
   // Only where something WAS armed: with nothing armed the whole hold goes back below.
   if (armed.length > 0) {
     await giveBackUnusedEnvironments(
-      lock,
       runId,
+      takenLocks,
       armed.flatMap(
         ({ binding }) => deployLockIntent(projectId, [{ binding }], reachesLive).environments,
       ),
     );
   }
-  await freeLockIfNothingPending(lock, runId, dispatched);
+  await freeLockIfNothingPending(lock, runId, dispatched, takenLocks);
 
   if (dispatched.length === 0 && pendingHumanConfirm) {
     return {
@@ -459,12 +453,10 @@ export async function confirmPendingProdDeploy(
   const took = Boolean(gate.lock) && !alreadyEnqueued;
   let taken: DeployLockHeld[] = [];
   if (gate.lock && took) {
-    const wanted = gate.lock.environments;
-    await acquireDeployLocks(
+    taken = await acquireDeployLocks(
       { projectId: gate.lock.projectId, runId: run.id, subject: gate.lock.subject },
-      wanted,
+      gate.lock.environments,
     );
-    taken = (await readDeployLocksHeld(run.id)).filter((h) => wanted.includes(h.environment));
   }
 
   let enqueued = false;

@@ -91,7 +91,7 @@ const request = (runId: string, subject = 'live deploy (binding b-1)') => ({
 
 /** One settled outcome per acquire, so a race can be read rather than thrown. */
 async function race(
-  attempts: Array<() => Promise<void>>,
+  attempts: Array<() => Promise<unknown>>,
 ): Promise<Array<{ ok: true } | { ok: false; err: unknown }>> {
   return Promise.all(
     attempts.map((run) =>

@@ -45,10 +45,14 @@ beforeEach(async () => {
 
 const lockModule = () => import('../../src/pipeline/deploy-lock.js');
 
-/** The `live` lock row this run holds, as a placeholder records what it speaks for (ISS-1279). */
-async function liveLocks(runId: string) {
-  const { readDeployLocksHeld } = await lockModule();
-  return (await readDeployLocksHeld(runId)).filter((h) => h.environment === 'live');
+/** The `live` lock row this run holds, read off the table as a placeholder records it (ISS-1279).
+ *  Production learns this from the acquire's own `RETURNING`; a test may look. */
+async function liveLocks(runId: string): Promise<{ environment: string; acquiredAt: string }[]> {
+  const rows = await harness.db.execute<{ environment: string; acquired_at: string }>(sql`
+    SELECT environment, acquired_at::text AS acquired_at
+      FROM deploy_locks WHERE run_id = ${runId} AND environment = 'live'
+  `);
+  return rows.map((r) => ({ environment: r.environment, acquiredAt: r.acquired_at }));
 }
 
 async function makeRun(): Promise<string> {
@@ -319,22 +323,38 @@ describe('the hold ends only on a record that can answer for it', () => {
     expect((await lockRow('live'))?.run_id).toBe(run);
   });
 
-  // The record that said "idle" described the lock this run held THEN. A dispatch of the same run
-  // taking the environment again in between is a different hold, and a release deriving from the
-  // older reading must not carry it off.
-  it('frees nothing a reading older than the hold could not have accounted for', async () => {
-    const { acquireDeployLocks, readDeployLocksHeld, releaseDeployLocksForRun } =
-      await lockModule();
+  // The delete's own predicate: one acquisition's rows are not the next one's, however exactly
+  // the environment matches (ISS-1279).
+  it('gives back only the very row its own acquisition took', async () => {
+    const { acquireDeployLocks, releaseDeployLocksForRun } = await lockModule();
     const run = await makeRun();
-    await acquireDeployLocks(request(run), ['live']);
-    const asRead = await readDeployLocksHeld(run);
+    const first = await acquireDeployLocks(request(run), ['live']);
 
     await expireLock('live');
-    await acquireDeployLocks(request(run, 'a second dispatch of the same run'), ['live']);
+    const second = await acquireDeployLocks(request(run, 'a second dispatch of the same run'), [
+      'live',
+    ]);
 
-    expect(await releaseDeployLocksForRun(run, asRead)).toBe(0);
+    expect(await releaseDeployLocksForRun(run, first)).toBe(0);
     expect((await lockRow('live'))?.subject).toBe('a second dispatch of the same run');
-    expect(await releaseDeployLocksForRun(run, await readDeployLocksHeld(run))).toBe(1);
+    expect(await releaseDeployLocksForRun(run, second)).toBe(1);
+  });
+
+  // And the caller that uses it: a dispatch stalled past its expiry, coming back to give a hold
+  // back it no longer holds, while the successor deploys.
+  it('gives a hold back from what its own acquire took, not from who holds it now', async () => {
+    const { acquireDeployLocks } = await lockModule();
+    const { freeLockIfNothingPending } = await import('../../src/pipeline/release-coolify-hold.js');
+    const run = await makeRun();
+    const intent = { projectId, environments: ['live'], subject: 'the stalled dispatch' };
+    const stalled = await acquireDeployLocks(request(run, intent.subject), ['live']);
+
+    await expireLock('live');
+    await acquireDeployLocks(request(run, 'the successor, deploying'), ['live']);
+
+    await freeLockIfNothingPending(intent, run, [], stalled);
+
+    expect((await lockRow('live'))?.subject).toBe('the successor, deploying');
   });
 
   // A second dispatch of the same run takes an environment the first never held. Its lock row is
@@ -377,20 +397,21 @@ describe('the hold ends only on the very row its record named', () => {
   // lock, taken by a dispatch whose placeholder is not yet written, is a different row — and an
   // environment NAME left on a historical hold would hand it to the live settlement to delete.
   it('frees no later taking of an environment it deployed to before', async () => {
-    const { acquireDeployLocks, readDeployLocksHeld } = await lockModule();
+    const { acquireDeployLocks } = await lockModule();
     const { openDeployDispatchHold, replaceDispatchHoldWithTargets } = await import(
       '../../src/pipeline/deploy-confirmations.js'
     );
     const run = await makeRun();
     const bindingId = '00000000-0000-4000-8000-0000000000b1';
 
-    await acquireDeployLocks(request(run, 'the preview deploy'), ['preview']);
+    const previewLocks = async (_r: string) =>
+      await acquireDeployLocks(request(run, 'the preview deploy'), ['preview']);
     await openDeployDispatchHold({
       runId: run,
       bindingId,
       requestId: 'req-p',
       targetLabel: 'preview deploy',
-      locks: await readDeployLocksHeld(run),
+      locks: await previewLocks(run),
     });
     await replaceDispatchHoldWithTargets({
       runId: run,

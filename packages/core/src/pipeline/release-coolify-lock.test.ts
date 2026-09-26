@@ -49,8 +49,10 @@ vi.mock('../db/client.js', () => ({
   db: { select: vi.fn(() => makeSelect()), update: vi.fn(() => makeUpdate()) },
 }));
 
-const acquireLocksMock = vi.fn(async (_request: unknown, _environments: readonly string[]) => {});
-/** What `deploy_locks` holds for this run, read before the deploy-hold record is (ISS-1279). */
+/** What `deploy_locks` hands back from the acquire that took the rows (ISS-1279). */
+const acquireLocksMock = vi.fn(async (_request: unknown, environments: readonly string[]) =>
+  LOCKS.filter((l) => environments.includes(l.environment)),
+);
 const LOCKS = [
   { environment: 'preview', acquiredAt: '2026-09-27T00:00:00.000Z' },
   { environment: 'live', acquiredAt: '2026-09-27T00:00:00.000Z' },
@@ -65,7 +67,6 @@ vi.mock('./deploy-lock.js', async () => {
     ...real,
     acquireDeployLocks: (request: unknown, environments: readonly string[]) =>
       acquireLocksMock(request, environments),
-    readDeployLocksHeld: async () => LOCKS,
     releaseDeployLocksForRun: (...a: unknown[]) => releaseLocksMock(...(a as [string])),
   };
 });
@@ -148,7 +149,9 @@ beforeEach(() => {
   listBindingsSpy.mockReset();
   listBindingsSpy.mockResolvedValue([]);
   acquireLocksMock.mockReset();
-  acquireLocksMock.mockResolvedValue(undefined);
+  acquireLocksMock.mockImplementation(async (_request, environments) =>
+    LOCKS.filter((l) => environments.includes(l.environment)),
+  );
   releaseLocksMock.mockReset();
   releaseLocksMock.mockResolvedValue(0);
   openHoldSpy.mockReset();

@@ -31,7 +31,6 @@ vi.mock('../../pipeline/deploy-lock.js', async () => {
   );
   return {
     ...real,
-    readDeployLocksHeld: async () => LOCKS,
     releaseDeployLocksForRun: (...a: unknown[]) => releaseLocksMock(...(a as [string])),
   };
 });

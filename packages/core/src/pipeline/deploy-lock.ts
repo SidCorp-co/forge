@@ -112,14 +112,18 @@ export async function readDeployLock(
 }
 
 /** All the environments this deploy reaches, or none: refused its second, it never dispatches, and
- *  a first left held would be freed by nothing but the expiry. */
+ *  a first left held would be freed by nothing but the expiry.
+ *
+ *  @returns the rows THIS acquisition took: a read afterwards can hand back a successor's.
+ */
 export async function acquireDeployLocks(
   request: DeployLockRequest,
   environments: readonly string[],
-): Promise<void> {
+): Promise<DeployLockHeld[]> {
   // Sorted, so two deploys wanting the same pair cannot each hold one and wait on the other.
   const wanted = [...new Set(environments)].sort();
-  if (wanted.length === 0) return;
+  if (wanted.length === 0) return [];
+  const taken: DeployLockHeld[] = [];
   let waitedOn = wanted[0] as string;
   try {
     await db.transaction(async (tx) => {
@@ -127,7 +131,7 @@ export async function acquireDeployLocks(
       for (const environment of wanted) {
         waitedOn = environment;
         // Postgres evaluates the `WHERE` under the conflicting row's lock: of two acquires arriving together, exactly one returns a row.
-        const taken = await tx.execute<{ environment: string }>(sql`
+        const rows = await tx.execute<{ environment: string; acquired_at: string }>(sql`
           INSERT INTO deploy_locks (project_id, environment, run_id, subject, acquired_at, expires_at)
           VALUES (${request.projectId}, ${environment}, ${request.runId}, ${request.subject},
                   now(), now() + ${DEPLOY_CONFIRM_WINDOW_MS} * interval '1 millisecond')
@@ -139,9 +143,13 @@ export async function acquireDeployLocks(
                  reclaimed_from_run_id = deploy_locks.run_id,
                  reclaimed_at = now()
            WHERE deploy_locks.expires_at <= now()
-          RETURNING environment
+          RETURNING environment, acquired_at::text AS acquired_at
         `);
-        if (taken.length > 0) continue;
+        const row = rows[0];
+        if (row) {
+          taken.push({ environment: row.environment, acquiredAt: row.acquired_at });
+          continue;
+        }
         throw new DeployEnvironmentLockedError(
           environment,
           await readLockWith(tx, request.projectId, environment),
@@ -152,6 +160,7 @@ export async function acquireDeployLocks(
     if (isLockWaitTimeout(err)) throw new DeployEnvironmentLockedError(waitedOn, null);
     throw err;
   }
+  return taken;
 }
 
 /** Drizzle keeps the driver's error on `cause`: reading the outer one alone is how this refusal
@@ -165,15 +174,6 @@ function isLockWaitTimeout(err: unknown): boolean {
  *  `acquiredAt` is Postgres' own rendering, carried back verbatim — a JS `Date` truncates the
  *  microseconds it has to match on. */
 export type DeployLockHeld = DeployLockRef;
-
-/** What this run holds NOW, read before the deploy-hold record is. */
-export async function readDeployLocksHeld(runId: string): Promise<DeployLockHeld[]> {
-  const rows = await db.execute<{ environment: string; acquired_at: string }>(sql`
-    SELECT environment, acquired_at::text AS acquired_at
-      FROM deploy_locks WHERE run_id = ${runId}
-  `);
-  return rows.map((r) => ({ environment: r.environment, acquiredAt: r.acquired_at }));
-}
 
 /** Keyed on the run: one that took no lock frees nothing, one whose hold was reclaimed cannot free
  *  the successor, and `held` narrows it to the rows a reading accounted for. */
