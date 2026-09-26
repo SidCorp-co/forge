@@ -1386,6 +1386,73 @@ while IFS= read -r -n1 c; do
 done
 "#;
 
+    /// The same pane in the shape Claude Code's Rewind picker draws: the rows
+    /// parted by blank lines, and the highlighted one alone between two of
+    /// them. Under the immediate-neighbour reading this pane took the Enter
+    /// and the message was lost (ISS-1272).
+    const FAKE_REWIND: &str = r#"draw() { printf '\033[2J\033[H   Rewind\n\n     an earlier turn\n     No code changes\n\n   \342\235\257 (current)\n\n\n   Enter to continue \302\267 Esc to cancel\n'; }
+draw
+while IFS= read -r -n1 c; do
+  if [ -z "$c" ]; then printf 'ENTER\n' >> "$OUT"; else printf 'KEY %s\n' "$c" >> "$OUT"; fi
+  draw
+done
+"#;
+
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_choice_row_standing_between_blank_lines_is_refused_and_is_sent_no_key_at_all() {
+        let _serialised = ONE_AT_A_TIME.lock().await;
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(_sandbox) = Sandbox::new("rewind") else {
+            cannot_run("this box gives a test no tmux server of its own — nothing runs rather than reaching its real one");
+            return;
+        };
+        if !available() {
+            cannot_run("tmux is not installed here — the transport test cannot run");
+            return;
+        }
+        let dir = crate::test_scratch::Scratch::new("rewind");
+        let script = dir.join("rewind.sh");
+        std::fs::write(&script, FAKE_REWIND).expect("the fake picker is written");
+        let keys = dir.join("rewind.keys");
+        let name = session_name("forge-test", &format!("rewind{}", std::process::id()));
+        let _ = kill(&name).await;
+        ensure(
+            &name,
+            &dir,
+            &["bash".to_string(), script.to_string_lossy().into_owned()],
+            &[("OUT".into(), keys.to_string_lossy().into_owned())],
+            None,
+        )
+        .await
+        .expect("the picker pane must start");
+
+        let picker = composer::Composer::Menu {
+            highlighted: "(current)".into(),
+        };
+        assert_eq!(
+            composer_reads(&name, &picker).await,
+            picker,
+            "the fake must draw the picker before anything is sent"
+        );
+
+        let refused = send_line(&name, "REWIND-MESSAGE")
+            .await
+            .expect_err("a row standing between blank lines is still a choice list");
+        assert!(
+            refused.to_string().contains("(current)"),
+            "the refusal must quote the row that stood between the blanks: {refused}"
+        );
+
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        assert_eq!(
+            std::fs::read_to_string(&keys).unwrap_or_default(),
+            "",
+            "no key may reach it — the Enter this defect sent answered the picker"
+        );
+        kill(&name).await.expect("kill");
+    }
+
     #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn a_pane_showing_a_choice_list_is_refused_and_is_sent_no_key_at_all() {

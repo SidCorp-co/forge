@@ -19,9 +19,9 @@
 //! tool-permission dialog took *1. Yes* (ISS-1266). So a menu is a reading of
 //! its own, told from the rest by two marks at once: Claude Code indents it
 //! inside the dialog body, while a composer's prompt, a shell's, and the
-//! transcript's echo of a message already sent all sit at column zero; and one
-//! of its neighbouring lines starts its text at the column its own text starts
-//! at, which a prompt with output above it does not.
+//! transcript's echo of a message already sent all sit at column zero; and the
+//! nearest line either side of it that is not blank starts its text at the
+//! column its own text starts at, which a prompt with output above it does not.
 
 /// How a capture reads.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -99,9 +99,14 @@ fn framed(lines: &[Line]) -> Option<(usize, Composer)> {
 /// else as well. The glyph is drawn at column one or further right: Claude
 /// Code indents a menu inside the dialog body, while a composer's prompt, a
 /// shell's, and the transcript's echo of a message already sent all sit at
-/// column zero. And one of the two neighbouring lines starts its own text at
-/// the column this line's text starts at, which is what makes the line one of
-/// a list rather than a prompt with something indented above it.
+/// column zero. And the nearest line either side of it that is not blank starts
+/// its own text at the column this line's text starts at, which is what makes
+/// the line one of a list rather than a prompt with something indented above
+/// it. A blank line carries no column at all, so the search steps over it
+/// rather than scoring it as a column that differs: Claude Code parts the
+/// Rewind picker's rows with blank lines and draws its highlighted row alone
+/// between two, and reading those as a mismatch dropped the marker and let
+/// `say` press Enter at the picker (ISS-1272).
 ///
 /// Neither mark survives being quoted, so a marker inside a message already
 /// sent is excluded as well: the transcript indents the body of an echo, and
@@ -111,8 +116,9 @@ fn choice(lines: &[Line]) -> Option<(usize, String)> {
     (0..lines.len()).rev().find_map(|i| {
         let at = marker(&lines[i].all).filter(|at| *at > 0)?;
         let text = at + MARKER_WIDTH;
-        let aligned = |j: usize| lines.get(j).and_then(|l| indent(&l.all)) == Some(text);
-        if !((i > 0 && aligned(i - 1)) || aligned(i + 1)) || echoed(lines, i) {
+        let above = (0..i).rev().find_map(|j| indent(&lines[j].all));
+        let below = (i + 1..lines.len()).find_map(|j| indent(&lines[j].all));
+        if (above != Some(text) && below != Some(text)) || echoed(lines, i) {
             return None;
         }
         Some((i, after_prompt(&lines[i].all).trim().to_string()))
@@ -380,6 +386,13 @@ mod tests {
     const PERMISSION: &str = include_str!("../../assets/composer-permission-dialog.txt");
     const MODEL: &str = include_str!("../../assets/composer-model-menu.txt");
 
+    /// Captured off a real Claude Code v2.1.283 on an isolated tmux socket
+    /// while reproducing ISS-1272: `Esc` `Esc` opens the Rewind picker on its
+    /// last row, `\u{276f} (current)`, which Claude Code draws alone with a
+    /// blank line above it and four below. A `say` pressed Enter there and the
+    /// message was lost.
+    const REWIND: &str = include_str!("../../assets/composer-rewind-picker.txt");
+
     #[test]
     fn the_captured_folder_trust_dialog_is_a_menu() {
         assert_eq!(
@@ -409,6 +422,91 @@ mod tests {
             highlighted.starts_with("2. Opus"),
             "the highlighted option was {highlighted:?}"
         );
+    }
+
+    #[test]
+    fn the_captured_rewind_picker_is_a_menu_though_its_row_stands_between_blanks() {
+        assert_eq!(
+            read(REWIND),
+            Composer::Menu {
+                highlighted: "(current)".into()
+            }
+        );
+    }
+
+    #[test]
+    fn a_highlighted_row_parted_from_its_siblings_by_blanks_is_still_a_menu() {
+        // The Rewind picker's shape: the options at one column, a blank line
+        // between each, and the highlighted one drawn alone between two.
+        let parted = [
+            "   Restore the conversation to the point before\u{2026}",
+            "",
+            "     an earlier turn",
+            "     No code changes",
+            "",
+            "   \u{276f} (current)",
+            "",
+            "   Enter to continue \u{b7} Esc to cancel",
+        ]
+        .join("\n");
+        assert_eq!(
+            read(&parted),
+            Composer::Menu {
+                highlighted: "(current)".into()
+            }
+        );
+    }
+
+    #[test]
+    fn a_sibling_drawn_immediately_below_still_carries_the_mark_on_its_own() {
+        // The side that is not blank is read exactly as it was before the
+        // search learned to step over blank lines.
+        let adjacent = [
+            "     an earlier turn",
+            "",
+            "   \u{276f} (current)",
+            "     a later turn",
+        ]
+        .join("\n");
+        assert_eq!(
+            read(&adjacent),
+            Composer::Menu {
+                highlighted: "(current)".into()
+            }
+        );
+    }
+
+    #[test]
+    fn a_run_of_blank_lines_is_stepped_over_however_long_it_is() {
+        let far = [
+            "     an earlier turn",
+            "",
+            "",
+            "",
+            "   \u{276f} (current)",
+            "",
+            "",
+        ]
+        .join("\n");
+        assert_eq!(
+            read(&far),
+            Composer::Menu {
+                highlighted: "(current)".into()
+            }
+        );
+    }
+
+    #[test]
+    fn a_lone_marker_whose_nearest_lines_sit_at_other_columns_is_not_a_menu() {
+        // Stepping over the blanks reaches a line either side, and neither
+        // starts where this one's text does — so nothing here is a list.
+        let lone = [" a heading", "", "   \u{276f} lonely", "", " a footer"].join("\n");
+        assert_eq!(read(&lone), Composer::Unrecognised);
+
+        // And a marker with nothing but blank lines either side of it reaches
+        // no column at all, which is the same answer.
+        let alone = ["", "", "   \u{276f} lonely", "", ""].join("\n");
+        assert_eq!(read(&alone), Composer::Unrecognised);
     }
 
     #[test]
