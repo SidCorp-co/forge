@@ -3098,6 +3098,7 @@
   set is now 59.
 
 ### Fixed
+- **Wide tables scroll sideways inside their card instead of cutting off columns.** A fade marks the side with more to see, keyboard users can tab in and scroll, and the Issues page no longer slides sideways.
 - **A message sent to a master sitting at a Claude Code menu no longer presses Enter on the highlighted choice.** It answered trust and permission dialogs on the master's behalf, once ending the session. The send is now refused.
 - **The 7-day Throughput chart shows seven consecutive days, a zero day drawn at zero.** An empty day vanished and the window slid back a day. Each bar prints its count; the total counts only the days drawn.
 - **An unavailable Agent now sends you where a runner can be paired**, and a screen reader no longer hears Stop as disabled while an answer arrives. Escape closes a mode menu without closing the conversation and its draft.

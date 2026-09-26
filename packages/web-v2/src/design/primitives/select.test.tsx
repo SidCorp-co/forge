@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 //
 // ISS-1172: the listbox rendered inside the trigger's wrapper, so a Select in a
-// Table was cut off by the table's `overflow-hidden` box; and the active option
+// Table was cut off by the table's clipping box; and the active option
 // was named by `aria-activedescendant` on the listbox while focus stayed on the
 // combobox, where no assistive technology reads it. These tests pin the wiring:
 // the listbox leaves for <body>, the focused combobox names the active option,

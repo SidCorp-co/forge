@@ -657,53 +657,51 @@ export function IssuesListView({
                     {g.label} · {g.rows.length}
                   </SectionTitle>
                 )}
-                <div className="overflow-x-auto">
-                  <Table>
-                    <THead>
-                      <TR>
-                        {bulkEnabled && (
-                          <TH className="w-9 pr-0">
-                            <Checkbox
-                              checked={allOnPageSelected}
-                              indeterminate={someOnPageSelected}
-                              onChange={toggleAllOnPage}
-                              ariaLabel="Select all issues on this page"
-                            />
-                          </TH>
-                        )}
-                        <TH>ID</TH>
-                        <TH>Issue</TH>
-                        <TH>Module</TH>
-                        <TH>Status</TH>
-                        <TH>Updated</TH>
-                        <TH>Priority</TH>
-                        <TH>Complexity</TH>
-                        <TH className="text-right">Cost</TH>
-                        <TH>Creator</TH>
-                        <TH className="sr-only">Actions</TH>
-                      </TR>
-                    </THead>
-                    <TBody>
-                      {g.rows.map((row) => (
-                        <IssueTableRow
-                          key={row.id}
-                          row={row}
-                          slug={slug}
-                          actions={actions}
-                          now={now}
-                          selection={
-                            bulkEnabled
-                              ? {
-                                  selected: selected.has(row.id),
-                                  onToggle: (next) => toggleRow(row.id, next),
-                                }
-                              : undefined
-                          }
-                        />
-                      ))}
-                    </TBody>
-                  </Table>
-                </div>
+                <Table>
+                  <THead>
+                    <TR>
+                      {bulkEnabled && (
+                        <TH className="w-9 pr-0">
+                          <Checkbox
+                            checked={allOnPageSelected}
+                            indeterminate={someOnPageSelected}
+                            onChange={toggleAllOnPage}
+                            ariaLabel="Select all issues on this page"
+                          />
+                        </TH>
+                      )}
+                      <TH>ID</TH>
+                      <TH>Issue</TH>
+                      <TH>Module</TH>
+                      <TH>Status</TH>
+                      <TH>Updated</TH>
+                      <TH>Priority</TH>
+                      <TH>Complexity</TH>
+                      <TH className="text-right">Cost</TH>
+                      <TH>Creator</TH>
+                      <TH className="sr-only">Actions</TH>
+                    </TR>
+                  </THead>
+                  <TBody>
+                    {g.rows.map((row) => (
+                      <IssueTableRow
+                        key={row.id}
+                        row={row}
+                        slug={slug}
+                        actions={actions}
+                        now={now}
+                        selection={
+                          bulkEnabled
+                            ? {
+                                selected: selected.has(row.id),
+                                onToggle: (next) => toggleRow(row.id, next),
+                              }
+                            : undefined
+                        }
+                      />
+                    ))}
+                  </TBody>
+                </Table>
               </section>
             ))}
           </div>
