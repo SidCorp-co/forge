@@ -232,7 +232,6 @@ export interface ReleaseReadiness {
 		| "build-commands"
 		| "test-commands"
 		| "release-procedure"
-		| "release-runner"
 		| "release-runner-ambiguous"
 		| "release-multi-channel"
 		| "release-target"

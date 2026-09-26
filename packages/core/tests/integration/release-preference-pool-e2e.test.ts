@@ -84,6 +84,14 @@ describe('a release runner label ranks the pool it does not filter', () => {
     return device.id;
   }
 
+  /** Take the declared label off the binding, leaving every other key on it. */
+  async function withdrawLabel(): Promise<void> {
+    await harness.db.execute(sql`
+      UPDATE integration_bindings SET config = config - 'releaseRunnerLabel'
+      WHERE project_id = ${projectId} AND provider = 'coolify' AND 'live' = ANY(stages)
+    `);
+  }
+
   async function releaseRunnerOf(runId: string): Promise<Record<string, unknown> | null> {
     const rows = await harness.db.execute(sql`
       SELECT metadata -> 'releaseRunner' AS release_runner
@@ -174,18 +182,33 @@ describe('a release runner label ranks the pool it does not filter', () => {
     expect(await stored(a)).toMatchObject({ status: 'awaiting_release', claim: null });
   });
 
-  it('goes on refusing RELEASE_RUNNER_UNDECLARED where no binding names a label', async () => {
+  // ISS-1275 — anhome held 30 issues at the gate for seven hours for want of a
+  // string whose own refusal said any value would do. Nothing declared is the
+  // ordinary state of a project that has expressed no preference, so it admits
+  // the pool the way every other job type already reaches it.
+  it('opens a batch where no binding names a label at all', async () => {
     await declareProduction();
-    await harness.db.execute(sql`
-      UPDATE integration_bindings SET config = config - 'releaseRunnerLabel'
-      WHERE project_id = ${projectId} AND provider = 'coolify' AND 'live' = ANY(stages)
-    `);
+    await withdrawLabel();
     await seedBox({ labels: [] });
     const a = await insertIssue();
 
-    await expect(claim([a])).rejects.toThrow('RELEASE_RUNNER_UNDECLARED');
+    const { runId } = await claim([a]);
 
-    expect(await stored(a)).toMatchObject({ status: 'awaiting_release', claim: null });
+    expect(runId).toBeTruthy();
+    expect((await stored(a)).status).toBe('releasing');
+  });
+
+  // Nothing was preferred, so nothing went unhonoured: `preferenceMet` reads
+  // true beside a null label rather than reporting a preference nobody made.
+  it('records no label and a preference nothing broke where none was declared', async () => {
+    await declareProduction();
+    await withdrawLabel();
+    await seedBox({ labels: [] });
+    const a = await insertIssue();
+
+    const { runId } = await claim([a]);
+
+    expect(await releaseRunnerOf(runId)).toEqual({ label: null, preferenceMet: true });
   });
 
   it('tells the release agent the label, whether it was met, and the box that took the job', async () => {

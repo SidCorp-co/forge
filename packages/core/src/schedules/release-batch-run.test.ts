@@ -142,16 +142,16 @@ describe('cutWaitingRelease', () => {
   });
 
   // `releaseBlockerError` throws a class per readiness code, most of them outside the list above
-  // (`RELEASE_RUNNER_UNDECLARED` among them); what makes one a refusal is the blockers it carries.
+  // (`RELEASE_BRANCHES_UNDECLARED` among them); what makes one a refusal is the blockers it carries.
   it('classifies any error carrying readiness blockers as a refusal under the first code', async () => {
-    const sentence = 'This project declares a release model and no live deploy binding names one.';
-    const err = Object.assign(new Error('RELEASE_RUNNER_UNDECLARED'), {
-      releaseBlockers: [{ code: 'RELEASE_RUNNER_UNDECLARED', message: sentence }],
+    const sentence = 'This project declares no base branch, so there is nothing to promote from.';
+    const err = Object.assign(new Error('RELEASE_BRANCHES_UNDECLARED'), {
+      releaseBlockers: [{ code: 'RELEASE_BRANCHES_UNDECLARED', message: sentence }],
     });
     createReleaseBatchMock.mockRejectedValueOnce(err);
     const outcome = await cutWaitingRelease({ projectId: 'p1', userId: 'u1', issueIds: ['iss-1'] });
     expect(outcome.status).toBe('skipped');
-    expect(outcome.code).toBe('RELEASE_RUNNER_UNDECLARED');
+    expect(outcome.code).toBe('RELEASE_BRANCHES_UNDECLARED');
     expect(outcome.reasons).toEqual([sentence]);
     expect(outcome.named).toEqual(['iss-1']);
   });

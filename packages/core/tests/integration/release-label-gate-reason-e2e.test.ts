@@ -172,6 +172,25 @@ const wedgeCount = async (): Promise<number> => {
   return Number(rows[0]?.n ?? 0);
 };
 
+/** A second live deploy binding naming a different label, which nobody but a person resolves. */
+async function addDisagreeingBinding(w: World, label: string): Promise<void> {
+  const owner = (await harness.db.execute(sql`
+    SELECT created_by AS id FROM projects WHERE id = ${w.projectId}
+  `)) as unknown as Array<{ id: string }>;
+  const connection = randomUUID();
+  await harness.db.execute(sql`
+    INSERT INTO integration_connections (id, owner_type, owner_id, provider, active, config)
+    VALUES (${connection}, 'user', ${owner[0]?.id}, 'coolify', true, '{}'::jsonb)
+  `);
+  await harness.db.execute(sql`
+    INSERT INTO integration_bindings (connection_id, project_id, provider, role, stages, active, config)
+    VALUES (
+      ${connection}, ${w.projectId}, 'coolify', 'deploy', ARRAY['live'], true,
+      ${JSON.stringify({ releaseRunnerLabel: label })}::jsonb
+    )
+  `);
+}
+
 describe('the release label is a gate reason', () => {
   // ISS-1128 — this arm answers a question about the JOB, not about one box:
   // can anything that could claim take it. A box carrying the wrong label beside
@@ -184,10 +203,12 @@ describe('the release label is a gate reason', () => {
     expect(await reasonFor(w)).toBeUndefined();
   });
 
-  it('names the label when the project resolves no label at all', async () => {
+  // ISS-1275 — a project that declares no label is not waiting on anybody: the
+  // job reaches the pool, so there is no reason to report.
+  it('says nothing when the project resolves no label at all', async () => {
     const w = await seed({ type: 'release_batch', labels: [LABEL], declaredLabel: null });
 
-    expect(await reasonFor(w)).toBe('release_label_missing');
+    expect(await reasonFor(w)).toBeUndefined();
   });
 
   it('says nothing when no box that could claim carries the label', async () => {
@@ -215,21 +236,7 @@ describe('the release label is a gate reason', () => {
 
   it('names the label when two live bindings disagree about it', async () => {
     const w = await seed({ type: 'release_batch', labels: [LABEL], declaredLabel: LABEL });
-    const owner = (await harness.db.execute(sql`
-      SELECT created_by AS id FROM projects WHERE id = ${w.projectId}
-    `)) as unknown as Array<{ id: string }>;
-    const second = randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO integration_connections (id, owner_type, owner_id, provider, active, config)
-      VALUES (${second}, 'user', ${owner[0]?.id}, 'coolify', true, '{}'::jsonb)
-    `);
-    await harness.db.execute(sql`
-      INSERT INTO integration_bindings (connection_id, project_id, provider, role, stages, active, config)
-      VALUES (
-        ${second}, ${w.projectId}, 'coolify', 'deploy', ARRAY['live'], true,
-        '{"releaseRunnerLabel":"a-second-box"}'::jsonb
-      )
-    `);
+    await addDisagreeingBinding(w, 'a-second-box');
 
     expect(await reasonFor(w)).toBe('release_label_missing');
   });
@@ -241,7 +248,8 @@ describe('the release label is a gate reason', () => {
   });
 
   it('answers assertDispatchable with the same reason', async () => {
-    const w = await seed({ type: 'release_batch', labels: [], declaredLabel: null });
+    const w = await seed({ type: 'release_batch', labels: [], declaredLabel: LABEL });
+    await addDisagreeingBinding(w, 'a-second-box');
 
     expect(await mods.assertDispatchable(w.jobId)).toEqual({
       ok: false,
@@ -272,9 +280,10 @@ describe('the surfaces that report a waiting job', () => {
     const w = await seed({
       type: 'release_batch',
       labels: [],
-      declaredLabel: null,
+      declaredLabel: LABEL,
       queuedMinutesAgo: 120,
     });
+    await addDisagreeingBinding(w, 'a-second-box');
 
     await mods.alarmStalledQueuedJobs(new Date());
 
@@ -299,9 +308,10 @@ describe('the surfaces that report a waiting job', () => {
     const w = await seed({
       type: 'release_batch',
       labels: [],
-      declaredLabel: null,
+      declaredLabel: LABEL,
       queuedMinutesAgo: 120,
     });
+    await addDisagreeingBinding(w, 'a-second-box');
 
     const alerts = await mods.computeAlerts({ now: new Date() });
     const a3 = alerts.find((a) => a.id === 'A3');

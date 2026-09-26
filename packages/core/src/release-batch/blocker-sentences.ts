@@ -22,7 +22,6 @@ export type ReleaseBlockerCode =
   | 'RELEASE_RECORD_MISSING'
   | 'RELEASE_WORK_UNMERGED'
   | 'RELEASE_RUNNER_AMBIGUOUS'
-  | 'RELEASE_RUNNER_UNDECLARED'
   | 'RELEASE_PROBES_UNDECLARED'
   | 'RELEASE_PROBES_UNREADABLE'
   | 'RELEASE_POOL_EMPTY'
@@ -114,8 +113,6 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
     '{n} issue(s) named here have no merge Forge watched land, so nothing says their work is on the branch this release deployed. Mark the merge on each of them first — a release records what shipped, and an issue nobody merged did not.',
   RELEASE_RUNNER_AMBIGUOUS:
     'Two live deploy bindings name different release runners, so there is no one box the release job may be offered to. Make the labels agree, or clear all but one.',
-  RELEASE_RUNNER_UNDECLARED:
-    'This project declares a release model and no live deploy binding names a release runner, so there is no box the release job may be offered to and none will take it. Set `releaseRunnerLabel` on the live deploy binding. It names the box a release should PREFER and does not restrict the pool: where no box on the project carries that label the release goes to the pool this project has, so a project with one box may name anything.',
   RELEASE_PROBES_UNDECLARED:
     'One of this project\'s live deploy bindings declares no verification probes, so nothing but the agent\'s own word could say the release happened. Two ways out. Either record where this project is deployed — `environments.live.commitUrl`, the endpoint that reports the running commit, and `environments.live.commitPath`, the dot path to it inside that endpoint\'s JSON body (`commit`, or `data.commit`; leave it empty where the whole body is the commit) — which answers this for every live binding at once. Or declare probes on the binding itself, which overrides the project\'s: `verify` = `{"probes":[{"url":"https://<host>/api/health","commitPath":"commit"}]}`. A binding that declares a `verify` Forge cannot read takes NO project default: correct it or remove it.',
   RELEASE_PROBES_UNREADABLE:
@@ -149,13 +146,6 @@ export interface RemedyAct {
   raises: ReleaseReasonCode;
 }
 
-const WITHDRAW_RUNNER_LABEL: RemedyAct = {
-  // Both places: a binding-only withdrawal leaves the connection's standing.
-  act: 'Withdrawing the label instead, by sending `releaseRunnerLabel` as `null` on every live deploy binding and on the connection behind it,',
-  worded: ['withdraw', 'withdrawing'],
-  raises: 'RELEASE_RUNNER_UNDECLARED',
-};
-
 /** Over both unions, so a code added later cannot skip the question. */
 export const REMEDY_COST: Record<ReleaseReasonCode, readonly RemedyAct[]> = {
   NO_RELEASE_GATE: [],
@@ -166,7 +156,6 @@ export const REMEDY_COST: Record<ReleaseReasonCode, readonly RemedyAct[]> = {
   RELEASE_RECORD_MISSING: [],
   RELEASE_WORK_UNMERGED: [],
   RELEASE_RUNNER_AMBIGUOUS: [],
-  RELEASE_RUNNER_UNDECLARED: [],
   RELEASE_PROBES_UNDECLARED: [],
   RELEASE_PROBES_UNREADABLE: [],
   RELEASE_POOL_EMPTY: [],
@@ -176,7 +165,7 @@ export const REMEDY_COST: Record<ReleaseReasonCode, readonly RemedyAct[]> = {
   BATCH_IN_FLIGHT: [],
   RELEASE_CRITERIA_UNEARNED: [],
   RELEASE_CHECK_UNEVALUATED: [],
-  RELEASE_RUNNER_PREFERENCE_UNMET: [WITHDRAW_RUNNER_LABEL],
+  RELEASE_RUNNER_PREFERENCE_UNMET: [],
   RELEASE_CRITERIA_HELD_BACK: [],
 };
 

@@ -256,10 +256,6 @@ describe('the create door answers with the entry readiness listed first', () => 
     ['a missing release note beside an empty pool', { noted: false, runner: false, binding: {} }],
     ['an empty pool alone', { noted: true, runner: false, binding: {} }],
     [
-      'an undeclared release runner',
-      { noted: true, runner: true, binding: { releaseRunnerLabel: undefined } },
-    ],
-    [
       'a probe url that is not a url',
       { noted: true, runner: true, binding: { verify: { probes: [{ url: 'example.test/v' }] } } },
     ],
@@ -269,6 +265,21 @@ describe('the create door answers with the entry readiness listed first', () => 
     const ids = await seedIssues(w, 1, s.noted);
 
     await expectDoorsAgree(w, ids);
+  });
+
+  // A project that names no release runner is refused nothing, so there is no
+  // refusal for the two doors to agree on: readiness lists nothing and the
+  // create goes through (ISS-1275).
+  it('opens a batch where no live binding names a release runner', async () => {
+    const w = await seed({ releaseRunnerLabel: undefined });
+    await seedRunner(w);
+    const ids = await seedIssues(w, 1);
+
+    const listed = await readiness(w);
+    const created = await create(w, ids);
+
+    expect(listed).toEqual([]);
+    expect(created.status).toBe(201);
   });
 });
 

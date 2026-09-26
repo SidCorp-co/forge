@@ -15,7 +15,6 @@ import {
   ReleasePoolEmptyError,
   ReleaseProbesUndeclaredError,
   ReleaseRecordMissingError,
-  ReleaseRunnerUndeclaredError,
   ReleaseWorkUnmergedError,
 } from './errors.js';
 import { ReleaseTargetUndeclaredError } from './gate.js';
@@ -99,8 +98,6 @@ function errorFor(
         report.projectId,
         (first.details?.labels as string[]) ?? [],
       );
-    case 'RELEASE_RUNNER_UNDECLARED':
-      return new ReleaseRunnerUndeclaredError();
     case 'RELEASE_PROBES_UNDECLARED':
       return new ReleaseProbesUndeclaredError();
     case 'RELEASE_PROBES_UNREADABLE':

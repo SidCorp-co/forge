@@ -170,7 +170,6 @@ describe('loadReleaseReadiness — a declaration that could not be read', () => 
     expect(out?.blockers.map((b) => [b.code, b.details?.check])).toEqual([
       ['RELEASE_CHECK_UNEVALUATED', 'declaration'],
       ['RELEASE_ROSTER_EMPTY', undefined],
-      ['RELEASE_RUNNER_UNDECLARED', undefined],
       ['RELEASE_POOL_EMPTY', undefined],
       ['RELEASE_CHECK_UNEVALUATED', 'branches'],
       ['RELEASE_CHECK_UNEVALUATED', 'project'],
@@ -208,7 +207,7 @@ describe('loadReleaseReadiness — a gap is never inferred from a read that fail
     const out = await loadReleaseReadiness(PROJECT_ID);
 
     expect(out?.channelsRead).toBe(false);
-    expect(out?.gaps).not.toContain('release-runner');
+    expect(out?.gaps).not.toContain('release-runner-ambiguous');
     expect(out?.gaps).not.toContain('verify-probes');
     expect(out?.gaps).not.toContain('rollback');
   });

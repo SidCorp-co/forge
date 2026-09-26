@@ -132,7 +132,7 @@ describe('loadReleaseReadiness', () => {
     expect(out?.hasReleaseGate).toBe(false);
     expect(out?.gaps).toEqual(expect.arrayContaining(['build-commands', 'test-commands']));
     expect(out?.gaps).not.toContain('release-procedure');
-    expect(out?.gaps).not.toContain('release-runner');
+    expect(out?.gaps).not.toContain('release-runner-ambiguous');
   });
 
   it('owes no build or test commands to a project that declares no repository', async () => {
@@ -163,7 +163,6 @@ describe('loadReleaseReadiness', () => {
     expect(out?.gaps.sort()).toEqual([
       'live-commit-endpoint',
       'release-procedure',
-      'release-runner',
       'rollback',
       'verify-probes',
     ]);
