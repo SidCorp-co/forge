@@ -360,9 +360,12 @@ describe('the hold the unattended sweep puts on a waiting issue', () => {
     const warned = report.warnings.find((w) => w.code === 'RELEASE_CRITERIA_UNCORROBORATED');
 
     expect(report.blockers.map((b) => b.code)).not.toContain('RELEASE_CRITERIA_UNEARNED');
-    expect(warned?.message).toContain('`ISS-1286` owes criterion 2, 5');
+    expect(warned?.message).toContain('`ISS-1286` on criterion 2, 5');
     expect(warned?.message).toContain('declares no way to ask');
     expect(warned?.message).toContain('absence of a reading is not a failure');
+    // The issue may still be held by another criterion: this warning says nothing about shipping.
+    expect(warned?.message).not.toContain('will be cut carrying');
+    expect(warned?.message).toContain('decided by its own criteria');
   });
 
   it('says nothing about corroboration where every criterion was weighed against a reading', async () => {

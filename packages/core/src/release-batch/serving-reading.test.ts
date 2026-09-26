@@ -190,6 +190,18 @@ describe('readServingNow', () => {
     expect(reading.kind === 'unreadable' && reading.why).not.toContain('unreachable');
   });
 
+  // ISS-1286 — a probe nobody can ask must not silence one somebody can.
+  it('asks the probes it can and keeps their commit beside a url that is not a url', async () => {
+    resolveReleaseChannelsMock.mockResolvedValue([
+      channel({ verify: { probes: [{ url: 'not-a-url' }, { url: 'https://one.test/health', commitPath: 'commit' }] } }),
+    ]);
+    vi.stubGlobal('fetch', answering({ 'https://one.test/health': `{"commit":"${SERVED}"}` }));
+
+    const reading = await readServingNow(PROJECT_ID, now);
+    expect(reading).toMatchObject({ kind: 'serving', commits: [SERVED] });
+    expect(reading.kind === 'serving' && reading.unread.join(' ')).toContain('not-a-url');
+  });
+
   it('names a probe url that is not a url as a declaration defect', async () => {
     resolveReleaseChannelsMock.mockResolvedValue([
       channel({ verify: { probes: [{ url: 'not-a-url', commitPath: 'commit' }] } }),
@@ -201,6 +213,18 @@ describe('readServingNow', () => {
     expect(reading.kind === 'unreadable' && reading.why).toContain('not-a-url');
     expect(reading.kind === 'unreadable' && reading.why).toContain('not a url');
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('says nothing could be read where the only usable probe answered nothing either', async () => {
+    resolveReleaseChannelsMock.mockResolvedValue([
+      channel({ verify: { probes: [{ url: 'not-a-url' }, { url: 'https://one.test/health' }] } }),
+    ]);
+    vi.stubGlobal('fetch', answering({}));
+
+    const reading = await readServingNow(PROJECT_ID, now);
+    expect(reading.kind).toBe('unreadable');
+    expect(reading.kind === 'unreadable' && reading.why).toContain('not-a-url');
+    expect(reading.kind === 'unreadable' && reading.why).toContain('unreachable');
   });
 
   it('separates a declaration this repo refused from a project declaring nothing', async () => {

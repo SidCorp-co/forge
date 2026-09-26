@@ -1,7 +1,7 @@
 /** What a project's declared probes answer about the commit it is serving, read when asked and
- *  never stored — a commit on a row is wrong the moment the next deploy lands (ISS-1286).
- *  `serving.ts:readServingDeployment` shares `readLiveState` with this and neither calls the other,
- *  nor is either called from `collectReleaseBlockers`, which promises no outbound request. */
+ *  never stored — a commit on a row is wrong the moment the next deploy lands (ISS-1286). This
+ *  shares `readLiveState` with `serving.ts` and neither calls the other, nor is either called from
+ *  `collectReleaseBlockers`, which promises no outbound request. */
 
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -11,7 +11,7 @@ import type { ReleaseChannel } from './plan.js';
 import { invalidProbeUrls, readLiveState, type VerifyConfig, type VerifyProbe } from './verify.js';
 
 /** One reading. `commits` is every distinct commit a probe answered (one settled fleet, more a
- *  rollout), `unread` a line per probe answering none, and only NO answer at all is an absence. */
+ *  rollout), `unread` a line per probe answering none, and only no answer at all is an absence. */
 export type ServingReading =
   | {
       readonly kind: 'serving';
@@ -28,8 +28,8 @@ export type ServingReading =
       readonly readAt: string;
     };
 
-/** The probes the live channels declare, and how many declared a block `parseVerifyConfig` refused,
- *  which decides anything only where `cfg` is null. */
+/** The probes the live channels declare, and how many declared a block `parseVerifyConfig` refused
+ *  — which decides anything only where `cfg` is null. */
 export interface DeclaredProbes {
   readonly cfg: VerifyConfig | null;
   readonly refused: number;
@@ -54,8 +54,8 @@ export function declaredProbesOf(channels: readonly ReleaseChannel[]): DeclaredP
   return { cfg: probes.length === 0 ? null : { probes }, refused };
 }
 
-/** The probe a project's own live environment declares. `resolveReleaseChannels` reads no project
- *  row with no live binding, so a project declaring a commit url and none is not undeclared. */
+/** `resolveReleaseChannels` reads no project row with no live binding, so a commit url declared
+ *  there with no binding is not undeclared. */
 async function liveEnvironmentProbe(projectId: string): Promise<VerifyConfig | null> {
   const [row] = await db
     .select({ environments: projects.environments })
@@ -69,14 +69,11 @@ const REFUSED_DECLARATION =
   'every declared verification probe was refused as a declaration: a `verify` block is there and ' +
   'nothing in it names a url to ask. Correct the declaration on the live deploy binding.';
 
-function invalidUrlWhy(invalid: readonly string[]): string {
-  return (
-    `a declared probe url is not a url (${invalid.join(', ')}), so no request could be made to it ` +
-    '— a declaration defect rather than a host that is down. Correct the probe, including its scheme.'
-  );
+function invalidUrlLines(invalid: readonly string[]): string[] {
+  const why = 'is not a url, so no request could be made to it — correct it, scheme included';
+  return invalid.map((url) => `${url} ${why}`);
 }
 
-/** Why a reading could not corroborate a runtime verdict, in words an operator can act on. */
 export function whyUncorroborated(serving: ServingReading): string {
   if (serving.kind === 'undeclared') {
     return 'this project declares no way to ask a host what it is serving.';
@@ -105,16 +102,18 @@ export async function readServingNow(
   }
 
   const hosts = declared.cfg.probes.map((probe) => probe.url);
-  const invalid = invalidProbeUrls(declared.cfg);
-  if (invalid.length > 0) {
-    return { kind: 'unreadable', why: invalidUrlWhy(invalid), hosts, readAt: now().toISOString() };
+  // A probe nobody can ask does not silence one somebody can: the defect travels in `unread`.
+  const defects = invalidUrlLines(invalidProbeUrls(declared.cfg));
+  const usable = declared.cfg.probes.filter((probe) => URL.canParse(probe.url));
+  if (usable.length === 0) {
+    return { kind: 'unreadable', why: defects.join('; '), hosts, readAt: now().toISOString() };
   }
 
-  const state = await readLiveState(declared.cfg);
+  const state = await readLiveState({ ...declared.cfg, probes: usable });
   const readAt = now().toISOString();
+  const unread = [...defects, ...state.unhealthy, ...state.unidentified];
   if (state.answeredCommits.length === 0) {
-    return { kind: 'unreadable', why: state.readings.join('; '), hosts, readAt };
+    return { kind: 'unreadable', why: [...defects, ...state.readings].join('; '), hosts, readAt };
   }
-  const unread = [...state.unhealthy, ...state.unidentified];
   return { kind: 'serving', commits: state.answeredCommits, unread, hosts, readAt };
 }

@@ -171,9 +171,9 @@ function reportUncorroborated(projectId: string, reports: readonly IssueCriteria
     const why = whyUncorroborated(report.serving);
     logger.warn(
       { projectId, issueId: report.issueId, criteria: report.uncorroborated, why },
-      `release-sweep: ${report.issueId} is carried on criterion ${report.uncorroborated.join(', ')} ` +
-        `judged at a runtime nothing here could re-read — ${why} The verdict counts, and it is ` +
-        'weaker evidence than a reading would have made it',
+      `release-sweep: ${report.issueId} earned criterion ${report.uncorroborated.join(', ')} at a ` +
+        `runtime nothing here could re-read — ${why} The verdict counts, and it is weaker ` +
+        'evidence than a reading would have made it; whether this issue ships is its own criteria',
     );
   }
 }

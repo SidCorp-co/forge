@@ -339,12 +339,12 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
 /** The sweep is cutting a release and leaving these behind, which stops nothing. */
 export function uncorroboratedWarningSentence(held: HeldIssueRef[], why: string): string {
   const issues = `${held.length} issue${held.length === 1 ? '' : 's'}`;
+  const each = held
+    .map((h) => `\`${h.displayId}\` on criterion ${h.criteria.join(', ')}`)
+    .join('; ');
   return withCosts(
     'RELEASE_CRITERIA_UNCORROBORATED',
-    heldIssuesSentence(
-      `A release will be cut carrying ${issues} whose criteria were judged at a runtime nothing here could re-read: ${why} The verdicts count — absence of a reading is not a failure — and they are weaker evidence than a reading would have made them.`,
-      held,
-    ),
+    `${issues} carry a criterion earned at a runtime nothing here could re-read: ${why} Those verdicts count — absence of a reading is not a failure — and they are weaker evidence than a reading would have made them. Whether each issue ships is decided by its own criteria, not by this. ${each}.`,
   );
 }
 
