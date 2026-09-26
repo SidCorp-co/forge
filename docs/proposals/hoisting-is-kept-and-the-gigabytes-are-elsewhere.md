@@ -83,9 +83,10 @@ it only because the tree is flat:
 Remove the two settings and nothing else, and `pnpm verify` loses five verdicts: `form scripts
 lint` goes red with `Command "biome" not found`, and `relations archmap`, `form
 integration-declarations`, `meta conformance levels` and `meta conformance audit` report that they
-could not run. Declaring the three tools at the root with `pnpm add -w -D` clears all five and
-leaves a sixth: `meta conformance audit` R7 then runs and fails, its unresolvable-edge count having
-gone from 33 to 208 against a ceiling of 50, because the `hono/*` mapping above no longer resolves.
+could not run. Declaring the three tools at the root with `pnpm add -w -D` clears four of
+the five and turns the fifth from unable-to-run into a failure: `meta conformance audit` R7 then
+runs and fails, its unresolvable-edge count having gone from 33 to 208 against a ceiling of 50,
+because the `hono/*` mapping above no longer resolves.
 
 Two things that were expected to be coupled are not. `pnpm build`, web-v2's `next build` among it,
 and `pnpm deploy --filter=@forge/core --prod` — the line `packages/core/Dockerfile` builds the
@@ -101,7 +102,7 @@ the list to have grown.
 
 The isolated linker is what would catch them, and this measurement says it is affordable — it costs
 13 MB and about five thousand directory entries per worktree, not gigabytes. What it is not is free:
-the six verdicts above have to be repaired first, and the `hono/*` repair means editing the
+the five verdicts above have to be repaired first, and the `hono/*` repair means editing the
 resolution map that `.arch-tsconfig.json`'s own opening records as having silently emptied three
 locked contracts once before.
 
