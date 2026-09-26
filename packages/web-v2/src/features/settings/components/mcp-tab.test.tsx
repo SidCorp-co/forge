@@ -33,6 +33,7 @@ vi.mock("@/features/projects/hooks", () => ({
 }));
 vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 
+import { getMcpUrl } from "../mcp";
 import { McpTab } from "./mcp-tab";
 
 function renderTab(current: ProjectListItem | null) {
@@ -55,7 +56,7 @@ describe("McpTab — the project a snippet configures", () => {
   it("opens on the project the person is working in, not the list's first entry", () => {
     renderTab(FORGE_DEV);
     expect(screen.getByRole("combobox")).toHaveTextContent("Forge Dev · forge-dev");
-    expect(snippetText()).toContain('"X-Forge-Project-Slug": "forge-dev"');
+    expect(snippetText()).toContain('--header "X-Forge-Project-Slug: forge-dev"');
     expect(snippetText()).not.toContain("sidcorp-mail");
   });
 
@@ -71,7 +72,7 @@ describe("McpTab — the project a snippet configures", () => {
     renderTab(FORGE_DEV);
     fireEvent.click(screen.getByRole("combobox"));
     fireEvent.click(screen.getByRole("option", { name: /Sidcorp Mail/ }));
-    expect(snippetText()).toContain('"X-Forge-Project-Slug": "sidcorp-mail"');
+    expect(snippetText()).toContain('--header "X-Forge-Project-Slug: sidcorp-mail"');
     expect(target()).toHaveTextContent(
       "This snippet configures Sidcorp Mail sidcorp-mail — not Forge Dev, the project you are working in.",
     );
@@ -86,7 +87,7 @@ describe("McpTab — the project a snippet configures", () => {
 
     fireEvent.click(screen.getByRole("combobox"));
     fireEvent.click(screen.getByRole("option", { name: /Forge Dev/ }));
-    expect(snippetText()).toContain('"X-Forge-Project-Slug": "forge-dev"');
+    expect(snippetText()).toContain('--header "X-Forge-Project-Slug: forge-dev"');
     expect(target()).toHaveTextContent("This snippet configures Forge Dev forge-dev.");
   });
 
@@ -94,5 +95,38 @@ describe("McpTab — the project a snippet configures", () => {
     renderTab({ ...FORGE_DEV, id: "5e0c1f2a-7b3d-4c8e-9f60-1a2b3c4d5e6f", slug: "gone" });
     expect(document.querySelector("pre")).toBeNull();
     expect(screen.getByText("Choose a project")).toBeInTheDocument();
+  });
+});
+
+// ISS-1175 measured with Claude Code 2.1.283 under an isolated HOME: an `mcpServers` block in
+// ~/.claude/settings.json is not read at all, and the same block in `.mcp.json` is skipped for
+// having a url and no type. The line `claude mcp add` writes is the one that connects.
+describe("McpTab — what each client is told to do with its snippet", () => {
+  const how = () => screen.getByTestId("mcp-snippet-how");
+  const pick = (label: string) => fireEvent.click(screen.getByRole("tab", { name: label }));
+
+  it("gives Claude CLI one line to run in a terminal, not a file to edit", () => {
+    renderTab(FORGE_DEV);
+    expect(snippetText().trim()).toBe(
+      `claude mcp add --transport http --scope user forge ${getMcpUrl()}` +
+        ' --header "Authorization: Bearer <YOUR_TOKEN_HERE>"' +
+        ' --header "X-Forge-Project-Slug: forge-dev"',
+    );
+    expect(snippetText()).not.toContain("mcpServers");
+    expect(how()).toHaveTextContent("run this line once in a terminal");
+    expect(how()).not.toHaveTextContent("settings.json");
+  });
+
+  it("points Cursor at the home-folder file that applies to every folder", () => {
+    renderTab(FORGE_DEV);
+    pick("Cursor");
+    expect(how()).toHaveTextContent("Add to ~/.cursor/mcp.json");
+    expect(snippetText()).toContain('"X-Forge-Project-Slug": "forge-dev"');
+  });
+
+  it("shows a token example in the shape real tokens have", () => {
+    renderTab(FORGE_DEV);
+    const box = screen.getByLabelText("Personal access token");
+    expect(box).toHaveAttribute("placeholder", "forge_pat_…");
   });
 });

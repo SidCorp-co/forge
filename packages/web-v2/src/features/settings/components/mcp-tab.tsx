@@ -185,9 +185,18 @@ export function McpTab() {
                 <Tabs tabs={CLIENT_TABS} value={client} onChange={(v) => setClient(v as ClientKind)} />
               </div>
 
-              <p className="fg-caption mb-2">
-                Add to <MonoTag>{snippet.filePath}</MonoTag> and replace{" "}
-                <MonoTag hue="flame">{TOKEN_PLACEHOLDER}</MonoTag> with your token.
+              <p className="fg-caption mb-2" data-testid="mcp-snippet-how">
+                {snippet.howTo === "command" ? (
+                  <>
+                    Replace <MonoTag hue="flame">{TOKEN_PLACEHOLDER}</MonoTag> with your token, then
+                    run this line once in a terminal.
+                  </>
+                ) : (
+                  <>
+                    Add to <MonoTag>{snippet.filePath}</MonoTag> and replace{" "}
+                    <MonoTag hue="flame">{TOKEN_PLACEHOLDER}</MonoTag> with your token.
+                  </>
+                )}
               </p>
               <pre className="overflow-x-auto rounded-md border border-line bg-sunken p-3 text-12-5 leading-relaxed text-fg">
                 <code>
@@ -311,7 +320,7 @@ function TestConnectionPanel({ mcpUrl, projectSlug }: { mcpUrl: string; projectS
               <Input
                 type="password"
                 autoComplete="off"
-                placeholder="forge_pat_live_…"
+                placeholder="forge_pat_…"
                 value={token}
                 onChange={(e) => setToken(e.target.value)}
               />
