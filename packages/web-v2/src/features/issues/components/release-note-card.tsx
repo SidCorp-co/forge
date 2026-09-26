@@ -1,6 +1,6 @@
 "use client";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/design";
+import { Card, CardContent, CardHeader, CardTitle, Markdown } from "@/design";
 import type { IssueDetail, IssueStatus } from "../types";
 
 /* status-tuple: differs — the statuses where the work is built and not yet released, which is the
@@ -28,9 +28,10 @@ function sentence(status: IssueStatus, userFacing: string, skip: boolean): strin
 }
 
 /**
- * The release note's plain-language line, on the issue page of the person who filed the work. The
- * heading says only what the status establishes: a Reopened issue keeps its earlier note under
- * "Release note" instead of calling work that already shipped a change still to come.
+ * The release note's plain-language line, on the issue page of the person who filed the work,
+ * rendered as the markdown it is written in so its markup never shows as characters. The heading
+ * says only what the status establishes: a Reopened issue keeps its earlier note under "Release
+ * note" instead of calling work that already shipped a change still to come.
  */
 export function ReleaseNoteCard({ issue }: { issue: Pick<IssueDetail, "status" | "releaseNotes"> }) {
   const note = issue.releaseNotes;
@@ -41,9 +42,7 @@ export function ReleaseNoteCard({ issue }: { issue: Pick<IssueDetail, "status" |
         <CardTitle>{heading(issue.status)}</CardTitle>
       </CardHeader>
       <CardContent>
-        <p className="fg-body whitespace-pre-line text-fg">
-          {sentence(issue.status, note.userFacing, note.section === "Skip")}
-        </p>
+        <Markdown>{sentence(issue.status, note.userFacing, note.section === "Skip")}</Markdown>
       </CardContent>
     </Card>
   );

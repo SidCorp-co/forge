@@ -31,7 +31,9 @@ cannot leak into each other.
 - **Page shape:** intro → Prerequisites → numbered, copy-pasteable steps →
   "Verify it worked" → Troubleshooting.
 - **Links:** only to other pages in this folder, or to public external URLs.
-  Never link into `docs/` or the source tree.
+  Never link into `docs/` or the source tree. A link to another page is written
+  `[Its title](?path=<slug>)`, the slug being the page's file name without `.md`;
+  `help-links.test.tsx` refuses any other form and any slug no page has.
 
 ## Frontmatter
 

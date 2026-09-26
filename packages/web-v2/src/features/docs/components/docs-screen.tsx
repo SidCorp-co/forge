@@ -82,10 +82,12 @@ export function DocsScreen() {
   const sections = useMemo(() => groupSections(HELP_DOCS), []);
   const firstSlug = sections[0]?.docs[0]?.slug ?? null;
 
-  // `?path=<slug>` deep-link (e.g. from a HelpButton "Learn more").
+  // `?path=<slug>` deep-link (e.g. from a HelpButton "Learn more"). One naming no page is said
+  // to name none, rather than answered with the first page as if it had been asked for.
   const deepLink = searchParams.get("path");
+  const missing = deepLink !== null && !HELP_DOCS.some((d) => d.slug === deepLink) ? deepLink : null;
   const [selected, setSelected] = useState<string | null>(
-    deepLink && HELP_DOCS.some((d) => d.slug === deepLink) ? deepLink : firstSlug,
+    deepLink !== null ? (missing === null ? deepLink : null) : firstSlug,
   );
   const [query, setQuery] = useState("");
   const contentRef = useRef<HTMLDivElement>(null);
@@ -204,8 +206,14 @@ export function DocsScreen() {
             <CardContent>
               {!doc ? (
                 <EmptyState
-                  title="Select a page"
-                  message="Pick a page from the left to start reading."
+                  title={missing === null ? "Select a page" : "No such help page"}
+                  message={
+                    missing === null
+                      ? "Pick a page from the left to start reading."
+                      : missing === ""
+                        ? "The link you followed names no help page. Pick one from the left."
+                        : `No help page is called "${missing}". Pick one from the left.`
+                  }
                   mascot={false}
                 />
               ) : (

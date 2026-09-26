@@ -20,6 +20,8 @@ them: the work is **with an agent**, it **needs you**, or it is **finished**.
 | **Open** | an agent | Nothing. It has been picked up. |
 | **In progress** | an agent | Nothing. |
 | **Developed**, **Testing** | an agent | Nothing. |
+| **Tested** | **you** | Review it for release. It passed its checks and has not been released. |
+| **Releasing** | an agent | Nothing. A release carrying it is running. It is done only once it reads **Closed**. |
 | **Needs info** | **you** | **Answer the question.** The work restarts by itself once you do. |
 | **On hold** | **you** | **Resume it.** Nothing moves until you do — this is a brake, not a question. |
 | **Awaiting release** | **you** | **Release it** with **Release now**, or let the next scheduled release take it — the issue page says which. |

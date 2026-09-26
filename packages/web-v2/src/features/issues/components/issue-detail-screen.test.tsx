@@ -157,6 +157,16 @@ describe("the issue detail's main column", () => {
     expect(title.className).toContain("break-words");
   });
 
+  it("keeps the header's actions on screen at phone width, on a row of their own", () => {
+    renderScreen();
+    const actions = screen.getByRole("button", { name: "Open session" }).parentElement;
+    for (let el: Element | null = actions; el && el !== document.body; el = el.parentElement) {
+      expect(el.className.split(/\s+/), "a bare `hidden` removes it below sm").not.toContain("hidden");
+    }
+    expect(actions?.className.split(/\s+/)).toContain("basis-full");
+    expect(actions?.parentElement?.className.split(/\s+/)).toContain("flex-wrap");
+  });
+
   it("sizes the rail as a clamped share of the grid rather than a fixed column", () => {
     renderScreen();
     const grid = screen.getByText("What the issue says.").closest(".grid");
