@@ -50,10 +50,13 @@ separated them by less than the run-to-run spread — 3.0 s and 8.5 s on two hoi
 3.5 s and 3.4 s on two isolated ones, the store already warm for all four.
 
 `virtualStoreType: global`, which ISS-1287 names as the shape worth reaching for, does not exist in
-the pnpm this repository pins. `packageManager` in the root `package.json` reads `pnpm@9.15.0`;
-`grep -c virtualStoreType` over that release's `pnpm.cjs` returns 0 and `pnpm config get
-virtual-store-type` answers `undefined`. Reaching it is a pnpm major upgrade, which is a different
-piece of work from this one.
+the pnpm this repository pins. `packageManager` in the root `package.json` reads `pnpm@9.15.0`, and
+`virtualStoreType` appears nowhere in that release's `dist/`. The control matters, because the
+first attempt at this grep hit `bin/pnpm.cjs`, a 999-byte launcher where every setting returns
+zero: over `dist/`, `nodeLinker` appears 39 times, `virtualStoreDir` 278, `preferWorkspacePackages`
+12 and `shamefullyHoist` 6, while `virtualStoreType` appears 0. `pnpm config get
+virtual-store-type` answers `undefined` beside it. Reaching that shape is a pnpm major upgrade,
+which is a different piece of work from this one.
 
 ## Where a worktree's gigabytes are
 
