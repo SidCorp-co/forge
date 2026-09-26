@@ -132,9 +132,12 @@ pub async fn pull_pending(client: &CoreClient) -> Result<Pending> {
         .await
         .map_err(|e| Error::Other(format!("provisions request: {e}")))?;
     if !resp.status().is_success() {
-        return Err(Error::Other(format!(
-            "provisions failed: {}",
-            resp.status()
+        let code = resp.status().as_u16();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(Error::Other(super::status::refused(
+            "provisions",
+            code,
+            &text,
         )));
     }
     let reported = parse_failures(
@@ -172,9 +175,12 @@ pub async fn report_status(
         .await
         .map_err(|e| Error::Other(format!("provision-status request: {e}")))?;
     if !resp.status().is_success() {
-        return Err(Error::Other(format!(
-            "provision-status failed: {}",
-            resp.status()
+        let code = resp.status().as_u16();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(Error::Other(super::status::refused(
+            "provision-status",
+            code,
+            &text,
         )));
     }
     Ok(())
