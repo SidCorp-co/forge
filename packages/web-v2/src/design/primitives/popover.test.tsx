@@ -145,6 +145,20 @@ describe("Popover", () => {
     await waitFor(() => expect(document.activeElement).toBe(trigger));
   });
 
+  it("takes focus onto the panel itself while nothing inside it can take focus yet", async () => {
+    // Measured on the notifications panel: its list loads only once the panel
+    // opens, so at mount it held nothing tabbable and focus stayed on the bell.
+    render(<Clipped takesFocus aria-label="Loading panel" />);
+    screen.getByText("trigger").focus();
+    const panel = screen.getByRole("dialog", { name: "Loading panel" });
+    await waitFor(() => expect(document.activeElement).toBe(panel));
+  });
+
+  it("keeps the role a focus-taking panel is given", () => {
+    render(<Clipped takesFocus role="menu" />);
+    expect(screen.getByTestId("panel")).toHaveAttribute("role", "menu");
+  });
+
   it("leaves focus where it is for a panel that does not take focus", async () => {
     render(<Clipped />);
     const trigger = screen.getByText("trigger");

@@ -75,9 +75,9 @@ export interface PopoverProps extends Omit<HTMLAttributes<HTMLDivElement>, "chil
   maxWidth?: number;
   /** Hold the page still while open; wheel and touch still scroll inside the panel. */
   lockScroll?: boolean;
-  /** Move focus into the panel on open and back to the anchor on close, with Tab
-   *  continuing from the anchor as though the panel sat beside it; focus leaving
-   *  the panel dismisses it. For panels a keyboard user works inside. */
+  /** Move focus into the panel on open (onto the panel itself, a `dialog` unless
+   *  given a role, while nothing inside can take it) and back to the anchor on
+   *  close, Tab continuing from the anchor. For panels a keyboard user works inside. */
   takesFocus?: boolean;
   panelRef?: Ref<HTMLDivElement>;
   children: ReactNode;
@@ -111,6 +111,7 @@ function OpenPopover({
   lockScroll = false,
   takesFocus = false,
   panelRef,
+  role = takesFocus ? "dialog" : undefined,
   className,
   style,
   children,
@@ -186,7 +187,7 @@ function OpenPopover({
   returnTo.current = home?.matches(FOCUSABLE) ? home : (home?.querySelector<HTMLElement>(FOCUSABLE) ?? null);
 
   const node = (
-    <div ref={setPanel} {...rest} className={cn(TIER.panel, className)} style={placed}>
+    <div ref={setPanel} {...rest} role={role} className={cn(TIER.panel, className)} style={placed}>
       {children}
     </div>
   );
