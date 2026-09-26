@@ -212,6 +212,9 @@ export const googleIntegration = declareIntegration<GoogleConfig, GoogleSecrets>
   },
   schemas: {
     connectionConfig: googleConnectionConfigSchema,
+    // Every key on it is optional already, and zod refuses `.partial()` on an object carrying
+    // refinements — this one refines that a client email and a project id arrive together.
+    connectionPatchConfig: googleConnectionConfigSchema,
     bindingConfig: googleConfigBase,
     patchConfig: googleConfigBase.partial(),
     secrets: googleSecretsSchema,

@@ -370,6 +370,7 @@ export const coolifyIntegration = declareIntegration<CoolifyConfig, CoolifySecre
   },
   schemas: {
     connectionConfig: coolifyConfigSchema,
+    connectionPatchConfig: coolifyConfigSchema.partial(),
     bindingConfig: coolifyConfigSchema,
     patchConfig: coolifyConfigSchema.partial(),
     secrets: coolifySecretsSchema,

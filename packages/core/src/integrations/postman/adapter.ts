@@ -176,6 +176,7 @@ export const postmanIntegration = declareIntegration<PostmanConfig, PostmanSecre
   },
   schemas: {
     connectionConfig: postmanConfigSchema,
+    connectionPatchConfig: postmanConfigBase.partial(),
     bindingConfig: postmanConfigSchema,
     patchConfig: postmanConfigBase.partial(),
     secrets: postmanSecretsSchema,

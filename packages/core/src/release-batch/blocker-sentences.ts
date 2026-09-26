@@ -193,6 +193,8 @@ export interface HeldIssueRef {
 }
 
 const RUNNERS_TAB = 'Settings → Runners';
+const INTEGRATIONS_TAB = 'Settings → Integrations';
+const CONNECTIONS_DIRECTORY = 'Integrations in the workspace rail';
 
 /**
  * What clears this reading, per reading. Every one of them answers: a reading with no
@@ -338,12 +340,13 @@ export function heldBackWarningSentence(held: HeldIssueRef[]): string {
   );
 }
 
-/** The declared release label no box carries. Here, not at the call site: this
- *  module owns every sentence a door prints, warnings included (ISS-1127). The
- *  clearing names both places because `effectiveConfig` overlays them. */
+/** The declared release label no box carries. Here, not at the call site: this module owns every
+ *  sentence a door prints (ISS-1127). Each act names the screen it is taken on, the free one
+ *  having been offered for a round with none. The label matches `runners.labels`, the box a
+ *  release RUNS on, not the one holding the deploy credential — on Coolify, Forge (ISS-1275). */
 export function runnerPreferenceUnmetSentence(label: string): string {
   return withCosts(
     'RELEASE_RUNNER_PREFERENCE_UNMET',
-    `No box on this project carries the declared release label \`${label}\`, so this release goes to the pool this project has. Two ways out, either one complete. Label the box that holds the deploy credential with \`${label}\` under ${RUNNERS_TAB}. Or clear \`releaseRunnerLabel\` from the live deploy binding AND from the connection behind it, which asks for no box and stops nothing: a project declaring no release runner releases on the pool it has, and this reading goes with the label. Clearing it from the binding alone falls back to the connection's label rather than to none.`,
+    `No box on this project carries the declared release label \`${label}\`, so this release goes to the pool this project has. Two ways out, either one complete. Label the box you want this project's releases to run on with \`${label}\` under ${RUNNERS_TAB}. Or clear \`releaseRunnerLabel\` from the live deploy binding under ${INTEGRATIONS_TAB} AND from the connection behind it under ${CONNECTIONS_DIRECTORY}, which asks for no box and stops nothing: a project declaring no release runner releases on the pool it has, and this warning goes with the label. Clearing it from the binding alone falls back to the connection's label rather than to none.`,
   );
 }

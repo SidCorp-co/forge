@@ -23,6 +23,7 @@ function sound(overrides = {}) {
       present: true,
       declaredKeys: [
         'connectionConfig',
+        'connectionPatchConfig',
         'bindingConfig',
         'patchConfig',
         'secrets',
@@ -33,6 +34,7 @@ function sound(overrides = {}) {
       ],
       types: {
         connectionConfig: 'object',
+        connectionPatchConfig: 'object',
         bindingConfig: 'object',
         patchConfig: 'object',
         secrets: 'object',
@@ -245,6 +247,17 @@ describe('declarationFaults — schemas', () => {
     schemas.types = { ...schemas.types, patchSecrets: 'undefined' };
     expect(reasons(sound({ schemas }))).toContain(
       'schemas.patchSecrets is undefined, not a zod schema',
+    );
+  });
+
+  // ISS-1275 — the connection PATCH read the CREATE schema, so a provider whose required keys
+  // live at the binding tier could take no connection config patch at all. The schema that
+  // answers it is walked here so a provider added later cannot skip the question.
+  it('names a provider that declares no connection patch schema', () => {
+    const schemas = sound().schemas;
+    schemas.types = { ...schemas.types, connectionPatchConfig: undefined };
+    expect(reasons(sound({ schemas }))).toContain(
+      'schemas.connectionPatchConfig is missing, not a zod schema',
     );
   });
 

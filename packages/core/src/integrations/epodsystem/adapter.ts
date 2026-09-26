@@ -271,6 +271,7 @@ export const epodsystemIntegration = declareIntegration<EpodsystemConfig, Epodsy
   },
   schemas: {
     connectionConfig: epodsystemConfigBase,
+    connectionPatchConfig: epodsystemConfigBase.partial(),
     bindingConfig: epodsystemConfigBase,
     patchConfig: epodsystemConfigBase.partial(),
     secrets: epodsystemSecretsSchema,
