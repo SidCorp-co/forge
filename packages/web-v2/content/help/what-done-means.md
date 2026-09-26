@@ -22,7 +22,7 @@ for yourself, and what to do if it is not what you meant.
 | **Developed**, **Testing** | The change is built and is still being checked. |
 | **Tested** | Built and checked, and waiting for someone to review it for release. |
 | **Awaiting release** | Built and checked, and not yet released. The issue page says when it will be: *"The next release cut runs …"*, or *"No release is scheduled, so this ships when a person cuts one"*. People who can release see a **Release now** button there. |
-| **Releasing** | A release carrying it is running now. It is done once that release finishes and the status reads **Closed**. |
+| **Releasing** | A release carrying it is running now. It is done only if that release goes out and the status reads **Closed**. |
 | **Reopened** | Someone said it was not right. It is back with a person. |
 | **Dropped** | Decided against. No further work is planned on this issue, and it shows no release note. |
 
