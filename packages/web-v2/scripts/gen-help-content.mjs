@@ -68,7 +68,9 @@ const out =
   "export interface HelpDoc {\n" +
   "  slug: string;\n  title: string;\n  section: string;\n  order: number;\n  body: string;\n" +
   "}\n\n" +
-  `export const HELP_DOCS: HelpDoc[] = ${JSON.stringify(docs, null, 2)};\n`;
+  // A page may quote `${NAME}` (a config the reader pastes); as \u0024 it stays a plain string
+  // to any reader of this file instead of looking like a template literal nobody interpolated.
+  `export const HELP_DOCS: HelpDoc[] = ${JSON.stringify(docs, null, 2).replaceAll("${", "\\u0024{")};\n`;
 
 await fs.mkdir(path.dirname(OUT_FILE), { recursive: true });
 await fs.writeFile(OUT_FILE, out, "utf8");

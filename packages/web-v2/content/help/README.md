@@ -32,8 +32,14 @@ cannot leak into each other.
   "Verify it worked" → Troubleshooting.
 - **Links:** only to other pages in this folder, or to public external URLs.
   Never link into `docs/` or the source tree. A link to another page is written
-  `[Its title](?path=<slug>)`, the slug being the page's file name without `.md`;
-  `help-links.test.tsx` refuses any other form and any slug no page has.
+  `[Its title](?path=<slug>)`, the slug being the page's path under this folder
+  without `.md` — `pair-a-runner`, or `connect-an-assistant/cursor` for a page in
+  a subfolder; `help-links.test.tsx` refuses any other form and any slug no page has.
+- **Subfolders** group a set of pages that answer one reader's questions together.
+  `content/help/connect-an-assistant/` is the one there is: connecting Claude
+  Desktop, Claude Code, Cursor or another app to Forge, written for someone who
+  has never heard the word "MCP".
+  `src/features/docs/help-assistant-setup.test.ts` holds its rules.
 
 ## Frontmatter
 
@@ -48,8 +54,9 @@ order: 20                  # sort within the section (ascending)
 ```
 
 `section` groups pages in the `/docs` sidebar; `order` sorts within a section.
-Sections render in first-seen order — keep a stable set (e.g. *Getting started*,
-*Guides*, *Concepts*, *Reference*, *Troubleshooting*).
+Sections render in the order `SECTION_ORDER` in `docs-screen.tsx` lists them, and
+any section it does not list falls to the end alphabetically — so a new section
+is added there.
 
 ## Structure (Diátaxis, for the product)
 
@@ -57,6 +64,7 @@ Sections render in first-seen order — keep a stable set (e.g. *Getting started
 |---|---|---|
 | Getting started | one end-to-end first run | Create a project · Pair a runner · Run your first issue |
 | Guides | one task each | Manage your org & members · Configure the pipeline · Connect an integration · Move a project to another org |
+| Connect an assistant | use Forge from an assistant the reader already has | What connecting does · Claude Desktop · Claude Code · Cursor · Another app · What you can ask · When it does not work |
 | Concepts | product-level mental model | Project · Device & runner · Pipeline · Organization |
 | Reference | look-ups | Pipeline stages · Roles & permissions · Settings |
 | Troubleshooting | when stuck | Device offline · Job stuck in queue · Pairing code expired |

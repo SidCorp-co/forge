@@ -50,7 +50,14 @@ function deriveToc(markdown: string): TocEntry[] {
 }
 
 // Stable section order; anything else falls to the end alphabetically.
-const SECTION_ORDER = ["Getting started", "Guides", "Concepts", "Reference", "Troubleshooting"];
+const SECTION_ORDER = [
+  "Getting started",
+  "Guides",
+  "Connect an assistant",
+  "Concepts",
+  "Reference",
+  "Troubleshooting",
+];
 
 interface Section {
   name: string;
@@ -133,7 +140,7 @@ export function DocsScreen() {
           <p className="fg-body-sm text-muted">Guides for using Forge.</p>
         </div>
         <HelpButton
-          summary="How to use Forge — getting started, pairing a runner, managing your organization, and troubleshooting. Pick a page from the left, read it in the center, and jump around with the table of contents."
+          summary="How to use Forge — getting started, pairing a runner, managing your organization, connecting your own assistant, and troubleshooting. Pick a page from the left, read it in the center, and jump around with the table of contents."
           actions={["Search filters the page list", "Click a TOC entry to jump to that heading"]}
         />
       </div>

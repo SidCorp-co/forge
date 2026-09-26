@@ -33,7 +33,7 @@ describe("every link between help pages", () => {
   it("is written in the one form the help README names", () => {
     const wrong = HELP_DOCS.flatMap((d) =>
       linksToOtherPages(d.body)
-        .filter((href) => !/^\?path=[a-z0-9-]+$/.test(href))
+        .filter((href) => !/^\?path=[a-z0-9-]+(\/[a-z0-9-]+)?$/.test(href))
         .map((href) => `${d.slug}: (${href}) — write (?path=<slug>)`),
     );
     expect(wrong).toEqual([]);
