@@ -5,6 +5,7 @@ import {
   isCloseDeferred,
   resolveDeployGate,
   settleDeployTarget,
+  targetHoldKey,
 } from '../../pipeline/deploy-confirmations.js';
 import { releaseDeployLocksForRun } from '../../pipeline/deploy-lock.js';
 import { closeRun, RELEASE_DEPLOY_DONE_STEP, setCurrentStep } from '../../pipeline/runs.js';
@@ -188,9 +189,12 @@ export type DeploySettlementTarget = Pick<
  * hold this poller handed it, and there is still exactly ONE writer of that
  * decision.
  */
-/** Whether any target of this run is still building, queued, or not yet dispatched. */
-const stillInFlight = (holds: DeployHolds): boolean =>
-  Object.values(holds).some((h) => h.status === 'pending');
+/** Whether any target of this run OTHER than the one settling is still building or queued.
+ *  `settled` is excluded by key rather than by its recorded status, because a run that has already
+ *  gone terminal refuses the bookkeeping write that would clear it (`writeHold`), so its own entry
+ *  reads `pending` for ever and a sibling arriving after a failure would free nothing, ever. */
+const othersInFlight = (holds: DeployHolds, settled: string): boolean =>
+  Object.entries(holds).some(([key, h]) => key !== settled && h.status === 'pending');
 
 export async function applyDeploySettlement(
   data: DeploySettlementTarget,
@@ -218,17 +222,20 @@ export async function applyDeploySettlement(
     ...(detail ? { detail } : {}),
   });
 
+  // ISS-1279 — this target's deploy has ended whatever its verdict, and the environment is free
+  // once nothing else of this run is still reaching it. One target failing does not stop the
+  // siblings Coolify is still building, so the run going terminal is not the moment. By run id, so
+  // a run that took no lock frees nothing and one whose hold was reclaimed cannot free its
+  // successor.
+  if (!othersInFlight(holds, targetHoldKey(data.deliveryId))) {
+    await releaseDeployLocksForRun(data.runId);
+  }
+
   if (verdict === 'failed') {
     logger.error(
       { runId: data.runId, deploymentUuid: data.deploymentUuid, detail },
       'coolify confirm: deploy failed — failing the run',
     );
-    // ISS-1279 — one target failing does not stop the siblings Coolify is still building, and
-    // they are still reaching this environment. Free it only once nothing of this run is left in
-    // flight; where something is, the stated expiry frees it rather than a second release
-    // arriving beside a live build. By run id, so a run that took no lock frees nothing and one
-    // whose hold was reclaimed cannot free the successor that took it.
-    if (!stillInFlight(holds)) await releaseDeployLocksForRun(data.runId);
     await closeRun(data.runId, 'failed');
     return { settled: 'failed', closedRun: 'failed', ...(detail ? { detail } : {}) };
   }
@@ -236,7 +243,6 @@ export async function applyDeploySettlement(
   const gate = resolveDeployGate(holds);
   if (gate.verdict !== 'clear') return { settled: 'succeeded', closedRun: false };
 
-  await releaseDeployLocksForRun(data.runId);
   await setCurrentStep(data.runId, RELEASE_DEPLOY_DONE_STEP);
   if (!(await isCloseDeferred(data.runId))) return { settled: 'succeeded', closedRun: false };
   await closeRun(data.runId, 'completed');

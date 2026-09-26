@@ -42,6 +42,7 @@ vi.mock('../../pipeline/deploy-confirmations.js', async () => {
   );
   return {
     resolveDeployGate: real.resolveDeployGate,
+    targetHoldKey: real.targetHoldKey,
     settleDeployTarget: (args: unknown) => settleMock(args),
     isCloseDeferred: (...a: unknown[]) => isCloseDeferredMock(...(a as [])),
   };
@@ -207,6 +208,27 @@ describe('runCoolifyConfirm', () => {
 
     expect(closeRunMock.mock.calls).toEqual([[RUN_ID, 'failed']]);
     expect(releaseLocksMock.mock.calls).toEqual([]);
+  });
+
+  // A run that has already failed refuses the bookkeeping write, so the last target's own entry
+  // still reads `pending` when it settles. Reading its own entry as work in flight is how the
+  // environment would stay held until its expiry after every deploy had finished.
+  it('frees the environment on the last target even once the run has failed', async () => {
+    getDeploymentMock.mockResolvedValue({ status: 'finished' });
+    settleMock.mockResolvedValue({
+      ...holds('failed'),
+      [`target:${job().deliveryId}`]: {
+        bindingId: 'bind-1',
+        deploymentUuid: 'dep-1',
+        targetLabel: 'Backend',
+        status: 'pending',
+        deadlineAt: FUTURE,
+      },
+    });
+
+    await runCoolifyConfirm(job());
+
+    expect(releaseLocksMock.mock.calls).toEqual([[RUN_ID]]);
   });
 
   it('re-polls while the deployment is non-terminal and the deadline is ahead', async () => {
