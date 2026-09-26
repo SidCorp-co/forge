@@ -162,4 +162,27 @@ describe("ChatComposer — stopping what is running", () => {
     fireEvent.click(screen.getByLabelText("Stop answering"));
     expect(onStop).toHaveBeenCalledOnce();
   });
+
+  // Dropping is off while a turn runs, and react-dropzone says so by writing
+  // aria-disabled on its root — the frame, which holds Stop. ARIA hands that to
+  // every control inside, so a screen reader would hear Stop as disabled in the
+  // one state it exists for.
+  it("is not announced disabled while a turn runs, through anything it sits in", () => {
+    render(
+      <ChatComposer onSend={vi.fn()} busy queueWhileBusy attachments={CONVERSATION_ATTACHMENTS} onStop={vi.fn()} />,
+    );
+    const stop = screen.getByRole("button", { name: "Stop answering" });
+    expect(stop).toBeEnabled();
+    expect(stop.closest('[aria-disabled="true"]')).toBeNull();
+    expect(screen.getByLabelText("Message").closest('[aria-disabled="true"]')).toBeNull();
+  });
+});
+
+describe("ChatComposer — one attach control, announced once", () => {
+  it("keeps the picker's own input out of the accessibility tree", () => {
+    render(<ChatComposer onSend={vi.fn()} attachments={CONVERSATION_ATTACHMENTS} />);
+    const input = document.querySelector('input[type="file"]');
+    expect(input).toHaveAttribute("aria-hidden", "true");
+    expect(screen.getAllByRole("button", { name: /attach|upload/i })).toHaveLength(1);
+  });
 });
