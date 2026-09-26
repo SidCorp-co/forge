@@ -3098,6 +3098,7 @@
   set is now 59.
 
 ### Fixed
+- **Menus, dropdowns and tooltips are no longer cut off near the bottom of a list.** They open on whichever side has room and scroll inside themselves when neither side does. The page behind an open menu stays still.
 - **Settings → MCP now offers a snippet for the project you are working in.** It opened on whichever project came first in your list. A sentence beside Copy now names the project the snippet configures.
 - **A box running two runners is no longer told the second is serving the first.** Where `forge-runner status` cannot name the daemon's build, it now names a process only if it serves the configuration you asked about, and guesses nothing.
 - **`forge-runner update --restart` now restarts the runner that actually lags.** It stopped at "up to date" first, and after an update it restarted whatever unit the box had. Both branches now ask the daemon, and refuse rather than guess.
