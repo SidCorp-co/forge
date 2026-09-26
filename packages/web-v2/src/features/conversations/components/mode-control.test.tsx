@@ -35,7 +35,7 @@ vi.mock("next/link", () => ({
 const FREE: AgentModeOffer = { available: true, reason: null };
 const BLOCKED: AgentModeOffer = {
   available: false,
-  reason: "no box is paired with this project",
+  reason: "this project has no runner paired",
 };
 
 function renderControl(over: Partial<Parameters<typeof ConversationModeControl>[0]> = {}) {
@@ -83,13 +83,19 @@ describe("the blocked option", () => {
     renderControl({ offer: BLOCKED });
     fireEvent.click(screen.getByRole("radio", { name: /Agent/ }));
     const panel = screen.getByTestId("mode-blocked-panel");
-    expect(panel).toHaveTextContent("no box is paired with this project");
+    expect(panel).toHaveTextContent("Agent needs a paired runner");
+    expect(panel).toHaveTextContent("This project has no runner paired.");
   });
 
-  it("offers the way out of it", () => {
+  // `/pair` only approves a code the CLI printed and, reached with none, sends
+  // the person away again; `/runners` is where "Pair a device" and "Generate
+  // code" are. The way out has to land where a pairing can start.
+  it("offers the way out of it, on the page a pairing starts from", () => {
     renderControl({ offer: BLOCKED });
     fireEvent.click(screen.getByRole("radio", { name: /Agent/ }));
-    expect(screen.getByRole("link", { name: /Pair a box/ })).toHaveAttribute("href", "/pair");
+    const link = screen.getByRole("link", { name: "Pair a runner" });
+    expect(link).toHaveAttribute("href", "/runners");
+    expect(link).not.toHaveAttribute("href", "/pair");
   });
 
   it("does not pick the mode it could not run", () => {
@@ -103,10 +109,33 @@ describe("the blocked option", () => {
     expect(screen.getByTestId("mode-condition-dot")).toBeInTheDocument();
   });
 
-  it("closes the panel on Escape", () => {
+  it("closes the panel on Escape and gives the caret back to the checked mode", () => {
     renderControl({ offer: BLOCKED });
     fireEvent.click(screen.getByRole("radio", { name: /Agent/ }));
-    fireEvent.keyDown(document, { key: "Escape" });
+    fireEvent.keyDown(screen.getByRole("link", { name: "Pair a runner" }), { key: "Escape" });
+    expect(screen.queryByTestId("mode-blocked-panel")).not.toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /Assistant/ })).toHaveFocus();
+  });
+
+  // The dock and the slide-over close on Escape too. A panel that closes and
+  // leaves the key unclaimed takes the whole conversation, draft and all, with it.
+  it("claims the Escape it closes on, so what it sits in does not also close", () => {
+    renderControl({ offer: BLOCKED });
+    fireEvent.click(screen.getByRole("radio", { name: /Agent/ }));
+    const reachedDocument = vi.fn();
+    document.addEventListener("keydown", reachedDocument);
+    const notCancelled = fireEvent.keyDown(screen.getByRole("link", { name: "Pair a runner" }), {
+      key: "Escape",
+    });
+    document.removeEventListener("keydown", reachedDocument);
+    expect(notCancelled).toBe(false);
+    expect(reachedDocument).not.toHaveBeenCalled();
+  });
+
+  it("closes when the keyboard leaves it", () => {
+    renderControl({ offer: BLOCKED });
+    fireEvent.click(screen.getByRole("radio", { name: /Agent/ }));
+    fireEvent.blur(screen.getByRole("link", { name: "Pair a runner" }), { relatedTarget: document.body });
     expect(screen.queryByTestId("mode-blocked-panel")).not.toBeInTheDocument();
   });
 });
@@ -149,11 +178,36 @@ describe("below 480 pixels of composer width", () => {
     expect(trigger).toHaveFocus();
   });
 
+  it("claims the Escape it closes on", () => {
+    renderControl({ narrow: true });
+    fireEvent.click(screen.getByTestId("conversation-mode-menu-trigger"));
+    const notCancelled = fireEvent.keyDown(screen.getByRole("menuitemradio", { name: /Assistant/ }), {
+      key: "Escape",
+    });
+    expect(notCancelled).toBe(false);
+  });
+
+  it("names the menu it opens", () => {
+    renderControl({ narrow: true });
+    fireEvent.click(screen.getByTestId("conversation-mode-menu-trigger"));
+    expect(screen.getByRole("menu", { name: "What this conversation talks to" })).toBeInTheDocument();
+  });
+
+  it("gives the caret back to its button when the blocked panel closes on Escape", () => {
+    renderControl({ narrow: true, offer: BLOCKED });
+    const trigger = screen.getByTestId("conversation-mode-menu-trigger");
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole("menuitemradio", { name: /Agent/ }));
+    fireEvent.keyDown(screen.getByRole("link", { name: "Pair a runner" }), { key: "Escape" });
+    expect(screen.queryByTestId("mode-blocked-panel")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
   it("gives the keyboard the way out when the option it stood on disappears", () => {
     renderControl({ narrow: true, offer: BLOCKED });
     fireEvent.click(screen.getByTestId("conversation-mode-menu-trigger"));
     fireEvent.click(screen.getByRole("menuitemradio", { name: /Agent/ }));
-    expect(screen.getByRole("link", { name: /Pair a box/ })).toHaveFocus();
+    expect(screen.getByRole("link", { name: "Pair a runner" })).toHaveFocus();
   });
 
   it("still refuses the blocked mode, with the same panel", () => {

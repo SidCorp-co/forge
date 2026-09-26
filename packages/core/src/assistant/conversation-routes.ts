@@ -228,7 +228,7 @@ conversationRoutes.get(
     return c.json(
       (await conversationAgentDeviceAvailable(projectId))
         ? { available: true, reason: null }
-        : { available: false, reason: 'this project has no box paired' },
+        : { available: false, reason: 'this project has no runner paired' },
     );
   },
 );

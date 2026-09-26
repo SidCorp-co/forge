@@ -138,7 +138,8 @@ describe("the name the server would refuse", () => {
     const long = `${"a".repeat(177)}.png`;
     const out = stageFiles([file(long, "image/png", 4096)], CONVERSATION_ATTACHMENTS, 0);
     expect(out.accepted).toEqual([]);
-    expect(out.refused[0]?.reason).toContain("180 bytes");
+    expect(out.refused[0]?.reason).toMatch(/^its name is too long — shorten it to at most 180 plain letters/);
+    expect(out.refused[0]?.reason).not.toContain("bytes");
   });
 
   it("counts the bytes of the name, not its characters", () => {

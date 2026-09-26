@@ -368,6 +368,11 @@ export function ChatComposer({
             {...getRootProps({
               ref: rowRef,
               "data-testid": "chat-composer",
+              // react-dropzone marks its root aria-disabled whenever dropping is
+              // off, and this root holds the footer: every control in it, Stop
+              // included, would be announced disabled for the whole of a turn.
+              // Each control states its own disabled state instead.
+              "aria-disabled": undefined,
               className: [
                 "flex w-full flex-col rounded-2xl border bg-surface transition-shadow",
                 "focus-within:border-[color:var(--link)] focus-within:shadow-[var(--shadow-focus)]",
@@ -375,7 +380,11 @@ export function ChatComposer({
               ].join(" "),
             })}
           >
-            {attachments && <input {...getInputProps({ accept: acceptAttribute(attachments) })} />}
+            {attachments && (
+              // The picker's own input, which "Attach files" opens: hidden from
+              // the accessibility tree so the one control is not announced twice.
+              <input {...getInputProps({ accept: acceptAttribute(attachments), "aria-hidden": true })} />
+            )}
 
             {files.length > 0 && (
               <ul className="flex flex-wrap gap-1.5 px-2.5 pt-2.5" data-testid="composer-chips">

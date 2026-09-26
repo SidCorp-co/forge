@@ -63,9 +63,28 @@ describe("what a stored turn carries for its reader", () => {
     const writeText = vi.fn(async () => undefined);
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
     render(<ConversationThread messages={[said()]} windows={[]} />);
-    fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Copy message from Colin/ }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("what is in this picture"));
-    expect(await screen.findByRole("button", { name: "Copied" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /^Copied message from Colin/ })).toBeInTheDocument();
+  });
+
+  it("says which message each copy control takes, so a list of them is not seven 'Copy's", () => {
+    const answer = said({
+      id: "m2",
+      seq: 1,
+      role: "assistant",
+      authorUserId: null,
+      authorLabel: null,
+      content: "a cat",
+    });
+    render(<ConversationThread messages={[said(), answer]} windows={[]} />);
+    const names = screen
+      .getAllByRole("button", { name: /^Copy/ })
+      .map((b) => b.getAttribute("aria-label"));
+    expect(names).toHaveLength(2);
+    expect(new Set(names).size).toBe(2);
+    expect(names[0]).toMatch(/^Copy message from Colin at /);
+    expect(names[1]).toMatch(/^Copy message from Assistant at /);
   });
 
   it("shows the files that went with it", () => {
@@ -84,6 +103,35 @@ describe("what a stored turn carries for its reader", () => {
     render(<ConversationThread messages={[pictureOnly]} windows={[]} />);
     expect(screen.getByTestId("message-files")).toBeInTheDocument();
     expect(screen.queryByText("what is in this picture")).not.toBeInTheDocument();
+  });
+});
+
+describe("a message still on its way", () => {
+  const png = new File(["x"], "whiteboard.png", { type: "image/png" });
+
+  it("shows the files it carries while it is sending", () => {
+    render(
+      <ConversationThread
+        messages={[]}
+        windows={[]}
+        outbox={[{ id: "o1", content: "read this", files: [png], state: "sending" }]}
+      />,
+    );
+    expect(screen.getByTestId("thread-outbox-sending")).toHaveTextContent("Sending…");
+    expect(screen.getByTestId("message-files")).toHaveTextContent("whiteboard.png");
+  });
+
+  it("draws no empty bubble for a picture sent alone", () => {
+    render(
+      <ConversationThread
+        messages={[]}
+        windows={[]}
+        outbox={[{ id: "o1", content: "", files: [png], state: "queued" }]}
+      />,
+    );
+    const item = screen.getByTestId("thread-outbox-queued");
+    expect(item.querySelector("p.fg-body")).toBeNull();
+    expect(screen.getByTestId("message-files")).toHaveTextContent("whiteboard.png");
   });
 });
 
