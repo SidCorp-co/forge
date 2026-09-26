@@ -299,7 +299,7 @@ export function IssueDetailScreen({
           TopBar now carries the breadcrumb trail (ISS-358/359), so the in-page
           breadcrumb was removed to stop the doubled header that hid the detail
           (ISS-360 regression). Full-bleed via negative gutters. */}
-      <div className="sticky top-0 z-20 -mx-4 mb-5 flex items-start gap-3 border-b border-line-subtle bg-app/95 px-4 py-3 backdrop-blur sm:-mx-8 sm:px-8">
+      <div className="sticky top-0 z-20 -mx-4 mb-5 flex flex-wrap items-start gap-3 border-b border-line-subtle bg-app/95 px-4 py-3 backdrop-blur sm:-mx-8 sm:px-8">
         <IconButton
           icon="arrowRight"
           aria-label="Back to issues"
@@ -322,7 +322,9 @@ export function IssueDetailScreen({
           </div>
           <PageTitle className="fg-h3 mt-1.5 break-words">{issue.title}</PageTitle>
         </div>
-        <div className="hidden flex-none items-center gap-2 sm:flex">
+        {/* Its own row under the title at phone width rather than hidden there: the help tells a
+            reader to choose Reopen at the top of the issue page, on whatever screen they read it. */}
+        <div className="flex basis-full flex-wrap items-center gap-2 sm:flex-none sm:basis-auto">
           <HelpButton
             summary="The full record for one issue: pipeline progress, description, acceptance criteria, the agent plan, and Comments / Activity / Tasks."
             actions={[

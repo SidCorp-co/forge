@@ -13,14 +13,20 @@ import { MermaidDiagram } from "./mermaid";
 const sameUrl = (url: string) => url;
 
 /** A relative link to another doc page (not scheme:/protocol-relative/absolute/
- *  anchor). Covers slug links (`pair-a-runner`) and legacy `.md` links. */
-function isRelativeDocLink(href: string): boolean {
+ *  anchor). Covers the viewer's own `?path=<slug>` form, slug links
+ *  (`pair-a-runner`) and legacy `.md` links. */
+export function isRelativeDocLink(href: string): boolean {
   return !/^([a-z][a-z0-9+.-]*:|\/\/|\/|#)/i.test(href);
 }
 
 /** Resolve a relative doc href against the current doc's slug → a slug the Docs
- *  viewer can open via `?path=`. Tolerates a legacy `.md` extension. */
-function resolveDocPath(baseFile: string, href: string): string {
+ *  viewer can open via `?path=`. A `?path=<slug>` href names its slug outright;
+ *  anything else is a path, with a legacy `.md` extension tolerated. An empty
+ *  result is a link to no page, which the viewer answers as a missing page. */
+export function resolveDocPath(baseFile: string, href: string): string {
+  if (href.startsWith("?")) {
+    return new URLSearchParams(href.split("#")[0]).get("path") ?? "";
+  }
   const clean = href.split(/[#?]/)[0].replace(/\.mdx?$/i, "");
   const baseDir = baseFile.includes("/") ? baseFile.slice(0, baseFile.lastIndexOf("/")) : "";
   const segs = `${baseDir ? `${baseDir}/` : ""}${clean}`.split("/");

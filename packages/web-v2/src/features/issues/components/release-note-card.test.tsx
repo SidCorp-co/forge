@@ -63,6 +63,16 @@ describe("the release note on an issue's page", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  it("renders the note's markdown instead of showing its markup", () => {
+    const { container } = show("testing", {
+      section: "Fixed",
+      userFacing: "Run `forge-runner status` to see **which** version is live.",
+    });
+    expect(container.textContent).toContain("Run forge-runner status to see which version is live.");
+    expect(container.textContent).not.toMatch(/[`*]/);
+    expect(container.querySelector("code")).toHaveTextContent("forge-runner status");
+  });
+
   it("draws nothing on a dropped issue, whatever note it carries", () => {
     const { container } = show("dropped", FIXED);
     expect(container).toBeEmptyDOMElement();
