@@ -298,16 +298,26 @@ const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySec
         bindingId: ctx.bindingId,
         targets: confirmations,
         ...(input.requestId ? { requestId: input.requestId } : {}),
+      }).catch((err: unknown) => {
+        // The placeholder stands where this could not be written, so the gate stays deferred
+        // rather than reading a run with no holds as proven. The confirmations below still go
+        // out: a deployment Coolify accepted and nothing polls is a deploy nobody watches, and
+        // the delivery rows make a second dispatch no way back to one.
+        logger.error({ err, runId, bindingId: ctx.bindingId }, 'coolify deploy: holds unwritable');
+        return false;
       });
-      for (const job of pendingConfirms) {
-        await enqueueCoolifyConfirm(job, { startAfterSeconds: 0 });
-      }
       if (!held) {
         logger.error(
           { runId, bindingId: ctx.bindingId, targets: confirmations.length },
           'coolify deploy: the run went terminal mid-dispatch and refused its confirmation holds — this deploy will be polled and audited, but no run can witness its outcome',
         );
       }
+    }
+
+    // Outside the `runId` guard: a run-less resource redeploy is polled and audited exactly as a
+    // run-tracked one is, and only the holds are the run's.
+    for (const job of pendingConfirms) {
+      await enqueueCoolifyConfirm(job, { startAfterSeconds: 0 });
     }
 
     if (failures.length > 0) {

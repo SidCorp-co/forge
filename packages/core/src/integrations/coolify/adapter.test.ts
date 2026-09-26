@@ -277,6 +277,40 @@ describe('coolifyAdapter — the deploy is held until Coolify confirms it (ISS-9
     expect(order).toEqual(['holds', 'confirm', 'confirm']);
   });
 
+  it('polls a run-less resource redeploy too — only the holds are the run\u2019s', async () => {
+    let n = 0;
+    globalThis.fetch = vi.fn(async () => {
+      n += 1;
+      return new Response(JSON.stringify({ deployment_uuid: `dep-${n}` }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    await coolifyAdapter.dispatchOutbound(twoTargetCtx(), {
+      eventName: 'release.requested',
+      payload: {},
+      requestId: 'req-1',
+    });
+
+    expect(replaceHoldsMock).not.toHaveBeenCalled();
+    expect(enqueueConfirmMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('polls what Coolify accepted even where the holds could not be written at all', async () => {
+    replaceHoldsMock.mockRejectedValueOnce(new Error('metadata write failed'));
+    let n = 0;
+    globalThis.fetch = vi.fn(async () => {
+      n += 1;
+      return new Response(JSON.stringify({ deployment_uuid: `dep-${n}` }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    await coolifyAdapter.dispatchOutbound(twoTargetCtx(), {
+      eventName: 'release.requested',
+      payload: { runId: RUN_ID },
+      requestId: 'req-1',
+    });
+
+    expect(enqueueConfirmMock).toHaveBeenCalledTimes(2);
+  });
+
   it('a target that never got a deployment_uuid is already a FAILED hold, not a pending one', async () => {
     let n = 0;
     globalThis.fetch = vi.fn(async () => {

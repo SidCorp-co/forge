@@ -78,9 +78,11 @@ vi.mock('./runs.js', () => ({
 
 const openHoldSpy = vi.fn(async (_args: unknown) => true);
 const abandonHoldSpy = vi.fn(async (_runId: string, _requestId: string) => undefined);
+let heldNow: Record<string, { status: string }> = {};
 vi.mock('./deploy-confirmations.js', () => ({
   openDeployDispatchHold: (args: unknown) => openHoldSpy(args),
   abandonDeployDispatchHold: (runId: string, requestId: string) => abandonHoldSpy(runId, requestId),
+  readDeployHolds: async () => heldNow,
   DEPLOY_CONFIRM_WINDOW_MS: 30 * 60_000,
 }));
 
@@ -141,6 +143,7 @@ beforeEach(() => {
   openHoldSpy.mockResolvedValue(true);
   abandonHoldSpy.mockReset();
   abandonHoldSpy.mockResolvedValue(undefined);
+  heldNow = {};
 });
 
 describe('tryDispatchCoolifyRelease — the environment hold', () => {
@@ -159,6 +162,7 @@ describe('tryDispatchCoolifyRelease — the environment hold', () => {
 
   it('holds the stages of the bindings it is about to dispatch', async () => {
     listBindingsSpy.mockResolvedValueOnce([stagingPair]);
+    heldNow = { 'target:del-a': { status: 'pending' } };
 
     await tryDispatchCoolifyRelease({
       projectId: PROJECT_ID,
@@ -246,7 +250,11 @@ describe('tryDispatchCoolifyRelease — the environment hold', () => {
 
     expect((db.update as unknown as { mock: { calls: unknown[][] } }).mock.calls.length).toBe(1);
   });
+});
 
+// The hold is given back the moment nothing of this run is reaching the environment any more,
+// and kept for as long as something is — a throw partway through the fan-out is neither by itself.
+describe('tryDispatchCoolifyRelease — giving the hold back', () => {
   it('gives the hold back when the dispatch throws before anything is enqueued', async () => {
     listBindingsSpy.mockResolvedValueOnce([stagingPair]);
     enqueueSpy.mockImplementation(() => {
@@ -268,6 +276,27 @@ describe('tryDispatchCoolifyRelease — the environment hold', () => {
   // A target that settles between two enqueues reads every hold registered so far as the whole
   // set, closes the run and frees the environment — and the binding not yet reached is then
   // dispatched behind both. Every hold is opened before the first enqueue so that window is shut.
+  it('gives the hold back when the binding that was enqueued has already settled', async () => {
+    listBindingsSpy.mockResolvedValueOnce([stagingPair, pairOf(SECOND_INT, ['preview'])]);
+    enqueueSpy
+      .mockImplementationOnce(() => undefined)
+      .mockImplementationOnce(() => {
+        throw new Error('queue is down');
+      });
+    // The one that WAS enqueued settled before this throw was caught, so nothing of this run is
+    // reaching the environment any more — and a count of successful enqueues cannot say so.
+    heldNow = { 'target:del-a': { status: 'succeeded' } };
+
+    await tryDispatchCoolifyRelease({
+      projectId: PROJECT_ID,
+      issueId: null,
+      runId: RUN_ID,
+      takeEnvironmentLock: true,
+    }).catch(() => undefined);
+
+    expect(releaseLocksMock.mock.calls).toEqual([[RUN_ID]]);
+  });
+
   it('opens every dispatch hold before the first binding is enqueued', async () => {
     const order: string[] = [];
     openHoldSpy.mockImplementation(async () => {
@@ -308,6 +337,7 @@ describe('tryDispatchCoolifyRelease — the environment hold', () => {
 
   it('keeps the hold when the dispatch throws after one binding is already on its way', async () => {
     listBindingsSpy.mockResolvedValueOnce([stagingPair, pairOf(SECOND_INT, ['preview'])]);
+    heldNow = { 'target:del-a': { status: 'pending' } };
     enqueueSpy
       .mockImplementationOnce(() => undefined)
       .mockImplementationOnce(() => {

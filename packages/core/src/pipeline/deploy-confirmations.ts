@@ -32,12 +32,9 @@ async function writeHold(
   runId: string,
   key: string,
   hold: DeployConfirmation,
-  /**
-   * Whether a terminal run may still take this write. Only a SETTLEMENT passes
-   * it (ISS-1279): one target failing closes the run while Coolify keeps
-   * building its siblings, and refusing their outcomes leaves the run's record
-   * saying a finished deploy is still pending, for ever. It creates no hold.
-   */
+  /** Whether a terminal run may still take this write (ISS-1279). Only a write about a deploy
+   *  Coolify already accepted passes it: a target failing closes the run while its siblings keep
+   *  building, and refusing THEIR record leaves it saying a finished deploy is still pending. */
   evenIfTerminal = false,
 ): Promise<boolean> {
   const live = inArray(pipelineRuns.status, ['running', 'paused']);
@@ -52,8 +49,7 @@ async function writeHold(
   return written.length > 0;
 }
 
-/** Forget a dispatch placeholder whose deploy was never queued (ISS-1279): nothing can settle it,
- *  so the run cannot close and the environment stays held to that hold's own deadline. */
+/** Forget a placeholder whose deploy was never queued (ISS-1279): nothing can settle it, so the run cannot close and the environment stays held to that hold's own deadline. */
 export async function abandonDeployDispatchHold(runId: string, requestId: string): Promise<void> {
   await dropHold(runId, dispatchHoldKey(requestId));
 }
@@ -127,19 +123,28 @@ export async function replaceDispatchHoldWithTargets(args: {
 }): Promise<boolean> {
   const now = args.now ?? new Date();
   const deadlineAt = new Date(now.getTime() + DEPLOY_CONFIRM_WINDOW_MS).toISOString();
+  // A terminal run records the outcome of work it authorised while live and takes on nothing new: a standing placeholder IS that authorisation (ISS-1279), and its absence leaves ISS-922's rule where it was.
+  const placeholder = args.requestId ? dispatchHoldKey(args.requestId) : null;
+  const replacing = placeholder !== null && placeholder in (await readDeployHolds(args.runId));
   let allHeld = true;
   for (const t of args.targets) {
-    const held = await writeHold(args.runId, targetHoldKey(t.deliveryId), {
-      bindingId: args.bindingId,
-      deploymentUuid: t.deploymentUuid,
-      targetLabel: t.targetLabel,
-      status: t.status,
-      deadlineAt,
-      ...(t.detail ? { detail: t.detail } : {}),
-    });
+    const held = await writeHold(
+      args.runId,
+      targetHoldKey(t.deliveryId),
+      {
+        bindingId: args.bindingId,
+        deploymentUuid: t.deploymentUuid,
+        targetLabel: t.targetLabel,
+        status: t.status,
+        deadlineAt,
+        ...(t.detail ? { detail: t.detail } : {}),
+      },
+      replacing,
+    );
     if (!held) allHeld = false;
   }
-  if (args.requestId) await dropHold(args.runId, dispatchHoldKey(args.requestId));
+  // Only once every target stands in its place: dropped beside a refused write it leaves a run with no holds at all, which every reader takes for a deploy that finished.
+  if (placeholder && allHeld) await dropHold(args.runId, placeholder);
   return allHeld;
 }
 

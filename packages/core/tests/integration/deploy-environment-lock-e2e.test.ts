@@ -338,6 +338,8 @@ describe('a hold whose owner is gone reads as free', () => {
 // Against the real bookkeeping, not a mock of it: the hold record is what the release decision
 // reads, so a hold that stops telling the truth is an environment held with nothing deploying.
 describe('the hold ends when the last deploy does', () => {
+  const BINDING_B = '00000000-0000-4000-8000-0000000000b2';
+
   const targetsOf = (n: number) =>
     Array.from({ length: n }, (_, i) => ({
       deliveryId: `del-${i}`,
@@ -388,6 +390,71 @@ describe('the hold ends when the last deploy does', () => {
     expect((await lockRow('live'))?.run_id).toBe(run);
 
     await settle(run, 'del-2', 'succeeded');
+    expect(await lockRow('live')).toBeNull();
+  });
+
+  // A second binding fanning out while a first one has already failed the run. Its targets are
+  // deploys Coolify accepted, so they go on the record whatever the run's status: refusing them
+  // and dropping their placeholder anyway leaves a run with no holds, which every reader takes
+  // for a deploy that finished — and this environment then reads free while C is still building.
+  async function twoBindingsOneFailed(run: string): Promise<void> {
+    const { openDeployDispatchHold, replaceDispatchHoldWithTargets } = await import(
+      '../../src/pipeline/deploy-confirmations.js'
+    );
+    await openDeployDispatchHold({
+      runId: run,
+      bindingId: BINDING_B,
+      requestId: 'req-b',
+      targetLabel: 'live deploy',
+    });
+    await armed(run, 1);
+    await settle(run, 'del-0', 'failed');
+    await replaceDispatchHoldWithTargets({
+      runId: run,
+      bindingId: BINDING_B,
+      requestId: 'req-b',
+      targets: [
+        { deliveryId: 'del-b', targetLabel: 'B', deploymentUuid: 'dep-b', status: 'pending' },
+        { deliveryId: 'del-c', targetLabel: 'C', deploymentUuid: 'dep-c', status: 'pending' },
+      ],
+    });
+  }
+
+  it('records the targets of a binding that fans out after the run has already failed', async () => {
+    const { acquireDeployLocks } = await lockModule();
+    const { readDeployHolds } = await import('../../src/pipeline/deploy-confirmations.js');
+    const run = await makeRun();
+    await acquireDeployLocks(request(run), ['live']);
+
+    await twoBindingsOneFailed(run);
+
+    expect(Object.keys(await readDeployHolds(run)).sort()).toEqual([
+      'target:del-0',
+      'target:del-b',
+      'target:del-c',
+    ]);
+  });
+
+  it('holds the environment while that second binding is still building', async () => {
+    const { acquireDeployLocks } = await lockModule();
+    const run = await makeRun();
+    await acquireDeployLocks(request(run), ['live']);
+    await twoBindingsOneFailed(run);
+
+    await settle(run, 'del-b', 'succeeded');
+
+    expect((await lockRow('live'))?.run_id).toBe(run);
+  });
+
+  it('frees it once that second binding\u2019s last target ends', async () => {
+    const { acquireDeployLocks } = await lockModule();
+    const run = await makeRun();
+    await acquireDeployLocks(request(run), ['live']);
+    await twoBindingsOneFailed(run);
+    await settle(run, 'del-b', 'succeeded');
+
+    await settle(run, 'del-c', 'succeeded');
+
     expect(await lockRow('live')).toBeNull();
   });
 

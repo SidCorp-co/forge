@@ -8,7 +8,11 @@ import { listActiveDeployBindingsForProvider } from '../integrations/store.js';
 import { logger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { projectAutoProdDeploy } from './auto-prod-deploy.js';
-import { abandonDeployDispatchHold, openDeployDispatchHold } from './deploy-confirmations.js';
+import {
+  abandonDeployDispatchHold,
+  openDeployDispatchHold,
+  readDeployHolds,
+} from './deploy-confirmations.js';
 import { acquireDeployLocks, releaseDeployLocksForRun } from './deploy-lock.js';
 import { RELEASE_DEPLOY_IN_FLIGHT_STEP, setCurrentStep } from './runs.js';
 
@@ -139,13 +143,20 @@ function deployLockIntent(
 const targetLabelOf = (binding: { stages: string[] | null; role: string }): string =>
   `${(binding.stages ?? []).join('+') || binding.role} deploy`;
 
-/** A deploy that put nothing on the wire is protecting nothing, so it holds nothing. */
-async function freeLockIfIdle(
+/**
+ * A deploy is protecting nothing once no target of this run is still pending, whatever the count
+ * it managed to enqueue: the holds are the record of what is actually reaching the environment,
+ * and a count of successful enqueues is not (ISS-1279).
+ */
+async function freeLockIfNothingPending(
   lock: DeployLockIntent | null,
   runId: string,
-  dispatchedCount: number,
 ): Promise<void> {
-  if (lock && dispatchedCount === 0) await releaseDeployLocksForRun(runId);
+  if (!lock) return;
+  const holds = await readDeployHolds(runId);
+  if (Object.values(holds).every((h) => h.status !== 'pending')) {
+    await releaseDeployLocksForRun(runId);
+  }
 }
 
 function reportUnwitnessedDeploy(runId: string, issueId: string | null, bindingId?: string): void {
@@ -268,11 +279,10 @@ export async function tryDispatchCoolifyRelease(args: {
     for (const { binding, requestId } of armed) {
       if (!dispatched.includes(binding.id)) await abandonDeployDispatchHold(runId, requestId);
     }
-    // The lock goes only where NOTHING reached Coolify: once a binding is on its way, that hold ends at the settlement or the expiry like any other.
-    await freeLockIfIdle(lock, runId, dispatched.length);
+    await freeLockIfNothingPending(lock, runId);
     throw err;
   }
-  await freeLockIfIdle(lock, runId, dispatched.length);
+  await freeLockIfNothingPending(lock, runId);
 
   if (dispatched.length === 0 && pendingHumanConfirm) {
     return {
