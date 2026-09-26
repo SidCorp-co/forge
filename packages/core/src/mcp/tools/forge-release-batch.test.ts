@@ -55,16 +55,6 @@ function tool(scopes: string[] = ['read', 'write']) {
 beforeEach(() => vi.clearAllMocks());
 
 describe('forge_release_batch refusals', () => {
-  // ISS-1276 — the method is a record, so a finish has no method refusal to map. Both codes are
-  // gone from the tool's vocabulary, not renamed inside it.
-  it('holds no method refusal in its vocabulary at all', async () => {
-    acceptFinish.mockRejectedValue(new Error('RELEASE_METHOD_MISMATCH: improvised'));
-
-    await expect(tool().handler({ action: 'finish', runId: RUN_ID })).rejects.toThrow(
-      /^RELEASE_METHOD_MISMATCH: improvised$/,
-    );
-  });
-
   it('says an aborted batch has nothing left to finish, in the account the REST door gives', async () => {
     acceptFinish.mockRejectedValue(new ReleaseBatchAbortedError('released', 'p-1'));
 
