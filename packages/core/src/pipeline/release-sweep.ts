@@ -16,6 +16,7 @@ import {
   ReleaseTargetUndeclaredError,
   resolveReleaseGate,
 } from '../release-batch/gate.js';
+import { readServingNow } from '../release-batch/serving-reading.js';
 import { loadCreatedBy } from '../schedules/release-batch-dispatch.js';
 import { cutWaitingRelease } from '../schedules/release-batch-run.js';
 import { projectAutoProdDeploy } from './release-coolify.js';
@@ -218,13 +219,22 @@ async function readGate(
   }
 }
 
-/** The criteria reports, or a hold naming why the verdicts could not be read. */
+/**
+ * The criteria reports, or a hold naming why the verdicts could not be read.
+ *
+ * One reading of what the project is serving is taken here and shared by every waiting issue: they
+ * are one project's rows weighed against one answer about that project, at one moment (ISS-1286).
+ * `readServingNow` answers rather than throwing for a host that will not talk — an unreachable
+ * probe is a reading this gate has, not a criteria read that failed — so only a tracker or database
+ * failure reaches the catch below.
+ */
 async function readCriteria(
   projectId: string,
   waiting: string[],
 ): Promise<{ ok: true; value: IssueCriteriaReport[] } | { ok: false; hold: ReleaseHold }> {
   try {
-    return { ok: true, value: await unearnedCriteriaReports(waiting) };
+    const serving = await readServingNow(projectId);
+    return { ok: true, value: await unearnedCriteriaReports(waiting, serving) };
   } catch (err) {
     logger.error({ err, projectId }, 'release-sweep: the criteria could not be read');
     return {

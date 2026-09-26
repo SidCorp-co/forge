@@ -12,7 +12,7 @@ import {
   releaseBlockerSentence,
 } from './blockers.js';
 import { releaseRunnerLabelOf } from './channel.js';
-import type { ReleaseRollback } from './plan.js';
+import type { ReleaseRollback, VerifySource } from './plan.js';
 
 export type ReleaseGapKey = string;
 
@@ -44,7 +44,7 @@ export interface ReleaseReadiness {
   rollbackMode: ReleaseRollback['kind'] | null;
   hasVerify: boolean;
   /** Where each live channel's probes came from, in the same order as `providers`. */
-  verifySources: Array<'binding' | 'environments-live' | 'none'>;
+  verifySources: VerifySource[];
   /** False where the declaration could not be READ, so `releaseModel`, the
    *  branches and `hasReleaseGate` are fallbacks rather than readings. */
   declarationRead: boolean;

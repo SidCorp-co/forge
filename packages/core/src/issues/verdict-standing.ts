@@ -1,10 +1,16 @@
 /**
- * What the identity a verdict names is worth once it is stored: which of its issue's own
- * identities it resolves against, and what an operator is told when it resolves against none.
- * The shapes that identity may be written in live at the write door, in
- * `messaging/verdict-identity.ts`.
+ * What the identity a verdict names is worth once it is stored: what it resolves against, and what
+ * an operator is told when it resolves against nothing.
+ *
+ * A runtime verdict resolves against a READING of what a project is serving, taken when the verdict
+ * is weighed — `release-batch/serving-reading.ts`. `sessionContext.landing.deployment` gates
+ * nothing: a commit stored on a row cannot say what a host serves now (ISS-1286). A source verdict
+ * resolves against the issue's own source, which is the issue's and does not move on its own.
+ *
+ * The shapes an identity may be written in live at the write door, `messaging/verdict-identity.ts`.
  */
 
+import type { ServingReading } from '../release-batch/serving-reading.js';
 import { sameIdentity } from '../messaging/verdict-identity.js';
 
 /** `source` is a commit that was read, which cannot say the code was ever running. */
@@ -14,17 +20,23 @@ export interface VerdictIdentity {
 }
 
 export interface IssueIdentities {
-  /** What the issue records as serving it. */
-  readonly serving: string | null;
   /** The source the issue stands at. */
   readonly source: string | null;
 }
 
-/** How a verdict's identity resolves. `stands` is the only one a criterion can be earned on. */
-export type VerdictStanding = 'stands' | 'superseded' | 'unwitnessed' | 'unanchored';
+/**
+ * How a verdict's identity resolves. `stands` and `uncorroborated` are the two a criterion is earned
+ * on. `uncorroborated` is a runtime somebody witnessed that nothing here could re-read: absence of a
+ * reading is not a failure, so it earns, and it is its own word because it is weaker evidence.
+ */
+export type VerdictStanding =
+  | 'stands'
+  | 'superseded'
+  | 'unwitnessed'
+  | 'uncorroborated'
+  | 'unanchored';
 
 interface LandingBlock {
-  deployment?: unknown;
   head?: unknown;
 }
 
@@ -46,22 +58,29 @@ export function issueIdentities(row: {
   mergedCommitSha?: string | null;
 }): IssueIdentities {
   const landing = landingOf(row.sessionContext);
-  return {
-    serving: textOrNull(landing.deployment),
-    source: textOrNull(row.mergedCommitSha) ?? textOrNull(landing.head),
-  };
+  return { source: textOrNull(row.mergedCommitSha) ?? textOrNull(landing.head) };
+}
+
+/** Whether a runtime verdict names something the reading says is running. */
+function runtimeStanding(value: string, serving: ServingReading): VerdictStanding {
+  if (serving.kind === 'serving') {
+    return sameIdentity(value, serving.commit) ? 'stands' : 'superseded';
+  }
+  // A fleet mid-rollout answered: those answers decide, exactly as one answer does.
+  if (serving.kind === 'disagreeing') {
+    return serving.commits.some((commit) => sameIdentity(value, commit)) ? 'stands' : 'superseded';
+  }
+  return 'uncorroborated';
 }
 
 export function verdictStanding(
   at: VerdictIdentity | null,
+  serving: ServingReading,
   identities: IssueIdentities,
 ): VerdictStanding {
   if (!at) return 'unanchored';
-  if (identities.serving === null && identities.source === null) return 'unanchored';
-  if (at.kind === 'runtime') {
-    return sameIdentity(at.value, identities.serving) ? 'stands' : 'superseded';
-  }
-  if (identities.source === null) return 'superseded';
+  if (at.kind === 'runtime') return runtimeStanding(at.value, serving);
+  if (identities.source === null) return 'unanchored';
   return sameIdentity(at.value, identities.source, { abbreviating: true })
     ? 'unwitnessed'
     : 'superseded';
@@ -71,13 +90,47 @@ function named(value: string | null): string {
   return value ?? 'nothing';
 }
 
+/** What the reading asked and when, as one clause an operator can go and check. */
+function askedClause(serving: ServingReading): string {
+  if (serving.kind === 'undeclared') return '';
+  const hosts = serving.hosts.length > 0 ? ` at ${serving.hosts.join(', ')}` : '';
+  return `${hosts}, read at ${serving.readAt}`;
+}
+
+function uncorroboratedSentence(at: VerdictIdentity | null, serving: ServingReading): string {
+  const runtime = named(at?.value ?? null);
+  if (serving.kind === 'unreadable') {
+    return `judged at the runtime ${runtime}, and nothing could be read from what this project declares${askedClause(serving)}: ${serving.why}. A verdict nothing could check is weaker evidence than one that was checked, and it is not a refusal`;
+  }
+  return `judged at the runtime ${runtime}, and this project declares no way to ask a host what it is serving, so nothing here could check that reading. A verdict nothing could check is weaker evidence than one that was checked, and it is not a refusal`;
+}
+
+function supersededSentence(
+  at: VerdictIdentity | null,
+  serving: ServingReading,
+  identities: IssueIdentities,
+): string {
+  const judged = named(at?.value ?? null);
+  if (at?.kind !== 'runtime') {
+    return `judged at ${judged}, and this issue now stands at ${named(identities.source)}`;
+  }
+  if (serving.kind === 'serving') {
+    return `judged at ${judged}, and what this project is serving${askedClause(serving)} is ${serving.commit}`;
+  }
+  if (serving.kind === 'disagreeing') {
+    return `judged at ${judged}, and what this project is serving${askedClause(serving)} is ${serving.commits.join(' and ')} — a rollout that has not finished, and neither of those is what this verdict names`;
+  }
+  return `judged at ${judged}, and nothing this project declares answered what it is serving`;
+}
+
 export function standingSentence(
   standing: VerdictStanding,
   at: VerdictIdentity | null,
+  serving: ServingReading,
   identities: IssueIdentities,
 ): string {
   if (standing === 'stands') {
-    return `judged at the runtime this issue records as serving it, ${named(identities.serving)}`;
+    return `judged at the runtime this project is serving${askedClause(serving)}, ${named(at?.value ?? null)}`;
   }
   if (standing === 'unanchored') {
     return at
@@ -87,6 +140,6 @@ export function standingSentence(
   if (standing === 'unwitnessed') {
     return `judged against source ${named(at?.value ?? null)}, which is still the source this issue stands at, but no runtime witnessed it — a source identity says which code was read, never that the code was running`;
   }
-  const stands = at?.kind === 'runtime' ? named(identities.serving) : named(identities.source);
-  return `judged at ${named(at?.value ?? null)}, and this issue now stands at ${stands}`;
+  if (standing === 'uncorroborated') return uncorroboratedSentence(at, serving);
+  return supersededSentence(at, serving, identities);
 }

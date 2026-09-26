@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ServingReading } from '../release-batch/serving-reading.js';
 
 const listIssueCommentsMock = vi.fn(async (_issueId: string) => [] as Array<{ body: string }>);
 vi.mock('../comments/service.js', () => ({
@@ -31,15 +32,31 @@ const {
   unearnedCriteriaReports,
 } = await import('./criteria-verdicts.js');
 
-/** The identity the issues in this file record as serving them. */
+/** The identity this project's probes answer while these tests run. */
 const SERVING = '33637c612ef15be6f924520c0d201a0889d8ed7e';
 const SOURCE = 'dce6f354c727baa81c681f144cbadf30050eabfc';
+const READ_AT = '2026-09-26T23:55:00.000Z';
 
-/** An issue that records a serving runtime, so a verdict naming it can stand. */
+/** The reading every call below is weighed against, unless a test names another. */
+const LIVE: ServingReading = {
+  kind: 'serving',
+  commit: SERVING,
+  hosts: ['https://app.test/build-info'],
+  readAt: READ_AT,
+};
+const UNDECLARED: ServingReading = { kind: 'undeclared' };
+
+/**
+ * An issue carrying a landing block. `deployment` is deliberately a commit NOTHING serves: after
+ * ISS-1286 it decides nothing, and a test that passed because it happened to match would be
+ * testing the field this change removed from the comparison.
+ */
 const deployed = (id: string, acceptanceCriteria: string | null): IssueRow => ({
   id,
   acceptanceCriteria,
-  sessionContext: { landing: { head: SOURCE, deployment: SERVING } },
+  sessionContext: {
+    landing: { head: SOURCE, deployment: 'da74b598bcae5a53a1c0f2b9e3d7a41f6c8b2d90' },
+  },
   mergedCommitSha: null,
 });
 
@@ -203,7 +220,7 @@ describe('issuesWithUnearnedCriteria', () => {
     blocks.push(verdictBlock(20, 'the runner close loop', 'skipped'));
     listIssueCommentsMock.mockResolvedValueOnce([{ body: verdictComment(blocks) }]);
 
-    expect(await issuesWithUnearnedCriteria(['iss-1139'])).toEqual(['iss-1139']);
+    expect(await issuesWithUnearnedCriteria(['iss-1139'], LIVE)).toEqual(['iss-1139']);
   });
 
   it('drops an issue once its skipped criterion is later corrected to pass', async () => {
@@ -212,7 +229,7 @@ describe('issuesWithUnearnedCriteria', () => {
       { body: verdictComment([verdictBlock(1, 'a', 'pass'), verdictBlock(2, 'b', 'skipped')]) },
       { body: verdictComment([verdictBlock(2, 'b', 'pass')]) },
     ]);
-    expect(await issuesWithUnearnedCriteria(['iss-1139'])).toEqual([]);
+    expect(await issuesWithUnearnedCriteria(['iss-1139'], LIVE)).toEqual([]);
   });
 
   it('treats `fail` the same as `skipped` — not earned', async () => {
@@ -220,7 +237,7 @@ describe('issuesWithUnearnedCriteria', () => {
     listIssueCommentsMock.mockResolvedValueOnce([
       { body: verdictComment([verdictBlock(1, 'a', 'fail')]) },
     ]);
-    expect(await issuesWithUnearnedCriteria(['iss-fail'])).toEqual(['iss-fail']);
+    expect(await issuesWithUnearnedCriteria(['iss-fail'], LIVE)).toEqual(['iss-fail']);
   });
 
   it('treats a criterion never verdicted at all as not earned', async () => {
@@ -228,7 +245,7 @@ describe('issuesWithUnearnedCriteria', () => {
     listIssueCommentsMock.mockResolvedValueOnce([
       { body: verdictComment([verdictBlock(1, 'a', 'pass')]) },
     ]);
-    expect(await issuesWithUnearnedCriteria(['iss-unjudged'])).toEqual(['iss-unjudged']);
+    expect(await issuesWithUnearnedCriteria(['iss-unjudged'], LIVE)).toEqual(['iss-unjudged']);
   });
 
   it('treats `short` as earned', async () => {
@@ -236,7 +253,7 @@ describe('issuesWithUnearnedCriteria', () => {
     listIssueCommentsMock.mockResolvedValueOnce([
       { body: verdictComment([verdictBlock(1, 'a', 'short')]) },
     ]);
-    expect(await issuesWithUnearnedCriteria(['iss-short'])).toEqual([]);
+    expect(await issuesWithUnearnedCriteria(['iss-short'], LIVE)).toEqual([]);
   });
 
   it('names an issue whose pass was judged at a runtime it no longer stands at', async () => {
@@ -248,11 +265,11 @@ describe('issuesWithUnearnedCriteria', () => {
         ]),
       },
     ]);
-    expect(await issuesWithUnearnedCriteria(['iss-repaired'])).toEqual(['iss-repaired']);
+    expect(await issuesWithUnearnedCriteria(['iss-repaired'], LIVE)).toEqual(['iss-repaired']);
   });
 
   it('names every fully-pass issue as none — an empty roster check', async () => {
-    expect(await issuesWithUnearnedCriteria([])).toEqual([]);
+    expect(await issuesWithUnearnedCriteria([], LIVE)).toEqual([]);
   });
 });
 
@@ -263,20 +280,20 @@ describe('unearnedCriteriaReports', () => {
     listIssueCommentsMock.mockResolvedValueOnce([
       { body: verdictComment([verdictBlock(1, 'a', 'pass', { runtime: stale })]) },
     ]);
-    const [report] = await unearnedCriteriaReports(['iss-repaired']);
+    const [report] = await unearnedCriteriaReports(['iss-repaired'], LIVE);
     expect(report?.unearned).toEqual([
       {
         criterion: 1,
         verdict: 'pass',
         standing: 'superseded',
-        why: `judged at ${stale}, and this issue now stands at ${SERVING}`,
+        why: `judged at ${stale}, and what this project is serving at https://app.test/build-info, read at ${READ_AT} is ${SERVING}`,
       },
     ]);
   });
 
   it('carries no verdict word and no standing for a criterion nothing ever judged', async () => {
     issueRows = [deployed('iss-unjudged', '1. ok')];
-    const [report] = await unearnedCriteriaReports(['iss-unjudged']);
+    const [report] = await unearnedCriteriaReports(['iss-unjudged'], LIVE);
     expect(report?.unearned).toEqual([
       { criterion: 1, verdict: null, standing: null, why: 'no verdict was recorded for it' },
     ]);
@@ -287,7 +304,7 @@ describe('unearnedCriteriaReports', () => {
     listIssueCommentsMock.mockResolvedValueOnce([
       { body: verdictComment([verdictBlock(1, 'a', 'skipped')]) },
     ]);
-    const [report] = await unearnedCriteriaReports(['iss-1139']);
+    const [report] = await unearnedCriteriaReports(['iss-1139'], LIVE);
     expect(report?.unearned[0]).toMatchObject({
       standing: 'stands',
       why: expect.stringContaining('not earned'),
@@ -296,12 +313,12 @@ describe('unearnedCriteriaReports', () => {
 
   it('reports an issue with no numbered criteria as owing nothing', async () => {
     issueRows = [deployed('iss-no-criteria', 'prose with no numbered line')];
-    expect(await unearnedCriteriaReports(['iss-no-criteria'])).toEqual([
-      { issueId: 'iss-no-criteria', unearned: [], broken: [], serving: SERVING },
+    expect(await unearnedCriteriaReports(['iss-no-criteria'], LIVE)).toEqual([
+      { issueId: 'iss-no-criteria', unearned: [], broken: [], serving: LIVE, uncorroborated: [] },
     ]);
   });
 
-  it('carries the deployment the issue records as serving it, or null where it records none', async () => {
+  it('carries the one reading every issue in the call was weighed against', async () => {
     issueRows = [
       deployed('iss-served', '1. ok'),
       {
@@ -311,11 +328,8 @@ describe('unearnedCriteriaReports', () => {
         mergedCommitSha: SOURCE,
       },
     ];
-    const reports = await unearnedCriteriaReports(['iss-served', 'iss-unserved']);
-    expect(reports.map((r) => [r.issueId, r.serving])).toEqual([
-      ['iss-served', SERVING],
-      ['iss-unserved', null],
-    ]);
+    const reports = await unearnedCriteriaReports(['iss-served', 'iss-unserved'], LIVE);
+    expect(reports.map((r) => r.serving)).toEqual([LIVE, LIVE]);
   });
 
   it('returns the same issue ids issuesWithUnearnedCriteria does', async () => {
@@ -323,9 +337,9 @@ describe('unearnedCriteriaReports', () => {
     listIssueCommentsMock.mockImplementation(async (id: string) =>
       id === 'iss-a' ? [{ body: verdictComment([verdictBlock(1, 'a', 'pass')]) }] : [],
     );
-    const reports = await unearnedCriteriaReports(['iss-a', 'iss-b']);
+    const reports = await unearnedCriteriaReports(['iss-a', 'iss-b'], LIVE);
     expect(reports.filter((r) => r.unearned.length > 0).map((r) => r.issueId)).toEqual(['iss-b']);
-    expect(await issuesWithUnearnedCriteria(['iss-a', 'iss-b'])).toEqual(['iss-b']);
+    expect(await issuesWithUnearnedCriteria(['iss-a', 'iss-b'], LIVE)).toEqual(['iss-b']);
   });
 });
 
@@ -339,7 +353,7 @@ describe('what a verdict cites, once the evidence is gone', () => {
   it('leaves an earned, standing verdict alone while the tracker holds what it cites', async () => {
     issueRows = [deployed('iss-497', '1. ok')];
     judged();
-    const [report] = await unearnedCriteriaReports(['iss-497']);
+    const [report] = await unearnedCriteriaReports(['iss-497'], LIVE);
     expect(report?.unearned).toEqual([]);
     expect(report?.broken).toEqual([]);
   });
@@ -348,7 +362,7 @@ describe('what a verdict cites, once the evidence is gone', () => {
     issueRows = [deployed('iss-497', '1. ok')];
     heldNames = [];
     judged();
-    const [report] = await unearnedCriteriaReports(['iss-497']);
+    const [report] = await unearnedCriteriaReports(['iss-497'], LIVE);
     expect(report?.unearned).toEqual([
       {
         criterion: 1,
@@ -363,7 +377,7 @@ describe('what a verdict cites, once the evidence is gone', () => {
     issueRows = [deployed('iss-497', '1. ok')];
     heldNames = [];
     judged();
-    const [report] = await unearnedCriteriaReports(['iss-497']);
+    const [report] = await unearnedCriteriaReports(['iss-497'], LIVE);
     expect(report?.broken).toEqual([
       { criterion: 1, unresolved: [{ cited: 'judge-evidence.txt', standing: 'dangling' }] },
     ]);
@@ -376,7 +390,7 @@ describe('what a verdict cites, once the evidence is gone', () => {
     listIssueCommentsMock.mockResolvedValueOnce([
       { body: verdictComment([verdictBlock(1, 'a', 'pass', { runtime: stale })]) },
     ]);
-    const [report] = await unearnedCriteriaReports(['iss-497']);
+    const [report] = await unearnedCriteriaReports(['iss-497'], LIVE);
     expect(report?.unearned[0]?.why).toContain(`judged at ${stale}`);
     expect(report?.unearned[0]?.why).toContain('does not resolve');
   });
@@ -385,7 +399,7 @@ describe('what a verdict cites, once the evidence is gone', () => {
     issueRows = [deployed('iss-497', '1. ok')];
     heldNames = [];
     judged('fail');
-    const [report] = await unearnedCriteriaReports(['iss-497']);
+    const [report] = await unearnedCriteriaReports(['iss-497'], LIVE);
     expect(report?.unearned[0]?.why).toContain('not earned');
     expect(report?.unearned[0]?.why).toContain('does not resolve');
   });
@@ -394,7 +408,7 @@ describe('what a verdict cites, once the evidence is gone', () => {
     issueRows = [deployed('iss-497', '1. ok')];
     heldNames = [];
     judged();
-    expect(await issuesWithUnearnedCriteria(['iss-497'])).toEqual(['iss-497']);
+    expect(await issuesWithUnearnedCriteria(['iss-497'], LIVE)).toEqual(['iss-497']);
   });
 
   it('leaves a citation pointing outside the tracker alone, and says it was not followed', async () => {
@@ -414,7 +428,7 @@ describe('what a verdict cites, once the evidence is gone', () => {
         ]),
       },
     ]);
-    const [report] = await unearnedCriteriaReports(['iss-653']);
+    const [report] = await unearnedCriteriaReports(['iss-653'], LIVE);
     expect(report?.unearned).toEqual([]);
     expect(report?.broken).toEqual([]);
   });
@@ -434,7 +448,7 @@ describe('what a verdict cites, once the evidence is gone', () => {
         ]),
       },
     ]);
-    const [report] = await unearnedCriteriaReports(['iss-497']);
+    const [report] = await unearnedCriteriaReports(['iss-497'], LIVE);
     expect(report?.broken[0]?.unresolved).toEqual([
       { cited: '/tmp/claude-1000/scratchpad/c17-cleared.png', standing: 'unreachable' },
     ]);
@@ -453,7 +467,7 @@ describe('what a verdict cites, once the evidence is gone', () => {
         ]),
       },
     ]);
-    const [report] = await unearnedCriteriaReports(['iss-497']);
+    const [report] = await unearnedCriteriaReports(['iss-497'], LIVE);
     expect(report?.broken.map((b) => b.criterion)).toEqual([1, 2, 3]);
   });
 });

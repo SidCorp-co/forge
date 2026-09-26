@@ -106,21 +106,29 @@ interface UnearnedCriterion {
   standing: string | null;
   why: string;
 }
+/** ISS-1286 — the one reading the sweep takes per project and hands to every report. */
+const READING = { kind: 'serving', commit: 'c0ffee0', hosts: ['https://app.test/h'], readAt: 'T' };
 interface CriteriaReport {
   issueId: string;
   unearned: UnearnedCriterion[];
+  serving: typeof READING;
+  uncorroborated: number[];
 }
-const unearnedCriteriaReportsMock = vi.fn(
-  async (ids: string[]): Promise<CriteriaReport[]> =>
-    ids.map((id) => ({ issueId: id, unearned: [] })),
-);
+const noneUnearned = async (ids: string[]): Promise<CriteriaReport[]> =>
+  ids.map((id) => ({ issueId: id, unearned: [], serving: READING, uncorroborated: [] }));
+const unearnedCriteriaReportsMock = vi.fn(noneUnearned);
 vi.mock('../issues/criteria-verdicts.js', () => ({
   unearnedCriteriaReports: (ids: string[]) => unearnedCriteriaReportsMock(ids),
 }));
 
+const readServingNowMock = vi.fn(async (_projectId: string) => READING as unknown);
+vi.mock('../release-batch/serving-reading.js', () => ({
+  readServingNow: (projectId: string) => readServingNowMock(projectId),
+}));
+
 /** The report a sweep reads for a roster where `held` are the ones still owing a criterion. */
 const reportsHolding = (all: string[], held: Record<string, UnearnedCriterion[]>) =>
-  all.map((id) => ({ issueId: id, unearned: held[id] ?? [] }));
+  all.map((id) => ({ issueId: id, unearned: held[id] ?? [], serving: READING, uncorroborated: [] }));
 
 const SUPERSEDED: UnearnedCriterion = {
   criterion: 13,
@@ -197,9 +205,9 @@ beforeEach(() => {
   staleClears.mockClear();
   loggerError.mockReset();
   unearnedCriteriaReportsMock.mockReset();
-  unearnedCriteriaReportsMock.mockImplementation(async (ids: string[]) =>
-    ids.map((id) => ({ issueId: id, unearned: [] })),
-  );
+  unearnedCriteriaReportsMock.mockImplementation(noneUnearned);
+  readServingNowMock.mockReset();
+  readServingNowMock.mockResolvedValue(READING);
   loggerInfo.mockReset();
   loadCreatedByMock.mockReset();
   loadCreatedByMock.mockResolvedValue('owner-1');

@@ -12,6 +12,7 @@ import { db } from '../db/client.js';
 import { comments, issues } from '../db/schema.js';
 import type { IssueCriteriaReport } from '../issues/criteria-verdicts.js';
 import { logger } from '../logger.js';
+import type { ServingReading } from '../release-batch/serving-reading.js';
 
 /** The session_context key this module owns. */
 export const RELEASE_HOLD_KEY = 'releaseHold';
@@ -49,12 +50,26 @@ export function readReleaseHold(value: unknown): ReleaseHold | null {
   return { code, reason, owes, waitingFor };
 }
 
+/**
+ * The same reason with the moment a probe was read taken out of it.
+ *
+ * The host asked and the commit it answered are what the hold SAYS; the clock value beside them
+ * moves on every sweep tick while the answer stands still. Left in the comparison it would make a
+ * standing hold a new hold each tick, and a rewritten hold is a re-commented hold — a comment a
+ * minute for as long as the issue is held. So the stored reason keeps the timestamp of the reading
+ * that wrote it, which is what it claims to be, and a reading whose answer has not moved does not
+ * replace it (ISS-1215, ISS-1286).
+ */
+export function withoutReadingTimes(text: string): string {
+  return text.replace(/read at \d{4}-\d{2}-\d{2}T[\d:.]+Z/g, 'read at a moment');
+}
+
 /** Whether two holds say the same thing; `at` is when it was written, never what it says. */
 export function sameReleaseHold(a: ReleaseHold | null, b: ReleaseHold): boolean {
   return (
     a !== null &&
     a.code === b.code &&
-    a.reason === b.reason &&
+    withoutReadingTimes(a.reason) === withoutReadingTimes(b.reason) &&
     a.owes === b.owes &&
     a.waitingFor === b.waitingFor
   );
@@ -76,12 +91,38 @@ function reasonsByWhy(report: IssueCriteriaReport): string {
  * Owed by a person: nothing dispatched claims a row at `awaiting_release`, and the release that
  * would is the one holding it, so every act that moves the row from here is somebody's by hand.
  */
+/** Where a verdict has to be judged for it to count, said from the reading rather than from a field. */
+function judgeClause(serving: ServingReading): string {
+  const asked = serving.kind === 'undeclared' ? '' : ` (asked at ${serving.hosts.join(', ')})`;
+  if (serving.kind === 'serving') {
+    return (
+      `record a verdict on each criterion named, judged at what this project is serving${asked}, ` +
+      `\`${serving.commit}\`, read at ${serving.readAt}`
+    );
+  }
+  if (serving.kind === 'disagreeing') {
+    return (
+      `this project is serving ${serving.commits.join(' and ')} at once${asked}, read at ` +
+      `${serving.readAt} — a rollout that has not finished. Record a verdict on each criterion ` +
+      'named, judged at one of those, or wait for the rollout to settle and judge at what it leaves'
+    );
+  }
+  if (serving.kind === 'unreadable') {
+    return (
+      `nothing could be read from the probes this project declares${asked}, read at ` +
+      `${serving.readAt}: ${serving.why}. Record a verdict on each criterion named — a verdict ` +
+      'nothing could check still earns the criterion, and this sentence is why it reads as weaker'
+    );
+  }
+  return (
+    'this project declares no way to ask a host what it is serving, so no runtime verdict can be ' +
+    'checked here: declare a commit endpoint on the live deploy binding under `verify.probes`, or ' +
+    'on the project under `environments.live.commitUrl`, then record a verdict on each criterion named'
+  );
+}
+
 export function criteriaHold(report: IssueCriteriaReport): ReleaseHold {
-  const judge = report.serving
-    ? `record a verdict on each criterion named, judged at the deployment this issue records as ` +
-      `serving it, \`${report.serving}\``
-    : 'this issue records no deployment serving it, so no verdict can earn a criterion yet: record ' +
-      'where the change runs, then a verdict on each criterion named, judged there';
+  const judge = judgeClause(report.serving);
   return {
     code: 'RELEASE_CRITERIA_UNEARNED',
     reason:

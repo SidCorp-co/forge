@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { runnerHoldClause } from '../release-batch/blocker-sentences.js';
+import type { ServingReading } from '../release-batch/serving-reading.js';
 import type { RunnerHold } from '../runners/ineligible.js';
 import {
   criteriaHold,
@@ -9,14 +10,25 @@ import {
   releaseHoldComment,
   sameReleaseHold,
   withoutAges,
+  withoutReadingTimes,
 } from './release-hold.js';
 
 const SERVING = '33637c612ef15be6f924520c0d201a0889d8ed7e';
+const HOST = 'https://app.test/build-info';
+const READ_AT = '2026-09-26T23:55:00.000Z';
+
+const live = (readAt = READ_AT): ServingReading => ({
+  kind: 'serving',
+  commit: SERVING,
+  hosts: [HOST],
+  readAt,
+});
 
 const REPORT = {
   issueId: 'iss-1',
   broken: [],
-  serving: SERVING,
+  serving: live(),
+  uncorroborated: [],
   unearned: [
     {
       criterion: 1,
@@ -60,11 +72,51 @@ describe('the hold a row carries (ISS-1215)', () => {
     expect(reason).toContain('criterion 4: no runtime');
   });
 
-  it('names the deployment a verdict must be judged at, or says the issue records none', () => {
-    expect(criteriaHold(REPORT).reason).toContain(`serving it, \`${SERVING}\``);
-    const unserved = criteriaHold({ ...REPORT, serving: null }).reason;
-    expect(unserved).toContain('records no deployment serving it');
-    expect(unserved).not.toContain('serving it, `');
+  // ISS-1286 — the sentence is built from a reading, never from a commit stored on the issue.
+  it('names the host asked, the commit it answered and the moment it was asked', () => {
+    const reason = criteriaHold(REPORT).reason;
+    expect(reason).toContain(`\`${SERVING}\``);
+    expect(reason).toContain(HOST);
+    expect(reason).toContain(`read at ${READ_AT}`);
+    expect(reason).not.toContain('records as serving it');
+  });
+
+  it('says a project declaring no way to ask so, and names what to declare', () => {
+    const reason = criteriaHold({ ...REPORT, serving: { kind: 'undeclared' } }).reason;
+    expect(reason).toContain('declares no way to ask a host what it is serving');
+    expect(reason).toContain('verify.probes');
+    expect(reason).toContain('environments.live.commitUrl');
+    expect(reason).not.toContain(SERVING);
+  });
+
+  it('says why nothing could be read, and that the verdict still earns the criterion', () => {
+    const reason = criteriaHold({
+      ...REPORT,
+      serving: {
+        kind: 'unreadable',
+        why: 'https://app.test/build-info is unreachable (ECONNREFUSED)',
+        hosts: [HOST],
+        readAt: READ_AT,
+      },
+    }).reason;
+    expect(reason).toContain('ECONNREFUSED');
+    expect(reason).toContain('still earns the criterion');
+  });
+
+  it('says a fleet mid-rollout is serving both, and names both', () => {
+    const other = 'da74b598bcae5a53a1c0f2b9e3d7a41f6c8b2d90';
+    const reason = criteriaHold({
+      ...REPORT,
+      serving: {
+        kind: 'disagreeing',
+        commits: [SERVING, other],
+        hosts: [HOST, 'https://two.test/h'],
+        readAt: READ_AT,
+      },
+    }).reason;
+    expect(reason).toContain(SERVING);
+    expect(reason).toContain(other);
+    expect(reason).toContain('a rollout that has not finished');
   });
 
   it('reads back what was stored, and refuses a shape it cannot read', () => {
@@ -83,6 +135,46 @@ describe('the hold a row carries (ISS-1215)', () => {
     const moved = criteriaHold({ ...REPORT, unearned: REPORT.unearned.slice(1) });
     expect(sameReleaseHold(hold, moved)).toBe(false);
     expect(sameReleaseHold(null, hold)).toBe(false);
+  });
+
+  /**
+   * ISS-1286 over ISS-1215 — the reading's clock value moves on every sweep tick while the answer
+   * stands still. A rewritten hold is a re-commented hold, so a tick that read the same answer an
+   * hour later must not count as a new reason.
+   */
+  it('reads a later reading of the same answer as the same hold', () => {
+    const first = criteriaHold(REPORT);
+    const anHourLater = criteriaHold({ ...REPORT, serving: live('2026-09-27T00:55:00.000Z') });
+    expect(first.reason).not.toBe(anHourLater.reason);
+    expect(sameReleaseHold(first, anHourLater)).toBe(true);
+  });
+
+  it('reads a reading that answered a different commit as a different hold', () => {
+    const moved = criteriaHold({
+      ...REPORT,
+      serving: {
+        kind: 'serving',
+        commit: 'da74b598bcae5a53a1c0f2b9e3d7a41f6c8b2d90',
+        hosts: [HOST],
+        readAt: READ_AT,
+      },
+    });
+    expect(sameReleaseHold(criteriaHold(REPORT), moved)).toBe(false);
+  });
+
+  it('reads a reading taken at another host as a different hold', () => {
+    const elsewhere = criteriaHold({
+      ...REPORT,
+      serving: { kind: 'serving', commit: SERVING, hosts: ['https://other.test/h'], readAt: READ_AT },
+    });
+    expect(sameReleaseHold(criteriaHold(REPORT), elsewhere)).toBe(false);
+  });
+
+  it('takes out the reading time and nothing else', () => {
+    expect(withoutReadingTimes(`serving ${SERVING}, read at ${READ_AT}, at ${HOST}`)).toBe(
+      `serving ${SERVING}, read at a moment, at ${HOST}`,
+    );
+    expect(withoutReadingTimes('no reading in this one')).toBe('no reading in this one');
   });
 
   it('owes a self-clearing refusal to the release path and every other to a person', () => {

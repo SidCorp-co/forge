@@ -2,6 +2,7 @@ import { unearnedCriteriaReports } from '../issues/criteria-verdicts.js';
 import { issueDisplayIds } from '../issues/display-ids.js';
 import { projectAutoProdDeploy } from '../pipeline/auto-prod-deploy.js';
 import { attempt, blocker, evaluate } from './blocker-kit.js';
+import { readServingNow } from './serving-reading.js';
 import {
   type HeldIssueRef,
   heldBackWarningSentence,
@@ -31,9 +32,12 @@ export async function criteriaHold(
     out,
   );
   if (auto !== true) return;
+  // One reading for the whole roster: one project, one answer about it, one moment (ISS-1286).
+  const serving = await evaluate('serving', async () => await readServingNow(projectId), out);
+  if (!serving) return;
   const reports = await evaluate(
     'criteria',
-    async () => await unearnedCriteriaReports(waiting),
+    async () => await unearnedCriteriaReports(waiting, serving),
     out,
   );
   if (!reports) return;

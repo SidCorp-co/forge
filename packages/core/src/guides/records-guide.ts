@@ -103,8 +103,14 @@ A verdict is a claim about a runtime at a moment. Each \`criterion\` line opens 
 block names what that criterion was judged against before the next \`criterion\` line closes it:
 
 - \`runtime: <a whole object id>\` — an identity something was observed serving. A verdict carrying
-  one reads as standing only while it is the identity the issue records as serving it; once the
-  issue stands at another, the verdict is superseded and stops reading as earned.
+  one is weighed against a READING of what the project is serving, taken at the moment it is
+  weighed: what its declared probes answer, never a commit stored on the issue. It stands where the
+  reading names that identity, and where a fleet mid-rollout answers two it stands on either of
+  them. It is superseded where the reading names something else, and it stops reading as earned.
+  Where the project declares no way to ask, or where what it declares answered nothing, the verdict
+  reads as uncorroborated: a runtime witnessed it and nothing here could check that, which is
+  weaker evidence than a checked reading and is earned all the same. Absence of a reading is not a
+  failure. What a landing wrote down about a deployment is read by people and gates nothing.
 - \`commit: <at least seven hexadecimal characters>\` — a source that was read. It says which code
   was judged and never that the code was running, so a verdict carrying one and no runtime reads as
   unwitnessed, which is not earned either.

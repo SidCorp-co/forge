@@ -152,17 +152,23 @@ describe('resolveReleaseChannels — the probe a live address earns', () => {
     expect(channel?.verifySource).toBe('environments-live');
   });
 
+  /**
+   * ISS-1286 — a declaration this repo refused still takes no fallback, and now says so under its
+   * own word. Reported as `none` it was the same answer as "nothing was declared", so a reader
+   * could not tell a configuration defect from an absent configuration.
+   */
   it.each([
     ['an empty verify object', { verify: {} }],
     ['a verify with an empty probe list', { verify: { probes: [] } }],
     ['probes with no url', { verify: { probes: [{ commitPath: 'commit' }] } }],
-  ])('takes NO default for a binding declaring %s', async (_l, cfg) => {
+    ['a probe whose url is empty', { verify: { probes: [{ url: '' }] } }],
+  ])('takes NO default for a binding declaring %s, and calls it declared-unusable', async (_l, cfg) => {
     listBindings.mockResolvedValue([binding({ bindingConfig: cfg })]);
     selectLimit.mockResolvedValue([{ environments: LIVE }]);
 
     const [channel] = await resolveReleaseChannels(PROJECT_ID);
     expect(channel?.verify).toBeNull();
-    expect(channel?.verifySource).toBe('none');
+    expect(channel?.verifySource).toBe('declared-unusable');
   });
 
   it('keeps a usable binding declaration whatever environments.live holds', async () => {
