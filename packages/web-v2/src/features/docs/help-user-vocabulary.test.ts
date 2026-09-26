@@ -66,3 +66,15 @@ describe("that guard, against one planted sentence per rule", () => {
     expect(offences(shipped)).toEqual([]);
   });
 });
+
+describe("the done page, where it says what Closed means", () => {
+  const done = () => HELP_DOCS.find((d) => d.slug === "what-done-means")?.body ?? "";
+
+  it("says an issue closed before the shipped rule may carry no record of shipping", () => {
+    expect(done()).toMatch(/closed before that rule existed may have no \*\*Merged\*\* row/);
+  });
+
+  it("does not say a dropped issue had nothing built", () => {
+    expect(done()).not.toMatch(/\*\*Dropped\*\*[^\n]*nothing was built/i);
+  });
+});

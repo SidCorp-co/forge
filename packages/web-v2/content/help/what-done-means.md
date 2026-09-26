@@ -8,6 +8,9 @@ order: 6
 
 An issue is done when its status reads **Closed**. Forge refuses to close an issue
 unless the work shipped, so Closed means the change was released — not only written.
+The side panel of a closed issue shows **Merged** with the date the change went in.
+An issue closed before that rule existed may have no **Merged** row: its comments
+are then the only record of what happened.
 
 This page answers the three questions that come next: what changed, how to see it
 for yourself, and what to do if it is not what you meant.
@@ -19,7 +22,7 @@ for yourself, and what to do if it is not what you meant.
 | **Developed**, **Testing** | The change is built and is still being checked. |
 | **Awaiting release** | Built and checked, and not yet released. The issue page says when it will be: *"The next release cut runs …"*, or *"No release is scheduled, so this ships when a person cuts one"*. People who can release see a **Release now** button there. |
 | **Reopened** | Someone said it was not right. It is back with a person. |
-| **Dropped** | Decided against. Nothing was built, and nothing will be. |
+| **Dropped** | Decided against. No further work is planned on this issue, and it shows no release note. |
 
 Every status, and who holds the issue at each one: [Read an issue's status](?path=issue-statuses).
 
@@ -36,14 +39,15 @@ you will now see:
 If the card says nothing you would see changed, the work had no visible part — a
 fix to speed or reliability, say — and there is nothing new to look for.
 
-The panel on the right shows **Merged** with the date the change went in. The
-**Comments** tab holds the rest: what was done, and how it was checked.
+The **Comments** tab holds the rest: what was done, and how it was checked.
 
-An issue with no such card has no release note. Read its comments instead.
+A closed issue with no such card has no release note. Read its comments instead.
 
 ## See it for yourself
 
-1. Read the **What changed** card, and go to the place it names.
+1. Read the **What changed** card — or, where there is none, the comments — and
+   go to the place it names. If it says nothing you would see changed, there is
+   nothing to look for, and you can stop here.
 2. Do what your issue described. The steps you wrote to show the problem are the
    check that it is gone.
 3. If you still see the old behaviour, reload the page — an open tab can keep
@@ -64,7 +68,7 @@ An issue with no such card has no release note. Read its comments instead.
 
 - Your issue reads **Closed**.
 - Its page shows the **What changed** card, or its comments say what was done.
-- You have seen the change in the place the card names.
+- Where the change is one you can see, you have seen it in the place named.
 
 ## Troubleshooting
 
