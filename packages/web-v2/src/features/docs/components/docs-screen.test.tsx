@@ -46,3 +46,30 @@ describe("the Docs screen opened from a link", () => {
     expect(breadcrumb()).toBeNull();
   });
 });
+
+describe("the Connect an assistant section (ISS-1175)", () => {
+  it("opens a page in the section's folder from its link", () => {
+    open("path=connect-an-assistant/claude-code");
+    expect(breadcrumb()).toContain("Connect an assistant");
+    expect(breadcrumb()).toContain("Connect Claude Code");
+  });
+
+  it("lists the section after Guides, with its seven pages in reading order", () => {
+    open("");
+    const groups = [...document.querySelectorAll('nav[aria-label="Docs"] > div')].map((group) => ({
+      name: group.querySelector("span")?.textContent,
+      pages: [...group.querySelectorAll("button")].map((b) => b.textContent),
+    }));
+    const names = groups.map((g) => g.name);
+    expect(names.indexOf("Connect an assistant")).toBe(names.indexOf("Guides") + 1);
+    expect(groups.find((g) => g.name === "Connect an assistant")?.pages).toEqual([
+      "What connecting an assistant does",
+      "Connect Claude Desktop",
+      "Connect Claude Code",
+      "Connect Cursor",
+      "Connect another app",
+      "What you can ask",
+      "When it does not work",
+    ]);
+  });
+});

@@ -20,9 +20,9 @@
   ],
   "replacementPatterns": [
     {
-      "comment": "The same in-app help articles also link each other as `?path=<slug>` — the deep-link form the viewer routes on (`/docs?path=…`, docs-screen.tsx). Rewritten to the file, not muted, for the same reason as the bare-slug rule below: a dead slug must keep failing.",
-      "pattern": "^\\?path=([a-z0-9][a-z0-9-]*)$",
-      "replacement": "$1.md"
+      "comment": "The in-app help articles link each other as `?path=<slug>` — the deep-link form the viewer routes on (`/docs?path=…`, docs-screen.tsx), where the slug is the page's path under content/help/, so `connect-an-assistant/cursor` for a page in a subfolder. Rewritten to that file from the repository root, as the viewer resolves it, not muted: a dead slug must keep failing. Rewritten relative to the linking page instead, a link from a subfolder to a root page read dead and a link with a folder in it was never rewritten at all, so it passed unchecked (ISS-1175).",
+      "pattern": "^\\?path=([a-z0-9][a-z0-9-]*(?:/[a-z0-9][a-z0-9-]*)?)$",
+      "replacement": "{{BASEURL}}/packages/web-v2/content/help/$1.md"
     },
     {
       "comment": "In-app help articles (packages/web-v2/content/help) link each other by bare route slug, e.g. [Pair a runner](pair-a-runner) — correct for the renderer, which routes by slug, but not a filesystem path. Append .md so the checker still VERIFIES the target exists instead of muting it: a genuinely dead slug keeps failing.",

@@ -44,4 +44,6 @@ control. This page is the shortest path from zero to a running pipeline.
 - [Pair a runner](?path=pair-a-runner) — the one piece most setups get stuck on.
 - [Manage your organization](?path=manage-your-organization) — invite teammates and
   set roles.
+- [What connecting an assistant does](?path=connect-an-assistant/what-this-does) —
+  ask about your project from Claude, Cursor or another assistant you already use.
 - [Troubleshooting](?path=troubleshooting) — if something doesn't light up.
