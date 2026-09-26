@@ -7,18 +7,37 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { runnersApi } from "./api";
 
 /**
- * The caller's devices. Keyed `['devices','me', orgId ?? null]` — a child of
+ * The caller's own devices. Keyed `['devices','me', orgId ?? null]` — a child of
  * `['devices','me']`, so the WS event-router (which invalidates the
  * `['devices','me']` PREFIX on `device.login`/`device.paired`/`device.revoked`
  * and reconnect) still refreshes every variant; pending→approved and revoke
- * reflect live with no extra wiring. ISS-477: pass `orgId` to scope the Runners
- * surface to the active org's devices; omit it (sessions/attention name
- * resolution) for the full owner-scoped list.
+ * reflect live with no extra wiring.
+ *
+ * `orgId` NARROWS this list to the caller's devices that serve a project in that
+ * org. ISS-477 had the Runners surface pass it; ISS-1162 reversed that, because a
+ * just-paired device has no runner row and so belongs to no org scope — under the
+ * filter it was on no screen in the app. The Runners surface now reads the whole
+ * owner-scoped list here and the organisation's from `useOrgDevices`.
  */
 export function useDevices(orgId?: string | null) {
 	return useQuery({
 		queryKey: ["devices", "me", orgId ?? null],
 		queryFn: () => runnersApi.listDevices(orgId ?? undefined),
+	});
+}
+
+/**
+ * The organisation's devices, over the projects this caller can see. Keyed
+ * `['devices','org', orgId]`, which the event-router invalidates beside
+ * `['devices','me']`: a pairing or revoke by ANOTHER member rides that member's
+ * own user room and reaches no client here, so this list is as live as the
+ * events this client is sent and no more (ISS-1162).
+ */
+export function useOrgDevices(orgId: string | null) {
+	return useQuery({
+		queryKey: ["devices", "org", orgId],
+		queryFn: () => runnersApi.listOrgDevices(orgId as string),
+		enabled: !!orgId,
 	});
 }
 
