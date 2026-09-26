@@ -127,6 +127,14 @@ describe("the issue detail's main column", () => {
     expect(steps).not.toHaveTextContent("None yet");
   });
 
+  it("says the steps could not be loaded when only the durations read failed", () => {
+    durations = { data: undefined, isLoading: false, isError: true, error: new Error("boom"), refetch: vi.fn() } as never;
+    renderScreen();
+    const steps = screen.getByRole("region", { name: "Steps" });
+    expect(steps).toHaveTextContent("Couldn't load");
+    expect(steps).not.toHaveTextContent("None yet");
+  });
+
   it("shows attachments inside the description, above its text, and no separate Attachments card", () => {
     attachments = ok([{ id: "a1", name: "detail-audit-report.html", mime: "text/html", size: 400_000, url: "/api/attachments/a1/download" }]);
     renderScreen();

@@ -435,11 +435,11 @@ export function IssueDetailScreen({
 
           {handoffsQ.isLoading || durationsQ.isLoading ? (
             <EmptyPanelLine title="Steps" status="Loading…" />
-          ) : handoffsQ.isError ? (
+          ) : handoffsQ.isError || durationsQ.isError ? (
             <EmptyPanelLine
               title="Steps"
               status="Couldn't load"
-              detail={formatApiError(handoffsQ.error)}
+              detail={formatApiError(handoffsQ.isError ? handoffsQ.error : durationsQ.error)}
             />
           ) : stepOutcomes.length === 0 ? (
             <EmptyPanelLine
