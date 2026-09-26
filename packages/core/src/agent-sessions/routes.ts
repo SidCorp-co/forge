@@ -63,7 +63,11 @@ import {
 } from './session-access.js';
 import { recordSessionCreatedActivity } from './session-activity.js';
 import { recordReportedTranscript } from './session-events.js';
-import { detectUnexpandedSkillFailure, finalizeScheduleSessionFailure } from './session-failure.js';
+import {
+  type AgentSessionPatch,
+  detectUnexpandedSkillFailure,
+  finalizeScheduleSessionFailure,
+} from './session-failure.js';
 import { onTerminalPatch } from './terminal-effects.js';
 import { syncTurnsWithMessages } from './turns-helpers.js';
 import { agentSessionTurnsRoutes } from './turns-routes.js';
@@ -566,7 +570,7 @@ agentSessionRoutes.patch(
     if (derivedTranscript) existing = await loadSessionOr404(id);
 
     const patchNow = new Date();
-    const updates: Record<string, unknown> = { updatedAt: patchNow };
+    const updates: AgentSessionPatch = { updatedAt: patchNow };
     if (patch.title !== undefined) updates.title = patch.title;
     if (patch.status !== undefined) updates.status = patch.status;
     if (patch.claudeSessionId !== undefined) updates.claudeSessionId = patch.claudeSessionId;

@@ -49,7 +49,7 @@ import {
   notFound,
 } from './session-access.js';
 import { recordSessionCreatedActivity } from './session-activity.js';
-import { finalizeScheduleSessionFailure } from './session-failure.js';
+import { type AgentSessionPatch, finalizeScheduleSessionFailure } from './session-failure.js';
 
 export async function loadProjectBySlug(slug: string) {
   const [row] = await db
@@ -462,7 +462,7 @@ agentSessionLifecycleRoutes.post(
 
     const { session: existing } = await ensureSessionRole(sessionId, userId, 'member');
 
-    const statusSet: Record<string, unknown> = { status, updatedAt: new Date() };
+    const statusSet: AgentSessionPatch = { status, updatedAt: new Date() };
 
     const classification =
       status === 'failed'
