@@ -3,7 +3,7 @@
 // Issues Insights view (the "Insights" tab of the Issues screen, ISS-364). Two figures, both from
 // REAL endpoints:
 //   • median + cost per step → `useStepDurations`, folded onto the job type each row carries
-//   • throughput             → `useThroughput` daily shipped (closed/released) count
+//   • throughput             → `useThroughput` issues shipped per day, each on its first day
 //
 // ISS-999 deleted the third panel — a seven-card funnel whose "N in stage" counts came from a
 // hand-written status→stage map against a pipeline ISS-897 removed from the kernel. Its median and
@@ -85,7 +85,7 @@ export function IssuesInsightsView({ scope }: IssuesInsightsViewProps) {
   return (
     <div className="flex flex-col gap-5">
       <div className="grid gap-4 lg:grid-cols-2">
-        {/* Throughput — daily shipped (closed/released) over the window. */}
+        {/* Throughput — issues shipped per day over the window, each counted once. */}
         <Card>
           <CardHeader>
             <CardTitle>Throughput</CardTitle>
