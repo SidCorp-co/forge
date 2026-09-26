@@ -494,7 +494,8 @@ pub enum Prompt {
     Empty,
     /// No Claude Code composer could be read, so nothing confirmed the prompt
     /// was empty. The text was typed anyway, as it always was before a pane
-    /// could be read.
+    /// could be read. A choice list is no longer one of these: it is refused
+    /// before the paste and so never reaches a `Prompt` at all.
     Unread,
 }
 
@@ -522,6 +523,9 @@ async fn read_prompt(target: &str) -> composer::Composer {
 ///
 /// Enter submits the whole composer, so a composer already holding text is
 /// refused, quoting it: typing there would send that text as part of this one.
+/// A pane showing a choice list is refused for the mirror reason: there Enter
+/// is a decision on the highlighted option and the pasted text is dropped, so
+/// a message that cannot be delivered is said not to have been (ISS-1266).
 /// The read comes a few milliseconds before the paste, and tmux has no lock
 /// over a pane's input, so a keystroke landing in between is not seen.
 pub async fn send_line(name: &str, text: &str) -> Result<Prompt> {
@@ -537,6 +541,14 @@ pub async fn send_line(name: &str, text: &str) -> Result<Prompt> {
 would submit that text as part of this message. At the prompt: \u{ab}{}\u{bb}. Clear it or \
 submit it at the pane, then send again.",
                 composer::excerpt(&found, 400)
+            )));
+        }
+        composer::Composer::Menu { highlighted } => {
+            return Err(Error::Other(format!(
+                "{name}: nothing was typed — its pane is showing a choice list with \u{ab}{}\u{bb} \
+highlighted, and Enter there decides that choice instead of sending a message. Answer it at the \
+pane, or wait for whatever raised it to close, then send again.",
+                composer::excerpt(&highlighted, 200)
             )));
         }
         composer::Composer::Unrecognised => {
@@ -1358,6 +1370,83 @@ done
         assert_eq!(
             submitted, "MY-ORCHESTRATOR-MESSAGE\n",
             "an empty composer submits exactly what the caller passed"
+        );
+        kill(&name).await.expect("kill");
+    }
+
+    /// A pane drawn the way Claude Code draws a choice list, recording every
+    /// key it is sent — Enter as `ENTER`, anything else as `KEY <c>`. The log
+    /// is what makes "no Enter was pressed" observable on its own: a refusal
+    /// that sent Enter and no text would leave it holding one line.
+    const FAKE_MENU: &str = r#"draw() { printf '\033[2J\033[H Do you want to proceed?\n \342\235\257 1. Yes\n   2. No\n\n Esc to cancel\n'; }
+draw
+while IFS= read -r -n1 c; do
+  if [ -z "$c" ]; then printf 'ENTER\n' >> "$OUT"; else printf 'KEY %s\n' "$c" >> "$OUT"; fi
+  draw
+done
+"#;
+
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_pane_showing_a_choice_list_is_refused_and_is_sent_no_key_at_all() {
+        let _serialised = ONE_AT_A_TIME.lock().await;
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(_sandbox) = Sandbox::new("menu") else {
+            cannot_run("this box gives a test no tmux server of its own — nothing runs rather than reaching its real one");
+            return;
+        };
+        if !available() {
+            cannot_run("tmux is not installed here — the transport test cannot run");
+            return;
+        }
+        let dir = crate::test_scratch::Scratch::new("menu");
+        let script = dir.join("menu.sh");
+        std::fs::write(&script, FAKE_MENU).expect("the fake menu is written");
+        let keys = dir.join("menu.keys");
+        let name = session_name("forge-test", &format!("menu{}", std::process::id()));
+        let _ = kill(&name).await;
+        ensure(
+            &name,
+            &dir,
+            &["bash".to_string(), script.to_string_lossy().into_owned()],
+            &[("OUT".into(), keys.to_string_lossy().into_owned())],
+            None,
+        )
+        .await
+        .expect("the menu pane must start");
+
+        let menu = composer::Composer::Menu {
+            highlighted: "1. Yes".into(),
+        };
+        assert_eq!(
+            composer_reads(&name, &menu).await,
+            menu,
+            "the fake must draw a choice list before anything is sent"
+        );
+
+        let refused = send_line(&name, "MY-ORCHESTRATOR-MESSAGE")
+            .await
+            .expect_err("a pane showing a choice list must refuse the send");
+        let said = refused.to_string();
+        assert!(
+            said.contains("1. Yes"),
+            "the refusal must quote the highlighted choice: {said}"
+        );
+        assert!(
+            said.contains("nothing was typed"),
+            "the refusal must say nothing was typed: {said}"
+        );
+
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        assert_eq!(
+            std::fs::read_to_string(&keys).unwrap_or_default(),
+            "",
+            "no key may reach a pane showing a choice list — an Enter alone would read as ENTER here"
+        );
+        assert_eq!(
+            read_prompt(&pane_target(&name)).await,
+            menu,
+            "the choice list must be left exactly as it was"
         );
         kill(&name).await.expect("kill");
     }
