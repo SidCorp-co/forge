@@ -1,6 +1,7 @@
 import { INTEGRATIONS_QUEUE_NAME } from '../../jobs/queue-name.js';
 import { logger } from '../../logger.js';
 import {
+  type DeployHolds,
   isCloseDeferred,
   resolveDeployGate,
   settleDeployTarget,
@@ -187,6 +188,10 @@ export type DeploySettlementTarget = Pick<
  * hold this poller handed it, and there is still exactly ONE writer of that
  * decision.
  */
+/** Whether any target of this run is still building, queued, or not yet dispatched. */
+const stillInFlight = (holds: DeployHolds): boolean =>
+  Object.values(holds).some((h) => h.status === 'pending');
+
 export async function applyDeploySettlement(
   data: DeploySettlementTarget,
   verdict: Exclude<DeploymentVerdict, 'pending'>,
@@ -218,10 +223,12 @@ export async function applyDeploySettlement(
       { runId: data.runId, deploymentUuid: data.deploymentUuid, detail },
       'coolify confirm: deploy failed — failing the run',
     );
-    // ISS-1279 — the deploy has ended, so the environment it held is free. By
-    // run id, so a deploy that took no lock frees nothing and a run whose hold
-    // was reclaimed after it expired cannot free the successor that took it.
-    await releaseDeployLocksForRun(data.runId);
+    // ISS-1279 — one target failing does not stop the siblings Coolify is still building, and
+    // they are still reaching this environment. Free it only once nothing of this run is left in
+    // flight; where something is, the stated expiry frees it rather than a second release
+    // arriving beside a live build. By run id, so a run that took no lock frees nothing and one
+    // whose hold was reclaimed cannot free the successor that took it.
+    if (!stillInFlight(holds)) await releaseDeployLocksForRun(data.runId);
     await closeRun(data.runId, 'failed');
     return { settled: 'failed', closedRun: 'failed', ...(detail ? { detail } : {}) };
   }

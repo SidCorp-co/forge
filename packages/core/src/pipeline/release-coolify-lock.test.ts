@@ -76,8 +76,9 @@ vi.mock('./runs.js', () => ({
   RELEASE_DEPLOY_IN_FLIGHT_STEP: 'release.deploy.in_flight',
 }));
 
+const openHoldSpy = vi.fn(async (_args: unknown) => true);
 vi.mock('./deploy-confirmations.js', () => ({
-  openDeployDispatchHold: async () => true,
+  openDeployDispatchHold: (args: unknown) => openHoldSpy(args),
   DEPLOY_CONFIRM_WINDOW_MS: 30 * 60_000,
 }));
 
@@ -134,6 +135,8 @@ beforeEach(() => {
   acquireLocksMock.mockResolvedValue(undefined);
   releaseLocksMock.mockReset();
   releaseLocksMock.mockResolvedValue(0);
+  openHoldSpy.mockReset();
+  openHoldSpy.mockResolvedValue(true);
 });
 
 describe('tryDispatchCoolifyRelease — the environment hold', () => {
@@ -258,6 +261,47 @@ describe('tryDispatchCoolifyRelease — the environment hold', () => {
     expect(releaseLocksMock.mock.calls).toEqual([[RUN_ID]]);
   });
 
+  // A target that settles between two enqueues reads every hold registered so far as the whole
+  // set, closes the run and frees the environment — and the binding not yet reached is then
+  // dispatched behind both. Every hold is opened before the first enqueue so that window is shut.
+  it('opens every dispatch hold before the first binding is enqueued', async () => {
+    const order: string[] = [];
+    openHoldSpy.mockImplementation(async () => {
+      order.push('hold');
+      return true;
+    });
+    enqueueSpy.mockImplementation(() => order.push('enqueue'));
+    listBindingsSpy.mockResolvedValueOnce([stagingPair, pairOf(SECOND_INT, ['preview'])]);
+
+    await tryDispatchCoolifyRelease({
+      projectId: PROJECT_ID,
+      issueId: null,
+      runId: RUN_ID,
+      takeEnvironmentLock: true,
+    });
+
+    expect(order).toEqual(['hold', 'hold', 'enqueue', 'enqueue']);
+  });
+
+  it('gives the hold back when a dispatch hold cannot be opened at all', async () => {
+    listBindingsSpy.mockResolvedValueOnce([stagingPair]);
+    openHoldSpy.mockImplementation(() => {
+      throw new Error('metadata write failed');
+    });
+
+    await expect(
+      tryDispatchCoolifyRelease({
+        projectId: PROJECT_ID,
+        issueId: null,
+        runId: RUN_ID,
+        takeEnvironmentLock: true,
+      }),
+    ).rejects.toThrow('metadata write failed');
+
+    expect(enqueueSpy).not.toHaveBeenCalled();
+    expect(releaseLocksMock.mock.calls).toEqual([[RUN_ID]]);
+  });
+
   it('keeps the hold when the dispatch throws after one binding is already on its way', async () => {
     listBindingsSpy.mockResolvedValueOnce([stagingPair, pairOf(SECOND_INT, ['preview'])]);
     enqueueSpy
@@ -360,6 +404,18 @@ describe('confirmPendingProdDeploy — resuming a parked release', () => {
 
     expect(acquireLocksMock).not.toHaveBeenCalled();
     expect(enqueueSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('gives the hold back when the confirmation fails before anything is enqueued', async () => {
+    queueGate(parkedGate({ lock: lockIntent }));
+    findDeliverySpy.mockResolvedValueOnce(null);
+    enqueueSpy.mockImplementation(() => {
+      throw new Error('queue is down');
+    });
+
+    await expect(confirmPendingProdDeploy(PROD_INT)).rejects.toThrow('queue is down');
+
+    expect(releaseLocksMock.mock.calls).toEqual([[RUN_ID]]);
   });
 
   it('asks for no hold on a confirmation that was already enqueued', async () => {

@@ -9,8 +9,8 @@ import { DEPLOY_CONFIRM_WINDOW_MS } from './deploy-confirmations.js';
 
 export const DEPLOY_ENVIRONMENT_LOCKED = 'DEPLOY_ENVIRONMENT_LOCKED';
 
-/** How long an acquire waits on one that has neither committed nor rolled back: expiry does not
- *  free a transaction's row lock, so an unbounded wait would wedge every later deploy. */
+/** Expiry does not free a transaction's row lock, so an acquire waiting on one that never commits
+ *  needs a bound of its own. */
 export const DEPLOY_LOCK_WAIT_MS = 3_000;
 
 /** Postgres `lock_not_available`, raised when `lock_timeout` runs out. */
@@ -18,7 +18,6 @@ const LOCK_NOT_AVAILABLE = '55P03';
 
 export interface DeployLockRequest {
   projectId: string;
-  /** The run that holds it, and whose settlement frees it. */
   runId: string;
   subject: string;
 }
@@ -85,11 +84,14 @@ const asHolder = (row: LockRow): DeployLockHolder => ({
   expiresAt: new Date(row.expires_at).toISOString(),
 });
 
-export async function readDeployLock(
+/** `exec` is the open transaction: the pool is ten wide, and an acquire asking it for an eleventh
+ *  connection while holding its own waits past the bound `lock_timeout` set. */
+async function readLockWith(
+  exec: Pick<typeof db, 'execute'>,
   projectId: string,
   environment: string,
 ): Promise<DeployLockHolder | null> {
-  const rows = await db.execute<LockRow>(sql`
+  const rows = await exec.execute<LockRow>(sql`
     SELECT project_id, environment, run_id, subject, acquired_at, expires_at
       FROM deploy_locks
      WHERE project_id = ${projectId} AND environment = ${environment}
@@ -99,7 +101,14 @@ export async function readDeployLock(
   return row ? asHolder(row) : null;
 }
 
-/** All the environments this deploy reaches, or none: one refused its second never dispatches, so
+export async function readDeployLock(
+  projectId: string,
+  environment: string,
+): Promise<DeployLockHolder | null> {
+  return readLockWith(db, projectId, environment);
+}
+
+/** All the environments this deploy reaches, or none: refused its second, it never dispatches, and
  *  a first left held would be freed by nothing but the expiry. */
 export async function acquireDeployLocks(
   request: DeployLockRequest,
@@ -132,7 +141,7 @@ export async function acquireDeployLocks(
         if (taken.length > 0) continue;
         throw new DeployEnvironmentLockedError(
           environment,
-          await readDeployLock(request.projectId, environment),
+          await readLockWith(tx, request.projectId, environment),
         );
       }
     });
@@ -142,15 +151,15 @@ export async function acquireDeployLocks(
   }
 }
 
-/** Drizzle keeps the driver's error on `cause`, so the SQLSTATE is read from either: reading the
- *  outer one alone is how this refusal becomes an unhandled query error instead. */
+/** Drizzle keeps the driver's error on `cause`: reading the outer one alone is how this refusal
+ *  becomes an unhandled query error instead. */
 function isLockWaitTimeout(err: unknown): boolean {
   const outer = err as { code?: unknown; cause?: { code?: unknown } } | null;
   return outer?.code === LOCK_NOT_AVAILABLE || outer?.cause?.code === LOCK_NOT_AVAILABLE;
 }
 
-/** Keyed on the run alone, so one that took no lock frees nothing and one whose hold was
- *  reclaimed cannot free the successor that took it. */
+/** Keyed on the run alone: one that took no lock frees nothing, and one whose hold was reclaimed
+ *  cannot free the successor. */
 export async function releaseDeployLocksForRun(runId: string): Promise<number> {
   const freed = await db.execute<{ environment: string }>(sql`
     DELETE FROM deploy_locks WHERE run_id = ${runId} RETURNING environment

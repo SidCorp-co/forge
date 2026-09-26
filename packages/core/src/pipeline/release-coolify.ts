@@ -110,8 +110,8 @@ function resourceUuidsOf(config: unknown): string[] {
     .filter((u): u is string => typeof u === 'string' && u.length > 0);
 }
 
-/** What a locked deploy holds and what its refusal says (ISS-1279): each binding's own stages,
- *  plus `live` for one `reachesLive` says reaches production whatever its label reads. */
+/** What a locked deploy holds (ISS-1279): each binding's stages, plus `live` for one `reachesLive`
+ *  says reaches production whatever its label reads. */
 export interface DeployLockIntent {
   projectId: string;
   environments: string[];
@@ -179,8 +179,7 @@ export async function tryDispatchCoolifyRelease(args: {
   /** Hard filter — when set, dispatch ONLY this binding. */
   integrationId?: string | null;
   allowLive?: boolean;
-  /** ISS-1279 — hold the environments this dispatch reaches. The release path passes it; the
-   *  landing auto-subscriber does not, and a deploy that enqueues nothing holds nothing. */
+  /** ISS-1279 — the release path passes it; the landing auto-subscriber does not. */
   takeEnvironmentLock?: boolean;
 }): Promise<DispatchOutcome> {
   const { projectId, issueId, runId, integrationId, allowLive = true } = args;
@@ -209,6 +208,10 @@ export async function tryDispatchCoolifyRelease(args: {
   let pendingHumanConfirm = false;
   const autoProd = await projectAutoProdDeploy(projectId);
 
+  // EVERY hold before the FIRST enqueue: opened beside its own enqueue, the holds registered so
+  // far read as the whole set, and a target settling there closes the run and frees the
+  // environment while a binding this loop has not reached is still to be dispatched.
+  const armed: Array<{ binding: (typeof pairs)[number]['binding']; requestId: string }> = [];
   try {
     for (const { binding } of pairs) {
       if (reachesLive(binding) && !autoProd) {
@@ -229,7 +232,6 @@ export async function tryDispatchCoolifyRelease(args: {
       }
 
       const requestId = `${runId}:${binding.id}:${Date.now()}-${randomUUID().slice(0, 8)}`;
-
       await setCurrentStep(runId, RELEASE_DEPLOY_IN_FLIGHT_STEP);
       const held = await openDeployDispatchHold({
         runId,
@@ -238,6 +240,10 @@ export async function tryDispatchCoolifyRelease(args: {
         targetLabel: targetLabelOf(binding),
       });
       if (!held) reportUnwitnessedDeploy(runId, issueId, binding.id);
+      armed.push({ binding, requestId });
+    }
+
+    for (const { binding, requestId } of armed) {
       await enqueueOutboundDispatch({
         jobKind: 'coolify.dispatch',
         bindingId: binding.id,
@@ -258,8 +264,7 @@ export async function tryDispatchCoolifyRelease(args: {
       }
     }
   } catch (err) {
-    // Only where NOTHING reached Coolify: once one binding is on its way the environment really
-    // is being deployed to, and that hold ends at the settlement or the expiry like any other.
+    // Only where NOTHING reached Coolify: once a binding is on its way, that hold ends at the settlement or the expiry like any other.
     await freeLockIfIdle(lock, runId, dispatched.length);
     throw err;
   }
@@ -341,8 +346,8 @@ interface ProdGateState {
   requestedAt: string;
   confirmedAt: string | null;
   confirmedByUserId?: string;
-  /** ISS-1279 — set only where the parked deploy held the lock. Carried rather than recomputed:
-   *  the confirm endpoint is handed a binding id and resolves no binding set of its own. */
+  /** ISS-1279 — set only where the parked deploy held the lock, and carried rather than
+   *  recomputed: the confirm endpoint resolves no binding set of its own. */
   lock?: DeployLockIntent;
 }
 
@@ -447,50 +452,58 @@ export async function confirmPendingProdDeploy(
     .limit(1);
   if (!run) return { confirmed: false, runId: null, integrationId: bindingId };
 
-  // ISS-1279 — a parked release resumes as the same release reaching the same box. Taken BEFORE
-  // the gate flips to confirmed, so a refused confirmation can be pressed again.
+  // ISS-1279 — the same release reaching the same box, taken BEFORE the gate flips so a refused confirmation can be pressed again.
   const confirmedRequestId = `${run.id}:${bindingId}:confirmed`;
   const alreadyEnqueued = await findDeliveryByRequestId(bindingId, confirmedRequestId);
-  if (gate.lock && !alreadyEnqueued) {
+  const took = Boolean(gate.lock) && !alreadyEnqueued;
+  if (gate.lock && took) {
     await acquireDeployLocks(
       { projectId: gate.lock.projectId, runId: run.id, subject: gate.lock.subject },
       gate.lock.environments,
     );
   }
 
-  const md = (run.metadata ?? {}) as Record<string, unknown>;
-  const gates = (md[GATE_METADATA_KEY] as Record<string, ProdGateState>) ?? {};
-  gates[bindingId] = {
-    ...gate,
-    confirmedAt: new Date().toISOString(),
-    ...(confirmedByUserId ? { confirmedByUserId } : {}),
-  };
-  await db
-    .update(pipelineRuns)
-    .set({ metadata: { ...md, [GATE_METADATA_KEY]: gates }, updatedAt: new Date() })
-    .where(eq(pipelineRuns.id, run.id));
+  let enqueued = false;
+  try {
+    const md = (run.metadata ?? {}) as Record<string, unknown>;
+    const gates = (md[GATE_METADATA_KEY] as Record<string, ProdGateState>) ?? {};
+    gates[bindingId] = {
+      ...gate,
+      confirmedAt: new Date().toISOString(),
+      ...(confirmedByUserId ? { confirmedByUserId } : {}),
+    };
+    await db
+      .update(pipelineRuns)
+      .set({ metadata: { ...md, [GATE_METADATA_KEY]: gates }, updatedAt: new Date() })
+      .where(eq(pipelineRuns.id, run.id));
 
-  await setCurrentStep(run.id, RELEASE_DEPLOY_IN_FLIGHT_STEP);
+    await setCurrentStep(run.id, RELEASE_DEPLOY_IN_FLIGHT_STEP);
 
-  // Same idempotency guard as the staging loop (ISS-242): a confirmed prod
-  // deploy already enqueued for this `:confirmed` requestId must not fire
-  // twice if the confirm endpoint is hit again.
-  if (!alreadyEnqueued) {
-    const held = await openDeployDispatchHold({
-      runId: run.id,
-      bindingId,
-      requestId: confirmedRequestId,
-      targetLabel: 'prod deploy',
-    });
-    if (!held) reportUnwitnessedDeploy(run.id, gate.issueId, bindingId);
-    await enqueueOutboundDispatch({
-      jobKind: 'coolify.dispatch',
-      bindingId,
-      runId: run.id,
-      issueId: gate.issueId,
-      eventName: 'release.requested',
-      requestId: confirmedRequestId,
-    });
+    // Same idempotency guard as the staging loop (ISS-242): a confirmed prod
+    // deploy already enqueued for this `:confirmed` requestId must not fire
+    // twice if the confirm endpoint is hit again.
+    if (!alreadyEnqueued) {
+      const held = await openDeployDispatchHold({
+        runId: run.id,
+        bindingId,
+        requestId: confirmedRequestId,
+        targetLabel: 'prod deploy',
+      });
+      if (!held) reportUnwitnessedDeploy(run.id, gate.issueId, bindingId);
+      await enqueueOutboundDispatch({
+        jobKind: 'coolify.dispatch',
+        bindingId,
+        runId: run.id,
+        issueId: gate.issueId,
+        eventName: 'release.requested',
+        requestId: confirmedRequestId,
+      });
+      enqueued = true;
+    }
+  } catch (err) {
+    // Left standing, this hold would refuse the person's own next press, in their run's name.
+    if (took && !enqueued) await releaseDeployLocksForRun(run.id);
+    throw err;
   }
 
   return { confirmed: true, runId: run.id, integrationId: bindingId };

@@ -199,6 +199,16 @@ describe('runCoolifyConfirm', () => {
     expect(releaseLocksMock.mock.calls).toEqual([[RUN_ID]]);
   });
 
+  it('holds the environment through a failure while a sibling target is still building', async () => {
+    getDeploymentMock.mockResolvedValue({ status: 'failed' });
+    settleMock.mockResolvedValue(holds('pending'));
+
+    expect(await runCoolifyConfirm(job())).toMatchObject({ settled: 'failed' });
+
+    expect(closeRunMock.mock.calls).toEqual([[RUN_ID, 'failed']]);
+    expect(releaseLocksMock.mock.calls).toEqual([]);
+  });
+
   it('re-polls while the deployment is non-terminal and the deadline is ahead', async () => {
     getDeploymentMock.mockResolvedValue({ status: 'in_progress' });
 

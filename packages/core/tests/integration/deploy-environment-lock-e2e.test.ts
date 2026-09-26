@@ -161,19 +161,37 @@ describe('one deploy reaches one environment at a time', () => {
     const { acquireDeployLocks, DeployEnvironmentLockedError } = await lockModule();
     const holder = await makeRun();
     const comer = await makeRun();
-    await acquireDeployLocks(request(holder, 'live deploy (binding b-9)'), ['live']);
+    // `preview`, not `live`: the acquire sorts, so `live` is attempted FIRST and is the one this
+    // call takes before it is refused. Holding `live` instead would refuse on the first statement
+    // and leave nothing to roll back, which is the case that passes whatever the rollback does.
+    await acquireDeployLocks(request(holder, 'preview deploy (binding b-9)'), ['preview']);
 
     const err = await acquireDeployLocks(request(comer), ['preview', 'live']).catch(
       (e: unknown) => e,
     );
 
     expect(err).toBeInstanceOf(DeployEnvironmentLockedError);
-    expect(await lockRow('preview')).toBeNull();
-    const live = await lockRow('live');
-    expect(live?.run_id).toBe(holder);
-    expect(live?.subject).toBe('live deploy (binding b-9)');
+    expect(await lockRow('live')).toBeNull();
+    const preview = await lockRow('preview');
+    expect(preview?.run_id).toBe(holder);
+    expect(preview?.subject).toBe('preview deploy (binding b-9)');
   });
 
+  it('leaves the environment it rolled back free for the next taker', async () => {
+    const { acquireDeployLocks } = await lockModule();
+    const holder = await makeRun();
+    const comer = await makeRun();
+    const next = await makeRun();
+    await acquireDeployLocks(request(holder), ['preview']);
+    await acquireDeployLocks(request(comer), ['preview', 'live']).catch(() => undefined);
+
+    await acquireDeployLocks(request(next), ['live']);
+
+    expect((await lockRow('live'))?.run_id).toBe(next);
+  });
+});
+
+describe('a hold whose owner is gone reads as free', () => {
   it('reclaims a hold whose expiry has passed, and records what it displaced', async () => {
     const { acquireDeployLocks } = await lockModule();
     const dead = await makeRun();
