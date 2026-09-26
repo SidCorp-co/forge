@@ -241,9 +241,10 @@ export interface ReleaseBatchContext {
   gateStatus: IssueStatus;
   /** The version this release cut, which the release agent writes into the tag it pushes. */
   version: string | null;
-  baseBranch: string;
+  /** `null` where the project declares none; the release reads its branches from its own method. */
+  baseBranch: string | null;
   /** Where a `promote` release lands; equals `baseBranch` under every other model. */
-  liveBranch: string;
+  liveBranch: string | null;
   deployPlanned: boolean;
   promotePlanned: boolean;
   releaseRunner: ReleaseRunnerAccount | null;

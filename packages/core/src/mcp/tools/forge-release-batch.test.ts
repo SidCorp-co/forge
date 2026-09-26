@@ -38,7 +38,6 @@ const RUN_ID = '44444444-4444-4444-8444-444444444444';
 
 const { forgeReleaseBatchTool } = await import('./forge-release-batch.js');
 const { makeFakePrincipal } = await import('../fake-principal.fixture.js');
-const { MethodMismatchError } = await import('../../release-batch/method.js');
 const {
   ReleaseBatchAbortedError,
   ReleaseFinishedForOtherCommitError,
@@ -56,14 +55,6 @@ function tool(scopes: string[] = ['read', 'write']) {
 beforeEach(() => vi.clearAllMocks());
 
 describe('forge_release_batch refusals', () => {
-  it('names the method the job expects when the run announced another', async () => {
-    acceptFinish.mockRejectedValue(new MethodMismatchError('improvised', 'release-flow'));
-
-    await expect(tool().handler({ action: 'finish', runId: RUN_ID })).rejects.toThrow(
-      /^RELEASE_METHOD_MISMATCH: .*`improvised`.*Announce `release-flow` with action=method/,
-    );
-  });
-
   it('says an aborted batch has nothing left to finish, in the account the REST door gives', async () => {
     acceptFinish.mockRejectedValue(new ReleaseBatchAbortedError('released', 'p-1'));
 

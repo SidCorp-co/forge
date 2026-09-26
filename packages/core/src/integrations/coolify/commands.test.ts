@@ -45,17 +45,32 @@ beforeEach(() => {
 });
 
 describe('runCoolifyDeploy on a release run', () => {
-  it('refuses a run that announced no method, and dispatches nothing', async () => {
+  // ISS-1276 — what this refuses is a run that has recorded NOTHING, which is what it always
+  // measured; only its name said otherwise. The skill gate it read as went with `assertMethodFor`.
+  it('refuses a run that has recorded nothing, and dispatches nothing', async () => {
     readRunMethod.mockResolvedValue(null);
 
     const out = runCoolifyDeploy({ projectId: PROJECT_ID, pipelineRunId: RUN_ID });
 
     await expect(out).rejects.toBeInstanceOf(CoolifyCommandError);
     await expect(out).rejects.toThrow(
-      /^RELEASE_METHOD_NOT_ANNOUNCED: .*forge_release_batch action=method/,
+      /^RELEASE_NOTHING_RECORDED: .*forge_release_batch.*action=method/,
     );
     expect(readRunMethod).toHaveBeenCalledWith(RUN_ID);
     expect(tryDispatchCoolifyRelease).not.toHaveBeenCalled();
+  });
+
+  it('dispatches for a run whose announcement says its method would not load', async () => {
+    readRunMethod.mockResolvedValue({
+      skill: 'release-flow',
+      loaded: false,
+      detail: 'the plugin is not installed on this box',
+      announcedAt: '2026-09-26T00:00:00.000Z',
+    });
+
+    await runCoolifyDeploy({ projectId: PROJECT_ID, pipelineRunId: RUN_ID });
+
+    expect(tryDispatchCoolifyRelease).toHaveBeenCalled();
   });
 
   it('reaches the release dispatch for a run that announced its method', async () => {

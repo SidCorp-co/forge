@@ -31,7 +31,6 @@ import {
   ReleaseVersionMissingError,
 } from './errors.js';
 import { ReleaseTargetUndeclaredError } from './gate.js';
-import { MethodMismatchError, MethodNotAnnouncedError } from './method.js';
 import { ReleaseMultiChannelUnsupportedError } from './service.js';
 import type { ReleaseRunHoldingError } from './state.js';
 
@@ -143,13 +142,6 @@ export function issuesUnnamed(projectId: string): HTTPException {
   });
 }
 
-export function undeclaredBranches(err?: unknown): HTTPException {
-  return carrying(
-    err,
-    'RELEASE_BRANCHES_UNDECLARED',
-    releaseBlockerSentence('RELEASE_BRANCHES_UNDECLARED'),
-  );
-}
 // so the refusal has to say where the verdict actually comes from, or the next caller sends it
 // again under a different spelling.
 export const MACHINE_ONLY_KEYS = [
@@ -173,23 +165,6 @@ export function holding(err: ReleaseRunHoldingError): HTTPException {
     'RELEASE_RUN_HOLDING',
     `This release run is past its ${err.crossed.join(' and ')} bound, so it records no further attempts. Read GET .../state, then either finish it or abort it with what you found.`,
   );
-}
-
-export function methodRefusal(err: unknown): HTTPException | null {
-  if (err instanceof MethodNotAnnouncedError) {
-    const { projectId, runId } = err.where;
-    return conflict(
-      'RELEASE_METHOD_NOT_ANNOUNCED',
-      `This run never announced the method it was working from, so nothing says it had one. Clear it with POST /api/projects/${projectId}/release-batches/${runId}/method and a body of {"skill":"${err.expected}","loaded":true}, or {"loaded":false,"detail":"<why not>"} if the skill would not load — then call finish again.`,
-    );
-  }
-  if (err instanceof MethodMismatchError) {
-    return conflict(
-      'RELEASE_METHOD_MISMATCH',
-      `This run announced the method \`${err.announced}\` and its job names \`${err.expected}\`. A release working from a method nobody chose for it is not one finish can close; announce \`${err.expected}\`, or abort with what you actually ran.`,
-    );
-  }
-  return null;
 }
 
 /**
@@ -261,7 +236,7 @@ export function finishRefusal(err: unknown): HTTPException | null {
       { requestId: err.requestId, finishedCommit: err.finishedCommit },
     );
   }
-  return methodRefusal(err);
+  return null;
 }
 
 /** Which commit a finished batch verified, against the one a later finish names; both doors say it. */

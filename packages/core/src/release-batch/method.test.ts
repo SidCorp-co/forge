@@ -1,9 +1,9 @@
 /**
- * ISS-1042 criteria 26–28 — reading a run's method, and refusing a run that
- * has none or the wrong one.
+ * ISS-1042 criteria 26–28, as ISS-1276 left them: reading a run's method, which is a record and no
+ * longer a gate. `assertMethodFor` refused a run that announced none and one whose announcement
+ * named another skill, which made `release-flow` a precondition for releasing at all.
  *
- * Unit, because the whole decision is over one value: what the run's metadata
- * holds against what its job names. The announcement's own write is SQL and is
+ * Unit, because the whole decision is over one value. The announcement's own write is SQL and is
  * proved next door in `tests/integration/release-ledger-e2e.test.ts`.
  */
 
@@ -11,11 +11,8 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../db/client.js', () => ({ db: {} }));
 
-const { assertMethodFor, MethodMismatchError, MethodNotAnnouncedError, readMethod } = await import(
-  './method.js'
-);
-
-const where = { projectId: 'proj-3', runId: 'run-5' };
+const methodModule = await import('./method.js');
+const { readMethod } = methodModule;
 
 const announced = (over: Record<string, unknown> = {}) => ({
   method: { skill: 'release-flow', loaded: true, detail: null, announcedAt: 'now', ...over },
@@ -43,34 +40,26 @@ describe('readMethod', () => {
   });
 });
 
-describe('assertMethodFor', () => {
-  it('passes a run that announced the skill its job names', () => {
-    expect(() => assertMethodFor(readMethod(announced()), 'release-flow', where)).not.toThrow();
+describe('the method is a record and not a gate (ISS-1276)', () => {
+  it('exports no assertion a finish could refuse on', () => {
+    expect(methodModule).not.toHaveProperty('assertMethodFor');
+    expect(methodModule).not.toHaveProperty('MethodNotAnnouncedError');
+    expect(methodModule).not.toHaveProperty('MethodMismatchError');
   });
 
-  it('refuses a run that announced nothing, naming the skill it owes', () => {
-    try {
-      assertMethodFor(null, 'release-flow', where);
-      expect.unreachable('a run with no announcement must be refused');
-    } catch (err) {
-      expect(err).toBeInstanceOf(MethodNotAnnouncedError);
-      expect(err).toMatchObject({ expected: 'release-flow', where });
-    }
+  it('still reads back an announcement naming a skill other than release-flow', () => {
+    expect(readMethod(announced({ skill: 'issue-flow' }))).toMatchObject({
+      skill: 'issue-flow',
+      loaded: true,
+    });
   });
 
-  it('refuses a run whose announcement names another skill, naming both', () => {
-    try {
-      assertMethodFor(readMethod(announced({ skill: 'issue-flow' })), 'release-flow', where);
-      expect.unreachable('a run working from another method must be refused');
-    } catch (err) {
-      expect(err).toBeInstanceOf(MethodMismatchError);
-      expect(err).toMatchObject({ announced: 'issue-flow', expected: 'release-flow' });
-    }
-  });
-
-  it('admits a run that announced it could NOT load its method, which is the priced amnesty', () => {
-    expect(() =>
-      assertMethodFor(readMethod(announced({ loaded: false })), 'release-flow', where),
-    ).not.toThrow();
+  it('still reads back an announcement saying the method would not load', () => {
+    expect(readMethod(announced({ loaded: false, detail: 'no plugin on this box' }))).toMatchObject(
+      {
+        loaded: false,
+        detail: 'no plugin on this box',
+      },
+    );
   });
 });

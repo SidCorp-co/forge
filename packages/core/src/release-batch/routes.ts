@@ -23,7 +23,6 @@ import {
   refuseMachineKeys,
   releaseBlockerHttp,
   reportedRefusal,
-  undeclaredBranches,
 } from './refusals.js';
 import {
   abortReleaseBatch,
@@ -35,7 +34,6 @@ import {
   loadReleaseBatchContext,
   loadReleaseRoster,
   NoReleaseGateError,
-  ReleaseBranchesUndeclaredError,
   ReleaseIssuesUnnamedError,
   ReleaseRecutRefusedError,
   ReleaseVersionConflictError,
@@ -112,7 +110,6 @@ releaseBatchRoutes.post(
       const declined = declarationRefusal(err);
       if (declined) throw declined;
       if (err instanceof NoReleaseGateError) throw releaseBlockerHttp(err, 'NO_RELEASE_GATE');
-      if (err instanceof ReleaseBranchesUndeclaredError) throw undeclaredBranches(err);
       if (err instanceof ClaimConflictError) {
         throw releaseBlockerHttp(err, 'CLAIM_CONFLICT', err.details ?? { issueIds: err.issueIds });
       }
@@ -259,12 +256,7 @@ releaseBatchRoutes.get(
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
     await loadRunForProject(runId, projectId, c.get('userId'));
-    try {
-      return c.json(await loadReleaseBatchContext(runId));
-    } catch (err) {
-      if (err instanceof ReleaseBranchesUndeclaredError) throw undeclaredBranches(err);
-      throw err;
-    }
+    return c.json(await loadReleaseBatchContext(runId));
   },
 );
 

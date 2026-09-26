@@ -371,7 +371,8 @@ describe('collectReleaseBlockers — nothing a caller already got may move', () 
     expect(err?.name).toBe('ReleaseTargetUndeclaredError');
   });
 
-  it('refuses a project missing BOTH a branch and one binding by the branch, as create did', async () => {
+  // ISS-1276 — the branch blocker is gone, so this is refused by the binding alone.
+  it('refuses a project missing BOTH a branch and one binding by the binding alone', async () => {
     ready();
     projectRow({ baseBranch: null, releaseModel: 'publish' });
     listBindings.mockResolvedValue([
@@ -404,9 +405,8 @@ describe('collectReleaseBlockers — nothing a caller already got may move', () 
 
     const codes = (await collectReleaseBlockers(PROJECT_ID)).blockers.map((b) => b.code);
 
-    expect(codes.indexOf('RELEASE_BRANCHES_UNDECLARED')).toBeLessThan(
-      codes.indexOf('RELEASE_MULTI_CHANNEL_UNSUPPORTED'),
-    );
+    expect(codes).not.toContain('RELEASE_BRANCHES_UNDECLARED');
+    expect(codes).toContain('RELEASE_MULTI_CHANNEL_UNSUPPORTED');
   });
 
   it('says the channels were not read, rather than answering as though none were declared', async () => {

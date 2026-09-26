@@ -14,7 +14,7 @@ import {
 import { parseVerifyConfig, type VerifyConfig } from './verify.js';
 
 export type { ReleaseChannel, ReleasePlan, ReleaseRollback } from './plan.js';
-export { defaultReleaseProcedure, RELEASE_PROCEDURE_FACT } from './plan.js';
+export { RELEASE_PROCEDURE_FACT } from './plan.js';
 
 /**
  * Read one binding's stored `rollback` into what a release agent may act on.

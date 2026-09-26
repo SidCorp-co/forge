@@ -351,8 +351,10 @@ describe('a held promoted roster across a sweeper pass', () => {
   }, 30_000);
 });
 
+// ISS-1276 — the announcement is a record and no method refusal exists for a finish to answer
+// with, whatever skill the job names.
 describe('a finish on a run that announced no method', () => {
-  it('names the real method path and the skill the run’s job names', async () => {
+  it('is accepted rather than refused', async () => {
     const { runId } = await batchOf(1);
     await harness.db.execute(sql`
       UPDATE pipeline_runs SET metadata = metadata - 'method' WHERE id = ${runId}
@@ -361,12 +363,8 @@ describe('a finish on a run that announced no method', () => {
       UPDATE jobs SET payload = payload || '{"skillName":"house-release"}'::jsonb
       WHERE pipeline_run_id = ${runId} AND type = 'release_batch'
     `);
-    const answer = await refused(runId);
-    expect(answer.message).toContain(
-      `POST /api/projects/${projectId}/release-batches/${runId}/method`,
-    );
-    expect(answer.message).toContain('"skill":"house-release"');
-    expect(answer.message).not.toMatch(/\{projectId\}|\{runId\}/);
+
+    await expect(accept(runId)).resolves.toBeDefined();
   }, 30_000);
 });
 

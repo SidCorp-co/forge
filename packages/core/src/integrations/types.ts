@@ -352,7 +352,6 @@ export interface IntegrationDeclaration<
   /** Null where the provider has no agent-facing usage to advertise. */
   readonly usage: IntegrationUsage | null;
   readonly presentation: IntegrationPresentation | null;
-  readonly releaseStep?: (namedChannels: string) => string;
   /** Absent exactly where nothing is integrated. */
   readonly adapter?: IntegrationAdapterMethods<TConfig, TSecrets>;
 }

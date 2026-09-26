@@ -11,7 +11,6 @@ import {
   ReleaseVersionMissingError,
 } from './errors.js';
 import { ReleaseTargetUndeclaredError } from './gate.js';
-import { MethodNotAnnouncedError } from './method.js';
 import {
   declarationRefusal,
   finishRefusal,
@@ -126,7 +125,6 @@ describe('reportedRefusal — the entry readiness listed, not a rebuild of it', 
     ['BATCH_IN_FLIGHT', { runId: 'run-9' }],
     ['RELEASE_ROSTER_OVERSIZE', { waiting: 51, limit: 50 }],
     ['RELEASE_ROSTER_EMPTY', { nearGate: 2 }],
-    ['RELEASE_BRANCHES_UNDECLARED', undefined],
   ] as const)('answers %s with its own status, message and details', (code, details) => {
     const entry = blocker(code, details as Record<string, unknown> | undefined);
 
@@ -279,17 +277,7 @@ describe('finishRefusal — a release row carrying no version', () => {
   });
 });
 
-describe('methodRefusal and issuesUnnamed — the paths they send are real', () => {
-  it('names the batch’s method path and the skill its job names', () => {
-    const message =
-      finishRefusal(
-        new MethodNotAnnouncedError('house-release', { projectId: 'proj-7', runId: 'run-7' }),
-      )?.message ?? '';
-    expect(message).toContain('POST /api/projects/proj-7/release-batches/run-7/method');
-    expect(message).toContain('{"skill":"house-release","loaded":true}');
-    expect(message).not.toMatch(/\{projectId\}|\{runId\}/);
-  });
-
+describe('issuesUnnamed — the path it sends is real', () => {
   it('names the project’s roster path', () => {
     const message = issuesUnnamed('proj-7').message;
     expect(message).toContain('GET /api/projects/proj-7/release-batches/roster');

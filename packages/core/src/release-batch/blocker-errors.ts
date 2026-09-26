@@ -18,7 +18,6 @@ import {
   ReleaseWorkUnmergedError,
 } from './errors.js';
 import { ReleaseTargetUndeclaredError } from './gate.js';
-import { ReleaseBranchesUndeclaredError } from './plan.js';
 
 /**
  * The error the first blocker is thrown as, carrying the whole list.
@@ -106,8 +105,6 @@ function errorFor(
       return new ReleasePoolEmptyError();
     case 'NO_RUNNER_ONLINE':
       return new NoRunnerOnlineError();
-    case 'RELEASE_BRANCHES_UNDECLARED':
-      return new ReleaseBranchesUndeclaredError();
     case 'RELEASE_MULTI_CHANNEL_UNSUPPORTED':
       return new ReleaseMultiChannelUnsupportedError(Number(first.details?.count ?? 0));
     case 'BATCH_IN_FLIGHT':
