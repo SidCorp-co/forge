@@ -13,6 +13,7 @@ import {
   CardTitle,
   Checkbox,
   Collapsible,
+  EmptyPanelLine,
   EmptyState,
   ErrorState,
   HelpButton,
@@ -29,7 +30,6 @@ import {
   type MenuItem,
   type TabItem,
 } from "@/design";
-import type { StatusKey } from "@/design/status";
 import { useResumeRun } from "@/features/pipeline/hooks";
 import { useProjects } from "@/features/projects/hooks";
 import { DECISION_PANEL_ANCHOR, DecisionPanel } from "@/features/questions/components/decision-panel";
@@ -48,6 +48,7 @@ import {
   runningStepOf,
   issueQueryKey,
   parseChecklist,
+  runStatusChip,
   statusLabel,
   statusToChip,
 } from "../derive";
@@ -69,7 +70,6 @@ import {
 } from "../hooks";
 import type { IssueAgentSession, IssueStatus, TaskRow } from "../types";
 import { ActivityFeed } from "./activity-feed";
-import { AttachmentList } from "./attachment-list";
 import { AwaitingReleaseBanner } from "./awaiting-release-banner";
 import { BlockerBanner } from "./blocker-banner";
 import { useGuardedTransition } from "./use-guarded-transition";
@@ -288,19 +288,8 @@ export function IssueDetailScreen({
     { value: "tasks", label: "Tasks", count: tasksQ.data?.length },
   ];
 
-  // Live agent-run status for the header — shown as a SESSION-domain chip
-  // (squared + agent glyph) right next to the issue's lifecycle chip so the two
-  // status vocabularies are never confused (ISS-360, the reporter's core ask).
-  const runChip: StatusKey | null =
-    issue.agentStatus === "running"
-      ? "running"
-      : issue.agentStatus === "queued"
-        ? "queued"
-        : issue.agentStatus === "completed"
-          ? "done"
-          : issue.agentStatus === "failed"
-            ? "failed"
-            : null;
+  // The run's state is a session chip beside the issue's lifecycle chip, never merged into it (ISS-360, ISS-1150).
+  const runChip = runStatusChip(issue.agentStatus);
 
   return (
     <PageContainer className="min-h-dvh">
@@ -320,9 +309,7 @@ export function IssueDetailScreen({
           <div className="flex flex-wrap items-center gap-2">
             <MonoTag hue="cobalt">{issue.displayId}</MonoTag>
             {/* Issue lifecycle (pill) vs live agent run (squared, agent glyph). */}
-            {
-        }
-        <StatusChip status={statusToChip(issue.status)} label={statusLabel(issue.status)} />
+            <StatusChip status={statusToChip(issue.status)} label={statusLabel(issue.status)} />
             {runChip && (
               <StatusChip
                 status={runChip}
@@ -332,7 +319,7 @@ export function IssueDetailScreen({
             )}
             {liveStep && <span className="fg-caption font-mono">{liveStep}</span>}
           </div>
-          <PageTitle className="fg-h3 mt-1.5 truncate">{issue.title}</PageTitle>
+          <PageTitle className="fg-h3 mt-1.5 break-words">{issue.title}</PageTitle>
         </div>
         <div className="hidden flex-none items-center gap-2 sm:flex">
           <HelpButton
@@ -401,7 +388,7 @@ export function IssueDetailScreen({
         </div>
       </div>
 
-      <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_360px] 2xl:grid-cols-[minmax(0,1fr)_380px]">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_clamp(16rem,32%,22.5rem)] 2xl:grid-cols-[minmax(0,1fr)_clamp(16rem,32%,23.75rem)]">
         <div className="min-w-0 space-y-4">
           {blocker && (
             <BlockerBanner
@@ -434,27 +421,38 @@ export function IssueDetailScreen({
             />
           )}
 
+          <DescriptionCard
+            issue={issue}
+            attachments={attachmentsQ.data ?? []}
+            attachmentsLoading={attachmentsQ.isLoading}
+            attachmentsError={attachmentsQ.isError ? attachmentsQ.error : null}
+            canWrite={canWrite}
+          />
+
           {/* Session-group continuity (ISS-376) — resumed/fresh per step. Self-
               hides when no session carries group metadata. */}
           <SessionGroupTimeline sessions={issue.agentSessions ?? []} />
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Steps</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {handoffsQ.isLoading || durationsQ.isLoading ? (
-                <div className="space-y-2">
-                  <Skeleton className="h-10 rounded-lg" />
-                  <Skeleton className="h-10 rounded-lg" />
-                </div>
-              ) : stepOutcomes.length === 0 ? (
-                <EmptyState
-                  title="No steps yet"
-                  message="Nothing has run on this issue. Steps appear here as agents record them."
-                  mascot={false}
-                />
-              ) : (
+          {handoffsQ.isLoading || durationsQ.isLoading ? (
+            <EmptyPanelLine title="Steps" status="Loading…" />
+          ) : handoffsQ.isError ? (
+            <EmptyPanelLine
+              title="Steps"
+              status="Couldn't load"
+              detail={formatApiError(handoffsQ.error)}
+            />
+          ) : stepOutcomes.length === 0 ? (
+            <EmptyPanelLine
+              title="Steps"
+              status="None yet"
+              detail="Steps appear here as agents record them."
+            />
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardTitle>Steps</CardTitle>
+              </CardHeader>
+              <CardContent>
                 <div className="space-y-2">
                   {stepOutcomes.map((outcome) => (
                     <StepArtifactCard
@@ -467,30 +465,9 @@ export function IssueDetailScreen({
                     />
                   ))}
                 </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <DescriptionCard
-            issue={issue}
-            attachments={attachmentsQ.data ?? []}
-            canWrite={canWrite}
-          />
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Attachments</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {attachmentsQ.isLoading ? (
-                <Skeleton variant="text" className="w-40" />
-              ) : (attachmentsQ.data?.length ?? 0) === 0 ? (
-                <p className="fg-body-sm text-muted">No attachments.</p>
-              ) : (
-                <AttachmentList rows={attachmentsQ.data ?? []} />
-              )}
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          )}
 
           {checklist.length > 0 && (
             <Card>

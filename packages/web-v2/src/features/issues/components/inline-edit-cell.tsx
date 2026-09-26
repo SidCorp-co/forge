@@ -97,12 +97,7 @@ export function StatusEdit({ status, agentStatus, onTransition, disabled, size }
       onSelect: () => onTransition(g.to),
     }));
   }
-  const chip = (
-    <span className="inline-flex items-center gap-1">
-      <StatusChip status={statusToChip(status, agentStatus)} size={size} />
-      <span className="fg-caption">{statusLabel(status)}</span>
-    </span>
-  );
+  const chip = <StatusChip status={statusToChip(status)} label={statusLabel(status)} size={size} />;
   if (disabled) return chip;
   return (
     <Menu
@@ -111,7 +106,7 @@ export function StatusEdit({ status, agentStatus, onTransition, disabled, size }
       trigger={
         <button
           type="button"
-          aria-label={`Change status (currently ${status})`}
+          aria-label={`Change status (currently ${statusLabel(status)})`}
           className="inline-flex min-h-11 items-center rounded-md px-1 hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
         >
           {chip}

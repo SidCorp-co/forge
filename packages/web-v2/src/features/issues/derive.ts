@@ -121,18 +121,8 @@ export const complexityLabel = (
 	c: IssueComplexity | null | undefined,
 ): string => (c ? (COMPLEXITY_LABELS[c] ?? c) : "—");
 
-/**
- * Map an issue lifecycle status (+ optional live agent status) to a design-kit
- * `StatusKey` for the StatusChip. A running/queued agent wins so the chip shows
- * the live `running · <stage>` band.
- */
-export function statusToChip(
-	status: IssueStatus,
-	agentStatus?: IssueAgentStatus,
-): StatusKey {
-	if (agentStatus === "running") return "running";
-	if (agentStatus === "queued") return "queued";
-	if (agentStatus === "failed") return "failed";
+/** The issue's lifecycle status as a design-kit `StatusKey`. The agent run's state is a different fact with its own chip: `runStatusChip`. */
+export function statusToChip(status: IssueStatus): StatusKey {
 	switch (status) {
 		case "in_progress":
 		case "reopen":
@@ -162,6 +152,24 @@ export function statusToChip(
 			return "paused";
 		default:
 			return "queued";
+	}
+}
+
+/** The agent run's state as a session-domain `StatusKey`, or null when no run has one to show. */
+export function runStatusChip(
+	agentStatus: IssueAgentStatus | undefined,
+): StatusKey | null {
+	switch (agentStatus) {
+		case "running":
+			return "running";
+		case "queued":
+			return "queued";
+		case "completed":
+			return "done";
+		case "failed":
+			return "failed";
+		default:
+			return null;
 	}
 }
 

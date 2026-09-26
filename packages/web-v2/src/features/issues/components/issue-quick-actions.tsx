@@ -3,7 +3,8 @@
 // IssueQuickActions (ISS-390) — a compact, always-visible quick-action row for
 // the board quick-open drawer (the pipeline `RunDetail` SlideOver, the live
 
-import { Button } from "@/design";
+import { Button, StatusChip } from "@/design";
+import { runStatusChip } from "../derive";
 import { InlineSelect, StatusEdit } from "./inline-edit-cell";
 import { PRIORITY_OPTIONS } from "./issue-table-row";
 import { usePatchIssue } from "../hooks";
@@ -32,6 +33,7 @@ export function IssueQuickActions({
   const patch = usePatchIssue();
   const { requestTransition, dialog, isPending } = useGuardedTransition();
   const pending = patch.isPending || isPending;
+  const runChip = runStatusChip(agentStatus);
 
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-line-subtle bg-sunken px-3.5 py-2.5">
@@ -43,6 +45,7 @@ export function IssueQuickActions({
         size="sm"
         onTransition={(toStatus) => requestTransition(issueId, toStatus)}
       />
+      {runChip && <StatusChip status={runChip} size="sm" domain="session" />}
       <span aria-hidden className="h-4 w-px flex-none" style={{ background: "var(--border-default)" }} />
       <InlineSelect
         ariaLabel="Priority"

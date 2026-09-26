@@ -37,6 +37,7 @@ import {
 	STATUS_LABELS,
 	statusLabel,
 	LABEL_VIEW,
+	runStatusChip,
 	statusToChip,
 	statusToTone,
 	statusesFromParam,
@@ -83,10 +84,23 @@ function row(over: Partial<IssueRow> & { id: string }): IssueRow {
 /** The word the board shows for a row: its lane label, held or not. */
 const lane = (s: IssueStatus, held: boolean): string => LABEL_VIEW[toAutonomousLabel(s, held)].label;
 
+describe("runStatusChip — the run's state, never the issue's", () => {
+	it("maps each run state the API sends to its own session key", () => {
+		expect(runStatusChip("running")).toBe("running");
+		expect(runStatusChip("queued")).toBe("queued");
+		expect(runStatusChip("completed")).toBe("done");
+		expect(runStatusChip("failed")).toBe("failed");
+	});
+	it("shows no chip when no run has a state", () => {
+		expect(runStatusChip(null)).toBeNull();
+		expect(runStatusChip(undefined)).toBeNull();
+	});
+});
+
 describe("statusToChip", () => {
-	it("maps live agent status first", () => {
-		expect(statusToChip("approved", "running")).toBe("running");
-		expect(statusToChip("approved", "queued")).toBe("queued");
+	it("reads the issue's status alone, so an open issue is not drawn as its run", () => {
+		expect(statusToChip("approved")).toBe("queued");
+		expect(statusToChip("in_progress")).toBe("running");
 	});
 	it("maps lifecycle status to a kit StatusKey", () => {
 		expect(statusToChip("in_progress")).toBe("running");

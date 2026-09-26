@@ -3099,6 +3099,7 @@
 
 ### Fixed
 
+- **On an issue, the description now gets most of the width and comes first.** Attachments sit above its text, empty panels and fields take a line or nothing, the title wraps, and the run's state has its own label.
 - **A message sent to a master is no longer answered by Claude Code's Rewind picker.** Its highlighted row stands alone between blank lines, which read as no menu, so the Enter took a choice and the message vanished.
 - **The side navigation keeps every label inside its button, an empty release gate is one line, and toasts no longer cover the page.** A long label ends in an ellipsis, its full name on hover; background notifications share one card.
 - **Wide tables scroll sideways inside their card instead of cutting off columns.** A fade marks the side with more to see, keyboard users can tab in and scroll, and the Issues page no longer slides sideways.
