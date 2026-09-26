@@ -4,6 +4,8 @@
  * person, which way is the flow going, is the output any good.
  */
 
+import type { FailureCause } from '../pipeline/failure-causes.js';
+
 /** A set the response counts in full and names only the first `shown.length` of. */
 export interface PulseCapped<T> {
   total: number;
@@ -138,7 +140,7 @@ export interface PulseQuality {
   reopened: { issues: number; events: number };
   rework: { fix: number; code: number };
   runFailure: { pipeline: PulseLane; scheduler: PulseLane; other: PulseLane };
-  sessionFailures: Array<{ reason: string; count: number }>;
+  sessionFailures: Array<{ reason: FailureCause; count: number }>;
   pipelineFlow: Array<{ type: string; count: number; medianSeconds: number | null }>;
 }
 
