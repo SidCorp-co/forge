@@ -76,6 +76,17 @@ function invalidUrlWhy(invalid: readonly string[]): string {
   );
 }
 
+/** Why a reading could not corroborate a runtime verdict, in words an operator can act on. */
+export function whyUncorroborated(serving: ServingReading): string {
+  if (serving.kind === 'undeclared') {
+    return 'this project declares no way to ask a host what it is serving.';
+  }
+  if (serving.kind === 'unreadable') {
+    return `nothing could be read from the probes it declares — ${serving.why}`;
+  }
+  return 'a reading answered, so nothing was uncorroborated.';
+}
+
 /** What this project is serving, now. The read is the server's: a caller's claim about what is
  *  deployed is not admissible here, for the reason it is not admissible in a release. */
 export async function readServingNow(

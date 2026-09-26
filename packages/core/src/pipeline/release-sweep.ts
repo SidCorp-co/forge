@@ -16,7 +16,7 @@ import {
   ReleaseTargetUndeclaredError,
   resolveReleaseGate,
 } from '../release-batch/gate.js';
-import { readServingNow } from '../release-batch/serving-reading.js';
+import { readServingNow, whyUncorroborated } from '../release-batch/serving-reading.js';
 import { loadCreatedBy } from '../schedules/release-batch-dispatch.js';
 import { cutWaitingRelease } from '../schedules/release-batch-run.js';
 import { projectAutoProdDeploy } from './release-coolify.js';
@@ -168,11 +168,12 @@ function reportHeldBack(projectId: string, held: readonly IssueCriteriaReport[])
 function reportUncorroborated(projectId: string, reports: readonly IssueCriteriaReport[]): void {
   for (const report of reports) {
     if (report.uncorroborated.length === 0) continue;
+    const why = whyUncorroborated(report.serving);
     logger.warn(
-      { projectId, issueId: report.issueId, criteria: report.uncorroborated },
+      { projectId, issueId: report.issueId, criteria: report.uncorroborated, why },
       `release-sweep: ${report.issueId} is carried on criterion ${report.uncorroborated.join(', ')} ` +
-        'judged at a runtime nothing here could re-read — the verdict counts, and it is weaker ' +
-        'evidence than a reading would have made it',
+        `judged at a runtime nothing here could re-read — ${why} The verdict counts, and it is ` +
+        'weaker evidence than a reading would have made it',
     );
   }
 }

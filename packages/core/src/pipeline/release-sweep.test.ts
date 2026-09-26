@@ -103,26 +103,25 @@ vi.mock('../release-batch/gate.js', () => ({
 type UnearnedCriterion = { criterion: number; verdict: string | null; standing: string | null; why: string };
 const READING = { kind: 'serving', commits: ['c0ffee0'], unread: [], hosts: ['h'], readAt: 'T' };
 const none = { unearned: [] as UnearnedCriterion[], serving: READING, uncorroborated: [] as number[] };
-const noneUnearned = async (ids: string[]) => ids.map((id) => ({ issueId: id, ...none }));
+const noneUnearned = async (i: string[]) => i.map((id) => ({ issueId: id, ...none }));
 const unearnedCriteriaReportsMock = vi.fn(noneUnearned);
 vi.mock('../issues/criteria-verdicts.js', () => ({
   unearnedCriteriaReports: (ids: string[]) => unearnedCriteriaReportsMock(ids),
 }));
 
 const readServingNowMock = vi.fn(async (_p: string) => READING as unknown);
+const WHY = 'nothing could be read from the probes it declares — host is down';
 vi.mock('../release-batch/serving-reading.js', () => ({
   readServingNow: (p: string) => readServingNowMock(p),
+  whyUncorroborated: () => WHY,
 }));
+
 /** The report a sweep reads for a roster where `held` are the ones still owing a criterion. */
 const reportsHolding = (all: string[], held: Record<string, UnearnedCriterion[]>) =>
   all.map((id) => ({ ...none, issueId: id, unearned: held[id] ?? [] }));
 
-const SUPERSEDED: UnearnedCriterion = {
-  criterion: 13,
-  verdict: 'pass',
-  standing: 'superseded',
-  why: 'judged at dce6f354c727baa81c681f144cbadf30050eabfc, and this issue now stands at 06fa37c6dfbc841bd75c3898034a53a1529a9c74',
-};
+const SUPERSEDED: UnearnedCriterion = { criterion: 13, verdict: 'pass', standing: 'superseded',
+  why: 'judged at dce6f354c727baa81c681f144cbadf30050eabfc, and this issue now stands at 06fa37c6dfbc841bd75c3898034a53a1529a9c74' };
 
 const loadCreatedByMock = vi.fn(async (_projectId: string) => 'owner-1' as string | undefined);
 vi.mock('../schedules/release-batch-dispatch.js', () => ({
@@ -373,7 +372,8 @@ describe('sweepAutomaticReleases — the ISS-1139/ISS-1114 reproduction', () => 
     unearnedCriteriaReportsMock.mockResolvedValueOnce(weak);
     await sweepAutomaticReleases();
     const said = loggerWarn.mock.calls.find(([, l]) => String(l).includes('could re-read'));
-    expect(said?.[0]).toMatchObject({ issueId: 'iss-earned', criteria: [4, 9] });
+    expect(said?.[0]).toMatchObject({ issueId: 'iss-earned', criteria: [4, 9], why: WHY });
+    expect(said?.[1]).toContain(WHY);
     expect(cutWaitingReleaseMock).toHaveBeenCalled();
   });
 

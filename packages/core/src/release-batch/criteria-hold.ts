@@ -10,19 +10,12 @@ import {
   type ReleaseWarning,
   uncorroboratedWarningSentence,
 } from './blocker-sentences.js';
-import type { ServingReading } from './serving-reading.js';
+import { type ServingReading, whyUncorroborated } from './serving-reading.js';
 
 const NO_READING =
   'no reading of what this project is serving was passed in, and this enumerator reaches no ' +
   'network of its own, so nothing could be weighed against what a runtime verdict names. The ' +
   'caller takes the reading and passes it as `serving`.';
-
-/** Why a reading could not corroborate, in the words the operator sentence carries. */
-function whyUncorroborated(serving: ServingReading): string {
-  return serving.kind === 'undeclared'
-    ? 'this project declares no way to ask a host what it is serving.'
-    : `nothing could be read from the probes it declares — ${serving.kind === 'unreadable' ? serving.why : 'no answer'}`;
-}
 
 /** A criterion earned on a runtime nothing could re-read passes, and says so (ISS-1286). */
 async function uncorroboratedWarning(
