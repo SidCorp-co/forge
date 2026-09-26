@@ -11,7 +11,7 @@
 import { createHmac, randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { RequestIdVars } from '../../src/middleware/request-id.js';
 import {
   createTestProject,
@@ -142,9 +142,17 @@ describe('a call turned away at the door', () => {
   });
 
   // Criterion 8. Without this the door is a write amplifier for anyone who knows a project slug.
+  // The bucket is floor(now / 10 minutes) off the wall clock, so six knocks that straddle a
+  // boundary leave two rows and this case passed or failed on what time it ran at. Frozen on a
+  // time inside one bucket, it turns on the source alone.
   it('leaves one record for a flood of the same refusal in one bucket', async () => {
-    for (let i = 0; i < 6; i++) await knock({ 'x-hub-signature-256': sign('wrong') });
-    expect(await deliveries()).toHaveLength(1);
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-01-02T03:05:00.000Z') });
+    try {
+      for (let i = 0; i < 6; i++) await knock({ 'x-hub-signature-256': sign('wrong') });
+      expect(await deliveries()).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('keeps a different refusal code apart rather than folding it into the first', async () => {

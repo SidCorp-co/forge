@@ -170,7 +170,6 @@ function declarationGaps(input: GapInput): ReleaseGapKey[] {
 
   const labels = [...new Set(channels.map((c) => c.releaseRunnerLabel).filter((l) => l !== null))];
   if (labels.length > 1) gaps.push('release-runner-ambiguous');
-  else if (labels.length === 0) gaps.push('release-runner');
   if (channels.some((c) => !c.verify)) gaps.push('verify-probes');
   if (channels.length > 1) gaps.push('release-multi-channel');
   if (channels.some((c) => !c.rollback)) gaps.push('rollback');

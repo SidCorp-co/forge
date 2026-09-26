@@ -111,27 +111,21 @@ describe('the release runner label', () => {
     expect(message).toContain('Settings \u2192 Runners');
   });
 
-  it('says what withdrawing the label costs, in the same breath as offering it', () => {
+  // ISS-1127 made this sentence state what withdrawing the label cost, because
+  // withdrawing it raised a 409. ISS-1275 removed that 409, so the cost clause
+  // is gone rather than reworded: a warning naming a consequence nobody meets
+  // is the same defect the clause was added to answer, pointed the other way.
+  it('names no cost for a withdrawal that now costs nothing', () => {
     const message = runnerPreferenceUnmetSentence('release');
 
-    expect(message).toContain('Withdrawing the label instead');
-    expect(message).toContain('RELEASE_RUNNER_UNDECLARED');
-    expect(message).toContain('does stop a release');
+    expect(message).not.toContain('does stop a release');
+    expect(message).not.toContain('RELEASE_RUNNER_UNDECLARED');
   });
 
-  it('offers no withdrawal from the reason withdrawal produces', () => {
-    const message = releaseBlockerSentence('RELEASE_RUNNER_UNDECLARED');
+  it('still sends the operator to the box rather than round the loop', () => {
+    const message = runnerPreferenceUnmetSentence('release');
 
-    expect(message.toLowerCase()).not.toContain('withdraw');
-    expect(message).not.toContain('`null`');
-  });
-
-  it('tells a project with one unlabelled box that naming a label still releases', () => {
-    const message = releaseBlockerSentence('RELEASE_RUNNER_UNDECLARED');
-
-    expect(message).toContain('Set `releaseRunnerLabel` on the live deploy binding');
-    expect(message).toContain('does not restrict the pool');
-    expect(message).toContain('the pool this project has');
+    expect(message).toContain('so this release goes to the pool this project has');
   });
 });
 

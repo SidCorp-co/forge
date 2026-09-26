@@ -126,7 +126,7 @@ describe('reportedRefusal — the entry readiness listed, not a rebuild of it', 
     ['BATCH_IN_FLIGHT', { runId: 'run-9' }],
     ['RELEASE_ROSTER_OVERSIZE', { waiting: 51, limit: 50 }],
     ['RELEASE_ROSTER_EMPTY', { nearGate: 2 }],
-    ['RELEASE_RUNNER_UNDECLARED', undefined],
+    ['RELEASE_BRANCHES_UNDECLARED', undefined],
   ] as const)('answers %s with its own status, message and details', (code, details) => {
     const entry = blocker(code, details as Record<string, unknown> | undefined);
 

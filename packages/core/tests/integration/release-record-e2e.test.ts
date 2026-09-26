@@ -44,7 +44,7 @@ const RELEASED = 'b853f813d0e4b2a1c9f8e7d6c5b4a39281706f5e';
 const NEVER_DEPLOYED = 'c0ffee1234567890abcdef1234567890abcdef12';
 
 const ACCOUNT =
-  'Merged and deployed by hand through the live Coolify binding, because this project declares no release runner label and no batch could be created.';
+  'Merged and deployed by hand through the live Coolify binding, because this project has no runner registered and no batch could be created.';
 
 beforeAll(async () => {
   harness = await setupTestDatabase();
@@ -168,6 +168,8 @@ const causeOf = async (res: { json: () => Promise<unknown> }) =>
   (await res.json()) as { code?: string; message?: string; details?: unknown };
 
 describe('a release that happened is recorded although no batch could be created', () => {
+  // ISS-1275 took the label out of this project's way; what is left is the
+  // fleet, which is why the refusal reads 503 and names the empty pool.
   it('refuses to create a batch on this project, so the batch path is not the way out', async () => {
     const w = await seed();
     const a = await insertIssue(w);
@@ -177,8 +179,8 @@ describe('a release that happened is recorded although no batch could be created
       body: JSON.stringify({ issueIds: [a] }),
     });
 
-    expect(res.status).toBe(409);
-    expect((await causeOf(res)).code).toBe('RELEASE_RUNNER_UNDECLARED');
+    expect(res.status).toBe(503);
+    expect((await causeOf(res)).code).toBe('RELEASE_POOL_EMPTY');
   });
 
   it('records the release and closes every issue it carried', async () => {

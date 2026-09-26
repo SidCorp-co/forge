@@ -3,20 +3,39 @@ import { db } from '../db/client.js';
 import { claimCapableSql } from '../runners/device-cap.js';
 import { runnerLive } from '../runners/liveness-sql.js';
 
+/** The distinct non-empty `releaseRunnerLabel` values this job's project declares. */
+const DECLARED_RELEASE_LABELS = sql`(
+  SELECT DISTINCT NULLIF(
+    CASE WHEN b.config ? 'releaseRunnerLabel'
+         THEN b.config ->> 'releaseRunnerLabel'
+         ELSE c.config ->> 'releaseRunnerLabel' END, '') AS label
+  FROM integration_bindings b
+  JOIN integration_connections c ON c.id = b.connection_id
+  WHERE b.project_id = j.project_id
+    AND b.role = 'deploy'
+    AND 'live' = ANY(b.stages)
+    AND b.active
+    AND c.active
+)`;
+
 export const RELEASE_LABEL_FOR_JOB = sql`(
-  SELECT CASE WHEN count(*) = 1 THEN min(label) END FROM (
-    SELECT DISTINCT NULLIF(
-      CASE WHEN b.config ? 'releaseRunnerLabel'
-           THEN b.config ->> 'releaseRunnerLabel'
-           ELSE c.config ->> 'releaseRunnerLabel' END, '') AS label
-    FROM integration_bindings b
-    JOIN integration_connections c ON c.id = b.connection_id
-    WHERE b.project_id = j.project_id
-      AND b.role = 'deploy'
-      AND 'live' = ANY(b.stages)
-      AND b.active
-      AND c.active
-  ) labels
+  SELECT CASE WHEN count(*) = 1 THEN min(label) END
+  FROM ${DECLARED_RELEASE_LABELS} labels
+  WHERE label IS NOT NULL
+)`;
+
+/**
+ * How many different labels this job's project declares: 0 where nobody
+ * declared one, 1 where they agree, more where they contradict each other.
+ *
+ * `RELEASE_LABEL_FOR_JOB` is NULL for the first and the last of those alike,
+ * and they are opposite answers — no preference admits the pool, two
+ * preferences admit nobody — so the count is read rather than the label
+ * wherever the two have to be told apart (ISS-1275).
+ */
+export const RELEASE_LABEL_COUNT_FOR_JOB = sql`(
+  SELECT count(*)
+  FROM ${DECLARED_RELEASE_LABELS} labels
   WHERE label IS NOT NULL
 )`;
 
@@ -45,8 +64,9 @@ export function eligibleBoxCarriesReleaseLabel(): SQL {
 
 /**
  * True for every job that is not a release, and for a release this box may
- * take: because it carries the project's declared label, or because no box on
- * the fleet that could take the release carries it.
+ * take: because the project declares no label at all, because this box carries
+ * the one it declares, or because no box on the fleet that could take the
+ * release carries it.
  *
  * ISS-1128 — the label RANKS the pool. A declaration of preference used to
  * remove every other box from it, so declaring which box a release *should*
@@ -54,17 +74,18 @@ export function eligibleBoxCarriesReleaseLabel(): SQL {
  * deploying anywhere. A project whose boxes carry no matching label releases
  * on the pool it has.
  *
- * A label that resolves to NULL is not an unmet preference and does not fall
- * back: none declared is `RELEASE_RUNNER_UNDECLARED`, and two live bindings
- * disagreeing is `RELEASE_RUNNER_AMBIGUOUS`. Both are contradictions to
- * resolve, and a release sent to whichever box asked first is the silent pick
- * those refusals exist to remove.
+ * ISS-1275 finished that: nothing declared is the ordinary state of a project
+ * that has expressed no preference, and it now admits the whole pool the way
+ * every other job type already reaches it. The one contradiction left is two
+ * live bindings naming different labels — `RELEASE_RUNNER_AMBIGUOUS`, which a
+ * person resolves — and that still admits nobody.
  *
  * Needs `j` (the job row) in scope; `labels` defaults to the runner row `r`.
  */
 export function runnerMayTakeJob(labels: SQL = sql`r.labels`): SQL {
   return sql`(
     j.type <> 'release_batch'
+    OR ${RELEASE_LABEL_COUNT_FOR_JOB} = 0
     OR (
       ${RELEASE_LABEL_FOR_JOB} IS NOT NULL
       AND (
@@ -87,7 +108,8 @@ export type ReleaseLabelVerdict =
  *
  * `preferenceMet` is false where this box was admitted because nothing
  * eligible carries the label. The caller says so rather than letting a
- * declared preference go unhonoured in silence.
+ * declared preference go unhonoured in silence. A project that declared no
+ * preference has none to leave unhonoured, so it reads true there.
  */
 export async function releaseLabelVerdict(args: {
   jobId: string;
@@ -96,6 +118,7 @@ export async function releaseLabelVerdict(args: {
   const rows = (await db.execute(sql`
     SELECT j.type,
            ${RELEASE_LABEL_FOR_JOB} AS label,
+           ${RELEASE_LABEL_COUNT_FOR_JOB} AS declared,
            COALESCE(r.labels, '[]'::jsonb) AS labels,
            ${eligibleBoxCarriesReleaseLabel()} AS preferred_available
     FROM jobs j
@@ -110,6 +133,8 @@ export async function releaseLabelVerdict(args: {
 
   const label = (row.label as string | null) ?? null;
   const carried = Array.isArray(row.labels) ? (row.labels as string[]) : [];
+  // `count(*)` comes back as a bigint, which node-postgres hands over as a string.
+  if (Number(row.declared) === 0) return { allowed: true, label: null, preferenceMet: true };
   if (label !== null && carried.includes(label))
     return { allowed: true, label, preferenceMet: true };
   if (label !== null && row.preferred_available !== true) {

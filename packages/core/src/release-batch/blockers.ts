@@ -179,8 +179,8 @@ function channelBlockers(
     out.push(blocker('RELEASE_MULTI_CHANNEL_UNSUPPORTED', { count: channels.length }));
   }
   try {
+    // ISS-1275 — no label is no preference, which admits the pool it has.
     label = releaseRunnerLabelOf(projectId, channels);
-    if (door === 'batch' && !label) out.push(blocker('RELEASE_RUNNER_UNDECLARED'));
   } catch (err) {
     const labels = err instanceof ReleaseRunnerAmbiguousError ? err.labels : [];
     out.push(blocker('RELEASE_RUNNER_AMBIGUOUS', { labels }));

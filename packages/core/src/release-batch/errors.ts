@@ -34,17 +34,6 @@ export class ReleasePoolEmptyError extends Error {
   }
 }
 
-/**
- * The project declares a release model but no live deploy binding names a release runner. Rule
- * 3 of ISS-897: a gate without a designated box is a refusal, never a fallback.
- */
-export class ReleaseRunnerUndeclaredError extends Error {
-  constructor() {
-    super('RELEASE_RUNNER_UNDECLARED');
-    this.name = 'ReleaseRunnerUndeclaredError';
-  }
-}
-
 export class ReleaseMultiChannelUnsupportedError extends Error {
   readonly code = 'RELEASE_MULTI_CHANNEL_UNSUPPORTED';
   constructor(readonly count: number) {

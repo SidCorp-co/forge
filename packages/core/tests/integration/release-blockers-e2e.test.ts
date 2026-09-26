@@ -345,12 +345,12 @@ describe('release-readiness and the create door answer the same question', () =>
     expect(created.status).toBe(201);
   });
 
-  // The judging run took this warning's own second remedy against the live
-  // project and went from two blockers to three: withdrawing the label raises
-  // RELEASE_RUNNER_UNDECLARED, a 409, whose sentence then named withdrawal
-  // again. Acting on a reason made the release harder to start, which is the
-  // compounding sequence ISS-1127 was filed about, inside its own answer.
-  it('does not offer withdrawing the label without saying it raises a blocker', async () => {
+  // ISS-1127 shipped this warning offering withdrawal as one of two equal ways
+  // out while withdrawal raised a 409. ISS-1275 answered that by making the
+  // withdrawal free, so the clause that named its cost is gone rather than
+  // reworded: a cost sentence for a cost nobody pays is the same defect wearing
+  // the opposite sign.
+  it('offers withdrawing the label without naming any blocker it would raise', async () => {
     const w = await seed();
     const device = await createTestDevice(harness.db, w.userId, { status: 'online' });
     await harness.db.execute(sql`
@@ -364,11 +364,10 @@ describe('release-readiness and the create door answer the same question', () =>
     const warned = answer.body.warnings.find((x) => x.code === 'RELEASE_RUNNER_PREFERENCE_UNMET');
 
     expect(warned?.message).toContain('Label the box that holds the deploy credential');
-    expect(warned?.message).toContain('RELEASE_RUNNER_UNDECLARED');
-    expect(warned?.message).toContain('does stop a release');
+    expect(warned?.message).not.toContain('does stop a release');
   });
 
-  it('takes the withdrawal the warning names and answers the reason it warned of', async () => {
+  it('takes the withdrawal and adds no blocker to the project it was taken on', async () => {
     const w = await seed();
     const device = await createTestDevice(harness.db, w.userId, { status: 'online' });
     await harness.db.execute(sql`
@@ -377,21 +376,19 @@ describe('release-readiness and the create door answer the same question', () =>
               'online', now(), '[]'::jsonb)
     `);
     await seedIssue(w);
+    const before = (await readiness(w)).body.blockers.map((b) => b.code);
+
     await harness.db.execute(sql`
       UPDATE integration_bindings
          SET config = config - 'releaseRunnerLabel'
        WHERE project_id = ${w.projectId}
     `);
-
     const answer = await readiness(w);
-    const raised = answer.body.blockers.find((b) => b.code === 'RELEASE_RUNNER_UNDECLARED');
 
-    expect(raised).toBeDefined();
+    expect(answer.body.blockers.map((b) => b.code)).toEqual(before);
     expect(answer.body.warnings.map((x) => x.code)).not.toContain(
       'RELEASE_RUNNER_PREFERENCE_UNMET',
     );
-    expect(raised?.message.toLowerCase()).not.toContain('withdraw');
-    expect(raised?.message).toContain('does not restrict the pool');
   });
 });
 

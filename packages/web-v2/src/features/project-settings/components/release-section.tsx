@@ -19,8 +19,6 @@ const GAP_TEXT: Record<ReleaseReadiness["gaps"][number], string> = {
   "test-commands": "No test-commands fact — a session has nothing to prove its work with.",
   "release-procedure":
     "No release-procedure fact — the release runs a generic fallback written for another repo.",
-  "release-runner":
-    "The live binding names no release runner — a release is refused rather than sent to an arbitrary box. Naming one recommends a box; it does not stop the others releasing when that box is unavailable.",
   "release-runner-ambiguous":
     "Two live bindings name different release runners — a release is refused rather than sent to whichever was created first. Give them the same label, or retire one.",
   "release-multi-channel":

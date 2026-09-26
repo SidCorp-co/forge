@@ -3,12 +3,14 @@
  *
  * ISS-1127 shipped the defect it was filed about: `RELEASE_RUNNER_PREFERENCE_UNMET`
  * called itself a reason that stops nothing and offered withdrawing the release
- * label as one of two equal ways out, while withdrawing it raises
+ * label as one of two equal ways out, while withdrawing it raised
  * `RELEASE_RUNNER_UNDECLARED`, a 409. The three scans below are the property
  * that was missing — a message may name a foreign code or a foreign act only
- * where `REMEDY_COST` declares it — and the last case drives the one declared
- * act through every branch the check reading it takes, so `raises` being a
- * single code is measured rather than assumed.
+ * where `REMEDY_COST` declares it.
+ *
+ * ISS-1275 then made that withdrawal free, so the table declares no act and a
+ * scan over it is green for every input. The planted cases drive it against a
+ * FIXTURE table, and the same plant against the shipped one is asserted clean.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -45,6 +47,7 @@ const {
   remedyCostClause,
   runnerPreferenceUnmetSentence,
 } = await import('./blockers.js');
+type RemedyAct = import('./blockers.js').RemedyAct;
 const { registerAllIntegrations } = await import('../integrations/register-all.js');
 registerAllIntegrations();
 
@@ -60,7 +63,6 @@ const BLOCKER_CODES = [
   'RELEASE_RECORD_MISSING',
   'RELEASE_WORK_UNMERGED',
   'RELEASE_RUNNER_AMBIGUOUS',
-  'RELEASE_RUNNER_UNDECLARED',
   'RELEASE_PROBES_UNDECLARED',
   'RELEASE_PROBES_UNREADABLE',
   'RELEASE_POOL_EMPTY',
@@ -110,9 +112,16 @@ function withoutDeclaredClauses(code: ReasonCode, message: string): string {
   return rest;
 }
 
-/** The reasons this message describes an act towards without declaring it. */
-function trespassingIn(code: ReasonCode, message: string): string[] {
-  const acts = Object.entries(REMEDY_COST).flatMap(([owner, costs]) =>
+type RemedyTable = Record<string, readonly RemedyAct[]>;
+
+/** The reasons this message describes an act towards without declaring it.
+ *  `table` is the shipped `REMEDY_COST` everywhere but the planted cases. */
+function trespassingIn(
+  code: ReasonCode,
+  message: string,
+  table: RemedyTable = REMEDY_COST,
+): string[] {
+  const acts = Object.entries(table).flatMap(([owner, costs]) =>
     costs.map((cost) => ({ owner, cost })),
   );
   const rest = withoutDeclaredClauses(code, message).toLowerCase();
@@ -121,6 +130,15 @@ function trespassingIn(code: ReasonCode, message: string): string[] {
     .filter(({ cost }) => cost.worded.some((w) => rest.includes(w.toLowerCase())))
     .map(({ cost }) => cost.raises);
 }
+
+/** One declared act, so the scans have something to find. `worded` holds stems
+ *  because the defect's words and a reviewer's were not the same words. */
+const PLANTED_ACT: RemedyAct = {
+  act: 'Withdrawing the label instead, by sending `releaseRunnerLabel` as `null` on every live deploy binding,',
+  worded: ['withdraw', 'withdrawing'],
+  raises: 'RELEASE_POOL_EMPTY',
+};
+const PLANTED_TABLE: RemedyTable = { RELEASE_RUNNER_PREFERENCE_UNMET: [PLANTED_ACT] };
 
 const REMEDY_POOL_EMPTY = releaseBlockerSentence('RELEASE_POOL_EMPTY');
 
@@ -157,16 +175,31 @@ describe('REMEDY_COST', () => {
     }
   });
 
-  // The words the shipped defect used and the words a reviewer reached for are
-  // not the same words, which is why `worded` holds stems and not sentences.
+  it('declares no act at all, every remedy this project prints being free', () => {
+    expect(Object.values(REMEDY_COST).flat()).toEqual([]);
+  });
+
   it.each([
     'Send `null` for that key to withdraw it again.',
     'Withdraw the release runner label to go back.',
     'You may withdraw this at any time.',
   ])('catches an undeclared withdrawal written as %s', (planted) => {
-    expect(trespassingIn('RELEASE_POOL_EMPTY', `${REMEDY_POOL_EMPTY} ${planted}`)).toEqual([
-      'RELEASE_RUNNER_UNDECLARED',
-    ]);
+    expect(
+      trespassingIn('RELEASE_POOL_EMPTY', `${REMEDY_POOL_EMPTY} ${planted}`, PLANTED_TABLE),
+    ).toEqual(['RELEASE_POOL_EMPTY']);
+  });
+
+  it.each([
+    'Send `null` for that key to withdraw it again.',
+    'Withdraw the release runner label to go back.',
+    'You may withdraw this at any time.',
+  ])('finds nothing to charge for the same sentence, shipped: %s', (planted) => {
+    expect(trespassingIn('RELEASE_POOL_EMPTY', `${REMEDY_POOL_EMPTY} ${planted}`)).toEqual([]);
+  });
+
+  // And a message describing no act is clean against the table that declares one.
+  it('charges nothing to a message that describes no declared act', () => {
+    expect(trespassingIn('RELEASE_POOL_EMPTY', REMEDY_POOL_EMPTY, PLANTED_TABLE)).toEqual([]);
   });
 });
 
@@ -258,7 +291,7 @@ async function codesFor(bindings: unknown[]): Promise<string[]> {
   return report.blockers.map((b) => b.code);
 }
 
-describe('the act RELEASE_RUNNER_PREFERENCE_UNMET names', () => {
+describe('withdrawing the release runner label', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     projectRow();
@@ -268,16 +301,13 @@ describe('the act RELEASE_RUNNER_PREFERENCE_UNMET names', () => {
   });
 
   for (const { branch, declared } of LABEL_BRANCHES) {
-    // The act is worded to cover the binding AND the connection behind it, so
-    // that is what is taken here. Withdrawing from one of the two is the case
-    // below, and it is why the act names both.
-    it(`raises RELEASE_RUNNER_UNDECLARED and nothing else new where ${branch}`, async () => {
+    // Taken from the binding AND the connection: the half-withdrawal is below.
+    it(`raises nothing new where ${branch}`, async () => {
       const before = await codesFor(declared);
 
       const after = await codesFor(withdrawReleaseRunnerLabel(declared));
 
-      expect(after).toContain('RELEASE_RUNNER_UNDECLARED');
-      expect(after.filter((c) => !before.includes(c))).toEqual(['RELEASE_RUNNER_UNDECLARED']);
+      expect(after.filter((c) => !before.includes(c))).toEqual([]);
     });
   }
 
@@ -300,9 +330,7 @@ describe('the act RELEASE_RUNNER_PREFERENCE_UNMET names', () => {
 
     expect(withdrawn?.binding.config).toEqual(REST);
     expect(withdrawn?.connection.config).toEqual({ apiKey: 'kept' });
-    expect(await codesFor(withdrawReleaseRunnerLabel(declared))).toContain(
-      'RELEASE_RUNNER_UNDECLARED',
-    );
+    expect(await codesFor(withdrawReleaseRunnerLabel(declared))).toEqual(await codesFor(declared));
   });
 
   it('changes nothing where only the binding is withdrawn and the connection still declares one', async () => {
@@ -313,7 +341,6 @@ describe('the act RELEASE_RUNNER_PREFERENCE_UNMET names', () => {
 
     const after = await codesFor([binding('b-1', { ...REST }, { releaseRunnerLabel: 'other' })]);
 
-    expect(after).not.toContain('RELEASE_RUNNER_UNDECLARED');
     expect(after).toEqual(before);
   });
 });
