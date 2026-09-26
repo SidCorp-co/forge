@@ -83,6 +83,7 @@ export function HelpButton({
         anchor={triggerRef}
         onDismiss={() => setOpen(false)}
         placement="bottom-end"
+        takesFocus
         id={panelId}
         role="dialog"
         aria-label="Page help"

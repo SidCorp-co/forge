@@ -9,7 +9,7 @@
 
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Layer, Popover, type PopoverProps } from "./popover";
 
@@ -116,6 +116,41 @@ describe("Popover", () => {
     const e = new WheelEvent("wheel", { deltaY: 200, bubbles: true, cancelable: true });
     document.body.dispatchEvent(e);
     expect(e.defaultPrevented).toBe(false);
+  });
+
+  it("moves focus into a panel that takes focus, and back to the anchor when it closes", async () => {
+    function Focusing() {
+      const anchor = useRef<HTMLButtonElement>(null);
+      const [open, setOpen] = useState(false);
+      return (
+        <>
+          <button ref={anchor} type="button" onClick={() => setOpen((o) => !o)}>
+            help
+          </button>
+          <button type="button">next on the page</button>
+          <Popover open={open} anchor={anchor} onDismiss={() => setOpen(false)} takesFocus>
+            <button type="button" onClick={() => setOpen(false)}>
+              close
+            </button>
+          </Popover>
+        </>
+      );
+    }
+    render(<Focusing />);
+    const trigger = screen.getByText("help");
+    trigger.focus();
+    fireEvent.click(trigger);
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByText("close")));
+    fireEvent.click(screen.getByText("close"));
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+  });
+
+  it("leaves focus where it is for a panel that does not take focus", async () => {
+    render(<Clipped />);
+    const trigger = screen.getByText("trigger");
+    trigger.focus();
+    await waitFor(() => expect(screen.getByTestId("panel").style.position).toBe("fixed"));
+    expect(document.activeElement).toBe(trigger);
   });
 
   it("sits on the panel tier, below the palette tier", () => {

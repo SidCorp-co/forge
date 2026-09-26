@@ -44,7 +44,7 @@ export function Select({
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const btnRef = useRef<HTMLButtonElement>(null);
-  const listRef = useRef<HTMLDivElement>(null);
+  const [panel, setPanel] = useState<HTMLDivElement | null>(null);
   const typeahead = useRef("");
   const typeaheadAt = useRef(0);
   const baseId = useId();
@@ -87,10 +87,12 @@ export function Select({
     [options],
   );
 
+  // The listbox mounts through a portal a render after `open` flips, so this
+  // waits for the node: the selected option is in view the moment it opens.
   useEffect(() => {
-    if (!open) return;
-    listRef.current?.querySelector<HTMLElement>(`[data-idx="${active}"]`)?.scrollIntoView({ block: "nearest" });
-  }, [open, active]);
+    if (!open || !panel) return;
+    panel.querySelector<HTMLElement>(`[data-idx="${active}"]`)?.scrollIntoView({ block: "nearest" });
+  }, [open, active, panel]);
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (!open) {
@@ -159,7 +161,7 @@ export function Select({
         matchAnchorWidth
         maxHeight={256}
         lockScroll
-        panelRef={listRef}
+        panelRef={setPanel}
         id={`${baseId}-list`}
         role="listbox"
         tabIndex={-1}

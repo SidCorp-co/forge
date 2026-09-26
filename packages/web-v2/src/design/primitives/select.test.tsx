@@ -115,6 +115,19 @@ describe("Select", () => {
     expect(screen.queryByRole("listbox")).toBeNull();
   });
 
+  it("brings the selected option into view as the listbox opens, before any key", () => {
+    const scrolled = vi.fn();
+    Element.prototype.scrollIntoView = scrolled;
+    function Long() {
+      const many = Array.from({ length: 30 }, (_, i) => ({ value: `v${i}`, label: `Option ${i}` }));
+      return <Select aria-label="Long" options={many} value="v29" onChange={vi.fn()} />;
+    }
+    render(<Long />);
+    fireEvent.click(screen.getByRole("combobox", { name: "Long" }));
+    expect(scrolled.mock.contexts).toContain(screen.getByRole("option", { name: "Option 29" }));
+    Element.prototype.scrollIntoView = vi.fn();
+  });
+
   it("closes on a press outside and on Escape", () => {
     render(<InTable />);
     fireEvent.click(combobox());

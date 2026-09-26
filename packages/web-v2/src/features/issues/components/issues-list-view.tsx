@@ -484,6 +484,7 @@ export function IssuesListView({
             onDismiss={() => setPinOpen(false)}
             placement="bottom-end"
             gap={8}
+            takesFocus
             role="dialog"
             aria-label="Pin this view"
             className="w-72 overflow-y-auto rounded-lg border border-line bg-surface p-3 shadow-lg"

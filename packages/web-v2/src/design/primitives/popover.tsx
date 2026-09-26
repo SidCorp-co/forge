@@ -5,6 +5,7 @@
 
 import {
   autoUpdate,
+  FloatingFocusManager,
   FloatingPortal,
   flip,
   offset,
@@ -33,6 +34,7 @@ export type PopoverPlacement =
 
 /** Distance kept from the viewport edge when a panel is shifted or capped. */
 const GUTTER = 8;
+const FOCUSABLE = 'button:not([disabled]),a[href],input:not([disabled]),select,textarea,[tabindex]:not([tabindex="-1"])';
 
 /*
  * Stacking, stated once. Every layer below renders through a portal on <body>,
@@ -73,6 +75,10 @@ export interface PopoverProps extends Omit<HTMLAttributes<HTMLDivElement>, "chil
   maxWidth?: number;
   /** Hold the page still while open; wheel and touch still scroll inside the panel. */
   lockScroll?: boolean;
+  /** Move focus into the panel on open and back to the anchor on close, with Tab
+   *  continuing from the anchor as though the panel sat beside it; focus leaving
+   *  the panel dismisses it. For panels a keyboard user works inside. */
+  takesFocus?: boolean;
   panelRef?: Ref<HTMLDivElement>;
   children: ReactNode;
 }
@@ -103,6 +109,7 @@ function OpenPopover({
   maxHeight,
   maxWidth,
   lockScroll = false,
+  takesFocus = false,
   panelRef,
   className,
   style,
@@ -113,8 +120,13 @@ function OpenPopover({
   const caps = useRef({ maxHeight, maxWidth, matchAnchorWidth });
   caps.current = { maxHeight, maxWidth, matchAnchorWidth };
 
-  const { refs, floatingStyles, isPositioned } = useFloating({
+  const dismissRef = useRef(onDismiss);
+  dismissRef.current = onDismiss;
+  const { refs, floatingStyles, isPositioned, context } = useFloating({
     open: true,
+    onOpenChange: (next) => {
+      if (!next) dismissRef.current?.();
+    },
     placement,
     strategy: "fixed",
     elements: { reference: anchor.current },
@@ -148,8 +160,6 @@ function OpenPopover({
     [refs, panelRef],
   );
 
-  const dismissRef = useRef(onDismiss);
-  dismissRef.current = onDismiss;
   const dismissible = onDismiss !== undefined;
   useEffect(() => {
     if (!dismissible) return;
@@ -171,11 +181,24 @@ function OpenPopover({
     ...style,
   };
 
+  const returnTo = useRef<HTMLElement | null>(null);
+  const home = anchor.current;
+  returnTo.current = home?.matches(FOCUSABLE) ? home : (home?.querySelector<HTMLElement>(FOCUSABLE) ?? null);
+
+  const node = (
+    <div ref={setPanel} {...rest} className={cn(TIER.panel, className)} style={placed}>
+      {children}
+    </div>
+  );
   return (
     <FloatingPortal>
-      <div ref={setPanel} {...rest} className={cn(TIER.panel, className)} style={placed}>
-        {children}
-      </div>
+      {takesFocus ? (
+        <FloatingFocusManager context={context} modal={false} returnFocus={returnTo}>
+          {node}
+        </FloatingFocusManager>
+      ) : (
+        node
+      )}
     </FloatingPortal>
   );
 }
