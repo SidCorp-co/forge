@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { utcDateTrunc } from '../lib/time-buckets.js';
+import { firstShipped } from './shipped-at.js';
 
 export interface ShippedDay {
   projectId: string;
@@ -9,8 +10,9 @@ export interface ShippedDay {
 }
 
 /**
- * Issues shipped per UTC day, dense over the calendar: exactly `days` rows per project, one for each
- * consecutive UTC date ending at `asOf`'s, a date with nothing shipped included at 0.
+ * Issues shipped per UTC day, each on the day of its first shipped transition (`firstShipped`), dense
+ * over the calendar: exactly `days` rows per project, one for each consecutive UTC date ending at
+ * `asOf`'s, a date with nothing shipped included at 0.
  *
  * `first_day` is computed once and bounds both the calendar and the rows counted, so the axis a chart
  * draws from this and the total beneath it cannot describe two different windows (ISS-1149).
@@ -38,17 +40,14 @@ export async function shippedPerDay(
                            interval '1 day') AS d
     ),
     shipped AS (
-      SELECT i.project_id,
-             to_char(al.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS date,
+      SELECT f.project_id,
+             to_char(f.shipped_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS date,
              count(*)::int AS n
-      FROM activity_log al
-      JOIN issues i ON i.id = al.issue_id
-      CROSS JOIN bounds
-      WHERE al.action = 'issue.statusChanged'
-        AND al.payload ->> 'to' IN ('closed', 'released', 'awaiting_release')
-        AND al.created_at >= bounds.first_day AT TIME ZONE 'UTC'
-        AND al.created_at < (bounds.first_day + (${days}::int * interval '1 day')) AT TIME ZONE 'UTC'
-        AND i.project_id IN (${ids})
+      FROM (${firstShipped({
+        projectIds,
+        from: sql`(SELECT first_day FROM bounds) AT TIME ZONE 'UTC'`,
+        until: sql`((SELECT first_day FROM bounds) + (${days}::int * interval '1 day')) AT TIME ZONE 'UTC'`,
+      })}) f
       GROUP BY 1, 2
     )
     SELECT p.project_id AS "projectId", c.date, COALESCE(s.n, 0)::int AS count
