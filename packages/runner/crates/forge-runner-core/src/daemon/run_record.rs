@@ -44,6 +44,20 @@ impl SessionOpener for CoreSessions<'_> {
     }
 }
 
+/// The one part of a declaration this box computes fresh on every sweep.
+///
+/// Everything else in the payload is read off the run's own row, so a
+/// constraint core names on it is as true at the 223rd attempt as at the 1st.
+/// The gate condition is not: `degraded::report` recounts it each sweep, and a
+/// count that has rolled out of its window or a reason list that has shrunk
+/// makes a refusal of it one a later sweep may legitimately get past. Ending
+/// the run on that would trade this defect for its mirror image — a run killed
+/// over a telemetry field. ISS-1192 keeps the two sides' bounds in one fixture,
+/// so this is a narrow door rather than an open one, and it is a door because
+/// the rule this file follows is *the payload cannot change*, which is a claim
+/// about this field and not about the status code (ISS-1284).
+const RECOMPUTED_EACH_SWEEP: &str = "gate: ";
+
 pub async fn open_declared_runs(
     opener: &impl SessionOpener,
     ledger: &mut Option<Ledger>,
@@ -112,6 +126,15 @@ pub async fn open_declared_runs(
             // session was minted: nothing at core has to be told, and the
             // close path already reads a run with no session as one whose
             // session is over.
+            Err(crate::error::Error::Malformed { said, named })
+                if named.iter().all(|n| n.starts_with(RECOMPUTED_EACH_SWEEP)) =>
+            {
+                tracing::warn!(
+                    "[run-record] run {}: {said} — that field is the one this sweep computes \
+                     fresh, so the row stands and the next sweep tries again",
+                    run.run_id
+                );
+            }
             Err(crate::error::Error::Malformed { said, named }) => {
                 let why = format!(
                     "core refused this declaration and will refuse it again unchanged: {}",
@@ -588,6 +611,62 @@ mod tests {
             .ended_reason
             .unwrap_or_default()
             .contains("the request itself"));
+    }
+
+    /// The mirror image of this issue's defect, and the reason the rule is
+    /// written about the payload rather than about the status code. The gate
+    /// condition is recomputed every sweep, so a refusal naming only it is one
+    /// a later sweep may get past — and a run ended over a telemetry field is
+    /// a run killed for something nobody was working on.
+    #[tokio::test]
+    async fn a_refusal_naming_only_the_field_this_sweep_recomputes_is_not_the_run_s_fault() {
+        let (mut led, url, sent) =
+            declared_against("400 Bad Request", fake_core::GATE_REFUSED, &["ISS-1"]).await;
+        let client = CoreClient::new(url, String::from("tok"));
+        let core = CoreSessions(&client);
+
+        assert_eq!(open_declared_runs(&core, &mut led, "boot-a", None).await, 0);
+        assert_eq!(open_declared_runs(&core, &mut led, "boot-a", None).await, 0);
+
+        assert_eq!(sent.lock().unwrap().len(), 2, "the row is still being sent");
+        assert!(
+            led.as_ref()
+                .unwrap()
+                .run("run-1")
+                .unwrap()
+                .unwrap()
+                .ended_by
+                .is_none(),
+            "the declaration itself was never refused, and the run stands"
+        );
+
+        let answering = spy(Ok(("sess-9".into(), "core-run-9".into())));
+        assert_eq!(
+            open_declared_runs(&answering, &mut led, "boot-a", None).await,
+            1,
+            "the gate clears and the run opens"
+        );
+    }
+
+    /// A refusal naming the gate AND something else is still the payload's:
+    /// the other constraint stands however the gate settles, so a run kept
+    /// alive for it would be the original loop wearing one extra field.
+    #[tokio::test]
+    async fn a_refusal_naming_the_recomputed_field_and_a_fixed_one_still_ends_the_run() {
+        let both = r#"{"code":"BAD_REQUEST","message":"Invalid input","details":{"formErrors":[],"fieldErrors":{"gate":["Too big: expected array to have <=24 items"],"name":["Too big: expected string to have <=60 characters"]}}}"#;
+        let (mut led, url, sent) = declared_against("400 Bad Request", both, &["ISS-1"]).await;
+        let client = CoreClient::new(url, String::from("tok"));
+        let core = CoreSessions(&client);
+
+        assert_eq!(open_declared_runs(&core, &mut led, "boot-a", None).await, 0);
+        assert_eq!(open_declared_runs(&core, &mut led, "boot-a", None).await, 0);
+
+        assert_eq!(sent.lock().unwrap().len(), 1);
+        let run = led.as_ref().unwrap().run("run-1").unwrap().unwrap();
+        assert!(run.ended_by.is_some());
+        let why = run.ended_reason.unwrap_or_default();
+        assert!(why.contains("gate:"), "both are reported: {why}");
+        assert!(why.contains("name:"), "both are reported: {why}");
     }
 
     /// Criteria 5, 6 and 7. Three refusals that say nothing about the payload.

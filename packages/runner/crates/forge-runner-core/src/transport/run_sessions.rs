@@ -58,7 +58,24 @@ pub fn fit(text: &str, max: usize) -> String {
 /// it says by how much rather than going quiet. Eight full keys already cross
 /// 60 units, which is what turned five ordinary declarations into five
 /// permanent retry loops on one project in fifty minutes (ISS-1284).
+///
+/// An empty slice names an empty run and gets an empty name, which core
+/// refuses by `min(1)`. That is the honest answer and not a gap:
+/// `open_declared_runs` refuses a run carrying no issues before it reaches
+/// here, and a name invented for one would be this box naming a run after
+/// nothing.
 pub fn session_name(keys: &[String]) -> String {
+    // A set that fits whole is carried whole. The greedy pass below weighs each
+    // key against the `+N more` tail it would leave behind it, and for keys
+    // shorter than that tail — a project whose issues are declared as bare
+    // numbers — the tail can cost more than the keys it stands for, so a set
+    // that fits would come back short. No declaration this box accepts reaches
+    // that today, and a builder whose answer depends on a cap enforced
+    // somewhere else is one that breaks the day that cap moves.
+    let whole = keys.join("+");
+    if whole.encode_utf16().count() <= MAX_NAME_CODE_UNITS {
+        return whole;
+    }
     let mut name = String::new();
     let mut taken = 0usize;
     for (i, key) in keys.iter().enumerate() {
@@ -84,7 +101,7 @@ pub fn session_name(keys: &[String]) -> String {
     // whole name is allowed to be. The run still needs a name core will accept,
     // so the keys are cut and the cut is marked.
     if taken == 0 {
-        return fit(&keys.join("+"), MAX_NAME_CODE_UNITS);
+        return fit(&whole, MAX_NAME_CODE_UNITS);
     }
     let left = keys.len() - taken;
     if left > 0 {
@@ -641,6 +658,22 @@ mod tests {
             );
             assert!(!name.is_empty(), "core refuses an empty name too");
         }
+    }
+
+    /// Criterion 10 where the tail costs more than the keys. Thirty one-character
+    /// keys join to 59 units and fit; weighed one at a time against the
+    /// `+N more` they would leave, three of them would have been dropped to
+    /// make room for a count of three. Unreachable through `run_declare`, and
+    /// the property is the function's rather than the cap's.
+    #[test]
+    fn a_set_that_fits_whole_is_never_shortened_to_make_room_for_its_own_count() {
+        let tiny: Vec<String> = (0..30)
+            .map(|i| ((b'a' + i % 26) as char).to_string())
+            .collect();
+        let name = session_name(&tiny);
+        assert_eq!(name, tiny.join("+"));
+        assert_eq!(name.encode_utf16().count(), 59);
+        assert!(!name.contains(" more"), "nothing was left out: {name}");
     }
 
     /// Criterion 10. The keys that fit are carried whole — a name that drops

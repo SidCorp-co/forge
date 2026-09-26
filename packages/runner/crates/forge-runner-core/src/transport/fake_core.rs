@@ -159,6 +159,11 @@ pub const NAME_TOO_LONG: &str = r#"{"code":"BAD_REQUEST","message":"Invalid inpu
 /// `400` — the same route refusing the object rather than any one field.
 pub const FORM_REFUSED: &str = r#"{"code":"BAD_REQUEST","message":"Invalid input","details":{"formErrors":["Unrecognized key: \"batch\""],"fieldErrors":{}}}"#;
 
+/// `400` — core would not read the gate condition the sweep put on the
+/// declaration. The one field of an open this box recomputes each sweep, so
+/// the same row can be refused now and accepted later.
+pub const GATE_REFUSED: &str = r#"{"code":"BAD_REQUEST","message":"Invalid input","details":{"formErrors":[],"fieldErrors":{"gate":["Too big: expected array to have <=24 items"]}}}"#;
+
 /// `409` — another box holds a lease the open would need. Correct, transient,
 /// and observed clearing on retry within 30 seconds.
 pub const LEASE_HELD: &str =
