@@ -242,7 +242,8 @@ export function NotificationsBell({ open, onClose, anchor }: NotificationsBellPr
         gap={8}
         lockScroll
         takesFocus
-        className="flex flex-col overflow-y-auto"
+        aria-label="Notifications"
+        className="overflow-y-auto"
       >
         <NotificationsMenu
           items={notificationItems}
