@@ -11,7 +11,14 @@
 // The markup is a radiogroup and stays one: `fieldset` + `legend.sr-only` +
 // `input[type=radio]`, one tab stop with the arrows moving between options.
 
-import { type KeyboardEvent as ReactKeyboardEvent, useContext, useEffect, useRef, useState } from "react";
+import {
+  type KeyboardEvent as ReactKeyboardEvent,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import Link from "next/link";
 import { Icon } from "@/design";
 import { ComposerWidthContext } from "@/features/chat/components/chat-composer";
@@ -23,6 +30,12 @@ import type { AgentModeOffer, ConversationMode } from "../types";
  * on the pane, not the window: the dock is 420px inside a 1440px one.
  */
 const TRACK_MIN_WIDTH = 480;
+
+/**
+ * Where a pairing starts. `/pair` is only the approval half and, reached with
+ * no code, tells the person to go and run the CLI.
+ */
+export const PAIR_A_RUNNER = "/runners";
 
 interface ModeMeta {
   mode: ConversationMode;
@@ -40,7 +53,7 @@ export const MODES: ModeMeta[] = [
   {
     mode: "agent",
     label: "Agent",
-    hint: "A session on a paired box with the repository checked out and a shell.",
+    hint: "A session on a paired runner with the repository checked out and a shell.",
   },
 ];
 
@@ -55,11 +68,28 @@ function labelOf(mode: ConversationMode): string {
   return MODES.find((m) => m.mode === mode)?.label ?? mode;
 }
 
+/** The reason core sends is a clause; the panel prints it as a sentence. */
+function asSentence(clause: string): string {
+  const text = clause.trim();
+  if (!text) return text;
+  const capital = text.charAt(0).toUpperCase() + text.slice(1);
+  return /[.!?]$/.test(capital) ? capital : `${capital}.`;
+}
+
 /**
  * Why Agent cannot be picked, and the way out of it. Pressable rather than
  * greyed out: a control with a condition names the condition.
+ *
+ * Escape is taken here and marked taken, so the dock or slide-over this
+ * composer sits in does not read the same key as its own close.
  */
-function BlockedPanel({ reason, onClose }: { reason: string | null; onClose: () => void }) {
+function BlockedPanel({
+  reason,
+  onClose,
+}: {
+  reason: string | null;
+  onClose: (returnFocus: boolean) => void;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const wayOut = useRef<HTMLAnchorElement>(null);
   // The control that opened this may have just been unmounted with the menu it
@@ -70,17 +100,10 @@ function BlockedPanel({ reason, onClose }: { reason: string | null; onClose: () 
   }, []);
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose(false);
     };
     document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey);
-    };
+    return () => document.removeEventListener("mousedown", onDoc);
   }, [onClose]);
   return (
     <div
@@ -89,19 +112,28 @@ function BlockedPanel({ reason, onClose }: { reason: string | null; onClose: () 
       role="dialog"
       aria-label="Agent is unavailable"
       data-testid="mode-blocked-panel"
+      onKeyDown={(e) => {
+        if (e.key !== "Escape") return;
+        e.preventDefault();
+        e.stopPropagation();
+        onClose(true);
+      }}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) onClose(false);
+      }}
       className="absolute bottom-full left-0 z-20 mb-2 w-72 rounded-md border border-line bg-surface p-3 shadow-lg"
     >
-      <p className="fg-body-sm font-semibold text-fg">Agent needs a paired box</p>
+      <p className="fg-body-sm font-semibold text-fg">Agent needs a paired runner</p>
       <p className="fg-caption mt-1 text-muted">
-        {reason ?? "no box is paired with this project"}.
+        {asSentence(reason ?? "no runner is paired with this project")}
       </p>
       <Link
         ref={wayOut}
-        href="/pair"
+        href={PAIR_A_RUNNER}
         className="fg-body-sm mt-2.5 inline-flex items-center gap-1.5 rounded-sm text-link hover:underline"
       >
         <Icon name="link" size={14} />
-        Pair a box
+        Pair a runner
       </Link>
     </div>
   );
@@ -204,6 +236,7 @@ function ModeMenu({
   const onItemKeyDown = (e: ReactKeyboardEvent<HTMLButtonElement>, index: number) => {
     if (e.key === "Escape") {
       e.preventDefault();
+      e.stopPropagation();
       close(true);
       return;
     }
@@ -226,6 +259,7 @@ function ModeMenu({
         onKeyDown={(e) => {
           if (e.key === "Escape" && open) {
             e.preventDefault();
+            e.stopPropagation();
             close(true);
           }
         }}
@@ -238,6 +272,7 @@ function ModeMenu({
       {open && (
         <div
           role="menu"
+          aria-label="What this conversation talks to"
           data-testid="conversation-mode-menu"
           onBlur={(e) => {
             // The keyboard left the menu for something outside it: close, and
@@ -300,6 +335,18 @@ export function ConversationModeControl({
   disabled?: boolean;
 }) {
   const [blockedOpen, setBlockedOpen] = useState(false);
+  const holder = useRef<HTMLDivElement>(null);
+  // Closing the panel from the keyboard puts the caret back on the control it
+  // was opened from: the checked radio in the track, the button in the menu.
+  const closeBlocked = useCallback((returnFocus: boolean) => {
+    setBlockedOpen(false);
+    if (!returnFocus) return;
+    holder.current
+      ?.querySelector<HTMLElement>(
+        'input[type="radio"]:checked, [data-testid="conversation-mode-menu-trigger"]',
+      )
+      ?.focus();
+  }, []);
   const composerWidth = useContext(ComposerWidthContext);
   const asMenu = narrow ?? (composerWidth !== null && composerWidth < TRACK_MIN_WIDTH);
 
@@ -317,7 +364,7 @@ export function ConversationModeControl({
 
   const blocked = !offer.available;
   return (
-    <div className="relative">
+    <div className="relative" ref={holder}>
       {asMenu ? (
         <ModeMenu
           value={value}
@@ -337,7 +384,7 @@ export function ConversationModeControl({
         />
       )}
       {blockedOpen && (
-        <BlockedPanel reason={offer.reason} onClose={() => setBlockedOpen(false)} />
+        <BlockedPanel reason={offer.reason} onClose={closeBlocked} />
       )}
     </div>
   );

@@ -20,7 +20,7 @@ export async function agentModeOffer(
     };
   }
   if (!(await conversationAgentDeviceAvailable(projectId))) {
-    return { available: false, reason: 'this project has no box paired' };
+    return { available: false, reason: 'this project has no runner paired' };
   }
   return { available: true, reason: null };
 }
