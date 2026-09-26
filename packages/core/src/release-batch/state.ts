@@ -20,7 +20,7 @@ export interface ReleaseRunState {
   /** Read at request time. `null` only when the project declares no probes. */
   live: LiveState | null;
   bounds: BoundsReading;
-  /** `null` when the run never announced one — which `finish` refuses. */
+  /** `null` when the run never announced one. */
   method: ReleaseMethod | null;
   /** True when the agent announced that it could not load its method. */
   methodUnloaded: boolean;
