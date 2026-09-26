@@ -1,5 +1,5 @@
 import type { TestProject } from 'vitest/node';
-import { reapAbandoned, templateDbName } from './scratch-db.js';
+import { reapAbandoned, runToken, sweepRunScratchDbs, templateDbName } from './scratch-db.js';
 
 let stopContainer: (() => Promise<void>) | null = null;
 let ownedTemplate: { url: string; name: string } | null = null;
@@ -50,6 +50,10 @@ export async function teardown(): Promise<void> {
     const postgres = (await import('postgres')).default;
     const admin = postgres(ownedTemplate.url, { max: 1 });
     try {
+      // The case databases first, and here rather than in the cases that used them: this is the
+      // only teardown in the suite with no vitest budget over it, so a `DROP DATABASE` waiting on
+      // the cluster's checkpoint costs a run its wall time and never a case its verdict.
+      await sweepRunScratchDbs(admin, runToken(ownedTemplate.name));
       await admin.unsafe(`DROP DATABASE IF EXISTS "${ownedTemplate.name}" WITH (FORCE)`);
     } catch {
     } finally {
