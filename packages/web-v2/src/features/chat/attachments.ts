@@ -125,7 +125,7 @@ export function stageFiles(
     if (attachmentNameExceedsBudget(safeAttachmentName(file.name))) {
       refused.push({
         name: named(file),
-        reason: `its name is longer than ${ATTACHMENT_NAME_MAX_BYTES} bytes once punctuation is cleaned out of it — rename the file and attach it again`,
+        reason: `its name is too long — shorten it to at most ${ATTACHMENT_NAME_MAX_BYTES} plain letters and digits and attach it again`,
       });
       continue;
     }
