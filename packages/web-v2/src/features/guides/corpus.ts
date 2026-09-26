@@ -48,8 +48,6 @@ export function fromHelpDoc(doc: HelpDoc): PublicDoc {
   };
 }
 
-/** The one audience a core guide may carry: the agent door is the only one that promises each
- *  page as markdown at `/api/guides/<slug>.md`, which only core can keep. */
 const CORE_AUDIENCE = "agent" satisfies Audience;
 
 /** A core guide as a public page, placed by the audience core declared for it. */
@@ -68,9 +66,7 @@ export function fromGuide(guide: Guide, order: number): PublicDoc {
 }
 
 function coreAudience(guide: Guide): Audience {
-  // Priced amnesty (ISS-1178): a core deployed before guides carried `audience` serves none, and
-  // live core runs behind main, so a guide with none is still an agent guide — said on the log,
-  // never silently. It ends once the core this web talks to serves the field on every guide.
+  // Priced amnesty, ended once live core serves the field: docs/proposals/documentation-home-residuals.md.
   if (guide.audience === undefined) {
     console.warn(
       `public docs: core served the guide '${guide.slug}' with no audience, so it is placed behind the agent door — a core older than ISS-1178; this ends when that core is redeployed`,

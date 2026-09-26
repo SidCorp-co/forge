@@ -36,4 +36,5 @@ deleted rather than kept as a fallback.
   regression that dropped the field from the guide response would be absorbed with a log line
   rather than refused, and nothing but that log line would show it.
 - Removing the branch is owed by whoever next touches `corpus.ts` after core is redeployed, and no
-  check fires when that moment comes; the reminder is this file and the comment above the branch.
+  check fires when that moment comes; the reminder is this file, the one-line comment above the
+  branch that points at it, and the warning the branch logs.
