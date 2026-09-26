@@ -290,6 +290,15 @@ async function codesFor(bindings: unknown[]): Promise<string[]> {
   return report.blockers.map((b) => b.code);
 }
 
+/** The label each unmet-preference reading names, which is what a clearing moves. */
+async function preferenceLabelsFor(bindings: unknown[]): Promise<Array<string | null>> {
+  listBindings.mockResolvedValue(bindings);
+  const report = await collectReleaseBlockers(PROJECT_ID);
+  return report.warnings
+    .filter((w) => w.code === 'RELEASE_RUNNER_PREFERENCE_UNMET')
+    .map((w) => (w.details?.label as string | undefined) ?? null);
+}
+
 describe('withdrawing the release runner label', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -341,5 +350,31 @@ describe('withdrawing the release runner label', () => {
     const after = await codesFor([binding('b-1', { ...REST }, { releaseRunnerLabel: 'other' })]);
 
     expect(after).toEqual(before);
+  });
+
+  // The blocker list above is equal either way, so it cannot tell a withdrawal
+  // that removed the preference from one that uncovered another. The sentence
+  // ISS-1275's repair prints claims the second, and this is what reads it: the
+  // label the warning carries, before and after.
+  it('uncovers the connection label where the binding alone is withdrawn', async () => {
+    const declared = [
+      binding('b-1', { ...REST, releaseRunnerLabel: 'release' }, { releaseRunnerLabel: 'other' }),
+    ];
+    const before = await preferenceLabelsFor(declared);
+
+    const after = await preferenceLabelsFor([
+      binding('b-1', { ...REST }, { releaseRunnerLabel: 'other' }),
+    ]);
+
+    expect(before).toEqual(['release']);
+    expect(after).toEqual(['other']);
+  });
+
+  it('leaves no preference reading where both places are withdrawn', async () => {
+    const declared = [
+      binding('b-1', { ...REST, releaseRunnerLabel: 'release' }, { releaseRunnerLabel: 'other' }),
+    ];
+
+    expect(await preferenceLabelsFor(withdrawReleaseRunnerLabel(declared))).toEqual([]);
   });
 });

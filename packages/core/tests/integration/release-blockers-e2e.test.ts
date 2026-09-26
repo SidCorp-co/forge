@@ -349,8 +349,9 @@ describe('release-readiness and the create door answer the same question', () =>
   // out while withdrawal raised a 409. ISS-1275 answered that by making the
   // withdrawal free, so the clause that named its cost is gone rather than
   // reworded: a cost sentence for a cost nobody pays is the same defect wearing
-  // the opposite sign.
-  it('offers withdrawing the label without naming any blocker it would raise', async () => {
+  // the opposite sign. Its repair then put the withdrawal back into the
+  // sentence, the free act having been left unsaid for a round.
+  it('offers both the labelling and the clearing, and names no blocker either raises', async () => {
     const w = await seed();
     const device = await createTestDevice(harness.db, w.userId, { status: 'online' });
     await harness.db.execute(sql`
@@ -364,6 +365,12 @@ describe('release-readiness and the create door answer the same question', () =>
     const warned = answer.body.warnings.find((x) => x.code === 'RELEASE_RUNNER_PREFERENCE_UNMET');
 
     expect(warned?.message).toContain('Label the box that holds the deploy credential');
+    expect(warned?.message).toContain(
+      'clear `releaseRunnerLabel` from the live deploy binding AND from the connection behind it',
+    );
+    expect(warned?.message).toContain(
+      "Clearing it from the binding alone falls back to the connection's label rather than to none.",
+    );
     expect(warned?.message).not.toContain('does stop a release');
   });
 

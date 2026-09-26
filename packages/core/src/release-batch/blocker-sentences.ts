@@ -339,10 +339,11 @@ export function heldBackWarningSentence(held: HeldIssueRef[]): string {
 }
 
 /** The declared release label no box carries. Here, not at the call site: this
- *  module owns every sentence a door prints, warnings included (ISS-1127). */
+ *  module owns every sentence a door prints, warnings included (ISS-1127). The
+ *  clearing names both places because `effectiveConfig` overlays them. */
 export function runnerPreferenceUnmetSentence(label: string): string {
   return withCosts(
     'RELEASE_RUNNER_PREFERENCE_UNMET',
-    `No box on this project carries the declared release label \`${label}\`, so this release goes to the pool this project has. Label the box that holds the deploy credential with \`${label}\` under ${RUNNERS_TAB}.`,
+    `No box on this project carries the declared release label \`${label}\`, so this release goes to the pool this project has. Two ways out, either one complete. Label the box that holds the deploy credential with \`${label}\` under ${RUNNERS_TAB}. Or clear \`releaseRunnerLabel\` from the live deploy binding AND from the connection behind it, which asks for no box and stops nothing: a project declaring no release runner releases on the pool it has, and this reading goes with the label. Clearing it from the binding alone falls back to the connection's label rather than to none.`,
   );
 }
