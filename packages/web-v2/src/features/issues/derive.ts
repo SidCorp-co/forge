@@ -155,23 +155,28 @@ export function statusToChip(status: IssueStatus): StatusKey {
 	}
 }
 
-/** The agent run's state as a session-domain `StatusKey`, or null when no run has one to show. */
-export function runStatusChip(
-	agentStatus: IssueAgentStatus | undefined,
-): StatusKey | null {
-	switch (agentStatus) {
-		case "running":
-			return "running";
-		case "queued":
-			return "queued";
-		case "completed":
-			return "done";
-		case "failed":
-			return "failed";
-		default:
-			return null;
-	}
+/** What an issue carries about its run: the sessions' verdict and the pipeline's queued job. */
+export interface RunReadingSource {
+	agentStatus?: IssueAgentStatus;
+	pipelineHealth?: PipelineHealth;
 }
+
+/**
+ * The agent run's state as a session-domain `StatusKey`, or null when no run has one to show — the
+ * one reading every run chip draws from. A job no runner has claimed yet has no session, so
+ * `agentStatus` alone reads it as no run; `pipelineHealth.queuedStep` is what says it is queued.
+ */
+export function runStatusChip({ agentStatus, pipelineHealth }: RunReadingSource): StatusKey | null {
+	if (agentStatus === "running") return "running";
+	if (agentStatus === "queued" || pipelineHealth?.queuedStep) return "queued";
+	if (agentStatus === "completed") return "done";
+	if (agentStatus === "failed") return "failed";
+	return null;
+}
+
+/** Whether the run's reading says an agent is working or waiting to. */
+export const isLiveRun = (chip: StatusKey | null): chip is "running" | "queued" =>
+	chip === "running" || chip === "queued";
 
 export function statusToTone(status: IssueStatus): SemanticTone {
 	return STATUS_KEY_TONE[statusToChip(status)];
