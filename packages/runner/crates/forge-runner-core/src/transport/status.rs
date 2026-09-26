@@ -309,13 +309,18 @@ mod tests {
     }
 
     /// A statement, from a line that opens one to the line that balances it.
+    ///
+    /// Balanced on the code, which is why [`placeholders_only`] runs first: a
+    /// `)` inside a message is not a closing paren, and counting it as one
+    /// ended the statement before the argument that says the status
+    /// (ISS-1233 review F2, the class).
     fn statement_at(lines: &[&str], from: usize) -> String {
-        let mut depth: i32 = 0;
         let mut said = String::new();
         for line in &lines[from..] {
             said.push(' ');
             said.push_str(line.trim());
-            depth += line.matches('(').count() as i32 - line.matches(')').count() as i32;
+            let code = placeholders_only(&said);
+            let depth = code.matches('(').count() as i32 - code.matches(')').count() as i32;
             if depth <= 0 {
                 break;
             }
@@ -343,7 +348,11 @@ mod tests {
             let Some((name, value)) = rest.split_once('=') else {
                 continue;
             };
-            let name = name.trim().trim_start_matches("mut ").trim();
+            let name = name.trim().trim_start_matches("mut ");
+            // `let code: u16 = …` declares `code`; the annotation is not part
+            // of what the message will say, and keeping it made every typed
+            // binding fail the character test below and go unread.
+            let name = name.split(':').next().unwrap_or(name).trim();
             if !name.chars().all(|c| c.is_alphanumeric() || c == '_') || name.is_empty() {
                 continue;
             }
@@ -389,58 +398,84 @@ mod tests {
     /// The same text with every literal's prose dropped and only its `{…}`
     /// placeholders kept, which is the difference between saying a value and
     /// spelling its name: `no code given`, two lines under `let code = …`, says
-    /// nothing, and `{code}` says the status.
+    /// nothing, and `{code}` says the status. It is also what makes a paren
+    /// count answer for the code rather than for the prose.
+    ///
+    /// Raw strings are read as raw strings. Reading `r#"… " …"#` as an ordinary
+    /// literal walks out of it at the quote in the message and back into one at
+    /// its real end, swallowing the argument after it — a shape the guard this
+    /// replaces did catch (ISS-1233 review F2).
     fn placeholders_only(said: &str) -> String {
+        let src: Vec<char> = said.chars().collect();
         let mut out = String::with_capacity(said.len());
-        let mut chars = said.chars().peekable();
-        let mut in_literal = false;
-        let mut in_placeholder = false;
-        while let Some(c) = chars.next() {
-            if !in_literal {
-                if c == '"' {
-                    in_literal = true;
-                    in_placeholder = false;
-                    out.push(' ');
-                } else {
-                    out.push(c);
+        let mut i = 0;
+        while i < src.len() {
+            if src[i] == 'r' && !opens_inside_a_word(&src, i) {
+                let mut h = i + 1;
+                while h < src.len() && src[h] == '#' {
+                    h += 1;
                 }
+                if h < src.len() && src[h] == '"' {
+                    i = literal(&src, h + 1, Some(h - i - 1), &mut out);
+                    continue;
+                }
+            }
+            if src[i] == '"' {
+                i = literal(&src, i + 1, None, &mut out);
                 continue;
             }
-            match c {
-                '\\' => {
-                    chars.next();
-                }
-                '"' => {
-                    in_literal = false;
-                    in_placeholder = false;
+            out.push(src[i]);
+            i += 1;
+        }
+        out
+    }
+
+    fn opens_inside_a_word(src: &[char], at: usize) -> bool {
+        at > 0 && (src[at - 1].is_alphanumeric() || src[at - 1] == '_')
+    }
+
+    /// One literal, from just past its opening quote, keeping its `{…}`
+    /// placeholders and dropping everything else. `hashes` is `Some` for a raw
+    /// string, whose end is the quote followed by that many `#` and inside
+    /// which nothing escapes. Answers the index just past the literal.
+    fn literal(src: &[char], from: usize, hashes: Option<usize>, out: &mut String) -> usize {
+        let mut i = from;
+        let mut in_placeholder = false;
+        out.push(' ');
+        while i < src.len() {
+            let c = src[i];
+            if c == '\\' && hashes.is_none() {
+                i += 2;
+                continue;
+            }
+            if c == '"' {
+                let closes = match hashes {
+                    None => true,
+                    Some(n) => src[i + 1..].iter().take(n).filter(|h| **h == '#').count() == n,
+                };
+                if closes {
                     out.push(' ');
+                    return i + 1 + hashes.unwrap_or(0);
                 }
-                '{' if chars.peek() == Some(&'{') => {
-                    chars.next();
-                }
+            }
+            match c {
+                '{' if src.get(i + 1) == Some(&'{') => i += 1,
                 '{' => {
                     in_placeholder = true;
-                    out.push(' ');
                     out.push('{');
                 }
                 '}' if in_placeholder => {
                     in_placeholder = false;
                     out.push('}');
-                    out.push(' ');
                 }
-                '}' => {
-                    if chars.peek() == Some(&'}') {
-                        chars.next();
-                    }
-                }
-                _ => {
-                    if in_placeholder {
-                        out.push(c);
-                    }
-                }
+                '}' if src.get(i + 1) == Some(&'}') => i += 1,
+                _ if in_placeholder => out.push(c),
+                _ => {}
             }
+            i += 1;
         }
-        out
+        out.push(' ');
+        i
     }
 
     /// `name` as a whole word, so `me/runners decode` does not read as saying
@@ -595,6 +630,31 @@ mod tests {
 "#,
         ),
         (
+            "a status bound under a type annotation",
+            r#"
+        let code: u16 = resp.status().as_u16();
+        return Err(Error::Other(format!("me/runners failed: {code}")));
+"#,
+        ),
+        (
+            "a status said from a raw string carrying a quote of its own",
+            r##"
+        let code = resp.status();
+        return Err(Error::Other(format!(r#"heartbeat " refused: {}"#, code)));
+"##,
+        ),
+        (
+            "a status behind a message whose own `)` used to end the statement",
+            r#"
+        let code = resp.status().as_u16();
+        let said = format!(
+            "me/runners failed) the gateway answered: {}",
+            code
+        );
+        return Err(Error::Other(said));
+"#,
+        ),
+        (
             "a body said with no binding at all",
             r#"
         return Err(Error::Other(format!(
@@ -620,6 +680,17 @@ mod tests {
         let said = super::status::named(resp.status().as_u16());
         return Err(Error::Other(format!("ack session {said}")));
 "#,
+        ),
+        (
+            "a raw-string message naming a binding without interpolating it",
+            r##"
+        let code = resp.status().as_u16();
+        let text = resp.text().await.unwrap_or_default();
+        if code == 404 {
+            return Err(Error::Other(format!(r#"no "code" and no "text" for {url}"#)));
+        }
+        return Err(Error::Other(status::refused("me/runners", code, &text)));
+"##,
         ),
         (
             "a message whose words merely include a binding's name",
