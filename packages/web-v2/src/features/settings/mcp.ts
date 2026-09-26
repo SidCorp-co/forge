@@ -26,10 +26,10 @@ export interface SnippetInput {
   mcpUrl: string;
 }
 
-export interface Snippet {
-  filePath: string;
-  content: string;
-}
+/** A snippet is either pasted into a file the client reads, or run once in a terminal. */
+export type Snippet =
+  | { howTo: "file"; filePath: string; content: string }
+  | { howTo: "command"; content: string };
 
 function mcpServersFragment(projectSlug: string, mcpUrl: string) {
   return {
@@ -67,21 +67,27 @@ export function generateSnippet(kind: ClientKind, input: SnippetInput): Snippet 
   switch (kind) {
     case "claude-cli":
       return {
-        filePath: "~/.claude/settings.json",
-        content: format(mcpServersFragment(input.projectSlug, input.mcpUrl)),
+        howTo: "command",
+        content:
+          `claude mcp add --transport http --scope user forge ${input.mcpUrl}` +
+          ` --header "Authorization: Bearer ${TOKEN_PLACEHOLDER}"` +
+          ` --header "X-Forge-Project-Slug: ${input.projectSlug}"\n`,
       };
     case "cursor":
       return {
-        filePath: ".cursor/mcp.json",
+        howTo: "file",
+        filePath: "~/.cursor/mcp.json",
         content: format(mcpServersFragment(input.projectSlug, input.mcpUrl)),
       };
     case "cline":
       return {
+        howTo: "file",
         filePath: "cline_mcp_settings.json",
         content: format(mcpServersFragment(input.projectSlug, input.mcpUrl)),
       };
     case "zed":
       return {
+        howTo: "file",
         filePath: "~/.config/zed/settings.json",
         content: format({
           context_servers: {
@@ -97,6 +103,7 @@ export function generateSnippet(kind: ClientKind, input: SnippetInput): Snippet 
       };
     case "generic":
       return {
+        howTo: "file",
         filePath: "mcp.json",
         content: format(mcpServersFragment(input.projectSlug, input.mcpUrl)),
       };
