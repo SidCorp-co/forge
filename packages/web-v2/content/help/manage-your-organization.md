@@ -22,8 +22,9 @@ members only see projects they're explicitly added to.
 
 ## Create a team organization
 
-1. Open **Settings → Organizations** and choose **Create organization**.
-2. Give it a name and a short URL slug (lowercase letters, digits, hyphens).
+1. Open **Settings → Organizations**.
+2. Enter a **New org name** and a **Slug** — a short URL name of lowercase
+   letters, digits and hyphens — then choose **Create org**.
 3. You become its owner. Switch between orgs any time with the org switcher in
    the sidebar.
 
