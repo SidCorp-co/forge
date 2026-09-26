@@ -83,6 +83,20 @@ describe("useScrollLock", () => {
     expect(touch(getByTestId("page"))).toBe(false);
   });
 
+  it("leaves a list scrolling in one open surface while another surface is also open", () => {
+    const { getAllByTestId } = render(
+      <>
+        <Harness active />
+        <Harness active />
+      </>,
+    );
+    const [, second] = getAllByTestId("list");
+    extent(second, { top: 0, client: 100, total: 400 });
+    expect(wheel(getAllByTestId("row")[1], 120)).toBe(false);
+    expect(wheel(getAllByTestId("page")[0], 120)).toBe(true);
+    expect(touch(getAllByTestId("row")[1])).toBe(false);
+  });
+
   it("lets go when the surface closes", () => {
     const { getByTestId, rerender } = render(<Harness active />);
     rerender(<Harness active={false} />);
