@@ -19,7 +19,8 @@ Common issues and how to clear them.
 
 - Is a device **assigned to the project and bound** to a local checkout? See
   [Pair a runner](?path=pair-a-runner).
-- Is another job already running? Each project runs **one issue at a time**.
+- Is the runner already busy? A runner takes only as many jobs at once as it is
+  set up for, and the rest wait in the queue.
 - Is the **Claude CLI** installed and signed in on the runner machine? The agent
   launches it to do the work.
 

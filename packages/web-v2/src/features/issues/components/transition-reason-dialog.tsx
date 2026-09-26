@@ -25,7 +25,7 @@ const COPY: Record<ReasonStatus, CopySpec> = {
     title: "Reopen this issue",
     confirm: "Reopen",
     blurb:
-      "Posted as a comment before the status flips, and it is what the fix step scopes its patch against — say what regressed or what is still wrong.",
+      "Posted as a comment before the status flips, where whoever picks the work back up reads it — say what regressed or what is still wrong.",
     placeholder: "e.g. the login redirect still 500s on a fresh session — trace in the last comment",
   },
   waiting: {
