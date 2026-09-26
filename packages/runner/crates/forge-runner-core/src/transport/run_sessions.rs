@@ -48,9 +48,13 @@ pub async fn open(
         return Err(Error::Unauthorized);
     }
     if !resp.status().is_success() {
-        let status = resp.status();
+        let code = resp.status().as_u16();
         let text = resp.text().await.unwrap_or_default();
-        return Err(Error::Other(format!("run-session open: {status}: {text}")));
+        return Err(Error::Other(super::status::refused(
+            "run-session open",
+            code,
+            &text,
+        )));
     }
     let parsed: OpenReply = resp
         .json()
@@ -118,9 +122,13 @@ pub async fn close(
         return Ok(());
     }
     if !resp.status().is_success() {
-        let status = resp.status();
+        let code = resp.status().as_u16();
         let text = resp.text().await.unwrap_or_default();
-        return Err(Error::Other(format!("run-session close: {status}: {text}")));
+        return Err(Error::Other(super::status::refused(
+            "run-session close",
+            code,
+            &text,
+        )));
     }
     Ok(())
 }
@@ -145,10 +153,12 @@ pub async fn report_resume_choice(
         return Err(Error::Unauthorized);
     }
     if !resp.status().is_success() {
-        let status = resp.status();
+        let code = resp.status().as_u16();
         let text = resp.text().await.unwrap_or_default();
-        return Err(Error::Other(format!(
-            "resume-choice report: {status}: {text}"
+        return Err(Error::Other(super::status::refused(
+            "resume-choice report",
+            code,
+            &text,
         )));
     }
     Ok(())
@@ -174,10 +184,12 @@ pub async fn report_held_worktree(
         return Err(Error::Unauthorized);
     }
     if !resp.status().is_success() {
-        let status = resp.status();
+        let code = resp.status().as_u16();
         let text = resp.text().await.unwrap_or_default();
-        return Err(Error::Other(format!(
-            "held-worktree report: {status}: {text}"
+        return Err(Error::Other(super::status::refused(
+            "held-worktree report",
+            code,
+            &text,
         )));
     }
     Ok(())
@@ -204,9 +216,13 @@ pub async fn is_terminal(client: &CoreClient, session_id: &str) -> Result<bool> 
         return Ok(true);
     }
     if !resp.status().is_success() {
-        let status = resp.status();
+        let code = resp.status().as_u16();
         let text = resp.text().await.unwrap_or_default();
-        return Err(Error::Other(format!("run-session state: {status}: {text}")));
+        return Err(Error::Other(super::status::refused(
+            "run-session state",
+            code,
+            &text,
+        )));
     }
     let parsed: Reply = resp
         .json()
@@ -297,7 +313,7 @@ pub async fn lease_state(
         return Err(Error::Unauthorized);
     }
     if !resp.status().is_success() {
-        let status = resp.status();
+        let status_code = resp.status().as_u16();
         let text = resp.text().await.unwrap_or_default();
         if let Some(code) = no_lease_stands_under_key(&text) {
             tracing::warn!(
@@ -309,7 +325,11 @@ pub async fn lease_state(
                 issue_over: None,
             });
         }
-        return Err(Error::Other(format!("issue-lease read: {status}: {text}")));
+        return Err(Error::Other(super::status::refused(
+            "issue-lease read",
+            status_code,
+            &text,
+        )));
     }
     let parsed: LeaseState = resp
         .json()
@@ -339,10 +359,12 @@ pub async fn release_lease(
     // else — a 409 core could not narrow to one project among them — is an
     // error, because retrying it unchanged never resolves (ISS-1139).
     if !resp.status().is_success() && resp.status().as_u16() != 404 {
-        let status = resp.status();
+        let code = resp.status().as_u16();
         let text = resp.text().await.unwrap_or_default();
-        return Err(Error::Other(format!(
-            "issue-lease release: {status}: {text}"
+        return Err(Error::Other(super::status::refused(
+            "issue-lease release",
+            code,
+            &text,
         )));
     }
     Ok(())

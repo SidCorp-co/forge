@@ -56,9 +56,13 @@ pub async fn list_designated(client: &CoreClient) -> Result<Vec<DesignatedPlugin
         return Ok(Vec::new());
     }
     if !resp.status().is_success() {
-        let status = resp.status();
+        let code = resp.status().as_u16();
         let text = resp.text().await.unwrap_or_default();
-        return Err(Error::Other(format!("me/plugins failed: {status}: {text}")));
+        return Err(Error::Other(super::status::refused(
+            "me/plugins",
+            code,
+            &text,
+        )));
     }
     resp.json::<MePluginsResponse>()
         .await

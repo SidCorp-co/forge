@@ -3098,6 +3098,7 @@
   set is now 59.
 
 ### Fixed
+- **A refused call to core now says which failure it was, and no longer pastes the gateway's error page.** A code the edge answers reads as its own fault, and a call that hangs now ends at a deadline.
 - **Menus, dropdowns and tooltips are no longer cut off near the bottom of a list.** They open on whichever side has room and scroll inside themselves when neither side does. The page behind an open menu stays still.
 - **Settings → MCP now offers a snippet for the project you are working in.** It opened on whichever project came first in your list. A sentence beside Copy now names the project the snippet configures.
 - **A box running two runners is no longer told the second is serving the first.** Where `forge-runner status` cannot name the daemon's build, it now names a process only if it serves the configuration you asked about, and guesses nothing.

@@ -252,4 +252,112 @@ mod tests {
         let s = reqwest::StatusCode::from_u16(520).unwrap();
         assert_eq!(s.to_string(), "520 <unknown status code>");
     }
+
+    /// Every module in `transport/`, so the guard below measures the directory
+    /// and not the handful of files somebody remembered.
+    ///
+    /// `status` is the implementation of the rule and `fake_core` is a test
+    /// double that writes wire responses, where `HTTP/1.1 {status}` is the
+    /// protocol rather than a refusal a person reads.
+    const SOURCES: &[(&str, &str)] = &[
+        ("admissible.rs", include_str!("admissible.rs")),
+        ("agent_sessions.rs", include_str!("agent_sessions.rs")),
+        ("events.rs", include_str!("events.rs")),
+        ("frames.rs", include_str!("frames.rs")),
+        ("git_credential.rs", include_str!("git_credential.rs")),
+        ("heartbeat.rs", include_str!("heartbeat.rs")),
+        ("inbox.rs", include_str!("inbox.rs")),
+        ("lifecycle.rs", include_str!("lifecycle.rs")),
+        ("master.rs", include_str!("master.rs")),
+        ("mcp_servers.rs", include_str!("mcp_servers.rs")),
+        ("mod.rs", include_str!("mod.rs")),
+        ("plugins.rs", include_str!("plugins.rs")),
+        ("pool.rs", include_str!("pool.rs")),
+        ("protections.rs", include_str!("protections.rs")),
+        ("provision.rs", include_str!("provision.rs")),
+        ("questions.rs", include_str!("questions.rs")),
+        ("run_sessions.rs", include_str!("run_sessions.rs")),
+        ("runners.rs", include_str!("runners.rs")),
+        ("session_ledger.rs", include_str!("session_ledger.rs")),
+        ("skills.rs", include_str!("skills.rs")),
+        ("ws.rs", include_str!("ws.rs")),
+    ];
+
+    const EXEMPT: &[&str] = &["status", "fake_core"];
+
+    /// Everything before the file's own test module, which is the half that
+    /// runs in front of an operator.
+    fn shipped(source: &str) -> &str {
+        match source.find("\n#[cfg(test)]") {
+            Some(at) => &source[..at],
+            None => source,
+        }
+    }
+
+    /// Criterion 11. A refusal site that interpolates the status or the body
+    /// into its own message is one `named` and `refused` do not reach, which is
+    /// how `520 <unknown status code>` and a whole gateway page went on
+    /// reaching an operator after both existed (ISS-1233).
+    #[test]
+    fn no_transport_module_formats_a_status_or_a_body_into_its_own_message() {
+        let mut offenders = Vec::new();
+        for (name, source) in SOURCES {
+            for (n, line) in shipped(source).lines().enumerate() {
+                if line.contains("{status}") || line.contains("{text}") {
+                    offenders.push(format!("{name}:{}: {}", n + 1, line.trim()));
+                }
+            }
+        }
+        assert!(
+            offenders.is_empty(),
+            "say it with status::named or status::refused instead:\n{}",
+            offenders.join("\n")
+        );
+    }
+
+    /// The guard above measures every module `mod.rs` declares, so a new route
+    /// cannot be added outside its reach without this failing first.
+    #[test]
+    fn the_guard_covers_every_module_this_directory_declares() {
+        let declared: Vec<String> = include_str!("mod.rs")
+            .lines()
+            .filter_map(|l| l.trim().strip_suffix(';'))
+            .filter_map(|l| l.rsplit_once("mod "))
+            .map(|(_, m)| m.to_string())
+            .filter(|m| !EXEMPT.contains(&m.as_str()))
+            .collect();
+        assert!(declared.len() > 15, "mod.rs parsed as {declared:?}");
+        for m in &declared {
+            assert!(
+                SOURCES.iter().any(|(name, _)| *name == format!("{m}.rs")),
+                "{m} is declared in mod.rs and the guard does not read it"
+            );
+        }
+        for (name, _) in SOURCES {
+            let stem = name.trim_end_matches(".rs");
+            assert!(
+                stem == "mod" || declared.iter().any(|m| m == stem),
+                "the guard reads {name} and mod.rs declares no such module"
+            );
+        }
+    }
+
+    /// Criterion 4. The reason an operator gets from `forge-runner master
+    /// status` is the transport error itself and nothing re-derived from the
+    /// response, so a refusal the lines above made legible is legible there
+    /// too. Read rather than exercised: `daemon/master.rs` is not this change's
+    /// to edit, and what binds the two is one expression in it.
+    #[test]
+    fn the_unplaced_reason_an_operator_reads_is_the_transport_error_itself() {
+        let sweep = include_str!("../daemon/master.rs");
+        let at = sweep
+            .find("Unplaced::RegisterFailed {")
+            .expect("the sweep still reports a refused registration");
+        let built: String = sweep[at..].lines().take(3).collect::<Vec<_>>().join(" ");
+        assert!(
+            built.contains("detail: e.to_string()"),
+            "the reason an operator reads is no longer the register error itself, so what this \
+             module makes legible may not be what reaches them — found: {built}"
+        );
+    }
 }

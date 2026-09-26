@@ -36,6 +36,15 @@ pub mod skills;
 pub mod status;
 pub mod ws;
 
+/// How long one call to core may take before it is a failed call rather than a
+/// wait. [`CoreClient`] carries no deadline of its own, so a peer that accepts
+/// the connection and never answers held the call, and the sweep behind it, for
+/// as long as the socket stayed open: nothing was recorded, and every heartbeat
+/// in the meantime told core the box had read cleanly (ISS-1234, ISS-1233).
+/// Shorter than the heartbeat's 30s, so the beat after a hung call already
+/// carries it.
+pub const CALL_DEADLINE: std::time::Duration = std::time::Duration::from_secs(15);
+
 /// Shared HTTP client + auth context for the REST surface.
 #[derive(Clone)]
 pub struct CoreClient {
