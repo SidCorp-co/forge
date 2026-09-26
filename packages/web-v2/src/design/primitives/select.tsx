@@ -5,6 +5,7 @@ import {
 } from "react";
 import { cn } from "@/lib/utils/cn";
 import { Icon, type IconName } from "@/design/icons/icon";
+import { Popover } from "@/design/primitives/popover";
 
 export interface SelectOption {
   value: string;
@@ -32,7 +33,9 @@ export interface SelectProps {
  * Accessible custom listbox (WAI-ARIA combobox pattern) — styled options with
  * icons + a selected check, brand-consistent popover, full keyboard support:
  * ↑/↓ move, Enter/Space select, Esc close, Home/End jump, type-ahead. Focus
- * returns to the trigger on close. For a plain OS control use NativeSelect.
+ * stays on the trigger, which names the active option through
+ * aria-activedescendant, and returns to it on close. The listbox is placed by
+ * Popover, so no clipping ancestor cuts it. For a plain OS control use NativeSelect.
  */
 export function Select({
   options, value, onChange, placeholder = "Select…", disabled, id, invalid,
@@ -40,9 +43,8 @@ export function Select({
 }: SelectProps) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
-  const rootRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
-  const listRef = useRef<HTMLUListElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const typeahead = useRef("");
   const typeaheadAt = useRef(0);
   const baseId = useId();
@@ -87,15 +89,6 @@ export function Select({
 
   useEffect(() => {
     if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
     listRef.current?.querySelector<HTMLElement>(`[data-idx="${active}"]`)?.scrollIntoView({ block: "nearest" });
   }, [open, active]);
 
@@ -128,7 +121,7 @@ export function Select({
   };
 
   return (
-    <div ref={rootRef} className={cn("relative", className)}>
+    <div className={cn("relative", className)}>
       <button
         ref={btnRef}
         type="button"
@@ -137,6 +130,7 @@ export function Select({
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={`${baseId}-list`}
+        aria-activedescendant={open ? `${baseId}-opt-${active}` : undefined}
         aria-invalid={isInvalid || undefined}
         aria-describedby={aria["aria-describedby"] as string | undefined}
         aria-label={aria["aria-label"] as string | undefined}
@@ -157,42 +151,46 @@ export function Select({
         <Icon name="chevronDown" size={16} className="text-subtle" />
       </button>
 
-      {open && (
-        <ul
-          ref={listRef}
-          id={`${baseId}-list`}
-          role="listbox"
-          tabIndex={-1}
-          aria-activedescendant={`${baseId}-opt-${active}`}
-          className="forge-drop absolute z-50 mt-1.5 max-h-64 w-full overflow-y-auto rounded-lg border border-line bg-surface p-1.5 shadow-lg"
-        >
-          {options.map((o, i) => {
-            const isSel = o.value === value;
-            const isActive = i === active;
-            return (
-              <li
-                key={o.value}
-                id={`${baseId}-opt-${i}`}
-                data-idx={i}
-                role="option"
-                aria-selected={isSel}
-                aria-disabled={o.disabled || undefined}
-                onMouseEnter={() => !o.disabled && setActive(i)}
-                onClick={() => commit(i)}
-                className={cn(
-                  "flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-13-5",
-                  o.disabled && "cursor-not-allowed opacity-50",
-                  isActive && !o.disabled ? "bg-accent-tint text-accent-text" : "text-fg",
-                )}
-              >
-                {o.icon && <Icon name={o.icon} size={16} style={isActive ? { color: "var(--accent)" } : { color: "var(--fg-subtle)" }} />}
-                <span className="flex-1 truncate">{o.label}</span>
-                {isSel && <Icon name="check" size={15} strokeWidth={2.5} style={{ color: "var(--accent)" }} />}
-              </li>
-            );
-          })}
-        </ul>
-      )}
+      <Popover
+        open={open}
+        anchor={btnRef}
+        onDismiss={() => setOpen(false)}
+        placement="bottom-start"
+        matchAnchorWidth
+        maxHeight={256}
+        lockScroll
+        panelRef={listRef}
+        id={`${baseId}-list`}
+        role="listbox"
+        tabIndex={-1}
+        className="forge-drop overflow-y-auto rounded-lg border border-line bg-surface p-1.5 shadow-lg"
+      >
+        {options.map((o, i) => {
+          const isSel = o.value === value;
+          const isActive = i === active;
+          return (
+            <div
+              key={o.value}
+              id={`${baseId}-opt-${i}`}
+              data-idx={i}
+              role="option"
+              aria-selected={isSel}
+              aria-disabled={o.disabled || undefined}
+              onMouseEnter={() => !o.disabled && setActive(i)}
+              onClick={() => commit(i)}
+              className={cn(
+                "flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-13-5",
+                o.disabled && "cursor-not-allowed opacity-50",
+                isActive && !o.disabled ? "bg-accent-tint text-accent-text" : "text-fg",
+              )}
+            >
+              {o.icon && <Icon name={o.icon} size={16} style={isActive ? { color: "var(--accent)" } : { color: "var(--fg-subtle)" }} />}
+              <span className="flex-1 truncate">{o.label}</span>
+              {isSel && <Icon name="check" size={15} strokeWidth={2.5} style={{ color: "var(--accent)" }} />}
+            </div>
+          );
+        })}
+      </Popover>
     </div>
   );
 }

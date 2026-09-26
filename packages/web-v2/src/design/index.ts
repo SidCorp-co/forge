@@ -51,6 +51,9 @@ export { Badge, type BadgeProps } from "./primitives/badge";
 export { Divider, type DividerProps } from "./primitives/divider";
 export { Banner, type BannerProps } from "./primitives/banner";
 export { Tooltip, type TooltipProps } from "./primitives/tooltip";
+export {
+  Popover, Layer, type PopoverProps, type PopoverPlacement, type LayerProps,
+} from "./primitives/popover";
 export { ConfirmDialog, type ConfirmDialogProps } from "./primitives/confirm-dialog";
 export { Tabs, type TabsProps, type TabItem } from "./primitives/tabs";
 export { ScreenTabs, type ScreenTabsProps } from "./patterns/screen-tabs";
@@ -98,3 +101,4 @@ export { useElapsed } from "./hooks/use-elapsed";
 export { useNow } from "./hooks/use-now";
 export { useAnimatedNumber } from "./hooks/use-animated-number";
 export { useMediaQuery } from "./hooks/use-media-query";
+export { useScrollLock } from "./hooks/use-scroll-lock";

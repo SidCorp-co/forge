@@ -1,11 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils/cn";
 import { Icon, type IconName } from "@/design/icons/icon";
 import { Input } from "@/design/primitives/input";
 import { Kbd } from "@/design/primitives/kbd";
 import { Kicker } from "@/design/primitives/kicker";
+import { Layer } from "@/design/primitives/popover";
+import { useScrollLock } from "@/design/hooks/use-scroll-lock";
 
 /** Palette group keys, rendered top-to-bottom in this order. */
 export type CommandGroup = "recent" | "pinned" | "navigate" | "actions" | "search";
@@ -39,6 +41,8 @@ export interface CommandPaletteProps {
 export function CommandPalette({ open, onClose, commands }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useScrollLock(open, [dialogRef]);
 
   // Filter by label + keywords, then keep a single FLAT list (ordered by group)
   // so ↑/↓/Enter traverse every result regardless of section boundaries.
@@ -106,68 +110,71 @@ export function CommandPalette({ open, onClose, commands }: CommandPaletteProps)
   if (!open) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center px-4 pt-palette-top"
-      style={{ background: "var(--scrim)", backdropFilter: "blur(8px)" }}
-      onClick={onClose}
-    >
+    <Layer tier="palette">
       <div
-        className="forge-drop w-full max-w-xl overflow-hidden rounded-xl border border-line bg-surface shadow-lg"
-        onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-label="Command palette"
+        className="fixed inset-0 flex items-start justify-center px-4 pt-palette-top"
+        style={{ background: "var(--scrim)", backdropFilter: "blur(8px)" }}
+        onClick={onClose}
       >
-        <div className="flex items-center gap-2.5 border-b border-line-subtle px-4 py-3">
-          <Icon name="search" size={18} className="text-subtle" />
-          <Input
-            variant="bare"
-            className="flex-1"
-            autoFocus
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setActive(0);
-            }}
-            placeholder="Search or run a command…"
-          />
-          <Kbd>esc</Kbd>
-        </div>
-        <div className="max-h-[360px] overflow-y-auto p-1.5">
-          {flat.length === 0 && <p className="fg-body-sm px-3 py-6 text-center">No matches.</p>}
-          {sections.map((section, si) => (
-            <div key={section.group}>
-              {si > 0 && <div className="my-1 border-t border-line-subtle" />}
-              <Kicker className="block px-3 pb-1 pt-1.5">{GROUP_LABEL[section.group]}</Kicker>
-              <ul>
-                {section.items.map(({ cmd, idx }) => (
-                  <li key={`${cmd.label}-${idx}`}>
-                    <button
-                      type="button"
-                      onMouseEnter={() => setActive(idx)}
-                      onClick={() => {
-                        cmd.onRun?.();
-                        onClose();
-                      }}
-                      className={cn(
-                        "flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm",
-                        idx === active ? "bg-accent-tint text-accent-text" : "text-fg hover:bg-hover",
-                      )}
-                    >
-                      <Icon
-                        name={cmd.icon}
-                        size={17}
-                        style={idx === active ? { color: "var(--accent)" } : { color: "var(--fg-subtle)" }}
-                      />
-                      <span className="flex-1 truncate">{cmd.label}</span>
-                      {cmd.kbd && <Kbd>{cmd.kbd}</Kbd>}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
+        <div
+          ref={dialogRef}
+          className="forge-drop w-full max-w-xl overflow-hidden rounded-xl border border-line bg-surface shadow-lg"
+          onClick={(e) => e.stopPropagation()}
+          role="dialog"
+          aria-label="Command palette"
+        >
+          <div className="flex items-center gap-2.5 border-b border-line-subtle px-4 py-3">
+            <Icon name="search" size={18} className="text-subtle" />
+            <Input
+              variant="bare"
+              className="flex-1"
+              autoFocus
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setActive(0);
+              }}
+              placeholder="Search or run a command…"
+            />
+            <Kbd>esc</Kbd>
+          </div>
+          <div className="max-h-[360px] overflow-y-auto p-1.5">
+            {flat.length === 0 && <p className="fg-body-sm px-3 py-6 text-center">No matches.</p>}
+            {sections.map((section, si) => (
+              <div key={section.group}>
+                {si > 0 && <div className="my-1 border-t border-line-subtle" />}
+                <Kicker className="block px-3 pb-1 pt-1.5">{GROUP_LABEL[section.group]}</Kicker>
+                <ul>
+                  {section.items.map(({ cmd, idx }) => (
+                    <li key={`${cmd.label}-${idx}`}>
+                      <button
+                        type="button"
+                        onMouseEnter={() => setActive(idx)}
+                        onClick={() => {
+                          cmd.onRun?.();
+                          onClose();
+                        }}
+                        className={cn(
+                          "flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm",
+                          idx === active ? "bg-accent-tint text-accent-text" : "text-fg hover:bg-hover",
+                        )}
+                      >
+                        <Icon
+                          name={cmd.icon}
+                          size={17}
+                          style={idx === active ? { color: "var(--accent)" } : { color: "var(--fg-subtle)" }}
+                        />
+                        <span className="flex-1 truncate">{cmd.label}</span>
+                        {cmd.kbd && <Kbd>{cmd.kbd}</Kbd>}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
-    </div>
+    </Layer>
   );
 }
