@@ -72,11 +72,13 @@ async fn post_chunk(client: &CoreClient, session_id: &str, events: &[LineEvent])
                 }
                 if status.is_client_error() {
                     let text = r.text().await.unwrap_or_default();
-                    return Err(Error::Other(format!("{REFUSED}: {status}: {text}")));
+                    let said = super::status::refused(REFUSED, status.as_u16(), &text);
+                    return Err(Error::Other(said));
                 }
                 if attempt == MAX_ATTEMPTS {
                     return Err(Error::Other(format!(
-                        "post_events failed after {attempt} attempts: {status}"
+                        "post_events failed after {attempt} attempts: {}",
+                        super::status::named(status.as_u16())
                     )));
                 }
             }
@@ -165,8 +167,8 @@ pub async fn ack_session(client: &CoreClient, session_id: &str) -> Result<()> {
                 }
                 // 4xx (terminal/forbidden/not-found) is not worth retrying.
                 if r.status().is_client_error() {
-                    let status = r.status();
-                    return Err(Error::Other(format!("ack session {status}")));
+                    let said = super::status::named(r.status().as_u16());
+                    return Err(Error::Other(format!("ack session {said}")));
                 }
             }
             Err(e) => {
@@ -210,11 +212,13 @@ pub async fn patch_session(
                 }
                 if status.is_client_error() {
                     let text = r.text().await.unwrap_or_default();
-                    return Err(Error::Other(format!("patch session {status}: {text}")));
+                    let said = super::status::refused("patch session", status.as_u16(), &text);
+                    return Err(Error::Other(said));
                 }
                 if attempt == MAX_ATTEMPTS {
                     return Err(Error::Other(format!(
-                        "patch_session failed after {attempt} attempts: {status}"
+                        "patch_session failed after {attempt} attempts: {}",
+                        super::status::named(status.as_u16())
                     )));
                 }
             }

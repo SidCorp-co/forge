@@ -1886,7 +1886,6 @@ mod tests {
         assert_eq!(liveness(&rec("0.17.8", None), &p), Liveness::Gone);
     }
 
-    #[test]
     /// A record that HAS start ticks was written by a platform that could read
     /// them, so "this platform cannot confirm it" is refuted by the record
     /// itself. What a pid that answers a signal and has no start time really

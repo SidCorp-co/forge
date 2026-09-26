@@ -577,10 +577,7 @@ extern "C" {
 
 #[cfg(all(test, target_os = "linux"))]
 mod tests {
-    use super::{
-        choose_restart, decide, main_pid_of, parse_unit_names, Applied, Because, Decision, Restart,
-    };
-    use forge_runner_core::daemon::serving::Turnover;
+    use super::{choose_restart, parse_unit_names, Restart};
 
     const UNITS: [&str; 2] = ["forge-runner.service", "forge-runner-qa.service"];
 

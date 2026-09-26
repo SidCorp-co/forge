@@ -252,4 +252,244 @@ mod tests {
         let s = reqwest::StatusCode::from_u16(520).unwrap();
         assert_eq!(s.to_string(), "520 <unknown status code>");
     }
+
+    /// Every module in `transport/`, so the guard below measures the directory
+    /// and not the handful of files somebody remembered.
+    ///
+    /// `status` is the implementation of the rule and `fake_core` is a test
+    /// double that writes wire responses, where `HTTP/1.1 {status}` is the
+    /// protocol rather than a refusal a person reads.
+    const SOURCES: &[(&str, &str)] = &[
+        ("admissible.rs", include_str!("admissible.rs")),
+        ("agent_sessions.rs", include_str!("agent_sessions.rs")),
+        ("events.rs", include_str!("events.rs")),
+        ("frames.rs", include_str!("frames.rs")),
+        ("git_credential.rs", include_str!("git_credential.rs")),
+        ("heartbeat.rs", include_str!("heartbeat.rs")),
+        ("inbox.rs", include_str!("inbox.rs")),
+        ("lifecycle.rs", include_str!("lifecycle.rs")),
+        ("master.rs", include_str!("master.rs")),
+        ("mcp_servers.rs", include_str!("mcp_servers.rs")),
+        ("mod.rs", include_str!("mod.rs")),
+        ("plugins.rs", include_str!("plugins.rs")),
+        ("pool.rs", include_str!("pool.rs")),
+        ("protections.rs", include_str!("protections.rs")),
+        ("provision.rs", include_str!("provision.rs")),
+        ("questions.rs", include_str!("questions.rs")),
+        ("run_sessions.rs", include_str!("run_sessions.rs")),
+        ("runners.rs", include_str!("runners.rs")),
+        ("session_ledger.rs", include_str!("session_ledger.rs")),
+        ("skills.rs", include_str!("skills.rs")),
+        ("ws.rs", include_str!("ws.rs")),
+    ];
+
+    const EXEMPT: &[&str] = &["status", "fake_core"];
+
+    /// The half of a module that runs in front of an operator: every
+    /// `#[cfg(test)]` item cut out, wherever it sits.
+    ///
+    /// Not "everything before the first test module": a module with code after
+    /// its tests would go unread, and a rule that stops at the first one it
+    /// meets is a rule the next file escapes by ordering (ISS-1233 review, F1).
+    fn shipped(source: &str) -> String {
+        let mut out = String::with_capacity(source.len());
+        let mut rest = source;
+        while let Some(at) = rest.find("#[cfg(test)]") {
+            out.push_str(&rest[..at]);
+            let after = &rest[at..];
+            // A test module's own closing brace is the first one at column
+            // zero, which is where this file's items all start.
+            rest = match after.find("\n}\n") {
+                Some(end) => &after[end + 3..],
+                None => "",
+            };
+        }
+        out.push_str(rest);
+        out
+    }
+
+    /// A statement, from a line that opens one to the line that balances it.
+    fn statement_at(lines: &[&str], from: usize) -> String {
+        let mut depth: i32 = 0;
+        let mut said = String::new();
+        for line in &lines[from..] {
+            said.push(' ');
+            said.push_str(line.trim());
+            depth += line.matches('(').count() as i32 - line.matches(')').count() as i32;
+            if depth <= 0 {
+                break;
+            }
+        }
+        said
+    }
+
+    /// Every name bound to a `reqwest::StatusCode` or to a response body — the
+    /// two values a refusal is built from, whatever the binding is called.
+    fn status_and_body_bindings(shipped: &str) -> Vec<String> {
+        let mut names = Vec::new();
+        for line in shipped.lines() {
+            let t = line.trim();
+            let Some(rest) = t.strip_prefix("let ") else {
+                continue;
+            };
+            let Some((name, value)) = rest.split_once('=') else {
+                continue;
+            };
+            let name = name.trim().trim_start_matches("mut ").trim();
+            if !name.chars().all(|c| c.is_alphanumeric() || c == '_') || name.is_empty() {
+                continue;
+            }
+            let holds_status = value.contains(".status()") && !value.contains(".as_u16()");
+            let holds_body = value.contains(".text().await");
+            if holds_status || holds_body {
+                names.push(name.to_string());
+            }
+        }
+        names.sort();
+        names.dedup();
+        names
+    }
+
+    /// What a `format!` still says once the two helpers' own calls are taken
+    /// out of it, so passing a status TO `named` is not mistaken for printing
+    /// one.
+    fn outside_the_helpers(said: &str) -> String {
+        let mut out = String::new();
+        let mut rest = said;
+        loop {
+            let next = ["status::named(", "status::refused(", "status::unanswered("]
+                .iter()
+                .filter_map(|h| rest.find(h).map(|at| (at, h.len())))
+                .min_by_key(|(at, _)| *at);
+            match next {
+                None => {
+                    out.push_str(rest);
+                    return out;
+                }
+                Some((at, len)) => {
+                    out.push_str(&rest[..at]);
+                    let mut depth = 1;
+                    let mut end = at + len;
+                    for (i, c) in rest[at + len..].char_indices() {
+                        if c == '(' {
+                            depth += 1;
+                        } else if c == ')' {
+                            depth -= 1;
+                            if depth == 0 {
+                                end = at + len + i + 1;
+                                break;
+                            }
+                        }
+                    }
+                    rest = &rest[end..];
+                }
+            }
+        }
+    }
+
+    /// Criterion 11. A refusal site that says the status or the body itself is
+    /// one `named` and `refused` do not reach, which is how
+    /// `520 <unknown status code>` and a whole gateway page went on reaching an
+    /// operator after both helpers existed (ISS-1233).
+    ///
+    /// Measured on what the value IS and not on what it is called: the guard
+    /// this replaces matched `{status}` and `{text}`, so renaming the binding
+    /// or formatting it positionally walked straight past it (review F1).
+    #[test]
+    fn no_transport_module_formats_a_status_or_a_body_into_its_own_message() {
+        let mut offenders = Vec::new();
+        for (name, source) in SOURCES {
+            let shipped = shipped(source);
+            let bound = status_and_body_bindings(&shipped);
+            let lines: Vec<&str> = shipped.lines().collect();
+            for (n, line) in lines.iter().enumerate() {
+                if !line.contains("format!(") {
+                    continue;
+                }
+                let said = outside_the_helpers(&statement_at(&lines, n));
+                for b in &bound {
+                    let printed = said.contains(&format!("{{{b}}}"))
+                        || said.contains(&format!(", {b})"))
+                        || said.contains(&format!(", {b},"))
+                        || said.contains(&format!(", {b} "))
+                        || said.contains(&format!("{b}.as_u16()"));
+                    if printed {
+                        offenders.push(format!("{name}:{}: {} — says `{b}`", n + 1, said.trim()));
+                    }
+                }
+            }
+        }
+        assert!(
+            offenders.is_empty(),
+            "a status or a body is said by status::named or status::refused, never by a \
+             format! of its own:\n{}",
+            offenders.join("\n")
+        );
+    }
+
+    /// The guard above reads bindings, so a module that reads a response body
+    /// and never reaches `refused` is one it cannot see into. Every body read
+    /// in the shipped half is answered by a call that says it.
+    #[test]
+    fn every_module_that_reads_a_refusals_body_says_it_through_the_helper() {
+        for (name, source) in SOURCES {
+            let shipped = shipped(source);
+            let bodies = shipped.matches(".text().await").count();
+            if bodies == 0 {
+                continue;
+            }
+            let said = shipped.matches("status::refused(").count();
+            assert!(
+                said >= bodies,
+                "{name} reads {bodies} response body/bodies and says {said} of them through \
+                 status::refused"
+            );
+        }
+    }
+
+    /// The guard above measures every module `mod.rs` declares, so a new route
+    /// cannot be added outside its reach without this failing first.
+    #[test]
+    fn the_guard_covers_every_module_this_directory_declares() {
+        let declared: Vec<String> = include_str!("mod.rs")
+            .lines()
+            .filter_map(|l| l.trim().strip_suffix(';'))
+            .filter_map(|l| l.rsplit_once("mod "))
+            .map(|(_, m)| m.to_string())
+            .filter(|m| !EXEMPT.contains(&m.as_str()))
+            .collect();
+        assert!(declared.len() > 15, "mod.rs parsed as {declared:?}");
+        for m in &declared {
+            assert!(
+                SOURCES.iter().any(|(name, _)| *name == format!("{m}.rs")),
+                "{m} is declared in mod.rs and the guard does not read it"
+            );
+        }
+        for (name, _) in SOURCES {
+            let stem = name.trim_end_matches(".rs");
+            assert!(
+                stem == "mod" || declared.iter().any(|m| m == stem),
+                "the guard reads {name} and mod.rs declares no such module"
+            );
+        }
+    }
+
+    /// Criterion 4. The reason an operator gets from `forge-runner master
+    /// status` is the transport error itself and nothing re-derived from the
+    /// response, so a refusal the lines above made legible is legible there
+    /// too. Read rather than exercised: `daemon/master.rs` is not this change's
+    /// to edit, and what binds the two is one expression in it.
+    #[test]
+    fn the_unplaced_reason_an_operator_reads_is_the_transport_error_itself() {
+        let sweep = include_str!("../daemon/master.rs");
+        let at = sweep
+            .find("Unplaced::RegisterFailed {")
+            .expect("the sweep still reports a refused registration");
+        let built: String = sweep[at..].lines().take(3).collect::<Vec<_>>().join(" ");
+        assert!(
+            built.contains("detail: e.to_string()"),
+            "the reason an operator reads is no longer the register error itself, so what this \
+             module makes legible may not be what reaches them — found: {built}"
+        );
+    }
 }

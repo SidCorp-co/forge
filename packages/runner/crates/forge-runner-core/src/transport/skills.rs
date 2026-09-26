@@ -93,7 +93,10 @@ fn map_status(label: &str, status: reqwest::StatusCode) -> Error {
     if status.as_u16() == 401 {
         Error::Other("UNAUTHORIZED".into())
     } else {
-        Error::Other(format!("{label} failed: {status}"))
+        Error::Other(format!(
+            "{label} failed: {}",
+            super::status::named(status.as_u16())
+        ))
     }
 }
 
