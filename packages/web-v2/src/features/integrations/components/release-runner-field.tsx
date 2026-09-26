@@ -75,7 +75,7 @@ function Editor({
         {declared ? (
           <>
             <span className="font-mono">{declared}</span> — a release prefers a box carrying
-            it, and still runs on this project&apos;s pool where no box does.
+            it, and still runs on the pool it has where no box does.
           </>
         ) : inherited ? (
           <>

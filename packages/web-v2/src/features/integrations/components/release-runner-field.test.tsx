@@ -213,6 +213,8 @@ describe("the release runner label on a shared connection", () => {
 		);
 
 		expect(screen.getByText("other")).toBeInTheDocument();
+		// A credential is not a project, so nothing here calls the pool one.
+		expect(screen.queryByText(/this project's pool/)).not.toBeInTheDocument();
 	});
 
 	it("says what a credential declaring none means, which is not a project's pool", () => {
