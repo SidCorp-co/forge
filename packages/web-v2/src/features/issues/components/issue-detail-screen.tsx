@@ -75,6 +75,7 @@ import { BlockerBanner } from "./blocker-banner";
 import { useGuardedTransition } from "./use-guarded-transition";
 import { CommentThread } from "./comment-thread";
 import { DescriptionCard } from "./description-card";
+import { ReleaseNoteCard } from "./release-note-card";
 import { type LiveAgentState, LiveAgentPanel } from "./live-agent-panel";
 import { ModulePicker } from "./module-picker";
 import { PropertiesRail } from "./properties-rail";
@@ -420,6 +421,8 @@ export function IssueDetailScreen({
               issueId={id}
             />
           )}
+
+          <ReleaseNoteCard issue={issue} />
 
           <DescriptionCard
             issue={issue}
