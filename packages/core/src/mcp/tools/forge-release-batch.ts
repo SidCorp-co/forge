@@ -18,21 +18,12 @@ import type { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import type { McpPrincipal } from '../../middleware/require-pat.js';
 import { acceptReleaseBatchFinish } from '../../release-batch/finish-job.js';
-import {
-  announceMethod,
-  MethodMismatchError,
-  MethodNotAnnouncedError,
-} from '../../release-batch/method.js';
-import {
-  RELEASE_BATCH_SKILL,
-  RELEASE_BATCH_TOOL,
-  ReleaseBranchesUndeclaredError,
-} from '../../release-batch/plan.js';
+import { announceMethod } from '../../release-batch/method.js';
+import { RELEASE_BATCH_SKILL, RELEASE_BATCH_TOOL } from '../../release-batch/plan.js';
 import {
   finishedForSentence,
   finishRefusal as finishHttpRefusal,
   recordRefusal,
-  undeclaredBranches,
 } from '../../release-batch/refusals.js';
 import {
   abortReleaseBatch,
@@ -111,27 +102,7 @@ async function assertRunOfProject(runId: string, projectId: string): Promise<voi
   }
 }
 
-function methodRefusalHere(err: unknown): Error | null {
-  if (err instanceof MethodNotAnnouncedError) {
-    return refusal(
-      'RELEASE_METHOD_NOT_ANNOUNCED',
-      `this run never announced the method it was working from. Call ${RELEASE_BATCH_TOOL} action=method ` +
-        `with skill="${err.expected}" and loaded=true, or loaded=false with a detail if the skill would not load, then finish again.`,
-    );
-  }
-  if (err instanceof MethodMismatchError) {
-    return refusal(
-      'RELEASE_METHOD_MISMATCH',
-      `this run announced the method \`${err.announced}\` and its job names \`${err.expected}\`. ` +
-        `Announce \`${err.expected}\` with action=method, or abort with what you actually ran.`,
-    );
-  }
-  return null;
-}
-
 function finishRefusal(err: unknown): Error {
-  const method = methodRefusalHere(err);
-  if (method) return method;
   if (err instanceof ReleaseNotVerifiedError || err instanceof ReleaseProbesUndeclaredError) {
     return fromHttp(recordRefusal(err));
   }
@@ -165,14 +136,8 @@ function finishRefusal(err: unknown): Error {
 async function run(principal: McpPrincipal, input: Input, projectId: string): Promise<unknown> {
   const { runId } = input;
   switch (input.action) {
-    case 'get': {
-      try {
-        return await loadReleaseBatchContext(runId);
-      } catch (err) {
-        if (err instanceof ReleaseBranchesUndeclaredError) throw fromHttp(undeclaredBranches(err));
-        throw err;
-      }
-    }
+    case 'get':
+      return await loadReleaseBatchContext(runId);
     case 'state': {
       const state = await readReleaseRunState(runId);
       if (!state || state.projectId !== projectId) {

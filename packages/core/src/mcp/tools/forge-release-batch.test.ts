@@ -38,7 +38,6 @@ const RUN_ID = '44444444-4444-4444-8444-444444444444';
 
 const { forgeReleaseBatchTool } = await import('./forge-release-batch.js');
 const { makeFakePrincipal } = await import('../fake-principal.fixture.js');
-const { MethodMismatchError } = await import('../../release-batch/method.js');
 const {
   ReleaseBatchAbortedError,
   ReleaseFinishedForOtherCommitError,
@@ -56,11 +55,13 @@ function tool(scopes: string[] = ['read', 'write']) {
 beforeEach(() => vi.clearAllMocks());
 
 describe('forge_release_batch refusals', () => {
-  it('names the method the job expects when the run announced another', async () => {
-    acceptFinish.mockRejectedValue(new MethodMismatchError('improvised', 'release-flow'));
+  // ISS-1276 — the method is a record, so a finish has no method refusal to map. Both codes are
+  // gone from the tool's vocabulary, not renamed inside it.
+  it('holds no method refusal in its vocabulary at all', async () => {
+    acceptFinish.mockRejectedValue(new Error('RELEASE_METHOD_MISMATCH: improvised'));
 
     await expect(tool().handler({ action: 'finish', runId: RUN_ID })).rejects.toThrow(
-      /^RELEASE_METHOD_MISMATCH: .*`improvised`.*Announce `release-flow` with action=method/,
+      /^RELEASE_METHOD_MISMATCH: improvised$/,
     );
   });
 

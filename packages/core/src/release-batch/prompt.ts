@@ -2,14 +2,9 @@
 // Pattern: buildSmokeCanaryPrompt (skills/smoke-verify.ts:429).
 // Untrusted issue text is wrapped via markUntrusted (same as every state prompt).
 
-import type { ReleaseModel, ReleaseStrategy } from '../db/schema.js';
+import type { ReleaseModel } from '../db/schema.js';
 import { markUntrusted } from '../prompt/sanitize.js';
-import {
-  defaultReleaseProcedure,
-  RELEASE_BATCH_SKILL,
-  RELEASE_BATCH_TOOL,
-  type ReleasePlan,
-} from './plan.js';
+import { RELEASE_BATCH_SKILL, RELEASE_BATCH_TOOL, type ReleasePlan } from './plan.js';
 
 interface IssueSummary {
   id: string;
@@ -20,11 +15,10 @@ interface IssueSummary {
 interface BuildReleaseBatchPromptArgs {
   runId: string;
   projectId: string;
-  baseBranch: string;
-  liveBranch: string;
+  /** `null` where the project declares none, which is a fact about the project and not a refusal. */
+  baseBranch: string | null;
+  liveBranch: string | null;
   releaseModel: ReleaseModel;
-  /** Non-null exactly under `promote`. The default procedure refuses what it has no default for. */
-  releaseStrategy: ReleaseStrategy | null;
   issues: IssueSummary[];
   plan: ReleasePlan;
   /** False where no box eligible to release carries the declared label. */
@@ -32,12 +26,12 @@ interface BuildReleaseBatchPromptArgs {
 }
 
 export function buildReleaseBatchPrompt(args: BuildReleaseBatchPromptArgs): string {
-  const { runId, projectId, baseBranch, liveBranch, releaseModel, releaseStrategy, issues, plan } =
-    args;
+  const { runId, projectId, baseBranch, liveBranch, releaseModel, issues, plan } = args;
   const roster = issues
     .map((i) => `- ${i.displayId} — ${markUntrusted(i.title, { source: 'issue.title' })}`)
     .join('\n');
-  const liveLine = releaseModel === 'promote' ? `\nliveBranch: ${liveBranch}` : '';
+  const baseLine = baseBranch ? `\nbaseBranch: ${baseBranch}` : '';
+  const liveLine = releaseModel === 'promote' && liveBranch ? `\nliveBranch: ${liveBranch}` : '';
   // What was true when the batch was CUT, never where it ended up running: the
   // job is claimed after this string is built, and a box carrying the label can
   // come online in between. The box that took it is in the batch context.
@@ -50,7 +44,7 @@ export function buildReleaseBatchPrompt(args: BuildReleaseBatchPromptArgs): stri
     : '';
   const channelLines =
     plan.channels.length === 0
-      ? 'deploy channels: none — cut the version and stop; a human deploys'
+      ? 'deploy channels: none declared to Forge'
       : `deploy channels (${plan.channels.length}, work ALL of them):\n${plan.channels
           .map((c) => `- ${c.provider}${c.label ? ` [${c.label}]` : ''}`)
           .join('\n')}`;
@@ -59,13 +53,12 @@ export function buildReleaseBatchPrompt(args: BuildReleaseBatchPromptArgs): stri
 
 projectId: ${projectId}
 runId: ${runId}
-releaseModel: ${releaseModel}
-baseBranch: ${baseBranch}${liveLine}${runnerLine}
+releaseModel: ${releaseModel}${baseLine}${liveLine}${runnerLine}
 ${channelLines}
 
 ### Issues in this batch (${issues.length})
 ${roster}
-${renderReach(runId)}${renderMethod()}${renderProcedure(plan, releaseModel, releaseStrategy)}
+${renderReach(runId)}${renderMethod()}${renderProcedure(plan)}
 Start by reading the batch context: \`${RELEASE_BATCH_TOOL}\` action \`get\` with runId \`${runId}\`.
 `;
 }
@@ -86,20 +79,19 @@ If \`${RELEASE_BATCH_TOOL}\` is not in your tool list, or refuses your first cal
 }
 
 /**
- * The one line that loads the method, off the SAME constant the job's
- * `skillName` carries.
+ * The line that points at the method, off the SAME constant the job's `skillName` carries.
  *
- * `skillName` named `release-flow` and nothing invoked it: the runner reads no
- * such column, and this prompt never mentioned it, so the field selected
- * nothing while reading like a designation (ISS-1042). The name reaching the
- * agent is what makes it true.
+ * `skillName` named `release-flow` and nothing invoked it: the runner reads no such column, and this
+ * prompt never mentioned it, so the field selected nothing while reading like a designation
+ * (ISS-1042). The name reaching the agent is what makes it true. It points; it no longer gates
+ * (ISS-1276) — the procedure above is the method, and this is a way of loading one shape of it.
  */
 function renderMethod(): string {
   return `
 ### Your method
-Load it before the first step: run the \`${RELEASE_BATCH_SKILL}\` skill, then announce what you loaded with \`${RELEASE_BATCH_TOOL}\` action \`method\` (\`skill\`, \`loaded\`). \`finish\` refuses a run that announced none, and so does a deploy through \`forge_coolify_deploy\`.
+Load it if this session has it: run the \`${RELEASE_BATCH_SKILL}\` skill, then announce what you loaded with \`${RELEASE_BATCH_TOOL}\` action \`method\` (\`skill\`, \`loaded\`).
 
-If the skill does not load, announce THAT — do not improvise a release out of this prompt. An announcement saying the method could not be loaded is a run a person can see; a release run with no method is not.
+If it will not load, announce THAT — \`loaded: false\` with a detail saying why — and carry on under the release procedure below, which is this project's own method. \`finish\` does not read the announcement and does not refuse a run that made none. What does depend on it: a deploy through \`forge_coolify_deploy\` is refused until this run has recorded SOMETHING through \`${RELEASE_BATCH_TOOL}\`, because until then nothing shows the credential this session holds can record what the deploy did.
 `;
 }
 
@@ -108,18 +100,17 @@ If the skill does not load, announce THAT — do not improvise a release out of 
  * NOT wrapped as untrusted: an operator writing their release steps is giving
  * an instruction, which is the opposite of an issue title arriving from a
  * stranger.
+ *
+ * ISS-1276 — where the project declares none, Forge says so and names where the method is instead.
+ * It composed one until then, out of a registry of per-provider deploy steps exactly one provider
+ * ever declared, refused the release for every provider that declared none, and threw the whole
+ * composition away for every project that HAD declared a procedure.
  */
-function renderProcedure(
-  plan: ReleasePlan,
-  releaseModel: ReleaseModel,
-  releaseStrategy: ReleaseStrategy | null,
-): string {
+function renderProcedure(plan: ReleasePlan): string {
   const blocks: string[] = [
     plan.procedure
       ? `### This project's release procedure\n${plan.procedure}`
-      : `### Release procedure (Forge default — this project declared none)\n${defaultReleaseProcedure(
-          { releaseModel, releaseStrategy, channels: plan.channels },
-        )}`,
+      : UNDECLARED_PROCEDURE,
   ];
   for (const channel of plan.channels) {
     if (!channel.instructions) continue;
@@ -136,6 +127,15 @@ function renderProcedure(
   blocks.push(renderRepairForward(plan));
   return `\n${blocks.join('\n\n')}\n`;
 }
+
+const UNDECLARED_PROCEDURE = `### This project's release procedure
+This project has declared none to Forge.
+Forge writes no release steps of its own, for this project or for any other.
+The method is where this project keeps it. Read it there:
+- the repository you are releasing — its release and deploy scripts, its CI workflows, its branch and changelog conventions;
+- the project's own configuration, which the batch context above carries;
+- what this session already knows about this project.
+Say in what you record which of those you read and what you took from each.`;
 
 function renderRepairForward(plan: ReleasePlan): string {
   const texts = plan.channels

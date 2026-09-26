@@ -12,15 +12,9 @@
 // claim release to `releasing-recovery.ts`, which is also what a batch that
 // died without either outcome goes through.
 
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
-import {
-  type IssueStatus,
-  issues,
-  jobs,
-  type PipelineRunStatus,
-  pipelineRuns,
-} from '../db/schema.js';
+import { type IssueStatus, issues, type PipelineRunStatus, pipelineRuns } from '../db/schema.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
@@ -55,8 +49,7 @@ import {
   ReleaseVersionMissingError,
 } from './errors.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
-import { assertMethodFor, readMethod } from './method.js';
-import { RELEASE_BATCH_SKILL, ReleaseBranchesUndeclaredError, releaseBranches } from './plan.js';
+import { RELEASE_BATCH_SKILL, releaseBranches } from './plan.js';
 import { buildReleaseBatchPrompt } from './prompt.js';
 import {
   type RecoverStrandedReleasingResult,
@@ -67,7 +60,6 @@ import { liveCarriesRoster, readLiveCommit, type VerifyConfig, verifyDeployed } 
 import { cutReleaseVersion, markReleaseShipped } from './version-store.js';
 
 export * from './errors.js';
-export { ReleaseBranchesUndeclaredError };
 export interface CreateReleaseBatchArgs {
   projectId: string;
   issueIds: string[];
@@ -219,7 +211,6 @@ export async function createReleaseBatch(
     baseBranch,
     liveBranch,
     releaseModel: project.releaseModel,
-    releaseStrategy: project.releaseStrategy,
     plan,
     releaseRunnerPreferenceMet: preferenceMet,
     issues: issueRows.map((r) => ({
@@ -331,19 +322,6 @@ export async function assertFinishable(runId: string, run: ReleaseRunRow): Promi
   // the transaction that inserts the row, so a release row reaching here without one was not
   // opened by it.
   if (!run.releaseVersion) throw new ReleaseVersionMissingError(runId);
-
-  const [job] = await db
-    .select({ payload: jobs.payload })
-    .from(jobs)
-    .where(and(eq(jobs.pipelineRunId, runId), eq(jobs.type, 'release_batch')))
-    .orderBy(desc(jobs.queuedAt))
-    .limit(1);
-  const jobSkill = (job?.payload as { skillName?: unknown } | null)?.skillName;
-  assertMethodFor(
-    readMethod(run.metadata),
-    typeof jobSkill === 'string' && jobSkill.length > 0 ? jobSkill : RELEASE_BATCH_SKILL,
-    { projectId: run.projectId, runId },
-  );
 
   const channels = await resolveReleaseChannels(run.projectId);
   const closeVerify = channels[0]?.verify ?? null;

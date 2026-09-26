@@ -1,9 +1,8 @@
 // The unattended cut: everything sitting at the release gate, on a cadence.
 //
-// A `release_batch` schedule needs no prompt, no script and no runner of its
-// own — it claims what is waiting and enqueues the one batch job, which is the
-// same thing a person pressing "Release now" does. Its whole job is to make the
-// cut happen without someone remembering to.
+// A `release_batch` schedule needs no prompt, no script and no runner of its own — it
+// claims what is waiting and enqueues the one batch job, which is the same thing a
+// person pressing "Release now" does, without someone remembering to.
 //
 // It skips rather than fails when nothing is waiting: an empty gate is the
 // normal state of a healthy project, and a nightly cron that reports failure on
@@ -18,7 +17,6 @@ import {
   createReleaseBatch,
   NoReleaseGateError,
   NoRunnerOnlineError,
-  ReleaseBranchesUndeclaredError,
   ReleasePoolEmptyError,
   ReleaseRecordMissingError,
 } from '../release-batch/service.js';
@@ -42,7 +40,6 @@ const CLASSIFIED_REFUSALS: ReadonlyArray<readonly [new (...args: never[]) => Err
   [NoRunnerOnlineError, 'NO_RUNNER_ONLINE'],
   [ReleasePoolEmptyError, 'RELEASE_POOL_EMPTY'],
   [NoReleaseGateError, 'NO_RELEASE_GATE'],
-  [ReleaseBranchesUndeclaredError, 'RELEASE_BRANCHES_UNDECLARED'],
   [ReleaseRecordMissingError, 'RELEASE_RECORD_MISSING'],
 ];
 

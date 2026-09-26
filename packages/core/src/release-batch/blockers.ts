@@ -1,18 +1,14 @@
-// Every reason a release will not start, enumerated once and read by every door.
+// Every reason a release will not start, enumerated once and read by every door (ISS-1127).
 //
-// Before ISS-1127 there were three lists — `readiness.ts`'s `gaps`,
-// `createReleaseBatch`'s own checks, `recorded.ts`'s third set — none naming the
-// others, so an operator learnt the reasons one at a time. Three properties the
-// callers rely on: it never throws (a check that cannot be evaluated becomes an
-// answer in the position that check held); it makes no outbound request, so what
-// is checked here is the probe DECLARATION; and it reports in the order the doors
-// refuse in, a door throwing the FIRST blocker under its existing name.
+// Three properties the callers rely on: it never throws (a check that cannot be
+// evaluated becomes an answer in the position that check held); it makes no outbound
+// request, so what is checked here is the probe DECLARATION; and it reports in the order
+// the doors refuse in, a door throwing the FIRST blocker under its existing name.
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
 import { issues } from '../db/schema.js';
 import { issuesMissingReleaseRecord } from '../issues/release-record-required.js';
-import { readProjectBranches } from '../projects/service.js';
 import { releaseIneligibleRunners } from '../runners/ineligible.js';
 import { onlineCapableDeviceIds } from '../runners/select.js';
 import { attempt, blocker, evaluate } from './blocker-kit.js';
@@ -36,7 +32,6 @@ import {
 import { claimConflictDetails, readClaimConflicts } from './claim-conflicts.js';
 import { criteriaHold } from './criteria-hold.js';
 import { RELEASE_GATE_STATUS, resolveReleaseDeclaration } from './gate.js';
-import { releaseBranches } from './plan.js';
 import { getActiveReleaseBatch } from './queries.js';
 import { invalidProbeUrls } from './verify.js';
 
@@ -260,24 +255,6 @@ function unreadableProbeBlockers(channels: ReleaseChannel[], out: ReleaseBlocker
   if (urls.length > 0) out.push(blocker('RELEASE_PROBES_UNREADABLE', { urls }));
 }
 
-/** Is there a branch a release could promote from. */
-async function branchBlockers(projectId: string, out: ReleaseBlocker[]): Promise<void> {
-  const branches = await evaluate(
-    'branches',
-    async () => await readProjectBranches(projectId),
-    out,
-  );
-  if (branches === undefined) return;
-  try {
-    releaseBranches(
-      branches ?? { baseBranch: null, liveBranch: null },
-      branches?.releaseModel ?? 'none',
-    );
-  } catch {
-    out.push(blocker('RELEASE_BRANCHES_UNDECLARED'));
-  }
-}
-
 /**
  * Every reason this project's release will not start, in the order the doors
  * refuse in. Never throws, and reaches no network.
@@ -364,7 +341,6 @@ async function gatedBlockers(
     const label = channelBlockers(projectId, channels, door, machinery);
     if (door === 'batch') {
       await poolBlockers(projectId, label, machinery, warnings);
-      await branchBlockers(projectId, machinery);
       if (channels.length > 1) {
         machinery.push(blocker('RELEASE_MULTI_CHANNEL_UNSUPPORTED', { count: channels.length }));
       }
@@ -372,7 +348,6 @@ async function gatedBlockers(
     }
   } else if (door === 'batch') {
     await poolBlockers(projectId, null, machinery, warnings);
-    await branchBlockers(projectId, machinery);
   }
 
   out.push(...(door === 'batch' ? [...roster, ...machinery] : [...machinery, ...roster]));

@@ -16,7 +16,8 @@ tag or deployment — nothing you did could be recorded. End the turn saying whi
 text. Do not look for another credential on this machine.
 
 ### Ordering contract (load-bearing — follow exactly)
-1. \`forge_release_batch\` action \`get\` → roster, releaseNotes per issue, branches, deployPlanned.
+1. \`forge_release_batch\` action \`get\` → roster, releaseNotes per issue, deployPlanned, and the
+   branches where the project declares any.
 2. Carry out the release procedure printed in your task prompt. That text is the authority
    on branches, versioning, changelog and deploy — this block is not, and you must not
    substitute a step it does not name.

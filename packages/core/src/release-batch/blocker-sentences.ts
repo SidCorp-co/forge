@@ -26,7 +26,6 @@ export type ReleaseBlockerCode =
   | 'RELEASE_PROBES_UNREADABLE'
   | 'RELEASE_POOL_EMPTY'
   | 'NO_RUNNER_ONLINE'
-  | 'RELEASE_BRANCHES_UNDECLARED'
   | 'RELEASE_MULTI_CHANNEL_UNSUPPORTED'
   | 'BATCH_IN_FLIGHT'
   | 'RELEASE_CRITERIA_UNEARNED'
@@ -121,8 +120,6 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
     'This project has no runner registered, so there is no box a release could run on. Pair a box to this project first.',
   NO_RUNNER_ONLINE:
     'This project has runners registered and none of them could be handed a release, and the reading of why could not be taken. Open Settings \u2192 Runners and check each box\'s "Takes jobs from the pool" switch and when it was last seen.',
-  RELEASE_BRANCHES_UNDECLARED:
-    'This project declares no base branch, so there is nothing a release could promote from. Set it in the project settings.',
   RELEASE_MULTI_CHANNEL_UNSUPPORTED:
     'This project declares more than one live deploy binding, and a release run records ONE reading used to close the whole roster. Leave exactly one binding carrying the `live` stage active, or release them as separate projects.',
   BATCH_IN_FLIGHT:
@@ -160,7 +157,6 @@ export const REMEDY_COST: Record<ReleaseReasonCode, readonly RemedyAct[]> = {
   RELEASE_PROBES_UNREADABLE: [],
   RELEASE_POOL_EMPTY: [],
   NO_RUNNER_ONLINE: [],
-  RELEASE_BRANCHES_UNDECLARED: [],
   RELEASE_MULTI_CHANNEL_UNSUPPORTED: [],
   BATCH_IN_FLIGHT: [],
   RELEASE_CRITERIA_UNEARNED: [],
@@ -199,13 +195,10 @@ export interface HeldIssueRef {
 const RUNNERS_TAB = 'Settings → Runners';
 
 /**
- * What clears this reading, per reading.
- *
- * Every one of them answers, because a reading with no act is the sentence this
- * file was rewritten to stop printing: correct about the state and silent about
- * what to do with it. Where nobody can act — a rate limit, a quarantine, a
- * provision in flight — the clause says what is being waited out and until when,
- * which is an answer too (ISS-1127).
+ * What clears this reading, per reading. Every one of them answers: a reading with no
+ * act is correct about the state and silent about what to do with it. Where nobody can
+ * act — a rate limit, a quarantine, a provision in flight — the clause says what is
+ * being waited out and until when, which is an answer too (ISS-1127).
  */
 const RUNNER_HOLD_ACT: Record<RunnerHoldReason, (hold: RunnerHold) => string> = {
   'device-disabled': () =>

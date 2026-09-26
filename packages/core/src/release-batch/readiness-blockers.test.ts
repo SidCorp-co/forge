@@ -37,10 +37,9 @@ vi.mock('../integrations/store.js', async (importActual) => {
 
 const { loadReleaseReadiness } = await import('./readiness.js');
 
-// `readiness.ts` asks the registry what a provider DECLARES (its release step, its rollback representability,
-// its webhook header) rather than naming providers (ISS-1071). Reading an empty registry throws
-// rather than answering "no provider declares anything", which is the answer that would have made
-// these assertions pass while describing a deployment with no integrations in it.
+// The code under test asks the registry what a provider DECLARES rather than naming providers
+// (ISS-1071). An empty registry throws rather than answering "no provider declares anything",
+// which would pass these assertions while describing a deployment with no integrations in it.
 const { registerAllIntegrations } = await import('../integrations/register-all.js');
 registerAllIntegrations();
 
@@ -171,7 +170,6 @@ describe('loadReleaseReadiness — a declaration that could not be read', () => 
       ['RELEASE_CHECK_UNEVALUATED', 'declaration'],
       ['RELEASE_ROSTER_EMPTY', undefined],
       ['RELEASE_POOL_EMPTY', undefined],
-      ['RELEASE_CHECK_UNEVALUATED', 'branches'],
       ['RELEASE_CHECK_UNEVALUATED', 'project'],
     ]);
   });

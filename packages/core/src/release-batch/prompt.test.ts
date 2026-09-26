@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { releaseBatchStatePrompt } from '../prompt/state-prompts/release-batch.js';
 import {
-  defaultReleaseProcedure,
   RELEASE_BATCH_SKILL,
   RELEASE_BATCH_TOOL,
   type ReleaseChannel,
@@ -9,20 +8,12 @@ import {
 } from './plan.js';
 import { buildReleaseBatchPrompt } from './prompt.js';
 
-// `prompt.ts` asks the registry what a provider DECLARES (its release step, its rollback representability,
-// its webhook header) rather than naming providers (ISS-1071). Reading an empty registry throws
-// rather than answering "no provider declares anything", which is the answer that would have made
-// these assertions pass while describing a deployment with no integrations in it.
-const { registerAllIntegrations } = await import('../integrations/register-all.js');
-registerAllIntegrations();
-
 const BASE = {
   runId: 'run-1',
   projectId: 'proj-1',
   baseBranch: 'dev',
   liveBranch: 'master',
   releaseModel: 'promote' as const,
-  releaseStrategy: 'merge-branch' as const,
   issues: [{ id: 'i1', displayId: 'ISS-9', title: 'checkout 500s' }],
   releaseRunnerPreferenceMet: true,
 };
@@ -86,24 +77,12 @@ describe('buildReleaseBatchPrompt', () => {
     expect(out).toContain(`run the \`${RELEASE_BATCH_SKILL}\` skill`);
   });
 
-  it('tells the agent what to do when the skill does not load', () => {
+  it("tells a run whose method will not load to carry on under the project's own method", () => {
     const out = buildReleaseBatchPrompt({ ...BASE, plan: plan() });
 
-    expect(out).toContain('If the skill does not load, announce THAT');
-    expect(out).toContain('do not improvise a release out of this prompt');
-  });
-
-  it('falls back to the Forge default, and says that is what it is', () => {
-    const out = buildReleaseBatchPrompt({ ...BASE, plan: plan() });
-
-    expect(out).toContain('Forge default');
-    expect(out).toContain(
-      defaultReleaseProcedure({
-        releaseModel: 'promote',
-        releaseStrategy: 'merge-branch',
-        channels: [],
-      }),
-    );
+    expect(out).toContain('If it will not load, announce THAT');
+    expect(out).toContain('carry on under the release procedure below');
+    expect(out).toContain('`finish` does not read the announcement');
   });
 
   it("prefers the project's own procedure and labels it as theirs", () => {
@@ -114,13 +93,8 @@ describe('buildReleaseBatchPrompt', () => {
 
     expect(out).toContain("This project's release procedure");
     expect(out).toContain('run ./release.sh — no squash, then tag');
-    expect(out).not.toContain(
-      defaultReleaseProcedure({
-        releaseModel: 'promote',
-        releaseStrategy: 'merge-branch',
-        channels: [],
-      }),
-    );
+    expect(out).not.toContain('Forge writes no release steps of its own');
+    expect(out).not.toContain('This project has declared none to Forge.');
   });
 
   it('adds the channel notes under the name of the channel they belong to', () => {
@@ -326,14 +300,16 @@ describe('where a release run reads its verdict (ISS-1190)', () => {
   });
 
   // The coolify step said 'Any failed → abort' above the section that says repair forward, so an
-  // agent reading top-down met the abort first (the judge at 93e2f8e).
-  it('sends a failed coolify deploy to repair forward before it offers abort', () => {
+  // agent reading top-down met the abort first (the judge at 93e2f8e). ISS-1276 deleted that step
+  // with the rest of the composition, so the ordering is now a property of the ONE place the rule
+  // lives: the repair-forward section, which must still put repairing ahead of aborting.
+  it('puts repair forward ahead of abort wherever a failed deploy is answered', () => {
     const text = buildReleaseBatchPrompt({ ...BASE, plan: probed });
     expect(text).not.toMatch(/Any 'failed' → abort/);
-    const step = text.indexOf("Any 'failed' → repair forward and deploy again");
-    expect(step).toBeGreaterThan(-1);
-    expect(text.indexOf('abort only', step)).toBeGreaterThan(step);
-    expect(text.indexOf('### If the deploy comes up dead')).toBeGreaterThan(step);
+    const repair = text.indexOf('REPAIR FORWARD, and never roll back');
+    expect(repair).toBeGreaterThan(-1);
+    expect(text.indexOf('abort', repair)).toBeGreaterThan(repair);
+    expect(text.indexOf('### If the deploy comes up dead')).toBeLessThan(repair);
   });
 
   it('says in the repair-forward section that the abort closes nothing and answers where issues are', () => {
@@ -350,5 +326,95 @@ describe('where a release run reads its verdict (ISS-1190)', () => {
 
   it('says a finished attempt reports what it closed and what failed to close', () => {
     expect(releaseBatchStatePrompt).toMatch(/lists what it `closed` and what `failed` to close/);
+  });
+});
+
+/**
+ * ISS-1276 — Forge composed a release out of a promote step, a per-provider deploy step and a
+ * CHANGELOG step; refused the whole release where the provider declared no step or the strategy was
+ * not `merge-branch`; and threw the composition away for every project that had declared a
+ * procedure of its own. These read the prompt for the absence of all three.
+ */
+describe('the procedure a project that declared none is handed (ISS-1276)', () => {
+  it('composes no step of its own', () => {
+    const out = buildReleaseBatchPrompt({
+      ...BASE,
+      plan: plan({ channels: [channel()] }),
+    });
+
+    expect(out).not.toContain('Merge baseBranch → liveBranch');
+    expect(out).not.toContain("forge_coolify_deploy { action:'deploy'");
+    expect(out).not.toContain('CHANGELOG.md');
+    expect(out).not.toContain('Forge default');
+  });
+
+  it('names where the method is instead of naming a step', () => {
+    const out = buildReleaseBatchPrompt({ ...BASE, plan: plan({ channels: [channel()] }) });
+
+    expect(out).toContain(
+      'Forge writes no release steps of its own, for this project or for any other.',
+    );
+    expect(out).toContain('The method is where this project keeps it. Read it there:');
+    expect(out).toContain('- the repository you are releasing');
+    expect(out).toContain(
+      "- the project's own configuration, which the batch context above carries;",
+    );
+  });
+
+  it('refuses nothing over a provider Forge has no deploy step for', () => {
+    const out = buildReleaseBatchPrompt({
+      ...BASE,
+      plan: plan({ channels: [channel({ provider: 'epodsystem', label: 'aurelle' })] }),
+    });
+
+    expect(out).not.toContain('NO default deploy step');
+    expect(out).not.toContain('do NOT merge');
+    expect(out).not.toContain('do NOT promote');
+    expect(out).toContain('epodsystem [aurelle]');
+  });
+
+  it('refuses nothing over a mixed channel set either', () => {
+    const out = buildReleaseBatchPrompt({
+      ...BASE,
+      plan: plan({ channels: [channel(), channel({ provider: 'epodsystem' })] }),
+    });
+
+    expect(out).not.toContain('NO default deploy step');
+    expect(out).not.toContain('a release that can only be half-finished is not started');
+    expect(out).toContain('work ALL of them');
+  });
+
+  it('states an absent deploy channel as a fact', () => {
+    const out = buildReleaseBatchPrompt({ ...BASE, plan: plan({ channels: [] }) });
+
+    expect(out).toContain('deploy channels: none declared to Forge');
+  });
+
+  it('tells the agent nothing to do about an absent deploy channel', () => {
+    const out = buildReleaseBatchPrompt({ ...BASE, plan: plan({ channels: [] }) });
+
+    expect(out).not.toContain('cut the version and stop');
+    expect(out).not.toContain('a human takes it from there');
+    expect(out).not.toContain('Do NOT reach for a deploy tool');
+  });
+});
+
+describe('the branches a release prompt carries (ISS-1276)', () => {
+  it('names a declared base branch as a fact', () => {
+    const out = buildReleaseBatchPrompt({ ...BASE, plan: plan() });
+
+    expect(out).toContain('baseBranch: dev');
+  });
+
+  it('names no base branch line where the project declares none', () => {
+    const out = buildReleaseBatchPrompt({ ...BASE, baseBranch: null, plan: plan() });
+
+    expect(out).not.toContain('baseBranch:');
+  });
+
+  it('names no live branch line where a promote project declares none', () => {
+    const out = buildReleaseBatchPrompt({ ...BASE, liveBranch: null, plan: plan() });
+
+    expect(out).not.toContain('liveBranch:');
   });
 });

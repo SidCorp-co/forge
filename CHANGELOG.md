@@ -2482,6 +2482,10 @@
   shrink and `forge_metrics.*` is in its "free to go" group. (ISS-944)
 
 ### Removed
+- **Forge no longer writes your release steps.** A project that declares its own procedure gets it;
+  one that declares none is told where its method lives, instead of being refused for a deploy
+  target Forge has no steps for.
+
 - **"Deploy when a change lands" is gone from the Coolify settings.** Nothing ever deployed
   through it. A deploy is now only ever something a person or an agent asks for, at the point
   of releasing.
