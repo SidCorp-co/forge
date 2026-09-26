@@ -32,9 +32,9 @@ import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { useRecents, buildShareLink } from "@/features/shell";
 import { IssueQuickActions } from "@/features/issues/components/issue-quick-actions";
-import { priorityLabel, statusToChip } from "@/features/issues/derive";
+import { priorityLabel, runStatusChip, statusToChip } from "@/features/issues/derive";
 import type { IssuePriority, IssueStatus } from "@/features/issues/types";
-import { formatDurationMs, formatUsd, runStatusToStatusKey } from "../derive";
+import { drawerRunChip, formatDurationMs, formatUsd } from "../derive";
 import { useCancelRun, useIssueTasks, usePauseRun, useResumeRun, useRun } from "../hooks";
 import { ActivityTab } from "./activity-feed";
 import type {
@@ -112,7 +112,7 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
   const title = issue?.title ?? "Pipeline run";
   const branch = issue?.metadata?.branchConfig?.branch ?? null;
   const chipStatus = run
-    ? runStatusToStatusKey(run.status)
+    ? drawerRunChip(run.status, issue ? runStatusChip(issue) : null)
     : statusToChip((issue?.status ?? "open") as IssueStatus);
   const isActive = run?.status === "running" || run?.status === "paused";
   // Pause is a "finish the in-flight step, then halt" gate (it does NOT abort
@@ -178,7 +178,14 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
       title={
         <span className="flex items-center gap-2.5">
           <MonoTag>{label}</MonoTag>
-          <StatusChip status={chipStatus} stage={chipStep} size="sm" domain="session" />
+          {/* The session vocabulary reads `paused` as an idle session; a pipeline run that is paused says so. */}
+          <StatusChip
+            status={chipStatus}
+            stage={chipStep}
+            size="sm"
+            domain="session"
+            label={chipStatus === "paused" ? "Paused" : undefined}
+          />
         </span>
       }
     >
@@ -198,6 +205,7 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
                 issueId={issue.id}
                 status={issue.status as IssueStatus}
                 agentStatus={issue.agentStatus ?? null}
+                pipelineHealth={issue.pipelineHealth}
                 priority={issue.priority as IssuePriority}
                 slug={slug}
                 onOpenIssue={openIssue}

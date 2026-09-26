@@ -66,6 +66,7 @@ export function LiveRunsCard({
                     <StatusChip
                       status={run.status === "paused" ? "paused" : "running"}
                       stage={run.status === "paused" ? undefined : (run.currentStep ?? undefined)}
+                      label={run.status === "paused" ? "Paused" : undefined}
                       domain="session"
                       size="sm"
                     />

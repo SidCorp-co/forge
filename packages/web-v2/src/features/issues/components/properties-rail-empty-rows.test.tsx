@@ -129,4 +129,25 @@ describe("the rail's two statuses", () => {
     const status = rowLabel("Status")?.parentElement as HTMLElement;
     expect(within(status).queryByText(word)).toBeNull();
   });
+
+  // ISS-1277 — a job no runner has claimed has no session, and is still a queued run.
+  const queuedJob = {
+    stage: "open",
+    queuedStep: { jobId: "j1", jobType: "drive", stageStatus: null, queuedAt: "2026-09-05T14:16:00Z", retryAfterAt: null },
+  };
+
+  it.each([
+    ["no session", null],
+    ["a failed session", "failed"],
+    ["a completed session", "completed"],
+  ] as const)("shows a job queued with %s as a Queued run", (_, agentStatus) => {
+    renderRail({ agentStatus, pipelineHealth: queuedJob });
+    const run = rowLabel("Run")?.parentElement as HTMLElement;
+    expect(within(run).getByText("Queued")).toBeInTheDocument();
+  });
+
+  it("shows no Run row when the pipeline has nothing queued and no session exists", () => {
+    renderRail({ agentStatus: null, pipelineHealth: { stage: "open" } });
+    expect(rowLabel("Run")).toBeNull();
+  });
 });

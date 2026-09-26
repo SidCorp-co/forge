@@ -182,7 +182,7 @@ export function PropertiesRail({
   const duplicates = [...incoming, ...outgoing].filter((e) => e.kind === "duplicates");
   const related = [...incoming, ...outgoing].filter((e) => e.kind === "relates");
   const held = heldByAgent(issue.status, issue.agentStatus);
-  const runChip = runStatusChip(issue.agentStatus);
+  const runChip = runStatusChip(issue);
   const tokens = totalTokens(cost);
   const hasModule = primaryModule !== undefined || secondaryModules.length > 0;
   // An empty field renders no row; one whose action this reader holds keeps the action, on the shared `Not set` row.
