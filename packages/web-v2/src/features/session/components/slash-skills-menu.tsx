@@ -2,10 +2,9 @@
 
 
 import { useEffect } from "react";
-import { Icon, Skeleton, Spinner } from "@/design";
+import { Icon, Popover, Skeleton, Spinner } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import type { InvokableSkill } from "@/features/skills/types";
-import { useAnchoredMenu } from "./anchored-menu";
 
 export interface SlashSkillsSource {
   /** The project's invokable skills; empty while loading or on error. */
@@ -81,14 +80,14 @@ export function SlashSkillsMenu({
   onReturnFocus,
   homeRef,
 }: SlashSkillsMenuProps) {
-  const pos = useAnchoredMenu({
-    open,
-    onClose,
-    anchorRef,
-    panelRef,
-    width: 360,
-    placement: "above",
-  });
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
 
   useEffect(() => {
     if (!open) return;
@@ -97,21 +96,17 @@ export function SlashSkillsMenu({
     if (typeof el?.scrollIntoView === "function") el.scrollIntoView({ block: "nearest" });
   }, [open, highlight, panelRef]);
 
-  if (!open) return null;
-
   return (
-    <div
+    <Popover
+      open={open}
+      anchor={anchorRef}
+      onDismiss={onClose}
+      placement="top-end"
+      maxHeight={280}
       role="listbox"
       aria-label="Insert a skill"
-      style={{
-        top: pos?.top,
-        bottom: pos?.bottom,
-        left: pos?.left,
-        width: pos?.width,
-        visibility: pos ? undefined : "hidden",
-      }}
-      className="forge-drop fixed z-50 max-h-[280px] overflow-y-auto rounded-lg border border-line bg-surface p-1.5 shadow-lg"
-      ref={panelRef}
+      className="forge-drop w-[360px] overflow-y-auto rounded-lg border border-line bg-surface p-1.5 shadow-lg"
+      panelRef={panelRef}
       onKeyDown={(e) => {
         if (e.key === "Escape") {
           e.preventDefault();
@@ -195,6 +190,6 @@ export function SlashSkillsMenu({
             </span>
           </button>
         ))}
-    </div>
+    </Popover>
   );
 }

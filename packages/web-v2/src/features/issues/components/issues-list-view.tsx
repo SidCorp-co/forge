@@ -14,6 +14,7 @@ import {
   ErrorState,
   Input,
   Pagination,
+  Popover,
   SectionTitle,
   SegmentedControl,
   Select,
@@ -211,12 +212,17 @@ export function IssuesListView({
   }, [pathname, search]);
   const isPinned = pinnedViews.isPinned(viewHref);
   const [pinOpen, setPinOpen] = useState(false);
+  const pinAnchor = useRef<HTMLDivElement>(null);
   const [pinName, setPinName] = useState("");
   const defaultPinLabel = `Issues${filter !== "all" ? ` · ${filter}` : ""}${q ? ` · "${q}"` : ""}`;
 
   function onPinClick() {
     if (isPinned) {
       pinnedViews.remove(viewHref);
+      return;
+    }
+    if (pinOpen) {
+      setPinOpen(false);
       return;
     }
     setPinName(defaultPinLabel);
@@ -461,7 +467,7 @@ export function IssuesListView({
             className="w-44"
           />
         </div>
-        <div className="relative sm:ml-auto">
+        <div ref={pinAnchor} className="relative sm:ml-auto">
           <Button
             variant={isPinned ? "secondary" : "ghost"}
             size="sm"
@@ -472,45 +478,39 @@ export function IssuesListView({
           >
             <span className="hidden sm:inline">{isPinned ? "Pinned" : "Pin view"}</span>
           </Button>
-          {pinOpen && (
-            <>
-              <button
-                type="button"
-                aria-label="Close"
-                tabIndex={-1}
-                className="fixed inset-0 z-10 cursor-default"
-                onClick={() => setPinOpen(false)}
-              />
-              <div
-                role="dialog"
-                aria-label="Pin this view"
-                className="absolute right-0 top-full z-20 mt-2 w-72 rounded-lg border border-line bg-surface p-3 shadow-lg"
-              >
-                <p className="fg-caption mb-2 text-muted">
-                  Pin this view — current filters are saved with it.
-                </p>
-                <Input
-                  value={pinName}
-                  onChange={(e) => setPinName(e.target.value)}
-                  placeholder={defaultPinLabel}
-                  aria-label="Pin name"
-                  autoFocus
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") confirmPin();
-                    if (e.key === "Escape") setPinOpen(false);
-                  }}
-                />
-                <div className="mt-2.5 flex justify-end gap-2">
-                  <Button variant="ghost" size="sm" onClick={() => setPinOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button variant="primary" size="sm" onClick={confirmPin}>
-                    Pin
-                  </Button>
-                </div>
-              </div>
-            </>
-          )}
+          <Popover
+            open={pinOpen}
+            anchor={pinAnchor}
+            onDismiss={() => setPinOpen(false)}
+            placement="bottom-end"
+            gap={8}
+            role="dialog"
+            aria-label="Pin this view"
+            className="w-72 overflow-y-auto rounded-lg border border-line bg-surface p-3 shadow-lg"
+          >
+            <p className="fg-caption mb-2 text-muted">
+              Pin this view — current filters are saved with it.
+            </p>
+            <Input
+              value={pinName}
+              onChange={(e) => setPinName(e.target.value)}
+              placeholder={defaultPinLabel}
+              aria-label="Pin name"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === "Enter") confirmPin();
+                if (e.key === "Escape") setPinOpen(false);
+              }}
+            />
+            <div className="mt-2.5 flex justify-end gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setPinOpen(false)}>
+                Cancel
+              </Button>
+              <Button variant="primary" size="sm" onClick={confirmPin}>
+                Pin
+              </Button>
+            </div>
+          </Popover>
         </div>
       </div>
 

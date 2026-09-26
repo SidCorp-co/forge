@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type RefObject, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ConfirmDialog, NotificationsMenu } from "@/design";
+import { ConfirmDialog, NotificationsMenu, Popover } from "@/design";
 import { useProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
@@ -26,9 +26,11 @@ export interface NotificationsBellProps {
   /** Dropdown visibility — toggled by the TopBar bell button in the layout. */
   open: boolean;
   onClose: () => void;
+  /** The bell button the dropdown is placed against. */
+  anchor: RefObject<HTMLElement | null>;
 }
 
-export function NotificationsBell({ open, onClose }: NotificationsBellProps) {
+export function NotificationsBell({ open, onClose, anchor }: NotificationsBellProps) {
   const router = useRouter();
   const { toast } = useToast();
   const { data: projects } = useProjects();
@@ -103,11 +105,16 @@ export function NotificationsBell({ open, onClose }: NotificationsBellProps) {
             variant: "ghost",
             loading: declineInvitation.isPending && declineInvitation.variables?.token === inv.token,
             disabled: acceptInvitation.isPending || declineInvitation.isPending,
-            onClick: () => setDeclineTarget(inv),
+            // The confirmation is a dialog in the page, and the dropdown sits in a
+            // portal above the page, so the dropdown steps aside for it.
+            onClick: () => {
+              setDeclineTarget(inv);
+              onClose();
+            },
           },
         ]),
       ),
-    [pendingQuery.data, acceptInvitation.isPending, acceptInvitation.variables, declineInvitation.isPending, declineInvitation.variables, onAccept],
+    [pendingQuery.data, acceptInvitation.isPending, acceptInvitation.variables, declineInvitation.isPending, declineInvitation.variables, onAccept, onClose],
   );
 
   // ISS-619 — a dependency-stall wedge's actionable target (the blocker/child
@@ -227,35 +234,32 @@ export function NotificationsBell({ open, onClose }: NotificationsBellProps) {
 
   return (
     <>
-      {open && (
-        <>
-          {/* click-away catcher */}
-          <button
-            type="button"
-            aria-label="Close notifications"
-            className="fixed inset-0 z-40 cursor-default"
-            onClick={onClose}
-          />
-          <div className="absolute right-4 top-[52px] z-50">
-            <NotificationsMenu
-              items={notificationItems}
-              loading={notificationsQuery.isLoading || pendingQuery.isLoading}
-              error={notificationsQuery.isError || pendingQuery.isError}
-              onRetry={() => {
-                notificationsQuery.refetch();
-                pendingQuery.refetch();
-              }}
-              onSelect={onSelectNotification}
-              onMarkAllRead={() => markAllRead.mutate()}
-              expandedId={expandedId}
-              expandedMembers={expandedMembers}
-              expandedLoading={membersQuery.isLoading}
-              onToggleGroup={onToggleGroup}
-              onSelectMember={onSelectMember}
-            />
-          </div>
-        </>
-      )}
+      <Popover
+        open={open}
+        anchor={anchor}
+        onDismiss={onClose}
+        placement="bottom-end"
+        gap={8}
+        lockScroll
+        className="flex flex-col overflow-y-auto"
+      >
+        <NotificationsMenu
+          items={notificationItems}
+          loading={notificationsQuery.isLoading || pendingQuery.isLoading}
+          error={notificationsQuery.isError || pendingQuery.isError}
+          onRetry={() => {
+            notificationsQuery.refetch();
+            pendingQuery.refetch();
+          }}
+          onSelect={onSelectNotification}
+          onMarkAllRead={() => markAllRead.mutate()}
+          expandedId={expandedId}
+          expandedMembers={expandedMembers}
+          expandedLoading={membersQuery.isLoading}
+          onToggleGroup={onToggleGroup}
+          onSelectMember={onSelectMember}
+        />
+      </Popover>
 
       {/* ISS-597 — decline confirmation modal */}
       <ConfirmDialog

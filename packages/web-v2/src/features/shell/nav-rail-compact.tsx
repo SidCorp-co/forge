@@ -12,6 +12,7 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { Icon, type IconName } from '@/design/icons/icon';
 import { Menu, type MenuItem } from '@/design/patterns/menu';
+import { Popover } from '@/design/primitives/popover';
 import { ProjectMark } from '@/design/primitives/project-mark';
 import { assetPath } from '@/lib/asset';
 import { cn } from '@/lib/utils/cn';
@@ -159,6 +160,7 @@ export function NavRailCompact({
   const [flyOpen, setFlyOpen] = useState(false);
   const [q, setQ] = useState('');
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const switcherRef = useRef<HTMLDivElement>(null);
 
   const show = useCallback(() => {
     if (closeTimer.current) clearTimeout(closeTimer.current);
@@ -213,7 +215,7 @@ export function NavRailCompact({
       {orgSwitcher && <div className="mb-3">{orgSwitcher}</div>}
 
       {projectItems && projectItems.length > 0 && activeProject && (
-        <div className="relative" onMouseEnter={show} onMouseLeave={hide}>
+        <div ref={switcherRef} className="relative" onMouseEnter={show} onMouseLeave={hide}>
           <button
             type="button"
             onClick={show}
@@ -247,89 +249,92 @@ export function NavRailCompact({
             )}
           </button>
 
-          {flyOpen && (
-            <div
-              role="dialog"
-              aria-label="Switch project"
-              className="absolute left-[calc(100%+10px)] top-[-6px] z-20 w-64 rounded-lg border border-line bg-surface p-[7px] shadow-[var(--shadow-lg)]"
-            >
-              {/* Diamond arrow on the left edge. */}
-              <span
-                aria-hidden
-                className="absolute left-[-6px] top-[22px] size-[11px] rotate-45"
-                style={{
-                  background: 'var(--bg-surface)',
-                  borderLeft: '1px solid var(--border-default)',
-                  borderBottom: '1px solid var(--border-default)',
-                }}
+          <Popover
+            open={flyOpen}
+            anchor={switcherRef}
+            onDismiss={() => setFlyOpen(false)}
+            placement="right-start"
+            gap={10}
+            role="dialog"
+            aria-label="Switch project"
+            className="w-64 rounded-lg border border-line bg-surface p-[7px] shadow-[var(--shadow-lg)]"
+          >
+            {/* Diamond arrow on the left edge. */}
+            <span
+              aria-hidden
+              className="absolute left-[-6px] top-[22px] size-[11px] rotate-45"
+              style={{
+                background: 'var(--bg-surface)',
+                borderLeft: '1px solid var(--border-default)',
+                borderBottom: '1px solid var(--border-default)',
+              }}
+            />
+            <div className="mb-1 flex items-center gap-[7px] border-b border-line-subtle px-2 py-1.5">
+              <Icon name="search" size={14} className="text-subtle" />
+              <input
+                autoFocus
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Find a project…"
+                className="flex-1 border-none bg-transparent py-0.5 text-13 text-fg outline-none placeholder:text-disabled"
               />
-              <div className="mb-1 flex items-center gap-[7px] border-b border-line-subtle px-2 py-1.5">
-                <Icon name="search" size={14} className="text-subtle" />
-                <input
-                  autoFocus
-                  value={q}
-                  onChange={(e) => setQ(e.target.value)}
-                  placeholder="Find a project…"
-                  className="flex-1 border-none bg-transparent py-0.5 text-13 text-fg outline-none placeholder:text-disabled"
-                />
-              </div>
-              <div className="max-h-[300px] overflow-y-auto">
-                {rows.map((p) => (
-                  <div
-                    key={p.id}
+            </div>
+            <div className="max-h-[300px] overflow-y-auto">
+              {rows.map((p) => (
+                <div
+                  key={p.id}
+                  className={cn(
+                    'flex w-full items-center gap-[9px] rounded-sm px-2 py-[7px]',
+                    p.slug === activeSlug ? 'bg-accent-tint' : 'hover:bg-hover',
+                  )}
+                >
+                  <button
+                    type="button"
+                    onClick={() => selectProject(p.slug)}
+                    className="flex min-w-0 flex-1 items-center gap-[9px] text-left focus-visible:outline-none"
+                  >
+                    <ProjectMark tint={p.tint} ink={p.ink} initials={p.initials} size={20} radius="var(--r-sm)" />
+                    <span className="min-w-0 flex-1 truncate text-13 font-medium text-fg">{p.name}</span>
+                    {p.liveRuns > 0 && (
+                      <span className="size-1.5 flex-none rounded-pill" style={{ background: 'var(--accent)' }} />
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onTogglePin(p.id)}
+                    aria-label={p.pinned ? `Unpin ${p.name}` : `Pin ${p.name}`}
+                    aria-pressed={p.pinned}
                     className={cn(
-                      'flex w-full items-center gap-[9px] rounded-sm px-2 py-[7px]',
-                      p.slug === activeSlug ? 'bg-accent-tint' : 'hover:bg-hover',
+                      'flex flex-none rounded-xs p-3px transition-colors hover:bg-active',
+                      p.pinned ? 'text-accent' : 'text-disabled hover:text-fg',
                     )}
                   >
-                    <button
-                      type="button"
-                      onClick={() => selectProject(p.slug)}
-                      className="flex min-w-0 flex-1 items-center gap-[9px] text-left focus-visible:outline-none"
-                    >
-                      <ProjectMark tint={p.tint} ink={p.ink} initials={p.initials} size={20} radius="var(--r-sm)" />
-                      <span className="min-w-0 flex-1 truncate text-13 font-medium text-fg">{p.name}</span>
-                      {p.liveRuns > 0 && (
-                        <span className="size-1.5 flex-none rounded-pill" style={{ background: 'var(--accent)' }} />
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onTogglePin(p.id)}
-                      aria-label={p.pinned ? `Unpin ${p.name}` : `Pin ${p.name}`}
-                      aria-pressed={p.pinned}
-                      className={cn(
-                        'flex flex-none rounded-xs p-3px transition-colors hover:bg-active',
-                        p.pinned ? 'text-accent' : 'text-disabled hover:text-fg',
-                      )}
-                    >
-                      <Icon name="pin" size={14} strokeWidth={p.pinned ? 2.4 : 1.75} />
-                    </button>
-                  </div>
-                ))}
-                {rows.length === 0 && (
-                  <p className="px-2 py-3 text-13 text-muted">No projects match.</p>
-                )}
-              </div>
-              <div className="my-1.5 mx-1 h-px bg-[color:var(--border-subtle)]" />
-              <button
-                type="button"
-                onClick={() => { setFlyOpen(false); onAllProjects(); }}
-                className="flex w-full items-center gap-2.5 rounded-sm p-2 text-13 font-medium text-fg hover:bg-hover"
-              >
-                <Icon name="folder" size={16} className="text-subtle" />
-                View all
-              </button>
-              <button
-                type="button"
-                onClick={() => { setFlyOpen(false); onNewProject(); }}
-                className="flex w-full items-center gap-2.5 rounded-sm p-2 text-13 font-medium text-fg hover:bg-hover"
-              >
-                <Icon name="plus" size={16} className="text-subtle" />
-                New project
-              </button>
+                    <Icon name="pin" size={14} strokeWidth={p.pinned ? 2.4 : 1.75} />
+                  </button>
+                </div>
+              ))}
+              {rows.length === 0 && (
+                <p className="px-2 py-3 text-13 text-muted">No projects match.</p>
+              )}
             </div>
-          )}
+            <div className="my-1.5 mx-1 h-px bg-[color:var(--border-subtle)]" />
+            <button
+              type="button"
+              onClick={() => { setFlyOpen(false); onAllProjects(); }}
+              className="flex w-full items-center gap-2.5 rounded-sm p-2 text-13 font-medium text-fg hover:bg-hover"
+            >
+              <Icon name="folder" size={16} className="text-subtle" />
+              View all
+            </button>
+            <button
+              type="button"
+              onClick={() => { setFlyOpen(false); onNewProject(); }}
+              className="flex w-full items-center gap-2.5 rounded-sm p-2 text-13 font-medium text-fg hover:bg-hover"
+            >
+              <Icon name="plus" size={16} className="text-subtle" />
+              New project
+            </button>
+          </Popover>
         </div>
       )}
 
