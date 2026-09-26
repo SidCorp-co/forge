@@ -228,11 +228,21 @@ export async function authenticatePat(
   };
 }
 
-const DEVICE_TOKEN_REFUSAL =
+const NOT_A_PAT_REFUSAL =
+  'this is not a Forge personal access token — those start with `forge_pat_`; create one ' +
+  'under Settings → API Tokens and paste it whole after `Bearer `. If this is a runner box: ' +
   'device tokens no longer authenticate /mcp — an agent session presents its own ' +
   '`job:`/`session:` token, minted by core and written into the job MCP config by ' +
   'forge-runner. A runner box seeing this needs a newer forge-runner binary; the device ' +
   'token still authenticates /ws and the device REST routes.';
+
+/** A token wrapped in angle brackets is a snippet's placeholder nobody replaced (ISS-1175). */
+const PLACEHOLDER_TOKEN = /^<[^<>]*>$/;
+
+const placeholderRefusal = (token: string) =>
+  `the Authorization header still holds the placeholder ${token} — replace it, angle brackets ` +
+  'included, with a personal access token created under Settings → API Tokens (it starts ' +
+  'with `forge_pat_`), keeping `Bearer ` in front of it.';
 
 export const requirePat = (): MiddlewareHandler<{ Variables: PrincipalVars }> => {
   return async (c, next) => {
@@ -242,7 +252,9 @@ export const requirePat = (): MiddlewareHandler<{ Variables: PrincipalVars }> =>
       throw unauth('invalid authorization header', { invalidRequest: true });
     const token = parsed.token;
 
-    if (!isPatLike(token)) throw unauth(DEVICE_TOKEN_REFUSAL, { invalidToken: true });
+    if (PLACEHOLDER_TOKEN.test(token))
+      throw unauth(placeholderRefusal(token), { invalidToken: true });
+    if (!isPatLike(token)) throw unauth(NOT_A_PAT_REFUSAL, { invalidToken: true });
 
     const principal = await authenticatePat(c, token, c.get('patRequestClass') ?? 'write');
     if (!principal) throw unauth('invalid personal access token', { invalidToken: true });

@@ -245,6 +245,51 @@ describe('requirePat middleware (ISS-150, ISS-931)', () => {
   });
 });
 
+describe('requirePat — the refusal a pasted config meets (ISS-1175)', () => {
+  it('says a token lacking the PAT prefix is not a personal access token, before the device history', async () => {
+    const app = makeApp();
+    const res = await app.request('/whoami', {
+      headers: { authorization: 'Bearer forge_pat_live_1234' },
+    });
+    expect(res.status).toBe(401);
+    expect(vi.mocked(verifyPat)).not.toHaveBeenCalled();
+    const { message } = (await res.json()) as { message: string };
+    expect(message).toMatch(/^this is not a Forge personal access token/);
+    expect(message).toMatch(/start with `forge_pat_`/);
+    expect(message).toMatch(/Settings → API Tokens/);
+    expect(message.indexOf('personal access token')).toBeLessThan(message.indexOf('device tokens'));
+  });
+
+  it.each(['<YOUR_TOKEN_HERE>', '<token>', '<>'])(
+    'names the placeholder %s a snippet was pasted with, instead of the device refusal',
+    async (placeholder) => {
+      const app = makeApp();
+      const res = await app.request('/whoami', {
+        headers: { authorization: `Bearer ${placeholder}` },
+      });
+      expect(res.status).toBe(401);
+      expect(vi.mocked(verifyPat)).not.toHaveBeenCalled();
+      const body = (await res.json()) as { code: string; message: string };
+      expect(body.code).toBe('UNAUTHENTICATED');
+      expect(body.message).toContain(`still holds the placeholder ${placeholder}`);
+      expect(body.message).toMatch(/Settings → API Tokens/);
+      expect(body.message).not.toMatch(/device tokens|forge-runner/);
+      expect(res.headers.get('WWW-Authenticate')).toBe(
+        'Bearer realm="forge-mcp", error="invalid_token"',
+      );
+    },
+  );
+
+  it('does not take a token merely containing brackets for the placeholder', async () => {
+    const app = makeApp();
+    const res = await app.request('/whoami', {
+      headers: { authorization: 'Bearer abc<def>' },
+    });
+    const { message } = (await res.json()) as { message: string };
+    expect(message).toMatch(/^this is not a Forge personal access token/);
+  });
+});
+
 /**
  * ISS-961 — reads and writes are two budgets on one token, and the 429 says
  * enough for a client to act without guessing.
