@@ -3099,6 +3099,7 @@
 
 ### Fixed
 
+- **Throughput counts each shipped issue once, on the day it first shipped.** An issue passing through awaiting release then closed, or reopened and closed again, counted each time. Project health and cost per closed now agree.
 - **On an issue, the description now gets most of the width and comes first.** Attachments sit above its text, empty panels and fields take a line or nothing, the title wraps, and the run's state has its own label.
 - **A project that names no release runner can now release.** The label was demanded by a refusal that said any value would do. Naming one still prefers that box; naming two different ones is still refused.
 - **A message sent to a master is no longer answered by Claude Code's Rewind picker.** Its highlighted row stands alone between blank lines, which read as no menu, so the Enter took a choice and the message vanished.
