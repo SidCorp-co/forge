@@ -41,10 +41,16 @@ function wheel(target: Element, deltaY: number): boolean {
   return e.defaultPrevented;
 }
 
-function touch(target: Element): boolean {
-  const e = new Event("touchmove", { bubbles: true, cancelable: true });
-  target.dispatchEvent(e);
-  return e.defaultPrevented;
+/** A drag from `fromY` to `toY`: upward (toY < fromY) scrolls content down. */
+function touch(target: Element, fromY = 300, toY = 200): boolean {
+  const at = (type: string, y: number) => {
+    const e = new Event(type, { bubbles: true, cancelable: true });
+    Object.defineProperty(e, "touches", { value: [{ clientY: y }] });
+    target.dispatchEvent(e);
+    return e;
+  };
+  at("touchstart", fromY);
+  return at("touchmove", toY).defaultPrevented;
 }
 
 describe("useScrollLock", () => {
@@ -71,10 +77,19 @@ describe("useScrollLock", () => {
     expect(wheel(getByTestId("label"), 120)).toBe(true);
   });
 
-  it("cancels a touch drag outside the surface and leaves one inside it", () => {
+  it("cancels a touch drag outside the surface and leaves one inside it that scrolls", () => {
     const { getByTestId } = render(<Harness active />);
+    extent(getByTestId("list"), { top: 0, client: 100, total: 400 });
     expect(touch(getByTestId("page"))).toBe(true);
     expect(touch(getByTestId("row"))).toBe(false);
+  });
+
+  it("cancels a touch drag inside the surface over nothing that scrolls, or past a list's end", () => {
+    const { getByTestId } = render(<Harness active />);
+    expect(touch(getByTestId("label"))).toBe(true);
+    extent(getByTestId("list"), { top: 300, client: 100, total: 400 });
+    expect(touch(getByTestId("row"), 300, 200)).toBe(true);
+    expect(touch(getByTestId("row"), 200, 300)).toBe(false);
   });
 
   it("holds nothing while inactive", () => {

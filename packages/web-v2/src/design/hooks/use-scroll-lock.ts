@@ -26,28 +26,40 @@ function home(target: EventTarget | null): HTMLElement | null {
   return null;
 }
 
-function onWheel(e: WheelEvent) {
-  const root = home(e.target);
-  if (root) {
-    for (let n = e.target as HTMLElement | null; n; n = n.parentElement) {
-      if (scrollsFurther(n, e.deltaY)) return;
-      if (n === root) break;
-    }
+/** Whether a scroll of `deltaY` at `target` moves something inside an open surface. */
+function scrollsInside(target: EventTarget | null, deltaY: number): boolean {
+  const root = home(target);
+  if (!root) return false;
+  for (let n = target as HTMLElement | null; n; n = n.parentElement) {
+    if (scrollsFurther(n, deltaY)) return true;
+    if (n === root) break;
   }
-  e.preventDefault();
+  return false;
 }
 
+function onWheel(e: WheelEvent) {
+  if (!scrollsInside(e.target, e.deltaY)) e.preventDefault();
+}
+
+let touchY = 0;
+function onTouchStart(e: TouchEvent) {
+  touchY = e.touches[0]?.clientY ?? 0;
+}
 function onTouchMove(e: TouchEvent) {
-  if (!home(e.target)) e.preventDefault();
+  const y = e.touches[0]?.clientY ?? touchY;
+  if (!scrollsInside(e.target, touchY - y)) e.preventDefault();
+  touchY = y;
 }
 
 const OPTS = { capture: true, passive: false } as const;
+const WATCH = { capture: true, passive: true } as const;
 
 /**
  * Holds the page still while a floating surface is open: a wheel or touch
  * scroll is cancelled unless it lands inside an open surface AND something
- * there can still scroll that way. The workspace scrolls `<main>`, not the
- * document, so `overflow: hidden` on the body would lock nothing.
+ * there can still scroll that way (a touch's way is read off its drag). The
+ * workspace scrolls `<main>`, not the document, so `overflow: hidden` on the
+ * body would lock nothing.
  */
 export function useScrollLock(
   active: boolean,
@@ -60,6 +72,7 @@ export function useScrollLock(
     const entry: Roots = roots;
     if (open.size === 0) {
       document.addEventListener("wheel", onWheel, OPTS);
+      document.addEventListener("touchstart", onTouchStart, WATCH);
       document.addEventListener("touchmove", onTouchMove, OPTS);
     }
     open.add(entry);
@@ -67,6 +80,7 @@ export function useScrollLock(
       open.delete(entry);
       if (open.size === 0) {
         document.removeEventListener("wheel", onWheel, OPTS);
+        document.removeEventListener("touchstart", onTouchStart, WATCH);
         document.removeEventListener("touchmove", onTouchMove, OPTS);
       }
     };
