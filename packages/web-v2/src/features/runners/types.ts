@@ -55,11 +55,13 @@ export interface DeviceRow {
  * A row of `GET /api/orgs/:orgId/devices` — the organisation's devices, over the
  * projects this caller can see, whoever paired them (ISS-1162).
  *
- * `runnerCount` is the bridge between the two nouns the screens disagreed about:
- * a runner is one (device, project) binding, so one box can stand behind several
- * of the runners the Overview counts.
+ * Narrower than `DeviceRow`: `capabilities` and `gate` are a box's own
+ * diagnostics and stay with its owner. `runnerCount` is the bridge between the
+ * two nouns — a runner is one (device, project) binding, so one box stands
+ * behind several of the runners the Overview counts, and `projectNames` holds
+ * one entry per assignment.
  */
-export interface OrgDeviceRow extends DeviceRow {
+export interface OrgDeviceRow extends Omit<DeviceRow, "capabilities" | "gate"> {
 	runnerCount: number;
 	projectNames: string[];
 }

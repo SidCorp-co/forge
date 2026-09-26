@@ -26,9 +26,7 @@ export function populationLine(scope: DeviceScope): string {
 		: "Every device assigned to a project you can see in this organisation, whoever paired it.";
 }
 
-/** Reconciles this page's device count with the Overview's runner count.
- *  Withheld until both figures are known: a sentence asserting either before its
- *  query answered asserts something nothing measured. */
+/** Reconciles this page's device count with the Overview's runner count. */
 export function assignmentBridgeLine(
 	deviceCount: DeviceCount,
 	runnerAssignments: DeviceCount,
@@ -39,6 +37,12 @@ export function assignmentBridgeLine(
 	const assignments =
 		runnerAssignments === 1 ? "1 runner assignment" : `${runnerAssignments} runner assignments`;
 	return `${boxes} ${assignments} between them — the assignments are what Overview counts as runners.`;
+}
+
+/** What the org list says in place of the owner's controls. */
+export function rowActionNote(scope: DeviceScope, ownedByMe: boolean): string | null {
+	if (scope === "mine") return null;
+	return ownedByMe ? "yours — manage it under Mine" : "read only";
 }
 
 export interface ScopeEmptyState {

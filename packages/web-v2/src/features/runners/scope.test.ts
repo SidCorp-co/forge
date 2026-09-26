@@ -9,6 +9,7 @@ import {
 	assignmentBridgeLine,
 	emptyState,
 	populationLine,
+	rowActionNote,
 	scopeCountLabel,
 	scopeName,
 	UNKNOWN_COUNT,
@@ -69,6 +70,20 @@ describe("the line reconciling devices with the Overview's runners", () => {
 
 	it("is withheld where there is no device to say it about", () => {
 		expect(assignmentBridgeLine(0, 0)).toBeNull();
+	});
+});
+
+describe("what stands in for the owner's controls on the org list", () => {
+	it("withholds nothing on the caller's own list", () => {
+		expect(rowActionNote("mine", true)).toBeNull();
+	});
+
+	it("says a row is read only where another member paired it", () => {
+		expect(rowActionNote("org", false)).toBe("read only");
+	});
+
+	it("points a caller at the list where their own box always appears", () => {
+		expect(rowActionNote("org", true)).toContain("Mine");
 	});
 });
 

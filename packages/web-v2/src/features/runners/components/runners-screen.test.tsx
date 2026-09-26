@@ -50,12 +50,12 @@ function device(over: Partial<DeviceRow> = {}): DeviceRow {
 }
 
 function orgDevice(over: Partial<OrgDeviceRow> = {}): OrgDeviceRow {
-	return {
-		...device({ id: "dev-2", name: "sid-xeon-1", ownedByMe: false }),
-		runnerCount: 2,
-		projectNames: ["Pipeline Alpha", "Pipeline Beta"],
-		...over,
-	};
+	const { capabilities: _c, gate: _g, ...rest } = device({
+		id: "dev-2",
+		name: "sid-xeon-1",
+		ownedByMe: false,
+	});
+	return { ...rest, runnerCount: 2, projectNames: ["Pipeline Alpha", "Pipeline Beta"], ...over };
 }
 
 function Wrap({ children }: { children: ReactNode }) {
@@ -115,6 +115,16 @@ describe("the own scope", () => {
 		expect(screen.getByText("my-laptop")).toBeTruthy();
 	});
 
+	it("keeps the owner's controls, which the org list does not carry", async () => {
+		listDevices.mockResolvedValue([device()]);
+
+		await show();
+
+		expect(screen.getByRole("button", { name: "Manage" })).toBeTruthy();
+		expect(screen.getByRole("button", { name: "Turn off" })).toBeTruthy();
+		expect(screen.getByRole("button", { name: "Revoke" })).toBeTruthy();
+	});
+
 	it("lists the owner's devices whatever project they serve, the call carrying no org filter", async () => {
 		listDevices.mockResolvedValue([device({ name: "just-paired" })]);
 
@@ -157,6 +167,17 @@ describe("the organisation scope", () => {
 		expect(screen.queryByRole("button", { name: "Revoke" })).toBeNull();
 		expect(screen.queryByRole("button", { name: "Manage" })).toBeNull();
 		expect(screen.getByText("read only")).toBeTruthy();
+	});
+
+	it("points a caller at Mine for a box of their own standing in the org list", async () => {
+		listOrgDevices.mockResolvedValue([orgDevice({ id: "dev-9", ownedByMe: true })]);
+
+		await show();
+		tab(/^Organisation · /).click();
+		await screen.findByText("sid-xeon-1");
+
+		expect(screen.getByText("yours — manage it under Mine")).toBeTruthy();
+		expect(screen.queryByRole("button", { name: "Manage" })).toBeNull();
 	});
 
 	it("names every project in the organisation the device serves", async () => {

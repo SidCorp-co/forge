@@ -194,6 +194,58 @@ describe('GET /api/orgs/:orgId/devices', () => {
     expect([...(rows[0]?.projectNames ?? [])].sort()).toEqual([...f.visibleProjectNames].sort());
   });
 
+  it('names one project per assignment, two projects sharing a name included', async () => {
+    const f = await seed();
+    const twin = await createTestProject(harness.db, f.callerId, {
+      orgId: f.orgId,
+      name: 'Pipeline Alpha',
+    });
+    await createTestProjectMember(harness.db, { userId: f.callerId, projectId: twin.id });
+    await addRunner(harness.db, {
+      projectId: twin.id,
+      deviceId: f.otherMemberDeviceId,
+      name: 'theirs-twin',
+    });
+
+    const res = await app.fetch(get(`/api/orgs/${f.orgId}/devices`, f.callerToken));
+    const body = (await res.json()) as OrgDeviceBody[];
+    const row = body.find((d) => d.id === f.otherMemberDeviceId);
+
+    // The count and the names answer for the same set: a name list shorter than
+    // the count would tell a reader the box serves fewer projects than it does.
+    expect(row?.runnerCount).toBe(3);
+    expect(row?.projectNames).toHaveLength(3);
+    expect(row?.projectNames.filter((n) => n === 'Pipeline Alpha')).toHaveLength(2);
+  });
+
+  it('the assignments it reports sum to the runner count the Overview takes', async () => {
+    const f = await seed();
+
+    const res = await app.fetch(get(`/api/orgs/${f.orgId}/devices`, f.callerToken));
+    const body = (await res.json()) as OrgDeviceBody[];
+
+    const { readPulseLiveness } = await import('../../src/me/pulse-liveness.js');
+    const { PULSE_THRESHOLDS } = await import('../../src/me/pulse-types.js');
+    const { loadVisibleProjectIds } = await import('../../src/lib/authz.js');
+    const visible = await loadVisibleProjectIds(f.callerId);
+    const pulse = await readPulseLiveness(visible, PULSE_THRESHOLDS, new Date());
+
+    expect(body.reduce((n, d) => n + d.runnerCount, 0)).toBe(pulse.devices.total);
+  });
+
+  it('withholds the box diagnostics that belong to its owner', async () => {
+    const f = await seed();
+
+    const res = await app.fetch(get(`/api/orgs/${f.orgId}/devices`, f.callerToken));
+    const body = (await res.json()) as Array<Record<string, unknown>>;
+    const theirs = body.find((d) => d.id === f.otherMemberDeviceId);
+
+    expect(theirs).toBeDefined();
+    expect(theirs).not.toHaveProperty('capabilities');
+    expect(theirs).not.toHaveProperty('gate');
+    expect(theirs).not.toHaveProperty('ownerId');
+  });
+
   it('omits a device bound only to a project this caller cannot see', async () => {
     const f = await seed();
 

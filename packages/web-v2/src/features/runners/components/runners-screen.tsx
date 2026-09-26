@@ -45,6 +45,7 @@ import {
   type DeviceScope,
   emptyState,
   populationLine,
+  rowActionNote,
   SCOPES,
   scopeCountLabel,
   scopeName,
@@ -263,8 +264,9 @@ export function RunnersScreen() {
 
   const active = scope === "mine" ? mine : org;
   const rows: Array<DeviceRow | OrgDeviceRow> = active.data ?? [];
-  // Re-derive from the live list so rename/status updates reflect in the open panel.
-  const detailDevice = rows.find((d) => d.id === detailId) ?? null;
+  // Read off the owner list, not the visible one: Manage is offered in the own
+  // scope alone, and re-deriving here keeps rename and status live in the panel.
+  const detailDevice = mine.data?.find((d) => d.id === detailId) ?? null;
   const empty = emptyState(scope, counts);
 
   return (
@@ -325,6 +327,7 @@ export function RunnersScreen() {
                 {rows.map((d) => {
                   const revoked = d.status === "revoked";
                   const disabled = !!d.disabledAt;
+                  const actionNote = rowActionNote(scope, d.ownedByMe);
                   return (
                     <TR key={d.id}>
                       <TD>
@@ -363,11 +366,8 @@ export function RunnersScreen() {
                         <span className="text-muted">{formatRelativeTime(d.lastSeenAt, { emptyLabel: "never" })}</span>
                       </TD>
                       <TD className="text-right">
-                        {/* Rename, turn-off and revoke are refused by name for a
-                            non-owner, so the row does not offer them: a control
-                            that always 403s is worse than no control (ISS-1162). */}
-                        {!d.ownedByMe ? (
-                          <span className="fg-body-sm text-subtle">read only</span>
+                        {actionNote !== null ? (
+                          <span className="fg-body-sm text-subtle">{actionNote}</span>
                         ) : confirmId === d.id ? (
                           <RevokeDeviceControl
                             deviceId={d.id}
