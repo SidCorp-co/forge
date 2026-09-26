@@ -2,6 +2,7 @@
 title: Troubleshooting
 section: Troubleshooting
 order: 10
+audience: user
 ---
 
 # Troubleshooting

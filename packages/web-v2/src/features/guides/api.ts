@@ -62,3 +62,20 @@ export const fetchGuide = cache(async (slug: string): Promise<Guide | null> => {
   }
   return guide as Guide;
 });
+
+/** Every guide with its body, in registry order — what lets the public search reach the words
+ *  inside an agent guide and not only its title. A slug the index lists and core then answers 404
+ *  for is refused by name: dropping it would publish a door missing a page with nothing said. */
+export const fetchGuideCorpus = cache(async (): Promise<Guide[]> => {
+  const index = await fetchGuideIndex();
+  const guides = await Promise.all(index.map((g) => fetchGuide(g.slug)));
+  const missing = index.filter((_, i) => guides[i] === null).map((g) => g.slug);
+  if (missing.length > 0) {
+    throw new GuideFetchError(
+      "reading every guide",
+      `${resolveServerApiBase()}/guides`,
+      `the index lists ${missing.join(", ")} and core answers 404 for ${missing.length === 1 ? "it" : "them"}`,
+    );
+  }
+  return guides as Guide[];
+});

@@ -2,6 +2,7 @@
 title: Tell when an issue is done
 section: Guides
 order: 6
+audience: user
 ---
 
 # Tell when an issue is done

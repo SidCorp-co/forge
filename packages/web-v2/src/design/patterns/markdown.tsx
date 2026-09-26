@@ -43,15 +43,15 @@ const linkRenderer: Components["a"] = ({ href, children }) => (
   <BodyLink href={href}>{children}</BodyLink>
 );
 
-/** Link renderer for the Docs viewer: relative `.md` links navigate inside the
- *  viewer (`/docs?path=…`); everything else falls back to the shared rule. This
+/** Link renderer for a docs reader: relative `.md` links navigate inside the
+ *  reader (`<docRoute>?path=…`); everything else falls back to the shared rule. This
  *  is the one place a `Markdown` and a `BodyView` given the same bare-relative
  *  href answer differently, and it is deliberate. */
-function makeDocLinkRenderer(docBasePath: string): Components["a"] {
+function makeDocLinkRenderer(docBasePath: string, docRoute: string): Components["a"] {
   return ({ href, children }) => {
     if (href && isRelativeDocLink(href)) {
       return (
-        <a href={`/docs?path=${encodeURIComponent(resolveDocPath(docBasePath, href))}`} className={LINK_CLASS}>
+        <a href={`${docRoute}?path=${encodeURIComponent(resolveDocPath(docBasePath, href))}`} className={LINK_CLASS}>
           {children}
         </a>
       );
@@ -152,14 +152,22 @@ export interface MarkdownProps {
   /** Current doc's repo-root path. When set, relative `.md` links resolve to
    *  in-viewer navigation (`/docs?path=…`) instead of the external core origin. */
   docBasePath?: string;
+  /** Where those links navigate: `/docs` in the workspace, `/guides` on the public pages. */
+  docRoute?: string;
 }
 
 /** Render trusted-ish markdown (issue descriptions, comments, plans, docs). */
-export function Markdown({ children, className, variant = "compact", docBasePath }: MarkdownProps): ReactNode {
+export function Markdown({
+  children,
+  className,
+  variant = "compact",
+  docBasePath,
+  docRoute = "/docs",
+}: MarkdownProps): ReactNode {
   const components = useMemo<Components>(() => {
     const base = variant === "prose" ? proseComponents : compactComponents;
-    return docBasePath ? { ...base, a: makeDocLinkRenderer(docBasePath) } : base;
-  }, [variant, docBasePath]);
+    return docBasePath ? { ...base, a: makeDocLinkRenderer(docBasePath, docRoute) } : base;
+  }, [variant, docBasePath, docRoute]);
   return (
     <div className={cn("min-w-0 max-w-full break-words [overflow-wrap:anywhere]", className)}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components} urlTransform={sameUrl}>

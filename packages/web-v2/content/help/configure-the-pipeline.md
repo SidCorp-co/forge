@@ -2,6 +2,7 @@
 title: Configure the pipeline & approvals
 section: Guides
 order: 20
+audience: user
 ---
 
 # Configure the pipeline & approvals

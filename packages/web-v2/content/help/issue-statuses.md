@@ -2,6 +2,7 @@
 title: Read an issue's status
 section: Reference
 order: 10
+audience: user
 ---
 
 # Read an issue's status

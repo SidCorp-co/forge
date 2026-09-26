@@ -2,6 +2,7 @@
 title: Connect another app
 section: Connect an assistant
 order: 50
+audience: assistant-setup
 ---
 
 # Connect another app

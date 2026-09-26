@@ -38,3 +38,26 @@ describe("a link inside the Docs viewer", () => {
     expect(hrefOf("[Nowhere](?path=)")).toBe("/docs?path=");
   });
 });
+
+describe("a link inside the public documentation reader", () => {
+  function publicHref(markdown: string): string | null {
+    const { container } = render(
+      <Markdown docBasePath="connect-an-assistant/cursor" docRoute="/guides">
+        {markdown}
+      </Markdown>,
+    );
+    return container.querySelector("a")?.getAttribute("href") ?? null;
+  }
+
+  it("stays on /guides instead of the sign-in-gated /docs", () => {
+    expect(publicHref("[Fix](?path=connect-an-assistant/when-it-does-not-work)")).toBe(
+      "/guides?path=connect-an-assistant%2Fwhen-it-does-not-work",
+    );
+  });
+
+  it("resolves a bare slug against the current page's folder", () => {
+    expect(publicHref("[Ask](what-you-can-ask)")).toBe(
+      "/guides?path=connect-an-assistant%2Fwhat-you-can-ask",
+    );
+  });
+});
