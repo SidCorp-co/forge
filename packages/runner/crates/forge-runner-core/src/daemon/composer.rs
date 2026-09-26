@@ -102,16 +102,37 @@ fn framed(lines: &[Line]) -> Option<(usize, Composer)> {
 /// column zero. And one of the two neighbouring lines starts its own text at
 /// the column this line's text starts at, which is what makes the line one of
 /// a list rather than a prompt with something indented above it.
+///
+/// Neither mark survives being quoted, so a marker inside a message already
+/// sent is excluded as well: the transcript indents the body of an echo, and
+/// a menu somebody described in one is drawn with both marks and decides
+/// nothing.
 fn choice(lines: &[Line]) -> Option<(usize, String)> {
     (0..lines.len()).rev().find_map(|i| {
         let at = marker(&lines[i].all).filter(|at| *at > 0)?;
         let text = at + MARKER_WIDTH;
         let aligned = |j: usize| lines.get(j).and_then(|l| indent(&l.all)) == Some(text);
-        if !((i > 0 && aligned(i - 1)) || aligned(i + 1)) {
+        if !((i > 0 && aligned(i - 1)) || aligned(i + 1)) || echoed(lines, i) {
             return None;
         }
         Some((i, after_prompt(&lines[i].all).trim().to_string()))
     })
+}
+
+/// Whether the line at `i` is inside the transcript's echo of a message
+/// already sent.
+///
+/// An echo opens with the marker at column zero and everything under it is
+/// indented, blank lines included, until the next thing drawn at column zero.
+/// Every dialog Claude Code raises is drawn in a box whose own border starts
+/// at column zero, so the nearest column-zero line above a real menu is that
+/// border and never an echo's opening line.
+fn echoed(lines: &[Line], i: usize) -> bool {
+    (0..i)
+        .rev()
+        .filter_map(|j| indent(&lines[j].all).map(|at| (j, at)))
+        .find(|(_, at)| *at == 0)
+        .is_some_and(|(j, _)| marker(&lines[j].all) == Some(0))
 }
 
 /// The column a line's own text starts at, or `None` for a blank line.
@@ -402,6 +423,54 @@ mod tests {
         ]
         .join("\n");
         assert_eq!(read(&transcript), Composer::Unrecognised);
+    }
+
+    /// A verbatim paste of a permission dialog, sent to a real Claude Code and
+    /// captured off its transcript: the columns below are that echo's.
+    const QUOTED: &str = include_str!("../../assets/composer-quoted-menu-paste.txt");
+
+    #[test]
+    fn a_menu_quoted_inside_a_message_already_sent_decides_nothing_and_reads_as_none() {
+        // An orchestrator describing this very defect to a master sends a
+        // message holding a menu, and the transcript echoes it indented — the
+        // marker at column 3, its sibling option at column 5. Both marks are
+        // then drawn by text nobody can press Enter in. With no composer
+        // repainted under it, this is the whole of what the pane shows.
+        let quoted = [
+            "\u{276f} Verbatim paste of a dialog follows.",
+            "   Do you want to create hello.txt?",
+            "   \u{276f} 1. Yes",
+            "     2. No",
+        ]
+        .join("\n");
+        assert_eq!(read(&quoted), Composer::Unrecognised);
+    }
+
+    #[test]
+    fn the_captured_quoted_dialog_carries_both_marks_and_still_is_not_the_reading() {
+        let lines = rendered(QUOTED);
+        let quoted = lines
+            .iter()
+            .enumerate()
+            .filter(|(_, l)| marker(&l.all).is_some_and(|at| at > 0))
+            .map(|(i, _)| i)
+            .next_back()
+            .expect("the echo draws a marker of its own, indented");
+        let at = marker(&lines[quoted].all).expect("that line is a marker");
+        assert_eq!(
+            indent(&lines[quoted + 1].all),
+            Some(at + MARKER_WIDTH),
+            "the option under it is aligned, so the second mark holds too"
+        );
+        assert!(
+            echoed(&lines, quoted),
+            "and it is inside a message already sent, which is what excludes it"
+        );
+        assert_eq!(
+            read(QUOTED),
+            Composer::Empty,
+            "so the empty composer drawn under the echo is what reads"
+        );
     }
 
     #[test]
