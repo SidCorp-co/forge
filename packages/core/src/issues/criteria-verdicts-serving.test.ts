@@ -163,6 +163,21 @@ describe('a runtime verdict against what the host answers (ISS-1286)', () => {
     expect(report?.uncorroborated).toEqual([]);
   });
 
+  it('earns one criterion uncorroborated while another still holds the issue', async () => {
+    issueRows = [{ ...stale('iss-548'), acceptanceCriteria: '1. ok\n2. also ok' }];
+    listIssueCommentsMock.mockResolvedValue([
+      {
+        body: verdictComment([
+          verdictBlock(1, 'pass', SERVED_HEAD),
+          verdictBlock(2, 'fail', SERVED_HEAD),
+        ]),
+      },
+    ]);
+    const [report] = await unearnedCriteriaReports(['iss-548'], UNDECLARED);
+    expect(report?.uncorroborated).toEqual([1]);
+    expect(report?.unearned.map((c) => c.criterion)).toEqual([2]);
+  });
+
   it('refuses a verdict a disagreeing fleet answered neither commit of', async () => {
     issueRows = [stale('iss-543')];
     judgedAt(SERVED_HEAD);
