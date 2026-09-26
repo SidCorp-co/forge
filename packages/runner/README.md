@@ -210,7 +210,14 @@ can (ISS-1223).
 being the latest is exactly the state a deferred drain leaves — updated, not yet
 turned over — so `--restart` there restarts the daemon when it is serving an
 older build, says there is nothing to restart when it already serves this one,
-and says which case holds when it cannot tell. Two things it will not do:
+and says which case holds when it cannot tell. It asks the same question after
+an update it has just applied, where a daemon agreeing with the build of the
+command is agreeing with the file that was replaced under it, and so lags by
+construction. Where no daemon can be named at all there, it restarts the box's
+one unit because the file that unit runs was replaced — saying, in those words,
+that this is not a claim about whose daemon it is, and that a daemon started
+some other way still runs the old build. Two things it will not do, on either
+branch:
 
 - **It never cuts into a drain that is under way.** A draining daemon is
   restarting itself and waiting for the work it holds, so a restart there would

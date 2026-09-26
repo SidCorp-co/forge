@@ -267,6 +267,26 @@ fn serves(_proc_pid: &Path, _ours: Option<&Path>) -> Serves {
 /// and naming it as this one's daemon tells an operator whose daemon is down
 /// that one is running.
 pub fn scan(root: &Path, self_pid: u32, ours: Option<&Path>) -> Option<Vec<Running>> {
+    scan_with(root, self_pid, ours, start_ticks)
+}
+
+/// `scan`, with the reading of a pid's identity supplied.
+///
+/// A `/proc/<pid>` entry is not one file: the cmdline says it is a daemon, the
+/// exe link says which build, and the environ says whose configuration. A pid
+/// that exits between those reads and is handed to another process makes one
+/// `Running` out of two of them — and on a box running a second runner, the
+/// replacement may be that second runner, so the mixed reading is exactly the
+/// misattribution this issue exists to end, arrived at from the other side. So
+/// the pid's identity is read before the sequence and again after it, and an
+/// entry whose identity moved is not reported at all. It is passed in rather
+/// than taken from `/proc` so a test can move it, which a planted tree cannot.
+pub fn scan_with(
+    root: &Path,
+    self_pid: u32,
+    ours: Option<&Path>,
+    identity: impl Fn(u32) -> Option<String>,
+) -> Option<Vec<Running>> {
     let entries = std::fs::read_dir(root).ok()?;
     let mut found = Vec::new();
     for entry in entries.flatten() {
@@ -280,6 +300,13 @@ pub fn scan(root: &Path, self_pid: u32, ours: Option<&Path>) -> Option<Vec<Runni
         if pid == self_pid {
             continue;
         }
+        let before = identity(pid);
+        // A pid whose cmdline cannot be read is skipped with no trace, and the
+        // absolute sentence this feeds — "no process serves this
+        // configuration" — survives it: this configuration's daemon reads this
+        // user's config directory and so runs as this user, whose `cmdline` is
+        // readable. A pid that refuses the read belongs to another user, and a
+        // process of another user is a process of another configuration.
         let Ok(raw) = std::fs::read(entry.path().join("cmdline")) else {
             continue;
         };
@@ -304,6 +331,13 @@ pub fn scan(root: &Path, self_pid: u32, ours: Option<&Path>) -> Option<Vec<Runni
             Err(e) => (format!("unreadable ({e})"), None),
         };
         let serves = serves(&entry.path(), ours);
+        // Everything above came off one pid. Only now can this box say whether
+        // it came off one PROCESS. Where the platform answers nothing for
+        // either read the two are still equal, which is the reading it has —
+        // `liveness` is where that unconfirmable identity is declared.
+        if identity(pid) != before {
+            continue;
+        }
         found.push(Running {
             pid,
             exe,
@@ -421,7 +455,7 @@ fn unrecorded(probe: &Probe, premise: Premise) -> Unrecorded {
                 file_clause(r)
             )),
             Serves::Unknown(why) => bodies.push(format!(
-                "pid {} (`forge-runner start`) is running, and whether it serves this configuration cannot be told — {why}; {}",
+                "pid {} (`forge-runner start`) was running when this box was read, and whether it serves this configuration cannot be told — {why}; {}",
                 r.pid,
                 file_clause(r)
             )),
@@ -560,7 +594,16 @@ pub fn liveness(record: &Record, probe: &Probe) -> Liveness {
     match (&record.start_ticks, (probe.start_ticks)(record.pid)) {
         (Some(then), Some(now)) if *then == now => Liveness::Same,
         (Some(_), Some(_)) => Liveness::Reused,
-        _ => Liveness::Unverified,
+        // The record HAS ticks, so the platform that wrote them could read
+        // them, and `Unverified` — "nothing here can say" — is refuted by the
+        // record itself. What it means is that the pid answers a signal and
+        // has no start time, which is a zombie, or a process that exited
+        // between the two reads. Both are a daemon that is gone, and saying so
+        // is what lets `--restart` act: an operator whose daemon has zombied
+        // is exactly the one who needs the restart to fire, and `Unverified`
+        // now refuses it while blaming a platform limit that is not there.
+        (Some(_), None) => Liveness::Gone,
+        (None, _) => Liveness::Unverified,
     }
 }
 
@@ -1652,6 +1695,63 @@ mod tests {
         );
     }
 
+    /// A `/proc/<pid>` entry is three reads, not one: the cmdline says it is a
+    /// daemon, the exe link says which build, the environ says whose
+    /// configuration. A pid that exits between them and is handed to another
+    /// process makes ONE reading out of TWO processes — and where the
+    /// replacement is the box's other runner, the reading names that daemon as
+    /// this configuration's, which is the misattribution this issue exists to
+    /// end, arrived at from the other side. The identity is read before the
+    /// sequence and again after it; an entry whose identity moved is not
+    /// reported at all.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_pid_handed_to_another_process_mid_read_is_not_reported_as_one_daemon() {
+        let root = crate::test_scratch::Scratch::new("serving-proc-race");
+        let d = root.join("300");
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("cmdline"), "forge-runner\0start\0").unwrap();
+        std::os::unix::fs::symlink("/x/forge-runner", d.join("exe")).unwrap();
+        std::fs::write(d.join("environ"), "HOME=/home/dev\0").unwrap();
+        let ours = PathBuf::from("/home/dev/.config/forge-runner");
+
+        // Held still, the entry is this configuration's daemon.
+        let steady = scan_with(&root, 1, Some(&ours), |_| Some("777".to_string()))
+            .expect("the planted root lists");
+        assert_eq!(steady.len(), 1, "{steady:?}");
+        assert_eq!(steady[0].serves, Serves::This);
+
+        // Moved under the reader, it is nobody's daemon and is not reported.
+        let reads = std::cell::Cell::new(0);
+        let moved = scan_with(&root, 1, Some(&ours), |_| {
+            reads.set(reads.get() + 1);
+            Some(format!("tick-{}", reads.get()))
+        })
+        .expect("the planted root lists");
+        assert!(
+            moved.is_empty(),
+            "a pid whose identity moved mid-read is not one process: {moved:?}"
+        );
+        assert_eq!(reads.get(), 2, "the identity is read on both sides of it");
+
+        // A process that has exited answers no identity at the second read.
+        let gone = std::cell::Cell::new(false);
+        let exited = scan_with(&root, 1, Some(&ours), |_| {
+            if gone.replace(true) {
+                None
+            } else {
+                Some("777".to_string())
+            }
+        })
+        .expect("the planted root lists");
+        assert!(exited.is_empty(), "{exited:?}");
+
+        // A platform that answers nothing at all is unchanged: the two reads
+        // agree, and `liveness` is where that is declared.
+        let blind = scan_with(&root, 1, Some(&ours), |_| None).expect("the planted root lists");
+        assert_eq!(blind.len(), 1, "{blind:?}");
+    }
+
     /// The scan over a planted `/proc`: a `forge-runner start` whose exe link
     /// carries the deleted suffix, one whose file stands, a `forge-runner
     /// status` and an unrelated process, and this process itself. Each daemon
@@ -1784,6 +1884,33 @@ mod tests {
         let mut p = live_same();
         p.boot_id = Some("boot-b".into());
         assert_eq!(liveness(&rec("0.17.8", None), &p), Liveness::Gone);
+    }
+
+    #[test]
+    /// A record that HAS start ticks was written by a platform that could read
+    /// them, so "this platform cannot confirm it" is refuted by the record
+    /// itself. What a pid that answers a signal and has no start time really
+    /// is, on Linux, is a zombie — or a process that exited between the two
+    /// reads. Both are gone, and saying `Unverified` there is not a hedge but
+    /// a wrong answer with a hedge's wording: `update --restart` refuses to
+    /// act on an unconfirmed identity, so a zombied daemon — exactly the one
+    /// an operator needs turned over — would be left standing, blamed on a
+    /// platform limit that is not there.
+    #[test]
+    fn a_recorded_identity_that_has_vanished_is_gone_and_not_merely_unconfirmable() {
+        let r = rec("0.17.9", None);
+        assert_eq!(
+            liveness(&r, &probe(|_| true, |_| None)),
+            Liveness::Gone,
+            "a record with ticks and no ticks to read now is a daemon that has gone"
+        );
+        let mut without = rec("0.17.9", None);
+        without.start_ticks = None;
+        assert_eq!(
+            liveness(&without, &probe(|_| true, |_| None)),
+            Liveness::Unverified,
+            "a record with no ticks at all is the one case nothing here can confirm"
+        );
     }
 
     #[test]
