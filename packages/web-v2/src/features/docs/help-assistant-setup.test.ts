@@ -23,6 +23,22 @@ const SETUP_PAGES = ["claude-desktop", "claude-code", "cursor", "other-apps"] as
 const EXPLAINS_MCP = "what-this-does";
 
 const body = (page: string) => HELP_DOCS.find((d) => d.slug === `${FOLDER}/${page}`)?.body ?? "";
+const bodyOf = (slug: string) => HELP_DOCS.find((d) => d.slug === slug)?.body ?? "";
+
+/** Every page written for someone connecting an assistant, wherever it sits: the step rule is the
+ *  `assistant-setup` audience's (docs/modules/guides/where-a-page-lives.md), not this folder's. */
+const ASSISTANT_PAGES = HELP_DOCS.filter((d) => d.audience === "assistant-setup").map((d) => d.slug);
+
+/**
+ * Priced amnesty (ISS-1178): pages held to the step rule by audience that do not meet it yet. Each
+ * reader here reaches a numbered step with nothing to check it against. Rewriting page content was
+ * outside ISS-1178, so the page is named rather than passed; it ends when the page meets the rule,
+ * and the test below refuses the entry from then on. Recorded in
+ * docs/proposals/documentation-home-residuals.md.
+ */
+const STEP_RULE_EXEMPT: Record<string, string> = {
+  [`${FOLDER}/when-it-does-not-work`]: "its three fix procedures have nine numbered steps and no Check line",
+};
 
 /** Prose only: fenced blocks hold what the reader pastes, not what the page says to them. */
 function prose(markdown: string): string {
@@ -123,9 +139,8 @@ describe("the Connect an assistant section", () => {
     },
   );
 
-  it.each(SETUP_PAGES)("%s has numbered steps, each ending in what the reader should now see", (page) => {
+  it.each(SETUP_PAGES)("%s has numbered steps", (page) => {
     expect(mainSteps(body(page)).length).toBeGreaterThan(3);
-    expect(stepsWithoutACheck(body(page))).toEqual([]);
   });
 
   it.each(SETUP_PAGES)("%s says where to find every file it names, on a Mac and on Windows", (page) => {
@@ -151,6 +166,24 @@ describe("the Connect an assistant section", () => {
     expect(text).not.toMatch(TIMING_PROMISE);
     expect(body(page)).not.toMatch(TOOL_NAME);
     expect(text).not.toMatch(CORRECTNESS_PROMISE);
+  });
+});
+
+describe("the assistant-setup step rule, over every page of that audience", () => {
+  it("covers the setup pages and every other page behind the assistant door", () => {
+    for (const page of SETUP_PAGES) expect(ASSISTANT_PAGES).toContain(`${FOLDER}/${page}`);
+  });
+
+  it.each(ASSISTANT_PAGES.filter((slug) => !(slug in STEP_RULE_EXEMPT)))(
+    "%s ends each numbered step in what the reader should now see",
+    (slug) => {
+      expect(stepsWithoutACheck(bodyOf(slug))).toEqual([]);
+    },
+  );
+
+  it.each(Object.entries(STEP_RULE_EXEMPT))("%s stays exempt only while it still fails (%s)", (slug) => {
+    expect(ASSISTANT_PAGES).toContain(slug);
+    expect(stepsWithoutACheck(bodyOf(slug)).length, `${slug} now meets the step rule: remove it from STEP_RULE_EXEMPT`).toBeGreaterThan(0);
   });
 });
 

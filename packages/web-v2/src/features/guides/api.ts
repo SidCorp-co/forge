@@ -6,6 +6,9 @@ import { GUIDE_SLUG } from "./requested-path";
  *  `body` is the guide markdown core serves. */
 export interface Guide {
   slug: string;
+  /** Who core says the guide is written for. Read as whatever came over the wire: `fromGuide`
+   *  decides whether it is one the public documentation can place. */
+  audience?: string;
   title: string;
   summary: string;
   version: number;

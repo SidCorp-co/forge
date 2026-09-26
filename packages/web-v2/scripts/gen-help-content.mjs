@@ -3,12 +3,12 @@
 // Markdown → a static module the web app imports, so the content ships inside
 // the Next build (no runtime fs, no API, no output-tracing needed under
 // `output: standalone`). Run by `dev`/`build` (see package.json). Skips README.md
-// (the authoring-rules doc) and any file without frontmatter.
+// (the authoring-rules doc) and refuses, by name, any other file without frontmatter.
 
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseFrontmatter, readAudience } from "./help-frontmatter.mjs";
+import { readAudience, readPage } from "./help-frontmatter.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "..");
@@ -34,14 +34,14 @@ const docs = [];
 const refused = [];
 for (const abs of files.sort()) {
   const raw = await fs.readFile(abs, "utf8");
-  const parsed = parseFrontmatter(raw);
-  if (!parsed) continue; // no frontmatter → not a published page
   const slug = path
     .relative(CONTENT_DIR, abs)
     .replace(/\\/g, "/")
     .replace(/\.mdx?$/i, "");
+  let parsed;
   let audience;
   try {
+    parsed = readPage(raw, path.relative(root, abs));
     audience = readAudience(parsed.meta, path.relative(root, abs));
   } catch (err) {
     refused.push(err.message);

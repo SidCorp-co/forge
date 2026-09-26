@@ -7,6 +7,7 @@ export const ASSISTANT_METHOD_SLUG = 'answering-as-the-assistant';
 
 export const ASSISTANT_METHOD_GUIDE: ForgeGuide = {
   slug: ASSISTANT_METHOD_SLUG,
+  audience: 'agent',
   title: 'Answering as the assistant',
   summary:
     'How a Forge assistant works a request: investigate with your tools before answering, act instead of delegating, and what a reply and a filed issue owe.',

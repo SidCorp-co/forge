@@ -6,29 +6,18 @@ This folder is the **product documentation shown to end users** in the app at
 into the **web build** (Hướng A — embedded MDX/Markdown), so it ships with the
 frontend and is **never** read off a backend filesystem.
 
-> **THE RULE — two homes, never mixed:**
->
-> | | repo-root `docs/` | `packages/web-v2/content/help/` (here) |
-> |---|---|---|
-> | What | **CODE / engineering docs** | **END-USER product guide** |
-> | Audience | contributors, maintainers, operators, AI coding sessions | people *using* Forge |
-> | May reference | source paths (`packages/…`), `ISS-###`, architecture, internals | only product UI + behavior |
-> | Ships in the product | **never** | yes (web build) |
-> | Rendered at `/docs` | **never** | the **only** source |
-> | Rendered at `/guides` | **never** | beside the agent guides core serves |
->
-> If a page talks about *how the code works* → it belongs in `docs/`.
-> If a page talks about *how to use Forge* → it belongs **here**.
-
-The backend does **not** read this folder, and `docs/` is **never** served to
-users — the separation is structural (different package trees), so the two
-cannot leak into each other.
+This is one of Forge's four documentation homes. Which page belongs here rather than in
+another, who a page here may be written for, and the voice each of those readers is owed are
+stated once, in
+[where-a-page-lives.md](../../../../docs/modules/guides/where-a-page-lives.md).
+In short: a page about how to use Forge on its screens belongs here, and a page about how the
+code works never does.
 
 ## Authoring rules
 
-- **Voice:** write for a product user, not a developer. Plain language,
-  task-first. No repo internals, no `ISS-###`, no `packages/…` paths, no
-  pipeline-agent ceremony, no architecture/RFC/threat-model material.
+- **Voice:** the rule for the page's `audience`, in
+  [where-a-page-lives.md](../../../../docs/modules/guides/where-a-page-lives.md).
+  Beyond it: plain language, task-first, no `ISS-###` and no pipeline-agent ceremony.
 - **One task per page.** Title starts with a verb ("Pair a runner", not
   "Runners").
 - **Page shape:** intro → Prerequisites → numbered, copy-pasteable steps →
@@ -65,8 +54,9 @@ a new section is added there.
 `audience` says who the page is written for, and decides which door of the public
 documentation it sits behind: `user` for someone using Forge, `assistant-setup` for
 someone connecting an AI assistant. It is required; `pnpm gen:help` refuses a page
-without one, or with any other value, naming the file. `agent` is not a value here —
-pages for agents are the guides core serves.
+with no front-matter, no `audience` or any other value, naming the file. Why `agent` is
+not a value here, and the voice rule each value is held to:
+[where-a-page-lives.md](../../../../docs/modules/guides/where-a-page-lives.md).
 
 ## Structure (Diátaxis, for the product)
 
@@ -78,9 +68,3 @@ pages for agents are the guides core serves.
 | Concepts | product-level mental model | Project · Device & runner · Pipeline · Organization |
 | Reference | look-ups | Pipeline stages · Roles & permissions · Settings |
 | Troubleshooting | when stuck | Device offline · Job stuck in queue · Pairing code expired |
-
-## Do NOT put here
-
-Architecture, RFCs, proposals, threat models, ADRs/decisions, module design,
-VISION, contributor/release/branching guides — those are internal and live in
-the repo-root `docs/` tree.

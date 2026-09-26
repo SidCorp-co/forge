@@ -11,11 +11,15 @@ outside the `(workspace)` group, whose layout redirects a signed-out visitor to 
 | `packages/web-v2/content/help/*.md`, bundled as `HELP_DOCS` | `user`, `assistant-setup` — each page's own front-matter | `/guides?path=<slug>` |
 | `packages/core/src/guides/registry.ts`, fetched from `GET <core>/api/guides` | `agent` | `/guides/<slug>`, and as markdown at `<core>/api/guides/<slug>.md` |
 
+These are two of Forge's four documentation homes; which page belongs in which is
+`docs/modules/guides/where-a-page-lives.md`.
+
 `buildCorpus` in `packages/web-v2/src/features/guides/corpus.ts` makes the two one list, and that
 list is what the search, the doors and the reader all read. No guide prose is stored in `web-v2`;
 the agent pages are fetched at request time, every body included (`fetchGuideCorpus` in
 `packages/web-v2/src/features/guides/api.ts`) so the search reaches their words and not only their titles.
-The registry is labelled `agent` in `fromGuide`, one place, until core carries the field (ISS-1178).
+Each guide carries the `audience` core declared for it, which `fromGuide` reads and refuses where it
+is not `agent`.
 
 The addresses: `/guides` is the landing — the sentence saying the corpus is one, the search, the
 three doors. `/guides?for=<audience>` is a door. `/guides?path=<slug>` is a help page, the same

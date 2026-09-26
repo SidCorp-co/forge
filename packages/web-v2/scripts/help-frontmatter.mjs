@@ -22,6 +22,18 @@ export function parseFrontmatter(raw) {
   return { meta, body: raw.slice(m[0].length) };
 }
 
+/** The front-matter of a page, refused by name when there is none: a page under content/help/
+ *  is published, and a skipped one is a page nobody is told went missing. */
+export function readPage(raw, file) {
+  const parsed = parseFrontmatter(raw);
+  if (!parsed) {
+    throw new Error(
+      `${file}: no front-matter. Every page under content/help/ except README.md opens with a \`---\` block carrying title, section, order and audience.`,
+    );
+  }
+  return parsed;
+}
+
 export function readAudience(meta, file) {
   const audience = meta.audience;
   if (audience === undefined || audience === "") {

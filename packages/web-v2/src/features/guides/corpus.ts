@@ -48,21 +48,41 @@ export function fromHelpDoc(doc: HelpDoc): PublicDoc {
   };
 }
 
-/** A core guide as a public page. The registry core serves is the agent corpus — the rules
- *  agents are held to — so every guide in it is labelled `agent` here, in this one place, until
- *  core carries the field itself (ISS-1178). */
+/** The one audience a core guide may carry: the agent door is the only one that promises each
+ *  page as markdown at `/api/guides/<slug>.md`, which only core can keep. */
+const CORE_AUDIENCE = "agent" satisfies Audience;
+
+/** A core guide as a public page, placed by the audience core declared for it. */
 export function fromGuide(guide: Guide, order: number): PublicDoc {
   return {
     slug: guide.slug,
     title: guide.title,
     summary: guide.summary,
-    audience: "agent",
+    audience: coreAudience(guide),
     section: AGENT_SECTION,
     order,
     body: guide.body,
     href: `${INDEX_PATH}/${guide.slug}`,
     markdownUrl: guideMarkdownUrl(guide.slug),
   };
+}
+
+function coreAudience(guide: Guide): Audience {
+  // Priced amnesty (ISS-1178): a core deployed before guides carried `audience` serves none, and
+  // live core runs behind main, so a guide with none is still an agent guide — said on the log,
+  // never silently. It ends once the core this web talks to serves the field on every guide.
+  if (guide.audience === undefined) {
+    console.warn(
+      `public docs: core served the guide '${guide.slug}' with no audience, so it is placed behind the agent door — a core older than ISS-1178; this ends when that core is redeployed`,
+    );
+    return CORE_AUDIENCE;
+  }
+  if (guide.audience !== CORE_AUDIENCE) {
+    throw new Error(
+      `public docs: core served the guide '${guide.slug}' with audience '${guide.audience}', and a core guide can only be placed behind the '${CORE_AUDIENCE}' door`,
+    );
+  }
+  return CORE_AUDIENCE;
 }
 
 export function buildCorpus(helpDocs: readonly HelpDoc[], guides: readonly Guide[]): PublicDoc[] {
