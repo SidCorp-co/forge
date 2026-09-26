@@ -22,9 +22,9 @@ them: the work is **with an agent**, it **needs you**, or it is **finished**.
 | **Developed**, **Testing** | an agent | Nothing. |
 | **Needs info** | **you** | **Answer the question.** The work restarts by itself once you do. |
 | **On hold** | **you** | **Resume it.** Nothing moves until you do — this is a brake, not a question. |
-| **Awaiting release** | **you** | **Approve the release.** It is finished work waiting at the gate. |
+| **Awaiting release** | **you** | **Release it** with **Release now**, or let the next scheduled release take it — the issue page says which. |
 | **Reopened** | **you** | Move it on. Nothing picks a reopened issue up on its own. |
-| **Closed** | nobody | Done. |
+| **Closed** | nobody | Done — see [Tell when an issue is done](?path=what-done-means). |
 | **Dropped** | nobody | Decided against. It has no way back — file a new issue instead. |
 
 ## How an issue moves
@@ -67,7 +67,8 @@ it parks somewhere nothing will pick up, so a cancel actually stops the work
 instead of a fresh run starting seconds later.
 
 **Awaiting release is not finished.** The work is built and verified and is
-waiting for a person to approve shipping it. It sits under *Needs you* on the
+waiting to be released — by a person choosing **Release now**, or by the next
+scheduled release, whichever the issue page names. It sits under *Needs you* on the
 Issues list for that reason — counting it as done is how a gate stops being
 noticed.
 
@@ -116,8 +117,9 @@ discarded out from under you.
 |---|---|
 | An issue sits still and asks nothing | It is probably *On hold* — resume it. On-hold issues never restart on their own. |
 | You answered a question and nothing happened | Check the status moved off *Needs info*. If it did not, the answer did not land — answer it again from the issue page. |
-| An issue looks finished but never shipped | It is at *Awaiting release*, waiting for someone to approve the release. |
+| An issue looks finished but never shipped | It is at *Awaiting release*, waiting to be released. The issue page says when. |
 | You cannot edit a field | An agent is running the issue and would overwrite what you set. Wait for it to pause or finish — or answer it, if it is at *Needs info*. |
 | A dropped issue needs doing after all | File a new issue. Dropped is terminal by design. |
 
-See also [Configure the pipeline & approvals](?path=configure-the-pipeline).
+See also [Ask for a change](?path=file-a-request), [Tell when an issue is done](?path=what-done-means)
+and [Configure the pipeline & approvals](?path=configure-the-pipeline).
