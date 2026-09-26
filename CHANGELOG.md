@@ -3098,6 +3098,7 @@
   set is now 59.
 
 ### Fixed
+- **The 7-day Throughput chart shows seven consecutive days, a zero day drawn at zero.** An empty day vanished and the window slid back a day. Each bar prints its count; the total counts only the days drawn.
 - **An unavailable Agent now sends you where a runner can be paired**, and a screen reader no longer hears Stop as disabled while an answer arrives. Escape closes a mode menu without closing the conversation and its draft.
 - **The box's heartbeat and its provision poll now report a refusal the way every other call does.** Both named the code unknown and pasted the gateway's error page; the beat also waited with no deadline of its own.
 - **A refused call to core now says which failure it was, and no longer pastes the gateway's error page.** A code the edge answers reads as its own fault, and a call that hangs now ends at a deadline.

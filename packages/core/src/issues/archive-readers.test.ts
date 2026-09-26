@@ -108,6 +108,8 @@ const NOT_DISCOVERY: Record<string, string> = {
   'pipeline/inv7-alarms.ts': 'held or queued jobs and running runs',
   'pipeline/issue-run-invariant.ts': 'reads only work-in-progress statuses',
   'pipeline/pipeline-config-service.ts': 'reads only stage statuses, all non-terminal',
+  'pipeline/throughput-series.ts':
+    'shipped counts per day, no issue identity; an archived issue still shipped on its day',
   'pipeline/reconciler.ts': 'reads only entry and in-flight statuses',
   'pipeline/lease-fanout.ts': 'reads only non-terminal rows, and counts claims per holder',
   'pipeline/recovery-verifier.ts': 'the issue of the job',

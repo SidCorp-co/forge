@@ -166,7 +166,7 @@ export interface StepDurationRow {
   costUsd: number;
 }
 
-/** One row of `GET /api/pipeline/throughput` — daily closed/released count. */
+/** One `GET /api/pipeline/throughput` row: issues shipped on one UTC date, a day with none at 0. */
 export interface ThroughputRow {
   projectId: string;
   date: string;
