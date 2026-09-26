@@ -120,6 +120,26 @@ describe("the release runner label on a deploy binding", () => {
 		).toBeInTheDocument();
 	});
 
+	// The binding summary's `config` is the overlay, so while this binding declares
+	// a label the connection's is invisible here. The hint carries the caveat the
+	// release warning carries rather than promising what a clearing cannot do.
+	it("says a clearing falls back to the connection's label before one is taken", () => {
+		draw(
+			<BindingReleaseRunnerField
+				projectId={PROJECT_ID}
+				binding={binding({
+					bindingConfig: { releaseRunnerLabel: "release" },
+					config: { releaseRunnerLabel: "release" },
+				})}
+				canEdit
+			/>,
+		);
+
+		expect(
+			screen.getByText(/Clearing it falls back to the shared connection's label/),
+		).toBeInTheDocument();
+	});
+
 	it("sends the typed label on the binding PATCH", () => {
 		draw(
 			<BindingReleaseRunnerField projectId={PROJECT_ID} binding={binding()} canEdit />,

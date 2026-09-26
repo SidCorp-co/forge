@@ -159,7 +159,7 @@ export function BindingReleaseRunnerField({
       inherited={declared === null ? effective : null}
       canEdit={canEdit}
       disabledReason="Only a project admin can change this."
-      hint="Which box this project's releases should prefer, matched against a runner's labels under Settings → Runners. Leave it clear and a release goes to any box in this project's pool."
+      hint="Which box this project's releases should prefer, matched against a runner's labels under Settings → Runners. Clearing it falls back to the shared connection's label where that declares one, and otherwise to any box in this project's pool."
       none={NO_RELEASE_RUNNER_LABEL}
       busy={update.isPending}
       failure={failure}
@@ -172,12 +172,8 @@ export function BindingReleaseRunnerField({
 /**
  * The connection tier, in the workspace connection drawer, because that is where
  * connection-scoped management lives and the server refuses it to anyone but the
- * credential's owner or an org admin.
- *
- * A clearing here sends null and the connection PATCH STORES that null rather
- * than removing the key, unlike the binding PATCH. Both readers treat a null as
- * no label, so the preference is gone either way; the stored shape is a defect
- * of `connection-routes.ts`, reported against the issue that holds that file.
+ * credential's owner or an org admin. A clearing here sends null and the route
+ * removes the key, as the binding PATCH does.
  */
 export function ConnectionReleaseRunnerField({
   connection,
