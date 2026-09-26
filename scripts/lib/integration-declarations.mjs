@@ -9,9 +9,10 @@ export const CAPABILITY_BOOLEANS = [
 
 export const AGENT_PATH_KINDS = ['none', 'core-mediated', 'direct-mcp'];
 
-/** The five zod schemas every provider declares, whatever it integrates. */
+/** The six zod schemas every provider declares, whatever it integrates. */
 export const SCHEMA_OBJECTS = [
   'connectionConfig',
+  'connectionPatchConfig',
   'bindingConfig',
   'patchConfig',
   'secrets',

@@ -546,7 +546,9 @@ function reportNotRunHere() {
     .filter(([, where]) => !where.startsWith('verify'))
     .filter(([step]) => RUN_ELSEWHERE_HINT.some((h) => step.includes(h)));
   if (elsewhere.length === 0) return;
-  console.log(`\n  CI runs these too — verify does NOT. Run them before you trust a green:`);
+  console.log(
+    `\n  A green here does not cover these — CI runs them, and ci-passed gates the merge:`,
+  );
   for (const cmd of [...new Set(elsewhere.map(([, where]) => where))].sort()) {
     console.log(`    ${cmd}`);
   }

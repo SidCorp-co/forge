@@ -104,11 +104,39 @@ describe('NO_RUNNER_ONLINE', () => {
 });
 
 describe('the release runner label', () => {
-  it('sends the operator to the box, not back round the loop, when the label is unmet', () => {
+  // ISS-1275's judge read this sentence against the product and found the box it
+  // named holding nothing: the label is matched against `runners.labels`, and on
+  // a Coolify project Forge holds the deploy credential and makes the call
+  // itself. The destination was right and the noun was not.
+  it('sends the operator to the box a release runs on, and to the tab that labels it', () => {
     const message = runnerPreferenceUnmetSentence('release');
 
-    expect(message).toContain('Label the box that holds the deploy credential');
+    expect(message).toContain("Label the box you want this project's releases to run on");
     expect(message).toContain('Settings \u2192 Runners');
+    expect(message).not.toContain('the box that holds the deploy credential');
+  });
+
+  // The act this repair added was offered for a round with no destination at
+  // all. Each act names its screen or the operator is told to do a thing the
+  // product has nowhere to do.
+  it('names the screen each of the two acts is taken on', () => {
+    const message = runnerPreferenceUnmetSentence('release');
+
+    expect(message).toContain(
+      'clear `releaseRunnerLabel` from the live deploy binding under Settings \u2192 Integrations',
+    );
+    expect(message).toContain(
+      'from the connection behind it under Integrations in the workspace rail',
+    );
+  });
+
+  // `and this reading goes with the label` named nothing a reader could point
+  // at on the screen it is printed on. What goes away is the warning.
+  it('names the warning as the thing that goes away, not `this reading`', () => {
+    const message = runnerPreferenceUnmetSentence('release');
+
+    expect(message).toContain('this warning goes with the label');
+    expect(message).not.toContain('this reading');
   });
 
   // ISS-1127 made this sentence state what withdrawing the label cost, because

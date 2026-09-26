@@ -150,11 +150,12 @@ export function configSchemaForProvider(provider: string): z.ZodTypeAny {
   return decl.schemas.patchConfig;
 }
 
-/** The config schema for an OWNER-SCOPED connection PATCH, where a binding-tier key does not belong. */
+/** An OWNER-SCOPED connection PATCH: the provider's own partial, not its create schema — coolify
+ *  splits its required `targets` to the binding tier, so no coolify connection took one (ISS-1275). */
 export function connectionConfigSchemaForProvider(provider: string): z.ZodTypeAny {
   const decl = getIntegration(provider);
   if (!decl) throw badRequest(undeclaredProviderMessage(provider));
-  return decl.schemas.connectionConfig;
+  return decl.schemas.connectionPatchConfig;
 }
 
 export async function applySecretsPatch(opts: {

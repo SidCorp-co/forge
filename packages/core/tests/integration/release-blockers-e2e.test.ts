@@ -351,7 +351,12 @@ describe('release-readiness and the create door answer the same question', () =>
   // reworded: a cost sentence for a cost nobody pays is the same defect wearing
   // the opposite sign. Its repair then put the withdrawal back into the
   // sentence, the free act having been left unsaid for a round.
-  it('offers both the labelling and the clearing, and names no blocker either raises', async () => {
+  //
+  // Its judge then read the sentence against the product: the free act named
+  // two objects and no screen, and there was no screen. Every act this message
+  // offers is asserted here WITH its destination, so an act that loses the
+  // place it is taken cannot pass as an act.
+  it('offers both acts with the screen each is taken on, and names no blocker either raises', async () => {
     const w = await seed();
     const device = await createTestDevice(harness.db, w.userId, { status: 'online' });
     await harness.db.execute(sql`
@@ -364,9 +369,11 @@ describe('release-readiness and the create door answer the same question', () =>
     const answer = await readiness(w);
     const warned = answer.body.warnings.find((x) => x.code === 'RELEASE_RUNNER_PREFERENCE_UNMET');
 
-    expect(warned?.message).toContain('Label the box that holds the deploy credential');
+    expect(warned?.message).toContain("Label the box you want this project's releases to run on");
+    expect(warned?.message).toContain('Settings \u2192 Runners');
     expect(warned?.message).toContain(
-      'clear `releaseRunnerLabel` from the live deploy binding AND from the connection behind it',
+      'clear `releaseRunnerLabel` from the live deploy binding under Settings \u2192 Integrations ' +
+        'AND from the connection behind it under Integrations in the workspace rail',
     );
     expect(warned?.message).toContain(
       "Clearing it from the binding alone falls back to the connection's label rather than to none.",

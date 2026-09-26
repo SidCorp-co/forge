@@ -390,6 +390,7 @@ export const githubIntegration = declareIntegration<GitHubConfig, GitHubSecrets>
   },
   schemas: {
     connectionConfig: githubConfigBase,
+    connectionPatchConfig: githubConfigBase.partial(),
     bindingConfig: githubConfigBase,
     patchConfig: githubConfigBase.partial(),
     secrets: githubSecretsSchema,

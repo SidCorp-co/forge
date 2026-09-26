@@ -36,6 +36,7 @@ import {
   useUpdateConnection,
 } from "../hooks";
 import { deriveConnectionStatus } from "../derive";
+import { ConnectionReleaseRunnerField } from "./release-runner-field";
 import { PROVIDER_MODULES, providerIcon, providerLabel, providerModule } from "../providers/registry";
 import type { BindingSummary, ConnectionSummary, IntegrationTestResult } from "../types";
 import { DirectoryStatusPill, scopeLabel } from "./status-pill";
@@ -452,6 +453,14 @@ export function ConnectionEditDrawer({
         <CredentialSection connection={connection} canManage={canManage} />
         <Divider />
         <ConfigSection connection={connection} canManage={canManage} />
+        {/* ISS-1275 — the connection tier of the release runner label. It renders
+            itself away unless some project binds this credential as a LIVE deploy
+            target, which is the only place the label decides anything. */}
+        <ConnectionReleaseRunnerField
+          connection={connection}
+          bindings={bindings}
+          canManage={canManage}
+        />
         <Divider />
         <ProjectsSection
           connection={connection}
