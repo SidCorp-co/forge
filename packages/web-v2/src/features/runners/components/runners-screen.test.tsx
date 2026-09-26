@@ -18,9 +18,11 @@ vi.mock("../api", () => ({ runnersApi: { listDevices, listOrgDevices, initPairin
 vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock("@/providers/auth-provider", () => ({ useAuth: () => ({ user: { id: "u-1" } }) }));
 vi.mock("@/lib/ws/use-room", () => ({ useRoom: () => undefined }));
-vi.mock("@/features/orgs/active-org", () => ({ useActiveOrg: () => ({ activeOrgId: "org-1" }) }));
+let activeOrgId: string | null = "org-1";
+vi.mock("@/features/orgs/active-org", () => ({ useActiveOrg: () => ({ activeOrgId }) }));
 
 const { RunnersScreen } = await import("./runners-screen");
+const { ORG_DEVICES_REFRESH_MS } = await import("../hooks");
 
 function device(over: Partial<DeviceRow> = {}): DeviceRow {
 	return {
@@ -73,6 +75,7 @@ async function show() {
 const tab = (name: RegExp) => screen.getByRole("button", { name });
 
 beforeEach(() => {
+	activeOrgId = "org-1";
 	listDevices.mockResolvedValue([]);
 	listOrgDevices.mockResolvedValue([]);
 });
@@ -213,6 +216,49 @@ describe("the organisation scope", () => {
 			),
 		).toBeTruthy();
 		expect(screen.getByText(/You have paired 1 device/)).toBeTruthy();
+	});
+});
+
+describe("a scope whose query has not answered", () => {
+	it("claims no population while the active org is still being resolved", async () => {
+		activeOrgId = null;
+		listDevices.mockResolvedValue([device()]);
+
+		render(<RunnersScreen />, { wrapper: Wrap });
+		await screen.findByRole("button", { name: /^Mine · 1 device$/ });
+		tab(/^Organisation · /).click();
+		// The scope really is on screen before anything is read off it: a click
+		// React has not flushed would leave every assertion below unfalsifiable.
+		await screen.findByText(/Every device assigned to a project you can see/);
+
+		expect(
+			screen.queryByText("No device is assigned to a project you can see in this organisation"),
+		).toBeNull();
+		expect(listOrgDevices).not.toHaveBeenCalled();
+		expect(tab(/^Organisation · counting…$/)).toBeTruthy();
+	});
+});
+
+describe("the organisation list, which no event about another member's box reaches", () => {
+	it("drops a device another member revoked without an event, on its own refresh", async () => {
+		vi.useFakeTimers({ shouldAdvanceTime: true });
+		try {
+			listDevices.mockResolvedValue([]);
+			listOrgDevices.mockResolvedValue([orgDevice()]);
+
+			render(<RunnersScreen />, { wrapper: Wrap });
+			await screen.findByRole("button", { name: /^Organisation · 1 device$/ });
+			tab(/^Organisation · /).click();
+			await screen.findByText("sid-xeon-1");
+
+			listOrgDevices.mockResolvedValue([]);
+			await vi.advanceTimersByTimeAsync(ORG_DEVICES_REFRESH_MS + 1_000);
+
+			expect(screen.queryByText("sid-xeon-1")).toBeNull();
+			expect(tab(/^Organisation · 0 devices$/)).toBeTruthy();
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });
 

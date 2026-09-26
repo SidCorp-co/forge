@@ -29,17 +29,22 @@ export function useDevices(orgId?: string | null) {
 /**
  * The organisation's devices, over the projects this caller can see. Keyed
  * `['devices','org', orgId]`, which the event-router invalidates beside
- * `['devices','me']`: a pairing or revoke by ANOTHER member rides that member's
- * own user room and reaches no client here, so this list is as live as the
- * events this client is sent and no more (ISS-1162).
+ * `['devices','me']`. That is not enough on its own: a pairing, revoke or
+ * turn-off by ANOTHER member publishes to that member's own room and reaches no
+ * client here, so without the poll this list would hold a revoked box and its
+ * assignment count until a reconnect happened to occur (ISS-1162). The interval
+ * matches `useProjectRunners`, which carries the same kind of report.
  */
 export function useOrgDevices(orgId: string | null) {
 	return useQuery({
 		queryKey: ["devices", "org", orgId],
 		queryFn: () => runnersApi.listOrgDevices(orgId as string),
 		enabled: !!orgId,
+		refetchInterval: ORG_DEVICES_REFRESH_MS,
 	});
 }
+
+export const ORG_DEVICES_REFRESH_MS = 30_000;
 
 export function useRevokeDevice() {
 	const qc = useQueryClient();

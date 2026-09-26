@@ -301,14 +301,17 @@ export function RunnersScreen() {
             {populationLine(scope)}
             {bridge ? ` ${bridge}` : null}
           </p>
-          {active.isLoading ? (
+          {active.isError ? (
+            <ErrorState message={formatApiError(active.error)} onRetry={() => active.refetch()} />
+          ) : /* Not `isLoading`: with no active org yet the org query is disabled,
+                which is pending and NOT loading, and an empty-state sentence
+                reached that way claims a population nothing asked for. */
+          !active.isSuccess ? (
             <div className="flex flex-col gap-2">
               <Skeleton className="h-10 w-full" />
               <Skeleton className="h-10 w-full" />
               <Skeleton className="h-10 w-full" />
             </div>
-          ) : active.isError ? (
-            <ErrorState message={formatApiError(active.error)} onRetry={() => active.refetch()} />
           ) : rows.length === 0 ? (
             <EmptyState title={empty.title} message={empty.message} mascot={false} />
           ) : (
