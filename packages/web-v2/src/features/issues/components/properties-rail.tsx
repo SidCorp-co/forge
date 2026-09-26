@@ -6,13 +6,13 @@
 // convention, and dependency edges (rendered as clickable `ISS-X` badges linking
 // to the related issue — ISS-331).
 
-import { Avatar, Badge, Button, MonoTag, Stat } from "@/design";
+import { Avatar, Badge, Button, MonoTag, Stat, StatusChip } from "@/design";
 import { COMPLEXITY_OPTIONS, PRIORITY_OPTIONS } from "./issue-table-row";
 import { IssueRefBadge } from "./issue-ref-badge";
 import { LiveReachValue } from "./live-reach-row";
 import { MergeMarkerControl } from "./merge-marker-control";
 import { InlineSelect, StatusEdit } from "./inline-edit-cell";
-import { creatorLabelOf, initials } from "../derive";
+import { creatorLabelOf, initials, runStatusChip } from "../derive";
 import { AGENT_HOLDS_EDIT, heldByAgent } from "../edit-lock";
 import type {
   IssueComplexity,
@@ -24,8 +24,7 @@ import type {
   IssueStatus,
 } from "../types";
 
-function fmtDate(iso: string | null): string {
-  if (!iso) return "—";
+function fmtDate(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
   return d.toISOString().slice(0, 10);
@@ -183,6 +182,12 @@ export function PropertiesRail({
   const duplicates = [...incoming, ...outgoing].filter((e) => e.kind === "duplicates");
   const related = [...incoming, ...outgoing].filter((e) => e.kind === "relates");
   const held = heldByAgent(issue.status, issue.agentStatus);
+  const runChip = runStatusChip(issue.agentStatus);
+  const tokens = totalTokens(cost);
+  const hasModule = primaryModule !== undefined || secondaryModules.length > 0;
+  // An empty field renders no row; one whose action this reader holds keeps the action, on the shared `Not set` row.
+  const offerModule = !hasModule && onEditModules !== undefined;
+  const offerMerge = !issue.mergedAt && canMarkMerged === true;
   return (
     <div className="divide-y divide-line-subtle">
       {held && (
@@ -198,6 +203,11 @@ export function PropertiesRail({
           onTransition={onTransition}
         />
       </Row>
+      {runChip && (
+        <Row label="Run">
+          <StatusChip status={runChip} size="sm" domain="session" />
+        </Row>
+      )}
       <Row label="Priority">
         <InlineSelect
           ariaLabel="Priority"
@@ -226,30 +236,26 @@ export function PropertiesRail({
           </span>
         </div>
       </Row>
-      <Row label="Category">
-        {issue.category ? (
+      {issue.category && (
+        <Row label="Category">
           <Badge tone="neutral">{titleCase(issue.category)}</Badge>
-        ) : (
-          <span className="fg-caption">—</span>
-        )}
-      </Row>
-      <Row label="Module">
-        <div className="flex flex-wrap items-center justify-end gap-1.5">
-          {primaryModule ? (
-            <MonoTag hue="cobalt">{primaryModule.name}</MonoTag>
-          ) : (
-            secondaryModules.length === 0 && <span className="fg-caption">—</span>
-          )}
-          {secondaryModules.map((m) => (
-            <MonoTag key={m.id}>{m.name}</MonoTag>
-          ))}
-          {onEditModules && (
-            <Button variant="ghost" size="sm" icon="settings" onClick={onEditModules}>
-              Edit
-            </Button>
-          )}
-        </div>
-      </Row>
+        </Row>
+      )}
+      {hasModule && (
+        <Row label="Module">
+          <div className="flex flex-wrap items-center justify-end gap-1.5">
+            {primaryModule && <MonoTag hue="cobalt">{primaryModule.name}</MonoTag>}
+            {secondaryModules.map((m) => (
+              <MonoTag key={m.id}>{m.name}</MonoTag>
+            ))}
+            {onEditModules && (
+              <Button variant="ghost" size="sm" icon="settings" onClick={onEditModules}>
+                Edit
+              </Button>
+            )}
+          </div>
+        </Row>
+      )}
       {plainLabels.length > 0 && (
         <Row label="Labels">
           <div className="flex flex-wrap justify-end gap-1.5">
@@ -262,47 +268,58 @@ export function PropertiesRail({
       <Row label="Branch">
         <MonoTag>{issue.displayId}</MonoTag>
       </Row>
-      <Row label="Merged">
-        <div className="flex items-center justify-end gap-2">
-          <span className="fg-body-sm font-mono text-muted">{fmtDate(issue.mergedAt)}</span>
-          <MergeMarkBadge mark={issue.mergeMark} commitSha={issue.mergedCommitSha} />
-          {canMarkMerged && (
-            <MergeMarkerControl
-              issueId={issue.id}
-              mergedAt={issue.mergedAt}
-              suggestedTarget={issue.displayId}
-            />
-          )}
-        </div>
-      </Row>
+      {issue.mergedAt && (
+        <Row label="Merged">
+          <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
+            <span className="fg-body-sm whitespace-nowrap font-mono text-muted">{fmtDate(issue.mergedAt)}</span>
+            <MergeMarkBadge mark={issue.mergeMark} commitSha={issue.mergedCommitSha} />
+            {canMarkMerged && (
+              <MergeMarkerControl
+                issueId={issue.id}
+                mergedAt={issue.mergedAt}
+                suggestedTarget={issue.displayId}
+              />
+            )}
+          </div>
+        </Row>
+      )}
       {issue.liveReach && (
         <Row label="Production">
           <LiveReachValue reach={issue.liveReach} />
         </Row>
       )}
-      <Row label="Cost">
-        <Stat icon="dollar">
-          {cost && cost.estimatedCost > 0 ? `$${cost.estimatedCost.toFixed(2)}` : "—"}
-        </Stat>
-      </Row>
-      <Row label="Tokens">
-        <Stat icon="cpu">
-          {(() => {
-            const total = totalTokens(cost);
-            return total > 0 ? (
-              <span title={`${total.toLocaleString()} tokens`}>{fmtTokens(total)}</span>
-            ) : (
-              "—"
-            );
-          })()}
-        </Stat>
-      </Row>
+      {cost && cost.estimatedCost > 0 && (
+        <Row label="Cost">
+          <Stat icon="dollar">{`$${cost.estimatedCost.toFixed(2)}`}</Stat>
+        </Row>
+      )}
+      {tokens > 0 && (
+        <Row label="Tokens">
+          <Stat icon="cpu">
+            <span title={`${tokens.toLocaleString()} tokens`}>{fmtTokens(tokens)}</span>
+          </Stat>
+        </Row>
+      )}
       <Row label="Created">
-        <span className="fg-body-sm font-mono text-muted">{fmtDate(issue.createdAt)}</span>
+        <span className="fg-body-sm whitespace-nowrap font-mono text-muted">{fmtDate(issue.createdAt)}</span>
       </Row>
       <Row label="Reopens">
         <span className="fg-body-sm font-mono text-muted">{issue.reopenCount}</span>
       </Row>
+      {(offerModule || offerMerge) && (
+        <Row label="Not set">
+          <div className="flex flex-wrap items-center justify-end gap-1.5">
+            {offerModule && (
+              <Button variant="ghost" size="sm" icon="settings" onClick={onEditModules}>
+                Set module
+              </Button>
+            )}
+            {offerMerge && (
+              <MergeMarkerControl issueId={issue.id} mergedAt={null} suggestedTarget={issue.displayId} />
+            )}
+          </div>
+        </Row>
+      )}
       <DepList edges={blockedBy} self={issue.id} slug={slug} label="Blocked by" />
       <DepList edges={blocks} self={issue.id} slug={slug} label="Blocks" />
       <DepList edges={parents} self={issue.id} slug={slug} label="Parent" />
