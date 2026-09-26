@@ -159,6 +159,39 @@ describe("the Release section's prose", () => {
 		expect(container.textContent).toContain("and then some words that must survive it.");
 		expect(container.querySelector("code")).toBeNull();
 	});
+
+	// `Rollback` and `Deploy verified by` each say what follows from their own
+	// absence; this row said `—`, on the card about the question ISS-1275 was
+	// filed on — whether no release runner label is settled or outstanding.
+	it("says what follows from no release runner label, rather than an em dash", () => {
+		readiness.mockReturnValue({
+			isLoading: false,
+			error: null,
+			data: ready({ releaseRunnerLabel: null }),
+		});
+
+		draw(<ReleaseSection projectId={PROJECT_ID} />);
+
+		expect(
+			screen.getByText("none — a release goes to any box in this project's pool"),
+		).toBeInTheDocument();
+		expect(screen.queryByText("—")).toBeNull();
+	});
+
+	it("shows the declared label itself where the project declares one", () => {
+		readiness.mockReturnValue({
+			isLoading: false,
+			error: null,
+			data: ready({ releaseRunnerLabel: "release" }),
+		});
+
+		draw(<ReleaseSection projectId={PROJECT_ID} />);
+
+		expect(screen.getByText("release")).toBeInTheDocument();
+		expect(
+			screen.queryByText("none — a release goes to any box in this project's pool"),
+		).toBeNull();
+	});
 });
 
 describe("the Runner pools matrix", () => {

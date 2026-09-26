@@ -51,6 +51,12 @@ const ROLLBACK_TEXT: Record<NonNullable<ReleaseReadiness["rollbackMode"]>, strin
  *  would show an unreadable binding as a binding that declares nothing. */
 const UNREAD = "could not be read";
 
+/** Every other row on this card says what follows from its own absence —
+ *  `Rollback` abort and comment, `Deploy verified by` nothing. This one said
+ *  `—`, which left a reader unable to tell a settled state from an outstanding
+ *  one, on the card about the very question ISS-1275 was filed on. */
+const NO_RELEASE_RUNNER_LABEL = "none — a release goes to any box in this project's pool";
+
 const FACT_GAPS = new Set(["build-commands", "test-commands", "release-procedure"]);
 
 /** What the badge says for each declared model — the words a reader of the screen uses. */
@@ -167,8 +173,14 @@ export function ReleaseSection({
         </div>
         <div>
           <dt className="fg-caption text-subtle">Release runner label</dt>
-          <dd className="fg-body-sm font-mono text-fg">
-            {!r.channelsRead ? UNREAD : (r.releaseRunnerLabel ?? "—")}
+          <dd className="fg-body-sm text-fg">
+            {!r.channelsRead ? (
+              UNREAD
+            ) : r.releaseRunnerLabel ? (
+              <span className="font-mono">{r.releaseRunnerLabel}</span>
+            ) : (
+              NO_RELEASE_RUNNER_LABEL
+            )}
           </dd>
         </div>
         <div>
