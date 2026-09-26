@@ -102,6 +102,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
 
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const bellRef = useRef<HTMLButtonElement>(null);
   const [flyoutOpen, setFlyoutOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   // True when the drawer was opened from the bottom-nav "Project switcher" tab
@@ -426,6 +427,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
             }
             onCommandPalette={() => setPaletteOpen(true)}
             onNotifications={() => setNotificationsOpen((o) => !o)}
+            notificationsRef={bellRef}
             notificationCount={openCount?.count ?? 0}
             onNewIssue={() =>
               slug
@@ -442,7 +444,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
           />
           {/* Bell dropdown + invitations + realtime delivery/open-count bridges
               (ISS-504/597/510/523) — always mounted, dropdown gated on open. */}
-          <NotificationsBell open={notificationsOpen} onClose={closeNotifications} />
+          <NotificationsBell open={notificationsOpen} onClose={closeNotifications} anchor={bellRef} />
         </div>
 
         {railProject && (
