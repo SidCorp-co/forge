@@ -227,4 +227,35 @@ describe('ISS-1270 · a shipped issue counts once, on its first shipped day', ()
       for (const p of series.filter((q) => q.n === 1)) expect(p.avgDays).toBeCloseTo(1, 6);
     });
   });
+
+  describe('the admin console', () => {
+    const loaders = async () => {
+      const { createRawLoaders, cutoffExpr, METRIC_SOURCES, WINDOW_SPECS } = await import(
+        '../../src/admin/metric-series.js'
+      );
+      const spec = WINDOW_SPECS['7d'];
+      const raw = createRawLoaders(spec, cutoffExpr(spec.hours * 2), ['intervention']);
+      return { raw, METRIC_SOURCES };
+    };
+    const bucket = (daysBack: number) => midnight(daysBack).toISOString();
+    const firstShippedDays = Object.values(PLANTED).map((p) => p.countsOn);
+
+    it('divides cost per closed by the distinct issues first shipped in each bucket', async () => {
+      const { raw, METRIC_SOURCES } = await loaders();
+      const { den } = await METRIC_SOURCES.costPerClosedUsd(raw);
+      expect(den && Object.fromEntries(den)).toEqual(
+        Object.fromEntries(firstShippedDays.map((d) => [bucket(d), 1])),
+      );
+    });
+
+    it('counts interventions per closed in distinct first-shipped issues, numerator and denominator', async () => {
+      const { raw, METRIC_SOURCES } = await loaders();
+      const { num, den } = await METRIC_SOURCES.interventionsPerClosed(raw);
+      expect(Object.fromEntries(num)).toEqual({
+        [bucket(PLANTED.sameDay.countsOn)]: 1,
+        [bucket(PLANTED.sameInstant.countsOn)]: 1,
+      });
+      expect(den?.get(bucket(PLANTED.sameInstant.countsOn))).toBe(1);
+    });
+  });
 });

@@ -15,6 +15,7 @@
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { bucketIso, utcDateTrunc } from '../lib/time-buckets.js';
+import { firstShipped } from '../pipeline/shipped-at.js';
 import type {
   AdminGlanceMetric,
   AdminGlanceMetricName,
@@ -115,11 +116,8 @@ async function bucketedLeadTime(
 
 async function bucketedResolved(spec: WindowSpec, baseStart: SQL): Promise<Map<string, number>> {
   const rows = (await db.execute(sql`
-    SELECT ${utcDateTrunc(spec.unit, sql`created_at`)} AS bucket, count(*)::int AS n
-    FROM activity_log
-    WHERE action = 'issue.statusChanged'
-      AND payload ->> 'to' IN ('closed', 'released', 'awaiting_release')
-      AND created_at >= ${baseStart}
+    SELECT ${utcDateTrunc(spec.unit, sql`f.shipped_at`)} AS bucket, count(*)::int AS n
+    FROM (${firstShipped({ projectIds: null, from: baseStart })}) f
     GROUP BY 1
   `)) as unknown as Array<{ bucket: unknown; n: number }>;
   return toBucketMap(rows, 'n');
@@ -136,14 +134,11 @@ async function bucketedResolvedWithInterventionLabel(
     sql`, `,
   );
   const rows = (await db.execute(sql`
-    SELECT ${utcDateTrunc(spec.unit, sql`al.created_at`)} AS bucket, count(DISTINCT al.id)::int AS n
-    FROM activity_log al
-    INNER JOIN issue_labels il ON il.issue_id = al.issue_id
+    SELECT ${utcDateTrunc(spec.unit, sql`f.shipped_at`)} AS bucket, count(DISTINCT f.issue_id)::int AS n
+    FROM (${firstShipped({ projectIds: null, from: baseStart })}) f
+    INNER JOIN issue_labels il ON il.issue_id = f.issue_id
     INNER JOIN labels l ON l.id = il.label_id
-    WHERE al.action = 'issue.statusChanged'
-      AND al.payload ->> 'to' IN ('closed', 'released', 'awaiting_release')
-      AND l.name IN (${laneList})
-      AND al.created_at >= ${baseStart}
+    WHERE l.name IN (${laneList})
     GROUP BY 1
   `)) as unknown as Array<{ bucket: unknown; n: number }>;
   return toBucketMap(rows, 'n');
