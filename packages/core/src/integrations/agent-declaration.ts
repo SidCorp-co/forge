@@ -21,6 +21,7 @@ export const agentIntegration = declareIntegration({
   },
   schemas: {
     connectionConfig: agentReleaseConfigSchema,
+    connectionPatchConfig: agentReleaseConfigSchema.partial(),
     bindingConfig: agentReleaseConfigSchema,
     patchConfig: agentReleaseConfigSchema.partial(),
     secrets: agentSecretsSchema,

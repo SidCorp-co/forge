@@ -212,6 +212,9 @@ export const googleIntegration = declareIntegration<GoogleConfig, GoogleSecrets>
   },
   schemas: {
     connectionConfig: googleConnectionConfigSchema,
+    // Both its keys are optional already, so a partial adds nothing, and zod refuses `.partial()`
+    // on an object carrying refinements — this one refuses a key the credential tier does not own.
+    connectionPatchConfig: googleConnectionConfigSchema,
     bindingConfig: googleConfigBase,
     patchConfig: googleConfigBase.partial(),
     secrets: googleSecretsSchema,

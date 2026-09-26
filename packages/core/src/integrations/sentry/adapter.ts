@@ -181,6 +181,7 @@ export const sentryIntegration = declareIntegration<SentryConfig, SentrySecrets>
   },
   schemas: {
     connectionConfig: sentryConfigBase,
+    connectionPatchConfig: sentryConfigBase.partial(),
     bindingConfig: sentryConfigBase,
     patchConfig: sentryConfigBase.partial(),
     secrets: sentrySecretsSchema,

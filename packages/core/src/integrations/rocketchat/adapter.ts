@@ -100,6 +100,7 @@ export const rocketchatIntegration = declareIntegration<RocketChatConfig, Rocket
   },
   schemas: {
     connectionConfig: rocketchatConfigBase,
+    connectionPatchConfig: rocketchatConfigBase.partial(),
     bindingConfig: rocketchatConfigBase,
     patchConfig: rocketchatConfigBase.partial(),
     secrets: rocketchatSecretsSchema,
