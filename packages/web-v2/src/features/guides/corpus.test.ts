@@ -7,13 +7,14 @@ import {
   buildCorpus,
   docsBehind,
   doorSections,
+  fromGuide,
   searchPlaceholder,
   workingExamples,
 } from "./corpus";
 
 const GUIDES: Guide[] = [
-  { slug: "what-is-an-issue", title: "What is an issue?", summary: "The four admission gates.", version: 1, body: "## What is an issue?\nAn issue is a unit of work." },
-  { slug: "issue-dependencies", title: "Issue dependencies", summary: "Blocks edges.", version: 1, body: "## Issue dependencies\nOnly a blocks edge gates dispatch." },
+  { slug: "what-is-an-issue", audience: "agent", title: "What is an issue?", summary: "The four admission gates.", version: 1, body: "## What is an issue?\nAn issue is a unit of work." },
+  { slug: "issue-dependencies", audience: "agent", title: "Issue dependencies", summary: "Blocks edges.", version: 1, body: "## Issue dependencies\nOnly a blocks edge gates dispatch." },
 ];
 
 const corpus = buildCorpus(HELP_DOCS, GUIDES);
@@ -102,5 +103,32 @@ describe("the search placeholder", () => {
       "I'm connecting an AI assistant",
       "I'm an agent or a script",
     ]);
+  });
+});
+
+describe("a core guide's audience, as core declares it", () => {
+  const guide = (audience?: string): Guide => ({ ...GUIDES[0], audience });
+
+  it("places a guide core declares agent behind the agent door, with nothing on the log", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(fromGuide(guide("agent"), 0).audience).toBe("agent");
+    expect(warn).not.toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it("refuses a guide core declares for another reader, naming its slug and the value", () => {
+    expect(() => fromGuide(guide("user"), 0)).toThrow(
+      /the guide 'what-is-an-issue' with audience 'user'.*only be placed behind the 'agent' door/,
+    );
+    expect(() => fromGuide(guide("agents"), 0)).toThrow(/audience 'agents'/);
+  });
+
+  it("places a guide from a core that declares none as agent, and says so on the log", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(fromGuide(guide(undefined), 0).audience).toBe("agent");
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringMatching(/'what-is-an-issue' with no audience.*older than ISS-1178; this ends when that core is redeployed/),
+    );
+    warn.mockRestore();
   });
 });

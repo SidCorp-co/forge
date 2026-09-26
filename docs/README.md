@@ -1,9 +1,8 @@
 # Documentation
 
-> **Scope — this tree is INTERNAL.** `docs/` is engineering documentation. It is **never** served
-> to product users and **never** shipped into the app image. **End-user product docs** live in
-> [`packages/web-v2/content/help/`](../packages/web-v2/content/help/) and are bundled into the web
-> build. Do not put user-facing guides here, and do not put internal docs there.
+> **Scope — this tree is INTERNAL.** `docs/` is engineering documentation, never served and never
+> shipped. It is one of four documentation homes, and which page belongs in which is stated once,
+> in [modules/guides/where-a-page-lives.md](modules/guides/where-a-page-lives.md).
 
 One folder carries the system's description, and it is the only one. The per-domain module docs,
 the architecture set, the RFC folder and the loose proposal notes were deleted on 2026-09-20: they

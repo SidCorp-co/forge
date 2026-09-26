@@ -18,6 +18,7 @@ afterEach(cleanup);
 const GUIDES: Guide[] = [
   {
     slug: "what-is-an-issue",
+    audience: "agent",
     title: "What is an issue?",
     summary: "The four admission gates.",
     version: 1,
@@ -25,6 +26,7 @@ const GUIDES: Guide[] = [
   },
   {
     slug: "issue-dependencies",
+    audience: "agent",
     title: "Issue dependencies",
     summary: "Blocks edges.",
     version: 1,

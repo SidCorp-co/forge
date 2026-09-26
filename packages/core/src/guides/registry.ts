@@ -4,12 +4,8 @@
 // consume this module: the `forge_guide` MCP tool (`mcp/tools/forge-guide.ts`)
 // and the public `GET /api/guides` routes (`guides/routes.ts`).
 //
-// Why a code module and not a DB table or `forge_knowledge` scope:'global': a guide ships
-// atomically with the code it documents and needs no per-environment seeder that can silently
-// diverge; it has no `projectId`, so there is nothing to gate and no membership bypass to bolt
-// onto `forge_knowledge`; and runtime-editable, per-project guidance already exists one tier
-// down (`forge_knowledge` entries), which this tier deliberately does not
-// duplicate.
+// Why a code module, and which pages belong here rather than in another of the four
+// documentation homes: docs/modules/guides/where-a-page-lives.md.
 //
 // Altitude rule for every body (NT1 — teach how to use the capability well:
 // ordering, gotchas, cardinal rules). Do NOT re-dump tool schemas (Tool
@@ -31,6 +27,7 @@ export type { ForgeGuide };
 export const FORGE_GUIDES: readonly ForgeGuide[] = [
   {
     slug: 'project-settings-and-test-credentials',
+    audience: 'agent',
     title: 'Project settings & test credentials',
     summary:
       'Where to fetch repo paths, branches, workspace setup, preview URLs, and test credentials — and why forge_config never returns them.',
@@ -58,6 +55,7 @@ The same shape costs tokens rather than a stall: a stage lands in a checkout who
   },
   {
     slug: 'issue-dependencies',
+    audience: 'agent',
     title: 'Issue dependencies',
     summary:
       'How blocks edges gate dispatch, which blocker statuses release a dependent, how to set an edge without racing the first dispatch, and why splitting an oversized issue is plain work rather than a lifecycle.',
@@ -88,6 +86,7 @@ Create the issue at \`draft\`, never \`open\` — \`open\` auto-triages and spaw
   },
   {
     slug: 'memory-and-knowledge',
+    audience: 'agent',
     title: 'Memory & knowledge',
     summary:
       'The two context tiers (memory and knowledge), recall-first discipline, and the verify-at-recall feedback loop.',
@@ -114,6 +113,7 @@ Only when it's reusable by a *different* agent on a *different* issue — a conv
   },
   {
     slug: 'deploy-safety',
+    audience: 'agent',
     title: 'Deploy safety',
     summary:
       'Confirm before an outward-facing deploy, poll status in the foreground, and what a failed deployment means for status.',
@@ -134,6 +134,7 @@ Verify liveness on the deployed environment before declaring success — a deplo
   },
   {
     slug: 'google-sheets',
+    audience: 'agent',
     title: 'Google Sheets through Forge',
     summary:
       'How a project reaches a Sheet without holding a Google key: which sheet a call resolves to, what update does that append does not, and what each refusal means.',
@@ -175,6 +176,7 @@ None of the five returns an empty success. If you got rows back, they came from 
   },
   {
     slug: 'what-is-an-issue',
+    audience: 'agent',
     title: 'What is an issue?',
     summary:
       'The four gates a thing must pass to be an issue at all, where a note / question / audit finding goes instead, and the three-way routing that stops a residual becoming an unowned draft.',
@@ -237,6 +239,7 @@ Public copy of this page, no auth required: \`GET /api/guides/what-is-an-issue.m
   },
   {
     slug: 'writing-an-issue',
+    audience: 'agent',
     title: 'Writing an issue',
     summary:
       'The three shapes an issue body takes and how to tell which one you are writing, why technical detail is placed rather than deleted, and how to use a mermaid diagram or an attached HTML artifact instead of prose.',
@@ -294,6 +297,7 @@ Same discipline, shorter. Lead with the outcome, put the trace underneath. A com
   },
   {
     slug: 'pipeline-and-issue-lifecycle',
+    audience: 'agent',
     title: 'Pipeline & issue lifecycle',
     summary:
       'What belongs in a description, the four exits from draft (including the direct-ship route and the discard that does not stamp `merged_at`), what the state machine actually enforces vs merely recommends, status-last discipline, why leaving a park is as free as entering it, the two authored kinds of `waiting`, and who owns which derived fields.',
@@ -466,6 +470,7 @@ If your job fails mechanically (process crash, non-zero exit), the system itself
   },
   {
     slug: 'attachments-and-uploads',
+    audience: 'agent',
     title: 'Attachments & uploads',
     summary:
       'Presigned-URL upload flow vs base64, and how to read the content of an existing attachment.',
@@ -489,6 +494,7 @@ For anything beyond a tiny snippet, use the \`forge_uploads\` presigned-URL patt
   },
   {
     slug: 'agent-setup',
+    audience: 'agent',
     title: 'Working in a Forge-managed repo',
     summary:
       'Start here: what Forge owns, the recall-first rule, draft vs open, and the red flags that waste a runner slot.',
@@ -544,6 +550,7 @@ naming files and endpoints: those claims go stale and, in practice, outrank live
   },
   {
     slug: 'update-pipeline-reconcile',
+    audience: 'agent',
     title: 'Update Pipeline — reconcile bundle reference',
     summary:
       'Every field the Master agent and verifiers receive, what each one is worth trusting, and the refusal contract that runs before either agent starts.',
@@ -623,6 +630,7 @@ silently changed, and the run records why it stopped.`,
   },
   {
     slug: 'module-taxonomy-migration',
+    audience: 'agent',
     title: 'Migrating a project onto the module taxonomy',
     summary:
       'Turn an existing module convention — a projectFact list and `**Module:**` comment tags — into kind=module labels and primary attributions, idempotently, without deleting anything.',

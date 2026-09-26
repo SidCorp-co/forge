@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { HELP_AUDIENCES, parseFrontmatter, readAudience } from "../../../scripts/help-frontmatter.mjs";
+import { HELP_AUDIENCES, parseFrontmatter, readAudience, readPage } from "../../../scripts/help-frontmatter.mjs";
 import { HELP_DOCS } from "./help-content.generated";
 import { HELP_SLUGS } from "./help-slugs.generated";
 
@@ -14,6 +14,23 @@ function pages(dir: string): string[] {
     return e.name.endsWith(".md") && e.name !== "README.md" ? [abs] : [];
   });
 }
+
+describe("a help page's front-matter", () => {
+  it("is refused by name when the page has none, instead of the page going unpublished", () => {
+    expect(() => readPage("# Pair a runner\n\nSteps.", "content/help/x.md")).toThrow(
+      /content\/help\/x\.md: no front-matter/,
+    );
+  });
+
+  it("is read when the page opens with one", () => {
+    expect(readPage("---\ntitle: X\naudience: user\n---\nBody", "f").meta).toEqual({ title: "X", audience: "user" });
+  });
+
+  it("opens every page in content/help", () => {
+    const bare = pages(CONTENT).filter((abs) => parseFrontmatter(readFileSync(abs, "utf8")) === null);
+    expect(bare.map((abs) => relative(CONTENT, abs))).toEqual([]);
+  });
+});
 
 describe("a help page's audience", () => {
   it("is refused by name when the front-matter has none", () => {
