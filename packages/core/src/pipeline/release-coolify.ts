@@ -13,7 +13,7 @@ import {
   openDeployDispatchHold,
   readDeployHolds,
 } from './deploy-confirmations.js';
-import { acquireDeployLocks, releaseDeployLocksForRun } from './deploy-lock.js';
+import { acquireDeployLocks, deployHoldsIdle, releaseDeployLocksForRun } from './deploy-lock.js';
 import { RELEASE_DEPLOY_IN_FLIGHT_STEP, setCurrentStep } from './runs.js';
 
 /**
@@ -144,17 +144,17 @@ const targetLabelOf = (binding: { stages: string[] | null; role: string }): stri
   `${(binding.stages ?? []).join('+') || binding.role} deploy`;
 
 /**
- * A deploy is protecting nothing once no target of this run is still pending, whatever the count
- * it managed to enqueue: the holds are the record of what is actually reaching the environment,
- * and a count of successful enqueues is not (ISS-1279).
+ * A deploy protects nothing once no target of this run is pending, whatever it enqueued: the holds
+ * record what reaches the environment, a count does not, and nothing queued is all a count answers.
+ * An empty record behind a dispatch that DID queue is a deploy no hold tracks (ISS-1279).
  */
 async function freeLockIfNothingPending(
   lock: DeployLockIntent | null,
   runId: string,
+  dispatched: readonly string[],
 ): Promise<void> {
   if (!lock) return;
-  const holds = await readDeployHolds(runId);
-  if (Object.values(holds).every((h) => h.status !== 'pending')) {
+  if (dispatched.length === 0 || deployHoldsIdle(await readDeployHolds(runId))) {
     await releaseDeployLocksForRun(runId);
   }
 }
@@ -279,10 +279,10 @@ export async function tryDispatchCoolifyRelease(args: {
     for (const { binding, requestId } of armed) {
       if (!dispatched.includes(binding.id)) await abandonDeployDispatchHold(runId, requestId);
     }
-    await freeLockIfNothingPending(lock, runId);
+    await freeLockIfNothingPending(lock, runId, dispatched);
     throw err;
   }
-  await freeLockIfNothingPending(lock, runId);
+  await freeLockIfNothingPending(lock, runId, dispatched);
 
   if (dispatched.length === 0 && pendingHumanConfirm) {
     return {

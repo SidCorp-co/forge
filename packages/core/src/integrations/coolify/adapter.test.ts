@@ -16,10 +16,20 @@ vi.mock('../deliveries.js', () => ({
   updateDelivery: vi.fn(),
 }));
 const replaceHoldsMock = vi.fn(async (_args: unknown) => true);
+/** What `readDeployHolds` finds after the dispatch wrote its holds (ISS-1279). */
+let heldNow: Record<string, { status: string }> = {};
 vi.mock('../../pipeline/deploy-confirmations.js', () => ({
   DEPLOY_CONFIRM_WINDOW_MS: 1_800_000,
   replaceDispatchHoldWithTargets: (args: unknown) => replaceHoldsMock(args),
+  readDeployHolds: async () => heldNow,
 }));
+const releaseLocksMock = vi.fn(async (_runId: string) => 0);
+vi.mock('../../pipeline/deploy-lock.js', async () => {
+  const real = await vi.importActual<typeof import('../../pipeline/deploy-lock.js')>(
+    '../../pipeline/deploy-lock.js',
+  );
+  return { ...real, releaseDeployLocksForRun: (runId: string) => releaseLocksMock(runId) };
+});
 const enqueueConfirmMock = vi.fn();
 vi.mock('./confirm.js', () => ({
   enqueueCoolifyConfirm: (...a: unknown[]) => enqueueConfirmMock(...(a as [])),
@@ -53,6 +63,8 @@ afterEach(() => {
 
 beforeEach(() => {
   updateConnectionMock.mockResolvedValue({});
+  heldNow = { 'target:del-1': { status: 'pending' } };
+  releaseLocksMock.mockClear();
 });
 
 function buildCtx(secrets: Record<string, unknown>) {
@@ -190,26 +202,26 @@ describe('coolifyAdapter.dispatchOutbound — health follows real deploy outcome
   });
 });
 
+function twoTargetCtx() {
+  return {
+    projectId: PROJECT_ID,
+    connectionId: CONN_ID,
+    bindingId: BINDING_ID,
+    environment: 'staging',
+    config: {
+      baseUrl: 'https://coolify.example',
+      targets: [
+        { id: 't-be', label: 'Backend', resourceUuid: 'res-be' },
+        { id: 't-fe', label: 'Frontend', resourceUuid: 'res-fe' },
+      ],
+    },
+    secrets: { apiToken: 'cf' },
+    // biome-ignore lint/suspicious/noExplicitAny: adapter ctx generics resolved at registration
+  } as any;
+}
+
 describe('coolifyAdapter — the deploy is held until Coolify confirms it (ISS-922)', () => {
   const RUN_ID = 'run-multi-1';
-
-  function twoTargetCtx() {
-    return {
-      projectId: PROJECT_ID,
-      connectionId: CONN_ID,
-      bindingId: BINDING_ID,
-      environment: 'staging',
-      config: {
-        baseUrl: 'https://coolify.example',
-        targets: [
-          { id: 't-be', label: 'Backend', resourceUuid: 'res-be' },
-          { id: 't-fe', label: 'Frontend', resourceUuid: 'res-fe' },
-        ],
-      },
-      secrets: { apiToken: 'cf' },
-      // biome-ignore lint/suspicious/noExplicitAny: adapter ctx generics resolved at registration
-    } as any;
-  }
 
   beforeEach(() => {
     findConnectionByIdMock.mockResolvedValue({ id: CONN_ID, active: true });

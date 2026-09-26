@@ -297,6 +297,25 @@ describe('tryDispatchCoolifyRelease — giving the hold back', () => {
     expect(releaseLocksMock.mock.calls).toEqual([[RUN_ID]]);
   });
 
+  // A terminal run refuses its dispatch placeholders, so the record stays empty while Coolify
+  // builds what was queued anyway. Reading that emptiness as an idle environment frees the hold
+  // under a live deploy — the one direction this row may never get wrong. The expiry ends it.
+  it('frees nothing when the run refused every placeholder and the deploys went out anyway', async () => {
+    listBindingsSpy.mockResolvedValueOnce([stagingPair]);
+    openHoldSpy.mockResolvedValue(false);
+    heldNow = {};
+
+    await tryDispatchCoolifyRelease({
+      projectId: PROJECT_ID,
+      issueId: null,
+      runId: RUN_ID,
+      takeEnvironmentLock: true,
+    });
+
+    expect(enqueueSpy).toHaveBeenCalledTimes(1);
+    expect(releaseLocksMock).not.toHaveBeenCalled();
+  });
+
   it('opens every dispatch hold before the first binding is enqueued', async () => {
     const order: string[] = [];
     openHoldSpy.mockImplementation(async () => {

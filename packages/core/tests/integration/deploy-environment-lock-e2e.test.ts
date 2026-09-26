@@ -458,6 +458,31 @@ describe('the hold ends when the last deploy does', () => {
     expect(await lockRow('live')).toBeNull();
   });
 
+  // The blocker shape: a run terminal BEFORE its deploy is dispatched refuses every target hold
+  // with no placeholder to authorise them, so the record says nothing about what Coolify is
+  // building. Read as an idle environment it frees the hold under a live deploy; its expiry, not
+  // a guess about siblings, is what ends a hold nothing can account for.
+  it('frees nothing when the deploys it settles were never recorded as holds', async () => {
+    const { acquireDeployLocks } = await lockModule();
+    const { replaceDispatchHoldWithTargets, readDeployHolds } = await import(
+      '../../src/pipeline/deploy-confirmations.js'
+    );
+    const run = await makeRun();
+    await acquireDeployLocks(request(run), ['live']);
+    await harness.db.execute(sql`UPDATE pipeline_runs SET status = 'failed' WHERE id = ${run}`);
+
+    await replaceDispatchHoldWithTargets({
+      runId: run,
+      bindingId: '00000000-0000-4000-8000-0000000000b1',
+      targets: targetsOf(2),
+    });
+    expect(await readDeployHolds(run)).toEqual({});
+
+    await settle(run, 'del-0', 'succeeded');
+
+    expect((await lockRow('live'))?.run_id).toBe(run);
+  });
+
   it('lets the next release take the environment the moment that last target ends', async () => {
     const { acquireDeployLocks } = await lockModule();
     const run = await makeRun();

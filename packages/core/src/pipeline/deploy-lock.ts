@@ -1,11 +1,11 @@
 /** One deploy reaches one environment at a time (ISS-1279). The shared resource is the deployment,
  *  not the roster, so the hold is keyed on `(project, environment)`; the roster-keyed
- *  `BATCH_IN_FLIGHT` beside it is ISS-1280's to remove. Every instant here comes from `now()`
- *  inside the statement, so a drifted application clock cannot make a dead holder look alive. */
+ *  `BATCH_IN_FLIGHT` beside it is ISS-1280's to remove. Every instant comes from `now()` inside
+ *  the statement, so a drifted application clock cannot make a dead holder look alive. */
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { DEPLOY_CONFIRM_WINDOW_MS } from './deploy-confirmations.js';
+import { DEPLOY_CONFIRM_WINDOW_MS, type DeployHolds } from './deploy-confirmations.js';
 
 export const DEPLOY_ENVIRONMENT_LOCKED = 'DEPLOY_ENVIRONMENT_LOCKED';
 
@@ -85,7 +85,7 @@ const asHolder = (row: LockRow): DeployLockHolder => ({
 });
 
 /** `exec` is the open transaction: the pool is ten wide, and an acquire asking it for an eleventh
- *  connection while holding its own waits past the bound `lock_timeout` set. */
+ *  connection while holding its own waits past the `lock_timeout` set. */
 async function readLockWith(
   exec: Pick<typeof db, 'execute'>,
   projectId: string,
@@ -166,3 +166,7 @@ export async function releaseDeployLocksForRun(runId: string): Promise<number> {
   `);
   return freed.length;
 }
+
+/** An EMPTY record is not idle: freeing on refused or unwritten holds joins a live deploy. */
+export const deployHoldsIdle = (holds: DeployHolds): boolean =>
+  Object.keys(holds).length > 0 && Object.values(holds).every((h) => h.status !== 'pending');

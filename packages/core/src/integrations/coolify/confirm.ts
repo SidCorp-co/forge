@@ -1,7 +1,6 @@
 import { INTEGRATIONS_QUEUE_NAME } from '../../jobs/queue-name.js';
 import { logger } from '../../logger.js';
 import {
-  type DeployHolds,
   isCloseDeferred,
   resolveDeployGate,
   settleDeployTarget,
@@ -189,13 +188,6 @@ export type DeploySettlementTarget = Pick<
  * hold this poller handed it, and there is still exactly ONE writer of that
  * decision.
  */
-/** Whether any target of this run OTHER than the one settling is still building or queued.
- *  `settled` is excluded by key rather than by its recorded status, because a run that has already
- *  gone terminal refuses the bookkeeping write that would clear it (`writeHold`), so its own entry
- *  reads `pending` for ever and a sibling arriving after a failure would free nothing, ever. */
-const othersInFlight = (holds: DeployHolds, settled: string): boolean =>
-  Object.entries(holds).some(([key, h]) => key !== settled && h.status === 'pending');
-
 export async function applyDeploySettlement(
   data: DeploySettlementTarget,
   verdict: Exclude<DeploymentVerdict, 'pending'>,
@@ -222,14 +214,15 @@ export async function applyDeploySettlement(
     ...(detail ? { detail } : {}),
   });
 
-  // ISS-1279 — this target's deploy has ended whatever its verdict, and the environment is free
-  // once nothing else of this run is still reaching it. One target failing does not stop the
-  // siblings Coolify is still building, so the run going terminal is not the moment. By run id, so
-  // a run that took no lock frees nothing and one whose hold was reclaimed cannot free its
-  // successor.
-  if (!othersInFlight(holds, targetHoldKey(data.deliveryId))) {
-    await releaseDeployLocksForRun(data.runId);
-  }
+  // ISS-1279 — the environment is free once nothing of this run is still reaching it, and this
+  // target's own recorded hold is the evidence that the record can answer that at all. Absent, the
+  // deploy was never witnessed and its siblings are unknown, so the expiry ends the hold instead.
+  // One target failing does not stop the siblings Coolify is still building, so the run going
+  // terminal is not the moment. By run id, so a run that took no lock frees nothing and one whose
+  // hold was reclaimed cannot free its successor.
+  const witnessed = holds[targetHoldKey(data.deliveryId)];
+  const stillReaching = Object.values(holds).some((h) => h.status === 'pending');
+  if (witnessed && !stillReaching) await releaseDeployLocksForRun(data.runId);
 
   if (verdict === 'failed') {
     logger.error(

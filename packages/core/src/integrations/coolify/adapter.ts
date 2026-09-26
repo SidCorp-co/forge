@@ -4,8 +4,10 @@ import { isSentryEnabled, Sentry } from '../../observability/sentry.js';
 import {
   DEPLOY_CONFIRM_WINDOW_MS,
   type DeployConfirmationStatus,
+  readDeployHolds,
   replaceDispatchHoldWithTargets,
 } from '../../pipeline/deploy-confirmations.js';
+import { deployHoldsIdle, releaseDeployLocksForRun } from '../../pipeline/deploy-lock.js';
 import { recordDelivery, updateDelivery } from '../deliveries.js';
 import { findConnectionById, updateConnection } from '../store.js';
 import {
@@ -74,6 +76,69 @@ function describeCoolifyFailure(err: unknown): string {
   const verdict = classifyCoolifyFailure(err);
   if (verdict.message) return verdict.message;
   return err instanceof Error ? err.message : 'unknown error';
+}
+
+interface DispatchOutcome {
+  runId: string | null;
+  requestId?: string;
+  bindingId: string;
+  targets: {
+    deliveryId: string;
+    targetLabel: string;
+    deploymentUuid: string | null;
+    status: DeployConfirmationStatus;
+    detail?: string;
+  }[];
+  pendingConfirms: CoolifyConfirmJob[];
+}
+
+/**
+ * The bookkeeping one dispatch owes whatever became of it: the holds recording what it authorised,
+ * the confirmations polling what Coolify accepted, and the environment it no longer needs.
+ */
+async function recordDispatchOutcome(outcome: DispatchOutcome): Promise<void> {
+  const { runId, bindingId, pendingConfirms } = outcome;
+  let held = false;
+  if (runId) {
+    held = await replaceDispatchHoldWithTargets({
+      runId,
+      bindingId,
+      targets: outcome.targets,
+      ...(outcome.requestId ? { requestId: outcome.requestId } : {}),
+    }).catch((err: unknown) => {
+      // The placeholder stands where this could not be written, so the gate stays deferred rather
+      // than reading a run with no holds as proven, and the environment stays held to its expiry.
+      logger.error({ err, runId, bindingId }, 'coolify deploy: holds unwritable');
+      return false;
+    });
+    if (!held) {
+      logger.error(
+        { runId, bindingId, targets: outcome.targets.length },
+        'coolify deploy: the run refused its confirmation holds — this deploy will be polled and audited, but no run can witness its outcome',
+      );
+    }
+  }
+
+  // Outside the `runId` guard: a run-less resource redeploy is polled and audited exactly as a
+  // run-tracked one is, and only the holds are the run's. Each send stands alone, so one queue
+  // refusal cannot take the siblings' polling with it.
+  for (const job of pendingConfirms) {
+    try {
+      await enqueueCoolifyConfirm(job, { startAfterSeconds: 0 });
+    } catch (err) {
+      logger.error(
+        { err, runId, bindingId, deliveryId: job.deliveryId },
+        'coolify deploy: confirmation could not be queued — Coolify accepted a deploy nothing will poll',
+      );
+    }
+  }
+
+  // ISS-1279 — read off the holds and only where they were written: every target resolved means
+  // nothing is reaching the environment, while a refused hold says nothing at all about what
+  // Coolify is running, and freeing on that is how a second deploy joins the first one in flight.
+  if (runId && held && deployHoldsIdle(await readDeployHolds(runId))) {
+    await releaseDeployLocksForRun(runId);
+  }
 }
 
 const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySecrets> = {
@@ -181,144 +246,133 @@ const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySec
     }[] = [];
     const pendingConfirms: CoolifyConfirmJob[] = [];
 
-    for (const target of targets) {
-      const targetRequestId = input.requestId ? `${input.requestId}:${target.id}` : undefined;
-      const deliveryId = await recordDelivery({
-        bindingId: ctx.bindingId,
-        direction: 'outbound',
-        eventName: input.eventName,
-        payload: {
-          ...payload,
-          runId,
-          stages: ctx.stages,
-          targetId: target.id,
-          targetLabel: target.label,
-          resourceUuid: target.resourceUuid,
-        },
-        ...(targetRequestId ? { requestId: targetRequestId } : {}),
-        status: 'pending',
-      });
-      if (!firstDeliveryId) firstDeliveryId = deliveryId;
-
-      if (isSentryEnabled()) {
-        Sentry.addBreadcrumb({
-          category: BREADCRUMB_OUT,
-          level: 'info',
-          message: `coolify deploy dispatch: ${input.eventName} (${target.label})`,
-          data: {
-            connectionId: ctx.connectionId,
-            bindingId: ctx.bindingId,
-            stages: ctx.stages,
-            deliveryId,
+    // Held rather than thrown, so the bookkeeping below runs on this path too.
+    let fanOutError: unknown;
+    try {
+      for (const target of targets) {
+        const targetRequestId = input.requestId ? `${input.requestId}:${target.id}` : undefined;
+        const deliveryId = await recordDelivery({
+          bindingId: ctx.bindingId,
+          direction: 'outbound',
+          eventName: input.eventName,
+          payload: {
+            ...payload,
             runId,
+            stages: ctx.stages,
             targetId: target.id,
+            targetLabel: target.label,
+            resourceUuid: target.resourceUuid,
           },
-        });
-      }
-
-      const started = Date.now();
-      try {
-        // Always force-rebuild: a release/re-deploy should produce a fresh build
-        // even when Coolify thinks the commit is unchanged (ISS-290).
-        const res = await client.deploy({ resourceUuid: target.resourceUuid, force: true });
-        // Coolify v4 returns a `deployments[]` array; older versions a top-level
-        // deployment_uuid. Resolve either and fail loudly if neither is present.
-        const deploymentUuid = res.deployments?.[0]?.deployment_uuid ?? res.deployment_uuid;
-        if (!deploymentUuid) {
-          throw new Error('coolify deploy: response carried no deployment_uuid');
-        }
-        const durationMs = Date.now() - started;
-        totalDurationMs += durationMs;
-        if (!firstDeploymentUuid) firstDeploymentUuid = deploymentUuid;
-        await updateDelivery(deliveryId, {
-          status: 'ok',
-          response: {
-            deployment_uuid: deploymentUuid,
-            targetId: target.id,
-            message: res.message ?? null,
-          },
-          durationMs,
-          completedAt: new Date(),
-        });
-        confirmations.push({
-          deliveryId,
-          targetLabel: target.label,
-          deploymentUuid,
+          ...(targetRequestId ? { requestId: targetRequestId } : {}),
           status: 'pending',
         });
-        // Published after the holds are installed, never here: a target that
-        // settles before `replaceDispatchHoldWithTargets` has run is recorded
-        // against a hold that does not exist yet, and is then installed as
-        // `pending` with nothing left to settle it (ISS-1279).
-        pendingConfirms.push({
-          jobKind: 'coolify.confirm',
-          bindingId: ctx.bindingId,
-          runId,
-          deliveryId,
-          deploymentUuid,
-          targetLabel: target.label,
-          deadlineAt: confirmDeadlineAt,
-        });
-      } catch (err) {
-        const durationMs = Date.now() - started;
-        totalDurationMs += durationMs;
-        const status = err instanceof CoolifyApiError ? err.status : null;
-        const message = describeCoolifyFailure(err);
-        await updateDelivery(deliveryId, {
-          status: 'failed',
-          errorMessage: message,
-          response:
-            status !== null ? { httpStatus: status, targetId: target.id } : { targetId: target.id },
-          durationMs,
-          completedAt: new Date(),
-        });
-        const verdict = classifyCoolifyFailure(err);
-        if (verdict.health !== 'error') {
-          await updateConnection(ctx.connectionId, {
-            lastHealthStatus: verdict.health,
-            lastHealthAt: new Date(),
+        if (!firstDeliveryId) firstDeliveryId = deliveryId;
+
+        if (isSentryEnabled()) {
+          Sentry.addBreadcrumb({
+            category: BREADCRUMB_OUT,
+            level: 'info',
+            message: `coolify deploy dispatch: ${input.eventName} (${target.label})`,
+            data: {
+              connectionId: ctx.connectionId,
+              bindingId: ctx.bindingId,
+              stages: ctx.stages,
+              deliveryId,
+              runId,
+              targetId: target.id,
+            },
           });
         }
-        confirmations.push({
-          deliveryId,
-          targetLabel: target.label,
-          deploymentUuid: null,
-          status: 'failed',
-          detail: message,
-        });
-        failures.push({ targetLabel: target.label, message, status });
-        // Keep deploying the remaining targets — a BE failure shouldn't strand
-        // an FE deploy. Aggregate failure is raised after the loop.
+
+        const started = Date.now();
+        try {
+          // Always force-rebuild: a release/re-deploy should produce a fresh build
+          // even when Coolify thinks the commit is unchanged (ISS-290).
+          const res = await client.deploy({ resourceUuid: target.resourceUuid, force: true });
+          // Coolify v4 returns a `deployments[]` array; older versions a top-level
+          // deployment_uuid. Resolve either and fail loudly if neither is present.
+          const deploymentUuid = res.deployments?.[0]?.deployment_uuid ?? res.deployment_uuid;
+          if (!deploymentUuid) {
+            throw new Error('coolify deploy: response carried no deployment_uuid');
+          }
+          const durationMs = Date.now() - started;
+          totalDurationMs += durationMs;
+          if (!firstDeploymentUuid) firstDeploymentUuid = deploymentUuid;
+          await updateDelivery(deliveryId, {
+            status: 'ok',
+            response: {
+              deployment_uuid: deploymentUuid,
+              targetId: target.id,
+              message: res.message ?? null,
+            },
+            durationMs,
+            completedAt: new Date(),
+          });
+          confirmations.push({
+            deliveryId,
+            targetLabel: target.label,
+            deploymentUuid,
+            status: 'pending',
+          });
+          // Published after the holds are installed, never here: a target that
+          // settles before `replaceDispatchHoldWithTargets` has run is recorded
+          // against a hold that does not exist yet, and is then installed as
+          // `pending` with nothing left to settle it (ISS-1279).
+          pendingConfirms.push({
+            jobKind: 'coolify.confirm',
+            bindingId: ctx.bindingId,
+            runId,
+            deliveryId,
+            deploymentUuid,
+            targetLabel: target.label,
+            deadlineAt: confirmDeadlineAt,
+          });
+        } catch (err) {
+          const durationMs = Date.now() - started;
+          totalDurationMs += durationMs;
+          const status = err instanceof CoolifyApiError ? err.status : null;
+          const message = describeCoolifyFailure(err);
+          await updateDelivery(deliveryId, {
+            status: 'failed',
+            errorMessage: message,
+            response:
+              status !== null
+                ? { httpStatus: status, targetId: target.id }
+                : { targetId: target.id },
+            durationMs,
+            completedAt: new Date(),
+          });
+          const verdict = classifyCoolifyFailure(err);
+          if (verdict.health !== 'error') {
+            await updateConnection(ctx.connectionId, {
+              lastHealthStatus: verdict.health,
+              lastHealthAt: new Date(),
+            });
+          }
+          confirmations.push({
+            deliveryId,
+            targetLabel: target.label,
+            deploymentUuid: null,
+            status: 'failed',
+            detail: message,
+          });
+          failures.push({ targetLabel: target.label, message, status });
+          // Keep deploying the remaining targets — a BE failure shouldn't strand
+          // an FE deploy. Aggregate failure is raised after the loop.
+        }
       }
+    } catch (err) {
+      fanOutError = err;
     }
 
-    if (runId) {
-      const held = await replaceDispatchHoldWithTargets({
-        runId,
-        bindingId: ctx.bindingId,
-        targets: confirmations,
-        ...(input.requestId ? { requestId: input.requestId } : {}),
-      }).catch((err: unknown) => {
-        // The placeholder stands where this could not be written, so the gate stays deferred
-        // rather than reading a run with no holds as proven. The confirmations below still go
-        // out: a deployment Coolify accepted and nothing polls is a deploy nobody watches, and
-        // the delivery rows make a second dispatch no way back to one.
-        logger.error({ err, runId, bindingId: ctx.bindingId }, 'coolify deploy: holds unwritable');
-        return false;
-      });
-      if (!held) {
-        logger.error(
-          { runId, bindingId: ctx.bindingId, targets: confirmations.length },
-          'coolify deploy: the run went terminal mid-dispatch and refused its confirmation holds — this deploy will be polled and audited, but no run can witness its outcome',
-        );
-      }
-    }
-
-    // Outside the `runId` guard: a run-less resource redeploy is polled and audited exactly as a
-    // run-tracked one is, and only the holds are the run's.
-    for (const job of pendingConfirms) {
-      await enqueueCoolifyConfirm(job, { startAfterSeconds: 0 });
-    }
+    await recordDispatchOutcome({
+      runId,
+      bindingId: ctx.bindingId,
+      targets: confirmations,
+      pendingConfirms,
+      ...(input.requestId ? { requestId: input.requestId } : {}),
+    });
+    if (fanOutError) throw fanOutError;
 
     if (failures.length > 0) {
       const tripped = await maybeTripBreaker({
