@@ -27,9 +27,9 @@ export interface SlideOverProps {
 const FOCUSABLE =
   'a[href],button:not([disabled]),textarea,input,select,[tabindex]:not([tabindex="-1"])';
 
-/** Right-hand drawer — context/detail (e.g. RunDetail) opens here rather than
-    navigating away. Esc to close, focus trapped inside, focus returns to the
-    trigger on close. Backdrop blur signals background dismissal. */
+/** Right-hand drawer for context/detail. Esc closes it unless a control inside
+    claimed the key first; focus is trapped inside and returns to the trigger on
+    close. Backdrop blur signals background dismissal. */
 export function SlideOver({
   open,
   onClose,
@@ -53,6 +53,7 @@ export function SlideOver({
 
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
+        if (e.defaultPrevented) return;
         onCloseRef.current();
         return;
       }

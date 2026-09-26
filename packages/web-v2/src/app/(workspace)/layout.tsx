@@ -14,6 +14,7 @@ import {
   type NavItem,
   type Command,
   type Crumb,
+  useMediaQuery,
 } from "@/design";
 import { ConversationDock } from "@/features/conversations/components/conversation-dock";
 import { ConversationPanel } from "@/features/conversations/components/conversation-panel";
@@ -111,6 +112,9 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const [mobileNavProjectFirst, setMobileNavProjectFirst] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const { chatOpen, setChatOpen, chatWidth, setChatWidth } = useConversationDock();
+  // One chat surface mounted, never both: a hidden slide-over's Escape closed the dock.
+  const chatDocked = useMediaQuery("(min-width: 48rem)");
+  const chatInSlideOver = useMediaQuery("not all and (min-width: 48rem)");
   const mainRef = useRef<HTMLElement>(null);
   // Hover-open coordination for the expanded-rail project switcher: the trigger
   // (NavRail) and the panel (ProjectFlyout) are siblings, so the open + close
@@ -450,7 +454,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
         {railProject && (
           <div className="md:hidden">
             <SlideOver
-              open={chatOpen}
+              open={chatOpen && chatInSlideOver}
               onClose={() => setChatOpen(false)}
               title="My conversations"
               width="clamp(560px, 60vw, 1024px)"
@@ -481,7 +485,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
         </main>
       </div>
 
-      {railProject && chatOpen && (
+      {railProject && chatOpen && chatDocked && (
         <ConversationDock
           projectId={railProject.id}
           width={chatWidth}
