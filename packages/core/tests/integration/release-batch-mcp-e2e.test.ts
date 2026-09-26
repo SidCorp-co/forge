@@ -205,17 +205,18 @@ describe('forge_release_batch over /mcp on the workspace credential', () => {
     });
   });
 
-  it('refuses finish on a run that announced no method, naming action=method as the way out', async () => {
+  // ISS-1276 — the tool holds no method refusal: a run that announced nothing finishes, and
+  // `action=method` is how it says what it ran under rather than how it earns the right to.
+  it('takes finish on a run that announced no method', async () => {
     const a = await fx.insertIssue();
     const runId = await unannouncedBatch([a]);
 
     const answer = await call(workspaceToken, { action: 'finish', runId });
 
-    expect(answer.isError).toBe(true);
-    expect(answer.text).toMatch(
-      /RELEASE_METHOD_NOT_ANNOUNCED: .*forge_release_batch action=method/,
-    );
-    expect((await fx.stored(a)).status).toBe('releasing');
+    expect(answer.isError, answer.text).toBe(false);
+    expect(answer.text).not.toMatch(/RELEASE_METHOD_NOT_ANNOUNCED/);
+    expect(await workDone(runId)).toMatchObject({ state: 'finished' });
+    expect((await fx.stored(a)).status).toBe('closed');
   });
 
   it('records the announcement finish reads, and finish then closes', async () => {

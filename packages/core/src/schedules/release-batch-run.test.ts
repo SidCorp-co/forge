@@ -29,7 +29,6 @@ class ClaimConflictError extends Error {}
 class NoRunnerOnlineError extends Error {}
 class ReleasePoolEmptyError extends Error {}
 class NoReleaseGateError extends Error {}
-class ReleaseBranchesUndeclaredError extends Error {}
 class ReleaseRecordMissingError extends Error {}
 
 const createReleaseBatchMock = vi.fn(
@@ -50,7 +49,6 @@ vi.mock('../release-batch/service.js', () => ({
   NoRunnerOnlineError,
   ReleasePoolEmptyError,
   NoReleaseGateError,
-  ReleaseBranchesUndeclaredError,
   ReleaseRecordMissingError,
 }));
 
@@ -108,11 +106,6 @@ describe('cutWaitingRelease', () => {
     ['NoRunnerOnlineError', new NoRunnerOnlineError('no runner'), 'NO_RUNNER_ONLINE'],
     ['ReleasePoolEmptyError', new ReleasePoolEmptyError('empty pool'), 'RELEASE_POOL_EMPTY'],
     ['NoReleaseGateError', new NoReleaseGateError('no gate'), 'NO_RELEASE_GATE'],
-    [
-      'ReleaseBranchesUndeclaredError',
-      new ReleaseBranchesUndeclaredError('no branches'),
-      'RELEASE_BRANCHES_UNDECLARED',
-    ],
     [
       'ReleaseRecordMissingError',
       new ReleaseRecordMissingError('no note'),

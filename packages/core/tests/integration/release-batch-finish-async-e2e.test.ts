@@ -302,27 +302,36 @@ describe('the door refuses what the database can refuse, and records nothing', (
     expect(await rawFinish(runId)).toBeNull();
   });
 
-  it('refuses a run that announced no method, an aborted run and a run with no version', async () => {
+  // ISS-1276 — an announcement is no longer among what the database can refuse. One case per run,
+  // because an accepted finish opens an attempt that answers the next call, and a second batch on
+  // one project is BATCH_IN_FLIGHT.
+  it('accepts a run that announced no method', async () => {
     const unannounced = await batch(1, 20);
     await harness.db.execute(sql`
       UPDATE pipeline_runs SET metadata = metadata - 'method' WHERE id = ${unannounced.runId}
     `);
-    expect((await finish(unannounced.runId)).body.code).toBe('RELEASE_METHOD_NOT_ANNOUNCED');
-    expect(await rawFinish(unannounced.runId)).toBeNull();
 
-    await harness.db.execute(sql`
-      UPDATE pipeline_runs SET release_version = NULL, metadata = metadata || ${JSON.stringify({
-        method: { skill: 'release-flow', loaded: true, detail: null, announcedAt: 'x' },
-      })}::jsonb WHERE id = ${unannounced.runId}
-    `);
-    expect((await finish(unannounced.runId)).body.code).toBe('RELEASE_VERSION_MISSING');
-    expect(await rawFinish(unannounced.runId)).toBeNull();
+    expect((await finish(unannounced.runId)).status).toBe(202);
+  });
 
+  it('refuses a run with no version, recording nothing', async () => {
+    const versionless = await batch(1, 20);
     await harness.db.execute(sql`
-      UPDATE pipeline_runs SET status = 'cancelled' WHERE id = ${unannounced.runId}
+      UPDATE pipeline_runs SET release_version = NULL WHERE id = ${versionless.runId}
     `);
-    expect((await finish(unannounced.runId)).body.code).toBe('RELEASE_BATCH_ABORTED');
-    expect(await rawFinish(unannounced.runId)).toBeNull();
+
+    expect((await finish(versionless.runId)).body.code).toBe('RELEASE_VERSION_MISSING');
+    expect(await rawFinish(versionless.runId)).toBeNull();
+  });
+
+  it('refuses an aborted run, recording nothing', async () => {
+    const aborted = await batch(1, 20);
+    await harness.db.execute(sql`
+      UPDATE pipeline_runs SET status = 'cancelled' WHERE id = ${aborted.runId}
+    `);
+
+    expect((await finish(aborted.runId)).body.code).toBe('RELEASE_BATCH_ABORTED');
+    expect(await rawFinish(aborted.runId)).toBeNull();
   });
 
   it('refuses a project that declares no probes', async () => {

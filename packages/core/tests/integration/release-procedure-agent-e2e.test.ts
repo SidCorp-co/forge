@@ -1,12 +1,11 @@
 /**
- * ISS-1276 — core writes no release step for any project, and the pre-flight stops demanding the
- * arguments of the default it used to write.
+ * ISS-1276 — core writes no release step for any project, and no pre-flight demands an argument to
+ * one.
  *
- * At the doors rather than beside them, because the three things this proves are each a composition
- * of a project row, a binding and a knowledge entry: what the agent is actually handed, what the
- * create refuses, and what the batch context answers. A unit test over `buildReleaseBatchPrompt`
- * reaches the prompt but not the release strategy, which reaches it through `createReleaseBatch`
- * and nothing else — so the strategy refusal this deletes could only be reproduced here.
+ * At the doors rather than beside them, because each thing proved here is a composition of a
+ * project row, a binding and a knowledge entry: what the agent is handed, what the create refuses,
+ * and what the batch context answers. `buildReleaseBatchPrompt` takes no release strategy, so a
+ * claim about what a strategy produces is only reachable through `createReleaseBatch`.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -266,8 +265,8 @@ describe('the branches a release reads (ISS-1276)', () => {
 
     const ctx = await contextOf(w, created.body.runId as string);
 
-    // The live branch is declared and the base is not, which is the reading `releaseBranches`
-    // now returns and the refusal used to replace with a 409 for the whole project.
+    // A declared live branch and an undeclared base is a readable state, not a refusal: the
+    // context answers each branch as the project declares it.
     expect(ctx.status).toBe(200);
     expect(ctx.body.baseBranch).toBeNull();
     expect(ctx.body.liveBranch).toBe('production');

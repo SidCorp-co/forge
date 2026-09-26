@@ -431,30 +431,33 @@ describe('a release run says what method it is working from', () => {
     });
   });
 
-  it('refuses a finish on a run that announced nothing, and carries the call that clears it', async () => {
+  // ISS-1276 — `release-flow` is one shape of the method and not a precondition for releasing, so
+  // the two refusals these replace are gone rather than renamed. What the run announced is still
+  // written on it, which is the point of keeping the action at all.
+  it('admits a finish on a run that announced nothing', async () => {
     const w = await seed();
     await seedJob(w, 'release-flow');
+    served = 'commit-after';
 
     const res = await finish(w);
 
-    expect(res.status).toBe(409);
-    const body = (await res.json()) as { code: string; message: string };
-    expect(body.code).toBe('RELEASE_METHOD_NOT_ANNOUNCED');
-    expect(body.message).toContain('/method');
-    expect(body.message).toContain('"skill":"release-flow"');
+    expect(res.status).toBe(202);
+    expect(((await res.json()) as { finish?: { state?: string } }).finish?.state).toBe('accepted');
   });
 
-  it('refuses a finish whose announcement names another skill than its job', async () => {
+  it('admits a finish whose announcement names another skill than its job', async () => {
     const w = await seed();
     await seedJob(w, 'release-flow');
+    served = 'commit-after';
     await announce(w, { skill: 'issue-flow', loaded: true });
 
     const res = await finish(w);
 
-    expect(res.status).toBe(409);
-    expect((await res.json()) as { code: string }).toMatchObject({
-      code: 'RELEASE_METHOD_MISMATCH',
-    });
+    expect(res.status).toBe(202);
+    const [run] = await harness.db.execute<{ metadata: Record<string, unknown> }>(sql`
+      SELECT metadata FROM pipeline_runs WHERE id = ${w.runId}
+    `);
+    expect(run?.metadata).toMatchObject({ method: { skill: 'issue-flow' } });
   });
 
   it('admits a finish once the run announces the skill its job names', async () => {
