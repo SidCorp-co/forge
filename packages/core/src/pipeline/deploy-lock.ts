@@ -196,3 +196,12 @@ export async function releaseDeployLocksForRun(
 /** An EMPTY record is not idle: freeing on refused or unwritten holds joins a live deploy. */
 export const deployHoldsIdle = (holds: DeployHolds): boolean =>
   Object.keys(holds).length > 0 && Object.values(holds).every((h) => h.status !== 'pending');
+
+/** The environments the record NAMES: a lock on any other it never accounted for. */
+export const deployHoldsCover = (
+  holds: DeployHolds,
+  held: readonly DeployLockHeld[],
+): DeployLockHeld[] => {
+  const named = new Set(Object.values(holds).flatMap((h) => h.environments ?? []));
+  return held.filter((h) => named.has(h.environment));
+};

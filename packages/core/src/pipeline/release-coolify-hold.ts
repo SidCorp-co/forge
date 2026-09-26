@@ -1,7 +1,12 @@
 /** The environment hold a release dispatch takes and gives back (ISS-1279). */
 
 import { readDeployHolds } from './deploy-confirmations.js';
-import { deployHoldsIdle, readDeployLocksHeld, releaseDeployLocksForRun } from './deploy-lock.js';
+import {
+  deployHoldsCover,
+  deployHoldsIdle,
+  readDeployLocksHeld,
+  releaseDeployLocksForRun,
+} from './deploy-lock.js';
 
 /** Each binding's stages, plus `live` for one `reachesLive` says reaches production. */
 export interface DeployLockIntent {
@@ -49,7 +54,26 @@ export async function freeLockIfNothingPending(
     );
     return;
   }
-  if (deployHoldsIdle(await readDeployHolds(runId))) {
-    await releaseDeployLocksForRun(runId, heldLocks);
+  const holds = await readDeployHolds(runId);
+  if (deployHoldsIdle(holds)) {
+    await releaseDeployLocksForRun(runId, deployHoldsCover(holds, heldLocks));
   }
+}
+
+/** An environment this dispatch took for a binding it then parked for a human is an environment it
+ *  is not deploying to. Left held, it refuses the confirmation that resumes it — in the name of the
+ *  very run waiting to press it — until the expiry (ISS-1279). */
+export async function giveBackUnusedEnvironments(
+  lock: DeployLockIntent | null,
+  runId: string,
+  needed: readonly string[],
+): Promise<void> {
+  if (!lock) return;
+  const surplus = lock.environments.filter((e) => !needed.includes(e));
+  if (surplus.length === 0) return;
+  const held = await readDeployLocksHeld(runId);
+  await releaseDeployLocksForRun(
+    runId,
+    held.filter((h) => surplus.includes(h.environment)),
+  );
 }

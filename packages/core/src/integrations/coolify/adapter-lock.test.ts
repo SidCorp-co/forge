@@ -22,7 +22,7 @@ vi.mock('../deliveries.js', () => ({
 }));
 const replaceHoldsMock = vi.fn(async (_args: unknown) => true);
 /** What `readDeployHolds` finds once the dispatch has written its holds. */
-let heldNow: Record<string, { status: string }> = {};
+let heldNow: Record<string, { status: string; environments?: string[] }> = {};
 vi.mock('../../pipeline/deploy-confirmations.js', () => ({
   DEPLOY_CONFIRM_WINDOW_MS: 1_800_000,
   replaceDispatchHoldWithTargets: (args: unknown) => replaceHoldsMock(args),
@@ -90,7 +90,10 @@ describe('coolifyAdapter.dispatchOutbound — the environment the dispatch no lo
     globalThis.fetch = vi.fn(
       async () => new Response('boom', { status: 500 }),
     ) as unknown as typeof fetch;
-    heldNow = { 'target:del-1': { status: 'failed' }, 'target:del-2': { status: 'failed' } };
+    heldNow = {
+      'target:del-1': { status: 'failed', environments: ['live'] },
+      'target:del-2': { status: 'failed', environments: ['live'] },
+    };
 
     await expect(
       coolifyAdapter.dispatchOutbound(twoTargetCtx(), {
@@ -111,7 +114,10 @@ describe('coolifyAdapter.dispatchOutbound — the environment the dispatch no lo
         ? new Response(JSON.stringify({ deployment_uuid: 'dep-1' }), { status: 200 })
         : new Response('boom', { status: 500 });
     }) as unknown as typeof fetch;
-    heldNow = { 'target:del-1': { status: 'pending' }, 'target:del-2': { status: 'failed' } };
+    heldNow = {
+      'target:del-1': { status: 'pending', environments: ['live'] },
+      'target:del-2': { status: 'failed', environments: ['live'] },
+    };
 
     await expect(
       coolifyAdapter.dispatchOutbound(twoTargetCtx(), {
@@ -133,7 +139,7 @@ describe('coolifyAdapter.dispatchOutbound — the environment the dispatch no lo
     replaceHoldsMock.mockResolvedValueOnce(false);
     // Resolved, so the record reads idle — and it is a record of an EARLIER deploy, not of the
     // two this dispatch just sent Coolify and could record nothing about.
-    heldNow = { 'target:del-earlier': { status: 'succeeded' } };
+    heldNow = { 'target:del-earlier': { status: 'succeeded', environments: ['live'] } };
 
     await expect(
       coolifyAdapter.dispatchOutbound(twoTargetCtx(), {
@@ -160,7 +166,10 @@ describe('coolifyAdapter.dispatchOutbound — the environment the dispatch no lo
     updateDeliveryMock.mockImplementation(async (_id: unknown, patch: { status: string }) => {
       if (patch.status === 'ok') throw new Error('delivery row refused');
     });
-    heldNow = { 'target:del-1': { status: 'failed' }, 'target:del-2': { status: 'pending' } };
+    heldNow = {
+      'target:del-1': { status: 'failed', environments: ['live'] },
+      'target:del-2': { status: 'pending', environments: ['live'] },
+    };
 
     await expect(
       coolifyAdapter.dispatchOutbound(twoTargetCtx(), {

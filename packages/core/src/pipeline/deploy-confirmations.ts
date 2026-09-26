@@ -17,6 +17,8 @@ export interface DeployConfirmation {
   status: DeployConfirmationStatus;
   deadlineAt: string;
   detail?: string;
+  /** What this deploy reaches, so the record names what it may free; absent, it frees nothing. */
+  environments?: string[];
 }
 
 export type DeployHolds = Record<string, DeployConfirmation>;
@@ -91,6 +93,7 @@ export async function openDeployDispatchHold(args: {
   /** A sibling of the SAME fan-out already holds a placeholder, so this is work the run authorised
    *  while live and going terminal midway disowns no half of it (ISS-1279). */
   authorisedBySibling?: boolean;
+  environments?: string[];
   now?: Date;
 }): Promise<boolean> {
   const now = args.now ?? new Date();
@@ -103,6 +106,7 @@ export async function openDeployDispatchHold(args: {
       targetLabel: args.targetLabel,
       status: 'pending',
       deadlineAt: new Date(now.getTime() + DEPLOY_CONFIRM_WINDOW_MS).toISOString(),
+      ...(args.environments?.length ? { environments: args.environments } : {}),
     },
     args.authorisedBySibling ?? false,
   );
@@ -113,8 +117,7 @@ export async function openDeployDispatchHold(args: {
  * the adapter has fanned out and every target has a `deployment_uuid` (or has
  * failed to get one, which is already a resolved hold).
  *
- * @returns `false` when the run refused any hold — it went terminal while the
- * deploy was being dispatched, so nothing can witness this deploy's outcome.
+ * @returns `false` where any hold was refused.
  */
 export async function replaceDispatchHoldWithTargets(args: {
   runId: string;
@@ -133,7 +136,11 @@ export async function replaceDispatchHoldWithTargets(args: {
   const deadlineAt = new Date(now.getTime() + DEPLOY_CONFIRM_WINDOW_MS).toISOString();
   // A terminal run records the outcome of work it authorised while live and takes on nothing new: a standing placeholder IS that authorisation (ISS-1279), and its absence leaves ISS-922's rule where it was.
   const placeholder = args.requestId ? dispatchHoldKey(args.requestId) : null;
-  const replacing = placeholder !== null && placeholder in (await readDeployHolds(args.runId));
+  const standing =
+    placeholder === null ? undefined : (await readDeployHolds(args.runId))[placeholder];
+  const replacing = standing !== undefined;
+  // Carried from the placeholder, the only thing that knew them (ISS-1279).
+  const environments = standing?.environments;
   let allHeld = true;
   for (const t of args.targets) {
     const held = await writeHold(
@@ -146,6 +153,7 @@ export async function replaceDispatchHoldWithTargets(args: {
         status: t.status,
         deadlineAt,
         ...(t.detail ? { detail: t.detail } : {}),
+        ...(environments?.length ? { environments } : {}),
       },
       replacing,
     );

@@ -6,7 +6,11 @@ import {
   settleDeployTarget,
   targetHoldKey,
 } from '../../pipeline/deploy-confirmations.js';
-import { readDeployLocksHeld, releaseDeployLocksForRun } from '../../pipeline/deploy-lock.js';
+import {
+  deployHoldsCover,
+  readDeployLocksHeld,
+  releaseDeployLocksForRun,
+} from '../../pipeline/deploy-lock.js';
 import { closeRun, RELEASE_DEPLOY_DONE_STEP, setCurrentStep } from '../../pipeline/runs.js';
 import { boss } from '../../queue/boss.js';
 import { recordDelivery } from '../deliveries.js';
@@ -225,7 +229,9 @@ export async function applyDeploySettlement(
   // hold was reclaimed cannot free its successor.
   const witnessed = holds[targetHoldKey(data.deliveryId)];
   const stillReaching = Object.values(holds).some((h) => h.status === 'pending');
-  if (witnessed && !stillReaching) await releaseDeployLocksForRun(data.runId, heldLocks);
+  if (witnessed && !stillReaching) {
+    await releaseDeployLocksForRun(data.runId, deployHoldsCover(holds, heldLocks));
+  }
 
   if (verdict === 'failed') {
     logger.error(

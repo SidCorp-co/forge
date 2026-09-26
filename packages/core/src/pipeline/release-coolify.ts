@@ -19,6 +19,7 @@ import {
   type DeployLockIntent,
   deployLockIntent,
   freeLockIfNothingPending,
+  giveBackUnusedEnvironments,
   targetLabelOf,
 } from './release-coolify-hold.js';
 import { RELEASE_DEPLOY_IN_FLIGHT_STEP, setCurrentStep } from './runs.js';
@@ -185,6 +186,7 @@ export async function tryDispatchCoolifyRelease(args: {
   // far read as the whole set, and a target settling there closes the run and frees the
   // environment while a binding this loop has not reached is still to be dispatched.
   const armed: Array<{ binding: (typeof pairs)[number]['binding']; requestId: string }> = [];
+  let witnessed = 0;
   try {
     for (const { binding } of pairs) {
       if (reachesLive(binding) && !autoProd) {
@@ -211,9 +213,15 @@ export async function tryDispatchCoolifyRelease(args: {
         bindingId: binding.id,
         requestId,
         targetLabel: targetLabelOf(binding),
-        authorisedBySibling: armed.length > 0,
+        // A placeholder this fan-out actually WROTE, never one it merely attempted: a run already
+        // terminal refuses the first and must go on refusing the rest (ISS-1279).
+        authorisedBySibling: witnessed > 0,
+        ...(lock
+          ? { environments: deployLockIntent(projectId, [{ binding }], reachesLive).environments }
+          : {}),
       });
-      if (!held) reportUnwitnessedDeploy(runId, issueId, binding.id);
+      if (held) witnessed += 1;
+      else reportUnwitnessedDeploy(runId, issueId, binding.id);
       armed.push({ binding, requestId });
     }
 
@@ -244,6 +252,17 @@ export async function tryDispatchCoolifyRelease(args: {
     }
     await freeLockIfNothingPending(lock, runId, dispatched);
     throw err;
+  }
+  // Only where something WAS armed: with nothing armed the whole hold goes back below, and the
+  // two would each issue a delete for it.
+  if (armed.length > 0) {
+    await giveBackUnusedEnvironments(
+      lock,
+      runId,
+      armed.flatMap(
+        ({ binding }) => deployLockIntent(projectId, [{ binding }], reachesLive).environments,
+      ),
+    );
   }
   await freeLockIfNothingPending(lock, runId, dispatched);
 
@@ -468,6 +487,7 @@ export async function confirmPendingProdDeploy(
         bindingId,
         requestId: confirmedRequestId,
         targetLabel: 'prod deploy',
+        ...(gate.lock ? { environments: gate.lock.environments } : {}),
       });
       if (!held) reportUnwitnessedDeploy(run.id, gate.issueId, bindingId);
       await enqueueOutboundDispatch({

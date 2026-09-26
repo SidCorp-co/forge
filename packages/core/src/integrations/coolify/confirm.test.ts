@@ -53,10 +53,16 @@ vi.mock('../../pipeline/deploy-confirmations.js', async () => {
 // happens on both terminal arms and is keyed on the settling run.
 const LOCKS = [{ environment: 'live', acquiredAt: '2026-09-27T00:00:00.000Z' }];
 const releaseLocksMock = vi.fn(async (..._a: unknown[]) => 0);
-vi.mock('../../pipeline/deploy-lock.js', () => ({
-  readDeployLocksHeld: async () => LOCKS,
-  releaseDeployLocksForRun: (...a: unknown[]) => releaseLocksMock(...(a as [string])),
-}));
+vi.mock('../../pipeline/deploy-lock.js', async () => {
+  const real = await vi.importActual<typeof import('../../pipeline/deploy-lock.js')>(
+    '../../pipeline/deploy-lock.js',
+  );
+  return {
+    ...real,
+    readDeployLocksHeld: async () => LOCKS,
+    releaseDeployLocksForRun: (...a: unknown[]) => releaseLocksMock(...(a as [string])),
+  };
+});
 
 const closeRunMock = vi.fn(async () => 'settled' as const);
 const setCurrentStepMock = vi.fn();
@@ -112,6 +118,8 @@ const hold = (targetLabel: string, deploymentUuid: string, status: HoldStatus) =
   targetLabel,
   status,
   deadlineAt: FUTURE,
+  /** What this hold's deploy reaches: the record names what it may free (ISS-1279). */
+  environments: ['live'],
 });
 
 /** What `settleDeployTarget` hands back: the settled target's OWN hold — written even on a run

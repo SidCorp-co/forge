@@ -8,6 +8,7 @@ import {
   replaceDispatchHoldWithTargets,
 } from '../../pipeline/deploy-confirmations.js';
 import {
+  deployHoldsCover,
   deployHoldsIdle,
   readDeployLocksHeld,
   releaseDeployLocksForRun,
@@ -141,8 +142,10 @@ async function recordDispatchOutcome(outcome: DispatchOutcome): Promise<void> {
   // ISS-1279 — read off the holds and only where they were written: every target resolved means
   // nothing is reaching the environment, while a refused hold says nothing at all about what
   // Coolify is running, and freeing on that is how a second deploy joins the first one in flight.
-  if (runId && held && deployHoldsIdle(await readDeployHolds(runId))) {
-    await releaseDeployLocksForRun(runId, heldLocks);
+  if (!runId || !held) return;
+  const holds = await readDeployHolds(runId);
+  if (deployHoldsIdle(holds)) {
+    await releaseDeployLocksForRun(runId, deployHoldsCover(holds, heldLocks));
   }
 }
 

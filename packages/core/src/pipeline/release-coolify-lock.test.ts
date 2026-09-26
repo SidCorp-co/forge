@@ -87,7 +87,7 @@ vi.mock('./runs.js', () => ({
 
 const openHoldSpy = vi.fn(async (_args: unknown) => true);
 const abandonHoldSpy = vi.fn(async (_runId: string, _requestId: string) => undefined);
-let heldNow: Record<string, { status: string }> = {};
+let heldNow: Record<string, { status: string; environments?: string[] }> = {};
 vi.mock('./deploy-confirmations.js', () => ({
   openDeployDispatchHold: (args: unknown) => openHoldSpy(args),
   abandonDeployDispatchHold: (runId: string, requestId: string) => abandonHoldSpy(runId, requestId),
@@ -240,6 +240,29 @@ describe('tryDispatchCoolifyRelease — the environment hold', () => {
     expect(releaseLocksMock.mock.calls).toEqual([[RUN_ID, LIVE_ONLY]]);
   });
 
+  // A hold taken for a binding that then parks is an environment nobody is deploying to — and
+  // the confirmation that resumes it asks for that same environment, so leaving it held refuses
+  // the press in the name of the very run waiting to make it (ISS-1279).
+  it('gives back the environment of a binding that parked, and keeps the one it dispatched', async () => {
+    listBindingsSpy.mockResolvedValueOnce([stagingPair, prodPair]);
+    selectQueue.push([{ status: 'running' }]);
+    selectQueue.push([]); // projectAutoProdDeploy: the gate stays on
+    selectQueue.push([]); // getProdGateStateForRun: unconfirmed
+    selectQueue.push([{ metadata: {} }]); // markPendingHumanConfirm
+    heldNow = { 'target:del-a': { status: 'pending', environments: ['preview'] } };
+
+    const outcome = await tryDispatchCoolifyRelease({
+      projectId: PROJECT_ID,
+      issueId: null,
+      runId: RUN_ID,
+      takeEnvironmentLock: true,
+    });
+
+    expect(outcome.pendingHumanConfirm).toBe(true);
+    expect(envsAsked()).toEqual(['live', 'preview']);
+    expect(releaseLocksMock.mock.calls).toEqual([[RUN_ID, LIVE_ONLY]]);
+  });
+
   it('writes the gate state a parked binding is resumed from', async () => {
     listBindingsSpy.mockResolvedValueOnce([prodPair]);
     selectQueue.push([{ status: 'running' }]);
@@ -291,7 +314,7 @@ describe('tryDispatchCoolifyRelease — giving the hold back', () => {
       });
     // The one that WAS enqueued settled before this throw was caught, so nothing of this run is
     // reaching the environment any more — and a count of successful enqueues cannot say so.
-    heldNow = { 'target:del-a': { status: 'succeeded' } };
+    heldNow = { 'target:del-a': { status: 'succeeded', environments: ['preview', 'live'] } };
 
     await tryDispatchCoolifyRelease({
       projectId: PROJECT_ID,
@@ -358,6 +381,26 @@ describe('tryDispatchCoolifyRelease — giving the hold back', () => {
       (c) => (c[0] as { authorisedBySibling?: boolean }).authorisedBySibling,
     );
     expect(authorised).toEqual([false, true]);
+  });
+
+  // Attempting a placeholder is not writing one. A run terminal before the fan-out began refuses
+  // the first, and claiming its authority for the second would record the very work ISS-922 says
+  // a terminal run takes on none of — and then free the environment from half a record.
+  it('claims no sibling authority from a placeholder the run refused', async () => {
+    listBindingsSpy.mockResolvedValueOnce([stagingPair, pairOf(SECOND_INT, ['preview'])]);
+    openHoldSpy.mockResolvedValue(false);
+
+    await tryDispatchCoolifyRelease({
+      projectId: PROJECT_ID,
+      issueId: null,
+      runId: RUN_ID,
+      takeEnvironmentLock: true,
+    });
+
+    const authorised = openHoldSpy.mock.calls.map(
+      (c) => (c[0] as { authorisedBySibling?: boolean }).authorisedBySibling,
+    );
+    expect(authorised).toEqual([false, false]);
   });
 
   it('gives the hold back when a dispatch hold cannot be opened at all', async () => {

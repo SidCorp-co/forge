@@ -17,7 +17,7 @@ vi.mock('../deliveries.js', () => ({
 }));
 const replaceHoldsMock = vi.fn(async (_args: unknown) => true);
 /** What `readDeployHolds` finds after the dispatch wrote its holds (ISS-1279). */
-let heldNow: Record<string, { status: string }> = {};
+let heldNow: Record<string, { status: string; environments?: string[] }> = {};
 vi.mock('../../pipeline/deploy-confirmations.js', () => ({
   DEPLOY_CONFIRM_WINDOW_MS: 1_800_000,
   replaceDispatchHoldWithTargets: (args: unknown) => replaceHoldsMock(args),
@@ -68,7 +68,7 @@ afterEach(() => {
 
 beforeEach(() => {
   updateConnectionMock.mockResolvedValue({});
-  heldNow = { 'target:del-1': { status: 'pending' } };
+  heldNow = { 'target:del-1': { status: 'pending', environments: ['live'] } };
   releaseLocksMock.mockClear();
 });
 

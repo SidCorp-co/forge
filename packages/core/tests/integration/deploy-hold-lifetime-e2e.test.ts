@@ -93,13 +93,22 @@ describe('the hold ends when the last deploy does', () => {
       status: 'pending' as const,
     }));
 
+  /** One dispatch: a placeholder naming the environment it took, replaced by its real targets. */
   async function armed(runId: string, count: number): Promise<void> {
-    const { replaceDispatchHoldWithTargets } = await import(
+    const { openDeployDispatchHold, replaceDispatchHoldWithTargets } = await import(
       '../../src/pipeline/deploy-confirmations.js'
     );
+    await openDeployDispatchHold({
+      runId,
+      bindingId: '00000000-0000-4000-8000-0000000000b1',
+      requestId: 'req-a',
+      targetLabel: 'live deploy',
+      environments: ['live'],
+    });
     await replaceDispatchHoldWithTargets({
       runId,
       bindingId: '00000000-0000-4000-8000-0000000000b1',
+      requestId: 'req-a',
       targets: targetsOf(count),
     });
   }
@@ -151,6 +160,7 @@ describe('the hold ends when the last deploy does', () => {
       bindingId: BINDING_B,
       requestId: 'req-b',
       targetLabel: 'live deploy',
+      environments: ['live'],
     });
     await armed(run, 1);
     await settle(run, 'del-0', 'failed');
@@ -261,12 +271,20 @@ describe('the hold ends only on a record that can answer for it', () => {
   };
 
   async function armed(runId: string, count: number): Promise<void> {
-    const { replaceDispatchHoldWithTargets } = await import(
+    const { openDeployDispatchHold, replaceDispatchHoldWithTargets } = await import(
       '../../src/pipeline/deploy-confirmations.js'
     );
+    await openDeployDispatchHold({
+      runId,
+      bindingId: '00000000-0000-4000-8000-0000000000b1',
+      requestId: 'req-a',
+      targetLabel: 'live deploy',
+      environments: ['live'],
+    });
     await replaceDispatchHoldWithTargets({
       runId,
       bindingId: '00000000-0000-4000-8000-0000000000b1',
+      requestId: 'req-a',
       targets: targetsOf(count),
     });
   }
@@ -297,6 +315,7 @@ describe('the hold ends only on a record that can answer for it', () => {
       requestId: 'req-b',
       targetLabel: 'live deploy',
       authorisedBySibling: true,
+      environments: ['live'],
     });
 
     expect(second).toBe(true);
@@ -318,6 +337,7 @@ describe('the hold ends only on a record that can answer for it', () => {
       bindingId: '00000000-0000-4000-8000-0000000000b1',
       requestId: 'req-a',
       targetLabel: 'preview deploy',
+      environments: ['live'],
     });
     await harness.db.execute(sql`UPDATE pipeline_runs SET status = 'failed' WHERE id = ${run}`);
     await openDeployDispatchHold({
@@ -326,6 +346,7 @@ describe('the hold ends only on a record that can answer for it', () => {
       requestId: 'req-b',
       targetLabel: 'live deploy',
       authorisedBySibling: true,
+      environments: ['live'],
     });
     await replaceDispatchHoldWithTargets({
       runId: run,
@@ -355,6 +376,38 @@ describe('the hold ends only on a record that can answer for it', () => {
     expect(await releaseDeployLocksForRun(run, asRead)).toBe(0);
     expect((await lockRow('live'))?.subject).toBe('a second dispatch of the same run');
     expect(await releaseDeployLocksForRun(run, await readDeployLocksHeld(run))).toBe(1);
+  });
+
+  // A second dispatch of the same run takes an environment the first never held. Its lock row is
+  // in the settling dispatch's snapshot and its acquisition instant matches, so only the record
+  // saying which environments it speaks for keeps it from being carried off (ISS-1279).
+  it('frees no environment its own record does not name', async () => {
+    const { acquireDeployLocks } = await lockModule();
+    const { openDeployDispatchHold, replaceDispatchHoldWithTargets } = await import(
+      '../../src/pipeline/deploy-confirmations.js'
+    );
+    const run = await makeRun();
+    await acquireDeployLocks(request(run), ['live']);
+    await openDeployDispatchHold({
+      runId: run,
+      bindingId: '00000000-0000-4000-8000-0000000000b1',
+      requestId: 'req-a',
+      targetLabel: 'live deploy',
+      environments: ['live'],
+    });
+    await replaceDispatchHoldWithTargets({
+      runId: run,
+      bindingId: '00000000-0000-4000-8000-0000000000b1',
+      requestId: 'req-a',
+      targets: targetsOf(1),
+    });
+    // The same run dispatching again, its placeholder not yet written.
+    await acquireDeployLocks(request(run, 'a preview dispatch of the same run'), ['preview']);
+
+    await settle(run, 'del-0', 'succeeded');
+
+    expect(await lockRow('live')).toBeNull();
+    expect((await lockRow('preview'))?.subject).toBe('a preview dispatch of the same run');
   });
 
   it('lets the next release take the environment the moment that last target ends', async () => {
