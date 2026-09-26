@@ -21,7 +21,7 @@ import { ConversationPanel } from "@/features/conversations/components/conversat
 import { useConversationDock } from "@/features/conversations/use-conversation-dock";
 import { useLocationSearch } from "@/lib/utils/use-location-search";
 import { useAuth } from "@/providers/auth-provider";
-import { useToast } from "@/providers/toast-provider";
+import { ToastLane, useToast } from "@/providers/toast-provider";
 import { useProjects } from "@/features/projects/hooks";
 import { usePinnedProjects } from "@/features/projects/pins";
 import { ProjectFlyout } from "@/features/projects/components/project-flyout";
@@ -334,7 +334,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-dvh overflow-hidden bg-app">
-      {/* Desktop rail — compact 76px icon Rail by default (Concept C); expands
+      {/* Desktop rail — compact 88px icon Rail by default (Concept C); expands
           to the labeled 232px NavRail. Hidden below md (bottom tab bar takes
           over). */}
       <div className="hidden h-full md:block">
@@ -483,6 +483,8 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
         >
           <CurrentProjectProvider project={railProject}>{children}</CurrentProjectProvider>
         </main>
+
+        <ToastLane className="mb-[calc(56px+env(safe-area-inset-bottom))] md:mb-0" />
       </div>
 
       {railProject && chatOpen && chatDocked && (

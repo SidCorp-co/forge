@@ -43,7 +43,7 @@ function CountLine({
         <span className="tabular-nums">{rollup.closed}</span> closed ·{" "}
         <span className="tabular-nums">{rollup.recentlyActive}</span> active
       </span>
-      <span className="fg-body-xs text-muted">
+      <span className="fg-caption text-muted">
         (<span className="tabular-nums">{own.total}</span> own,{" "}
         <span className="tabular-nums">{inherited.total}</span> inherited)
       </span>
@@ -161,7 +161,7 @@ export function ModuleRollupView({ scope }: ModuleRollupViewProps) {
           icon="search"
           className="w-full sm:w-64"
         />
-        <p className="fg-body-xs text-muted">Active = updated in the last {activeWithinDays} days</p>
+        <p className="fg-caption text-muted">Active = updated in the last {activeWithinDays} days</p>
       </div>
 
       {shown.length === 0 ? (
