@@ -36,11 +36,15 @@ function itemClass(active: boolean) {
 function ItemBody({ item }: { item: DocsNavItem }) {
   return (
     <>
-      <Icon name="book" size={13} className="flex-none text-subtle" />
-      <span className="truncate">{item.title}</span>
+      <Icon name="book" size={13} className="flex-none self-start pt-0.5 text-subtle" />
       {item.tag ? (
-        <span className="fg-caption ml-auto flex-none pl-2 text-subtle">{item.tag}</span>
-      ) : null}
+        <span className="flex min-w-0 flex-col">
+          <span className="truncate">{item.title}</span>
+          <span className="fg-caption text-subtle">{item.tag}</span>
+        </span>
+      ) : (
+        <span className="truncate">{item.title}</span>
+      )}
     </>
   );
 }

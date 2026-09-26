@@ -10,7 +10,7 @@ import type { Guide } from "../api";
 import { ONE_CORPUS } from "../audience";
 import { buildCorpus, helpPageHref, searchPlaceholder } from "../corpus";
 import { missingDoor } from "../missing";
-import { PublicLanding, PublicReader } from "./public-docs";
+import { PublicLanding, PublicReader, PublicRefusal } from "./public-docs";
 
 expect.extend(matchers);
 afterEach(cleanup);
@@ -159,11 +159,28 @@ describe("a page", () => {
 });
 
 describe("a refused address, reached by a client navigation", () => {
-  it("shows the same refusal the middleware serves, in place of a page", () => {
+  it("shows the same refusal the middleware serves, with every door as the way on", () => {
     const refusal = missingDoor("users");
-    reader({ kind: "refused", refusal });
-    expect(screen.getByText(refusal.heading)).toBeInTheDocument();
-    expect(screen.queryByRole("complementary", { name: "Written for" })).toBeNull();
+    render(<PublicRefusal refusal={refusal} />);
+    expect(screen.getByRole("heading", { name: refusal.heading })).toBeInTheDocument();
+    expect(screen.getByText(refusal.body)).toBeInTheDocument();
+    expect(within(screen.getByRole("navigation", { name: "Ways in" })).getAllByRole("link")).toHaveLength(4);
+  });
+});
+
+describe("a search result in the reader's sidebar", () => {
+  it("puts its door under the title, so the title keeps the row's width", () => {
+    reader({ kind: "door", audience: "user" });
+    fireEvent.change(screen.getByRole("textbox", { name: "Search every page" }), {
+      target: { value: "Claude" },
+    });
+    const result = within(screen.getByRole("list", { name: "Search results" }))
+      .getAllByRole("link")
+      .find((l) => l.textContent?.startsWith("Connect Claude Code"));
+    const [title, door] = [...(result?.querySelectorAll("span > span") ?? [])];
+    expect(title?.textContent).toBe("Connect Claude Code");
+    expect(door?.textContent).toBe("I'm connecting an AI assistant");
+    expect(title?.parentElement?.className).toContain("flex-col");
   });
 });
 

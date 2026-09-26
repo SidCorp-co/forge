@@ -26,12 +26,8 @@ import {
 } from "../corpus";
 import type { Refusal } from "../missing";
 
-/** What the reader shows: a door's page list, one page (by its href, which is unique across
- *  both homes), or a refusal of the address. */
-export type ReaderView =
-  | { kind: "door"; audience: Audience }
-  | { kind: "page"; href: string }
-  | { kind: "refused"; refusal: Refusal };
+/** What the reader shows: a door's page list, or one page by its href, unique across both homes. */
+export type ReaderView = { kind: "door"; audience: Audience } | { kind: "page"; href: string };
 
 function resultItem(doc: PublicDoc, activeHref: string | null): DocsNavItem {
   return {
@@ -203,10 +199,9 @@ export function PublicReader({ corpus, view }: { corpus: readonly PublicDoc[]; v
   );
 
   let content: React.ReactNode;
-  if (view.kind === "refused") {
-    content = <EmptyState title={view.refusal.heading} message={view.refusal.body} mascot={false} />;
-  } else if (view.kind === "door") {
-    content = <DoorPage audience={view.audience} docs={docsBehind(corpus, view.audience)} />;
+  if (view.kind === "door") {
+    const docs = doorSections(corpus, view.audience).flatMap((section) => section.docs);
+    content = <DoorPage audience={view.audience} docs={docs} />;
   } else if (!doc) {
     // The server resolved this href from the same corpus, so a miss here is a defect, said so.
     content = (
@@ -233,5 +228,26 @@ export function PublicReader({ corpus, view }: { corpus: readonly PublicDoc[]; v
     <DocsLayout sidebar={sidebar} toc={toc} contentFirst>
       {content}
     </DocsLayout>
+  );
+}
+
+/** An address naming no page or door. It needs nothing from core, so a refusal still renders
+ *  when core is down, and offers every door as the way on. */
+export function PublicRefusal({ refusal }: { refusal: Refusal }) {
+  return (
+    <div className="mx-auto flex max-w-[72ch] flex-col gap-4 py-8">
+      <PageTitle className="fg-h2 text-fg">{refusal.heading}</PageTitle>
+      <p className="fg-body-sm text-muted">{refusal.body}</p>
+      <nav aria-label="Ways in" className="flex flex-col gap-1">
+        {AUDIENCES.map((a) => (
+          <Link key={a} href={doorHref(a)} className={LINK_CLASS}>
+            {DOORS[a].label}
+          </Link>
+        ))}
+        <Link href={INDEX_PATH} className={LINK_CLASS}>
+          All three ways in
+        </Link>
+      </nav>
+    </div>
   );
 }

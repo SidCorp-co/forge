@@ -5,7 +5,7 @@ import { fetchGuideCorpus } from "@/features/guides/api";
 import { DOORS } from "@/features/guides/audience";
 import { buildCorpus, helpPageHref, searchPlaceholder } from "@/features/guides/corpus";
 import { GuideShell } from "@/features/guides/components/guide-shell";
-import { PublicLanding, PublicReader } from "@/features/guides/components/public-docs";
+import { PublicLanding, PublicReader, PublicRefusal } from "@/features/guides/components/public-docs";
 import { readPublicRequest, toSearchParams } from "@/features/guides/requested-page";
 
 /** Per request, never prerendered: a prerender bakes the index into the image
@@ -31,12 +31,18 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
 
 export default async function GuidesPage({ searchParams }: Props) {
   const asked = readPublicRequest(toSearchParams(await searchParams), HELP_SLUGS);
+  if (asked.kind === "refused") {
+    return (
+      <GuideShell>
+        <PublicRefusal refusal={asked.refusal} />
+      </GuideShell>
+    );
+  }
   const corpus = buildCorpus(HELP_DOCS, await fetchGuideCorpus());
-  const placeholder = searchPlaceholder(corpus);
   return (
     <GuideShell>
       {asked.kind === "landing" ? (
-        <PublicLanding corpus={corpus} placeholder={placeholder} />
+        <PublicLanding corpus={corpus} placeholder={searchPlaceholder(corpus)} />
       ) : (
         <PublicReader
           corpus={corpus}
