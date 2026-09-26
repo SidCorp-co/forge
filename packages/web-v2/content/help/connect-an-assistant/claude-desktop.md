@@ -2,6 +2,7 @@
 title: Connect Claude Desktop
 section: Connect an assistant
 order: 20
+audience: assistant-setup
 ---
 
 # Connect Claude Desktop

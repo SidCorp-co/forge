@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchGuide, fetchGuideIndex } from "./api";
+import { fetchGuide, fetchGuideCorpus, fetchGuideIndex } from "./api";
 
 const BASE = "http://core.test/api";
 
@@ -78,5 +78,38 @@ describe("fetchGuide", () => {
     withBase();
     stubFetch(() => Response.json({ guide: { slug: "c" } }));
     await expect(fetchGuide("c")).rejects.toThrow(/no `guide` body/);
+  });
+});
+
+describe("fetchGuideCorpus", () => {
+  const index = {
+    guides: [
+      { slug: "a", title: "A", summary: "s", version: 1 },
+      { slug: "b", title: "B", summary: "t", version: 1 },
+    ],
+  };
+
+  it("returns every guide the index lists with its body, in index order", async () => {
+    withBase();
+    stubFetch((url) => {
+      if (url.endsWith("/guides")) return Response.json(index);
+      const slug = url.split("/").pop() ?? "";
+      return Response.json({ guide: { slug, title: slug.toUpperCase(), summary: "", version: 1, body: `# ${slug}` } });
+    });
+    const guides = await fetchGuideCorpus();
+    expect(guides.map((g) => [g.slug, g.body])).toEqual([
+      ["a", "# a"],
+      ["b", "# b"],
+    ]);
+  });
+
+  it("throws naming a slug the index lists and core then answers 404 for, rather than dropping it", async () => {
+    withBase();
+    stubFetch((url) => {
+      if (url.endsWith("/guides")) return Response.json(index);
+      if (url.endsWith("/guides/b")) return new Response("nope", { status: 404 });
+      return Response.json({ guide: { slug: "a", title: "A", summary: "", version: 1, body: "# a" } });
+    });
+    await expect(fetchGuideCorpus()).rejects.toThrow(/the index lists b and core answers 404 for it/);
   });
 });

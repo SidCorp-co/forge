@@ -2,6 +2,7 @@
 title: What connecting an assistant does
 section: Connect an assistant
 order: 10
+audience: assistant-setup
 ---
 
 # What connecting an assistant does

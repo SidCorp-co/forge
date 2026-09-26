@@ -112,6 +112,10 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+
+- **The public documentation has three doors and a search.** Choose "I use Forge", "I'm connecting
+  an AI assistant" or "I'm an agent or a script"; every page says who it is for, and search
+  reaches all of them.
 - **Two help pages for people filing work: how to ask for a change, and how to tell it is done.**
   A finished issue's page now shows its release note — what changed, or what will once it ships.
 - **You can now attach a picture when you talk to the agent on the web, see what you are typing as

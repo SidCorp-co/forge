@@ -1,5 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { missingGuideDocument } from "@/features/guides/missing-document";
+import { HELP_SLUGS } from "@/features/docs/help-slugs.generated";
+import { missingGuideDocument, refusalDocument } from "@/features/guides/missing-document";
+import { readPublicRequest } from "@/features/guides/requested-page";
 import {
   GUIDE_PATH_HEADER,
   GUIDE_SLUG,
@@ -10,21 +12,25 @@ import { resolveServerApiBase } from "@/lib/utils/server-api-base";
 
 export const config = { matcher: ["/admin", "/admin/:path*", "/guides/:path*"] };
 
-/** Answers a `/guides/<slug>` naming no guide, and gates nobody on those routes
- *  — why it is here and not in the page: docs/modules/guides/public-pages.md. */
+/** Answers a `/guides/<slug>` naming no guide, and a `/guides?path=`/`?for=` naming no page or
+ *  door, and gates nobody on those routes — why it is here and not in the page:
+ *  docs/modules/guides/public-pages.md. */
 async function guides(request: NextRequest, pathname: string): Promise<NextResponse> {
   const headers = new Headers(request.headers);
   headers.set(GUIDE_PATH_HEADER, pathname);
   const pass = () => NextResponse.next({ request: { headers } });
 
-  const slug = slugFromGuidePath(pathname);
-  if (!slug || request.headers.has("RSC")) return pass();
+  if (request.headers.has("RSC")) return pass();
+  const notFound = (html: string) =>
+    new NextResponse(html, { status: 404, headers: { "content-type": "text/html; charset=utf-8" } });
 
-  const missing = () =>
-    new NextResponse(missingGuideDocument(slug), {
-      status: 404,
-      headers: { "content-type": "text/html; charset=utf-8" },
-    });
+  const slug = slugFromGuidePath(pathname);
+  if (!slug) {
+    const asked = readPublicRequest(request.nextUrl.searchParams, HELP_SLUGS);
+    return asked.kind === "refused" ? notFound(refusalDocument(asked.refusal)) : pass();
+  }
+
+  const missing = () => notFound(missingGuideDocument(slug));
 
   if (!GUIDE_SLUG.test(slug)) return missing();
 

@@ -1,8 +1,10 @@
 # End-user help docs (`packages/web-v2/content/help/`)
 
 This folder is the **product documentation shown to end users** in the app at
-`/docs`. It is bundled into the **web build** (Hướng A — embedded MDX/Markdown),
-so it ships with the frontend and is **never** read off a backend filesystem.
+`/docs`, and to anyone, signed in or not, on the public documentation at `/guides`
+(behind the doors "I use Forge" and "I'm connecting an AI assistant"). It is bundled
+into the **web build** (Hướng A — embedded MDX/Markdown), so it ships with the
+frontend and is **never** read off a backend filesystem.
 
 > **THE RULE — two homes, never mixed:**
 >
@@ -13,6 +15,7 @@ so it ships with the frontend and is **never** read off a backend filesystem.
 > | May reference | source paths (`packages/…`), `ISS-###`, architecture, internals | only product UI + behavior |
 > | Ships in the product | **never** | yes (web build) |
 > | Rendered at `/docs` | **never** | the **only** source |
+> | Rendered at `/guides` | **never** | beside the agent guides core serves |
 >
 > If a page talks about *how the code works* → it belongs in `docs/`.
 > If a page talks about *how to use Forge* → it belongs **here**.
@@ -50,13 +53,20 @@ Every page starts with:
 title: Pair a runner
 section: Getting started   # sidebar group
 order: 20                  # sort within the section (ascending)
+audience: user             # user | assistant-setup
 ---
 ```
 
-`section` groups pages in the `/docs` sidebar; `order` sorts within a section.
-Sections render in the order `SECTION_ORDER` in `docs-screen.tsx` lists them, and
-any section it does not list falls to the end alphabetically — so a new section
-is added there.
+`section` groups pages in the sidebar; `order` sorts within a section.
+Sections render in the order `HELP_SECTION_ORDER` in `packages/web-v2/src/features/docs/reader.ts`
+lists them, and any section it does not list falls to the end alphabetically — so
+a new section is added there.
+
+`audience` says who the page is written for, and decides which door of the public
+documentation it sits behind: `user` for someone using Forge, `assistant-setup` for
+someone connecting an AI assistant. It is required; `pnpm gen:help` refuses a page
+without one, or with any other value, naming the file. `agent` is not a value here —
+pages for agents are the guides core serves.
 
 ## Structure (Diátaxis, for the product)
 
