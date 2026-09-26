@@ -182,3 +182,53 @@ describe("DescriptionCard, while an agent is working the issue", () => {
     expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument();
   });
 });
+
+// ISS-1150 — the attachments sit with the text that refers to them.
+describe("DescriptionCard's attachments", () => {
+  const FILE = {
+    id: "a1",
+    issueId: "i1",
+    uploaderId: "u1",
+    createdAt: "2026-09-21T11:01:17.765Z",
+    name: "notes.txt",
+    mime: "text/plain",
+    size: 120,
+    url: "/api/attachments/a1/download",
+  };
+  const at = (name: string) => screen.getByText(name);
+  const precedes = (a: Element, b: Element) =>
+    (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+
+  it("lists the attachments above the description text", () => {
+    render(<DescriptionCard issue={issue("the body")} attachments={[FILE]} canWrite={false} />);
+    const region = screen.getByRole("region", { name: "Attachments" });
+    expect(region).toHaveTextContent("notes.txt");
+    expect(precedes(region, at("the body"))).toBe(true);
+  });
+
+  it("renders nothing for attachments when there are none", () => {
+    render(<DescriptionCard issue={issue("the body")} attachments={[]} canWrite={false} />);
+    expect(screen.queryByRole("region", { name: "Attachments" })).toBeNull();
+    expect(screen.queryByText(/No attachments/)).toBeNull();
+  });
+
+  it("says a failed read failed instead of showing none", () => {
+    render(
+      <DescriptionCard
+        issue={issue("the body")}
+        attachments={[]}
+        attachmentsError={new Error("network down")}
+        canWrite={false}
+      />,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("Couldn't load attachments");
+  });
+
+  it("holds a placeholder while the attachments load", () => {
+    const { container } = render(
+      <DescriptionCard issue={issue("the body")} attachments={[]} attachmentsLoading canWrite={false} />,
+    );
+    expect(container.querySelector("[aria-busy]")).not.toBeNull();
+    expect(screen.queryByRole("region", { name: "Attachments" })).toBeNull();
+  });
+});
