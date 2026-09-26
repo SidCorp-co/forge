@@ -20,6 +20,7 @@ import {
   deployLockIntent,
   freeLockIfNothingPending,
   giveBackUnusedEnvironments,
+  locksOf,
   targetLabelOf,
 } from './release-coolify-hold.js';
 import { RELEASE_DEPLOY_IN_FLIGHT_STEP, setCurrentStep } from './runs.js';
@@ -175,8 +176,14 @@ export async function tryDispatchCoolifyRelease(args: {
   }
 
   const lock = takeEnvironmentLock ? deployLockIntent(projectId, pairs, reachesLive) : null;
-  if (lock)
+  // Each placeholder records the rows its own binding needs (ISS-1279).
+  let takenLocks: DeployLockHeld[] = [];
+  if (lock) {
     await acquireDeployLocks({ projectId, runId, subject: lock.subject }, lock.environments);
+    takenLocks = (await readDeployLocksHeld(runId)).filter((h) =>
+      lock.environments.includes(h.environment),
+    );
+  }
 
   const dispatched: string[] = [];
   let pendingHumanConfirm = false;
@@ -199,7 +206,9 @@ export async function tryDispatchCoolifyRelease(args: {
             runId,
             issueId,
             bindingId: binding.id,
-            ...(lock ? { lock } : {}),
+            // THIS binding's environments, never the fan-out's: asking for a sibling's is how the
+            // press gets refused in the name of its own run (ISS-1279).
+            ...(lock ? { lock: deployLockIntent(projectId, [{ binding }], reachesLive) } : {}),
           });
           pendingHumanConfirm = true;
           continue;
@@ -213,12 +222,9 @@ export async function tryDispatchCoolifyRelease(args: {
         bindingId: binding.id,
         requestId,
         targetLabel: targetLabelOf(binding),
-        // A placeholder this fan-out actually WROTE, never one it merely attempted: a run already
-        // terminal refuses the first and must go on refusing the rest (ISS-1279).
+        // One this fan-out WROTE, never one it attempted (ISS-1279).
         authorisedBySibling: witnessed > 0,
-        ...(lock
-          ? { environments: deployLockIntent(projectId, [{ binding }], reachesLive).environments }
-          : {}),
+        locks: locksOf(takenLocks, deployLockIntent(projectId, [{ binding }], reachesLive)),
       });
       if (held) witnessed += 1;
       else reportUnwitnessedDeploy(runId, issueId, binding.id);
@@ -253,8 +259,7 @@ export async function tryDispatchCoolifyRelease(args: {
     await freeLockIfNothingPending(lock, runId, dispatched);
     throw err;
   }
-  // Only where something WAS armed: with nothing armed the whole hold goes back below, and the
-  // two would each issue a delete for it.
+  // Only where something WAS armed: with nothing armed the whole hold goes back below.
   if (armed.length > 0) {
     await giveBackUnusedEnvironments(
       lock,
@@ -487,7 +492,7 @@ export async function confirmPendingProdDeploy(
         bindingId,
         requestId: confirmedRequestId,
         targetLabel: 'prod deploy',
-        ...(gate.lock ? { environments: gate.lock.environments } : {}),
+        locks: taken,
       });
       if (!held) reportUnwitnessedDeploy(run.id, gate.issueId, bindingId);
       await enqueueOutboundDispatch({

@@ -22,7 +22,7 @@ vi.mock('../deliveries.js', () => ({
 }));
 const replaceHoldsMock = vi.fn(async (_args: unknown) => true);
 /** What `readDeployHolds` finds once the dispatch has written its holds. */
-let heldNow: Record<string, { status: string; environments?: string[] }> = {};
+let heldNow: Record<string, { status: string; locks?: typeof LOCKS }> = {};
 vi.mock('../../pipeline/deploy-confirmations.js', () => ({
   DEPLOY_CONFIRM_WINDOW_MS: 1_800_000,
   replaceDispatchHoldWithTargets: (args: unknown) => replaceHoldsMock(args),
@@ -91,8 +91,8 @@ describe('coolifyAdapter.dispatchOutbound — the environment the dispatch no lo
       async () => new Response('boom', { status: 500 }),
     ) as unknown as typeof fetch;
     heldNow = {
-      'target:del-1': { status: 'failed', environments: ['live'] },
-      'target:del-2': { status: 'failed', environments: ['live'] },
+      'target:del-1': { status: 'failed', locks: LOCKS },
+      'target:del-2': { status: 'failed', locks: LOCKS },
     };
 
     await expect(
@@ -115,8 +115,8 @@ describe('coolifyAdapter.dispatchOutbound — the environment the dispatch no lo
         : new Response('boom', { status: 500 });
     }) as unknown as typeof fetch;
     heldNow = {
-      'target:del-1': { status: 'pending', environments: ['live'] },
-      'target:del-2': { status: 'failed', environments: ['live'] },
+      'target:del-1': { status: 'pending', locks: LOCKS },
+      'target:del-2': { status: 'failed', locks: LOCKS },
     };
 
     await expect(
@@ -139,7 +139,7 @@ describe('coolifyAdapter.dispatchOutbound — the environment the dispatch no lo
     replaceHoldsMock.mockResolvedValueOnce(false);
     // Resolved, so the record reads idle — and it is a record of an EARLIER deploy, not of the
     // two this dispatch just sent Coolify and could record nothing about.
-    heldNow = { 'target:del-earlier': { status: 'succeeded', environments: ['live'] } };
+    heldNow = { 'target:del-earlier': { status: 'succeeded', locks: LOCKS } };
 
     await expect(
       coolifyAdapter.dispatchOutbound(twoTargetCtx(), {
@@ -167,8 +167,8 @@ describe('coolifyAdapter.dispatchOutbound — the environment the dispatch no lo
       if (patch.status === 'ok') throw new Error('delivery row refused');
     });
     heldNow = {
-      'target:del-1': { status: 'failed', environments: ['live'] },
-      'target:del-2': { status: 'pending', environments: ['live'] },
+      'target:del-1': { status: 'failed', locks: LOCKS },
+      'target:del-2': { status: 'pending', locks: LOCKS },
     };
 
     await expect(

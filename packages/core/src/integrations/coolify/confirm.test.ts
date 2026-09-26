@@ -118,8 +118,8 @@ const hold = (targetLabel: string, deploymentUuid: string, status: HoldStatus) =
   targetLabel,
   status,
   deadlineAt: FUTURE,
-  /** What this hold's deploy reaches: the record names what it may free (ISS-1279). */
-  environments: ['live'],
+  /** The lock row this hold speaks for: the record names what it may free (ISS-1279). */
+  locks: LOCKS,
 });
 
 /** What `settleDeployTarget` hands back: the settled target's OWN hold — written even on a run

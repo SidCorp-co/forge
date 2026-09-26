@@ -8,9 +8,8 @@ import {
   replaceDispatchHoldWithTargets,
 } from '../../pipeline/deploy-confirmations.js';
 import {
-  deployHoldsCover,
   deployHoldsIdle,
-  readDeployLocksHeld,
+  deployHoldsLocks,
   releaseDeployLocksForRun,
 } from '../../pipeline/deploy-lock.js';
 import { recordDelivery, updateDelivery } from '../deliveries.js';
@@ -103,7 +102,6 @@ interface DispatchOutcome {
  */
 async function recordDispatchOutcome(outcome: DispatchOutcome): Promise<void> {
   const { runId, bindingId, pendingConfirms } = outcome;
-  const heldLocks = runId ? await readDeployLocksHeld(runId) : [];
   let held = false;
   if (runId) {
     held = await replaceDispatchHoldWithTargets({
@@ -145,7 +143,7 @@ async function recordDispatchOutcome(outcome: DispatchOutcome): Promise<void> {
   if (!runId || !held) return;
   const holds = await readDeployHolds(runId);
   if (deployHoldsIdle(holds)) {
-    await releaseDeployLocksForRun(runId, deployHoldsCover(holds, heldLocks));
+    await releaseDeployLocksForRun(runId, deployHoldsLocks(holds));
   }
 }
 

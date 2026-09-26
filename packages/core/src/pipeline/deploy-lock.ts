@@ -5,7 +5,11 @@
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { DEPLOY_CONFIRM_WINDOW_MS, type DeployHolds } from './deploy-confirmations.js';
+import {
+  DEPLOY_CONFIRM_WINDOW_MS,
+  type DeployHolds,
+  type DeployLockRef,
+} from './deploy-confirmations.js';
 
 export const DEPLOY_ENVIRONMENT_LOCKED = 'DEPLOY_ENVIRONMENT_LOCKED';
 
@@ -157,13 +161,10 @@ function isLockWaitTimeout(err: unknown): boolean {
   return outer?.code === LOCK_NOT_AVAILABLE || outer?.cause?.code === LOCK_NOT_AVAILABLE;
 }
 
-/** One row of the lock table, identified by when it was taken as well as where: a reacquire moves
- *  `acquired_at`, telling this hold from the next on the same environment. `acquiredAt` is
- *  Postgres' own rendering, carried back verbatim — a JS `Date` truncates its microseconds. */
-export interface DeployLockHeld {
-  environment: string;
-  acquiredAt: string;
-}
+/** A reacquire moves `acquired_at`, telling this hold from the next on the same environment.
+ *  `acquiredAt` is Postgres' own rendering, carried back verbatim — a JS `Date` truncates the
+ *  microseconds it has to match on. */
+export type DeployLockHeld = DeployLockRef;
 
 /** What this run holds NOW, read before the deploy-hold record is. */
 export async function readDeployLocksHeld(runId: string): Promise<DeployLockHeld[]> {
@@ -197,11 +198,11 @@ export async function releaseDeployLocksForRun(
 export const deployHoldsIdle = (holds: DeployHolds): boolean =>
   Object.keys(holds).length > 0 && Object.values(holds).every((h) => h.status !== 'pending');
 
-/** The environments the record NAMES: a lock on any other it never accounted for. */
-export const deployHoldsCover = (
-  holds: DeployHolds,
-  held: readonly DeployLockHeld[],
-): DeployLockHeld[] => {
-  const named = new Set(Object.values(holds).flatMap((h) => h.environments ?? []));
-  return held.filter((h) => named.has(h.environment));
+/** The lock rows the record NAMES, by identity: one it never accounted for is a later taker's. */
+export const deployHoldsLocks = (holds: DeployHolds): DeployLockHeld[] => {
+  const byId = new Map<string, DeployLockHeld>();
+  for (const hold of Object.values(holds)) {
+    for (const l of hold.locks ?? []) byId.set(`${l.environment}@${l.acquiredAt}`, l);
+  }
+  return [...byId.values()];
 };

@@ -45,6 +45,12 @@ beforeEach(async () => {
 
 const lockModule = () => import('../../src/pipeline/deploy-lock.js');
 
+/** The `live` lock row this run holds, as a placeholder records what it speaks for (ISS-1279). */
+async function liveLocks(runId: string) {
+  const { readDeployLocksHeld } = await lockModule();
+  return (await readDeployLocksHeld(runId)).filter((h) => h.environment === 'live');
+}
+
 async function makeRun(): Promise<string> {
   const id = randomUUID();
   await harness.db.execute(sql`
@@ -82,55 +88,54 @@ const request = (runId: string, subject = 'live deploy (binding b-1)') => ({
   subject,
 });
 
+const BINDING_B = '00000000-0000-4000-8000-0000000000b2';
+
+const targetsOf = (n: number) =>
+  Array.from({ length: n }, (_, i) => ({
+    deliveryId: `del-${i}`,
+    targetLabel: `Target ${i}`,
+    deploymentUuid: `dep-${i}`,
+    status: 'pending' as const,
+  }));
+
+const settle = async (
+  runId: string,
+  deliveryId: string,
+  verdict: 'succeeded' | 'failed',
+): Promise<void> => {
+  const { applyDeploySettlement } = await import('../../src/integrations/coolify/confirm.js');
+  await applyDeploySettlement(
+    {
+      bindingId: '00000000-0000-4000-8000-0000000000b1',
+      runId,
+      deliveryId,
+      deploymentUuid: `dep-${deliveryId}`,
+      targetLabel: deliveryId,
+    },
+    verdict,
+  );
+};
+
+async function armed(runId: string, count: number): Promise<void> {
+  const { openDeployDispatchHold, replaceDispatchHoldWithTargets } = await import(
+    '../../src/pipeline/deploy-confirmations.js'
+  );
+  await openDeployDispatchHold({
+    runId,
+    bindingId: '00000000-0000-4000-8000-0000000000b1',
+    requestId: 'req-a',
+    targetLabel: 'live deploy',
+    locks: await liveLocks(runId),
+  });
+  await replaceDispatchHoldWithTargets({
+    runId,
+    bindingId: '00000000-0000-4000-8000-0000000000b1',
+    requestId: 'req-a',
+    targets: targetsOf(count),
+  });
+}
+
 describe('the hold ends when the last deploy does', () => {
-  const BINDING_B = '00000000-0000-4000-8000-0000000000b2';
-
-  const targetsOf = (n: number) =>
-    Array.from({ length: n }, (_, i) => ({
-      deliveryId: `del-${i}`,
-      targetLabel: `Target ${i}`,
-      deploymentUuid: `dep-${i}`,
-      status: 'pending' as const,
-    }));
-
-  /** One dispatch: a placeholder naming the environment it took, replaced by its real targets. */
-  async function armed(runId: string, count: number): Promise<void> {
-    const { openDeployDispatchHold, replaceDispatchHoldWithTargets } = await import(
-      '../../src/pipeline/deploy-confirmations.js'
-    );
-    await openDeployDispatchHold({
-      runId,
-      bindingId: '00000000-0000-4000-8000-0000000000b1',
-      requestId: 'req-a',
-      targetLabel: 'live deploy',
-      environments: ['live'],
-    });
-    await replaceDispatchHoldWithTargets({
-      runId,
-      bindingId: '00000000-0000-4000-8000-0000000000b1',
-      requestId: 'req-a',
-      targets: targetsOf(count),
-    });
-  }
-
-  const settle = async (
-    runId: string,
-    deliveryId: string,
-    verdict: 'succeeded' | 'failed',
-  ): Promise<void> => {
-    const { applyDeploySettlement } = await import('../../src/integrations/coolify/confirm.js');
-    await applyDeploySettlement(
-      {
-        bindingId: '00000000-0000-4000-8000-0000000000b1',
-        runId,
-        deliveryId,
-        deploymentUuid: `dep-${deliveryId}`,
-        targetLabel: deliveryId,
-      },
-      verdict,
-    );
-  };
-
   it('frees it only after the last of three targets, though the first failed the run', async () => {
     const { acquireDeployLocks } = await lockModule();
     const run = await makeRun();
@@ -160,7 +165,7 @@ describe('the hold ends when the last deploy does', () => {
       bindingId: BINDING_B,
       requestId: 'req-b',
       targetLabel: 'live deploy',
-      environments: ['live'],
+      locks: await liveLocks(run),
     });
     await armed(run, 1);
     await settle(run, 'del-0', 'failed');
@@ -241,54 +246,8 @@ describe('the hold ends when the last deploy does', () => {
 
 // The record can only free what it accounted for: work a run going terminal would disown, and a
 // reading of the lock table older than the lock it is about to delete.
+
 describe('the hold ends only on a record that can answer for it', () => {
-  const BINDING_B = '00000000-0000-4000-8000-0000000000b2';
-
-  const targetsOf = (n: number) =>
-    Array.from({ length: n }, (_, i) => ({
-      deliveryId: `del-${i}`,
-      targetLabel: `Target ${i}`,
-      deploymentUuid: `dep-${i}`,
-      status: 'pending' as const,
-    }));
-
-  const settle = async (
-    runId: string,
-    deliveryId: string,
-    verdict: 'succeeded' | 'failed',
-  ): Promise<void> => {
-    const { applyDeploySettlement } = await import('../../src/integrations/coolify/confirm.js');
-    await applyDeploySettlement(
-      {
-        bindingId: '00000000-0000-4000-8000-0000000000b1',
-        runId,
-        deliveryId,
-        deploymentUuid: `dep-${deliveryId}`,
-        targetLabel: deliveryId,
-      },
-      verdict,
-    );
-  };
-
-  async function armed(runId: string, count: number): Promise<void> {
-    const { openDeployDispatchHold, replaceDispatchHoldWithTargets } = await import(
-      '../../src/pipeline/deploy-confirmations.js'
-    );
-    await openDeployDispatchHold({
-      runId,
-      bindingId: '00000000-0000-4000-8000-0000000000b1',
-      requestId: 'req-a',
-      targetLabel: 'live deploy',
-      environments: ['live'],
-    });
-    await replaceDispatchHoldWithTargets({
-      runId,
-      bindingId: '00000000-0000-4000-8000-0000000000b1',
-      requestId: 'req-a',
-      targets: targetsOf(count),
-    });
-  }
-
   // Half a fan-out witnessed is not the whole of it: a run going terminal between two bindings
   // refuses the second placeholder, and the first binding settling then reads a record with
   // nothing pending in it and frees the environment while the second is still building.
@@ -315,7 +274,7 @@ describe('the hold ends only on a record that can answer for it', () => {
       requestId: 'req-b',
       targetLabel: 'live deploy',
       authorisedBySibling: true,
-      environments: ['live'],
+      locks: await liveLocks(run),
     });
 
     expect(second).toBe(true);
@@ -337,7 +296,7 @@ describe('the hold ends only on a record that can answer for it', () => {
       bindingId: '00000000-0000-4000-8000-0000000000b1',
       requestId: 'req-a',
       targetLabel: 'preview deploy',
-      environments: ['live'],
+      locks: await liveLocks(run),
     });
     await harness.db.execute(sql`UPDATE pipeline_runs SET status = 'failed' WHERE id = ${run}`);
     await openDeployDispatchHold({
@@ -346,7 +305,7 @@ describe('the hold ends only on a record that can answer for it', () => {
       requestId: 'req-b',
       targetLabel: 'live deploy',
       authorisedBySibling: true,
-      environments: ['live'],
+      locks: await liveLocks(run),
     });
     await replaceDispatchHoldWithTargets({
       runId: run,
@@ -393,7 +352,7 @@ describe('the hold ends only on a record that can answer for it', () => {
       bindingId: '00000000-0000-4000-8000-0000000000b1',
       requestId: 'req-a',
       targetLabel: 'live deploy',
-      environments: ['live'],
+      locks: await liveLocks(run),
     });
     await replaceDispatchHoldWithTargets({
       runId: run,
@@ -408,6 +367,63 @@ describe('the hold ends only on a record that can answer for it', () => {
 
     expect(await lockRow('live')).toBeNull();
     expect((await lockRow('preview'))?.subject).toBe('a preview dispatch of the same run');
+  });
+});
+
+// Identity, not name: which ROW of the lock table a record speaks for, when the same run has
+// taken the same environment more than once.
+describe('the hold ends only on the very row its record named', () => {
+  // The same run has deployed to preview once and its succeeded hold still says so. A NEW preview
+  // lock, taken by a dispatch whose placeholder is not yet written, is a different row — and an
+  // environment NAME left on a historical hold would hand it to the live settlement to delete.
+  it('frees no later taking of an environment it deployed to before', async () => {
+    const { acquireDeployLocks, readDeployLocksHeld } = await lockModule();
+    const { openDeployDispatchHold, replaceDispatchHoldWithTargets } = await import(
+      '../../src/pipeline/deploy-confirmations.js'
+    );
+    const run = await makeRun();
+    const bindingId = '00000000-0000-4000-8000-0000000000b1';
+
+    await acquireDeployLocks(request(run, 'the preview deploy'), ['preview']);
+    await openDeployDispatchHold({
+      runId: run,
+      bindingId,
+      requestId: 'req-p',
+      targetLabel: 'preview deploy',
+      locks: await readDeployLocksHeld(run),
+    });
+    await replaceDispatchHoldWithTargets({
+      runId: run,
+      bindingId,
+      requestId: 'req-p',
+      targets: [
+        { deliveryId: 'del-p', targetLabel: 'P', deploymentUuid: 'dep-p', status: 'pending' },
+      ],
+    });
+    await settle(run, 'del-p', 'succeeded');
+    expect(await lockRow('preview')).toBeNull();
+
+    await acquireDeployLocks(request(run, 'the live deploy'), ['live']);
+    await openDeployDispatchHold({
+      runId: run,
+      bindingId,
+      requestId: 'req-l',
+      targetLabel: 'live deploy',
+      locks: await liveLocks(run),
+    });
+    await replaceDispatchHoldWithTargets({
+      runId: run,
+      bindingId,
+      requestId: 'req-l',
+      targets: targetsOf(1),
+    });
+    // A further preview dispatch of the same run, its placeholder not yet written.
+    await acquireDeployLocks(request(run, 'a second preview deploy'), ['preview']);
+
+    await settle(run, 'del-0', 'succeeded');
+
+    expect(await lockRow('live')).toBeNull();
+    expect((await lockRow('preview'))?.subject).toBe('a second preview deploy');
   });
 
   it('lets the next release take the environment the moment that last target ends', async () => {

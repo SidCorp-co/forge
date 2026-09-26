@@ -17,11 +17,18 @@ export interface DeployConfirmation {
   status: DeployConfirmationStatus;
   deadlineAt: string;
   detail?: string;
-  /** What this deploy reaches, so the record names what it may free; absent, it frees nothing. */
-  environments?: string[];
+  /** The lock rows this deploy holds: a NAME alone outlives its row and would free a later
+   *  taker's, and absent, this hold frees nothing (ISS-1279). */
+  locks?: DeployLockRef[];
 }
 
 export type DeployHolds = Record<string, DeployConfirmation>;
+
+/** One row of `deploy_locks`, by where it is and when it was taken. */
+export interface DeployLockRef {
+  environment: string;
+  acquiredAt: string;
+}
 
 /** Key for the placeholder a dispatcher opens before the targets are known. */
 export const dispatchHoldKey = (requestId: string): string => `dispatch:${requestId}`;
@@ -77,23 +84,21 @@ export async function readDeployHolds(runId: string): Promise<DeployHolds> {
 }
 
 /**
- * Open the placeholder hold at ENQUEUE time, before the deploy job runs. The
- * window between enqueueing a deploy and the adapter learning its
- * `deployment_uuid` is a window in which the run could otherwise close
- * `completed` with nothing recorded against it.
+ * Open the placeholder hold at ENQUEUE time, before the deploy job runs: between enqueueing a
+ * deploy and the adapter learning its `deployment_uuid` the run could otherwise close `completed`
+ * with nothing recorded against it.
  *
- * @returns `false` when the run was already terminal and refused the hold — the
- * deploy will still run, but no run can witness its outcome.
+ * @returns `false` where the run was already terminal and refused the hold.
  */
 export async function openDeployDispatchHold(args: {
   runId: string;
   bindingId: string;
   requestId: string;
   targetLabel: string;
-  /** A sibling of the SAME fan-out already holds a placeholder, so this is work the run authorised
-   *  while live and going terminal midway disowns no half of it (ISS-1279). */
+  /** A sibling of this fan-out holds a placeholder, so going terminal midway disowns no half of
+   *  work the run authorised while live (ISS-1279). */
   authorisedBySibling?: boolean;
-  environments?: string[];
+  locks?: DeployLockRef[];
   now?: Date;
 }): Promise<boolean> {
   const now = args.now ?? new Date();
@@ -106,7 +111,7 @@ export async function openDeployDispatchHold(args: {
       targetLabel: args.targetLabel,
       status: 'pending',
       deadlineAt: new Date(now.getTime() + DEPLOY_CONFIRM_WINDOW_MS).toISOString(),
-      ...(args.environments?.length ? { environments: args.environments } : {}),
+      ...(args.locks?.length ? { locks: args.locks } : {}),
     },
     args.authorisedBySibling ?? false,
   );
@@ -140,7 +145,7 @@ export async function replaceDispatchHoldWithTargets(args: {
     placeholder === null ? undefined : (await readDeployHolds(args.runId))[placeholder];
   const replacing = standing !== undefined;
   // Carried from the placeholder, the only thing that knew them (ISS-1279).
-  const environments = standing?.environments;
+  const locks = standing?.locks;
   let allHeld = true;
   for (const t of args.targets) {
     const held = await writeHold(
@@ -153,7 +158,7 @@ export async function replaceDispatchHoldWithTargets(args: {
         status: t.status,
         deadlineAt,
         ...(t.detail ? { detail: t.detail } : {}),
-        ...(environments?.length ? { environments } : {}),
+        ...(locks?.length ? { locks } : {}),
       },
       replacing,
     );

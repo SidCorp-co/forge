@@ -29,11 +29,16 @@ function makeSelect(): any {
   };
   return p;
 }
+/** Every row written through `db.update`, so what a parked gate recorded can be read back. */
+const updates: unknown[] = [];
 // biome-ignore lint/suspicious/noExplicitAny: minimal chainable drizzle stub
 function makeUpdate(): any {
   // biome-ignore lint/suspicious/noExplicitAny: see above
   const u: any = {
-    set: () => u,
+    set: (row: unknown) => {
+      updates.push(row);
+      return u;
+    },
     where: () => u,
     then: (resolve: (v: unknown) => void) => resolve(undefined),
   };
@@ -51,8 +56,8 @@ const LOCKS = [
   { environment: 'live', acquiredAt: '2026-09-27T00:00:00.000Z' },
 ];
 /** What a give-back with NOTHING queued may free: only the environments this dispatch took. */
-const PREVIEW_ONLY = [LOCKS[0]];
-const LIVE_ONLY = [LOCKS[1]];
+const PREVIEW_ONLY = LOCKS.slice(0, 1);
+const LIVE_ONLY = LOCKS.slice(1);
 const releaseLocksMock = vi.fn(async (..._a: unknown[]) => 0);
 vi.mock('./deploy-lock.js', async () => {
   const real = await vi.importActual<typeof import('./deploy-lock.js')>('./deploy-lock.js');
@@ -87,7 +92,7 @@ vi.mock('./runs.js', () => ({
 
 const openHoldSpy = vi.fn(async (_args: unknown) => true);
 const abandonHoldSpy = vi.fn(async (_runId: string, _requestId: string) => undefined);
-let heldNow: Record<string, { status: string; environments?: string[] }> = {};
+let heldNow: Record<string, { status: string; locks?: typeof LOCKS }> = {};
 vi.mock('./deploy-confirmations.js', () => ({
   openDeployDispatchHold: (args: unknown) => openHoldSpy(args),
   abandonDeployDispatchHold: (runId: string, requestId: string) => abandonHoldSpy(runId, requestId),
@@ -135,6 +140,7 @@ const sharedBox = (id: string, stages: string[]) =>
 
 beforeEach(() => {
   vi.clearAllMocks();
+  updates.length = 0;
   selectQueue.length = 0;
   enqueueSpy.mockReset();
   enqueueSpy.mockImplementation(() => undefined);
@@ -249,7 +255,7 @@ describe('tryDispatchCoolifyRelease — the environment hold', () => {
     selectQueue.push([]); // projectAutoProdDeploy: the gate stays on
     selectQueue.push([]); // getProdGateStateForRun: unconfirmed
     selectQueue.push([{ metadata: {} }]); // markPendingHumanConfirm
-    heldNow = { 'target:del-a': { status: 'pending', environments: ['preview'] } };
+    heldNow = { 'target:del-a': { status: 'pending', locks: PREVIEW_ONLY } };
 
     const outcome = await tryDispatchCoolifyRelease({
       projectId: PROJECT_ID,
@@ -261,6 +267,31 @@ describe('tryDispatchCoolifyRelease — the environment hold', () => {
     expect(outcome.pendingHumanConfirm).toBe(true);
     expect(envsAsked()).toEqual(['live', 'preview']);
     expect(releaseLocksMock.mock.calls).toEqual([[RUN_ID, LIVE_ONLY]]);
+  });
+
+  // The confirmation that resumes a parked binding deploys THAT binding. Recording the whole
+  // fan-out's environments has it ask for a sibling's too, and the press is then refused in the
+  // name of the run waiting to make it, for as long as the sibling is still building (ISS-1279).
+  it('parks a binding against its own environments, not the whole fan-out\u2019s', async () => {
+    listBindingsSpy.mockResolvedValueOnce([stagingPair, prodPair]);
+    selectQueue.push([{ status: 'running' }]);
+    selectQueue.push([]); // projectAutoProdDeploy: the gate stays on
+    selectQueue.push([]); // getProdGateStateForRun: unconfirmed
+    selectQueue.push([{ metadata: {} }]); // markPendingHumanConfirm
+
+    await tryDispatchCoolifyRelease({
+      projectId: PROJECT_ID,
+      issueId: null,
+      runId: RUN_ID,
+      takeEnvironmentLock: true,
+    });
+
+    const gates = updates
+      .map((u) => (u as { metadata?: Record<string, unknown> }).metadata)
+      .find((m) => m && '__forge_prod_deploy_gate' in m) as
+      | Record<string, Record<string, { lock?: { environments: string[] } }>>
+      | undefined;
+    expect(gates?.__forge_prod_deploy_gate?.[PROD_INT]?.lock?.environments).toEqual(['live']);
   });
 
   it('writes the gate state a parked binding is resumed from', async () => {
@@ -314,7 +345,7 @@ describe('tryDispatchCoolifyRelease — giving the hold back', () => {
       });
     // The one that WAS enqueued settled before this throw was caught, so nothing of this run is
     // reaching the environment any more — and a count of successful enqueues cannot say so.
-    heldNow = { 'target:del-a': { status: 'succeeded', environments: ['preview', 'live'] } };
+    heldNow = { 'target:del-a': { status: 'succeeded', locks: LOCKS } };
 
     await tryDispatchCoolifyRelease({
       projectId: PROJECT_ID,

@@ -2,8 +2,9 @@
 
 import { readDeployHolds } from './deploy-confirmations.js';
 import {
-  deployHoldsCover,
+  type DeployLockHeld,
   deployHoldsIdle,
+  deployHoldsLocks,
   readDeployLocksHeld,
   releaseDeployLocksForRun,
 } from './deploy-lock.js';
@@ -44,8 +45,7 @@ export async function freeLockIfNothingPending(
   dispatched: readonly string[],
 ): Promise<void> {
   if (!lock) return;
-  // Read before the record, so a lock taken since is not freed by a record that predates it; and
-  // narrowed to what THIS dispatch took, an earlier one of the same run may still be deploying.
+  // Narrowed to what THIS dispatch took: an earlier one of the same run may still be deploying.
   const heldLocks = await readDeployLocksHeld(runId);
   if (dispatched.length === 0) {
     await releaseDeployLocksForRun(
@@ -55,9 +55,7 @@ export async function freeLockIfNothingPending(
     return;
   }
   const holds = await readDeployHolds(runId);
-  if (deployHoldsIdle(holds)) {
-    await releaseDeployLocksForRun(runId, deployHoldsCover(holds, heldLocks));
-  }
+  if (deployHoldsIdle(holds)) await releaseDeployLocksForRun(runId, deployHoldsLocks(holds));
 }
 
 /** An environment this dispatch took for a binding it then parked for a human is an environment it
@@ -77,3 +75,9 @@ export async function giveBackUnusedEnvironments(
     held.filter((h) => surplus.includes(h.environment)),
   );
 }
+
+/** The rows a binding's deploy needs, so its placeholder records what it alone may free. */
+export const locksOf = (
+  taken: readonly DeployLockHeld[],
+  needs: DeployLockIntent,
+): DeployLockHeld[] => taken.filter((h) => needs.environments.includes(h.environment));
