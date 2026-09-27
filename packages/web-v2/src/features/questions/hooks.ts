@@ -52,14 +52,14 @@ export function useAnswerQuestion(issueId: string) {
 }
 
 
-/** Every OPEN decision on one project, for the queue on the Agents screen. */
+/** Every OPEN decision on one project that names no issue, for the Agents screen. */
 const PROJECT_QUEUE_POLL_MS = 30_000;
 
 export function useProjectQuestions(projectId: string | undefined) {
   const query = useInfiniteQuery({
     queryKey: projectQuestionsKey(projectId ?? ""),
     queryFn: ({ pageParam }) =>
-      questionsApi.listOpenForProject(projectId as string, pageParam ?? undefined),
+      questionsApi.listOpenWithoutIssue(projectId as string, pageParam ?? undefined),
     initialPageParam: null as string | null,
     getNextPageParam: (last) => (last.hasMore ? (last.nextCursor ?? undefined) : undefined),
     enabled: Boolean(projectId),

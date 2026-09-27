@@ -10,7 +10,11 @@ import { useToast } from "@/providers/toast-provider";
 import { statusLabel } from "../derive";
 import { useTransitionIssue } from "../hooks";
 import type { IssueStatus, WaitingCause } from "../types";
-import { type ReasonStatus, TransitionReasonDialog } from "./transition-reason-dialog";
+import {
+  type DialogMode,
+  type ReasonStatus,
+  TransitionReasonDialog,
+} from "./transition-reason-dialog";
 
 export const REASON_REQUIRED = new Set<string>(REASON_REQUIRED_ISSUE_STATUSES);
 
@@ -39,9 +43,15 @@ export interface GuardedTransition {
 export function useGuardedTransition(): GuardedTransition {
   const transition = useTransitionIssue();
   const { toast } = useToast();
-  const [prompt, setPrompt] = useState<
-    { id: string; status: ReasonStatus; successMessage: string; onSuccess?: () => void } | null
-  >(null);
+  const [prompt, setPrompt] = useState<{
+    id: string;
+    status: DialogMode;
+    /** Where the move goes: the reason status itself, or the close/drop the questions held up. */
+    target: IssueStatus;
+    successMessage: string;
+    onSuccess?: () => void;
+    openQuestions?: number;
+  } | null>(null);
 
   const succeed = (title: string, extra?: () => void) => () => {
     toast({ title, tone: "success" });
@@ -53,24 +63,39 @@ export function useGuardedTransition(): GuardedTransition {
       setPrompt({
         id,
         status: toStatus as ReasonStatus,
+        target: toStatus,
         successMessage: opts?.successMessage ?? REASON_TOAST[toStatus as ReasonStatus],
         onSuccess: opts?.onSuccess,
       });
       return;
     }
+    const successMessage = opts?.successMessage ?? `Moved to ${statusLabel(toStatus)}`;
     transition.mutate(
       { id, toStatus },
       {
-        onSuccess: succeed(opts?.successMessage ?? `Moved to ${statusLabel(toStatus)}`, opts?.onSuccess),
+        onSuccess: succeed(successMessage, opts?.onSuccess),
+        onOpenQuestions: (ids) =>
+          setPrompt({
+            id,
+            status: "void_questions",
+            target: toStatus,
+            successMessage,
+            onSuccess: opts?.onSuccess,
+            openQuestions: ids.length,
+          }),
       },
     );
   };
 
   const onConfirm = (reason: string, waitingKind?: WaitingCause) => {
     if (!prompt) return;
-    const { id, status, successMessage, onSuccess } = prompt;
+    const { id, status, target, successMessage, onSuccess } = prompt;
+    const body =
+      status === "void_questions"
+        ? { id, toStatus: target, voidQuestions: reason }
+        : { id, toStatus: target, reason, ...(waitingKind ? { waitingKind } : {}) };
     transition.mutate(
-      { id, toStatus: status, reason, ...(waitingKind ? { waitingKind } : {}) },
+      body,
       {
         onSuccess: succeed(successMessage, () => {
           setPrompt(null);
@@ -86,6 +111,7 @@ export function useGuardedTransition(): GuardedTransition {
     dialog: (
       <TransitionReasonDialog
         status={prompt?.status ?? null}
+        openQuestions={prompt?.openQuestions}
         loading={transition.isPending}
         onConfirm={onConfirm}
         onClose={() => setPrompt(null)}

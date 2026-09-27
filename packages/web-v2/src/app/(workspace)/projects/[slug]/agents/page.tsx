@@ -42,5 +42,5 @@ export default function ProjectAgentsPage() {
     );
   }
 
-  return <AgentsScreen scope={{ projectId: project.id }} />;
+  return <AgentsScreen scope={{ projectId: project.id, slug: project.slug }} />;
 }
