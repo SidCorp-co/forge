@@ -47,6 +47,31 @@ dispatcher's own act. No code path fires a deployment, and none cuts a release t
 release burning its number — see
 [`docs/adr/0001-a-release-version-is-a-counter.md`](docs/adr/0001-a-release-version-is-a-counter.md).
 
+**What a release moves is declared by the project's release chain**, an ordered list of branches
+whose last entry is live — see
+[`docs/adr/0003-a-release-chain-replaces-the-release-model-enum.md`](docs/adr/0003-a-release-chain-replaces-the-release-model-enum.md).
+
+### Release notes
+
+<!-- doc-citation: unchecked `docs/releases/` — named as a path that deliberately does NOT exist here; its absence is the rule, so a checker finding it would be the defect -->
+[`CHANGELOG.md`](CHANGELOG.md) **is** the release note. There is no second changelog, no
+`docs/releases/`, and no per-version file: the `record` axis owns that document and a second copy of
+the same fact is the defect ADR 0003 was written against.
+
+Cutting a release turns the `[Unreleased]` heading into a version heading carrying **the number the
+allocator gave** and the date the release shipped, and opens a fresh empty `[Unreleased]` above it.
+The entries do not move or get rewritten on the way — they were written for a reader when the work
+landed, and the release only stamps them.
+
+A release that reaches its tag step and cannot cut the tag gets **no heading**. It is reported
+unfinished rather than released, so no version heading ever names work that is not out.
+
+**The address to hand anyone outside this repository** — another repo's issue, a reviewer, an agent
+on the other side of an API — is
+<https://github.com/SidCorp-co/forge/blob/main/CHANGELOG.md>. It is the one URL for what shipped,
+and quoting entries into another tracker in place of it creates the second copy this section exists
+to prevent.
+
 ## What an agent decides alone
 
 Everything the issue's plan covers: the plan itself, comments, evidence, the branch, commits, the
