@@ -35,10 +35,23 @@ long-lived Postgres. Testcontainers needs only Docker, which GitHub Actions'
 ### Concurrent runs on one server
 
 Every database a run creates is named for that run: the template is
-`forge_test_tpl_<stamp>_<rand>` and each worker's clone is
-`test_w<id>_<stamp>_<rand>`, both minted in `tests/helpers/scratch-db.ts`. A run
-drops only what it created; anything a crashed run left behind is dropped by
-`reapAbandoned` once it is older than any live run could be.
+`forge_test_tpl_<stamp>_<rand>`, each file's clone is
+`test_w_<token>_<id>_<stamp>_<rand>` and a migration case's is
+`test_case_<token>_<tag>_<stamp>_<rand>`, all minted in
+`tests/helpers/scratch-db.ts`. The token is the template's own stamp, so a run
+can name its own databases and no other run's. A run drops only what it created;
+anything a crashed run left behind is dropped by `reapAbandoned` once it is
+older than any live run could be.
+
+None of those drops happens where vitest is timing something. `DROP DATABASE`
+forces a cluster-wide checkpoint and waits for it, which is a wait no test owns,
+so a database is given back through `scratch-db.ts:retireScratchDb` and dropped
+by a drain behind the test. A teardown waits out that drain for a grace of its
+own choosing and then stops; what the grace did not reach is dropped by the run's
+global teardown, which vitest gives no budget at all, and after that by the next
+run's `reapAbandoned`. `scratch-db.test.ts` holds every file under `tests/` to
+that rule, so a teardown written by hand cannot quietly put the wait back
+(ISS-1141).
 
 This is load-bearing rather than tidy. The template used to be the single fixed
 name `forge_test_tpl`, dropped and recreated at the start of every run, so two
