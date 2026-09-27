@@ -58,7 +58,17 @@ export function ActivityTab({ run, loading, error, onRetry }: ActivityTabProps) 
   if (loading) return <ActivitySkeleton />;
   if (error) return <ErrorState message={formatApiError(error)} onRetry={onRetry} />;
 
-  const entries = deriveActivityFeed(run?.attempts);
+  // This tab reads a pipeline run's attempts; a session that ran outside one is not "nothing".
+  if (!run) {
+    return (
+      <EmptyState
+        title="No pipeline run"
+        message="This tab lists a pipeline run's attempts, and this issue has no pipeline run."
+      />
+    );
+  }
+
+  const entries = deriveActivityFeed(run.attempts);
   if (entries.length === 0) {
     return (
       <EmptyState
