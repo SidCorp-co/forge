@@ -249,3 +249,22 @@ export async function createTestDevice(
 
   return device;
 }
+
+/**
+ * Bind a device to a project as its runner, which is what a box must be before it may open a run
+ * session there (`devices/pool-admission.ts:projectAdmission`).
+ */
+export async function bindTestRunner(
+  db: TestDb,
+  args: {
+    projectId: string;
+    deviceId: string;
+    status?: 'online' | 'offline' | 'draining' | 'disabled';
+  },
+): Promise<void> {
+  await db.execute(sql`
+    INSERT INTO runners (id, project_id, device_id, name, type, status)
+    VALUES (gen_random_uuid(), ${args.projectId}, ${args.deviceId}, ${`runner-${randomUUID().slice(0, 8)}`},
+            'claude-code', ${args.status ?? 'online'})
+  `);
+}

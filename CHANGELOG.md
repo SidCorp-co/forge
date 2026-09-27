@@ -10,6 +10,10 @@
 
 ### Security
 
+- **A box can only start work on a project it serves.** A box with no runner there, a disabled
+  box or a withdrawn runner is refused before claiming anything, and told which, and what an
+  admitted box is.
+
 - **The Attention inbox no longer shows you issues from projects you were removed from.**
   The "Awaiting input" list picked an issue because you were its assignee, or because you filed it
   and nobody else owns it. That is a fair question to ask — is this mine to answer? — but it was the

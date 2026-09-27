@@ -2,7 +2,7 @@ import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import type { RequestIdVars } from '../../src/middleware/request-id.js';
-import { createTestDevice, createTestProjectMember } from '../helpers/factories.js';
+import { bindTestRunner, createTestDevice, createTestProjectMember } from '../helpers/factories.js';
 import { registerIdleFixture, testHeartbeat, testLease } from '../helpers/idle-fixture.js';
 
 /**
@@ -128,6 +128,7 @@ describe('hydrateHeldForIssues — a declared run holds its row past its claim (
     const { openRunSession } = await import('../../src/devices/run-session.js');
     const id = await claimed({ renewedAt: '2026-09-20T14:00:00.000Z' });
     const device = await createTestDevice(fx.db, fx.ownerId);
+    await bindTestRunner(fx.db, { projectId: fx.projectId, deviceId: device.id });
     await openRunSession({
       deviceId: device.id,
       projectId: fx.projectId,

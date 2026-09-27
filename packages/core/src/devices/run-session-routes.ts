@@ -14,7 +14,8 @@ import { z } from 'zod';
 import { IssueLeaseHeldError } from '../issues/issue-lease.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { gateConditionSchema } from './gate-report.js';
-import { badRequest, conflict, notFound, sessionParamsSchema } from './route-errors.js';
+import { RunnerNotAdmittedError } from './pool-admission.js';
+import { badRequest, conflict, forbidden, notFound, sessionParamsSchema } from './route-errors.js';
 import {
   heldWorktreeSchema,
   resumeChoiceSchema,
@@ -62,6 +63,13 @@ deviceRunSessionRoutes.post(
       // failed retries against the same holder until the lease lapses.
       if (err instanceof IssueLeaseHeldError) {
         throw conflict(err.code, err.message, { holders: err.holders });
+      }
+      if (err instanceof RunnerNotAdmittedError) {
+        throw forbidden(err.code, err.message, {
+          reason: err.reason,
+          projectId: err.projectId,
+          deviceId: err.deviceId,
+        });
       }
       throw err;
     }

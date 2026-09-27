@@ -19,6 +19,7 @@
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
+  bindTestRunner,
   createTestDevice,
   createTestProject,
   createTestUser,
@@ -97,6 +98,7 @@ async function aRunOver(issSeq: number, next: string) {
   const user = await createTestUser(harness.db);
   const project = await createTestProject(harness.db, user.id);
   const device = await createTestDevice(harness.db, user.id);
+  await bindTestRunner(harness.db, { projectId: project.id, deviceId: device.id });
   const issueId = await anIssue(project.id, user.id, issSeq, next);
   const session = await mods.openRunSession({
     deviceId: device.id,
@@ -197,6 +199,7 @@ describe('a report that arrives twice', () => {
     const user = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, user.id);
     const device = await createTestDevice(harness.db, user.id);
+    await bindTestRunner(harness.db, { projectId: project.id, deviceId: device.id });
     const declaration = {
       deviceId: device.id,
       projectId: project.id,
@@ -233,7 +236,9 @@ describe('a report that arrives twice', () => {
     const user = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, user.id);
     const deviceA = await createTestDevice(harness.db, user.id);
+    await bindTestRunner(harness.db, { projectId: project.id, deviceId: deviceA.id });
     const deviceB = await createTestDevice(harness.db, user.id);
+    await bindTestRunner(harness.db, { projectId: project.id, deviceId: deviceB.id });
     const issueId = await anIssue(project.id, user.id, 7, 'A was working');
     await harness.db.execute(sql`UPDATE issues SET status = 'open' WHERE id = ${issueId}`);
 
