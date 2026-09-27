@@ -5,7 +5,7 @@
 // latency and nothing else (ISS-964 criterion 12).
 
 import { randomUUID } from 'node:crypto';
-import { and, count, desc, eq, sql } from 'drizzle-orm';
+import { and, count, desc, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, type ProjectMemberRole } from '../db/schema.js';
 import {
@@ -18,11 +18,17 @@ import {
   type QuestionStep,
   questionWaiters,
 } from '../db/schema-questions.js';
+import type { TransitionActor } from '../issues/actor-agency.js';
+import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
 import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
+import { AUTONOMOUS_QUESTION_STATUS } from '../pipeline/autonomous-mode.js';
 import {
+  type AskAnswer,
+  type AskInput,
   answerQuestion,
   askQuestion,
   type GivenAnswer,
+  getQuestion,
   mayAnswerFreeText,
   mayChoose,
   QuestionRefused,
@@ -63,11 +69,12 @@ function seenBy<T extends { steps: QuestionStep[] }>(row: T, role: ProjectMember
  */
 export type AskAsInput = {
   userId: string;
+  /** Who the park is recorded as, where a `human` ask moves the issue. */
+  actor: TransitionActor;
   issueId: string;
   prompt: string;
   blockerKind: QuestionBlockerKind;
-  options: QuestionOption[];
-  recommendedOptionId: string;
+  answer: AskAnswer;
   assumed?: Record<string, unknown> | undefined;
   maxRounds?: number | undefined;
   parkDeadlineAt?: Date | undefined;
@@ -75,11 +82,7 @@ export type AskAsInput = {
 };
 
 export async function askAs(args: AskAsInput) {
-  const [issue] = await db
-    .select({ projectId: issues.projectId })
-    .from(issues)
-    .where(eq(issues.id, args.issueId))
-    .limit(1);
+  const issue = await readAskedIssue(args.issueId);
   if (!issue?.projectId) return null;
   const role = await roleOn(issue.projectId, args.userId);
   if (!role) return null;
@@ -88,22 +91,68 @@ export async function askAs(args: AskAsInput) {
       'asking a question writes a row, and this caller is a viewer on the project the issue belongs to',
     );
   }
-  return askQuestion({
+  const ask: AskInput = {
     id: randomUUID(),
     projectId: issue.projectId,
     issueId: args.issueId,
     prompt: args.prompt,
     blockerKind: args.blockerKind,
-    answer: {
-      shape: 'choice',
-      options: args.options,
-      recommendedOptionId: args.recommendedOptionId,
-    },
+    answer: args.answer,
     ...(args.assumed ? { assumed: args.assumed } : {}),
     ...(args.maxRounds === undefined ? {} : { maxRounds: args.maxRounds }),
     ...(args.parkDeadlineAt ? { parkDeadlineAt: args.parkDeadlineAt } : {}),
     ...(args.sensitive ? { sensitive: true } : {}),
-  });
+  };
+  if (args.blockerKind !== 'human') return askQuestion(ask);
+  return askAndPark(issue, ask, args.actor);
+}
+
+const ASK_ATTEMPTS = 3;
+
+async function readAskedIssue(issueId: string) {
+  const [issue] = await db
+    .select({
+      id: issues.id,
+      projectId: issues.projectId,
+      status: issues.status,
+      reopenCount: issues.reopenCount,
+    })
+    .from(issues)
+    .where(eq(issues.id, issueId))
+    .limit(1);
+  return issue;
+}
+
+type AskedIssue = NonNullable<Awaited<ReturnType<typeof readAskedIssue>>>;
+
+/**
+ * A person is the blocker, so the issue waits on them: on an issue already at
+ * `needs_info` the question is written while that status holds, and anywhere else
+ * the park and the question are one transition. Either write refuses if the status
+ * moved under it (a resume, another park), and the ask is decided again on a fresh read.
+ */
+async function askAndPark(first: AskedIssue, ask: AskInput, actor: TransitionActor) {
+  let issue = first;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      if (issue.status === AUTONOMOUS_QUESTION_STATUS) {
+        return await askQuestion(ask, AUTONOMOUS_QUESTION_STATUS);
+      }
+      await transitionIssueStatus(issue, AUTONOMOUS_QUESTION_STATUS, actor, {
+        transitionReason: ask.prompt,
+        ask,
+      });
+      return getQuestion(ask.id);
+    } catch (err) {
+      const moved =
+        (err instanceof QuestionRefused && err.code === 'QUESTION_ISSUE_MOVED') ||
+        (err instanceof TransitionError && err.code === 'STALE_TRANSITION');
+      if (!moved || attempt === ASK_ATTEMPTS) throw err;
+      const fresh = await readAskedIssue(issue.id);
+      if (!fresh) throw err;
+      issue = fresh;
+    }
+  }
 }
 
 /**
@@ -156,12 +205,15 @@ export async function projectQuestionsFor(
   userId: string,
   status?: QuestionStatus,
   page: { limit: number; cursor?: QuestionCursor | undefined } = { limit: 50 },
+  issueless = false,
 ): Promise<ProjectQuestionPage | null> {
   const role = await roleOn(projectId, userId);
   if (!role) return null;
-  const scope = status
-    ? and(eq(agentQuestions.projectId, projectId), eq(agentQuestions.status, status))
-    : eq(agentQuestions.projectId, projectId);
+  const scope = and(
+    eq(agentQuestions.projectId, projectId),
+    status ? eq(agentQuestions.status, status) : undefined,
+    issueless ? isNull(agentQuestions.issueId) : undefined,
+  );
   const after = cursorPredicate(page.cursor);
   const where = after ? and(scope, after) : scope;
 

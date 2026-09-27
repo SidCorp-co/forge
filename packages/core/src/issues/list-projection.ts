@@ -1,4 +1,4 @@
-import type { SQL } from 'drizzle-orm';
+import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues, type WaitingKind } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -37,6 +37,13 @@ export const REST_ISSUE_LIST_COLUMNS = {
   archivedAt: issues.archivedAt,
   createdAt: issues.createdAt,
   updatedAt: issues.updatedAt,
+  /** ISS-1257 — since when a person has owed this issue an answer: its oldest open `human` question. */
+  waitingOnPersonSince: sql<Date | null>`(
+    select min(q.created_at) from agent_questions q
+     where q.issue_id = issues.id and q.status = 'open' and q.blocker_kind = 'human'
+  )`
+    .mapWith(issues.createdAt)
+    .as('waiting_on_person_since'),
 } as const;
 
 /** One row as the two REST list endpoints select it. */
@@ -66,6 +73,7 @@ export type RestIssueListRow = {
   archivedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  waitingOnPersonSince: Date | null;
   /** ISS-960 — present only when the query carried a search term. */
   matchedFields?: IssueSearchField[];
 };

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { IssueStatus } from '../db/schema.js';
 import { AUTONOMOUS_QUESTION_STATUS } from '../pipeline/autonomous-mode.js';
-import { askParkQuestion } from '../questions/write.js';
+import { type AskInput, askParkQuestion, insertAskedQuestion } from '../questions/write.js';
 import { actorAgency, type TransitionActor } from './actor-agency.js';
 import type { DrizzleTx } from './dependency-executor.js';
 
@@ -12,7 +12,12 @@ export interface MintParkQuestionInput {
   issue: { id: string; projectId: string };
   toStatus: IssueStatus;
   actor: TransitionActor;
-  options: { needs?: string | undefined; transitionReason?: string | undefined };
+  options: {
+    needs?: string | undefined;
+    transitionReason?: string | undefined;
+    reason?: string | undefined;
+    ask?: AskInput | undefined;
+  };
 }
 
 /**
@@ -20,12 +25,16 @@ export interface MintParkQuestionInput {
  */
 export async function mintParkQuestion(input: MintParkQuestionInput, tx: DrizzleTx): Promise<void> {
   if (input.toStatus !== AUTONOMOUS_QUESTION_STATUS) return;
+  if (input.options.ask) {
+    await insertAskedQuestion(tx, input.options.ask);
+    return;
+  }
   if (actorAgency(input.actor) !== 'agent') return;
   await askParkQuestion(tx, {
     id: randomUUID(),
     projectId: input.issue.projectId,
     issueId: input.issue.id,
-    prompt: input.options.transitionReason?.trim() ?? '',
+    prompt: input.options.transitionReason?.trim() || input.options.reason?.trim() || '',
     needed: input.options.needs?.trim() || NEED_NOT_STATED,
   });
 }
