@@ -949,4 +949,22 @@ mod tests {
             refused("run-session open", 503, r#"{"code":"UNAVAILABLE"}"#)
         );
     }
+
+    /// ISS-1110. Core refuses a run-session open from a box that may not serve
+    /// the project with a 403 naming the predicate. That is a state an operator
+    /// changes — rebind, enable, undrain — so the sweep keeps asking rather than
+    /// giving the declaration up, and the reason reaches the journal verbatim.
+    #[test]
+    fn a_box_not_admitted_is_retried_and_says_why() {
+        let body = r#"{"code":"RUNNER_NOT_ADMITTED","message":"runner_withdrawn: this device's runner on the project is disabled or draining (project p, device d), so it may not open a run session there.","details":{"reason":"runner_withdrawn","projectId":"p","deviceId":"d"}}"#;
+        let refused_open = refusal("run-session open", 403, body);
+        assert!(
+            matches!(refused_open, crate::error::Error::Other(_)),
+            "a refusal of the moment, not of the bytes, must not be classified as malformed"
+        );
+        assert!(
+            format!("{refused_open}").contains("runner_withdrawn"),
+            "the operator reads the predicate in the journal: {refused_open}"
+        );
+    }
 }

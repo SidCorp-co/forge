@@ -10,6 +10,17 @@
 
 ### Security
 
+- **A box can only start work on a project it is set up to serve, and one that may not is told
+  why.** Starting a run on a box claims the issues it will work, so nobody else picks them up.
+  That step never checked the box itself: a box with no runner on the project, including one
+  belonging to somebody else entirely, a box that had been disabled, and a runner that had been
+  withdrawn or set to drain could each start a run there and hold those issues until the run
+  ended. It is now refused before anything is claimed, and the refusal names which of the three it
+  was, for which project and which box, and what a box that may start work looks like, so an
+  operator reading the box's log knows what to change. Boxes that are set up to serve the project
+  are unaffected, and a box whose run had already started keeps it. The unused route that used to
+  answer every job claim with "runner too old" is gone.
+
 - **The Attention inbox no longer shows you issues from projects you were removed from.**
   The "Awaiting input" list picked an issue because you were its assignee, or because you filed it
   and nobody else owns it. That is a fair question to ask — is this mine to answer? — but it was the
