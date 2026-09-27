@@ -58,6 +58,30 @@ describe("the workspace pulse is refreshed by every event that moves one of its 
   });
 });
 
+describe("a device event reaches the organisation's list as well as the caller's own", () => {
+	// ISS-1162 criterion 21. The Runners page reads two populations from two keys;
+	// one refreshed and the other left stale is the same screen disagreeing with
+	// itself that this change exists to remove.
+	for (const event of [
+		"device.login",
+		"device.paired",
+		"device.revoked",
+		"device.statusChanged",
+	]) {
+		it(`${event} invalidates both device prefixes`, () => {
+			const c = send(event);
+			expect(c.has(["devices", "me"])).toBe(true);
+			expect(c.has(["devices", "org"])).toBe(true);
+		});
+	}
+
+	it("leaves both alone for an event about neither", () => {
+		const c = send("user.preferencesChanged");
+		expect(c.has(["devices", "me"])).toBe(false);
+		expect(c.has(["devices", "org"])).toBe(false);
+	});
+});
+
 describe("routeEvent", () => {
   it("ignores an event it does not know rather than throwing", () => {
     expect(() => send("nothing.likeThis")).not.toThrow();
@@ -99,6 +123,7 @@ describe("a reconnect still repairs every prefix it repaired before", () => {
       ["attention"],
       ["pulse"],
       ["devices", "me"],
+      ["devices", "org"],
       ["chat-logs"],
       ["integrations"],
       ["integration-connections"],
@@ -109,7 +134,7 @@ describe("a reconnect still repairs every prefix it repaired before", () => {
     ]) {
       expect(c.has(key)).toBe(true);
     }
-    expect(c.keys).toHaveLength(16);
+    expect(c.keys).toHaveLength(17);
   });
 });
 

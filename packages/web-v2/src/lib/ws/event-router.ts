@@ -202,6 +202,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "device.statusChanged": {
 			scheduleInvalidation(qc, ["admin", "devices"]);
 			scheduleInvalidation(qc, ["devices", "me"]);
+			scheduleInvalidation(qc, ["devices", "org"]);
 			// Projects console (ISS-290): online-runner counts feed per-project health.
 			scheduleInvalidation(qc, ["projects", "health"]);
 			scheduleInvalidation(qc, ["pulse"]);
@@ -209,14 +210,16 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			scheduleInvalidation(qc, ["attention"]);
 			return;
 		}
-		// ISS-305 — runner browser-approve device login + revoke. The Runners
-		// surface (`features/runners`) keys its device list under ['devices','me'];
-		// these events ride the owner's user room so pending→approved and revoke
-		// reflect live without polling.
+		// ISS-305, ISS-1162 — the Runners surface keys its own list under
+		// ['devices','me'] and the organisation's under ['devices','org']. These ride
+		// the owner's user room, so pending→approved and revoke reflect live; another
+		// member's pairing rides THEIR room and reaches no client here, which is what
+		// the reconnect replay is for.
 		case "device.login":
 		case "device.paired":
 		case "device.revoked": {
 			scheduleInvalidation(qc, ["devices", "me"]);
+			scheduleInvalidation(qc, ["devices", "org"]);
 			scheduleInvalidation(qc, ["projects", "health"]);
 			scheduleInvalidation(qc, ["pulse"]);
 			return;
@@ -330,6 +333,7 @@ const REPLAY_PREFIXES: readonly (readonly unknown[])[] = [
 	["attention"],
 	["pulse"],
 	["devices", "me"],
+	["devices", "org"],
 	["chat-logs"],
 	["integrations"],
 	["integration-connections"],
