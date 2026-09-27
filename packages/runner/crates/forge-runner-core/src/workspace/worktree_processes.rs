@@ -172,6 +172,11 @@ pub enum Why {
     /// signal. It was never signalled: the process this box attributed is
     /// already gone, and the one holding the pid now was attributed to nothing.
     Moved,
+    /// It was not in the reading this ending was taken over. It moved into the
+    /// checkout, or was forked by a resident, while that resident was being
+    /// ended — so every pid the ending knew about can be gone and somebody can
+    /// still be living there.
+    Arrived,
     /// Signalled with `SIGKILL` and still there when the grace was up.
     Survived,
     /// The kernel refused the signal, and what it said.
@@ -187,6 +192,10 @@ impl std::fmt::Display for Why {
             Why::Moved => f.write_str(
                 "its pid was handed to another process between the reading and the signal, so \
                  signalling it would reach something this box never attributed to anything",
+            ),
+            Why::Arrived => f.write_str(
+                "it appeared in the checkout while this box was clearing it, so no reading this \
+                 ending was taken over ever named it",
             ),
             Why::Survived => f.write_str("it was still there after SIGKILL"),
             Why::Refused(said) => write!(f, "the signal was refused: {said}"),
@@ -264,12 +273,32 @@ impl Ending {
                  not knowing is not the same as knowing nobody is in it",
                 at.display()
             )),
-            Ending::Standing { standing, .. } => Verdict::Refuse(format!(
-                "{} process(es) are still running in {} — {}. The directory stays: it is the only \
-                 thing left naming them",
+            // What was ended is named here too, and not only what stands. A
+            // refusal that printed the survivors alone would leave the
+            // processes this box really did signal in no line anywhere, which
+            // is the same silence the whole change exists to end (consult
+            // 8064e5 F2).
+            Ending::Standing { standing, ended } => Verdict::Refuse(format!(
+                "{} process(es) are still running in {} — {}. {} The directory stays: it is the \
+                 only thing left naming them",
                 standing.len(),
                 at.display(),
-                Ending::said(standing)
+                Ending::said(standing),
+                match ended.is_empty() {
+                    true => "Nothing in it was ended.".to_string(),
+                    false => format!(
+                        "{} was ended first: {}.",
+                        match ended.len() {
+                            1 => "One process".to_string(),
+                            n => format!("{n} processes"),
+                        },
+                        ended
+                            .iter()
+                            .map(Resident::to_string)
+                            .collect::<Vec<_>>()
+                            .join("; ")
+                    ),
+                }
             )),
         }
     }
@@ -583,15 +612,38 @@ impl Clearing<'static> {
 
 impl Clearing<'_> {
     /// Read who is living in `worktree`, end them, and say what is left.
+    ///
+    /// The last word is a FRESH reading and never the snapshot the ending
+    /// started from. A resident that forks a replacement inside the checkout as
+    /// it is asked to go leaves every pid the ending knew about gone — a clear
+    /// answer over a checkout somebody is still living in, which is the orphan
+    /// this whole module exists to stop, arrived at through the guard against
+    /// it (consult 8064e5 F1). Nothing loops on it: a checkout that keeps
+    /// growing residents is refused, and the refusal is what a caller is bound
+    /// by.
     pub async fn clear(&self, worktree: &Path) -> Ending {
-        match residents_of(self.proc_root, worktree) {
-            Reading::NoTable(why) => Ending::NoTable(why),
-            Reading::Unreadable(why) => Ending::Unreadable(why),
-            Reading::Read(rs) if rs.is_empty() => Ending::Clear { ended: Vec::new() },
+        let ended = match residents_of(self.proc_root, worktree) {
+            Reading::NoTable(why) => return Ending::NoTable(why),
+            Reading::Unreadable(why) => return Ending::Unreadable(why),
+            Reading::Read(rs) if rs.is_empty() => Vec::new(),
             Reading::Read(rs) => {
                 let ours = ancestry(self.proc_root, std::process::id());
-                end_residents(rs, &ours, self.grace, self.hand).await
+                match end_residents(rs, &ours, self.grace, self.hand).await {
+                    Ending::Clear { ended } => ended,
+                    standing => return standing,
+                }
             }
+        };
+        match residents_of(self.proc_root, worktree) {
+            Reading::Read(rs) if rs.is_empty() => Ending::Clear { ended },
+            Reading::Read(rs) => Ending::Standing {
+                standing: rs.into_iter().map(|r| (r, Why::Arrived)).collect(),
+                ended,
+            },
+            Reading::NoTable(why) | Reading::Unreadable(why) => Ending::Unreadable(format!(
+                "the checkout was cleared and the reading that would confirm it could not be \
+                 taken ({why})"
+            )),
         }
     }
 
@@ -1018,6 +1070,103 @@ mod tests {
             Vec::<u32>::new(),
             "a live run's own processes are not stranded, and warning about them every sweep is \
              how a report stops being read"
+        );
+    }
+
+    /// A hand that plants a NEW pid in the process root the moment it signals,
+    /// which is a resident forking a replacement inside the checkout as it is
+    /// asked to go.
+    ///
+    /// It also takes the signalled pid's entry out of the root, because that is
+    /// what a kernel does and a fixture that left it would have the second
+    /// reading find a process that is not there — which is the fixture failing,
+    /// not the source.
+    struct Forks<'a> {
+        proc_root: &'a Path,
+        at: &'a Path,
+        gone: Mutex<BTreeSet<u32>>,
+    }
+
+    impl Hand for Forks<'_> {
+        fn signal(&self, pid: u32, _sig: Sig) -> std::result::Result<(), String> {
+            self.gone.lock().unwrap().insert(pid);
+            let _ = std::fs::remove_dir_all(self.proc_root.join(pid.to_string()));
+            plant(
+                self.proc_root,
+                777,
+                &self.at.to_string_lossy(),
+                "the replacement",
+            );
+            Ok(())
+        }
+        fn present(&self, pid: u32) -> bool {
+            !self.gone.lock().unwrap().contains(&pid)
+        }
+        fn identity(&self, pid: u32) -> Option<String> {
+            Some(format!("proc-{pid}"))
+        }
+    }
+
+    #[test]
+    fn a_replacement_forked_while_the_checkout_was_being_cleared_refuses_the_removal() {
+        let scratch = Scratch::new("wtproc-forked");
+        let proc = scratch.join("proc");
+        let wt = scratch.join("wt");
+        std::fs::create_dir_all(&wt).expect("a checkout");
+        plant(
+            &proc,
+            700,
+            &wt.to_string_lossy(),
+            "the one the reading found",
+        );
+
+        let hand = Forks {
+            proc_root: &proc,
+            at: &wt,
+            gone: Mutex::new(BTreeSet::new()),
+        };
+        let clearing = Clearing {
+            proc_root: &proc,
+            grace: NO_WAIT,
+            hand: &hand,
+        };
+        let outcome = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("a runtime")
+            .block_on(clearing.clear(&wt));
+
+        let Ending::Standing { standing, ended } = outcome else {
+            panic!(
+                "every pid the ending knew about went, and somebody is still living in the \
+                 checkout — answering `Clear` here is the orphan this module exists to stop, \
+                 reached through the guard against it: {outcome:?}"
+            );
+        };
+        assert_eq!(ended.iter().map(|r| r.pid).collect::<Vec<_>>(), vec![700]);
+        assert_eq!(
+            standing
+                .iter()
+                .map(|(r, w)| (r.pid, w.clone()))
+                .collect::<Vec<_>>(),
+            vec![(777, Why::Arrived)]
+        );
+    }
+
+    #[test]
+    fn a_refusal_names_what_was_ended_first_and_not_only_what_stands() {
+        let said = Ending::Standing {
+            standing: vec![(resident(82), Why::Survived)],
+            ended: vec![resident(81)],
+        }
+        .verdict(Path::new("/wt"));
+        let Verdict::Refuse(said) = said else {
+            panic!("{said:?}");
+        };
+        assert!(
+            said.contains("pid 81") && said.contains("One process was ended first"),
+            "a refusal that printed the survivors alone would leave the process this box really \
+             did signal in no line anywhere, which is the silence the whole change ends: {said}"
         );
     }
 

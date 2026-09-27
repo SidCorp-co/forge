@@ -133,7 +133,13 @@ fn a_repo_with_a_worktree(root: &Path) -> (PathBuf, PathBuf) {
 /// `traps` makes it ignore `SIGTERM`. `read` is a shell builtin and a fifo
 /// nobody writes to blocks it for ever, so the process waits without spawning
 /// anything and without spinning a core while it waits.
-fn a_child_in(wt: &Path, fifo: &Path, traps: bool) -> Kept {
+///
+/// The trapping one touches `ready` AFTER installing the trap and before it
+/// blocks. Residence alone would not do: a shell that has entered the checkout
+/// but has not yet run `trap` dies on the SIGTERM this removal sends, the case
+/// then fails its SIGKILL assertion, and a case that fails on the scheduler
+/// rather than on the source says nothing about either (consult 8064e5 F3).
+fn a_child_in(wt: &Path, fifo: &Path, ready: &Path, traps: bool) -> Kept {
     if !traps {
         return Kept(
             Command::new("sleep")
@@ -146,11 +152,33 @@ fn a_child_in(wt: &Path, fifo: &Path, traps: bool) -> Kept {
     Kept(
         Command::new("sh")
             .arg("-c")
-            .arg(format!("trap '' TERM; read x < {}", fifo.display()))
+            .arg(format!(
+                "trap '' TERM; : > {}; read x < {}",
+                ready.display(),
+                fifo.display()
+            ))
             .current_dir(wt)
             .spawn()
             .expect("a child in the checkout that will not be asked"),
     )
+}
+
+/// Block until `ready` is there, or say what was never established.
+///
+/// A deadline rather than a wait without one: a child that never installs its
+/// trap is a broken fixture, and a fixture that hangs is read as a hung run
+/// rather than as the red it is.
+fn wait_for(ready: &Path) {
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while !ready.exists() {
+        assert!(
+            std::time::Instant::now() < until,
+            "the trapping child never reported its trap installed ({}), so nothing below would \
+             be measuring what it claims",
+            ready.display()
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
 }
 
 /// A child this file made, taken on the way out however the case leaves.
@@ -178,12 +206,16 @@ fn a_removal_ends_the_processes_living_in_the_checkout_and_leaves_none_behind() 
 
     let fifo = scratch.join("blocks-for-ever");
     mkfifo(&fifo);
-    let mut plain = a_child_in(&wt, &fifo, false);
-    let mut stubborn = a_child_in(&wt, &fifo, true);
+    let ready = scratch.join("the-trap-is-installed");
+    let mut plain = a_child_in(&wt, &fifo, &ready, false);
+    let mut stubborn = a_child_in(&wt, &fifo, &ready, true);
     let (plain_pid, stubborn_pid) = (plain.pid(), stubborn.pid());
 
-    // The control. Without it a green below proves nothing: a removal that
-    // ended nothing reads the same as one that had nothing to end.
+    // The control, in two halves. Without the first, a green below proves
+    // nothing: a removal that ended nothing reads the same as one that had
+    // nothing to end. Without the second, the SIGKILL assertion turns on which
+    // of the shell and the signal got there first.
+    wait_for(&ready);
     let before = living_in(&wt);
     assert!(
         before.contains(&plain_pid) && before.contains(&stubborn_pid),
