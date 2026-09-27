@@ -16,10 +16,24 @@ vi.mock('../deliveries.js', () => ({
   updateDelivery: vi.fn(),
 }));
 const replaceHoldsMock = vi.fn(async (_args: unknown) => true);
+/** What `readDeployHolds` finds after the dispatch wrote its holds (ISS-1279). */
+let heldNow: Record<string, { status: string; locks?: typeof LOCKS }> = {};
 vi.mock('../../pipeline/deploy-confirmations.js', () => ({
   DEPLOY_CONFIRM_WINDOW_MS: 1_800_000,
   replaceDispatchHoldWithTargets: (args: unknown) => replaceHoldsMock(args),
+  readDeployHolds: async () => heldNow,
 }));
+const LOCKS = [{ environment: 'live', acquiredAt: '2026-09-27T00:00:00.000Z' }];
+const releaseLocksMock = vi.fn(async (..._a: unknown[]) => 0);
+vi.mock('../../pipeline/deploy-lock.js', async () => {
+  const real = await vi.importActual<typeof import('../../pipeline/deploy-lock.js')>(
+    '../../pipeline/deploy-lock.js',
+  );
+  return {
+    ...real,
+    releaseDeployLocksForRun: (...a: unknown[]) => releaseLocksMock(...(a as [string])),
+  };
+});
 const enqueueConfirmMock = vi.fn();
 vi.mock('./confirm.js', () => ({
   enqueueCoolifyConfirm: (...a: unknown[]) => enqueueConfirmMock(...(a as [])),
@@ -53,6 +67,8 @@ afterEach(() => {
 
 beforeEach(() => {
   updateConnectionMock.mockResolvedValue({});
+  heldNow = { 'target:del-1': { status: 'pending', locks: LOCKS } };
+  releaseLocksMock.mockClear();
 });
 
 function buildCtx(secrets: Record<string, unknown>) {
@@ -190,26 +206,26 @@ describe('coolifyAdapter.dispatchOutbound — health follows real deploy outcome
   });
 });
 
+function twoTargetCtx() {
+  return {
+    projectId: PROJECT_ID,
+    connectionId: CONN_ID,
+    bindingId: BINDING_ID,
+    environment: 'staging',
+    config: {
+      baseUrl: 'https://coolify.example',
+      targets: [
+        { id: 't-be', label: 'Backend', resourceUuid: 'res-be' },
+        { id: 't-fe', label: 'Frontend', resourceUuid: 'res-fe' },
+      ],
+    },
+    secrets: { apiToken: 'cf' },
+    // biome-ignore lint/suspicious/noExplicitAny: adapter ctx generics resolved at registration
+  } as any;
+}
+
 describe('coolifyAdapter — the deploy is held until Coolify confirms it (ISS-922)', () => {
   const RUN_ID = 'run-multi-1';
-
-  function twoTargetCtx() {
-    return {
-      projectId: PROJECT_ID,
-      connectionId: CONN_ID,
-      bindingId: BINDING_ID,
-      environment: 'staging',
-      config: {
-        baseUrl: 'https://coolify.example',
-        targets: [
-          { id: 't-be', label: 'Backend', resourceUuid: 'res-be' },
-          { id: 't-fe', label: 'Frontend', resourceUuid: 'res-fe' },
-        ],
-      },
-      secrets: { apiToken: 'cf' },
-      // biome-ignore lint/suspicious/noExplicitAny: adapter ctx generics resolved at registration
-    } as any;
-  }
 
   beforeEach(() => {
     findConnectionByIdMock.mockResolvedValue({ id: CONN_ID, active: true });
@@ -250,6 +266,65 @@ describe('coolifyAdapter — the deploy is held until Coolify confirms it (ISS-9
         ],
       }),
     );
+  });
+
+  // A confirmation that runs before the holds are installed settles a hold that does not exist,
+  // and the target it names is then installed as `pending` with nothing left to settle it — the
+  // run never closes, and the environment it deployed to stays held to the deadline (ISS-1279).
+  it('installs every hold before it schedules the first confirmation', async () => {
+    const order: string[] = [];
+    replaceHoldsMock.mockImplementation(async () => {
+      order.push('holds');
+      return true;
+    });
+    enqueueConfirmMock.mockImplementation(() => order.push('confirm'));
+    let n = 0;
+    globalThis.fetch = vi.fn(async () => {
+      n += 1;
+      return new Response(JSON.stringify({ deployment_uuid: `dep-${n}` }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    await coolifyAdapter.dispatchOutbound(twoTargetCtx(), {
+      eventName: 'release.requested',
+      payload: { runId: RUN_ID },
+      requestId: 'req-1',
+    });
+
+    expect(order).toEqual(['holds', 'confirm', 'confirm']);
+  });
+
+  it('polls a run-less resource redeploy too — only the holds are the run\u2019s', async () => {
+    let n = 0;
+    globalThis.fetch = vi.fn(async () => {
+      n += 1;
+      return new Response(JSON.stringify({ deployment_uuid: `dep-${n}` }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    await coolifyAdapter.dispatchOutbound(twoTargetCtx(), {
+      eventName: 'release.requested',
+      payload: {},
+      requestId: 'req-1',
+    });
+
+    expect(replaceHoldsMock).not.toHaveBeenCalled();
+    expect(enqueueConfirmMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('polls what Coolify accepted even where the holds could not be written at all', async () => {
+    replaceHoldsMock.mockRejectedValueOnce(new Error('metadata write failed'));
+    let n = 0;
+    globalThis.fetch = vi.fn(async () => {
+      n += 1;
+      return new Response(JSON.stringify({ deployment_uuid: `dep-${n}` }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    await coolifyAdapter.dispatchOutbound(twoTargetCtx(), {
+      eventName: 'release.requested',
+      payload: { runId: RUN_ID },
+      requestId: 'req-1',
+    });
+
+    expect(enqueueConfirmMock).toHaveBeenCalledTimes(2);
   });
 
   it('a target that never got a deployment_uuid is already a FAILED hold, not a pending one', async () => {

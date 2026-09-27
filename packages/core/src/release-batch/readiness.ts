@@ -12,7 +12,8 @@ import {
   releaseBlockerSentence,
 } from './blockers.js';
 import { releaseRunnerLabelOf } from './channel.js';
-import type { ReleaseRollback } from './plan.js';
+import type { ReleaseRollback, VerifySource } from './plan.js';
+import { readServingNow } from './serving-reading.js';
 
 export type ReleaseGapKey = string;
 
@@ -44,7 +45,7 @@ export interface ReleaseReadiness {
   rollbackMode: ReleaseRollback['kind'] | null;
   hasVerify: boolean;
   /** Where each live channel's probes came from, in the same order as `providers`. */
-  verifySources: Array<'binding' | 'environments-live' | 'none'>;
+  verifySources: VerifySource[];
   /** False where the declaration could not be READ, so `releaseModel`, the
    *  branches and `hasReleaseGate` are fallbacks rather than readings. */
   declarationRead: boolean;
@@ -64,9 +65,10 @@ export interface ReleaseReadiness {
 }
 
 export async function loadReleaseReadiness(projectId: string): Promise<ReleaseReadiness | null> {
-  // ONE pass: the enumerator already guards these reads, and a second unguarded
-  // copy would throw away the report it just produced (ISS-1127).
-  const report = await collectReleaseBlockers(projectId);
+  // ONE pass: the enumerator guards these reads and a second copy would throw away its report
+  // (ISS-1127). The reading is HERE because the enumerator reaches no network (ISS-1286).
+  const serving = await readServingNow(projectId).catch(() => undefined);
+  const report = await collectReleaseBlockers(projectId, { serving });
   if (!report.projectExists) return null;
   const decl = report.declaration;
   const channels = report.channels ?? [];

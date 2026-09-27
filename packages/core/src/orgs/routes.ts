@@ -14,6 +14,7 @@ import {
   projects,
   users,
 } from '../db/schema.js';
+import { deviceOrgRoutes } from '../devices/org-routes.js';
 import { assertOrgAccess } from '../lib/authz.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { logger } from '../logger.js';
@@ -469,3 +470,6 @@ orgRoutes.delete(
 );
 
 orgRoutes.route('/', agentAccountRoutes);
+// ISS-1162 — the organisation's devices, mounted here so the router carries no
+// auth of its own and answers under the same org gate every sibling does.
+orgRoutes.route('/', deviceOrgRoutes);

@@ -30,9 +30,27 @@ import { useActiveOrg } from "@/features/orgs/active-org";
 import { formatApiError } from "@/lib/api/error";
 import { userRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
-import { useDevices, useInitPairing, useSetDeviceDisabled } from "../hooks";
+import { useDevices, useInitPairing, useOrgDevices, useSetDeviceDisabled } from "../hooks";
 import { RevokeDeviceControl } from "./revoke-device-control";
-import { deviceBuildChip, deviceHealth, deviceVersionLabel, type DeviceRow } from "../types";
+import {
+  deviceBuildChip,
+  deviceHealth,
+  deviceVersionLabel,
+  type DeviceRow,
+  type OrgDeviceRow,
+} from "../types";
+import {
+  assignmentBridgeLine,
+  type DeviceCount,
+  type DeviceScope,
+  emptyState,
+  populationLine,
+  rowActionNote,
+  SCOPES,
+  scopeCountLabel,
+  scopeName,
+  UNKNOWN_COUNT,
+} from "../scope";
 import { DeviceDetail } from "./device-detail";
 
 function CopyButton({ value }: { value: string }) {
@@ -143,24 +161,113 @@ function PairPanel() {
   );
 }
 
+/** Both populations and both counts, visible at once, so a zero in one of them reads as a fact. */
+function ScopeTabs({
+  scope,
+  counts,
+  onChange,
+}: {
+  scope: DeviceScope;
+  counts: Record<DeviceScope, DeviceCount>;
+  onChange: (next: DeviceScope) => void;
+}) {
+  return (
+    <div className="inline-flex rounded-md border border-line bg-sunken p-0.5">
+      {SCOPES.map((s) => (
+        <button
+          key={s}
+          type="button"
+          aria-pressed={scope === s}
+          onClick={() => onChange(s)}
+          className={
+            scope === s
+              ? "rounded px-3 py-1 text-13 font-medium text-fg bg-surface shadow-sm"
+              : "rounded px-3 py-1 text-13 text-muted hover:text-fg"
+          }
+        >
+          {scopeName(s)} · {scopeCountLabel(counts[s])}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * The device's name, its version line, and — on the org list — whose box it is
+ * and which of this org's projects it serves. A runner IS one (device, project)
+ * binding, so the bindings have to be on the row or the org's runners are not
+ * reachable from the device list at all (ISS-1162).
+ */
+function DeviceNameCell({ device }: { device: DeviceRow | OrgDeviceRow }) {
+  const chip = deviceBuildChip(device);
+  const projects = "projectNames" in device ? device.projectNames : null;
+  return (
+    <div className="flex flex-col">
+      <span className="font-semibold text-fg">
+        {device.name}
+        {device.ownedByMe ? null : (
+          <span className="ml-1.5 inline-flex items-center rounded px-1.5 py-0.5 text-11 font-medium text-muted bg-sunken">
+            paired by another member
+          </span>
+        )}
+      </span>
+      {/* Always a version line: a device that has reported nothing says so,
+          because a blank one reads as a device with nothing to say (ISS-1119). */}
+      <span className="fg-body-sm text-subtle">
+        {deviceVersionLabel(device.agentVersion)}
+        {chip ? (
+          <span
+            className={
+              chip.tone === "warning"
+                ? "ml-1.5 inline-flex items-center rounded px-1.5 py-0.5 text-11 font-medium text-amber-700 bg-amber-100 dark:text-amber-300 dark:bg-amber-900/40"
+                : "ml-1.5 inline-flex items-center rounded px-1.5 py-0.5 text-11 font-medium text-muted bg-sunken"
+            }
+            title={chip.title}
+          >
+            {chip.label}
+          </span>
+        ) : null}
+      </span>
+      {projects && projects.length > 0 ? (
+        <span className="fg-body-sm text-subtle">Serves {projects.join(", ")}</span>
+      ) : null}
+    </div>
+  );
+}
+
 export function RunnersScreen() {
   const { user } = useAuth();
   // Live pending→approved + revoke ride the owner's user room.
   useRoom(user?.id ? userRoom(user.id) : null);
-  // ISS-477 — scope the fleet to the active org's projects. A device is bound to
-  // an org via a project runner, so an org with zero projects shows zero devices.
-  // Unbound (just-paired, not yet assigned) devices appear under no org scope —
-  // pair, then assign the device to a project to see it here.
   const { activeOrgId } = useActiveOrg();
-  const devices = useDevices(activeOrgId);
+  // ISS-1162 — two populations, read separately and counted on screen together.
+  // `useDevices()` takes no org argument on purpose: a just-paired device has no
+  // runner row, so under an org filter it appeared on no screen in the app.
+  const mine = useDevices();
+  const org = useOrgDevices(activeOrgId);
+  const [scope, setScope] = useState<DeviceScope>("mine");
   const toggleDisabled = useSetDeviceDisabled();
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
 
-  const rows: DeviceRow[] = devices.data ?? [];
-  // Re-derive from the live list so rename/status updates reflect in the open panel.
-  const detailDevice = rows.find((d) => d.id === detailId) ?? null;
+  // A query that has not answered is UNKNOWN, never zero: rendering an unanswered
+  // count as 0 is the misreading this whole screen change exists to remove.
+  const counts: Record<DeviceScope, DeviceCount> = {
+    mine: mine.isSuccess ? mine.data.length : UNKNOWN_COUNT,
+    org: org.isSuccess ? org.data.length : UNKNOWN_COUNT,
+  };
+  const assignments: DeviceCount = org.isSuccess
+    ? org.data.reduce((n, d) => n + d.runnerCount, 0)
+    : UNKNOWN_COUNT;
+  const bridge = scope === "org" ? assignmentBridgeLine(counts.org, assignments) : null;
+
+  const active = scope === "mine" ? mine : org;
+  const rows: Array<DeviceRow | OrgDeviceRow> = active.data ?? [];
+  // Read off the owner list, not the visible one: Manage is offered in the own
+  // scope alone, and re-deriving here keeps rename and status live in the panel.
+  const detailDevice = mine.data?.find((d) => d.id === detailId) ?? null;
+  const empty = emptyState(scope, counts);
 
   return (
     <PageContainer className="flex flex-col gap-5">
@@ -174,9 +281,9 @@ export function RunnersScreen() {
         <HelpButton
           summary="Each device is a machine running the forge-runner agent. Pair new devices with a browser-approved login, watch their online status live, turn a device off to park it, or revoke access when a device is retired."
           actions={[
-            "Pair a device — start the browser-approve login flow",
-            "Turn off — ignore a device across every project (reversible; keeps it paired). Turn it back on anytime",
-            "Revoke — permanently cut off a device's token and unbind its runners",
+            "Mine — every device you paired, whether or not it serves a project",
+            "Organisation — every device assigned to a project you can see here, whoever paired it",
+            "Turn off, revoke and rename are the device owner's alone",
           ]}
           docPath="pair-a-runner"
         />
@@ -187,22 +294,26 @@ export function RunnersScreen() {
       <Card>
         <CardHeader>
           <CardTitle>Devices</CardTitle>
+          <ScopeTabs scope={scope} counts={counts} onChange={setScope} />
         </CardHeader>
         <CardContent>
-          {devices.isLoading ? (
+          <p className="mb-3 fg-body-sm text-muted">
+            {populationLine(scope)}
+            {bridge ? ` ${bridge}` : null}
+          </p>
+          {active.isError ? (
+            <ErrorState message={formatApiError(active.error)} onRetry={() => active.refetch()} />
+          ) : /* Not `isLoading`: with no active org yet the org query is disabled,
+                which is pending and NOT loading, and an empty-state sentence
+                reached that way claims a population nothing asked for. */
+          !active.isSuccess ? (
             <div className="flex flex-col gap-2">
               <Skeleton className="h-10 w-full" />
               <Skeleton className="h-10 w-full" />
               <Skeleton className="h-10 w-full" />
             </div>
-          ) : devices.isError ? (
-            <ErrorState message={formatApiError(devices.error)} onRetry={() => devices.refetch()} />
           ) : rows.length === 0 ? (
-            <EmptyState
-              title="No devices yet"
-              message="Pair a runner with the command above, then assign it to a project in this organization to see it here."
-              mascot={false}
-            />
+            <EmptyState title={empty.title} message={empty.message} mascot={false} />
           ) : (
             <Table>
               <THead>
@@ -219,33 +330,11 @@ export function RunnersScreen() {
                 {rows.map((d) => {
                   const revoked = d.status === "revoked";
                   const disabled = !!d.disabledAt;
+                  const actionNote = rowActionNote(scope, d.ownedByMe);
                   return (
                     <TR key={d.id}>
                       <TD>
-                        <div className="flex flex-col">
-                          <span className="font-semibold text-fg">{d.name}</span>
-                          {/* Always a version line: a device that has reported
-                              nothing says so, because a blank one reads as a
-                              device with nothing to say (ISS-1119). */}
-                          <span className="fg-body-sm text-subtle">
-                            {deviceVersionLabel(d.agentVersion)}
-                            {(() => {
-                              const chip = deviceBuildChip(d);
-                              return chip ? (
-                                <span
-                                  className={
-                                    chip.tone === "warning"
-                                      ? "ml-1.5 inline-flex items-center rounded px-1.5 py-0.5 text-11 font-medium text-amber-700 bg-amber-100 dark:text-amber-300 dark:bg-amber-900/40"
-                                      : "ml-1.5 inline-flex items-center rounded px-1.5 py-0.5 text-11 font-medium text-muted bg-sunken"
-                                  }
-                                  title={chip.title}
-                                >
-                                  {chip.label}
-                                </span>
-                              ) : null;
-                            })()}
-                          </span>
-                        </div>
+                        <DeviceNameCell device={d} />
                       </TD>
                       <TD>
                         {disabled ? (
@@ -280,7 +369,9 @@ export function RunnersScreen() {
                         <span className="text-muted">{formatRelativeTime(d.lastSeenAt, { emptyLabel: "never" })}</span>
                       </TD>
                       <TD className="text-right">
-                        {confirmId === d.id ? (
+                        {actionNote !== null ? (
+                          <span className="fg-body-sm text-subtle">{actionNote}</span>
+                        ) : confirmId === d.id ? (
                           <RevokeDeviceControl
                             deviceId={d.id}
                             deviceName={d.name}

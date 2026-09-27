@@ -116,6 +116,9 @@
 - **The public documentation has three doors and a search.** Choose "I use Forge", "I'm connecting
   an AI assistant" or "I'm an agent or a script"; every page says who it is for, and search
   reaches all of them.
+- **Two releases can no longer deploy to the same environment at once.** The second is refused as
+  `DEPLOY_ENVIRONMENT_LOCKED`, naming the release that holds it, what it is deploying, since when,
+  and when the hold lifts.
 - **Two help pages for people filing work: how to ask for a change, and how to tell it is done.**
   A finished issue's page now shows its release note — what changed, or what will once it ships.
 - **You can now attach a picture when you talk to the agent on the web, see what you are typing as
@@ -3115,6 +3118,13 @@
 - **New issue in the top bar and the command palette now opens the form on the Issues list too.** It did nothing there before. Closing the form clears the link, so Back and reload no longer reopen it.
 - **The board drawer no longer labels an issue with nothing running as Queued.** Its header shows a run chip only for a run, Activity says when no pipeline run exists, and the issue's status appears once, named as itself.
 - **An issue waiting for a runner now shows as Queued everywhere on its page and in the board drawer.** The run chips said nothing while the agent panel said queued. A paused run reads Paused, not Idle.
+- **A run the control plane refuses as malformed now stops after one attempt.** It was re-sent every twenty seconds for ever. The box now names the field refused, ends the run, and builds names and reasons that fit.
+- **The automatic release now asks your live host what it is serving, instead of a commit written on the issue weeks ago.** A verdict judged at what is running counts; where nothing can be asked, it still counts.
+- **The Runners page says which devices it lists, and can show your organisation's.** It listed only boxes you paired while promising the organisation, so an admin read zero beside an Overview reading forty. Both counts now show at once.
+- **A red integration suite now means the code is wrong, not that two suites ran at once.** Each
+  migration case tore down its own database on its own clock, and that teardown waits on the whole
+  server.
+
 - **`pnpm verify` no longer says `ci-passed` gates a check it does not gate.** CodeQL sits outside the merge gate, so it now has its own heading instead of standing under one that covers everything above it.
 - **Links between help pages open the page they name.** Every one opened Getting started; a link to a missing page now says so. Release notes render their formatting, and Reopen stays on screen at phone width.
 - **Throughput counts each shipped issue once, on the day it first shipped.** An issue passing through awaiting release then closed, or reopened and closed again, counted each time. Project health and cost per closed now agree.

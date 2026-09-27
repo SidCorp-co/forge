@@ -9,6 +9,7 @@ import * as agentSelvesSchema from './schema-agent-selves.js';
 import * as agentSessionEventsSchema from './schema-agent-session-events.js';
 import * as backfillMarkersSchema from './schema-backfill-markers.js';
 import * as conversationsSchema from './schema-conversations.js';
+import * as deployLocksSchema from './schema-deploy-locks.js';
 import * as issueLeasesSchema from './schema-issue-leases.js';
 import * as journalSchema from './schema-journal.js';
 import * as memoryChunksSchema from './schema-memory-chunks.js';
@@ -38,6 +39,7 @@ const schema = {
   ...sessionInboxSchema,
   ...memoryChunksSchema,
   ...memoryRevisionsSchema,
+  ...deployLocksSchema,
   ...issueLeasesSchema,
   ...runLedgerSchema,
   ...speakerLinksSchema,

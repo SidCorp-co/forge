@@ -18,6 +18,19 @@ pub enum Error {
     #[error("UNAUTHORIZED")]
     Unauthorized,
 
+    /// A refusal whose subject is the request's own shape: core named a
+    /// constraint the bytes that were sent can never satisfy, so sending them
+    /// again is a loop with no exit. A caller that sweeps a payload nothing
+    /// between attempts changes matches this to fail once rather than for ever
+    /// (ISS-1284). Typed for the same reason `Unauthorized` is.
+    #[error("{said}")]
+    Malformed {
+        /// The refusal as any other would read it, from `transport::status`.
+        said: String,
+        /// One line per constraint core named, `field: what it said`.
+        named: Vec<String>,
+    },
+
     #[error("{0}")]
     Other(String),
 }
