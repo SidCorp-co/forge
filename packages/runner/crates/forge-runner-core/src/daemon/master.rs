@@ -4093,7 +4093,9 @@ mod tests {
     #[test]
     fn the_skill_says_an_idle_pane_with_admissible_work_is_a_deviation() {
         const OBJECTIVE: &str = "An idle pane while admissible work stands is a deviation";
-        let own = MASTER_SKILL
+        // A Windows checkout under `core.autocrlf` embeds this asset as CRLF.
+        let skill = MASTER_SKILL.replace("\r\n", "\n");
+        let own = skill
             .split("## What is yours and nowhere else")
             .nth(1)
             .and_then(|s| s.split("\n## ").next())
@@ -4124,7 +4126,7 @@ mod tests {
             "a row that needs a person goes to needs_info with its question, not to a run: {paragraph}"
         );
         assert!(
-            !MASTER_SKILL.contains("forge guide master"),
+            !skill.contains("forge guide master"),
             "no guide named master prints on the CLI yet (forge-plugin ISS-2592); a pointer to it sends a master to a refusal. \
              Remove this assertion in the change that adds the pointer, once that guide prints"
         );
