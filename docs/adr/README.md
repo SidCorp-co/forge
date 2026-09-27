@@ -18,7 +18,9 @@ One file per decision: what was decided, the context it was decided in, and what
 
 This directory is the series of record from `0001`. Readers will meet citations to a different
 series: the project's tracker knowledge cites **"ADR 0014"** for the branch name `ISS-<seq>-<slug>`.
-Searched on 2026-09-27 at `7a377691e`, no document of that series exists in this repository or in
-the installed `forge-plugin` copy — the citation resolves to nothing readable. It is recorded here
+Searched on 2026-09-27 at `7a377691e`: no document of that series exists under `docs/adr/` here,
+and none in the installed `forge-plugin` copy — `grep -rl 0014` over
+`~/.config/forge-runner/marketplaces/SidCorp-co__forge-plugin/plugin`, whose `plugin.json` read
+`3.36.192`, matched no `.md` file. The citation resolves to nothing readable. It is recorded here
 so a reader stops looking, and so nobody reads `0014` in this directory, when it is allocated, as
 that citation's target.
