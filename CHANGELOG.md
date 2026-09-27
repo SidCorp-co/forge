@@ -3130,7 +3130,7 @@
 - **The automatic release now asks your live host what it is serving, instead of a commit written on the issue weeks ago.** A verdict judged at what is running counts; where nothing can be asked, it still counts.
 - **The Runners page says which devices it lists, and can show your organisation's.** It listed only boxes you paired while promising the organisation, so an admin read zero beside an Overview reading forty. Both counts now show at once.
 - **A red integration suite now means the code is wrong, not that two suites ran at once.** Each
-  migration case tore down its own database on its own clock, and that teardown waits on the whole
+  test tore down its own database on its own clock, and that teardown waits on the whole
   server.
 
 - **`pnpm verify` no longer says `ci-passed` gates a check it does not gate.** CodeQL sits outside the merge gate, so it now has its own heading instead of standing under one that covers everything above it.
