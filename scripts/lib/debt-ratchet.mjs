@@ -73,6 +73,7 @@ export function total(files) {
  * Freeze: no file may hold more of a metric than its baseline allows.
  *
  * `scope` limits which files are judged (pre-commit's staged set); null judges all.
+ * `metrics[i]` names the metric `reasons[i]` refuses.
  */
 export function freezeFaults(measured, baseline, scope = null) {
   const faults = [];
@@ -80,11 +81,15 @@ export function freezeFaults(measured, baseline, scope = null) {
     if (scope && !scope.has(file)) continue;
     const was = baseline[file] ?? {};
     const reasons = [];
+    const metrics = [];
     for (const [metric, count] of Object.entries(now)) {
       const allowed = was[metric] ?? 0;
-      if (count > allowed) reasons.push(`${metric}: ${count} (baseline allowed ${allowed})`);
+      if (count > allowed) {
+        reasons.push(`${metric}: ${count} (baseline allowed ${allowed})`);
+        metrics.push(metric);
+      }
     }
-    if (reasons.length) faults.push({ file, reasons });
+    if (reasons.length) faults.push({ file, reasons, metrics });
   }
   return faults;
 }

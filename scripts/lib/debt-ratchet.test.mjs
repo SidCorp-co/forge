@@ -40,7 +40,15 @@ afterEach(() => {
 describe('freeze', () => {
   it('refuses a file that gained a diagnostic', () => {
     const faults = freezeFaults({ 'a.ts': { r: 3 } }, { 'a.ts': { r: 2 } });
-    expect(faults).toEqual([{ file: 'a.ts', reasons: ['r: 3 (baseline allowed 2)'] }]);
+    expect(faults).toEqual([
+      { file: 'a.ts', reasons: ['r: 3 (baseline allowed 2)'], metrics: ['r'] },
+    ]);
+  });
+
+  it('names the metric behind each reason, index for index', () => {
+    const faults = freezeFaults({ 'a.ts': { x: 2, y: 1, z: 5 } }, { 'a.ts': { y: 1 } });
+    expect(faults[0].reasons).toEqual(['x: 2 (baseline allowed 0)', 'z: 5 (baseline allowed 0)']);
+    expect(faults[0].metrics).toEqual(['x', 'z']);
   });
 
   it('lets a file keep the debt it was frozen with', () => {

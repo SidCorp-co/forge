@@ -36,8 +36,9 @@ import {
   drainFaults,
   drainMatcher,
   emptiedScopes,
+  explainFaults,
   mergeOriginal,
-  SIZE_RULES,
+  readDiagnostic,
 } from './lib/lint-budget.mjs';
 import { absentPrerequisites, remedyLines } from './lib/prerequisite.mjs';
 
@@ -86,6 +87,7 @@ function linterFault(scope) {
 
 function collect(scopes) {
   const measured = {};
+  const said = {};
   const scopeOf = new Map();
   const silent = [];
 
@@ -133,12 +135,15 @@ function collect(scopes) {
     }
 
     for (const d of diags) {
-      const rule = d.category;
-      const path = d.location?.path?.file ?? d.location?.path;
-      if (!rule || typeof path !== 'string' || SIZE_RULES.has(rule)) continue;
-      const rel = relative(ROOT, join(cwd, path));
+      const diag = readDiagnostic(d);
+      if (diag === null) continue;
+      const { rule, line, message } = diag;
+      const rel = relative(ROOT, join(cwd, diag.path));
       measured[rel] ??= {};
       measured[rel][rule] = (measured[rel][rule] ?? 0) + 1;
+      said[rel] ??= {};
+      said[rel][rule] ??= [];
+      said[rel][rule].push({ line, message });
       scopeOf.set(rel, scope.cwd);
     }
   }
@@ -148,7 +153,7 @@ function collect(scopes) {
       error: `biome scanned no files in ${silent.join(', ')} — scope matched nothing`,
     };
   }
-  return { measured, scopeOf };
+  return { measured, said, scopeOf };
 }
 
 function git(args) {
@@ -210,7 +215,7 @@ if (cfg.error) {
   process.exit(2);
 }
 
-const { measured, scopeOf, error } = collect(cfg.scopes);
+const { measured, said, scopeOf, error } = collect(cfg.scopes);
 if (error) {
   console.error(`check-lint-budget: ${error}`);
   process.exit(2);
@@ -283,7 +288,7 @@ if (mode === '--staged') {
   }
 }
 
-const failures = freezeFaults(measured, baseline.files, staged?.files ?? null);
+const failures = explainFaults(freezeFaults(measured, baseline.files, staged?.files ?? null), said);
 
 let matchers;
 try {
