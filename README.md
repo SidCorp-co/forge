@@ -61,12 +61,16 @@ Full walkthrough: [docs/quickstart.md](docs/quickstart.md).
 
 [Vision](docs/VISION.md) · [Quickstart](docs/quickstart.md) ·
 [Architecture](docs/proposals/destination/) ·
-[Proposals](docs/proposals/destination/) · [Changelog](CHANGELOG.md)
+[Proposals](docs/proposals/destination/) · [Decisions](docs/adr/) ·
+[Governance](GOVERNANCE.md) · [Changelog](CHANGELOG.md)
 
 ## Contributing
 
-[CONTRIBUTING.md](CONTRIBUTING.md). Trunk-based: one `main`, branches under a day, feature flags
-absorb what is in flight. Significant changes are argued in [`docs/proposals/destination/`](docs/proposals/destination/).
+[CONTRIBUTING.md](CONTRIBUTING.md) is the front door; [GOVERNANCE.md](GOVERNANCE.md) says who
+reviews, merges and releases. Trunk-based: one `main`, branches under a day, feature flags absorb
+what is in flight. Significant changes are argued in
+[`docs/proposals/destination/`](docs/proposals/destination/), and the decisions behind the rules are
+in [`docs/adr/`](docs/adr/).
 
 Security vulnerabilities: **never a public issue** — use
 [private reporting](https://github.com/SidCorp-co/forge/security/advisories/new).

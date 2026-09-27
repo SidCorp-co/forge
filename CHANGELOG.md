@@ -117,6 +117,7 @@
 
 ### Added
 
+- **How to contribute, and who decides, are now in the repository.** `CONTRIBUTING.md`, `GOVERNANCE.md` and `docs/adr/` state the rules and the decisions behind them.
 - **The public documentation has three doors and a search.** Choose "I use Forge", "I'm connecting
   an AI assistant" or "I'm an agent or a script"; every page says who it is for, and search
   reaches all of them.

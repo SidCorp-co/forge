@@ -1,11 +1,14 @@
-# CODEOWNERS — tự động request review từ các owner khi PR chạm file họ sở hữu
+# CODEOWNERS — routes review requests. It does NOT gate merges.
+#
+# Branch protection on the default branch requires `ci-passed` and nothing else:
+# `required_pull_request_reviews` is off, so no review is required from anyone
+# named here. GitHub will request a review when a pull request touches an owned
+# path, and the pull request can merge without it.
+#
+# Who may merge, and what actually holds a change, is in GOVERNANCE.md. If this
+# file is ever meant to gate, branch protection has to change first — a file
+# claiming enforcement it does not have is worse than no file.
+#
 # Syntax: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-security/customizing-your-repository/about-code-owners
 
-# Mặc định: toàn bộ repo
 * @SidCorp-co
-
-# Ví dụ fine-grained (uncomment khi dự án có nhiều module):
-# /docs/          @SidCorp-co
-# /.github/       @SidCorp-co
-# /backend/       @SidCorp-co
-# /frontend/      @SidCorp-co
