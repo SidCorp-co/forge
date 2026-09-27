@@ -44,7 +44,12 @@ import { applyIssuePrefixPatch } from './issue-prefix-patch.js';
 import { projectOnboardRoutes } from './onboard-routes.js';
 import { projectFactsRoutes } from './project-facts-routes.js';
 import { PATCHED_PROJECT, PROJECT_DETAIL } from './projections.js';
-import { readableLiveBranch, releaseModelGap, releaseModelPatchFields } from './release-model.js';
+import {
+  chainLiveBranch,
+  releaseChainGapFor,
+  releaseChainPatchFields,
+  withRetiredReleaseAxes,
+} from './release-chain.js';
 import { refuseRetiredProjectKeys } from './retired-project-keys.js';
 import {
   badRequest,
@@ -83,7 +88,7 @@ export const updateProjectSchema = z
     repoUrl: z.string().trim().max(500).nullable().optional(),
     workspaceSetup: z.string().trim().max(8000).nullable().optional(),
     baseBranch: z.string().trim().max(100).nullable().optional(),
-    ...releaseModelPatchFields,
+    ...releaseChainPatchFields,
     issuePrefix: z.string().trim().max(16).nullable().optional(),
     defaultDeviceId: z.uuid().nullable().optional(),
     personaStyle: z.string().trim().max(PERSONA_STYLE_MAX).nullable().optional(),
@@ -265,8 +270,7 @@ projectRoutes.get(
     // apiKey is returned for member+ (ADR 0013); the viewer tier is read-only
     // and the key is execution-grade (MCP pairing / widget), so it's withheld.
     return c.json({
-      ...project,
-      liveBranch: readableLiveBranch(project),
+      ...withRetiredReleaseAxes(project),
       apiKey: access.role === 'viewer' ? null : project.apiKey,
       role: access.role,
       orgRole: access.orgRole,
@@ -358,10 +362,8 @@ projectRoutes.patch(
     if (patch.repoUrl !== undefined) updates.repoUrl = patch.repoUrl;
     if (patch.baseBranch !== undefined) updates.baseBranch = patch.baseBranch;
     if (patch.workspaceSetup !== undefined) updates.workspaceSetup = patch.workspaceSetup;
-    if (patch.liveBranch !== undefined) updates.liveBranch = patch.liveBranch;
-    if (patch.releaseModel !== undefined) updates.releaseModel = patch.releaseModel;
-    if (patch.releaseStrategy !== undefined) updates.releaseStrategy = patch.releaseStrategy;
-    const gap = await releaseModelGap(id, updates);
+    if (patch.releaseChain !== undefined) updates.releaseChain = patch.releaseChain;
+    const gap = await releaseChainGapFor(id, patch);
     if (gap) throw new HTTPException(400, { message: gap.message, cause: { code: gap.code } });
     if (patch.defaultDeviceId !== undefined) updates.defaultDeviceId = patch.defaultDeviceId;
 
@@ -393,7 +395,7 @@ projectRoutes.patch(
     if (!updated) throw notFound();
     await announceContractInput(id, patch);
 
-    return c.json({ ...updated, liveBranch: readableLiveBranch(updated) });
+    return c.json(withRetiredReleaseAxes(updated));
   },
 );
 
@@ -579,14 +581,13 @@ projectRoutes.get(
     const [row] = await db
       .select({
         baseBranch: projects.baseBranch,
-        liveBranch: projects.liveBranch,
-        releaseModel: projects.releaseModel,
+        releaseChain: projects.releaseChain,
       })
       .from(projects)
       .where(eq(projects.id, id))
       .limit(1);
     if (!row) throw notFound();
-    const project = { baseBranch: row.baseBranch, liveBranch: readableLiveBranch(row) };
+    const project = { baseBranch: row.baseBranch, liveBranch: chainLiveBranch(row.releaseChain) };
 
     const [issueRow] = await db
       .select({

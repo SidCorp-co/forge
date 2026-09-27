@@ -228,7 +228,7 @@ describe('every exit before the cut is written on the row', () => {
   it('writes NO_RELEASE_GATE on a row still waiting on a project that declares no release', async () => {
     const id = await heldRow('pass');
     await harness.db.execute(sql`
-      UPDATE projects SET release_model = 'none', live_branch = NULL, release_strategy = NULL
+      UPDATE projects SET release_chain = '[]'::jsonb
        WHERE id = ${projectId}
     `);
 

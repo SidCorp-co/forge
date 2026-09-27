@@ -57,9 +57,7 @@ describe('release record required E2E', () => {
     await harness.db.execute(sql`
       UPDATE projects
          SET base_branch = 'main',
-             live_branch = 'production',
-             release_model = 'promote',
-             release_strategy = 'merge-branch'
+             release_chain = '[{"branch": "main"}, {"branch": "production", "from": "merge-branch"}]'::jsonb
        WHERE id = ${projectId}
     `);
     await harness.db.execute(sql`

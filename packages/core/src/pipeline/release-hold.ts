@@ -174,9 +174,10 @@ export function queuedBehindHold(carried: number): ReleaseHold {
 export const NO_RELEASE_GATE_HOLD: ReleaseHold = {
   code: 'NO_RELEASE_GATE',
   reason:
-    'This project declares no release (`releaseModel` is `none`), so there is no release for the ' +
-    'automatic sweep to carry this issue into, and nothing will move it from `awaiting_release`. ' +
-    'Either declare a release model with a live deploy binding, or close the issue.',
+    'This project declares no release (its `releaseChain` is empty), so there is no release for ' +
+    'the automatic sweep to carry this issue into, and nothing will move it from ' +
+    '`awaiting_release`. Either declare a release chain with a live deploy binding, or close the ' +
+    'issue.',
   owes: 'human',
   waitingFor: 'a person to declare a release or close the issue',
 };

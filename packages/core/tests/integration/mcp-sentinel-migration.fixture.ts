@@ -166,8 +166,8 @@ export async function plantProject(
 ): Promise<string> {
   const id = randomUUID();
   await sql.unsafe(
-    `INSERT INTO projects (id, slug, name, created_by, org_id, agent_config, release_model)
-     VALUES ($1, $2, $3, $4, $5, $6, 'none')`,
+    `INSERT INTO projects (id, slug, name, created_by, org_id, agent_config)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
     [id, slug, slug, g.ownerId, g.orgId, agentConfig === null ? null : sql.json(agentConfig)],
   );
   return id;

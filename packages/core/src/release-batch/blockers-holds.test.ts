@@ -84,9 +84,7 @@ function projectRow(over: Record<string, unknown> = {}) {
       repoPath: '/srv/app',
       repoUrl: null,
       baseBranch: 'main',
-      liveBranch: null,
-      releaseModel: 'publish',
-      releaseStrategy: null,
+      releaseChain: [{ branch: 'main' }],
       environments: {
         live: { url: 'https://app.example.test', commitUrl: 'https://example.test/api/health' },
       },

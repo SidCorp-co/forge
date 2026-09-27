@@ -49,6 +49,7 @@ export { MEMORY_EMBEDDING_DIM, pgVector, tsVector } from './schema-types.js';
 import { BODY_FORMATS } from '../body/formats.js';
 import type { IssueBranchOverride } from '../branches/resolve.js';
 import type { ReleaseNotes } from '../issues/release-notes.js';
+import type { ReleaseChain } from '../projects/release-chain.js';
 import { activityLog, actorAgencies } from './schema-activity.js';
 
 export {
@@ -344,10 +345,10 @@ export const projects = pgTable(
     description: text('description'),
     kind: text('kind').notNull().default('standard'),
     repoPath: text('repo_path'),
+    /** Where an ISS-* branch is cut from and merges back to. NOT a release fact: `releaseChain` is. */
     baseBranch: text('base_branch'),
-    liveBranch: text('live_branch'),
-    releaseModel: text('release_model', { enum: axes.releaseModels }).notNull().default('none'),
-    releaseStrategy: text('release_strategy', { enum: axes.releaseStrategies }),
+    /** ISS-1311 — the ordered release path. First entry is where work merges, last is live. */
+    releaseChain: jsonb('release_chain').$type<ReleaseChain>().notNull().default([]),
     repoUrl: text('repo_url'),
     workspaceSetup: text('workspace_setup'),
     defaultDeviceId: uuid('default_device_id').references((): AnyPgColumn => devices.id, {
@@ -372,7 +373,6 @@ export const projects = pgTable(
       columns: [t.id, t.issuePrefix],
       foreignColumns: [issuePrefixAliases.projectId, issuePrefixAliases.prefix],
     }),
-    // the three predicates, and why each is shaped the way it is, live in `./release-axes.ts`
     ...axes.releaseProjectChecks,
   }),
 );

@@ -65,9 +65,7 @@ function projectRow(over: Record<string, unknown> = {}) {
       repoPath: '/srv/app',
       repoUrl: null,
       baseBranch: 'main',
-      liveBranch: null,
-      releaseModel: 'publish',
-      releaseStrategy: null,
+      releaseChain: [{ branch: 'main' }],
       environments: {
         live: { url: 'https://app.example.test', commitUrl: 'https://example.test/api/health' },
       },
@@ -363,7 +361,7 @@ describe('collectReleaseBlockers', () => {
  */
 describe('collectReleaseBlockers — nothing a caller already got may move', () => {
   it('throws the target refusal under its own class, which is what keeps it a 409', async () => {
-    projectRow({ releaseModel: 'publish' });
+    projectRow({ releaseChain: [{ branch: 'main' }] });
     listBindings.mockResolvedValue([]);
 
     const err = releaseBlockerError(await collectReleaseBlockers(PROJECT_ID));
@@ -374,7 +372,7 @@ describe('collectReleaseBlockers — nothing a caller already got may move', () 
   // ISS-1276 — the branch blocker is gone, so this is refused by the binding alone.
   it('refuses a project missing BOTH a branch and one binding by the binding alone', async () => {
     ready();
-    projectRow({ baseBranch: null, releaseModel: 'publish' });
+    projectRow({ baseBranch: null, releaseChain: [{ branch: 'main' }] });
     listBindings.mockResolvedValue([
       {
         binding: {

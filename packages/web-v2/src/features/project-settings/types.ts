@@ -28,10 +28,11 @@ export interface ProjectUpdateInput {
 	/** Prose: how to bring this repo's workspace to a buildable state. Read by
 	 *  the runner's setup agent; blank means it derives the procedure per job. */
 	workspaceSetup?: string | null;
+	/** Where an ISS-* branch is cut from. NOT a release fact. */
 	baseBranch?: string | null;
-	liveBranch?: string | null;
-	releaseModel?: "none" | "promote" | "publish";
-	releaseStrategy?: "merge-branch" | "cherry-pick" | "tag-mr" | null;
+	/** The ordered release path. Sent WHOLE — it replaces the stored list rather
+	 *  than patching it — and its first entry must name `baseBranch`. */
+	releaseChain?: ReleaseChainEntry[];
 	/** NOT `environments`: that document is written through
 	 *  `PATCH /api/projects/:id/environments`, which refuses it here by name. */
 	orgId?: string;
@@ -199,15 +200,27 @@ export interface ReleaseWarning {
 	details?: Record<string, unknown>;
 }
 
+/** How a release crosses ONE edge of the chain, declared on the entry it enters. */
+export type ReleaseCrossing = "merge-branch" | "cherry-pick";
+
+/** One branch on the release path. The first entry crosses from nothing. */
+export interface ReleaseChainEntry {
+	branch: string;
+	from?: ReleaseCrossing;
+}
+
 /** What a project still has to declare — mirrors `ReleaseReadiness` in core
  *  `release-batch/readiness.ts`. `gaps` is what settings says out loud. */
 export interface ReleaseReadiness {
-	/** The project declares a release model AND has an active live deploy binding. */
+	/** The project declares a release chain AND has an active live deploy binding. */
 	hasReleaseGate: boolean;
+	/** The ordered release path. Empty means this project ships nothing. */
+	releaseChain: ReleaseChainEntry[];
+	/** Derived from the chain by core, not stored. ISS-1311 / ADR 0003. */
 	releaseModel: "none" | "promote" | "publish";
-	releaseStrategy: "merge-branch" | "cherry-pick" | "tag-mr" | null;
+	releaseStrategy: ReleaseCrossing | null;
 	baseBranch: string;
-	/** Non-null only under `promote` — every other model reads no branch. */
+	/** Non-null only where the chain names two or more branches. */
 	liveBranch: string | null;
 	targetUndeclared: boolean;
 	/** Providers of EVERY live deploy binding; core never picks one. */

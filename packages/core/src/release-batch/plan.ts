@@ -6,16 +6,17 @@ export const RELEASE_BATCH_SKILL = 'release-flow';
 /** The MCP tool a release run reads and records its batch through, on the credential its pane holds. */
 export const RELEASE_BATCH_TOOL = 'forge_release_batch';
 
-import { type ProjectLike, resolveIssueBranches } from '../branches/resolve.js';
-import type { ReleaseModel, ReleaseStrategy } from '../db/schema.js';
+import { resolveIssueBranches } from '../branches/resolve.js';
+import type { ReleaseCrossing } from '../db/schema.js';
+import { chainLiveBranch, type ReleaseChain } from '../projects/release-chain.js';
 import type { VerifyConfig } from './verify.js';
 
 export interface ReleaseBranches {
   /** `null` where the project declares none. A release reads its branches from its own method. */
   baseBranch: string | null;
-  /** Where a `promote` release lands. Equals `baseBranch` under every other model. */
+  /** Where the last edge of the chain lands. Equals `baseBranch` where the chain crosses nothing. */
   liveBranch: string | null;
-  /** True only under `releaseModel: 'promote'` with a live branch of its own. */
+  /** True where the chain has an edge to cross before it deploys. */
   promotePlanned: boolean;
 }
 
@@ -27,9 +28,15 @@ export interface ReleaseBranches {
  * behalf of a merge step that no longer exists; `resolveReleaseDeclaration` read the same column and
  * defaulted it to `main`, so the two readings disagreed about the same project.
  */
-export function releaseBranches(project: ProjectLike, releaseModel: ReleaseModel): ReleaseBranches {
-  const resolved = resolveIssueBranches({}, project);
-  const promotePlanned = releaseModel === 'promote' && resolved.liveBranch !== null;
+export function releaseBranches(project: {
+  baseBranch: string | null;
+  releaseChain: ReleaseChain;
+}): ReleaseBranches {
+  const resolved = resolveIssueBranches(
+    {},
+    { ...project, liveBranch: chainLiveBranch(project.releaseChain) },
+  );
+  const promotePlanned = resolved.liveBranch !== null;
   return {
     baseBranch: resolved.baseBranch,
     liveBranch: promotePlanned ? resolved.liveBranch : resolved.baseBranch,
@@ -73,4 +80,4 @@ export interface ReleasePlan {
   procedure: string | null;
 }
 
-export type { ReleaseModel, ReleaseStrategy };
+export type { ReleaseCrossing };

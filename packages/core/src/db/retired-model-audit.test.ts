@@ -31,6 +31,15 @@ describe('the rules name the retired reader', () => {
     ['await listActiveBindingsForEnvironment(id);', 'prod-binding-literal'],
     ['const d = await resolveProductionDeclaration(id);', 'prod-binding-literal'],
     ['const c = await resolveReleaseChannel(id);', 'prod-binding-literal'],
+    ['const m = projects.releaseModel;', 'release-model-columns'],
+    ['const l = projects.liveBranch;', 'release-model-columns'],
+    ['const s = projects.releaseStrategy;', 'release-model-columns'],
+    ['sql`SELECT release_model FROM projects`', 'release-model-columns'],
+    ['sql`... WHERE live_branch IS NOT NULL`', 'release-model-columns'],
+    ['sql`... SET release_strategy = NULL`', 'release-model-columns'],
+    ['const b = readableLiveBranch(row);', 'release-model-columns'],
+    ['const gap = await releaseModelGap(id, updates);', 'release-model-columns'],
+    ["if (s === 'tag-mr') return;", 'tag-mr-strategy'],
   ])('%s → %s', (source, rule) => {
     expect(hits(source)).toContain(rule);
   });
@@ -39,8 +48,10 @@ describe('the rules name the retired reader', () => {
 describe('the rules leave live code alone', () => {
   it.each([
     "sql`... WHERE b.role = 'deploy' AND 'live' = ANY(b.stages)`",
-    'const b = readableLiveBranch(row);',
-    'const branch = project.liveBranch;',
+    'const branch = row.liveBranch;',
+    'const live = chainLiveBranch(project.releaseChain);',
+    'const chain = projects.releaseChain;',
+    "if (e.from === 'merge-branch') return;",
     'type Stage = "preview" | "live";',
     'const set = await resolveReleaseChannels(projectId);',
     'const e = deploymentEnvironment;',

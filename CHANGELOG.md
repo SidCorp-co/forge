@@ -6068,6 +6068,10 @@
   deploy. Shipped 2026-09-02; this line was owed then and is written now. (ISS-870)
 
 ### Changed
+- **A project's route to live is now one ordered list of branches.** Release model, live branch
+  and strategy could disagree; a list cannot. Every project keeps the shape it released by, and
+  longer paths can now be described.
+
 - **Closing an issue now means the work shipped.** A close is refused unless the issue says the code landed. Work that turned out not to be work leaves by Dropped, which frees whatever was waiting on it just the same.
 - **Every check now measures against the branch your work will actually land on**, not always
   `main`. A repository on another base gets real checks instead of quiet passes.
