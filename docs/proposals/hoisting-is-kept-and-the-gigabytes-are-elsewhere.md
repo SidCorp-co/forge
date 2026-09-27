@@ -42,6 +42,44 @@ Two things will re-hide it for the next person:
   location and not of this repository; it is recorded here only so the next person does not read
   it as a finding.
 
+### How to re-take it
+
+Measured at `5b06318a5`. Anywhere with no forge-core checkout above it — `/home/dev` is one,
+`<repo>/.claude/worktrees/` is not:
+
+```
+git clone <this repo> /home/dev/forge-iss1287-probe
+cd /home/dev/forge-iss1287-probe && git checkout <the commit you are judging>
+export TURBO_CACHE_DIR="$(mktemp -d)"                       # never the shared cache
+
+# the control
+rm -rf node_modules packages/*/node_modules
+pnpm install --frozen-lockfile
+node scripts/verify.mjs; pnpm build --force; pnpm exec turbo run test --force
+
+# the subject: the linker moves on the command line, so no file is edited
+rm -rf node_modules packages/*/node_modules
+pnpm install --frozen-lockfile --config.node-linker=isolated --config.shamefully-hoist=false
+node scripts/verify.mjs; pnpm build --force; pnpm exec turbo run test --force
+pnpm deploy --filter=@forge/core --prod "$(mktemp -d)"
+```
+
+The two `verify` runs are what the seven-verdict count is the difference between; read which checks
+`could not run`, not the totals. `--force` on both turbo tasks is not optional — see the cache note
+above. The package census is a file-existence test against the isolated install's root, which is
+the part that must not use `require.resolve`:
+
+```
+# after the isolated install, at the repository root
+for p in @biomejs/biome tsx dependency-cruiser hono typescript @testing-library/dom; do
+  printf '%-22s %s\n' "$p" "$([ -e "node_modules/$p/package.json" ] && echo AT-ROOT || echo ABSENT)"
+done
+```
+
+Two of the figures are on a different footing and are said so where they appear: the disk split
+below needs an install-fresh tree, and `runner cargo gates` and `meta migration-order` are red in a
+fresh clone under both linkers for reasons that have nothing to do with the linker.
+
 ## What a worktree's node_modules actually costs it
 
 pnpm hardlinks package files out of its content-addressable store under **both** linkers. What a
