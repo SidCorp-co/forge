@@ -4,6 +4,7 @@ import type { IssueStatus } from '../db/schema.js';
 import { applyStatusTransition } from '../issues/apply-transition.js';
 import { logger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
+import { holdsOpenHumanQuestion } from '../questions/issue-coupling.js';
 import { wakeMastersForProject } from '../ws/master-wake.js';
 import {
   AUTONOMOUS_ENTRY_STATUS,
@@ -148,6 +149,7 @@ export async function resetAutonomousWedgesOnce(): Promise<number> {
     WHERE i.status IN (${inflightList})
       AND i.updated_at < now() - interval '${sql.raw(WEDGE_GRACE)}'
       AND lj.type = ${AUTONOMOUS_JOB_TYPE}
+      AND NOT ${holdsOpenHumanQuestion(sql`i.id`)}
       AND NOT EXISTS (
         SELECT 1 FROM jobs j2
         WHERE j2.issue_id = i.id

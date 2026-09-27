@@ -4,7 +4,7 @@
 // writer to `issues.status` and it is `issues/apply-transition.ts`. Nothing here
 // moves an issue; it refuses or voids alongside the move that does (ISS-1257).
 
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, type SQL, type SQLWrapper, sql } from 'drizzle-orm';
 import type { IssueStatus } from '../db/schema.js';
 import { agentQuestions } from '../db/schema-questions.js';
 import type { IssueDependencyExecutor } from '../issues/dependency-executor.js';
@@ -13,6 +13,21 @@ import { ISSUE_TERMINAL_STATUSES } from '../issues/status-sets.js';
 type Executor = IssueDependencyExecutor;
 
 export const QUESTION_ENDED_WITH_ISSUE = 'issue_terminal';
+
+/**
+ * The marker that a person owes an issue an answer: an open question on it whose
+ * blocker kind is `human`. It is read from the question rows every time rather
+ * than stored, so answering or voiding the last one clears it with no second write.
+ */
+export function holdsOpenHumanQuestion(issueId: SQLWrapper): SQL {
+  return sql`exists (select 1 from agent_questions q
+    where q.issue_id = ${issueId} and q.status = 'open' and q.blocker_kind = 'human')`;
+}
+
+export async function personOwesAnAnswer(executor: Executor, issueId: string): Promise<boolean> {
+  const rows = await executor.execute(sql`select ${holdsOpenHumanQuestion(sql`${issueId}::uuid`)} as held`);
+  return (rows[0] as { held?: boolean } | undefined)?.held === true;
+}
 
 export async function openQuestionIdsOn(executor: Executor, issueId: string): Promise<string[]> {
   const rows = await executor
@@ -80,7 +95,7 @@ export async function settleOpenQuestions(
     .update(agentQuestions)
     .set({
       status: 'void',
-      voidReason: `the issue went to \`${args.toStatus}\` with this question open: ${reason}`,
+      voidReason: `the issue went to ${args.toStatus} with this question open: ${reason}`,
       endedBy: args.by,
       endedReason: QUESTION_ENDED_WITH_ISSUE,
       updatedAt: new Date(),

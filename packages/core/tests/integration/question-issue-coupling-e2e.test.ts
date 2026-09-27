@@ -180,7 +180,7 @@ describe('an issue cannot reach a terminal status while it holds an open questio
     expect(await statusOf(issueId)).toBe('dropped');
     const [q] = await questionsOn(issueId);
     expect(q?.status).toBe('void');
-    expect(q?.voidReason).toContain('`dropped`');
+    expect(q?.voidReason).toContain('went to dropped with this question open');
     expect(q?.voidReason).toContain('a duplicate of the tenant issue');
     expect(q?.endedReason).toBe('issue_terminal');
   });
@@ -319,14 +319,14 @@ describe('forge_questions — an agent on the MCP server can ask', () => {
     expect(row?.steps[0]).toMatchObject({ answerShape: 'free_text', needed: 'the tenant slug' });
   });
 
-  it('parks the issue at needs_info in the same write when a person is the blocker', async () => {
+  it('writes the question and leaves the status alone when a person is the blocker', async () => {
     const issueId = await insertIssue('in_progress');
     const principal = makeFakeJobPrincipal(randomUUID(), ownerId, randomUUID(), projectId);
     await toolFor(principal).handler({
       action: 'ask',
       data: { issueId, prompt: 'Ship now?', blockerKind: 'human', ...choice },
     });
-    expect(await statusOf(issueId)).toBe('needs_info');
+    expect(await statusOf(issueId)).toBe('in_progress');
     const rows = await questionsOn(issueId);
     expect(rows).toHaveLength(1);
     expect(rows[0]?.status).toBe('open');
@@ -344,7 +344,7 @@ describe('forge_questions — an agent on the MCP server can ask', () => {
     });
   }
 
-  it('refuses an ask on a closed issue rather than parking finished work back open', async () => {
+  it('refuses an ask on a closed issue, which no answer could reach', async () => {
     const issueId = await insertIssue('closed');
     await expect(
       toolFor().handler({

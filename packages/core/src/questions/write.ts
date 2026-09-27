@@ -65,7 +65,6 @@ export const questionRefusalCodes = [
   'QUESTION_REASON_REQUIRED',
   'QUESTION_ISSUE_ELSEWHERE',
   'QUESTION_ISSUE_TERMINAL',
-  'QUESTION_ISSUE_MOVED',
   'QUESTION_OPTIONS_REQUIRED',
   'QUESTION_RECOMMENDED_UNKNOWN',
   'QUESTION_OPTION_IDS_DUPLICATE',
@@ -172,15 +171,10 @@ async function checkIssueBelongsToProject(
 }
 
 /**
- * Locked `for share`, so a close or a resume racing this ask either commits first
- * and is seen, or waits for it. `whileStatus` is the status the caller decided on:
- * an ask that relies on the issue already being parked is refused if it no longer is.
+ * Locked `for share`, so a close racing this ask either commits first and is seen,
+ * or waits for it.
  */
-async function refuseFinishedWork(
-  executor: QuestionExecutor,
-  issueId: string | undefined,
-  whileStatus: IssueStatus | undefined,
-) {
+async function refuseFinishedWork(executor: QuestionExecutor, issueId: string | undefined) {
   if (!issueId) return;
   const rows = await executor.execute(
     sql`select status from issues where id = ${issueId} for share`,
@@ -192,32 +186,21 @@ async function refuseFinishedWork(
       'QUESTION_ISSUE_TERMINAL',
     );
   }
-  if (whileStatus && status !== whileStatus) {
-    throw new QuestionRefused(
-      `issue ${issueId} left \`${whileStatus}\` for \`${status}\` while this question was being asked, so writing it alone would leave a person's question on an issue that is not waiting for them. Ask again`,
-      'QUESTION_ISSUE_MOVED',
-    );
-  }
 }
 
 /**
  * The one path every door's question is written through: shape, owning project,
- * live issue, row. `whileStatus` pins the issue's status for an insert that is
- * only correct while the issue stays there.
+ * live issue, row.
  */
-export async function insertAskedQuestion(
-  executor: QuestionExecutor,
-  input: AskInput,
-  whileStatus?: IssueStatus,
-) {
+export async function insertAskedQuestion(executor: QuestionExecutor, input: AskInput) {
   checkAnswer(input.answer);
   await checkIssueBelongsToProject(executor, input.issueId, input.projectId);
-  await refuseFinishedWork(executor, input.issueId, whileStatus);
+  await refuseFinishedWork(executor, input.issueId);
   return insertQuestion(executor, input);
 }
 
-export async function askQuestion(input: AskInput, whileStatus?: IssueStatus) {
-  return db.transaction((tx) => insertAskedQuestion(tx, input, whileStatus));
+export async function askQuestion(input: AskInput) {
+  return db.transaction((tx) => insertAskedQuestion(tx, input));
 }
 
 export async function askParkQuestion(

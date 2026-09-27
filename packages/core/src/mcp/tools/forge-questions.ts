@@ -6,14 +6,12 @@ import {
   optionExecutors,
   questionBlockerKinds,
 } from '../../db/schema-questions.js';
-import { TransitionError } from '../../issues/apply-transition.js';
 import { askAs, readQuestionFor, readQuestionsForIssue } from '../../questions/read.js';
 import { QuestionRefused } from '../../questions/write.js';
 import {
   assertPrincipalIsMember,
   assertPrincipalIsWriter,
   type ContextScopedMcpToolFactory,
-  principalActor,
   zodToMcpSchema,
 } from './lib.js';
 
@@ -80,7 +78,6 @@ function answerOf(data: AskData) {
 
 function refused(err: unknown): unknown {
   if (err instanceof QuestionRefused) return new Error(`${err.code}: ${err.message}`);
-  if (err instanceof TransitionError) return new Error(err.message);
   return err;
 }
 
@@ -91,8 +88,9 @@ export const forgeQuestionsTool: ContextScopedMcpToolFactory = (ctx) => ({
     'action=ask — data={issueId, prompt, blockerKind:"human"|"master_or_peer"|"machine", then EITHER ' +
     'options:[{id,label,authority:"writer"|"admin",bindsTo:"this_call"|"session"|"project",executedBy:"agent"|"core"|"human",fingerprint?}] + recommendedOptionId ' +
     'OR needed:"<what would settle it>"; optional assumed, maxRounds, parkDeadlineAt, sensitive}. ' +
-    'With blockerKind "human" the issue is parked at `needs_info` in the same write unless it is there already — the question IS the park, and the prompt is posted on the thread as its reason. ' +
-    'Other blocker kinds only write the question. Asking on a closed or dropped issue is refused (QUESTION_ISSUE_TERMINAL). ' +
+    'An ask writes the question and moves no status, whatever the blocker kind: the issue keeps its rung, and an open "human" question marks it as waiting on a person on the Issues list, in Needs you and in Attention. ' +
+    'To stop work for want of a requirement, park it with forge_issues at `needs_info` as well; that park asks nothing twice. ' +
+    'Asking on a closed or dropped issue is refused (QUESTION_ISSUE_TERMINAL). ' +
     'A closed or dropped move is refused while a question is open: answer it, or send the close with `voidQuestions` on forge_issues. ' +
     'action=get — id=<question uuid>. action=list — issueId=<issue uuid>, every question on that issue, newest first. ' +
     'Requires writer role to ask and member role to read; answering is a person’s, from the issue screen.',
@@ -109,7 +107,6 @@ export const forgeQuestionsTool: ContextScopedMcpToolFactory = (ctx) => ({
         try {
           const asked = await askAs({
             userId: principal.userId,
-            actor: principalActor(principal),
             issueId: data.issueId,
             prompt: data.prompt,
             blockerKind: data.blockerKind,
