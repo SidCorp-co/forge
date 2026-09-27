@@ -212,12 +212,13 @@ describe('a box that may not serve the project is refused on the open, by name',
 describe('the pool and the run-session open ask one predicate', () => {
   const THREE = ['runner_unbound', 'device_disabled', 'runner_withdrawn'] as const;
 
-  /** What `prepare` answered about admission, normalised: its other refusals are not admission. */
+  /** What `prepare` answered about admission; any other refusal fails the case rather than reading as yes. */
   function prepared(result: Awaited<ReturnType<typeof prepareJobForMaster>>) {
-    if (!result.ok && (THREE as readonly string[]).includes(result.reason)) {
+    if (result.ok) return { admitted: true, reason: null };
+    if ((THREE as readonly string[]).includes(result.reason)) {
       return { admitted: false, reason: result.reason };
     }
-    return { admitted: true, reason: null };
+    throw new Error(`prepare refused for a reason that is not admission: ${result.reason}`);
   }
 
   async function opened(projectId: string, deviceId: string) {
