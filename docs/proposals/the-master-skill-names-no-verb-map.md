@@ -35,3 +35,12 @@ those boxes run that release; deleting the copies before then leaves those maste
 **The deletion is owed once** the daemon on the boxes serving those three projects reports a
 version built from a commit that carries the paragraph. The verb-map half of each copy stays until
 the pointer above lands.
+
+## Honest costs
+
+- Until the pointer lands, a master learns the CLI's verbs only from each verb's own help, so a
+  master that never thinks to run `forge next` still misses the judging lane it lists.
+- Keeping the interim copies until a release reaches those boxes means three projects carry the
+  objective twice for that window, and an edit to one copy can drift from the skill's wording.
+- The assertion refusing `forge guide master` has to be deleted by hand in the change that adds the
+  pointer, which is one more step that change can forget and will be told about only by a red test.
