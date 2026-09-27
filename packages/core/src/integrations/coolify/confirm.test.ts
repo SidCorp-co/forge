@@ -42,8 +42,24 @@ vi.mock('../../pipeline/deploy-confirmations.js', async () => {
   );
   return {
     resolveDeployGate: real.resolveDeployGate,
+    targetHoldKey: real.targetHoldKey,
     settleDeployTarget: (args: unknown) => settleMock(args),
     isCloseDeferred: (...a: unknown[]) => isCloseDeferredMock(...(a as [])),
+  };
+});
+
+// ISS-1279 — the environment hold, freed when the deploy ends. Mocked rather
+// than given a `db`, because what these cases assert is that the release
+// happens on both terminal arms and is keyed on the settling run.
+const LOCKS = [{ environment: 'live', acquiredAt: '2026-09-27T00:00:00.000Z' }];
+const releaseLocksMock = vi.fn(async (..._a: unknown[]) => 0);
+vi.mock('../../pipeline/deploy-lock.js', async () => {
+  const real = await vi.importActual<typeof import('../../pipeline/deploy-lock.js')>(
+    '../../pipeline/deploy-lock.js',
+  );
+  return {
+    ...real,
+    releaseDeployLocksForRun: (...a: unknown[]) => releaseLocksMock(...(a as [string])),
   };
 });
 
@@ -94,20 +110,29 @@ function job(over: Record<string, unknown> = {}) {
   };
 }
 
-const holds = (status: 'pending' | 'succeeded' | 'failed', label = 'Frontend') => ({
-  other: {
-    bindingId: 'bind-1',
-    deploymentUuid: 'dep-2',
-    targetLabel: label,
-    status,
-    deadlineAt: FUTURE,
-  },
+type HoldStatus = 'pending' | 'succeeded' | 'failed';
+const hold = (targetLabel: string, deploymentUuid: string, status: HoldStatus) => ({
+  bindingId: 'bind-1',
+  deploymentUuid,
+  targetLabel,
+  status,
+  deadlineAt: FUTURE,
+  /** The lock row this hold speaks for: the record names what it may free (ISS-1279). */
+  locks: LOCKS,
+});
+
+/** What `settleDeployTarget` hands back: the settled target's OWN hold — written even on a run
+ *  that has gone terminal — beside whatever sibling the run still holds. A fixture without it
+ *  describes a record the dispatcher never wrote, which is its own case below. */
+const holds = (own: 'succeeded' | 'failed', sibling?: HoldStatus) => ({
+  'target:del-1': hold('Backend', 'dep-1', own),
+  ...(sibling ? { other: hold('Frontend', 'dep-2', sibling) } : {}),
 });
 
 beforeEach(() => {
   contextConfig = { baseUrl: 'https://coolify.example' };
   findBindingMock.mockResolvedValue({ id: 'bind-1', connectionId: 'conn-1' });
-  settleMock.mockResolvedValue({});
+  settleMock.mockResolvedValue(holds('succeeded'));
   isCloseDeferredMock.mockResolvedValue(false);
 });
 afterEach(() => vi.clearAllMocks());
@@ -147,7 +172,7 @@ describe('runCoolifyConfirm', () => {
 
   it('does NOT close the run while a sibling target is still in flight', async () => {
     getDeploymentMock.mockResolvedValue({ status: 'finished' });
-    settleMock.mockResolvedValue(holds('pending'));
+    settleMock.mockResolvedValue(holds('succeeded', 'pending'));
     isCloseDeferredMock.mockResolvedValue(true);
 
     expect(await runCoolifyConfirm(job())).toEqual({ settled: 'succeeded', closedRun: false });
@@ -156,7 +181,7 @@ describe('runCoolifyConfirm', () => {
 
   it('closes the deferred run only once EVERY target has confirmed', async () => {
     getDeploymentMock.mockResolvedValue({ status: 'finished' });
-    settleMock.mockResolvedValue(holds('succeeded'));
+    settleMock.mockResolvedValue(holds('succeeded', 'succeeded'));
     isCloseDeferredMock.mockResolvedValue(true);
 
     expect(await runCoolifyConfirm(job())).toEqual({
@@ -165,11 +190,12 @@ describe('runCoolifyConfirm', () => {
     });
     expect(setCurrentStepMock.mock.calls).toEqual([[RUN_ID, 'release.deploy.done']]);
     expect(closeRunMock.mock.calls).toEqual([[RUN_ID, 'completed']]);
+    expect(releaseLocksMock.mock.calls).toEqual([[RUN_ID, LOCKS]]);
   });
 
   it('leaves a run nobody tried to close alone, even with every target confirmed', async () => {
     getDeploymentMock.mockResolvedValue({ status: 'finished' });
-    settleMock.mockResolvedValue(holds('succeeded'));
+    settleMock.mockResolvedValue(holds('succeeded', 'succeeded'));
     isCloseDeferredMock.mockResolvedValue(false);
 
     expect(await runCoolifyConfirm(job())).toEqual({ settled: 'succeeded', closedRun: false });
@@ -179,6 +205,7 @@ describe('runCoolifyConfirm', () => {
 
   it('a reported failure FAILS the run rather than annotating it', async () => {
     getDeploymentMock.mockResolvedValue({ status: 'failed' });
+    settleMock.mockResolvedValue(holds('failed'));
 
     expect(await runCoolifyConfirm(job())).toEqual({
       settled: 'failed',
@@ -187,6 +214,40 @@ describe('runCoolifyConfirm', () => {
     });
     expect(recordDeliveryMock.mock.calls[0]?.[0]).toMatchObject({ eventName: 'deploy.failed' });
     expect(closeRunMock.mock.calls).toEqual([[RUN_ID, 'failed']]);
+    expect(releaseLocksMock.mock.calls).toEqual([[RUN_ID, LOCKS]]);
+  });
+
+  it('holds the environment through a failure while a sibling target is still building', async () => {
+    getDeploymentMock.mockResolvedValue({ status: 'failed' });
+    settleMock.mockResolvedValue(holds('failed', 'pending'));
+
+    expect(await runCoolifyConfirm(job())).toMatchObject({ settled: 'failed' });
+
+    expect(closeRunMock.mock.calls).toEqual([[RUN_ID, 'failed']]);
+    expect(releaseLocksMock.mock.calls).toEqual([]);
+  });
+
+  // A run that has already failed still takes the settlement write, so the last target's own entry
+  // reads its outcome and the environment goes back the moment nothing else is building.
+  it('frees the environment on the last target even once the run has failed', async () => {
+    getDeploymentMock.mockResolvedValue({ status: 'finished' });
+    settleMock.mockResolvedValue(holds('succeeded', 'failed'));
+
+    await runCoolifyConfirm(job());
+
+    expect(releaseLocksMock.mock.calls).toEqual([[RUN_ID, LOCKS]]);
+  });
+
+  // ISS-1279 — a settlement that finds no hold of its OWN knows nothing about its siblings: the
+  // dispatcher never recorded what it authorised, so an empty record is a deploy nobody is
+  // tracking rather than an idle environment. The expiry ends that hold, never a guess here.
+  it('frees nothing when the deploy it settles was never recorded as a hold', async () => {
+    getDeploymentMock.mockResolvedValue({ status: 'finished' });
+    settleMock.mockResolvedValue({});
+
+    await runCoolifyConfirm(job());
+
+    expect(releaseLocksMock.mock.calls).toEqual([]);
   });
 
   it('re-polls while the deployment is non-terminal and the deadline is ahead', async () => {
@@ -196,6 +257,15 @@ describe('runCoolifyConfirm', () => {
     expect(sendCalls()).toHaveLength(1);
     expect(closeRunMock.mock.calls).toEqual([]);
     expect(recordDeliveryMock.mock.calls).toEqual([]);
+    expect(releaseLocksMock.mock.calls).toEqual([]);
+  });
+
+  it('holds the environment while one target of two is still building', async () => {
+    getDeploymentMock.mockResolvedValue({ status: 'finished' });
+    settleMock.mockResolvedValue(holds('succeeded', 'pending'));
+
+    expect(await runCoolifyConfirm(job())).toEqual({ settled: 'succeeded', closedRun: false });
+    expect(releaseLocksMock.mock.calls).toEqual([]);
   });
 
   it('a deploy still non-terminal AT the deadline fails the run, naming what it could not confirm', async () => {

@@ -4,7 +4,9 @@ import {
   isCloseDeferred,
   resolveDeployGate,
   settleDeployTarget,
+  targetHoldKey,
 } from '../../pipeline/deploy-confirmations.js';
+import { deployHoldsLocks, releaseDeployLocksForRun } from '../../pipeline/deploy-lock.js';
 import { closeRun, RELEASE_DEPLOY_DONE_STEP, setCurrentStep } from '../../pipeline/runs.js';
 import { boss } from '../../queue/boss.js';
 import { recordDelivery } from '../deliveries.js';
@@ -211,6 +213,18 @@ export async function applyDeploySettlement(
     status: verdict,
     ...(detail ? { detail } : {}),
   });
+
+  // ISS-1279 — the environment is free once nothing of this run is still reaching it, and this
+  // target's own recorded hold is the evidence that the record can answer that at all. Absent, the
+  // deploy was never witnessed and its siblings are unknown, so the expiry ends the hold instead.
+  // One target failing does not stop the siblings Coolify is still building, so the run going
+  // terminal is not the moment. By run id, so a run that took no lock frees nothing and one whose
+  // hold was reclaimed cannot free its successor.
+  const witnessed = holds[targetHoldKey(data.deliveryId)];
+  const stillReaching = Object.values(holds).some((h) => h.status === 'pending');
+  if (witnessed && !stillReaching) {
+    await releaseDeployLocksForRun(data.runId, deployHoldsLocks(holds));
+  }
 
   if (verdict === 'failed') {
     logger.error(

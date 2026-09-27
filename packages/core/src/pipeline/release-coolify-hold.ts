@@ -1,0 +1,73 @@
+/** The environment hold a release dispatch takes and gives back (ISS-1279). */
+
+import { readDeployHolds } from './deploy-confirmations.js';
+import {
+  type DeployLockHeld,
+  deployHoldsIdle,
+  deployHoldsLocks,
+  releaseDeployLocksForRun,
+} from './deploy-lock.js';
+
+/** Each binding's stages, plus `live` for one `reachesLive` says reaches production. */
+export interface DeployLockIntent {
+  projectId: string;
+  environments: string[];
+  subject: string;
+}
+
+type LockableBinding = { id: string; stages: string[] | null; role: string; config: unknown };
+
+export function deployLockIntent(
+  projectId: string,
+  pairs: ReadonlyArray<{ binding: LockableBinding }>,
+  reachesLive: (binding: { stages: string[] | null; config: unknown }) => boolean,
+): DeployLockIntent {
+  const environments = new Set<string>();
+  for (const { binding } of pairs) {
+    for (const stage of binding.stages ?? []) environments.add(stage);
+    if (reachesLive(binding)) environments.add('live');
+  }
+  const subject = pairs
+    .map(({ binding }) => `${targetLabelOf(binding)} (binding ${binding.id})`)
+    .join(', ');
+  return { projectId, environments: [...environments].sort(), subject };
+}
+
+export const targetLabelOf = (binding: { stages: string[] | null; role: string }): string =>
+  `${(binding.stages ?? []).join('+') || binding.role} deploy`;
+
+/** Nothing queued is all a count answers; past that the holds record what reaches the
+ *  environment, and an empty one behind a dispatch that DID queue is a deploy no hold tracks. */
+export async function freeLockIfNothingPending(
+  lock: DeployLockIntent | null,
+  runId: string,
+  dispatched: readonly string[],
+  taken: readonly DeployLockHeld[],
+): Promise<void> {
+  if (!lock) return;
+  // `taken`, never a fresh read: stalled past its expiry it would give back a SUCCESSOR's.
+  if (dispatched.length === 0) {
+    await releaseDeployLocksForRun(runId, taken);
+    return;
+  }
+  const holds = await readDeployHolds(runId);
+  if (deployHoldsIdle(holds)) await releaseDeployLocksForRun(runId, deployHoldsLocks(holds));
+}
+
+/** An environment taken for a binding that then parked is one nobody is deploying to. Left held,
+ *  it refuses the confirmation resuming it, in the name of the run waiting to press it. */
+export async function giveBackUnusedEnvironments(
+  runId: string,
+  taken: readonly DeployLockHeld[],
+  needed: readonly string[],
+): Promise<void> {
+  const surplus = taken.filter((h) => !needed.includes(h.environment));
+  if (surplus.length === 0) return;
+  await releaseDeployLocksForRun(runId, surplus);
+}
+
+/** The rows a binding's deploy needs, so its placeholder records what it alone may free. */
+export const locksOf = (
+  taken: readonly DeployLockHeld[],
+  needs: DeployLockIntent,
+): DeployLockHeld[] => taken.filter((h) => needs.environments.includes(h.environment));

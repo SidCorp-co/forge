@@ -116,6 +116,9 @@
 - **The public documentation has three doors and a search.** Choose "I use Forge", "I'm connecting
   an AI assistant" or "I'm an agent or a script"; every page says who it is for, and search
   reaches all of them.
+- **Two releases can no longer deploy to the same environment at once.** The second is refused as
+  `DEPLOY_ENVIRONMENT_LOCKED`, naming the release that holds it, what it is deploying, since when,
+  and when the hold lifts.
 - **Two help pages for people filing work: how to ask for a change, and how to tell it is done.**
   A finished issue's page now shows its release note — what changed, or what will once it ships.
 - **You can now attach a picture when you talk to the agent on the web, see what you are typing as
