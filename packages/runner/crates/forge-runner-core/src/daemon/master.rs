@@ -4087,6 +4087,51 @@ mod tests {
         );
     }
 
+    /// ISS-1274. Three merged rows rested at `developed` for four hours on one
+    /// box while its master dispatched other work: nothing refused, so nothing
+    /// said so. The rule sits beside the pass-over rule it completes.
+    #[test]
+    fn the_skill_says_an_idle_pane_with_admissible_work_is_a_deviation() {
+        const OBJECTIVE: &str = "An idle pane while admissible work stands is a deviation";
+        // A Windows checkout under `core.autocrlf` embeds this asset as CRLF.
+        let skill = MASTER_SKILL.replace("\r\n", "\n");
+        let own = skill
+            .split("## What is yours and nowhere else")
+            .nth(1)
+            .and_then(|s| s.split("\n## ").next())
+            .expect("the skill carries the section on what is the master's own");
+        let pass_over = own
+            .find("A pass-over is written on the issue")
+            .expect("the pass-over paragraph the objective completes");
+        let objective = own.find(OBJECTIVE).unwrap_or_else(|| {
+            panic!("the master's own section must say `{OBJECTIVE}`: without it a row nobody decided about reads as a quiet pass")
+        });
+        let after_pass_over = own[pass_over..]
+            .find("\n\n")
+            .map_or(own.len(), |end| pass_over + end + 2);
+        assert!(
+            own[after_pass_over..]
+                .trim_start_matches('*')
+                .starts_with(OBJECTIVE),
+            "the objective is the second half of the pass-over rule and is the paragraph directly after it"
+        );
+        let paragraph = own[objective..].split("\n\n").next().unwrap();
+        assert!(
+            paragraph.contains("does not mean dispatch everything")
+                && paragraph.contains("record on the issue"),
+            "a pass-over stays a recorded decision, or the objective reads as dispatch every row: {paragraph}"
+        );
+        assert!(
+            paragraph.contains("`needs_info` with the question written on it"),
+            "a row that needs a person goes to needs_info with its question, not to a run: {paragraph}"
+        );
+        assert!(
+            !skill.contains("forge guide master"),
+            "no guide named master prints on the CLI yet (forge-plugin ISS-2592); a pointer to it sends a master to a refusal. \
+             Remove this assertion in the change that adds the pointer, once that guide prints"
+        );
+    }
+
     /// Criterion 12. Until this change a master that had been taken over by a
     /// person could only say so in prose, in a pane nothing reads, and went on
     /// answering nudges for nine hours (ISS-1118 comment 3d208f73).
