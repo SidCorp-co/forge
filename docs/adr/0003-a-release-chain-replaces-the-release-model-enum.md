@@ -142,12 +142,13 @@ is the closing of the forge-plugin issue that moves the plugin's readers of thes
 `src/tracker/project-config.mjs` and `src/tracker/routes.mjs` — onto the chain. Step 3 is owed at
 that moment and is not deferred past it.
 
-**That issue's identifier is not yet allocated**, because it is filed once the core half lands and
-its changelog can be handed over, and this ADR is amended with the identifier at that moment. Until
-then the end condition names a described issue rather than a numbered one: a reader can tell which
-issue would satisfy it, and cannot yet check whether it has. An amnesty whose ending nobody can
-check is the failure this paragraph exists to avoid, so the gap is stated here rather than left for
-a reader to discover.
+**That issue is `ISS-2745` on the `forge-plugin` project**, filed 2026-09-27 once the core half
+landed and its changelog could be handed over. The end condition is therefore a numbered one: a
+reader can check whether this amnesty has ended by reading that issue's status, and step 3 — core
+stops answering `releaseModel`, `liveBranch` and `releaseStrategy` — is owed the moment it closes.
+
+Until it does, the derived fields stay. An amnesty whose ending nobody can check is the failure this
+paragraph exists to avoid.
 
 This is not two live paths. The chain is the only stored fact, the derivation runs one way, and the
 old names are a projection with an expiry — not a fallback anything can land on.
