@@ -3,6 +3,7 @@
 import { spawnSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { baseRef } from './lib/base-branch.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CRATE_DIR = resolve(ROOT, 'packages/runner');
@@ -24,10 +25,23 @@ function git(args) {
   return r.status === 0 ? r.stdout : null;
 }
 
+/** Why the scope could not be computed, set beside the `no-base` sentinel below. */
+let noBase = null;
+
 function changedCrateFiles() {
   if (git(['rev-parse', '--git-dir']) === null) return 'no-git';
-  const base = git(['merge-base', 'origin/main', 'HEAD'])?.trim();
-  if (!base) return 'no-base';
+  const target = baseRef(ROOT);
+  if (target.refusal) {
+    noBase = target.refusal;
+    return 'no-base';
+  }
+  const base = git(['merge-base', target.ref, 'HEAD'])?.trim();
+  if (!base) {
+    noBase =
+      `\`git merge-base ${target.ref} HEAD\` did not answer, so the changed set cannot be scoped —\n` +
+      `run \`git fetch origin ${target.branch}\`, or pass --all to run every gate unconditionally.`;
+    return 'no-base';
+  }
   const files = new Set();
   for (const l of (git(['diff', '--name-only', base, '--', 'packages/runner']) ?? '').split('\n')) {
     if (l.trim()) files.add(l.trim());
@@ -45,9 +59,7 @@ if (changed === 'no-git') {
   process.exit(0);
 }
 if (changed === 'no-base') {
-  console.error(
-    'runner-gates: could not resolve origin/main to scope the diff — run `git fetch origin main`, or pass --all to run every gate unconditionally.',
-  );
+  console.error(`runner-gates: ${noBase}`);
   process.exit(2);
 }
 if (changed !== null && changed.size === 0) {
