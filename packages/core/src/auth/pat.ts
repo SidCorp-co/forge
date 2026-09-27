@@ -30,8 +30,8 @@ export interface MintPatInput {
   projectIds?: string[] | null | undefined;
   boundProjectId?: string | null | undefined;
   /**
-   * The permission names granted, or omitted for every group. See
-   * `auth/pat-permissions.ts`.
+   * What this token may reach: the names, or `PAT_GRANT_ALL` for the whole
+   * menu. Omitting it writes the legacy shape, which reaches everything.
    */
   permissions?: readonly string[] | null | undefined;
   /** The paired box this token is issued to — see `devices/credential.ts`. */
