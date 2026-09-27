@@ -14,7 +14,8 @@ afterEach(cleanup);
 let listed: Record<string, unknown>;
 let linked: Record<string, unknown>;
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
+const replace = vi.fn();
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn(), replace }) }));
 vi.mock("@/features/questions/hooks", () => ({
   useProjectQuestions: () => listed,
   useAnswerProjectQuestion: () => ({ mutateAsync: vi.fn() }),
@@ -37,6 +38,7 @@ beforeEach(() => {
     refetch: vi.fn(),
   };
   linked = { gone: false, unreachable: false, data: undefined, refetch: vi.fn() };
+  replace.mockClear();
 });
 
 describe("QuestionsPane", () => {
@@ -46,16 +48,23 @@ describe("QuestionsPane", () => {
     expect(screen.getByText(/waits on that issue's row in the Issues list/)).toBeInTheDocument();
   });
 
-  it("turns a run row's link to a decision on an issue into a link to that issue", () => {
+  it("sends a run row's link to an open decision on an issue straight to that issue", () => {
     linked = { ...linked, data: { status: "open", issueId: "iss-uuid-1" } };
     render(<QuestionsPane scope={scope} focusQuestionId="q-on-issue" />);
-    const link = screen.getByRole("link", { name: "Open the issue to answer it" });
-    expect(link).toHaveAttribute("href", "/projects/forge-dev/issues/iss-uuid-1");
+    expect(replace).toHaveBeenCalledWith("/projects/forge-dev/issues/iss-uuid-1");
+    expect(screen.queryByText("No master is waiting on a person")).not.toBeInTheDocument();
   });
 
-  it("offers no issue link for a linked decision that is no longer open", () => {
+  it("sends a link to an answered decision on an issue to that issue too", () => {
     linked = { ...linked, gone: true, data: { status: "answered", issueId: "iss-uuid-1" } };
     render(<QuestionsPane scope={scope} focusQuestionId="q-answered" />);
-    expect(screen.queryByTestId("decision-on-issue")).not.toBeInTheDocument();
+    expect(replace).toHaveBeenCalledWith("/projects/forge-dev/issues/iss-uuid-1");
+  });
+
+  it("stays on the tab for a linked decision that names no issue", () => {
+    linked = { ...linked, gone: true, data: { status: "answered", issueId: null } };
+    render(<QuestionsPane scope={scope} focusQuestionId="q-master" />);
+    expect(replace).not.toHaveBeenCalled();
+    expect(screen.getByText("No master is waiting on a person")).toBeInTheDocument();
   });
 });

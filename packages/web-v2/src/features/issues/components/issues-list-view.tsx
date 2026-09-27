@@ -45,7 +45,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type IssueBuckets, ISSUES_PAGE_SIZE } from "../api";
 import {
   ANY_AGENT_LABEL,
-  filterToQueryParams,
+  filterCount,
   groupRows,
   priorityLabel,
   statusesFromParam,
@@ -62,7 +62,6 @@ import {
   ISSUE_PRIORITIES,
   type IssueFilter,
   type IssuePriority,
-  type IssueStatus,
   type IssueSort,
 } from "../types";
 import { BulkActionBar } from "./bulk-action-bar";
@@ -90,8 +89,6 @@ function withCounts(
   buckets: IssueBuckets | undefined,
 ): SegmentOption<IssueFilter>[] {
   if (!buckets) return options;
-  const sum = (ss: IssueStatus[] | undefined) =>
-    (ss ?? []).reduce((n, s) => n + (buckets.byStatus[s] ?? 0), 0);
   const all = Object.values(buckets.byStatus).reduce<number>((n, v) => n + (v ?? 0), 0);
   return options.map((o) => {
     const count =
@@ -101,7 +98,7 @@ function withCounts(
           ? buckets.detector
           : o.value === "draft"
             ? buckets.humanDraft
-            : sum(filterToQueryParams(o.value).status);
+            : filterCount(o.value, buckets);
     return { ...o, count, countTone: o.value === "you" ? "attention" : "neutral" };
   });
 }
