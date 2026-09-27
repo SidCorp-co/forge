@@ -136,9 +136,62 @@ pub async fn pane_pid(name: &str) -> Option<u32> {
         .ok()
 }
 
-pub async fn alive(name: &str) -> bool {
+/// What tmux answered when it was asked whether it holds a session.
+///
+/// `has-session` exits non-zero for two different facts and says which in its
+/// own words on stderr: a session this server does not hold, and a question it
+/// could not answer at all. [`alive`] folds both into `false`, which is right
+/// for a caller deciding whether to bother doing something and wrong for one
+/// about to tell core that a session ended — only the middle value here is an
+/// ending, and reporting the last one as an ending invents the answer
+/// (`VISION: state-never-lies`, ISS-1265).
+///
+/// This is not [`still_there`], which answers `kill`'s postcondition: there a
+/// server that is not running IS the outcome the caller wanted, and here it is
+/// a socket this box may simply be looking at the wrong one of.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Presence {
+    Present,
+    Absent,
+    Unaskable,
+}
+
+/// tmux's own wording for a session it does not hold. Anything else it says is
+/// something this code has not been taught to read, and an unread answer is
+/// not an ending.
+const NO_SUCH_SESSION: [&str; 2] = ["can't find session", "session not found"];
+
+async fn has_session(name: &str) -> Presence {
     let target = session_target(name);
-    matches!(tmux(&["has-session", "-t", &target]).await, Ok(o) if o.status.success())
+    let out = match tmux(&["has-session", "-t", &target]).await {
+        Ok(out) => out,
+        Err(e) => {
+            tracing::warn!(
+                "[terminal] {name}: tmux could not be run to ask whether this session is there ({e}), so nothing here says it ended"
+            );
+            return Presence::Unaskable;
+        }
+    };
+    if out.status.success() {
+        return Presence::Present;
+    }
+    let said = String::from_utf8_lossy(&out.stderr);
+    let lower = said.to_lowercase();
+    if NO_SUCH_SESSION
+        .iter()
+        .any(|wording| lower.contains(wording))
+    {
+        return Presence::Absent;
+    }
+    tracing::warn!(
+        "[terminal] {name}: tmux answered `has-session` with \u{ab}{}\u{bb}, which is not its wording for a session it does not hold, so this box has not established that the session ended",
+        said.trim()
+    );
+    Presence::Unaskable
+}
+
+pub async fn alive(name: &str) -> bool {
+    has_session(name).await == Presence::Present
 }
 
 /// Which incarnation of the session named `name` is running, as an opaque
@@ -484,7 +537,7 @@ pub async fn brief_new_pane(name: &str, text: &str) -> Result<()> {
         return Err(Error::Other(format!("no session named {name}")));
     }
     tokio::time::sleep(PANE_BRIEF_DELAY).await;
-    send_line(name, text).await.map(|_| ())
+    send_line(name, text).await.map(|_| ()).map_err(Error::from)
 }
 
 /// What `send_line` knew about the prompt it typed at.
@@ -497,6 +550,37 @@ pub enum Prompt {
     /// could be read. A choice list is no longer one of these: it is refused
     /// before the paste and so never reaches a `Prompt` at all.
     Unread,
+}
+
+/// Why `send_line` typed nothing, for a caller whose answer to the world turns
+/// on which of these it was.
+///
+/// Every one of these used to be an `Error::Other(String)`, and
+/// `daemon/inbox.rs` folded all of them into one bit and told core `gone` —
+/// the ack minted for a session that ended — about a pane it had just read
+/// alive (ISS-1265). The sentences are unchanged; what is new is that a caller
+/// can tell them apart without reading them, which is the same reason
+/// `Error::Unauthorized` is a variant rather than a string.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum NotTyped {
+    /// tmux answered, in its own words, that it holds no session by this name.
+    /// The only one of the three that is a session having ended.
+    #[error("no session named {0}")]
+    Gone(String),
+    /// The pane answered alive and was read, and what is drawn on it refuses
+    /// the message: a draft at the composer, or a choice list.
+    #[error("{0}")]
+    Refused(String),
+    /// tmux could not be asked whether the session is there, or one of the
+    /// calls that type the message broke. Neither establishes an ending.
+    #[error("{0}")]
+    Failed(String),
+}
+
+impl From<NotTyped> for Error {
+    fn from(why: NotTyped) -> Self {
+        Error::Other(why.to_string())
+    }
 }
 
 /// How much scrollback the prompt read takes, so a draft taller than the
@@ -528,15 +612,21 @@ async fn read_prompt(target: &str) -> composer::Composer {
 /// a message that cannot be delivered is said not to have been (ISS-1266).
 /// The read comes a few milliseconds before the paste, and tmux has no lock
 /// over a pane's input, so a keystroke landing in between is not seen.
-pub async fn send_line(name: &str, text: &str) -> Result<Prompt> {
-    if !alive(name).await {
-        return Err(Error::Other(format!("no session named {name}")));
+pub async fn send_line(name: &str, text: &str) -> std::result::Result<Prompt, NotTyped> {
+    match has_session(name).await {
+        Presence::Present => {}
+        Presence::Absent => return Err(NotTyped::Gone(name.to_string())),
+        Presence::Unaskable => {
+            return Err(NotTyped::Failed(format!(
+                "{name}: nothing was typed — tmux could not be asked whether this session is there, so whether it is running is unknown rather than settled. Ask again once tmux answers."
+            )))
+        }
     }
     let target = pane_target(name);
     let prompt = match read_prompt(&target).await {
         composer::Composer::Empty => Prompt::Empty,
         composer::Composer::Holds(found) => {
-            return Err(Error::Other(format!(
+            return Err(NotTyped::Refused(format!(
                 "{name}: nothing was typed — its prompt already holds unsent text, and Enter \
 would submit that text as part of this message. At the prompt: \u{ab}{}\u{bb}. Clear it or \
 submit it at the pane, then send again.",
@@ -544,7 +634,7 @@ submit it at the pane, then send again.",
             )));
         }
         composer::Composer::Menu { highlighted } => {
-            return Err(Error::Other(format!(
+            return Err(NotTyped::Refused(format!(
                 "{name}: nothing was typed — its pane is showing a choice list with \u{ab}{}\u{bb} \
 highlighted, and Enter there decides that choice instead of sending a message. Answer it at the \
 pane, or wait for whatever raised it to close, then send again.",
@@ -573,33 +663,39 @@ nothing confirmed its prompt was empty before typing"
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
-        .map_err(|e| Error::Other(format!("tmux load-buffer: {e}")))?;
+        .map_err(|e| NotTyped::Failed(format!("tmux load-buffer: {e}")))?;
     if let Some(mut stdin) = child.stdin.take() {
         use tokio::io::AsyncWriteExt;
         stdin
             .write_all(text.as_bytes())
             .await
-            .map_err(|e| Error::Other(format!("tmux load-buffer write: {e}")))?;
+            .map_err(|e| NotTyped::Failed(format!("tmux load-buffer write: {e}")))?;
         let _ = stdin.shutdown().await;
     }
     let status = child
         .wait()
         .await
-        .map_err(|e| Error::Other(format!("tmux load-buffer: {e}")))?;
+        .map_err(|e| NotTyped::Failed(format!("tmux load-buffer: {e}")))?;
     if !status.success() {
-        return Err(Error::Other(format!("tmux load-buffer {name}: {status}")));
+        return Err(NotTyped::Failed(format!(
+            "tmux load-buffer {name}: {status}"
+        )));
     }
 
-    let out = tmux(&["paste-buffer", "-p", "-d", "-b", &buffer, "-t", &target]).await?;
+    let out = tmux(&["paste-buffer", "-p", "-d", "-b", &buffer, "-t", &target])
+        .await
+        .map_err(|e| NotTyped::Failed(e.to_string()))?;
     if !out.status.success() {
-        return Err(Error::Other(format!(
+        return Err(NotTyped::Failed(format!(
             "tmux paste-buffer {name}: {}",
             String::from_utf8_lossy(&out.stderr).trim()
         )));
     }
-    let out = tmux(&["send-keys", "-t", &target, "Enter"]).await?;
+    let out = tmux(&["send-keys", "-t", &target, "Enter"])
+        .await
+        .map_err(|e| NotTyped::Failed(e.to_string()))?;
     if !out.status.success() {
-        return Err(Error::Other(format!(
+        return Err(NotTyped::Failed(format!(
             "tmux send-keys {name}: {}",
             String::from_utf8_lossy(&out.stderr).trim()
         )));
@@ -830,6 +926,117 @@ pub(crate) mod testing {
         }
     }
 
+    /// What a shim tmux answers when it is asked whether a session is there.
+    ///
+    /// tmux exits non-zero for both of the last two and says which in its own
+    /// words on stderr. That sentence is the only thing parting a session this
+    /// box does not hold from a server this box cannot reach, so a test that
+    /// cannot produce both sentences cannot reach the two answers
+    /// [`super::has_session`] now gives.
+    #[derive(Debug, Clone, Copy)]
+    pub(crate) enum Asked {
+        Present,
+        Absent,
+        NoServer,
+    }
+
+    impl Asked {
+        fn as_env(self) -> &'static str {
+            match self {
+                Asked::Present => "present",
+                Asked::Absent => "absent",
+                Asked::NoServer => "no-server",
+            }
+        }
+    }
+
+    /// A tmux that answers out of what the test set rather than out of a server.
+    ///
+    /// `RefusingKill` above hands everything it does not care about to the real
+    /// tmux. This one hands over nothing, because the states it holds — a
+    /// composer with a draft in it, a `capture-pane` that answers and a
+    /// `paste-buffer` that does not, a server that cannot be reached — are
+    /// states no real server on this box reaches on request. It journals every
+    /// verb it is asked for, which is how a test reads back that nothing was
+    /// typed at a pane after the capture refused the message.
+    pub(crate) struct ShimTmux {
+        _path: ScopedVar,
+        _asked: ScopedVar,
+        _capture: ScopedVar,
+        _fail: ScopedVar,
+        _log: ScopedVar,
+        log: std::path::PathBuf,
+        _dir: crate::test_scratch::Scratch,
+    }
+
+    const SHIM: &str = r#"#!/bin/sh
+verb=''
+for a in "$@"; do
+  case "$a" in
+    has-session|capture-pane|load-buffer|paste-buffer|send-keys|kill-session|list-panes|display-message)
+      verb="$a"; break ;;
+  esac
+done
+printf '%s\n' "$verb" >> "$FORGE_TEST_TMUX_LOG"
+if [ "$verb" = load-buffer ]; then cat > /dev/null 2>/dev/null; fi
+if [ -n "$FORGE_TEST_TMUX_FAIL" ] && [ "$verb" = "$FORGE_TEST_TMUX_FAIL" ]; then
+  echo "shim: tmux $verb was made to fail" >&2
+  exit 1
+fi
+case "$verb" in
+  has-session)
+    case "$FORGE_TEST_TMUX_ASKED" in
+      present) exit 0 ;;
+      absent) echo "can't find session: shim" >&2; exit 1 ;;
+      *) echo "no server running on /shim/tmux.sock" >&2; exit 1 ;;
+    esac ;;
+  capture-pane) cat "$FORGE_TEST_TMUX_CAPTURE"; exit 0 ;;
+esac
+exit 0
+"#;
+
+    impl ShimTmux {
+        /// `fail` names the one verb the shim refuses, for the failures that
+        /// happen after a pane has already answered alive and been read.
+        pub(crate) fn installed(asked: Asked, capture: &str, fail: Option<&str>) -> Self {
+            let dir = crate::test_scratch::Scratch::new("shim-tmux");
+            let shim = dir.join("tmux");
+            std::fs::write(&shim, SHIM).expect("the shim is written");
+            #[cfg(unix)]
+            {
+                let mut perms = std::fs::metadata(&shim).expect("shim mode").permissions();
+                std::os::unix::fs::PermissionsExt::set_mode(&mut perms, 0o755);
+                std::fs::set_permissions(&shim, perms).expect("shim executable");
+            }
+            let capture_at = dir.join("capture.txt");
+            std::fs::write(&capture_at, capture).expect("the capture is written");
+            let log = dir.join("verbs.log");
+            std::fs::write(&log, "").expect("the journal starts empty");
+            let ahead = match std::env::var_os("PATH") {
+                Some(p) => format!("{}:{}", dir.to_string_lossy(), p.to_string_lossy()),
+                None => dir.to_string_lossy().into_owned(),
+            };
+            Self {
+                _path: ScopedVar::set("PATH", ahead),
+                _asked: ScopedVar::set("FORGE_TEST_TMUX_ASKED", asked.as_env()),
+                _capture: ScopedVar::set("FORGE_TEST_TMUX_CAPTURE", &capture_at),
+                _fail: ScopedVar::set("FORGE_TEST_TMUX_FAIL", fail.unwrap_or("")),
+                _log: ScopedVar::set("FORGE_TEST_TMUX_LOG", &log),
+                log,
+                _dir: dir,
+            }
+        }
+
+        /// Every verb the shim was asked for, in the order it was asked.
+        pub(crate) fn verbs(&self) -> Vec<String> {
+            std::fs::read_to_string(&self.log)
+                .unwrap_or_default()
+                .lines()
+                .map(str::to_string)
+                .collect()
+        }
+    }
+
     pub(crate) fn shim_quote(s: &str) -> String {
         format!("'{}'", s.replace('\'', "'\\''"))
     }
@@ -837,7 +1044,7 @@ pub(crate) mod testing {
 
 #[cfg(test)]
 mod tests {
-    use super::testing::{cannot_run, RefusingKill, UnaskableTmux, ONE_AT_A_TIME};
+    use super::testing::{cannot_run, Asked, RefusingKill, ShimTmux, UnaskableTmux, ONE_AT_A_TIME};
     use super::*;
     use crate::auth::cred_store::{ScopedVar, ENV_TEST_LOCK};
 
@@ -2204,5 +2411,144 @@ done
             let _ = kill(n).await;
         }
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    const SHIM_PANE: &str = "forge-test-shim";
+
+    /// A capture drawn the way Claude Code draws its composer, holding `body`.
+    fn shim_composer(body: &str) -> String {
+        let rule = "\u{2500}".repeat(12);
+        format!("\u{25cf} earlier output\n{rule}\n\u{276f}\u{a0}{body}\n{rule}\n  footer\n")
+    }
+
+    /// The refusals `send_line` mints, each one now a variant and each one
+    /// still the sentence it was before ISS-1265 typed them.
+    ///
+    /// A shim tmux rather than a real one: `Presence::Unaskable` is a server
+    /// this box cannot reach, which no real server reaches on request, and the
+    /// wording that parts it from an absent session is the whole subject.
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn every_refusal_carries_the_sentence_it_always_carried() {
+        let _serialised = ONE_AT_A_TIME.lock().await;
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
+        {
+            let _tmux = ShimTmux::installed(Asked::Absent, &shim_composer(""), None);
+            let why = send_line(SHIM_PANE, "MESSAGE")
+                .await
+                .expect_err("tmux said it holds no such session");
+            assert_eq!(why, NotTyped::Gone(SHIM_PANE.to_string()));
+            assert_eq!(
+                why.to_string(),
+                format!("no session named {SHIM_PANE}"),
+                "the sentence a caller reads is unchanged"
+            );
+        }
+
+        {
+            let _tmux = ShimTmux::installed(Asked::NoServer, &shim_composer(""), None);
+            let why = send_line(SHIM_PANE, "MESSAGE")
+                .await
+                .expect_err("no server answered, so nothing was typed");
+            assert!(
+                matches!(why, NotTyped::Failed(_)),
+                "a server that could not be reached is not a session that ended: {why:?}"
+            );
+            assert!(
+                why.to_string().contains("could not be asked"),
+                "and it says so rather than naming an absent session: {why}"
+            );
+        }
+
+        {
+            let _tmux = ShimTmux::installed(
+                Asked::Present,
+                &shim_composer("LEFTOVER-FROM-SOMEWHERE-ELSE"),
+                None,
+            );
+            let why = send_line(SHIM_PANE, "MESSAGE")
+                .await
+                .expect_err("a composer holding text refuses the send");
+            assert!(matches!(why, NotTyped::Refused(_)), "{why:?}");
+            let said = why.to_string();
+            assert!(
+                said.contains("nothing was typed") && said.contains("LEFTOVER-FROM-SOMEWHERE-ELSE"),
+                "the refusal still quotes what was at the prompt: {said}"
+            );
+        }
+
+        {
+            let menu = " Do you want to proceed?\n   1. Yes\n \u{276f} 2. No\n\n Esc to cancel";
+            let _tmux = ShimTmux::installed(Asked::Present, menu, None);
+            let why = send_line(SHIM_PANE, "MESSAGE")
+                .await
+                .expect_err("a choice list refuses the send");
+            assert!(matches!(why, NotTyped::Refused(_)), "{why:?}");
+            assert!(
+                why.to_string().contains("choice list"),
+                "the refusal still names the list: {why}"
+            );
+        }
+
+        for verb in ["load-buffer", "paste-buffer", "send-keys"] {
+            let _tmux = ShimTmux::installed(Asked::Present, &shim_composer(""), Some(verb));
+            let why = send_line(SHIM_PANE, "MESSAGE")
+                .await
+                .expect_err("the verb the shim refuses stops the typing");
+            assert!(
+                matches!(why, NotTyped::Failed(_)),
+                "tmux broke at {verb} after the pane answered alive, which is no ending: {why:?}"
+            );
+        }
+    }
+
+    /// The branch the shim cannot reach: tmux is not runnable at all, so the
+    /// spawn fails and no process ever answers.
+    ///
+    /// `UnaskableTmux` empties `PATH` process-wide, which is why this sits here
+    /// and holds it across exactly one failed spawn rather than at the inbox,
+    /// where the same guard held across a socket bind and an HTTP round trip
+    /// and took two unrelated suites down with it (measured on this branch,
+    /// 2026-09-27). What the inbox does with the classification is proved three
+    /// other ways in `daemon/inbox.rs`.
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_tmux_that_cannot_be_run_at_all_is_not_a_session_that_ended() {
+        let _serialised = ONE_AT_A_TIME.lock().await;
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _no_tmux = UnaskableTmux::installed();
+        let why = send_line(SHIM_PANE, "MESSAGE")
+            .await
+            .expect_err("nothing could be asked, so nothing was typed");
+        assert!(
+            matches!(why, NotTyped::Failed(_)),
+            "a question nobody answered is not a session that ended: {why:?}"
+        );
+        assert!(
+            !why.to_string().contains("no session named"),
+            "and it may not borrow the sentence minted for one: {why}"
+        );
+    }
+
+    /// `alive` answers exactly what it answered before `has_session` was split
+    /// out under it: true only where tmux exited zero.
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn alive_still_collapses_the_two_answers_that_are_not_present() {
+        let _serialised = ONE_AT_A_TIME.lock().await;
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        for (asked, want) in [
+            (Asked::Present, true),
+            (Asked::Absent, false),
+            (Asked::NoServer, false),
+        ] {
+            let _tmux = ShimTmux::installed(asked, &shim_composer(""), None);
+            assert_eq!(
+                alive(SHIM_PANE).await,
+                want,
+                "alive on {asked:?} must not move: every other caller reads this bool"
+            );
+        }
     }
 }
