@@ -35,11 +35,11 @@ import {
 import { type GateCondition, RUN_GATE_METADATA_KEY } from './gate-report.js';
 import { liveMasterSessionId } from './master-owner.js';
 import { returnIssuesForRun } from './run-issue-return.js';
+import { RUN_ISSUES_METADATA_KEY } from './run-session-keys.js';
 
 export { RUN_SESSION_KIND } from '../jobs/session-kinds.js';
 
-/** Where a run's issue group lives on its one-shot run. */
-export const RUN_ISSUES_METADATA_KEY = 'runIssues';
+export { RUN_ISSUES_METADATA_KEY } from './run-session-keys.js';
 
 /** The box's own run id for this dispatch, so the two records can be joined. */
 export const BOX_RUN_ID_METADATA_KEY = 'boxRunId';

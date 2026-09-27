@@ -505,7 +505,7 @@ describe('reapResultMisses — result hop (was ISS-258 runStaleSweep), now kill-
 
 describe('runLoopMonitor — one tick, hops in dependency order', () => {
   it('aggregates all hop results', async () => {
-    const result = await runLoopMonitor(new Date('2026-06-12T00:00:00Z'));
+    const { axis, outOfAxis, ...result } = await runLoopMonitor(new Date('2026-06-12T00:00:00Z'));
     expect(result).toEqual({
       ackMisses: { reaped: 0, killRequested: 0, awaitingKill: 0 },
       sessions: {

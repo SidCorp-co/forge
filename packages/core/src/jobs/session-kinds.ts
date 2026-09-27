@@ -4,10 +4,11 @@
  */
 import { sql } from 'drizzle-orm';
 import { type AgentSessionKind, agentSessionKinds } from '../db/schema.js';
+import { RUN_SESSION_METADATA_TYPE } from '../devices/run-session-keys.js';
 
 export const MASTER_SESSION_KIND: AgentSessionKind = 'master';
 
-export const RUN_SESSION_KIND: AgentSessionKind = 'run_session';
+export const RUN_SESSION_KIND: AgentSessionKind = RUN_SESSION_METADATA_TYPE;
 
 export const PIPELINE_SESSION_KINDS = [
   'pipeline',

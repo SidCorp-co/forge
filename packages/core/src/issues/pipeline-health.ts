@@ -10,18 +10,27 @@
  * must stay correct after ISS-162 (D1) drops the column, and reading it would
  * mask the 29-min plan-stage UI blind spot from ISS-137.
  *
+ * ISS-1273 — the session bind is TWO binds, not one. `metadata->>'issueId'` is the job lane's
+ * link and reaches nothing else; a run session opened by `devices/run-session.ts` carries a GROUP
+ * of issues and links to each through its `issue_leases` row. Beside both, `issues.session_context
+ * .lease` is the only record a driver lane leaves, and `worker` is where all three are answered —
+ * including the arm that says no lane can.
+ *
  * WS event `issue.pipelineHealth.changed` is published directly (NOT routed
  * through `pipeline/hooks.ts` -> `ws/broadcast-subscribers.ts`) because the
  * payload is a derived snapshot recomputed at publish time — the same pattern
  * `issue.statusChanged` uses. Keep it direct.
  */
 
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { agentSessions, type IssueStatus, issues } from '../db/schema.js';
+import type { IssueStatus, WaitingKind } from '../db/schema.js';
 import { freshRunnerAvailability } from '../jobs/queued-gates.js';
 import { logger } from '../logger.js';
+import { holderFanout, readClaim } from '../pipeline/lease-fanout.js';
+import type { LeaseReading } from '../pipeline/session-claim.js';
 import { projectRoom } from '../ws/rooms.js';
+import { classifyIssueWorker, type SessionWorkerLane } from './issue-worker.js';
 import { loadActiveJobsByIssue, loadPausedRunsByIssue } from './pipeline-health-loaders.js';
 import {
   heldWaitingOn,
@@ -35,6 +44,7 @@ import type {
   PipelineHealthSession,
 } from './pipeline-health-types.js';
 
+export type { IssueWorker, SessionWorkerLane, WorkerSession } from './issue-worker.js';
 export type {
   ClassifyInput,
   PipelineHealth,
@@ -59,7 +69,13 @@ export function classifyPipelineHealthForIssue(input: ClassifyInput): PipelineHe
   const activeJobs = issueJobs.filter((j) => j.status !== 'queued');
   const activeSession = sessions.find((s) => s.status === 'running' || s.status === 'queued');
 
-  const out: PipelineHealth = { stage: issue.status as IssueStatus };
+  const out: PipelineHealth = {
+    stage: issue.status as IssueStatus,
+    worker: classifyIssueWorker({
+      sessions: sessions.map((s) => ({ id: s.id, status: s.status, lane: s.lane })),
+      claim: input.claim ?? null,
+    }),
+  };
   if (activeSession) {
     out.activeSession = {
       id: activeSession.id,
@@ -134,6 +150,24 @@ function skillFromSessionMetadata(metadata: Record<string, unknown> | null): str
   return '';
 }
 
+/** `db.execute` rows — object literals, which its `T extends Record<string, unknown>` needs. */
+type IssueRow = {
+  id: string;
+  status: string;
+  project_id: string;
+  merged_at: string | null;
+  waiting_kind: WaitingKind | null;
+  lease: unknown;
+};
+
+type SessionRow = {
+  id: string;
+  status: string;
+  metadata: Record<string, unknown> | null;
+  issue_id: string | null;
+  lane: SessionWorkerLane;
+};
+
 export async function hydratePipelineHealthForIssues(
   projectId: string,
   issueIds: readonly string[],
@@ -141,47 +175,60 @@ export async function hydratePipelineHealthForIssues(
   const map = new Map<string, PipelineHealth>();
   if (issueIds.length === 0) return map;
   const ids = [...issueIds];
+  const idList = sql`(${sql.join(
+    ids.map((id) => sql`${id}::uuid`),
+    sql`, `,
+  )})`;
 
-  const issueRows = await db
-    .select({
-      id: issues.id,
-      status: issues.status,
-      projectId: issues.projectId,
-      mergedAt: issues.mergedAt,
-      waitingKind: issues.waitingKind,
-    })
-    .from(issues)
-    .where(inArray(issues.id, ids));
+  const issueRows = (await db.execute(sql`
+    SELECT i.id, i.status, i.project_id, i.merged_at, i.waiting_kind,
+           i.session_context -> 'lease' AS lease
+      FROM issues i
+     WHERE i.id IN ${idList}
+  `)) as unknown as IssueRow[];
   const issuesById = new Map(issueRows.map((r) => [r.id, r]));
 
-  // Q2 — non-idle agent_sessions linked to these issues via metadata.issueId.
-  const sessionRows = await db
-    .select({
-      id: agentSessions.id,
-      status: agentSessions.status,
-      metadata: agentSessions.metadata,
-      issueId: sql<string>`(${agentSessions.metadata}->>'issueId')`,
-    })
-    .from(agentSessions)
-    .where(
-      and(
-        eq(agentSessions.projectId, projectId),
-        inArray(agentSessions.status, ['queued', 'running', 'completed', 'failed']),
-        inArray(sql<string>`${agentSessions.metadata}->>'issueId'`, ids),
-      ),
-    )
-    .orderBy(sql`updated_at DESC`);
+  // Q2 — the two session binds. `lane` carries which one found each row.
+  const sessionRows = (await db.execute(sql`
+    SELECT s.id, s.status, s.metadata, i.id AS issue_id, 'job' AS lane, s.updated_at
+      FROM agent_sessions s
+      JOIN issues i ON i.id::text = s.metadata->>'issueId'
+     WHERE s.project_id = ${projectId}
+       AND s.status IN ('queued', 'running', 'completed', 'failed')
+       AND i.id IN ${idList}
+    UNION ALL
+    SELECT s.id, s.status, s.metadata, i.id AS issue_id, 'run_session' AS lane, s.updated_at
+      FROM issue_leases l
+      JOIN agent_sessions s ON s.id = l.session_id
+      JOIN issues i ON i.project_id = l.project_id
+                   AND 'ISS-' || i.iss_seq = l.issue_key -- ISS-992:canonical
+     WHERE s.project_id = ${projectId}
+       AND s.status IN ('queued', 'running', 'completed', 'failed')
+       AND i.id IN ${idList}
+     ORDER BY updated_at DESC
+  `)) as unknown as SessionRow[];
   const sessionsByIssue = new Map<string, PipelineHealthSession[]>();
   for (const r of sessionRows) {
-    if (!r.issueId) continue;
-    const bucket = sessionsByIssue.get(r.issueId) ?? [];
+    if (!r.issue_id) continue;
+    const bucket = sessionsByIssue.get(r.issue_id) ?? [];
     bucket.push({
       id: r.id,
       status: r.status,
       metadata: (r.metadata as Record<string, unknown> | null) ?? null,
+      lane: r.lane,
     });
-    sessionsByIssue.set(r.issueId, bucket);
+    sessionsByIssue.set(r.issue_id, bucket);
   }
+
+  // Q3 — the claim lane, read by the module that owns that blob.
+  const now = new Date();
+  const fanout = await holderFanout(
+    issueRows.map((r) => r.lease),
+    now,
+  );
+  const claimsByIssue = new Map<string, LeaseReading>(
+    issueRows.map((r) => [r.id, readClaim(r.lease, now, fanout)]),
+  );
 
   const jobsByIssue = await loadActiveJobsByIssue(projectId, ids);
   const pausedRunsByIssue = await loadPausedRunsByIssue(projectId, ids);
@@ -196,12 +243,13 @@ export async function hydratePipelineHealthForIssues(
       issue: {
         id: issueRow.id,
         status: issueRow.status,
-        mergedAt: issueRow.mergedAt,
-        waitingKind: issueRow.waitingKind,
+        mergedAt: issueRow.merged_at === null ? null : new Date(issueRow.merged_at),
+        waitingKind: issueRow.waiting_kind,
       },
       sessions: sessionsByIssue.get(issueId) ?? [],
       jobs: jobsByIssue.get(issueId) ?? [],
       runnerPool,
+      claim: claimsByIssue.get(issueId) ?? null,
       ...(pausedRun ? { pausedRun } : {}),
     });
     map.set(issueId, health);

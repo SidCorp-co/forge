@@ -9,7 +9,7 @@
  * here so the front-end stays a thin renderer.
  */
 
-import { asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   agentSessions,
@@ -23,11 +23,21 @@ import {
   terminalAgentSessionStatuses,
   usageRecords,
 } from '../db/schema.js';
+import { phaseJournal } from '../db/schema-journal.js';
 import { type RunGate, readRunGate } from '../devices/gate-report.js';
 import { RETRY_MAX_ROUNDS, readAutoRetryPayload } from '../jobs/retry.js';
 import { UNHELD_LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { usageSessionMatch } from '../usage-records/rollup.js';
+import {
+  laneOf,
+  type PipelineRunLane,
+  type PipelineRunStep,
+  runIssuesOf,
+  stepOf,
+} from './runs-lane.js';
+
+export type { PipelineRunLane, PipelineRunStep } from './runs-lane.js';
 
 export type PipelineStepStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
 
@@ -103,6 +113,10 @@ export interface PipelineRunSummary {
   id: string;
   projectId: string;
   issueId: string | null;
+  lane: PipelineRunLane;
+  step: PipelineRunStep;
+  /** ISS-1273 — the canonical keys this run was opened over; empty off the run-session lane. */
+  runIssues: string[];
   /** ISS-460 — human ref (`ISS-<seq>`) of the run's issue; null for pm/system/interactive runs. */
   issueRef: string | null;
   /** ISS-460 — title of the run's issue; null when the run has no issue. */
@@ -313,10 +327,14 @@ async function loadAttemptsForRun(runId: string): Promise<{
 }
 
 function rowToListItem(row: RunRow): PipelineRunListItem {
+  const lane = laneOf(row);
   return {
     id: row.id,
     projectId: row.projectId,
     issueId: row.issueId,
+    lane,
+    step: stepOf(lane, row.currentStep),
+    runIssues: runIssuesOf(row.metadata),
     // ISS-460 — resolved by callers that join `issues`; default null here.
     issueRef: null,
     issueTitle: null,
@@ -329,6 +347,20 @@ function rowToListItem(row: RunRow): PipelineRunListItem {
     liveJobs: 0,
     lastSessionBeatAt: null,
   };
+}
+
+/** ISS-1273 — `runs.ts:setCurrentStep` is reached only by the job lane, so a box-driven run's
+ *  step is its open `phase_journal` row instead. */
+async function loadOpenPhaseByRunIds(runIds: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (runIds.length === 0) return out;
+  const rows = await db
+    .select({ runId: phaseJournal.runId, phase: phaseJournal.phase })
+    .from(phaseJournal)
+    .where(and(inArray(phaseJournal.runId, runIds), isNull(phaseJournal.endedAt)))
+    .orderBy(asc(phaseJournal.startedAt));
+  for (const r of rows) out.set(r.runId, r.phase);
+  return out;
 }
 
 /** ISS-460 — batch-resolve `{ issueRef, issueTitle }` for the given issue ids. */
@@ -361,17 +393,21 @@ export async function loadPipelineRunSummary(runId: string): Promise<PipelineRun
   const [row] = await db.select().from(pipelineRuns).where(eq(pipelineRuns.id, runId)).limit(1);
   if (!row) return null;
 
-  const [steps, cost, attemptRollup, issueRefs, liveMap] = await Promise.all([
+  const listItem = rowToListItem(row);
+  const [steps, cost, attemptRollup, issueRefs, liveMap, openPhase] = await Promise.all([
     loadStepsForRun(runId),
     loadCostForRun(runId),
     loadAttemptsForRun(runId),
     loadIssueRefs(row.issueId ? [row.issueId] : []),
     loadRunLivenessByRunIds([runId]),
+    loadOpenPhaseByRunIds(listItem.lane === 'run_session' ? [runId] : []),
   ]);
 
   const ref = row.issueId ? issueRefs.get(row.issueId) : undefined;
   return {
-    ...rowToListItem(row),
+    ...listItem,
+    step: stepOf(listItem.lane, row.currentStep, openPhase.get(runId)),
+    currentStep: row.currentStep ?? openPhase.get(runId) ?? null,
     issueRef: ref?.issueRef ?? null,
     issueTitle: ref?.issueTitle ?? null,
     liveJobs: liveMap.get(runId)?.liveJobs ?? 0,
@@ -474,16 +510,21 @@ async function loadCostByRunIds(runIds: string[]): Promise<Map<string, PipelineR
 export async function listItemsFromRows(rows: RunRow[]): Promise<PipelineRunListItem[]> {
   if (rows.length === 0) return [];
   const ids = rows.map((r) => r.id);
+  const items = rows.map(rowToListItem);
   const issueIds = [...new Set(rows.map((r) => r.issueId).filter((v): v is string => v != null))];
-  const [costMap, issueRefs, liveMap] = await Promise.all([
+  const [costMap, issueRefs, liveMap, openPhases] = await Promise.all([
     loadCostByRunIds(ids),
     loadIssueRefs(issueIds),
     loadRunLivenessByRunIds(ids),
+    loadOpenPhaseByRunIds(items.filter((i) => i.lane === 'run_session').map((i) => i.id)),
   ]);
-  return rows.map((r) => {
+  return items.map((item, index) => {
+    const r = rows[index] as RunRow;
     const ref = r.issueId ? issueRefs.get(r.issueId) : undefined;
     return {
-      ...rowToListItem(r),
+      ...item,
+      step: stepOf(item.lane, r.currentStep, openPhases.get(r.id)),
+      currentStep: r.currentStep ?? openPhases.get(r.id) ?? null,
       issueRef: ref?.issueRef ?? null,
       issueTitle: ref?.issueTitle ?? null,
       cost: costMap.get(r.id) ?? EMPTY_COST,
