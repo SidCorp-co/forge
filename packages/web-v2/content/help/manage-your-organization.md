@@ -2,6 +2,7 @@
 title: Manage your organization
 section: Guides
 order: 10
+audience: user
 ---
 
 # Manage your organization

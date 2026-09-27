@@ -17,6 +17,7 @@ const ok = <T,>(data: T) => ({ data, isLoading: false, isError: false, error: nu
 let handoffs: ReturnType<typeof ok> | Record<string, unknown> = ok([]);
 let durations: ReturnType<typeof ok> = ok([]);
 let attachments: ReturnType<typeof ok> = ok([]);
+let pipelineHealth: Record<string, unknown> | undefined;
 
 const ISSUE = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -60,7 +61,7 @@ vi.mock("./html-attachment-card", () => ({
   HtmlAttachmentCard: ({ name }: { name: string }) => <div>preview {name}</div>,
 }));
 vi.mock("../detail-hooks", () => ({
-  useIssue: () => ok(ISSUE),
+  useIssue: () => ok({ ...ISSUE, pipelineHealth }),
   useComments: () => ok({ items: [], totalCount: 0 }),
   useActivity: () => ok({ items: [] }),
   useTasks: () => ok([]),
@@ -93,6 +94,7 @@ beforeEach(() => {
   handoffs = ok([]);
   durations = ok([]);
   attachments = ok([]);
+  pipelineHealth = undefined;
 });
 afterEach(cleanup);
 
@@ -172,5 +174,29 @@ describe("the issue detail's main column", () => {
     const grid = screen.getByText("What the issue says.").closest(".grid");
     expect(grid?.className).toContain("lg:grid-cols-[minmax(0,1fr)_clamp(16rem,32%,22.5rem)]");
     expect(grid?.className).not.toContain("_360px]");
+  });
+});
+
+// ISS-1277 — a job no runner has claimed yet has no session, and the header still reads it as a queued run.
+describe("the issue header's run", () => {
+  const headerChips = () => screen.getByText("ISS-7").parentElement as HTMLElement;
+
+  it("shows a queued job with no session as a Queued run chip and offers Pause", () => {
+    pipelineHealth = {
+      stage: "open",
+      queuedStep: { jobId: "j1", jobType: "drive", stageStatus: null, queuedAt: "2026-09-05T14:16:00Z", retryAfterAt: null },
+    };
+    renderScreen();
+    expect(within(headerChips()).getByText("Queued")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Run pipeline" })).toBeNull();
+  });
+
+  it("shows no run chip and offers Run pipeline when nothing is queued and no session exists", () => {
+    pipelineHealth = { stage: "open" };
+    renderScreen();
+    expect(within(headerChips()).queryByText("Queued")).toBeNull();
+    expect(within(headerChips()).queryByText("Running")).toBeNull();
+    expect(screen.getByRole("button", { name: "Run pipeline" })).toBeInTheDocument();
   });
 });

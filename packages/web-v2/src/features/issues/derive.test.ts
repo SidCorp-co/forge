@@ -85,15 +85,30 @@ function row(over: Partial<IssueRow> & { id: string }): IssueRow {
 const lane = (s: IssueStatus, held: boolean): string => LABEL_VIEW[toAutonomousLabel(s, held)].label;
 
 describe("runStatusChip — the run's state, never the issue's", () => {
-	it("maps each run state the API sends to its own session key", () => {
-		expect(runStatusChip("running")).toBe("running");
-		expect(runStatusChip("queued")).toBe("queued");
-		expect(runStatusChip("completed")).toBe("done");
-		expect(runStatusChip("failed")).toBe("failed");
+	const queuedJob = {
+		stage: "open",
+		queuedStep: { jobId: "j1", jobType: "drive", stageStatus: null, queuedAt: "2026-09-05T14:16:00Z", retryAfterAt: null },
+	};
+	it("maps each session state the API sends to its own session key", () => {
+		expect(runStatusChip({ agentStatus: "running" })).toBe("running");
+		expect(runStatusChip({ agentStatus: "queued" })).toBe("queued");
+		expect(runStatusChip({ agentStatus: "completed" })).toBe("done");
+		expect(runStatusChip({ agentStatus: "failed" })).toBe("failed");
 	});
-	it("shows no chip when no run has a state", () => {
-		expect(runStatusChip(null)).toBeNull();
-		expect(runStatusChip(undefined)).toBeNull();
+	it("reads a job queued before any session exists as a queued run (ISS-1277)", () => {
+		expect(runStatusChip({ agentStatus: null, pipelineHealth: queuedJob })).toBe("queued");
+	});
+	it("reads a job queued behind a finished session as queued, not the old outcome", () => {
+		expect(runStatusChip({ agentStatus: "failed", pipelineHealth: queuedJob })).toBe("queued");
+		expect(runStatusChip({ agentStatus: "completed", pipelineHealth: queuedJob })).toBe("queued");
+	});
+	it("lets a running session outrank a queued job", () => {
+		expect(runStatusChip({ agentStatus: "running", pipelineHealth: queuedJob })).toBe("running");
+	});
+	it("shows no chip when neither the sessions nor the pipeline say a run exists", () => {
+		expect(runStatusChip({ agentStatus: null })).toBeNull();
+		expect(runStatusChip({})).toBeNull();
+		expect(runStatusChip({ agentStatus: null, pipelineHealth: { stage: "open" } })).toBeNull();
 	});
 });
 

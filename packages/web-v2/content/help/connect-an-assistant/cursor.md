@@ -2,6 +2,7 @@
 title: Connect Cursor
 section: Connect an assistant
 order: 40
+audience: assistant-setup
 ---
 
 # Connect Cursor

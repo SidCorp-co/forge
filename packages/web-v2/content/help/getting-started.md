@@ -2,6 +2,7 @@
 title: Getting started
 section: Getting started
 order: 10
+audience: user
 ---
 
 # Getting started with Forge

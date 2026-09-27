@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aggregateStepCosts, cardStatus, checkInLine, median, runGateNote } from "./derive";
+import { aggregateStepCosts, cardStatus, checkInLine, drawerRunChip, median, runGateNote } from "./derive";
 import { LABEL_VIEW, statusToChip } from "@/features/issues/derive";
 import { PIPELINE_RUN_STATUSES, type PipelineIssueRow, type RunGateCondition, type StepDurationRow } from "./types";
 
@@ -295,5 +295,28 @@ describe("checkInLine", () => {
   it("counts days past a day", () => {
     const at = new Date(2026, 8, 22, 23, 59, 0);
     expect(checkInLine(at.toISOString(), at.getTime() + 50 * 3_600_000)).toBe("Last check-in 23:59 · 2d ago");
+  });
+});
+
+describe("drawerRunChip — the drawer header reads the issue's run while its pipeline run is running (ISS-1277)", () => {
+  it("shows a queued step under a running run as queued", () => {
+    expect(drawerRunChip("running", "queued")).toBe("queued");
+  });
+  it("shows a running step under a running run as running", () => {
+    expect(drawerRunChip("running", "running")).toBe("running");
+  });
+  it("keeps the run's own status when the issue's reading is not live", () => {
+    expect(drawerRunChip("running", null)).toBe("running");
+    expect(drawerRunChip("running", "done")).toBe("running");
+    expect(drawerRunChip("running", "failed")).toBe("running");
+  });
+  it("keeps a paused run paused whatever the issue's session or queued job says", () => {
+    expect(drawerRunChip("paused", "running")).toBe("paused");
+    expect(drawerRunChip("paused", "queued")).toBe("paused");
+  });
+  it("keeps a finished or cancelled run's own status", () => {
+    expect(drawerRunChip("completed", "queued")).toBe("done");
+    expect(drawerRunChip("failed", "running")).toBe("failed");
+    expect(drawerRunChip("cancelled", "queued")).toBe("blocked");
   });
 });

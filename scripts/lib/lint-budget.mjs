@@ -5,6 +5,49 @@ export const SIZE_RULES = new Set([
   'lint/complexity/noExcessiveLinesPerFunction',
 ]);
 
+/** One biome JSON diagnostic as the budget counts it, or null for one it does not count. */
+export function readDiagnostic(d) {
+  const rule = d?.category;
+  const path = d?.location?.path?.file ?? d?.location?.path;
+  if (!rule || typeof path !== 'string' || SIZE_RULES.has(rule)) return null;
+  const line = d.location?.start?.line;
+  const message = typeof d.message === 'string' ? d.message.trim() : '';
+  return {
+    rule,
+    path,
+    line: Number.isInteger(line) ? line : null,
+    message: message === '' ? null : message,
+  };
+}
+
+export const NO_MESSAGE = '(biome gave no message for this diagnostic)';
+
+/** What biome said about one (file, rule): one line per distinct message, with every line it was reported at. */
+export function messageLines(said = []) {
+  const groups = new Map();
+  for (const { line, message } of said) {
+    const text = message === null ? NO_MESSAGE : message.replace(/\s*\n\s*/g, ' ');
+    const at = groups.get(text) ?? [];
+    if (line !== null) at.push(line);
+    groups.set(text, at);
+  }
+  return [...groups].map(([text, at]) => {
+    if (at.length === 0) return text;
+    return `${at.length === 1 ? 'line' : 'lines'} ${at.sort((a, b) => a - b).join(', ')}: ${text}`;
+  });
+}
+
+/** Freeze faults with biome's own message for each refused rule, indented under that rule's reason. */
+export function explainFaults(faults, said) {
+  return faults.map(({ file, reasons, metrics }) => ({
+    file,
+    reasons: reasons.flatMap((reason, i) => [
+      reason,
+      ...messageLines(said[file]?.[metrics[i]]).map((l) => `  ${l}`),
+    ]),
+  }));
+}
+
 /** Scopes whose baseline records debt but which measured nothing — the shape a silent wipe takes. */
 export function emptiedScopes(currentByScope, baselineByScope) {
   const out = [];

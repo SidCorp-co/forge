@@ -28,4 +28,17 @@ describe('the public guide surface', () => {
     expect((await app.request('/api/guides')).status).toBe(200);
     expect((await app.request('/api/guides/what-is-an-issue.md')).status).toBe(200);
   });
+
+  it('says who each guide is written for, in the index and on the guide', async () => {
+    const index = (await (await app.request('/api/guides')).json()) as {
+      guides: Array<{ slug: string; audience?: string }>;
+    };
+    expect(index.guides.length).toBeGreaterThan(10);
+    for (const g of index.guides) expect(g.audience, g.slug).toBe('agent');
+
+    const one = (await (await app.request('/api/guides/what-is-an-issue')).json()) as {
+      guide: { audience?: string };
+    };
+    expect(one.guide.audience).toBe('agent');
+  });
 });

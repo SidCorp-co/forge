@@ -10,7 +10,8 @@ import {
 import { PipelineBoard } from "@/features/pipeline/components/pipeline-board";
 import { useProjects } from "@/features/projects/hooks";
 import { useTabParam } from "@/lib/utils/use-tab-param";
-import { useEffect, useState } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 import { IssuesInsightsView } from "./issues-insights-view";
 import { ModuleRollupView } from "./module-rollup-view";
 import { IssuesListView } from "./issues-list-view";
@@ -35,17 +36,28 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
   const projectsQ = useProjects();
   const canWrite =
     projectsQ.data?.find((p) => p.id === scope.projectId)?.role !== "viewer";
-  // New-issue dialog — opened locally or via a `?new=1` deep-link (the global
-  // TopBar / ⌘K "New issue" actions route here with that param).
+  // New-issue dialog — opened locally or by `?new=1`, which the top bar and ⌘K push onto this
+  // route. On this route Next keeps the screen mounted, so the query is followed, not read once.
   const [newOpen, setNewOpen] = useState(false);
+  const searchParams = useSearchParams();
+  const pathname = usePathname() || "";
+  const wantsNew = searchParams.get("new") === "1";
 
-  // On mount: honour `?new=1`. (Old deep-links carrying list params but no
-  // `?tab=` need no special-casing anymore — List IS the default view.)
   useEffect(() => {
+    if (wantsNew) setNewOpen(true);
+  }, [wantsNew]);
+
+  // Closing drops `new` from this entry and keeps the rest, so Back and reload stay shut. The state
+  // is `null` because Next skips syncing `useSearchParams` for a state carrying its `__NA` mark.
+  const closeNew = useCallback(() => {
+    setNewOpen(false);
     if (typeof window === "undefined") return;
     const sp = new URLSearchParams(window.location.search);
-    if (sp.get("new") === "1") setNewOpen(true);
-  }, []);
+    if (!sp.has("new")) return;
+    sp.delete("new");
+    const qs = sp.toString();
+    window.history.replaceState(null, "", `${pathname}${qs ? `?${qs}` : ""}`);
+  }, [pathname]);
 
   const header = (
     <header className="mb-4 flex flex-wrap items-start justify-between gap-3 sm:mb-6">
@@ -115,7 +127,7 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
 
       <NewIssueDialog
         open={newOpen && canWrite}
-        onClose={() => setNewOpen(false)}
+        onClose={closeNew}
         scope={scope}
       />
     </>
