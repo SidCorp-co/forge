@@ -148,6 +148,37 @@ async function transitionReasons(issueId: string): Promise<string[]> {
   return rows.map((r) => String((r as { body: unknown }).body));
 }
 
+async function lockWaiter() {
+  for (let i = 0; i < 200; i++) {
+    const rows = await harness.db.execute(sql`
+      SELECT count(*)::int AS n FROM pg_stat_activity
+      WHERE wait_event_type = 'Lock' AND datname = current_database()
+    `);
+    if ((rows[0] as { n: number }).n > 0) return;
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  throw new Error('nothing waited on the issue row this test holds');
+}
+
+/**
+ * Holds an ask in flight — the issue row share-locked as the ask path locks it, and a question
+ * for a person written but not committed — while `act` starts, then commits once `act` waits.
+ */
+async function whileAnAskIsInFlight<T>(issueId: string, act: () => Promise<T>): Promise<T> {
+  let acted: Promise<T> | undefined;
+  await harness.db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT 1 FROM issues WHERE id = ${issueId} FOR SHARE`);
+    await tx.execute(sql`
+      INSERT INTO agent_questions (id, project_id, issue_id, status, blocker_kind, steps)
+      VALUES (${randomUUID()}, ${projectId}, ${issueId}, 'open', 'human', '[]'::jsonb)
+    `);
+    acted = act();
+    acted.catch(() => {});
+    await lockWaiter();
+  });
+  return acted as Promise<T>;
+}
+
 const prompt = 'Publish now, or hold for the copy change?';
 const choice = {
   options: [
@@ -237,6 +268,18 @@ describe('a park on an issue that already waits on a person asks nothing twice',
       needs: 'the tenant slug',
     });
     expect(await openQuestionsOn(issueId)).toHaveLength(2);
+  });
+
+  it('asks nothing twice when a person is asked while the park is being written', async () => {
+    const issueId = await insertIssue('in_progress');
+    const row = await load(issueId);
+    await whileAnAskIsInFlight(issueId, () =>
+      transition.transitionIssueStatus(row, 'needs_info', agent(), {
+        transitionReason: 'Stopped for a person.',
+      }),
+    );
+    expect(await statusOf(issueId)).toBe('needs_info');
+    expect(await openQuestionsOn(issueId)).toHaveLength(1);
   });
 
   it('mints one when the only open question is a peer’s', async () => {
@@ -345,6 +388,13 @@ describe('the wedge reset leaves an issue a person owes an answer', () => {
     const issueId = await wedged();
     await openQuestion(issueId);
     await reconciler.resetAutonomousWedgesOnce();
+    expect(await statusOf(issueId)).toBe('in_progress');
+  });
+
+  it('keeps an issue whose person was asked after the wedge read chose it', async () => {
+    const issueId = await wedged();
+    const reset = await whileAnAskIsInFlight(issueId, () => reconciler.resetAutonomousWedgesOnce());
+    expect(reset).toBe(0);
     expect(await statusOf(issueId)).toBe('in_progress');
   });
 

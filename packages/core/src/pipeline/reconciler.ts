@@ -4,7 +4,7 @@ import type { IssueStatus } from '../db/schema.js';
 import { applyStatusTransition } from '../issues/apply-transition.js';
 import { logger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
-import { holdsOpenHumanQuestion } from '../questions/issue-coupling.js';
+import { holdsOpenHumanQuestion, personOwesAnAnswer } from '../questions/issue-coupling.js';
 import { wakeMastersForProject } from '../ws/master-wake.js';
 import {
   AUTONOMOUS_ENTRY_STATUS,
@@ -120,6 +120,9 @@ export async function runReconcilerOnce(): Promise<{
   return { rescued, stale, autonomousReset };
 }
 
+/** A question for a person committed between the wedge read and the reset's row lock. */
+class AskedSinceSelected extends Error {}
+
 export async function resetAutonomousWedgesOnce(): Promise<number> {
   if (AUTONOMOUS_INFLIGHT_STATUSES.length === 0) return 0;
   let reset = 0;
@@ -196,7 +199,13 @@ export async function resetAutonomousWedgesOnce(): Promise<number> {
         },
         AUTONOMOUS_ENTRY_STATUS,
         { id: actorId, ownerId: actorId },
-        { reason: 'reconciler_autonomous_wedge_reset', skip: true },
+        {
+          reason: 'reconciler_autonomous_wedge_reset',
+          skip: true,
+          beforeStatusWrite: async (tx) => {
+            if (await personOwesAnAnswer(tx, row.id)) throw new AskedSinceSelected();
+          },
+        },
       );
 
       if (runId) await recordAutonomousRescue(runId);
@@ -214,6 +223,13 @@ export async function resetAutonomousWedgesOnce(): Promise<number> {
         });
       }
     } catch (err) {
+      if (err instanceof AskedSinceSelected) {
+        logger.info(
+          { issueId: row.id },
+          'reconciler: a person was asked since the wedge read, so it stays',
+        );
+        continue;
+      }
       logger.error(
         { err, issueId: row.id, status: row.status },
         'reconciler: autonomous wedge reset failed',

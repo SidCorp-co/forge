@@ -23,6 +23,7 @@ export function holdsOpenHumanQuestion(issueId: SQLWrapper): SQL {
     where q.issue_id = ${issueId} and q.status = 'open' and q.blocker_kind = 'human')`;
 }
 
+/** Whether a person owes the issue an answer. A transition calls it after locking the row, so an ask in flight commits first. */
 export async function personOwesAnAnswer(executor: Executor, issueId: string): Promise<boolean> {
   const rows = await executor.execute(
     sql`select ${holdsOpenHumanQuestion(sql`${issueId}::uuid`)} as held`,
