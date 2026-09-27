@@ -116,8 +116,19 @@ So the boundary takes a **priced amnesty**, in the shape the community calls exp
 3. **Contract** — core stops answering the derived fields.
 
 What this trades: three field names outlive the concept, and a reader of the API sees a vocabulary
-core no longer thinks in. What it buys: the tracker does not go down. **The condition that ends it**
-is the forge-plugin issue closing; step 3 is owed at that moment and is not deferred past it.
+core no longer thinks in. What it buys: the tracker does not go down.
+<!-- doc-citation: unchecked `src/tracker/project-config.mjs` `src/tracker/routes.mjs` — paths inside github.com/SidCorp-co/forge-plugin, a second repository this tree cannot see or gate -->
+**The condition that ends it**
+is the closing of the forge-plugin issue that moves the plugin's readers of these axes —
+`src/tracker/project-config.mjs` and `src/tracker/routes.mjs` — onto the chain. Step 3 is owed at
+that moment and is not deferred past it.
+
+**That issue's identifier is not yet allocated**, because it is filed once the core half lands and
+its changelog can be handed over, and this ADR is amended with the identifier at that moment. Until
+then the end condition names a described issue rather than a numbered one: a reader can tell which
+issue would satisfy it, and cannot yet check whether it has. An amnesty whose ending nobody can
+check is the failure this paragraph exists to avoid, so the gap is stated here rather than left for
+a reader to discover.
 
 This is not two live paths. The chain is the only stored fact, the derivation runs one way, and the
 old names are a projection with an expiry — not a fallback anything can land on.
