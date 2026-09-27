@@ -9,7 +9,6 @@
 // device door, which carries `issueId: null`.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { EmptyState, ErrorState, Skeleton } from "@/design";
 import { QuestionCard } from "@/features/questions/components/question-card";
@@ -36,21 +35,6 @@ export interface QuestionsPaneProps {
   focusQuestionId?: string | null;
 }
 
-/** A run row linked a decision that is on an issue: it is answered there, so say where. */
-function OnItsIssue({ slug, issueId }: { slug: string; issueId: string }) {
-  return (
-    <p className="fg-caption mt-3 text-muted" data-testid="decision-on-issue">
-      The decision that run named is on its issue.{" "}
-      <Link
-        href={`/projects/${slug}/issues/${issueId}`}
-        className="underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
-      >
-        Open the issue to answer it
-      </Link>
-    </p>
-  );
-}
-
 function IssueContext() {
   return <span className="fg-caption text-muted">asked by a master — no issue behind it</span>;
 }
@@ -66,13 +50,18 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
 
   const questions = data?.questions ?? [];
   const focusPresent = !!focusQuestionId && questions.some((q) => q.id === focusQuestionId);
-  useEffect(() => {
-    if (!focusQuestionId || focusPresent || !hasNextPage || isFetchingNextPage) return;
-    void fetchNextPage();
-  }, [focusQuestionId, focusPresent, hasNextPage, isFetchingNextPage, fetchNextPage]);
-  const linked = useLinkedQuestion(focusQuestionId ?? undefined, !!focusQuestionId && !focusPresent && !hasNextPage);
+  // A question on an issue is never on this list, so the one a run row linked is looked up
+  // at once: if it names an issue, answered or not, that issue is where the link goes.
+  const linked = useLinkedQuestion(focusQuestionId ?? undefined, !!focusQuestionId && !focusPresent);
   const walkedOut = !!focusQuestionId && !focusPresent && !hasNextPage;
-  const onIssue = walkedOut && linked.data?.status === "open" ? linked.data.issueId : null;
+  const onIssue = linked.data?.issueId ?? null;
+  useEffect(() => {
+    if (!focusQuestionId || focusPresent || onIssue || !hasNextPage || isFetchingNextPage) return;
+    void fetchNextPage();
+  }, [focusQuestionId, focusPresent, onIssue, hasNextPage, isFetchingNextPage, fetchNextPage]);
+  useEffect(() => {
+    if (onIssue) router.replace(`/projects/${scope.slug}/issues/${onIssue}`);
+  }, [onIssue, router, scope.slug]);
   const questionsRef = useRef<AgentQuestion[]>(questions);
   questionsRef.current = questions;
 
@@ -133,6 +122,14 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
     );
   }
 
+  if (onIssue) {
+    return (
+      <p className="fg-caption p-4 text-muted" role="status" data-testid="decision-on-issue">
+        That decision is on its issue — opening it.
+      </p>
+    );
+  }
+
   if (questions.length === 0) {
     return (
       <div className="grid min-h-[40vh] place-items-center p-4">
@@ -141,7 +138,6 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
           title="No master is waiting on a person"
           message="A question a master asks with no issue behind it appears here. A question on an issue waits on that issue's row in the Issues list, and is answered on the issue."
         />
-        {onIssue && <OnItsIssue slug={scope.slug} issueId={onIssue} />}
       </div>
     );
   }
@@ -173,8 +169,7 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
           </span>
         </div>
       )}
-      {onIssue && <OnItsIssue slug={scope.slug} issueId={onIssue} />}
-      {walkedOut && linked.gone && (
+      {walkedOut && !onIssue && linked.gone && (
         <p className="fg-caption text-muted">
           The decision that run named is no longer open.{" "}
           <button
@@ -186,7 +181,7 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
           </button>
         </p>
       )}
-      {walkedOut && linked.unreachable && (
+      {walkedOut && !onIssue && linked.unreachable && (
         <p className="fg-caption text-muted">
           That decision could not be looked up.{" "}
           <button

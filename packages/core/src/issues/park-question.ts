@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import type { IssueStatus } from '../db/schema.js';
 import { AUTONOMOUS_QUESTION_STATUS } from '../pipeline/autonomous-mode.js';
-import { type AskInput, askParkQuestion, insertAskedQuestion } from '../questions/write.js';
+import { personOwesAnAnswer } from '../questions/issue-coupling.js';
+import { askParkQuestion } from '../questions/write.js';
 import { actorAgency, type TransitionActor } from './actor-agency.js';
 import type { DrizzleTx } from './dependency-executor.js';
 
@@ -16,26 +17,24 @@ export interface MintParkQuestionInput {
     needs?: string | undefined;
     transitionReason?: string | undefined;
     reason?: string | undefined;
-    ask?: AskInput | undefined;
   };
 }
 
 /**
- * Mint the question this park is answered through.
+ * Mint the question this park is answered through — unless the park names no need
+ * and a person already owes the issue an answer, which is the question it waits on.
  */
 export async function mintParkQuestion(input: MintParkQuestionInput, tx: DrizzleTx): Promise<void> {
   if (input.toStatus !== AUTONOMOUS_QUESTION_STATUS) return;
-  if (input.options.ask) {
-    await insertAskedQuestion(tx, input.options.ask);
-    return;
-  }
   if (actorAgency(input.actor) !== 'agent') return;
+  const needs = input.options.needs?.trim();
+  if (!needs && (await personOwesAnAnswer(tx, input.issue.id))) return;
   await askParkQuestion(tx, {
     id: randomUUID(),
     projectId: input.issue.projectId,
     issueId: input.issue.id,
     prompt: input.options.transitionReason?.trim() || input.options.reason?.trim() || '',
-    needed: input.options.needs?.trim() || NEED_NOT_STATED,
+    needed: needs || NEED_NOT_STATED,
   });
 }
 

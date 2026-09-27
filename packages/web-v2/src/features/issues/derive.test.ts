@@ -21,6 +21,8 @@ import {
 	depCounts,
 	deriveBlockerState,
 	deriveCommentKind,
+	filterCount,
+	waitingOnPersonSinceOf,
 	deriveStepOutcomes,
 	runningStepOf,
 	filterToQueryParams,
@@ -1433,3 +1435,68 @@ describe("issueQueryKey (ISS-1160 — codex 1a508e/F1, recheck-confirmed)", () =
 		expect(issueQueryKey(undefined, "p1")).toEqual(["issue", undefined]);
 	});
 });
+
+// ISS-1257 — a question marks its issue and moves nothing, so the surfaces a person reads take
+// the marker as well as the status.
+describe("the marker that a person owes an issue an answer", () => {
+	const q = (status: string, blockerKind: string, createdAt: string) => ({
+		status,
+		blockerKind,
+		createdAt,
+	});
+
+	it("dates the marker from the oldest open question blocked on a person", () => {
+		expect(
+			waitingOnPersonSinceOf([
+				q("open", "human", "2026-09-25T10:00:00Z"),
+				q("open", "human", "2026-09-20T10:00:00Z"),
+				q("open", "master_or_peer", "2026-09-01T10:00:00Z"),
+				q("answered", "human", "2026-09-02T10:00:00Z"),
+			]),
+		).toBe("2026-09-20T10:00:00Z");
+	});
+
+	it("reads no marker once every question for a person is answered or void", () => {
+		expect(
+			waitingOnPersonSinceOf([
+				q("answered", "human", "2026-09-20T10:00:00Z"),
+				q("void", "human", "2026-09-21T10:00:00Z"),
+				q("open", "machine", "2026-09-22T10:00:00Z"),
+			]),
+		).toBeNull();
+		expect(waitingOnPersonSinceOf(undefined)).toBeNull();
+	});
+
+	it("shows a banner on an issue at testing that a person owes an answer", () => {
+		const banner = deriveBlockerState(
+			blockerIssue({ status: "testing" }),
+			undefined,
+			undefined,
+			"2026-09-20T10:00:00Z",
+		);
+		expect(banner?.tone).toBe("attention");
+		expect(banner?.reason).toMatch(/owes this issue an answer/);
+		expect(banner?.cta.kind).toBe("provide-info");
+	});
+
+	it("shows no banner at testing without the marker", () => {
+		expect(
+			deriveBlockerState(blockerIssue({ status: "testing" }), undefined, undefined, null),
+		).toBeNull();
+	});
+
+	it("asks Needs you to take the marker as well as its statuses", () => {
+		expect(filterToQueryParams("you").orWaitingOnPerson).toBe(true);
+		expect(filterToQueryParams("agent").orWaitingOnPerson).toBeUndefined();
+	});
+
+	it("counts a marked issue at a status Needs you does not name, once", () => {
+		const buckets = {
+			byStatus: { needs_info: 2, testing: 5 },
+			waitingOnPersonByStatus: { needs_info: 1, testing: 1 },
+		};
+		expect(filterCount("you", buckets)).toBe(3);
+		expect(filterCount("agent", buckets), "a filter that takes no marker counts only its statuses").toBe(5);
+	});
+});
+

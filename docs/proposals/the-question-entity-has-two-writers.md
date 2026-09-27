@@ -1,8 +1,8 @@
 # The question entity has two writers, and only one of them creates a question
 
 First measured 2026-09-23 against `main` at `710ab641` and the installed plugin at `3.36.262`
-(ISS-1210); rewritten 2026-09-27 by ISS-1257, which made a question and the issue it stops one
-state. Written because the split runs across a repository boundary this repo cannot gate, and the
+(ISS-1210); rewritten 2026-09-27 by ISS-1257, which coupled a question to the issue it stops
+without letting the question move the issue's status. Written because the split runs across a repository boundary this repo cannot gate, and the
 way it was found was an owner staring at an empty panel for nineteen hours.
 
 ## What core owns
@@ -30,29 +30,39 @@ The entity, its doors and everything that reads it:
 
 ## How the question and its issue stay in step
 
-`issues/apply-transition.ts:transitionIssueStatus` is the one writer to `issues.status`, and both
-halves of the pairing run inside its transaction:
+`issues/apply-transition.ts:transitionIssueStatus` is the one writer to `issues.status`. A question
+and the status are two facts: the status says how far the work has got, and an open question with
+blocker kind `human` is the **marker** that a person owes the issue an answer. The marker is never
+stored — `questions/issue-coupling.ts:holdsOpenHumanQuestion` reads it from the question rows every
+time, so answering or voiding the last one clears it with no second write. The Issues list's
+`Needs you` (`orWaitingOnPerson` on the search, and `waitingOnPersonByStatus` in its buckets), the
+issue page's banner, the Attention count (`me/attention-buckets.ts`) and the row chip each read
+status OR marker.
 
-- **Into `needs_info`.** Every agent or device park mints a question (`issues/park-question.ts`),
-  `skip` or not. An ask through `askAs` whose blocker kind is `human`, on an issue not already at
-  `needs_info`, IS that park: one transition carrying the asked question whole; on an issue already
-  there, the question is written only while the locked status still reads `needs_info`. A status
-  that moved under either write (a resume, another park) is refused — `QUESTION_ISSUE_MOVED` or
-  `STALE_TRANSITION` — and `askAs` decides again on a fresh read. Other blocker kinds only write
-  the question. A person's own move to `needs_info` mints nothing.
+- **An ask moves nothing.** `askAs`, behind `POST /api/questions` and `forge_questions`, writes the
+  question and leaves the issue at its rung, whatever the blocker kind.
+- **Into `needs_info`.** A park is a deliberate move, taken for want of a requirement. Every agent
+  or device park leaves an open question (`issues/park-question.ts`), `skip` or not: it mints one,
+  unless no `needs` was sent and a `human` question is already open — that is then the question it
+  waits on. A person's own move to `needs_info` mints nothing.
 - **Out to `closed` or `dropped`.** Refused with `OPEN_QUESTIONS` while a question on the issue is
   open, naming the ids, unless the move carries `voidQuestions` — then each is voided with that
   sentence, `ended_reason: 'issue_terminal'`. Every door refuses an ask on a terminal issue
   (`QUESTION_ISSUE_TERMINAL`).
-- **Back to `open`.** `pipeline/answer-resume.ts` returns an autonomous issue once its last open
-  question is answered, and not before.
+- **Out of `needs_info` on an answer.** `pipeline/answer-resume.ts` moves the issue once its last
+  open question is answered, and not before: to `confirmed`, the rung that says the requirements
+  are settled, where the project's `poolBacklog.statuses` admit it; to `open` where they do not,
+  with a comment saying why, because nothing there reads `confirmed`. An answer at any other rung
+  moves nothing.
+- **The wedge reset** (`pipeline/reconciler.ts:resetAutonomousWedgesOnce`) leaves an issue holding
+  the marker at its rung: its next move is a person's, so it is not wedged.
 
 ## The writers, and what each one produces
 
 | Writer | Where it lives | Creates a question row | Moves the issue |
 |---|---|---|---|
 | `mintParkQuestion` | `packages/core/src/issues/park-question.ts` | yes, on every agent or device park to `needs_info` | it runs inside that park |
-| `askAs` | `packages/core/src/questions/read.ts`, behind `POST /api/questions` and `forge_questions` | yes | parks at `needs_info` for a `human` blocker |
+| `askAs` | `packages/core/src/questions/read.ts`, behind `POST /api/questions` and `forge_questions` | yes | no |
 | `forge-runner question ask` → `transport::questions::ask` | `packages/runner/crates/forge-runner/src/cmd/question.rs` | yes, on the box's device pairing | no |
 | `forge record question` | `github.com/SidCorp-co/forge-plugin`, `plugin/` | **no** — it writes a `forge-record: question` comment and nothing else | no |
 
@@ -69,11 +79,16 @@ them and stores what they carry (`tests/integration/question-runner-wire-e2e.tes
 
 ## What is still true and was not fixed
 
-- **The device door does not park.** A master's ask on an issue writes the question and leaves the
-  issue's status alone. Parking it would strand the issue: `answer-resume` dispatches nothing when a
-  box has registered to read the answer back, so nothing would ever move it out of `needs_info`.
-  Until the box reports its own resume, a master's question on an issue shows on the issue's row
-  and panel while the status says whatever the master left it at.
+- **A person's answer at a rung other than `needs_info` reaches no session.** `answer-resume` hands
+  an answer to the session that asked only while the issue is parked; a run that asked about
+  finished work reads the answer back with `forge_questions` action `get`.
+- **No browser is told a question changed.** An ask or an answer publishes no websocket event, and
+  since neither moves the issue, an Issues list or an issue page already open shows the marker,
+  `Needs you`, its count and the banner as of its last fetch until it refetches (focus, remount, or
+  its own poll — which the issue page's question read skips while the issue holds none).
+- **23 of 33 live projects on beta (measured 2026-09-27) admit nothing at `confirmed`**, so an
+  answered park there returns to `open` instead. The day each autonomous project's admission reads
+  `confirmed`, `answer-resume.ts:answerTarget` loses its second branch.
 - **`issue_id` stays nullable.** A master's question from the device door may carry none, and those
   are what the Questions tab still lists. Making the column `NOT NULL` breaks the runner's wire.
 - `packages/runner/crates/forge-runner-core/src/runner/blocked.rs` — `arm_bounded` and

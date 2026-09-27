@@ -15,7 +15,6 @@ import { withActorContext } from '../pipeline/outbox-session.js';
 import { closeOpenRunForIssue, setCurrentStepForOpenIssueRun } from '../pipeline/runs.js';
 import { canTransitionFree, DRAFT_EXIT_TARGETS, isReopenEntry } from '../pipeline/state-machine.js';
 import { settleOpenQuestions } from '../questions/issue-coupling.js';
-import type { AskInput } from '../questions/write.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { actorAgency, type DeviceLite, type TransitionActor } from './actor-agency.js';
@@ -119,8 +118,6 @@ export interface ApplyStatusTransitionOptions {
    * park mints a free-text question and the reason becomes its prompt.
    */
   needs?: string | undefined;
-  /** The question this park is asked through, minted whole instead of the one `needs` makes. */
-  ask?: AskInput | undefined;
   /** Why the open questions died with the work; a terminal move with one open is refused without it. */
   voidQuestions?: string | undefined;
   /** Refuse OPEN_QUESTIONS if one is open once the row is locked — the answer resume's guard. */

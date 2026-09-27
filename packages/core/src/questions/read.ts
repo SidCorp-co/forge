@@ -18,17 +18,13 @@ import {
   type QuestionStep,
   questionWaiters,
 } from '../db/schema-questions.js';
-import type { TransitionActor } from '../issues/actor-agency.js';
-import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
 import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
-import { AUTONOMOUS_QUESTION_STATUS } from '../pipeline/autonomous-mode.js';
 import {
   type AskAnswer,
   type AskInput,
   answerQuestion,
   askQuestion,
   type GivenAnswer,
-  getQuestion,
   mayAnswerFreeText,
   mayChoose,
   QuestionRefused,
@@ -65,12 +61,12 @@ function seenBy<T extends { steps: QuestionStep[] }>(row: T, role: ProjectMember
 
 /**
  * Ask a question against one issue, as somebody, or `null` when that somebody
- * cannot reach the issue.
+ * cannot reach the issue. The ask writes the question and nothing else: the issue
+ * keeps its status, and an open `human` question is the marker that a person owes
+ * it an answer (ISS-1257).
  */
 export type AskAsInput = {
   userId: string;
-  /** Who the park is recorded as, where a `human` ask moves the issue. */
-  actor: TransitionActor;
   issueId: string;
   prompt: string;
   blockerKind: QuestionBlockerKind;
@@ -103,56 +99,16 @@ export async function askAs(args: AskAsInput) {
     ...(args.parkDeadlineAt ? { parkDeadlineAt: args.parkDeadlineAt } : {}),
     ...(args.sensitive ? { sensitive: true } : {}),
   };
-  if (args.blockerKind !== 'human') return askQuestion(ask);
-  return askAndPark(issue, ask, args.actor);
+  return askQuestion(ask);
 }
-
-const ASK_ATTEMPTS = 3;
 
 async function readAskedIssue(issueId: string) {
   const [issue] = await db
-    .select({
-      id: issues.id,
-      projectId: issues.projectId,
-      status: issues.status,
-      reopenCount: issues.reopenCount,
-    })
+    .select({ projectId: issues.projectId })
     .from(issues)
     .where(eq(issues.id, issueId))
     .limit(1);
   return issue;
-}
-
-type AskedIssue = NonNullable<Awaited<ReturnType<typeof readAskedIssue>>>;
-
-/**
- * A person is the blocker, so the issue waits on them: on an issue already at
- * `needs_info` the question is written while that status holds, and anywhere else
- * the park and the question are one transition. Either write refuses if the status
- * moved under it (a resume, another park), and the ask is decided again on a fresh read.
- */
-async function askAndPark(first: AskedIssue, ask: AskInput, actor: TransitionActor) {
-  let issue = first;
-  for (let attempt = 1; ; attempt++) {
-    try {
-      if (issue.status === AUTONOMOUS_QUESTION_STATUS) {
-        return await askQuestion(ask, AUTONOMOUS_QUESTION_STATUS);
-      }
-      await transitionIssueStatus(issue, AUTONOMOUS_QUESTION_STATUS, actor, {
-        transitionReason: ask.prompt,
-        ask,
-      });
-      return getQuestion(ask.id);
-    } catch (err) {
-      const moved =
-        (err instanceof QuestionRefused && err.code === 'QUESTION_ISSUE_MOVED') ||
-        (err instanceof TransitionError && err.code === 'STALE_TRANSITION');
-      if (!moved || attempt === ASK_ATTEMPTS) throw err;
-      const fresh = await readAskedIssue(issue.id);
-      if (!fresh) throw err;
-      issue = fresh;
-    }
-  }
 }
 
 /**

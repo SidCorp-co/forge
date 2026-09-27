@@ -40,7 +40,7 @@ export function useAnswerQuestion(issueId: string) {
       qc.invalidateQueries({ queryKey: ["attention"] });
       toast({
         title: "Decision recorded",
-        description: "The run has been told.",
+        description: "Your answer is on the question. Whoever asked reads it there.",
         tone: "success",
       });
     },
@@ -113,7 +113,7 @@ export function useAnswerProjectQuestion(projectId: string) {
       qc.invalidateQueries({ queryKey: ["attention"] });
       toast({
         title: "Decision recorded",
-        description: "The run has been told.",
+        description: "Your answer is on the question. Whoever asked reads it there.",
         tone: "success",
       });
     },

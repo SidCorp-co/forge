@@ -76,13 +76,19 @@ export function TransitionReasonDialog({
 }: TransitionReasonDialogProps) {
   const [reason, setReason] = useState("");
   const [kind, setKind] = useState<WaitingCause>("needs_decision");
+  /** Set on the first confirm, so a second click before `loading` arrives sends no second move. */
+  const [sent, setSent] = useState(false);
 
   useEffect(() => {
     if (status) {
       setReason("");
       setKind("needs_decision");
+      setSent(false);
     }
   }, [status]);
+  useEffect(() => {
+    if (!loading) setSent(false);
+  }, [loading]);
 
   if (!status) return null;
   const copy = COPY[status];
@@ -124,9 +130,13 @@ export function TransitionReasonDialog({
           <Button
             type="button"
             variant="primary"
-            loading={loading}
-            disabled={trimmed.length === 0}
-            onClick={() => onConfirm(trimmed, status === "waiting" ? kind : undefined)}
+            loading={loading || sent}
+            disabled={trimmed.length === 0 || sent}
+            onClick={() => {
+              if (sent) return;
+              setSent(true);
+              onConfirm(trimmed, status === "waiting" ? kind : undefined);
+            }}
           >
             {copy.confirm}
           </Button>
