@@ -4,11 +4,13 @@
 
 ## Context
 
-A project declares how its code reaches production through four columns on `projects`:
-`release_model` (`none` | `promote` | `publish`), `base_branch`, `live_branch` and
-`release_strategy` (`merge-branch` | `cherry-pick` | `tag-mr`).
+A project declares how its code reaches production through three columns on `projects`:
+`release_model` (`none` | `promote` | `publish`), `live_branch` and `release_strategy`
+(`merge-branch` | `cherry-pick` | `tag-mr`). A fourth, `base_branch`, stands beside them and is
+read when a release is built, but is not part of the declaration — what it is, and why it is the
+one of the four that stays, is under *`base_branch` is the fourth column and it stays* below.
 
-Three readings say these four are one fact spelled four ways.
+Three readings say the three are one fact spelled three ways.
 
 **The ledger already models a release as a sequence.**
 `packages/core/src/db/schema-release-ledger.ts:RELEASE_ATTEMPT_STAGES` is
@@ -63,6 +65,24 @@ a project. A three-branch chain may cross one way here and another way there.
 **`tag-mr` is removed.** A value with no behaviour, no document and no adopter reads as a considered
 option and is not one. If it turns out to have had an intended meaning, it returns as a new ADR with
 that meaning written down.
+
+**`base_branch` is the fourth column and it stays.** Three of the four go; this one does not, and
+the difference is what each is a fact about. `base_branch` is the project's **default work branch**:
+where an `ISS-*` branch is cut from, and where it lands unless that issue overrides the target.
+`packages/core/src/branches/resolve.ts:resolveIssueBranches` falls `targetBranch` back to it when an
+issue's `metadata.branchConfig` names none — the override moves one issue, never the project's
+default. So it is a fact about where WORK goes, while the chain is a fact about where a RELEASE
+goes. A project that ships nothing still cuts branches. Folding the column in would map
+every such project to `[]`, which names no branch, and leave `resolveIssueBranches` with nowhere to
+cut from, *silently*. Measured while landing this change, 2026-09-27: of 37 fleet projects, **28
+declare no release while carrying a base branch**.
+
+Where a project does declare a release, the chain's first entry and `base_branch` name the same
+branch, and that is **the one place the two must agree**. It is held at the write door by
+`RELEASE_CHAIN_BASE_MISMATCH`, which refuses the pair by name and says which shape is valid — not by
+a CHECK. The CHECKs this ADR removes existed to stop two spellings of ONE fact contradicting each
+other; these are two different facts that meet at one branch name, and a refusal a caller can read
+is the right instrument for that where a constraint is not.
 
 **An empty chain is declared, never inferred.**
 `packages/core/src/release-batch/gate.ts` refuses `RELEASE_TARGET_UNDECLARED` for a project that
