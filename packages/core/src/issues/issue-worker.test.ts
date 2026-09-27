@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { LeaseReading } from '../pipeline/session-claim.js';
-import { classifyIssueWorker, type WorkerSession } from './issue-worker.js';
+import { classifyIssueWorker, unreadableWorker, type WorkerSession } from './issue-worker.js';
 
 function claim(over: Partial<LeaseReading> = {}): LeaseReading {
   return {
@@ -104,6 +104,14 @@ describe('classifyIssueWorker', () => {
     });
     expect(worker).toMatchObject({ lane: 'none' });
     expect((worker as { detail: string }).detail).toContain('an unnamed holder');
+  });
+
+  // ISS-1273 — the route serves this when the loader threw. Before it, the fallback was
+  // `{ stage }` alone: the status column the caller already had, served as computed health.
+  it('names a failed derivation as its own answer, not as nobody working the issue', () => {
+    const worker = unreadableWorker('the loader threw');
+    expect(worker.lane).toBe('unreadable');
+    expect(worker.lane).not.toBe('none');
   });
 
   it('refuses to report a live claim carrying no holder as the claim lane', () => {

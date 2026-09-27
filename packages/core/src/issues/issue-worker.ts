@@ -1,9 +1,8 @@
 /**
  * ISS-1273 — who is working one issue, on whichever of the three lanes opened the work: the job
- * lane's `agent_sessions.metadata.issueId`, the run-session lane's `issue_leases` row
- * (`devices/run-session.ts` opens one run over a GROUP, so its session names no issue), and the
- * claim lane's `issues.session_context.lease`, which is all a driver leaves. `none` is an answer
- * here and carries its reason, because an absent field reads as a quiet system.
+ * lane's `agent_sessions.metadata.issueId`, the run-session lane's `issue_leases` row (one run
+ * over a GROUP, so its session names no issue), and `issues.session_context.lease`, all a claim
+ * leaves. `none` carries its reason: an absent field reads as a quiet system.
  */
 
 import {
@@ -31,14 +30,20 @@ export type IssueWorker =
       expiresAt: string | null;
       silentMs: number | null;
     }
-  | { lane: 'none'; detail: string };
+  | { lane: 'none'; detail: string }
+  | { lane: 'unreadable'; detail: string };
+
+/** ISS-1273 — what a caller answers with when the derivation failed: the answer is missing,
+ *  which is a different thing from nobody working the issue. */
+export function unreadableWorker(detail: string): IssueWorker {
+  return { lane: 'unreadable', detail };
+}
 
 function liveSession(session: WorkerSession): boolean {
   return session.status === 'queued' || session.status === 'running';
 }
 
-/** A session outranks a claim: core wrote the session row itself, where the claim is a blob a
- *  driver wrote into the issue and core only classifies. */
+/** A session outranks a claim: core wrote that row itself and only classifies the claim. */
 export function classifyIssueWorker(input: {
   sessions: readonly WorkerSession[];
   claim: LeaseReading | null;

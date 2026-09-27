@@ -30,7 +30,7 @@ import { logger } from '../logger.js';
 import { holderFanout, readClaim } from '../pipeline/lease-fanout.js';
 import type { LeaseReading } from '../pipeline/session-claim.js';
 import { projectRoom } from '../ws/rooms.js';
-import { classifyIssueWorker, type SessionWorkerLane } from './issue-worker.js';
+import { classifyIssueWorker, type SessionWorkerLane, unreadableWorker } from './issue-worker.js';
 import { loadActiveJobsByIssue, loadPausedRunsByIssue } from './pipeline-health-loaders.js';
 import {
   heldWaitingOn,
@@ -45,6 +45,16 @@ import type {
 } from './pipeline-health-types.js';
 
 export type { IssueWorker, SessionWorkerLane, WorkerSession } from './issue-worker.js';
+
+/** ISS-1273 — the answer a caller serves for an issue the loader gave it nothing for. */
+export function pipelineHealthUnderived(stage: IssueStatus): PipelineHealth {
+  return {
+    stage,
+    worker: unreadableWorker(
+      'core could not derive this issue health; the stage is its stored status and nothing here was read from a run, a session or a claim',
+    ),
+  };
+}
 export type {
   ClassifyInput,
   PipelineHealth,
