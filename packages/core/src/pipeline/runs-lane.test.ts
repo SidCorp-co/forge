@@ -67,8 +67,30 @@ describe('stepOf', () => {
     });
   });
 
-  it('prefers the stamped column over a phase, so two writers cannot disagree', () => {
+  it('prefers the stamped column over a phase on the job lane, where the column has a writer', () => {
     expect(stepOf('job', 'code', 'implement').step).toBe('code');
+  });
+
+  // ISS-1273 — `runs.ts:setCurrentStep` never runs on the run-session lane, so a value in that
+  // column is stale or hand-repaired. Reporting it would credit a writer that does not exist.
+  it('refuses a stale column on the run-session lane rather than crediting the job lane writer', () => {
+    expect(stepOf('run_session', 'code')).toEqual({
+      source: 'none',
+      step: null,
+      detail: expect.stringContaining('no phase open'),
+    });
+  });
+
+  it('takes the open phase over a stale column on the run-session lane', () => {
+    expect(stepOf('run_session', 'code', 'implement')).toEqual({
+      source: 'phase_journal',
+      step: 'implement',
+      detail: null,
+    });
+  });
+
+  it('keeps the column on the system lane, where a release does stamp it', () => {
+    expect(stepOf('system', 'deploy').source).toBe('run_column');
   });
 
   // ISS-1273 — a null step with nothing saying why is the shape this issue was filed against.

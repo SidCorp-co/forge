@@ -59,10 +59,16 @@ describe('ISS-1273 run summary lanes', () => {
     return runId;
   }
 
-  async function openPhase(projectId: string, runId: string, phase: string): Promise<void> {
+  async function openPhase(
+    projectId: string,
+    runId: string,
+    phase: string,
+    args: { attempt?: number; agoMinutes?: number } = {},
+  ): Promise<void> {
     await harness.db.execute(sql`
       INSERT INTO phase_journal (id, project_id, run_id, phase, attempt, source, started_at)
-      VALUES (${randomUUID()}, ${projectId}, ${runId}, ${phase}, 1, 'agent', now())
+      VALUES (${randomUUID()}, ${projectId}, ${runId}, ${phase}, ${args.attempt ?? 1}, 'agent',
+              now() - make_interval(mins => ${args.agoMinutes ?? 0}::int))
     `);
   }
 
@@ -98,6 +104,49 @@ describe('ISS-1273 run summary lanes', () => {
     expect(summary?.currentStep).toBeNull();
     expect(summary?.step.source).toBe('none');
     expect(summary?.step.detail).toContain('no phase open');
+  });
+
+  // ISS-1273 — a driver that never closed an earlier phase leaves two open rows. The newest is
+  // the one it is on, the row `phase-journal.ts:resumePoint` would resume at.
+  it('takes the newest open phase where a driver left an earlier one open', async () => {
+    const project = await seed();
+    const runId = await groupRun(project.id, ['ISS-1273']);
+    await openPhase(project.id, runId, 'plan', { agoMinutes: 30 });
+    await openPhase(project.id, runId, 'implement', { attempt: 2 });
+
+    const summary = await mods.loadPipelineRunSummary(runId);
+    expect(summary?.currentStep).toBe('implement');
+  });
+
+  // Two open rows stamped at the same instant: the higher attempt is the later round. Inserted
+  // newest-first ON PURPOSE — an answer that depended on which row arrived last would return
+  // `plan` here and `implement` in the case above, and neither would be a policy.
+  it('breaks a tie on attempt, not on the order the rows came back', async () => {
+    const project = await seed();
+    const runId = await groupRun(project.id, ['ISS-1273']);
+    await harness.db.execute(sql`
+      INSERT INTO phase_journal (id, project_id, run_id, phase, attempt, source, started_at)
+      VALUES (${randomUUID()}, ${project.id}, ${runId}, 'implement', 2, 'agent',
+              timestamptz '2026-09-27 10:00:00+00'),
+             (${randomUUID()}, ${project.id}, ${runId}, 'plan', 1, 'agent',
+              timestamptz '2026-09-27 10:00:00+00')
+    `);
+
+    const summary = await mods.loadPipelineRunSummary(runId);
+    expect(summary?.currentStep).toBe('implement');
+  });
+
+  // The column has no writer on this lane, so a value in it is stale or hand-repaired.
+  it('refuses a stale current_step on a run-session run rather than reporting it', async () => {
+    const project = await seed();
+    const runId = await groupRun(project.id, ['ISS-1273']);
+    await harness.db.execute(
+      sql`UPDATE pipeline_runs SET current_step = 'code' WHERE id = ${runId}`,
+    );
+
+    const summary = await mods.loadPipelineRunSummary(runId);
+    expect(summary?.currentStep).toBeNull();
+    expect(summary?.step.source).toBe('none');
   });
 
   it('leaves a job-lane run on its stamped step and its own issue', async () => {

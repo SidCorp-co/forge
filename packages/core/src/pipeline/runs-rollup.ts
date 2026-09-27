@@ -9,7 +9,7 @@
  * here so the front-end stays a thin renderer.
  */
 
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { asc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   agentSessions,
@@ -23,7 +23,6 @@ import {
   terminalAgentSessionStatuses,
   usageRecords,
 } from '../db/schema.js';
-import { phaseJournal } from '../db/schema-journal.js';
 import { type RunGate, readRunGate } from '../devices/gate-report.js';
 import { RETRY_MAX_ROUNDS, readAutoRetryPayload } from '../jobs/retry.js';
 import { UNHELD_LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
@@ -333,14 +332,13 @@ function rowToListItem(row: RunRow): PipelineRunListItem {
     projectId: row.projectId,
     issueId: row.issueId,
     lane,
-    step: stepOf(lane, row.currentStep),
+    ...withStep(lane, row.currentStep),
     runIssues: runIssuesOf(row.metadata),
     // ISS-460 — resolved by callers that join `issues`; default null here.
     issueRef: null,
     issueTitle: null,
     kind: row.kind,
     status: row.status,
-    currentStep: row.currentStep,
     startedAt: toIsoRequired(row.startedAt),
     finishedAt: toIso(row.finishedAt),
     cost: EMPTY_COST,
@@ -349,17 +347,35 @@ function rowToListItem(row: RunRow): PipelineRunListItem {
   };
 }
 
-/** ISS-1273 — `runs.ts:setCurrentStep` is reached only by the job lane, so a box-driven run's
- *  step is its open `phase_journal` row instead. */
+/** ISS-1273 — the step and the column agree by construction: `currentStep` IS `step.step`, so a
+ *  reader taking either gets the one answer `runs-lane.ts:stepOf` reached. */
+function withStep(
+  lane: PipelineRunLane,
+  currentStep: string | null,
+  openPhase?: string,
+): { step: PipelineRunStep; currentStep: string | null } {
+  const step = stepOf(lane, currentStep, openPhase);
+  return { step, currentStep: step.step };
+}
+
+/** ISS-1273 — a box-driven run's step is its open `phase_journal` row. Two open rows mean a
+ *  driver never closed the earlier phase; the newest is the one it is on, the row
+ *  `phase-journal.ts:resumePoint` resumes at, and `DISTINCT ON` settles that in the query rather
+ *  than in whichever order rows arrived. */
 async function loadOpenPhaseByRunIds(runIds: string[]): Promise<Map<string, string>> {
   const out = new Map<string, string>();
   if (runIds.length === 0) return out;
-  const rows = await db
-    .select({ runId: phaseJournal.runId, phase: phaseJournal.phase })
-    .from(phaseJournal)
-    .where(and(inArray(phaseJournal.runId, runIds), isNull(phaseJournal.endedAt)))
-    .orderBy(asc(phaseJournal.startedAt));
-  for (const r of rows) out.set(r.runId, r.phase);
+  const rows = (await db.execute(sql`
+    SELECT DISTINCT ON (run_id) run_id, phase
+      FROM phase_journal
+     WHERE ended_at IS NULL
+       AND run_id IN (${sql.join(
+         runIds.map((id) => sql`${id}::uuid`),
+         sql`, `,
+       )})
+     ORDER BY run_id, started_at DESC, attempt DESC
+  `)) as unknown as Array<{ run_id: string; phase: string }>;
+  for (const r of rows) out.set(r.run_id, r.phase);
   return out;
 }
 
@@ -406,8 +422,7 @@ export async function loadPipelineRunSummary(runId: string): Promise<PipelineRun
   const ref = row.issueId ? issueRefs.get(row.issueId) : undefined;
   return {
     ...listItem,
-    step: stepOf(listItem.lane, row.currentStep, openPhase.get(runId)),
-    currentStep: row.currentStep ?? openPhase.get(runId) ?? null,
+    ...withStep(listItem.lane, row.currentStep, openPhase.get(runId)),
     issueRef: ref?.issueRef ?? null,
     issueTitle: ref?.issueTitle ?? null,
     liveJobs: liveMap.get(runId)?.liveJobs ?? 0,
@@ -523,8 +538,7 @@ export async function listItemsFromRows(rows: RunRow[]): Promise<PipelineRunList
     const ref = r.issueId ? issueRefs.get(r.issueId) : undefined;
     return {
       ...item,
-      step: stepOf(item.lane, r.currentStep, openPhases.get(r.id)),
-      currentStep: r.currentStep ?? openPhases.get(r.id) ?? null,
+      ...withStep(item.lane, r.currentStep, openPhases.get(r.id)),
       issueRef: ref?.issueRef ?? null,
       issueTitle: ref?.issueTitle ?? null,
       cost: costMap.get(r.id) ?? EMPTY_COST,
