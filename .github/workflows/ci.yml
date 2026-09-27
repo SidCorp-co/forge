@@ -304,12 +304,24 @@ jobs:
               - 'packages/web-v2/**'
               - 'packages/contracts/**'
               - 'packages/core/**'
+              - '.npmrc'
               - '.github/workflows/ci.yml'
+            # `.npmrc` sits under both because it decides how EVERY package resolves its
+            # modules: `node-linker=hoisted` is what lets four packages only `@forge/core`
+            # declares resolve from the repository root, and `pnpm verify` loses five
+            # verdicts without them. It matched no filter, so a change to it skipped `core`,
+            # `web`, `core-integration` and `runner` at once — and a skipped job passes
+            # `ci-passed`, which is the shape `39431309` already cost a production deploy.
+            # Still unmatched by `web`, and left so deliberately: `pnpm-lock.yaml`,
+            # `package.json` and `pnpm-workspace.yaml`, which `core` carries. A dependency
+            # bump can break the web build the same way; widening it is a separate argument
+            # about paying a web build on every bump, not this one.
             core:
               - 'packages/core/**'
               - 'pnpm-workspace.yaml'
               - 'pnpm-lock.yaml'
               - 'package.json'
+              - '.npmrc'
               - '.github/workflows/ci.yml'
             runner:
               - 'packages/runner/**'
