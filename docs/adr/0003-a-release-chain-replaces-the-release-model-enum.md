@@ -18,9 +18,8 @@ exist.
 
 **Two CHECK constraints exist only to stop the columns contradicting each other.**
 `packages/core/src/db/release-axes.ts` carries `release_model <> 'promote' OR live_branch IS NOT NULL`
-and `(release_model = 'promote') = (release_strategy IS NOT NULL)`, and
-`packages/core/src/projects/release-model.ts:releaseModelGap` answers `LIVE_BRANCH_REQUIRED` for the
-same reason. A rule whose whole job is to keep two fields agreeing is a rule about a fact stored
+and `(release_model = 'promote') = (release_strategy IS NOT NULL)`, and the project write door
+answers `LIVE_BRANCH_REQUIRED` for the same reason. A rule whose whole job is to keep two fields agreeing is a rule about a fact stored
 twice.
 
 **`release_strategy` is not what it appears to be.** One site in core branches on its value —

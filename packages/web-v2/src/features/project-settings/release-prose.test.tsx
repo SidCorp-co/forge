@@ -46,6 +46,7 @@ const PROJECT_ID = "55555555-5555-4555-8555-555555555555";
 function ready(over: Partial<ReleaseReadiness>): ReleaseReadiness {
 	return {
 		hasReleaseGate: true,
+		releaseChain: [{ branch: "main" }],
 		releaseModel: "publish",
 		releaseStrategy: null,
 		baseBranch: "main",

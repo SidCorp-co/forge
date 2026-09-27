@@ -75,11 +75,11 @@ export const RETIRED_STRATEGY_INPUTS = {
       'so forge-fix can resolve it. Never leave the issue at awaiting_release after ' +
       'a conflict — silent waiting blocks the release indefinitely.',
     appliesWhen:
-      "The project declares releaseModel='promote' in its project config, meaning the release " +
-      'moves code from baseBranch to liveBranch and ISS-* branches must track liveBranch to ' +
-      'avoid divergence at merge time. It does NOT apply under releaseModel `publish` (the ' +
-      'release is an act on a live binding and no ref moves) or `none` (there is no release step), ' +
-      'whatever branches those projects happen to have stored.',
+      'The project declares a releaseChain of two or more branches in its project config, ' +
+      'meaning the release crosses from one branch to the next and ISS-* branches must track the ' +
+      'last one to avoid divergence at merge time. It does NOT apply to a chain of one (the ' +
+      'release is an act on a live binding and no ref moves) or an empty chain (there is no ' +
+      'release step), whatever branches those projects happen to have stored.',
     appliesToSkills: ['forge-release'],
   },
   QA_QUALITY_BAR: {

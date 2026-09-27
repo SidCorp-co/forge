@@ -24,7 +24,7 @@ const GAP_TEXT: Record<ReleaseReadiness["gaps"][number], string> = {
   "release-multi-channel":
     "Two live deploy bindings are declared, and a release run records ONE check of ONE address — so closing the batch on it would claim a delivery nobody looked at. Cutting a release is refused by name until then. Retire one of the two, or keep both and cut this project's releases by hand.",
   "release-target":
-    "This project declares a release but has no live deploy binding to send it to — every issue would wait for a release nobody can cut. Add one, or set the release model to none.",
+    "This project declares a release but has no live deploy binding to send it to — every issue would wait for a release nobody can cut. Add one, or declare an empty release chain.",
   rollback:
     "No rollback declared — a failed release aborts and comments, and rolls back nothing.",
   "rollback-prose":
@@ -59,17 +59,20 @@ const NO_RELEASE_RUNNER_LABEL = "none — a release goes to any box in this proj
 
 const FACT_GAPS = new Set(["build-commands", "test-commands", "release-procedure"]);
 
-/** What the badge says for each declared model — the words a reader of the screen uses. */
-const RELEASE_MODEL_TEXT: Record<ReleaseReadiness["releaseModel"], string> = {
-  none: "none",
-  promote: "promote — code moves to a live branch",
-  publish: "publish — an act on a live target",
-};
+/** What the badge says about the declared chain — the words a reader of the screen uses. */
+function chainText(r: ReleaseReadiness): string {
+  const n = r.releaseChain.length;
+  if (n === 0) return "none — this project ships nothing";
+  if (n === 1) return "one branch — an act on a live target, no branch moves";
+  return `${n} branches — code crosses to a live branch`;
+}
 
-function branchPair(r: ReleaseReadiness): string {
-  return r.releaseModel === "promote" && r.liveBranch
-    ? `${r.baseBranch} → ${r.liveBranch}`
-    : `${r.baseBranch} (no branch moves)`;
+/** The chain as its ordered branches, each named with the crossing that reaches it. */
+function chainBranches(r: ReleaseReadiness): string {
+  if (r.releaseChain.length === 0) return "— none declared —";
+  return r.releaseChain
+    .map((e, i) => (i === 0 ? e.branch : `${e.from} → ${e.branch}`))
+    .join("  ");
 }
 
 function stateLine(r: ReleaseReadiness) {
@@ -157,13 +160,13 @@ export function ReleaseSection({
           <dt className="fg-caption text-subtle">Release</dt>
           <dd className="fg-body-sm text-fg">
             <Badge tone={r.hasReleaseGate ? "accent" : "neutral"}>
-              {RELEASE_MODEL_TEXT[r.releaseModel]}
+              {chainText(r)}
             </Badge>
           </dd>
         </div>
         <div>
-          <dt className="fg-caption text-subtle">Branches</dt>
-          <dd className="fg-body-sm font-mono text-fg">{branchPair(r)}</dd>
+          <dt className="fg-caption text-subtle">Release chain</dt>
+          <dd className="fg-body-sm font-mono text-fg">{chainBranches(r)}</dd>
         </div>
         <div>
           <dt className="fg-caption text-subtle">Live targets</dt>
@@ -212,10 +215,10 @@ export function ReleaseSection({
             </>
           ) : (
             <>
-              A project has a release gate when it declares what releasing it means — moving code
-              to a live branch, or publishing to a live target — <i>and</i> has an active{" "}
-              <b>live</b> deploy binding. This one declares none, so sessions close their issues
-              rather than parking them for a release nobody would cut.
+              A project has a release gate when it declares a release chain — the ordered path its
+              code takes to live — <i>and</i> has an active <b>live</b> deploy binding. This
+              one&apos;s chain is empty, so sessions close their issues rather than parking them for
+              a release nobody would cut.
             </>
           )}
         </p>

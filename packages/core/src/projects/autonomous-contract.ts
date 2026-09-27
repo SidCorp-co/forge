@@ -1,4 +1,4 @@
-import type { ReleaseModel } from '../db/schema.js';
+import { chainShipsNothing, type ReleaseChain } from './release-chain.js';
 
 export interface KnowledgeObligation {
   /** `knowledge_entries.slug`, fetched by the driver with `forge_knowledge`. */
@@ -13,7 +13,7 @@ export interface KnowledgeObligation {
 export interface ProjectDeclarations {
   repoPath: string | null;
   repoUrl: string | null;
-  releaseModel: ReleaseModel;
+  releaseChain: ReleaseChain;
 }
 
 export function declaresRepository(p: ProjectDeclarations): boolean {
@@ -34,11 +34,11 @@ export function requiredProjectKnowledge(p: ProjectDeclarations): KnowledgeOblig
       because: 'this project declares a repository',
     });
   }
-  if (p.releaseModel !== 'none') {
+  if (!chainShipsNothing(p.releaseChain)) {
     owed.push({
       slug: 'release-procedure',
       role: 'how a release is performed here, so the release agent does not invent one',
-      because: `this project declares releaseModel: ${p.releaseModel}`,
+      because: `this project declares a release chain of ${p.releaseChain.length} branch(es), ending at ${p.releaseChain[p.releaseChain.length - 1]?.branch}`,
     });
   }
   return owed;

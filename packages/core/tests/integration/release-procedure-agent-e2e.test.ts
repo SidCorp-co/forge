@@ -73,21 +73,24 @@ interface World {
 interface Shape {
   provider?: string;
   baseBranch?: string | null;
-  releaseModel?: 'promote' | 'publish';
-  releaseStrategy?: string | null;
+  /** How many branches the chain names: 1 deploys the base, 2 crosses into `production`. */
+  chainLength?: 1 | 2;
+  /** The crossing into the second entry. Only read where `chainLength` is 2. */
+  crossing?: string;
   procedure?: string | null;
 }
 
 async function seed(shape: Shape = {}): Promise<World> {
   const provider = shape.provider ?? 'coolify';
-  const releaseModel = shape.releaseModel ?? 'promote';
-  const releaseStrategy =
-    shape.releaseStrategy === undefined
-      ? releaseModel === 'promote'
-        ? 'merge-branch'
-        : null
-      : shape.releaseStrategy;
+  const chainLength = shape.chainLength ?? 2;
+  const crossing = shape.crossing ?? 'merge-branch';
   const baseBranch = shape.baseBranch === undefined ? 'main' : shape.baseBranch;
+  const releaseChain =
+    baseBranch === null
+      ? []
+      : chainLength === 1
+        ? [{ branch: baseBranch }]
+        : [{ branch: baseBranch }, { branch: 'production', from: crossing }];
 
   const user = await createTestUser(harness.db);
   await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`);
@@ -99,8 +102,7 @@ async function seed(shape: Shape = {}): Promise<World> {
   });
   await harness.db.execute(sql`
     UPDATE projects
-       SET base_branch = ${baseBranch}, live_branch = 'production',
-           release_model = ${releaseModel}, release_strategy = ${releaseStrategy},
+       SET base_branch = ${baseBranch}, release_chain = ${JSON.stringify(releaseChain)}::jsonb,
            repo_path = '/srv/app'
      WHERE id = ${project.id}
   `);
@@ -212,7 +214,7 @@ describe('the method a release is handed (ISS-1276)', () => {
   // `foreignChannelRefusal` — "There is nothing below this line: do NOT merge, do NOT promote" —
   // because the only provider that ever declared a deploy step was Coolify.
   it('refuses nothing for a project whose only live channel is epodsystem', async () => {
-    const w = await seed({ provider: 'epodsystem', releaseModel: 'publish' });
+    const w = await seed({ provider: 'epodsystem', chainLength: 1 });
 
     const { prompt } = await cut(w);
 
@@ -222,19 +224,19 @@ describe('the method a release is handed (ISS-1276)', () => {
     expect(prompt).toContain('epodsystem');
   });
 
-  // `null` is not in this list because Postgres refuses it: `projects_release_strategy_chk`
-  // requires a strategy under `promote`, so the deleted default's "no releaseStrategy at all"
-  // arm answered for a row the database cannot hold.
-  it.each(['cherry-pick', 'tag-mr'])(
-    'refuses nothing for a promote project declaring releaseStrategy %s',
-    async (strategy) => {
-      const w = await seed({ releaseStrategy: strategy });
+  // An entry with no `from` is not in this list because Postgres refuses it:
+  // `projects_release_chain_chk` requires a crossing on every entry after the first, so the
+  // deleted default's "no strategy at all" arm answered for a row the database cannot hold.
+  it.each(['cherry-pick', 'merge-branch'])(
+    'refuses nothing for a project whose chain crosses by %s',
+    async (crossing) => {
+      const w = await seed({ crossing });
 
       const { prompt } = await cut(w);
 
       expect(prompt).not.toContain('Forge has no default procedure for it');
       expect(prompt).not.toMatch(/STOP — this project declares/);
-      expect(prompt).not.toContain(`releaseStrategy: ${strategy}`);
+      expect(prompt).not.toContain(`releaseStrategy: ${crossing}`);
     },
   );
 });
@@ -247,37 +249,59 @@ describe('the branches a release reads (ISS-1276)', () => {
     expect((await readiness(w)).map((b) => b.code)).not.toContain('RELEASE_BRANCHES_UNDECLARED');
   });
 
-  it('opens a batch for a project that declares no base branch', async () => {
+  // ISS-1311 moved this case rather than deleting it. A project could declare no base branch and
+  // promote to a live branch anyway — `release_model` said `promote` while `base_branch` was null
+  // — and this suite proved the create did not refuse it. `0312` ABORTS on exactly that row: a
+  // release chain BEGINS at the branch work merges into, so a project with no base branch has an
+  // empty chain and ships nothing. The absence still does not pass in silence; it is refused here.
+  it('refuses a release for a project that declares no base branch, naming the gate', async () => {
     const w = await seed({ baseBranch: null });
     const id = await seedIssue(w);
 
     const created = await create(w, [id]);
 
-    expect(created.status, JSON.stringify(created.body)).toBe(201);
-    expect(created.body.code).toBeUndefined();
+    expect(created.status, JSON.stringify(created.body)).toBe(409);
+    expect(created.body.code).toBe('NO_RELEASE_GATE');
+    expect(String(created.body.message)).toContain('release chain');
   });
 
-  it('answers the batch context with an absent branch rather than refusing to answer', async () => {
-    const w = await seed({ baseBranch: null });
+  it('answers the batch context with the branches the chain names', async () => {
+    const w = await seed({ chainLength: 2 });
     const id = await seedIssue(w);
     const created = await create(w, [id]);
     expect(created.status).toBe(201);
 
     const ctx = await contextOf(w, created.body.runId as string);
 
-    // A declared live branch and an undeclared base is a readable state, not a refusal: the
-    // context answers each branch as the project declares it.
     expect(ctx.status).toBe(200);
-    expect(ctx.body.baseBranch).toBeNull();
+    expect(ctx.body.baseBranch).toBe('main');
     expect(ctx.body.liveBranch).toBe('production');
+    expect(ctx.body.promotePlanned).toBe(true);
   });
 
-  it('names no branch line in the prompt where the project declares none', async () => {
-    const w = await seed({ baseBranch: null });
+  // The context answers an equality rather than a null the caller would have to interpret, and
+  // distinguishes the two shapes in `promotePlanned`.
+  it('answers live as the base branch where the chain crosses nothing', async () => {
+    const w = await seed({ chainLength: 1 });
+    const id = await seedIssue(w);
+    const created = await create(w, [id]);
+    expect(created.status).toBe(201);
+
+    const ctx = await contextOf(w, created.body.runId as string);
+
+    expect(ctx.status).toBe(200);
+    expect(ctx.body.baseBranch).toBe('main');
+    expect(ctx.body.liveBranch).toBe('main');
+    expect(ctx.body.promotePlanned).toBe(false);
+  });
+
+  it('names no liveBranch line in the prompt where the chain crosses nothing', async () => {
+    const w = await seed({ chainLength: 1 });
 
     const { prompt } = await cut(w);
 
-    expect(prompt).not.toContain('baseBranch:');
+    expect(prompt).not.toContain('liveBranch:');
+    expect(prompt).toContain('baseBranch: main');
     expect(prompt).toContain('## Batch Release');
   });
 });

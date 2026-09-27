@@ -52,24 +52,19 @@ const CONTRACT_KNOWLEDGE = {
 
 function project(over: {
   baseBranch?: string;
-  liveBranch?: string | null;
-  releaseModel?: 'none' | 'promote' | 'publish';
-  releaseStrategy?: string | null;
+  releaseChain?: { branch: string; from?: string }[];
   facts?: Record<string, unknown>;
   repoPath?: string | null;
   environments?: unknown;
 }) {
   const row = {
-    // Every real project on this deployment declares a repository — the pipeline cannot check one
-    // out otherwise — so the fixture declares one too. Since ISS-1048 the build/test obligations are
-    // conditioned on that declaration, and a fixture silently missing it would make the contract
-    // tests below pass by owing nothing at all. The repo-less case gets its own test.
+    // Every real project declares a repository — the pipeline cannot check one out otherwise — so
+    // the fixture does too: the build/test obligations hang off that declaration, and a fixture
+    // missing it would pass by owing nothing. The repo-less case is its own test.
     repoPath: over.repoPath === undefined ? '/srv/app' : over.repoPath,
     repoUrl: null,
     baseBranch: over.baseBranch ?? 'main',
-    liveBranch: over.liveBranch === undefined ? null : over.liveBranch,
-    releaseModel: over.releaseModel ?? 'none',
-    releaseStrategy: over.releaseStrategy ?? null,
+    releaseChain: over.releaseChain ?? [],
     agentConfig: {},
     // ISS-1069 — the default is a project that records no live address, because that is what 32 of
     // 32 projects held when the column was added. The filled case is passed in by the tests about it.
@@ -118,9 +113,7 @@ beforeEach(() => {
 // reason that cannot be evaluated taking the whole answer with it.
 describe('loadReleaseReadiness — every reason at once (ISS-1127)', () => {
   const RELEASING = {
-    releaseModel: 'promote' as const,
-    liveBranch: 'production',
-    releaseStrategy: 'merge-branch',
+    releaseChain: [{ branch: 'main' }, { branch: 'production', from: 'merge-branch' as const }],
     facts: { ...CONTRACT_KNOWLEDGE, 'release-procedure': 'cut a tag, then deploy' },
   };
 
@@ -159,7 +152,7 @@ describe('loadReleaseReadiness — every reason at once (ISS-1127)', () => {
 // `declarationRead` stops fallback fields reading as a confirmed absence.
 describe('loadReleaseReadiness — a declaration that could not be read', () => {
   it('says the declaration was not read rather than answering as though it were', async () => {
-    project({ releaseModel: 'publish' });
+    project({ releaseChain: [{ branch: 'main' }] });
     selectLimit.mockRejectedValue(new Error('projects table unreadable'));
 
     const out = await loadReleaseReadiness(PROJECT_ID);
@@ -175,7 +168,7 @@ describe('loadReleaseReadiness — a declaration that could not be read', () => 
   });
 
   it('says it WAS read for every project whose declaration answered', async () => {
-    project({ releaseModel: 'none' });
+    project({ releaseChain: [] });
 
     expect((await loadReleaseReadiness(PROJECT_ID))?.declarationRead).toBe(true);
   });
@@ -184,9 +177,7 @@ describe('loadReleaseReadiness — a declaration that could not be read', () => 
 // A gap is an absence somebody can act on, never a read nobody managed to make.
 describe('loadReleaseReadiness — a gap is never inferred from a read that failed', () => {
   const RELEASING = {
-    releaseModel: 'promote' as const,
-    liveBranch: 'production',
-    releaseStrategy: 'merge-branch',
+    releaseChain: [{ branch: 'main' }, { branch: 'production', from: 'merge-branch' as const }],
     facts: { ...CONTRACT_KNOWLEDGE, 'release-procedure': 'cut a tag, then deploy' },
   };
 
@@ -225,7 +216,7 @@ describe('loadReleaseReadiness — a gap is never inferred from a read that fail
 // eleven waiting issues had, and not the status move, which none of them had.
 describe('what readiness says about an empty roster', () => {
   it('names the status move rather than the merge', async () => {
-    project({ releaseModel: 'publish' });
+    project({ releaseChain: [{ branch: 'main' }] });
     liveBinding({ verify: PROBES, releaseRunnerLabel: 'box', rollback: { mode: 'coolify-image' } });
 
     const answer = await loadReleaseReadiness(PROJECT_ID);

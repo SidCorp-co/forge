@@ -2031,6 +2031,13 @@
       "when": 1809993600000,
       "tag": "0311_questions_die_with_their_issue",
       "breakpoints": true
+    },
+    {
+      "idx": 312,
+      "version": "7",
+      "when": 1810080000000,
+      "tag": "0312_a_release_chain_replaces_the_release_model",
+      "breakpoints": true
     }
   ]
 }

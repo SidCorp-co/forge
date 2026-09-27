@@ -123,11 +123,9 @@ export async function createReleaseBatch(
 
   const project = (await readProjectBranches(projectId)) ?? {
     baseBranch: null,
-    liveBranch: null,
-    releaseModel: 'none' as const,
-    releaseStrategy: null,
+    releaseChain: [],
   };
-  const { baseBranch, liveBranch, promotePlanned } = releaseBranches(project, project.releaseModel);
+  const { baseBranch, promotePlanned } = releaseBranches(project);
   const deployPlanned = plan.channels.length > 0;
   const firstVerify = plan.channels[0]?.verify ?? null;
   const commitBefore = firstVerify ? await readLiveCommit(firstVerify) : null;
@@ -209,8 +207,7 @@ export async function createReleaseBatch(
     runId: run.id,
     projectId,
     baseBranch,
-    liveBranch,
-    releaseModel: project.releaseModel,
+    releaseChain: project.releaseChain,
     plan,
     releaseRunnerPreferenceMet: preferenceMet,
     issues: issueRows.map((r) => ({

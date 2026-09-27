@@ -104,9 +104,9 @@ export function alsoBlocking(err: unknown, thrown: ReleaseBlockerCode): ReleaseB
 
 const REMEDY: Record<ReleaseBlockerCode, string> = {
   NO_RELEASE_GATE:
-    'This project has no release gate configured, so there is no release to start — an agent `closed` here is already `closed`. Declare a release model, or leave it at `none`.',
+    'This project has no release gate configured, so there is no release to start — an agent `closed` here is already `closed`. Declare a release chain, or leave it empty.',
   RELEASE_TARGET_UNDECLARED:
-    'This project declares a release model and has no active deploy binding carrying the `live` stage, so there is nowhere for a release to land. Add one on the integrations screen, or set the release model to `none`.',
+    'This project declares a release chain and has no active deploy binding carrying the `live` stage, so there is nowhere for a release to land. Add one on the integrations screen, or declare an empty release chain.',
   CLAIM_CONFLICT:
     '{n} issue(s) named here are not at the release gate, are not on this project, or are already claimed by a batch. Read the roster and send the issues it lists.',
   RELEASE_ROSTER_EMPTY:
@@ -311,8 +311,10 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
     const held = (details?.held as HeldIssueRef[] | undefined) ?? [];
     return held.length === 0 ? remedy : heldIssuesSentence(remedy, held);
   }
-  if (code === 'RELEASE_TARGET_UNDECLARED' && typeof details?.releaseModel === 'string') {
-    return `This project declares releaseModel \`${details.releaseModel}\` and has no active deploy binding carrying the \`live\` stage, so there is nowhere for a release to land. Add one on the integrations screen, or set the release model to \`none\`.`;
+  if (code === 'RELEASE_TARGET_UNDECLARED' && Array.isArray(details?.releaseChain)) {
+    const chain = details.releaseChain as { branch?: unknown }[];
+    const last = chain[chain.length - 1]?.branch;
+    return `This project's release chain ends at \`${String(last)}\` and it has no active deploy binding carrying the \`live\` stage, so there is nowhere for a release to land. Add one on the integrations screen, or declare an empty release chain.`;
   }
   if (code === 'RELEASE_RUNNER_AMBIGUOUS' && Array.isArray(details?.labels)) {
     const labels = details.labels as string[];

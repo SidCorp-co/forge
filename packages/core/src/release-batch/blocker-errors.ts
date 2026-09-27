@@ -1,3 +1,4 @@
+import type { ReleaseChain } from '../projects/release-chain.js';
 import type {
   HeldIssueRef,
   ReleaseBlockedError,
@@ -81,7 +82,9 @@ function errorFor(
     case 'RELEASE_TARGET_UNDECLARED':
       return new ReleaseTargetUndeclaredError(
         report.projectId,
-        (first.details?.releaseModel as 'promote' | 'publish') ?? 'publish',
+        Array.isArray(first.details?.releaseChain)
+          ? (first.details.releaseChain as ReleaseChain)
+          : [],
       );
     case 'CLAIM_CONFLICT':
       return new ClaimConflictError(ids, readClaimConflictDetails(first.details));

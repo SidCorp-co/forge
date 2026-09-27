@@ -12,10 +12,8 @@ import {
 
 const row: ProjectReleaseRow = {
   id: 'p1',
-  releaseModel: 'promote',
-  releaseStrategy: 'merge-branch',
   baseBranch: 'staging',
-  liveBranch: 'master',
+  releaseChain: [{ branch: 'staging' }, { branch: 'master', from: 'merge-branch' }],
 };
 
 let clock = new Date('2026-09-23T14:00:00Z').getTime();
@@ -42,9 +40,11 @@ afterEach(() => {
 });
 
 describe('liveReadingForRow', () => {
-  it('gives nothing for a project whose release model is not promote', async () => {
+  it('gives nothing for a project whose chain crosses nothing', async () => {
     const d = deps(async () => fakeDivergence());
-    await expect(liveReadingForRow({ ...row, releaseModel: 'publish' }, d)).resolves.toBeNull();
+    const publish = { ...row, releaseChain: [{ branch: 'staging' }] };
+    await expect(liveReadingForRow(publish, d)).resolves.toBeNull();
+    await expect(liveReadingForRow({ ...row, releaseChain: [] }, d)).resolves.toBeNull();
     expect(compares).toBe(0);
   });
 
@@ -116,7 +116,13 @@ describe('liveReadingForRow', () => {
   it('takes a new reading when the branches it was taken for changed', async () => {
     const d = deps(async () => fakeDivergence());
     await liveReadingForRow(row, d);
-    await liveReadingForRow({ ...row, liveBranch: 'production' }, d);
+    await liveReadingForRow(
+      {
+        ...row,
+        releaseChain: [{ branch: 'staging' }, { branch: 'production', from: 'merge-branch' }],
+      },
+      d,
+    );
     expect(compares).toBe(2);
   });
 
@@ -132,14 +138,40 @@ describe('liveReadingForRow', () => {
     expect((await liveReadingForRow(row, d))?.kind).toBe('measured');
   });
 
-  it('refuses a cherry-pick project by name without reading its repository', async () => {
+  it('refuses a chain whose last edge is a cherry-pick, without reading the repository', async () => {
     const divergence = vi.fn(async () => fakeDivergence());
-    const r = await liveReadingForRow({ ...row, releaseStrategy: 'cherry-pick' }, deps(divergence));
+    const r = await liveReadingForRow(
+      {
+        ...row,
+        releaseChain: [{ branch: 'staging' }, { branch: 'master', from: 'cherry-pick' }],
+      },
+      deps(divergence),
+    );
     expect(r?.kind === 'refused' && r.reason).toMatch(/cherry-pick/);
     expect(divergence).not.toHaveBeenCalled();
   });
 
-  it('refuses a promote project naming no base branch', async () => {
+  // ISS-1311 — the enum carried ONE strategy per project, so a cherry-pick anywhere on the path
+  // was the only cherry-pick there was. A chain can cross by cherry-pick early and merge later,
+  // and the shas are new from that edge down, so the reading is refused on the whole chain.
+  it('refuses a chain whose FIRST edge is a cherry-pick, although its last merges', async () => {
+    const divergence = vi.fn(async () => fakeDivergence());
+    const r = await liveReadingForRow(
+      {
+        ...row,
+        releaseChain: [
+          { branch: 'staging' },
+          { branch: 'stg2', from: 'cherry-pick' },
+          { branch: 'master', from: 'merge-branch' },
+        ],
+      },
+      deps(divergence),
+    );
+    expect(r?.kind === 'refused' && r.reason).toMatch(/cherry-pick/);
+    expect(divergence).not.toHaveBeenCalled();
+  });
+
+  it('refuses a crossing project naming no base branch', async () => {
     const r = await liveReadingForRow(
       { ...row, baseBranch: null },
       deps(async () => fakeDivergence()),

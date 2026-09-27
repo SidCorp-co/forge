@@ -226,7 +226,7 @@ describe('POST /api/projects', () => {
     });
 
     expect(txInsertProjectValues).toHaveBeenCalledWith(
-      expect.not.objectContaining({ liveBranch: expect.anything() }),
+      expect.not.objectContaining({ releaseChain: expect.anything() }),
     );
     expect(txInsertProjectValues).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -238,9 +238,8 @@ describe('POST /api/projects', () => {
         // ISS-274 — `baseBranch` is defaulted at create time so the resolver
         // never surfaces a null-base misconfig for new projects.
         baseBranch: 'main',
-        // ISS-1046 — `liveBranch` deliberately is NOT: a new project declares
-        // `releaseModel: 'none'`, which reads no live branch at all.
-        releaseModel: 'none',
+        // ISS-1311 — `releaseChain` deliberately is NOT: a new project takes the column's own
+        // `[]` default, which says it ships nothing until somebody declares otherwise.
       }),
     );
     expect(txInsertMembersValues).toHaveBeenCalledWith({
@@ -378,7 +377,7 @@ describe('GET /api/projects/:id', () => {
         description: 'desc',
         repoPath: '/repo',
         baseBranch: 'main',
-        liveBranch: 'master',
+        releaseChain: [{ branch: 'main' }, { branch: 'master', from: 'merge-branch' }],
         defaultDeviceId: null,
         agentConfig: null,
         webhookSecret: null,
@@ -440,7 +439,7 @@ describe('GET /api/projects/:id', () => {
         description: null,
         repoPath: null,
         baseBranch: null,
-        liveBranch: null,
+        releaseChain: [],
         defaultDeviceId: null,
         agentConfig: null,
         webhookSecret: null,
@@ -481,6 +480,9 @@ function patchedRow(over: Record<string, unknown> = {}): Record<string, unknown>
     orgId: ORG_ID,
     createdBy: 'uuid-owner',
     createdAt: new Date(),
+    // ISS-1311 — every read projection carries the chain, and `withRetiredReleaseAxes` derives the
+    // three retired names from it, so a row without it is a row core could not have selected.
+    releaseChain: [],
     ...over,
   };
 }
@@ -559,18 +561,16 @@ describe('PATCH /api/projects/:id', () => {
         description: 'a project',
         repoPath: '/home/user/repo',
         baseBranch: 'staging',
-        liveBranch: 'main',
+        releaseChain: [{ branch: 'staging' }, { branch: 'main', from: 'merge-branch' }],
         defaultDeviceId: '22222222-2222-4222-8222-222222222222',
         agentConfig: null,
         webhookSecret: null,
       }),
     ]);
 
-    // Touching `liveBranch` makes the PATCH read the row it is about to change,
-    // so the model and the branch are judged together (ISS-1046).
-    selectLimit.mockResolvedValueOnce([
-      { releaseModel: 'none', liveBranch: null, releaseStrategy: null },
-    ]);
+    // Touching either half makes the PATCH read the row it is about to change, so the chain and
+    // the base branch are judged together (ISS-1311).
+    selectLimit.mockResolvedValueOnce([{ baseBranch: 'main', releaseChain: [] }]);
 
     const res = await req('/11111111-1111-4111-8111-111111111111', {
       method: 'PATCH',
@@ -578,7 +578,7 @@ describe('PATCH /api/projects/:id', () => {
         description: 'a project',
         repoPath: '/home/user/repo',
         baseBranch: 'staging',
-        liveBranch: 'main',
+        releaseChain: [{ branch: 'staging' }, { branch: 'main', from: 'merge-branch' }],
         defaultDeviceId: '22222222-2222-4222-8222-222222222222',
       }),
       token,
@@ -588,7 +588,7 @@ describe('PATCH /api/projects/:id', () => {
       description: 'a project',
       repoPath: '/home/user/repo',
       baseBranch: 'staging',
-      liveBranch: 'main',
+      releaseChain: [{ branch: 'staging' }, { branch: 'main', from: 'merge-branch' }],
       defaultDeviceId: '22222222-2222-4222-8222-222222222222',
     });
   });
@@ -637,7 +637,7 @@ describe('PATCH /api/projects/:id', () => {
         description: null,
         repoPath: null,
         baseBranch: null,
-        liveBranch: null,
+        releaseChain: [],
         defaultDeviceId: null,
         agentConfig: null,
         webhookSecret: null,
@@ -980,7 +980,10 @@ describe('GET /api/projects/:id/issues/:issueId/branch-config (ISS-135 PR-A)', (
     selectLimit
       .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
       .mockResolvedValueOnce([
-        { baseBranch: 'develop', liveBranch: 'release', releaseModel: 'promote' },
+        {
+          baseBranch: 'develop',
+          releaseChain: [{ branch: 'develop' }, { branch: 'release', from: 'merge-branch' }],
+        },
       ])
       .mockResolvedValueOnce([]);
 
@@ -996,7 +999,10 @@ describe('GET /api/projects/:id/issues/:issueId/branch-config (ISS-135 PR-A)', (
     selectLimit
       .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
       .mockResolvedValueOnce([
-        { baseBranch: 'develop', liveBranch: 'release', releaseModel: 'promote' },
+        {
+          baseBranch: 'develop',
+          releaseChain: [{ branch: 'develop' }, { branch: 'release', from: 'merge-branch' }],
+        },
       ])
       .mockResolvedValueOnce([{ id: IID, sessionContext: null }]);
 
@@ -1020,7 +1026,10 @@ describe('GET /api/projects/:id/issues/:issueId/branch-config (ISS-135 PR-A)', (
     selectLimit
       .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
       .mockResolvedValueOnce([
-        { baseBranch: 'develop', liveBranch: 'release', releaseModel: 'promote' },
+        {
+          baseBranch: 'develop',
+          releaseChain: [{ branch: 'develop' }, { branch: 'release', from: 'merge-branch' }],
+        },
       ])
       .mockResolvedValueOnce([
         {
@@ -1048,7 +1057,7 @@ describe('GET /api/projects/:id/issues/:issueId/branch-config (ISS-135 PR-A)', (
     projectAccess.mockResolvedValueOnce(access('member'));
     selectLimit
       .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ baseBranch: null, liveBranch: null }])
+      .mockResolvedValueOnce([{ baseBranch: null, releaseChain: [] }])
       .mockResolvedValueOnce([{ id: IID, sessionContext: null }]);
 
     const res = await req(`/${PID}/issues/${IID}/branch-config`, { token });
@@ -1211,15 +1220,18 @@ describe('environmentsPatchSchema · limits (ISS-767, ISS-1069)', () => {
 });
 
 /**
- * ISS-1046 — `projects.live_branch` is readable only under `releaseModel: 'promote'`.
+ * ISS-1311 / ADR 0003 — the release shape is `projects.release_chain`, and the three names that
+ * spelled it are answered on the way OUT and refused on the way IN.
  *
- * 25 of the 32 fleet projects carry a live branch nothing promotes to: the migration KEEPS
- * those values rather than discarding a real declaration, so every reader has to ask the
- * model. `readableLiveBranch` is that one rule, and these three doors are the REST surface
- * it was missed on — each one projected the raw column, and none of them returned the model
- * a caller would need to interpret it.
+ * This is the expand half of a priced expand/contract amnesty: `forge-plugin` reads `releaseModel`,
+ * `liveBranch` and `releaseStrategy`, the two repositories ship on different clocks, and the `forge`
+ * CLI answers with core — so a read keeps answering them, derived one way from the chain. A WRITE
+ * does not, because a second way to say what the chain says is a fallback rather than a projection.
+ *
+ * These cases replace the ISS-1046 block that read a stale `live_branch` through the enum. That
+ * staleness cannot exist here: the column is gone, so there is no second value to withhold.
  */
-describe('the REST doors read `liveBranch` through the release model', () => {
+describe('the REST doors answer the retired axes from the chain, and refuse them on a write', () => {
   const PID = '11111111-1111-4111-8111-111111111111';
   const IID = '22222222-2222-4222-8222-222222222222';
 
@@ -1246,78 +1258,203 @@ describe('the REST doors read `liveBranch` through the release model', () => {
     const res = await req(`/${PID}`, { token });
     expect(res.status).toBe(200);
     return (await res.json()) as {
+      releaseChain: { branch: string; from?: string }[];
       liveBranch: string | null;
       releaseModel: string | null;
       releaseStrategy: string | null;
     };
   }
 
-  it('GET returns the live branch under `promote`, with both declared axes beside it', async () => {
+  it('GET answers the chain, and the three retired names derived from it', async () => {
     const body = await detail({
-      liveBranch: 'production',
-      releaseModel: 'promote',
-      releaseStrategy: 'merge-branch',
+      releaseChain: [{ branch: 'main' }, { branch: 'production', from: 'merge-branch' }],
     });
+    expect(body.releaseChain).toEqual([
+      { branch: 'main' },
+      { branch: 'production', from: 'merge-branch' },
+    ]);
     expect(body.liveBranch).toBe('production');
     expect(body.releaseModel).toBe('promote');
     expect(body.releaseStrategy).toBe('merge-branch');
   });
 
-  it('GET withholds a stale live branch under `publish`, and names the model instead', async () => {
-    const body = await detail({
-      liveBranch: 'production',
-      releaseModel: 'publish',
-      releaseStrategy: null,
-    });
+  it('GET answers `publish` and no live branch for a chain that crosses nothing', async () => {
+    const body = await detail({ releaseChain: [{ branch: 'main' }] });
     expect(body.liveBranch).toBeNull();
-    // The model travels with it: "promotes to no branch" and "does not promote" are
-    // different answers, and before ISS-1046 both came back as the stale branch.
     expect(body.releaseModel).toBe('publish');
+    expect(body.releaseStrategy).toBeNull();
   });
 
-  it('GET withholds a stale live branch under `none`', async () => {
-    const body = await detail({ liveBranch: 'production', releaseModel: 'none' });
+  it('GET answers `none` for an empty chain, which is a declaration and not a gap', async () => {
+    const body = await detail({ releaseChain: [] });
     expect(body.liveBranch).toBeNull();
     expect(body.releaseModel).toBe('none');
   });
 
-  it('PATCH does not echo back a live branch the model it just set cannot read', async () => {
+  it('GET derives the LAST crossing of a chain longer than two, not the first', async () => {
+    const body = await detail({
+      releaseChain: [
+        { branch: 'main' },
+        { branch: 'stg', from: 'merge-branch' },
+        { branch: 'live', from: 'cherry-pick' },
+      ],
+    });
+    expect(body.liveBranch).toBe('live');
+    expect(body.releaseStrategy).toBe('cherry-pick');
+  });
+
+  it.each([
+    ['releaseModel', { releaseModel: 'none' }],
+    ['liveBranch', { liveBranch: 'production' }],
+    ['releaseStrategy', { releaseStrategy: 'merge-branch' }],
+  ])('PATCH refuses %s by name, and names releaseChain as what to send', async (key, patch) => {
+    const token = await signUserToken('uuid-owner');
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+
+    const res = await req(`/${PID}`, { method: 'PATCH', body: JSON.stringify(patch), token });
+
+    expect(res.status).toBe(400);
+    const text = await res.text();
+    expect(text).toContain(`\`${key}\` was retired by ISS-1311`);
+    expect(text).toContain('releaseChain');
+    expect(updateSet).not.toHaveBeenCalled();
+  });
+
+  it('PATCH refuses a chain whose first entry declares a crossing', async () => {
+    const token = await signUserToken('uuid-owner');
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+
+    const res = await req(`/${PID}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ releaseChain: [{ branch: 'main', from: 'merge-branch' }] }),
+      token,
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.text()).toContain('RELEASE_CHAIN_FIRST_CROSSES_NOTHING');
+    expect(updateSet).not.toHaveBeenCalled();
+  });
+
+  // ISS-1311 — `releaseModelGap` silently wrote `merge-branch` into a promote project that named
+  // no strategy. That default is the unreported normalisation ADR 0003 removes, so the same input
+  // is now refused rather than filled in.
+  it('PATCH refuses an entry after the first that declares no crossing, rather than defaulting it', async () => {
+    const token = await signUserToken('uuid-owner');
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+
+    const res = await req(`/${PID}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ releaseChain: [{ branch: 'main' }, { branch: 'production' }] }),
+      token,
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.text()).toContain('RELEASE_CHAIN_EDGE_UNDECLARED');
+    expect(updateSet).not.toHaveBeenCalled();
+  });
+
+  it('PATCH refuses a chain that names the same branch twice', async () => {
+    const token = await signUserToken('uuid-owner');
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+
+    const res = await req(`/${PID}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        releaseChain: [{ branch: 'main' }, { branch: 'main', from: 'merge-branch' }],
+      }),
+      token,
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.text()).toContain('RELEASE_CHAIN_BRANCH_REPEATED');
+    expect(updateSet).not.toHaveBeenCalled();
+  });
+
+  it('PATCH refuses a chain and a base branch that name different first branches', async () => {
     const token = await signUserToken('uuid-owner');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
     projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
-    updateReturning.mockResolvedValueOnce([
-      patchedRow({
-        baseBranch: 'main',
-        liveBranch: 'production',
-        releaseModel: 'none',
-        releaseStrategy: null,
-      }),
-    ]);
+    selectLimit.mockResolvedValueOnce([{ baseBranch: 'main', releaseChain: [] }]);
+
+    const res = await req(`/${PID}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ baseBranch: 'dev', releaseChain: [{ branch: 'main' }] }),
+      token,
+    });
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { message?: string };
+    expect(body.message).toContain('RELEASE_CHAIN_BASE_MISMATCH');
+    expect(body.message).toContain('`main`');
+    expect(body.message).toContain('`dev`');
+  });
+
+  it('PATCH refuses a base branch sent alone that would part it from a stored chain', async () => {
+    const token = await signUserToken('uuid-owner');
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
     selectLimit.mockResolvedValueOnce([
-      { releaseModel: 'promote', liveBranch: 'production', releaseStrategy: 'merge-branch' },
+      {
+        baseBranch: 'main',
+        releaseChain: [{ branch: 'main' }, { branch: 'live', from: 'merge-branch' }],
+      },
     ]);
 
     const res = await req(`/${PID}`, {
       method: 'PATCH',
-      body: JSON.stringify({ releaseModel: 'none' }),
+      body: JSON.stringify({ baseBranch: 'dev' }),
       token,
     });
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { liveBranch: string | null; releaseModel: string };
-    // The ROW keeps the value — the migration does not discard a real declaration — but the
-    // response does not carry it, or the next PATCH writes it straight back.
-    expect(body.liveBranch).toBeNull();
-    expect(body.releaseModel).toBe('none');
+
+    expect(res.status).toBe(400);
+    expect(await res.text()).toContain('RELEASE_CHAIN_BASE_MISMATCH');
   });
 
-  it('branch-config resolves a stale live branch to null under `publish`', async () => {
+  it('PATCH accepts a base branch and a chain that agree, and writes both', async () => {
+    const token = await signUserToken('uuid-owner');
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
+    updateReturning.mockResolvedValueOnce([
+      patchedRow({ baseBranch: 'dev', releaseChain: [{ branch: 'dev' }] }),
+    ]);
+    selectLimit.mockResolvedValueOnce([{ baseBranch: 'main', releaseChain: [] }]);
+
+    const res = await req(`/${PID}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ baseBranch: 'dev', releaseChain: [{ branch: 'dev' }] }),
+      token,
+    });
+
+    expect(res.status).toBe(200);
+    expect(updateSet).toHaveBeenCalledWith({
+      baseBranch: 'dev',
+      releaseChain: [{ branch: 'dev' }],
+    });
+  });
+
+  it('PATCH accepts a base branch alone where the project ships nothing', async () => {
+    const token = await signUserToken('uuid-owner');
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
+    updateReturning.mockResolvedValueOnce([patchedRow({ baseBranch: 'dev', releaseChain: [] })]);
+    selectLimit.mockResolvedValueOnce([{ baseBranch: 'main', releaseChain: [] }]);
+
+    const res = await req(`/${PID}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ baseBranch: 'dev' }),
+      token,
+    });
+
+    expect(res.status).toBe(200);
+    expect(updateSet).toHaveBeenCalledWith({ baseBranch: 'dev' });
+  });
+
+  it('branch-config resolves no live branch for a chain that crosses nothing', async () => {
     const token = await signUserToken('uuid-user');
     projectAccess.mockResolvedValueOnce(access('member'));
     selectLimit
       .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([
-        { baseBranch: 'develop', liveBranch: 'release', releaseModel: 'publish' },
-      ])
+      .mockResolvedValueOnce([{ baseBranch: 'develop', releaseChain: [{ branch: 'develop' }] }])
       .mockResolvedValueOnce([{ id: IID, sessionContext: null }]);
 
     const res = await req(`/${PID}/issues/${IID}/branch-config`, { token });
@@ -1334,8 +1471,8 @@ describe('the REST doors read `liveBranch` through the release model', () => {
  * `pipeline-config-service.ts` announces a declaration change made through the
  * dedicated pipeline-config route. This one takes a wide-open `agentConfig`
  * jsonb, so `statusEntryCriteria` can be replaced without that service running
- * at all — and `baseBranch`, `liveBranch` and `releaseModel` are read by
- * `work-evidence.ts:collectWorkEvidence`, so moving any of them moves the
+ * at all — and `baseBranch` and `releaseChain` are read by
+ * `work-evidence.ts:collectWorkEvidence`, so moving either of them moves the
  * `work_evidence` criterion for every issue on the project.
  */
 describe('PATCH /api/projects/:id — contractInputChanged', () => {
@@ -1353,9 +1490,7 @@ describe('PATCH /api/projects/:id — contractInputChanged', () => {
     const token = await signUserToken('uuid-owner');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
     projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
-    selectLimit.mockResolvedValue([
-      { releaseModel: 'none', liveBranch: null, releaseStrategy: null },
-    ]);
+    selectLimit.mockResolvedValue([{ baseBranch: 'release/next', releaseChain: [] }]);
     updateReturning.mockResolvedValueOnce([
       patchedRow({ agentConfig: null, webhookSecret: null, ...row }),
     ]);
@@ -1375,16 +1510,15 @@ describe('PATCH /api/projects/:id — contractInputChanged', () => {
     expect(heard).toEqual([]);
   });
 
-  it.each(['baseBranch', 'liveBranch', 'releaseModel'])(
-    'announces a write of `%s`, which work evidence reads',
-    async (field) => {
-      const value = field === 'releaseModel' ? 'none' : 'release/next';
-      const res = await patchAs({ [field]: value });
-      expect(res.status).toBe(200);
-      expect(heard).toHaveLength(1);
-      expect(heard[0]?.reason).toContain(field);
-    },
-  );
+  it.each([
+    ['baseBranch', 'release/next' as unknown],
+    ['releaseChain', [{ branch: 'release/next' }] as unknown],
+  ])('announces a write of `%s`, which work evidence reads', async (field, value) => {
+    const res = await patchAs({ [field]: value });
+    expect(res.status).toBe(200);
+    expect(heard).toHaveLength(1);
+    expect(heard[0]?.reason).toContain(field);
+  });
 
   it('stays silent for a patch that names none of them', async () => {
     const res = await patchAs({ name: 'New name' });

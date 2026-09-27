@@ -90,9 +90,7 @@ function gated() {
   projectSelectLimit.mockResolvedValueOnce([
     {
       baseBranch: 'dev',
-      liveBranch: 'master',
-      releaseModel: 'promote',
-      releaseStrategy: 'merge-branch',
+      releaseChain: [{ branch: 'dev' }, { branch: 'master', from: 'merge-branch' }],
     },
   ]);
   listBindings.mockResolvedValueOnce([{ binding: { provider: 'coolify' }, connection: {} }]);
@@ -100,13 +98,11 @@ function gated() {
 
 /**
  * A project that declares it ships nowhere. Since ISS-1046 this is the ONLY ungated shape:
- * the gate reads `releaseModel` and does not infer from branch names or provider identity, so
+ * the gate reads `releaseChain` and does not infer from branch names or provider identity, so
  * a trunk project and a storefront are ungated for the same declared reason or not at all.
  */
 function ungated() {
-  projectSelectLimit.mockResolvedValueOnce([
-    { baseBranch: 'main', liveBranch: null, releaseModel: 'none', releaseStrategy: null },
-  ]);
+  projectSelectLimit.mockResolvedValueOnce([{ baseBranch: 'main', releaseChain: [] }]);
 }
 
 /** A project that declares a release but has no live deploy binding to land it on. */
@@ -114,9 +110,7 @@ function undeclaredTarget() {
   projectSelectLimit.mockResolvedValueOnce([
     {
       baseBranch: 'dev',
-      liveBranch: 'master',
-      releaseModel: 'promote',
-      releaseStrategy: 'merge-branch',
+      releaseChain: [{ branch: 'dev' }, { branch: 'master', from: 'merge-branch' }],
     },
   ]);
   listBindings.mockResolvedValueOnce([]);
@@ -221,7 +215,7 @@ describe('who may still write `closed`', () => {
     expect(result.status).toBe('closed');
   });
 
-  it('an agent on a project that declares `releaseModel: none`', async () => {
+  it('an agent on a project whose release chain is empty', async () => {
     ungated();
     queueUpdate('closed');
 
@@ -265,6 +259,6 @@ describe('a project that declares a release it cannot land', () => {
 
     expect(String(err)).toContain(PROJECT_ID);
     expect(String(err)).toContain("no active deploy binding carrying the 'live' stage");
-    expect(String(err)).toContain("releaseModel='none'");
+    expect(String(err)).toContain('declare an empty release chain');
   });
 });
