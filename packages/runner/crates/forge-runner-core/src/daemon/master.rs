@@ -4104,9 +4104,14 @@ mod tests {
         let objective = own.find(OBJECTIVE).unwrap_or_else(|| {
             panic!("the master's own section must say `{OBJECTIVE}`: without it a row nobody decided about reads as a quiet pass")
         });
+        let after_pass_over = own[pass_over..]
+            .find("\n\n")
+            .map_or(own.len(), |end| pass_over + end + 2);
         assert!(
-            objective > pass_over,
-            "the objective is the second half of the pass-over rule and follows it"
+            own[after_pass_over..]
+                .trim_start_matches('*')
+                .starts_with(OBJECTIVE),
+            "the objective is the second half of the pass-over rule and is the paragraph directly after it"
         );
         let paragraph = own[objective..].split("\n\n").next().unwrap();
         assert!(
