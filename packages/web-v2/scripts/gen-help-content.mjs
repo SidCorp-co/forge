@@ -3,31 +3,19 @@
 // Markdown → a static module the web app imports, so the content ships inside
 // the Next build (no runtime fs, no API, no output-tracing needed under
 // `output: standalone`). Run by `dev`/`build` (see package.json). Skips README.md
-// (the authoring-rules doc) and any file without frontmatter.
+// (the authoring-rules doc) and refuses, by name, any other file without frontmatter.
 
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { readAudience, readPage } from "./help-frontmatter.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "..");
 const CONTENT_DIR = path.join(root, "content", "help");
 const OUT_FILE = path.join(root, "src", "features", "docs", "help-content.generated.ts");
-
-/** Parse a leading `--- ... ---` frontmatter block → { meta, body }. */
-function parseFrontmatter(raw) {
-  const m = /^---\n([\s\S]*?)\n---\n?/.exec(raw);
-  if (!m) return null;
-  const meta = {};
-  for (const line of m[1].split("\n")) {
-    const i = line.indexOf(":");
-    if (i === -1) continue;
-    const key = line.slice(0, i).trim();
-    let val = line.slice(i + 1).trim().replace(/^["']|["']$/g, "");
-    meta[key] = val;
-  }
-  return { meta, body: raw.slice(m[0].length) };
-}
+// The slugs alone, for the middleware, which would otherwise bundle every page body to learn them.
+const SLUGS_FILE = path.join(root, "src", "features", "docs", "help-slugs.generated.ts");
 
 async function walk(dir) {
   const out = [];
@@ -43,21 +31,34 @@ async function walk(dir) {
 
 const files = await walk(CONTENT_DIR);
 const docs = [];
+const refused = [];
 for (const abs of files.sort()) {
   const raw = await fs.readFile(abs, "utf8");
-  const parsed = parseFrontmatter(raw);
-  if (!parsed) continue; // no frontmatter → not a published page
   const slug = path
     .relative(CONTENT_DIR, abs)
     .replace(/\\/g, "/")
     .replace(/\.mdx?$/i, "");
+  let parsed;
+  let audience;
+  try {
+    parsed = readPage(raw, path.relative(root, abs));
+    audience = readAudience(parsed.meta, path.relative(root, abs));
+  } catch (err) {
+    refused.push(err.message);
+    continue;
+  }
   docs.push({
     slug,
     title: parsed.meta.title ?? slug,
     section: parsed.meta.section ?? "Guides",
     order: Number(parsed.meta.order ?? 100),
+    audience,
     body: parsed.body,
   });
+}
+if (refused.length > 0) {
+  console.error(`gen-help-content: refused ${refused.length} page(s):\n  ${refused.join("\n  ")}`);
+  process.exit(1);
 }
 
 const banner =
@@ -66,10 +67,18 @@ const banner =
 const out =
   banner +
   "export interface HelpDoc {\n" +
-  "  slug: string;\n  title: string;\n  section: string;\n  order: number;\n  body: string;\n" +
+  "  slug: string;\n  title: string;\n  section: string;\n  order: number;\n" +
+  '  audience: "user" | "assistant-setup";\n  body: string;\n' +
   "}\n\n" +
-  `export const HELP_DOCS: HelpDoc[] = ${JSON.stringify(docs, null, 2)};\n`;
+  // A page may quote `${NAME}` (a config the reader pastes); as \u0024 it stays a plain string
+  // to any reader of this file instead of looking like a template literal nobody interpolated.
+  `export const HELP_DOCS: HelpDoc[] = ${JSON.stringify(docs, null, 2).replaceAll("${", "\\u0024{")};\n`;
 
 await fs.mkdir(path.dirname(OUT_FILE), { recursive: true });
 await fs.writeFile(OUT_FILE, out, "utf8");
+await fs.writeFile(
+  SLUGS_FILE,
+  `${banner}export const HELP_SLUGS: readonly string[] = ${JSON.stringify(docs.map((d) => d.slug), null, 2)};\n`,
+  "utf8",
+);
 console.log(`gen-help-content: wrote ${docs.length} docs → ${path.relative(root, OUT_FILE)}`);

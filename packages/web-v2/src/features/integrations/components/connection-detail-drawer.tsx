@@ -17,6 +17,7 @@ import { PROVIDER_MODULES, providerLabel } from "../providers/registry";
 import type { BindingSummary, DeployStage, StatusCard } from "../types";
 import { AgentAccessControl } from "./agent-access-control";
 import { DeliveryLogViewer } from "./delivery-log-viewer";
+import { BindingReleaseRunnerField } from "./release-runner-field";
 import { STAGE_OPTIONS, StatusPill, scopeLabel } from "./status-pill";
 
 /** Adaptive connection detail (ISS-402). Opened from a directory provider card;
@@ -216,6 +217,18 @@ function ConfigPane({
       {binding && (
         <section className="mt-4">
           <AgentAccessControl projectId={projectId} binding={binding} canEdit={canEdit} />
+        </section>
+      )}
+      {/* ISS-1275 — the binding tier of the release runner label, beside the other
+          binding-scoped control on this pane. It renders itself away for a binding
+          that carries no live stage. */}
+      {binding && (
+        <section className="mt-4">
+          <BindingReleaseRunnerField
+            projectId={projectId}
+            binding={binding}
+            canEdit={canEdit}
+          />
         </section>
       )}
       {binding?.connectionId && (

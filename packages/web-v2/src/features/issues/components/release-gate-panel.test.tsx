@@ -6,7 +6,7 @@
 
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReleaseRoster } from "../api";
 import { ReleaseGatePanel } from "./release-gate-panel";
@@ -114,21 +114,21 @@ describe("ReleaseGatePanel — the three unknowns render differently", () => {
 
 describe("ReleaseGatePanel — who deploys this", () => {
   it("names the project's live deploy target rather than saying nobody deploys it", () => {
-    state({ channels: ["coolify"] });
+    state({ channels: ["coolify"], issues: ISSUES });
     renderPanel();
     expect(screen.getByText("coolify")).toBeInTheDocument();
     expect(screen.queryByText("nothing — a person deploys")).not.toBeInTheDocument();
   });
 
   it("names every target where the project declares more than one", () => {
-    state({ channels: ["coolify", "vercel"] });
+    state({ channels: ["coolify", "vercel"], issues: ISSUES });
     renderPanel();
     expect(screen.getByText("coolify")).toBeInTheDocument();
     expect(screen.getByText("vercel")).toBeInTheDocument();
   });
 
   it("says a person deploys this only where the roster names no target at all", () => {
-    state({ channels: [] });
+    state({ channels: [], issues: ISSUES });
     renderPanel();
     expect(screen.getByText("nothing — a person deploys")).toBeInTheDocument();
   });
@@ -207,9 +207,51 @@ describe("ReleaseGatePanel — releasing", () => {
     expect(screen.getByText(/1 shipping now/)).toBeInTheDocument();
   });
 
-  it("offers an empty state when the gate exists but nothing is waiting", () => {
+});
+
+// An empty state costs what it is worth: a gate holding nothing is one line
+// ahead of the list, never a card that pushes the first issue off the screen.
+describe("ReleaseGatePanel — nothing is waiting", () => {
+  it("is one line naming the gate and that nothing waits", () => {
     state({ issues: [] });
     renderPanel();
-    expect(screen.getByText("Nothing is waiting")).toBeInTheDocument();
+    const line = screen.getByRole("region", { name: "Awaiting release" });
+    expect(line.className).toContain("h-10");
+    expect(line).toHaveTextContent("None waiting");
+  });
+
+  it("offers no release action, no roster and no deploy sentence", () => {
+    state({ issues: [], channels: ["coolify"] });
+    renderPanel();
+    expect(screen.queryByRole("button", { name: /release/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+    expect(screen.queryByText("coolify")).not.toBeInTheDocument();
+  });
+
+  it("says when the next cut is, on the line itself", () => {
+    state({ issues: [], nextCutAt: "2026-08-26T15:00:00.000Z" });
+    renderPanel();
+    const line = screen.getByRole("region", { name: "Awaiting release" });
+    expect(within(line).getByText("Next cut in 3h")).toBeInTheDocument();
+  });
+
+  it("says a cut is due, in words that fit a phone, once its time has passed", () => {
+    state({ issues: [], nextCutAt: "2026-08-26T11:00:00.000Z" });
+    renderPanel();
+    expect(screen.getByText("Cut due now")).toBeInTheDocument();
+  });
+
+  it("says a person releases where nothing is scheduled", () => {
+    state({ issues: [], nextCutAt: null });
+    renderPanel();
+    expect(screen.getByText("A person releases")).toBeInTheDocument();
+  });
+
+  it("goes back to the full card the moment one issue is waiting", () => {
+    state({ issues: ISSUES.slice(0, 1) });
+    renderPanel();
+    expect(screen.queryByRole("region", { name: "Awaiting release" })).not.toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Select ISS-1 for release" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /release now/i })).toBeInTheDocument();
   });
 });

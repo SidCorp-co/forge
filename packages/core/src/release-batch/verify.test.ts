@@ -479,7 +479,7 @@ describe('a probe that never answers', () => {
     const started = Date.now();
     const outcome = await verifyDeployed({
       cfg: { probes: [{ url: host.url }], timeoutSeconds: 1, stableReads: 1 },
-      commitBefore: null,
+      commitBefore: OLD,
       expected: null,
       sleep: async () => {},
     });

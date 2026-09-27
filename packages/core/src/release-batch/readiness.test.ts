@@ -41,10 +41,10 @@ vi.mock('../integrations/store.js', async (importActual) => {
 
 const { loadReleaseReadiness } = await import('./readiness.js');
 
-// `readiness.ts` asks the registry what a provider DECLARES (its release step, its rollback representability,
-// its webhook header) rather than naming providers (ISS-1071). Reading an empty registry throws
-// rather than answering "no provider declares anything", which is the answer that would have made
-// these assertions pass while describing a deployment with no integrations in it.
+// The code under test asks the registry what a provider DECLARES (its rollback representability,
+// its webhook header) rather than naming providers (ISS-1071). An empty registry throws rather
+// than answering "no provider declares anything", which would pass these assertions while
+// describing a deployment with no integrations in it.
 const { registerAllIntegrations } = await import('../integrations/register-all.js');
 registerAllIntegrations();
 
@@ -57,9 +57,7 @@ const CONTRACT_KNOWLEDGE = {
 
 function project(over: {
   baseBranch?: string;
-  liveBranch?: string | null;
-  releaseModel?: 'none' | 'promote' | 'publish';
-  releaseStrategy?: string | null;
+  releaseChain?: { branch: string; from?: string }[];
   facts?: Record<string, unknown>;
   repoPath?: string | null;
   environments?: unknown;
@@ -72,9 +70,7 @@ function project(over: {
     repoPath: over.repoPath === undefined ? '/srv/app' : over.repoPath,
     repoUrl: null,
     baseBranch: over.baseBranch ?? 'main',
-    liveBranch: over.liveBranch === undefined ? null : over.liveBranch,
-    releaseModel: over.releaseModel ?? 'none',
-    releaseStrategy: over.releaseStrategy ?? null,
+    releaseChain: over.releaseChain ?? [],
     agentConfig: {},
     // ISS-1069 — the default is a project that records no live address, because that is what 32 of
     // 32 projects held when the column was added. The filled case is passed in by the tests about it.
@@ -132,7 +128,7 @@ describe('loadReleaseReadiness', () => {
     expect(out?.hasReleaseGate).toBe(false);
     expect(out?.gaps).toEqual(expect.arrayContaining(['build-commands', 'test-commands']));
     expect(out?.gaps).not.toContain('release-procedure');
-    expect(out?.gaps).not.toContain('release-runner');
+    expect(out?.gaps).not.toContain('release-runner-ambiguous');
   });
 
   it('owes no build or test commands to a project that declares no repository', async () => {
@@ -154,7 +150,9 @@ describe('loadReleaseReadiness', () => {
   });
 
   it('names every release gap at once on a project that does declare a release', async () => {
-    project({ releaseModel: 'promote', liveBranch: 'production', releaseStrategy: 'merge-branch' });
+    project({
+      releaseChain: [{ branch: 'main' }, { branch: 'production', from: 'merge-branch' }],
+    });
     liveBinding();
 
     const out = await loadReleaseReadiness(PROJECT_ID);
@@ -163,7 +161,6 @@ describe('loadReleaseReadiness', () => {
     expect(out?.gaps.sort()).toEqual([
       'live-commit-endpoint',
       'release-procedure',
-      'release-runner',
       'rollback',
       'verify-probes',
     ]);
@@ -171,9 +168,7 @@ describe('loadReleaseReadiness', () => {
 
   it('drops each release gap as its half is declared', async () => {
     project({
-      releaseModel: 'promote',
-      liveBranch: 'production',
-      releaseStrategy: 'merge-branch',
+      releaseChain: [{ branch: 'main' }, { branch: 'production', from: 'merge-branch' }],
       facts: { ...CONTRACT_KNOWLEDGE, 'release-procedure': 'cut a tag, then deploy' },
       environments: LIVE_DECLARED,
     });
@@ -193,9 +188,7 @@ describe('loadReleaseReadiness', () => {
 
   it('names the binding still declaring a coolify rollback as free text', async () => {
     project({
-      releaseModel: 'promote',
-      liveBranch: 'production',
-      releaseStrategy: 'merge-branch',
+      releaseChain: [{ branch: 'main' }, { branch: 'production', from: 'merge-branch' }],
       facts: { ...CONTRACT_KNOWLEDGE, 'release-procedure': 'cut a tag, then deploy' },
       environments: LIVE_DECLARED,
     });
@@ -225,7 +218,7 @@ describe('loadReleaseReadiness', () => {
   });
 
   it('reports the release gaps of a publish project', async () => {
-    project({ releaseModel: 'publish' });
+    project({ releaseChain: [{ branch: 'main' }] });
     liveBinding({ releaseRunnerLabel: 'epod-prod' });
 
     const out = await loadReleaseReadiness(PROJECT_ID);
@@ -239,7 +232,7 @@ describe('loadReleaseReadiness', () => {
   });
 
   it('names a declared release with nowhere to land as its own gap', async () => {
-    project({ releaseModel: 'publish' });
+    project({ releaseChain: [{ branch: 'main' }] });
     listBindings.mockResolvedValue([]);
 
     const out = await loadReleaseReadiness(PROJECT_ID);
@@ -250,7 +243,7 @@ describe('loadReleaseReadiness', () => {
   });
 
   it('reports disagreeing runner labels as a gap rather than throwing', async () => {
-    project({ releaseModel: 'publish' });
+    project({ releaseChain: [{ branch: 'main' }] });
     listBindings.mockResolvedValue([
       {
         binding: {
@@ -285,7 +278,9 @@ describe('loadReleaseReadiness', () => {
   });
 
   it('names the undeclared probes of a releasing project as their own gap', async () => {
-    project({ releaseModel: 'promote', liveBranch: 'production', releaseStrategy: 'merge-branch' });
+    project({
+      releaseChain: [{ branch: 'main' }, { branch: 'production', from: 'merge-branch' }],
+    });
     liveBinding({ releaseRunnerLabel: 'prod-box', rollback: { mode: 'coolify-image' } });
 
     const out = await loadReleaseReadiness(PROJECT_ID);
@@ -298,7 +293,7 @@ describe('loadReleaseReadiness', () => {
 describe('loadReleaseReadiness — more than one live channel', () => {
   it('names two live channels as their own gap, even where nothing else is missing', async () => {
     project({
-      releaseModel: 'publish',
+      releaseChain: [{ branch: 'main' }],
       facts: { ...CONTRACT_KNOWLEDGE, 'release-procedure': 'ship it' },
       environments: LIVE_DECLARED,
     });
@@ -329,7 +324,7 @@ describe('loadReleaseReadiness — more than one live channel', () => {
 
   it('reports no multi-channel gap for the one-channel projects the fleet actually has', async () => {
     project({
-      releaseModel: 'publish',
+      releaseChain: [{ branch: 'main' }],
       facts: { ...CONTRACT_KNOWLEDGE, 'release-procedure': 'ship it' },
       environments: LIVE_DECLARED,
     });
@@ -347,7 +342,9 @@ describe('loadReleaseReadiness — more than one live channel', () => {
 
 describe('loadReleaseReadiness — the declared probes', () => {
   it('reports no probe gap once the binding declares them', async () => {
-    project({ releaseModel: 'promote', liveBranch: 'production', releaseStrategy: 'merge-branch' });
+    project({
+      releaseChain: [{ branch: 'main' }, { branch: 'production', from: 'merge-branch' }],
+    });
     liveBinding({
       releaseRunnerLabel: 'prod-box',
       verify: PROBES,
@@ -372,9 +369,7 @@ describe('loadReleaseReadiness — the declared probes', () => {
  */
 describe('loadReleaseReadiness — the live address, and the preview that is not a gap', () => {
   const RELEASING = {
-    releaseModel: 'promote' as const,
-    liveBranch: 'production',
-    releaseStrategy: 'merge-branch',
+    releaseChain: [{ branch: 'main' }, { branch: 'production', from: 'merge-branch' as const }],
     facts: { ...CONTRACT_KNOWLEDGE, 'release-procedure': 'cut a tag, then deploy' },
   };
   const DECLARED = {

@@ -33,7 +33,8 @@ export type ConversationWindowDecision =
   | "authority-refused"
   | "unreachable"
   | "undetermined"
-  | "handed-off";
+  | "handed-off"
+  | "stopped";
 
 export interface ConversationRow {
   id: string;
@@ -48,6 +49,12 @@ export interface ConversationRow {
   archivedAt: string | null;
 }
 
+export interface ConversationImage {
+  name: string;
+  mime: string;
+  ref: string;
+}
+
 export interface ConversationMessage {
   id: string;
   seq: number;
@@ -55,6 +62,7 @@ export interface ConversationMessage {
   authorUserId: string | null;
   authorLabel: string | null;
   content: string;
+  images?: ConversationImage[];
   /**
    * The ordered canonical blocks of this turn, where it has them.
    */
@@ -159,6 +167,8 @@ export interface OutboxMessage {
    */
   id: string;
   content: string;
+  /** Staged in the composer, uploaded when this message is actually sent. */
+  files?: File[];
   state: "queued" | "sending" | "sent" | "failed";
   /** Set on `failed` only — what the send was refused with. */
   error?: string;
@@ -186,6 +196,7 @@ export const SILENCE_REASON: Record<SilenceDecision, string> = {
   "authority-refused": "The agent cannot act as whoever spoke here, so it did not answer.",
   unreachable: "The agent could not be reached, so this was never answered.",
   undetermined: "A reply was sent and never confirmed — the agent will not send it again.",
+  stopped: "You stopped this answer, so the agent never finished it.",
 };
 
 /**

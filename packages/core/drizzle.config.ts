@@ -17,6 +17,7 @@ export default defineConfig({
     './src/db/schema-memory-revisions.ts',
     './src/db/schema-unaudited-transitions.ts',
     './src/db/schema-issue-leases.ts',
+    './src/db/schema-deploy-locks.ts',
     './src/db/schema-run-ledger.ts',
     './src/db/schema-release-ledger.ts',
     './src/db/schema-conversations.ts',

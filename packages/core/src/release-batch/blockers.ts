@@ -1,18 +1,14 @@
-// Every reason a release will not start, enumerated once and read by every door.
+// Every reason a release will not start, enumerated once and read by every door (ISS-1127).
 //
-// Before ISS-1127 there were three lists — `readiness.ts`'s `gaps`,
-// `createReleaseBatch`'s own checks, `recorded.ts`'s third set — none naming the
-// others, so an operator learnt the reasons one at a time. Three properties the
-// callers rely on: it never throws (a check that cannot be evaluated becomes an
-// answer in the position that check held); it makes no outbound request, so what
-// is checked here is the probe DECLARATION; and it reports in the order the doors
-// refuse in, a door throwing the FIRST blocker under its existing name.
+// Three properties the callers rely on: it never throws (a check that cannot be
+// evaluated becomes an answer in the position that check held); it makes no outbound
+// request, so what is checked here is the probe DECLARATION; and it reports in the order
+// the doors refuse in, a door throwing the FIRST blocker under its existing name.
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
 import { issues } from '../db/schema.js';
 import { issuesMissingReleaseRecord } from '../issues/release-record-required.js';
-import { readProjectBranches } from '../projects/service.js';
 import { releaseIneligibleRunners } from '../runners/ineligible.js';
 import { onlineCapableDeviceIds } from '../runners/select.js';
 import { attempt, blocker, evaluate } from './blocker-kit.js';
@@ -33,9 +29,9 @@ import {
   resolveReleaseChannels,
   resolveReleaseDeviceIds,
 } from './channel.js';
+import { claimConflictDetails, readClaimConflicts } from './claim-conflicts.js';
 import { criteriaHold } from './criteria-hold.js';
 import { RELEASE_GATE_STATUS, resolveReleaseDeclaration } from './gate.js';
-import { releaseBranches } from './plan.js';
 import { getActiveReleaseBatch } from './queries.js';
 import { invalidProbeUrls } from './verify.js';
 
@@ -79,7 +75,18 @@ async function resolveRoster(
   // Sized like the roster; an empty named list falls through to read the gate.
   if (issueIds && issueIds.length > 0) {
     if (issueIds.length > RELEASE_ROSTER_LIMIT) out.push(oversize(issueIds.length));
-    return { ids: issueIds, unclaimed: issueIds };
+    const named = await evaluate(
+      'roster',
+      async () =>
+        await db
+          .select({ id: issues.id })
+          .from(issues)
+          .where(and(eq(issues.projectId, projectId), inArray(issues.id, issueIds))),
+      out,
+    );
+    if (!named) return undefined;
+    const ids = named.map((r) => r.id);
+    return { ids, unclaimed: ids };
   }
   const rows = await evaluate(
     'roster',
@@ -108,29 +115,19 @@ function oversize(waiting: number): ReleaseBlocker {
   return blocker('RELEASE_ROSTER_OVERSIZE', { waiting, limit: RELEASE_ROSTER_LIMIT }, 'roster');
 }
 
-/** Wrong status, wrong project, already claimed — the caller's own list only. */
 async function claimBlockers(
   projectId: string,
   gateStatus: IssueStatus,
   issueIds: string[],
   out: ReleaseBlocker[],
 ): Promise<void> {
-  const rows = await evaluate(
+  const conflicts = await evaluate(
     'claim',
-    async () =>
-      await db
-        .select({ id: issues.id, status: issues.status, claimed: issues.releaseBatchRunId })
-        .from(issues)
-        .where(and(eq(issues.projectId, projectId), inArray(issues.id, issueIds))),
+    async () => await readClaimConflicts(projectId, gateStatus, issueIds),
     out,
   );
-  if (!rows) return;
-  const found = new Set(rows.map((r) => r.id));
-  const wrong = [
-    ...issueIds.filter((id) => !found.has(id)),
-    ...rows.filter((r) => r.status !== gateStatus || r.claimed !== null).map((r) => r.id),
-  ];
-  if (wrong.length > 0) out.push(blocker('CLAIM_CONFLICT', { issueIds: [...new Set(wrong)] }));
+  if (!conflicts || conflicts.length === 0) return;
+  out.push(blocker('CLAIM_CONFLICT', claimConflictDetails(projectId, gateStatus, conflicts)));
 }
 
 /** What the roster owes before it may be closed: a note, and a merge. */
@@ -177,8 +174,8 @@ function channelBlockers(
     out.push(blocker('RELEASE_MULTI_CHANNEL_UNSUPPORTED', { count: channels.length }));
   }
   try {
+    // ISS-1275 — no label is no preference, which admits the pool it has.
     label = releaseRunnerLabelOf(projectId, channels);
-    if (door === 'batch' && !label) out.push(blocker('RELEASE_RUNNER_UNDECLARED'));
   } catch (err) {
     const labels = err instanceof ReleaseRunnerAmbiguousError ? err.labels : [];
     out.push(blocker('RELEASE_RUNNER_AMBIGUOUS', { labels }));
@@ -258,24 +255,6 @@ function unreadableProbeBlockers(channels: ReleaseChannel[], out: ReleaseBlocker
   if (urls.length > 0) out.push(blocker('RELEASE_PROBES_UNREADABLE', { urls }));
 }
 
-/** Is there a branch a release could promote from. */
-async function branchBlockers(projectId: string, out: ReleaseBlocker[]): Promise<void> {
-  const branches = await evaluate(
-    'branches',
-    async () => await readProjectBranches(projectId),
-    out,
-  );
-  if (branches === undefined) return;
-  try {
-    releaseBranches(
-      branches ?? { baseBranch: null, liveBranch: null },
-      branches?.releaseModel ?? 'none',
-    );
-  } catch {
-    out.push(blocker('RELEASE_BRANCHES_UNDECLARED'));
-  }
-}
-
 /**
  * Every reason this project's release will not start, in the order the doors
  * refuse in. Never throws, and reaches no network.
@@ -304,7 +283,7 @@ export async function collectReleaseBlockers(
   if (read) {
     if (read.kind === 'no-release') blockers.push(blocker('NO_RELEASE_GATE'));
     if (read.kind === 'undeclared-target') {
-      blockers.push(blocker('RELEASE_TARGET_UNDECLARED', { releaseModel: read.releaseModel }));
+      blockers.push(blocker('RELEASE_TARGET_UNDECLARED', { releaseChain: read.releaseChain }));
     }
     if (read.kind !== 'gated') {
       return {
@@ -323,7 +302,7 @@ export async function collectReleaseBlockers(
   // and for the judgement that the rest are moot, which cannot be made where it
   // cannot be read. Returning here instead reported one reason, and it was the
   // one reason the operator could not act on (ISS-1127).
-  const channels = await gatedBlockers(projectId, door, options.issueIds, blockers, warnings);
+  const channels = await gatedBlockers(projectId, door, options, blockers, warnings);
   return {
     projectId,
     projectExists: true,
@@ -339,10 +318,11 @@ export async function collectReleaseBlockers(
 async function gatedBlockers(
   projectId: string,
   door: ReleaseDoor,
-  issueIds: string[] | undefined,
+  options: CollectReleaseBlockersOptions,
   out: ReleaseBlocker[],
   warnings: ReleaseWarning[],
 ): Promise<ReleaseChannel[] | null> {
+  const { issueIds } = options;
   // Both groups are READ here and REPORTED in the order the door refuses in.
   // A channel read that failed must not outrank a roster reason the batch door
   // reached first, or a 409 an operator already knows becomes a 503.
@@ -362,7 +342,6 @@ async function gatedBlockers(
     const label = channelBlockers(projectId, channels, door, machinery);
     if (door === 'batch') {
       await poolBlockers(projectId, label, machinery, warnings);
-      await branchBlockers(projectId, machinery);
       if (channels.length > 1) {
         machinery.push(blocker('RELEASE_MULTI_CHANNEL_UNSUPPORTED', { count: channels.length }));
       }
@@ -370,7 +349,6 @@ async function gatedBlockers(
     }
   } else if (door === 'batch') {
     await poolBlockers(projectId, null, machinery, warnings);
-    await branchBlockers(projectId, machinery);
   }
 
   out.push(...(door === 'batch' ? [...roster, ...machinery] : [...machinery, ...roster]));
@@ -383,7 +361,9 @@ async function gatedBlockers(
       out,
     );
     if (active) out.push(blocker('BATCH_IN_FLIGHT', { runId: active.runId }));
-    if (!issueIds && found) await criteriaHold(projectId, found.unclaimed, out, warnings);
+    if (!issueIds && found) {
+      await criteriaHold(projectId, found.unclaimed, out, warnings, options.serving);
+    }
   }
   return channels;
 }

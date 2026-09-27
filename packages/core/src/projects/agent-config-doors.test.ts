@@ -65,7 +65,7 @@ describe('agentConfig declared keys and their doors', () => {
     const owners: Record<string, string> = {
       repoPath: 'projects.repo_path',
       baseBranch: 'projects.base_branch',
-      productionBranch: 'projects.live_branch',
+      productionBranch: 'projects.release_chain',
       activeDeviceId: 'projects.default_device_id',
       runnerFallback: 'pipelineConfig.states[*].runner',
     };
@@ -88,7 +88,7 @@ describe('refuseAgentConfigRecord', () => {
   it.each([
     ['repoPath', '/tmp/somewhere', 'projects.repo_path'],
     ['baseBranch', 'main', 'projects.base_branch'],
-    ['productionBranch', 'main', 'projects.live_branch'],
+    ['productionBranch', 'main', 'projects.release_chain'],
     ['activeDeviceId', '85644100-e4f5-455a-9754-6af76c19e50a', 'projects.default_device_id'],
     ['runnerFallback', { type: 'claude-code' }, 'decides nothing'],
   ])('refuses the retired key %s naming what owns its value', (key, value, owner) => {

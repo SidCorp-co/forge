@@ -203,15 +203,60 @@ pub async fn reap_repo(repo: &Path, min_age: Duration, held_by: &HeldTrees) -> R
             if !older_than(&p, min_age) || holds_work(&p).await {
                 continue;
             }
-            let ok = git(
+            // The caller prints a count, and a count is not a path. Two
+            // directories went from this box with nothing in the journal naming
+            // either, and what took them could not be established afterwards at
+            // all (ISS-1250) — so the remover says which one it took and by
+            // which of its two routes, and says what git answered when it would
+            // not take one (consult 27dbdd F3).
+            let refused = match git(
                 repo,
                 &["worktree", "remove", "--force", &p.to_string_lossy()],
             )
             .await
-            .is_some_and(|o| o.status.success())
-                || std::fs::remove_dir_all(&p).is_ok();
-            if ok && !p.exists() {
+            {
+                Some(o) if o.status.success() => None,
+                Some(o) => Some(
+                    String::from_utf8_lossy(&o.stderr)
+                        .lines()
+                        .map(str::trim)
+                        .find(|l| !l.is_empty())
+                        .unwrap_or("git exited non-zero and said nothing")
+                        .to_string(),
+                ),
+                None => Some("`git worktree remove` could not be spawned".to_string()),
+            };
+            let Some(refusal) = refused else {
+                tracing::info!(
+                    "[worktree-reap] removed {} — no run in the ledger holds it, it is older than \
+                     {}s, and it holds no work",
+                    p.display(),
+                    min_age.as_secs()
+                );
                 removed.push(p);
+                continue;
+            };
+            match std::fs::remove_dir_all(&p) {
+                Ok(()) if !p.exists() => {
+                    tracing::warn!(
+                        "[worktree-reap] git would not remove {} ({refusal}) — the directory held \
+                         no work and is older than {}s, so it was removed directly and git's own \
+                         registry is pruned below",
+                        p.display(),
+                        min_age.as_secs()
+                    );
+                    removed.push(p);
+                }
+                Ok(()) => tracing::warn!(
+                    "[worktree-reap] git would not remove {} ({refusal}), and the directory is \
+                     still there after removing it — it stays, and this sweep took nothing here",
+                    p.display()
+                ),
+                Err(e) => tracing::warn!(
+                    "[worktree-reap] {} stays: git would not remove it ({refusal}) and neither \
+                     would the filesystem ({e})",
+                    p.display()
+                ),
             }
         }
     }
@@ -559,6 +604,74 @@ mod tests {
         assert_eq!(reap_repo(&repo, NOW, &led()).await.removed.len(), 1);
         assert!(!wt.exists());
         let _ = std::fs::remove_dir_all(&repo);
+    }
+
+    /// ISS-1250 — the second remover on this box said nothing either.
+    ///
+    /// `reap_repo` prints `keeping <path>` for every tree it leaves and its
+    /// caller prints only `removed N stale worktree(s)`, so a directory that
+    /// went and a directory that stayed left the same evidence and the one that
+    /// went left no name. `removed.len()` is not that proof: the count is
+    /// exactly what was already there.
+    #[test]
+    fn a_reaped_worktree_is_named_in_the_journal_and_not_only_counted() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        let (repo, wt) = rt.block_on(repo_with_worktree("logged"));
+
+        let said = crate::workspace::worktree::tests::logged_while(|| {
+            let swept = rt.block_on(reap_repo(&repo, NOW, &led()));
+            assert_eq!(swept.removed.len(), 1, "the premise: this sweep took one");
+        });
+        let _ = std::fs::remove_dir_all(&repo);
+
+        assert!(
+            said.contains(&wt.display().to_string()),
+            "a person reading the journal has to be able to tell which directory went: {said}"
+        );
+        assert!(
+            said.contains("holds no work"),
+            "and why it was allowed to go: {said}"
+        );
+    }
+
+    /// consult 27dbdd F3 — a refused removal left nothing in the journal, so a
+    /// directory git would not take read exactly like one nobody swept.
+    ///
+    /// A locked worktree is the shape that refuses while staying a worktree:
+    /// `git worktree remove --force` will not take one, and every question the
+    /// age and work predicates ask still answers, so the fallback is reached.
+    #[test]
+    fn a_removal_git_refuses_says_what_git_said_before_the_fallback_takes_it() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        let (repo, wt) = rt.block_on(repo_with_worktree("refused"));
+        // Lock it: git refuses a locked working tree by design.
+        rt.block_on(run(&repo, &["worktree", "lock", &wt.to_string_lossy()]));
+
+        let said = crate::workspace::worktree::tests::logged_while(|| {
+            let swept = rt.block_on(reap_repo(&repo, NOW, &led()));
+            assert_eq!(
+                swept.removed.len(),
+                1,
+                "the fallback still takes a directory holding no work"
+            );
+        });
+        let _ = std::fs::remove_dir_all(&repo);
+
+        assert!(
+            said.contains(&wt.display().to_string()),
+            "the path has to be in the line whichever route took it: {said}"
+        );
+        assert!(
+            said.contains("git would not remove"),
+            "and a refusal that is answered by removing the directory anyway is not a silent \
+             success: {said}"
+        );
     }
 
     #[tokio::test]

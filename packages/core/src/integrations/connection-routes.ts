@@ -32,6 +32,7 @@ import {
   splitProviderConfig,
 } from './provider-schemas.js';
 import { getAdapter, getIntegration, providerCanDeploy } from './registry.js';
+import { withdrawNulls } from './release-channel-schema.js';
 import {
   alreadyExists,
   assertAdmin,
@@ -270,7 +271,8 @@ integrationConnectionsRoutes.get('/:id/bindings', async (c) => {
   const userId = c.get('userId');
   await loadVisibleConnection(id, userId);
   const pairs = await listBindingsForConnection(id);
-  return c.json({ items: pairs.map(summarizeBinding) });
+  const bindings = pairs.map(summarizeBinding);
+  return c.json({ bindings, items: bindings });
 });
 
 integrationConnectionsRoutes.post('/:id/test', async (c) => {
@@ -326,10 +328,12 @@ integrationConnectionsRoutes.patch(
     if (patch.config) {
       const parsed = connectionConfigSchemaForProvider(existing.provider).safeParse(patch.config);
       if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
-      connPatch.config = {
+      // `withdrawNulls` as the binding PATCH does: a key sent as null is REMOVED. Storing one
+      // left a withdrawn `releaseRunnerLabel` on the row as a null forever (ISS-1127, ISS-1275).
+      connPatch.config = withdrawNulls({
         ...((existing.config ?? {}) as object),
         ...(parsed.data as Record<string, unknown>),
-      };
+      });
     }
     if (patch.secrets) {
       const merged = await applySecretsPatch({

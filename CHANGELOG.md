@@ -10,6 +10,10 @@
 
 ### Security
 
+- **A box can only start work on a project it serves.** A box with no runner there, a disabled
+  box or a withdrawn runner is refused before claiming anything, and told which, and what an
+  admitted box is.
+
 - **The Attention inbox no longer shows you issues from projects you were removed from.**
   The "Awaiting input" list picked an issue because you were its assignee, or because you filed it
   and nobody else owns it. That is a fair question to ask — is this mine to answer? — but it was the
@@ -112,6 +116,22 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+
+- **How to contribute, and who decides, are now in the repository.** `CONTRIBUTING.md`,
+  `GOVERNANCE.md` and `docs/adr/` state the rules and the decisions behind them, including that
+  this file is the release note and there is no second changelog.
+- **The public documentation has three doors and a search.** Choose "I use Forge", "I'm connecting
+  an AI assistant" or "I'm an agent or a script"; every page says who it is for, and search
+  reaches all of them.
+- **Two releases can no longer deploy to the same environment at once.** The second is refused as
+  `DEPLOY_ENVIRONMENT_LOCKED`, naming the release that holds it, what it is deploying, since when,
+  and when the hold lifts.
+- **Two help pages for people filing work: how to ask for a change, and how to tell it is done.**
+  A finished issue's page now shows its release note — what changed, or what will once it ships.
+- **You can now attach a picture when you talk to the agent on the web, see what you are typing as
+  the box grows, stop an answer mid-flow, and still read which mode the room is in.**
+- **Stopping a box driving a project now asks why, and so does starting it again.** Both refuse an
+  empty reason and show the shape of a good one. Every stop a box has held is kept, not overwritten.
 - **An issue can be archived, and unarchived.** It leaves search, recall, the duplicate check and
   every list but the pulse's undeployed work, and opens by key everywhere except the `forge` CLI
   (forge-plugin ISS-2421). Unfinished work cannot be archived.
@@ -2478,6 +2498,13 @@
   shrink and `forge_metrics.*` is in its "free to go" group. (ISS-944)
 
 ### Removed
+- **Forge no longer writes your release steps.** A project that declares its own procedure gets it;
+  one that declares none is told where its method lives, instead of being refused for a deploy
+  target Forge has no steps for.
+
+- **A release run that never said which method it loaded can now be finished.** The run page no
+  longer says it cannot. What still waits on that announcement is a deploy Forge makes for you.
+
 - **"Deploy when a change lands" is gone from the Coolify settings.** Nothing ever deployed
   through it. A deploy is now only ever something a person or an agent asks for, at the point
   of releasing.
@@ -3094,12 +3121,62 @@
   set is now 59.
 
 ### Fixed
+
 - **A runner refused its provisioning poll now says which endpoint answered, with what status and
   what body.** The same refusal repeating is reported once, escalated once, then held quiet until it
   changes or clears.
-- **A runner no longer starts a project's master without the MCP servers the project declares.** When it cannot read them, or cannot hand them over, it starts none and says why, naming the request and its status.
+- **A question an agent asks now waits for an answer without moving its issue.** Its row says a person owes an answer and for how long, and closing it asks why open questions no longer matter.
+- **New issue in the top bar and the command palette now opens the form on the Issues list too.** It did nothing there before. Closing the form clears the link, so Back and reload no longer reopen it.
+- **The board drawer no longer labels an issue with nothing running as Queued.** Its header shows a run chip only for a run, Activity says when no pipeline run exists, and the issue's status appears once, named as itself.
+- **An issue waiting for a runner now shows as Queued everywhere on its page and in the board drawer.** The run chips said nothing while the agent panel said queued. A paused run reads Paused, not Idle.
+- **A run the control plane refuses as malformed now stops after one attempt.** It was re-sent every twenty seconds for ever. The box now names the field refused, ends the run, and builds names and reasons that fit.
+- **The automatic release now asks your live host what it is serving, instead of a commit written on the issue weeks ago.** A verdict judged at what is running counts; where nothing can be asked, it still counts.
+- **The Runners page says which devices it lists, and can show your organisation's.** It listed only boxes you paired while promising the organisation, so an admin read zero beside an Overview reading forty. Both counts now show at once.
+- **A red integration suite now means the code is wrong, not that two suites ran at once.** Each
+  test tore down its own database on its own clock, and that teardown waits on the whole
+  server.
+
+- **`pnpm verify` no longer says `ci-passed` gates a check it does not gate.** CodeQL sits outside the merge gate, so it now has its own heading instead of standing under one that covers everything above it.
+- **Links between help pages open the page they name.** Every one opened Getting started; a link to a missing page now says so. Release notes render their formatting, and Reopen stays on screen at phone width.
+- **Throughput counts each shipped issue once, on the day it first shipped.** An issue passing through awaiting release then closed, or reopened and closed again, counted each time. Project health and cost per closed now agree.
+- **On an issue, the description now gets most of the width and comes first.** Attachments sit above its text, empty panels and fields take a line or nothing, the title wraps, and the run's state has its own label.
+- **A project that names no release runner can now release.** Naming one still prefers that box; naming two different ones is still refused. Where no box carries it, the warning now offers clearing the label; settings explains its absence.
+- **The release runner label can now be set and cleared on screen.** It sits on a project's live deploy binding and on the shared credential behind it, each saying which one the label in force came from.
+- **A message sent to a master is no longer answered by Claude Code's Rewind picker.** Its highlighted row stands alone between blank lines, which read as no menu, so the Enter took a choice and the message vanished.
+- **The side navigation keeps every label inside its button, an empty release gate is one line, and toasts no longer cover the page.** A long label ends in an ellipsis, its full name on hover; background notifications share one card.
+- **Wide tables scroll sideways inside their card instead of cutting off columns.** A fade marks the side with more to see, keyboard users can tab in and scroll, and the Issues page no longer slides sideways.
+- **A message sent to a master sitting at a Claude Code menu no longer presses Enter on the highlighted choice.** It answered trust and permission dialogs on the master's behalf, once ending the session. The send is now refused.
+- **The 7-day Throughput chart shows seven consecutive days, a zero day drawn at zero.** An empty day vanished and the window slid back a day. Each bar prints its count; the total counts only the days drawn.
+- **An unavailable Agent now sends you where a runner can be paired**, and a screen reader no longer hears Stop as disabled while an answer arrives. Escape closes a mode menu without closing the conversation and its draft.
+- **The box's heartbeat and its provision poll now report a refusal the way every other call does.** Both named the code unknown and pasted the gateway's error page; the beat also waited with no deadline of its own.
+- **A refused call to core now says which failure it was, and no longer pastes the gateway's error page.** A code the edge answers reads as its own fault, and a call that hangs now ends at a deadline.
+- **Menus, dropdowns and tooltips are no longer cut off near the bottom of a list.** They open on whichever side has room and scroll inside themselves when neither side does. The page behind an open menu stays still.
+- **Settings → MCP now offers a snippet for the project you are working in.** It opened on whichever project came first in your list. A sentence beside Copy now names the project the snippet configures.
+- **A box running two runners is no longer told the second is serving the first.** Where `forge-runner status` cannot name the daemon's build, it now names a process only if it serves the configuration you asked about, and guesses nothing.
+- **`forge-runner update --restart` now restarts the runner that actually lags.** It stopped at "up to date" first, and after an update it restarted whatever unit the box had. Both branches now ask the daemon, and refuse rather than guess.
+- **A refused release no longer sends you to abort a shipped batch.** A closed issue says it is closed, a leftover claim says the sweep clears it, a release record is named as one. The regression line matches its readings.
+- **An abort names every issue its batch already closed, and a refused release says why.** An abort after a finished batch no longer answers that nothing closed. A refused release names each claimed or misplaced issue, and what frees it.
+- **A box running out of room says so before it runs out**, and keeps saying so once that filesystem stops answering. It reads free bytes and free inodes wherever runs write scratch, and says the sweep will not reclaim it.
+- **A release agent is told what an abort really does.** Closed issues stay closed, and a promoted roster stays held for a person. A failed deploy is repaired forward before any abort, and refusals name closed issues by key.
+- **`forge-runner doctor` no longer fails a box whose projects have no master pane running.** A second integration binding sharing a server name reads Shadowed, instead of asking you to replace a credential that works.
+- **A runner whose credential file cannot be read is told to repair it, not to sign in again.** `doctor` names that file, and the network checks stop rather than reporting the box as never paired.
+- **A box's report on a held checkout could be wrong in both directions.** The publish check signs in as the repository pushes, the retention reading follows the fetch that moves it, and a removal is logged.
+- **A runner restarting after a self-update stops taking new work while it waits, and says what it is waiting on.** `forge-runner status` now shows the build the daemon is actually serving, not only the file on disk.
+- **A run whose issues have all closed no longer stays open on a box for ever.** Its leases go back and its checkout is asked for, or the release refuses by name and keeps both.
+
+- **A run nothing on the box can close now says so once, naming what is outstanding and what it is waiting on**, instead of repeating one unactionable warning every sweep. It no longer names a command that refuses it.
+
+- **A release refusal the world overtook is settled on the run's record** rather than standing open for ever, so "which runs are stranded" has an answer.
+
+- **A job a runner refuses for want of a personal access token now names the box and where to create one.** `forge-runner doctor` fails on a box holding none, and reports an unreadable credential file as such.
+- **The Agent MCP servers panel lists every server an agent receives, not only the ones integrations supply.** A connected integration reaching no agent now says which condition it fails, and binding lists answer under `bindings`.
+- **A runner no longer starts a project's master without the MCP servers the project declares.** When it cannot read or hand them over, it starts none and says why: request and status, a gateway page's title, the directory to fix.
 - **A master stopped by a usage limit is asked again every five minutes.** It no longer sleeps until
   the reset hour, so capacity restored by swapping or adding an account is used on the next pass.
+
+- **A release of any size finishes.** Finishing is taken at once and confirmed in the
+  background, so a large release no longer strands its issues. A release that failed to confirm can
+  be finished again once the deploy is up.
 
 - **A release recorded after it shipped can now be finished.** A batch opened once the deploy was
   already live could never pass its own check. What proves a release now is that production is
@@ -5994,7 +6071,13 @@
   deploy. Shipped 2026-09-02; this line was owed then and is written now. (ISS-870)
 
 ### Changed
+- **A project's route to live is now one ordered list of branches.** Release model, live branch
+  and strategy could disagree; a list cannot. Every project keeps the shape it released by, and
+  longer paths can now be described.
+
 - **Closing an issue now means the work shipped.** A close is refused unless the issue says the code landed. Work that turned out not to be work leaves by Dropped, which frees whatever was waiting on it just the same.
+- **Every check now measures against the branch your work will actually land on**, not always
+  `main`. A repository on another base gets real checks instead of quiet passes.
 
 - **Every change of an issue's status is now recorded in the same ledger as the rest of the work.** Who moved it, when, and under whose authority is answered from that record instead of from a comment somebody wrote.
 

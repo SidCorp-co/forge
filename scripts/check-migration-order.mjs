@@ -4,18 +4,16 @@
  * Whether the migrations this tree is landing can be applied alongside every open branch's.
  * `migrations-journal.test.ts` reads only its own journal, so the set is measured by nothing;
  * this reads the set. Origin and rules: `scripts/README.md`.
- *
- * Exit 0 applicable · 1 a refusal naming the branches and numbers · 2 could not run, which is
- * never a pass.
+ * Exit 0 applicable · 1 a refusal naming the branches and numbers · 2 could not run, never a pass.
  */
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { baseRef as resolveBase } from './lib/base-branch.mjs';
 import { checkSet, floorOf, newEntries } from './lib/migration-order.mjs';
 
 const JOURNAL = 'packages/core/drizzle/migrations/meta/_journal.json';
-const MAIN_CANDIDATES = ['origin/main', 'refs/remotes/origin/main', 'main'];
 const LABEL = 'migration-order';
 
 function say(line) {
@@ -55,16 +53,17 @@ const journalPath = join(root, JOURNAL);
 if (!existsSync(journalPath)) die(`there is no journal at ${JOURNAL}`);
 const here = entriesOf(readFileSync(journalPath, 'utf8'), JOURNAL);
 
-const mainRef = MAIN_CANDIDATES.find((ref) =>
-  git(['rev-parse', '--verify', `${ref}^{commit}`], root),
-);
-if (!mainRef) {
+// The floor comes from the branch this work lands on, never from `main` by assumption: a floor off
+// a branch the work does not derive from hands back a `when` somebody has already taken.
+const base = resolveBase(root);
+if (base.refusal) {
   die(
-    'origin/main does not resolve in this checkout, so the floor every migration must clear\n' +
-      'cannot be read. Fetch it — `git fetch origin main` — and run this again. A run that\n' +
-      'cannot see main has measured nothing, which is why this is exit 2 and not a pass.',
+    `${base.refusal}\n` +
+      'Without it the floor every migration must clear cannot be read, and a run that cannot\n' +
+      'read the floor has measured nothing — which is why this is exit 2 and not a pass.',
   );
 }
+const baseRef = base.ref;
 
 function journalAt(ref) {
   const text = git(['show', `${ref}:${JOURNAL}`], root);
@@ -72,7 +71,7 @@ function journalAt(ref) {
   return entriesOf(text, `${ref}:${JOURNAL}`);
 }
 
-let main = journalAt(mainRef);
+let baseEntries = journalAt(baseRef);
 
 /**
  * What to call this tree, and which remote refs are it rather than a sibling. Three readings say
@@ -91,16 +90,16 @@ function isOurs(ref) {
   return spawnSync('git', ['merge-base', '--is-ancestor', ref, 'HEAD'], { cwd: root }).status === 0;
 }
 
-let landing = newEntries(here, main);
-let isMain = git(['rev-parse', 'HEAD'], root) === git(['rev-parse', mainRef], root);
+let landing = newEntries(here, baseEntries);
+let isBase = git(['rev-parse', 'HEAD'], root) === git(['rev-parse', baseRef], root);
 
 // A tree that adds no migration asserts nothing about the set, so it reads nothing. This is the
 // one path that skips the remote, and it skips it on a proposition proved from local data rather
-// than on a failure to reach it: `main` only ever GAINS entries, so a journal that adds nothing to
-// a stale main adds nothing to the current one either.
-if (landing.length === 0 && !isMain) {
+// than on a failure to reach it: the base branch only ever GAINS entries, so a journal that adds
+// nothing to a stale base adds nothing to the current one either.
+if (landing.length === 0 && !isBase) {
   say(`${LABEL}: 0 migration(s) landing, 0 open branch(es) read`);
-  say(`  ${branch} adds no migration to ${mainRef}, so the open set was not read.`);
+  say(`  ${branch} adds no migration to ${baseRef}, so the open set was not read.`);
   say('  No merge order and no next-free number are claimed here.');
   process.exit(0);
 }
@@ -115,19 +114,18 @@ function readOpenBranches() {
   const refs = git(['for-each-ref', '--format=%(refname:short)', 'refs/remotes/origin'], root);
   if (refs === null) return null;
 
-  // The fetch may have moved main under us, and the floor this whole check is measured against
-  // was read before it. Re-read everything derived from main rather than comparing this tree
-  // against a number the remote has already left behind.
-  main = journalAt(mainRef);
-  landing = newEntries(here, main);
-  isMain = git(['rev-parse', 'HEAD'], root) === git(['rev-parse', mainRef], root);
+  // The fetch may have moved the base under us, and the floor was read before it. Re-read rather
+  // than compare against a number the remote has already left behind.
+  baseEntries = journalAt(baseRef);
+  landing = newEntries(here, baseEntries);
+  isBase = git(['rev-parse', 'HEAD'], root) === git(['rev-parse', baseRef], root);
 
   const open = [];
   for (const ref of refs.split('\n').filter(Boolean)) {
-    if (ref === 'origin/HEAD' || ref === mainRef || isOurs(ref)) continue;
-    // Already merged: its entries are main's, and a branch nobody deleted is not a pending merge.
+    if (ref === 'origin/HEAD' || ref === baseRef || isOurs(ref)) continue;
+    // Already merged: its entries are the base's, and a branch nobody deleted is not a pending merge.
     if (
-      spawnSync('git', ['merge-base', '--is-ancestor', ref, mainRef], { cwd: root }).status === 0
+      spawnSync('git', ['merge-base', '--is-ancestor', ref, baseRef], { cwd: root }).status === 0
     ) {
       continue;
     }
@@ -154,7 +152,7 @@ function readOpenBranches() {
           `landing ${landing.map((e) => e.tag).join(', ') || 'no migration'}. Exit 2, not a pass.`,
       );
     }
-    const entries = newEntries(entriesOf(text, `${ref}:${JOURNAL}`), main);
+    const entries = newEntries(entriesOf(text, `${ref}:${JOURNAL}`), baseEntries);
     if (entries.length > 0) open.push({ branch: ref, entries });
   }
   return open;
@@ -162,19 +160,20 @@ function readOpenBranches() {
 
 const siblings = readOpenBranches();
 
-// The fetch inside that call may have shown that main already carries what this tree was landing.
-if (siblings !== null && landing.length === 0 && !isMain) {
+// The fetch inside that call may have shown that the base already carries what this tree was
+// landing.
+if (siblings !== null && landing.length === 0 && !isBase) {
   say(`${LABEL}: 0 migration(s) landing, ${siblings.length} open branch(es) read`);
-  say(`  ${mainRef} already carries every migration in this journal, so there is none to order.`);
+  say(`  ${baseRef} already carries every migration in this journal, so there is none to order.`);
   process.exit(0);
 }
 
 if (siblings === null) {
   if (landing.length === 0) {
-    // `main` asserts nothing about anybody's numbers — it has already landed. The report below is
-    // the only thing it owed, so a remote it cannot reach costs the report and not the run.
+    // The base branch asserts nothing about anybody's numbers — it has already landed. The report
+    // below is the only thing it owed, so a remote it cannot reach costs the report and not the run.
     say(`${LABEL}: 0 migration(s) landing, 0 open branch(es) read`);
-    say(`  ${mainRef} could not be compared against the open branches: the remote did not answer.`);
+    say(`  ${baseRef} could not be compared against the open branches: the remote did not answer.`);
     say('  Nothing is claimed about them. This tree lands no migration of its own.');
     process.exit(0);
   }
@@ -187,10 +186,17 @@ if (siblings === null) {
   );
 }
 
-const result = checkSet({ main, self: { branch, entries: landing }, siblings });
+const result = checkSet({
+  base: baseEntries,
+  baseRef,
+  self: { branch, entries: landing },
+  siblings,
+});
 
 say(`${LABEL}: ${landing.length} migration(s) landing, ${siblings.length} open branch(es) read`);
-say(`  ${mainRef} floor: ${floorOf(main)}`);
+say(
+  `  ${baseRef} floor: ${floorOf(baseEntries)} (merge target ${base.branch}, from ${base.source})`,
+);
 
 if (result.stranded.length > 0) {
   say('');
@@ -206,7 +212,9 @@ if (result.refusals.length > 0) {
   console.error(`${LABEL}: ${result.refusals.length} refusal(s) — this set has no merge order.`);
   for (const r of result.refusals) console.error(`\n  [${r.rule}] ${r.message}`);
   console.error(`\n  The next free number is when ${result.next.when}, index ${result.next.idx}.`);
-  console.error('  Take it rather than deriving one from main alone: main is not the set.\n');
+  console.error(
+    `  Take it rather than deriving one from ${baseRef} alone: the base is not the set.\n`,
+  );
   process.exit(1);
 }
 

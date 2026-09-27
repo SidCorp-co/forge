@@ -19,7 +19,7 @@ page in the set that touches the module. Nothing here is fixed.
 | 9 | Every kernel row carries a non-null project (`authority.html` §1) | Holds. Tables with no `project_id` are children cascading from a parent that has one | **pass** |
 | 10 | Five grants, not one `admin` bit (`authority.html` §2) | `projectMemberRoles` is coarse, but `questions/write.ts:mayChoose` gates each option on its own `authority` and binds a permission to one call by fingerprint | partial pass |
 | 11 | Admission is a core write with the policy version pinned (`vision.html` §7) | The audited-event plane **exists and is stronger than the set assumed**: `lifecycle/transition.ts` is a single chokepoint that CAS-writes the status and inserts a `kernel_transitions` row (entity, from, to, reason, actor type/agency/id, source) in the same transaction, and stamps `forge.kernel_txn` so a **database trigger** files any bypassing write into `unaudited_transitions`. What it does not cover is admission, because nothing flips — and issues, see row 14 | partial pass |
-| 12 | Core refuses, naming the predicate (`vision.html` §7) | Implemented for runner admission — `devices/pool-admission.ts:runnerAdmission` returns `runner_withdrawn` / `device_disabled` / `runner_unbound` with the doctrine written above it. Not implemented for issue admission, where a withheld row is simply absent | partial pass |
+| 12 | Core refuses, naming the predicate (`vision.html` §7) | Implemented for runner admission — `devices/pool-admission.ts:runnerAdmission` returns `runner_withdrawn` / `device_disabled` / `runner_unbound` with the doctrine written above it, and since ISS-1110 on the write that takes issues too: `devices/run-session.ts:openRunSession` asks `projectAdmission` and refuses `RUNNER_NOT_ADMITTED` before anything is written. The admissible read still withholds rows rather than refusing; ISS-1302 removes it | partial pass |
 | 13 | A box is reached through core admission, never a box-side pull (`architecture.html` §9) | `prepare` and `start` are core writes at claim time (`devices/claim.ts`), so a box cannot help itself. The pull is for candidates only | **pass** |
 | 14 | *(not a claim in the set — found by reading)* | Triggers `trg_*_unaudited_transition` and `trg_*_unaudited_deletion` cover `jobs`, `pipeline_runs`, `agent_sessions`. **`issues` has no audit trigger and no `kernel_transitions` row**; `issues/apply-transition.ts` records a transition by writing a comment | **the finding of this module** |
 
@@ -53,8 +53,8 @@ provenance of its own.
    `pipeline/issue-run-invariant.ts` (identical, project-scoped), `devices/pool.ts` (job-level,
    excludes `queued`), and `isIssueLeaseHeld` (device-scoped, and the only one named for the
    lease). The first two and the fourth now call `issues/issue-lease.ts`. `devices/pool.ts` was
-   deliberately left: its predicate is over `jobs` for one issue, a different subject, and ISS-1110
-   removes the route.
+   deliberately left: its predicate is over `jobs` for one issue, a different subject, and the pool
+   stays — ISS-1135's executor decision of 2026-09-24 made it the route for issue-less work.
 3. ~~**A real lease**, replacing the JSONB array with something a constraint can refuse.~~
    **Done, ISS-1109.** `issue_leases`, primary key `(project_id, issue_key)`, taken by
    `INSERT ... ON CONFLICT DO NOTHING` inside the transaction that opens the run session.
@@ -67,8 +67,9 @@ provenance of its own.
    that matched no row answers `404` and one this box holds in two projects answers `409` naming
    both, rather than either being acknowledged as done.
 5. **Issue revision**, so a live attempt is not silently re-aimed.
-6. **Delete `POST /me/pool/claim`** — a live endpoint whose whole body returns
-   `{ ok: false, reason: 'runner_too_old' }`, false for most callers, superseded by `prepare`.
+6. ~~**Delete `POST /me/pool/claim`**~~ **Done, ISS-1110.** It answered every call
+   `{ ok: false, reason: 'runner_too_old' }` and had no caller; `prepare` and `start` are the way a
+   job is taken.
 
 ## Owner decisions this module is blocked on
 

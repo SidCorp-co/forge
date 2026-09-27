@@ -14,13 +14,20 @@
  */
 
 import { and, eq, sql } from 'drizzle-orm';
+import {
+  attachmentIdFromRef,
+  loadConversationAttachment,
+} from '../conversations/attachment-service.js';
 import type { ConversationVenue } from '../conversations/ports.js';
+import type { ConversationImage } from '../conversations/store.js';
 import { db } from '../db/client.js';
 import { agentSessions, type MemberLens } from '../db/schema.js';
 import { buildProgressFactsBlock, computeProjectProgress } from '../issues/progress.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import type { ProgressFacts } from '../messaging/facts.js';
+import { getStorage } from '../storage/index.js';
+import { persistSessionAttachment } from './attachment-service.js';
 import { createChatSessionRow, dispatchChatTurn, resolveChatDevice } from './chat-turn.js';
 import { scheduleAck } from './conversation-agent-ack.js';
 
@@ -64,11 +71,22 @@ export interface ConversationAgentTurnArgs {
   ackAfterMs?: number | null | undefined;
   /** The chat voice this session's cold-start preamble is pinned to. */
   forceLenses?: readonly MemberLens[] | null | undefined;
+  /**
+   * The pictures the window's messages carry. A box reads its own session's
+   * attachments and nothing of the room's, so each one is copied onto this
+   * turn's session before the turn is dispatched (ISS-1146).
+   */
+  images?: readonly ConversationImage[] | undefined;
 }
 
 export type ConversationAgentTurnResult =
   | { started: true; sessionId: string }
-  | { started: false; reason: 'deduped' | 'no-device' | 'dispatch-failed' };
+  | {
+      started: false;
+      reason: 'deduped' | 'no-device' | 'dispatch-failed' | 'attachment-unreadable';
+      /** The file the turn could not carry, for a refusal that names it. */
+      file?: string;
+    };
 
 /** What a session carries about the conversation turn it is answering. */
 export interface ConversationAgentMeta {
@@ -254,6 +272,49 @@ export async function conversationAgentDeviceAvailable(projectId: string): Promi
   return Boolean(client.deviceId);
 }
 
+/**
+ * Copy the room's pictures onto this turn's session, so the box that answers
+ * can open them. A box reads session attachments and has no way to reach a
+ * conversation's, so a turn dispatched without this copy answers a question
+ * about a picture it was never shown.
+ *
+ * A picture that cannot be copied stops the turn rather than being left out:
+ * an answer written without the file it was asked about is worse than no
+ * answer, and the caller names the file in what it posts instead.
+ */
+async function carryImagesToSession(
+  conversationId: string,
+  sessionId: string,
+  images: readonly ConversationImage[],
+): Promise<{ ok: true; ids: string[] } | { ok: false; file: string }> {
+  const ids: string[] = [];
+  for (const image of images) {
+    const attachmentId = attachmentIdFromRef(conversationId, image.ref);
+    if (!attachmentId) return { ok: false, file: image.name };
+    const row = await loadConversationAttachment(conversationId, attachmentId);
+    if (!row) return { ok: false, file: image.name };
+    try {
+      const bytes = await getStorage().get(row.path);
+      const copy = await persistSessionAttachment({
+        sessionId,
+        name: row.name,
+        mime: row.mime,
+        bytes,
+        uploaderId: row.uploaderId,
+        uploaderDeviceId: null,
+      });
+      ids.push(copy.id);
+    } catch (err) {
+      logger.error(
+        { err, conversationId, sessionId, attachmentId },
+        'conversation-agent: a picture could not be carried to the session',
+      );
+      return { ok: false, file: row.name };
+    }
+  }
+  return { ok: true, ids };
+}
+
 export async function startConversationAgentTurn(
   args: ConversationAgentTurnArgs,
 ): Promise<ConversationAgentTurnResult> {
@@ -307,11 +368,20 @@ export async function startConversationAgentTurn(
     },
   });
 
+  const carried = args.images?.length
+    ? await carryImagesToSession(args.conversationId, session.id, args.images)
+    : { ok: true as const, ids: [] };
+  if (!carried.ok) {
+    await markSessionFailed(session, 'conversation-agent');
+    return { started: false, reason: 'attachment-unreadable', file: carried.file };
+  }
+
   try {
     await dispatchChatTurn({
       session,
       project: args.project,
       client,
+      ...(carried.ids.length ? { attachmentIds: carried.ids } : {}),
       message: buildConversationAgentPrompt({
         persona: args.persona,
         conversationContext: args.conversationContext,

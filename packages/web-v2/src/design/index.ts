@@ -30,6 +30,7 @@ export { BulletBar, type BulletBarProps } from "./primitives/bullet-bar";
 export { StreamBand, type StreamBandProps, type StreamWeek } from "./primitives/stream-band";
 export { SankeyFlow, type SankeyFlowProps, type SankeyNode } from "./primitives/sankey-flow";
 export { EmptyState, type EmptyStateProps } from "./primitives/empty-state";
+export { EmptyPanelLine, type EmptyPanelLineProps } from "./primitives/empty-panel-line";
 export { ComingSoon, type ComingSoonProps } from "./primitives/coming-soon";
 export { ErrorState, type ErrorStateProps } from "./primitives/error-state";
 export { LiveDot, type LiveDotProps } from "./primitives/live-dot";
@@ -51,6 +52,9 @@ export { Badge, type BadgeProps } from "./primitives/badge";
 export { Divider, type DividerProps } from "./primitives/divider";
 export { Banner, type BannerProps } from "./primitives/banner";
 export { Tooltip, type TooltipProps } from "./primitives/tooltip";
+export {
+  Popover, Layer, type PopoverProps, type PopoverPlacement, type LayerProps,
+} from "./primitives/popover";
 export { ConfirmDialog, type ConfirmDialogProps } from "./primitives/confirm-dialog";
 export { Tabs, type TabsProps, type TabItem } from "./primitives/tabs";
 export { ScreenTabs, type ScreenTabsProps } from "./patterns/screen-tabs";
@@ -98,3 +102,4 @@ export { useElapsed } from "./hooks/use-elapsed";
 export { useNow } from "./hooks/use-now";
 export { useAnimatedNumber } from "./hooks/use-animated-number";
 export { useMediaQuery } from "./hooks/use-media-query";
+export { useScrollLock } from "./hooks/use-scroll-lock";

@@ -14,6 +14,7 @@ import {
   ErrorState,
   Input,
   Pagination,
+  Popover,
   SectionTitle,
   SegmentedControl,
   Select,
@@ -44,7 +45,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type IssueBuckets, ISSUES_PAGE_SIZE } from "../api";
 import {
   ANY_AGENT_LABEL,
-  filterToQueryParams,
+  filterCount,
   groupRows,
   priorityLabel,
   statusesFromParam,
@@ -61,7 +62,6 @@ import {
   ISSUE_PRIORITIES,
   type IssueFilter,
   type IssuePriority,
-  type IssueStatus,
   type IssueSort,
 } from "../types";
 import { BulkActionBar } from "./bulk-action-bar";
@@ -89,8 +89,6 @@ function withCounts(
   buckets: IssueBuckets | undefined,
 ): SegmentOption<IssueFilter>[] {
   if (!buckets) return options;
-  const sum = (ss: IssueStatus[] | undefined) =>
-    (ss ?? []).reduce((n, s) => n + (buckets.byStatus[s] ?? 0), 0);
   const all = Object.values(buckets.byStatus).reduce<number>((n, v) => n + (v ?? 0), 0);
   return options.map((o) => {
     const count =
@@ -100,7 +98,7 @@ function withCounts(
           ? buckets.detector
           : o.value === "draft"
             ? buckets.humanDraft
-            : sum(filterToQueryParams(o.value).status);
+            : filterCount(o.value, buckets);
     return { ...o, count, countTone: o.value === "you" ? "attention" : "neutral" };
   });
 }
@@ -211,12 +209,17 @@ export function IssuesListView({
   }, [pathname, search]);
   const isPinned = pinnedViews.isPinned(viewHref);
   const [pinOpen, setPinOpen] = useState(false);
+  const pinAnchor = useRef<HTMLDivElement>(null);
   const [pinName, setPinName] = useState("");
   const defaultPinLabel = `Issues${filter !== "all" ? ` · ${filter}` : ""}${q ? ` · "${q}"` : ""}`;
 
   function onPinClick() {
     if (isPinned) {
       pinnedViews.remove(viewHref);
+      return;
+    }
+    if (pinOpen) {
+      setPinOpen(false);
       return;
     }
     setPinName(defaultPinLabel);
@@ -461,7 +464,7 @@ export function IssuesListView({
             className="w-44"
           />
         </div>
-        <div className="relative sm:ml-auto">
+        <div ref={pinAnchor} className="relative sm:ml-auto">
           <Button
             variant={isPinned ? "secondary" : "ghost"}
             size="sm"
@@ -472,45 +475,40 @@ export function IssuesListView({
           >
             <span className="hidden sm:inline">{isPinned ? "Pinned" : "Pin view"}</span>
           </Button>
-          {pinOpen && (
-            <>
-              <button
-                type="button"
-                aria-label="Close"
-                tabIndex={-1}
-                className="fixed inset-0 z-10 cursor-default"
-                onClick={() => setPinOpen(false)}
-              />
-              <div
-                role="dialog"
-                aria-label="Pin this view"
-                className="absolute right-0 top-full z-20 mt-2 w-72 rounded-lg border border-line bg-surface p-3 shadow-lg"
-              >
-                <p className="fg-caption mb-2 text-muted">
-                  Pin this view — current filters are saved with it.
-                </p>
-                <Input
-                  value={pinName}
-                  onChange={(e) => setPinName(e.target.value)}
-                  placeholder={defaultPinLabel}
-                  aria-label="Pin name"
-                  autoFocus
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") confirmPin();
-                    if (e.key === "Escape") setPinOpen(false);
-                  }}
-                />
-                <div className="mt-2.5 flex justify-end gap-2">
-                  <Button variant="ghost" size="sm" onClick={() => setPinOpen(false)}>
-                    Cancel
-                  </Button>
-                  <Button variant="primary" size="sm" onClick={confirmPin}>
-                    Pin
-                  </Button>
-                </div>
-              </div>
-            </>
-          )}
+          <Popover
+            open={pinOpen}
+            anchor={pinAnchor}
+            onDismiss={() => setPinOpen(false)}
+            placement="bottom-end"
+            gap={8}
+            takesFocus
+            role="dialog"
+            aria-label="Pin this view"
+            className="w-72 overflow-y-auto rounded-lg border border-line bg-surface p-3 shadow-lg"
+          >
+            <p className="fg-caption mb-2 text-muted">
+              Pin this view — current filters are saved with it.
+            </p>
+            <Input
+              value={pinName}
+              onChange={(e) => setPinName(e.target.value)}
+              placeholder={defaultPinLabel}
+              aria-label="Pin name"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === "Enter") confirmPin();
+                if (e.key === "Escape") setPinOpen(false);
+              }}
+            />
+            <div className="mt-2.5 flex justify-end gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setPinOpen(false)}>
+                Cancel
+              </Button>
+              <Button variant="primary" size="sm" onClick={confirmPin}>
+                Pin
+              </Button>
+            </div>
+          </Popover>
         </div>
       </div>
 
@@ -656,53 +654,51 @@ export function IssuesListView({
                     {g.label} · {g.rows.length}
                   </SectionTitle>
                 )}
-                <div className="overflow-x-auto">
-                  <Table>
-                    <THead>
-                      <TR>
-                        {bulkEnabled && (
-                          <TH className="w-9 pr-0">
-                            <Checkbox
-                              checked={allOnPageSelected}
-                              indeterminate={someOnPageSelected}
-                              onChange={toggleAllOnPage}
-                              ariaLabel="Select all issues on this page"
-                            />
-                          </TH>
-                        )}
-                        <TH>ID</TH>
-                        <TH>Issue</TH>
-                        <TH>Module</TH>
-                        <TH>Status</TH>
-                        <TH>Updated</TH>
-                        <TH>Priority</TH>
-                        <TH>Complexity</TH>
-                        <TH className="text-right">Cost</TH>
-                        <TH>Creator</TH>
-                        <TH className="sr-only">Actions</TH>
-                      </TR>
-                    </THead>
-                    <TBody>
-                      {g.rows.map((row) => (
-                        <IssueTableRow
-                          key={row.id}
-                          row={row}
-                          slug={slug}
-                          actions={actions}
-                          now={now}
-                          selection={
-                            bulkEnabled
-                              ? {
-                                  selected: selected.has(row.id),
-                                  onToggle: (next) => toggleRow(row.id, next),
-                                }
-                              : undefined
-                          }
-                        />
-                      ))}
-                    </TBody>
-                  </Table>
-                </div>
+                <Table>
+                  <THead>
+                    <TR>
+                      {bulkEnabled && (
+                        <TH className="w-9 pr-0">
+                          <Checkbox
+                            checked={allOnPageSelected}
+                            indeterminate={someOnPageSelected}
+                            onChange={toggleAllOnPage}
+                            ariaLabel="Select all issues on this page"
+                          />
+                        </TH>
+                      )}
+                      <TH>ID</TH>
+                      <TH>Issue</TH>
+                      <TH>Module</TH>
+                      <TH>Status</TH>
+                      <TH>Updated</TH>
+                      <TH>Priority</TH>
+                      <TH>Complexity</TH>
+                      <TH className="text-right">Cost</TH>
+                      <TH>Creator</TH>
+                      <TH className="sr-only">Actions</TH>
+                    </TR>
+                  </THead>
+                  <TBody>
+                    {g.rows.map((row) => (
+                      <IssueTableRow
+                        key={row.id}
+                        row={row}
+                        slug={slug}
+                        actions={actions}
+                        now={now}
+                        selection={
+                          bulkEnabled
+                            ? {
+                                selected: selected.has(row.id),
+                                onToggle: (next) => toggleRow(row.id, next),
+                              }
+                            : undefined
+                        }
+                      />
+                    ))}
+                  </TBody>
+                </Table>
               </section>
             ))}
           </div>

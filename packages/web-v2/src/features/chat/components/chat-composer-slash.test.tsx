@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 //
-// ISS-718 — the composer's `/` menu and inline actions slot, mounted for real.
+// ISS-718 — the composer's `/` menu and its footer slot, mounted for real.
+// Moved here with the composer itself when the two surfaces stopped having one
+// each (ISS-1146); the cases are the ones that file was already carrying.
 // Matchers are extended on vitest's OWN `expect` (not the
 // `@testing-library/jest-dom/vitest` convenience entry) because that entry
 // resolves its own vitest peer, which under pnpm hoisting can land on a
@@ -10,8 +12,9 @@ import * as matchers from "@testing-library/jest-dom/matchers";
 import { act, cleanup, createEvent, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { InvokableSkill } from "@/features/skills/types";
-import { Composer } from "./composer";
-import type { SlashSkillsSource } from "./slash-skills-menu";
+import { CONVERSATION_ATTACHMENTS } from "../attachments";
+import { ChatComposer } from "./chat-composer";
+import type { SlashSkillsSource } from "@/features/session/components/slash-skills-menu";
 
 expect.extend(matchers);
 
@@ -47,15 +50,15 @@ function renderComposer(
           retry,
         };
   const view = render(
-    <Composer onSend={onSend} allowAttachments actions={over.actions} slashSkills={slashSkills} />,
+    <ChatComposer onSend={onSend} attachments={CONVERSATION_ATTACHMENTS} footerControl={over.actions} slashSkills={slashSkills} />,
   );
   /** Re-render with a settled source — how a retry's outcome actually arrives. */
   const settle = (next: Partial<SlashSkillsSource>) =>
     view.rerender(
-      <Composer
+      <ChatComposer
         onSend={onSend}
-        allowAttachments
-        actions={over.actions}
+        attachments={CONVERSATION_ATTACHMENTS}
+        footerControl={over.actions}
         slashSkills={{ ...(slashSkills as SlashSkillsSource), ...next }}
       />,
     );
@@ -80,7 +83,7 @@ function pressWithFocusShift(el: HTMLElement) {
   fireEvent.click(el);
 }
 
-describe("Composer — slash skills menu", () => {
+describe("ChatComposer — slash skills menu", () => {
   it("opens on a slash token and lists the project's skills", () => {
     renderComposer();
     typeInto(textarea(), "/");
@@ -383,7 +386,7 @@ describe("Composer — slash skills menu", () => {
   });
 });
 
-describe("Composer — the trigger is never inert", () => {
+describe("ChatComposer — the trigger is never inert", () => {
   it("hides the trigger entirely when the project has no invokable skills", () => {
     renderComposer({ items: [] });
     expect(screen.queryByLabelText("Insert a skill")).not.toBeInTheDocument();
@@ -411,7 +414,7 @@ describe("Composer — the trigger is never inert", () => {
   });
 });
 
-describe("Composer — the actions slot", () => {
+describe("ChatComposer — the actions slot", () => {
   it("renders the injected controls inside the input row", () => {
     renderComposer({ actions: <button type="button">Sonnet</button> });
     expect(screen.getByRole("button", { name: "Sonnet" })).toBeInTheDocument();
@@ -424,11 +427,11 @@ describe("Composer — the actions slot", () => {
   });
 });
 
-describe("Composer · what pressing send does to the box", () => {
+describe("ChatComposer · what pressing send does to the box", () => {
   it("clears the box before the send has resolved, for a caller that queues", async () => {
     let release: () => void = () => undefined;
     const onSend = vi.fn(() => new Promise<void>((resolve) => { release = () => resolve(); }));
-    render(<Composer onSend={onSend} queueWhileBusy />);
+    render(<ChatComposer onSend={onSend} queueWhileBusy />);
 
     const box = textarea();
     typeInto(box, "is the release ready?");
@@ -460,7 +463,7 @@ describe("Composer · what pressing send does to the box", () => {
 
   it("refuses the send while busy unless the caller queues", async () => {
     const onSend = vi.fn(async () => undefined);
-    const view = render(<Composer onSend={onSend} busy />);
+    const view = render(<ChatComposer onSend={onSend} busy />);
     const box = screen.getByLabelText("Message") as HTMLTextAreaElement;
     typeInto(box, "and how many are blocked?");
     await act(async () => {
@@ -468,7 +471,7 @@ describe("Composer · what pressing send does to the box", () => {
     });
     expect(onSend).not.toHaveBeenCalled();
 
-    view.rerender(<Composer onSend={onSend} busy queueWhileBusy />);
+    view.rerender(<ChatComposer onSend={onSend} busy queueWhileBusy />);
     await act(async () => {
       fireEvent.keyDown(screen.getByLabelText("Message"), { key: "Enter" });
     });

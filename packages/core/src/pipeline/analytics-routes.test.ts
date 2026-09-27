@@ -39,6 +39,11 @@ vi.mock('../lib/authz.js', async (importOriginal) => ({
   loadVisibleProjectIds: (...args: unknown[]) => visibleIds(...args),
 }));
 
+const shippedPerDay = vi.fn();
+vi.mock('./throughput-series.js', () => ({
+  shippedPerDay: (...args: unknown[]) => shippedPerDay(...args),
+}));
+
 const routes = await import('./analytics-routes.js');
 const { signUserToken } = await import('../auth/jwt.js');
 const { errorHandler } = await import('../middleware/error.js');
@@ -101,59 +106,45 @@ describe('GET /api/pipeline/throughput', () => {
     expect(res.status).toBe(400);
   });
 
-  it('returns [] when user has no visible projects', async () => {
+  const P1 = '11111111-1111-4111-8111-111111111111';
+  const P2 = '22222222-2222-4222-8222-222222222222';
+  async function asMember(path: string, visible: string[]) {
     const token = await signUserToken('u-1');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    visibleIds.mockResolvedValueOnce([]);
+    visibleIds.mockResolvedValueOnce(visible);
+    return buildApp().fetch(req(path, { token }));
+  }
 
-    const app = buildApp();
-    const res = await app.fetch(req('/api/pipeline/throughput', { token }));
+  it('returns [] when user has no visible projects', async () => {
+    const res = await asMember('/api/pipeline/throughput', []);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual([]);
   });
 
-  it('returns daily counts grouped by project for member', async () => {
-    const token = await signUserToken('u-1');
-    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    visibleIds.mockResolvedValueOnce(['p-1']);
-    selectOrderBy.mockResolvedValueOnce([
-      { projectId: 'p-1', date: '2026-04-26', count: 3 },
-      { projectId: 'p-1', date: '2026-04-27', count: 5 },
-    ]);
-
-    const app = buildApp();
-    const res = await app.fetch(req('/api/pipeline/throughput?days=7', { token }));
+  it('answers with the calendar series for every visible project over the window asked for', async () => {
+    const series = [
+      { projectId: P1, date: '2026-04-26', count: 3 },
+      { projectId: P1, date: '2026-04-27', count: 0 },
+    ];
+    shippedPerDay.mockResolvedValueOnce(series);
+    const res = await asMember('/api/pipeline/throughput?days=2', [P1, P2]);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as Array<{ date: string; count: number }>;
-    expect(body).toHaveLength(2);
-    expect(body[0]?.count).toBe(3);
-    expect(body[1]?.count).toBe(5);
+    expect(await res.json()).toEqual(series);
+    expect(shippedPerDay).toHaveBeenCalledWith([P1, P2], 2, expect.any(Date));
   });
 
   it('scopes to projectId when caller has access', async () => {
-    const token = await signUserToken('u-1');
-    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    visibleIds.mockResolvedValueOnce(['p-1', 'p-2']);
-    selectOrderBy.mockResolvedValueOnce([{ projectId: 'p-1', date: '2026-04-27', count: 7 }]);
-
-    const app = buildApp();
-    const res = await app.fetch(
-      req('/api/pipeline/throughput?projectId=11111111-1111-4111-8111-111111111111', { token }),
-    );
+    shippedPerDay.mockResolvedValueOnce([]);
+    const res = await asMember(`/api/pipeline/throughput?projectId=${P1}`, [P1, P2]);
     expect(res.status).toBe(200);
+    expect(shippedPerDay).toHaveBeenCalledWith([P1], 30, expect.any(Date));
   });
 
   it('returns [] when projectId is not in user visibility', async () => {
-    const token = await signUserToken('u-1');
-    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    visibleIds.mockResolvedValueOnce(['p-1']);
-
-    const app = buildApp();
-    const res = await app.fetch(
-      req('/api/pipeline/throughput?projectId=22222222-2222-4222-8222-222222222222', { token }),
-    );
+    const res = await asMember(`/api/pipeline/throughput?projectId=${P2}`, [P1]);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual([]);
+    expect(shippedPerDay).not.toHaveBeenCalled();
   });
 });
 

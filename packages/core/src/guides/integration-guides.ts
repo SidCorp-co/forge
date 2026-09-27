@@ -1,8 +1,6 @@
 // Per-org integration guides — the runtime-editable tier that `registry.ts`
-// deliberately does not cover. Its rationale ("a guide ships atomically with
-// the code it documents, gets PR review") holds for guides about Forge's own
-// features; it does not hold for a guide about an EXTERNAL service, whose
-// behaviour changes in another repo on someone else's release schedule.
+// deliberately does not cover. Why a guide about an external service lives in a
+// table and not in code: docs/modules/guides/where-a-page-lives.md.
 //
 // Precedence: org row (if any) shadows the code default for that provider.
 // Same shape as a project skill shadowing a global template.
@@ -70,6 +68,7 @@ export async function resolveGuide(
     if (row) {
       return {
         slug,
+        audience: 'agent',
         title: row.title,
         summary: row.summary,
         version: row.version,
@@ -107,6 +106,7 @@ export async function resolveGuideIndex(
       integrationGuideSlug(r.provider),
       {
         slug: integrationGuideSlug(r.provider),
+        audience: 'agent' as const,
         title: r.title,
         summary: r.summary,
         version: r.version,

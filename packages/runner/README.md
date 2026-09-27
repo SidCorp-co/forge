@@ -73,14 +73,15 @@ on failure rather than filling it with an error shaped like an answer.
 **Credential.** `api` speaks with a **personal access token**, not the device
 token — a device token names a machine, and REST fences a caller by the
 projects its credential may speak for. Mint one in the web UI under
-Settings → Access tokens, then either:
+Settings → API Tokens, then either:
 
 ```
 forge-runner login --pat forge_pat_…   # stored beside the device token
 export FORGE_PAT=forge_pat_…           # or per-shell, which wins over the store
 ```
 
-`forge-runner doctor` reports whether one is present.
+The same token is what every job the box starts hands its Forge tools, so a
+box holding none refuses its jobs, and `forge-runner doctor` fails on it.
 
 **Reach.** A token bound to a project reaches that project and 404s on every
 other — the same answer a project that does not exist gives, so a token cannot
@@ -165,10 +166,74 @@ The daemon checks `{core}/api/install/latest.json` ~30s after start and every 6h
 When a newer release is published it downloads the matching binary, verifies its
 sha256, swaps the executable, and restarts the systemd service.
 
-Auto-update is **ON by default**. The restart **drains to idle first** — it waits
-for in-flight pipeline jobs and chat sessions to finish (up to 30 min) before
-restarting, so an update never kills running work. Control it without editing
-TOML:
+Auto-update is **ON by default**. The restart **drains to idle first**, so an
+update never kills running work:
+
+- **Admission closes for the drain.** From the moment it begins the daemon
+  declares no new run, takes no pool job, and places or nudges no master, for
+  every project it serves — a drain that went on admitting work waited on a
+  queue it kept refilling (ISS-1223). Chat turns and messages into a master pane
+  are still taken, and counted as holders, because they have no way to tell the
+  person waiting that they were refused.
+- **It speaks while it waits**: a line at the start and every 10 minutes naming
+  each run, by id and issue key, and each interactive turn still holding it.
+- **It is bounded at 2h.** Past that it does not restart: it names what still holds
+  it, reopens admission, and no drain may close it again for another 2h. The
+  next attempt is the next update check.
+- **What that costs when the work never ends.** Each attempt closes admission
+  for the full 2h again. A box holding a run that outlives it stays closed to
+  new runs, pool jobs and masters for 2h of every 6h under a pending update, or
+  2h of every 4h under a pending re-login. Before this, a drain closed nothing
+  and cost no admission time, but it also never turned the box over. The give-up
+  line states the cycle. The cost ends when that work ends, or when an operator
+  restarts the service by hand.
+
+Until the restart, the daemon serves the build it started on while the newer
+file stands on disk. `forge-runner status` prints both — `binary` for the file,
+`daemon` for what the running daemon recorded it serves, with its drain — and
+`forge-runner --version` adds a line on stderr when the two differ, leaving its
+stdout unchanged.
+
+**Both lines speak about one configuration: the one this command resolves.** A
+box runs more than one daemon whenever somebody starts a second under its own
+`XDG_CONFIG_HOME`, and the `forge-runner-<id>` units are built for it. Where the
+record names no live daemon — there is none, it is gone, its pid is now another
+process, or the file will not parse — `status` says which of those holds, and
+then looks at the `forge-runner start` processes running here. It names one only
+where that process's own environment resolves to this configuration; one that
+resolves to another is counted and its directory named, as what it is; one whose
+environment cannot be read is named as unattributed rather than claimed either
+way. It never reads a build off a process that wrote no record, because nothing
+can (ISS-1223).
+
+`forge-runner update --restart` asks the daemon, not the file. The file on disk
+being the latest is exactly the state a deferred drain leaves — updated, not yet
+turned over — so `--restart` there restarts the daemon when it is serving an
+older build, says there is nothing to restart when it already serves this one,
+and says which case holds when it cannot tell. It asks the same question after
+an update it has just applied, where a daemon agreeing with the build of the
+command is agreeing with the file that was replaced under it, and so lags by
+construction. Where no daemon can be named at all there, it restarts the box's
+one unit because the file that unit runs was replaced — saying, in those words,
+that this is not a claim about whose daemon it is, and that a daemon started
+some other way still runs the old build. Two things it will not do, on either
+branch:
+
+- **It never cuts into a drain that is under way.** A draining daemon is
+  restarting itself and waiting for the work it holds, so a restart there would
+  stop exactly that work. It names the cause and every holder instead, and
+  leaves the box to turn itself over. A drain that gave up is the opposite case
+  and is restarted.
+- **It restarts only the unit whose main process is that daemon.** The pid comes
+  from one configuration's record, and on a box running a second daemon the
+  single `forge-runner*.service` unit need not be it — restarting that one would
+  leave the daemon that lagged lagging and stop another mid-job. Where no unit
+  answers for the pid, it refuses by name and lists what each unit is running.
+  Where this platform cannot confirm the pid is still that daemon, it restarts
+  nothing at all: `status` declines to assert that identity, and a restart is
+  that assertion with a `systemctl` behind it.
+
+Control it without editing TOML:
 
 ```bash
 forge-runner config set update.auto false   # opt this device out

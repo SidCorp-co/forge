@@ -109,7 +109,7 @@ pub async fn handle_session_send(
 async fn deliver_to_pane(masters: &Arc<Masters>, session_id: &str, body: &str) -> Option<bool> {
     let pane = masters.pane_for_session(session_id)?;
     match terminal::send_line(&pane, body).await {
-        Ok(()) => Some(true),
+        Ok(_) => Some(true),
         Err(e) => {
             tracing::info!("[inbox] master pane {pane} did not take the message: {e}");
             Some(false)

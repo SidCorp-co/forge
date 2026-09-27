@@ -22,6 +22,7 @@ import {
 import { logger } from '../logger.js';
 import { detectStateConfab } from './confab.js';
 import { PROVIDER_HISTORY_WINDOW } from './context-budget.js';
+import { STOPPED_BY_A_PERSON } from './conversation-stops.js';
 import {
   appendAssistantMessage,
   appendSilence,
@@ -256,9 +257,14 @@ export async function runExternalChatTurn(
 
   let assistantMessageId: string | null = null;
   if (turn && record !== 'nothing') {
+    // A person who stopped this turn gets no silence row: "the agent had
+    // nothing to add" is a different thing from "you ended this", and a
+    // provider that answers a cancelled call with an error result rather than
+    // raising would otherwise write the first (ISS-1146).
+    const stoppedByAPerson = args.signal?.aborted && args.signal.reason === STOPPED_BY_A_PERSON;
     if (result.terminal === 'done' && result.finalText.length > 0) {
       if (record === 'question-and-answer') appendAssistantMessage(turn, result.finalText);
-    } else {
+    } else if (!stoppedByAPerson) {
       appendSilence(
         turn,
         result.errorMessage ?? (result.terminal === 'done' ? 'empty-reply' : result.terminal),

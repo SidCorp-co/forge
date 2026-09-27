@@ -8,7 +8,20 @@ import { listActiveDeployBindingsForProvider } from '../integrations/store.js';
 import { logger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { projectAutoProdDeploy } from './auto-prod-deploy.js';
-import { openDeployDispatchHold } from './deploy-confirmations.js';
+import { abandonDeployDispatchHold, openDeployDispatchHold } from './deploy-confirmations.js';
+import {
+  acquireDeployLocks,
+  type DeployLockHeld,
+  releaseDeployLocksForRun,
+} from './deploy-lock.js';
+import {
+  type DeployLockIntent,
+  deployLockIntent,
+  freeLockIfNothingPending,
+  giveBackUnusedEnvironments,
+  locksOf,
+  targetLabelOf,
+} from './release-coolify-hold.js';
 import { RELEASE_DEPLOY_IN_FLIGHT_STEP, setCurrentStep } from './runs.js';
 
 /**
@@ -140,8 +153,11 @@ export async function tryDispatchCoolifyRelease(args: {
   /** Hard filter — when set, dispatch ONLY this binding. */
   integrationId?: string | null;
   allowLive?: boolean;
+  /** ISS-1279 — the release path passes it; the landing auto-subscriber does not. */
+  takeEnvironmentLock?: boolean;
 }): Promise<DispatchOutcome> {
   const { projectId, issueId, runId, integrationId, allowLive = true } = args;
+  const takeEnvironmentLock = args.takeEnvironmentLock === true;
   await warnIfRunAlreadyTerminal(runId, issueId);
   const allPairs = await listActiveDeployBindingsForProvider(projectId, 'coolify');
   const reachesLive = reachesLiveOf(allPairs);
@@ -158,52 +174,96 @@ export async function tryDispatchCoolifyRelease(args: {
     };
   }
 
+  const lock = takeEnvironmentLock ? deployLockIntent(projectId, pairs, reachesLive) : null;
+  // Each placeholder records the rows its own binding needs (ISS-1279).
+  const takenLocks: DeployLockHeld[] = lock
+    ? await acquireDeployLocks({ projectId, runId, subject: lock.subject }, lock.environments)
+    : [];
+
   const dispatched: string[] = [];
   let pendingHumanConfirm = false;
   const autoProd = await projectAutoProdDeploy(projectId);
 
-  for (const { binding } of pairs) {
-    if (reachesLive(binding) && !autoProd) {
-      // Manual approval gate — never auto-dispatch prod. The UI sticky
-      // banner calls /integrations/:id/confirm-prod-deploy to release the gate.
-      // Skipped entirely when the project opted into autoProdDeploy.
-      const gateState = await getProdGateStateForRun(binding.id, runId);
-      if (!gateState || gateState.confirmedAt === null) {
-        await markPendingHumanConfirm({ runId, issueId, bindingId: binding.id });
-        pendingHumanConfirm = true;
-        continue;
+  // EVERY hold before the FIRST enqueue: opened beside its own enqueue, the holds registered so
+  // far read as the whole set, and a target settling there closes the run and frees the
+  // environment while a binding this loop has not reached is still to be dispatched.
+  const armed: Array<{ binding: (typeof pairs)[number]['binding']; requestId: string }> = [];
+  let witnessed = 0;
+  try {
+    for (const { binding } of pairs) {
+      if (reachesLive(binding) && !autoProd) {
+        // Manual approval gate — never auto-dispatch prod. The UI sticky
+        // banner calls /integrations/:id/confirm-prod-deploy to release the gate.
+        // Skipped entirely when the project opted into autoProdDeploy.
+        const gateState = await getProdGateStateForRun(binding.id, runId);
+        if (!gateState || gateState.confirmedAt === null) {
+          await markPendingHumanConfirm({
+            runId,
+            issueId,
+            bindingId: binding.id,
+            // THIS binding's, never the fan-out's: a sibling's would refuse its own press.
+            ...(lock ? { lock: deployLockIntent(projectId, [{ binding }], reachesLive) } : {}),
+          });
+          pendingHumanConfirm = true;
+          continue;
+        }
+      }
+
+      const requestId = `${runId}:${binding.id}:${Date.now()}-${randomUUID().slice(0, 8)}`;
+      await setCurrentStep(runId, RELEASE_DEPLOY_IN_FLIGHT_STEP);
+      const held = await openDeployDispatchHold({
+        runId,
+        bindingId: binding.id,
+        requestId,
+        targetLabel: targetLabelOf(binding),
+        // One this fan-out WROTE, never one it attempted (ISS-1279).
+        authorisedBySibling: witnessed > 0,
+        locks: locksOf(takenLocks, deployLockIntent(projectId, [{ binding }], reachesLive)),
+      });
+      if (held) witnessed += 1;
+      else reportUnwitnessedDeploy(runId, issueId, binding.id);
+      armed.push({ binding, requestId });
+    }
+
+    for (const { binding, requestId } of armed) {
+      await enqueueOutboundDispatch({
+        jobKind: 'coolify.dispatch',
+        bindingId: binding.id,
+        runId,
+        issueId,
+        eventName: 'release.requested',
+        requestId,
+      });
+      dispatched.push(binding.id);
+
+      if (isSentryEnabled()) {
+        Sentry.addBreadcrumb({
+          category: 'integration.coolify.dispatch',
+          level: 'info',
+          message: 'enqueued coolify dispatch',
+          data: { bindingId: binding.id, stages: binding.stages, runId },
+        });
       }
     }
-
-    const requestId = `${runId}:${binding.id}:${Date.now()}-${randomUUID().slice(0, 8)}`;
-
-    await setCurrentStep(runId, RELEASE_DEPLOY_IN_FLIGHT_STEP);
-    const held = await openDeployDispatchHold({
-      runId,
-      bindingId: binding.id,
-      requestId,
-      targetLabel: `${(binding.stages ?? []).join('+') || binding.role} deploy`,
-    });
-    if (!held) reportUnwitnessedDeploy(runId, issueId, binding.id);
-    await enqueueOutboundDispatch({
-      jobKind: 'coolify.dispatch',
-      bindingId: binding.id,
-      runId,
-      issueId,
-      eventName: 'release.requested',
-      requestId,
-    });
-    dispatched.push(binding.id);
-
-    if (isSentryEnabled()) {
-      Sentry.addBreadcrumb({
-        category: 'integration.coolify.dispatch',
-        level: 'info',
-        message: 'enqueued coolify dispatch',
-        data: { bindingId: binding.id, stages: binding.stages, runId },
-      });
+  } catch (err) {
+    // A placeholder whose deploy was never queued is a hold nothing can settle.
+    for (const { binding, requestId } of armed) {
+      if (!dispatched.includes(binding.id)) await abandonDeployDispatchHold(runId, requestId);
     }
+    await freeLockIfNothingPending(lock, runId, dispatched, takenLocks);
+    throw err;
   }
+  // Only where something WAS armed: with nothing armed the whole hold goes back below.
+  if (armed.length > 0) {
+    await giveBackUnusedEnvironments(
+      runId,
+      takenLocks,
+      armed.flatMap(
+        ({ binding }) => deployLockIntent(projectId, [{ binding }], reachesLive).environments,
+      ),
+    );
+  }
+  await freeLockIfNothingPending(lock, runId, dispatched, takenLocks);
 
   if (dispatched.length === 0 && pendingHumanConfirm) {
     return {
@@ -281,6 +341,9 @@ interface ProdGateState {
   requestedAt: string;
   confirmedAt: string | null;
   confirmedByUserId?: string;
+  /** ISS-1279 — set only where the parked deploy held the lock, and carried rather than
+   *  recomputed: the confirm endpoint resolves no binding set of its own. */
+  lock?: DeployLockIntent;
 }
 
 const GATE_METADATA_KEY = '__forge_prod_deploy_gate';
@@ -289,6 +352,7 @@ async function markPendingHumanConfirm(input: {
   runId: string;
   issueId: string | null;
   bindingId: string;
+  lock?: DeployLockIntent;
 }): Promise<void> {
   const [row] = await db
     .select({ metadata: pipelineRuns.metadata })
@@ -303,6 +367,7 @@ async function markPendingHumanConfirm(input: {
     bindingId: input.bindingId,
     requestedAt: new Date().toISOString(),
     confirmedAt: null,
+    ...(input.lock ? { lock: input.lock } : {}),
   };
   await db
     .update(pipelineRuns)
@@ -382,41 +447,60 @@ export async function confirmPendingProdDeploy(
     .limit(1);
   if (!run) return { confirmed: false, runId: null, integrationId: bindingId };
 
-  const md = (run.metadata ?? {}) as Record<string, unknown>;
-  const gates = (md[GATE_METADATA_KEY] as Record<string, ProdGateState>) ?? {};
-  gates[bindingId] = {
-    ...gate,
-    confirmedAt: new Date().toISOString(),
-    ...(confirmedByUserId ? { confirmedByUserId } : {}),
-  };
-  await db
-    .update(pipelineRuns)
-    .set({ metadata: { ...md, [GATE_METADATA_KEY]: gates }, updatedAt: new Date() })
-    .where(eq(pipelineRuns.id, run.id));
-
-  await setCurrentStep(run.id, RELEASE_DEPLOY_IN_FLIGHT_STEP);
-
-  // Same idempotency guard as the staging loop (ISS-242): a confirmed prod
-  // deploy already enqueued for this `:confirmed` requestId must not fire
-  // twice if the confirm endpoint is hit again.
+  // ISS-1279 — the same release reaching the same box, taken BEFORE the gate flips so a refused confirmation can be pressed again.
   const confirmedRequestId = `${run.id}:${bindingId}:confirmed`;
-  const existing = await findDeliveryByRequestId(bindingId, confirmedRequestId);
-  if (!existing) {
-    const held = await openDeployDispatchHold({
-      runId: run.id,
-      bindingId,
-      requestId: confirmedRequestId,
-      targetLabel: 'prod deploy',
-    });
-    if (!held) reportUnwitnessedDeploy(run.id, gate.issueId, bindingId);
-    await enqueueOutboundDispatch({
-      jobKind: 'coolify.dispatch',
-      bindingId,
-      runId: run.id,
-      issueId: gate.issueId,
-      eventName: 'release.requested',
-      requestId: confirmedRequestId,
-    });
+  const alreadyEnqueued = await findDeliveryByRequestId(bindingId, confirmedRequestId);
+  const took = Boolean(gate.lock) && !alreadyEnqueued;
+  let taken: DeployLockHeld[] = [];
+  if (gate.lock && took) {
+    taken = await acquireDeployLocks(
+      { projectId: gate.lock.projectId, runId: run.id, subject: gate.lock.subject },
+      gate.lock.environments,
+    );
+  }
+
+  let enqueued = false;
+  try {
+    const md = (run.metadata ?? {}) as Record<string, unknown>;
+    const gates = (md[GATE_METADATA_KEY] as Record<string, ProdGateState>) ?? {};
+    gates[bindingId] = {
+      ...gate,
+      confirmedAt: new Date().toISOString(),
+      ...(confirmedByUserId ? { confirmedByUserId } : {}),
+    };
+    await db
+      .update(pipelineRuns)
+      .set({ metadata: { ...md, [GATE_METADATA_KEY]: gates }, updatedAt: new Date() })
+      .where(eq(pipelineRuns.id, run.id));
+
+    await setCurrentStep(run.id, RELEASE_DEPLOY_IN_FLIGHT_STEP);
+
+    // Same idempotency guard as the staging loop (ISS-242): a confirmed prod
+    // deploy already enqueued for this `:confirmed` requestId must not fire
+    // twice if the confirm endpoint is hit again.
+    if (!alreadyEnqueued) {
+      const held = await openDeployDispatchHold({
+        runId: run.id,
+        bindingId,
+        requestId: confirmedRequestId,
+        targetLabel: 'prod deploy',
+        locks: taken,
+      });
+      if (!held) reportUnwitnessedDeploy(run.id, gate.issueId, bindingId);
+      await enqueueOutboundDispatch({
+        jobKind: 'coolify.dispatch',
+        bindingId,
+        runId: run.id,
+        issueId: gate.issueId,
+        eventName: 'release.requested',
+        requestId: confirmedRequestId,
+      });
+      enqueued = true;
+    }
+  } catch (err) {
+    // Left standing, this hold would refuse the person's own next press, in their run's name.
+    if (took && !enqueued) await releaseDeployLocksForRun(run.id, taken);
+    throw err;
   }
 
   return { confirmed: true, runId: run.id, integrationId: bindingId };

@@ -54,6 +54,8 @@ const NOT_DISCOVERY: Record<string, string> = {
   'issues/attributes/read.ts': 'the ids attribute values reference',
   'issues/attributes/routes.ts': 'by issue id',
   'issues/create-service.ts': 'the existing row a dedup names',
+  'issues/issue-lease.ts':
+    'the one issue a lease key names; a run holding an archived issue is still holding it, and its status is what says whether it is over',
   'issues/criteria-verdicts.ts': 'the ids passed in',
   'issues/dependency-routes.ts': 'the two ends of the edge being written',
   'issues/dependency-service.ts': 'the two ends of the edge being written, refused when archived',
@@ -106,6 +108,8 @@ const NOT_DISCOVERY: Record<string, string> = {
   'pipeline/inv7-alarms.ts': 'held or queued jobs and running runs',
   'pipeline/issue-run-invariant.ts': 'reads only work-in-progress statuses',
   'pipeline/pipeline-config-service.ts': 'reads only stage statuses, all non-terminal',
+  'pipeline/shipped-at.ts':
+    'the first shipped moment per issue, read only into counts and timings; an archived issue still shipped on its day',
   'pipeline/reconciler.ts': 'reads only entry and in-flight statuses',
   'pipeline/lease-fanout.ts': 'reads only non-terminal rows, and counts claims per holder',
   'pipeline/recovery-verifier.ts': 'the issue of the job',
@@ -122,13 +126,17 @@ const NOT_DISCOVERY: Record<string, string> = {
   'pm/snapshot-service.ts': 'status counts; stalled rows read only active statuses',
   'projects/health-aggregates.ts':
     'counts and timings; blockers read only `on_hold` and `needs_info`',
+  'projects/issue-work-records.ts':
+    "which issue a waiting commit is the work of; an archived issue still owns its commits, or they would read as nobody's",
   'projects/routes.ts': 'by issue id',
   'projects/service.ts': 'by issue id',
   'prompt/issue-snapshot.ts':
     'the one issue a job runs on, by id; an archived issue is terminal and runs no job',
   'questions/read.ts': 'by issue id',
   'questions/write.ts': 'by issue id',
+  'release-batch/abort-stamp.ts': 'the closed ids one release run recorded',
   'release-batch/blockers.ts': 'gate statuses, counted; claims by id',
+  'release-batch/claim-conflicts.ts': 'the ids passed in',
   'release-batch/finish-job.ts':
     'counts rows of one release run: releasing, or closed by it, so never archived live work',
   'release-batch/queries.ts': 'reads only the gate status, or rows of one release run',

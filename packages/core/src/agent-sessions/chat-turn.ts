@@ -32,6 +32,7 @@ import {
   samePageContext,
 } from './page-context.js';
 import { seedTurn } from './session-events.js';
+import type { AgentSessionPatch } from './session-failure.js';
 import { readSessionModel } from './session-model.js';
 import { syncTurnsWithMessages } from './turns-helpers.js';
 
@@ -307,8 +308,8 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
     throw new Error(`dispatchChatTurn: invalid skillName '${args.skillName}'`);
   }
 
-  const updates: Record<string, unknown> = {
-    messages: messages as never,
+  const updates: AgentSessionPatch = {
+    messages,
     status: 'running',
     lastHeartbeatAt: now,
     updatedAt: now,

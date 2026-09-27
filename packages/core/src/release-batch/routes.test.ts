@@ -4,7 +4,7 @@
  *
  * `resolveReleaseGate` and `releaseRunnerLabelOf` each throw a named error (proved in
  * `gate.test.ts` and `channel.test.ts`); neither was caught here, so a project that
- * declares `releaseModel` with no live deploy binding — or two live bindings naming
+ * declares a release chain with no live deploy binding — or two live bindings naming
  * different release runners — answered `500 Internal Server Error` on both the create
  * and the roster. An operator reading a 500 cannot tell a misdeclared project from a
  * broken server, which is the same silent shape the declaration exists to remove.
@@ -39,6 +39,12 @@ vi.mock('./service.js', async (importOriginal) => ({
   createReleaseBatch: (a: unknown) => createReleaseBatchMock(a),
   loadReleaseRoster: (a: unknown) => loadReleaseRosterMock(a),
   findReleaseBatchRun: (a: unknown) => findRunMock(a),
+}));
+
+const recordReleaseMock = vi.fn();
+vi.mock('./recorded.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./recorded.js')>()),
+  recordPerformedRelease: (a: unknown) => recordReleaseMock(a),
 }));
 
 vi.mock('./finish-job.js', () => ({
@@ -112,13 +118,16 @@ beforeEach(() => {
 describe('POST /:projectId/release-batches — the declaration refusals', () => {
   // ISS-1127 criterion 9: this text is `releaseBlockerSentence`'s, the same
   // function `GET /release-readiness` composes its own `RELEASE_TARGET_UNDECLARED`
-  // entry from (`blockers.ts`'s `blocker('RELEASE_TARGET_UNDECLARED', { releaseModel })`)
+  // entry from (`blockers.ts`'s `blocker('RELEASE_TARGET_UNDECLARED', { releaseChain })`)
   // — not the error class's own `.message`, which named the project id this
   // call is already scoped to and neither door needed.
-  it('answers 409 RELEASE_TARGET_UNDECLARED, naming the declared model and the remedy', async () => {
+  it('answers 409 RELEASE_TARGET_UNDECLARED, naming the declared chain and the remedy', async () => {
     mockAdmin();
     createReleaseBatchMock.mockRejectedValueOnce(
-      new ReleaseTargetUndeclaredError(PROJECT_ID, 'promote'),
+      new ReleaseTargetUndeclaredError(PROJECT_ID, [
+        { branch: 'main' },
+        { branch: 'live', from: 'merge-branch' },
+      ]),
     );
 
     const res = await createReq();
@@ -126,7 +135,7 @@ describe('POST /:projectId/release-batches — the declaration refusals', () => 
 
     expect(res.status).toBe(409);
     expect(body.code).toBe('RELEASE_TARGET_UNDECLARED');
-    expect(body.message).toContain('releaseModel `promote`');
+    expect(body.message).toContain('release chain ends at `live`');
     expect(body.message).toContain('no active deploy binding carrying the `live` stage');
   });
 
@@ -173,7 +182,7 @@ describe('GET /:projectId/release-batches/roster — the same two refusals', () 
   it('answers 409 RELEASE_TARGET_UNDECLARED rather than 500', async () => {
     mockAdmin();
     loadReleaseRosterMock.mockRejectedValueOnce(
-      new ReleaseTargetUndeclaredError(PROJECT_ID, 'publish'),
+      new ReleaseTargetUndeclaredError(PROJECT_ID, [{ branch: 'main' }]),
     );
 
     const res = await rosterReq();
@@ -326,7 +335,7 @@ describe('POST /:projectId/release-batches — the refusals that go through thei
   it('still answers 409 for an undeclared target, rather than the 500 an unmapped class gets', async () => {
     mockAdmin();
     createReleaseBatchMock.mockRejectedValueOnce(
-      new ReleaseTargetUndeclaredError(PROJECT_ID, 'publish'),
+      new ReleaseTargetUndeclaredError(PROJECT_ID, [{ branch: 'main' }]),
     );
 
     const res = await createReq();
@@ -336,7 +345,7 @@ describe('POST /:projectId/release-batches — the refusals that go through thei
 
   it('carries the rest of the list on a declaration refusal too', async () => {
     mockAdmin();
-    const err = new ReleaseTargetUndeclaredError(PROJECT_ID, 'publish');
+    const err = new ReleaseTargetUndeclaredError(PROJECT_ID, [{ branch: 'main' }]);
     Object.assign(err, {
       releaseBlockers: [
         { code: 'RELEASE_TARGET_UNDECLARED', message: 'thrown', evaluated: true, httpStatus: 409 },
@@ -409,7 +418,10 @@ describe('POST /:projectId/release-batches/:runId/finish — the door answers th
     const { ReleaseFinishInFlightError } = await import('./errors.js');
     const inFlight = 'a'.repeat(40);
     acceptFinishMock.mockRejectedValueOnce(
-      new ReleaseFinishInFlightError('r-1', inFlight, 'b'.repeat(40)),
+      new ReleaseFinishInFlightError('r-1', inFlight, 'b'.repeat(40), {
+        projectId: 'proj-9',
+        runId: 'run-9',
+      }),
     );
 
     const res = await finishReq({ commit: 'b'.repeat(40) });
@@ -418,12 +430,14 @@ describe('POST /:projectId/release-batches/:runId/finish — the door answers th
     expect(res.status).toBe(409);
     expect(body.code).toBe('RELEASE_FINISH_IN_FLIGHT');
     expect(body.message).toContain(inFlight);
+    expect(body.message).toContain('GET /api/projects/proj-9/release-batches/run-9/state');
+    expect(body.message).not.toMatch(/\{projectId\}|\{runId\}/);
     expect(body.details).toEqual({ requestId: 'r-1', inFlightCommit: inFlight });
   });
 
   it('answers a refusal the door decided under its existing code', async () => {
     const { ReleaseBatchAbortedError, ReleaseNotVerifiedError } = await import('./errors.js');
-    acceptFinishMock.mockRejectedValueOnce(new ReleaseBatchAbortedError());
+    acceptFinishMock.mockRejectedValueOnce(new ReleaseBatchAbortedError('released', 'proj-9'));
     const aborted = await finishReq();
     expect(aborted.status).toBe(409);
     expect(((await aborted.json()) as { code?: string }).code).toBe('RELEASE_BATCH_ABORTED');
@@ -437,5 +451,46 @@ describe('POST /:projectId/release-batches/:runId/finish — the door answers th
       code: 'RELEASE_NOT_VERIFIED',
       message: '`abc` is not a whole commit',
     });
+  });
+});
+
+describe('a roster naming one issue twice', () => {
+  const LETTERED = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+  const twice = [LETTERED, LETTERED.toUpperCase()];
+
+  async function post(path: string, body: Record<string, unknown>) {
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    const res = await buildApp().request(`/api/projects/${PROJECT_ID}/${path}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${await token()}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return { status: res.status, text: JSON.stringify(await res.json()) };
+  }
+
+  it('is refused 400 at the batch door, naming the repeated id, and opens no batch', async () => {
+    const answer = await post('release-batches', { issueIds: twice });
+    expect(answer.status).toBe(400);
+    expect(answer.text).toContain(`issueIds names ${LETTERED.toUpperCase()} more than once`);
+    expect(createReleaseBatchMock).not.toHaveBeenCalled();
+  });
+
+  it('is refused 400 at the record door, naming the repeated id, and claims nothing', async () => {
+    const answer = await post('release-records', {
+      issueIds: [ISSUE_ID, ISSUE_ID],
+      commit: 'a'.repeat(40),
+      account: 'Promoted by hand; production serves this commit.',
+    });
+    expect(answer.status).toBe(400);
+    expect(answer.text).toContain(`issueIds names ${ISSUE_ID} more than once`);
+    expect(recordReleaseMock).not.toHaveBeenCalled();
+  });
+
+  it('lets a roster naming each issue once through to the door', async () => {
+    mockAdmin();
+    createReleaseBatchMock.mockResolvedValueOnce({ runId: 'r', issueIds: [ISSUE_ID] });
+    const res = await createReq();
+    expect(res.status).toBe(201);
+    expect(createReleaseBatchMock).toHaveBeenCalledOnce();
   });
 });

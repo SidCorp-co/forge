@@ -87,6 +87,7 @@ export function useNotificationDelivery(
           description: d.body ?? undefined,
           tone: plan.tone,
           onClick: () => onNavigate(d),
+          slot: "notification",
         });
       }
       if (plan.browser) {

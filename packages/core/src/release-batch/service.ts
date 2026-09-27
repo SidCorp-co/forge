@@ -12,15 +12,9 @@
 // claim release to `releasing-recovery.ts`, which is also what a batch that
 // died without either outcome goes through.
 
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
-import {
-  type IssueStatus,
-  issues,
-  jobs,
-  type PipelineRunStatus,
-  pipelineRuns,
-} from '../db/schema.js';
+import { type IssueStatus, issues, type PipelineRunStatus, pipelineRuns } from '../db/schema.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
@@ -35,13 +29,19 @@ import {
   type OneShotRunSpec,
 } from '../pipeline/runs.js';
 import { readProjectBranches } from '../projects/service.js';
+import {
+  abortedError,
+  batchAborted,
+  closedBeforeAbort,
+  settleAbortStamp,
+  stampAbort,
+} from './abort-stamp.js';
 import { collectReleaseBlockers, releaseBlockerError } from './blockers.js';
 import { resolveReleaseChannels, resolveReleasePlan } from './channel.js';
+import { claimConflictAt } from './claim-conflicts.js';
 import {
   BatchInFlightError,
-  ClaimConflictError,
   NoReleaseGateError,
-  ReleaseBatchAbortedError,
   ReleaseFinishFenceLostError,
   ReleaseIssuesUnnamedError,
   ReleaseNotVerifiedError,
@@ -49,16 +49,17 @@ import {
   ReleaseVersionMissingError,
 } from './errors.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
-import { assertMethodFor, readMethod } from './method.js';
-import { RELEASE_BATCH_SKILL, ReleaseBranchesUndeclaredError, releaseBranches } from './plan.js';
+import { RELEASE_BATCH_SKILL, releaseBranches } from './plan.js';
 import { buildReleaseBatchPrompt } from './prompt.js';
-import { recoverStrandedReleasing } from './releasing-recovery.js';
+import {
+  type RecoverStrandedReleasingResult,
+  recoverStrandedReleasing,
+} from './releasing-recovery.js';
 import { RELEASE_UNSTARTED_DEADLINE_MS } from './unstarted-recovery.js';
 import { liveCarriesRoster, readLiveCommit, type VerifyConfig, verifyDeployed } from './verify.js';
 import { cutReleaseVersion, markReleaseShipped } from './version-store.js';
 
 export * from './errors.js';
-export { ReleaseBranchesUndeclaredError };
 export interface CreateReleaseBatchArgs {
   projectId: string;
   issueIds: string[];
@@ -90,16 +91,21 @@ export interface CreateReleaseBatchResult {
 export async function createReleaseBatch(
   args: CreateReleaseBatchArgs,
 ): Promise<CreateReleaseBatchResult> {
-  const { projectId, issueIds, userId, recutOf } = args;
+  const { projectId, userId, recutOf } = args;
 
   // ISS-1127 — one enumerator, and this door throws its FIRST answer. Every
   // refusal keeps the class, the code and the wording it had; what is new is
   // that the error carries the rest of the list, so an operator clearing this
   // one already knows what else is standing.
-  const report = await collectReleaseBlockers(projectId, { issueIds, door: 'batch' });
+  const report = await collectReleaseBlockers(projectId, {
+    issueIds: args.issueIds,
+    door: 'batch',
+  });
   if (!report.projectExists) throw new NoReleaseGateError();
   const refusal = releaseBlockerError(report);
   if (refusal) throw refusal;
+  // Every id is now an issue at this project's gate, so its lower-case spelling is the row's own.
+  const issueIds = args.issueIds.map((id) => id.toLowerCase());
   // After the report, so every project reason outranks it. An empty gate is
   // already `RELEASE_ROSTER_EMPTY` above; reaching here, issues are waiting and
   // this call named none of them, which is the caller's list to fix.
@@ -117,11 +123,9 @@ export async function createReleaseBatch(
 
   const project = (await readProjectBranches(projectId)) ?? {
     baseBranch: null,
-    liveBranch: null,
-    releaseModel: 'none' as const,
-    releaseStrategy: null,
+    releaseChain: [],
   };
-  const { baseBranch, liveBranch, promotePlanned } = releaseBranches(project, project.releaseModel);
+  const { baseBranch, promotePlanned } = releaseBranches(project);
   const deployPlanned = plan.channels.length > 0;
   const firstVerify = plan.channels[0]?.verify ?? null;
   const commitBefore = firstVerify ? await readLiveCommit(firstVerify) : null;
@@ -180,7 +184,7 @@ export async function createReleaseBatch(
 
   if (claimed.length !== issueIds.length) {
     await closeRunIfOneShot(run.id, 'cancelled');
-    throw new ClaimConflictError(issueIds.filter((id) => !claimed.some((r) => r.id === id)));
+    throw await claimConflictAt(projectId, gateStatus, issueIds, claimed);
   }
 
   for (const id of claimed.map((r) => r.id)) {
@@ -203,9 +207,7 @@ export async function createReleaseBatch(
     runId: run.id,
     projectId,
     baseBranch,
-    liveBranch,
-    releaseModel: project.releaseModel,
-    releaseStrategy: project.releaseStrategy,
+    releaseChain: project.releaseChain,
     plan,
     releaseRunnerPreferenceMet: preferenceMet,
     issues: issueRows.map((r) => ({
@@ -266,6 +268,7 @@ export interface FinishReleaseBatchOptions {
   commit?: string | undefined;
   /** An earlier worker on this same attempt already saw the probes go green, so they are not read again. */
   alreadyVerified?: boolean | undefined;
+  whileVerifying?: (() => Promise<void>) | undefined;
   /** Called once verification is green, before the first issue closes. */
   onVerified?: (() => Promise<void>) | undefined;
   /** Called with the roster's outcome before the claims are released, so it outlives them. */
@@ -309,25 +312,13 @@ export async function readReleaseRun(runId: string): Promise<ReleaseRunRow | und
  * verification will read. Nothing here makes an outbound request, so a door may call it inline.
  */
 export async function assertFinishable(runId: string, run: ReleaseRunRow): Promise<VerifyConfig> {
-  if (run.status === 'cancelled') throw new ReleaseBatchAbortedError();
+  if (batchAborted(run)) throw await abortedError(runId);
   // A release closes its roster claiming a ship. Without a version nothing afterwards can name
   // WHICH release carried these issues, which is the one thing this path exists to make true, so
   // it is refused by name rather than closed anyway. `createReleaseBatch` cuts the number inside
   // the transaction that inserts the row, so a release row reaching here without one was not
   // opened by it.
   if (!run.releaseVersion) throw new ReleaseVersionMissingError(runId);
-
-  const [job] = await db
-    .select({ payload: jobs.payload })
-    .from(jobs)
-    .where(and(eq(jobs.pipelineRunId, runId), eq(jobs.type, 'release_batch')))
-    .orderBy(desc(jobs.queuedAt))
-    .limit(1);
-  const jobSkill = (job?.payload as { skillName?: unknown } | null)?.skillName;
-  assertMethodFor(
-    readMethod(run.metadata),
-    typeof jobSkill === 'string' && jobSkill.length > 0 ? jobSkill : RELEASE_BATCH_SKILL,
-  );
 
   const channels = await resolveReleaseChannels(run.projectId);
   const closeVerify = channels[0]?.verify ?? null;
@@ -368,6 +359,7 @@ export async function finishReleaseBatch(
         cfg: closeVerify,
         commitBefore: typeof meta.commitBefore === 'string' ? meta.commitBefore : null,
         expected: options.commit ?? null,
+        checkpoint: options.whileVerifying,
       });
       if (!outcome.ok) throw new ReleaseNotVerifiedError(outcome.reason, outcome.live);
       if (!outcome.moved) {
@@ -436,14 +428,9 @@ export async function finishReleaseBatch(
   return result;
 }
 
-export interface AbortReleaseBatchResult {
-  claimsCleared: string[];
-  /** Where the roster went, or `null` when nothing moved. */
-  destination: IssueStatus | null;
-  /** True when the run had promoted. On its own it no longer says the roster stayed put:
-   *  `promotedRoster: 'return-to-gate'` settles one anyway, and `destination` is what moved. */
-  promoted: boolean;
-  /** What the abort did to the run row, in its own words. */
+/** What the recovery did to the roster, and what the abort did to the run row. `alreadyClosed` is
+ *  every roster issue closed when the abort ran, claimed or not (`closedBeforeAbort`). */
+export interface AbortReleaseBatchResult extends RecoverStrandedReleasingResult {
   run: {
     status: PipelineRunStatus | null;
     wasAlreadyTerminal: boolean;
@@ -464,6 +451,8 @@ export type PromotedRosterSettlement = 'hold' | 'return-to-gate';
 
 export interface AbortReleaseBatchOptions {
   promotedRoster?: PromotedRosterSettlement | undefined;
+  /** Test seam: runs after the roster is recovered and before its account is settled. */
+  afterRosterRecovered?: (() => Promise<void>) | undefined;
 }
 
 export async function abortReleaseBatch(
@@ -472,21 +461,31 @@ export async function abortReleaseBatch(
   actorUserId: string,
   options: AbortReleaseBatchOptions = {},
 ): Promise<AbortReleaseBatchResult> {
-  const { claimsCleared, destination, promoted } = await recoverStrandedReleasing(runId, {
+  // First, so a finish sees the abort before the recovery and the cancel below (abort-stamp.ts).
+  const stampId = await stampAbort(runId, {
+    reason,
+    by: actorUserId,
+    holdPromotedRoster: options.promotedRoster !== 'return-to-gate',
+  });
+  const recovery = await recoverStrandedReleasing(runId, {
     reason: `batch release aborted: ${reason}`,
     actorUserId,
     comment: true,
     settlePromotedRoster: options.promotedRoster === 'return-to-gate',
   });
+  await options.afterRosterRecovered?.();
+  const held = recovery.promoted && options.promotedRoster !== 'return-to-gate';
+  const roster = held ? 'held' : 'released';
+  const alreadyClosed = await closedBeforeAbort(runId, recovery.alreadyClosed);
+  await settleAbortStamp(runId, stampId, { roster, closed: alreadyClosed });
 
   await closeRunIfOneShot(runId, 'cancelled');
 
   const after = await cancelConcludedRun(runId);
 
   return {
-    claimsCleared,
-    destination,
-    promoted,
+    ...recovery,
+    alreadyClosed,
     run: {
       status: after.cancelled ? 'cancelled' : after.was,
       wasAlreadyTerminal: after.cancelled,

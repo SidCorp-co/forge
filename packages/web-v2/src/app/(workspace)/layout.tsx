@@ -14,13 +14,14 @@ import {
   type NavItem,
   type Command,
   type Crumb,
+  useMediaQuery,
 } from "@/design";
 import { ConversationDock } from "@/features/conversations/components/conversation-dock";
 import { ConversationPanel } from "@/features/conversations/components/conversation-panel";
 import { useConversationDock } from "@/features/conversations/use-conversation-dock";
 import { useLocationSearch } from "@/lib/utils/use-location-search";
 import { useAuth } from "@/providers/auth-provider";
-import { useToast } from "@/providers/toast-provider";
+import { ToastLane, useToast } from "@/providers/toast-provider";
 import { useProjects } from "@/features/projects/hooks";
 import { usePinnedProjects } from "@/features/projects/pins";
 import { ProjectFlyout } from "@/features/projects/components/project-flyout";
@@ -55,6 +56,7 @@ import {
   resolveRailSlug,
   useProjectOrgScopeSync,
   useRailProjectData,
+  CurrentProjectProvider,
 } from "@/features/shell";
 
 export default function WorkspaceLayout({ children }: { children: React.ReactNode }) {
@@ -101,6 +103,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
 
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const bellRef = useRef<HTMLButtonElement>(null);
   const [flyoutOpen, setFlyoutOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   // True when the drawer was opened from the bottom-nav "Project switcher" tab
@@ -109,6 +112,9 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const [mobileNavProjectFirst, setMobileNavProjectFirst] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const { chatOpen, setChatOpen, chatWidth, setChatWidth } = useConversationDock();
+  // One chat surface mounted, never both: a hidden slide-over's Escape closed the dock.
+  const chatDocked = useMediaQuery("(min-width: 48rem)");
+  const chatInSlideOver = useMediaQuery("not all and (min-width: 48rem)");
   const mainRef = useRef<HTMLElement>(null);
   // Hover-open coordination for the expanded-rail project switcher: the trigger
   // (NavRail) and the panel (ProjectFlyout) are siblings, so the open + close
@@ -328,7 +334,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-dvh overflow-hidden bg-app">
-      {/* Desktop rail — compact 76px icon Rail by default (Concept C); expands
+      {/* Desktop rail — compact 88px icon Rail by default (Concept C); expands
           to the labeled 232px NavRail. Hidden below md (bottom tab bar takes
           over). */}
       <div className="hidden h-full md:block">
@@ -425,6 +431,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
             }
             onCommandPalette={() => setPaletteOpen(true)}
             onNotifications={() => setNotificationsOpen((o) => !o)}
+            notificationsRef={bellRef}
             notificationCount={openCount?.count ?? 0}
             onNewIssue={() =>
               slug
@@ -441,13 +448,13 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
           />
           {/* Bell dropdown + invitations + realtime delivery/open-count bridges
               (ISS-504/597/510/523) — always mounted, dropdown gated on open. */}
-          <NotificationsBell open={notificationsOpen} onClose={closeNotifications} />
+          <NotificationsBell open={notificationsOpen} onClose={closeNotifications} anchor={bellRef} />
         </div>
 
         {railProject && (
           <div className="md:hidden">
             <SlideOver
-              open={chatOpen}
+              open={chatOpen && chatInSlideOver}
               onClose={() => setChatOpen(false)}
               title="My conversations"
               width="clamp(560px, 60vw, 1024px)"
@@ -474,11 +481,13 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
             setScrolled((s) => (s ? top > 4 : top > 8));
           }}
         >
-          {children}
+          <CurrentProjectProvider project={railProject}>{children}</CurrentProjectProvider>
         </main>
+
+        <ToastLane className="mb-[calc(56px+env(safe-area-inset-bottom))] md:mb-0" />
       </div>
 
-      {railProject && chatOpen && (
+      {railProject && chatOpen && chatDocked && (
         <ConversationDock
           projectId={railProject.id}
           width={chatWidth}

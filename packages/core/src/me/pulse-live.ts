@@ -4,12 +4,14 @@ import { issues, projects } from '../db/schema.js';
 import { heldIssuePrefixes } from '../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import {
-  evidenceFor,
-  issueRefPattern,
-  type LiveReading,
-  subjectIssueSeqs,
-} from '../projects/live-reach.js';
+  type ReadingOwnership,
+  readingOwnership,
+  unclaimedShas,
+} from '../projects/commit-owners.js';
+import { issueWorkRecordsAt } from '../projects/issue-work-records.js';
+import { evidenceFor, issueRefPattern, type LiveReading } from '../projects/live-reach.js';
 import { liveReadingForRow, projectReleaseRows } from '../projects/live-reading.js';
+import { chainPromotes } from '../projects/release-chain.js';
 import { ageSeconds } from './pulse-folds.js';
 import type {
   PulseCapped,
@@ -25,16 +27,24 @@ export interface PulseLive {
 
 type MeasuredReading = Extract<LiveReading, { kind: 'measured' }>;
 
+/** Every waiting commit's issues, with the project's work records the reading needs read once. */
+async function ownershipOf(projectId: string, reading: MeasuredReading): Promise<ReadingOwnership> {
+  const pattern = issueRefPattern(await heldIssuePrefixes(projectId));
+  const unclaimed = unclaimedShas(reading.commits, pattern, reading.baseBranch);
+  const records = await issueWorkRecordsAt(projectId, unclaimed);
+  return readingOwnership(reading.commits, pattern, reading, records);
+}
+
 async function closedNotOnLive(
   project: { id: string; slug: string; issuePrefix: string | null },
   reading: MeasuredReading,
+  ownership: ReadingOwnership,
   now: Date,
 ): Promise<PulseNotOnLiveIdentity[]> {
   if (reading.commits.length === 0) return [];
-  const pattern = issueRefPattern(await heldIssuePrefixes(project.id));
   const seqs = new Set<number>();
-  for (const c of reading.commits) {
-    for (const s of subjectIssueSeqs(c.message, pattern)) seqs.add(s);
+  for (const owned of ownership.owners.values()) {
+    for (const s of owned.keys()) seqs.add(s);
   }
   const shas = reading.commits.map((c) => c.sha);
   const match =
@@ -61,7 +71,7 @@ async function closedNotOnLive(
     );
   const out: PulseNotOnLiveIdentity[] = [];
   for (const r of rows) {
-    const evidence = evidenceFor(r, reading.commits, pattern);
+    const evidence = evidenceFor(r, reading, ownership);
     if (evidence.length === 0) continue;
     out.push({
       documentId: r.id,
@@ -79,12 +89,14 @@ async function closedNotOnLive(
 
 /**
  * Why a measured reading still leaves closed issues of this project unplaced, or null where it
- * places every one: a list cut short, or issues that merged after the reading started.
+ * places every one: a list cut short, issues that merged after the reading started, or waiting
+ * commits no source gives to any issue.
  */
 async function measuredGap(
   projectId: string,
   reading: MeasuredReading,
   placed: readonly string[],
+  ownerless: number,
 ): Promise<string | null> {
   const reasons: string[] = [];
   if (!reading.complete) {
@@ -109,6 +121,11 @@ async function measuredGap(
       `${n} closed issue${n === 1 ? '' : 's'} merged after the reading of ${reading.startedAt.toISOString()}, which the next reading places`,
     );
   }
+  if (ownerless > 0) {
+    reasons.push(
+      `${ownerless} commit${ownerless === 1 ? '' : 's'} waiting on ${reading.baseBranch} belong${ownerless === 1 ? 's' : ''} to no issue, so a closed issue whose work ${ownerless === 1 ? 'it is' : 'they are'} reads as nothing waiting`,
+    );
+  }
   return reasons.length > 0 ? reasons.join('; ') : null;
 }
 
@@ -121,8 +138,8 @@ export async function readPulseLive(
   thresholds: PulseThresholds,
   now: Date,
 ): Promise<PulseLive> {
-  const releaseRows = (await projectReleaseRows(projectIds)).filter(
-    (r) => r.releaseModel === 'promote',
+  const releaseRows = (await projectReleaseRows(projectIds)).filter((r) =>
+    chainPromotes(r.releaseChain),
   );
   if (releaseRows.length === 0) {
     return { notOnLive: { total: 0, shown: [] }, liveUnmeasured: { total: 0, shown: [] } };
@@ -153,12 +170,14 @@ export async function readPulseLive(
     if (!reading || !project) continue;
     let reason: string | null = reading.kind === 'measured' ? null : reading.reason;
     if (reading.kind === 'measured') {
-      const placed = await closedNotOnLive(project, reading, now);
+      const ownership = await ownershipOf(project.id, reading);
+      const placed = await closedNotOnLive(project, reading, ownership, now);
       notOnLive.push(...placed);
       reason = await measuredGap(
         project.id,
         reading,
         placed.map((i) => i.documentId),
+        ownership.ownerless.length,
       );
     }
     if (reason === null) continue;

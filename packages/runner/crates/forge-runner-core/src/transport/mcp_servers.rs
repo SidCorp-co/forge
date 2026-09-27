@@ -33,11 +33,10 @@ impl ProjectMcpServers {
     }
 }
 
-/// How long the read may take before it is a failed read. The client carries no
-/// deadline of its own, and this read sits on the master sweep's path, so a
-/// peer that accepts the connection and never answers would hold the sweep for
-/// every project behind it. The pool's value, under the heartbeat's 30s.
-pub const CALL_DEADLINE: Duration = Duration::from_secs(15);
+/// The deadline every call to core carries, named here for the callers that
+/// reach for this read's own. [`super::CALL_DEADLINE`] is where the value and
+/// the reason for it live.
+pub const CALL_DEADLINE: Duration = super::CALL_DEADLINE;
 
 pub async fn fetch(client: &CoreClient, project_id: &str) -> Result<ProjectMcpServers> {
     fetch_within(client, project_id, CALL_DEADLINE).await

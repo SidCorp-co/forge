@@ -9,7 +9,7 @@
 //! the gateway never reaches core, and this route answered normally around every
 //! one measured (ISS-1234).
 
-use super::CoreClient;
+use super::{status, CoreClient, CALL_DEADLINE};
 use crate::error::{Error, Result};
 use serde::Deserialize;
 
@@ -112,14 +112,22 @@ async fn beat_with(client: &CoreClient, conditions: &Conditions) -> Result<(Stri
         .post(&url)
         .bearer_auth(client.device_token())
         .json(&body)
+        .timeout(CALL_DEADLINE)
         .send()
         .await
-        .map_err(|e| Error::Other(format!("heartbeat request: {e}")))?;
+        .map_err(|e| {
+            Error::Other(format!(
+                "heartbeat request: {}",
+                status::unanswered(&e, CALL_DEADLINE)
+            ))
+        })?;
     if resp.status().as_u16() == 401 {
         return Err(Error::Unauthorized);
     }
     if !resp.status().is_success() {
-        return Err(Error::Other(format!("heartbeat failed: {}", resp.status())));
+        let code = resp.status().as_u16();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(Error::Other(status::refused("heartbeat", code, &text)));
     }
     let parsed = resp
         .json::<HeartbeatResponse>()

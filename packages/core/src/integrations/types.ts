@@ -201,6 +201,16 @@ export interface IntegrationCapabilities {
 export interface IntegrationSchemas {
   /** Owner-scoped connection create: the credential tier's config. */
   connectionConfig: z.ZodTypeAny;
+  /**
+   * The partial of `connectionConfig` a connection PATCH validates against, which is a schema of
+   * its own rather than `connectionConfig.partial()` at the call site: zod refuses `.partial()` on
+   * an object carrying refinements, so one provider's answer is its already-optional schema
+   * unchanged. Declared per provider so a provider added later cannot skip the question (ISS-1275).
+   *
+   * Without it the PATCH read the CREATE schema, and a provider whose required keys live at the
+   * BINDING tier — coolify's `targets` — could take no connection config patch at all.
+   */
+  connectionPatchConfig: z.ZodTypeAny;
   /** Project-scoped binding create: config carrying both tiers, split by `bindingConfigKeys`. */
   bindingConfig: z.ZodTypeAny;
   /** The partial of `bindingConfig` a PATCH validates against. */
@@ -352,7 +362,6 @@ export interface IntegrationDeclaration<
   /** Null where the provider has no agent-facing usage to advertise. */
   readonly usage: IntegrationUsage | null;
   readonly presentation: IntegrationPresentation | null;
-  readonly releaseStep?: (namedChannels: string) => string;
   /** Absent exactly where nothing is integrated. */
   readonly adapter?: IntegrationAdapterMethods<TConfig, TSecrets>;
 }

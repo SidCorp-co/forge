@@ -151,13 +151,10 @@ impl std::fmt::Display for ReadFailure {
     }
 }
 
-/// How long one pool call may take before it is a failed call rather than a
-/// wait. The client carries no deadline of its own, so a peer that accepts the
-/// connection and never answers held the read, and the sweep behind it, for as
-/// long as the socket stayed open: nothing was recorded, and every heartbeat in
-/// the meantime told core the box read cleanly (ISS-1234). Shorter than the
-/// heartbeat's 30s, so the beat after a hung read already carries it.
-pub const CALL_DEADLINE: Duration = Duration::from_secs(15);
+/// The deadline every call to core carries, named here for the callers that
+/// reach for the pool's own. [`super::CALL_DEADLINE`] is where the value and
+/// the reason for it live.
+pub const CALL_DEADLINE: Duration = super::CALL_DEADLINE;
 
 pub async fn list(
     client: &CoreClient,

@@ -38,9 +38,12 @@ const RUN_ID = '44444444-4444-4444-8444-444444444444';
 
 const { forgeReleaseBatchTool } = await import('./forge-release-batch.js');
 const { makeFakePrincipal } = await import('../fake-principal.fixture.js');
-const { MethodMismatchError } = await import('../../release-batch/method.js');
-const { ReleaseBatchAbortedError, ReleaseFinishInFlightError, ReleaseVersionMissingError } =
-  await import('../../release-batch/errors.js');
+const {
+  ReleaseBatchAbortedError,
+  ReleaseFinishedForOtherCommitError,
+  ReleaseFinishInFlightError,
+  ReleaseVersionMissingError,
+} = await import('../../release-batch/errors.js');
 
 function tool(scopes: string[] = ['read', 'write']) {
   return forgeReleaseBatchTool({
@@ -52,27 +55,41 @@ function tool(scopes: string[] = ['read', 'write']) {
 beforeEach(() => vi.clearAllMocks());
 
 describe('forge_release_batch refusals', () => {
-  it('names the method the job expects when the run announced another', async () => {
-    acceptFinish.mockRejectedValue(new MethodMismatchError('improvised', 'release-flow'));
+  it('says an aborted batch has nothing left to finish, in the account the REST door gives', async () => {
+    acceptFinish.mockRejectedValue(new ReleaseBatchAbortedError('released', 'p-1'));
 
     await expect(tool().handler({ action: 'finish', runId: RUN_ID })).rejects.toThrow(
-      /^RELEASE_METHOD_MISMATCH: .*`improvised`.*Announce `release-flow` with action=method/,
+      /^RELEASE_BATCH_ABORTED: This batch was aborted.*its claims were released/,
     );
   });
 
-  it('says an aborted batch has nothing left to finish', async () => {
-    acceptFinish.mockRejectedValue(new ReleaseBatchAbortedError());
+  it('says a promoted roster the abort held stays at releasing, claimed', async () => {
+    acceptFinish.mockRejectedValue(new ReleaseBatchAbortedError('held', 'p-1'));
 
-    await expect(tool().handler({ action: 'finish', runId: RUN_ID })).rejects.toThrow(
-      /^RELEASE_BATCH_ABORTED: this batch was aborted/,
+    const refused = tool().handler({ action: 'finish', runId: RUN_ID });
+
+    await expect(refused).rejects.toThrow(/the abort kept its claims.*stay at `releasing`/);
+    await expect(refused).rejects.not.toThrow(/claims were released/);
+  });
+
+  it('names the issues a finish closed before the abort, in the sentence and the details', async () => {
+    acceptFinish.mockRejectedValue(
+      new ReleaseBatchAbortedError('released', 'p-1', ['i-1'], new Map([['i-1', 'ISS-41']])),
     );
+
+    const refused = tool().handler({ action: 'finish', runId: RUN_ID });
+
+    await expect(refused).rejects.toThrow(/closed ISS-41 before the abort, and it stays closed/);
+    await expect(refused).rejects.toThrow(/"closed":\["i-1"\]/);
   });
 
   it('carries a missing version under its own code', async () => {
     acceptFinish.mockRejectedValue(new ReleaseVersionMissingError(RUN_ID));
 
-    await expect(tool().handler({ action: 'finish', runId: RUN_ID })).rejects.toThrow(
-      /^RELEASE_VERSION_MISSING: /,
+    const refused = tool().handler({ action: 'finish', runId: RUN_ID });
+    await expect(refused).rejects.toThrow(/^RELEASE_VERSION_MISSING: Release run /);
+    await expect(refused).rejects.not.toThrow(
+      /RELEASE_VERSION_MISSING[\s\S]*RELEASE_VERSION_MISSING/,
     );
   });
 
@@ -120,10 +137,41 @@ describe('forge_release_batch finish answers the attempt, not the outcome (ISS-1
 
   it('names the commit already in flight when another is claimed', async () => {
     const inFlight = 'a'.repeat(40);
-    acceptFinish.mockRejectedValue(new ReleaseFinishInFlightError('r-1', inFlight, 'b'.repeat(40)));
-
-    await expect(tool().handler({ action: 'finish', runId: RUN_ID })).rejects.toThrow(
-      new RegExp(`^RELEASE_FINISH_IN_FLIGHT: A finish for ${inFlight} is already running`),
+    acceptFinish.mockRejectedValue(
+      new ReleaseFinishInFlightError('r-1', inFlight, 'b'.repeat(40), {
+        projectId: 'p-1',
+        runId: RUN_ID,
+      }),
     );
+
+    const refused = tool().handler({ action: 'finish', runId: RUN_ID });
+
+    await expect(refused).rejects.toThrow(
+      new RegExp(`^RELEASE_FINISH_IN_FLIGHT: a finish for ${inFlight} is already running`),
+    );
+    await expect(refused).rejects.toThrow(
+      new RegExp(`Read it with forge_release_batch action=state runId=${RUN_ID}:`),
+    );
+    await expect(refused).rejects.not.toThrow(/GET \/api|\{projectId\}/);
+  });
+
+  it('names the commit a finished batch verified when another is claimed', async () => {
+    const finished = 'a'.repeat(40);
+    acceptFinish.mockRejectedValue(
+      new ReleaseFinishedForOtherCommitError('r-1', finished, 'b'.repeat(40), {
+        projectId: 'p-1',
+        runId: RUN_ID,
+      }),
+    );
+
+    const refused = tool().handler({ action: 'finish', runId: RUN_ID, commit: 'b'.repeat(40) });
+
+    await expect(refused).rejects.toThrow(
+      new RegExp(`^RELEASE_FINISHED_FOR_OTHER_COMMIT: This batch already finished for ${finished}`),
+    );
+    await expect(refused).rejects.toThrow(
+      new RegExp(`with forge_release_batch action=state runId=${RUN_ID}\\.`),
+    );
+    await expect(refused).rejects.not.toThrow(/GET \/api/);
   });
 });

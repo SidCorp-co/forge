@@ -90,8 +90,7 @@ async function seed(binding: Record<string, unknown> = {}): Promise<World> {
   });
   await harness.db.execute(sql`
     UPDATE projects
-       SET base_branch = 'main', live_branch = 'production',
-           release_model = 'promote', release_strategy = 'merge-branch',
+       SET base_branch = 'main', release_chain = '[{"branch": "main"}, {"branch": "production", "from": "merge-branch"}]'::jsonb,
            repo_path = '/srv/app',
            environments = ${JSON.stringify({ live: { url: 'https://app.example.test' } })}::jsonb
      WHERE id = ${project.id}
@@ -256,10 +255,6 @@ describe('the create door answers with the entry readiness listed first', () => 
     ['a missing release note beside an empty pool', { noted: false, runner: false, binding: {} }],
     ['an empty pool alone', { noted: true, runner: false, binding: {} }],
     [
-      'an undeclared release runner',
-      { noted: true, runner: true, binding: { releaseRunnerLabel: undefined } },
-    ],
-    [
       'a probe url that is not a url',
       { noted: true, runner: true, binding: { verify: { probes: [{ url: 'example.test/v' }] } } },
     ],
@@ -269,6 +264,21 @@ describe('the create door answers with the entry readiness listed first', () => 
     const ids = await seedIssues(w, 1, s.noted);
 
     await expectDoorsAgree(w, ids);
+  });
+
+  // A project that names no release runner is refused nothing, so there is no
+  // refusal for the two doors to agree on: readiness lists nothing and the
+  // create goes through (ISS-1275).
+  it('opens a batch where no live binding names a release runner', async () => {
+    const w = await seed({ releaseRunnerLabel: undefined });
+    await seedRunner(w);
+    const ids = await seedIssues(w, 1);
+
+    const listed = await readiness(w);
+    const created = await create(w, ids);
+
+    expect(listed).toEqual([]);
+    expect(created.status).toBe(201);
   });
 });
 
@@ -282,6 +292,9 @@ describe('what the create door refuses that readiness does not list', () => {
 
     expect(refused.status).toBe(400);
     expect(refused.body.code).toBe('RELEASE_ISSUES_UNNAMED');
+    expect(refused.body.message).toContain(
+      `GET /api/projects/${w.projectId}/release-batches/roster`,
+    );
     expect(await readiness(w)).toEqual([]);
   });
 

@@ -28,6 +28,33 @@ function settled(attempts: ReleaseAttemptRow[]): ReleaseAttemptRow[] {
   return attempts.filter((a) => a.settledAt !== null);
 }
 
+/** Whether the newest settled reading is `down` after an earlier `up`, and what the ledger shows. */
+function readRegression(readings: ReleaseAttemptRow[]): { crossed: boolean; why: string } {
+  const newest = readings.at(-1);
+  if (newest === undefined) {
+    return {
+      crossed: false,
+      why: 'no attempt on this run has settled, so there is no reading to compare',
+    };
+  }
+  if (newest.health === 'up') {
+    return { crossed: false, why: 'the newest settled attempt reads the application up' };
+  }
+  if (newest.health !== 'down') {
+    return { crossed: false, why: 'the newest settled attempt recorded no health reading' };
+  }
+  if (!readings.slice(0, -1).some((a) => a.health === 'up')) {
+    return {
+      crossed: false,
+      why: 'the newest settled attempt reads the application down, and no settled attempt before it read it up',
+    };
+  }
+  return {
+    crossed: true,
+    why: 'the newest settled attempt reads the application down after an earlier one read it up',
+  };
+}
+
 /**
  * The three bounds, measured against one run's ledger.
  *
@@ -84,19 +111,11 @@ export function readBounds(
           why: 'time since the newest write to this run’s ledger',
         };
 
-  const readings = settled(attempts);
-  const wasUp = readings.findIndex((a) => a.health === 'up');
-  const newest = readings.at(-1);
   const regression: BoundReading = {
     name: 'regression',
-    crossed:
-      wasUp !== -1 &&
-      newest !== undefined &&
-      newest.health === 'down' &&
-      readings.indexOf(newest) > wasUp,
+    ...readRegression(settled(attempts)),
     measuredMs: null,
     thresholdMs: null,
-    why: 'the newest settled attempt reads the application down after an earlier one read it up',
   };
 
   const bounds = [total, stall, regression];

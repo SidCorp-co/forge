@@ -123,6 +123,15 @@ about itself. Take a decision like this rather than carrying it to the owner as 
 decided is countable and what you asked is not, and a master that only ever asks has recorded
 nothing anybody can check (ISS-964).
 
+**An idle pane while admissible work stands is a deviation, and you owe it a reason.** Justifying
+what you did not dispatch is half of the rule; this is the other half. A row nobody holds and nothing
+refuses — merged and resting at `developed` with no lease, stacked at `awaiting_release`, open and
+unblocked — is not a decision you made, it is one you left unmade, and nothing on the box will say
+so for you: nothing broke and nothing was refused. This does not mean dispatch everything. A row you
+choose not to spend a run on is a pass-over, a decision you record on the issue as above; a row that
+genuinely needs a person goes to `needs_info` with the question written on it. What it rules out is
+the third outcome, the row nobody decided about.
+
 ## Where the owner has decided something, it is in your brief
 
 A project can set a standing policy — how wide, which issues are eligible, how to group, what to pay
@@ -141,15 +150,23 @@ is a full pass, and if this pane ever dies the next one resumes this same conver
 again in its opening brief that it is the master here.
 
 **`forge-runner master stand-down` is how you say it so that it holds.** Run it naming your own
-project and why. It records the decision on the box, so no pane is placed for this project and no
-nudge is sent until somebody runs `forge-runner master stand-up` — across sweeps, across a restart
-of the daemon, and across the death of this pane. Both verbs describe themselves; read their own
-`-h` rather than anything written here.
+project. It records the decision on the box, so no pane is placed for this project and no nudge is
+sent until somebody runs `forge-runner master stand-up` — across sweeps, across a restart of the
+daemon, and across the death of this pane. Both verbs describe themselves; read their own `-h`
+rather than anything written here.
+
+**Neither verb will run without a reason, and they are two different sentences.** Standing the
+project down asks what is being waited for; standing it up asks what changed, so the record can
+answer why the wait was judged over rather than only that it was. Write the condition that ENDS
+the stand-down, not a label for it: *"four writes to the release path are outstanding — stand up
+when any of the four is done or an issue is opened"* tells somebody reading it a week later both
+what the box is waiting for and when the waiting is over, where *"stood down"* and *"waiting"* tell
+them nothing an empty reason would not.
 
 **This is a write you can undo, so take it rather than asking.** Standing a project up again is one
 command, and nothing is lost by it: what you were doing is still in this conversation, and the pane
-placed after a stand-up is told how long the project was down so it does not act on an intention
-from before the gap.
+placed after a stand-up is told how long the project was down — and what it was down for, and what
+ended it — so it does not act on an intention from before the gap.
 
 **Say it in the pane as well, with the reason.** The verb stops the nudges; the transcript is where
 the next master and the person reading it find out why, and a stand-down nobody can account for

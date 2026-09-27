@@ -15,7 +15,7 @@ import type { ExistingAttachmentRef } from '../lib/attachment-refs.js';
 /** How long a minted upload ticket stays valid. Short by design (replay window). */
 export const UPLOAD_TICKET_TTL_MS = 5 * 60 * 1000;
 
-export type UploadTargetType = 'issue' | 'comment' | 'session';
+export type UploadTargetType = 'issue' | 'comment' | 'session' | 'conversation';
 
 export type UploadTicketErrorCode = 'MIME_NOT_ALLOWED' | 'ATTACHMENT_NAME_TAKEN' | 'INVALID_NAME';
 
@@ -54,10 +54,9 @@ export interface CreateUploadTicketInput {
 }
 
 /**
- * The document already holding this name on the target, or null.
- *
- * Sessions are absent by design and not by omission: no record cites a session
- * attachment by name, so uniqueness there would refuse uploads for nothing.
+ * The document already holding this name on the target, or null. Sessions and
+ * conversations are absent by design: nothing cites either's attachment by
+ * name, and two `Screenshot.png` in one room is ordinary, not a mistake.
  */
 async function takenNameOn(
   targetType: UploadTargetType,

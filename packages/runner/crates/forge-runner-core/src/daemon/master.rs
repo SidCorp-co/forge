@@ -163,6 +163,11 @@ pub(crate) enum Unplaced {
     Draining {
         status: String,
     },
+    /// This daemon is draining before a restart, so it admits no new work for
+    /// any project until it has restarted or the drain gives up (ISS-1223).
+    Restarting {
+        cause: String,
+    },
     /// Core serves this project to this box but nothing here says where the
     /// checkout is.
     NoRepoPath,
@@ -223,8 +228,20 @@ pub(crate) enum Unplaced {
         detail: String,
     },
     /// The project declares MCP servers and the file handing them to a pane
-    /// could not be written, so no pane was started for the same reason.
+    /// could not be written into `dir`, so no pane was started for the same
+    /// reason. `dir` is what an operator has to make writable.
     ServersUnwritable {
+        detail: String,
+        dir: std::path::PathBuf,
+    },
+    /// Everything before the pane was in place and the capability it would
+    /// carry could not be minted, so no pane was started: one without it has
+    /// every declaration refused.
+    CapabilityUnminted {
+        detail: String,
+    },
+    /// Everything was in place and tmux did not start the pane.
+    PaneUnstarted {
         detail: String,
     },
 }
@@ -235,6 +252,10 @@ impl std::fmt::Display for Unplaced {
             Self::Draining { status } => write!(
                 f,
                 "this box's runner for it is `{status}`, so it starts no work and places no master until that changes"
+            ),
+            Self::Restarting { cause } => write!(
+                f,
+                "this box is draining before a restart ({cause}), so it starts no work and places no master for any project until it has restarted or the drain gives up"
             ),
             Self::NoRepoPath => write!(
                 f,
@@ -262,10 +283,16 @@ impl std::fmt::Display for Unplaced {
                 slug,
                 pane,
             } => {
-                write!(f, "its master was stood down by {by}")?;
-                if let Some(w) = why {
-                    write!(f, " ({w})")?;
-                }
+                // Always a reason in parentheses, never an absent one. A line
+                // that says only who stood it down reads as a stand-down whose
+                // reason the reader has not found yet, rather than one that was
+                // never recorded — and telling those two apart is the whole of
+                // ISS-1238.
+                write!(
+                    f,
+                    "its master was stood down by {by} ({})",
+                    why.as_deref().unwrap_or(MasterStanding::NO_REASON)
+                )?;
                 match pane {
                     None => write!(
                         f,
@@ -283,11 +310,21 @@ impl std::fmt::Display for Unplaced {
             ),
             Self::ServersUnreadable { detail } => write!(
                 f,
-                "this box could not read which MCP servers it declares ({detail}), so it started no master rather than one carrying none of them. The next sweep whose read succeeds places one"
+                "this box could not read which MCP servers this project declares ({detail}), so it started no master rather than one carrying none of them. The next sweep whose read succeeds places one"
             ),
-            Self::ServersUnwritable { detail } => write!(
+            Self::ServersUnwritable { detail, dir } => write!(
                 f,
-                "it declares MCP servers and the file that hands them to a pane could not be written ({detail}), so this box started no master rather than one carrying none of them"
+                "it declares MCP servers and the file that hands them to a pane could not be written into {} ({detail}), so this box started no master rather than one carrying none of them. Make {} writable and the next sweep starts one",
+                dir.display(),
+                dir.display()
+            ),
+            Self::CapabilityUnminted { detail } => write!(
+                f,
+                "the control capability its pane would carry could not be minted ({detail}), so this box started no master rather than one whose every declaration is refused"
+            ),
+            Self::PaneUnstarted { detail } => write!(
+                f,
+                "everything it needs was in place and the pane itself did not start ({detail})"
             ),
             Self::StaleCapability { session, pane } => write!(
                 f,
@@ -319,12 +356,14 @@ impl Unplaced {
     /// Whether this is a state an operator has to act on before the box's two
     /// answers agree.
     ///
-    /// Three of them are. A pane running against a stand-down is the nine-hour
-    /// silence ISS-1118 was filed over; a standing this box could not read is a
-    /// box that cannot say what it is doing; a pane whose capability is stale
-    /// is the four-hour silence ISS-1099 was filed over, and no sweep resolves
-    /// it. Everything else here is a pane absent for a reason the box is
-    /// content with.
+    /// A pane running against a stand-down is the nine-hour silence ISS-1118
+    /// was filed over; a standing this box could not read is a box that cannot
+    /// say what it is doing; a pane whose capability is stale is the four-hour
+    /// silence ISS-1099 was filed over, and no sweep resolves it. The four that
+    /// refuse a start the project wanted — its servers unreadable or
+    /// unwritable, its capability unminted, its pane unstarted — leave it with
+    /// no master for a fault on this box. Everything else here is a pane absent
+    /// for a reason the box is content with.
     fn is_error(&self) -> bool {
         matches!(
             self,
@@ -333,6 +372,8 @@ impl Unplaced {
                 | Self::StaleCapability { .. }
                 | Self::ServersUnreadable { .. }
                 | Self::ServersUnwritable { .. }
+                | Self::CapabilityUnminted { .. }
+                | Self::PaneUnstarted { .. }
         )
     }
 }
@@ -393,14 +434,47 @@ fn stood_down_reason(
     }
 }
 
-/// How long a lifted stand-down held, for the pane placed after it. `None`
-/// while it still stands, and `None` on a row whose two stamps cannot make an
-/// interval — a clock that went backwards is not a fact to tell a master.
-fn stood_down_interval(standing: &MasterStanding) -> Option<Duration> {
+/// What a pane placed after a lifted stand-down is told about the episode it
+/// is following.
+///
+/// The interval alone was what this carried until ISS-1238, and an interval
+/// says a gap happened without saying what the gap was for. The two reasons
+/// travel with it because the pane is the one reader who was not there.
+pub(crate) struct Lifted {
+    /// Which episode this is, so the one a pane is told about is the one
+    /// stamped told and no other.
+    pub episode: i64,
+    pub held_for: Duration,
+    /// The reason recorded on the way down, or `None` on an episode written
+    /// before a reason was required.
+    pub why: Option<String>,
+    /// The argument the lift was taken on, or `None` on an episode lifted
+    /// before one was required.
+    pub lifted_on: Option<String>,
+}
+
+/// The lifted episode a pane placed now has to be told about, where there is
+/// one.
+///
+/// `None` while it still stands, `None` once a pane has been told — being told
+/// is what spends it, and telling the next pane the same gap again is the same
+/// defect as never telling the first — and `None` on a row whose two stamps
+/// cannot make an interval, because a clock that went backwards is not a fact
+/// to tell a master.
+fn lifted_from(standing: &MasterStanding) -> Option<Lifted> {
+    if standing.told_at.is_some() {
+        return None;
+    }
     let up = standing.stood_up_at?;
-    u64::try_from(up - standing.stood_down_at)
+    let held_for = u64::try_from(up - standing.stood_down_at)
         .ok()
-        .map(Duration::from_secs)
+        .map(Duration::from_secs)?;
+    Some(Lifted {
+        episode: standing.episode,
+        held_for,
+        why: standing.why.clone(),
+        lifted_on: standing.stood_up_why.clone(),
+    })
 }
 
 fn placement_under(standing: Option<&MasterStanding>, pane_alive: bool) -> Placed {
@@ -835,6 +909,7 @@ pub async fn run(
     adopted: tokio::sync::watch::Receiver<bool>,
     mut cancel: tokio::sync::watch::Receiver<bool>,
     mut wake: mpsc::Receiver<Wake>,
+    drain: Arc<crate::daemon::drain::Drain>,
 ) {
     let mut delay = POLL_INTERVAL;
     let mut last_sweep = Instant::now();
@@ -855,7 +930,7 @@ pub async fn run(
     loop {
         tokio::select! {
             _ = tokio::time::sleep(delay) => {
-                delay = sweep(&client, &cfg, &masters, &activity, &job_panes, job_records.as_ref(), &adopted, &mut ledger, tokens.as_ref(), &mut account_limit_said)
+                delay = sweep(&client, &cfg, &masters, &activity, &job_panes, job_records.as_ref(), &adopted, &mut ledger, tokens.as_ref(), &mut account_limit_said, &drain)
                     .await;
                 last_sweep = Instant::now();
             }
@@ -865,7 +940,7 @@ pub async fn run(
                     tokio::time::sleep(WAKE_FLOOR - since).await;
                 }
                 tracing::info!("[master] wake ({}) — sweeping now", w.describe());
-                delay = sweep(&client, &cfg, &masters, &activity, &job_panes, job_records.as_ref(), &adopted, &mut ledger, tokens.as_ref(), &mut account_limit_said)
+                delay = sweep(&client, &cfg, &masters, &activity, &job_panes, job_records.as_ref(), &adopted, &mut ledger, tokens.as_ref(), &mut account_limit_said, &drain)
                     .await;
                 last_sweep = Instant::now();
             }
@@ -912,6 +987,7 @@ async fn sweep(
     ledger: &mut Option<Ledger>,
     tokens: Option<&session_tokens::SessionTokens>,
     account_limit_said: &mut Option<String>,
+    drain: &crate::daemon::drain::Drain,
 ) -> Duration {
     let now_unix = master_limit::now_unix();
     let mut account_said: Vec<master_limit::Decisive> = Vec::new();
@@ -956,6 +1032,27 @@ async fn sweep(
     }
 
     for runner in &served {
+        // Leave is taken per project and held to the end of its iteration, so
+        // a drain that begins part-way through a sweep waits for the project
+        // in hand to finish admitting and stops the sweep at the next one.
+        let _admitting = match drain.admit() {
+            Ok(permit) => permit,
+            Err(closed) => {
+                let read = read_standing(ledger.as_ref(), &runner.project_id);
+                let verdict =
+                    standing_verdict(masters, read, &runner.project_id, &runner.slug).await;
+                if matches!(verdict, Some((Placed::Proceed | Placed::Withheld, _))) {
+                    masters.note_unplaced(
+                        &runner.project_id,
+                        Unplaced::Restarting {
+                            cause: closed.cause,
+                        },
+                    );
+                }
+                supervise(client, masters, tokens, &runner.project_id, &runner.slug).await;
+                continue;
+            }
+        };
         if !accepts_new_work(&runner.status) {
             tracing::info!(
                 "[master] {}: runner is {} — taking no new work; anything already running finishes",
@@ -1019,7 +1116,7 @@ async fn sweep(
             Placed::Contradicted => continue,
         }
         let pane_name = terminal::session_name(terminal::MASTER_PREFIX, &runner.slug);
-        let lifted_interval = standing.as_ref().and_then(stood_down_interval);
+        let lifted_episode = standing.as_ref().and_then(lifted_from);
 
         let admissible = admissible::admissible(client, Some(&runner.project_id))
             .await
@@ -1079,7 +1176,7 @@ async fn sweep(
             &Carryover {
                 conversation: stored_conversation.as_deref(),
                 inherited: &inherited,
-                stood_down_for: lifted_interval,
+                lifted: lifted_episode.as_ref(),
                 stood_down_told: &told,
             },
             placement,
@@ -1106,10 +1203,11 @@ async fn sweep(
             continue;
         }
         if told.load(std::sync::atomic::Ordering::Relaxed) {
-            if let Some(led) = ledger.as_ref() {
-                if let Err(e) = led.forget_lifted_standing(&runner.project_id) {
+            let stamped = ledger.as_ref().zip(lifted_episode.as_ref());
+            if let Some((led, lifted)) = stamped {
+                if let Err(e) = led.note_standing_told(&runner.project_id, lifted.episode) {
                     tracing::warn!(
-                        "[master] {}: cannot clear the lifted stand-down a pane has now been told about: {e} — the next pane placed will be told the same interval again",
+                        "[master] {}: cannot mark the lifted stand-down a pane has now been told about: {e} — the next pane placed will be told the same interval again",
                         resolved.slug
                     );
                 }
@@ -1943,22 +2041,38 @@ pub(crate) struct InheritedRun {
 /// resumed conversation carries a transcript that ends mid-work. Without this,
 /// a master stood down for nine hours wakes believing it was driving the whole
 /// time (ISS-1118).
-pub(crate) fn stood_up_brief(stood_down_for: Duration) -> String {
-    let mins = stood_down_for.as_secs() / 60;
+///
+/// The two reasons are here because the interval alone tells a master that
+/// something happened and nothing about what. A pane that knows the box was
+/// waiting on four outstanding writes, and that the wait ended because one of
+/// them landed, can read the board knowing what it is looking for (ISS-1238).
+pub(crate) fn stood_up_brief(lifted: &Lifted) -> String {
+    let mins = lifted.held_for.as_secs() / 60;
     let span = if mins >= 120 {
         format!("{} hours", mins / 60)
     } else if mins >= 1 {
         format!("{mins} minutes")
     } else {
-        format!("{} seconds", stood_down_for.as_secs())
+        format!("{} seconds", lifted.held_for.as_secs())
     };
-    format!(
+    let mut out = format!(
         "\nThis project was STOOD DOWN for {span} and has just been stood up again. This box \
 placed no master for it over that interval and nudged none, so nothing you remember doing \
 happened during it — whatever was decided about this project in that time was decided by \
 somebody else, and the tracker is where it is written rather than in anything you recall. Read \
 the board before you act on any intention you are carrying from before the gap.\n"
-    )
+    );
+    out.push_str(&format!(
+        "\nIt was stood down because: {}\n",
+        lifted.why.as_deref().unwrap_or(MasterStanding::NO_REASON)
+    ));
+    out.push_str(&match lifted.lifted_on.as_deref() {
+        Some(on) => format!("It was stood up because: {on}\n"),
+        None => "No argument was recorded for standing it up — that episode predates the \
+requirement, so what ended the wait is not on this box's record.\n"
+            .to_string(),
+    });
+    out
 }
 
 pub(crate) fn resumed_brief(conversation: &str, runs: &[InheritedRun]) -> String {
@@ -2199,18 +2313,19 @@ pub(crate) fn placement_for(admissible: &[AdmissibleIssue]) -> Placement {
 
 /// What a pane this sweep places carries over from whatever stood before it:
 /// the conversation it resumes, the runs that conversation holds, and the
-/// interval its project spent stood down.
+/// stand-down its project has just come out of.
 pub(crate) struct Carryover<'a> {
     conversation: Option<&'a str>,
     inherited: &'a [InheritedRun],
     /// Set only for a pane placed after a stand-down was lifted, so a resumed
-    /// conversation is not told merely that it is master again (ISS-1118).
-    stood_down_for: Option<Duration>,
-    /// Raised when the brief carrying `stood_down_for` actually reached a
-    /// pane. The sweep forgets the lifted record only on this, because a pane
-    /// that was adopted rather than started was sent no brief at all, and one
-    /// whose brief failed to land was told nothing — forgetting on either
-    /// would drop the interval undelivered.
+    /// conversation is not told merely that it is master again (ISS-1118), and
+    /// carrying the two reasons as well as the interval (ISS-1238).
+    lifted: Option<&'a Lifted>,
+    /// Raised when the brief carrying `lifted` actually reached a pane. The
+    /// sweep stamps the lifted episode told only on this, because a pane that
+    /// was adopted rather than started was sent no brief at all, and one whose
+    /// brief failed to land was told nothing — stamping on either would spend
+    /// the episode undelivered.
     stood_down_told: &'a std::sync::atomic::AtomicBool,
 }
 
@@ -2620,17 +2735,15 @@ async fn ensure_master(
                 &cleared,
             ) {
                 (LaunchRecord::Lying, Err(ce)) => {
-                    tracing::error!(
-                        "[master] {}: could not write the pane's MCP config ({e}) and could not remove the previous one either: refusing to start a master this box could not describe: {ce} — a pane started now would carry none of this project's servers while the file on disk still claims it carries them, so no later sweep could report it. Make {} writable and the next sweep starts one.",
-                        resolved.slug,
-                        crate::mcp::config::session_dir().display()
-                    );
                     say_unplaced(
                         masters,
                         project_id,
                         &resolved.slug,
                         Unplaced::ServersUnwritable {
-                            detail: format!("{e}; the previous config could not be removed: {ce}"),
+                            detail: format!(
+                                "{e}; the previous config could not be removed either ({ce}), and it still claims servers a pane started now would not carry"
+                            ),
+                            dir: crate::mcp::config::session_dir(),
                         },
                     );
                     return PaneState::Absent;
@@ -2645,6 +2758,7 @@ async fn ensure_master(
                                 "{e}; declared: {}",
                                 declared.resolved_names.join(", ")
                             ),
+                            dir: crate::mcp::config::session_dir(),
                         },
                     );
                     return PaneState::Absent;
@@ -2673,17 +2787,25 @@ async fn ensure_master(
         Some(store) => match store.mint(&session.session_id) {
             Ok(token) => env.push((session_tokens::TOKEN_ENV.to_string(), token)),
             Err(e) => {
-                tracing::error!(
-                    "[master] {}: cannot mint a control capability: {e} — not starting a master",
-                    resolved.slug
+                say_unplaced(
+                    masters,
+                    project_id,
+                    &resolved.slug,
+                    Unplaced::CapabilityUnminted {
+                        detail: e.to_string(),
+                    },
                 );
                 return PaneState::Absent;
             }
         },
         None => {
-            tracing::error!(
-                "[master] {}: cannot resolve the control token map — not starting a master",
-                resolved.slug
+            say_unplaced(
+                masters,
+                project_id,
+                &resolved.slug,
+                Unplaced::CapabilityUnminted {
+                    detail: "this box cannot resolve where its control token map lives".into(),
+                },
             );
             return PaneState::Absent;
         }
@@ -2700,7 +2822,7 @@ async fn ensure_master(
     {
         Ok(started) => started,
         Err(e) => {
-            tracing::error!("[master] {}: could not start {name}: {e}", resolved.slug);
+            let detail = format!("could not start {name}: {e}");
             // No pane holds the capability minted for it, so it is taken back
             // rather than left in the map as proof of a pane that never started.
             let withdrawn = withdraw_unplaced_mint(tokens, &session.session_id);
@@ -2718,6 +2840,12 @@ async fn ensure_master(
                     session.session_id
                 );
             }
+            say_unplaced(
+                masters,
+                project_id,
+                &resolved.slug,
+                Unplaced::PaneUnstarted { detail },
+            );
             return PaneState::Absent;
         }
     };
@@ -2790,15 +2918,16 @@ surface it reads",
         Some(conv) => format!("{brief}{}", resumed_brief(conv, inherited)),
         None => brief,
     };
-    let brief = match carry.stood_down_for {
-        Some(down) => format!("{brief}{}", stood_up_brief(down)),
+    let brief = match carry.lifted {
+        Some(lifted) => format!("{brief}{}", stood_up_brief(lifted)),
         None => brief,
     };
     match terminal::brief_new_pane(&name, &brief).await {
-        Ok(()) => carry.stood_down_told.store(
-            carry.stood_down_for.is_some(),
-            std::sync::atomic::Ordering::Relaxed,
-        ),
+        Ok(()) => {
+            let carried = carry.lifted.is_some();
+            let order = std::sync::atomic::Ordering::Relaxed;
+            carry.stood_down_told.store(carried, order);
+        }
         Err(e) => tracing::warn!("[master] {}: could not brief {name}: {e}", resolved.slug),
     }
     match resume {
@@ -3955,6 +4084,51 @@ mod tests {
         assert!(
             MASTER_SKILL.contains("reversible"),
             "tier 0 is the rule that a reversible write is TAKEN and recorded — the brief is where the master reads it"
+        );
+    }
+
+    /// ISS-1274. Three merged rows rested at `developed` for four hours on one
+    /// box while its master dispatched other work: nothing refused, so nothing
+    /// said so. The rule sits beside the pass-over rule it completes.
+    #[test]
+    fn the_skill_says_an_idle_pane_with_admissible_work_is_a_deviation() {
+        const OBJECTIVE: &str = "An idle pane while admissible work stands is a deviation";
+        // A Windows checkout under `core.autocrlf` embeds this asset as CRLF.
+        let skill = MASTER_SKILL.replace("\r\n", "\n");
+        let own = skill
+            .split("## What is yours and nowhere else")
+            .nth(1)
+            .and_then(|s| s.split("\n## ").next())
+            .expect("the skill carries the section on what is the master's own");
+        let pass_over = own
+            .find("A pass-over is written on the issue")
+            .expect("the pass-over paragraph the objective completes");
+        let objective = own.find(OBJECTIVE).unwrap_or_else(|| {
+            panic!("the master's own section must say `{OBJECTIVE}`: without it a row nobody decided about reads as a quiet pass")
+        });
+        let after_pass_over = own[pass_over..]
+            .find("\n\n")
+            .map_or(own.len(), |end| pass_over + end + 2);
+        assert!(
+            own[after_pass_over..]
+                .trim_start_matches('*')
+                .starts_with(OBJECTIVE),
+            "the objective is the second half of the pass-over rule and is the paragraph directly after it"
+        );
+        let paragraph = own[objective..].split("\n\n").next().unwrap();
+        assert!(
+            paragraph.contains("does not mean dispatch everything")
+                && paragraph.contains("record on the issue"),
+            "a pass-over stays a recorded decision, or the objective reads as dispatch every row: {paragraph}"
+        );
+        assert!(
+            paragraph.contains("`needs_info` with the question written on it"),
+            "a row that needs a person goes to needs_info with its question, not to a run: {paragraph}"
+        );
+        assert!(
+            !skill.contains("forge guide master"),
+            "no guide named master prints on the CLI yet (forge-plugin ISS-2592); a pointer to it sends a master to a refusal. \
+             Remove this assertion in the change that adds the pointer, once that guide prints"
         );
     }
 
@@ -6711,6 +6885,11 @@ mod unplaced_tests {
             "a pane that could not be started gives back the capability minted for it"
         );
         assert!(
+            ensure_failed[..ensure_failed.find("return PaneState::Absent;").unwrap()]
+                .contains("Unplaced::PaneUnstarted { detail }"),
+            "a pane that could not be started replaces whatever reason an earlier sweep recorded (criterion 19)"
+        );
+        assert!(
             !body.contains("unwrap_or_default()"),
             "a failed read must never become an empty declaration"
         );
@@ -6743,6 +6922,10 @@ mod unplaced_tests {
             said.contains("me/mcp-servers 525 (gateway: the TLS handshake"),
             "{said}"
         );
+        assert!(
+            said.contains("which MCP servers this project declares"),
+            "the project declares the servers, not the box the sentence opens on: {said}"
+        );
         assert!(why.is_error());
         assert_eq!(why.lead(), "no master pane placed");
 
@@ -6757,17 +6940,26 @@ mod unplaced_tests {
         assert!(masters.note_unplaced("proj-1", why));
     }
 
-    /// Criterion 7.
+    /// Criteria 7 and 17: the write, the directory it could not write, and
+    /// the act that lets the next sweep start one.
     #[test]
     fn an_unwritable_config_is_recorded_naming_the_write() {
         let why = Unplaced::ServersUnwritable {
             detail: "permission denied; declared: playwright".into(),
+            dir: std::path::PathBuf::from("/srv/forge-runner/mcp"),
         };
         let said = why.to_string();
-        assert!(said.contains("could not be written"), "{said}");
+        assert!(
+            said.contains("could not be written into /srv/forge-runner/mcp"),
+            "{said}"
+        );
         assert!(
             said.contains("permission denied; declared: playwright"),
             "{said}"
+        );
+        assert!(
+            said.contains("Make /srv/forge-runner/mcp writable and the next sweep starts one"),
+            "the refusal says what an operator does about it: {said}"
         );
         assert!(why.is_error());
     }
@@ -7765,11 +7957,13 @@ mod unplaced_tests {
             .unwrap_or_else(|e| e.into_inner());
         let iso = terminal::testing::IsolatedServer::new("deafkill");
         if !terminal::available() {
-            eprintln!("tmux is not installed here — the transport this rests on cannot run");
+            terminal::testing::cannot_run(
+                "tmux is not installed here — the transport this rests on cannot run",
+            );
             return;
         }
         if !iso.took() {
-            eprintln!("this box does not resolve its tmux socket from the config dir, so the only server here is its own — not starting a pane on it");
+            terminal::testing::cannot_run("this box does not resolve its tmux socket from the config dir, so the only server here is its own — not starting a pane on it");
             return;
         }
         let dir = crate::test_scratch::Scratch::new("deafkill");
@@ -8431,6 +8625,297 @@ async fn deaf_pane_outlived_its_kill(",
     }
 }
 
+/// ISS-1235's two refusals, walked through `ensure_master` itself on a tmux
+/// server of the test's own, against a core answering each route its own way.
+///
+/// The decisions are pure functions with tests of their own, and the order of
+/// the calls is pinned on the source above. Neither can go red for a wrong
+/// ARGUMENT: the independent judgement at 9a7c706 handed `replacement_gate`
+/// `true` and `launch_record` `false` in place of what was read, and every test
+/// stayed green. Only a test over what `ensure_master` then does can tell.
+#[cfg(all(test, unix))]
+mod servers_refusal_walk_tests {
+    use super::*;
+    use crate::auth::cred_store::ScopedVar;
+    use crate::transport::fake_core;
+
+    const REGISTER: &str = "/api/devices/me/master-session";
+    const SERVERS: &str = "/api/devices/me/mcp-servers";
+    const SESSION: &str =
+        r#"{"sessionId":"sess-core-serves-now","name":"forge-master-walk","created":false}"#;
+    const DECLARES: &str = r#"{"mcpServers":{"playwright":{"type":"stdio","command":"true"}},"resolvedNames":["playwright"],"droppedNames":[]}"#;
+    const GATEWAY_PAGE: &str =
+        "<!DOCTYPE html><html><head><title>origin error</title></head><body>error code: 520</body></html>";
+
+    fn resolved(slug: &str, repo: &std::path::Path) -> crate::daemon::dispatch::Resolved {
+        crate::daemon::dispatch::Resolved {
+            slug: slug.to_string(),
+            repo_path: repo.to_path_buf(),
+            base_branch: None,
+            master_policy: None,
+        }
+    }
+
+    async fn walk(
+        core: String,
+        masters: &Arc<Masters>,
+        resolved: &crate::daemon::dispatch::Resolved,
+        tokens: Option<&session_tokens::SessionTokens>,
+        deaf: &DeafSink,
+    ) -> PaneState {
+        let told = std::sync::atomic::AtomicBool::new(false);
+        let authority = AuthoritySink::default();
+        ensure_master(
+            &CoreClient::new(core, "device-token"),
+            masters,
+            "proj-walk",
+            resolved,
+            &Carryover {
+                conversation: None,
+                inherited: &[],
+                lifted: None,
+                stood_down_told: &told,
+            },
+            Placement::AdoptOrStart,
+            &CapabilityPorts {
+                tokens,
+                authority: &authority,
+                deaf,
+            },
+        )
+        .await
+    }
+
+    fn recorded(masters: &Masters) -> Option<Unplaced> {
+        masters
+            .0
+            .lock()
+            .expect("masters poisoned")
+            .unplaced
+            .get("proj-walk")
+            .cloned()
+    }
+
+    /// Criterion 12, against a pane that is up and deaf. Its capability map
+    /// holds nothing for the session core serves, so the rule on its own says
+    /// `Replace`; the read failing is the only thing that says otherwise.
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_deaf_pane_is_left_standing_while_the_declaration_cannot_be_read() {
+        let _serialised = terminal::testing::ONE_AT_A_TIME.lock().await;
+        let _env = crate::auth::cred_store::ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let iso = terminal::testing::IsolatedServer::new("walkdeaf");
+        if !terminal::available() {
+            terminal::testing::cannot_run(
+                "tmux is not installed here — the transport this rests on cannot run",
+            );
+            return;
+        }
+        if !iso.took() {
+            terminal::testing::cannot_run("this box does not resolve its tmux socket from the config dir, so the only server here is its own — not starting a pane on it");
+            return;
+        }
+        let repo = crate::test_scratch::Scratch::new("walkdeaf-repo");
+        let map = crate::test_scratch::Scratch::new("walkdeaf-map").at("control-tokens.json");
+        let store = session_tokens::SessionTokens::at(map.to_path_buf());
+        let name = terminal::session_name(terminal::MASTER_PREFIX, "walkdeaf");
+        terminal::ensure(
+            &name,
+            &repo,
+            &["sleep".to_string(), "60".to_string()],
+            &[],
+            None,
+        )
+        .await
+        .expect("the pane standing in for the deaf master must start");
+        assert_eq!(
+            capability_act(
+                &capability_of(Some(&store), "sess-core-serves-now"),
+                Placement::AdoptOrStart
+            ),
+            CapabilityAct::Replace,
+            "the plant is only the plant while the rule alone would end this pane"
+        );
+
+        let core = fake_core::serve_routes(&[
+            (REGISTER, "200 OK", SESSION),
+            (SERVERS, "520 Origin Error", GATEWAY_PAGE),
+        ])
+        .await;
+        let masters = Arc::new(Masters::new());
+        let deaf = DeafSink::default();
+        let state = walk(
+            core,
+            &masters,
+            &resolved("walkdeaf", &repo),
+            Some(&store),
+            &deaf,
+        )
+        .await;
+
+        assert!(
+            terminal::alive(&name).await,
+            "the deaf pane was ended for a replacement the failed read then refused to place, so the project is left with no pane at all"
+        );
+        assert_eq!(state, PaneState::StaleCapability);
+        match deaf.take().expect("the box met a deaf pane").acted {
+            DeafAct::LeftStanding(why) => assert!(
+                why.contains("declared MCP servers"),
+                "the record says it was the read that kept the pane standing: {why}"
+            ),
+            other => panic!("a pane still running was recorded as {other:?}"),
+        }
+        let _ = terminal::kill(&name).await;
+    }
+
+    /// Criteria 6 and 7, against a config write that fails for any user, root
+    /// included: a directory stands where the write's temporary file goes, and
+    /// no previous config exists, so the old one clears and this is `Withheld`
+    /// rather than `Lying`.
+    ///
+    /// `tokens` is `None`, so a placement that got past the refusal stops at
+    /// the mint rather than starting `claude` in a pane.
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_config_that_cannot_be_written_for_a_declaring_project_places_no_pane() {
+        let _serialised = terminal::testing::ONE_AT_A_TIME.lock().await;
+        let _env = crate::auth::cred_store::ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let iso = terminal::testing::IsolatedServer::new("walkwrite");
+        if !terminal::available() {
+            terminal::testing::cannot_run(
+                "tmux is not installed here — the transport this rests on cannot run",
+            );
+            return;
+        }
+        if !iso.took() {
+            terminal::testing::cannot_run("this box does not resolve its tmux socket from the config dir, so the only server here is its own — not asking it about a pane");
+            return;
+        }
+        let claude_home = crate::test_scratch::Scratch::new("walkwrite-claude");
+        let _trust = ScopedVar::set("CLAUDE_CONFIG_DIR", claude_home.path());
+        let repo = crate::test_scratch::Scratch::new("walkwrite-repo");
+        let dir = crate::mcp::config::session_dir();
+        assert_eq!(
+            dir.parent(),
+            terminal::socket_path().as_deref().and_then(|s| s.parent()),
+            "the session configs are written beside the isolated server's socket, not under this box's own config"
+        );
+        let blocked = dir.join(format!(
+            "forge-master-mcp-walkwrite.tmp.{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&blocked).expect("the directory the write will meet");
+
+        let core = fake_core::serve_routes(&[
+            (REGISTER, "200 OK", SESSION),
+            (SERVERS, "200 OK", DECLARES),
+        ])
+        .await;
+        let masters = Arc::new(Masters::new());
+        let deaf = DeafSink::default();
+        let state = walk(core, &masters, &resolved("walkwrite", &repo), None, &deaf).await;
+
+        assert_eq!(state, PaneState::Absent);
+        assert!(
+            !terminal::alive(&terminal::session_name(
+                terminal::MASTER_PREFIX,
+                "walkwrite"
+            ))
+            .await,
+            "no pane is started for a project whose servers could not be handed to it"
+        );
+        match recorded(&masters) {
+            Some(Unplaced::ServersUnwritable { detail, dir: at }) => {
+                assert!(
+                    detail.contains("declared: playwright"),
+                    "the refusal names what the pane would have lacked: {detail}"
+                );
+                assert_eq!(at, dir, "the refusal names the directory the write met");
+            }
+            other => panic!(
+                "a declaring project whose config could not be written was recorded as {:?} — the refusal was not taken, and with a capability map to mint into the pane would have started carrying none of its servers",
+                other.map(|why| why.to_string())
+            ),
+        }
+        let _ = std::fs::remove_dir(&blocked);
+    }
+
+    /// Criterion 18: a sweep refused at the mint after one refused at the read
+    /// records the mint's reason. The first reason promises that "the next
+    /// sweep whose read succeeds places one"; left standing once the read has
+    /// succeeded, it names a fault this box no longer has and hides the one it
+    /// does.
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_later_refusal_at_the_mint_replaces_the_read_it_followed() {
+        let _serialised = terminal::testing::ONE_AT_A_TIME.lock().await;
+        let _env = crate::auth::cred_store::ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let iso = terminal::testing::IsolatedServer::new("walkmint");
+        if !terminal::available() {
+            terminal::testing::cannot_run(
+                "tmux is not installed here — the transport this rests on cannot run",
+            );
+            return;
+        }
+        if !iso.took() {
+            terminal::testing::cannot_run("this box does not resolve its tmux socket from the config dir, so the only server here is its own — not asking it about a pane");
+            return;
+        }
+        let claude_home = crate::test_scratch::Scratch::new("walkmint-claude");
+        let _trust = ScopedVar::set("CLAUDE_CONFIG_DIR", claude_home.path());
+        let repo = crate::test_scratch::Scratch::new("walkmint-repo");
+        let masters = Arc::new(Masters::new());
+        let deaf = DeafSink::default();
+
+        let failing = fake_core::serve_routes(&[
+            (REGISTER, "200 OK", SESSION),
+            (SERVERS, "520 Origin Error", GATEWAY_PAGE),
+        ])
+        .await;
+        let first = walk(failing, &masters, &resolved("walkmint", &repo), None, &deaf).await;
+        assert_eq!(first, PaneState::Absent);
+        assert!(
+            matches!(recorded(&masters), Some(Unplaced::ServersUnreadable { .. })),
+            "the plant is only the plant once the read's refusal is on the record"
+        );
+
+        let answering = fake_core::serve_routes(&[
+            (REGISTER, "200 OK", SESSION),
+            (SERVERS, "200 OK", DECLARES),
+        ])
+        .await;
+        let second = walk(
+            answering,
+            &masters,
+            &resolved("walkmint", &repo),
+            None,
+            &deaf,
+        )
+        .await;
+        assert_eq!(second, PaneState::Absent);
+        match recorded(&masters) {
+            Some(why @ Unplaced::CapabilityUnminted { .. }) => {
+                let said = why.to_string();
+                assert!(
+                    said.contains("control token map") && why.is_error(),
+                    "the recorded reason names the mint's fault: {said}"
+                );
+            }
+            other => panic!(
+                "a sweep refused at the mint still reads {:?}",
+                other.map(|why| why.to_string())
+            ),
+        }
+        let _ = crate::mcp::config::clear_session("walkmint");
+    }
+}
+
 /// A master an owner stood down stays down, and the box tells its two answers
 /// apart (ISS-1118).
 #[cfg(test)]
@@ -8483,18 +8968,24 @@ mod stand_down_tests {
 
     fn stood_down() -> MasterStanding {
         MasterStanding {
+            episode: 1,
             project_id: "proj-1".into(),
             slug: "forge-dev".into(),
             stood_down_at: 1_000,
             stood_down_by: "owner".into(),
             why: Some("a human is driving it".into()),
             stood_up_at: None,
+            stood_up_by: None,
+            stood_up_why: None,
+            told_at: None,
         }
     }
 
     fn lifted() -> MasterStanding {
         MasterStanding {
             stood_up_at: Some(5_000),
+            stood_up_by: Some("owner".into()),
+            stood_up_why: Some("the human handed it back".into()),
             ..stood_down()
         }
     }
@@ -8954,6 +9445,91 @@ mod stand_down_tests {
         );
     }
 
+    /// Criterion 24. The interval alone tells a master that a gap happened and
+    /// nothing about what it was for. A pane that knows the box was waiting on
+    /// four writes, and that the wait ended because one landed, can read the
+    /// board knowing what it is looking for.
+    #[test]
+    fn a_pane_placed_after_a_lift_is_told_both_halves_of_the_episode() {
+        let brief = stood_up_brief(&Lifted {
+            episode: 1,
+            held_for: Duration::from_secs(9 * 3600),
+            why: Some("four writes to the release path are outstanding".into()),
+            lifted_on: Some("ISS-1186 removed the path they guarded".into()),
+        });
+        assert!(brief.contains("STOOD DOWN for 9 hours"), "the gap: {brief}");
+        assert!(
+            brief.contains("four writes to the release path are outstanding"),
+            "what the box was waiting for: {brief}"
+        );
+        assert!(
+            brief.contains("ISS-1186 removed the path they guarded"),
+            "and what ended the wait, which is the half nothing could say: {brief}"
+        );
+    }
+
+    /// The same brief for an episode a binary older than ISS-1238 wrote. It
+    /// says the reason is missing rather than leaving the sentence off, because
+    /// a master that is told nothing cannot tell a silent stand-down from one
+    /// whose reason it has not been shown.
+    #[test]
+    fn a_pane_following_an_episode_from_before_the_requirement_is_told_so() {
+        let brief = stood_up_brief(&Lifted {
+            episode: 1,
+            held_for: Duration::from_secs(120),
+            why: None,
+            lifted_on: None,
+        });
+        assert!(
+            brief.contains(MasterStanding::NO_REASON),
+            "the missing reason is named: {brief}"
+        );
+        assert!(
+            brief.contains("No argument was recorded for standing it up"),
+            "and so is the missing argument: {brief}"
+        );
+    }
+
+    /// Criterion 25. Being told is what spends an episode. Telling the next
+    /// pane the same gap again is the same defect as never telling the first,
+    /// and it is what the DELETE used to prevent.
+    #[test]
+    fn an_episode_a_pane_has_already_been_told_about_is_not_carried_again() {
+        let mut row = lifted();
+        assert!(
+            lifted_from(&row).is_some(),
+            "a lift nobody has been told about is what the next pane placed carries"
+        );
+        row.told_at = Some(6_000);
+        assert!(
+            lifted_from(&row).is_none(),
+            "and once a pane has been told, the next one is not told the same gap over again"
+        );
+        assert!(
+            lifted_from(&stood_down()).is_none(),
+            "a stand-down that still stands is not a gap anybody has come out of"
+        );
+        let mut backwards = lifted();
+        backwards.stood_up_at = Some(0);
+        assert!(
+            lifted_from(&backwards).is_none(),
+            "and a clock that went backwards is not a fact to tell a master"
+        );
+    }
+
+    /// The reason carried into the brief is the episode's own, so the two
+    /// surfaces cannot drift.
+    #[test]
+    fn the_carried_episode_is_the_row_the_ledger_holds() {
+        let carried = lifted_from(&lifted()).expect("a lift not yet told is carried");
+        assert_eq!(carried.why.as_deref(), Some("a human is driving it"));
+        assert_eq!(
+            carried.lifted_on.as_deref(),
+            Some("the human handed it back")
+        );
+        assert_eq!(carried.held_for, Duration::from_secs(4_000));
+    }
+
     #[test]
     fn the_unplaced_reason_names_the_act_that_reverses_it() {
         let why = Unplaced::StoodDown {
@@ -8981,6 +9557,10 @@ mod stand_down_tests {
         assert!(
             bare.contains("stand-up forge-dev") && !bare.contains("()"),
             "a stand-down with no reason given still names the way back, and does not print an empty one: {bare}"
+        );
+        assert!(
+            bare.contains(MasterStanding::NO_REASON),
+            "and it says the reason was never recorded rather than printing nothing, because a line carrying no reason reads as one the reader has not found yet (ISS-1238): {bare}"
         );
     }
 }
@@ -9112,5 +9692,129 @@ mod own_exe_reporting_tests {
             crate::daemon::hook_install::settings_path(&repo).exists(),
             "the hooks were not written: {said}"
         );
+    }
+}
+
+/// ISS-1223 criterion 3, run rather than read off the source: a sweep taken
+/// while a drain holds admission asks core for no work.
+#[cfg(test)]
+mod drain_sweep_tests {
+    use super::*;
+    use std::sync::Mutex as StdMutex;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    const RUNNERS: &str = r#"[{"projectId":"proj-1","runnerId":"r-1","slug":"drainsweep","baseBranch":null,"repoPath":null,"branch":null,"status":"active"}]"#;
+
+    /// Answers `me/runners` with one active runner and every other path with a
+    /// 404, and records the path of every request it is sent.
+    async fn recording_core() -> (String, Arc<StdMutex<Vec<String>>>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let seen = Arc::new(StdMutex::new(Vec::new()));
+        let log = seen.clone();
+        tokio::spawn(async move {
+            while let Ok((mut sock, _)) = listener.accept().await {
+                let log = log.clone();
+                tokio::spawn(async move {
+                    let mut buf = [0u8; 4096];
+                    let n = sock.read(&mut buf).await.unwrap_or(0);
+                    let head = String::from_utf8_lossy(&buf[..n]).into_owned();
+                    let path = head.split_whitespace().nth(1).unwrap_or("").to_string();
+                    let bare = path.split('?').next().unwrap_or("").to_string();
+                    log.lock().unwrap().push(bare.clone());
+                    let (status, body) = if bare == "/api/devices/me/runners" {
+                        ("200 OK", RUNNERS)
+                    } else {
+                        ("404 Not Found", r#"{"error":"absent","code":"NOT_FOUND"}"#)
+                    };
+                    let resp = format!(
+                        "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    );
+                    let _ = sock.write_all(resp.as_bytes()).await;
+                    let _ = sock.shutdown().await;
+                });
+            }
+        });
+        (format!("http://{addr}"), seen)
+    }
+
+    async fn one_sweep(drain: &crate::daemon::drain::Drain) -> (Vec<String>, Arc<Masters>) {
+        let (core, seen) = recording_core().await;
+        let client = CoreClient::new(core, String::from("tok"));
+        let masters = Arc::new(Masters::new());
+        let (_adopted_tx, adopted) = tokio::sync::watch::channel(true);
+        let mut ledger = Some(Ledger::open_in_memory().unwrap());
+        let mut said = None;
+        let _ = sweep(
+            &client,
+            &Config::default(),
+            &masters,
+            &agent_activity::Activities::new(),
+            &Arc::new(JobPanes::new()),
+            &crate::daemon::pool_jobs::NoRecords,
+            &adopted,
+            &mut ledger,
+            None,
+            &mut said,
+            drain,
+        )
+        .await;
+        let paths = seen.lock().unwrap().clone();
+        (paths, masters)
+    }
+
+    /// Every path a sweep reaches only by admitting work for a project.
+    fn admitting(paths: &[String]) -> Vec<&String> {
+        paths
+            .iter()
+            .filter(|p| p.contains("admissible") || p.contains("/pool") || p.contains("claim"))
+            .collect()
+    }
+
+    // cm:guard not on Windows: the sweep removes rendered MCP session files of projects it
+    // does not serve, under the OS config dir, and this test isolates that dir through
+    // XDG_CONFIG_HOME, which dirs_next reads only on Unix. On Windows it would reach the real
+    // one and delete another project's files on any developer's box.
+    #[cfg(not(windows))]
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_sweep_during_a_drain_asks_core_for_no_work_and_says_why() {
+        let _env = crate::auth::cred_store::ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = crate::test_scratch::Scratch::new("drain-sweep");
+        let _xdg = crate::auth::cred_store::ScopedVar::set("XDG_CONFIG_HOME", home.path());
+
+        // The control: with admission open, the same sweep does ask for work,
+        // so the silence below is the drain's and not this fixture's.
+        let open = crate::daemon::drain::Drain::unrecorded();
+        let (paths, _) = one_sweep(&open).await;
+        assert!(
+            !admitting(&paths).is_empty(),
+            "with admission open the sweep asks core for work: {paths:?}"
+        );
+
+        let drain = crate::daemon::drain::Drain::unrecorded();
+        let _attempt = drain.begin("update 0.1.0 → 0.1.1").unwrap();
+        let (paths, masters) = one_sweep(&drain).await;
+        assert!(
+            paths.iter().any(|p| p == "/api/devices/me/runners"),
+            "the sweep still reads which projects it serves: {paths:?}"
+        );
+        assert!(
+            admitting(&paths).is_empty(),
+            "a draining sweep asked core for work: {:?}",
+            admitting(&paths)
+        );
+        // Asserted on its fragments and never printed whole: the sentence can
+        // carry a master's session id, which is not for a log.
+        let why = masters.why_unplaced("proj-1");
+        for fragment in ["draining before a restart", "update 0.1.0 → 0.1.1"] {
+            assert!(
+                why.contains(fragment),
+                "the project records the drain as why no master was placed, and this fragment is missing: {fragment}"
+            );
+        }
     }
 }

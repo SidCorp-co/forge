@@ -4,6 +4,7 @@ import type {
 	ActiveRunnersSnapshot,
 	DeviceRow,
 	DeviceRunnerAssignment,
+	OrgDeviceRow,
 	PairingCode,
 	ProjectGitAccessView,
 	ProjectRunner,
@@ -14,6 +15,14 @@ import type {
 export const runnersApi = {
 	listDevices: (orgId?: string) =>
 		apiClient<DeviceRow[]>(orgId ? `/me/devices?orgId=${encodeURIComponent(orgId)}` : `/me/devices`),
+
+	/**
+	 * `GET /api/orgs/:orgId/devices` — the organisation's devices over the
+	 * projects this caller can see. A different population from `/me/devices`,
+	 * whose `orgId` narrows the caller's own list rather than widening it.
+	 */
+	listOrgDevices: (orgId: string) =>
+		apiClient<OrgDeviceRow[]>(`/orgs/${encodeURIComponent(orgId)}/devices`),
 
 	/** `PATCH /api/devices/:id` — rename a device (owner only). */
 	renameDevice: (id: string, name: string) =>

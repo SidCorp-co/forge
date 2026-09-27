@@ -45,6 +45,7 @@ export const REGISTERED_TOOLS = [
   'forge_projects.get',
   'forge_projects.list',
   'forge_projects.update',
+  'forge_questions',
   'forge_reconcile',
   'forge_release_batch',
   'forge_runners',

@@ -54,6 +54,20 @@ vi.mock('../conversations/ports.js', async (orig) => ({
   conversationTransport: () => ({ adapter: 'web', deliver }),
 }));
 
+const loadConversationAttachment = vi.fn();
+vi.mock('../conversations/attachment-service.js', async (orig) => ({
+  ...(await orig<typeof import('../conversations/attachment-service.js')>()),
+  loadConversationAttachment: (...args: unknown[]) => loadConversationAttachment(...args),
+}));
+
+const storageGet = vi.fn();
+vi.mock('../storage/index.js', () => ({ getStorage: () => ({ get: storageGet }) }));
+
+const persistSessionAttachment = vi.fn();
+vi.mock('./attachment-service.js', () => ({
+  persistSessionAttachment: (...args: unknown[]) => persistSessionAttachment(...args),
+}));
+
 const loggerInfo = vi.fn();
 vi.mock('../logger.js', () => ({
   logger: { info: (...args: unknown[]) => loggerInfo(...args), error: vi.fn(), warn: vi.fn() },
@@ -138,6 +152,75 @@ describe('startConversationAgentTurn', () => {
     dispatchChatTurn.mockReset();
     resolveChatDevice.mockReset();
     applyKernelTransition.mockReset();
+    loadConversationAttachment.mockReset();
+    storageGet.mockReset();
+    persistSessionAttachment.mockReset();
+  });
+
+  /** One picture on the window, as the room stored it. */
+  const PICTURE = {
+    name: 'screenshot.png',
+    mime: 'image/png',
+    ref: '/api/conversations/conv-1/attachments/11111111-2222-3333-4444-555555555555/download',
+  };
+
+  function readyToDispatch() {
+    selectLimit.mockResolvedValue([]);
+    resolveChatDevice.mockResolvedValue({ deviceId: 'device-1', isLocal: false });
+    createChatSessionRow.mockResolvedValue({ id: 'session-1', status: 'idle' });
+    dispatchChatTurn.mockResolvedValue({ id: 'session-1' });
+  }
+
+  it("copies the room's picture onto the session and dispatches the turn carrying it", async () => {
+    readyToDispatch();
+    loadConversationAttachment.mockResolvedValue({
+      id: '11111111-2222-3333-4444-555555555555',
+      conversationId: 'conv-1',
+      name: 'screenshot.png',
+      mime: 'image/png',
+      size: 64,
+      path: 'conversations/conv-1/1-screenshot.png',
+      uploaderId: 'user-1',
+    });
+    storageGet.mockResolvedValue(Buffer.from('bytes'));
+    persistSessionAttachment.mockResolvedValue({ id: 'sess-att-1' });
+
+    const result = await startConversationAgentTurn({ ...BASE_ARGS, images: [PICTURE] });
+
+    expect(result).toEqual({ started: true, sessionId: 'session-1' });
+    expect(persistSessionAttachment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: 'session-1',
+        name: 'screenshot.png',
+        uploaderId: 'user-1',
+      }),
+    );
+    expect(dispatchChatTurn).toHaveBeenCalledWith(
+      expect.objectContaining({ attachmentIds: ['sess-att-1'] }),
+    );
+  });
+
+  it('refuses the turn naming the file, rather than answering a picture it could not carry', async () => {
+    readyToDispatch();
+    loadConversationAttachment.mockResolvedValue(null);
+
+    const result = await startConversationAgentTurn({ ...BASE_ARGS, images: [PICTURE] });
+
+    expect(result).toEqual({
+      started: false,
+      reason: 'attachment-unreadable',
+      file: 'screenshot.png',
+    });
+    expect(dispatchChatTurn).not.toHaveBeenCalled();
+  });
+
+  it('dispatches a turn with no attachment lane at all where the window carries no picture', async () => {
+    readyToDispatch();
+    await startConversationAgentTurn(BASE_ARGS);
+    expect(persistSessionAttachment).not.toHaveBeenCalled();
+    expect(dispatchChatTurn).toHaveBeenCalledWith(
+      expect.not.objectContaining({ attachmentIds: expect.anything() }),
+    );
   });
 
   it('dedupes against an in-flight agent-chat turn for the same room without creating a session', async () => {

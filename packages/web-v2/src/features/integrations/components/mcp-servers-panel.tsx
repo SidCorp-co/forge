@@ -1,11 +1,10 @@
 "use client";
 
-// Agent MCP servers panel (ISS-429). Renders EXACTLY what the dispatch-time
-// resolvers will inject into a runner's `mcpServers` for this project — the
-// preview comes from `GET .../integrations/mcp-preview`, which runs the same
-// builders + filters as the resolvers, so the URL shown here cannot drift from
-// what an agent actually receives. The Authorization header is redacted
-// server-side BY CONSTRUCTION; nothing secret ever reaches this component.
+// Agent MCP servers panel (ISS-429, ISS-1191). `GET .../integrations/mcp-preview`
+// composes its answer from the one resolver the dispatch itself uses, so neither
+// the set nor the URL here can drift from what an agent receives, and each row
+// says which of the two sources supplied that server. Authorization is redacted
+// server-side BY CONSTRUCTION.
 
 import { useState } from "react";
 import {
@@ -43,7 +42,13 @@ const REASON_META: Record<
     bg: "var(--amberw-50)",
     icon: "alert",
   },
-  shadowed: { label: "Shadowed", fg: "var(--fg-subtle)", bg: "var(--bg-sunken)", icon: "dot" },
+  shadowed: {
+    label: "Shadowed",
+    fg: "var(--fg-subtle)",
+    bg: "var(--bg-sunken)",
+    icon: "dot",
+    hint: "Another binding of this provider holds the server name an agent would reach it by, so nothing here is wrong with this one. Where a provider serves one binding per project, the oldest granted one takes the slot and a label changes nothing — move the grant to this binding to use it instead. Where a provider serves several, each is named after its label and two labels can resolve to one name, which a label of its own settles.",
+  },
   not_granted: {
     label: "Not granted",
     fg: "var(--amberw-600)",
@@ -51,6 +56,18 @@ const REASON_META: Record<
     icon: "alert",
     hint: `Connected and credentialed, but no agent on this project may use it — nobody has granted it. Switch on "${GRANT_LABEL}" below to grant it; health does not gate the grant.`,
   },
+  not_resolved: {
+    label: "Not delivered",
+    fg: "var(--red-600)",
+    bg: "var(--red-50)",
+    icon: "alert",
+    hint: "Active, credentialed, granted, and holding its own server name — and the resolver still built no server for it. That is either a stored credential that will not decrypt or a binding configuration this provider cannot build a server from. Verify the credential first; if it verifies, the configuration is what to check.",
+  },
+};
+
+const SOURCE_LABEL: Record<McpServerPreviewEntry["source"], string> = {
+  integration: "from an integration",
+  project: "from this project's pipeline config",
 };
 
 function ReasonPill({ reason }: { reason: McpServerPreviewEntry["reason"] }) {
@@ -108,6 +125,9 @@ function McpServerRow({
             {scopeLabel(entry.role, entry.stages)}
           </span>
         )}
+        <span className="fg-body-sm rounded-pill bg-sunken px-2 py-0.5 text-subtle">
+          {SOURCE_LABEL[entry.source]}
+        </span>
         <span className="ml-auto">
           <ReasonPill reason={entry.reason} />
         </span>
@@ -117,11 +137,11 @@ function McpServerRow({
         <p className="truncate font-mono text-12-5 text-muted" title={entry.url}>
           {entry.url}
         </p>
-      ) : (
+      ) : entry.provider ? (
         <p className="fg-body-sm text-subtle">
           Configure the {providerLabel(entry.provider)} integration below to inject its MCP server.
         </p>
-      )}
+      ) : null}
 
       {REASON_META[entry.reason].hint && (
         <p className="fg-body-sm text-[var(--amberw-600)]">{REASON_META[entry.reason].hint}</p>
@@ -165,17 +185,20 @@ export function McpServersPanel({
 }) {
   const preview = useMcpPreview(projectId);
   const bindings = useIntegrationsList(projectId);
-  const byBindingId = new Map((bindings.data?.items ?? []).map((b) => [b.id, b]));
+  const byBindingId = new Map((bindings.data?.bindings ?? []).map((b) => [b.id, b]));
+  const stateOnly = preview.data?.stateOnlyNames ?? [];
+  const dropped = preview.data?.droppedNames ?? [];
 
   return (
     <Card>
       <CardContent>
         <SectionTitle className="fg-h3 mb-1">Agent MCP servers</SectionTitle>
         <p className="fg-body-sm mb-3 text-muted">
-          MCP servers injected into every Claude agent dispatched for this project. URLs come from
-          the same resolver that performs the injection; credentials are attached at dispatch time
-          and never shown here. A connected integration reaches an agent only once it is granted,
-          on the row below.
+          Every MCP server injected into a Claude agent dispatched for this project without a
+          per-state override, from both sources that feed them: this project&rsquo;s own pipeline
+          configuration and its granted integrations. The list comes from the same resolver that
+          performs the injection; credentials are attached at dispatch time and never shown here. A
+          connected integration reaches an agent only once it is granted, on the row below.
         </p>
         {preview.isLoading ? (
           <div className="flex flex-col gap-2">
@@ -188,7 +211,7 @@ export function McpServersPanel({
           <ul className="flex flex-col gap-2">
             {(preview.data?.servers ?? []).map((entry) => (
               <McpServerRow
-                key={`${entry.provider}:${entry.bindingId ?? "none"}`}
+                key={`${entry.source}:${entry.provider ?? entry.serverName}:${entry.bindingId ?? entry.serverName}`}
                 entry={entry}
                 projectId={projectId}
                 binding={entry.bindingId ? byBindingId.get(entry.bindingId) : undefined}
@@ -196,6 +219,19 @@ export function McpServersPanel({
               />
             ))}
           </ul>
+        )}
+        {dropped.length > 0 && (
+          <p className="fg-body-sm mt-3 text-[var(--amberw-600)]">
+            Declared for this project and not supplied, so the list above does not carry them:{" "}
+            {dropped.join(", ")}. A pipeline state that declares one with a spec of its own may
+            still supply it on that state&rsquo;s dispatches.
+          </p>
+        )}
+        {stateOnly.length > 0 && (
+          <p className="fg-body-sm mt-2 text-subtle">
+            Declared only for particular pipeline states, so they are not in the list above and
+            whether each one resolves is decided on that state&rsquo;s dispatch: {stateOnly.join(", ")}.
+          </p>
         )}
       </CardContent>
     </Card>

@@ -13,6 +13,7 @@ import {
   CardTitle,
   Checkbox,
   Collapsible,
+  EmptyPanelLine,
   EmptyState,
   ErrorState,
   HelpButton,
@@ -29,10 +30,10 @@ import {
   type MenuItem,
   type TabItem,
 } from "@/design";
-import type { StatusKey } from "@/design/status";
 import { useResumeRun } from "@/features/pipeline/hooks";
 import { useProjects } from "@/features/projects/hooks";
 import { DECISION_PANEL_ANCHOR, DecisionPanel } from "@/features/questions/components/decision-panel";
+import { useIssueQuestions } from "@/features/questions/hooks";
 import { buildShareLink, useRecents } from "@/features/shell";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
@@ -44,10 +45,13 @@ import { useEffect, useMemo, useState } from "react";
 import {
   canonicalIssueId,
   deriveBlockerState,
+  waitingOnPersonSinceOf,
   deriveStepOutcomes,
+  isLiveRun,
   runningStepOf,
   issueQueryKey,
   parseChecklist,
+  runStatusChip,
   statusLabel,
   statusToChip,
 } from "../derive";
@@ -69,12 +73,12 @@ import {
 } from "../hooks";
 import type { IssueAgentSession, IssueStatus, TaskRow } from "../types";
 import { ActivityFeed } from "./activity-feed";
-import { AttachmentList } from "./attachment-list";
 import { AwaitingReleaseBanner } from "./awaiting-release-banner";
 import { BlockerBanner } from "./blocker-banner";
 import { useGuardedTransition } from "./use-guarded-transition";
 import { CommentThread } from "./comment-thread";
 import { DescriptionCard } from "./description-card";
+import { ReleaseNoteCard } from "./release-note-card";
 import { type LiveAgentState, LiveAgentPanel } from "./live-agent-panel";
 import { ModulePicker } from "./module-picker";
 import { PropertiesRail } from "./properties-rail";
@@ -157,6 +161,7 @@ export function IssueDetailScreen({
   const pending = patch.isPending || transitionPending || resumeRun.isPending;
 
   const issue = issueQ.data;
+  const questionsQ = useIssueQuestions(issue?.id ?? "");
   const checklist = useMemo(() => {
     const criteria = parseChecklist(issue?.acceptanceCriteria);
     const counts = new Map<string, number>();
@@ -218,7 +223,12 @@ export function IssueDetailScreen({
   const onBannerResume = () =>
     requestTransition(issue.id, "reopen", { successMessage: "Issue resumed", onSuccess: refreshIssue });
 
-  const blocker = deriveBlockerState(issue, issue.pipelineHealth, depsQ.data);
+  const blocker = deriveBlockerState(
+    issue,
+    issue.pipelineHealth,
+    depsQ.data,
+    waitingOnPersonSinceOf(questionsQ.data?.questions),
+  );
   const liveStep = issue.pipelineHealth?.activeSession?.skill ?? null;
   const stepOutcomes = deriveStepOutcomes(handoffsQ.data, durationsQ.data, {
     activeStep: runningStepOf(issue.pipelineHealth),
@@ -242,11 +252,9 @@ export function IssueDetailScreen({
 
   const isTerminal = issue.status === "awaiting_release" || issue.status === "closed";
   const isParked = issue.status === "on_hold";
-  const isRunActive =
-    issue.agentStatus === "running" ||
-    issue.agentStatus === "queued" ||
-    issue.status === "in_progress" ||
-    issue.status === "reopen";
+  // The run's state is a session chip beside the issue's lifecycle chip, never merged into it (ISS-360, ISS-1150).
+  const runChip = runStatusChip(issue);
+  const isRunActive = isLiveRun(runChip) || issue.status === "in_progress" || issue.status === "reopen";
   const openSessions = () =>
     router.push(`/projects/${slug}/agents?issue=${issue.id}`);
   const openPipeline = () => router.push(`/projects/${slug}/pipeline`);
@@ -288,20 +296,6 @@ export function IssueDetailScreen({
     { value: "tasks", label: "Tasks", count: tasksQ.data?.length },
   ];
 
-  // Live agent-run status for the header — shown as a SESSION-domain chip
-  // (squared + agent glyph) right next to the issue's lifecycle chip so the two
-  // status vocabularies are never confused (ISS-360, the reporter's core ask).
-  const runChip: StatusKey | null =
-    issue.agentStatus === "running"
-      ? "running"
-      : issue.agentStatus === "queued"
-        ? "queued"
-        : issue.agentStatus === "completed"
-          ? "done"
-          : issue.agentStatus === "failed"
-            ? "failed"
-            : null;
-
   return (
     <PageContainer className="min-h-dvh">
       {/* Sticky action + state bar — keeps the id, live status, and the primary
@@ -309,7 +303,7 @@ export function IssueDetailScreen({
           TopBar now carries the breadcrumb trail (ISS-358/359), so the in-page
           breadcrumb was removed to stop the doubled header that hid the detail
           (ISS-360 regression). Full-bleed via negative gutters. */}
-      <div className="sticky top-0 z-20 -mx-4 mb-5 flex items-start gap-3 border-b border-line-subtle bg-app/95 px-4 py-3 backdrop-blur sm:-mx-8 sm:px-8">
+      <div className="sticky top-0 z-20 -mx-4 mb-5 flex flex-wrap items-start gap-3 border-b border-line-subtle bg-app/95 px-4 py-3 backdrop-blur sm:-mx-8 sm:px-8">
         <IconButton
           icon="arrowRight"
           aria-label="Back to issues"
@@ -320,9 +314,7 @@ export function IssueDetailScreen({
           <div className="flex flex-wrap items-center gap-2">
             <MonoTag hue="cobalt">{issue.displayId}</MonoTag>
             {/* Issue lifecycle (pill) vs live agent run (squared, agent glyph). */}
-            {
-        }
-        <StatusChip status={statusToChip(issue.status)} label={statusLabel(issue.status)} />
+            <StatusChip status={statusToChip(issue.status)} label={statusLabel(issue.status)} />
             {runChip && (
               <StatusChip
                 status={runChip}
@@ -332,9 +324,11 @@ export function IssueDetailScreen({
             )}
             {liveStep && <span className="fg-caption font-mono">{liveStep}</span>}
           </div>
-          <PageTitle className="fg-h3 mt-1.5 truncate">{issue.title}</PageTitle>
+          <PageTitle className="fg-h3 mt-1.5 break-words">{issue.title}</PageTitle>
         </div>
-        <div className="hidden flex-none items-center gap-2 sm:flex">
+        {/* Its own row under the title at phone width rather than hidden there: the help tells a
+            reader to choose Reopen at the top of the issue page, on whatever screen they read it. */}
+        <div className="flex basis-full flex-wrap items-center gap-2 sm:flex-none sm:basis-auto">
           <HelpButton
             summary="The full record for one issue: pipeline progress, description, acceptance criteria, the agent plan, and Comments / Activity / Tasks."
             actions={[
@@ -401,7 +395,7 @@ export function IssueDetailScreen({
         </div>
       </div>
 
-      <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_360px] 2xl:grid-cols-[minmax(0,1fr)_380px]">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_clamp(16rem,32%,22.5rem)] 2xl:grid-cols-[minmax(0,1fr)_clamp(16rem,32%,23.75rem)]">
         <div className="min-w-0 space-y-4">
           {blocker && (
             <BlockerBanner
@@ -434,27 +428,40 @@ export function IssueDetailScreen({
             />
           )}
 
+          <ReleaseNoteCard issue={issue} />
+
+          <DescriptionCard
+            issue={issue}
+            attachments={attachmentsQ.data ?? []}
+            attachmentsLoading={attachmentsQ.isLoading}
+            attachmentsError={attachmentsQ.isError ? attachmentsQ.error : null}
+            canWrite={canWrite}
+          />
+
           {/* Session-group continuity (ISS-376) — resumed/fresh per step. Self-
               hides when no session carries group metadata. */}
           <SessionGroupTimeline sessions={issue.agentSessions ?? []} />
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Steps</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {handoffsQ.isLoading || durationsQ.isLoading ? (
-                <div className="space-y-2">
-                  <Skeleton className="h-10 rounded-lg" />
-                  <Skeleton className="h-10 rounded-lg" />
-                </div>
-              ) : stepOutcomes.length === 0 ? (
-                <EmptyState
-                  title="No steps yet"
-                  message="Nothing has run on this issue. Steps appear here as agents record them."
-                  mascot={false}
-                />
-              ) : (
+          {handoffsQ.isLoading || durationsQ.isLoading ? (
+            <EmptyPanelLine title="Steps" status="Loading…" />
+          ) : handoffsQ.isError || durationsQ.isError ? (
+            <EmptyPanelLine
+              title="Steps"
+              status="Couldn't load"
+              detail={formatApiError(handoffsQ.isError ? handoffsQ.error : durationsQ.error)}
+            />
+          ) : stepOutcomes.length === 0 ? (
+            <EmptyPanelLine
+              title="Steps"
+              status="None yet"
+              detail="Steps appear here as agents record them."
+            />
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardTitle>Steps</CardTitle>
+              </CardHeader>
+              <CardContent>
                 <div className="space-y-2">
                   {stepOutcomes.map((outcome) => (
                     <StepArtifactCard
@@ -467,30 +474,9 @@ export function IssueDetailScreen({
                     />
                   ))}
                 </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <DescriptionCard
-            issue={issue}
-            attachments={attachmentsQ.data ?? []}
-            canWrite={canWrite}
-          />
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Attachments</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {attachmentsQ.isLoading ? (
-                <Skeleton variant="text" className="w-40" />
-              ) : (attachmentsQ.data?.length ?? 0) === 0 ? (
-                <p className="fg-body-sm text-muted">No attachments.</p>
-              ) : (
-                <AttachmentList rows={attachmentsQ.data ?? []} />
-              )}
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          )}
 
           {checklist.length > 0 && (
             <Card>

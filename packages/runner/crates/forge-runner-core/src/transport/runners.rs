@@ -6,7 +6,9 @@
 //!   device's repo path/branch back to the server so web and CLI write the
 //!   same source-of-truth field.
 
-use super::CoreClient;
+use std::time::Duration;
+
+use super::{status, CoreClient, CALL_DEADLINE};
 use crate::error::{Error, Result};
 use serde::{Deserialize, Deserializer};
 
@@ -41,22 +43,37 @@ pub struct MeRunner {
 
 /// List the projects this device is assigned to. `401` maps to a clear
 /// `UNAUTHORIZED` error so callers can prompt a re-login.
+///
+/// This is the first call the master sweep makes, so a peer that accepts the
+/// connection and never answers stopped the sweep for every project behind it
+/// — no pool read, no registration, nothing recorded (ISS-1233).
 pub async fn list_me(client: &CoreClient) -> Result<Vec<MeRunner>> {
+    list_me_within(client, CALL_DEADLINE).await
+}
+
+/// [`list_me`], with the deadline a test can shorten.
+pub async fn list_me_within(client: &CoreClient, deadline: Duration) -> Result<Vec<MeRunner>> {
     let url = client.url("/api/devices/me/runners");
     let resp = client
         .http()
         .get(&url)
         .bearer_auth(client.device_token())
+        .timeout(deadline)
         .send()
         .await
-        .map_err(|e| Error::Other(format!("me/runners request: {e}")))?;
+        .map_err(|e| {
+            Error::Other(format!(
+                "me/runners request: {}",
+                status::unanswered(&e, deadline)
+            ))
+        })?;
     if resp.status().as_u16() == 401 {
         return Err(Error::Unauthorized);
     }
     if !resp.status().is_success() {
-        let status = resp.status();
+        let code = resp.status().as_u16();
         let text = resp.text().await.unwrap_or_default();
-        return Err(Error::Other(format!("me/runners failed: {status}: {text}")));
+        return Err(Error::Other(status::refused("me/runners", code, &text)));
     }
     resp.json::<Vec<MeRunner>>()
         .await
@@ -84,18 +101,22 @@ pub async fn patch_runner(
         .patch(&url)
         .bearer_auth(client.device_token())
         .json(&serde_json::Value::Object(body))
+        .timeout(CALL_DEADLINE)
         .send()
         .await
-        .map_err(|e| Error::Other(format!("patch runner request: {e}")))?;
+        .map_err(|e| {
+            Error::Other(format!(
+                "patch runner request: {}",
+                status::unanswered(&e, CALL_DEADLINE)
+            ))
+        })?;
     if resp.status().as_u16() == 401 {
         return Err(Error::Unauthorized);
     }
     if !resp.status().is_success() {
-        let status = resp.status();
+        let code = resp.status().as_u16();
         let text = resp.text().await.unwrap_or_default();
-        return Err(Error::Other(format!(
-            "patch runner failed: {status}: {text}"
-        )));
+        return Err(Error::Other(status::refused("patch runner", code, &text)));
     }
     Ok(())
 }
@@ -103,6 +124,92 @@ pub async fn patch_runner(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    fn client(url: String) -> CoreClient {
+        CoreClient::new(url, String::from("tok"))
+    }
+
+    /// A core answering one status with one body of the caller's choosing.
+    async fn refusing(status: &'static str, body: &'static str) -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0u8; 8192];
+            let _ = sock.read(&mut buf).await;
+            let resp = format!(
+                "HTTP/1.1 {status}\r\nContent-Type: text/html\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            let _ = sock.write_all(resp.as_bytes()).await;
+            let _ = sock.shutdown().await;
+        });
+        format!("http://{addr}")
+    }
+
+    /// Criteria 5 and 6. `me/runners failed: 502 Bad Gateway: <html>` is the
+    /// line ISS-1233 was filed carrying, from the read that opens the master
+    /// sweep. The page is a page and the code is named.
+    #[tokio::test]
+    async fn a_gateway_refusing_this_boxs_projects_is_named_and_its_page_is_not_pasted() {
+        let page = "<!DOCTYPE html><html><head><title>forge-beta-api.sidcorp.co | 502: Bad gateway</title></head><body>error code: 502</body></html>";
+        let said = list_me(&client(refusing("502 Bad Gateway", page).await))
+            .await
+            .unwrap_err()
+            .to_string();
+        assert_eq!(
+            said,
+            "me/runners 502 Bad Gateway: an HTML page titled \"forge-beta-api.sidcorp.co | 502: Bad gateway\""
+        );
+        assert!(!said.contains('<'), "no markup reaches an operator: {said}");
+    }
+
+    #[tokio::test]
+    async fn a_gateway_code_on_this_read_says_what_it_means() {
+        let said = list_me(&client(refusing("520 ", "error code: 520").await))
+            .await
+            .unwrap_err()
+            .to_string();
+        assert_eq!(
+            said,
+            "me/runners 520 (gateway: the origin returned an unknown error): error code: 520"
+        );
+    }
+
+    /// Criteria 8 and 9. This read is the first call the sweep makes, so a peer
+    /// that accepts and never answers stopped every project behind it — no pool
+    /// read, no registration, and nothing recorded to say so.
+    #[tokio::test]
+    async fn a_core_that_accepts_and_never_answers_ends_this_read_at_the_deadline() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (stop, hold) = tokio::sync::oneshot::channel::<()>();
+        tokio::spawn(async move {
+            let accepted = listener.accept().await;
+            let _ = hold.await;
+            drop(accepted);
+        });
+        let said = tokio::time::timeout(
+            Duration::from_secs(5),
+            list_me_within(
+                &client(format!("http://{addr}")),
+                Duration::from_millis(150),
+            ),
+        )
+        .await
+        .expect("the call returns rather than hanging")
+        .unwrap_err()
+        .to_string();
+        assert_eq!(said, "me/runners request: timed out after 150ms");
+        drop(stop);
+    }
+
+    #[test]
+    fn this_read_carries_the_deadline_every_core_call_does() {
+        assert_eq!(CALL_DEADLINE, super::super::CALL_DEADLINE);
+        assert!(CALL_DEADLINE < Duration::from_secs(30));
+    }
 
     /// A core that predates `masterPolicy` leaves the master on the skill's own
     /// defaults, which is what every project ran before ISS-929.

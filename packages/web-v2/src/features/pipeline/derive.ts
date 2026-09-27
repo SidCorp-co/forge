@@ -53,6 +53,16 @@ export function runStatusToStatusKey(status: PipelineRunStatus): StatusKey {
   }
 }
 
+/**
+ * The board drawer header's chip. A running pipeline run is as live as its step, so while the
+ * issue's run reading (`runStatusChip`) is `running` or `queued` the header shows that reading; a
+ * paused, finished or cancelled run keeps its own status.
+ */
+export function drawerRunChip(runStatus: PipelineRunStatus, issueRun: StatusKey | null): StatusKey {
+  if (runStatus === "running" && (issueRun === "running" || issueRun === "queued")) return issueRun;
+  return runStatusToStatusKey(runStatus);
+}
+
 /** Format an estimated cost in USD. `$X.XX`, with small-value and zero cases. */
 export function formatUsd(usd: number | null | undefined): string {
   if (usd == null) return "—";

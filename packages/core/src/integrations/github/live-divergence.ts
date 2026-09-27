@@ -7,8 +7,10 @@ export const COMPARE_MAX_PAGES = 3;
 
 export interface WaitingCommit {
   sha: string;
-  /** The whole message: a key named in a merge commit's body counts as much as one in its subject. */
+  /** The whole message. Only its subject line is read for keys, by `commitOwners`. */
   message: string;
+  /** First parent first, as git records them: the merge walk in `commitOwners` reads the order. */
+  parents: string[];
 }
 
 export type LiveDivergence =
@@ -31,7 +33,11 @@ interface BranchRead {
 interface CompareRead {
   ahead_by?: number;
   total_commits?: number;
-  commits?: Array<{ sha?: string; commit?: { message?: string } }>;
+  commits?: Array<{
+    sha?: string;
+    parents?: Array<{ sha?: string }>;
+    commit?: { message?: string };
+  }>;
 }
 
 async function headOf(client: GitHubRepoClient, branch: string): Promise<string> {
@@ -67,7 +73,9 @@ export async function readLiveDivergence(
       aheadBy = typeof cmp.ahead_by === 'number' ? cmp.ahead_by : (cmp.total_commits ?? 0);
       const got = cmp.commits ?? [];
       for (const c of got) {
-        if (c.sha) commits.push({ sha: c.sha, message: c.commit?.message ?? '' });
+        if (!c.sha) continue;
+        const parents = (c.parents ?? []).flatMap((p) => (p.sha ? [p.sha] : []));
+        commits.push({ sha: c.sha, message: c.commit?.message ?? '', parents });
       }
       if (got.length < COMPARE_PAGE_SIZE || commits.length >= aheadBy) break;
     }

@@ -14,6 +14,7 @@ import { ToastProvider } from "@/providers/toast-provider";
 import { BulkActionBar } from "./bulk-action-bar";
 import { IssueMobileCard } from "./issue-row-actions";
 import { StatusEdit } from "./inline-edit-cell";
+import { statusLabel } from "../derive";
 import type { IssueRow, IssueStatus } from "../types";
 
 expect.extend(matchers);
@@ -57,7 +58,7 @@ function wrap(ui: ReactNode) {
 
 function openPicker(status: IssueStatus, agentStatus?: "running" | null) {
   wrap(<StatusEdit status={status} agentStatus={agentStatus} onTransition={vi.fn()} />);
-  fireEvent.click(screen.getByLabelText(`Change status (currently ${status})`));
+  fireEvent.click(screen.getByLabelText(`Change status (currently ${statusLabel(status)})`));
 }
 
 function labels(): string[] {
@@ -101,7 +102,7 @@ describe("StatusEdit, once the exits have answered", () => {
     const onTransition = vi.fn();
     get.mockResolvedValue(ANSWERED);
     wrap(<StatusEdit status="dropped" onTransition={onTransition} />);
-    fireEvent.click(screen.getByLabelText("Change status (currently dropped)"));
+    fireEvent.click(screen.getByLabelText("Change status (currently Dropped)"));
     fireEvent.click(await screen.findByRole("menuitem"));
     expect(onTransition).not.toHaveBeenCalled();
     expect(screen.getByRole("menuitem")).toBeInTheDocument();

@@ -29,7 +29,6 @@ class ClaimConflictError extends Error {}
 class NoRunnerOnlineError extends Error {}
 class ReleasePoolEmptyError extends Error {}
 class NoReleaseGateError extends Error {}
-class ReleaseBranchesUndeclaredError extends Error {}
 class ReleaseRecordMissingError extends Error {}
 
 const createReleaseBatchMock = vi.fn(
@@ -50,7 +49,6 @@ vi.mock('../release-batch/service.js', () => ({
   NoRunnerOnlineError,
   ReleasePoolEmptyError,
   NoReleaseGateError,
-  ReleaseBranchesUndeclaredError,
   ReleaseRecordMissingError,
 }));
 
@@ -109,11 +107,6 @@ describe('cutWaitingRelease', () => {
     ['ReleasePoolEmptyError', new ReleasePoolEmptyError('empty pool'), 'RELEASE_POOL_EMPTY'],
     ['NoReleaseGateError', new NoReleaseGateError('no gate'), 'NO_RELEASE_GATE'],
     [
-      'ReleaseBranchesUndeclaredError',
-      new ReleaseBranchesUndeclaredError('no branches'),
-      'RELEASE_BRANCHES_UNDECLARED',
-    ],
-    [
       'ReleaseRecordMissingError',
       new ReleaseRecordMissingError('no note'),
       'RELEASE_RECORD_MISSING',
@@ -142,16 +135,16 @@ describe('cutWaitingRelease', () => {
   });
 
   // `releaseBlockerError` throws a class per readiness code, most of them outside the list above
-  // (`RELEASE_RUNNER_UNDECLARED` among them); what makes one a refusal is the blockers it carries.
+  // (`RELEASE_WORK_UNMERGED` among them); what makes one a refusal is the blockers it carries.
   it('classifies any error carrying readiness blockers as a refusal under the first code', async () => {
-    const sentence = 'This project declares a release model and no live deploy binding names one.';
-    const err = Object.assign(new Error('RELEASE_RUNNER_UNDECLARED'), {
-      releaseBlockers: [{ code: 'RELEASE_RUNNER_UNDECLARED', message: sentence }],
+    const sentence = '2 issue(s) named here have no merge Forge watched land.';
+    const err = Object.assign(new Error('RELEASE_WORK_UNMERGED'), {
+      releaseBlockers: [{ code: 'RELEASE_WORK_UNMERGED', message: sentence }],
     });
     createReleaseBatchMock.mockRejectedValueOnce(err);
     const outcome = await cutWaitingRelease({ projectId: 'p1', userId: 'u1', issueIds: ['iss-1'] });
     expect(outcome.status).toBe('skipped');
-    expect(outcome.code).toBe('RELEASE_RUNNER_UNDECLARED');
+    expect(outcome.code).toBe('RELEASE_WORK_UNMERGED');
     expect(outcome.reasons).toEqual([sentence]);
     expect(outcome.named).toEqual(['iss-1']);
   });

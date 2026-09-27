@@ -23,7 +23,6 @@ import {
   refuseMachineKeys,
   releaseBlockerHttp,
   reportedRefusal,
-  undeclaredBranches,
 } from './refusals.js';
 import {
   abortReleaseBatch,
@@ -35,7 +34,6 @@ import {
   loadReleaseBatchContext,
   loadReleaseRoster,
   NoReleaseGateError,
-  ReleaseBranchesUndeclaredError,
   ReleaseIssuesUnnamedError,
   ReleaseRecutRefusedError,
   ReleaseVersionConflictError,
@@ -47,6 +45,21 @@ import { readLiveState } from './verify.js';
 
 const projectParamSchema = z.object({ projectId: z.uuid() });
 
+/** A roster names each issue once; a uuid is one id in either letter case. */
+const rosterIdsSchema = z.array(z.uuid()).superRefine((ids, ctx) => {
+  const seen = new Set<string>();
+  for (const id of ids) {
+    if (seen.has(id.toLowerCase())) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `issueIds names ${id} more than once, counting either letter case as the same id: send each issue once.`,
+      });
+      return;
+    }
+    seen.add(id.toLowerCase());
+  }
+});
+
 const createBodySchema = z
   .object({
     /**
@@ -54,7 +67,7 @@ const createBodySchema = z
      * so both are refused by the code readiness lists them under rather than as
      * a schema's `Invalid input` (ISS-1127 criterion 1).
      */
-    issueIds: z.array(z.uuid()),
+    issueIds: rosterIdsSchema,
     /**
      * The version of a FAILED release being cut again, which raises the patch digit instead of the
      * minor. Not validated for shape here: `cutReleaseVersion` refuses a value that is not a
@@ -97,12 +110,11 @@ releaseBatchRoutes.post(
       const declined = declarationRefusal(err);
       if (declined) throw declined;
       if (err instanceof NoReleaseGateError) throw releaseBlockerHttp(err, 'NO_RELEASE_GATE');
-      if (err instanceof ReleaseBranchesUndeclaredError) throw undeclaredBranches(err);
       if (err instanceof ClaimConflictError) {
-        throw releaseBlockerHttp(err, 'CLAIM_CONFLICT', { issueIds: err.issueIds });
+        throw releaseBlockerHttp(err, 'CLAIM_CONFLICT', err.details ?? { issueIds: err.issueIds });
       }
       if (err instanceof BatchInFlightError) throw releaseBlockerHttp(err, 'BATCH_IN_FLIGHT');
-      if (err instanceof ReleaseIssuesUnnamedError) throw issuesUnnamed();
+      if (err instanceof ReleaseIssuesUnnamedError) throw issuesUnnamed(projectId);
       if (err instanceof ReleaseRecutRefusedError) {
         throw conflict('RELEASE_RECUT_REFUSED', err.message);
       }
@@ -220,7 +232,7 @@ const abortBodySchema = z
  */
 const releaseRecordBodySchema = z
   .object({
-    issueIds: z.array(z.uuid()).min(1),
+    issueIds: rosterIdsSchema.min(1),
     commit: z.string().trim().min(1).max(200),
     account: z.string().trim().min(20).max(20_000),
     providerRef: z.string().trim().max(500).optional(),
@@ -244,12 +256,7 @@ releaseBatchRoutes.get(
   async (c) => {
     const { projectId, runId } = c.req.valid('param');
     await loadRunForProject(runId, projectId, c.get('userId'));
-    try {
-      return c.json(await loadReleaseBatchContext(runId));
-    } catch (err) {
-      if (err instanceof ReleaseBranchesUndeclaredError) throw undeclaredBranches(err);
-      throw err;
-    }
+    return c.json(await loadReleaseBatchContext(runId));
   },
 );
 

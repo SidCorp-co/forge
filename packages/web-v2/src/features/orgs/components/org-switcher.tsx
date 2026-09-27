@@ -61,7 +61,7 @@ export function OrgSwitcher({ variant }: { variant: "compact" | "expanded" }) {
       </span>
     );
     const labelEl = (
-      <span className="mt-1 block max-w-[64px] truncate text-center text-9-5 font-semibold tracking-[-0.01em] text-muted">
+      <span title={label} className="mt-1 block min-w-0 max-w-full truncate text-center text-10 font-semibold tracking-[-0.01em] text-muted">
         {label}
       </span>
     );
@@ -71,7 +71,7 @@ export function OrgSwitcher({ variant }: { variant: "compact" | "expanded" }) {
       return (
         <Link
           href="/org"
-          className="flex w-[60px] flex-col items-center rounded-md pb-1 pt-5px transition-colors hover:bg-hover"
+          className="flex w-[76px] flex-col items-center rounded-md px-1 pb-1 pt-5px transition-colors hover:bg-hover"
           aria-label={`Organization: ${label}`}
         >
           {glyph}
@@ -90,7 +90,7 @@ export function OrgSwitcher({ variant }: { variant: "compact" | "expanded" }) {
             type="button"
             aria-haspopup="menu"
             aria-label={`Switch organization — current ${label}`}
-            className="flex w-[60px] flex-col items-center rounded-md pb-1 pt-5px transition-colors hover:bg-hover"
+            className="flex w-[76px] flex-col items-center rounded-md px-1 pb-1 pt-5px transition-colors hover:bg-hover"
           >
             {glyph}
             {labelEl}

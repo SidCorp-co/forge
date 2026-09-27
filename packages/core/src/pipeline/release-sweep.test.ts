@@ -100,34 +100,28 @@ vi.mock('../release-batch/gate.js', () => ({
   resolveReleaseGate: (projectId: string) => resolveReleaseGateMock(projectId),
 }));
 
-interface UnearnedCriterion {
-  criterion: number;
-  verdict: string | null;
-  standing: string | null;
-  why: string;
-}
-interface CriteriaReport {
-  issueId: string;
-  unearned: UnearnedCriterion[];
-}
-const unearnedCriteriaReportsMock = vi.fn(
-  async (ids: string[]): Promise<CriteriaReport[]> =>
-    ids.map((id) => ({ issueId: id, unearned: [] })),
-);
+type Unearned = { criterion: number; verdict: string | null; standing: string | null; why: string };
+const READING = { kind: 'serving', commits: ['c0ffee0'], unread: [], hosts: ['h'], readAt: 'T' };
+const none = { unearned: [] as Unearned[], serving: READING, uncorroborated: [] as number[] };
+const noneUnearned = async (i: string[]) => i.map((id) => ({ issueId: id, ...none }));
+const unearnedCriteriaReportsMock = vi.fn(noneUnearned);
 vi.mock('../issues/criteria-verdicts.js', () => ({
   unearnedCriteriaReports: (ids: string[]) => unearnedCriteriaReportsMock(ids),
 }));
 
-/** The report a sweep reads for a roster where `held` are the ones still owing a criterion. */
-const reportsHolding = (all: string[], held: Record<string, UnearnedCriterion[]>) =>
-  all.map((id) => ({ issueId: id, unearned: held[id] ?? [] }));
+const WHY = 'nothing could be read from the probes it declares — host is down';
+vi.mock('../release-batch/serving-reading.js', () => ({
+  readServingNow: async () => READING,
+  whyUncorroborated: () => WHY,
+}));
 
-const SUPERSEDED: UnearnedCriterion = {
-  criterion: 13,
-  verdict: 'pass',
-  standing: 'superseded',
-  why: 'judged at dce6f354c727baa81c681f144cbadf30050eabfc, and this issue now stands at 06fa37c6dfbc841bd75c3898034a53a1529a9c74',
-};
+/** The report a sweep reads for a roster where `held` are the ones still owing a criterion. */
+const reportsHolding = (all: string[], held: Record<string, Unearned[]>) =>
+  all.map((id) => ({ ...none, issueId: id, unearned: held[id] ?? [] }));
+
+const STOOD =
+  'judged at dce6f354c727baa81c681f144cbadf30050eabfc, and this issue now stands at 06fa37c6dfbc841bd75c3898034a53a1529a9c74';
+const SUPERSEDED: Unearned = { criterion: 13, verdict: 'pass', standing: 'superseded', why: STOOD };
 
 const loadCreatedByMock = vi.fn(async (_projectId: string) => 'owner-1' as string | undefined);
 vi.mock('../schedules/release-batch-dispatch.js', () => ({
@@ -162,10 +156,11 @@ vi.mock('../schedules/release-batch-run.js', () => ({
 
 const loggerInfo = vi.fn();
 const loggerError = vi.fn();
+const loggerWarn = vi.fn();
 vi.mock('../logger.js', () => ({
   logger: {
     error: (...args: unknown[]) => loggerError(...args),
-    warn: vi.fn(),
+    warn: (...args: unknown[]) => loggerWarn(...args),
     info: (...args: unknown[]) => loggerInfo(...args),
   },
 }));
@@ -196,11 +191,9 @@ beforeEach(() => {
   clearedProjects.length = 0;
   staleClears.mockClear();
   loggerError.mockReset();
-  unearnedCriteriaReportsMock.mockReset();
-  unearnedCriteriaReportsMock.mockImplementation(async (ids: string[]) =>
-    ids.map((id) => ({ issueId: id, unearned: [] })),
-  );
+  unearnedCriteriaReportsMock.mockReset().mockImplementation(noneUnearned);
   loggerInfo.mockReset();
+  loggerWarn.mockReset();
   loadCreatedByMock.mockReset();
   loadCreatedByMock.mockResolvedValue('owner-1');
   cutWaitingReleaseMock.mockReset();
@@ -369,6 +362,19 @@ describe('sweepAutomaticReleases — the ISS-1139/ISS-1114 reproduction', () => 
     expect(result).toEqual({ projectsCut: 1, issuesCut: 1, issuesExcluded: 1, holdsWritten: 1 });
   });
 
+  // ISS-1286 — a row cut on a runtime nothing could re-read says so, rather than only being cut.
+  it('records that a cut issue was judged at a runtime nothing could re-read', async () => {
+    candidateRows = [candidateRow('proj-1', 'iss-earned', '2026-09-22T00:00:00Z')];
+    waitingIds = ['iss-earned'];
+    const weak = [{ ...none, issueId: 'iss-earned', uncorroborated: [4, 9] }];
+    unearnedCriteriaReportsMock.mockResolvedValueOnce(weak);
+    await sweepAutomaticReleases();
+    const said = loggerWarn.mock.calls.find(([, l]) => String(l).includes('could re-read'));
+    expect(said?.[0]).toMatchObject({ issueId: 'iss-earned', criteria: [4, 9], why: WHY });
+    expect(said?.[1]).toContain(WHY);
+    expect(cutWaitingReleaseMock).toHaveBeenCalled();
+  });
+
   it('does nothing for a project with no unclaimed waiting issue', async () => {
     candidateRows = [candidateRow('proj-1', 'iss-1', '2026-09-22T00:00:00Z')];
     await sweepAutomaticReleases();
@@ -391,7 +397,7 @@ describe('sweepAutomaticReleases — declined cuts', () => {
 
   it.each([
     ['NO_RUNNER_ONLINE', 'human'],
-    ['RELEASE_RUNNER_UNDECLARED', 'human'],
+    ['RELEASE_PROBES_UNDECLARED', 'human'],
     ['BATCH_IN_FLIGHT', 'agent'],
   ])('writes a %s refusal with every reason standing, owed by %s', async (code, owes) => {
     candidateRows = [candidateRow('proj-1', 'iss-1', '2026-09-22T00:00:00Z')];

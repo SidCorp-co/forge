@@ -24,14 +24,13 @@ import {
   ClaimConflictError,
   NoReleaseGateError,
   ReleaseBatchAbortedError,
+  ReleaseFinishedForOtherCommitError,
   ReleaseFinishInFlightError,
   ReleaseNotVerifiedError,
   ReleaseProbesUndeclaredError,
   ReleaseVersionMissingError,
 } from './errors.js';
 import { ReleaseTargetUndeclaredError } from './gate.js';
-import { MethodMismatchError, MethodNotAnnouncedError } from './method.js';
-import { RELEASE_BATCH_SKILL } from './plan.js';
 import { ReleaseMultiChannelUnsupportedError } from './service.js';
 import type { ReleaseRunHoldingError } from './state.js';
 
@@ -97,7 +96,7 @@ export function declarationRefusal(err: unknown): HTTPException | null {
     return carrying(
       err,
       'RELEASE_TARGET_UNDECLARED',
-      releaseBlockerSentence('RELEASE_TARGET_UNDECLARED', { releaseModel: err.releaseModel }),
+      releaseBlockerSentence('RELEASE_TARGET_UNDECLARED', { releaseChain: err.releaseChain }),
     );
   }
   if (err instanceof ReleaseRunnerAmbiguousError) {
@@ -134,22 +133,15 @@ export function undeclaredProbes(err?: unknown): HTTPException {
   );
 }
 
-export function issuesUnnamed(): HTTPException {
+export function issuesUnnamed(projectId: string): HTTPException {
   return new HTTPException(400, {
     message:
-      'This call names no issue to release, and issues are waiting at the release gate. Send the ids GET /api/projects/{projectId}/release-batches/roster lists, oldest merge first, at most ' +
+      `This call names no issue to release, and issues are waiting at the release gate. Send the ids GET /api/projects/${projectId}/release-batches/roster lists, oldest merge first, at most ` +
       `${RELEASE_ROSTER_LIMIT} in one release.`,
     cause: { code: 'RELEASE_ISSUES_UNNAMED' },
   });
 }
 
-export function undeclaredBranches(err?: unknown): HTTPException {
-  return carrying(
-    err,
-    'RELEASE_BRANCHES_UNDECLARED',
-    releaseBlockerSentence('RELEASE_BRANCHES_UNDECLARED'),
-  );
-}
 // so the refusal has to say where the verdict actually comes from, or the next caller sends it
 // again under a different spelling.
 export const MACHINE_ONLY_KEYS = [
@@ -173,22 +165,6 @@ export function holding(err: ReleaseRunHoldingError): HTTPException {
     'RELEASE_RUN_HOLDING',
     `This release run is past its ${err.crossed.join(' and ')} bound, so it records no further attempts. Read GET .../state, then either finish it or abort it with what you found.`,
   );
-}
-
-export function methodRefusal(err: unknown): HTTPException | null {
-  if (err instanceof MethodNotAnnouncedError) {
-    return conflict(
-      'RELEASE_METHOD_NOT_ANNOUNCED',
-      `This run never announced the method it was working from, so nothing says it had one. Clear it with POST /api/projects/{projectId}/release-batches/{runId}/method and a body of {"skill":"${RELEASE_BATCH_SKILL}","loaded":true}, or {"loaded":false,"detail":"<why not>"} if the skill would not load — then call finish again.`,
-    );
-  }
-  if (err instanceof MethodMismatchError) {
-    return conflict(
-      'RELEASE_METHOD_MISMATCH',
-      `This run announced the method \`${err.announced}\` and its job names \`${err.expected}\`. A release working from a method nobody chose for it is not one finish can close; announce \`${err.expected}\`, or abort with what you actually ran.`,
-    );
-  }
-  return null;
 }
 
 /**
@@ -217,7 +193,7 @@ export function recordRefusal(err: unknown): HTTPException {
     });
   }
   if (err instanceof ClaimConflictError) {
-    return releaseBlockerHttp(err, 'CLAIM_CONFLICT', { issueIds: err.issueIds });
+    return releaseBlockerHttp(err, 'CLAIM_CONFLICT', err.details ?? { issueIds: err.issueIds });
   }
   throw err;
 }
@@ -240,15 +216,69 @@ export function finishRefusal(err: unknown): HTTPException | null {
   if (err instanceof ReleaseBatchAbortedError) {
     return conflict(
       'RELEASE_BATCH_ABORTED',
-      'This batch was aborted, so there is nothing left to finish: its claims were released and its roster is back where the abort put it. If the release did land after all, that is a person’s call to make on each issue.',
+      abortedSentence(err),
+      err.closed === null ? { account: err.account } : { account: err.account, closed: err.closed },
     );
   }
   if (err instanceof ReleaseFinishInFlightError) {
+    const { projectId, runId } = err.where;
     return conflict(
       'RELEASE_FINISH_IN_FLIGHT',
-      `A finish for ${err.inFlightCommit ?? 'no named commit'} is already running on this batch, and this call names ${err.askedCommit ?? 'no commit'}. Read its outcome with GET /api/projects/{projectId}/release-batches/{runId}/state (\`finish\`); a new finish is taken once that one has failed.`,
+      `A finish for ${err.inFlightCommit ?? 'no named commit'} is already running on this batch, and this call names ${err.askedCommit ?? 'no commit'}. Read its outcome with GET /api/projects/${projectId}/release-batches/${runId}/state (\`finish\`); a new finish is taken once that one has failed.`,
       { requestId: err.requestId, inFlightCommit: err.inFlightCommit },
     );
   }
-  return methodRefusal(err);
+  if (err instanceof ReleaseFinishedForOtherCommitError) {
+    const { projectId, runId } = err.where;
+    return conflict(
+      'RELEASE_FINISHED_FOR_OTHER_COMMIT',
+      `${finishedForSentence(err)} Read what it recorded with GET /api/projects/${projectId}/release-batches/${runId}/state (\`finish\`).`,
+      { requestId: err.requestId, finishedCommit: err.finishedCommit },
+    );
+  }
+  return null;
+}
+
+/** Which commit a finished batch verified, against the one a later finish names; both doors say it. */
+export function finishedForSentence(err: ReleaseFinishedForOtherCommitError): string {
+  const verified =
+    err.finishedCommit === null
+      ? 'finished with no named commit, on a live build that had changed from what was serving when it opened'
+      : `finished for ${err.finishedCommit}`;
+  return `This batch already ${verified}, and this call names ${err.askedCommit}, which that finish never verified. A finished batch is not verified again, so its issues' closes say nothing about ${err.askedCommit}; a release of ${err.askedCommit} is a batch of its own.`;
+}
+
+/** What a finish on an aborted batch is told, by what the abort did to that batch. */
+export function abortedSentence(err: ReleaseBatchAbortedError): string {
+  const none = 'This batch was aborted, so there is nothing left to finish';
+  const closed = err.closed ?? [];
+  const kept = closed.length > 0 ? ` ${closedBeforeAbort(closed, err.shown)}` : '';
+  switch (err.account) {
+    case 'shipped':
+      return `${none}: its release had already shipped, so the issues its finish closed stay closed, and the abort moved none of them.`;
+    case 'held': {
+      const rest = closed.length > 0 ? 'Every other issue stays' : 'Its issues stay';
+      // `release-records` takes only issues at the gate that no batch claims, so the abort that
+      // puts them there comes first and is never offered beside it.
+      return `${none}: it recorded a promotion, so the abort kept its claims.${kept} ${rest} at \`releasing\`, still claimed, for a person to settle. To settle them, abort this batch again with \`promotedRoster: "return-to-gate"\`, which puts them back at the release gate; once they are there, if the release did land, record it with POST /api/projects/${err.projectId}/release-records, naming the commit production is serving.`;
+    }
+    case 'returning':
+      return `${none}. The abort had not finished putting its roster back at the release gate when this was read, so each issue’s own status says whether its claim is released yet.`;
+    case 'released':
+      if (closed.length > 0) {
+        return `${none}.${kept} Its claims were released and the rest of its roster is back where the abort put it. If the release did land after all, that is a person’s call to make on each of those.`;
+      }
+      return `${none}: its claims were released and its roster is back where the abort put it. If the release did land after all, that is a person’s call to make on each issue.`;
+    case 'unrecorded':
+      return 'This batch’s run was cancelled, so there is nothing left to finish. Nothing on the run records what that did to its issues, so each issue’s own status and notes are the account; if the release did land after all, that is a person’s call to make on each issue.';
+  }
+}
+
+/** The issues a finish closed before the abort landed, by the key a person knows each by. */
+function closedBeforeAbort(ids: string[], shown: ReadonlyMap<string, string>): string {
+  const one = ids.length === 1;
+  const names = ids
+    .map((id) => shown.get(id) ?? id)
+    .sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
+  return `Its finish had already closed ${names.join(', ')} before the abort, and ${one ? 'it stays' : 'they stay'} closed.`;
 }

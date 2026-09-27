@@ -1,3 +1,4 @@
+import type { agentSessions } from '../db/schema.js';
 import { logger } from '../logger.js';
 import type { FailureCause } from '../pipeline/failure-causes.js';
 import {
@@ -7,6 +8,13 @@ import {
 } from '../pipeline/failure-classifier.js';
 import { parseUsageLimitReset } from '../runners/limit-detect.js';
 import { extractPromptString } from './turns-helpers.js';
+
+/**
+ * A pending write to one `agent_sessions` row. Built as `Record<string, unknown>`, a patch escapes
+ * the column types, and `failure_reason`'s enum is the only thing that keeps prose out of a column
+ * an org-wide chart groups on (ISS-1157).
+ */
+export type AgentSessionPatch = Partial<typeof agentSessions.$inferInsert>;
 
 export function extractSessionFailureText(
   messages: unknown,
@@ -102,7 +110,7 @@ export async function finalizeScheduleSessionFailure(opts: {
   /** Metadata base for the `limitResetAt` merge (caller-resolved precedence). */
   baseMetadata: Record<string, unknown> | null | undefined;
   /** Pending update object the status write will persist; mutated always. */
-  set: Record<string, unknown>;
+  set: AgentSessionPatch;
 }): Promise<{
   kind: FailureKind;
   action: FailureAction;

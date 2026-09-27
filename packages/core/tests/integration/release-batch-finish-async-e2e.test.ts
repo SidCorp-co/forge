@@ -201,7 +201,10 @@ describe('the job reaches terminal without the caller', () => {
     const res = await finish(runId, { commit: PUSHED });
     expect(res.status).toBe(202);
 
-    const after = await until(() => state(runId), settled, 20_000);
+    // The run closes in a write after the finished record, so wait for both.
+    const closed = (s: Awaited<ReturnType<typeof state>>) =>
+      settled(s) && s.runStatus !== 'running';
+    const after = await until(() => state(runId), closed, 20_000);
     expect(after.finish?.state).toBe('finished');
     expect(new Set(after.finish?.closed)).toEqual(new Set(ids));
     expect(after.runStatus).toBe('completed');
@@ -248,6 +251,45 @@ describe('the job reaches terminal without the caller', () => {
   }, 45_000);
 });
 
+describe('a finished batch is not asked about another commit in silence', () => {
+  it('refuses a finish naming another commit than the one the batch finished for', async () => {
+    const { runId, ids } = await batch(1, 20);
+    serving = PUSHED;
+    await finish(runId, { commit: PUSHED });
+    const done = await until(() => state(runId), settled, 20_000);
+    expect(done.finish?.state).toBe('finished');
+    const recorded = await rawFinish(runId);
+
+    const other = await finish(runId, { commit: OTHER });
+
+    expect(other.status).toBe(409);
+    expect(other.body.code).toBe('RELEASE_FINISHED_FOR_OTHER_COMMIT');
+    expect(other.body.message).toContain(`already finished for ${PUSHED}`);
+    expect(other.body.message).toContain(`this call names ${OTHER}`);
+    expect(await rawFinish(runId)).toEqual(recorded);
+    expect(await closesOf(ids[0] as string)).toBe(1);
+
+    const claimless = await finish(runId);
+    expect(claimless.status).toBe(200);
+    expect(claimless.body.finish?.commit).toBe(PUSHED);
+  }, 45_000);
+
+  it('refuses a finish naming a commit on a batch that finished with none named', async () => {
+    const { runId } = await batch(1, 20);
+    serving = PUSHED;
+    await finish(runId);
+    const done = await until(() => state(runId), settled, 20_000);
+    expect(done.finish?.state).toBe('finished');
+    expect(done.finish?.commit).toBeNull();
+
+    const named = await finish(runId, { commit: PUSHED });
+
+    expect(named.status).toBe(409);
+    expect(named.body.code).toBe('RELEASE_FINISHED_FOR_OTHER_COMMIT');
+    expect(named.body.message).toContain('already finished with no named commit');
+  }, 45_000);
+});
+
 describe('the door refuses what the database can refuse, and records nothing', () => {
   it('refuses a commit that is not a whole sha with the whole-commit sentence', async () => {
     const { runId } = await batch(1, 20);
@@ -260,27 +302,36 @@ describe('the door refuses what the database can refuse, and records nothing', (
     expect(await rawFinish(runId)).toBeNull();
   });
 
-  it('refuses a run that announced no method, an aborted run and a run with no version', async () => {
+  // ISS-1276 — an announcement is no longer among what the database can refuse. One case per run,
+  // because an accepted finish opens an attempt that answers the next call, and a second batch on
+  // one project is BATCH_IN_FLIGHT.
+  it('accepts a run that announced no method', async () => {
     const unannounced = await batch(1, 20);
     await harness.db.execute(sql`
       UPDATE pipeline_runs SET metadata = metadata - 'method' WHERE id = ${unannounced.runId}
     `);
-    expect((await finish(unannounced.runId)).body.code).toBe('RELEASE_METHOD_NOT_ANNOUNCED');
-    expect(await rawFinish(unannounced.runId)).toBeNull();
 
-    await harness.db.execute(sql`
-      UPDATE pipeline_runs SET release_version = NULL, metadata = metadata || ${JSON.stringify({
-        method: { skill: 'release-flow', loaded: true, detail: null, announcedAt: 'x' },
-      })}::jsonb WHERE id = ${unannounced.runId}
-    `);
-    expect((await finish(unannounced.runId)).body.code).toBe('RELEASE_VERSION_MISSING');
-    expect(await rawFinish(unannounced.runId)).toBeNull();
+    expect((await finish(unannounced.runId)).status).toBe(202);
+  });
 
+  it('refuses a run with no version, recording nothing', async () => {
+    const versionless = await batch(1, 20);
     await harness.db.execute(sql`
-      UPDATE pipeline_runs SET status = 'cancelled' WHERE id = ${unannounced.runId}
+      UPDATE pipeline_runs SET release_version = NULL WHERE id = ${versionless.runId}
     `);
-    expect((await finish(unannounced.runId)).body.code).toBe('RELEASE_BATCH_ABORTED');
-    expect(await rawFinish(unannounced.runId)).toBeNull();
+
+    expect((await finish(versionless.runId)).body.code).toBe('RELEASE_VERSION_MISSING');
+    expect(await rawFinish(versionless.runId)).toBeNull();
+  });
+
+  it('refuses an aborted run, recording nothing', async () => {
+    const aborted = await batch(1, 20);
+    await harness.db.execute(sql`
+      UPDATE pipeline_runs SET status = 'cancelled' WHERE id = ${aborted.runId}
+    `);
+
+    expect((await finish(aborted.runId)).body.code).toBe('RELEASE_BATCH_ABORTED');
+    expect(await rawFinish(aborted.runId)).toBeNull();
   });
 
   it('refuses a project that declares no probes', async () => {

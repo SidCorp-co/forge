@@ -1,3 +1,4 @@
+import type { ReleaseChain } from '../projects/release-chain.js';
 import type {
   HeldIssueRef,
   ReleaseBlockedError,
@@ -5,6 +6,7 @@ import type {
   ReleaseBlockerReport,
 } from './blocker-sentences.js';
 import { ReleaseRunnerAmbiguousError } from './channel.js';
+import { readClaimConflictDetails } from './claim-conflicts.js';
 import {
   BatchInFlightError,
   ClaimConflictError,
@@ -14,11 +16,9 @@ import {
   ReleasePoolEmptyError,
   ReleaseProbesUndeclaredError,
   ReleaseRecordMissingError,
-  ReleaseRunnerUndeclaredError,
   ReleaseWorkUnmergedError,
 } from './errors.js';
 import { ReleaseTargetUndeclaredError } from './gate.js';
-import { ReleaseBranchesUndeclaredError } from './plan.js';
 
 /**
  * The error the first blocker is thrown as, carrying the whole list.
@@ -82,10 +82,12 @@ function errorFor(
     case 'RELEASE_TARGET_UNDECLARED':
       return new ReleaseTargetUndeclaredError(
         report.projectId,
-        (first.details?.releaseModel as 'promote' | 'publish') ?? 'publish',
+        Array.isArray(first.details?.releaseChain)
+          ? (first.details.releaseChain as ReleaseChain)
+          : [],
       );
     case 'CLAIM_CONFLICT':
-      return new ClaimConflictError(ids);
+      return new ClaimConflictError(ids, readClaimConflictDetails(first.details));
     case 'RELEASE_ROSTER_EMPTY':
     case 'RELEASE_ROSTER_OVERSIZE':
       return new ReleaseRosterUnusableError(first.code, Number(first.details?.waiting ?? 0));
@@ -98,8 +100,6 @@ function errorFor(
         report.projectId,
         (first.details?.labels as string[]) ?? [],
       );
-    case 'RELEASE_RUNNER_UNDECLARED':
-      return new ReleaseRunnerUndeclaredError();
     case 'RELEASE_PROBES_UNDECLARED':
       return new ReleaseProbesUndeclaredError();
     case 'RELEASE_PROBES_UNREADABLE':
@@ -108,8 +108,6 @@ function errorFor(
       return new ReleasePoolEmptyError();
     case 'NO_RUNNER_ONLINE':
       return new NoRunnerOnlineError();
-    case 'RELEASE_BRANCHES_UNDECLARED':
-      return new ReleaseBranchesUndeclaredError();
     case 'RELEASE_MULTI_CHANNEL_UNSUPPORTED':
       return new ReleaseMultiChannelUnsupportedError(Number(first.details?.count ?? 0));
     case 'BATCH_IN_FLIGHT':

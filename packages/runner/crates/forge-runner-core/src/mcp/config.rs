@@ -16,37 +16,72 @@ use crate::error::{Error, Result};
 /// that reaches no project, and nothing on the box says which kind it holds.
 pub fn job_credential() -> Result<String> {
     let file = credential_file_path().ok();
-    decide_job_credential(load_pat(), load_device_token(), file.as_deref())
+    decide_job_credential(
+        load_pat(),
+        load_device_token(),
+        file.as_deref(),
+        &box_name(),
+    )
 }
 
+/// What to call this box to whoever reads a refusal: the label it paired under,
+/// which is what the web app's device list shows, and the hostname only where
+/// nothing recorded one. A box paired as `forge-runner login --name X` is `X`
+/// in that list, so naming its hostname sends a reader looking for a device
+/// that is not there (ISS-1235).
+fn box_name() -> String {
+    crate::config::Config::load()
+        .ok()
+        .and_then(|cfg| cfg.device_name)
+        .filter(|n| !n.trim().is_empty())
+        .unwrap_or_else(crate::auth::pairing::default_device_name)
+}
+
+/// Where a person gets the token the refusals below ask for.
+const TOKEN_PAGE: &str = "Forge's web app under Settings → API Tokens";
+
+/// The refusal reaches whoever started the job, often a person in a chat
+/// rather than the operator of this box, and a project may be served by
+/// several boxes, so it names the box before anything else.
 fn decide_job_credential(
     pat: Result<Option<String>>,
     device_token: Result<Option<String>>,
     file: Option<&Path>,
+    box_name: &str,
 ) -> Result<String> {
-    let sources = pat_sources(file);
+    let lead = format!(
+        "the runner box `{box_name}` cannot start this job: the job's Forge tools need a personal access token"
+    );
+    // `load_pat` reads `$FORGE_PAT` first and swallows a keychain miss, so an
+    // error here is the credential file's: its path, its read or its parse.
     let pat = pat.map_err(|e| {
+        let file = file.map_or_else(
+            || "its credential file".to_string(),
+            |p| format!("its credential file `{}`", p.display()),
+        );
         Error::Other(format!(
-            "this job's `forge` MCP server needs a personal access token, and the credential \
-             store could not be read ({e}). Fix or remove {sources}, then retry."
+            "{lead}, and {file} could not be read ({e}). Whoever operates `{box_name}` repairs \
+             that file (it also holds the box's pairing, so deleting it unpairs the box), or \
+             sets `$FORGE_PAT` for the runner, which is read before the file."
         ))
     })?;
     if let Some(pat) = pat.map(|p| p.trim().to_string()).filter(|p| !p.is_empty()) {
         return Ok(pat);
     }
     let held = match device_token {
-        Ok(Some(t)) if !t.trim().is_empty() => "a device token from pairing. It authenticates \
-             this daemon's own channel and is not written into a job's config: its project \
-             reach is its holder's, and a box paired by a person reaches no project with it"
+        Ok(Some(t)) if !t.trim().is_empty() => "a device token from pairing, which connects \
+             the box to Forge and is never handed to a job"
             .to_string(),
         Ok(_) => "no device token either, so the box is not paired (`forge-runner login` pairs it)"
             .to_string(),
         Err(e) => format!("a device token that could not be read ({e})"),
     };
     Err(Error::Other(format!(
-        "this job's `forge` MCP server needs a personal access token, and this box holds none \
-         (read from {sources}). What it holds: {held}. Store one with \
-         `forge-runner login --pat <token>`."
+        "{lead}, and the box holds none (read from {}). What it holds: {held}. Whoever operates \
+         `{box_name}` creates a token in {TOKEN_PAGE} and runs \
+         `forge-runner login --pat <token>` on that box; jobs started after that carry it, \
+         with no restart.",
+        pat_sources(file)
     )))
 }
 
@@ -176,6 +211,16 @@ pub fn session_dir() -> PathBuf {
     mcp_config_dir()
 }
 
+/// The file this box writes one project's session MCP servers to.
+///
+/// What an operator asks after being told an integration is delivered is *where*, and the answer
+/// is not the checkout's `.mcp.json` — that holds the `forge` server and nothing else, which is
+/// the reading that cost ISS-1191's reporter three wrong conclusions. The surface that says
+/// delivered names this path.
+pub fn session_path(slug: &str) -> PathBuf {
+    session_path_in(&mcp_config_dir(), slug)
+}
+
 fn mcp_config_dir() -> PathBuf {
     let base = dirs_next::config_dir()
         .map(|d| d.join("forge-runner"))
@@ -278,12 +323,25 @@ fn session_matches_in(dir: &Path, slug: &str, servers: &serde_json::Map<String, 
         (None, true) => true,
         (None, false) => false,
         (Some(_), true) => false,
-        (Some(text), false) => {
-            serde_json::from_str::<Value>(&text)
-                .ok()
-                .and_then(|doc| doc.get("mcpServers").cloned())
-                == Some(Value::Object(servers.clone()))
-        }
+        (Some(text), false) => session_servers(&text).as_ref() == Some(servers),
+    }
+}
+
+/// The `mcpServers` map a session config document holds, or `None` where the
+/// text is not the document [`write_session`] writes.
+///
+/// Takes the TEXT and not a path, so a caller that has already read the file
+/// judges the bytes it read. [`session_matches`] reads by path, and the master
+/// sweep rewrites that file on every pass for a live pane, so two reads of one
+/// path can answer about two different files (ISS-1191). `None` and a map that
+/// differs are also two answers here rather than one: a pane started from a
+/// document this cannot parse carries nothing, which is not the same as
+/// carrying something else.
+pub fn session_servers(text: &str) -> Option<serde_json::Map<String, Value>> {
+    let doc: Value = serde_json::from_str(text).ok()?;
+    match doc.get("mcpServers") {
+        Some(Value::Object(map)) => Some(map.clone()),
+        _ => None,
     }
 }
 
@@ -950,10 +1008,11 @@ mod tests {
     }
 
     const DEVICE: &str = "forge_pat_dev_devicetoken";
+    const BOX: &str = "sid-xeon-1";
 
     fn refusal(pat: Result<Option<String>>, device: Result<Option<String>>) -> String {
         let file = Path::new("/box/forge-runner/credentials.json");
-        match decide_job_credential(pat, device, Some(file)) {
+        match decide_job_credential(pat, device, Some(file), BOX) {
             Ok(tok) => panic!(
                 "expected a refusal, got a credential of {} chars",
                 tok.len()
@@ -968,6 +1027,7 @@ mod tests {
             Ok(Some(" forge_pat_dev_op ".into())),
             Ok(Some(DEVICE.into())),
             None,
+            BOX,
         );
         assert_eq!(got.unwrap(), "forge_pat_dev_op");
     }
@@ -975,7 +1035,7 @@ mod tests {
     #[test]
     fn a_device_token_alone_is_refused_naming_what_was_wanted_and_what_was_found() {
         let err = refusal(Ok(None), Ok(Some(DEVICE.into())));
-        assert!(err.contains("needs a personal access token"), "{err}");
+        assert!(err.contains("need a personal access token"), "{err}");
         assert!(
             err.contains("What it holds: a device token from pairing"),
             "{err}"
@@ -985,6 +1045,14 @@ mod tests {
             "names the file: {err}"
         );
         assert!(err.contains("forge-runner login --pat <token>"), "{err}");
+        assert!(
+            err.starts_with("the runner box `sid-xeon-1` cannot start this job"),
+            "a person in a chat on a project several boxes serve can tell which box needs the token: {err}"
+        );
+        assert!(
+            err.contains("Settings → API Tokens"),
+            "the reader is told where a token comes from: {err}"
+        );
         assert!(!err.contains("to pair the box"), "the box is paired: {err}");
         assert!(
             !err.contains(DEVICE),
@@ -1020,6 +1088,20 @@ mod tests {
         assert!(
             !err.contains("holds none"),
             "a read error is not an absence: {err}"
+        );
+        assert!(
+            err.contains(
+                "its credential file `/box/forge-runner/credentials.json` could not be read"
+            ),
+            "the whole file failed to parse, and the refusal says which file: {err}"
+        );
+        assert!(
+            !err.contains("$FORGE_PAT` or the `pat` key"),
+            "`$FORGE_PAT` is read first, so this path runs only when it is unset, and the fault is the file rather than one key: {err}"
+        );
+        assert!(
+            err.contains("deleting it unpairs the box") && err.contains("`sid-xeon-1`"),
+            "{err}"
         );
         let device = refusal(Ok(None), Err(Error::Other("keychain locked".into())));
         assert!(
@@ -1633,6 +1715,27 @@ mod tests {
         // a different project is a different file and is unaffected
         assert!(session_matches_in(&dir, "forge-dev", &none));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// ISS-1191 — the map is read out of TEXT a caller already holds, so a caller judging a file
+    /// judges the bytes it read rather than whatever a second read by path finds. A document this
+    /// cannot parse, and one holding no `mcpServers` object, are `None` rather than an empty map:
+    /// a pane started from either carries nothing, which is not the same as carrying no servers on
+    /// purpose.
+    #[test]
+    fn the_servers_come_out_of_the_text_and_an_unparseable_document_is_not_an_empty_one() {
+        let decl = servers(&[("playwright", "npx")]);
+        let doc =
+            serde_json::to_string(&serde_json::json!({ "mcpServers": decl.clone() })).unwrap();
+
+        assert_eq!(session_servers(&doc), Some(decl));
+        assert_eq!(session_servers("not json at all"), None);
+        assert_eq!(session_servers("{}"), None);
+        assert_eq!(session_servers(r#"{"mcpServers":[]}"#), None);
+        assert_eq!(
+            session_servers(r#"{"mcpServers":{}}"#),
+            Some(serde_json::Map::new())
+        );
     }
 
     /// A pane whose file was swept out from under it reads as stale rather than

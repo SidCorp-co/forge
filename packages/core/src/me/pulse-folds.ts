@@ -4,6 +4,7 @@
  */
 
 import { HUMAN_PARK_STATUSES } from '../issues/status-sets.js';
+import { type FailureCause, resolveFailureCause } from '../pipeline/failure-causes.js';
 import {
   PULSE_AWAITING_RELEASE_STATUSES,
   PULSE_FLOW_WEEKS,
@@ -137,4 +138,22 @@ export function foldLanes(
     out[lane].total += r.total;
   }
   return out;
+}
+
+/**
+ * Failed sessions per cause. The column still holds prose on rows written before ISS-877, so a
+ * raw value is never a key: each resolves to a member of the cause set, and what matches none is
+ * `unclassified` (ISS-1157).
+ */
+export function foldSessionFailures(
+  rows: ReadonlyArray<{ reason: string | null; count: number }>,
+): Array<{ reason: FailureCause; count: number }> {
+  const byCause = new Map<FailureCause, number>();
+  for (const r of rows) {
+    const cause = resolveFailureCause(r.reason);
+    byCause.set(cause, (byCause.get(cause) ?? 0) + r.count);
+  }
+  return [...byCause]
+    .map(([reason, count]) => ({ reason, count }))
+    .sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason));
 }

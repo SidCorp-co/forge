@@ -113,6 +113,61 @@ describe('the stall bound', () => {
 });
 
 describe('the regression bound', () => {
+  it('says no attempt has settled on a run with none', () => {
+    const rows = [attempt({ stage: 'promote', startedAt: at(600_000) })];
+
+    expect(bound(rows, 'regression')).toMatchObject({
+      crossed: false,
+      why: 'no attempt on this run has settled, so there is no reading to compare',
+    });
+    expect(bound([], 'regression')?.why).toMatch(/^no attempt on this run has settled/);
+  });
+
+  it('says the newest settled reading is up when it is', () => {
+    const rows = [
+      attempt({ stage: 'promote', startedAt: at(600_000), settledAt: at(590_000), health: 'down' }),
+      attempt({ startedAt: at(300_000), settledAt: at(290_000), health: 'up' }),
+    ];
+
+    expect(bound(rows, 'regression')?.why).toBe(
+      'the newest settled attempt reads the application up',
+    );
+  });
+
+  it('says the newest settled attempt recorded no health reading when it has none', () => {
+    const rows = [
+      attempt({ stage: 'promote', startedAt: at(600_000), settledAt: at(590_000), health: 'up' }),
+      attempt({ startedAt: at(300_000), settledAt: at(290_000) }),
+    ];
+
+    expect(bound(rows, 'regression')).toMatchObject({
+      crossed: false,
+      why: 'the newest settled attempt recorded no health reading',
+    });
+  });
+
+  it('says no earlier settled attempt read it up when the newest reads down first', () => {
+    const rows = [
+      attempt({ stage: 'promote', startedAt: at(600_000), settledAt: at(590_000), health: 'down' }),
+      attempt({ startedAt: at(300_000), settledAt: at(290_000), health: 'down' }),
+    ];
+
+    expect(bound(rows, 'regression')?.why).toBe(
+      'the newest settled attempt reads the application down, and no settled attempt before it read it up',
+    );
+  });
+
+  it('keeps the crossing sentence for a crossed bound', () => {
+    const rows = [
+      attempt({ stage: 'promote', startedAt: at(600_000), settledAt: at(590_000), health: 'up' }),
+      attempt({ startedAt: at(300_000), settledAt: at(290_000), health: 'down' }),
+    ];
+
+    expect(bound(rows, 'regression')?.why).toBe(
+      'the newest settled attempt reads the application down after an earlier one read it up',
+    );
+  });
+
   it('is crossed when the newest settled attempt reads down after an earlier one read up', () => {
     const rows = [
       attempt({ stage: 'promote', startedAt: at(600_000), settledAt: at(590_000), health: 'up' }),

@@ -93,6 +93,12 @@ describe("ActivityTab — required states", () => {
     expect(screen.getByText(/nothing has run yet/i)).toBeInTheDocument();
   });
 
+  it("no pipeline run: says there is none rather than that nothing has run", () => {
+    render(<ActivityTab run={undefined} loading={false} error={null} onRetry={noop} />);
+    expect(screen.getByText("No pipeline run")).toBeInTheDocument();
+    expect(screen.queryByText(/nothing has run yet/i)).toBeNull();
+  });
+
   it("filtered-empty is DISTINCT from first-run empty and clears the filter", () => {
     render(
       <ActivityTab

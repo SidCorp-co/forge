@@ -4,6 +4,8 @@ import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { baseRef } from './lib/base-branch.mjs';
+import { notRunHereLines } from './lib/not-run-here.mjs';
 import { absentPrerequisites, blockedAside, remedyLines } from './lib/prerequisite.mjs';
 import { markFor, tally, tallyLine } from './lib/verify-report.mjs';
 
@@ -264,8 +266,23 @@ function git(args) {
   return r.status === 0 ? r.stdout.trim() : null;
 }
 
+/** The ref the scope was taken against, for the lines that report what a check measured. */
+let BASE_REF = null;
+
+/** The merge-base with the branch this change will land on, or why there is none. */
 function mergeBase() {
-  return git(['merge-base', 'origin/main', 'HEAD']);
+  const target = baseRef(ROOT);
+  if (target.refusal) return { refusal: target.refusal };
+  BASE_REF = target.ref;
+  const base = git(['merge-base', target.ref, 'HEAD']);
+  if (base === null) {
+    return {
+      refusal:
+        `\`git merge-base ${target.ref} HEAD\` failed, so no check can be scoped. Fetch it:\n` +
+        `  git fetch origin ${target.branch}`,
+    };
+  }
+  return { base };
 }
 
 function assertEverySkipIsCovered() {
@@ -335,7 +352,7 @@ function verdict(check, status, out) {
     // so a checker whose job is partly to report — a worklist, a scope it could not
     // measure — is silent on exactly the runs that are meant to carry it onward.
     const carried = check.carries ? out.match(check.carries)?.[1] : undefined;
-    const note = n === 0 ? 'no diff against origin/main — nothing to scope' : carried;
+    const note = n === 0 ? `no diff against ${BASE_REF} — nothing to scope` : carried;
     return { ...check, code: status ?? 1, out, files: n, note };
   }
   return { ...check, code: status ?? 1, out };
@@ -359,7 +376,7 @@ function runCheck(check, base) {
       ...check,
       code: 2,
       condition: 'blocked',
-      why: 'origin/main not available — cannot scope the diff',
+      why: 'no base revision available — cannot scope the diff',
     });
   }
   const argv = check.json ? [...cmd, '--json'] : cmd;
@@ -545,12 +562,11 @@ function reportNotRunHere() {
   const elsewhere = Object.entries(CI_COVERAGE)
     .filter(([, where]) => !where.startsWith('verify'))
     .filter(([step]) => RUN_ELSEWHERE_HINT.some((h) => step.includes(h)));
-  if (elsewhere.length === 0) return;
-  console.log(`\n  CI runs these too — verify does NOT. Run them before you trust a green:`);
-  for (const cmd of [...new Set(elsewhere.map(([, where]) => where))].sort()) {
-    console.log(`    ${cmd}`);
-  }
-  for (const line of OFF_TREE_CHECKS) console.log(`    ${line}`);
+  const lines = notRunHereLines(
+    elsewhere.map(([, where]) => where),
+    OFF_TREE_CHECKS,
+  );
+  for (const line of lines) console.log(line);
 }
 
 /**
@@ -621,14 +637,14 @@ assertEverySkipIsCovered();
 
 if (args.includes('--ci-parity')) process.exit(ciParity());
 
-const base = mergeBase();
-if (base === null) {
-  console.error('verify: `git merge-base origin/main HEAD` failed. Fetch origin first:');
-  console.error('  git fetch origin main');
+const scope = mergeBase();
+if (scope.refusal) {
+  console.error(`verify: ${scope.refusal}`);
   process.exit(2);
 }
+const base = scope.base;
 
-console.log(`verify: ${CHECKS.length} checks against ${base.slice(0, 8)}`);
+console.log(`verify: ${CHECKS.length} checks against ${base.slice(0, 8)} on ${BASE_REF}`);
 const WIDTH = Number(process.env.VERIFY_CONCURRENCY) || 6;
 const results = await runAll(CHECKS, base, WIDTH);
 

@@ -174,6 +174,7 @@ export function useSendMessage() {
       content,
       mode,
       clientToken,
+      attachmentIds,
     }: {
       conversationId: string;
       content: string;
@@ -181,7 +182,9 @@ export function useSendMessage() {
       mode?: ConversationMode | undefined;
       /** This browser's own id for the message, echoed on `conversation.accepted` (ISS-1078). */
       clientToken?: string | undefined;
-    }) => conversationsApi.send(conversationId, content, mode, clientToken),
+      /** Files already uploaded to this room, staged with this message (ISS-1146). */
+      attachmentIds?: string[] | undefined;
+    }) => conversationsApi.send(conversationId, content, mode, clientToken, attachmentIds),
     onSuccess: async (result) => {
       await qc.cancelQueries({ queryKey: ["conversations", result.conversationId] });
       qc.setQueryData<ConversationDetail>(["conversations", result.conversationId], (prev) =>
@@ -197,6 +200,32 @@ export function useSendMessage() {
       );
       qc.invalidateQueries({ queryKey: ["conversations", "list"] });
     },
+  });
+}
+
+/**
+ * Put one staged file in this room, and say which stored file it became.
+ *
+ * Not a react-query cache write: nothing reads an upload on its own, and what
+ * the room shows is the message the ids are then sent with.
+ */
+export function useUploadAttachment() {
+  return useMutation({
+    mutationFn: ({ conversationId, file }: { conversationId: string; file: File }) =>
+      conversationsApi.upload(conversationId, file),
+  });
+}
+
+/**
+ * End the turn this room is answering. A room running nothing is refused by
+ * name, and the message says so rather than a silent no-op.
+ */
+export function useStopConversation() {
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: (conversationId: string) => conversationsApi.stop(conversationId),
+    onError: (err) =>
+      toast({ title: "Couldn't stop this answer", description: formatApiError(err), tone: "error" }),
   });
 }
 

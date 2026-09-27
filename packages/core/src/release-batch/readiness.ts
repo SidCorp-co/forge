@@ -1,10 +1,11 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import type { ReleaseModel, ReleaseStrategy } from '../db/schema.js';
+import type { ReleaseCrossing } from '../db/schema.js';
 import { projects } from '../db/schema.js';
 import { selectAllSlugsFromKnowledge } from '../knowledge/service.js';
 import { missingProjectKnowledge } from '../projects/autonomous-contract.js';
 import { normalizeEnvironments } from '../projects/environments.js';
+import { type ReleaseChain, retiredReleaseAxes } from '../projects/release-chain.js';
 import {
   collectReleaseBlockers,
   type ReleaseBlocker,
@@ -12,7 +13,8 @@ import {
   releaseBlockerSentence,
 } from './blockers.js';
 import { releaseRunnerLabelOf } from './channel.js';
-import type { ReleaseRollback } from './plan.js';
+import type { ReleaseRollback, VerifySource } from './plan.js';
+import { readServingNow } from './serving-reading.js';
 
 export type ReleaseGapKey = string;
 
@@ -23,16 +25,19 @@ type ReleaseChannelRead = NonNullable<
 interface ProjectRow {
   repoPath: string | null;
   repoUrl: string | null;
-  releaseModel: ReleaseModel;
+  releaseChain: ReleaseChain;
   environments: unknown;
 }
 
 export interface ReleaseReadiness {
   hasReleaseGate: boolean;
-  releaseModel: ReleaseModel;
-  releaseStrategy: ReleaseStrategy | null;
+  /** The ordered release path. Empty means this project ships nothing. */
+  releaseChain: ReleaseChain;
+  /** ISS-1311 — derived from `releaseChain` for `forge-plugin`; see `retiredReleaseAxes`. */
+  releaseModel: 'none' | 'promote' | 'publish';
+  releaseStrategy: ReleaseCrossing | null;
   baseBranch: string;
-  /** Non-null only under `promote`. */
+  /** Non-null only where the chain has two or more entries. */
   liveBranch: string | null;
   targetUndeclared: boolean;
   /** Providers of every live deploy binding. Empty when the project declares none. */
@@ -44,9 +49,8 @@ export interface ReleaseReadiness {
   rollbackMode: ReleaseRollback['kind'] | null;
   hasVerify: boolean;
   /** Where each live channel's probes came from, in the same order as `providers`. */
-  verifySources: Array<'binding' | 'environments-live' | 'none'>;
-  /** False where the declaration could not be READ, so `releaseModel`, the
-   *  branches and `hasReleaseGate` are fallbacks rather than readings. */
+  verifySources: VerifySource[];
+  /** False where the declaration could not be READ: the chain is then a fallback, not a reading. */
   declarationRead: boolean;
   /** The same, for `providers`, the rollback, `hasVerify` and the label. */
   channelsRead: boolean;
@@ -64,9 +68,10 @@ export interface ReleaseReadiness {
 }
 
 export async function loadReleaseReadiness(projectId: string): Promise<ReleaseReadiness | null> {
-  // ONE pass: the enumerator already guards these reads, and a second unguarded
-  // copy would throw away the report it just produced (ISS-1127).
-  const report = await collectReleaseBlockers(projectId);
+  // ONE pass: the enumerator guards these reads and a second copy would throw away its report
+  // (ISS-1127). The reading is HERE because the enumerator reaches no network (ISS-1286).
+  const serving = await readServingNow(projectId).catch(() => undefined);
+  const report = await collectReleaseBlockers(projectId, { serving });
   if (!report.projectExists) return null;
   const decl = report.declaration;
   const channels = report.channels ?? [];
@@ -77,7 +82,7 @@ export async function loadReleaseReadiness(projectId: string): Promise<ReleaseRe
       .select({
         repoPath: projects.repoPath,
         repoUrl: projects.repoUrl,
-        releaseModel: projects.releaseModel,
+        releaseChain: projects.releaseChain,
         environments: projects.environments,
       })
       .from(projects)
@@ -100,10 +105,9 @@ export async function loadReleaseReadiness(projectId: string): Promise<ReleaseRe
     declarationRead: decl !== null,
     channelsRead: report.channels !== null,
     hasReleaseGate: decl?.kind === 'gated',
-    releaseModel: !decl || decl.kind === 'no-release' ? 'none' : decl.releaseModel,
-    releaseStrategy: decl?.kind === 'gated' ? decl.releaseStrategy : null,
+    releaseChain: decl?.releaseChain ?? [],
+    ...retiredReleaseAxes(decl?.releaseChain ?? []),
     baseBranch: !decl || decl.kind === 'undeclared-target' ? '' : decl.baseBranch,
-    liveBranch: decl?.kind === 'gated' ? decl.liveBranch : null,
     targetUndeclared: decl?.kind === 'undeclared-target',
     providers: channels.map((c) => c.provider),
     releaseRunnerLabel,
@@ -156,7 +160,7 @@ function declarationGaps(input: GapInput): ReleaseGapKey[] {
     const declarations = {
       repoPath: row?.repoPath ?? null,
       repoUrl: row?.repoUrl ?? null,
-      releaseModel: row?.releaseModel ?? 'none',
+      releaseChain: row?.releaseChain ?? [],
     };
     gaps.push(...missingProjectKnowledge(declarations, held).map((o) => o.slug));
   }
@@ -170,7 +174,6 @@ function declarationGaps(input: GapInput): ReleaseGapKey[] {
 
   const labels = [...new Set(channels.map((c) => c.releaseRunnerLabel).filter((l) => l !== null))];
   if (labels.length > 1) gaps.push('release-runner-ambiguous');
-  else if (labels.length === 0) gaps.push('release-runner');
   if (channels.some((c) => !c.verify)) gaps.push('verify-probes');
   if (channels.length > 1) gaps.push('release-multi-channel');
   if (channels.some((c) => !c.rollback)) gaps.push('rollback');

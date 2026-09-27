@@ -14,7 +14,9 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  Skeleton,
 } from "@/design";
+import { formatApiError } from "@/lib/api/error";
 import type { AttachmentRow, IssueDetail } from "../types";
 import { AttachmentList } from "./attachment-list";
 import { BodyEditor } from "./body-editor";
@@ -25,9 +27,18 @@ export interface DescriptionCardProps {
   issue: IssueDetail;
   attachments: AttachmentRow[];
   canWrite: boolean;
+  attachmentsLoading?: boolean;
+  /** A failed attachments read, said as such rather than drawn as none. */
+  attachmentsError?: unknown;
 }
 
-export function DescriptionCard({ issue, attachments, canWrite }: DescriptionCardProps) {
+export function DescriptionCard({
+  issue,
+  attachments,
+  canWrite,
+  attachmentsLoading = false,
+  attachmentsError = null,
+}: DescriptionCardProps) {
   const [draft, setDraft] = useState<string | null>(null);
   const save = useSaveDescription(issue.id);
   const editing = draft !== null;
@@ -61,6 +72,7 @@ export function DescriptionCard({ issue, attachments, canWrite }: DescriptionCar
         </div>
       </CardHeader>
       <CardContent>
+        <IssueAttachments rows={attachments} loading={attachmentsLoading} error={attachmentsError} />
         {editing ? (
           <BodyEditor
             label="Issue description"
@@ -108,5 +120,37 @@ export function DescriptionCard({ issue, attachments, canWrite }: DescriptionCar
         )}
       </CardContent>
     </Card>
+  );
+}
+
+/** The issue's attachments, above the text that refers to them; nothing at all when there are none. */
+function IssueAttachments({
+  rows,
+  loading,
+  error,
+}: {
+  rows: AttachmentRow[];
+  loading: boolean;
+  error: unknown;
+}) {
+  if (loading) {
+    return (
+      <div className="mb-4" aria-busy>
+        <Skeleton variant="text" className="w-40" />
+      </div>
+    );
+  }
+  if (error) {
+    return (
+      <p role="alert" className="fg-body-sm mb-4 text-muted">
+        Couldn't load attachments — {formatApiError(error)}
+      </p>
+    );
+  }
+  if (rows.length === 0) return null;
+  return (
+    <section aria-label="Attachments" className="mb-4">
+      <AttachmentList rows={rows} />
+    </section>
   );
 }

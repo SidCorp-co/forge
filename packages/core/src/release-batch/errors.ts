@@ -1,3 +1,5 @@
+import type { ClaimConflictDetails } from './claim-conflicts.js';
+
 export class NoReleaseGateError extends Error {
   constructor() {
     super('NO_RELEASE_GATE');
@@ -29,17 +31,6 @@ export class ReleasePoolEmptyError extends Error {
   constructor() {
     super('RELEASE_POOL_EMPTY');
     this.name = 'ReleasePoolEmptyError';
-  }
-}
-
-/**
- * The project declares a release model but no live deploy binding names a release runner. Rule
- * 3 of ISS-897: a gate without a designated box is a refusal, never a fallback.
- */
-export class ReleaseRunnerUndeclaredError extends Error {
-  constructor() {
-    super('RELEASE_RUNNER_UNDECLARED');
-    this.name = 'ReleaseRunnerUndeclaredError';
   }
 }
 
@@ -86,10 +77,23 @@ export class ReleaseNotVerifiedError extends Error {
 }
 
 /**
- * `finish` was called on a run somebody aborted.
+ * What an abort did to a batch, as the run records it: its release had `shipped`, it `held` a
+ * promoted roster, it is still `returning` the roster, it `released` it, or nothing recorded it.
+ */
+export type AbortAccount = 'shipped' | 'held' | 'returning' | 'released' | 'unrecorded';
+
+/**
+ * `finish` was called on a run somebody aborted. Built by `abortedError`, which reads the account.
  */
 export class ReleaseBatchAbortedError extends Error {
-  constructor() {
+  constructor(
+    public readonly account: AbortAccount,
+    public readonly projectId: string,
+    /** The roster issues its finish had closed before the abort; `null` where nothing recorded it. */
+    public readonly closed: string[] | null = null,
+    /** The key each of `closed` is shown under; an issue missing here is named by its id. */
+    public readonly shown: ReadonlyMap<string, string> = new Map(),
+  ) {
     super('RELEASE_BATCH_ABORTED');
     this.name = 'ReleaseBatchAbortedError';
   }
@@ -104,9 +108,27 @@ export class ReleaseFinishInFlightError extends Error {
     public readonly requestId: string,
     public readonly inFlightCommit: string | null,
     public readonly askedCommit: string | null,
+    public readonly where: { projectId: string; runId: string },
   ) {
     super('RELEASE_FINISH_IN_FLIGHT');
     this.name = 'ReleaseFinishInFlightError';
+  }
+}
+
+/**
+ * The batch already finished, and not for the commit this call names. Its record
+ * verified one commit (or, claimless, only that the build changed); a finish
+ * naming another is a claim that record never checked.
+ */
+export class ReleaseFinishedForOtherCommitError extends Error {
+  constructor(
+    public readonly requestId: string,
+    public readonly finishedCommit: string | null,
+    public readonly askedCommit: string,
+    public readonly where: { projectId: string; runId: string },
+  ) {
+    super('RELEASE_FINISHED_FOR_OTHER_COMMIT');
+    this.name = 'ReleaseFinishedForOtherCommitError';
   }
 }
 
@@ -119,7 +141,11 @@ export class ReleaseFinishFenceLostError extends Error {
 }
 
 export class ClaimConflictError extends Error {
-  constructor(public readonly issueIds: string[]) {
+  /** Each refused issue's standing, where the door read them, so the sentence names what frees it. */
+  constructor(
+    public readonly issueIds: string[],
+    public readonly details: ClaimConflictDetails | null = null,
+  ) {
     super('CLAIM_CONFLICT');
     this.name = 'ClaimConflictError';
   }
@@ -151,10 +177,10 @@ export class BatchInFlightError extends Error {
 export class ReleaseVersionMissingError extends Error {
   constructor(public readonly runId: string) {
     super(
-      `RELEASE_VERSION_MISSING: release run ${runId} carries no version on its row, so it has no ` +
+      `Release run ${runId} carries no version on its row, so it has no ` +
         'identity and nothing afterwards could name which release carried these issues. A release ' +
-        'is versioned at the instant it is created; a row without one was not opened by ' +
-        '`createReleaseBatch`. Abort this run and cut a new release.',
+        'is given its version at the instant it is cut, so a run without one was never cut as a ' +
+        'release. Abort this run and cut a new release.',
     );
     this.name = 'ReleaseVersionMissingError';
   }

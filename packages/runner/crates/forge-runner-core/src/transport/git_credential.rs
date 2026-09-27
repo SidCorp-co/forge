@@ -37,7 +37,7 @@ pub async fn ask(client: &CoreClient, host: &str, path: &str) -> Result<GitCrede
         return Err(Error::Unauthorized);
     }
     if !resp.status().is_success() {
-        let status = resp.status();
+        let code = resp.status().as_u16();
         let text = resp.text().await.unwrap_or_default();
         let message = serde_json::from_str::<serde_json::Value>(&text)
             .ok()
@@ -48,7 +48,11 @@ pub async fn ask(client: &CoreClient, host: &str, path: &str) -> Result<GitCrede
                     .map(str::to_string)
             })
             .unwrap_or(text);
-        return Err(Error::Other(format!("core refused ({status}): {message}")));
+        return Err(Error::Other(super::status::refused(
+            "core refused git-credential",
+            code,
+            &message,
+        )));
     }
     resp.json::<GitCredentialGrant>()
         .await

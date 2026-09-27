@@ -16,11 +16,16 @@ name: CI
 #      fires. If you find yourself disabling it, you're papering over real
 #      drift; fix the lockfile instead.
 
+# The branch set this workflow gates is written three times — twice here and once in the `proved`
+# step below — because `on:` cannot read a variable. `conformance-audit` R11 holds the three to one
+# answer. `dev` is here for the base branch this repository is moving to under `releaseModel:
+# promote`; `main` stays, because under that model it is the branch a promotion lands on and every
+# check a promotion owes is one a pull request into `dev` already ran (ISS-1304).
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
-    branches: [main]
+    branches: [main, dev]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -264,9 +269,10 @@ jobs:
       # drift: a Docker Hub manifest timeout pulling pgvector, and a pg-boss
       # enqueue failure — neither reachable by this filter.
       # The parent count is read from the commit object, which a depth-1 checkout
-      # still carries. Anything not a 2-parent push to `main` is `proved=false`,
-      # so a DIRECT push to main — the owner lane, which sees no pull_request run
-      # at all — keeps the full gate. It went red 16 times in that same window.
+      # still carries. Anything not a 2-parent push to a gated branch is
+      # `proved=false`, so a DIRECT push — the owner lane, which sees no
+      # pull_request run at all — keeps the full gate. It went red 16 times in
+      # that same window.
       # The cheap always-on jobs (lang-check, conformance, archmap, docs,
       # injected-docs, install-check) are NOT gated on this: they cost seconds,
       # they are ungated by paths-filter on purpose, and `docs` walks the whole
@@ -276,7 +282,12 @@ jobs:
         shell: bash
         run: |
           proved=false
-          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
+          gated="refs/heads/main refs/heads/dev"
+          case " $gated " in
+            *" ${{ github.ref }} "*) on_gated_branch=true ;;
+            *) on_gated_branch=false ;;
+          esac
+          if [ "${{ github.event_name }}" = "push" ] && [ "$on_gated_branch" = true ]; then
             parents=$(git rev-list --parents -n 1 HEAD | wc -w)
             if [ "$parents" -ge 3 ]; then proved=true; fi
           fi
@@ -304,12 +315,24 @@ jobs:
               - 'packages/web-v2/**'
               - 'packages/contracts/**'
               - 'packages/core/**'
+              - '.npmrc'
               - '.github/workflows/ci.yml'
+            # `.npmrc` sits under both because it decides how EVERY package resolves its
+            # modules: `node-linker=hoisted` is what lets four packages only `@forge/core`
+            # declares resolve from the repository root, and `pnpm verify` loses five
+            # verdicts without them. It matched no filter, so a change to it skipped `core`,
+            # `web`, `core-integration` and `runner` at once — and a skipped job passes
+            # `ci-passed`, which is the shape `39431309` already cost a production deploy.
+            # Still unmatched by `web`, and left so deliberately: `pnpm-lock.yaml`,
+            # `package.json` and `pnpm-workspace.yaml`, which `core` carries. A dependency
+            # bump can break the web build the same way; widening it is a separate argument
+            # about paying a web build on every bump, not this one.
             core:
               - 'packages/core/**'
               - 'pnpm-workspace.yaml'
               - 'pnpm-lock.yaml'
               - 'package.json'
+              - '.npmrc'
               - '.github/workflows/ci.yml'
             runner:
               - 'packages/runner/**'
@@ -428,10 +451,24 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: packages/runner
+      # The tests that drive a master pane through a real tmux server return early where tmux is
+      # absent, and a return passes green having asserted nothing — so whether this gate caught
+      # the ensure_master mutants they exist for rested on what the image happened to carry
+      # (ISS-1235). Linux installs tmux (the ubuntu image carries it today; nothing promises
+      # that) and sets FORGE_TEST_REQUIRE_TMUX, under which such a test fails naming what it
+      # lacked instead of returning. macOS resolves the config dir, and so the socket, outside
+      # XDG_CONFIG_HOME, so a test there cannot get a server of its own and still skips;
+      # Windows does not compile the module.
       - name: Lockfile sync + fmt + clippy + test
         working-directory: packages/runner
         shell: bash
+        env:
+          FORGE_TEST_REQUIRE_TMUX: ${{ runner.os == 'Linux' && '1' || '' }}
         run: |
+          if [ "$RUNNER_OS" = Linux ]; then
+            sudo apt-get update -q && sudo apt-get install -y -q tmux
+            tmux -V
+          fi
           cargo metadata --locked --format-version=1 >/dev/null
           cargo fmt --check
           cargo clippy --workspace --all-targets

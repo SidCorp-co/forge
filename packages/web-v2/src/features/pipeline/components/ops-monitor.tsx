@@ -273,7 +273,7 @@ function ProgressTab({
   durations: StepDurationRow[] | undefined;
   loading: boolean;
 }) {
-  const closed = (throughput ?? []).reduce((a, r) => a + r.count, 0);
+  const shipped = (throughput ?? []).reduce((a, r) => a + r.count, 0);
   const aggs = useMemo(() => aggregateByStep(durations), [durations]);
   const maxAvg = Math.max(1, ...aggs.map((a) => a.avgSec));
 
@@ -288,7 +288,7 @@ function ProgressTab({
   return (
     <div className="flex flex-col gap-5">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-        <Tile label="Closed · 30d" value={String(closed)} />
+        <Tile label="Shipped · 30d" value={String(shipped)} />
         <Tile label="Steps · 7d" value={String((durations ?? []).length)} />
         <Tile
           label="Spend · 7d"

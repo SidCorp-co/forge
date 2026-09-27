@@ -2,6 +2,7 @@
 title: Pair a runner
 section: Getting started
 order: 20
+audience: user
 ---
 
 # Pair a runner

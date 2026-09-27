@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AgentSessionPatch } from './session-failure.js';
 
 // Stub eager env validation (config/env.js throws at import when DATABASE_URL /
 // JWT_SECRET / DEVICE_TOKEN_PEPPER are absent) so this unit suite stays hermetic
@@ -123,7 +124,7 @@ describe('finalizeScheduleSessionFailure', () => {
   });
 
   it('a failure that matches no classifier pattern still persists a reason (never left NULL)', async () => {
-    const set: Record<string, unknown> = {};
+    const set: AgentSessionPatch = {};
     const result = await finalizeScheduleSessionFailure({
       sessionId: 'sess-1',
       messages: [{ role: 'assistant', content: 'some unrelated tool error' }],
@@ -138,7 +139,7 @@ describe('finalizeScheduleSessionFailure', () => {
   });
 
   it('does NOT classify the schedule prompt — a user message saying "usage limit" must not trigger a failover', async () => {
-    const set: Record<string, unknown> = {};
+    const set: AgentSessionPatch = {};
     const result = await finalizeScheduleSessionFailure({
       sessionId: 'sess-1',
       messages: [
@@ -159,7 +160,7 @@ describe('finalizeScheduleSessionFailure', () => {
   });
 
   it('classifies a usage/session-limit hit as action:failover, stamps limitResetAt, and recovers the schedule run', async () => {
-    const set: Record<string, unknown> = {};
+    const set: AgentSessionPatch = {};
     const result = await finalizeScheduleSessionFailure({
       sessionId: 'sess-1',
       messages: [
@@ -184,7 +185,7 @@ describe('finalizeScheduleSessionFailure', () => {
   });
 
   it('does not fail over a non-schedule (plain chat) session even on a failover-classified hit', async () => {
-    const set: Record<string, unknown> = {};
+    const set: AgentSessionPatch = {};
     const result = await finalizeScheduleSessionFailure({
       sessionId: 'sess-1',
       messages: [
@@ -202,7 +203,7 @@ describe('finalizeScheduleSessionFailure', () => {
     expect(redispatchScheduleSessionOnFailoverMock).not.toHaveBeenCalled();
   });
   it('ISS-877: writes a cause token into failureReason and the sentence into failureDetail', async () => {
-    const set: Record<string, unknown> = {};
+    const set: AgentSessionPatch = {};
     await finalizeScheduleSessionFailure({
       sessionId: 'sess-1',
       messages: [
@@ -239,7 +240,7 @@ describe('finalizeScheduleSessionFailure', () => {
   });
 
   it('a plain chat session records that no failover exists, not the predicted one', async () => {
-    const set: Record<string, unknown> = {};
+    const set: AgentSessionPatch = {};
     await finalizeScheduleSessionFailure({
       sessionId: 'sess-1',
       messages: [
@@ -258,7 +259,7 @@ describe('finalizeScheduleSessionFailure', () => {
   });
 
   it("leaves an agent-chat session's detail to its own failover path", async () => {
-    const set: Record<string, unknown> = {};
+    const set: AgentSessionPatch = {};
     await finalizeScheduleSessionFailure({
       sessionId: 'sess-1',
       messages: [
@@ -281,7 +282,7 @@ describe('finalizeScheduleSessionFailure', () => {
       "I'll look at the screenshots and check how CSAT sending decides its window.",
       '[RESULT_ERROR] success: a provider message nobody has a pattern for',
     ]) {
-      const set: Record<string, unknown> = {};
+      const set: AgentSessionPatch = {};
       await finalizeScheduleSessionFailure({
         sessionId: 'sess-1',
         messages: [{ role: 'assistant', content }],
@@ -293,5 +294,15 @@ describe('finalizeScheduleSessionFailure', () => {
       expect(set.failureReason, content).toBe('unclassified');
       expect(set.failureDetail, content).toBeTruthy();
     }
+  });
+});
+
+describe('AgentSessionPatch (ISS-1157)', () => {
+  it('refuses prose as a failure reason at compile time, and takes a cause or null', () => {
+    const patch: AgentSessionPatch = { failureReason: 'queue_timeout' };
+    patch.failureReason = null;
+    // @ts-expect-error — a sentence is not a member of the cause set; `tsc` fails if this compiles.
+    patch.failureReason = 'failed to start chat turn: io error: No space left on device';
+    expect(patch.failureReason).toContain('No space left');
   });
 });

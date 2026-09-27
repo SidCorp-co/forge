@@ -91,6 +91,24 @@ export async function apiClient<T>(endpoint: string, options: RequestInit = {}):
   return (await res.json()) as T;
 }
 
+/**
+ * Raw-bytes client, for the capability-authenticated upload endpoint: the
+ * ticket in the path IS the authorization, so this sends no credentials and no
+ * JSON envelope — the body is the file.
+ */
+export async function apiPutBytes<T>(endpoint: string, file: Blob): Promise<T> {
+  const res = await sendRequest(endpoint, {
+    method: 'PUT',
+    body: file,
+    headers: file.type ? { 'Content-Type': file.type } : undefined,
+  });
+  if (!res.ok) {
+    const { message, code, details, body } = await parseErrorBody(res);
+    throw new ApiError(res.status, message, code, details, body);
+  }
+  return (await res.json()) as T;
+}
+
 /** Multipart-aware client. Sends FormData without the JSON Content-Type. */
 export async function apiMultipart<T>(endpoint: string, formData: FormData): Promise<T> {
   const res = await sendRequest(endpoint, {

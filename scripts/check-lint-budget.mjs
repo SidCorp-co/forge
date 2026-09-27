@@ -21,6 +21,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { baseRef } from './lib/base-branch.mjs';
 import {
   freezeFaults,
   loadBaseline,
@@ -36,8 +37,9 @@ import {
   drainFaults,
   drainMatcher,
   emptiedScopes,
+  explainFaults,
   mergeOriginal,
-  SIZE_RULES,
+  readDiagnostic,
 } from './lib/lint-budget.mjs';
 import { absentPrerequisites, remedyLines } from './lib/prerequisite.mjs';
 
@@ -86,6 +88,7 @@ function linterFault(scope) {
 
 function collect(scopes) {
   const measured = {};
+  const said = {};
   const scopeOf = new Map();
   const silent = [];
 
@@ -133,12 +136,15 @@ function collect(scopes) {
     }
 
     for (const d of diags) {
-      const rule = d.category;
-      const path = d.location?.path?.file ?? d.location?.path;
-      if (!rule || typeof path !== 'string' || SIZE_RULES.has(rule)) continue;
-      const rel = relative(ROOT, join(cwd, path));
+      const diag = readDiagnostic(d);
+      if (diag === null) continue;
+      const { rule, line, message } = diag;
+      const rel = relative(ROOT, join(cwd, diag.path));
       measured[rel] ??= {};
       measured[rel][rule] = (measured[rel][rule] ?? 0) + 1;
+      said[rel] ??= {};
+      said[rel][rule] ??= [];
+      said[rel][rule].push({ line, message });
       scopeOf.set(rel, scope.cwd);
     }
   }
@@ -148,7 +154,7 @@ function collect(scopes) {
       error: `biome scanned no files in ${silent.join(', ')} — scope matched nothing`,
     };
   }
-  return { measured, scopeOf };
+  return { measured, said, scopeOf };
 }
 
 function git(args) {
@@ -165,9 +171,11 @@ function git(args) {
 
 function branchDelta() {
   const head = git(['rev-parse', 'HEAD']);
-  const base = git(['merge-base', 'origin/main', 'HEAD']);
   if (!head) return { skip: 'no git HEAD' };
-  if (!base) return { skip: 'no origin/main to compare against (shallow or detached checkout)' };
+  const target = baseRef(ROOT);
+  if (target.refusal) return { skip: target.summary };
+  const base = git(['merge-base', target.ref, 'HEAD']);
+  if (!base) return { skip: `no merge-base with ${target.ref} (shallow or detached checkout)` };
   if (base === head) return { skip: `merge-base is HEAD (${base.slice(0, 8)}) — no branch delta` };
 
   const names = git(['diff', '--name-only', base]);
@@ -210,7 +218,7 @@ if (cfg.error) {
   process.exit(2);
 }
 
-const { measured, scopeOf, error } = collect(cfg.scopes);
+const { measured, said, scopeOf, error } = collect(cfg.scopes);
 if (error) {
   console.error(`check-lint-budget: ${error}`);
   process.exit(2);
@@ -283,7 +291,7 @@ if (mode === '--staged') {
   }
 }
 
-const failures = freezeFaults(measured, baseline.files, staged?.files ?? null);
+const failures = explainFaults(freezeFaults(measured, baseline.files, staged?.files ?? null), said);
 
 let matchers;
 try {

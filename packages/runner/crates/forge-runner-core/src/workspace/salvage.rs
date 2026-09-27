@@ -22,6 +22,8 @@ use std::time::Duration;
 
 use tokio::process::Command;
 
+use crate::workspace::repo_cred::RepoCred;
+
 const PICK_BUDGET: Duration = Duration::from_secs(10);
 const LOCAL_BUDGET: Duration = Duration::from_secs(15);
 const PUSH_BUDGET: Duration = Duration::from_secs(45);
@@ -130,27 +132,35 @@ pub enum Publication {
     Unknown { why: String },
 }
 
-pub async fn publication_of(worktree: &Path) -> Publication {
+pub async fn publication_of(worktree: &Path, cred: &RepoCred) -> Publication {
     let fetched = tokio::time::timeout(
         FETCH_BUDGET,
-        git(worktree, &["fetch", "--prune", "--quiet", "--all"]),
+        git_over_network(worktree, &["fetch", "--prune", "--quiet", "--all"], cred),
     );
     match fetched.await {
         Ok(Some(out)) if out.status.success() => {}
         Ok(Some(out)) => {
             return Publication::Unknown {
-                why: format!("`git fetch --all` failed: {}", stderr_brief(&out)),
+                why: format!(
+                    "`git fetch --all`, offering {}, failed: {}",
+                    cred.source(),
+                    stderr_brief(&out)
+                ),
             };
         }
         Ok(None) => {
             return Publication::Unknown {
-                why: "`git fetch --all` could not be spawned".into(),
+                why: format!(
+                    "`git fetch --all`, offering {}, could not be spawned",
+                    cred.source()
+                ),
             };
         }
         Err(_) => {
             return Publication::Unknown {
                 why: format!(
-                    "`git fetch --all` did not answer within {}s",
+                    "`git fetch --all`, offering {}, did not answer within {}s",
+                    cred.source(),
                     FETCH_BUDGET.as_secs()
                 ),
             };
@@ -183,11 +193,11 @@ pub async fn publication_of(worktree: &Path) -> Publication {
     }
 }
 
-pub async fn publish(worktree: &Path, branch: &str) -> Publication {
+pub async fn publish(worktree: &Path, branch: &str, cred: &RepoCred) -> Publication {
     let refspec = format!("HEAD:refs/heads/{branch}");
     let argv = ["push", "origin", refspec.as_str()];
-    let _ = tokio::time::timeout(PUSH_BUDGET, git(worktree, &argv)).await;
-    publication_of(worktree).await
+    let _ = tokio::time::timeout(PUSH_BUDGET, git_over_network(worktree, &argv, cred)).await;
+    publication_of(worktree, cred).await
 }
 
 /// The namespace [`keep_at`] writes into, so a commit nothing else names is
@@ -242,6 +252,34 @@ pub async fn retention_of(worktree: &Path) -> Retention {
     }
 }
 
+/// What a release may do about the DIRECTORY, which is the decision
+/// [`retention_of`] is only the reading for.
+///
+/// One predicate, because two callers asking two different questions is what
+/// this is here to end: `daemon/held_report.rs` used to ask [`publication_of`]
+/// and print "run X keeps <path>" about a checkout `runner/terminate.rs` was
+/// entitled to remove seconds later, and did (ISS-1250). Whatever the answer,
+/// both now read it from here.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Fate {
+    /// Every commit at HEAD is already named by a ref that outlives the
+    /// directory. The release may take it.
+    Named,
+    /// This many commits are named by this checkout's HEAD and nothing else, so
+    /// a ref of their own is written before the directory goes.
+    NeedsARef { commits: u32 },
+    /// This box could not establish either, so the directory stays.
+    Kept { why: String },
+}
+
+pub async fn fate_of(worktree: &Path) -> Fate {
+    match retention_of(worktree).await {
+        Retention::Kept => Fate::Named,
+        Retention::AtRisk { commits } => Fate::NeedsARef { commits },
+        Retention::Unknown { why } => Fate::Kept { why },
+    }
+}
+
 /// Give the commits at HEAD a name this repository keeps, and answer with it.
 ///
 /// For the one shape nothing else covers: a detached checkout that committed.
@@ -275,6 +313,22 @@ pub async fn keep_at(worktree: &Path, run_id: &str) -> std::result::Result<Strin
         )),
         None => Err(format!("`git update-ref {name} HEAD` could not be spawned")),
     }
+}
+
+/// A git call that reaches a remote, and therefore names the credential it
+/// offers rather than taking whatever the child resolves.
+async fn git_over_network(
+    dir: &Path,
+    args: &[&str],
+    cred: &RepoCred,
+) -> Option<std::process::Output> {
+    let mut cmd = Command::new("git");
+    cmd.args(args)
+        .current_dir(dir)
+        .stdin(Stdio::null())
+        .kill_on_drop(true);
+    cred.apply(&mut cmd);
+    cmd.output().await.ok()
 }
 
 async fn git(dir: &Path, args: &[&str]) -> Option<std::process::Output> {
@@ -405,6 +459,8 @@ pub struct SalvageInput<'a> {
     pub job_id: &'a str,
     pub attempt: u32,
     pub failure: &'a str,
+    /// The credential this project's pushes are made with.
+    pub cred: &'a RepoCred,
 }
 
 /// Choose the checkout to salvage, or explain why there is none.
@@ -469,7 +525,7 @@ pub async fn salvage_wip(input: SalvageInput<'_>) -> Salvage {
     };
     let refspec = format!("HEAD:refs/heads/{}", target.branch);
     let argv = ["push", "origin", refspec.as_str()];
-    let push = git(&target.path, &argv);
+    let push = git_over_network(&target.path, &argv, input.cred);
     match tokio::time::timeout(PUSH_BUDGET, push).await {
         Ok(Some(out)) if out.status.success() => Salvage {
             outcome: Outcome::Pushed,
@@ -563,6 +619,13 @@ async fn stage_and_commit(target: &Target, job_id: &str, attempt: u32, failure: 
 mod tests {
     use super::*;
 
+    /// A fixture's remotes are local paths, which no credential reaches, so
+    /// every test here asks for the one this box can name for no project: it
+    /// sets nothing and takes an inherited GIT_SSH_COMMAND off the call.
+    async fn no_credential(at: &Path) -> RepoCred {
+        RepoCred::of(None, at).await
+    }
+
     async fn run(dir: &Path, args: &[&str]) {
         Command::new("git")
             .args(args)
@@ -618,7 +681,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(root.with_extension("remote.git"));
     }
 
-    fn input<'a>(root: &'a Path, agent_branch: &'a str) -> SalvageInput<'a> {
+    fn input<'a>(root: &'a Path, agent_branch: &'a str, cred: &'a RepoCred) -> SalvageInput<'a> {
         SalvageInput {
             repo_root: root,
             base_branch: Some("main"),
@@ -626,6 +689,7 @@ mod tests {
             job_id: "job-1",
             attempt: 2,
             failure: "spend limit",
+            cred,
         }
     }
 
@@ -658,7 +722,7 @@ mod tests {
             run(&wt, &["commit", "-qm", "work"]).await;
 
             assert_eq!(
-                publication_of(&wt).await,
+                publication_of(&wt, &no_credential(&wt).await).await,
                 Publication::Unpublished { commits: 2 },
                 "the publication question counts every commit here, because there is no remote \
                  for any of them to be on — and no sequence of events can ever change that"
@@ -783,7 +847,7 @@ mod tests {
         let (root, wt) = repo("push", "ISS-1-alpha").await;
         std::fs::write(wt.join("new.txt"), "salvaged\n").unwrap();
         std::fs::write(wt.join("f.txt"), "one\ntwo\n").unwrap();
-        let s = salvage_wip(input(&root, "ISS-1-alpha")).await;
+        let s = salvage_wip(input(&root, "ISS-1-alpha", &no_credential(&root).await)).await;
         assert_eq!(s.outcome, Outcome::Pushed, "{s:?}");
         assert_eq!(s.branch.as_deref(), Some("ISS-1-alpha"));
         assert_eq!(s.files, Some(2));
@@ -807,7 +871,7 @@ mod tests {
     async fn never_touches_a_dirty_repo_root() {
         let (root, _wt) = repo("root", "ISS-2-beta").await;
         std::fs::write(root.join("dirty.txt"), "x\n").unwrap();
-        let s = salvage_wip(input(&root, "ISS-2-beta")).await;
+        let s = salvage_wip(input(&root, "ISS-2-beta", &no_credential(&root).await)).await;
         assert_eq!(s.outcome, Outcome::None, "{s:?}");
         let out = Command::new("git")
             .args(["status", "--porcelain"])
@@ -824,7 +888,7 @@ mod tests {
         let (root, _mine) = repo("nomatch", "ISS-10-mine").await;
         let theirs = add_worktree(&root, "ISS-99-theirs").await;
         std::fs::write(theirs.join("stale.txt"), "old\n").unwrap();
-        let s = salvage_wip(input(&root, "ISS-10-mine")).await;
+        let s = salvage_wip(input(&root, "ISS-10-mine", &no_credential(&root).await)).await;
         assert_eq!(s.outcome, Outcome::Refused, "{s:?}");
         let d = s.detail.unwrap();
         assert!(d.contains("ISS-10-mine"), "{d}");
@@ -838,7 +902,7 @@ mod tests {
         let theirs = add_worktree(&root, "ISS-99-theirs").await;
         std::fs::write(theirs.join("stale.txt"), "old\n").unwrap();
         std::fs::write(mine.join("new.txt"), "x\n").unwrap();
-        let s = salvage_wip(input(&root, "ISS-3-mine")).await;
+        let s = salvage_wip(input(&root, "ISS-3-mine", &no_credential(&root).await)).await;
         assert_eq!(s.branch.as_deref(), Some("ISS-3-mine"), "{s:?}");
         let out = Command::new("git")
             .args(["status", "--porcelain"])
@@ -863,7 +927,7 @@ mod tests {
         let b = add_worktree(&root, "ISS-5-b").await;
         std::fs::write(a.join("x.txt"), "x\n").unwrap();
         std::fs::write(b.join("y.txt"), "y\n").unwrap();
-        let s = salvage_wip(input(&root, "ISS-5-b")).await;
+        let s = salvage_wip(input(&root, "ISS-5-b", &no_credential(&root).await)).await;
         assert_eq!(s.outcome, Outcome::Pushed, "{s:?}");
         assert_eq!(s.branch.as_deref(), Some("ISS-5-b"));
         cleanup(&root);
@@ -875,7 +939,7 @@ mod tests {
     async fn finds_a_tree_whose_name_no_issue_key_would_have_matched() {
         let (root, wt) = repo("grouped", "catalog-sweep").await;
         std::fs::write(wt.join("new.txt"), "x\n").unwrap();
-        let s = salvage_wip(input(&root, "catalog-sweep")).await;
+        let s = salvage_wip(input(&root, "catalog-sweep", &no_credential(&root).await)).await;
         assert_eq!(s.outcome, Outcome::Pushed, "{s:?}");
         assert_eq!(s.branch.as_deref(), Some("catalog-sweep"));
         cleanup(&root);
@@ -884,7 +948,7 @@ mod tests {
     #[tokio::test]
     async fn reports_none_on_a_clean_worktree_rather_than_an_empty_commit() {
         let (root, _wt) = repo("clean", "ISS-6-c").await;
-        let s = salvage_wip(input(&root, "ISS-6-c")).await;
+        let s = salvage_wip(input(&root, "ISS-6-c", &no_credential(&root).await)).await;
         assert_eq!(s.outcome, Outcome::None);
         assert!(s.sha.is_none());
         cleanup(&root);
@@ -895,7 +959,7 @@ mod tests {
         let (root, wt) = repo("ignored", "ISS-7-d").await;
         std::fs::write(wt.join(".gitignore"), ".env\n").unwrap();
         std::fs::write(wt.join(".env"), "SECRET=1\n").unwrap();
-        let s = salvage_wip(input(&root, "ISS-7-d")).await;
+        let s = salvage_wip(input(&root, "ISS-7-d", &no_credential(&root).await)).await;
         assert_eq!(s.outcome, Outcome::Pushed, "{s:?}");
         let out = Command::new("git")
             .args(["show", "--name-only", "--format=", "HEAD"])
@@ -914,7 +978,7 @@ mod tests {
         let (root, wt) = repo("nopush", "ISS-8-e").await;
         std::fs::write(wt.join("new.txt"), "x\n").unwrap();
         let _ = std::fs::remove_dir_all(root.with_extension("remote.git"));
-        let s = salvage_wip(input(&root, "ISS-8-e")).await;
+        let s = salvage_wip(input(&root, "ISS-8-e", &no_credential(&root).await)).await;
         assert_eq!(s.outcome, Outcome::CommittedNotPushed, "{s:?}");
         assert!(s.sha.is_some());
         assert!(s.detail.is_some());
@@ -934,7 +998,7 @@ mod tests {
             std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
         }
         std::fs::write(wt.join("new.txt"), "x\n").unwrap();
-        let s = salvage_wip(input(&root, "ISS-9-f")).await;
+        let s = salvage_wip(input(&root, "ISS-9-f", &no_credential(&root).await)).await;
         assert_eq!(s.outcome, Outcome::Pushed, "{s:?}");
         cleanup(&root);
     }
@@ -957,7 +1021,7 @@ mod tests {
         // `origin` will ever prune that.
         run(&mirror, &["update-ref", "-d", "refs/heads/ISS-6-f6"]).await;
 
-        let got = publication_of(&wt).await;
+        let got = publication_of(&wt, &no_credential(&wt).await).await;
         assert!(
             matches!(got, Publication::Unpublished { .. }),
             "a ref only this box still remembers is not a remote that has the work: {got:?}"

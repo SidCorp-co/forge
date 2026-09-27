@@ -8,6 +8,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ServingReading } from '../release-batch/serving-reading.js';
 
 const listIssueCommentsMock = vi.fn(async (_issueId: string) => [] as Array<{ body: string }>);
 vi.mock('../comments/service.js', () => ({
@@ -38,6 +39,15 @@ const { unearnedCriteriaReports, issuesWithUnearnedCriteria } = await import(
 
 /** The head `forge claim --pushed` captured on ISS-1114, which is all the issue records. */
 const LANDING_HEAD = 'dce6f354c727baa81c681f144cbadf30050eabfc';
+
+/** ISS-1114 names no runtime anywhere, so what a host answers decides none of it. */
+const LIVE: ServingReading = {
+  kind: 'serving',
+  commits: ['33637c612ef15be6f924520c0d201a0889d8ed7e'],
+  unread: [],
+  hosts: ['https://app.test/build-info'],
+  readAt: '2026-09-26T23:55:00.000Z',
+};
 
 const CRITERIA = Array.from({ length: 13 }, (_, i) => `${i + 1}. Criterion ${i + 1}.`).join('\n');
 
@@ -103,11 +113,11 @@ describe("ISS-1114's history before the 2026-09-22 correction", () => {
   });
 
   it('reports the issue as carrying unearned criteria', async () => {
-    expect(await issuesWithUnearnedCriteria(['iss-1114'])).toEqual(['iss-1114']);
+    expect(await issuesWithUnearnedCriteria(['iss-1114'], LIVE)).toEqual(['iss-1114']);
   });
 
   it('names all thirteen, each judged against a source no runtime witnessed', async () => {
-    const [report] = await unearnedCriteriaReports(['iss-1114']);
+    const [report] = await unearnedCriteriaReports(['iss-1114'], LIVE);
     expect(report?.unearned.map((c) => c.criterion)).toEqual([
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
     ]);
@@ -116,7 +126,7 @@ describe("ISS-1114's history before the 2026-09-22 correction", () => {
   });
 
   it('reads criterion 13 as the pass that superseded the skipped one by recency alone', async () => {
-    const [report] = await unearnedCriteriaReports(['iss-1114']);
+    const [report] = await unearnedCriteriaReports(['iss-1114'], LIVE);
     expect(report?.unearned[12]).toMatchObject({ criterion: 13, verdict: 'pass' });
   });
 });
@@ -127,7 +137,7 @@ describe("ISS-1114's history including the correction", () => {
   });
 
   it('gives criterion 13 the verdict word the correction wrote', async () => {
-    const [report] = await unearnedCriteriaReports(['iss-1114']);
+    const [report] = await unearnedCriteriaReports(['iss-1114'], LIVE);
     expect(report?.unearned[12]).toMatchObject({ criterion: 13, verdict: 'skipped' });
     expect(report?.unearned[12]?.why).toContain('not earned');
   });
@@ -156,7 +166,7 @@ describe('the same history on an issue that records a serving runtime', () => {
         ]),
       },
     ]);
-    const [report] = await unearnedCriteriaReports(['iss-1114']);
+    const [report] = await unearnedCriteriaReports(['iss-1114'], LIVE);
     expect(report?.unearned).toEqual([]);
   });
 });

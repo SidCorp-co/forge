@@ -411,6 +411,8 @@ function routedOutcome(outcome: TurnOutcome): RoutedWindow {
       return { decision: 'answered', detail: { messageId: outcome.messageId } };
     case 'declined':
       return { decision: 'nothing-to-say', detail: { reason: outcome.reason } };
+    case 'stopped':
+      return { decision: 'stopped', detail: { reason: outcome.reason } };
     case 'diverted':
       return { decision: 'handed-off', detail: { reason: outcome.reason } };
     case 'superseded':

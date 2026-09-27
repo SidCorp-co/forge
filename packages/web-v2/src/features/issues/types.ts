@@ -1,5 +1,5 @@
 
-import type { BodyNode, ForgeRecordView, RecordLens } from "@forge/contracts";
+import type { BodyNode, ForgeRecordView, RecordLens, ReleaseNotes } from "@forge/contracts";
 import {
   REGISTRY_ISSUE_COMPLEXITIES,
   REGISTRY_ISSUE_PRIORITIES,
@@ -96,6 +96,8 @@ export interface IssueRow {
   liveReach?: LiveReach | null;
   createdAt: string;
   updatedAt: string;
+  /** ISS-1257 — the oldest open question blocked on a person; null or absent when none is. */
+  waitingOnPersonSince?: string | null;
   agentSessions?: IssueAgentSession[];
   agentStatus?: IssueAgentStatus;
   estimatedCost?: number;
@@ -223,6 +225,8 @@ export interface IssueDetail extends IssueRow {
   descriptionNodes?: BodyNode[] | null;
   labels?: IssueLabel[];
   metadata: Record<string, unknown> | null;
+  /** ISS-1176 — the release note, whose `userFacing` line is the one sentence written for the person who filed. */
+  releaseNotes?: ReleaseNotes | null;
 }
 
 /** Why the dispatcher hasn't picked up the issue's next step. Mirrors core
@@ -427,10 +431,13 @@ export type CommentKind =
 
 export type { StageKey, StatusKey };
 
-export interface LiveReachEvidence {
+export interface LiveReachCommit {
   sha: string;
   subject: string;
-  via: "merged_commit" | "names_issue";
+}
+
+export interface LiveReachEvidence extends LiveReachCommit {
+  via: "merged_commit" | "declares_issue" | "merged_in" | "recorded_head";
 }
 
 interface LiveReachMeasured {
@@ -443,7 +450,7 @@ interface LiveReachMeasured {
 
 export type LiveReach =
   | (LiveReachMeasured & { state: "not_on_live"; evidence: LiveReachEvidence[] })
-  | (LiveReachMeasured & { state: "none_waiting" })
+  | (LiveReachMeasured & { state: "none_waiting"; unowned: LiveReachCommit[] })
   | {
       state: "unmeasured";
       baseBranch: string | null;

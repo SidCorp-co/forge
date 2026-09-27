@@ -76,9 +76,13 @@ pub async fn admissible(
         return Err(Error::Unauthorized);
     }
     if !resp.status().is_success() {
-        let status = resp.status();
+        let code = resp.status().as_u16();
         let text = resp.text().await.unwrap_or_default();
-        return Err(Error::Other(format!("admissible {status}: {text}")));
+        return Err(Error::Other(super::status::refused(
+            "admissible",
+            code,
+            &text,
+        )));
     }
     let parsed: AdmissibleResponse = resp
         .json()

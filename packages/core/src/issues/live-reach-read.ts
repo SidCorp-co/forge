@@ -1,6 +1,8 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
+import { unclaimedShas } from '../projects/commit-owners.js';
+import { issueWorkRecordsAt } from '../projects/issue-work-records.js';
 import { issueRefPattern, type LiveReach, liveReachOf } from '../projects/live-reach.js';
 import {
   type LiveReadingDeps,
@@ -28,6 +30,13 @@ export async function liveReachForIssue(
   if (!row) return null;
   const reading = await liveReadingForRow(row, deps);
   if (!reading) return null;
-  const prefixes = await heldIssuePrefixes(issue.projectId);
-  return liveReachOf(issue, reading, issueRefPattern(prefixes));
+  const pattern = issueRefPattern(await heldIssuePrefixes(issue.projectId));
+  const records =
+    reading.kind === 'measured'
+      ? await issueWorkRecordsAt(
+          issue.projectId,
+          unclaimedShas(reading.commits, pattern, reading.baseBranch),
+        )
+      : [];
+  return liveReachOf(issue, reading, pattern, records);
 }

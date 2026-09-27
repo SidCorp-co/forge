@@ -31,6 +31,7 @@ const transitionBodySchema = z
     reason: z.string().trim().min(1).max(2000).optional(),
     waitingKind: z.enum(waitingKinds).optional(),
     needs: z.string().trim().min(1).max(2000).optional(),
+    voidQuestions: z.string().max(2000).optional(),
   })
   .strict();
 
@@ -64,6 +65,7 @@ function transitionErrorToHttp(err: TransitionError): HTTPException {
     case 'RELEASE_RECORD_REQUIRED':
     case 'CLOSE_REQUIRES_SHIPPED':
     case 'ENTRY_CRITERIA_UNMET':
+    case 'VOID_REASON_REQUIRED':
       return new HTTPException(422, { message: err.detail, cause });
     case 'NO_WORK_EVIDENCE':
       return new HTTPException(409, { message: err.detail, cause });
@@ -222,7 +224,7 @@ transitionRoutes.post(
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    const { toStatus, reason, waitingKind, needs } = c.req.valid('json');
+    const { toStatus, reason, waitingKind, needs, voidQuestions } = c.req.valid('json');
     const userId = c.get('userId');
 
     const [issue] = await db
@@ -254,7 +256,7 @@ transitionRoutes.post(
         },
         toStatus,
         restActor(c),
-        { reason, transitionReason: reason, waitingKind, needs },
+        { reason, transitionReason: reason, waitingKind, needs, voidQuestions },
       );
     } catch (err) {
       if (err instanceof TransitionError) throw transitionErrorToHttp(err);

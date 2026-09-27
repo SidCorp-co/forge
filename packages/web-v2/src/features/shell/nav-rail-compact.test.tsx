@@ -115,3 +115,62 @@ describe("what the compact rail lets outgrow it", () => {
 		expect(tiers.contains(screen.getByLabelText("Switch project — current Forge"))).toBe(false);
 	});
 });
+
+// A label is bounded by its button, whatever its length: the rail's width buys
+// today's labels room, and the truncation is what holds when a longer one or a
+// translation arrives. jsdom lays nothing out, so this reads the bound itself;
+// the rendered geometry is measured in a browser.
+describe("a nav label and its button", () => {
+	const LONG = "Integrations and external services";
+
+	function labelOf(name: string): HTMLElement {
+		const button = screen.getByRole("button", { name });
+		const span = button.querySelector("span:not([aria-hidden])");
+		if (!(span instanceof HTMLElement)) throw new Error(`no label span in ${name}`);
+		return span;
+	}
+
+	it("bounds every label to its button's width and truncates the rest", () => {
+		renderRail();
+
+		for (const item of [...PROJECT, ...WORKSPACE]) {
+			const cls = labelOf(item.label).className.split(/\s+/);
+			expect(cls).toEqual(expect.arrayContaining(["block", "min-w-0", "max-w-full", "truncate"]));
+		}
+	});
+
+	it("gives every button a fixed width narrower than the rail", () => {
+		const { container } = renderRail();
+
+		expect(container.querySelector("nav")?.className).toContain("w-[88px]");
+		for (const item of [...PROJECT, ...WORKSPACE]) {
+			expect(screen.getByRole("button", { name: item.label }).className).toContain("w-[76px]");
+		}
+	});
+
+	it("shows the full label on hover, so a truncated one can still be read", () => {
+		render(
+			<NavRailCompact
+				workspaceItems={[{ key: "long", label: LONG, icon: "link" }]}
+				activeKey="long"
+				switcherProjects={[]}
+				onNavigate={() => {}}
+				onSelectProject={() => {}}
+				onTogglePin={() => {}}
+				onAllProjects={() => {}}
+				onNewProject={() => {}}
+			/>,
+		);
+
+		const button = screen.getByRole("button", { name: LONG });
+		expect(button.getAttribute("title")).toBe(LONG);
+		expect(labelOf(LONG).className).toContain("truncate");
+	});
+
+	it("pins the active bar inside the rail rather than past its left edge", () => {
+		renderRail();
+
+		const bar = screen.getByRole("button", { name: "Issues" }).querySelector("span[aria-hidden]");
+		expect(bar?.className).toContain("left-[-6px]");
+	});
+});

@@ -317,14 +317,14 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
 
         <p className="fg-caption">
           An issue is <strong>work</strong> with a deliverable someone else can verify. A note,
-          a question, or a record of something already done belongs in memory or docs —{" "}
+          a question, or a record of something already done is not an issue —{" "}
           <a
-            href="/guides/what-is-an-issue"
+            href="/docs?path=file-a-request"
             target="_blank"
             rel="noreferrer"
             className="underline"
           >
-            what counts as an issue
+            what to write, and what counts as an issue
           </a>
           .
         </p>

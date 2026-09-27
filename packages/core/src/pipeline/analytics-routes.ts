@@ -1,5 +1,5 @@
 import { zValidator } from '@hono/zod-validator';
-import { eq, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -12,6 +12,7 @@ import { retryRescuesSince } from '../metrics/queries.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { cycleTimeTransitionsSql } from './cycle-time-sql.js';
 import { driverComparison } from './driver-comparison.js';
+import { shippedPerDay } from './throughput-series.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -54,9 +55,8 @@ export const pipelineAnalyticsRoutes = new Hono<{ Variables: AuthVars }>();
 pipelineAnalyticsRoutes.use('*', requireAuth(), assertEmailVerified());
 
 /**
- * Daily closure rate per project. Used for the throughput trend line chart
- * on /pipeline/health. Counts `activity_log` entries where `payload.to` is
- * `closed` or the release rung — BOTH spellings, see the guard below — over the requested window.
+ * Issues shipped per project per UTC day, one row for each of the last `days` calendar dates
+ * whether or not anything shipped on it — see `shippedPerDay`.
  */
 pipelineAnalyticsRoutes.get(
   '/throughput',
@@ -70,30 +70,7 @@ pipelineAnalyticsRoutes.get(
     const projectIds = await loadVisibleProjectIdsScoped(userId, projectId);
     if (projectIds.length === 0) return c.json([]);
 
-    const rows = await db
-      .select({
-        projectId: issues.projectId,
-        date: sql<string>`${utcDayText(sql`${activityLog.createdAt}`)}`,
-        count: sql<number>`count(*)::int`,
-      })
-      .from(activityLog)
-      .innerJoin(issues, eq(issues.id, activityLog.issueId))
-      .where(
-        sql`${activityLog.action} = 'issue.statusChanged'
-          AND ${activityLog.payload} ->> 'to' IN ('closed','released','awaiting_release')
-          AND ${activityLog.createdAt} >= now() - (${days}::int * interval '1 day')
-          AND ${issues.projectId} IN ${projectIds}`,
-      )
-      .groupBy(issues.projectId, utcDayText(sql`${activityLog.createdAt}`))
-      .orderBy(utcDayText(sql`${activityLog.createdAt}`));
-
-    return c.json(
-      rows.map((r) => ({
-        projectId: r.projectId,
-        date: r.date,
-        count: Number(r.count),
-      })),
-    );
+    return c.json(await shippedPerDay(projectIds, days, new Date()));
   },
 );
 

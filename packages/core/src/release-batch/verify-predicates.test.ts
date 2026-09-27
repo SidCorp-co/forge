@@ -31,6 +31,10 @@ describe('readingSatisfies', () => {
     expect(readingSatisfies(OLD, OLD, null)).toBe(false);
     expect(readingSatisfies(null, OLD, null)).toBe(false);
   });
+
+  it('is never satisfied by a claimless reading when nothing was recorded serving before', () => {
+    for (const live of [NEW, OLD, SAME]) expect(readingSatisfies(live, null, null)).toBe(false);
+  });
 });
 
 describe('liveCarriesRoster', () => {

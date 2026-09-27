@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest';
+import { freezeFaults } from './debt-ratchet.mjs';
 import {
   drainedLine,
   drainFaults,
   drainMatcher,
   emptiedScopes,
+  explainFaults,
   mergeOriginal,
+  messageLines,
+  NO_MESSAGE,
+  readDiagnostic,
 } from './lint-budget.mjs';
 
 const CORE = {
@@ -177,5 +182,115 @@ describe('emptiedScopes', () => {
       [],
     );
     expect(emptiedScopes(at({ 'packages/web-v2': 1 }), at({ 'packages/web-v2': 210 }))).toEqual([]);
+  });
+});
+
+const BOUNDARY =
+  "react-hook-form is a behaviour library web-v2 keeps behind its own design system (ISS-1172). Import it only inside src/design/**, and give features a component or hook from @/design that passes their own types, never the library's.";
+
+/** The shape biome 2.5.9's --reporter=json printed for a restricted import planted in web-v2. */
+const planted = (overrides = {}) => ({
+  severity: 'error',
+  message: BOUNDARY,
+  category: 'lint/style/noRestrictedImports',
+  location: {
+    path: 'src/features/zz-probe/x.tsx',
+    start: { line: 1, column: 25 },
+    end: { line: 1, column: 42 },
+  },
+  advices: [],
+  ...overrides,
+});
+
+describe('readDiagnostic', () => {
+  it("keeps biome's message and line beside the rule and path it counts by", () => {
+    expect(readDiagnostic(planted())).toEqual({
+      rule: 'lint/style/noRestrictedImports',
+      path: 'src/features/zz-probe/x.tsx',
+      line: 1,
+      message: BOUNDARY,
+    });
+  });
+
+  it('reads the older object-shaped path', () => {
+    const d = planted({ location: { path: { file: 'src/a.ts' }, start: { line: 4 } } });
+    expect(readDiagnostic(d)).toMatchObject({ path: 'src/a.ts', line: 4 });
+  });
+
+  it('marks an absent or blank message as null rather than inventing one', () => {
+    expect(readDiagnostic(planted({ message: undefined })).message).toBeNull();
+    expect(readDiagnostic(planted({ message: '   ' })).message).toBeNull();
+    expect(readDiagnostic(planted({ location: { path: 'src/a.ts' } })).line).toBeNull();
+  });
+
+  it('counts nothing for a length rule, a missing category or a missing path', () => {
+    expect(readDiagnostic(planted({ category: 'lint/style/noExcessiveLinesPerFile' }))).toBeNull();
+    expect(readDiagnostic(planted({ category: undefined }))).toBeNull();
+    expect(readDiagnostic(planted({ location: {} }))).toBeNull();
+  });
+});
+
+describe('messageLines', () => {
+  it('prints one shared message once, with every line it was reported at, in order', () => {
+    const said = [
+      { line: 9, message: 'm' },
+      { line: 2, message: 'm' },
+    ];
+    expect(messageLines(said)).toEqual(['lines 2, 9: m']);
+  });
+
+  it('keeps distinct messages apart', () => {
+    const said = [
+      { line: 1, message: 'a' },
+      { line: 2, message: 'b' },
+    ];
+    expect(messageLines(said)).toEqual(['line 1: a', 'line 2: b']);
+  });
+
+  it('says biome gave no message rather than leaving the diagnostic out', () => {
+    expect(messageLines([{ line: 3, message: null }])).toEqual([`line 3: ${NO_MESSAGE}`]);
+  });
+
+  it('prints a message with no line bare, and folds a multi-line message onto one', () => {
+    expect(messageLines([{ line: null, message: 'first\n  second' }])).toEqual(['first second']);
+  });
+});
+
+describe('explainFaults', () => {
+  it("puts biome's message under the rule that rose and under no other", () => {
+    const measured = { 'x.tsx': { 'lint/style/noRestrictedImports': 1, 'lint/a': 2 } };
+    const baseline = { 'x.tsx': { 'lint/a': 2 } };
+    const said = {
+      'x.tsx': {
+        'lint/style/noRestrictedImports': [{ line: 1, message: BOUNDARY }],
+        'lint/a': [
+          { line: 5, message: 'frozen debt' },
+          { line: 6, message: 'frozen debt' },
+        ],
+      },
+    };
+    expect(explainFaults(freezeFaults(measured, baseline), said)).toEqual([
+      {
+        file: 'x.tsx',
+        reasons: [
+          'lint/style/noRestrictedImports: 1 (baseline allowed 0)',
+          `  line 1: ${BOUNDARY}`,
+        ],
+      },
+    ]);
+  });
+
+  it('leaves the count line exactly as the freeze wrote it', () => {
+    const measured = { 'x.tsx': { r: 2 } };
+    const said = {
+      'x.tsx': {
+        r: [
+          { line: 1, message: 'm' },
+          { line: 4, message: 'm' },
+        ],
+      },
+    };
+    const [fault] = explainFaults(freezeFaults(measured, { 'x.tsx': { r: 1 } }), said);
+    expect(fault.reasons).toEqual(['r: 2 (baseline allowed 1)', '  lines 1, 4: m']);
   });
 });

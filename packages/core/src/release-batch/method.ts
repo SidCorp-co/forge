@@ -2,6 +2,7 @@ import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
 
+/** What a release run says it is running under: a record nothing refuses on (ISS-1276). */
 export interface ReleaseMethod {
   /** The skill the run says it loaded. */
   skill: string;
@@ -10,23 +11,6 @@ export interface ReleaseMethod {
   /** The agent's own words about what it loaded, or why it could not. */
   detail: string | null;
   announcedAt: string;
-}
-
-export class MethodNotAnnouncedError extends Error {
-  constructor(public readonly expected: string) {
-    super('RELEASE_METHOD_NOT_ANNOUNCED');
-    this.name = 'MethodNotAnnouncedError';
-  }
-}
-
-export class MethodMismatchError extends Error {
-  constructor(
-    public readonly announced: string,
-    public readonly expected: string,
-  ) {
-    super('RELEASE_METHOD_MISMATCH');
-    this.name = 'MethodMismatchError';
-  }
 }
 
 export async function announceMethod(args: {
@@ -61,15 +45,6 @@ export function readMethod(metadata: unknown): ReleaseMethod | null {
     detail: typeof m.detail === 'string' ? m.detail : null,
     announcedAt: typeof m.announcedAt === 'string' ? m.announcedAt : '',
   };
-}
-
-/**
- * Refuse a run that never announced a method, and one that announced another
- * skill than the job it is running names.
- */
-export function assertMethodFor(method: ReleaseMethod | null, expected: string): void {
-  if (method === null) throw new MethodNotAnnouncedError(expected);
-  if (method.skill !== expected) throw new MethodMismatchError(method.skill, expected);
 }
 
 /**

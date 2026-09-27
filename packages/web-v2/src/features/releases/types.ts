@@ -74,7 +74,7 @@ export interface ReleaseRunState {
 	/** `null` only when the project declares no probes. */
 	live: ReleaseLiveState | null;
 	bounds: ReleaseBoundsReading;
-	/** `null` when the run never announced one — which `finish` refuses. */
+	/** `null` when the run never announced one. */
 	method: ReleaseMethod | null;
 	methodUnloaded: boolean;
 }

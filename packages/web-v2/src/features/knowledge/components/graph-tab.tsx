@@ -84,40 +84,38 @@ export function GraphTab({ projectId, canManage }: GraphTabProps) {
       {!edgesQ.isLoading && !edgesQ.isError && edges.length > 0 && (
         <>
           <div className="hidden md:block">
-            <div className="overflow-x-auto rounded-lg border border-line bg-surface">
-              <Table>
-                <THead>
-                  <TR>
-                    <TH>Subject</TH>
-                    <TH>Predicate</TH>
-                    <TH>Object</TH>
-                    {canManage && <TH className="w-12" aria-label="Actions" />}
-                  </TR>
-                </THead>
-                <TBody>
-                  {edges.map((edge) => (
-                    <TR key={edge.id}>
-                      <TD className="font-medium text-fg">{edge.subject}</TD>
-                      <TD>
-                        <MonoTag hue="cobalt">{edge.predicate}</MonoTag>
+            <Table>
+              <THead>
+                <TR>
+                  <TH>Subject</TH>
+                  <TH>Predicate</TH>
+                  <TH>Object</TH>
+                  {canManage && <TH className="w-12" aria-label="Actions" />}
+                </TR>
+              </THead>
+              <TBody>
+                {edges.map((edge) => (
+                  <TR key={edge.id}>
+                    <TD className="font-medium text-fg">{edge.subject}</TD>
+                    <TD>
+                      <MonoTag hue="cobalt">{edge.predicate}</MonoTag>
+                    </TD>
+                    <TD className="text-fg">{edge.object}</TD>
+                    {canManage && (
+                      <TD className="text-right">
+                        <IconButton
+                          icon="trash"
+                          aria-label={`Delete edge ${edge.subject} ${edge.predicate} ${edge.object}`}
+                          disabled={deleteEdge.isPending}
+                          onClick={() => deleteEdge.mutate(edge.id)}
+                          className="min-h-11 min-w-11"
+                        />
                       </TD>
-                      <TD className="text-fg">{edge.object}</TD>
-                      {canManage && (
-                        <TD className="text-right">
-                          <IconButton
-                            icon="trash"
-                            aria-label={`Delete edge ${edge.subject} ${edge.predicate} ${edge.object}`}
-                            disabled={deleteEdge.isPending}
-                            onClick={() => deleteEdge.mutate(edge.id)}
-                            className="min-h-11 min-w-11"
-                          />
-                        </TD>
-                      )}
-                    </TR>
-                  ))}
-                </TBody>
-              </Table>
-            </div>
+                    )}
+                  </TR>
+                ))}
+              </TBody>
+            </Table>
           </div>
 
           <div className="space-y-2.5 md:hidden">

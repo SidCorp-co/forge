@@ -140,7 +140,7 @@ describe('the raw agentConfig record is refused by name', () => {
   it.each([
     ['repoPath', '/tmp/elsewhere', 'projects.repo_path'],
     ['baseBranch', 'main', 'projects.base_branch'],
-    ['productionBranch', 'main', 'projects.live_branch'],
+    ['productionBranch', 'main', 'projects.release_chain'],
     ['activeDeviceId', '85644100-e4f5-455a-9754-6af76c19e50a', 'projects.default_device_id'],
     ['runnerFallback', 'claude-code', 'decides nothing'],
     ['whateverThisIs', 1, 'is not a key this project'],

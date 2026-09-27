@@ -44,7 +44,8 @@ import {
   useSessionTurns,
 } from "../hooks";
 import { deriveAgentTasks, parseMessages, parseTurns } from "../types";
-import { Composer, ReadOnlyComposerNote } from "./composer";
+import { SESSION_ATTACHMENTS } from "@/features/chat/attachments";
+import { ChatComposer, ReadOnlyComposerNote } from "@/features/chat/components/chat-composer";
 import { RunReport } from "./run-report/run-report";
 import { ContextRail } from "./context-rail";
 import { Conversation } from "./conversation";
@@ -403,13 +404,13 @@ export function SessionScreen({
             </div>
           </div>
           {canWrite ? (
-            <Composer
+            <ChatComposer
               onSend={async (message, files) => {
                 await send.mutateAsync({ sessionId, message, files });
               }}
               busy={live || send.isPending}
               disabled={!session.deviceId}
-              allowAttachments
+              attachments={SESSION_ATTACHMENTS}
             />
           ) : (
             <ReadOnlyComposerNote />

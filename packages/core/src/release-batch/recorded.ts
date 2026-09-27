@@ -18,17 +18,14 @@ import { logger } from '../logger.js';
 import { closeRunIfOneShot, openOneShotRun } from '../pipeline/runs.js';
 import { collectReleaseBlockers, releaseBlockerError } from './blockers.js';
 import type { ReleaseChannel } from './channel.js';
+import { claimConflictAt, RELEASE_RECORD_SOURCE } from './claim-conflicts.js';
 import {
-  ClaimConflictError,
   NoReleaseGateError,
   ReleaseNotVerifiedError,
   ReleaseProbesUndeclaredError,
 } from './errors.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
 import { type ServingNowOutcome, verifyServingNow } from './verify.js';
-
-/** What `metadata.source` reads on the run a recorded release writes. */
-export const RELEASE_RECORD_SOURCE = 'release-record';
 
 /** The one ledger key a recorded release writes under. */
 const RECORD_ATTEMPT_KEY = 'release-record';
@@ -110,14 +107,19 @@ function issueNote(args: {
 export async function recordPerformedRelease(
   args: RecordPerformedReleaseArgs,
 ): Promise<RecordPerformedReleaseResult> {
-  const { projectId, issueIds, commit, account, userId } = args;
+  const { projectId, commit, account, userId } = args;
   const providerRef = args.providerRef ?? null;
 
   // ONE pass before anything refuses, so probes, notes and merges arrive together (ISS-1127).
-  const report = await collectReleaseBlockers(projectId, { issueIds, door: 'record' });
+  const report = await collectReleaseBlockers(projectId, {
+    issueIds: args.issueIds,
+    door: 'record',
+  });
   if (!report.projectExists) throw new NoReleaseGateError();
   const refusal = releaseBlockerError(report);
   if (refusal) throw refusal;
+  // Every id is now an issue at this project's gate, so its lower-case spelling is the row's own.
+  const issueIds = args.issueIds.map((id) => id.toLowerCase());
 
   const gateStatus = RELEASE_GATE_STATUS;
   const verify = soleVerifyConfig(report.channels);
@@ -156,7 +158,7 @@ export async function recordPerformedRelease(
 
   if (claimed.length !== issueIds.length) {
     await closeRunIfOneShot(run.id, 'cancelled');
-    throw new ClaimConflictError(issueIds.filter((id) => !claimed.some((r) => r.id === id)));
+    throw await claimConflictAt(projectId, gateStatus, issueIds, claimed);
   }
 
   await writeLedger(run.id, { commit, outcome, account, providerRef });

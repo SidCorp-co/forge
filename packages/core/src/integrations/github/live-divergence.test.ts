@@ -23,6 +23,7 @@ function client(get: (path: string) => unknown): GitHubRepoClient {
 function commits(from: number, n: number) {
   return Array.from({ length: n }, (_, i) => ({
     sha: `c${String(from + i).padStart(39, '0')}`,
+    parents: [{ sha: `p${String(from + i).padStart(39, '0')}` }, { sha: undefined }],
     commit: { message: `feat: change ${from + i} (${formatIssueRef(null, from + i)})` },
   }));
 }
@@ -49,8 +50,16 @@ describe('readLiveDivergence', () => {
       liveSha: LIVE,
       aheadBy: 2,
       commits: [
-        { sha: commits(1, 1)[0]?.sha, message: 'feat: change 1 (ISS-1)' },
-        { sha: commits(2, 1)[0]?.sha, message: 'feat: change 2 (ISS-2)' },
+        {
+          sha: commits(1, 1)[0]?.sha,
+          message: 'feat: change 1 (ISS-1)',
+          parents: [`p${'1'.padStart(39, '0')}`],
+        },
+        {
+          sha: commits(2, 1)[0]?.sha,
+          message: 'feat: change 2 (ISS-2)',
+          parents: [`p${'2'.padStart(39, '0')}`],
+        },
       ],
       complete: true,
     });

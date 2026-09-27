@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { BASE_MERGE_STATE } from '../issues/merged-at.js';
-import { foldLanes } from './pulse-folds.js';
+import { foldLanes, foldSessionFailures } from './pulse-folds.js';
 import { idList } from './pulse-sql.js';
 import { PULSE_QUALITY_WINDOW_DAYS, type PulseQuality } from './pulse-types.js';
 
@@ -83,16 +83,16 @@ async function readLanes(scope: ReturnType<typeof idList>) {
 }
 
 /**
- * Failed agent sessions of the window, grouped by what killed them.
+ * Failed agent sessions of the window, by the cause that killed them.
  */
 async function readSessionFailures(scope: ReturnType<typeof idList>) {
   const rows = (await db.execute(sql`
-    SELECT coalesce(failure_reason, 'unclassified') AS reason, count(*)::int AS n
+    SELECT failure_reason AS reason, count(*)::int AS n
     FROM agent_sessions
     WHERE project_id IN (${scope}) AND status = 'failed' AND created_at >= ${windowExpr}
-    GROUP BY 1 ORDER BY 2 DESC
-  `)) as unknown as Array<{ reason: string; n: number }>;
-  return rows.map((r) => ({ reason: r.reason, count: Number(r.n) }));
+    GROUP BY 1
+  `)) as unknown as Array<{ reason: string | null; n: number }>;
+  return foldSessionFailures(rows.map((r) => ({ reason: r.reason, count: Number(r.n) })));
 }
 
 /** Per job type: how many ran, and how long the middle one took. */

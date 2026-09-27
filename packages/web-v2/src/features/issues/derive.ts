@@ -121,18 +121,8 @@ export const complexityLabel = (
 	c: IssueComplexity | null | undefined,
 ): string => (c ? (COMPLEXITY_LABELS[c] ?? c) : "—");
 
-/**
- * Map an issue lifecycle status (+ optional live agent status) to a design-kit
- * `StatusKey` for the StatusChip. A running/queued agent wins so the chip shows
- * the live `running · <stage>` band.
- */
-export function statusToChip(
-	status: IssueStatus,
-	agentStatus?: IssueAgentStatus,
-): StatusKey {
-	if (agentStatus === "running") return "running";
-	if (agentStatus === "queued") return "queued";
-	if (agentStatus === "failed") return "failed";
+/** The issue's lifecycle status as a design-kit `StatusKey`. The agent run's state is a different fact with its own chip: `runStatusChip`. */
+export function statusToChip(status: IssueStatus): StatusKey {
 	switch (status) {
 		case "in_progress":
 		case "reopen":
@@ -164,6 +154,29 @@ export function statusToChip(
 			return "queued";
 	}
 }
+
+/** What an issue carries about its run: the sessions' verdict and the pipeline's queued job. */
+export interface RunReadingSource {
+	agentStatus?: IssueAgentStatus;
+	pipelineHealth?: PipelineHealth;
+}
+
+/**
+ * The agent run's state as a session-domain `StatusKey`, or null when no run has one to show — the
+ * one reading every run chip draws from. A job no runner has claimed yet has no session, so
+ * `agentStatus` alone reads it as no run; `pipelineHealth.queuedStep` is what says it is queued.
+ */
+export function runStatusChip({ agentStatus, pipelineHealth }: RunReadingSource): StatusKey | null {
+	if (agentStatus === "running") return "running";
+	if (agentStatus === "queued" || pipelineHealth?.queuedStep) return "queued";
+	if (agentStatus === "completed") return "done";
+	if (agentStatus === "failed") return "failed";
+	return null;
+}
+
+/** Whether the run's reading says an agent is working or waiting to. */
+export const isLiveRun = (chip: StatusKey | null): chip is "running" | "queued" =>
+	chip === "running" || chip === "queued";
 
 export function statusToTone(status: IssueStatus): SemanticTone {
 	return STATUS_KEY_TONE[statusToChip(status)];
@@ -286,6 +299,8 @@ export function filterToQueryParams(filter: IssueFilter): {
 	status?: IssueStatus[];
 	statusNot?: IssueStatus[];
 	origin?: "detector" | "human";
+	/** Also match an issue a person owes an answer, whatever its status (ISS-1257). */
+	orWaitingOnPerson?: boolean;
 } {
 	switch (filter) {
 		case "draft":
@@ -300,6 +315,7 @@ export function filterToQueryParams(filter: IssueFilter): {
 					"awaiting_release",
 					"reopened",
 				),
+				orWaitingOnPerson: true,
 			};
 		case "agent":
 			return { status: statusesForLabels("open", "running", "unheld") };
@@ -308,6 +324,29 @@ export function filterToQueryParams(filter: IssueFilter): {
 		default:
 			return {};
 	}
+}
+
+/**
+ * How many issues a filter segment holds, from the search's buckets. A filter that
+ * also takes the issues a person owes an answer adds those at the statuses it does
+ * not name, each counted once (ISS-1257).
+ */
+export function filterCount(
+	filter: IssueFilter,
+	buckets: {
+		byStatus: Partial<Record<IssueStatus, number>>;
+		waitingOnPersonByStatus: Partial<Record<IssueStatus, number>>;
+	},
+): number {
+	const { status, orWaitingOnPerson } = filterToQueryParams(filter);
+	const named = new Set<string>(status ?? []);
+	let n = 0;
+	for (const s of named) n += buckets.byStatus[s as IssueStatus] ?? 0;
+	if (!orWaitingOnPerson) return n;
+	for (const [s, v] of Object.entries(buckets.waitingOnPersonByStatus)) {
+		if (!named.has(s)) n += v ?? 0;
+	}
+	return n;
 }
 
 /**
@@ -575,7 +614,8 @@ export function openBlockingRefs(
 
 /**
  * Derive the single blocker verdict for an issue, or `null` when it is actively
- * progressing. Precedence (richest signal first): needs_info →
+ * progressing. Precedence (richest signal first): needs_info → an open question
+ * blocked on a person →
  * waiting-for-approve → on_hold → pipelineHealth capacity/dep waits → open
  * `blocks` edges.
  *
@@ -587,6 +627,8 @@ export function deriveBlockerState(
 	issue: Pick<IssueDetail, "status">,
 	pipelineHealth: PipelineHealth | undefined,
 	deps: IssueDependencies | undefined,
+	/** When the oldest open question blocked on a person was asked; the marker that one is owed. */
+	waitingOnPersonSince: string | null = null,
 ): BlockerState | null {
 	const blockingRefs = openBlockingRefs(deps);
 
@@ -610,6 +652,18 @@ export function deriveBlockerState(
 			reason: "The pipeline needs more information before it can continue.",
 			whoMustAct: "Anyone on the project can act on it; what the run is waiting on is below.",
 			cta: { label: "Provide info", kind: "provide-info" },
+			...(blockingRefs.length ? { blockingRefs } : {}),
+		};
+	}
+
+	// ISS-1257 — a question marks the issue and leaves its rung alone, so the banner reads the
+	// marker as well as the status: work at `testing` can be waiting on a person too.
+	if (waitingOnPersonSince && issue.status !== "waiting") {
+		return {
+			tone: "attention",
+			reason: "A person owes this issue an answer before its work can go on.",
+			whoMustAct: "Anyone on the project can answer it; the question is below.",
+			cta: { label: "Answer it", kind: "provide-info" },
 			...(blockingRefs.length ? { blockingRefs } : {}),
 		};
 	}
@@ -1007,4 +1061,14 @@ export function canonicalIssueId(rawId: string, fetchedId: string | undefined): 
 
 export function issueQueryKey(id: string | undefined, projectId: string | undefined): readonly unknown[] {
 	return !id || UUID_RE.test(id) ? ["issue", id] : ["issue", id, projectId];
+}
+
+export function waitingOnPersonSinceOf(
+	questions: ReadonlyArray<{ status: string; blockerKind: string; createdAt: string }> | undefined,
+): string | null {
+	const asked = (questions ?? [])
+		.filter((q) => q.status === "open" && q.blockerKind === "human")
+		.map((q) => q.createdAt)
+		.sort();
+	return asked[0] ?? null;
 }

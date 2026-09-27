@@ -1,5 +1,6 @@
 "use client";
 
+import type { Ref } from "react";
 import { Icon } from "@/design/icons/icon";
 import { Breadcrumb, type Crumb } from "@/design/primitives/breadcrumb";
 import { Button } from "@/design/primitives/button";
@@ -24,6 +25,8 @@ export interface TopBarProps {
   notificationCount?: number;
   onCommandPalette?: () => void;
   onNotifications?: () => void;
+  /** The bell button, for a notifications panel to be placed against. */
+  notificationsRef?: Ref<HTMLButtonElement>;
   onNewIssue?: () => void;
   /** Opens the global Agent Chat dock. Renders an "Ask agent" action when set. */
   onAskAgent?: () => void;
@@ -45,6 +48,7 @@ export function TopBar({
   notificationCount = 0,
   onCommandPalette,
   onNotifications,
+  notificationsRef,
   onNewIssue,
   onAskAgent,
   askAgentActive = false,
@@ -104,6 +108,7 @@ export function TopBar({
           </Tooltip>
         )}
         <button
+          ref={notificationsRef}
           type="button"
           onClick={onNotifications}
           className="relative inline-flex size-9 items-center justify-center rounded-md text-muted transition-colors hover:bg-hover hover:text-fg"

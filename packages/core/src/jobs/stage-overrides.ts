@@ -113,6 +113,20 @@ async function loadStageMap(projectId: string): Promise<Record<string, StageConf
   }
 }
 
+/**
+ * Every MCP server name declared under a per-state `pipelineConfig.states.*.mcpServers` override,
+ * deduplicated across states.
+ *
+ * A project-wide resolution carries none of these: they reach an agent only on a dispatch at that
+ * state. A surface reporting the project-wide set names them rather than omitting them, which is
+ * what ISS-1191 was filed for.
+ */
+export async function stateDeclaredMcpNames(projectId: string): Promise<string[]> {
+  const states = await loadStageMap(projectId);
+  if (!states) return [];
+  return [...collectDeclaredMcpNames({ states })];
+}
+
 /** Return shape of {@link resolveProjectDefaultMcpServers}. */
 export interface ProjectDefaultMcpServers {
   /** Expanded servers (catalog shorthand → full spec) — the merge BASE. */

@@ -232,16 +232,20 @@ describe('a release job is offered only to the release pool', () => {
     expect(await poolIds(w)).toEqual([w.jobId]);
   });
 
-  it('offers a release job to nobody when the project declares no label', async () => {
-    const w = await seed({ type: 'release_batch', labels: [LABEL], bindingConfig: {} });
+  // ISS-1275 — no declaration is no preference, which is not a contradiction.
+  it('offers a release job to an unlabelled box when the project declares no label', async () => {
+    const w = await seed({ type: 'release_batch', labels: [], bindingConfig: {} });
 
-    expect(await poolIds(w)).toEqual([]);
+    expect(await poolIds(w)).toEqual([w.jobId]);
   });
 
-  it('offers a release job to nobody when the project has no live deploy binding', async () => {
-    const w = await seed({ type: 'release_batch', labels: [LABEL], bindingConfig: null });
+  // The predicate answers about the LABEL and nothing else. A project with no
+  // live binding has no release target either, which is `RELEASE_TARGET_UNDECLARED`
+  // at the door that cuts batches — a reason of its own, raised where it belongs.
+  it('offers a release job to an unlabelled box when the project has no live deploy binding', async () => {
+    const w = await seed({ type: 'release_batch', labels: [], bindingConfig: null });
 
-    expect(await poolIds(w)).toEqual([]);
+    expect(await poolIds(w)).toEqual([w.jobId]);
   });
 });
 
@@ -331,6 +335,50 @@ describe('the claim answers the same question by name', () => {
     expect(res).toEqual({ ok: false, reason: 'not_found' });
   });
 
+  // ISS-1275 — the claim door answers the same question as the pool, and it
+  // answers it for the ambiguous case too: two live bindings naming different
+  // labels resolve to no single box, which is a person's to reconcile.
+  it('refuses a release job while two live bindings name different labels', async () => {
+    const w = await seed({
+      type: 'release_batch',
+      labels: [LABEL],
+      bindingConfig: { releaseRunnerLabel: LABEL },
+    });
+    const otherConnection = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO integration_connections (id, owner_type, owner_id, provider, active, config)
+      SELECT ${otherConnection}, 'user', p.created_by, 'coolify', true, '{}'::jsonb
+      FROM projects p WHERE p.id = ${w.projectId}
+    `);
+    await harness.db.execute(sql`
+      INSERT INTO integration_bindings (connection_id, project_id, provider, role, stages, active, config)
+      VALUES (
+        ${otherConnection}, ${w.projectId}, 'coolify', 'deploy', ARRAY['live'], true,
+        ${JSON.stringify({ releaseRunnerLabel: 'some-other-box' })}::jsonb
+      )
+    `);
+
+    const res = await mods.prepareJobForMaster({
+      jobId: w.jobId,
+      deviceId: w.deviceId,
+      sessionId: session(),
+    });
+
+    expect(res).toEqual({ ok: false, reason: 'release_label_missing' });
+  });
+
+  it('admits a release job on an unlabelled box when the project declares no label', async () => {
+    const w = await seed({ type: 'release_batch', labels: [], bindingConfig: {} });
+
+    const res = await mods.prepareJobForMaster({
+      jobId: w.jobId,
+      deviceId: w.deviceId,
+      sessionId: session(),
+    });
+
+    expect(res.ok).toBe(true);
+  });
+
   it('admits the release job on the labelled box', async () => {
     const w = await seed({
       type: 'release_batch',
@@ -387,15 +435,43 @@ describe('the pool reads the label the release path reads', () => {
     expect(await poolIds(w)).toEqual([]);
   });
 
+  // ISS-1275 — this is the whole of what withdrawing the preference costs.
   it('lets a binding null out the connection-level label, for the pool as for the release', async () => {
     const w = await seed({
       type: 'release_batch',
-      labels: [LABEL],
+      labels: [],
       bindingConfig: { releaseRunnerLabel: null },
       connectionConfig: { releaseRunnerLabel: LABEL },
     });
 
     expect((await mods.resolveReleasePlan(w.projectId)).releaseRunnerLabel).toBeNull();
-    expect(await poolIds(w)).toEqual([]);
+    expect(await poolIds(w)).toEqual([w.jobId]);
+  });
+
+  // The distinction the fix turns on: two bindings AGREEING resolve to that one
+  // label. An implementation counting declarations rather than distinct values
+  // would read this as ambiguous and refuse a project that said one thing twice.
+  it('resolves the one label where two live bindings name the same one', async () => {
+    const w = await seed({
+      type: 'release_batch',
+      labels: [LABEL],
+      bindingConfig: { releaseRunnerLabel: LABEL },
+    });
+    const second = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO integration_connections (id, owner_type, owner_id, provider, active, config)
+      SELECT ${second}, 'user', p.created_by, 'coolify', true, '{}'::jsonb
+      FROM projects p WHERE p.id = ${w.projectId}
+    `);
+    await harness.db.execute(sql`
+      INSERT INTO integration_bindings (connection_id, project_id, provider, role, stages, active, config)
+      VALUES (
+        ${second}, ${w.projectId}, 'coolify', 'deploy', ARRAY['live'], true,
+        ${JSON.stringify({ releaseRunnerLabel: LABEL })}::jsonb
+      )
+    `);
+
+    expect((await mods.resolveReleasePlan(w.projectId)).releaseRunnerLabel).toBe(LABEL);
+    expect(await poolIds(w)).toEqual([w.jobId]);
   });
 });

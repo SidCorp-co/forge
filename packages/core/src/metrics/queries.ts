@@ -1,6 +1,7 @@
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { bucketIso, utcDateTrunc } from '../lib/time-buckets.js';
+import { firstShipped } from '../pipeline/shipped-at.js';
 
 export const METRICS = [
   'cost',
@@ -163,14 +164,9 @@ export async function runTimeseries(params: TimeseriesParams): Promise<Timeserie
 
     case 'throughput': {
       const rows = (await db.execute(sql`
-        SELECT ${utcDateTrunc(bucket, sql`al.created_at`)} AS bucket,
+        SELECT ${utcDateTrunc(bucket, sql`f.shipped_at`)} AS bucket,
                count(*)::int AS resolved
-        FROM activity_log al
-        JOIN issues i ON i.id = al.issue_id
-        WHERE i.project_id = ${projectId}
-          AND al.action = 'issue.statusChanged'
-          AND al.payload ->> 'to' IN ('closed', 'released', 'awaiting_release')
-          AND al.created_at >= ${cutoff}
+        FROM (${firstShipped({ projectIds: [projectId], from: cutoff })}) f
         GROUP BY 1
         ORDER BY 1
       `)) as unknown as Array<Record<string, unknown>>;
@@ -188,15 +184,8 @@ export async function runTimeseries(params: TimeseriesParams): Promise<Timeserie
     case 'cycle_time': {
       const rows = (await db.execute(sql`
         WITH resolved AS (
-          SELECT al.issue_id,
-                 max(al.created_at) AS resolved_at
-          FROM activity_log al
-          JOIN issues i ON i.id = al.issue_id
-          WHERE i.project_id = ${projectId}
-            AND al.action = 'issue.statusChanged'
-            AND al.payload ->> 'to' IN ('closed', 'released', 'awaiting_release')
-            AND al.created_at >= ${cutoff}
-          GROUP BY al.issue_id
+          SELECT f.issue_id, f.shipped_at AS resolved_at
+          FROM (${firstShipped({ projectIds: [projectId], from: cutoff })}) f
         ),
         -- and that changes no figure: the outer query LEFT JOINs this on exactly
         -- those ids, so every row it used to compute for another tenant's issue was

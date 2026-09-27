@@ -426,7 +426,7 @@ describe('what one box is told about one issue lease', () => {
 
     const seen = await mods.readDeviceIssueLease({ deviceId: boxA.id, issueKey: 'ISS-881' });
 
-    expect(seen).toEqual({ held: false, heldByThisDevice: false, holder: null });
+    expect(seen).toEqual({ held: false, heldByThisDevice: false, holder: null, issueOver: null });
   });
 
   it('stops reporting a lease once the holding session goes terminal', async () => {
@@ -444,7 +444,7 @@ describe('what one box is told about one issue lease', () => {
     expect(
       await mods.readDeviceIssueLease({ deviceId: boxB.id, issueKey: 'ISS-880' }),
       'a lease row that outlives its session strands the issue where no box can take it',
-    ).toEqual({ held: false, heldByThisDevice: false, holder: null });
+    ).toEqual({ held: false, heldByThisDevice: false, holder: null, issueOver: null });
   });
 });
 

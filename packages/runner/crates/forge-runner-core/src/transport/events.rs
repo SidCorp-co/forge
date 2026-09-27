@@ -73,15 +73,16 @@ async fn post_batch(client: &CoreClient, job_id: &str, events: &[JobEventInput])
                 if status.is_success() {
                     return Ok(events.len());
                 }
+                let said = super::status::named(status.as_u16());
                 if status.as_u16() == 409 || status.as_u16() == 403 {
-                    return Err(Error::Other(format!("{DISOWNED}: {status}")));
+                    return Err(Error::Other(format!("{DISOWNED}: {said}")));
                 }
                 if status.is_client_error() {
-                    return Err(Error::Other(format!("events client error: {status}")));
+                    return Err(Error::Other(format!("events client error: {said}")));
                 }
                 if attempt == MAX_ATTEMPTS {
                     return Err(Error::Other(format!(
-                        "post_job_events failed after {attempt} attempts: {status}"
+                        "post_job_events failed after {attempt} attempts: {said}"
                     )));
                 }
             }

@@ -117,6 +117,25 @@ describe('fetchDivergence', () => {
     expect(d.commits.every((c) => /^[0-9a-f]{40}$/.test(c.sha))).toBe(true);
   });
 
+  it("gives each commit its parents, the merge's first parent first", async () => {
+    const d = await fetchDivergence(
+      `file://${remote}`,
+      env,
+      { baseRef: 'staging', liveRef: 'master' },
+      scratch(),
+    );
+    if (!d.ok) throw new Error(d.reason);
+    const bySubject = new Map(d.commits.map((c) => [c.message.split('\n', 1)[0], c]));
+    const change = bySubject.get('fix(desk): a change (ISS-423)');
+    const side = bySubject.get('feat: the side work');
+    expect(change?.parents).toEqual([liveSha]);
+    expect(side?.parents).toEqual([change?.sha]);
+    expect(bySubject.get('Merge branch side into staging')?.parents).toEqual([
+      change?.sha,
+      side?.sha,
+    ]);
+  });
+
   it('lists nothing where live already holds every commit on base', async () => {
     const d = await fetchDivergence(
       `file://${remote}`,

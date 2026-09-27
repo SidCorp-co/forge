@@ -16,6 +16,7 @@ use std::time::Duration;
 
 use tokio::process::Command;
 
+use super::composer;
 use crate::error::{Error, Result};
 
 pub const MASTER_PREFIX: &str = "forge-master";
@@ -483,14 +484,81 @@ pub async fn brief_new_pane(name: &str, text: &str) -> Result<()> {
         return Err(Error::Other(format!("no session named {name}")));
     }
     tokio::time::sleep(PANE_BRIEF_DELAY).await;
-    send_line(name, text).await
+    send_line(name, text).await.map(|_| ())
 }
 
-pub async fn send_line(name: &str, text: &str) -> Result<()> {
+/// What `send_line` knew about the prompt it typed at.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Prompt {
+    /// A Claude Code composer, read empty before the paste.
+    Empty,
+    /// No Claude Code composer could be read, so nothing confirmed the prompt
+    /// was empty. The text was typed anyway, as it always was before a pane
+    /// could be read. A choice list is no longer one of these: it is refused
+    /// before the paste and so never reaches a `Prompt` at all.
+    Unread,
+}
+
+/// How much scrollback the prompt read takes, so a draft taller than the
+/// pane is still read from its first line.
+const PROMPT_READ_LINES: &str = "-500";
+
+async fn read_prompt(target: &str) -> composer::Composer {
+    let args = [
+        "capture-pane",
+        "-p",
+        "-e",
+        "-S",
+        PROMPT_READ_LINES,
+        "-t",
+        target,
+    ];
+    match tmux(&args).await {
+        Ok(out) if out.status.success() => composer::read(&String::from_utf8_lossy(&out.stdout)),
+        _ => composer::Composer::Unrecognised,
+    }
+}
+
+/// Type `text` into a pane and submit it.
+///
+/// Enter submits the whole composer, so a composer already holding text is
+/// refused, quoting it: typing there would send that text as part of this one.
+/// A pane showing a choice list is refused for the mirror reason: there Enter
+/// is a decision on the highlighted option and the pasted text is dropped, so
+/// a message that cannot be delivered is said not to have been (ISS-1266).
+/// The read comes a few milliseconds before the paste, and tmux has no lock
+/// over a pane's input, so a keystroke landing in between is not seen.
+pub async fn send_line(name: &str, text: &str) -> Result<Prompt> {
     if !alive(name).await {
         return Err(Error::Other(format!("no session named {name}")));
     }
     let target = pane_target(name);
+    let prompt = match read_prompt(&target).await {
+        composer::Composer::Empty => Prompt::Empty,
+        composer::Composer::Holds(found) => {
+            return Err(Error::Other(format!(
+                "{name}: nothing was typed — its prompt already holds unsent text, and Enter \
+would submit that text as part of this message. At the prompt: \u{ab}{}\u{bb}. Clear it or \
+submit it at the pane, then send again.",
+                composer::excerpt(&found, 400)
+            )));
+        }
+        composer::Composer::Menu { highlighted } => {
+            return Err(Error::Other(format!(
+                "{name}: nothing was typed — its pane is showing a choice list with \u{ab}{}\u{bb} \
+highlighted, and Enter there decides that choice instead of sending a message. Answer it at the \
+pane, or wait for whatever raised it to close, then send again.",
+                composer::excerpt(&highlighted, 200)
+            )));
+        }
+        composer::Composer::Unrecognised => {
+            tracing::warn!(
+                "[terminal] {name}: no Claude Code composer could be read on this pane, so \
+nothing confirmed its prompt was empty before typing"
+            );
+            Prompt::Unread
+        }
+    };
     let buffer = format!("forge-{}", std::process::id());
 
     let mut load = socket_args();
@@ -536,7 +604,7 @@ pub async fn send_line(name: &str, text: &str) -> Result<()> {
             String::from_utf8_lossy(&out.stderr).trim()
         )));
     }
-    Ok(())
+    Ok(prompt)
 }
 
 /// End a session by name, and answer for the session being gone.
@@ -630,6 +698,24 @@ pub(crate) mod testing {
     /// environment to choose it, so two at once are one test watching another
     /// one's pane.
     pub(crate) static ONE_AT_A_TIME: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+    /// Set by a test run that installed tmux and can give a test a server of
+    /// its own — CI's Linux leg. There, a tmux-reaching test that cannot run
+    /// has lost its subject, and returning would pass it green having
+    /// asserted nothing.
+    pub(crate) const REQUIRE_TMUX: &str = "FORGE_TEST_REQUIRE_TMUX";
+
+    /// Why a tmux-reaching test is not running. Under [`REQUIRE_TMUX`] that is
+    /// a failure naming `why`; anywhere else it is printed, and the caller
+    /// returns.
+    pub(crate) fn cannot_run(why: &str) {
+        if std::env::var_os(REQUIRE_TMUX).is_some_and(|v| !v.is_empty()) {
+            panic!(
+                "{why} — and {REQUIRE_TMUX} is set, so this run promised tmux and a server of this test's own; returning here would pass the test without running it"
+            );
+        }
+        eprintln!("{why}");
+    }
 
     /// A tmux server of this test's own, addressed the way production
     /// addresses the box's: through the config dir.
@@ -751,7 +837,7 @@ pub(crate) mod testing {
 
 #[cfg(test)]
 mod tests {
-    use super::testing::{RefusingKill, UnaskableTmux, ONE_AT_A_TIME};
+    use super::testing::{cannot_run, RefusingKill, UnaskableTmux, ONE_AT_A_TIME};
     use super::*;
     use crate::auth::cred_store::{ScopedVar, ENV_TEST_LOCK};
 
@@ -859,6 +945,29 @@ mod tests {
                 .is_ok_and(|o| !String::from_utf8_lossy(&o.stdout).trim().is_empty())
     }
 
+    /// A run that promised tmux turns a skip into a failure naming both the
+    /// reason and the promise; one that did not prints it and returns, which
+    /// is what a developer box without tmux still gets.
+    #[test]
+    fn a_skip_is_a_failure_only_where_the_run_promised_tmux() {
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        {
+            let _promised = ScopedVar::set(super::testing::REQUIRE_TMUX, "1");
+            let failed = std::panic::catch_unwind(|| cannot_run("tmux is not installed here"))
+                .expect_err("a promised tmux that is absent must fail the test");
+            let said = failed.downcast_ref::<String>().cloned().unwrap_or_default();
+            assert!(
+                said.contains("tmux is not installed here")
+                    && said.contains(super::testing::REQUIRE_TMUX),
+                "the failure names what was missing and what promised it: {said}"
+            );
+        }
+        {
+            let _unpromised = ScopedVar::unset(super::testing::REQUIRE_TMUX);
+            cannot_run("tmux is not installed here");
+        }
+    }
+
     #[test]
     fn a_pane_target_is_not_a_session_target() {
         assert_eq!(session_target("m"), "=m");
@@ -910,11 +1019,11 @@ mod tests {
         let _serialised = ONE_AT_A_TIME.lock().await;
         let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let Some(_sandbox) = Sandbox::new("incarnation") else {
-            eprintln!("this box gives a test no tmux server of its own — nothing runs rather than reaching its real one");
+            cannot_run("this box gives a test no tmux server of its own — nothing runs rather than reaching its real one");
             return;
         };
         if !available() {
-            eprintln!("tmux is not installed here — the transport test cannot run");
+            cannot_run("tmux is not installed here — the transport test cannot run");
             return;
         }
         let dir = crate::test_scratch::Scratch::new("terminal-inc");
@@ -1001,11 +1110,11 @@ mod tests {
         let _serialised = ONE_AT_A_TIME.lock().await;
         let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let Some(_sandbox) = Sandbox::new("kill-refused") else {
-            eprintln!("this box gives a test no tmux server of its own — nothing runs rather than reaching its real one");
+            cannot_run("this box gives a test no tmux server of its own — nothing runs rather than reaching its real one");
             return;
         };
         if !available() {
-            eprintln!("tmux is not installed here — the transport test cannot run");
+            cannot_run("tmux is not installed here — the transport test cannot run");
             return;
         }
         let dir = crate::test_scratch::Scratch::new("terminal-kr");
@@ -1063,11 +1172,11 @@ mod tests {
         let _serialised = ONE_AT_A_TIME.lock().await;
         let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let Some(_sandbox) = Sandbox::new("panes") else {
-            eprintln!("this box gives a test no tmux server of its own — nothing runs rather than reaching its real one");
+            cannot_run("this box gives a test no tmux server of its own — nothing runs rather than reaching its real one");
             return;
         };
         if !available() {
-            eprintln!("tmux is not installed here — the transport test cannot run");
+            cannot_run("tmux is not installed here — the transport test cannot run");
             return;
         }
         let dir = crate::test_scratch::Scratch::new("terminal");
@@ -1100,9 +1209,13 @@ mod tests {
             "ensure is idempotent: the second call creates nothing"
         );
 
-        send_line(&name, "first line\nsecond line")
-            .await
-            .expect("the paste must land");
+        assert_eq!(
+            send_line(&name, "first line\nsecond line")
+                .await
+                .expect("the paste must land"),
+            Prompt::Unread,
+            "a plain shell shows no composer, so the typing must say nothing confirmed it empty"
+        );
 
         let mut seen = String::new();
         for _ in 0..40 {
@@ -1131,17 +1244,291 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// A pane drawn the way Claude Code draws its composer: a rule, `❯` and the
+    /// draft, a rule, a footer. Each character typed joins the draft, and Enter
+    /// appends the whole draft to `$OUT` as one submission.
+    const FAKE_COMPOSER: &str = r#"R='────────────────'
+buf=''
+draw() { printf '\033[2J\033[H%s\n\342\235\257\302\240%s\n%s\n  footer\n' "$R" "$buf" "$R"; }
+draw
+while IFS= read -r -n1 c; do
+  if [ -z "$c" ]; then printf '%s\n' "$buf" >> "$OUT"; buf=''; else buf="$buf$c"; fi
+  draw
+done
+"#;
+
+    async fn composer_pane(dir: &std::path::Path, tag: &str) -> (String, std::path::PathBuf) {
+        let script = dir.join("composer.sh");
+        std::fs::write(&script, FAKE_COMPOSER).expect("the fake composer is written");
+        let out = dir.join(format!("{tag}.submitted"));
+        let name = session_name("forge-test", &format!("{tag}{}", std::process::id()));
+        let _ = kill(&name).await;
+        ensure(
+            &name,
+            dir,
+            &["bash".to_string(), script.to_string_lossy().into_owned()],
+            &[("OUT".into(), out.to_string_lossy().into_owned())],
+            None,
+        )
+        .await
+        .expect("the composer pane must start");
+        (name, out)
+    }
+
+    async fn composer_reads(name: &str, want: &composer::Composer) -> composer::Composer {
+        let mut seen = composer::Composer::Unrecognised;
+        for _ in 0..40 {
+            seen = read_prompt(&pane_target(name)).await;
+            if &seen == want {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+        seen
+    }
+
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn text_left_at_the_prompt_is_refused_by_name_and_never_submitted_with_the_message() {
+        let _serialised = ONE_AT_A_TIME.lock().await;
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(_sandbox) = Sandbox::new("dirty") else {
+            cannot_run("this box gives a test no tmux server of its own — nothing runs rather than reaching its real one");
+            return;
+        };
+        if !available() {
+            cannot_run("tmux is not installed here — the transport test cannot run");
+            return;
+        }
+        let dir = crate::test_scratch::Scratch::new("composer");
+        let (name, out) = composer_pane(&dir, "dirty").await;
+        assert_eq!(
+            composer_reads(&name, &composer::Composer::Empty).await,
+            composer::Composer::Empty,
+            "the fake must draw an empty composer before anything is typed"
+        );
+
+        // The issue's reproduction: text sits unsent at the prompt, then a message is sent.
+        let typed = tmux(&[
+            "send-keys",
+            "-t",
+            &pane_target(&name),
+            "-l",
+            "LEFTOVER-FROM-SOMEWHERE-ELSE ",
+        ])
+        .await
+        .expect("tmux runs");
+        assert!(typed.status.success(), "the leftover must be typed");
+        let leftover = composer::Composer::Holds("LEFTOVER-FROM-SOMEWHERE-ELSE".into());
+        assert_eq!(composer_reads(&name, &leftover).await, leftover);
+
+        let refused = send_line(&name, "MY-ORCHESTRATOR-MESSAGE")
+            .await
+            .expect_err("a composer holding text must refuse the send");
+        let said = refused.to_string();
+        assert!(
+            said.contains("LEFTOVER-FROM-SOMEWHERE-ELSE"),
+            "the refusal must quote what was at the prompt: {said}"
+        );
+        assert!(
+            said.contains("nothing was typed"),
+            "the refusal must say nothing was typed: {said}"
+        );
+
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        assert_eq!(
+            read_prompt(&pane_target(&name)).await,
+            leftover,
+            "the draft must be left exactly as it was"
+        );
+        assert!(
+            std::fs::read_to_string(&out).unwrap_or_default().is_empty(),
+            "nothing may be submitted: {:?}",
+            std::fs::read_to_string(&out)
+        );
+        kill(&name).await.expect("kill");
+
+        let (name, out) = composer_pane(&dir, "clean").await;
+        assert_eq!(
+            composer_reads(&name, &composer::Composer::Empty).await,
+            composer::Composer::Empty
+        );
+        assert_eq!(
+            send_line(&name, "MY-ORCHESTRATOR-MESSAGE")
+                .await
+                .expect("an empty composer takes the message"),
+            Prompt::Empty
+        );
+        let mut submitted = String::new();
+        for _ in 0..40 {
+            submitted = std::fs::read_to_string(&out).unwrap_or_default();
+            if !submitted.is_empty() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+        assert_eq!(
+            submitted, "MY-ORCHESTRATOR-MESSAGE\n",
+            "an empty composer submits exactly what the caller passed"
+        );
+        kill(&name).await.expect("kill");
+    }
+
+    /// A pane drawn the way Claude Code draws a choice list, recording every
+    /// key it is sent — Enter as `ENTER`, anything else as `KEY <c>`. The log
+    /// is what makes "no Enter was pressed" observable on its own: a refusal
+    /// that sent Enter and no text would leave it holding one line.
+    const FAKE_MENU: &str = r#"draw() { printf '\033[2J\033[H Do you want to proceed?\n \342\235\257 1. Yes\n   2. No\n\n Esc to cancel\n'; }
+draw
+while IFS= read -r -n1 c; do
+  if [ -z "$c" ]; then printf 'ENTER\n' >> "$OUT"; else printf 'KEY %s\n' "$c" >> "$OUT"; fi
+  draw
+done
+"#;
+
+    /// The same pane in the shape Claude Code's Rewind picker draws: the rows
+    /// parted by blank lines, and the highlighted one alone between two of
+    /// them. Under the immediate-neighbour reading this pane took the Enter
+    /// and the message was lost (ISS-1272).
+    const FAKE_REWIND: &str = r#"draw() { printf '\033[2J\033[H   Rewind\n\n     an earlier turn\n     No code changes\n\n   \342\235\257 (current)\n\n\n   Enter to continue \302\267 Esc to cancel\n'; }
+draw
+while IFS= read -r -n1 c; do
+  if [ -z "$c" ]; then printf 'ENTER\n' >> "$OUT"; else printf 'KEY %s\n' "$c" >> "$OUT"; fi
+  draw
+done
+"#;
+
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_choice_row_standing_between_blank_lines_is_refused_and_is_sent_no_key_at_all() {
+        let _serialised = ONE_AT_A_TIME.lock().await;
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(_sandbox) = Sandbox::new("rewind") else {
+            cannot_run("this box gives a test no tmux server of its own — nothing runs rather than reaching its real one");
+            return;
+        };
+        if !available() {
+            cannot_run("tmux is not installed here — the transport test cannot run");
+            return;
+        }
+        let dir = crate::test_scratch::Scratch::new("rewind");
+        let script = dir.join("rewind.sh");
+        std::fs::write(&script, FAKE_REWIND).expect("the fake picker is written");
+        let keys = dir.join("rewind.keys");
+        let name = session_name("forge-test", &format!("rewind{}", std::process::id()));
+        let _ = kill(&name).await;
+        ensure(
+            &name,
+            &dir,
+            &["bash".to_string(), script.to_string_lossy().into_owned()],
+            &[("OUT".into(), keys.to_string_lossy().into_owned())],
+            None,
+        )
+        .await
+        .expect("the picker pane must start");
+
+        let picker = composer::Composer::Menu {
+            highlighted: "(current)".into(),
+        };
+        assert_eq!(
+            composer_reads(&name, &picker).await,
+            picker,
+            "the fake must draw the picker before anything is sent"
+        );
+
+        let refused = send_line(&name, "REWIND-MESSAGE")
+            .await
+            .expect_err("a row standing between blank lines is still a choice list");
+        assert!(
+            refused.to_string().contains("(current)"),
+            "the refusal must quote the row that stood between the blanks: {refused}"
+        );
+
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        assert_eq!(
+            std::fs::read_to_string(&keys).unwrap_or_default(),
+            "",
+            "no key may reach it — the Enter this defect sent answered the picker"
+        );
+        kill(&name).await.expect("kill");
+    }
+
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_pane_showing_a_choice_list_is_refused_and_is_sent_no_key_at_all() {
+        let _serialised = ONE_AT_A_TIME.lock().await;
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(_sandbox) = Sandbox::new("menu") else {
+            cannot_run("this box gives a test no tmux server of its own — nothing runs rather than reaching its real one");
+            return;
+        };
+        if !available() {
+            cannot_run("tmux is not installed here — the transport test cannot run");
+            return;
+        }
+        let dir = crate::test_scratch::Scratch::new("menu");
+        let script = dir.join("menu.sh");
+        std::fs::write(&script, FAKE_MENU).expect("the fake menu is written");
+        let keys = dir.join("menu.keys");
+        let name = session_name("forge-test", &format!("menu{}", std::process::id()));
+        let _ = kill(&name).await;
+        ensure(
+            &name,
+            &dir,
+            &["bash".to_string(), script.to_string_lossy().into_owned()],
+            &[("OUT".into(), keys.to_string_lossy().into_owned())],
+            None,
+        )
+        .await
+        .expect("the menu pane must start");
+
+        let menu = composer::Composer::Menu {
+            highlighted: "1. Yes".into(),
+        };
+        assert_eq!(
+            composer_reads(&name, &menu).await,
+            menu,
+            "the fake must draw a choice list before anything is sent"
+        );
+
+        let refused = send_line(&name, "MY-ORCHESTRATOR-MESSAGE")
+            .await
+            .expect_err("a pane showing a choice list must refuse the send");
+        let said = refused.to_string();
+        assert!(
+            said.contains("1. Yes"),
+            "the refusal must quote the highlighted choice: {said}"
+        );
+        assert!(
+            said.contains("nothing was typed"),
+            "the refusal must say nothing was typed: {said}"
+        );
+
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        assert_eq!(
+            std::fs::read_to_string(&keys).unwrap_or_default(),
+            "",
+            "no key may reach a pane showing a choice list — an Enter alone would read as ENTER here"
+        );
+        assert_eq!(
+            read_prompt(&pane_target(&name)).await,
+            menu,
+            "the choice list must be left exactly as it was"
+        );
+        kill(&name).await.expect("kill");
+    }
+
     #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn a_restart_re_enters_the_pane_it_left_rather_than_starting_a_second_one() {
         let _serialised = ONE_AT_A_TIME.lock().await;
         let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let Some(_sandbox) = Sandbox::new("panes") else {
-            eprintln!("this box gives a test no tmux server of its own — nothing runs rather than reaching its real one");
+            cannot_run("this box gives a test no tmux server of its own — nothing runs rather than reaching its real one");
             return;
         };
         if !available() {
-            eprintln!("tmux is not installed here — the residency test cannot run");
+            cannot_run("tmux is not installed here — the residency test cannot run");
             return;
         }
         let dir = crate::test_scratch::Scratch::new("resident");
@@ -1758,8 +2145,14 @@ mod tests {
     async fn a_cold_start_hit_by_several_panes_at_once_places_one_server_and_loses_no_pane() {
         let _serialised = ONE_AT_A_TIME.lock().await;
         let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        if !available() || !can_place_a_unit().await {
-            eprintln!("no tmux or no systemd user manager here — the placement property does not exist on this box");
+        if !available() {
+            cannot_run("tmux is not installed here — the placement test cannot run");
+            return;
+        }
+        if !can_place_a_unit().await {
+            eprintln!(
+                "no systemd user manager here — the placement property does not exist on this box"
+            );
             return;
         }
         let home = ConfigHome::new("coldstart");

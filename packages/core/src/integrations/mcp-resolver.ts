@@ -4,8 +4,14 @@ import { directMcpIntegrations, mcpServerNameFor } from './registry.js';
 import { decryptConnectionSecrets, effectiveConfig } from './store.js';
 import type { IntegrationDeclaration } from './types.js';
 
+export interface ProducedMcpServer {
+  name: string;
+  bindingId: string;
+}
+
 export async function resolveGrantedMcpEntries(
   projectId: string,
+  produced?: ProducedMcpServer[],
 ): Promise<Record<string, Record<string, unknown>>> {
   const entries: Record<string, Record<string, unknown>> = {};
   for (const decl of directMcpIntegrations()) {
@@ -35,13 +41,19 @@ export async function resolveGrantedMcpEntries(
       const label = ((pair.binding as Record<string, unknown>).label as string) ?? '';
       const serverName = mcpServerNameFor(decl, label);
       if (!serverName) continue;
+      // First claim on a name keeps it: `usable` is granted order, oldest first, so a colliding
+      // binding never displaces the one already serving agents. The preview calls it `shadowed`.
+      if (serverName in entries) continue;
       try {
         const secrets = decryptConnectionSecrets<Record<string, unknown>>(pair.connection);
         if (!secrets) continue;
         const path = decl.capabilities.agentPath;
         if (path.kind !== 'direct-mcp') continue;
         const entry = path.buildEntry(effectiveConfig(pair), secrets);
-        if (entry) entries[serverName] = entry;
+        if (entry) {
+          entries[serverName] = entry;
+          produced?.push({ name: serverName, bindingId: pair.binding.id });
+        }
       } catch (err) {
         logger.warn(
           {
@@ -60,6 +72,15 @@ export async function resolveGrantedMcpEntries(
   return entries;
 }
 
+/** What {@link applyGrantedMcpServers} laid down, and under which names. */
+export interface GrantedMcpApplication {
+  map: Record<string, unknown> | null;
+  /** Every name this pass produced, each carrying the binding that produced it. One can be absent
+   *  though its binding is active, credentialed, granted and unshadowed, and two bindings of one
+   *  provider can land on one name, so neither a name nor its absence identifies a binding. */
+  produced: ProducedMcpServer[];
+}
+
 /**
  * Lay this project's granted integration entries over a resolved `mcpServers` map.
  *
@@ -69,10 +90,11 @@ export async function resolveGrantedMcpEntries(
 export async function applyGrantedMcpServers(
   projectId: string,
   current: Record<string, unknown> | null,
-): Promise<Record<string, unknown> | null> {
-  const entries = await resolveGrantedMcpEntries(projectId);
-  if (Object.keys(entries).length === 0) return current;
-  return { ...(current ?? {}), ...entries };
+): Promise<GrantedMcpApplication> {
+  const produced: ProducedMcpServer[] = [];
+  const entries = await resolveGrantedMcpEntries(projectId, produced);
+  if (produced.length === 0) return { map: current, produced };
+  return { map: { ...(current ?? {}), ...entries }, produced };
 }
 
 export function declaredServerNames(

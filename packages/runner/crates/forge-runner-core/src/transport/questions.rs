@@ -101,9 +101,13 @@ pub async fn ask(client: &CoreClient, req: Ask<'_>) -> Result<String> {
         return Err(Error::Unauthorized);
     }
     if !resp.status().is_success() {
-        let status = resp.status();
+        let code = resp.status().as_u16();
         let text = resp.text().await.unwrap_or_default();
-        return Err(Error::Other(format!("question ask: {status}: {text}")));
+        return Err(Error::Other(super::status::refused(
+            "question ask",
+            code,
+            &text,
+        )));
     }
     let parsed: AskReply = resp
         .json()
@@ -141,9 +145,13 @@ pub async fn answer(
         )));
     }
     if !resp.status().is_success() {
-        let status = resp.status();
+        let code = resp.status().as_u16();
         let text = resp.text().await.unwrap_or_default();
-        return Err(Error::Other(format!("question read: {status}: {text}")));
+        return Err(Error::Other(super::status::refused(
+            "question read",
+            code,
+            &text,
+        )));
     }
     let parsed: AnswerReply = resp
         .json()

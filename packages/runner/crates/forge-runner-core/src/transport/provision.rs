@@ -138,13 +138,19 @@ pub async fn pull_pending(client: &CoreClient) -> std::result::Result<Pending, P
         .await
         .map_err(|e| PullRefusal::unanswered(&url, &format!("never got an answer: {e}")))?;
     let status = resp.status();
+    // The status as `status::named` says it, and never as `StatusCode`'s own
+    // `Display`: that prints `520 <unknown status code>` for the whole 52x
+    // family the gateway in front of core answers with, which is the string
+    // ISS-1233 was filed carrying. Read once here because both the refusal
+    // below and the decode failure further down have to say it.
+    let named = super::status::named(status.as_u16());
     if !status.is_success() {
         let body = match tokio::time::timeout(BODY_DEADLINE, resp.text()).await {
             Ok(Ok(raw)) => body_excerpt(&raw),
             Ok(Err(e)) => format!("<could not be read: {e}>"),
             Err(_) => format!("<not sent within {}s>", BODY_DEADLINE.as_secs()),
         };
-        return Err(PullRefusal::answered(&url, status, &body));
+        return Err(PullRefusal::answered(&url, &named, &body));
     }
     let reported = parse_failures(
         resp.headers()
@@ -154,7 +160,7 @@ pub async fn pull_pending(client: &CoreClient) -> std::result::Result<Pending, P
     let provisions = resp.json::<Vec<Provision>>().await.map_err(|e| {
         PullRefusal::unanswered(
             &url,
-            &format!("answered {status} this box could not read: {e}"),
+            &format!("answered {named} this box could not read: {e}"),
         )
     })?;
     let recovery = streak().succeeded(Instant::now());
@@ -213,8 +219,10 @@ impl PullRefusal {
     /// a status and differing only in body are one streak, so the second body
     /// is not written — the escalation carries the body of the refusal that
     /// escalated, which is the current one.
-    fn answered(url: &str, status: reqwest::StatusCode, body: &str) -> Self {
-        let condition = format!("GET {url} answered {status}");
+    /// `named` is the status as [`super::status::named`] says it, which is what
+    /// makes one 52x code tell itself apart from the next.
+    fn answered(url: &str, named: &str, body: &str) -> Self {
+        let condition = format!("GET {url} answered {named}");
         Self {
             subject: format!("provisions failed: {condition}, body: {body}"),
             condition,
@@ -426,9 +434,12 @@ pub async fn report_status(
         .await
         .map_err(|e| Error::Other(format!("provision-status request: {e}")))?;
     if !resp.status().is_success() {
-        return Err(Error::Other(format!(
-            "provision-status failed: {}",
-            resp.status()
+        let code = resp.status().as_u16();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(Error::Other(super::status::refused(
+            "provision-status",
+            code,
+            &text,
         )));
     }
     Ok(())
@@ -522,11 +533,7 @@ mod tests {
     const CORE: &str = "http://core/api/devices/me/provisions";
 
     fn refusal(status: u16) -> PullRefusal {
-        PullRefusal::answered(
-            CORE,
-            reqwest::StatusCode::from_u16(status).unwrap(),
-            "<none>",
-        )
+        PullRefusal::answered(CORE, &super::super::status::named(status), "<none>")
     }
 
     #[test]
@@ -636,7 +643,7 @@ mod tests {
         let ray = |n: u32| {
             PullRefusal::answered(
                 CORE,
-                reqwest::StatusCode::from_u16(520).unwrap(),
+                &super::super::status::named(520),
                 &format!("error 520 Ray ID: 8f2c{n:04x} Web server is returning an unknown error"),
             )
         };
@@ -667,9 +674,8 @@ mod tests {
     #[test]
     fn a_base_url_carrying_the_body_marker_still_tells_two_statuses_apart() {
         let odd = "http://core/tenant, body: blue/api/devices/me/provisions";
-        let at = |code: u16| {
-            PullRefusal::answered(odd, reqwest::StatusCode::from_u16(code).unwrap(), "<none>")
-        };
+        let at =
+            |code: u16| PullRefusal::answered(odd, &super::super::status::named(code), "<none>");
         let mut s = Streak::new();
         let now = Instant::now();
         assert!(matches!(s.refused(&at(500), now), Entry::Refused(_)));

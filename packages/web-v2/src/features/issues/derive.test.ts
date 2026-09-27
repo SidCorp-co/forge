@@ -21,6 +21,8 @@ import {
 	depCounts,
 	deriveBlockerState,
 	deriveCommentKind,
+	filterCount,
+	waitingOnPersonSinceOf,
 	deriveStepOutcomes,
 	runningStepOf,
 	filterToQueryParams,
@@ -37,6 +39,7 @@ import {
 	STATUS_LABELS,
 	statusLabel,
 	LABEL_VIEW,
+	runStatusChip,
 	statusToChip,
 	statusToTone,
 	statusesFromParam,
@@ -83,10 +86,38 @@ function row(over: Partial<IssueRow> & { id: string }): IssueRow {
 /** The word the board shows for a row: its lane label, held or not. */
 const lane = (s: IssueStatus, held: boolean): string => LABEL_VIEW[toAutonomousLabel(s, held)].label;
 
+describe("runStatusChip — the run's state, never the issue's", () => {
+	const queuedJob = {
+		stage: "open",
+		queuedStep: { jobId: "j1", jobType: "drive", stageStatus: null, queuedAt: "2026-09-05T14:16:00Z", retryAfterAt: null },
+	};
+	it("maps each session state the API sends to its own session key", () => {
+		expect(runStatusChip({ agentStatus: "running" })).toBe("running");
+		expect(runStatusChip({ agentStatus: "queued" })).toBe("queued");
+		expect(runStatusChip({ agentStatus: "completed" })).toBe("done");
+		expect(runStatusChip({ agentStatus: "failed" })).toBe("failed");
+	});
+	it("reads a job queued before any session exists as a queued run (ISS-1277)", () => {
+		expect(runStatusChip({ agentStatus: null, pipelineHealth: queuedJob })).toBe("queued");
+	});
+	it("reads a job queued behind a finished session as queued, not the old outcome", () => {
+		expect(runStatusChip({ agentStatus: "failed", pipelineHealth: queuedJob })).toBe("queued");
+		expect(runStatusChip({ agentStatus: "completed", pipelineHealth: queuedJob })).toBe("queued");
+	});
+	it("lets a running session outrank a queued job", () => {
+		expect(runStatusChip({ agentStatus: "running", pipelineHealth: queuedJob })).toBe("running");
+	});
+	it("shows no chip when neither the sessions nor the pipeline say a run exists", () => {
+		expect(runStatusChip({ agentStatus: null })).toBeNull();
+		expect(runStatusChip({})).toBeNull();
+		expect(runStatusChip({ agentStatus: null, pipelineHealth: { stage: "open" } })).toBeNull();
+	});
+});
+
 describe("statusToChip", () => {
-	it("maps live agent status first", () => {
-		expect(statusToChip("approved", "running")).toBe("running");
-		expect(statusToChip("approved", "queued")).toBe("queued");
+	it("reads the issue's status alone, so an open issue is not drawn as its run", () => {
+		expect(statusToChip("approved")).toBe("queued");
+		expect(statusToChip("in_progress")).toBe("running");
 	});
 	it("maps lifecycle status to a kit StatusKey", () => {
 		expect(statusToChip("in_progress")).toBe("running");
@@ -1404,3 +1435,68 @@ describe("issueQueryKey (ISS-1160 — codex 1a508e/F1, recheck-confirmed)", () =
 		expect(issueQueryKey(undefined, "p1")).toEqual(["issue", undefined]);
 	});
 });
+
+// ISS-1257 — a question marks its issue and moves nothing, so the surfaces a person reads take
+// the marker as well as the status.
+describe("the marker that a person owes an issue an answer", () => {
+	const q = (status: string, blockerKind: string, createdAt: string) => ({
+		status,
+		blockerKind,
+		createdAt,
+	});
+
+	it("dates the marker from the oldest open question blocked on a person", () => {
+		expect(
+			waitingOnPersonSinceOf([
+				q("open", "human", "2026-09-25T10:00:00Z"),
+				q("open", "human", "2026-09-20T10:00:00Z"),
+				q("open", "master_or_peer", "2026-09-01T10:00:00Z"),
+				q("answered", "human", "2026-09-02T10:00:00Z"),
+			]),
+		).toBe("2026-09-20T10:00:00Z");
+	});
+
+	it("reads no marker once every question for a person is answered or void", () => {
+		expect(
+			waitingOnPersonSinceOf([
+				q("answered", "human", "2026-09-20T10:00:00Z"),
+				q("void", "human", "2026-09-21T10:00:00Z"),
+				q("open", "machine", "2026-09-22T10:00:00Z"),
+			]),
+		).toBeNull();
+		expect(waitingOnPersonSinceOf(undefined)).toBeNull();
+	});
+
+	it("shows a banner on an issue at testing that a person owes an answer", () => {
+		const banner = deriveBlockerState(
+			blockerIssue({ status: "testing" }),
+			undefined,
+			undefined,
+			"2026-09-20T10:00:00Z",
+		);
+		expect(banner?.tone).toBe("attention");
+		expect(banner?.reason).toMatch(/owes this issue an answer/);
+		expect(banner?.cta.kind).toBe("provide-info");
+	});
+
+	it("shows no banner at testing without the marker", () => {
+		expect(
+			deriveBlockerState(blockerIssue({ status: "testing" }), undefined, undefined, null),
+		).toBeNull();
+	});
+
+	it("asks Needs you to take the marker as well as its statuses", () => {
+		expect(filterToQueryParams("you").orWaitingOnPerson).toBe(true);
+		expect(filterToQueryParams("agent").orWaitingOnPerson).toBeUndefined();
+	});
+
+	it("counts a marked issue at a status Needs you does not name, once", () => {
+		const buckets = {
+			byStatus: { needs_info: 2, testing: 5 },
+			waitingOnPersonByStatus: { needs_info: 1, testing: 1 },
+		};
+		expect(filterCount("you", buckets)).toBe(3);
+		expect(filterCount("agent", buckets), "a filter that takes no marker counts only its statuses").toBe(5);
+	});
+});
+

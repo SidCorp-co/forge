@@ -71,15 +71,16 @@ async fn send(client: &CoreClient, url: &str, body: serde_json::Value) -> Result
         .await
         .map_err(|e| Error::Other(format!("lifecycle request: {e}")))?;
     if !resp.status().is_success() {
-        let status = resp.status();
+        let code = resp.status().as_u16();
         let text = resp.text().await.unwrap_or_default();
-        if status.as_u16() == 403 || status.as_u16() == 409 {
+        let said = super::status::refused("lifecycle", code, &text);
+        if code == 403 || code == 409 {
             return Err(Error::Other(format!(
-                "{}: lifecycle {status}: {text}",
+                "{}: {said}",
                 crate::transport::events::DISOWNED
             )));
         }
-        return Err(Error::Other(format!("lifecycle {status}: {text}")));
+        return Err(Error::Other(said));
     }
     Ok(())
 }

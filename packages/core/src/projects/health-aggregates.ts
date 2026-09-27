@@ -1,8 +1,8 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, pipelineRuns, projectMembers, projects, runners, users } from '../db/schema.js';
-import { activityLog } from '../db/schema-activity.js';
 import { createLimiter } from '../lib/bounded-concurrency.js';
+import { firstShipped } from '../pipeline/shipped-at.js';
 
 /**
  * The ten independent per-project reads behind `GET /api/projects/health`, and
@@ -69,36 +69,26 @@ const readBlockerRows = (projectIds: string[]) =>
     )
     .orderBy(issues.projectId, sql`${issues.updatedAt} DESC`);
 
+export type ThroughputRow = { projectId: string; n: number };
+
+const lastSevenDays = (projectIds: string[]) =>
+  firstShipped({ projectIds, from: sql`now() - interval '7 days'` });
+
 const readThroughputRows = (projectIds: string[]) =>
-  db
-    .select({
-      projectId: issues.projectId,
-      n: sql<number>`count(*)::int`,
-    })
-    .from(activityLog)
-    .innerJoin(issues, eq(issues.id, activityLog.issueId))
-    .where(
-      and(
-        inArray(issues.projectId, projectIds),
-        eq(activityLog.action, 'issue.statusChanged'),
-        sql`${activityLog.payload} ->> 'to' IN ('closed','released','awaiting_release')`,
-        sql`${activityLog.createdAt} >= now() - interval '7 days'`,
-      ),
-    )
-    .groupBy(issues.projectId);
+  db.execute(sql`
+    SELECT f.project_id AS "projectId", count(*)::int AS n
+    FROM (${lastSevenDays(projectIds)}) f
+    GROUP BY f.project_id
+  `) as unknown as Promise<ThroughputRow[]>;
 
 export type CycleRow = { project_id: string; avg_days: number | null };
 
 const readCycleRows = (projectIds: string[]) =>
   db.execute(sql`
     WITH completions AS (
-      SELECT al.issue_id, al.created_at, i.project_id, i.created_at AS issue_created_at
-      FROM activity_log al
-      JOIN issues i ON i.id = al.issue_id
-      WHERE i.project_id IN (${idList(projectIds)})
-        AND al.action = 'issue.statusChanged'
-        AND al.payload ->> 'to' IN ('closed','released','awaiting_release')
-        AND al.created_at >= now() - interval '7 days'
+      SELECT f.issue_id, f.shipped_at, f.project_id, i.created_at AS issue_created_at
+      FROM (${lastSevenDays(projectIds)}) f
+      JOIN issues i ON i.id = f.issue_id
     ),
     work_start AS (
       SELECT DISTINCT ON (al.issue_id) al.issue_id, al.created_at AS started_at
@@ -109,7 +99,7 @@ const readCycleRows = (projectIds: string[]) =>
       ORDER BY al.issue_id, al.created_at ASC
     )
     SELECT c.project_id,
-           avg(extract(epoch from (c.created_at - COALESCE(w.started_at, c.issue_created_at))) / 86400.0) AS avg_days
+           avg(extract(epoch from (c.shipped_at - COALESCE(w.started_at, c.issue_created_at))) / 86400.0) AS avg_days
     FROM completions c
     LEFT JOIN work_start w ON w.issue_id = c.issue_id
     GROUP BY c.project_id

@@ -1,7 +1,12 @@
 # `packages/core/src/db` — Drizzle schema conventions
 
-Single source of truth for Postgres schema. Every new table lands in
-[`schema.ts`](./schema.ts); migrations are generated into
+Single source of truth for Postgres schema. A new table lands either in
+[`schema.ts`](./schema.ts) or in a `schema-<subject>.ts` module of its own —
+`schema-issue-leases.ts`, `schema-deploy-locks.ts` and the rest. A module of its
+own owes two registrations, and a table carrying neither is invisible to the
+generator or to the query layer: the file path in `schema` in
+[`../../drizzle.config.ts`](../../drizzle.config.ts), and a spread into the
+`schema` object in [`db/client.ts`](./client.ts). Migrations are generated into
 [`../../drizzle/migrations/`](../../drizzle/migrations) via `pnpm db:generate`.
 
 The conventions below are set by Phase 2.1-C (ISS-146) and bind every later

@@ -2,6 +2,7 @@
 title: Getting started
 section: Getting started
 order: 10
+audience: user
 ---
 
 # Getting started with Forge
@@ -28,19 +29,22 @@ control. This page is the shortest path from zero to a running pipeline.
 2. **Pair a runner.** A project needs a machine to run jobs. Follow
    [Pair a runner](?path=pair-a-runner) — install the agent, approve it, and assign it
    to your project.
-3. **File your first issue.** Open the project, create an issue describing what
-   you want done, and let triage pick it up. Watch it advance through the
-   pipeline on the board.
+3. **File your first issue.** Open the project and choose **New issue**.
+   [Ask for a change](?path=file-a-request) covers what to write. From then on
+   the issue's status says who holds the work.
 
 ## Verify it worked
 
 - The project appears in your console under the right organization.
 - Your device shows **online** under **Runners**.
-- A new issue moves from `open` to `confirmed` shortly after you file it.
+- Your new issue is on the project's Issues list at **Open** — or at **Draft**,
+  if your project reviews new issues before work starts.
 
 ## Next
 
 - [Pair a runner](?path=pair-a-runner) — the one piece most setups get stuck on.
 - [Manage your organization](?path=manage-your-organization) — invite teammates and
   set roles.
+- [What connecting an assistant does](?path=connect-an-assistant/what-this-does) —
+  ask about your project from Claude, Cursor or another assistant you already use.
 - [Troubleshooting](?path=troubleshooting) — if something doesn't light up.

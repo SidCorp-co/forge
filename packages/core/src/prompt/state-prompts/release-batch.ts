@@ -16,7 +16,8 @@ tag or deployment — nothing you did could be recorded. End the turn saying whi
 text. Do not look for another credential on this machine.
 
 ### Ordering contract (load-bearing — follow exactly)
-1. \`forge_release_batch\` action \`get\` → roster, releaseNotes per issue, branches, deployPlanned.
+1. \`forge_release_batch\` action \`get\` → roster, releaseNotes per issue, deployPlanned, and the
+   branches where the project declares any.
 2. Carry out the release procedure printed in your task prompt. That text is the authority
    on branches, versioning, changelog and deploy — this block is not, and you must not
    substitute a step it does not name.
@@ -33,22 +34,32 @@ this release happened. Call it after the procedure completed AND you read its re
 call it because the steps ran without throwing, and never to tidy up a partial release.
 
 When the project declares verification probes, the SERVER reads them after \`finish\` and ends
-the attempt \`failed\` with RELEASE_NOT_VERIFIED unless the live build both changed and matches
-your \`commit\`. You cannot assert your way past it, and you must not: a refusal means the deploy
-did not land.
+the attempt \`failed\` with RELEASE_NOT_VERIFIED unless the live build matches your \`commit\`
+before its window closes. You cannot assert your way past it, and you must not: that refusal means
+the deploy had not landed when the window closed. It is not the end of the batch — once the deploy
+has landed (it was still coming up, or you repaired forward and deployed again), call \`finish\`
+again with the commit you last pushed, which starts a new attempt. A deploy that will not land inside
+this run is a failure, below.
 
-On ANY failure — a conflict, a failed deploy, a step you could not complete, a procedure that
-does not fit what you actually found:
-→ \`forge_release_batch\` action \`abort\` with \`reason\` — claims released, NOTHING closed.
+On a failure you cannot repair forward inside this run — a conflict, a deploy that will not land,
+a step you could not complete, a procedure that does not fit what you actually found:
+→ \`forge_release_batch\` action \`abort\` with \`reason\`. The abort closes nothing, and an issue a
+  finish already closed stays closed (\`alreadyClosed\`). Where this run recorded no promotion, it
+  releases every claim and moves the issues still at \`releasing\` back to the release gate for
+  a later batch (\`recovered\`). Where this run recorded a promotion, the code may already be on
+  production, so the roster keeps its claims and stays at \`releasing\` for a person to settle.
+  Report each issue where the abort's answer says it is.
 → Then fail the turn honestly so the job records 'failed'.
 
 ### Policy
-- Every issue in the batch closes together or none does. There is no partial finish.
+- A finish closes the roster issue by issue once its verification is green: a \`finished\` attempt
+  lists what it \`closed\` and what \`failed\` to close, and an abort landing mid-close leaves the
+  closed ones closed. Report both lists, each failure with its reason.
 - The CHANGELOG entry is written in English. Everything else — comments, your report — goes in
   the language the project works in.
 - finish is idempotent: while an attempt is running, calling it again with the same \`commit\`
-  answers that attempt; once it has finished, it answers the recorded outcome.
-- An aborted batch leaves every issue exactly where it was, ready for a later batch.
+  answers that attempt; once it has finished, it answers the recorded outcome, and a \`finish\`
+  naming another commit is refused RELEASE_FINISHED_FOR_OTHER_COMMIT.
 - If the deploy comes up dead, REPAIR FORWARD. Never roll back, never revert a shared branch and
   never restore an earlier build: from inside this session you cannot tell an outage you caused
   from one that was already there. Where you cannot repair forward, abort with the reason.`;

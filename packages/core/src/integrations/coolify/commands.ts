@@ -13,6 +13,7 @@
 
 import type { DeployStage } from '../../db/schema.js';
 import { effectiveConfig, listActiveDeployBindingsForProvider } from '../../integrations/store.js';
+import { DeployEnvironmentLockedError } from '../../pipeline/deploy-lock.js';
 import {
   type DispatchOutcome,
   dispatchCoolifyDeployDirect,
@@ -122,15 +123,18 @@ const shape = (outcome: DispatchOutcome) => ({
 });
 
 /**
- * `finish` refuses a release run that announced no method. Refusing the same run
- * here puts that refusal ahead of the deploy Forge performs rather than after
- * it: the announcement is the first write a run makes to its batch, so a run
- * that made it has shown its credential reaches the recording half (ISS-1211).
+ * The only thing establishing, before production changes, that this session's credential reaches
+ * the half that records what the deploy did (ISS-1211).
+ *
+ * It read as a method gate and never was one: `readRunMethod` answers non-null for any
+ * announcement, `loaded: false` included. ISS-1276 removed the method gate at `finish` and renamed
+ * this to say what it checks — a run announcing that its method would not load still deploys.
  */
-export const RELEASE_DEPLOY_BEFORE_METHOD =
-  'RELEASE_METHOD_NOT_ANNOUNCED: this release run has announced no method, so nothing shows the credential ' +
-  'it runs on can record what this deploy would do. Announce it first with forge_release_batch action=method ' +
-  '(the tool and credential finish takes), then deploy. A release deploy is refused before production changes, never after.';
+export const RELEASE_DEPLOY_BEFORE_RECORDING =
+  'RELEASE_NOTHING_RECORDED: this release run has recorded nothing through forge_release_batch, so nothing ' +
+  'shows the credential it runs on can record what this deploy would do. Make one call first — action=method ' +
+  'says what you are working from, and `loaded: false` with a detail is a valid answer — then deploy. ' +
+  'A release deploy is refused before production changes, never after.';
 
 export async function runCoolifyDeploy(input: {
   projectId: string;
@@ -147,17 +151,27 @@ export async function runCoolifyDeploy(input: {
       );
     }
     if ((await readRunMethod(input.pipelineRunId)) === null) {
-      throw new CoolifyCommandError(RELEASE_DEPLOY_BEFORE_METHOD);
+      throw new CoolifyCommandError(RELEASE_DEPLOY_BEFORE_RECORDING);
     }
-    return shape(
-      await tryDispatchCoolifyRelease({
-        projectId,
-        issueId: null,
-        runId: input.pipelineRunId,
-        integrationId: input.integrationId ?? null,
-        allowLive: true,
-      }),
-    );
+    // ISS-1279 — the release path, and the only caller that takes the deploy lock: a release
+    // reaching an environment another is mid-deploy to is refused rather than queued.
+    try {
+      return shape(
+        await tryDispatchCoolifyRelease({
+          projectId,
+          issueId: null,
+          runId: input.pipelineRunId,
+          integrationId: input.integrationId ?? null,
+          allowLive: true,
+          takeEnvironmentLock: true,
+        }),
+      );
+    } catch (err) {
+      if (err instanceof DeployEnvironmentLockedError) {
+        throw new CoolifyCommandError(err.message);
+      }
+      throw err;
+    }
   }
 
   if (input.issueId) {

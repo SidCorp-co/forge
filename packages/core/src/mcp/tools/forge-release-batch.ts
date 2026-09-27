@@ -18,26 +18,19 @@ import type { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import type { McpPrincipal } from '../../middleware/require-pat.js';
 import { acceptReleaseBatchFinish } from '../../release-batch/finish-job.js';
+import { announceMethod } from '../../release-batch/method.js';
+import { RELEASE_BATCH_SKILL, RELEASE_BATCH_TOOL } from '../../release-batch/plan.js';
 import {
-  announceMethod,
-  MethodMismatchError,
-  MethodNotAnnouncedError,
-} from '../../release-batch/method.js';
-import {
-  RELEASE_BATCH_SKILL,
-  RELEASE_BATCH_TOOL,
-  ReleaseBranchesUndeclaredError,
-} from '../../release-batch/plan.js';
-import {
+  finishedForSentence,
   finishRefusal as finishHttpRefusal,
   recordRefusal,
-  undeclaredBranches,
 } from '../../release-batch/refusals.js';
 import {
   abortReleaseBatch,
   findReleaseBatchRun,
   loadReleaseBatchContext,
   ReleaseBatchAbortedError,
+  ReleaseFinishedForOtherCommitError,
   ReleaseFinishInFlightError,
   ReleaseNotVerifiedError,
   ReleaseProbesUndeclaredError,
@@ -109,27 +102,7 @@ async function assertRunOfProject(runId: string, projectId: string): Promise<voi
   }
 }
 
-function methodRefusalHere(err: unknown): Error | null {
-  if (err instanceof MethodNotAnnouncedError) {
-    return refusal(
-      'RELEASE_METHOD_NOT_ANNOUNCED',
-      `this run never announced the method it was working from. Call ${RELEASE_BATCH_TOOL} action=method ` +
-        `with skill="${err.expected}" and loaded=true, or loaded=false with a detail if the skill would not load, then finish again.`,
-    );
-  }
-  if (err instanceof MethodMismatchError) {
-    return refusal(
-      'RELEASE_METHOD_MISMATCH',
-      `this run announced the method \`${err.announced}\` and its job names \`${err.expected}\`. ` +
-        `Announce \`${err.expected}\` with action=method, or abort with what you actually ran.`,
-    );
-  }
-  return null;
-}
-
 function finishRefusal(err: unknown): Error {
-  const method = methodRefusalHere(err);
-  if (method) return method;
   if (err instanceof ReleaseNotVerifiedError || err instanceof ReleaseProbesUndeclaredError) {
     return fromHttp(recordRefusal(err));
   }
@@ -137,15 +110,25 @@ function finishRefusal(err: unknown): Error {
     return refusal('RELEASE_VERSION_MISSING', err.message);
   }
   if (err instanceof ReleaseFinishInFlightError) {
-    const http = finishHttpRefusal(err);
-    if (http) return fromHttp(http);
+    return refusal(
+      'RELEASE_FINISH_IN_FLIGHT',
+      `a finish for ${err.inFlightCommit ?? 'no named commit'} is already running on this batch, and this call names ` +
+        `${err.askedCommit ?? 'no commit'}. Read it with ${RELEASE_BATCH_TOOL} action=state runId=${err.where.runId}: ` +
+        '`finish.state` ends at `finished` or `failed`, and a new finish is taken once that one has failed.',
+      { requestId: err.requestId, inFlightCommit: err.inFlightCommit },
+    );
+  }
+  if (err instanceof ReleaseFinishedForOtherCommitError) {
+    return refusal(
+      'RELEASE_FINISHED_FOR_OTHER_COMMIT',
+      `${finishedForSentence(err)} Read what it recorded with ${RELEASE_BATCH_TOOL} action=state runId=${err.where.runId}.`,
+      { requestId: err.requestId, finishedCommit: err.finishedCommit },
+    );
   }
   if (err instanceof ReleaseBatchAbortedError) {
-    return refusal(
-      'RELEASE_BATCH_ABORTED',
-      'this batch was aborted, so there is nothing left to finish: its claims were released. ' +
-        'If the release did land after all, that is a person’s call to make on each issue.',
-    );
+    // The same account the REST door gives and the finish record stores: one sentence per abort.
+    const http = finishHttpRefusal(err);
+    if (http) return fromHttp(http);
   }
   return err instanceof Error ? err : new Error(String(err));
 }
@@ -153,14 +136,8 @@ function finishRefusal(err: unknown): Error {
 async function run(principal: McpPrincipal, input: Input, projectId: string): Promise<unknown> {
   const { runId } = input;
   switch (input.action) {
-    case 'get': {
-      try {
-        return await loadReleaseBatchContext(runId);
-      } catch (err) {
-        if (err instanceof ReleaseBranchesUndeclaredError) throw fromHttp(undeclaredBranches(err));
-        throw err;
-      }
-    }
+    case 'get':
+      return await loadReleaseBatchContext(runId);
     case 'state': {
       const state = await readReleaseRunState(runId);
       if (!state || state.projectId !== projectId) {
@@ -214,9 +191,12 @@ export const forgeReleaseBatchTool: ContextScopedMcpToolFactory = (ctx) => ({
     'Read and record one release batch from inside the release_batch job that runs it — the calls its prompt names, ' +
     'on the credential the job already holds. Actions: `get` (the batch context: roster, release notes, branches, deploy plan; ' +
     'call it FIRST), `state` (roster, attempts, live reading, bounds, announced method), `method` (announce the method loaded: ' +
-    '`skill` + `loaded`, optional `detail`; finish refuses a run that announced none), `finish` (`commit` = the SHA pushed to ' +
+    '`skill` + `loaded`, optional `detail`; a Coolify deploy is refused until this run has recorded something, and this is the ' +
+    'call that records it first), `finish` (`commit` = the SHA pushed to ' +
     'production; answers at once with the attempt at `accepted`, and the server then reads the probes and closes every claimed issue ' +
-    'on its own — read `state` → `finish.state` for `finished` or `failed`, whose `refusal` says why), `abort` (`reason`; releases every claim, closes nothing — ' +
+    'on its own — read `state` → `finish.state` for `finished` or `failed`, whose `refusal` says why; a new `finish` after a `failed` one ' +
+    'starts a new attempt), `abort` (`reason`; closes nothing and leaves closed the issues a finish already closed, answered as `alreadyClosed`; ' +
+    'on a run that recorded no promotion it releases every claim and moves the issues still at `releasing` back to the release gate, answered as `recovered` — ' +
     'a roster whose run already promoted is left at `releasing` still claimed unless `promotedRoster: "return-to-gate"` names the settlement, which returns it ' +
     'to the release gate for `POST /release-records` to close against what production is serving). ' +
     'Every action needs `runId`, and a token with the write scope: a credential that could read the batch but not record it is ' +

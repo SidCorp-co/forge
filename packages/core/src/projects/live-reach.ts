@@ -1,5 +1,12 @@
 import type { WaitingCommit } from '../integrations/github/live-divergence.js';
 import { LEGACY_ISSUE_PREFIX } from '../lib/issue-ref.js';
+import {
+  type IssueWorkRecord,
+  type OwnerVia,
+  type ReadingOwnership,
+  readingOwnership,
+  subjectOf,
+} from './commit-owners.js';
 
 interface ReadingBranches {
   /** Null only on a refusal: a project naming no base branch has nothing to compare. */
@@ -22,11 +29,14 @@ export type LiveReading =
   | (ReadingBranches & { kind: 'refused'; reason: string; startedAt: Date })
   | (ReadingBranches & { kind: 'pending'; reason: string });
 
-export interface LiveReachEvidence {
+export interface LiveReachCommit {
   sha: string;
   subject: string;
-  /** `merged_commit` — the issue's own observed merge; `names_issue` — matched by `subjectIssueSeqs`. */
-  via: 'merged_commit' | 'names_issue';
+}
+
+export interface LiveReachEvidence extends LiveReachCommit {
+  /** `merged_commit` — the issue's own observed merge; the others as `commitOwners` counted it. */
+  via: 'merged_commit' | OwnerVia;
 }
 
 type Measured = ReadingBranches & {
@@ -39,7 +49,11 @@ type Measured = ReadingBranches & {
 /** Whether one merged issue's work is on the live branch, as far as one reading can say. */
 export type LiveReach =
   | (Measured & { state: 'not_on_live'; evidence: LiveReachEvidence[] })
-  | (Measured & { state: 'none_waiting' })
+  | (Measured & {
+      state: 'none_waiting';
+      /** Waiting commits no source gives to any issue: where a closed row could still be missed. */
+      unowned: LiveReachCommit[];
+    })
   | (ReadingBranches & { state: 'unmeasured'; measuredAt: string | null; reason: string });
 
 export interface LiveReachIssue {
@@ -61,34 +75,19 @@ export function issueRefPattern(prefixes: readonly string[]): RegExp {
   );
 }
 
-export function subjectOf(message: string): string {
-  return message.split('\n', 1)[0]?.trim() ?? '';
-}
-
-/**
- * Every issue sequence a commit's subject line names. The body is never read: it is where a commit
- * cites other issues' decisions, and a citation is not that issue's work.
- */
-export function subjectIssueSeqs(message: string, pattern: RegExp): Set<number> {
-  const seqs = new Set<number>();
-  for (const m of subjectOf(message).matchAll(pattern)) seqs.add(Number(m[1]));
-  return seqs;
-}
-
-/** The waiting commits that are this issue's merge or name it in their subject, in the reading's order. */
+/** The waiting commits that are this issue's merge or its work by `readingOwnership`, in the reading's order. */
 export function evidenceFor(
   issue: LiveReachIssue,
-  commits: readonly WaitingCommit[],
-  pattern: RegExp,
+  reading: { commits: readonly WaitingCommit[] },
+  ownership: ReadingOwnership,
 ): LiveReachEvidence[] {
   const own = (issue.mergedCommitSha ?? '').trim().toLowerCase();
   const out: LiveReachEvidence[] = [];
-  for (const c of commits) {
-    if (own !== '' && c.sha.toLowerCase() === own) {
-      out.push({ sha: c.sha, subject: subjectOf(c.message), via: 'merged_commit' });
-    } else if (subjectIssueSeqs(c.message, pattern).has(issue.issSeq)) {
-      out.push({ sha: c.sha, subject: subjectOf(c.message), via: 'names_issue' });
-    }
+  for (const c of reading.commits) {
+    const sha = c.sha.toLowerCase();
+    const via =
+      own !== '' && sha === own ? 'merged_commit' : ownership.owners.get(sha)?.get(issue.issSeq);
+    if (via) out.push({ sha: c.sha, subject: subjectOf(c.message), via });
   }
   return out;
 }
@@ -103,11 +102,13 @@ function mergedAfter(issue: LiveReachIssue, startedAt: Date): boolean {
  * One issue's verdict. `null` where there is nothing to place: no reading (the project is not
  * `promote`) or no merged mark. Absence of evidence is never read as "on live" — it is
  * `none_waiting` only from a complete reading taken after the merge, and `unmeasured` otherwise.
+ * `records` are the project's issues whose merged commit or recorded head is a waiting commit.
  */
 export function liveReachOf(
   issue: LiveReachIssue,
   reading: LiveReading | null,
   pattern: RegExp,
+  records: readonly IssueWorkRecord[] = [],
 ): LiveReach | null {
   if (!reading || issue.mergedAt == null) return null;
   const branches = { baseBranch: reading.baseBranch, liveBranch: reading.liveBranch };
@@ -125,7 +126,8 @@ export function liveReachOf(
     baseSha: reading.baseSha,
     liveSha: reading.liveSha,
   };
-  const evidence = evidenceFor(issue, reading.commits, pattern);
+  const ownership = readingOwnership(reading.commits, pattern, reading, records);
+  const evidence = evidenceFor(issue, reading, ownership);
   if (evidence.length > 0) return { ...measured, state: 'not_on_live', evidence };
   if (!reading.complete) {
     return {
@@ -143,5 +145,6 @@ export function liveReachOf(
       reason: `this issue merged after the last reading of ${reading.baseBranch} against ${reading.liveBranch}, which the next reading answers`,
     };
   }
-  return { ...measured, state: 'none_waiting' };
+  const unowned = ownership.ownerless.map((c) => ({ sha: c.sha, subject: subjectOf(c.message) }));
+  return { ...measured, state: 'none_waiting', unowned };
 }

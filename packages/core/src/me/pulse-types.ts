@@ -4,6 +4,8 @@
  * person, which way is the flow going, is the output any good.
  */
 
+import type { FailureCause } from '../pipeline/failure-causes.js';
+
 /** A set the response counts in full and names only the first `shown.length` of. */
 export interface PulseCapped<T> {
   total: number;
@@ -40,7 +42,11 @@ export interface PulseIssueIdentity {
 /** A closed issue whose work a reading of its project's branches places off the live branch. */
 export interface PulseNotOnLiveIdentity extends PulseIssueIdentity {
   liveBranch: string;
-  evidence: Array<{ sha: string; subject: string; via: 'merged_commit' | 'names_issue' }>;
+  evidence: Array<{
+    sha: string;
+    subject: string;
+    via: 'merged_commit' | 'declares_issue' | 'merged_in' | 'recorded_head';
+  }>;
 }
 
 /** A `promote` project whose base and live branches could not be compared, and why. */
@@ -134,7 +140,7 @@ export interface PulseQuality {
   reopened: { issues: number; events: number };
   rework: { fix: number; code: number };
   runFailure: { pipeline: PulseLane; scheduler: PulseLane; other: PulseLane };
-  sessionFailures: Array<{ reason: string; count: number }>;
+  sessionFailures: Array<{ reason: FailureCause; count: number }>;
   pipelineFlow: Array<{ type: string; count: number; medianSeconds: number | null }>;
 }
 

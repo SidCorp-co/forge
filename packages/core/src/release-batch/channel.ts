@@ -14,7 +14,7 @@ import {
 import { parseVerifyConfig, type VerifyConfig } from './verify.js';
 
 export type { ReleaseChannel, ReleasePlan, ReleaseRollback } from './plan.js';
-export { defaultReleaseProcedure, RELEASE_PROCEDURE_FACT } from './plan.js';
+export { RELEASE_PROCEDURE_FACT } from './plan.js';
 
 /**
  * Read one binding's stored `rollback` into what a release agent may act on.
@@ -67,6 +67,8 @@ export async function resolveReleaseChannels(projectId: string): Promise<Release
     const declared = parseVerifyConfig(cfg.verify);
     const absent = cfg.verify === undefined || cfg.verify === null;
     const verify = declared ?? (absent ? fallback : null);
+    // A declaration this repo refused takes no fallback (ISS-1069) and is not silence (ISS-1286).
+    const unusable = !declared && !absent;
     return {
       bindingId: pair.binding.id,
       provider: pair.binding.provider,
@@ -77,7 +79,9 @@ export async function resolveReleaseChannels(projectId: string): Promise<Release
         ? ('binding' as const)
         : verify
           ? ('environments-live' as const)
-          : ('none' as const),
+          : unusable
+            ? ('declared-unusable' as const)
+            : ('none' as const),
       rollback: classifyRollback(pair.binding.provider, cfg.rollback),
       releaseRunnerLabel: typeof label === 'string' && label.length > 0 ? label : null,
     };
