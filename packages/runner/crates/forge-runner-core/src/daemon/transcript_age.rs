@@ -60,6 +60,38 @@ pub fn written_at(path: &Path) -> Option<i64> {
     modified_ms(path)
 }
 
+/// How much of a transcript's end [`ends_on_stop_records`] reads. A stop
+/// hook's record is a few hundred bytes; a newest entry longer than this is
+/// not one, and reads as the turn that wrote it.
+const TAIL_BYTES: u64 = 64 * 1024;
+
+/// Whether the newest entry in the transcript at `path` is a record a
+/// `SubagentStop` hook left. `None` where the file cannot be read.
+///
+/// Claude Code appends one such record per hook once the hook returns, which is
+/// after the box stamped the stop, so a subagent's transcript is always written
+/// after the stop it records — 120 to 210 ms after, on both runs ISS-1312
+/// measured. Read by its time alone, that write is a resumed turn, and every
+/// finished subagent held every restart until its master closed it. An entry of
+/// any other kind after those records, or one that does not parse, is a turn.
+pub fn ends_on_stop_records(path: &Path) -> Option<bool> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut file = std::fs::File::open(path).ok()?;
+    let len = file.metadata().ok()?.len();
+    file.seek(SeekFrom::Start(len.saturating_sub(TAIL_BYTES)))
+        .ok()?;
+    let mut tail = Vec::new();
+    file.read_to_end(&mut tail).ok()?;
+    let tail = String::from_utf8_lossy(&tail);
+    let Some(newest) = tail.lines().rev().find(|l| !l.trim().is_empty()) else {
+        return Some(false);
+    };
+    let Ok(entry) = serde_json::from_str::<serde_json::Value>(newest) else {
+        return Some(false);
+    };
+    Some(entry["type"] == "attachment" && entry["attachment"]["hookEvent"] == "SubagentStop")
+}
+
 fn modified_ms(path: &Path) -> Option<i64> {
     let meta = std::fs::metadata(path).ok()?;
     if !meta.is_file() {
@@ -84,6 +116,26 @@ pub(crate) fn absolute_fixture(name: &str) -> String {
         .to_string_lossy()
         .into_owned()
 }
+
+/// The end of `agent-a9860d00885b2b2d0.jsonl` as ISS-1312 found it, cut to the
+/// fields that decide: the subagent's last message, then the two records its
+/// `SubagentStop` hooks appended after the box stamped the stop.
+#[cfg(test)]
+pub(crate) const STOP_TAIL: &str = concat!(
+    r#"{"isSidechain":true,"agentId":"a9860d00885b2b2d0","type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"ISS-259 is parked on a question."}]},"timestamp":"2026-09-27T11:10:16.900Z"}"#,
+    "\n",
+    r#"{"isSidechain":true,"agentId":"a9860d00885b2b2d0","attachment":{"type":"hook_success","hookName":"SubagentStop","hookEvent":"SubagentStop","exitCode":0},"type":"attachment","timestamp":"2026-09-27T11:10:17.000Z"}"#,
+    "\n",
+    r#"{"isSidechain":true,"agentId":"a9860d00885b2b2d0","attachment":{"type":"hook_success","hookName":"SubagentStop","hookEvent":"SubagentStop","exitCode":0},"type":"attachment","timestamp":"2026-09-27T11:10:17.080Z"}"#,
+    "\n",
+);
+
+/// A turn resumed after that stop: a background notification arrived.
+#[cfg(test)]
+pub(crate) const RESUMED_TAIL: &str = concat!(
+    r#"{"isSidechain":true,"agentId":"a9860d00885b2b2d0","type":"user","message":{"role":"user","content":"<task-notification>the suite finished</task-notification>"},"timestamp":"2026-09-27T11:11:13.000Z"}"#,
+    "\n",
+);
 
 #[cfg(test)]
 mod tests {
@@ -250,5 +302,62 @@ mod tests {
             .as_millis() as i64;
         let got = last_written(&lead).expect("readable");
         assert!((now - got).abs() < 5_000, "{now} vs {got}");
+    }
+
+    fn transcript(dir: &Scratch, body: &str) -> std::path::PathBuf {
+        let path = dir.path().join("agent-a1.jsonl");
+        std::fs::write(&path, body).expect("write");
+        path
+    }
+
+    #[test]
+    fn a_transcript_ending_on_its_stop_hooks_records_ends_on_its_stop() {
+        let dir = Scratch::new("transcript-age");
+        assert_eq!(
+            ends_on_stop_records(&transcript(&dir, STOP_TAIL)),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn an_entry_after_the_stop_records_is_a_turn_and_not_the_stop() {
+        let dir = Scratch::new("transcript-age");
+        let resumed = format!("{STOP_TAIL}{RESUMED_TAIL}");
+        assert_eq!(
+            ends_on_stop_records(&transcript(&dir, &resumed)),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn a_newest_entry_that_does_not_parse_is_never_read_as_a_stop() {
+        let dir = Scratch::new("transcript-age");
+        let torn = format!("{STOP_TAIL}{{\"type\":\"attach");
+        assert_eq!(ends_on_stop_records(&transcript(&dir, &torn)), Some(false));
+        assert_eq!(ends_on_stop_records(&transcript(&dir, "")), Some(false));
+    }
+
+    #[test]
+    fn another_hook_s_record_is_not_this_stop_s() {
+        let dir = Scratch::new("transcript-age");
+        let pre_tool = r#"{"type":"attachment","attachment":{"type":"hook_success","hookEvent":"PreToolUse"}}"#;
+        assert_eq!(
+            ends_on_stop_records(&transcript(&dir, &format!("{STOP_TAIL}{pre_tool}\n"))),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn only_the_tail_is_read_however_long_the_transcript() {
+        let dir = Scratch::new("transcript-age");
+        let long = format!("{}{STOP_TAIL}", RESUMED_TAIL.repeat(2_000));
+        assert!(long.len() as u64 > 4 * TAIL_BYTES);
+        assert_eq!(ends_on_stop_records(&transcript(&dir, &long)), Some(true));
+    }
+
+    #[test]
+    fn a_transcript_that_is_not_there_says_nothing_about_a_stop() {
+        let dir = Scratch::new("transcript-age");
+        assert_eq!(ends_on_stop_records(&dir.path().join("gone.jsonl")), None);
     }
 }
