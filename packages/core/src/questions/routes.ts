@@ -16,8 +16,7 @@ import {
   questionBlockerKinds,
   questionStatuses,
 } from '../db/schema-questions.js';
-import { TransitionError } from '../issues/apply-transition.js';
-import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
+import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {
   answerAs,
   askAs,
@@ -92,7 +91,6 @@ const REFUSAL_STATUS: Record<QuestionRefusalCode, ContentfulStatusCode> = {
   QUESTION_AUTHORITY_REQUIRED: 403,
   QUESTION_ISSUE_ELSEWHERE: 400,
   QUESTION_ISSUE_TERMINAL: 409,
-  QUESTION_ISSUE_MOVED: 409,
   QUESTION_REASON_REQUIRED: 400,
   QUESTION_OPTIONS_REQUIRED: 400,
   QUESTION_RECOMMENDED_UNKNOWN: 400,
@@ -197,18 +195,11 @@ questionRoutes.post('/', async (c) => {
       blockerKind: blockerKind ?? 'human',
       parkDeadlineAt: parkDeadlineAt ? new Date(parkDeadlineAt) : undefined,
       userId: c.get('userId'),
-      actor: restActor(c),
     });
     if (!asked) throw notFound('issue');
     return c.json(asked, 201);
   } catch (e) {
     if (e instanceof QuestionRefused) throw refused(e);
-    if (e instanceof TransitionError) {
-      throw new HTTPException(409, {
-        message: e.detail,
-        cause: { code: e.code, details: e.details },
-      });
-    }
     throw e;
   }
 });

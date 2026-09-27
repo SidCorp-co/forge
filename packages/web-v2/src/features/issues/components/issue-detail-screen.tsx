@@ -33,6 +33,7 @@ import {
 import { useResumeRun } from "@/features/pipeline/hooks";
 import { useProjects } from "@/features/projects/hooks";
 import { DECISION_PANEL_ANCHOR, DecisionPanel } from "@/features/questions/components/decision-panel";
+import { useIssueQuestions } from "@/features/questions/hooks";
 import { buildShareLink, useRecents } from "@/features/shell";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
@@ -44,6 +45,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   canonicalIssueId,
   deriveBlockerState,
+  waitingOnPersonSinceOf,
   deriveStepOutcomes,
   isLiveRun,
   runningStepOf,
@@ -159,6 +161,7 @@ export function IssueDetailScreen({
   const pending = patch.isPending || transitionPending || resumeRun.isPending;
 
   const issue = issueQ.data;
+  const questionsQ = useIssueQuestions(issue?.id ?? "");
   const checklist = useMemo(() => {
     const criteria = parseChecklist(issue?.acceptanceCriteria);
     const counts = new Map<string, number>();
@@ -220,7 +223,12 @@ export function IssueDetailScreen({
   const onBannerResume = () =>
     requestTransition(issue.id, "reopen", { successMessage: "Issue resumed", onSuccess: refreshIssue });
 
-  const blocker = deriveBlockerState(issue, issue.pipelineHealth, depsQ.data);
+  const blocker = deriveBlockerState(
+    issue,
+    issue.pipelineHealth,
+    depsQ.data,
+    waitingOnPersonSinceOf(questionsQ.data?.questions),
+  );
   const liveStep = issue.pipelineHealth?.activeSession?.skill ?? null;
   const stepOutcomes = deriveStepOutcomes(handoffsQ.data, durationsQ.data, {
     activeStep: runningStepOf(issue.pipelineHealth),

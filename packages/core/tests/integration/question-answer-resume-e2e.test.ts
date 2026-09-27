@@ -33,7 +33,6 @@ let transition: typeof import('../../src/issues/apply-transition.js');
 let write: typeof import('../../src/questions/write.js');
 let resume: typeof import('../../src/pipeline/answer-resume.js');
 let hooksMod: typeof import('../../src/pipeline/hooks.js');
-let read: typeof import('../../src/questions/read.js');
 
 beforeAll(async () => {
   harness = await setupTestDatabase();
@@ -45,7 +44,6 @@ beforeAll(async () => {
   write = await import('../../src/questions/write.js');
   resume = await import('../../src/pipeline/answer-resume.js');
   hooksMod = await import('../../src/pipeline/hooks.js');
-  read = await import('../../src/questions/read.js');
 }, 60_000);
 
 afterAll(async () => {
@@ -173,65 +171,10 @@ describe('answering returns the issue only when nothing is left to answer', () =
     expect(await statusOf(issueId)).toBe('needs_info');
   });
 
-  it('returns it to open when the last open question is answered', async () => {
+  it('returns it to open when the last open question is answered on a project that admits nothing at confirmed', async () => {
     const issueId = await insertIssue('needs_info');
     const only = await openQuestion(issueId);
     await answer(only);
     expect(await statusOf(issueId)).toBe('open');
-  });
-});
-
-describe('a person ask whose status read goes stale before its write', () => {
-  async function lockWaiter() {
-    for (let i = 0; i < 200; i++) {
-      const rows = await harness.db.execute(sql`
-        SELECT count(*)::int AS n FROM pg_stat_activity
-        WHERE wait_event_type = 'Lock' AND datname = current_database()
-      `);
-      if ((rows[0] as { n: number }).n > 0) return;
-      await new Promise((r) => setTimeout(r, 25));
-    }
-    throw new Error('the ask never waited on the row this test holds locked');
-  }
-
-  /** Moves the issue under a held row lock, starts the ask, and lets the move commit once the ask waits. */
-  async function askWhileMoving(issueId: string, to: string) {
-    let asked: ReturnType<typeof read.askAs> | undefined;
-    await harness.db.transaction(async (tx) => {
-      await tx.execute(sql`SELECT 1 FROM issues WHERE id = ${issueId} FOR UPDATE`);
-      await tx.execute(sql`UPDATE issues SET status = ${to} WHERE id = ${issueId}`);
-      asked = read.askAs({
-        userId: ownerId,
-        actor: person(),
-        issueId,
-        prompt: 'Which tenant?',
-        blockerKind: 'human',
-        answer: { shape: 'free_text', needed: 'the tenant slug' },
-      });
-      asked.catch(() => {});
-      await lockWaiter();
-    });
-    return asked;
-  }
-
-  async function openOn(issueId: string) {
-    const rows = await harness.db.execute(sql`
-      SELECT id FROM agent_questions WHERE issue_id = ${issueId} AND status = 'open'
-    `);
-    return rows.map((r) => (r as { id: string }).id);
-  }
-
-  it('parks the issue again when a resume took it to open after the ask read needs_info', async () => {
-    const issueId = await insertIssue('needs_info');
-    const asked = await askWhileMoving(issueId, 'open');
-    expect(await statusOf(issueId)).toBe('needs_info');
-    expect(await openOn(issueId)).toEqual([(asked as { id: string }).id]);
-  });
-
-  it('writes the question alone when another park reached needs_info after the ask read open', async () => {
-    const issueId = await insertIssue('open');
-    const asked = await askWhileMoving(issueId, 'needs_info');
-    expect(await statusOf(issueId)).toBe('needs_info');
-    expect(await openOn(issueId)).toEqual([(asked as { id: string }).id]);
   });
 });
