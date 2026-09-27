@@ -15,6 +15,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { readMigrationFiles } from 'drizzle-orm/migrator';
 import postgres, { type Sql } from 'postgres';
+import { caseDbName, drainRetiredCaseDbs, retireCaseDb } from '../helpers/scratch-db.js';
 
 const MIGRATIONS = fileURLToPath(new URL('../../drizzle/migrations', import.meta.url));
 
@@ -112,7 +113,7 @@ export async function preMigrationGround(): Promise<PreMigrationGround> {
   const adminUrl = process.env.TEST_PG_ADMIN_URL ?? process.env.TEST_DATABASE_URL ?? '';
   if (!adminUrl) throw new Error('no TEST_PG_ADMIN_URL — global setup did not run');
   const admin = postgres(adminUrl, { max: 1, onnotice: () => {} });
-  const template = `iss1046_tpl_${randomUUID().replace(/-/g, '').slice(0, 12)}`;
+  const template = caseDbName('iss1046tpl');
   await admin.unsafe(`CREATE DATABASE "${template}"`);
   const url = new URL(adminUrl);
   url.pathname = `/${template}`;
@@ -127,7 +128,7 @@ export async function preMigrationGround(): Promise<PreMigrationGround> {
 
   return {
     async fresh() {
-      const name = `iss1046_${randomUUID().replace(/-/g, '').slice(0, 16)}`;
+      const name = caseDbName('iss1046');
       await admin.unsafe(`CREATE DATABASE "${name}" TEMPLATE "${template}"`);
       const dbUrl = new URL(adminUrl);
       dbUrl.pathname = `/${name}`;
@@ -136,11 +137,12 @@ export async function preMigrationGround(): Promise<PreMigrationGround> {
         sql,
         drop: async () => {
           await sql.end({ timeout: 5 }).catch(() => {});
-          await admin.unsafe(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`).catch(() => {});
+          retireCaseDb(adminUrl, name);
         },
       };
     },
     async stop() {
+      await drainRetiredCaseDbs();
       await admin.unsafe(`DROP DATABASE IF EXISTS "${template}" WITH (FORCE)`).catch(() => {});
       await admin.end({ timeout: 5 });
     },
