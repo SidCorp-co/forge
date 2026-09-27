@@ -1063,7 +1063,6 @@ export function issueQueryKey(id: string | undefined, projectId: string | undefi
 	return !id || UUID_RE.test(id) ? ["issue", id] : ["issue", id, projectId];
 }
 
-/** When the oldest open question blocked on a person was asked, or null when none is open. */
 export function waitingOnPersonSinceOf(
 	questions: ReadonlyArray<{ status: string; blockerKind: string; createdAt: string }> | undefined,
 ): string | null {

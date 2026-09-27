@@ -15,9 +15,8 @@ type Executor = IssueDependencyExecutor;
 export const QUESTION_ENDED_WITH_ISSUE = 'issue_terminal';
 
 /**
- * The marker that a person owes an issue an answer: an open question on it whose
- * blocker kind is `human`. It is read from the question rows every time rather
- * than stored, so answering or voiding the last one clears it with no second write.
+ * The marker that a person owes an issue an answer: an open `human` question on it.
+ * Read from the rows, never stored, so answering or voiding the last one clears it.
  */
 export function holdsOpenHumanQuestion(issueId: SQLWrapper): SQL {
   return sql`exists (select 1 from agent_questions q
@@ -25,7 +24,9 @@ export function holdsOpenHumanQuestion(issueId: SQLWrapper): SQL {
 }
 
 export async function personOwesAnAnswer(executor: Executor, issueId: string): Promise<boolean> {
-  const rows = await executor.execute(sql`select ${holdsOpenHumanQuestion(sql`${issueId}::uuid`)} as held`);
+  const rows = await executor.execute(
+    sql`select ${holdsOpenHumanQuestion(sql`${issueId}::uuid`)} as held`,
+  );
   return (rows[0] as { held?: boolean } | undefined)?.held === true;
 }
 

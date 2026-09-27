@@ -151,7 +151,13 @@ async function transitionReasons(issueId: string): Promise<string[]> {
 const prompt = 'Publish now, or hold for the copy change?';
 const choice = {
   options: [
-    { id: 'publish', label: 'Publish it', authority: 'writer', bindsTo: 'session', executedBy: 'agent' },
+    {
+      id: 'publish',
+      label: 'Publish it',
+      authority: 'writer',
+      bindsTo: 'session',
+      executedBy: 'agent',
+    },
     { id: 'hold', label: 'Hold it', authority: 'writer', bindsTo: 'session', executedBy: 'agent' },
   ],
   recommendedOptionId: 'publish',

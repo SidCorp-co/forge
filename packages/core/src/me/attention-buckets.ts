@@ -29,8 +29,8 @@ import {
 import { issueArchiveSide } from '../issues/archive.js';
 import { creatorIsAgentCondition } from '../issues/creator.js';
 import { ISSUE_RESOLVED_STATUSES } from '../issues/status-sets.js';
-import { holdsOpenHumanQuestion } from '../questions/issue-coupling.js';
 import { visibleProjectsWhere } from '../lib/authz.js';
+import { holdsOpenHumanQuestion } from '../questions/issue-coupling.js';
 
 export const NEEDS_REVIEW_STATUSES = ['developed', 'reopen'] as const;
 export const AWAITING_INPUT_STATUSES = ['waiting', 'needs_info'] as const;

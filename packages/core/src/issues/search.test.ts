@@ -487,7 +487,6 @@ describe('withBuckets — the tab counts (ISS-1010)', () => {
     listWhereArgs.length = 0;
     const res = await req('?status=needs_info&withBuckets=1', await token());
     expect(res.status).toBe(200);
-    // Two grouped reads: every status, and the issues a person owes an answer (ISS-1257).
     expect(bucketWhereArgs).toHaveLength(2);
     expect(listWhereArgs).toHaveLength(1);
     expect(namesStatusColumn(listWhereArgs[0])).toBe(true);
