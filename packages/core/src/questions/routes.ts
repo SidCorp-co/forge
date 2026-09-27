@@ -16,7 +16,8 @@ import {
   questionBlockerKinds,
   questionStatuses,
 } from '../db/schema-questions.js';
-import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { TransitionError } from '../issues/apply-transition.js';
+import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import {
   answerAs,
   askAs,
@@ -90,6 +91,8 @@ const REFUSAL_STATUS: Record<QuestionRefusalCode, ContentfulStatusCode> = {
   QUESTION_OPTION_UNKNOWN: 400,
   QUESTION_AUTHORITY_REQUIRED: 403,
   QUESTION_ISSUE_ELSEWHERE: 400,
+  QUESTION_ISSUE_TERMINAL: 409,
+  QUESTION_ISSUE_MOVED: 409,
   QUESTION_REASON_REQUIRED: 400,
   QUESTION_OPTIONS_REQUIRED: 400,
   QUESTION_RECOMMENDED_UNKNOWN: 400,
@@ -142,6 +145,10 @@ questionRoutes.get('/', async (c) => {
   if (issueId && projectId) {
     throw badRequest('name issueId or projectId, not both — they are two different questions');
   }
+  const issueScope = c.req.query('issue');
+  if (issueScope !== undefined && issueScope !== 'none') {
+    throw badRequest('issue takes one value, `none`, for the questions that name no issue');
+  }
   const status = c.req.query('status');
   if (status && !questionStatuses.includes(status as (typeof questionStatuses)[number])) {
     throw badRequest(`status must be one of ${questionStatuses.join(', ')}`);
@@ -159,6 +166,7 @@ questionRoutes.get('/', async (c) => {
         c.get('userId'),
         status as (typeof questionStatuses)[number] | undefined,
         page.data,
+        issueScope === 'none',
       );
       if (!open) throw notFound();
       return c.json(open);
@@ -177,19 +185,30 @@ questionRoutes.post('/', async (c) => {
   const body = await c.req.json().catch(() => null);
   const parsed = askSchema.safeParse(body);
   if (!parsed.success) throw badRequest(z.prettifyError(parsed.error));
-  const { parkDeadlineAt, blockerKind, options, ...rest } = parsed.data;
+  const { parkDeadlineAt, blockerKind, options, recommendedOptionId, ...rest } = parsed.data;
   try {
     const asked = await askAs({
       ...rest,
-      options: options.map(({ fingerprint, ...o }) => (fingerprint ? { ...o, fingerprint } : o)),
+      answer: {
+        shape: 'choice',
+        options: options.map(({ fingerprint, ...o }) => (fingerprint ? { ...o, fingerprint } : o)),
+        recommendedOptionId,
+      },
       blockerKind: blockerKind ?? 'human',
       parkDeadlineAt: parkDeadlineAt ? new Date(parkDeadlineAt) : undefined,
       userId: c.get('userId'),
+      actor: restActor(c),
     });
     if (!asked) throw notFound('issue');
     return c.json(asked, 201);
   } catch (e) {
     if (e instanceof QuestionRefused) throw refused(e);
+    if (e instanceof TransitionError) {
+      throw new HTTPException(409, {
+        message: e.detail,
+        cause: { code: e.code, details: e.details },
+      });
+    }
     throw e;
   }
 });

@@ -14,6 +14,8 @@ import { logger } from '../logger.js';
 import { withActorContext } from '../pipeline/outbox-session.js';
 import { closeOpenRunForIssue, setCurrentStepForOpenIssueRun } from '../pipeline/runs.js';
 import { canTransitionFree, DRAFT_EXIT_TARGETS, isReopenEntry } from '../pipeline/state-machine.js';
+import { settleOpenQuestions } from '../questions/issue-coupling.js';
+import type { AskInput } from '../questions/write.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { actorAgency, type DeviceLite, type TransitionActor } from './actor-agency.js';
@@ -58,7 +60,9 @@ export type TransitionErrorCode =
   | 'ENTRY_CRITERIA_UNMET'
   | 'CLOSE_REQUIRES_SHIPPED'
   | 'WAITING_KIND_NOT_APPLICABLE'
-  | 'ISSUE_ARCHIVED';
+  | 'ISSUE_ARCHIVED'
+  | 'OPEN_QUESTIONS'
+  | 'VOID_REASON_REQUIRED';
 
 /**
  * Typed transition failure. `message` keeps the legacy `CODE: detail` shape
@@ -115,6 +119,12 @@ export interface ApplyStatusTransitionOptions {
    * park mints a free-text question and the reason becomes its prompt.
    */
   needs?: string | undefined;
+  /** The question this park is asked through, minted whole instead of the one `needs` makes. */
+  ask?: AskInput | undefined;
+  /** Why the open questions died with the work; a terminal move with one open is refused without it. */
+  voidQuestions?: string | undefined;
+  /** Refuse OPEN_QUESTIONS if one is open once the row is locked — the answer resume's guard. */
+  requireNoOpenQuestions?: boolean;
   /**
    * Which flavour of "a human is needed" this park is. REQUIRED entering
    * `waiting`.
@@ -459,8 +469,8 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
           },
           tx,
         );
-        await mintParkQuestion({ issue, toStatus, actor, options }, tx);
       }
+      if (fromStatus !== toStatus) await mintParkQuestion({ issue, toStatus, actor, options }, tx);
       const violation = await checkTransitionEvidence({
         issue: { id: issue.id, projectId: issue.projectId },
         toStatus: requestedStatus,
@@ -476,6 +486,12 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
       const unshipped = await refuseUnshippedClose(tx, { issueId: issue.id, toStatus });
       if (unshipped)
         throw new TransitionError('CLOSE_REQUIRES_SHIPPED', unshipped.detail, unshipped.details);
+      if (ISSUE_TERMINAL_STATUSES.includes(toStatus) || options.requireNoOpenQuestions) {
+        await tx.execute(sql`select 1 from issues where id = ${issue.id} for update`);
+      }
+      const by = actor.type === 'user' ? actor.id : actor.ownerId;
+      const asked = await settleOpenQuestions(tx, { ...options, issueId: issue.id, toStatus, by });
+      if (asked) throw new TransitionError(asked.code, asked.detail, asked.details);
       // cm:flow dispatch/transition — the status UPDATE commits and an AFTER UPDATE trigger enqueues the outbox row in this same transaction
       const result = await withActorContext(
         tx,

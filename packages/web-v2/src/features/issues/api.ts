@@ -102,7 +102,7 @@ export const issuesApi = {
   transition: (
     id: string,
     toStatus: IssueStatus,
-    opts?: { reason?: string; waitingKind?: WaitingCause },
+    opts?: { reason?: string; waitingKind?: WaitingCause; voidQuestions?: string },
   ) =>
     apiClient<IssueDetail>(`/issues/${id}/transition`, {
       method: "POST",
@@ -110,6 +110,7 @@ export const issuesApi = {
         toStatus,
         ...(opts?.reason ? { reason: opts.reason } : {}),
         ...(opts?.waitingKind ? { waitingKind: opts.waitingKind } : {}),
+        ...(opts?.voidQuestions !== undefined ? { voidQuestions: opts.voidQuestions } : {}),
       }),
     }),
 

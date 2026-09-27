@@ -54,6 +54,7 @@ import {
   type RowSelection,
   LastWriteCell,
 } from "./issue-table-row";
+import { WaitingOnPersonChip } from "./waiting-on-person-chip";
 
 /** ISS-700 — shared row-open behaviour: a pending flag set synchronously
  *  before navigation (so the row can dim + show a spinner) and a double-click
@@ -328,6 +329,7 @@ export function IssueTableRow({
         </button>
         <div className="mt-1 flex flex-wrap items-center gap-1.5">
           {row.category && <MonoTag>{row.category}</MonoTag>}
+          <WaitingOnPersonChip since={row.waitingOnPersonSince} now={now} />
           <DepBadges deps={row.dependencies} slug={slug} />
         </div>
       </TD>
@@ -417,6 +419,7 @@ export function IssueMobileCard({
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           {row.category && <MonoTag>{row.category}</MonoTag>}
           {row.modules && row.modules.length > 0 && <ModuleCell modules={row.modules} />}
+          <WaitingOnPersonChip since={row.waitingOnPersonSince} now={now} />
           <DepBadges deps={row.dependencies} slug={slug} />
         </div>
 

@@ -6,7 +6,7 @@
 
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { issues, type ProjectMemberRole } from '../db/schema.js';
+import { type IssueStatus, issues, type ProjectMemberRole } from '../db/schema.js';
 import {
   type AnswerShape,
   agentQuestions,
@@ -17,6 +17,7 @@ import {
   type QuestionStep,
 } from '../db/schema-questions.js';
 import type { IssueDependencyExecutor } from '../issues/dependency-executor.js';
+import { ISSUE_TERMINAL_STATUSES } from '../issues/status-sets.js';
 import { hooks } from '../pipeline/hooks.js';
 import { wakeMastersForAnswer } from '../ws/master-wake.js';
 import { resolveAskOrigin } from './origin.js';
@@ -63,6 +64,8 @@ export const questionRefusalCodes = [
   'QUESTION_AUTHORITY_REQUIRED',
   'QUESTION_REASON_REQUIRED',
   'QUESTION_ISSUE_ELSEWHERE',
+  'QUESTION_ISSUE_TERMINAL',
+  'QUESTION_ISSUE_MOVED',
   'QUESTION_OPTIONS_REQUIRED',
   'QUESTION_RECOMMENDED_UNKNOWN',
   'QUESTION_OPTION_IDS_DUPLICATE',
@@ -147,11 +150,12 @@ function buildStep(
 }
 
 async function checkIssueBelongsToProject(
+  executor: QuestionExecutor,
   issueId: string | undefined,
   projectId: string,
 ): Promise<void> {
   if (!issueId) return;
-  const [issue] = await db
+  const [issue] = await executor
     .select({ projectId: issues.projectId })
     .from(issues)
     .where(eq(issues.id, issueId))
@@ -167,10 +171,53 @@ async function checkIssueBelongsToProject(
   }
 }
 
-export async function askQuestion(input: AskInput) {
+/**
+ * Locked `for share`, so a close or a resume racing this ask either commits first
+ * and is seen, or waits for it. `whileStatus` is the status the caller decided on:
+ * an ask that relies on the issue already being parked is refused if it no longer is.
+ */
+async function refuseFinishedWork(
+  executor: QuestionExecutor,
+  issueId: string | undefined,
+  whileStatus: IssueStatus | undefined,
+) {
+  if (!issueId) return;
+  const rows = await executor.execute(
+    sql`select status from issues where id = ${issueId} for share`,
+  );
+  const status = (rows[0] as { status?: IssueStatus } | undefined)?.status;
+  if (status && ISSUE_TERMINAL_STATUSES.includes(status)) {
+    throw new QuestionRefused(
+      `issue ${issueId} is \`${status}\` — the work this would ask about is finished, so no answer could reach it. Reopen the issue first if the question still stands`,
+      'QUESTION_ISSUE_TERMINAL',
+    );
+  }
+  if (whileStatus && status !== whileStatus) {
+    throw new QuestionRefused(
+      `issue ${issueId} left \`${whileStatus}\` for \`${status}\` while this question was being asked, so writing it alone would leave a person's question on an issue that is not waiting for them. Ask again`,
+      'QUESTION_ISSUE_MOVED',
+    );
+  }
+}
+
+/**
+ * The one path every door's question is written through: shape, owning project,
+ * live issue, row. `whileStatus` pins the issue's status for an insert that is
+ * only correct while the issue stays there.
+ */
+export async function insertAskedQuestion(
+  executor: QuestionExecutor,
+  input: AskInput,
+  whileStatus?: IssueStatus,
+) {
   checkAnswer(input.answer);
-  await checkIssueBelongsToProject(input.issueId, input.projectId);
-  return insertQuestion(db, input);
+  await checkIssueBelongsToProject(executor, input.issueId, input.projectId);
+  await refuseFinishedWork(executor, input.issueId, whileStatus);
+  return insertQuestion(executor, input);
+}
+
+export async function askQuestion(input: AskInput, whileStatus?: IssueStatus) {
+  return db.transaction((tx) => insertAskedQuestion(tx, input, whileStatus));
 }
 
 export async function askParkQuestion(
@@ -384,10 +431,17 @@ export async function voidQuestion(args: { questionId: string; reason: string })
       'QUESTION_REASON_REQUIRED',
     );
   }
-  await db
+  const voided = await db
     .update(agentQuestions)
     .set({ status: 'void', voidReason: args.reason, updatedAt: new Date() })
-    .where(eq(agentQuestions.id, args.questionId));
+    .where(and(eq(agentQuestions.id, args.questionId), eq(agentQuestions.status, 'open')))
+    .returning({ id: agentQuestions.id });
+  if (voided.length > 0) return;
+  const row = await load(args.questionId, 'QUESTION_NOT_FOUND');
+  throw new QuestionRefused(
+    `this question is ${row.status} — only an open question can be voided, and voiding an answered one would erase the answer`,
+    'QUESTION_NOT_OPEN',
+  );
 }
 
 /**
@@ -409,9 +463,9 @@ export async function checkPermission(args: { questionId: string; fingerprint: s
   return true;
 }
 
-async function load(id: string) {
+async function load(id: string, code: QuestionRefusalCode = 'QUESTION_REFUSED') {
   const [row] = await db.select().from(agentQuestions).where(eq(agentQuestions.id, id)).limit(1);
-  if (!row) throw new QuestionRefused(`no question ${id}`);
+  if (!row) throw new QuestionRefused(`no question ${id}`, code);
   return row;
 }
 

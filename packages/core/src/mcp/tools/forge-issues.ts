@@ -146,6 +146,13 @@ const dataObject = z
       .describe(
         'What a person must supply for a `needs_info` park to start again — NOT `reason`, which is why the work stopped. Sending it mints the free-text question that person answers; omitting it mints one saying the run did not say what would settle this. Minted only for an agent-held credential.',
       ),
+    voidQuestions: z
+      .string()
+      .max(2_000)
+      .optional()
+      .describe(
+        'Why the open questions on this issue died with the work, sent with a move to `closed` or `dropped`. Such a move is refused with OPEN_QUESTIONS while a question is open; with this field each open question is voided, carrying this sentence, in the same write.',
+      ),
     labels: z
       .array(
         z.union([
@@ -708,6 +715,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
             transitionReason: input.data.reason ?? input.data.note,
             waitingKind: input.data.waitingKind,
             needs: input.data.needs,
+            voidQuestions: input.data.voidQuestions,
           });
           unasked = parkQuestionNotMinted({
             issue,
@@ -739,6 +747,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           transitionReason: input.data?.reason ?? input.data?.note,
           waitingKind: input.data?.waitingKind,
           needs: input.data?.needs,
+          voidQuestions: input.data?.voidQuestions,
         });
         const fresh = await loadIssue(issue.id);
         const transitionOutput: Record<string, unknown> = await serializeWithAttachments(fresh);

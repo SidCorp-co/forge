@@ -4,7 +4,7 @@ import { db } from '../db/client.js';
 import { agentSessions, issues, jobs, terminalAgentSessionStatuses } from '../db/schema.js';
 import { agentQuestions, questionWaiters } from '../db/schema-questions.js';
 import { sessionInbox } from '../db/schema-session-inbox.js';
-import { transitionIssueStatus } from '../issues/apply-transition.js';
+import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
 import type { LoopScope } from '../jobs/loop-monitor.js';
 import { logger } from '../logger.js';
 import { AUTONOMOUS_ENTRY_STATUS, AUTONOMOUS_QUESTION_STATUS } from './autonomous-mode.js';
@@ -25,6 +25,29 @@ async function resumableIssue(issueId: string) {
   if (!issue || issue.status !== AUTONOMOUS_QUESTION_STATUS) return null;
   if (!(await isAutonomousProject(issue.projectId))) return null;
   return issue;
+}
+
+/** Resume, unless a question on the issue is still open once the transition has the row locked. */
+async function resumeUnasked(
+  issue: NonNullable<Awaited<ReturnType<typeof resumableIssue>>>,
+  answeredBy: string,
+): Promise<boolean> {
+  try {
+    await transitionIssueStatus(
+      issue,
+      AUTONOMOUS_ENTRY_STATUS,
+      { type: 'user', id: answeredBy },
+      { requireNoOpenQuestions: true },
+    );
+    return true;
+  } catch (err) {
+    if (!(err instanceof TransitionError) || err.code !== 'OPEN_QUESTIONS') throw err;
+    logger.info(
+      { issueId: issue.id },
+      'answer-resume: another question on this issue is still open, so it waits on that one',
+    );
+    return false;
+  }
 }
 
 /**
@@ -105,10 +128,7 @@ export function registerAnswerResume(bus: HooksBus): void {
           );
           return;
         }
-        await transitionIssueStatus(issue, AUTONOMOUS_ENTRY_STATUS, {
-          type: 'user',
-          id: p.answeredBy,
-        });
+        if (!(await resumeUnasked(issue, p.answeredBy))) return;
         logger.info(
           { issueId, questionId: p.questionId },
           'answer-resume: question answered, issue returned to the driver',
@@ -160,7 +180,7 @@ export async function resumeLapsedAnswers(
     if (outcome !== 'gone' || !issueId || !authorId) continue;
     const issue = await resumableIssue(issueId);
     if (!issue) continue;
-    await transitionIssueStatus(issue, AUTONOMOUS_ENTRY_STATUS, { type: 'user', id: authorId });
+    if (!(await resumeUnasked(issue, authorId))) continue;
     resumed += 1;
     logger.info(
       { issueId, agentSessionId: inbox.agentSessionId, seq: inbox.seq },

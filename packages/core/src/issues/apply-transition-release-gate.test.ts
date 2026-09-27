@@ -26,6 +26,7 @@ const dbSelect = vi.fn(() => ({ from: projectSelectFrom }));
 const insertValues = vi.fn(async (_v: Record<string, unknown>) => undefined);
 
 // The archived-issue guard reads the row itself; these tests script every select, so it answers none.
+vi.mock('../questions/issue-coupling.js', () => ({ settleOpenQuestions: async () => null }));
 vi.mock('./archive.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./archive.js')>()),
   archivedAmong: vi.fn(async () => []),

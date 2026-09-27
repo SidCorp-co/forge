@@ -12,6 +12,8 @@ import { SlideOver } from "@/design/patterns/slide-over";
 import type { WaitingCause } from "../types";
 
 export type ReasonStatus = "reopen" | "waiting" | "needs_info";
+/** ISS-1257 — a close or drop the server refused because questions on the issue are still open. */
+export type DialogMode = ReasonStatus | "void_questions";
 
 interface CopySpec {
   title: string;
@@ -20,7 +22,7 @@ interface CopySpec {
   placeholder: string;
 }
 
-const COPY: Record<ReasonStatus, CopySpec> = {
+const COPY: Record<DialogMode, CopySpec> = {
   reopen: {
     title: "Reopen this issue",
     confirm: "Reopen",
@@ -42,6 +44,13 @@ const COPY: Record<ReasonStatus, CopySpec> = {
       "The question is posted as a comment before the status flips. Ask it in full here — this is the only place the reporter will see it.",
     placeholder: "e.g. which environment did you see this on, and was the user an org admin?",
   },
+  void_questions: {
+    title: "Questions are still open on this issue",
+    confirm: "Withdraw them and continue",
+    blurb:
+      "An agent asked a person something on this issue and nobody has answered. Finishing the work withdraws those questions — say why they no longer matter, and that sentence is recorded on each one. To answer them instead, cancel and use the Decisions panel on the issue.",
+    placeholder: "e.g. the fix shipped without needing the tenant — the question is moot",
+  },
 };
 
 const KIND_LABEL: Record<WaitingCause, string> = {
@@ -50,7 +59,9 @@ const KIND_LABEL: Record<WaitingCause, string> = {
 };
 
 interface TransitionReasonDialogProps {
-  status: ReasonStatus | null;
+  status: DialogMode | null;
+  /** How many open questions a `void_questions` confirm withdraws. */
+  openQuestions?: number;
   loading: boolean;
   onConfirm: (reason: string, waitingKind?: WaitingCause) => void;
   onClose: () => void;
@@ -58,6 +69,7 @@ interface TransitionReasonDialogProps {
 
 export function TransitionReasonDialog({
   status,
+  openQuestions,
   loading,
   onConfirm,
   onClose,
@@ -80,6 +92,11 @@ export function TransitionReasonDialog({
     <SlideOver open onClose={onClose} title={copy.title} width={480}>
       <div className="flex h-full flex-col gap-4">
         <p className="fg-body-sm text-muted">{copy.blurb}</p>
+        {status === "void_questions" && openQuestions !== undefined && (
+          <p className="fg-body-sm text-fg">
+            {openQuestions === 1 ? "1 question is" : `${openQuestions} questions are`} open.
+          </p>
+        )}
         {status === "waiting" && (
           <Field label="What is needed" required>
             <RadioGroup

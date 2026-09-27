@@ -3119,6 +3119,7 @@
 
 ### Fixed
 
+- **A question an agent asks now waits on its issue, and dies with it.** The issue parks, its row says a person owes an answer and for how long, and closing it asks why open questions no longer matter.
 - **New issue in the top bar and the command palette now opens the form on the Issues list too.** It did nothing there before. Closing the form clears the link, so Back and reload no longer reopen it.
 - **The board drawer no longer labels an issue with nothing running as Queued.** Its header shows a run chip only for a run, Activity says when no pipeline run exists, and the issue's status appears once, named as itself.
 - **An issue waiting for a runner now shows as Queued everywhere on its page and in the board drawer.** The run chips said nothing while the agent panel said queued. A paused run reads Paused, not Idle.

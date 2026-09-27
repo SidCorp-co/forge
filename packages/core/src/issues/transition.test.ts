@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const TEST_SECRET = 'test-secret-at-least-32-chars-long-abcdef';
 
+vi.mock('../questions/issue-coupling.js', () => ({ settleOpenQuestions: async () => null }));
 vi.mock('./archive.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./archive.js')>()),
   archivedAmong: vi.fn(async () => []),
@@ -476,7 +477,6 @@ describe('POST /api/issues/:id/transition — draft as a target (ISS-787)', () =
   });
 });
 
-// Its own describe because the suite above is at its function-length budget.
 describe('POST /api/issues/:id/transition — a refusal answers in its own words', () => {
   it("409 NO_OP answers with the error's own detail, not a fixed string", async () => {
     const token = await signUserToken(USER_ID);
