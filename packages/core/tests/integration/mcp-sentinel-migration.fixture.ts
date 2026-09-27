@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { readMigrationFiles } from 'drizzle-orm/migrator';
 import postgres, { type Sql } from 'postgres';
 import { afterAll, beforeAll } from 'vitest';
-import { caseDbName, drainRetiredCaseDbs, retireCaseDb } from '../helpers/scratch-db.js';
+import { caseDbName, drainRetiredScratchDbs, retireScratchDb } from '../helpers/scratch-db.js';
 
 const MIGRATIONS = fileURLToPath(new URL('../../drizzle/migrations', import.meta.url));
 const ROLLBACK_DIR = fileURLToPath(new URL('../../drizzle/rollback/', import.meta.url));
@@ -97,8 +97,8 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (admin) {
-    await drainRetiredCaseDbs();
-    await admin.unsafe(`DROP DATABASE IF EXISTS "${template}" WITH (FORCE)`).catch(() => {});
+    retireScratchDb(adminUrl, template);
+    await drainRetiredScratchDbs();
     await admin.end({ timeout: 5 });
   }
 });
@@ -118,7 +118,7 @@ export async function fresh(): Promise<Fresh> {
     notices,
     drop: async () => {
       await sql.end({ timeout: 5 }).catch(() => {});
-      retireCaseDb(adminUrl, name);
+      retireScratchDb(adminUrl, name);
     },
   };
 }

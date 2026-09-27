@@ -1,14 +1,15 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   bornAt,
   CASE_PREFIX,
   caseDbName,
-  drainRetiredCaseDbs,
+  drainRetiredScratchDbs,
   isAbandoned,
   reapAbandoned,
-  retireCaseDb,
+  retireScratchDb,
   runToken,
   sweepRunScratchDbs,
   TEMPLATE_PREFIX,
@@ -19,20 +20,29 @@ import {
 
 const HOUR = 60 * 60 * 1000;
 
+const TOKEN = runToken(templateDbName()) as string;
+
 describe('names', () => {
   it('mints a different template for every run', () => {
     const names = new Set(Array.from({ length: 200 }, () => templateDbName()));
     expect(names.size).toBe(200);
   });
 
-  it('mints a different worker database for every run of the same worker', () => {
-    expect(workerDbName('3')).not.toBe(workerDbName('3'));
-    expect(workerDbName('3').startsWith(`${WORKER_PREFIX}3_`)).toBe(true);
+  it('mints a different file database for every call of the same worker', () => {
+    expect(workerDbName('3', TOKEN)).not.toBe(workerDbName('3', TOKEN));
+  });
+
+  it('carries this run\u2019s token, so a sweep can tell a file database from another run\u2019s', () => {
+    expect(workerDbName('3', TOKEN).startsWith(`${WORKER_PREFIX}${TOKEN}_3_`)).toBe(true);
+  });
+
+  it('refuses a run with no template rather than minting an unsweepable file database', () => {
+    expect(() => workerDbName('3', null)).toThrow(/TEST_PG_TEMPLATE/);
   });
 
   it('keeps both prefixes, so the reaper can still find them', () => {
     expect(templateDbName().startsWith(TEMPLATE_PREFIX)).toBe(true);
-    expect(workerDbName('0').startsWith(WORKER_PREFIX)).toBe(true);
+    expect(workerDbName('0', TOKEN).startsWith(WORKER_PREFIX)).toBe(true);
   });
 
   it('carries the birth time the reaper needs', () => {
@@ -73,25 +83,30 @@ describe('isAbandoned', () => {
   });
 });
 
+/** A `pg_database` a drop actually empties, so a sweep that reads the catalog back can terminate. */
 function fakeAdmin(datnames: string[]) {
+  const catalog = new Set(datnames);
   const dropped: string[] = [];
-  const admin = (async () => datnames.map((datname) => ({ datname }))) as unknown as {
+  const admin = (async () => [...catalog].map((datname) => ({ datname }))) as unknown as {
     (...args: unknown[]): Promise<{ datname: string }[]>;
     unsafe: (sql: string) => Promise<unknown>;
   };
   admin.unsafe = async (sql: string) => {
     const m = /DROP DATABASE IF EXISTS "([^"]+)"/.exec(sql);
-    if (m?.[1]) dropped.push(m[1]);
+    if (m?.[1]) {
+      dropped.push(m[1]);
+      catalog.delete(m[1]);
+    }
     return [];
   };
-  return { admin, dropped };
+  return { admin, catalog, dropped };
 }
 
 describe('reapAbandoned', () => {
   it('drops only what is old and stamped', async () => {
     const now = Date.now();
     const old = `${TEMPLATE_PREFIX}${(now - 3 * HOUR).toString(36)}_aaaaaaaa`;
-    const oldWorker = `${WORKER_PREFIX}2_${(now - 3 * HOUR).toString(36)}_bbbbbbbb`;
+    const oldWorker = `${WORKER_PREFIX}abc_2_${(now - 3 * HOUR).toString(36)}_bbbbbbbb`;
     const fresh = templateDbName();
     const { admin, dropped } = fakeAdmin([
       old,
@@ -123,24 +138,23 @@ describe('reapAbandoned', () => {
 });
 
 describe('a database minted for one test case', () => {
-  const token = runToken(templateDbName()) as string;
-
   it('carries this run\u2019s token, so a sweep can tell it from another run\u2019s', () => {
-    expect(caseDbName('iss1046', token).startsWith(`${CASE_PREFIX}${token}_`)).toBe(true);
+    expect(caseDbName('iss1046', TOKEN).startsWith(`${CASE_PREFIX}${TOKEN}_`)).toBe(true);
   });
 
   it('carries the birth time the reaper needs', () => {
-    const born = bornAt(caseDbName('iss1046', token));
+    const born = bornAt(caseDbName('iss1046', TOKEN));
     expect(born).not.toBeNull();
     expect(born as number).toBeGreaterThanOrEqual(Date.now() - 1000);
   });
 
   it('is a different database every time the same file asks for one', () => {
-    expect(caseDbName('iss1046', token)).not.toBe(caseDbName('iss1046', token));
+    expect(caseDbName('iss1046', TOKEN)).not.toBe(caseDbName('iss1046', TOKEN));
   });
 
   it('stays inside the identifier length Postgres truncates at', () => {
-    expect(Buffer.byteLength(caseDbName('conversations', token))).toBeLessThan(63);
+    expect(Buffer.byteLength(caseDbName('conversations', TOKEN))).toBeLessThan(63);
+    expect(Buffer.byteLength(workerDbName('12', TOKEN))).toBeLessThan(63);
   });
 
   it('refuses a run with no template rather than minting an unsweepable name', () => {
@@ -148,7 +162,7 @@ describe('a database minted for one test case', () => {
   });
 
   it('refuses a tag that would not survive the name', () => {
-    expect(() => caseDbName('iss 1046', token)).toThrow(/tag/);
+    expect(() => caseDbName('iss 1046', TOKEN)).toThrow(/tag/);
   });
 
   it('refuses to read a token out of a name this suite did not mint', () => {
@@ -191,6 +205,17 @@ describe('sweepRunScratchDbs', () => {
     expect(dropped).toEqual([a, b]);
   });
 
+  it('drops every file database carrying this run\u2019s token', async () => {
+    const mine = runToken(templateDbName()) as string;
+    const a = workerDbName('1', mine);
+    const b = workerDbName('2', mine);
+    const { admin, dropped } = fakeAdmin([a, b, 'forge']);
+
+    // biome-ignore lint/suspicious/noExplicitAny: the fake stands in for a postgres-js tag function
+    await expect(sweepRunScratchDbs(admin as any, mine)).resolves.toEqual([a, b]);
+    expect(dropped).toEqual([a, b]);
+  });
+
   it('leaves a case database another live run minted', async () => {
     const mine = runToken(templateDbName()) as string;
     const theirs = runToken(templateDbName()) as string;
@@ -202,18 +227,67 @@ describe('sweepRunScratchDbs', () => {
     expect(dropped).toEqual([ours]);
   });
 
+  it('leaves a file database another live run minted', async () => {
+    const mine = runToken(templateDbName()) as string;
+    const theirs = runToken(templateDbName()) as string;
+    const ours = workerDbName('1', mine);
+    const { admin, dropped } = fakeAdmin([ours, workerDbName('1', theirs)]);
+
+    // biome-ignore lint/suspicious/noExplicitAny: the fake stands in for a postgres-js tag function
+    await expect(sweepRunScratchDbs(admin as any, mine)).resolves.toEqual([ours]);
+    expect(dropped).toEqual([ours]);
+  });
+
   it('keeps going when a drop is refused', async () => {
     const mine = runToken(templateDbName()) as string;
     const a = caseDbName('iss1046', mine);
     const b = caseDbName('iss1001', mine);
-    const { admin } = fakeAdmin([a, b]);
+    const { admin, catalog } = fakeAdmin([a, b]);
+    const real = admin.unsafe;
     admin.unsafe = async (sql: string) => {
       if (sql.includes(a)) throw new Error('is being accessed by other users');
-      return [];
+      return real(sql);
     };
 
     // biome-ignore lint/suspicious/noExplicitAny: the fake stands in for a postgres-js tag function
     await expect(sweepRunScratchDbs(admin as any, mine)).resolves.toEqual([b]);
+    expect(catalog.has(a)).toBe(true);
+  });
+
+  it('tries a name again when the first drop of it was refused', async () => {
+    const mine = runToken(templateDbName()) as string;
+    const a = caseDbName('iss1046', mine);
+    const { admin, catalog } = fakeAdmin([a]);
+    const real = admin.unsafe;
+    let refusals = 0;
+    admin.unsafe = async (sql: string) => {
+      if (sql.includes(a) && refusals++ < 1) throw new Error('is being dropped');
+      return real(sql);
+    };
+
+    // biome-ignore lint/suspicious/noExplicitAny: the fake stands in for a postgres-js tag function
+    await expect(sweepRunScratchDbs(admin as any, mine)).resolves.toEqual([a]);
+    expect(catalog.size).toBe(0);
+  });
+
+  it('names a database it could not drop rather than returning as though it had', async () => {
+    const mine = runToken(templateDbName()) as string;
+    const a = caseDbName('iss1046', mine);
+    const { admin } = fakeAdmin([a]);
+    admin.unsafe = async () => {
+      throw new Error('is being accessed by other users');
+    };
+    const said: string[] = [];
+    const was = console.error;
+    console.error = (msg: string) => said.push(msg);
+
+    try {
+      // biome-ignore lint/suspicious/noExplicitAny: the fake stands in for a postgres-js tag function
+      await expect(sweepRunScratchDbs(admin as any, mine)).resolves.toEqual([]);
+    } finally {
+      console.error = was;
+    }
+    expect(said.join('\n')).toContain(a);
   });
 });
 
@@ -238,15 +312,15 @@ function heldDrain() {
 async function settleDrain(h: ReturnType<typeof heldDrain>): Promise<void> {
   for (let i = 0; i < 50; i++) {
     for (const s of h.settle.splice(0)) s();
-    if ((await drainRetiredCaseDbs(50)) === 0) return;
+    if ((await drainRetiredScratchDbs(50)) === 0) return;
   }
   throw new Error('the drain never emptied');
 }
 
 describe('the drain', () => {
-  it('returns to the case before the drop it queued has settled', async () => {
+  it('returns to the caller before the drop it queued has settled', async () => {
     const h = heldDrain();
-    retireCaseDb('postgres://held/1', 'test_case_held_a', h.connect);
+    retireScratchDb('postgres://held/1', 'test_case_held_a', h.connect);
     expect(h.issued).toHaveLength(0);
     await Promise.resolve();
     expect(h.issued).toHaveLength(1);
@@ -255,11 +329,11 @@ describe('the drain', () => {
 
   it('hands the caller back inside the grace while a drop is still in flight', async () => {
     const h = heldDrain();
-    retireCaseDb('postgres://held/2', 'test_case_held_b', h.connect);
-    retireCaseDb('postgres://held/2', 'test_case_held_c', h.connect);
+    retireScratchDb('postgres://held/2', 'test_case_held_b', h.connect);
+    retireScratchDb('postgres://held/2', 'test_case_held_c', h.connect);
 
     const began = Date.now();
-    await expect(drainRetiredCaseDbs(30)).resolves.toBe(2);
+    await expect(drainRetiredScratchDbs(30)).resolves.toBe(2);
     expect(Date.now() - began).toBeLessThan(2000);
     await settleDrain(h);
   });
@@ -267,13 +341,13 @@ describe('the drain', () => {
   it('hands what the grace did not reach to the run sweep, and nothing else', async () => {
     const mine = runToken(templateDbName()) as string;
     const a = caseDbName('iss1046', mine);
-    const b = caseDbName('iss1001', mine);
+    const b = workerDbName('1', mine);
     const theirs = caseDbName('iss1046', runToken(templateDbName()) as string);
 
     const h = heldDrain();
-    retireCaseDb('postgres://held/4', a, h.connect);
-    retireCaseDb('postgres://held/4', b, h.connect);
-    await expect(drainRetiredCaseDbs(30)).resolves.toBe(2);
+    retireScratchDb('postgres://held/4', a, h.connect);
+    retireScratchDb('postgres://held/4', b, h.connect);
+    await expect(drainRetiredScratchDbs(30)).resolves.toBe(2);
 
     const { admin, dropped } = fakeAdmin([a, b, theirs, 'forge']);
     // biome-ignore lint/suspicious/noExplicitAny: the fake stands in for a postgres-js tag function
@@ -285,8 +359,8 @@ describe('the drain', () => {
 
   it('strands nothing behind a drop the server refused', async () => {
     const h = heldDrain();
-    retireCaseDb('postgres://held/3', 'test_case_held_d', h.connect);
-    retireCaseDb('postgres://held/3', 'test_case_held_e', h.connect);
+    retireScratchDb('postgres://held/3', 'test_case_held_d', h.connect);
+    retireScratchDb('postgres://held/3', 'test_case_held_e', h.connect);
 
     await Promise.resolve();
     h.settle.splice(0, 1)[0]?.(new Error('is being accessed by other users'));
@@ -295,42 +369,113 @@ describe('the drain', () => {
   });
 });
 
-/**
- * The three callers, read rather than run.
- *
- * `retireCaseDb` returns `void`, so the only way a ground can put a drop back on its case's clock
- * is to issue one itself or to call the drain's wait from inside `drop()`. Both are visible in the
- * source, and the source is where they are checked: each ground holds its own admin connection and
- * builds it from the environment, so there is no seam a unit test could hand a held drop through.
- */
-const GROUNDS = [
-  'release-axes-migration-ground.ts',
-  'conversations-migration-ground.ts',
-  'mcp-sentinel-migration.fixture.ts',
-] as const;
+const TESTS_ROOT = fileURLToPath(new URL('..', import.meta.url));
 
-function dropBody(source: string): string {
-  const at = source.indexOf('drop: async () => {');
-  if (at < 0) throw new Error('no `drop: async () => {` in this ground');
-  const end = source.indexOf('\n', source.indexOf('},', at));
-  return source.slice(at, end);
+function sourceOf(rel: string): string {
+  return readFileSync(join(TESTS_ROOT, rel), 'utf8');
 }
 
-describe.each(GROUNDS)('%s, giving a case database back', (file) => {
-  const source = readFileSync(
-    fileURLToPath(new URL(`../integration/${file}`, import.meta.url)),
-    'utf8',
-  );
+/**
+ * The lines of `source` that issue a `DROP DATABASE`, prose about one not counting as one.
+ *
+ * A comment saying why a teardown no longer waits for a drop is the opposite of the defect, so a
+ * plain substring search would read every explanation of this rule as a breach of it.
+ */
+function dropStatements(source: string): string[] {
+  const code = source
+    .split('\n')
+    .filter((line) => !/^\s*(\/\/|\/\*|\*)/.test(line))
+    .join('\n');
+  return [...code.matchAll(/\bdrop\s+database\b[^;]*/gi)].map((m) => m[0]);
+}
+
+/** The body of `marker`, from its opening brace to the one that closes it. */
+function bodyAt(source: string, marker: string, after = ''): string {
+  const from = after ? source.indexOf(after) : 0;
+  if (from < 0) throw new Error(`no \`${after}\` in this source`);
+  const at = source.indexOf(marker, from);
+  if (at < 0) throw new Error(`no \`${marker}\` in this source`);
+  let depth = 0;
+  for (let i = at + marker.length - 1; i < source.length; i++) {
+    if (source[i] === '{') depth += 1;
+    else if (source[i] === '}') {
+      depth -= 1;
+      if (depth === 0) return source.slice(at, i + 1);
+    }
+  }
+  throw new Error(`\`${marker}\` never closes`);
+}
+
+/**
+ * Every teardown vitest puts a clock on, and the marker its body starts at.
+ *
+ * `retireScratchDb` returns `void`, so the only way one of these can put a `DROP DATABASE` back
+ * inside its own budget is to issue one itself, and that is visible in the source. The source is
+ * where it is checked: each of these builds its own admin connection out of the environment and
+ * offers no seam a held drop could be handed through.
+ */
+const BUDGETED_TEARDOWNS: Array<[string, string, string]> = [
+  ['integration/release-axes-migration-ground.ts', 'drop: async () => {', ''],
+  ['integration/conversations-migration-ground.ts', 'drop: async () => {', ''],
+  ['integration/mcp-sentinel-migration.fixture.ts', 'drop: async () => {', ''],
+  ['integration/release-axes-migration-ground.ts', 'async stop() {', ''],
+  ['integration/conversations-migration-ground.ts', 'async stop() {', ''],
+  ['integration/mcp-sentinel-migration.fixture.ts', 'afterAll(async () => {', ''],
+  ['helpers/db.ts', 'cleanup: async () => {', 'async function cloneFromTemplate'],
+];
+
+describe.each(BUDGETED_TEARDOWNS)('%s, at `%s`', (file, marker, after) => {
+  const body = bodyAt(sourceOf(file), marker, after);
 
   it('hands the name to the drain', () => {
-    expect(dropBody(source)).toContain('retireCaseDb(');
+    expect(body).toContain('retireScratchDb(');
   });
 
   it('issues no drop of its own', () => {
-    expect(dropBody(source)).not.toContain('DROP DATABASE');
+    expect(dropStatements(body)).toEqual([]);
+  });
+});
+
+describe.each(BUDGETED_TEARDOWNS.slice(0, 3))('%s, giving a case database back', (file, marker) => {
+  it('does not wait the drain out, which is a hook\u2019s job and never a case\u2019s', () => {
+    expect(bodyAt(sourceOf(file), marker)).not.toContain('drainRetiredScratchDbs');
+  });
+});
+
+/**
+ * The three files a judging run caught were the three it happened to run; the property is the
+ * suite's. A `DROP DATABASE` waits on a cluster-wide checkpoint, so any one of them inside a case's
+ * 30s or a hook's 60s makes that verdict a fact about what else is running (ISS-1141). These two
+ * are the only places one may be awaited: the drain, which no vitest clock covers, and the global
+ * teardown, which vitest gives no budget at all.
+ */
+const MAY_AWAIT_A_DROP = new Set([
+  'helpers/scratch-db.ts',
+  'helpers/global-setup.ts',
+  'helpers/scratch-db.test.ts',
+]);
+
+function everyTestSource(): string[] {
+  return readdirSync(TESTS_ROOT, { recursive: true, encoding: 'utf8' })
+    .map((rel) => rel.split('\\').join('/'))
+    .filter((rel) => rel.endsWith('.ts'));
+}
+
+describe('DROP DATABASE, over every file in the suite', () => {
+  it('reads the suite it is judging', () => {
+    expect(everyTestSource().length).toBeGreaterThan(100);
   });
 
-  it('does not wait the drain out', () => {
-    expect(dropBody(source)).not.toContain('drainRetiredCaseDbs');
+  it('reads the statement and not one spelling of it', () => {
+    expect(dropStatements('await admin.unsafe(`drop database if exists "x"`);')).toHaveLength(1);
+    expect(dropStatements('await admin.unsafe(`DROP\nDATABASE IF EXISTS "x"`);')).toHaveLength(1);
+    expect(dropStatements('  // a comment about DROP DATABASE is not one')).toHaveLength(0);
+  });
+
+  it('is issued nowhere a vitest clock can time it', () => {
+    const offenders = everyTestSource().filter(
+      (rel) => !MAY_AWAIT_A_DROP.has(rel) && dropStatements(sourceOf(rel)).length > 0,
+    );
+    expect(offenders).toEqual([]);
   });
 });
