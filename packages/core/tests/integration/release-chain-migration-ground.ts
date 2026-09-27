@@ -15,7 +15,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { readMigrationFiles } from 'drizzle-orm/migrator';
 import postgres, { type Sql } from 'postgres';
-import { caseDbName, drainRetiredCaseDbs, retireCaseDb } from '../helpers/scratch-db.js';
+import { caseDbName, drainRetiredScratchDbs, retireScratchDb } from '../helpers/scratch-db.js';
 
 const MIGRATIONS = fileURLToPath(new URL('../../drizzle/migrations', import.meta.url));
 const TAG = '0312_a_release_chain_replaces_the_release_model';
@@ -68,13 +68,13 @@ export async function preMigrationGround(): Promise<PreMigrationGround> {
         sql,
         drop: async () => {
           await sql.end({ timeout: 5 }).catch(() => {});
-          retireCaseDb(adminUrl, name);
+          retireScratchDb(adminUrl, name);
         },
       };
     },
     async stop() {
-      await drainRetiredCaseDbs();
-      await admin.unsafe(`DROP DATABASE IF EXISTS "${template}" WITH (FORCE)`).catch(() => {});
+      retireScratchDb(adminUrl, template);
+      await drainRetiredScratchDbs();
       await admin.end({ timeout: 5 });
     },
   };
