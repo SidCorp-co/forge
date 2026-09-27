@@ -92,7 +92,12 @@ describe('release sweep E2E (ISS-1117)', () => {
   }
 
   /** The landing an issue records, which is what a verdict's identity is resolved against. */
-  async function setServing(issueId: string, deployment: string): Promise<void> {
+  /**
+   * The landing block, `deployment` included. ISS-1286 made that field inert — nothing reads it to
+   * decide a runtime verdict any more — and it is still written here so these rows prove it: every
+   * one of them names `SERVING` as its deployment, and what holds or cuts them is the host.
+   */
+  async function setLanding(issueId: string, deployment: string): Promise<void> {
     const landing = JSON.stringify({ landing: { head: 'dce6f354c', deployment } });
     await harness.db.execute(sql`
       UPDATE issues SET session_context = ${landing}::jsonb WHERE id = ${issueId}
@@ -133,13 +138,15 @@ describe('release sweep E2E (ISS-1117)', () => {
       })
     ).id;
     await declareProduction();
+    // ISS-1286: what the production host answers is what a runtime verdict is weighed against.
+    fx.serve(SERVING);
     await seedReleaseRunner();
   });
 
   it('cuts the earned issue and leaves the ISS-1139-shaped skipped one untouched', async () => {
     const earnedId = await insertIssue();
     await setCriteria(earnedId, '1. ok\n2. ok');
-    await setServing(earnedId, SERVING);
+    await setLanding(earnedId, SERVING);
     await postVerdict(
       earnedId,
       verdictComment([verdictBlock(1, 'a', 'pass'), verdictBlock(2, 'b', 'pass')]),
@@ -147,7 +154,7 @@ describe('release sweep E2E (ISS-1117)', () => {
 
     const unearnedId = await insertIssue();
     await setCriteria(unearnedId, '1. ok\n2. ok');
-    await setServing(unearnedId, SERVING);
+    await setLanding(unearnedId, SERVING);
     await postVerdict(
       unearnedId,
       verdictComment([
@@ -181,7 +188,7 @@ describe('release sweep E2E (ISS-1117)', () => {
   it('touches nothing when every waiting issue is unearned', async () => {
     const id = await insertIssue();
     await setCriteria(id, '1. ok');
-    await setServing(id, SERVING);
+    await setLanding(id, SERVING);
     await postVerdict(id, verdictComment([verdictBlock(1, 'never reached', 'skipped')]));
 
     const before = await stored(id);
@@ -198,7 +205,7 @@ describe('release sweep E2E (ISS-1117)', () => {
   it('leaves an issue whose every criterion passed at a runtime a repair replaced', async () => {
     const id = await insertIssue();
     await setCriteria(id, '1. ok\n2. ok');
-    await setServing(id, SERVING);
+    await setLanding(id, SERVING);
     await postVerdict(
       id,
       verdictComment([
@@ -220,7 +227,7 @@ describe('release sweep E2E (ISS-1117)', () => {
   it('leaves an issue whose passes name only a source, with no runtime to witness them', async () => {
     const id = await insertIssue();
     await setCriteria(id, '1. ok');
-    await setServing(id, SERVING);
+    await setLanding(id, SERVING);
     await postVerdict(id, verdictComment([verdictBlock(1, 'a', 'pass', null)]));
 
     const before = await stored(id);
