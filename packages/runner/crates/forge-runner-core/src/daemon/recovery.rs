@@ -683,8 +683,7 @@ fn say_standing(
 /// finished or cannot be read is still being kept, and what ends it.
 fn say_why_kept(ledger: &mut Ledger, run: &Run, now: i64) {
     let path = run.agent_transcript.as_deref();
-    let written = path.and_then(|p| transcript_age::written_at(Path::new(p)));
-    let evidence = subagent_end::read(run.turn_ended_at_ms, written, now);
+    let evidence = subagent_end::observe(run.turn_ended_at_ms, path.map(Path::new), now);
     let Some(notice) = subagent_end::notice(evidence) else {
         return;
     };
@@ -1970,6 +1969,36 @@ mod tests {
             beats.0.lock().unwrap().len(),
             4,
             "the box still holds the run, so every sweep beats it and core's reaper leaves it alone"
+        );
+    }
+
+    /// ISS-1312: the stop hooks append their own records after the box stamps
+    /// the stop, so the transcript is always written after it. Those records
+    /// are the stop, and the run is said quiet by the reading the drain uses.
+    #[tokio::test]
+    async fn a_subagent_whose_last_write_is_its_own_stop_hooks_is_said_quiet() {
+        let scratch = Scratch::new("iss-1312");
+        let (mut led, root, wt, transcript) = a_subagent_run_in_a_worktree(&scratch);
+        let beats = Beats::default();
+        let stop = now_ms() - 3 * 60 * MIN_MS;
+        std::fs::create_dir_all(transcript.parent().unwrap()).unwrap();
+        std::fs::write(&transcript, crate::daemon::transcript_age::STOP_TAIL).unwrap();
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(&transcript)
+            .unwrap()
+            .set_modified(
+                std::time::UNIX_EPOCH + std::time::Duration::from_millis(stop as u64 + 213),
+            )
+            .unwrap();
+        stop_at(&led, stop, Some(&transcript));
+        let r = sweep(&mut led, &master_alive(), &beats).await;
+        assert_still_held(&led, &r, &wt, "quiet is said, and ends nothing");
+        assert!(registered(&root, &wt));
+        assert_eq!(
+            kept(&led).as_deref(),
+            Some("quiet"),
+            "a write 213 ms after the stop made only of that stop's hook records is not a resumed turn"
         );
     }
 
