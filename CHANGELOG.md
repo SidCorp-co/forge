@@ -3112,6 +3112,7 @@
 
 ### Fixed
 
+- **New issue in the top bar and the command palette now opens the form on the Issues list too.** It did nothing there before. Closing the form clears the link, so Back and reload no longer reopen it.
 - **The board drawer no longer labels an issue with nothing running as Queued.** Its header shows a run chip only for a run, Activity says when no pipeline run exists, and the issue's status appears once, named as itself.
 - **An issue waiting for a runner now shows as Queued everywhere on its page and in the board drawer.** The run chips said nothing while the agent panel said queued. A paused run reads Paused, not Idle.
 - **Links between help pages open the page they name.** Every one opened Getting started; a link to a missing page now says so. Release notes render their formatting, and Reopen stays on screen at phone width.

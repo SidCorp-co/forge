@@ -16,6 +16,7 @@ afterEach(cleanup);
 vi.mock("next/navigation", () => ({
   usePathname: () => "/projects/forge-dev/issues",
   useRouter: () => ({ push: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(window.location.search),
 }));
 vi.mock("@/features/projects/hooks", () => ({
   useProjects: () => ({ data: [{ id: "p1", slug: "forge-dev", role: "admin" }] }),
