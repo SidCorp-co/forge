@@ -383,8 +383,10 @@ function sourceOf(rel: string): string {
  */
 function dropStatements(source: string): string[] {
   const code = source
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
     .split('\n')
-    .filter((line) => !/^\s*(\/\/|\/\*|\*)/.test(line))
+    .map((line) => line.replace(/(^|[^:])\/\/.*$/, '$1'))
+    .filter((line) => !/^\s*\*/.test(line))
     .join('\n');
   return [...code.matchAll(/\bdrop\s+database\b[^;]*/gi)].map((m) => m[0]);
 }
@@ -448,6 +450,10 @@ describe.each(BUDGETED_TEARDOWNS.slice(0, 3))('%s, giving a case database back',
  * 30s or a hook's 60s makes that verdict a fact about what else is running (ISS-1141). These two
  * are the only places one may be awaited: the drain, which no vitest clock covers, and the global
  * teardown, which vitest gives no budget at all.
+ *
+ * It reads source, so it is a tripwire for the shapes this suite writes and not a proof. What the
+ * property actually rests on is that one function drops; this catches the hand-written teardown
+ * that stops routing through it, which is how the rule was broken both times.
  */
 const MAY_AWAIT_A_DROP = new Set([
   'helpers/scratch-db.ts',
@@ -469,7 +475,14 @@ describe('DROP DATABASE, over every file in the suite', () => {
   it('reads the statement and not one spelling of it', () => {
     expect(dropStatements('await admin.unsafe(`drop database if exists "x"`);')).toHaveLength(1);
     expect(dropStatements('await admin.unsafe(`DROP\nDATABASE IF EXISTS "x"`);')).toHaveLength(1);
+    expect(dropStatements('/* why */ await a.unsafe(`DROP DATABASE "x"`);')).toHaveLength(1);
+    expect(dropStatements('await a.unsafe(`DROP DATABASE "x"`); // why')).toHaveLength(1);
+  });
+
+  it('reads prose about the statement as prose', () => {
     expect(dropStatements('  // a comment about DROP DATABASE is not one')).toHaveLength(0);
+    expect(dropStatements(' * a doc comment about DROP DATABASE is not one')).toHaveLength(0);
+    expect(dropStatements('postgres://host/db // not a drop database here')).toHaveLength(0);
   });
 
   it('is issued nowhere a vitest clock can time it', () => {
