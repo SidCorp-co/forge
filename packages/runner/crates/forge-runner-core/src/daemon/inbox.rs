@@ -106,15 +106,36 @@ pub async fn handle_session_send(
     }
 }
 
-async fn deliver_to_pane(masters: &Arc<Masters>, session_id: &str, body: &str) -> Option<bool> {
+/// What became of one message at a master pane, in the three shapes core can
+/// be answered in — including the one that is no answer at all.
+enum AtThePane {
+    /// The pane took it.
+    Took,
+    /// tmux says it holds no session by that name. The only shape `gone`
+    /// describes.
+    Gone,
+    /// Nothing was typed, and nothing here establishes that the session ended:
+    /// the pane was read alive and refused the message, or tmux could not be
+    /// asked. `Ack` has no word for it, and RFC 0003 already defines what the
+    /// runner does with what it cannot honestly claim — it says nothing, core
+    /// reads that as `unknown`, and the message waits instead of being
+    /// replaced. The string is why, for the log.
+    Unsaid(String),
+}
+
+async fn deliver_to_pane(
+    masters: &Arc<Masters>,
+    session_id: &str,
+    body: &str,
+) -> Option<AtThePane> {
     let pane = masters.pane_for_session(session_id)?;
-    match terminal::send_line(&pane, body).await {
-        Ok(_) => Some(true),
-        Err(e) => {
-            tracing::info!("[inbox] master pane {pane} did not take the message: {e}");
-            Some(false)
+    Some(match terminal::send_line(&pane, body).await {
+        Ok(_) => AtThePane::Took,
+        Err(terminal::NotTyped::Gone(_)) => AtThePane::Gone,
+        Err(why @ (terminal::NotTyped::Refused(_) | terminal::NotTyped::Failed(_))) => {
+            AtThePane::Unsaid(why.to_string())
         }
-    }
+    })
 }
 
 async fn deliver(
@@ -125,9 +146,28 @@ async fn deliver(
     key: &str,
     body: &str,
 ) {
-    if let Some(landed) = deliver_to_pane(masters, &frame.session_id, body).await {
-        let ack = if landed { Ack::Delivered } else { Ack::Gone };
-        inbox::ack(client, &frame.session_id, frame.seq, ack).await;
+    if let Some(outcome) = deliver_to_pane(masters, &frame.session_id, body).await {
+        match outcome {
+            AtThePane::Took => {
+                inbox::ack(client, &frame.session_id, frame.seq, Ack::Delivered).await
+            }
+            AtThePane::Gone => {
+                tracing::info!(
+                    "[inbox] session={} seq={}: tmux holds no such session — acking `gone`",
+                    frame.session_id,
+                    frame.seq
+                );
+                inbox::ack(client, &frame.session_id, frame.seq, Ack::Gone).await
+            }
+            // Said at the level the `cancel` arm uses, and for the same reason:
+            // the ack vocabulary has no answer that is true here, and the half
+            // of that which used to be quiet was the half that lied.
+            AtThePane::Unsaid(why) => tracing::error!(
+                "[inbox] session={} seq={}: {why} — NO ack is being sent, because the pane was read and `gone` would say this session ended when this box has not established that. Core reads the silence as `unknown` and waits",
+                frame.session_id,
+                frame.seq
+            ),
+        }
         return;
     }
     let pending = Some((frame.session_id.clone(), frame.seq));
@@ -150,6 +190,256 @@ async fn deliver(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::auth::cred_store::ENV_TEST_LOCK;
+    use crate::daemon::terminal::testing::{Asked, ShimTmux, ONE_AT_A_TIME};
+    use std::sync::Mutex;
+
+    const RULE: &str = "\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}\u{2500}";
+
+    /// A pane drawn the way Claude Code draws its composer, holding `body`.
+    fn composer(body: &str) -> String {
+        format!("\u{25cf} earlier output\n{RULE}\n\u{276f}\u{a0}{body}\n{RULE}\n  footer\n")
+    }
+
+    /// A pane showing a choice list, where Enter decides rather than sends.
+    fn menu() -> String {
+        " Do you want to proceed?\n   1. Yes\n \u{276f} 2. No\n\n Esc to cancel".to_string()
+    }
+
+    /// Captures what this thread logs while the delivery runs.
+    struct Capture(Arc<Mutex<Vec<u8>>>);
+    impl std::io::Write for Capture {
+        fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().expect("the log buffer").extend_from_slice(b);
+            Ok(b.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    fn capture_log() -> (Arc<Mutex<Vec<u8>>>, tracing::subscriber::DefaultGuard) {
+        crate::daemon::keep_tracing_capturable();
+        let buf = Arc::new(Mutex::new(Vec::new()));
+        let made = buf.clone();
+        let sub = tracing_subscriber::fmt()
+            .with_writer(move || Capture(made.clone()))
+            .with_ansi(false)
+            .finish();
+        (buf, tracing::subscriber::set_default(sub))
+    }
+
+    /// A core that records every request rather than answering one way.
+    ///
+    /// `transport::fake_core` serves a fixed answer and keeps nothing, and what
+    /// every test below asserts is what reached the wire — including, four
+    /// times over, that nothing did.
+    async fn recording_core() -> (String, Arc<Mutex<Vec<(String, String)>>>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("a port of this test's own");
+        let addr = listener.local_addr().expect("its address");
+        let seen: Arc<Mutex<Vec<(String, String)>>> = Arc::new(Mutex::new(Vec::new()));
+        let writes = seen.clone();
+        tokio::spawn(async move {
+            while let Ok((mut sock, _)) = listener.accept().await {
+                let writes = writes.clone();
+                tokio::spawn(async move {
+                    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+                    let mut buf = [0u8; 4096];
+                    let n = sock.read(&mut buf).await.unwrap_or(0);
+                    let whole = String::from_utf8_lossy(&buf[..n]).into_owned();
+                    let path = whole.split_whitespace().nth(1).unwrap_or("").to_string();
+                    let body = whole.split("\r\n\r\n").nth(1).unwrap_or("").to_string();
+                    writes
+                        .lock()
+                        .expect("the request journal")
+                        .push((path, body));
+                    let _ = sock
+                        .write_all(
+                            b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}",
+                        )
+                        .await;
+                    let _ = sock.shutdown().await;
+                });
+            }
+        });
+        (format!("http://{addr}"), seen)
+    }
+
+    const PANE: &str = "forge-master-shim";
+
+    struct Sent {
+        acks: Vec<(String, String)>,
+        verbs: Vec<String>,
+        log: String,
+    }
+
+    impl Sent {
+        fn outcomes(&self) -> Vec<String> {
+            self.acks.iter().map(|(_, body)| body.clone()).collect()
+        }
+    }
+
+    /// One `session.send` frame, routed to a master pane, through whatever
+    /// tmux the caller has already installed.
+    async fn send_frame() -> (Vec<(String, String)>, String) {
+        let (url, acks) = recording_core().await;
+        let (buf, _logs) = capture_log();
+        let masters = Arc::new(Masters::new());
+        masters.remember_for_test("proj-1", "sess-1", PANE);
+        let runner = Arc::new(ClaudeCodeRunner::new(&url, "device-token", 1));
+        let client = CoreClient::new(&url, "device-token");
+        handle_session_send(
+            &client,
+            runner,
+            masters,
+            serde_json::json!({
+                "sessionId": "sess-1",
+                "seq": 3,
+                "kind": "answer",
+                "body": "MY-ORCHESTRATOR-MESSAGE",
+                "deadlineMs": 10_000
+            }),
+        )
+        .await;
+        let acks = acks.lock().expect("the request journal").clone();
+        let log = String::from_utf8_lossy(&buf.lock().expect("the log buffer")).into_owned();
+        (acks, log)
+    }
+
+    /// The same, through a shim tmux answering what this case needs.
+    async fn send_one(asked: Asked, capture: &str, fail: Option<&str>) -> Sent {
+        let shim = ShimTmux::installed(asked, capture, fail);
+        let (acks, log) = send_frame().await;
+        Sent {
+            acks,
+            verbs: shim.verbs(),
+            log,
+        }
+    }
+
+    /// The issue's own reproduction: a live master, a draft at its prompt, and
+    /// the ack read off the wire.
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_message_refused_at_a_dirty_composer_is_never_acked_gone() {
+        let _serialised = ONE_AT_A_TIME.lock().await;
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let sent = send_one(
+            Asked::Present,
+            &composer("LEFTOVER-FROM-SOMEWHERE-ELSE"),
+            None,
+        )
+        .await;
+        assert!(
+            sent.acks.is_empty(),
+            "the pane was read alive, so nothing may be said about it: {:?}",
+            sent.acks
+        );
+        assert!(
+            !sent
+                .verbs
+                .iter()
+                .any(|v| v == "paste-buffer" || v == "send-keys"),
+            "nothing may be typed after the capture refused the message: {:?}",
+            sent.verbs
+        );
+        let said = sent.log.to_lowercase();
+        assert!(
+            sent.log.contains("ERROR") && said.contains(PANE) && said.contains("no ack"),
+            "the silence must be said at the level the cancel arm uses, naming the pane and the ack that did not go: {}",
+            sent.log
+        );
+    }
+
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_message_refused_at_a_choice_list_is_never_acked_gone() {
+        let _serialised = ONE_AT_A_TIME.lock().await;
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let sent = send_one(Asked::Present, &menu(), None).await;
+        assert!(
+            sent.acks.is_empty(),
+            "a pane showing a choice list is running, and Enter there decides rather than sends: {:?}",
+            sent.acks
+        );
+    }
+
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_tmux_call_that_fails_while_typing_is_never_acked_gone() {
+        let _serialised = ONE_AT_A_TIME.lock().await;
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        for verb in ["load-buffer", "paste-buffer", "send-keys"] {
+            let sent = send_one(Asked::Present, &composer(""), Some(verb)).await;
+            assert!(
+                sent.acks.is_empty(),
+                "tmux broke at {verb} after the pane answered alive, which says nothing about the session having ended: {:?}",
+                sent.acks
+            );
+        }
+    }
+
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_session_tmux_says_it_does_not_hold_is_still_acked_gone() {
+        let _serialised = ONE_AT_A_TIME.lock().await;
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let sent = send_one(Asked::Absent, &composer(""), None).await;
+        assert_eq!(
+            sent.outcomes(),
+            vec![r#"{"outcome":"gone"}"#.to_string()],
+            "tmux answered in its own words that it holds no such session, which is the one thing `gone` may be minted from"
+        );
+    }
+
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_tmux_that_cannot_be_asked_is_never_acked_gone() {
+        let _serialised = ONE_AT_A_TIME.lock().await;
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let sent = send_one(Asked::NoServer, &composer(""), None).await;
+        assert!(
+            sent.acks.is_empty(),
+            "no server answered, so nobody established that the session ended: {:?}",
+            sent.acks
+        );
+    }
+
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_message_the_pane_takes_is_acked_delivered() {
+        let _serialised = ONE_AT_A_TIME.lock().await;
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let sent = send_one(Asked::Present, &composer(""), None).await;
+        assert_eq!(
+            sent.outcomes(),
+            vec![r#"{"outcome":"delivered"}"#.to_string()],
+            "an empty composer takes the message"
+        );
+        assert!(
+            sent.verbs.iter().any(|v| v == "send-keys"),
+            "and it is typed and submitted: {:?}",
+            sent.verbs
+        );
+    }
+
+    /// ISS-1224 settled that a pane whose composer cannot be read is typed into
+    /// anyway, as it always was before a pane could be read. This change does
+    /// not reopen it.
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_pane_whose_composer_cannot_be_read_still_takes_the_message() {
+        let _serialised = ONE_AT_A_TIME.lock().await;
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let sent = send_one(Asked::Present, "$ \n$ echo hi\nhi\n$ ", None).await;
+        assert_eq!(
+            sent.outcomes(),
+            vec![r#"{"outcome":"delivered"}"#.to_string()],
+            "an unreadable prompt is typed into and reported honestly, unchanged by this issue"
+        );
+    }
 
     fn frame(kind: &str, body: Option<&str>, job: Option<&str>) -> SendFrame {
         SendFrame {
