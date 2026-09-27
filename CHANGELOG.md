@@ -3125,6 +3125,7 @@
   migration case tore down its own database on its own clock, and that teardown waits on the whole
   server.
 
+- **`pnpm verify` no longer says `ci-passed` gates a check it does not gate.** CodeQL sits outside the merge gate, so it now has its own heading instead of standing under one that covers everything above it.
 - **Links between help pages open the page they name.** Every one opened Getting started; a link to a missing page now says so. Release notes render their formatting, and Reopen stays on screen at phone width.
 - **Throughput counts each shipped issue once, on the day it first shipped.** An issue passing through awaiting release then closed, or reopened and closed again, counted each time. Project health and cost per closed now agree.
 - **On an issue, the description now gets most of the width and comes first.** Attachments sit above its text, empty panels and fields take a line or nothing, the title wraps, and the run's state has its own label.

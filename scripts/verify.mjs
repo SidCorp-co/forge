@@ -4,6 +4,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { notRunHereLines } from './lib/not-run-here.mjs';
 import { absentPrerequisites, blockedAside, remedyLines } from './lib/prerequisite.mjs';
 import { markFor, tally, tallyLine } from './lib/verify-report.mjs';
 
@@ -545,14 +546,11 @@ function reportNotRunHere() {
   const elsewhere = Object.entries(CI_COVERAGE)
     .filter(([, where]) => !where.startsWith('verify'))
     .filter(([step]) => RUN_ELSEWHERE_HINT.some((h) => step.includes(h)));
-  if (elsewhere.length === 0) return;
-  console.log(
-    `\n  A green here does not cover these — CI runs them, and ci-passed gates the merge:`,
+  const lines = notRunHereLines(
+    elsewhere.map(([, where]) => where),
+    OFF_TREE_CHECKS,
   );
-  for (const cmd of [...new Set(elsewhere.map(([, where]) => where))].sort()) {
-    console.log(`    ${cmd}`);
-  }
-  for (const line of OFF_TREE_CHECKS) console.log(`    ${line}`);
+  for (const line of lines) console.log(line);
 }
 
 /**
