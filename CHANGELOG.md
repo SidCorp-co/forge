@@ -3112,6 +3112,7 @@
 
 ### Fixed
 
+- **The board drawer no longer labels an issue with nothing running as Queued.** Its header shows a run chip only for a run. The issue's status appears once, under its own name, including for read-only viewers.
 - **An issue waiting for a runner now shows as Queued everywhere on its page and in the board drawer.** The run chips said nothing while the agent panel said queued. A paused run reads Paused, not Idle.
 - **Links between help pages open the page they name.** Every one opened Getting started; a link to a missing page now says so. Release notes render their formatting, and Reopen stays on screen at phone width.
 - **Throughput counts each shipped issue once, on the day it first shipped.** An issue passing through awaiting release then closed, or reopened and closed again, counted each time. Project health and cost per closed now agree.

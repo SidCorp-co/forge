@@ -2,6 +2,7 @@
 //
 // ISS-1277 — the board drawer's header chip and its quick-actions chip read one run state. A job no
 // runner has claimed has no session; under a running pipeline run both chips say it is queued.
+// ISS-1278 — with no run there is no run chip, and the issue's status is only ever its own pill.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -128,5 +129,63 @@ describe("the board drawer's run chips", () => {
     render(<RunDetail open onClose={vi.fn()} issue={null} runId="r1" slug="forge-dev" />);
     expect(within(screen.getByText("run r1").parentElement as HTMLElement).getByText("running · drive")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Change status/ })).toBeNull();
+  });
+});
+
+describe("the board drawer with no pipeline run", () => {
+  const noRun = { pipelineHealth: { stage: "open" } };
+
+  it("draws no run chip for an open issue with nothing running, and never reads Queued", () => {
+    render(<RunDetail open onClose={vi.fn()} issue={issueRow(noRun)} runId={null} slug="forge-dev" />);
+    expect(within(header()).queryByText("Queued")).toBeNull();
+    expect(screen.queryAllByText("Queued")).toHaveLength(0);
+    expect(within(header()).getByText("ISS-2").parentElement?.children).toHaveLength(1);
+    expect(within(quick()).getAllByText("Open")).toHaveLength(1);
+  });
+
+  it("does not print a dropped issue's status as a run chip", () => {
+    render(<RunDetail open onClose={vi.fn()} issue={issueRow({ ...noRun, status: "dropped" })} runId={null} slug="forge-dev" />);
+    expect(within(header()).queryByText("Closed")).toBeNull();
+    expect(within(quick()).getByText("Dropped")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["completed", "Completed"],
+    ["failed", "Failed"],
+    ["running", "Running"],
+    ["queued", "Queued"],
+  ] as const)("reads a %s session in the header as the quick actions do", (agentStatus, text) => {
+    render(<RunDetail open onClose={vi.fn()} issue={issueRow({ ...noRun, agentStatus })} runId={null} slug="forge-dev" />);
+    const quickChip = within(quick()).getByText(text);
+    expect(within(header()).getByText(text).textContent).toBe(quickChip.textContent);
+  });
+
+  it("reads a job queued before any session as Queued, as the quick actions do", () => {
+    render(<RunDetail open onClose={vi.fn()} issue={issueRow()} runId={null} slug="forge-dev" />);
+    expect(within(header()).getByText("Queued")).toBeInTheDocument();
+    expect(within(quick()).getByText("Queued")).toBeInTheDocument();
+  });
+
+  it("gives a read-only viewer the issue pill with the issue's own label, and no run chip", () => {
+    render(<RunDetail open onClose={vi.fn()} issue={issueRow(noRun)} runId={null} slug="forge-dev" canWrite={false} />);
+    expect(within(header()).getByText("Open")).toBeInTheDocument();
+    expect(within(header()).queryByText("Queued")).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Change status/ })).toBeNull();
+  });
+
+  it("gives a read-only viewer the issue pill beside a pipeline run's chip", () => {
+    run = summary("running");
+    render(
+      <RunDetail open onClose={vi.fn()} issue={issueRow({ agentStatus: "running", pipelineHealth: { stage: "open" } })} runId="r1" slug="forge-dev" canWrite={false} />,
+    );
+    expect(within(header()).getByText("Open")).toBeInTheDocument();
+    expect(within(header()).getByText("running · drive")).toBeInTheDocument();
+  });
+
+  it("draws no chip in the Ops drawer while its run has not loaded", () => {
+    render(<RunDetail open onClose={vi.fn()} issue={null} runId="r1" slug="forge-dev" />);
+    const opsHeader = screen.getByText("run r1").parentElement as HTMLElement;
+    expect(opsHeader.children).toHaveLength(1);
+    expect(within(opsHeader).queryByText("Queued")).toBeNull();
   });
 });

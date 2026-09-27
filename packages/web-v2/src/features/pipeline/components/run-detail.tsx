@@ -32,7 +32,7 @@ import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { useRecents, buildShareLink } from "@/features/shell";
 import { IssueQuickActions } from "@/features/issues/components/issue-quick-actions";
-import { priorityLabel, runStatusChip, statusToChip } from "@/features/issues/derive";
+import { priorityLabel, runStatusChip, statusLabel, statusToChip } from "@/features/issues/derive";
 import type { IssuePriority, IssueStatus } from "@/features/issues/types";
 import { drawerRunChip, formatDurationMs, formatUsd } from "../derive";
 import { useCancelRun, useIssueTasks, usePauseRun, useResumeRun, useRun } from "../hooks";
@@ -111,9 +111,10 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
   const label = issue?.displayId ?? (runId ? `run ${runId.slice(0, 8)}` : "run");
   const title = issue?.title ?? "Pipeline run";
   const branch = issue?.metadata?.branchConfig?.branch ?? null;
-  const chipStatus = run
-    ? drawerRunChip(run.status, issue ? runStatusChip(issue) : null)
-    : statusToChip((issue?.status ?? "open") as IssueStatus);
+  // A session-styled chip is the run's; the issue's own status is never drawn in it.
+  const issueRun = issue ? runStatusChip(issue) : null;
+  const chipStatus = run ? drawerRunChip(run.status, issueRun) : issueRun;
+  const issueStatus = issue ? (issue.status as IssueStatus) : null;
   const isActive = run?.status === "running" || run?.status === "paused";
   // Pause is a "finish the in-flight step, then halt" gate (it does NOT abort
   // the running agent — only Cancel does). So a paused run with a step still
@@ -178,14 +179,20 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
       title={
         <span className="flex items-center gap-2.5">
           <MonoTag>{label}</MonoTag>
+          {/* Writers read the issue's status off the quick-actions row; a viewer has no such row. */}
+          {issueStatus && !canWrite && (
+            <StatusChip status={statusToChip(issueStatus)} label={statusLabel(issueStatus)} size="sm" />
+          )}
           {/* The session vocabulary reads `paused` as an idle session; a pipeline run that is paused says so. */}
-          <StatusChip
-            status={chipStatus}
-            stage={chipStep}
-            size="sm"
-            domain="session"
-            label={chipStatus === "paused" ? "Paused" : undefined}
-          />
+          {chipStatus && (
+            <StatusChip
+              status={chipStatus}
+              stage={chipStep}
+              size="sm"
+              domain="session"
+              label={chipStatus === "paused" ? "Paused" : undefined}
+            />
+          )}
         </span>
       }
     >
