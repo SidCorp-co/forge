@@ -45,6 +45,7 @@ import {
   canonicalIssueId,
   deriveBlockerState,
   deriveStepOutcomes,
+  isLiveRun,
   runningStepOf,
   issueQueryKey,
   parseChecklist,
@@ -243,11 +244,9 @@ export function IssueDetailScreen({
 
   const isTerminal = issue.status === "awaiting_release" || issue.status === "closed";
   const isParked = issue.status === "on_hold";
-  const isRunActive =
-    issue.agentStatus === "running" ||
-    issue.agentStatus === "queued" ||
-    issue.status === "in_progress" ||
-    issue.status === "reopen";
+  // The run's state is a session chip beside the issue's lifecycle chip, never merged into it (ISS-360, ISS-1150).
+  const runChip = runStatusChip(issue);
+  const isRunActive = isLiveRun(runChip) || issue.status === "in_progress" || issue.status === "reopen";
   const openSessions = () =>
     router.push(`/projects/${slug}/agents?issue=${issue.id}`);
   const openPipeline = () => router.push(`/projects/${slug}/pipeline`);
@@ -288,9 +287,6 @@ export function IssueDetailScreen({
     },
     { value: "tasks", label: "Tasks", count: tasksQ.data?.length },
   ];
-
-  // The run's state is a session chip beside the issue's lifecycle chip, never merged into it (ISS-360, ISS-1150).
-  const runChip = runStatusChip(issue.agentStatus);
 
   return (
     <PageContainer className="min-h-dvh">

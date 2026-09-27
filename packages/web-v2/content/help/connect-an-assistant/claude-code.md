@@ -2,6 +2,7 @@
 title: Connect Claude Code
 section: Connect an assistant
 order: 30
+audience: assistant-setup
 ---
 
 # Connect Claude Code

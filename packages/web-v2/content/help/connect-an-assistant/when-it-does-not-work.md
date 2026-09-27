@@ -2,6 +2,7 @@
 title: When it does not work
 section: Connect an assistant
 order: 70
+audience: assistant-setup
 ---
 
 # When it does not work

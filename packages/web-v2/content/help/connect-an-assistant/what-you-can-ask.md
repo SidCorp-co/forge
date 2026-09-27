@@ -2,6 +2,7 @@
 title: What you can ask
 section: Connect an assistant
 order: 60
+audience: assistant-setup
 ---
 
 # What you can ask

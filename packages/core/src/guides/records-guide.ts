@@ -16,6 +16,7 @@ const route = (kind: string): string => `\`${RECORD_DESTINATIONS.get(kind) ?? ''
 
 export const RECORDS_GUIDE: ForgeGuide = {
   slug: RECORD_GUIDE_SLUG,
+  audience: 'agent',
   title: 'What a comment is for, and where a record goes',
   summary:
     'A comment carries what a person wrote for a person to read; a structured record goes to the store its kind names, with the comment keeping the pointer back.',

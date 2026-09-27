@@ -54,6 +54,25 @@ describe("the board's quick actions", () => {
     expect(screen.getByText("Queued")).toBeInTheDocument();
   });
 
+  it("shows a job queued before any session as a Queued run (ISS-1277)", () => {
+    const pipelineHealth = {
+      stage: "open",
+      queuedStep: { jobId: "j1", jobType: "drive", stageStatus: null, queuedAt: "2026-09-05T14:16:00Z", retryAfterAt: null },
+    };
+    wrap(<IssueQuickActions issueId="i1" status="open" agentStatus={null} pipelineHealth={pipelineHealth} priority="medium" />);
+    expect(screen.getByRole("button", { name: "Change status (currently Open)" })).toHaveTextContent(/^Open$/);
+    expect(screen.getByText("Queued")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["running", "Running"],
+    ["completed", "Completed"],
+    ["failed", "Failed"],
+  ] as const)("shows a %s session as its own chip", (agentStatus, word) => {
+    wrap(<IssueQuickActions issueId="i1" status="open" agentStatus={agentStatus} priority="medium" />);
+    expect(screen.getByText(word)).toBeInTheDocument();
+  });
+
   it("shows no run chip when the run has no state", () => {
     wrap(<IssueQuickActions issueId="i1" status="open" agentStatus={null} priority="medium" />);
     expect(screen.queryByText("Queued")).toBeNull();

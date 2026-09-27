@@ -9,12 +9,14 @@ import { InlineSelect, StatusEdit } from "./inline-edit-cell";
 import { PRIORITY_OPTIONS } from "./issue-table-row";
 import { usePatchIssue } from "../hooks";
 import { useGuardedTransition } from "./use-guarded-transition";
-import type { IssueAgentStatus, IssuePriority, IssueStatus } from "../types";
+import type { IssueAgentStatus, IssuePriority, IssueStatus, PipelineHealth } from "../types";
 
 interface IssueQuickActionsProps {
   issueId: string;
   status: IssueStatus;
   agentStatus?: IssueAgentStatus;
+  /** The issue's pipeline health — a job queued before any runner claims it is a queued run. */
+  pipelineHealth?: PipelineHealth;
   priority: IssuePriority;
   /** Project slug — enables the "Open issue" full-detail link when present. */
   slug?: string;
@@ -26,6 +28,7 @@ export function IssueQuickActions({
   issueId,
   status,
   agentStatus,
+  pipelineHealth,
   priority,
   slug,
   onOpenIssue,
@@ -33,7 +36,7 @@ export function IssueQuickActions({
   const patch = usePatchIssue();
   const { requestTransition, dialog, isPending } = useGuardedTransition();
   const pending = patch.isPending || isPending;
-  const runChip = runStatusChip(agentStatus);
+  const runChip = runStatusChip({ agentStatus, pipelineHealth });
 
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-line-subtle bg-sunken px-3.5 py-2.5">
