@@ -6065,6 +6065,8 @@
 
 ### Changed
 - **Closing an issue now means the work shipped.** A close is refused unless the issue says the code landed. Work that turned out not to be work leaves by Dropped, which frees whatever was waiting on it just the same.
+- **Every check now measures against the branch your work will actually land on**, not always
+  `main`. A repository on another base gets real checks instead of quiet passes.
 
 - **Every change of an issue's status is now recorded in the same ledger as the rest of the work.** Who moved it, when, and under whose authority is answered from that record instead of from a comment somebody wrote.
 

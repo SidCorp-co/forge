@@ -13,9 +13,9 @@ export function floorOf(entries) {
   return entries.reduce((max, e) => (e.when > max ? e.when : max), Number.NEGATIVE_INFINITY);
 }
 
-/** The entries of `branch` that `main` does not already carry, in index order. */
-export function newEntries(branch, main) {
-  const landed = new Set(main.map((e) => e.tag));
+/** The entries of `branch` that the base branch does not already carry, in index order. */
+export function newEntries(branch, base) {
+  const landed = new Set(base.map((e) => e.tag));
   return branch.filter((e) => !landed.has(e.tag)).sort((a, b) => a.idx - b.idx);
 }
 
@@ -33,13 +33,13 @@ function name(entry) {
  * ours is the damage this check exists to refuse, so dropping it before measuring would be the
  * check deleting its own subject.
  */
-function floorRefusals(self, floor, nextWhen) {
+function floorRefusals(self, floor, nextWhen, baseRef) {
   return self.entries
     .filter((e) => e.when <= floor)
     .map((e) => ({
       rule: 'below-floor',
       message:
-        `${name(e)} on ${self.branch} does not clear origin/main, whose highest when is ${floor}.\n` +
+        `${name(e)} on ${self.branch} does not clear ${baseRef}, whose highest when is ${floor}.\n` +
         '  drizzle reads that number once and applies only entries above it, so this migration\n' +
         `  would be skipped silently and for ever. Take when ${nextWhen}.`,
     }));
@@ -105,12 +105,12 @@ export function betweenBranches(self, sibling) {
 }
 
 /**
- * Judge one tree's new migrations against the open set. Sibling entries at or below `main`'s floor
- * are STRANDED: reported on their own, counted against nobody.
- * @param {{ main: Entry[], self: Branch, siblings: Branch[] }} set
+ * Judge one tree's new migrations against the open set. Siblings at or below the base branch's
+ * floor are STRANDED: counted against nobody. `baseRef` names that branch in the refusal.
+ * @param {{ base: Entry[], baseRef: string, self: Branch, siblings: Branch[] }} set
  */
-export function checkSet({ main, self, siblings }) {
-  const floor = floorOf(main);
+export function checkSet({ base, baseRef, self, siblings }) {
+  const floor = floorOf(base);
   const stranded = [];
   const live = [];
   for (const sibling of siblings) {
@@ -120,13 +120,13 @@ export function checkSet({ main, self, siblings }) {
     if (above.length > 0) live.push({ branch: sibling.branch, entries: above });
   }
 
-  const everything = [...main, ...self.entries, ...live.flatMap((b) => b.entries)];
+  const everything = [...base, ...self.entries, ...live.flatMap((b) => b.entries)];
   const next = {
     when: floorOf(everything) + DAY,
     idx: everything.reduce((max, e) => (e.idx > max ? e.idx : max), -1) + 1,
   };
 
-  const refusals = floorRefusals(self, floor, next.when);
+  const refusals = floorRefusals(self, floor, next.when, baseRef);
   if (self.entries.length > 0) {
     for (const sibling of live) refusals.push(...betweenBranches(self, sibling));
   }
