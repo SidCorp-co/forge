@@ -183,8 +183,7 @@ export async function openRunSession(args: {
       return { sessionId: existing.sessionId, runId: existing.runId };
     }
   }
-  // After the replay, so a box whose committed open lost its reply gets its session back rather
-  // than leaving one holding leases; before any write, so a refusal leaves nothing behind.
+  // After the replay, so a committed open whose reply was lost is answered, not orphaned.
   const admission = await projectAdmission({ projectId: args.projectId, deviceId: args.deviceId });
   if (!admission.admitted) {
     throw new RunnerNotAdmittedError({

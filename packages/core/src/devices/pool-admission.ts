@@ -24,12 +24,7 @@ const WHAT_WAS_WRONG: Record<RunnerAdmissionReason, string> = {
   runner_withdrawn: "this device's runner on the project is disabled or draining",
 };
 
-/**
- * Refused: the box may not take this project's work at all.
- *
- * Thrown by the write that takes work, before anything is written, so the refusal reaches the
- * box by name instead of the box being shown fewer rows and left to guess why.
- */
+/** Refused before anything is written, so the box is told why rather than shown fewer rows. */
 export class RunnerNotAdmittedError extends Error {
   readonly code = 'RUNNER_NOT_ADMITTED';
   readonly reason: RunnerAdmissionReason;
@@ -77,10 +72,7 @@ export async function projectAdmission(args: {
   return { admitted: true };
 }
 
-/**
- * Whether this device may take work on the project that owns `jobId` — the
- * same answer `projectAdmission` gives, reached through the job.
- */
+/** `projectAdmission`, reached through the job's project. */
 export async function runnerAdmission(args: {
   jobId: string;
   deviceId: string;
