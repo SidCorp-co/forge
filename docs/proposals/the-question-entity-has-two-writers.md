@@ -82,6 +82,10 @@ them and stores what they carry (`tests/integration/question-runner-wire-e2e.tes
 - **A person's answer at a rung other than `needs_info` reaches no session.** `answer-resume` hands
   an answer to the session that asked only while the issue is parked; a run that asked about
   finished work reads the answer back with `forge_questions` action `get`.
+- **No browser is told a question changed.** An ask or an answer publishes no websocket event, and
+  since neither moves the issue, an Issues list or an issue page already open shows the marker,
+  `Needs you`, its count and the banner as of its last fetch until it refetches (focus, remount, or
+  its own poll — which the issue page's question read skips while the issue holds none).
 - **23 of 33 live projects on beta (measured 2026-09-27) admit nothing at `confirmed`**, so an
   answered park there returns to `open` instead. The day each autonomous project's admission reads
   `confirmed`, `answer-resume.ts:answerTarget` loses its second branch.
