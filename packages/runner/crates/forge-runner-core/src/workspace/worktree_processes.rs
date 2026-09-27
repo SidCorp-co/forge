@@ -74,8 +74,16 @@ impl std::fmt::Display for Resident {
 /// What this box could read about who is living in a checkout.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Reading {
-    /// The processes found, which may be none.
-    Read(Vec<Resident>),
+    /// The processes found, which may be none, and how many pids this box was
+    /// not allowed to ask about at all.
+    Read {
+        residents: Vec<Resident>,
+        /// Pids whose `cwd` the kernel would not show this process, which it
+        /// does for a process of another user. Counted rather than dropped in
+        /// silence: the reading is partial, and a caller saying nobody is in
+        /// the checkout would be claiming more than was measured.
+        not_asked: usize,
+    },
     /// This platform keeps no process table at the root it was asked about, so
     /// the question cannot be put here at all.
     NoTable(String),
@@ -206,8 +214,14 @@ impl std::fmt::Display for Why {
 /// What became of the residents of a checkout about to be given back.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Ending {
-    /// Nobody was living there, or everybody who was is gone.
-    Clear { ended: Vec<Resident> },
+    /// Nobody this box could ask about was living there, or everybody who was
+    /// is gone.
+    Clear {
+        ended: Vec<Resident>,
+        /// Pids this box was not allowed to ask about, carried so the line a
+        /// removal writes says how complete its reading was.
+        not_asked: usize,
+    },
     /// This platform keeps no process table, so nothing was read and nothing
     /// signalled. The removal is no worse off than it was before this module.
     NoTable(String),
@@ -218,6 +232,7 @@ pub enum Ending {
     Standing {
         standing: Vec<(Resident, Why)>,
         ended: Vec<Resident>,
+        not_asked: usize,
     },
 }
 
@@ -237,6 +252,26 @@ pub enum Verdict {
     Refuse(String),
 }
 
+/// How a reading that could not ask about every pid says so.
+///
+/// Never omitted where the count is not zero: a line saying a checkout is clear
+/// is a claim about every process on the box, and this reading is only ever a
+/// claim about the ones the kernel would answer for.
+fn unasked(n: usize) -> String {
+    format!(
+        "{n} pid(s) belong to another user, whose working directory this box is not allowed to \
+         read and whose processes it could not signal either"
+    )
+}
+
+/// The same, as a clause appended to a line that says something else first.
+fn also(n: usize) -> String {
+    match n {
+        0 => String::new(),
+        n => format!(" Also: {}.", unasked(n)),
+    }
+}
+
 impl Ending {
     /// One sentence naming everything still standing, for the refusal that
     /// carries it.
@@ -251,16 +286,24 @@ impl Ending {
     /// Whether the checkout at `at` may be taken now.
     pub fn verdict(&self, at: &Path) -> Verdict {
         match self {
-            Ending::Clear { ended } if ended.is_empty() => Verdict::Take(None),
-            Ending::Clear { ended } => Verdict::Take(Some(format!(
-                "ended {} process(es) living in {} before taking it — {}",
+            Ending::Clear { ended, not_asked } if ended.is_empty() => match not_asked {
+                0 => Verdict::Take(None),
+                n => Verdict::Take(Some(format!(
+                    "nobody this box may ask about is living in {}, and {}",
+                    at.display(),
+                    unasked(*n)
+                ))),
+            },
+            Ending::Clear { ended, not_asked } => Verdict::Take(Some(format!(
+                "ended {} process(es) living in {} before taking it — {}{}",
                 ended.len(),
                 at.display(),
                 ended
                     .iter()
                     .map(Resident::to_string)
                     .collect::<Vec<_>>()
-                    .join("; ")
+                    .join("; "),
+                also(*not_asked)
             ))),
             Ending::NoTable(said) => Verdict::Take(Some(format!(
                 "who is living in {} cannot be asked on this platform ({said}) — the directory is \
@@ -278,8 +321,12 @@ impl Ending {
             // processes this box really did signal in no line anywhere, which
             // is the same silence the whole change exists to end (consult
             // 8064e5 F2).
-            Ending::Standing { standing, ended } => Verdict::Refuse(format!(
-                "{} process(es) are still running in {} — {}. {} The directory stays: it is the \
+            Ending::Standing {
+                standing,
+                ended,
+                not_asked,
+            } => Verdict::Refuse(format!(
+                "{} process(es) are still running in {} — {}. {}{} The directory stays: it is the \
                  only thing left naming them",
                 standing.len(),
                 at.display(),
@@ -298,7 +345,8 @@ impl Ending {
                             .collect::<Vec<_>>()
                             .join("; ")
                     ),
-                }
+                },
+                also(*not_asked)
             )),
         }
     }
@@ -393,6 +441,7 @@ fn each_pid(
     identity: impl Fn(u32) -> Option<String>,
     wanted: impl Fn(&Path, bool) -> bool,
 ) -> Reading {
+    let mut not_asked = 0usize;
     let entries = match std::fs::read_dir(proc_root) {
         Ok(e) => e,
         // A root that is not there at all is a platform that keeps no such
@@ -423,10 +472,34 @@ fn each_pid(
             continue;
         };
         let before = identity(pid);
-        // A pid whose cwd link cannot be read belongs to another user, and a
-        // process of another user was not started by a run of this box's.
-        let Ok(raw) = std::fs::read_link(entry.path().join("cwd")) else {
-            continue;
+        let raw = match std::fs::read_link(entry.path().join("cwd")) {
+            Ok(raw) => raw,
+            // The pid went between the listing and this line. There is no
+            // process here to be living anywhere.
+            Err(e) if matches!(e.kind(), std::io::ErrorKind::NotFound) => continue,
+            // The kernel will not show this process's working directory, which
+            // it does for a process of another user. Two things follow and
+            // neither is a refusal: a run of this box executes as this user, so
+            // another user's process was not started by one; and this box could
+            // not signal it either, the kernel refusing that too, which already
+            // stands as `Why::Refused` rather than passing. So it is skipped —
+            // but COUNTED, because a reading that dropped it in silence would
+            // let a caller say nobody is in the checkout on a measurement that
+            // never asked. Measured on `sid-xeon-1`, 804 of 1074 pids answer
+            // this way, which is why a blanket refusal here is not the fix
+            // (consult 2e320c F2).
+            Err(e) if matches!(e.kind(), std::io::ErrorKind::PermissionDenied) => {
+                not_asked += 1;
+                continue;
+            }
+            // Anything else is a read this box should have been able to take
+            // and could not, and not knowing is not knowing it is safe.
+            Err(e) => {
+                return Reading::Unreadable(format!(
+                    "the working directory of pid {pid} could not be read ({e}), so who is living \
+                     in a checkout cannot be established on this box"
+                ))
+            }
         };
         let (base, gone) = link_target(&raw);
         let at = if gone { base } else { resolved(&base) };
@@ -448,7 +521,10 @@ fn each_pid(
         });
     }
     found.sort_by_key(|r| r.pid);
-    Reading::Read(found)
+    Reading::Read {
+        residents: found,
+        not_asked,
+    }
 }
 
 /// This process and every ancestor of it that `proc_root` names.
@@ -493,6 +569,7 @@ pub async fn end_residents(
 ) -> Ending {
     let (mine, theirs): (Vec<Resident>, Vec<Resident>) =
         residents.into_iter().partition(|r| ours.contains(&r.pid));
+    let not_asked = 0;
 
     let mut handed_on: BTreeSet<u32> = BTreeSet::new();
     let mut refused: Vec<(u32, String)> = Vec::new();
@@ -550,9 +627,13 @@ pub async fn end_residents(
     standing.sort_by_key(|(r, _)| r.pid);
 
     if standing.is_empty() {
-        Ending::Clear { ended }
+        Ending::Clear { ended, not_asked }
     } else {
-        Ending::Standing { standing, ended }
+        Ending::Standing {
+            standing,
+            ended,
+            not_asked,
+        }
     }
 }
 
@@ -625,20 +706,29 @@ impl Clearing<'_> {
         let ended = match residents_of(self.proc_root, worktree) {
             Reading::NoTable(why) => return Ending::NoTable(why),
             Reading::Unreadable(why) => return Ending::Unreadable(why),
-            Reading::Read(rs) if rs.is_empty() => Vec::new(),
-            Reading::Read(rs) => {
+            Reading::Read { residents, .. } if residents.is_empty() => Vec::new(),
+            Reading::Read { residents, .. } => {
                 let ours = ancestry(self.proc_root, std::process::id());
-                match end_residents(rs, &ours, self.grace, self.hand).await {
-                    Ending::Clear { ended } => ended,
+                match end_residents(residents, &ours, self.grace, self.hand).await {
+                    Ending::Clear { ended, .. } => ended,
                     standing => return standing,
                 }
             }
         };
+        // The count comes off the LAST reading, because that is the one the
+        // verdict is taken over.
         match residents_of(self.proc_root, worktree) {
-            Reading::Read(rs) if rs.is_empty() => Ending::Clear { ended },
-            Reading::Read(rs) => Ending::Standing {
-                standing: rs.into_iter().map(|r| (r, Why::Arrived)).collect(),
+            Reading::Read {
+                residents,
+                not_asked,
+            } if residents.is_empty() => Ending::Clear { ended, not_asked },
+            Reading::Read {
+                residents,
+                not_asked,
+            } => Ending::Standing {
+                standing: residents.into_iter().map(|r| (r, Why::Arrived)).collect(),
                 ended,
+                not_asked,
             },
             Reading::NoTable(why) | Reading::Unreadable(why) => Ending::Unreadable(format!(
                 "the checkout was cleared and the reading that would confirm it could not be \
@@ -681,7 +771,7 @@ mod tests {
 
     fn pids(reading: &Reading) -> Vec<u32> {
         match reading {
-            Reading::Read(rs) => rs.iter().map(|r| r.pid).collect(),
+            Reading::Read { residents, .. } => residents.iter().map(|r| r.pid).collect(),
             other => panic!("the reading was taken, not {other:?}"),
         }
     }
@@ -966,7 +1056,10 @@ mod tests {
         let hand = Fake::default().dying_on(81, Sig::Term);
         let outcome = ending(vec![resident(81), resident(82)], &[], &hand);
 
-        let Ending::Standing { standing, ended } = outcome else {
+        let Ending::Standing {
+            standing, ended, ..
+        } = outcome
+        else {
             panic!("a resident that survived SIGKILL is not a clear checkout: {outcome:?}");
         };
         assert_eq!(ended.iter().map(|r| r.pid).collect::<Vec<_>>(), vec![81]);
@@ -995,7 +1088,10 @@ mod tests {
         let hand = Fake::default().handed_on(93);
         let outcome = ending(vec![resident(93)], &[], &hand);
 
-        let Ending::Standing { standing, ended } = outcome else {
+        let Ending::Standing {
+            standing, ended, ..
+        } = outcome
+        else {
             panic!("a pid nobody could safely signal is not a clear checkout: {outcome:?}");
         };
         assert!(ended.is_empty(), "{ended:?}");
@@ -1024,7 +1120,7 @@ mod tests {
             .dying_on(102, Sig::Kill);
         let outcome = ending(vec![resident(101), resident(102)], &[], &hand);
 
-        let Ending::Clear { ended } = outcome else {
+        let Ending::Clear { ended, .. } = outcome else {
             panic!("everybody went, so the directory may be taken: {outcome:?}");
         };
         assert_eq!(
@@ -1136,7 +1232,10 @@ mod tests {
             .expect("a runtime")
             .block_on(clearing.clear(&wt));
 
-        let Ending::Standing { standing, ended } = outcome else {
+        let Ending::Standing {
+            standing, ended, ..
+        } = outcome
+        else {
             panic!(
                 "every pid the ending knew about went, and somebody is still living in the \
                  checkout — answering `Clear` here is the orphan this module exists to stop, \
@@ -1158,6 +1257,7 @@ mod tests {
         let said = Ending::Standing {
             standing: vec![(resident(82), Why::Survived)],
             ended: vec![resident(81)],
+            not_asked: 0,
         }
         .verdict(Path::new("/wt"));
         let Verdict::Refuse(said) = said else {
@@ -1168,6 +1268,73 @@ mod tests {
             "a refusal that printed the survivors alone would leave the process this box really \
              did signal in no line anywhere, which is the silence the whole change ends: {said}"
         );
+    }
+
+    #[test]
+    fn a_working_directory_this_box_should_have_read_and_could_not_refuses_the_whole_reading() {
+        let scratch = Scratch::new("wtproc-cwd-eio");
+        let proc = scratch.join("proc");
+        let wt = scratch.join("wt");
+        std::fs::create_dir_all(&wt).expect("a checkout");
+        // A DIRECTORY where the `cwd` link belongs: `read_link` answers
+        // `InvalidInput`, which is neither a pid that went nor a pid of another
+        // user — it is a read this box should have been able to take.
+        let d = proc.join("505");
+        std::fs::create_dir_all(d.join("cwd")).expect("a pid directory");
+
+        let Reading::Unreadable(why) = residents_of(&proc, &wt) else {
+            panic!(
+                "a cwd this box could not read for a reason that is not permission is a reading \
+                 it did not take, and an empty list here would say nobody is in the checkout on a \
+                 measurement that never happened"
+            );
+        };
+        assert!(why.contains("pid 505"), "{why}");
+    }
+
+    #[test]
+    fn a_pid_that_went_between_the_listing_and_the_read_is_skipped_and_not_counted() {
+        let scratch = Scratch::new("wtproc-vanished");
+        let proc = scratch.join("proc");
+        let wt = scratch.join("wt");
+        std::fs::create_dir_all(&wt).expect("a checkout");
+        // A pid directory with no `cwd` entry at all: `read_link` answers
+        // `NotFound`, which is the pid having gone.
+        std::fs::create_dir_all(proc.join("606")).expect("a pid directory");
+        plant(&proc, 607, &wt.to_string_lossy(), "still here");
+
+        let Reading::Read {
+            residents,
+            not_asked,
+        } = residents_of(&proc, &wt)
+        else {
+            panic!("a pid that went is not a reading this box could not take");
+        };
+        assert_eq!(
+            residents.iter().map(|r| r.pid).collect::<Vec<_>>(),
+            vec![607]
+        );
+        assert_eq!(
+            not_asked, 0,
+            "a pid that no longer exists is nobody this box was refused, so counting it would \
+             report a partial reading that was in fact whole"
+        );
+    }
+
+    #[test]
+    fn a_clear_checkout_says_how_many_pids_it_was_never_allowed_to_ask_about() {
+        let said = Ending::Clear {
+            ended: Vec::new(),
+            not_asked: 804,
+        }
+        .verdict(Path::new("/wt"));
+        let Verdict::Take(Some(said)) = said else {
+            panic!(
+                "a reading that could not ask about 804 pids is not the same claim as one that \
+                 asked about every one and found nobody: {said:?}"
+            );
+        };
+        assert!(said.contains("804 pid(s) belong to another user"), "{said}");
     }
 
     #[test]

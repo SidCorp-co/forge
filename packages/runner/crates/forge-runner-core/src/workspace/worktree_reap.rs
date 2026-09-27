@@ -198,7 +198,10 @@ pub async fn reap_repo(repo: &Path, min_age: Duration, held_by: &HeldTrees) -> R
 fn report_the_stranded(repo: &Path, clearing: &Clearing<'_>) {
     let roots: Vec<PathBuf> = WORKTREE_ROOTS.iter().map(|r| repo.join(r)).collect();
     match clearing.stranded(&roots) {
-        Reading::Read(stranded) => {
+        Reading::Read {
+            residents: stranded,
+            ..
+        } => {
             for r in stranded {
                 tracing::warn!(
                     "[worktree-reap] {r} — the checkout it was living in went without it, so this \

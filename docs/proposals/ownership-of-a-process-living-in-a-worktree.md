@@ -39,6 +39,30 @@ repository has no way to exercise in its own CI.
 
 The condition that ends this one is the first orphaned listener observed on a non-Linux box.
 
+## The window between the last reading and the removal
+
+`Clearing::clear` ends the residents and then takes a FRESH reading, so a resident that forks a
+replacement while it is being asked to go is caught. What that cannot establish is ownership of the
+path *through* the removal: a process can change its working directory into the checkout after the
+second reading returns and before `git worktree remove` takes the directory, and the removal then
+succeeds over a live process whose working directory is gone. The window went from unbounded to the
+milliseconds between two calls; it did not close.
+
+Closing it needs an admission barrier rather than a third scan — quarantine the tree, scan the
+quarantined path, then remove it. The only rename that keeps git's registry honest is
+`git worktree move`, and taking it here is a change of its own shape: it refuses a worktree holding
+submodules, it changes the path in every line an operator greps the journal for, it gives the reap
+sweep's `remove_dir_all` fallback a different path to fall back to, and ISS-1193 on this box is the
+record of what worktree paths moving out from under the registry costs.
+
+There is a backstop in the meantime, added by the same change: the sweep names every process whose
+`cwd` is a `(deleted)` path under a worktree root, so a process that arrives inside the window is
+reported at the next sweep rather than living unnamed for three days, which is what the two orphans
+in ISS-1271 did.
+
+The condition that ends this one is a process observed arriving inside that window in the field, or
+a second issue asking for the quarantine on its own terms.
+
 ## Nine copies of the log-capture helper
 
 `forge-runner-core` held eight copies of the same `logged_while` test helper — in
@@ -62,4 +86,7 @@ form, `capturing()`, that an `async` test needs and that none of the copies has.
 | Refusing a removal over a resident that will not die | A release refused this way holds the run's leases until `RELEASE_GRACE_SECS` or `RELEASE_ATTEMPT_BOUND` decides it, and the sweep leaves that checkout's disk unreclaimed for a full six-hour period each time it meets it. |
 | Proceeding where there is no process table | On macOS and Windows the guarantee is not enforced at all, so a leaked listener there stays exactly as invisible as it was before ISS-1271, and every removal on those platforms carries a `warn` line that reads as noise until the day it does not. |
 | Closing the residence residual with an inherited marker | Two spawn paths change, `runner::claude_code` and `daemon::terminal`; the tmux pane route needs the variable put on the pane's own command rather than the client's; and every process started before the change carries no marker, so the reading needs a fallback for as long as any of them lives. |
+| Leaving the window between the last reading and the removal open | A removal can still succeed over a process that entered the checkout in the milliseconds after the final scan, and the only thing that reports one is the next sweep, up to six hours later. |
+| Closing that window with a quarantine | `git worktree move` per removal: a second git call on every reap, a refusal on any worktree holding submodules, a path in the journal that is no longer the path an operator knows, and a fallback route that has to follow the move. |
+| Counting rather than refusing a working directory the kernel will not show | A process of another user living in the checkout is neither ended nor refused over; the removal proceeds and the line says how many pids it was not allowed to ask about, which on this box is most of them — 804 of 1074. |
 | Folding the remaining seven log-capture copies | Seven files are touched for no behaviour change, each one a file some other change may hold, so the fold has to be taken when no branch is open across them or it buys a merge conflict per file. |
