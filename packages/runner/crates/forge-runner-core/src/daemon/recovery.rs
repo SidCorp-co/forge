@@ -458,10 +458,11 @@ fn silence_evidence(run: &Run) -> String {
     }
 }
 
-/// The `kept_notice` [`say_why_released`] latches on. It keeps the word
-/// 0.17.46's release path wrote to live ledgers, so a release said then is not
-/// said again.
-const RELEASE_SAID: &str = "unanswered";
+/// The `kept_notice` [`say_why_released`] latches on. Not `unanswered`, which
+/// 0.17.46 wrote for a release said and 0.17.52 for a keep, so that word
+/// latches neither writer: a release still owed after 0.17.46 said it is said
+/// once more, rather than a release after 0.17.52's keep never being said.
+const RELEASE_SAID: &str = "release-said";
 
 /// The `kept_notice` [`say_issue_status_unreadable`] latches on.
 const ISSUE_STATUS_UNREADABLE: &str = "issue-status-unreadable";
@@ -2222,6 +2223,29 @@ mod tests {
         }
     }
 
+    /// A row either earlier release wrote `unanswered` on — 0.17.46 for a
+    /// release it said, 0.17.52 for a keep — latches no writer here.
+    #[test]
+    fn a_row_carrying_the_retired_unanswered_notice_still_says_its_release() {
+        let scratch = Scratch::new("retired-unanswered");
+        let (mut led, _root, _wt, transcript) = a_subagent_run_in_a_worktree(&scratch);
+        over_for(&led, &transcript, 2 * HOUR_MS, 2 * HOUR_MS);
+        assert!(led.note_standing("run-1", "unanswered").unwrap());
+        let said = logged_while(|| {
+            block_on(async {
+                let r = sweep(&mut led, &NoRegistryEntry, &Beats::default())
+                    .await
+                    .expect("answered");
+                assert!(r.owed_release, "{r:?}");
+            })
+        });
+        assert!(
+            said.contains("no master on this box answers for it"),
+            "a word two releases gave two meanings is no proof this release was said: {said}"
+        );
+        assert_eq!(kept(&led).as_deref(), Some(RELEASE_SAID));
+    }
+
     /// Every writer of `kept_notice` latches on its own words. One column
     /// holds one notice per run, so a value two writers share is one writer's
     /// "already said" silencing the other: a keep written as `unanswered`
@@ -2269,7 +2293,7 @@ mod tests {
                 standing.push(standing_notice(s, &state));
             }
         }
-        let writers: [(&str, Vec<&str>); 4] = [
+        let writers: [(&str, Vec<&str>); 5] = [
             (
                 "say_why_kept",
                 evidence
@@ -2279,6 +2303,7 @@ mod tests {
             ),
             ("say_standing", standing),
             ("say_why_released", vec![RELEASE_SAID]),
+            ("no writer: retired, see RELEASE_SAID", vec!["unanswered"]),
             ("say_issue_status_unreadable", vec![ISSUE_STATUS_UNREADABLE]),
         ];
         for (i, (a, mine)) in writers.iter().enumerate() {
@@ -2561,7 +2586,7 @@ mod tests {
         );
         assert_eq!(
             led.run("run-1").unwrap().unwrap().kept_notice.as_deref(),
-            Some("unanswered"),
+            Some(RELEASE_SAID),
             "and the row says what the box said"
         );
 
