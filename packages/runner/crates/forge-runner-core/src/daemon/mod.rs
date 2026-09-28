@@ -1771,54 +1771,60 @@ mod tests {
         );
     }
 
-    /// ISS-488 and ISS-553/554 on this box: a background task finished after
-    /// the subagent stopped, its notification was appended, and no reply ever
-    /// followed. Of 277 notifications in 1075 transcripts measured 2026-09-28
-    /// the slowest reply came 29 s after it, and of 145,297 entries a reply
-    /// answers the slowest came 20 min after.
+    /// A background task finished after the subagent stopped, its
+    /// notification was appended, and no reply ever followed: ISS-488's bare,
+    /// and ISS-553/554's with the context Claude Code wrote beside it. Of 277
+    /// notifications in 1075 transcripts measured 2026-09-28 the slowest reply
+    /// came 29 s after it, and of 145,297 entries a reply answers the slowest
+    /// came 20 min after.
     #[test]
     fn a_notification_nobody_answered_for_the_quiet_bound_does_not_hold_the_restart() {
         let stop = NOW_MS - 3 * 24 * HOUR_MS;
-        let body = format!(
-            "{}{}",
-            transcript_age::STOP_TAIL,
-            transcript_age::NOTIFIED_TAIL
-        );
-        let (led, dir) = a_stopped_subagent_writing(stop, Some(NOW_MS - HOUR_MS), &body);
-        let runs = led.unclosed_runs().unwrap();
-        let quiet = count_live_runs(&runs, "boot-a", |_| true, |r| reads_quiet(r, NOW_MS));
-        let (led_recent, dir_recent) =
-            a_stopped_subagent_writing(stop, Some(NOW_MS - HOUR_MS + 1), &body);
-        let runs = led_recent.unclosed_runs().unwrap();
-        let recent = count_live_runs(&runs, "boot-a", |_| true, |r| reads_quiet(r, NOW_MS));
-        let _ = std::fs::remove_dir_all(dir);
-        let _ = std::fs::remove_dir_all(dir_recent);
-        assert_eq!(
-            quiet, 0,
-            "unanswered for the whole bound: no turn took it up"
-        );
-        assert_eq!(
-            recent, 1,
-            "a millisecond inside the bound, a reply may still come"
-        );
+        for (shape, tail) in [
+            ("ISS-488", transcript_age::NOTIFIED_TAIL),
+            ("ISS-553/554", transcript_age::NOTIFIED_WITH_CONTEXT_TAIL),
+        ] {
+            let body = format!("{}{tail}", transcript_age::STOP_TAIL);
+            let (led, dir) = a_stopped_subagent_writing(stop, Some(NOW_MS - HOUR_MS), &body);
+            let runs = led.unclosed_runs().unwrap();
+            let quiet = count_live_runs(&runs, "boot-a", |_| true, |r| reads_quiet(r, NOW_MS));
+            let (led_recent, dir_recent) =
+                a_stopped_subagent_writing(stop, Some(NOW_MS - HOUR_MS + 1), &body);
+            let runs = led_recent.unclosed_runs().unwrap();
+            let recent = count_live_runs(&runs, "boot-a", |_| true, |r| reads_quiet(r, NOW_MS));
+            let _ = std::fs::remove_dir_all(dir);
+            let _ = std::fs::remove_dir_all(dir_recent);
+            assert_eq!(
+                quiet, 0,
+                "{shape}: unanswered for the whole bound, no turn took it up"
+            );
+            assert_eq!(
+                recent, 1,
+                "{shape}: a millisecond inside the bound, a reply may still come"
+            );
+        }
     }
 
     #[test]
     fn a_notification_still_inside_the_bound_is_held_and_says_so() {
         let now = agent_activity::now_ms();
-        let body = format!(
-            "{}{}",
-            transcript_age::STOP_TAIL,
-            transcript_age::NOTIFIED_TAIL
-        );
-        let (led, dir) =
-            a_stopped_subagent_writing(now - 3 * HOUR_MS, Some(now - 5 * 60_000 - 30_000), &body);
-        let held = held_line(&led);
-        let _ = std::fs::remove_dir_all(dir);
-        assert!(
-            held[0].contains("written 5m ago") && held[0].contains("no reply yet"),
-            "{held:?}"
-        );
+        for tail in [
+            transcript_age::NOTIFIED_TAIL,
+            transcript_age::NOTIFIED_WITH_CONTEXT_TAIL,
+        ] {
+            let body = format!("{}{tail}", transcript_age::STOP_TAIL);
+            let (led, dir) = a_stopped_subagent_writing(
+                now - 3 * HOUR_MS,
+                Some(now - 5 * 60_000 - 30_000),
+                &body,
+            );
+            let held = held_line(&led);
+            let _ = std::fs::remove_dir_all(dir);
+            assert!(
+                held[0].contains("written 5m ago") && held[0].contains("no reply yet"),
+                "{held:?}"
+            );
+        }
     }
 
     #[test]

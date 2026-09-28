@@ -129,7 +129,9 @@ pub fn is_quiet(evidence: Evidence) -> bool {
 }
 
 /// What the box says when it first finds a run in this state, or `None` for
-/// the states it says nothing about.
+/// the states it says nothing about. The value is written to `kept_notice`,
+/// which recovery's other notices share, so none of them may be one of these
+/// (`recovery::tests::no_two_writers_of_kept_notice_share_a_value`).
 pub fn notice(evidence: Evidence) -> Option<&'static str> {
     match evidence {
         Evidence::NoTurnEnd
@@ -137,7 +139,7 @@ pub fn notice(evidence: Evidence) -> Option<&'static str> {
         | Evidence::AwaitingReply { .. }
         | Evidence::Recent { .. } => None,
         Evidence::Quiet { .. } => Some("quiet"),
-        Evidence::Unanswered { .. } => Some("unanswered"),
+        Evidence::Unanswered { .. } => Some("no-reply"),
         Evidence::Unreadable | Evidence::TailUnreadable { .. } => Some("unreadable"),
     }
 }
@@ -316,7 +318,7 @@ mod tests {
         assert_eq!(notice(Evidence::Quiet { silent_ms: WINDOW }), Some("quiet"));
         assert_eq!(
             notice(Evidence::Unanswered { silent_ms: WINDOW }),
-            Some("unanswered")
+            Some("no-reply")
         );
         assert_eq!(notice(Evidence::Unreadable), Some("unreadable"));
         assert_eq!(
@@ -451,27 +453,29 @@ mod tests {
         );
     }
 
+    /// ISS-488's notification bare, and ISS-553/554's with the context
+    /// Claude Code wrote beside it.
     #[test]
     fn observing_a_notification_nobody_answered() {
-        let dir = crate::test_scratch::Scratch::new("subagent-end");
-        let path = dir.path().join("agent-aa8c118c2d62d166d.jsonl");
-        let body = format!(
-            "{}{}",
-            transcript_age::STOP_TAIL,
-            transcript_age::NOTIFIED_TAIL
-        );
-        std::fs::write(&path, body).unwrap();
-        let written = transcript_age::written_at(&path).unwrap();
-        let stop = written - 10 * MIN;
-        assert_eq!(
-            observe(Some(stop), Some(&path), written + MIN),
-            Evidence::AwaitingReply { silent_ms: MIN }
-        );
-        assert_eq!(
-            observe(Some(stop), Some(&path), written + 3 * 24 * 60 * MIN),
-            Evidence::Unanswered {
-                silent_ms: 3 * 24 * 60 * MIN
-            }
-        );
+        for tail in [
+            transcript_age::NOTIFIED_TAIL,
+            transcript_age::NOTIFIED_WITH_CONTEXT_TAIL,
+        ] {
+            let dir = crate::test_scratch::Scratch::new("subagent-end");
+            let path = dir.path().join("agent-aa8c118c2d62d166d.jsonl");
+            std::fs::write(&path, format!("{}{tail}", transcript_age::STOP_TAIL)).unwrap();
+            let written = transcript_age::written_at(&path).unwrap();
+            let stop = written - 10 * MIN;
+            assert_eq!(
+                observe(Some(stop), Some(&path), written + MIN),
+                Evidence::AwaitingReply { silent_ms: MIN }
+            );
+            assert_eq!(
+                observe(Some(stop), Some(&path), written + 3 * 24 * 60 * MIN),
+                Evidence::Unanswered {
+                    silent_ms: 3 * 24 * 60 * MIN
+                }
+            );
+        }
     }
 }
