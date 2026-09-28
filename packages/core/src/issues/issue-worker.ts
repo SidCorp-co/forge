@@ -66,10 +66,9 @@ export function classifyIssueWorker(input: {
   return { lane: 'none', detail: absenceOf(claim, input.sessions) };
 }
 
-/** Why no lane answered. What is absent is a LIVE session — the bind takes non-live rows too —
- *  and the clause reports their statuses rather than judging them, `liveSession` testing
- *  queued-or-running while `idle` is neither live nor terminal. It also may not end at a bare
- *  colon: `session-claim.ts` leaves `detail` empty for all but `malformed`. */
+/** Why no lane answered. What is absent is a LIVE session, and the clause names their statuses
+ *  rather than judging them: `idle` is neither live nor terminal. It may not end at a bare colon
+ *  either — `session-claim.ts` leaves `detail` empty for every verdict but `malformed`. */
 function absenceOf(claim: LeaseReading | null, sessions: readonly WorkerSession[]): string {
   return `${sessionClause(sessions)}, and ${claimClause(claim)}`;
 }
