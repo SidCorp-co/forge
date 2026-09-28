@@ -12,6 +12,7 @@ use std::process::Stdio;
 use tokio::process::Command;
 
 use crate::error::{Error, Result};
+use crate::workspace::worktree_processes::{Clearing, Verdict};
 
 async fn git(repo: &str, args: &[&str]) -> Result<std::process::Output> {
     Command::new("git")
@@ -224,7 +225,12 @@ fn could_be_filed_as(have: &std::ffi::OsStr, want: &std::ffi::OsStr) -> bool {
 /// the refusals carry. On Windows that is the verbatim `\\?\` form, which is
 /// uglier to read than git's answer and is the only one a caller can hold
 /// against a row; the refusals name the ledger's own path beside it.
-fn resolved_for_compare(path: &Path) -> PathBuf {
+///
+/// `pub(crate)`: [`worktree_processes`](super::worktree_processes) compares a
+/// path a process still sits in against one whose directory is already gone,
+/// which is this same problem from the other side and not a second one to
+/// solve twice.
+pub(crate) fn resolved_for_compare(path: &Path) -> PathBuf {
     if let Ok(real) = path.canonicalize() {
         return real;
     }
@@ -369,7 +375,38 @@ pub async fn residence_of(repo: &Path, worktree: &Path) -> Residence {
 /// (ISS-1250). The refusal is said too, for the same reason in reverse: a
 /// directory still standing because git would not take it is not a directory
 /// nobody asked about.
+///
+/// What is LIVING in the checkout is given back before the directory is. A
+/// removal that is only a filesystem act leaves every process a run started in
+/// its tree still bound to its port and still holding whatever it held, with
+/// the tree that named it gone (ISS-1271), so this refuses rather than removing
+/// over a resident it could not end. The refusal is bounded and does not bring
+/// ISS-1188 back: `terminate::release` wraps every error this returns in
+/// `ledger::note_release_refusal`, and one still standing past
+/// `RELEASE_GRACE_SECS` or `RELEASE_ATTEMPT_BOUND` goes through
+/// `close_loop::close`, which returns the run's leases, before the run is ended
+/// over it. So a process nothing can kill costs an operator a window, not a box.
 pub async fn remove_at(repo: &str, worktree: &std::path::Path, why: &str) -> Result<()> {
+    remove_at_clearing(repo, worktree, why, &Clearing::this_box()).await
+}
+
+/// [`remove_at`], with the reading and the signalling supplied, which is how
+/// every arm of it is exercised without a test having to make a real process
+/// behave that way.
+pub async fn remove_at_clearing(
+    repo: &str,
+    worktree: &std::path::Path,
+    why: &str,
+    clearing: &Clearing<'_>,
+) -> Result<()> {
+    match clearing.clear(worktree).await.verdict(worktree) {
+        Verdict::Refuse(said) => {
+            tracing::warn!("[worktree] {repo}: {said}");
+            return Err(Error::Other(said));
+        }
+        Verdict::Take(Some(said)) => tracing::warn!("[worktree] {repo}: {said}"),
+        Verdict::Take(None) => {}
+    }
     let out = git(
         repo,
         &["worktree", "remove", &worktree.to_string_lossy(), "--force"],
@@ -546,33 +583,7 @@ pub(crate) mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    /// Capture what `tracing` was told while `f` ran, the way
-    /// `runner/close_loop.rs` does it — a journal line is the deliverable here,
-    /// so asserting on the return value would prove nothing about it.
-    pub(crate) fn logged_while(f: impl FnOnce()) -> String {
-        use std::sync::{Arc, Mutex};
-        #[derive(Clone)]
-        struct Buf(Arc<Mutex<Vec<u8>>>);
-        impl std::io::Write for Buf {
-            fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
-                self.0.lock().unwrap().extend_from_slice(b);
-                Ok(b.len())
-            }
-            fn flush(&mut self) -> std::io::Result<()> {
-                Ok(())
-            }
-        }
-        let buf = Buf(Arc::new(Mutex::new(Vec::new())));
-        let made = buf.clone();
-        let sub = tracing_subscriber::fmt()
-            .with_writer(move || made.clone())
-            .with_ansi(false)
-            .finish();
-        crate::daemon::keep_tracing_capturable();
-        tracing::subscriber::with_default(sub, f);
-        let out = buf.0.lock().unwrap().clone();
-        String::from_utf8_lossy(&out).into_owned()
-    }
+    pub(crate) use crate::log_capture::logged_while;
 
     /// ISS-1250 — a keep and a removal left the same evidence.
     ///
@@ -1016,5 +1027,176 @@ pub(crate) mod tests {
              the OTHER checkout, or both of them"
         );
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// A hand and a process root of this test's own, so each arm of the
+    /// removal's verdict is reached without a real process having to be made
+    /// to behave that way.
+    /// Unix only, and named here rather than left to the platform gate to
+    /// find: the fixture plants a process root, and a `cwd` entry in one is a
+    /// symlink, which is an API only unix has. What it proves — that a removal
+    /// refuses over a resident it could not end — is about signalling, which
+    /// is unix's too.
+    #[cfg(unix)]
+    mod residents {
+        use super::*;
+        use crate::workspace::worktree_processes::{Grace, Hand, Sig};
+
+        pub(super) struct Wont;
+
+        impl Hand for Wont {
+            fn signal(&self, _pid: u32, _sig: Sig) -> std::result::Result<(), String> {
+                Ok(())
+            }
+            fn present(&self, _pid: u32) -> bool {
+                true
+            }
+            fn identity(&self, pid: u32) -> Option<String> {
+                Some(format!("proc-{pid}"))
+            }
+        }
+
+        pub(super) const NO_WAIT: Grace = Grace {
+            after_term: std::time::Duration::ZERO,
+            after_kill: std::time::Duration::ZERO,
+        };
+
+        /// A process root naming one pid whose working directory is `at`.
+        pub(super) fn one_living_in(root: &Path, at: &Path) {
+            let d = root.join("4242");
+            std::fs::create_dir_all(&d).expect("a pid directory");
+            std::os::unix::fs::symlink(at, d.join("cwd")).expect("a cwd link");
+            std::fs::write(d.join("cmdline"), b"next-server\0(v16.2.1)").expect("a cmdline");
+        }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_checkout_somebody_is_still_living_in_is_not_given_back_and_the_refusal_names_them() {
+        let root = repo("residents-standing").await;
+        let r = root.to_string_lossy().to_string();
+        let linked = create(&r, "ISS-1271", None).await.unwrap();
+        let proc = root.join("proc");
+        residents::one_living_in(&proc, &linked);
+
+        let refused = remove_at_clearing(
+            &r,
+            &linked,
+            "the run is over",
+            &Clearing {
+                proc_root: &proc,
+                grace: residents::NO_WAIT,
+                hand: &residents::Wont,
+            },
+        )
+        .await
+        .expect_err("a checkout with a process still in it is not given back");
+
+        let said = refused.to_string();
+        assert!(
+            said.contains("pid 4242") && said.contains("next-server"),
+            "the refusal names who is in there by pid and by command line, because a directory \
+             standing for a reason nobody wrote down is the state ISS-1250 was filed over: {said}"
+        );
+        assert!(
+            linked.is_dir(),
+            "and git was never asked for it: the directory is the only thing left naming what is \
+             running in it"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_checkout_nobody_is_living_in_is_given_back_as_it_always_was() {
+        let root = repo("residents-clear").await;
+        let r = root.to_string_lossy().to_string();
+        let linked = create(&r, "ISS-1271", None).await.unwrap();
+        let proc = root.join("proc");
+        std::fs::create_dir_all(&proc).expect("an empty process root");
+
+        remove_at_clearing(
+            &r,
+            &linked,
+            "the run is over",
+            &Clearing {
+                proc_root: &proc,
+                grace: residents::NO_WAIT,
+                hand: &residents::Wont,
+            },
+        )
+        .await
+        .expect("nobody is in it, so it goes");
+
+        assert!(!linked.exists(), "{}", linked.display());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_platform_that_keeps_no_process_table_still_reclaims_its_disk_and_says_it_looked() {
+        let root = repo("residents-notable").await;
+        let r = root.to_string_lossy().to_string();
+        let linked = create(&r, "ISS-1271", None).await.unwrap();
+        let absent = root.join("no-proc-on-this-platform");
+
+        let (log, guard) = crate::log_capture::capturing();
+        remove_at_clearing(
+            &r,
+            &linked,
+            "the run is over",
+            &Clearing {
+                proc_root: &absent,
+                grace: residents::NO_WAIT,
+                hand: &residents::Wont,
+            },
+        )
+        .await
+        .expect("a box that cannot look is no worse off than it was before this reading");
+        drop(guard);
+        let said = log.said();
+
+        assert!(
+            !linked.exists(),
+            "refusing here would stop worktree reclaim outright on every platform without a \
+             /proc, over a leak measured on a box that has one"
+        );
+        assert!(
+            said.contains("cannot be asked on this platform"),
+            "and it says on every such removal that it could not look, because a skip nobody \
+             states reads as a step that passed: {said}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_box_that_has_a_process_table_and_will_not_read_it_keeps_the_checkout() {
+        let root = repo("residents-unreadable").await;
+        let r = root.to_string_lossy().to_string();
+        let linked = create(&r, "ISS-1271", None).await.unwrap();
+        // A file where the root belongs: it IS there, and it will not list.
+        let broken = root.join("proc-that-will-not-open");
+        std::fs::write(&broken, "not a directory").expect("a file at the root's path");
+
+        let refused = remove_at_clearing(
+            &r,
+            &linked,
+            "the run is over",
+            &Clearing {
+                proc_root: &broken,
+                grace: residents::NO_WAIT,
+                hand: &residents::Wont,
+            },
+        )
+        .await
+        .expect_err("not knowing is not the same as knowing nobody is in it");
+
+        assert!(
+            refused.to_string().contains("could not be read"),
+            "{refused}"
+        );
+        assert!(linked.is_dir(), "{}", linked.display());
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
