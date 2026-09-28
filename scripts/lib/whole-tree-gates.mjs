@@ -219,12 +219,11 @@ function scriptText(path) {
  * string, where a `cd` moves the directory the rest run in.
  */
 export function subprocessListing({ command, args = [], shell = false, cwd, root }) {
-  const viaShell =
-    shell
-      ? [command, ...args].join(' ')
-      : ['sh', 'bash', 'zsh'].includes(basename(command)) && args[0] === '-c'
-        ? args[1]
-        : null;
+  const viaShell = shell
+    ? [command, ...args].join(' ')
+    : ['sh', 'bash', 'zsh'].includes(basename(command)) && args[0] === '-c'
+      ? args[1]
+      : null;
   if (viaShell === null) return argvListing([command, ...args], cwd, root);
   const found = [];
   let dir = cwd;
