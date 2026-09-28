@@ -12,10 +12,11 @@
 
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { dirname, join, relative, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 import process from 'node:process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { CONFIG_RE } from './lib/test-reachability.mjs';
 import {
   declarationExit,
@@ -50,12 +51,22 @@ for (const path of tracked.filter((f) => SOURCE_FILE_RE.test(f))) {
 const configs = tracked.filter((f) => CONFIG_RE.test(f));
 const judged = judgeDeclarations({ files });
 const { tests, declared } = judged;
-const refused = [
-  ...judged.refused,
-  ...judgeConfigs(
-    configs.map((path) => ({ path, source: readFileSync(join(ROOT, path), 'utf8') })),
-  ),
-];
+/** The `test.setupFiles` vitest resolves for a config, loaded by the vitest its package declares. */
+async function setupFilesOf(path) {
+  const dir = resolve(ROOT, dirname(path));
+  try {
+    const vitestNode = createRequire(join(dir, 'package.json')).resolve('vitest/node');
+    const { resolveConfig } = await import(pathToFileURL(vitestNode).href);
+    const config = await resolveConfig({ config: basename(path), root: dir, watch: false });
+    return { path, setupFiles: [config.test?.setupFiles ?? []].flat().map((f) => resolve(dir, f)) };
+  } catch (e) {
+    return { path, error: suiteMessage(e?.message ?? e) ?? 'vitest gave no message' };
+  }
+}
+
+const loaded = [];
+for (const path of configs) loaded.push(await setupFilesOf(path));
+const refused = [...judged.refused, ...judgeConfigs(loaded, ROOT)];
 
 function report(list) {
   for (const { path, why } of list) console.error(`  ${path}\n    ${why}`);

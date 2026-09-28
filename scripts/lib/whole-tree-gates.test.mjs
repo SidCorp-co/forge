@@ -18,7 +18,6 @@ import {
   judgeRun,
   subprocessListing,
   suiteMessage,
-  withoutComments,
 } from './whole-tree-gates.mjs';
 
 const MARK = `@gate-${'input'}`;
@@ -370,21 +369,21 @@ describe('judging the declarations', () => {
 });
 
 describe('judging the vitest configurations', () => {
-  it('passes one that names the guard by its path from the config', () => {
-    const source =
-      "test: { setupFiles: ['./vitest.setup.ts', '../../scripts/lib/whole-tree-guard.mjs'] },";
-    expect(judgeConfigs([{ path: 'packages/core/vitest.config.ts', source }])).toEqual([]);
+  const guard = `${ROOT}/scripts/lib/whole-tree-guard.mjs`;
+
+  it('passes one whose resolved test.setupFiles holds the guard', () => {
+    const configs = [
+      { path: 'packages/core/vitest.config.ts', setupFiles: [`${CORE}/s.ts`, guard] },
+    ];
+    expect(judgeConfigs(configs, ROOT)).toEqual([]);
   });
 
-  it('refuses one that does not, naming the path to add', () => {
+  it('refuses one that does not, naming the path to add from where it stands', () => {
     const configs = [
-      { path: 'packages/extra/vitest.config.ts', source: "setupFiles: ['./setup.ts']," },
-      {
-        path: 'vitest.config.ts',
-        source: "setupFiles: ['../../scripts/lib/whole-tree-guard.mjs'],",
-      },
+      { path: 'packages/extra/vitest.config.ts', setupFiles: [`${ROOT}/packages/extra/setup.ts`] },
+      { path: 'vitest.config.ts', setupFiles: [] },
     ];
-    expect(judgeConfigs(configs)).toEqual([
+    expect(judgeConfigs(configs, ROOT)).toEqual([
       {
         path: 'packages/extra/vitest.config.ts',
         why: "does not install the guard that refuses an undeclared root walk — add '../../scripts/lib/whole-tree-guard.mjs' to its `test.setupFiles`",
@@ -396,45 +395,11 @@ describe('judging the vitest configurations', () => {
     ]);
   });
 
-  it('refuses the path standing only in a comment, or outside setupFiles', () => {
-    const guard = "'../../scripts/lib/whole-tree-guard.mjs'";
-    const sources = [
-      `setupFiles: ['./setup.ts'], // ${guard}`,
-      `setupFiles: [\n  './setup.ts',\n  // ${guard},\n],`,
-      `setupFiles: [], /* ${guard} */`,
-      `const unused = ${guard};\nsetupFiles: ['./setup.ts'],`,
-    ];
-    const configs = sources.map((source) => ({ path: 'packages/core/vitest.config.ts', source }));
-    expect(judgeConfigs(configs)).toHaveLength(4);
-  });
-
-  it('keeps a string holding // or /* as written, and drops only real comments', () => {
-    const guard = "'../../scripts/lib/whole-tree-guard.mjs'";
-    const path = 'packages/core/vitest.config.ts';
-    const lines = [
-      `const a = 'x//y'; const b = "/*"; export default { test: { setupFiles: [${guard}] } };`,
-      `const u = 'https://example.com'; export default { test: { setupFiles: [${guard}] } };`,
-    ];
-    expect(judgeConfigs(lines.map((source) => ({ path, source })))).toEqual([]);
-    expect(withoutComments("a('//'); // gone\nb(`/* kept */`); /* gone */ c();")).toBe(
-      "a('//'); \nb(`/* kept */`);  c();",
+  it('refuses one vitest could not load, rather than trusting it', () => {
+    const configs = [{ path: 'packages/core/vitest.config.ts', error: 'Unexpected token' }];
+    expect(judgeConfigs(configs, ROOT)[0].why).toBe(
+      'could not be loaded by vitest, so whether it installs the guard is unknown: Unexpected token',
     );
-  });
-
-  it('reads only test.setupFiles, never a top-level or a nested one', () => {
-    const guard = "'../../scripts/lib/whole-tree-guard.mjs'";
-    const path = 'packages/core/vitest.config.ts';
-    const refused = [
-      `export default defineConfig({ setupFiles: [${guard}], test: { include: ['x'] } });`,
-      `export default { test: { poolOptions: { forks: { setupFiles: [${guard}] } } } };`,
-    ];
-    refused.push(
-      `const marker = 'test: {';\nsetupFiles: [${guard}];\nexport default {};`,
-      `export default { test: { include: ['}'], x: '{' }, setupFiles: [${guard}] };`,
-    );
-    expect(judgeConfigs(refused.map((source) => ({ path, source })))).toHaveLength(4);
-    const source = `export default { test: { typecheck: { enabled: true }, setupFiles: [${guard}] } };`;
-    expect(judgeConfigs([{ path, source }])).toEqual([]);
   });
 });
 

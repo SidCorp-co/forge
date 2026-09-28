@@ -289,89 +289,24 @@ export function judgeDeclarations({ files }) {
 
 export const GUARD_PATH = 'scripts/lib/whole-tree-guard.mjs';
 
-/** Source with its line and block comments removed, and every quoted string kept as written. */
-export function withoutComments(source) {
-  let out = '';
-  let quote = null;
-  for (let i = 0; i < source.length; i++) {
-    const c = source[i];
-    if (quote) {
-      out += c;
-      if (c === '\\') out += source[++i] ?? '';
-      else if (c === quote) quote = null;
-    } else if (c === '/' && source[i + 1] === '/') {
-      while (i < source.length && source[i] !== '\n') i++;
-      out += '\n';
-    } else if (c === '/' && source[i + 1] === '*') {
-      const end = source.indexOf('*/', i + 2);
-      i = end === -1 ? source.length : end + 1;
-    } else {
-      if (c === "'" || c === '"' || c === '`') quote = c;
-      out += c;
-    }
-  }
-  return out;
-}
-
-/** The code with every string's contents blanked, same length, so no text inside one is read as
- * structure. */
-function maskStrings(code) {
-  let out = '';
-  let quote = null;
-  for (let i = 0; i < code.length; i++) {
-    const c = code[i];
-    if (!quote) {
-      if (c === "'" || c === '"' || c === '`') quote = c;
-      out += c;
-    } else if (c === '\\') {
-      out += '  ';
-      i++;
-    } else if (c === quote) {
-      quote = null;
-      out += c;
-    } else out += c === '\n' ? c : ' ';
-  }
-  return out;
-}
-
-/** The literal `setupFiles` arrays directly inside each `test: { ... }` object, as written. */
-function testSetupLists(code) {
-  const masked = maskStrings(code);
-  const lists = [];
-  for (const m of masked.matchAll(/\btest\s*:\s*\{/g)) {
-    let depth = 1;
-    let i = m.index + m[0].length;
-    const start = i;
-    for (; i < masked.length && depth > 0; i++)
-      depth += masked[i] === '{' ? 1 : masked[i] === '}' ? -1 : 0;
-    let body = masked.slice(start, i - 1);
-    const blank = (x) => ' '.repeat(x.length);
-    while (/\{[^{}]*\}/.test(body)) body = body.replace(/\{[^{}]*\}/g, blank);
-    for (const f of body.matchAll(/\bsetupFiles\s*:\s*\[([^\]]*)\]/g)) {
-      const at = start + f.index + f[0].indexOf('[') + 1;
-      lists.push(code.slice(at, at + f[1].length));
-    }
-  }
-  return lists;
-}
-
-/**
- * Every vitest configuration has to install the guard, as a quoted entry of a literal `setupFiles`
- * array outside any comment: a config that does not, or builds the list another way, is refused.
- */
-export function judgeConfigs(configs) {
+/** Every vitest config has to install the guard: `setupFiles` is the absolute `test.setupFiles`
+ * vitest itself resolved, and a config it could not load (`error`) is refused, not trusted. */
+export function judgeConfigs(configs, root) {
+  const guard = resolve(root, GUARD_PATH);
   const refused = [];
-  for (const { path, source } of configs) {
+  for (const { path, setupFiles, error } of configs) {
     const expected = relative(dirname(path), GUARD_PATH);
-    const quoted = new RegExp(
-      `(['"\`])(?:\\./)?${expected.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\1`,
-    );
-    const lists = testSetupLists(withoutComments(source));
-    if (lists.some((list) => quoted.test(list))) continue;
-    refused.push({
-      path,
-      why: `does not install the guard that refuses an undeclared root walk — add '${expected}' to its \`test.setupFiles\``,
-    });
+    if (error) {
+      refused.push({
+        path,
+        why: `could not be loaded by vitest, so whether it installs the guard is unknown: ${error}`,
+      });
+    } else if (!setupFiles.includes(guard)) {
+      refused.push({
+        path,
+        why: `does not install the guard that refuses an undeclared root walk — add '${expected}' to its \`test.setupFiles\``,
+      });
+    }
   }
   return refused;
 }
