@@ -313,21 +313,46 @@ export function withoutComments(source) {
   return out;
 }
 
-/** The body of each `test: { ... }` object, with every object nested inside it emptied, so what
- * is left are the keys vitest reads as `test.*`. */
-function testBlocks(code) {
-  const bodies = [];
-  for (const m of code.matchAll(/\btest\s*:\s*\{/g)) {
+/** The code with every string's contents blanked, same length, so no text inside one is read as
+ * structure. */
+function maskStrings(code) {
+  let out = '';
+  let quote = null;
+  for (let i = 0; i < code.length; i++) {
+    const c = code[i];
+    if (!quote) {
+      if (c === "'" || c === '"' || c === '`') quote = c;
+      out += c;
+    } else if (c === '\\') {
+      out += '  ';
+      i++;
+    } else if (c === quote) {
+      quote = null;
+      out += c;
+    } else out += c === '\n' ? c : ' ';
+  }
+  return out;
+}
+
+/** The literal `setupFiles` arrays directly inside each `test: { ... }` object, as written. */
+function testSetupLists(code) {
+  const masked = maskStrings(code);
+  const lists = [];
+  for (const m of masked.matchAll(/\btest\s*:\s*\{/g)) {
     let depth = 1;
     let i = m.index + m[0].length;
     const start = i;
-    for (; i < code.length && depth > 0; i++)
-      depth += code[i] === '{' ? 1 : code[i] === '}' ? -1 : 0;
-    let body = code.slice(start, i - 1);
-    while (/\{[^{}]*\}/.test(body)) body = body.replace(/\{[^{}]*\}/g, '');
-    bodies.push(body);
+    for (; i < masked.length && depth > 0; i++)
+      depth += masked[i] === '{' ? 1 : masked[i] === '}' ? -1 : 0;
+    let body = masked.slice(start, i - 1);
+    const blank = (x) => ' '.repeat(x.length);
+    while (/\{[^{}]*\}/.test(body)) body = body.replace(/\{[^{}]*\}/g, blank);
+    for (const f of body.matchAll(/\bsetupFiles\s*:\s*\[([^\]]*)\]/g)) {
+      const at = start + f.index + f[0].indexOf('[') + 1;
+      lists.push(code.slice(at, at + f[1].length));
+    }
   }
-  return bodies;
+  return lists;
 }
 
 /**
@@ -341,10 +366,7 @@ export function judgeConfigs(configs) {
     const quoted = new RegExp(
       `(['"\`])(?:\\./)?${expected.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\1`,
     );
-    const code = withoutComments(source);
-    const lists = testBlocks(code).flatMap((body) =>
-      [...body.matchAll(/\bsetupFiles\s*:\s*\[([^\]]*)\]/g)].map((m) => m[1]),
-    );
+    const lists = testSetupLists(withoutComments(source));
     if (lists.some((list) => quoted.test(list))) continue;
     refused.push({
       path,

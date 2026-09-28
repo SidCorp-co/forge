@@ -428,7 +428,11 @@ describe('judging the vitest configurations', () => {
       `export default defineConfig({ setupFiles: [${guard}], test: { include: ['x'] } });`,
       `export default { test: { poolOptions: { forks: { setupFiles: [${guard}] } } } };`,
     ];
-    expect(judgeConfigs(refused.map((source) => ({ path, source })))).toHaveLength(2);
+    refused.push(
+      `const marker = 'test: {';\nsetupFiles: [${guard}];\nexport default {};`,
+      `export default { test: { include: ['}'], x: '{' }, setupFiles: [${guard}] };`,
+    );
+    expect(judgeConfigs(refused.map((source) => ({ path, source })))).toHaveLength(4);
     const source = `export default { test: { typecheck: { enabled: true }, setupFiles: [${guard}] } };`;
     expect(judgeConfigs([{ path, source }])).toEqual([]);
   });
