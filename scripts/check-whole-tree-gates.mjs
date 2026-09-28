@@ -2,7 +2,8 @@
 // A test whose input is the whole repository declares it in its own text, and this runs exactly
 // those on every change. CI's `changes` filter selects a job by the paths a pull request touched,
 // so a guard that walks the tree but lives under `packages/core` was skipped by a documents-only
-// change that broke it, and `ci-passed` read the skip as a pass (ISS-1314).
+// change that broke it, and `ci-passed` read the skip as a pass (ISS-1314). A test that lists the
+// root WITHOUT the declaration is refused where it runs, by `lib/whole-tree-guard.mjs`.
 //
 //   node scripts/check-whole-tree-gates.mjs         the declarations: which files, and every refusal
 //   node scripts/check-whole-tree-gates.mjs --run   and then run each declared file where it is collected
@@ -11,16 +12,19 @@
 
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { dirname, join, relative, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 import process from 'node:process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { CONFIG_RE } from './lib/test-reachability.mjs';
 import {
   declarationExit,
+  judgeConfigs,
   judgeDeclarations,
   judgeRun,
   SOURCE_FILE_RE,
+  suiteMessage,
 } from './lib/whole-tree-gates.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -44,11 +48,25 @@ for (const path of tracked.filter((f) => SOURCE_FILE_RE.test(f))) {
   }
 }
 
-// A runner stands in the package that holds a test, so that is where its `process.cwd()` resolves.
-const packageDirs = tracked
-  .filter((f) => f === 'package.json' || f.endsWith('/package.json'))
-  .map((f) => dirname(f));
-const { tests, declared, refused } = judgeDeclarations({ files, packageDirs });
+const configs = tracked.filter((f) => CONFIG_RE.test(f));
+const judged = judgeDeclarations({ files });
+const { tests, declared } = judged;
+/** The `test.setupFiles` vitest resolves for a config, loaded by the vitest its package declares. */
+async function setupFilesOf(path) {
+  const dir = resolve(ROOT, dirname(path));
+  try {
+    const vitestNode = createRequire(join(dir, 'package.json')).resolve('vitest/node');
+    const { resolveConfig } = await import(pathToFileURL(vitestNode).href);
+    const config = await resolveConfig({ config: basename(path), root: dir, watch: false });
+    return { path, setupFiles: [config.test?.setupFiles ?? []].flat().map((f) => resolve(dir, f)) };
+  } catch (e) {
+    return { path, error: suiteMessage(e?.message ?? e) ?? 'vitest gave no message' };
+  }
+}
+
+const loaded = [];
+for (const path of configs) loaded.push(await setupFilesOf(path));
+const refused = [...judged.refused, ...judgeConfigs(loaded, ROOT)];
 
 function report(list) {
   for (const { path, why } of list) console.error(`  ${path}\n    ${why}`);
@@ -73,11 +91,10 @@ if (exit === 2) {
 }
 
 console.log(
-  `whole-tree-gates: ${tests} test file(s) read, ${declared.length} declared whole-tree: ${declared.join(', ')}`,
+  `whole-tree-gates: ${tests} test file(s) read, ${declared.length} declared whole-tree: ${declared.join(', ')}; ${configs.length} vitest config(s) install the guard`,
 );
 if (!RUN) process.exit(0);
 
-const configs = tracked.filter((f) => CONFIG_RE.test(f));
 if (configs.length === 0) die('found no vitest config — nothing could run a declared file');
 const absolute = declared.map((f) => join(ROOT, f));
 
@@ -107,7 +124,7 @@ for (const config of configs) {
 }
 
 const executed = Object.fromEntries(declared.map((f) => [f, 0]));
-const loadErrors = {};
+const suiteErrors = {};
 let failed = false;
 const scratch = mkdtempSync(join(tmpdir(), 'whole-tree-gates-'));
 try {
@@ -123,32 +140,32 @@ try {
         '--config',
         config.split('/').pop(),
         '--reporter=default',
-        '--reporter=json',
-        `--outputFile.json=${out}`,
+        `--reporter=${join(ROOT, 'scripts/lib/whole-tree-reporter.mjs')}`,
         ...list.map((f) => join(ROOT, f)),
       ],
-      { cwd: resolve(ROOT, dirname(config)), stdio: ['ignore', 'inherit', 'inherit'] },
+      {
+        cwd: resolve(ROOT, dirname(config)),
+        env: { ...process.env, WHOLE_TREE_REPORT: out },
+        stdio: ['ignore', 'inherit', 'inherit'],
+      },
     );
     if (r.status !== 0) failed = true;
-    let doc;
+    let rows;
     try {
-      doc = JSON.parse(readFileSync(out, 'utf8'));
+      rows = JSON.parse(readFileSync(out, 'utf8'));
     } catch {
-      die(`vitest wrote no JSON report for ${config}, so what ran cannot be read`);
+      die(`vitest wrote no report for ${config}, so what ran cannot be read`);
     }
-    for (const file of doc.testResults ?? []) {
-      const rel = relative(ROOT, file.name);
-      const ran = (file.assertionResults ?? []).filter(
-        (a) => a.status === 'passed' || a.status === 'failed',
-      ).length;
+    for (const row of rows) {
+      const rel = relative(ROOT, row.file);
       if (!(rel in executed)) continue;
-      executed[rel] += ran;
-      if (file.status === 'failed' && (file.assertionResults ?? []).length === 0) {
-        const first = (file.message ?? '')
-          .split('\n')
-          .map((l) => l.trim())
-          .find(Boolean);
-        loadErrors[rel] = first ?? 'vitest marked the suite failed and gave no message';
+      executed[rel] += row.ran;
+      // A module that failed with no case passing or failing never reached its assertions: an
+      // import, a throw at load, or a hook that threw and left its cases skipped.
+      if (row.state === 'failed' && row.ran === 0) {
+        suiteErrors[rel] =
+          row.errors.map(suiteMessage).filter(Boolean).join('; ') ||
+          'vitest marked the suite failed and gave no message';
       }
     }
   }
@@ -156,7 +173,7 @@ try {
   rmSync(scratch, { recursive: true, force: true });
 }
 
-const run = judgeRun({ declared, collected, executed, loadErrors });
+const run = judgeRun({ declared, collected, executed, suiteErrors });
 if (run.refused.length > 0) {
   console.error(`\nwhole-tree-gates: ${run.refused.length} declared file(s) proved nothing:\n`);
   report(run.refused);
