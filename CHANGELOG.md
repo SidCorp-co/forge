@@ -2497,6 +2497,13 @@
   in `metrics/interventions-report.ts`. No MCP tool was added — that surface is under a documented
   shrink and `forge_metrics.*` is in its "free to go" group. (ISS-944)
 
+- **A project can now declare what its master is for.** A goal and rules, written by a person and
+  versioned, reach the master over the API instead of living only in one machine's hook string.
+  (ISS-1313)
+- **Project knowledge can now say when it is worth reading.** An entry may name the verb a master
+  is performing or the board status it is looking at; unset entries behave exactly as before.
+  (ISS-1313)
+
 ### Removed
 - **Forge no longer writes your release steps.** A project that declares its own procedure gets it;
   one that declares none is told where its method lives, instead of being refused for a deploy

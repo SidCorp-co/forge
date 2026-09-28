@@ -1636,6 +1636,16 @@ export const knowledgeEntries = pgTable(
     injection: text('injection', { enum: ['always', 'on_demand', 'none'] })
       .notNull()
       .default('on_demand'),
+    /**
+     * When this entry is worth reading, or `null` where nobody has said
+     * (ISS-1313). `{ verbs?: MasterVerb[], statuses?: IssueStatus[] }`, held to
+     * that shape by `knowledge_entries_read_when_chk`. It is a second axis
+     * beside `injection` and not a replacement for it: `injection` decides
+     * whether an entry is carried into every prompt, and this decides whether
+     * it is worth fetching for the act in hand. Never a file glob — a master
+     * dispatches and moves issues rather than editing files.
+     */
+    readWhen: jsonb('read_when'),
     confidence: text('confidence', { enum: ['verified', 'inferred', 'deprecated'] })
       .notNull()
       .default('inferred'),
@@ -1670,6 +1680,10 @@ export const knowledgeEntries = pgTable(
     embeddingBackfillIdx: index('knowledge_entries_embedding_backfill_idx')
       .on(t.updatedAt)
       .where(sql`embedding IS NULL AND archived_at IS NULL`),
+    // Mirrors `parseReadWhen` (ISS-1313) so a direct SQL writer is held to the same shape an
+    // upsert is — declared here too, not just in the migration, so drizzle-kit's own model of
+    // this table knows the constraint exists.
+    readWhenChk: check('knowledge_entries_read_when_chk', sql`knowledge_read_when_ok(${t.readWhen})`),
   }),
 );
 

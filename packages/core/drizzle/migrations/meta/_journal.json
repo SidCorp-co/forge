@@ -2038,6 +2038,13 @@
       "when": 1810080000000,
       "tag": "0312_a_release_chain_replaces_the_release_model",
       "breakpoints": true
+    },
+    {
+      "idx": 314,
+      "version": "7",
+      "when": 1810166400000,
+      "tag": "0314_a_project_declares_what_its_master_is_for",
+      "breakpoints": true
     }
   ]
 }
