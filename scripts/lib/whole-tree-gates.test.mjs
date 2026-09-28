@@ -18,6 +18,7 @@ import {
   judgeRun,
   subprocessListing,
   suiteMessage,
+  withoutComments,
 } from './whole-tree-gates.mjs';
 
 const MARK = `@gate-${'input'}`;
@@ -405,6 +406,19 @@ describe('judging the vitest configurations', () => {
     ];
     const configs = sources.map((source) => ({ path: 'packages/core/vitest.config.ts', source }));
     expect(judgeConfigs(configs)).toHaveLength(4);
+  });
+
+  it('keeps a string holding // or /* as written, and drops only real comments', () => {
+    const guard = "'../../scripts/lib/whole-tree-guard.mjs'";
+    const path = 'packages/core/vitest.config.ts';
+    const lines = [
+      `const a = 'x//y'; const b = "/*"; export default { test: { setupFiles: [${guard}] } };`,
+      `const u = 'https://example.com'; export default { test: { setupFiles: [${guard}] } };`,
+    ];
+    expect(judgeConfigs(lines.map((source) => ({ path, source })))).toEqual([]);
+    expect(withoutComments("a('//'); // gone\nb(`/* kept */`); /* gone */ c();")).toBe(
+      "a('//'); \nb(`/* kept */`);  c();",
+    );
   });
 
   it('reads only test.setupFiles, never a top-level or a nested one', () => {

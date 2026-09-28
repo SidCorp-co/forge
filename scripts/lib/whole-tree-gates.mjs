@@ -289,10 +289,30 @@ export function judgeDeclarations({ files }) {
 
 export const GUARD_PATH = 'scripts/lib/whole-tree-guard.mjs';
 
-/**
- * Every vitest configuration has to install the guard, as a quoted entry of a literal `setupFiles`
- * array outside any comment: a config that does not, or builds the list another way, is refused.
- */
+/** Source with its line and block comments removed, and every quoted string kept as written. */
+export function withoutComments(source) {
+  let out = '';
+  let quote = null;
+  for (let i = 0; i < source.length; i++) {
+    const c = source[i];
+    if (quote) {
+      out += c;
+      if (c === '\\') out += source[++i] ?? '';
+      else if (c === quote) quote = null;
+    } else if (c === '/' && source[i + 1] === '/') {
+      while (i < source.length && source[i] !== '\n') i++;
+      out += '\n';
+    } else if (c === '/' && source[i + 1] === '*') {
+      const end = source.indexOf('*/', i + 2);
+      i = end === -1 ? source.length : end + 1;
+    } else {
+      if (c === "'" || c === '"' || c === '`') quote = c;
+      out += c;
+    }
+  }
+  return out;
+}
+
 /** The body of each `test: { ... }` object, with every object nested inside it emptied, so what
  * is left are the keys vitest reads as `test.*`. */
 function testBlocks(code) {
@@ -310,6 +330,10 @@ function testBlocks(code) {
   return bodies;
 }
 
+/**
+ * Every vitest configuration has to install the guard, as a quoted entry of a literal `setupFiles`
+ * array outside any comment: a config that does not, or builds the list another way, is refused.
+ */
 export function judgeConfigs(configs) {
   const refused = [];
   for (const { path, source } of configs) {
@@ -317,7 +341,7 @@ export function judgeConfigs(configs) {
     const quoted = new RegExp(
       `(['"\`])(?:\\./)?${expected.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\1`,
     );
-    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`])\/\/.*$/gm, '$1');
+    const code = withoutComments(source);
     const lists = testBlocks(code).flatMap((body) =>
       [...body.matchAll(/\bsetupFiles\s*:\s*\[([^\]]*)\]/g)].map((m) => m[1]),
     );
