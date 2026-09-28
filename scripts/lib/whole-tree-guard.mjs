@@ -1,9 +1,8 @@
 // The vitest setup file every config names: it fails a file in `afterAll` when what the file ran
 // listed a directory covering the repository root and the file does not declare `@gate-input
-// whole-tree` (ISS-1314). It reads the calls, not the source, because each reading of the text was
-// a list of spellings. A listing a run never executes it cannot see; the run that executes it is
-// refused. Nor can it see a program it cannot read into reach the root by a route none of the
-// program's inputs spell.
+// whole-tree` (ISS-1314). It reads calls, not source: each reading of the text was a list of
+// spellings. It cannot see a listing the run never executes (the run that does is refused), nor an
+// unreadable program reaching the root by a route none of its inputs spell.
 
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
