@@ -1,6 +1,8 @@
 import type { IssueStatus, WaitingKind } from '../db/schema.js';
 import type { RunnerAvailability } from '../jobs/queued-gates.js';
 import type { PauseResumer } from '../pipeline/run-pause.js';
+import type { LeaseReading } from '../pipeline/session-claim.js';
+import type { IssueWorker, SessionWorkerLane } from './issue-worker.js';
 
 export type PipelineWaitingReason =
   | 'issue_busy'
@@ -14,6 +16,12 @@ export type WaitingCause = WaitingKind;
 
 export interface PipelineHealth {
   stage: IssueStatus;
+  /**
+   * ISS-1273 — who is working this issue, on whichever lane opened the work, and `none` with the
+   * sentence saying why where no lane can answer. Always present: `stage` alone is a restatement
+   * of the status column the caller already had, and an absent field reads as a quiet system.
+   */
+  worker: IssueWorker;
   activeSession?: { id: string; status: 'queued' | 'running'; skill: string };
   waitingOn?: {
     reason: PipelineWaitingReason;
@@ -55,6 +63,8 @@ export interface PipelineHealthSession {
   id: string;
   status: string;
   metadata: Record<string, unknown> | null;
+  /** ISS-1273 — which bind found this row: the metadata key, or the run's issue lease. */
+  lane: SessionWorkerLane;
 }
 
 export interface PipelineHealthJob {
@@ -82,6 +92,9 @@ export interface ClassifyInput {
   runnerPool: RunnerAvailability;
   /** ISS-853 — the issue's paused pipeline run, from `loadPausedRunsByIssue`. */
   pausedRun?: PipelineHealthPausedRun;
+  /** ISS-1273 — the issue's own claim, read by `pipeline/lease-fanout.ts`. `null` where the
+   *  caller did not read one, which is not the same as a row carrying none. */
+  claim?: LeaseReading | null;
   /** Injectable clock for the retry-cooldown comparison; defaults to now. */
   now?: Date;
 }
