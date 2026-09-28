@@ -28,6 +28,7 @@ use tokio::process::Command;
 
 use crate::error::Result;
 use crate::runner::ledger::Ledger;
+use crate::workspace::worktree_processes::{Clearing, Reading, Verdict};
 
 pub const MIN_AGE: Duration = Duration::from_secs(14 * 24 * 3600);
 
@@ -181,6 +182,49 @@ pub struct Reaped {
 }
 
 pub async fn reap_repo(repo: &Path, min_age: Duration, held_by: &HeldTrees) -> Reaped {
+    reap_repo_clearing(repo, min_age, held_by, &Clearing::this_box()).await
+}
+
+/// Name the processes living in this repository's worktree paths that are
+/// already gone.
+///
+/// These are past every removal's reach: their checkout went without them, so
+/// nothing recorded a decision about them and no owner is left to make one.
+/// They are named and never signalled — a reading that reaches them cannot tell
+/// a run's own child from a stranger, and a reaper that cannot tell must refuse
+/// rather than guess. Naming them is still the whole of what nothing on this
+/// box does: both orphans ISS-1271 was filed over were found by a person
+/// reading `/proc/<pid>/cwd` by hand, because no line anywhere names one.
+fn report_the_stranded(repo: &Path, clearing: &Clearing<'_>) {
+    let roots: Vec<PathBuf> = WORKTREE_ROOTS.iter().map(|r| repo.join(r)).collect();
+    match clearing.stranded(&roots) {
+        Reading::Read {
+            residents: stranded,
+            ..
+        } => {
+            for r in stranded {
+                tracing::warn!(
+                    "[worktree-reap] {r} — the checkout it was living in went without it, so this \
+                     sweep can end it on nobody's terms and signals it not at all; it still holds \
+                     every port and every connection it held"
+                );
+            }
+        }
+        Reading::NoTable(said) | Reading::Unreadable(said) => tracing::debug!(
+            "[worktree-reap] the processes stranded in worktree paths already gone cannot be read \
+             on this box ({said})"
+        ),
+    }
+}
+
+/// [`reap_repo`], with the reading and the signalling supplied.
+pub async fn reap_repo_clearing(
+    repo: &Path,
+    min_age: Duration,
+    held_by: &HeldTrees,
+    clearing: &Clearing<'_>,
+) -> Reaped {
+    report_the_stranded(repo, clearing);
     let mut removed: Vec<PathBuf> = Vec::new();
     let mut held: Vec<(PathBuf, String)> = Vec::new();
     for root in WORKTREE_ROOTS {
@@ -202,6 +246,19 @@ pub async fn reap_repo(repo: &Path, min_age: Duration, held_by: &HeldTrees) -> R
             }
             if !older_than(&p, min_age) || holds_work(&p).await {
                 continue;
+            }
+            // What is living in the tree is given back before the tree is, and a
+            // tree this box could not clear stays under neither count: it is
+            // the only thing left naming what is running in it (ISS-1271). This
+            // is ahead of BOTH routes below, because `remove_dir_all` leaves a
+            // process exactly as running as git does.
+            match clearing.clear(&p).await.verdict(&p) {
+                Verdict::Refuse(said) => {
+                    tracing::warn!("[worktree-reap] {said}");
+                    continue;
+                }
+                Verdict::Take(Some(said)) => tracing::warn!("[worktree-reap] {said}"),
+                Verdict::Take(None) => {}
             }
             // The caller prints a count, and a count is not a path. Two
             // directories went from this box with nothing in the journal naming
@@ -760,6 +817,157 @@ mod tests {
         run(&repo, &["remote", "remove", "origin"]).await;
         assert!(reap_repo(&repo, NOW, &led()).await.removed.is_empty());
         assert!(wt.exists());
+        let _ = std::fs::remove_dir_all(&repo);
+    }
+
+    /// A hand and a process root of this test's own, so a sweep meeting a tree
+    /// somebody is living in is reached without a real process being made to
+    /// survive a real SIGKILL.
+    /// Unix only, and named here rather than left to the platform gate to
+    /// find: the fixture plants a process root, and a `cwd` entry in one is a
+    /// symlink, which is an API only unix has. What it proves — that a removal
+    /// refuses over a resident it could not end — is about signalling, which
+    /// is unix's too.
+    #[cfg(unix)]
+    mod residents {
+        use super::*;
+        use crate::workspace::worktree_processes::{Grace, Hand, Sig};
+
+        /// Signals nothing, dies of nothing, and remembers every pid it was
+        /// asked about — so a test can assert what was NOT signalled, which is
+        /// the whole claim in the stranded case.
+        #[derive(Default)]
+        pub(super) struct Wont {
+            pub(super) sent: std::sync::Mutex<Vec<u32>>,
+        }
+
+        impl Hand for Wont {
+            fn signal(&self, pid: u32, _sig: Sig) -> std::result::Result<(), String> {
+                self.sent.lock().unwrap().push(pid);
+                Ok(())
+            }
+            fn present(&self, _pid: u32) -> bool {
+                true
+            }
+            fn identity(&self, pid: u32) -> Option<String> {
+                Some(format!("proc-{pid}"))
+            }
+        }
+
+        pub(super) const NO_WAIT: Grace = Grace {
+            after_term: Duration::ZERO,
+            after_kill: Duration::ZERO,
+        };
+
+        pub(super) fn plant(root: &Path, pid: u32, cwd: &str, cmd: &str) {
+            let d = root.join(pid.to_string());
+            std::fs::create_dir_all(&d).expect("a pid directory");
+            std::os::unix::fs::symlink(cwd, d.join("cwd")).expect("a cwd link");
+            std::fs::write(d.join("cmdline"), cmd.replace(' ', "\0")).expect("a cmdline");
+        }
+
+        pub(super) fn clearing<'a>(proc_root: &'a Path, hand: &'a Wont) -> Clearing<'a> {
+            Clearing {
+                proc_root,
+                grace: NO_WAIT,
+                hand,
+            }
+        }
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_tree_somebody_is_still_living_in_is_left_standing_and_taken_by_neither_route() {
+        let (repo, wt) = repo_with_worktree("residents-standing").await;
+        let proc = repo.join("proc-of-this-test");
+        residents::plant(&proc, 909, &wt.to_string_lossy(), "next-server (v16.2.1)");
+
+        let swept = reap_repo_clearing(
+            &repo,
+            NOW,
+            &led(),
+            &residents::clearing(&proc, &residents::Wont::default()),
+        )
+        .await;
+
+        assert!(
+            swept.removed.is_empty(),
+            "a tree this box could not clear is not a tree it removed: {:?}",
+            swept.removed
+        );
+        assert!(
+            swept.held.is_empty(),
+            "and it is not a run's held tree either — `held` is what the LEDGER says, and \
+             reporting this one there would tell an operator a run still has it: {:?}",
+            swept.held
+        );
+        assert!(
+            wt.is_dir(),
+            "neither `git worktree remove` nor `remove_dir_all` was reached: removing the \
+             directory leaves the process exactly as running and takes the only thing naming it"
+        );
+        let _ = std::fs::remove_dir_all(&repo);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_tree_whose_process_table_will_not_open_is_left_standing() {
+        let (repo, wt) = repo_with_worktree("residents-unreadable").await;
+        // A file where the root belongs: it IS there, and it will not list.
+        let broken = repo.join("proc-that-will-not-open");
+        std::fs::write(&broken, "not a directory").expect("a file at the root's path");
+
+        let swept = reap_repo_clearing(
+            &repo,
+            NOW,
+            &led(),
+            &residents::clearing(&broken, &residents::Wont::default()),
+        )
+        .await;
+
+        assert!(swept.removed.is_empty(), "{:?}", swept.removed);
+        assert!(
+            wt.is_dir(),
+            "not knowing who is in a checkout is not the same as knowing nobody is"
+        );
+        let _ = std::fs::remove_dir_all(&repo);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn the_sweep_names_a_process_stranded_in_a_worktree_path_that_is_already_gone() {
+        let (repo, _wt) = repo_with_worktree("residents-stranded").await;
+        let proc = repo.join("proc-of-this-test");
+        let went = repo.join(WORKTREE_ROOTS[0]).join("iss-1217-judge");
+        residents::plant(
+            &proc,
+            1234,
+            &format!("{}{}", went.display(), crate::exe::DELETED_SUFFIX),
+            "chrome --headless=new",
+        );
+
+        let hand = residents::Wont::default();
+        let (log, guard) = crate::log_capture::capturing();
+        let _ = reap_repo_clearing(&repo, NOW, &led(), &residents::clearing(&proc, &hand)).await;
+        drop(guard);
+        let said = log.said();
+
+        assert!(
+            !hand.sent.lock().unwrap().contains(&1234),
+            "nothing stranded is signalled: a reading that reaches it cannot tell a run's own              child from a stranger, and a reaper that cannot tell must refuse. Sent: {:?}",
+            hand.sent.lock().unwrap()
+        );
+
+        assert!(
+            said.contains("pid 1234") && said.contains("chrome"),
+            "both orphans this was filed over were found by a person reading /proc by hand, \
+             because nothing on the box names one: {said}"
+        );
+        assert!(
+            said.contains("signals it not at all"),
+            "and the line says it signalled nothing, because their checkout went without them and \
+             no owner is left to decide: {said}"
+        );
         let _ = std::fs::remove_dir_all(&repo);
     }
 }
