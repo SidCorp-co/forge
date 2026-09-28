@@ -9,6 +9,8 @@
  * routes.ts` reaches `confirmPendingProdDeploy` through a dynamic `await import()`. The wrapper
  * `runCoolifyDeploy` is forbidden beside the three dispatchers, reaching it being
  * indistinguishable from reaching past it. Non-test files only: a test dispatches nothing.
+ *
+ * @gate-input whole-tree
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';

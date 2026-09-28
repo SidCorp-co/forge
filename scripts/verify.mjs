@@ -43,6 +43,13 @@ const CHECKS = [
   },
   {
     axis: 'behaviour',
+    label: 'whole-tree-gates',
+    cmd: ['node', 'scripts/check-whole-tree-gates.mjs'],
+    scanned: /^whole-tree-gates: (\d+) test file\(s\) read/m,
+    unit: 'test files',
+  },
+  {
+    axis: 'behaviour',
     label: 'flow-coverage',
     cmd: ['node', 'scripts/check-flow-coverage.mjs', '--all'],
     scanned: /: (\d+) step\(s\) across/,
@@ -253,6 +260,8 @@ const CI_COVERAGE = {
   'node scripts/check-flow-coverage.mjs --all --require-sources': 'verify, minus --require-sources',
   'Lockfile sync + fmt + clippy + test':
     'verify, via scripts/check-runner-gates.mjs when packages/runner changed — on THIS box only, while CI runs the same step on all three platforms',
+  'node scripts/check-whole-tree-gates.mjs --run':
+    'verify, the declarations half; pnpm test runs the declared files themselves',
   'node scripts/build-images.mjs':
     'pnpm images, which verify does NOT run — it needs a docker daemon',
   'Check Markdown links': 'docs job, gaurav-nelson/github-action-markdown-link-check',

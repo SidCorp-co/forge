@@ -3129,6 +3129,9 @@
 
 ### Fixed
 
+- **A documents-only change can no longer pass CI over a check that reads the whole repository.**
+  Such checks now run on every change, so a document that breaks one fails on its own pull request.
+
 - **A runner refused its provisioning poll now says which endpoint answered, with what status and
   what body.** The same refusal repeating is reported once, escalated once, then held quiet until it
   changes or clears.
