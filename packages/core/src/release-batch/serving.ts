@@ -1,5 +1,6 @@
 import { collectReleaseBlockers } from './blockers.js';
 import type { ReleaseChannel } from './channel.js';
+import type { VerifySource } from './plan.js';
 import { type LiveState, readLiveState } from './verify.js';
 
 export interface ServingDeployment {
@@ -10,7 +11,7 @@ export interface ServingDeployment {
   unidentified: string[];
   disagreement: string[] | null;
   readAt: string;
-  verifySource: 'binding' | 'environments-live' | 'none';
+  verifySource: VerifySource;
 }
 
 export type ServingRead =

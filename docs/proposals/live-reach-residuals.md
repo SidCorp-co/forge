@@ -1,6 +1,7 @@
 # What a live-branch reading cannot see
 
-ISS-1217 places a merged issue on a `promote` project as not on the live branch when one of its
+ISS-1217 places a merged issue on a project whose release chain has two or more entries as not on
+the live branch when one of its
 commits is on the base branch and not an ancestor of the live branch
 (`packages/core/src/projects/live-reach.ts:liveReachOf`). Ancestry is the whole premise. One way
 of releasing that the tree does not model breaks that premise, and it is recorded here rather than
@@ -8,7 +9,8 @@ filed as an issue, as the rules require for a residual.
 
 ## A hand cherry-pick onto the live branch reads as not on live
 
-On a project whose `releaseStrategy` is `merge-branch`, a person sometimes copies an issue's
+On a project whose release chain crosses into the live branch by `merge-branch`
+(`projects.release_chain`, ADR 0003), a person sometimes copies an issue's
 change onto the live branch by hand instead of promoting the base branch. The live branch then
 carries the change under a different sha. The base branch's commit stays out of the live branch's
 ancestry, so the reading lists it as waiting, and an issue that commit is attributed to reads "Not
@@ -31,10 +33,12 @@ cannot, because it returns no patch ids. A squash made by hand has no mechanical
 source. Its change reaches the live branch only through the release record for the issue: a
 verification naming the live deployment that serves it.
 
-What is open is which of these a `promote` project should rely on. One option is to treat a hand
-cherry-pick as a release the issue records and the reading defers to. The other is to hold
-`merge-branch` projects to promotion and let "Not on production" stand until the base branch is
-promoted. That is a decision about the release model. It belongs to a person, not to a diff.
+What is open is which of these a promoting project should rely on. One option is to treat a hand
+cherry-pick as a release the issue records and the reading defers to. The other is to hold a chain
+whose crossing is `merge-branch` to promotion and let "Not on production" stand until the base
+branch is promoted. That is a decision about the release shape. It belongs to a person, not to a
+diff — and since ADR 0003 the chain can say it per edge rather than once per project, so the two
+options are no longer exclusive across a fleet.
 
 ## Honest costs
 

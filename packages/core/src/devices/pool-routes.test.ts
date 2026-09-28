@@ -40,6 +40,7 @@ vi.mock('./admissible.js', () => ({
   readAdmissibleIssues: (a: unknown) => readAdmissibleIssues(a),
 }));
 vi.mock('../issues/issue-lease.js', () => ({
+  IssueLeaseHeldError: class IssueLeaseHeldError extends Error {},
   readDeviceIssueLease: vi.fn(async () => ({
     held: false,
     heldByThisDevice: false,
@@ -180,6 +181,35 @@ describe('POST /me/run-sessions', () => {
     });
   });
 
+  it('answers a box that may not serve the project with 403, naming the reason', async () => {
+    const { RunnerNotAdmittedError } = await import('./pool-admission.js');
+    const projectId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    openRunSession.mockRejectedValue(
+      new RunnerNotAdmittedError({ reason: 'runner_withdrawn', projectId, deviceId: 'dev-1' }),
+    );
+    const res = await app.request('/api/devices/me/run-sessions', {
+      method: 'POST',
+      headers: { ...AUTH, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        projectId,
+        runId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+        issueKeys: ['ISS-957'],
+        name: 'grp',
+      }),
+    });
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as {
+      code: string;
+      message: string;
+      details: Record<string, unknown>;
+    };
+    expect(body.code).toBe('RUNNER_NOT_ADMITTED');
+    expect(body.details).toEqual({ reason: 'runner_withdrawn', projectId, deviceId: 'dev-1' });
+    expect(body.message, 'the box prints the message; it has to say why').toContain(
+      'runner_withdrawn',
+    );
+  });
+
   it('400s on an empty issue group — a run carries at least one', async () => {
     const res = await app.request('/api/devices/me/run-sessions', {
       method: 'POST',
@@ -300,6 +330,20 @@ describe('POST /me/limit', () => {
       });
     },
   );
+});
+
+describe('POST /me/pool/claim', () => {
+  it('is gone: prepare and start are the only way a job is taken', async () => {
+    const res = await app.request('/api/devices/me/pool/claim', {
+      method: 'POST',
+      headers: { ...AUTH, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        jobId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+        sessionId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+      }),
+    });
+    expect(res.status).toBe(404);
+  });
 });
 
 describe('the run-session family stays mounted where it was', () => {

@@ -16,11 +16,16 @@ name: CI
 #      fires. If you find yourself disabling it, you're papering over real
 #      drift; fix the lockfile instead.
 
+# The branch set this workflow gates is written three times — twice here and once in the `proved`
+# step below — because `on:` cannot read a variable. `conformance-audit` R11 holds the three to one
+# answer. `dev` is here for the base branch this repository is moving to under `releaseModel:
+# promote`; `main` stays, because under that model it is the branch a promotion lands on and every
+# check a promotion owes is one a pull request into `dev` already ran (ISS-1304).
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
-    branches: [main]
+    branches: [main, dev]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -264,9 +269,10 @@ jobs:
       # drift: a Docker Hub manifest timeout pulling pgvector, and a pg-boss
       # enqueue failure — neither reachable by this filter.
       # The parent count is read from the commit object, which a depth-1 checkout
-      # still carries. Anything not a 2-parent push to `main` is `proved=false`,
-      # so a DIRECT push to main — the owner lane, which sees no pull_request run
-      # at all — keeps the full gate. It went red 16 times in that same window.
+      # still carries. Anything not a 2-parent push to a gated branch is
+      # `proved=false`, so a DIRECT push — the owner lane, which sees no
+      # pull_request run at all — keeps the full gate. It went red 16 times in
+      # that same window.
       # The cheap always-on jobs (lang-check, conformance, archmap, docs,
       # injected-docs, install-check) are NOT gated on this: they cost seconds,
       # they are ungated by paths-filter on purpose, and `docs` walks the whole
@@ -276,7 +282,12 @@ jobs:
         shell: bash
         run: |
           proved=false
-          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
+          gated="refs/heads/main refs/heads/dev"
+          case " $gated " in
+            *" ${{ github.ref }} "*) on_gated_branch=true ;;
+            *) on_gated_branch=false ;;
+          esac
+          if [ "${{ github.event_name }}" = "push" ] && [ "$on_gated_branch" = true ]; then
             parents=$(git rev-list --parents -n 1 HEAD | wc -w)
             if [ "$parents" -ge 3 ]; then proved=true; fi
           fi
@@ -304,12 +315,24 @@ jobs:
               - 'packages/web-v2/**'
               - 'packages/contracts/**'
               - 'packages/core/**'
+              - '.npmrc'
               - '.github/workflows/ci.yml'
+            # `.npmrc` sits under both because it decides how EVERY package resolves its
+            # modules: `node-linker=hoisted` is what lets four packages only `@forge/core`
+            # declares resolve from the repository root, and `pnpm verify` loses five
+            # verdicts without them. It matched no filter, so a change to it skipped `core`,
+            # `web`, `core-integration` and `runner` at once — and a skipped job passes
+            # `ci-passed`, which is the shape `39431309` already cost a production deploy.
+            # Still unmatched by `web`, and left so deliberately: `pnpm-lock.yaml`,
+            # `package.json` and `pnpm-workspace.yaml`, which `core` carries. A dependency
+            # bump can break the web build the same way; widening it is a separate argument
+            # about paying a web build on every bump, not this one.
             core:
               - 'packages/core/**'
               - 'pnpm-workspace.yaml'
               - 'pnpm-lock.yaml'
               - 'package.json'
+              - '.npmrc'
               - '.github/workflows/ci.yml'
             runner:
               - 'packages/runner/**'
@@ -490,6 +513,22 @@ jobs:
       - uses: actions/checkout@v7
       - run: node scripts/build-images.mjs
 
+  # A test whose input is the whole repository, selected by its own declaration rather than by
+  # where it lives. `changes` picks a job by the paths a pull request touched, which is right for a
+  # test of one module and wrong for a guard that walks every file: #710 changed only documents,
+  # `core` was skipped, and the guard that document broke merged green and left `main` red for the
+  # next branch to find (ISS-1314). A test carrying `@gate-input whole-tree` runs here on every
+  # change; the checker refuses one that walks from the root without it. NOT path-filtered on
+  # purpose, and it rides `proved` alone for the reason `images` does.
+  whole-tree:
+    needs: changes
+    if: needs.changes.outputs.proved != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-workspace
+      - run: node scripts/check-whole-tree-gates.mjs --run
+
   # ───────────────────────────────────────────────────────────────────────
   # Single aggregate gate. Branch protection should require ONLY this check
   # (drop the lone `changes` requirement). Requiring the individual jobs
@@ -523,6 +562,7 @@ jobs:
         archmap,
         conformance,
         images,
+        whole-tree,
       ]
     runs-on: ubuntu-latest
     steps:
@@ -540,7 +580,8 @@ jobs:
             "injected-docs:${{ needs.injected-docs.result }}" \
             "archmap:${{ needs.archmap.result }}" \
             "conformance:${{ needs.conformance.result }}" \
-            "images:${{ needs.images.result }}"; do
+            "images:${{ needs.images.result }}" \
+            "whole-tree:${{ needs.whole-tree.result }}"; do
             echo "$r"
             result="${r##*:}"
             if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then

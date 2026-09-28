@@ -359,6 +359,20 @@ fn run_declare(
             "`{bad}` is not an issue reference — a declaration takes one per issue the subagent is being given, each a display id such as `ISS-42` or your project's own prefix, or the bare number. Nothing was recorded"
         ));
     }
+    // Refused here rather than trimmed to fit: the keys are what the caller
+    // declared and dropping the seventeenth would be this box deciding which
+    // issue the run is not about. Refused here rather than downstream because
+    // core's refusal arrives at a sweep and not at this pane — one declaration
+    // of 27 keys was answered `400` every twenty seconds for an hour and
+    // forty-seven minutes, and the master that built it never saw one of them
+    // (ISS-1284).
+    let cap = crate::transport::run_sessions::MAX_ISSUE_KEYS;
+    if issue_keys.len() > cap {
+        return ClaimReply::refused(format!(
+            "a run carries at most {cap} issues and this declaration names {}. Core refuses more by name and the refusal reaches this box's sweep rather than this pane, so the run would be opened nowhere and retried for ever. Declare the work in groups of {cap} or fewer. Nothing was recorded",
+            issue_keys.len()
+        ));
+    }
     let run_id = uuid::Uuid::new_v4().to_string();
     let mut held = ctl.ledger.lock().expect("ledger poisoned");
     let Some(led) = held.as_mut() else {
@@ -1232,6 +1246,54 @@ mod tests {
     #[cfg(unix)]
     fn promised_to(ctl: &Arc<Control>, run_id: &str) -> Option<String> {
         ctl.promises.lock().unwrap().promised.get(run_id).cloned()
+    }
+
+    /// Criteria 11, 12 and 13. The cap is core's and the refusal is this
+    /// box's: a master that hears `400` from a sweep it cannot see hears
+    /// nothing, and one that hears the cap at the pane it typed into can split
+    /// the batch. Both sides of the boundary, because a cap refusing the
+    /// declaration it is supposed to allow is a master that cannot declare at
+    /// all.
+    #[cfg(unix)]
+    #[test]
+    fn a_declaration_over_the_cap_is_refused_at_the_pane_and_writes_nothing() {
+        let cap = crate::transport::run_sessions::MAX_ISSUE_KEYS;
+        let keys =
+            |n: usize| -> Vec<String> { (0..n).map(|i| format!("ISS-{}", 900 + i)).collect() };
+
+        let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
+        let over = run_declare(&ctl, "proj-1", &keys(cap + 1), "/w/over", "sess-a");
+        assert!(!over.ok, "seventeen keys is one more than core accepts");
+        let said = over.reason.clone().unwrap_or_default();
+        assert!(said.contains(&cap.to_string()), "the cap is named: {said}");
+        assert!(
+            said.contains(&(cap + 1).to_string()),
+            "and so is what was sent, so the master can see by how much: {said}"
+        );
+        assert!(
+            over.job_id.is_none(),
+            "a refused declaration reserves no run"
+        );
+        assert_eq!(
+            ctl.ledger
+                .lock()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .unclosed_runs()
+                .unwrap()
+                .len(),
+            0,
+            "nothing was recorded, which is what the refusal says"
+        );
+
+        let (ctl, _t, _dir) = declaring_control("sess-b", "proj-1");
+        let at_cap = run_declare(&ctl, "proj-1", &keys(cap), "/w/at-cap", "sess-b");
+        assert!(
+            at_cap.ok,
+            "exactly the cap is what core accepts and must still be declarable: {:?}",
+            at_cap.reason
+        );
     }
 
     #[cfg(unix)]

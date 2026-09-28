@@ -45,6 +45,7 @@ passed, because the external record of what shipped belonged to none of them.
 | costs | `check-honest-costs` — `lang-check` | whether `docs/VISION.md` and every `docs/proposals/*.md` price what adopting them costs | whether the price stated is honest — that is review's |
 | relations | `archmap check` — `archmap` | which module may depend on which | how a file is written |
 | reachability | `check-test-reachability` — `conformance` | whether every tracked test file is collected, and whether a skipped suite says why | what a test asserts once it runs |
+| selection | `check-whole-tree-gates` — `whole-tree` | whether a test whose input is the whole repository runs on every change: it runs every test carrying `@gate-input whole-tree` under the vitest config that collects it, refuses a declared file that ran no case or failed to load, and refuses an undeclared test that builds a path to the root and lists a directory | which jobs `changes` selects for everything else, and what a declared test asserts |
 | behaviour | `check-test-signal` — `lang-check` | whether a test asserts behaviour or restates a declaration | how many tests exist, coverage % |
 | flows | `check-flow-coverage` — `core-integration` | whether the integration suite ENTERS the function every declared `cm:flow` step sits on | whether the flow ran through it — a function-hit cannot tell; which flows exist, `checkers.flow-coverage.flows` declares |
 | language | `check-source-language` — `lang-check` | English-only source policy | everything else |
@@ -89,6 +90,20 @@ The manifest also declares a `profile` — the shape the whole repo claims, neve
 Frozen at zero on 2026-08-25, the one day it cost nothing: 495 tracked test files, 495 collected.
 Declared skips live in `.forge/test-skips.json` with a reason each, because *"waiting on ISS-214's
 endpoints"* is what the device-runner E2E said for months after those endpoints shipped.
+
+### Why a whole-tree test is selected by its own declaration
+
+`changes` selects a job by the paths a pull request touched. That is right for a test of one
+module and wrong for a guard that walks every file: #710 changed only documents, `core` was
+skipped, `ci-passed` read the skip as a pass, and the guard the document broke left `main` red for
+the next branch to find (ISS-1314). A path list in the workflow would repeat that one directory
+later, so the declaration lives in the test and moves with it. The root-walk refusal is a backstop
+on the declaration and never the selection; over-declaring costs seconds. It decides "reaches the
+root" by evaluating where each path expression resolves, never by counting its `..`: a counter
+read against the test's own depth passed `join(process.cwd(), '..', '..')` and a `dirname()` chain
+undeclared, though both list the root at runtime (ISS-1314, reopened). A test reading one NAMED
+file outside its package is not this checker's: see
+`docs/proposals/a-test-reading-a-named-file-outside-its-package-is-not-selected-by-it.md`.
 
 ### Why flows is where the two axes meet
 
@@ -542,6 +557,56 @@ offending lines on the Dependabot pull request that caused this named by package
 
 ## check-branch-name.sh
 
+Two accepted schemes — `ISS-<seq>-<slug>` for the pipeline and `<type>/<slug>` for an external
+contributor — plus three exempt names, `main`, `master` and `HEAD`, and one derived: the branch this
+checkout's work lands on, read through `lib/base-branch.mjs`. Derived rather than listed because a
+list here said `main` and would have refused a push of the base branch itself the day this
+repository moved off it. With no `node` on `PATH` the three literal names still stand, which is the
+exemption this script has always had.
+
+## lib/base-branch.mjs — one answer to "which branch will this land on"
+
+Every delta-scoped gate here needs a base revision, and until ISS-1304 each of them wrote
+`origin/main` into its own source. A repository that moves its base off `main` breaks all of them
+**silently**: a budget measured against the wrong merge-base reports a pass, and
+`check-migration-order` hands back a `when` another branch has already spent.
+
+`mergeTarget(root, env)` derives it, reading no configuration anywhere — the per-project config a
+plugin keeps is one machine's file and GitHub Actions never sees it, so a gate sourcing its baseline
+there would be right on a laptop and silently wrong in CI. Three sources, each **establishing** the
+target rather than inferring it, and each named in the refusal:
+
+| | source | when it answers |
+|---|---|---|
+| 1 | `$GITHUB_BASE_REF` | a `pull_request` run: the base of the pull request being built |
+| 2 | `$GITHUB_REF` naming a branch on a `push` event | a push: the branch that took the commit |
+| 3 | `refs/remotes/origin/HEAD` | everywhere else: the remote's recorded default |
+
+The ref and not `$GITHUB_REF_NAME` in row 2, because a tag push is a push event and carries a ref
+name too — `runner-release.yml` fires on one.
+<!-- doc-citation: unchecked `refs/heads/` — a git ref namespace, not a path in this tree. -->
+What says a branch took the commit is the `refs/heads/` prefix, and row 2 requires it.
+
+**There is no fourth rung reading the sole remote-tracking branch.** A plain `git clone --depth 1`
+records `origin/HEAD`, so such a rung would only ever have answered for `--depth 1 --branch <b>` —
+the one shape where the branch fetched need not be the branch the work lands on. It could not tell
+"the only branch here is the target" from "the only branch here is the one somebody asked for", and
+a wrong floor from it is the silently skipped migration. That checkout is refused, naming
+`git remote set-head origin -a`.
+
+**Nothing falls back to `main`.** `baseRef(root)` then resolves the branch to `origin/<b>`,
+`refs/remotes/origin/<b>` or `<b>`, and refuses naming all three rather than measuring against a
+branch this change does not derive from.
+
+Row 3 is the repository's own statement of what a pull request from this checkout targets, which is
+the merge target for any change taking the default base. For a local run aimed at some other base,
+`GITHUB_BASE_REF=<branch>` in front of the command scopes it; CI needs nothing, having row 1.
+
+`branchSetFaults(ciYamlText, target)` is the other half, and `conformance-audit` R11 runs it: a
+workflow trigger cannot read a variable, so the branches CI gates are written three times over —
+the push trigger, the pull-request trigger, and the step deciding a tree a pull request already
+proved. The three must name one set, and the merge target must be in it.
+
 ## check-migration-order.mjs — a migration is ordered against the set, not against `main`
 
 `packages/core/src/db/migrations-journal.test.ts` reads one journal: its own. Its head-entry
@@ -557,13 +622,13 @@ arm). An entry below that mark is not reordered — it is skipped, silently, for
 that looks like afterwards: the container served new code against an old schema and the symptom was
 a live 500 on `GET /me/attention` for every signed-in user.
 
-**What it asserts, exactly one proposition:** the migrations THIS tree adds to `origin/main` can be
+**What it asserts, exactly one proposition:** the migrations THIS tree adds to its merge target can be
 applied in some order of whole-branch merges alongside every open branch's live ones. Five refusals,
 each naming the branches, the tags and the numbers:
 
 | rule | what it catches |
 |---|---|
-| `below-floor` | a `when` of ours at or under `origin/main`'s highest — the entry drizzle will skip |
+| `below-floor` | a `when` of ours at or under the merge target's highest — the entry drizzle will skip |
 | `duplicate-when` | two branches on one number; whichever merges second is skipped |
 | `duplicate-idx` | two branches claiming one migration index |
 | `inverted` | an index above a sibling's whose `when` is below it, so the merged journal is not monotonic |
@@ -590,12 +655,13 @@ answers `HEAD`. Three readings say "this is us" and a ref matching any is not a 
 HEAD is on, `GITHUB_HEAD_REF`, and any ref this tree already contains. Without them the PR's own
 branch is read as a sibling holding every one of its migrations, and every migration-bearing PR is
 refused against itself. The floor is re-read after the check's own fetch for the same reason in
-reverse: a cached `origin/main` is a floor the remote has already left behind.
+reverse: a cached base branch is a floor the remote has already left behind.
 
 **Exit codes.** 0 applicable · 1 a refusal · 2 could not run. A tree that adds no migration exits 0
 without touching the remote and says so, which is a proposition proved from local data rather than a
-failure to reach anything. A tree that IS `origin/main` reads the set for the stranded report alone
-and exits 0 whatever it finds, because `main` is not the tree that can repair it. **A tree landing a
+failure to reach anything. A tree that IS the merge target reads the set for the stranded report
+alone and exits 0 whatever it finds, because a branch that has landed is not the tree that can
+repair anybody's numbers. **A tree landing a
 migration that cannot enumerate the open branches is exit 2**, naming the migrations — a check that
 cannot see the set has proved nothing, and a pass there would be the silent substitution the whole
 gate is about.
@@ -738,9 +804,10 @@ one word can — and no rule that counts words can tell that from a typo fix. Th
 of the published record one change may replace without declaring it; the meaning of a narrow edit is
 the diff review's, which sees it as two lines.
 
-Base revision comes from `baseRev()` in `lib/baseline-ratchet.mjs` — merge-base against `origin/main`
-with the `HEAD~1` fallback, because a commit pushed straight to `main` has `origin/main == HEAD` and
-a rule whose base can equal its subject passes everything. **No base revision is exit 2**, which is
+Base revision comes from `baseRev()` in `lib/baseline-ratchet.mjs` — merge-base against the merge
+target `lib/base-branch.mjs` derives, with the `HEAD~1` fallback, because a commit pushed straight to
+that branch has its tip equal to `HEAD` and a rule whose base can equal its subject passes
+everything. **No base revision is exit 2**, which is
 why `lang-check` carries `fetch-depth: 0`.
 
 ### Removing an entry is legal, and it is declared
@@ -949,6 +1016,7 @@ printing `0 violations`.
 | R8 | no CI step runs where it cannot fail | the desktop Rust gate, `continue-on-error: true` for months behind a comment promising cleanup |
 | R9 | every **declared** severity biome exits 0 on (`warn`, `info`, `on`) is counted by a baselined checker — it reads the configs, so a rule left non-blocking by preset default is out of its reach | `packages/core`'s 280 `warn` diagnostics, invisible to R1–R7 because all seven judge a *declared* axis |
 | R10 | every declared axis declares a numeric level of at least 2 | R1–R9 all skip an axis that is not level 2, and `hardened` needs only 4 of 5 — so an axis could declare 1, omit the key, or quote the digit, and pass the audit |
+| R11 | one branch set across the merge gate, and the merge target is in it | `ci.yml` triggered on `[main]` alone, so a pull request into any other base would have run no CI at all and reported no failure (ISS-1304) |
 
 Profiles bound **shape**, never tool choice — `baseline` (one axis measures) · `standard` (two axes
 block, both meta-checks) · `hardened` (every declared axis blocks, every needs-job asserted). "Two

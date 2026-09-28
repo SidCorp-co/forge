@@ -2017,6 +2017,34 @@
       "when": 1809820800000,
       "tag": "0309_a_conversation_holds_files_and_a_person_may_stop_a_turn",
       "breakpoints": true
+    },
+    {
+      "idx": 310,
+      "version": "7",
+      "when": 1809907200000,
+      "tag": "0310_one_deploy_reaches_one_environment",
+      "breakpoints": true
+    },
+    {
+      "idx": 311,
+      "version": "7",
+      "when": 1809993600000,
+      "tag": "0311_questions_die_with_their_issue",
+      "breakpoints": true
+    },
+    {
+      "idx": 312,
+      "version": "7",
+      "when": 1810080000000,
+      "tag": "0312_a_release_chain_replaces_the_release_model",
+      "breakpoints": true
+    },
+    {
+      "idx": 314,
+      "version": "7",
+      "when": 1810166400000,
+      "tag": "0314_a_project_declares_what_its_master_is_for",
+      "breakpoints": true
     }
   ]
 }

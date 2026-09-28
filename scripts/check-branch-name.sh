@@ -34,12 +34,28 @@ if [ -z "$branch" ] || [ "$branch" = "HEAD" ]; then
   exit 0
 fi
 
-# Exempt: trunk + special refs that don't go through the pipeline
+# Exempt: trunk + special refs that don't go through the pipeline.
+#
+# The branch this repository's work lands on is exempt whatever it is called. It is DERIVED, not
+# listed: a list here said `main` and would have refused a push of the base branch the moment the
+# repository moved off it (ISS-1304). With no node on PATH, or in a checkout that cannot say what
+# its merge target is, the three names below still stand — the same exemption this script has
+# always had.
+here="$(cd "$(dirname "$0")" && pwd)"
+base=$(node --input-type=module -e \
+  "import { mergeTarget } from '$here/lib/base-branch.mjs';
+   const t = mergeTarget(process.cwd());
+   if (t.branch) console.log(t.branch);" 2>/dev/null || true)
+
 case "$branch" in
   main|master|HEAD)
     exit 0
     ;;
 esac
+
+if [ -n "$base" ] && [ "$branch" = "$base" ]; then
+  exit 0
+fi
 
 # Hard length cap — most platforms truncate near 60. Refs over 50 stay readable.
 length=${#branch}
@@ -121,6 +137,10 @@ Rules:
   - <slug> is kebab-case lowercase (a-z, 0-9, hyphen), 2-50 chars
   - Total branch name ≤ 60 chars
   - One issue per branch (no ISS-A-B-…)
+
+Also exempt: the branch this checkout's work lands on, read from the remote's
+recorded default. This checkout reads that as '${base:-none}'. If the remote has
+moved its default, refresh it: git remote set-head origin -a
 
 Override: SKIP_PREPUSH=1 git push  (use sparingly — emergency only).
 

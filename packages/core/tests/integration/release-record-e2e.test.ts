@@ -98,7 +98,7 @@ async function seed(opts: { probes?: boolean; label?: string } = {}): Promise<Wo
     role: 'admin',
   });
   await harness.db.execute(sql`
-    UPDATE projects SET base_branch = 'main', release_model = 'publish' WHERE id = ${project.id}
+    UPDATE projects SET base_branch = 'main', release_chain = '[{"branch": "main"}]'::jsonb WHERE id = ${project.id}
   `);
   const connection = randomUUID();
   await harness.db.execute(sql`

@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { mergeTarget } from './lib/base-branch.mjs';
 import { baseRev, ratchetFault } from './lib/baseline-ratchet.mjs';
 import { absentPrerequisites, couldNotStart, remedyLines } from './lib/prerequisite.mjs';
 
@@ -141,6 +142,14 @@ function ciGates() {
     : null;
 }
 
+/** The branch the missing revision should have come from, named rather than assumed to be `main`. */
+function whereFrom() {
+  const target = mergeTarget(ROOT);
+  return target.branch
+    ? `nothing resolves for the merge target \`${target.branch}\``
+    : target.summary;
+}
+
 const { manifest, error } = readManifest();
 if (error) {
   console.error(`conformance-status: ${error}`);
@@ -156,7 +165,7 @@ const ratchetable = Object.values(declared)
 if (ratchetable.length > 0 && BASE_REV === null) {
   console.error(
     `conformance-status: ${ratchetable.length} axis/axes declare a baseline direction, and there is\n` +
-      'no revision to compare against — no origin/main and no HEAD~1. That is a shallow or\n' +
+      `no revision to compare against — ${whereFrom()} and no HEAD~1. That is a shallow or\n` +
       'single-commit checkout, so the direction check would silently pass on nothing.\n' +
       'Fetch history (actions/checkout with fetch-depth: 0) and re-run.\n',
   );

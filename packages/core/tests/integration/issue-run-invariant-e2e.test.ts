@@ -11,6 +11,7 @@
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
+  bindTestRunner,
   createTestDevice,
   createTestProject,
   createTestUser,
@@ -109,6 +110,7 @@ describe('an issue asserting work with no live run behind it', () => {
     const user = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, user.id);
     const device = await createTestDevice(harness.db, user.id);
+    await bindTestRunner(harness.db, { projectId: project.id, deviceId: device.id });
     await anIssueAt({
       projectId: project.id,
       createdById: user.id,

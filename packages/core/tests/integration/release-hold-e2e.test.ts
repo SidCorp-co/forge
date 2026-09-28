@@ -52,6 +52,9 @@ beforeEach(async () => {
     })
   ).id;
   await declareProduction();
+  // ISS-1286: a runtime verdict is weighed against what the production probe ANSWERS, so the
+  // fixture's host has to serve the commit these verdicts were judged at or every row is held.
+  fx.serve(SERVING);
   await seedReleaseRunner();
 });
 
@@ -142,7 +145,9 @@ describe('a held row says why, once per reason', () => {
     expect(String(written?.reason)).toContain('criterion 1');
     expect(String(written?.reason)).not.toContain('criterion 2');
     expect(written?.owes).toBe('human');
-    expect(String(written?.reason)).toContain(`serving it, \`${SERVING}\``);
+    expect(String(written?.reason)).toContain(`this project is serving`);
+    expect(String(written?.reason)).toContain(`\`${SERVING}\``);
+    expect(String(written?.reason)).toMatch(/read at \d{4}-\d\d-\d\dT/);
     const comments = await holdComments(id);
     expect(comments).toHaveLength(1);
     expect(comments[0]).toContain('criterion 1');
@@ -173,6 +178,39 @@ describe('a held row says why, once per reason', () => {
   }, 30_000);
 });
 
+/**
+ * ISS-1286 — the same row, cut or held by nothing but what the host answers. `landing.deployment`
+ * still says `SERVING` in both halves; it decides neither, which is the whole of this issue.
+ */
+describe('what the host answers decides a runtime verdict, not what the issue stored', () => {
+  const MOVED_ON = '0d98a6be6d9680b967d3f16542eadd25d02602cb';
+
+  it('cuts a row whose passes name the commit the host is serving', async () => {
+    const id = await heldRow('pass');
+
+    const result = await sweep();
+
+    expect(result.issuesCut).toBe(1);
+    expect(await holdOf(id)).toBeNull();
+  }, 30_000);
+
+  it('holds the same row once the host answers a commit no verdict was judged at', async () => {
+    const id = await heldRow('pass');
+    fx.serve(MOVED_ON);
+
+    const result = await sweep();
+
+    expect(result.issuesCut).toBe(0);
+    const reason = String((await holdOf(id))?.reason);
+    expect((await holdOf(id))?.code).toBe('RELEASE_CRITERIA_UNEARNED');
+    expect(reason).toContain('each of criteria 1 and 2');
+    expect(reason).toContain(SERVING);
+    expect(reason).toContain(MOVED_ON);
+    expect(reason).toContain('http://127.0.0.1:');
+    expect(reason).toMatch(/read at \d{4}-\d\d-\d\dT/);
+  }, 30_000);
+});
+
 describe('every exit before the cut is written on the row', () => {
   it('writes RELEASE_TARGET_UNDECLARED when the project has nowhere to release onto', async () => {
     const id = await heldRow('pass');
@@ -190,7 +228,7 @@ describe('every exit before the cut is written on the row', () => {
   it('writes NO_RELEASE_GATE on a row still waiting on a project that declares no release', async () => {
     const id = await heldRow('pass');
     await harness.db.execute(sql`
-      UPDATE projects SET release_model = 'none', live_branch = NULL, release_strategy = NULL
+      UPDATE projects SET release_chain = '[]'::jsonb
        WHERE id = ${projectId}
     `);
 

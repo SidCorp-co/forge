@@ -1,43 +1,43 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import {
-  type IssueStatus,
-  projects,
-  type ReleaseModel,
-  type ReleaseStrategy,
-} from '../db/schema.js';
+import { type IssueStatus, projects } from '../db/schema.js';
 import {
   type BindingWithConnection,
   listActiveDeployBindingsForStage,
 } from '../integrations/store.js';
-import { readableLiveBranch } from '../projects/release-model.js';
+import {
+  chainLiveBranch,
+  chainShipsNothing,
+  chainStartBranch,
+  type ReleaseChain,
+} from '../projects/release-chain.js';
 
 /** The one status an issue waits at for release. */
 export const RELEASE_GATE_STATUS: IssueStatus = 'awaiting_release';
 
-/** Thrown where a project declares a release model and nothing to release onto. */
+/** Thrown where a project declares a release chain and nothing to release onto. */
 export class ReleaseTargetUndeclaredError extends Error {
   readonly code = 'RELEASE_TARGET_UNDECLARED';
   constructor(
     readonly projectId: string,
-    readonly releaseModel: ReleaseModel,
+    readonly releaseChain: ReleaseChain,
   ) {
     super(
-      `RELEASE_TARGET_UNDECLARED: project ${projectId} declares releaseModel='${releaseModel}' but has no active deploy binding carrying the 'live' stage, so there is nowhere for a release to land. Either add one on the integrations screen, or set releaseModel='none' if this project ships nothing.`,
+      `RELEASE_TARGET_UNDECLARED: project ${projectId} declares a release chain ending at '${chainLiveBranch(releaseChain) ?? chainStartBranch(releaseChain)}' but has no active deploy binding carrying the 'live' stage, so there is nowhere for a release to land. Either add one on the integrations screen, or declare an empty release chain if this project ships nothing.`,
     );
     this.name = 'ReleaseTargetUndeclaredError';
   }
 }
 
 export type ReleaseDeclaration =
-  | { kind: 'no-release'; releaseModel: 'none'; baseBranch: string }
-  | { kind: 'undeclared-target'; releaseModel: Exclude<ReleaseModel, 'none'> }
+  | { kind: 'no-release'; releaseChain: ReleaseChain; baseBranch: string }
+  | { kind: 'undeclared-target'; releaseChain: ReleaseChain }
   | {
       kind: 'gated';
-      releaseModel: Exclude<ReleaseModel, 'none'>;
-      releaseStrategy: ReleaseStrategy | null;
+      /** The WHOLE ordered path: a crossing is a fact about one edge, so no field reduces it. */
+      releaseChain: ReleaseChain;
       baseBranch: string;
-      /** Non-null exactly under `promote`; `projects_live_branch_chk` holds that in Postgres. */
+      /** Non-null exactly where the chain has two or more entries. */
       liveBranch: string | null;
       /** EVERY active live deploy binding. Core does not choose among them. */
       liveBindings: BindingWithConnection[];
@@ -52,9 +52,7 @@ export async function resolveReleaseDeclaration(
   const [row] = await db
     .select({
       baseBranch: projects.baseBranch,
-      liveBranch: projects.liveBranch,
-      releaseModel: projects.releaseModel,
-      releaseStrategy: projects.releaseStrategy,
+      releaseChain: projects.releaseChain,
     })
     .from(projects)
     .where(eq(projects.id, projectId))
@@ -62,21 +60,21 @@ export async function resolveReleaseDeclaration(
   if (!row) return null;
 
   const baseBranch = row.baseBranch ?? 'main';
-  if (row.releaseModel === 'none') {
-    return { kind: 'no-release', releaseModel: 'none', baseBranch };
+  const releaseChain = row.releaseChain;
+  if (chainShipsNothing(releaseChain)) {
+    return { kind: 'no-release', releaseChain, baseBranch };
   }
 
   const liveBindings = await listActiveDeployBindingsForStage(projectId, 'live');
   if (liveBindings.length === 0) {
-    return { kind: 'undeclared-target', releaseModel: row.releaseModel };
+    return { kind: 'undeclared-target', releaseChain };
   }
 
   return {
     kind: 'gated',
-    releaseModel: row.releaseModel,
-    releaseStrategy: row.releaseStrategy,
+    releaseChain,
     baseBranch,
-    liveBranch: readableLiveBranch(row),
+    liveBranch: chainLiveBranch(releaseChain),
     liveBindings,
   };
 }
@@ -85,15 +83,14 @@ export async function resolveReleaseDeclaration(
  * The status issues must be at to join a batch release, or `null` when the project
  * ships nowhere else and the driver's `closed` means what it says.
  *
- * THROWS on `undeclared-target`. The caller 409s with `RELEASE_TARGET_UNDECLARED`;
- * the old code answered `null` there, which read to every caller as "this project
- * has no release step" — indistinguishable from a project that had declared so.
+ * THROWS on `undeclared-target`. The caller 409s with `RELEASE_TARGET_UNDECLARED`; answering
+ * `null` there reads to every caller as a project that declared it ships nothing.
  */
 export async function resolveReleaseGate(projectId: string): Promise<IssueStatus | null> {
   const decl = await resolveReleaseDeclaration(projectId);
   if (!decl) return null;
   if (decl.kind === 'undeclared-target') {
-    throw new ReleaseTargetUndeclaredError(projectId, decl.releaseModel);
+    throw new ReleaseTargetUndeclaredError(projectId, decl.releaseChain);
   }
   return decl.kind === 'gated' ? RELEASE_GATE_STATUS : null;
 }

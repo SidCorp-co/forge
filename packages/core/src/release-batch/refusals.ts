@@ -96,7 +96,7 @@ export function declarationRefusal(err: unknown): HTTPException | null {
     return carrying(
       err,
       'RELEASE_TARGET_UNDECLARED',
-      releaseBlockerSentence('RELEASE_TARGET_UNDECLARED', { releaseModel: err.releaseModel }),
+      releaseBlockerSentence('RELEASE_TARGET_UNDECLARED', { releaseChain: err.releaseChain }),
     );
   }
   if (err instanceof ReleaseRunnerAmbiguousError) {

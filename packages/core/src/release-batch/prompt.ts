@@ -2,7 +2,7 @@
 // Pattern: buildSmokeCanaryPrompt (skills/smoke-verify.ts:429).
 // Untrusted issue text is wrapped via markUntrusted (same as every state prompt).
 
-import type { ReleaseModel } from '../db/schema.js';
+import { chainLiveBranch, type ReleaseChain } from '../projects/release-chain.js';
 import { markUntrusted } from '../prompt/sanitize.js';
 import { RELEASE_BATCH_SKILL, RELEASE_BATCH_TOOL, type ReleasePlan } from './plan.js';
 
@@ -17,8 +17,7 @@ interface BuildReleaseBatchPromptArgs {
   projectId: string;
   /** `null` where the project declares none, which is a fact about the project and not a refusal. */
   baseBranch: string | null;
-  liveBranch: string | null;
-  releaseModel: ReleaseModel;
+  releaseChain: ReleaseChain;
   issues: IssueSummary[];
   plan: ReleasePlan;
   /** False where no box eligible to release carries the declared label. */
@@ -26,12 +25,13 @@ interface BuildReleaseBatchPromptArgs {
 }
 
 export function buildReleaseBatchPrompt(args: BuildReleaseBatchPromptArgs): string {
-  const { runId, projectId, baseBranch, liveBranch, releaseModel, issues, plan } = args;
+  const { runId, projectId, baseBranch, releaseChain, issues, plan } = args;
   const roster = issues
     .map((i) => `- ${i.displayId} — ${markUntrusted(i.title, { source: 'issue.title' })}`)
     .join('\n');
   const baseLine = baseBranch ? `\nbaseBranch: ${baseBranch}` : '';
-  const liveLine = releaseModel === 'promote' && liveBranch ? `\nliveBranch: ${liveBranch}` : '';
+  const liveBranch = chainLiveBranch(releaseChain);
+  const liveLine = liveBranch ? `\nliveBranch: ${liveBranch}` : '';
   // What was true when the batch was CUT, never where it ended up running: the
   // job is claimed after this string is built, and a box carrying the label can
   // come online in between. The box that took it is in the batch context.
@@ -53,7 +53,7 @@ export function buildReleaseBatchPrompt(args: BuildReleaseBatchPromptArgs): stri
 
 projectId: ${projectId}
 runId: ${runId}
-releaseModel: ${releaseModel}${baseLine}${liveLine}${runnerLine}
+releaseChain: ${releaseChain.length === 0 ? 'empty — this project ships nothing' : releaseChain.map((e) => (e.from ? `${e.from} → ${e.branch}` : e.branch)).join(', then ')}${baseLine}${liveLine}${runnerLine}
 ${channelLines}
 
 ### Issues in this batch (${issues.length})

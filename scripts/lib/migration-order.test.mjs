@@ -10,7 +10,7 @@ function at(idx, when, tag = `${String(idx).padStart(4, '0')}_m${idx}`) {
 
 /** The set this repo actually held on 2026-09-20, read off the three open branches. */
 const MEASURED = {
-  main: [at(288, 1_807_315_200_000, '0288_issue_creator_agency')],
+  base: [at(288, 1_807_315_200_000, '0288_issue_creator_agency')],
   transitionAudit: {
     branch: 'origin/iss-1107-1108',
     entries: [
@@ -28,15 +28,15 @@ const rules = (result) => result.refusals.map((r) => r.rule);
 const said = (result) => result.refusals.map((r) => r.message).join('\n');
 
 describe('newEntries', () => {
-  it('keeps only what main does not already carry, in index order', () => {
-    const main = [at(1, 100), at(2, 200)];
+  it('keeps only what the base branch does not already carry, in index order', () => {
+    const base = [at(1, 100), at(2, 200)];
     const branch = [at(2, 200), at(4, 400), at(1, 100), at(3, 300)];
-    expect(newEntries(branch, main).map((e) => e.idx)).toEqual([3, 4]);
+    expect(newEntries(branch, base).map((e) => e.idx)).toEqual([3, 4]);
   });
 
-  it('is empty for a branch that only carries what main carries', () => {
-    const main = [at(1, 100), at(2, 200)];
-    expect(newEntries([at(1, 100), at(2, 200)], main)).toEqual([]);
+  it('is empty for a branch that only carries what the base branch carries', () => {
+    const base = [at(1, 100), at(2, 200)];
+    expect(newEntries([at(1, 100), at(2, 200)], base)).toEqual([]);
   });
 });
 
@@ -53,7 +53,7 @@ describe('floorOf', () => {
 describe('checkSet refuses what no merge order can apply', () => {
   it('names both branches and the number when two of them hold one `when`', () => {
     const result = checkSet({
-      main: [at(288, 1000)],
+      base: [at(288, 1000)],
       self: { branch: 'iss-a', entries: [at(289, 2000, '0289_a')] },
       siblings: [{ branch: 'origin/iss-b', entries: [at(290, 2000, '0290_b')] }],
     });
@@ -63,9 +63,10 @@ describe('checkSet refuses what no merge order can apply', () => {
     expect(said(result)).toContain('2000');
   });
 
-  it('refuses an entry that does not clear main, naming the floor and the number to take', () => {
+  it('refuses an entry that does not clear the base branch, naming the floor and the number to take', () => {
     const result = checkSet({
-      main: [at(288, 5000)],
+      base: [at(288, 5000)],
+      baseRef: 'origin/dev',
       self: { branch: 'iss-a', entries: [at(289, 4000, '0289_a')] },
       siblings: [],
     });
@@ -75,12 +76,23 @@ describe('checkSet refuses what no merge order can apply', () => {
     expect(said(result)).toContain(String(5000 + DAY));
   });
 
+  it('names the base branch it took the floor from, not `main`', () => {
+    const result = checkSet({
+      base: [at(288, 5000)],
+      baseRef: 'origin/dev',
+      self: { branch: 'iss-a', entries: [at(289, 4000, '0289_a')] },
+      siblings: [],
+    });
+    expect(said(result)).toContain('does not clear origin/dev');
+    expect(said(result)).not.toContain('origin/main');
+  });
+
   it('refuses a branch whose when range straddles a sibling, which no whole-branch order applies', () => {
     // A = {289, 291} and B = {290}: every entry distinct, every index ascending with its `when`,
     // and still unorderable — a branch merges whole, so whichever lands first raises the
     // high-water past the other's remainder.
     const result = checkSet({
-      main: [at(288, 1000)],
+      base: [at(288, 1000)],
       self: { branch: 'iss-a', entries: [at(289, 2000, '0289_a'), at(291, 4000, '0291_a')] },
       siblings: [{ branch: 'origin/iss-b', entries: [at(290, 3000, '0290_b')] }],
     });
@@ -91,7 +103,7 @@ describe('checkSet refuses what no merge order can apply', () => {
 
   it('refuses an index above a sibling whose `when` is below it', () => {
     const result = checkSet({
-      main: [at(288, 1000)],
+      base: [at(288, 1000)],
       self: { branch: 'iss-a', entries: [at(291, 2000, '0291_a')] },
       siblings: [{ branch: 'origin/iss-b', entries: [at(289, 3000, '0289_b')] }],
     });
@@ -102,7 +114,7 @@ describe('checkSet refuses what no merge order can apply', () => {
 
   it('refuses two open branches holding one index', () => {
     const result = checkSet({
-      main: [at(288, 1000)],
+      base: [at(288, 1000)],
       self: { branch: 'iss-a', entries: [at(289, 2000, '0289_a')] },
       siblings: [{ branch: 'origin/iss-b', entries: [at(289, 3000, '0289_b')] }],
     });
@@ -112,7 +124,7 @@ describe('checkSet refuses what no merge order can apply', () => {
 
   it('charges a shared `when` to one rule, not to two', () => {
     const result = checkSet({
-      main: [at(288, 1000)],
+      base: [at(288, 1000)],
       self: { branch: 'iss-a', entries: [at(289, 2000, '0289_a')] },
       siblings: [{ branch: 'origin/iss-b', entries: [at(290, 2000, '0290_b')] }],
     });
@@ -123,7 +135,7 @@ describe('checkSet refuses what no merge order can apply', () => {
 describe('checkSet leaves a workable set alone', () => {
   it('passes the three branches this repo actually held, and derives their merge order', () => {
     const result = checkSet({
-      main: MEASURED.main,
+      base: MEASURED.base,
       self: MEASURED.releaseVersion,
       siblings: [MEASURED.transitionAudit],
     });
@@ -137,7 +149,7 @@ describe('checkSet leaves a workable set alone', () => {
 
   it('names the sibling that has to renumber when this branch lands out of order', () => {
     const result = checkSet({
-      main: MEASURED.main,
+      base: MEASURED.base,
       self: MEASURED.releaseVersion,
       siblings: [MEASURED.transitionAudit],
     });
@@ -146,7 +158,7 @@ describe('checkSet leaves a workable set alone', () => {
 
   it('claims no head start for the branch that is already first', () => {
     const result = checkSet({
-      main: MEASURED.main,
+      base: MEASURED.base,
       self: MEASURED.transitionAudit,
       siblings: [MEASURED.releaseVersion],
     });
@@ -157,9 +169,9 @@ describe('checkSet leaves a workable set alone', () => {
 
 describe('a sibling already below the floor is reported, never charged to anybody', () => {
   it('reports it and refuses nothing, because no number here can repair it', () => {
-    // main has deployed 290; the sibling still holds 289 below the floor; this branch adds 291.
+    // The base branch has deployed 290; the sibling still holds 289 below the floor; this branch adds 291.
     const result = checkSet({
-      main: [at(288, 1000), at(290, 3000, '0290_landed')],
+      base: [at(288, 1000), at(290, 3000, '0290_landed')],
       self: { branch: 'iss-a', entries: [at(291, 4000, '0291_a')] },
       siblings: [{ branch: 'origin/iss-b', entries: [at(289, 2000, '0289_b')] }],
     });
@@ -170,7 +182,7 @@ describe('a sibling already below the floor is reported, never charged to anybod
 
   it('keeps the stranded sibling out of the merge order it can no longer join', () => {
     const result = checkSet({
-      main: [at(288, 1000), at(290, 3000, '0290_landed')],
+      base: [at(288, 1000), at(290, 3000, '0290_landed')],
       self: { branch: 'iss-a', entries: [at(291, 4000, '0291_a')] },
       siblings: [{ branch: 'origin/iss-b', entries: [at(289, 2000, '0289_b')] }],
     });
@@ -181,7 +193,7 @@ describe('a sibling already below the floor is reported, never charged to anybod
     // The partition is for siblings only. Filtering our own below-floor entry out would delete
     // the very thing the check exists to refuse.
     const result = checkSet({
-      main: [at(288, 1000), at(290, 3000, '0290_landed')],
+      base: [at(288, 1000), at(290, 3000, '0290_landed')],
       self: { branch: 'iss-a', entries: [at(289, 2000, '0289_a')] },
       siblings: [{ branch: 'origin/iss-b', entries: [at(289, 2500, '0289_b')] }],
     });
@@ -195,7 +207,7 @@ describe('two other open branches that cannot both land', () => {
   // compatibility with self is not the whole-set proposition, and a run that printed an order
   // here would be naming an order nobody can execute.
   const set = {
-    main: [at(288, 1000)],
+    base: [at(288, 1000)],
     self: { branch: 'iss-c', entries: [at(292, 5000, '0292_c')] },
     siblings: [
       { branch: 'origin/iss-a', entries: [at(289, 2000, '0289_a'), at(291, 4000, '0291_a')] },
@@ -223,7 +235,7 @@ describe('two other open branches that cannot both land', () => {
 describe('the interleave refusal names the entries, not only the ranges', () => {
   it('prints the straddling tags on both sides', () => {
     const result = checkSet({
-      main: [at(288, 1000)],
+      base: [at(288, 1000)],
       self: { branch: 'iss-a', entries: [at(289, 2000, '0289_a'), at(291, 4000, '0291_a')] },
       siblings: [{ branch: 'origin/iss-b', entries: [at(290, 3000, '0290_b')] }],
     });

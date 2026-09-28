@@ -3,7 +3,7 @@ import { type Db, db } from '../db/client.js';
 import { issueDependencies, issueStepContexts, issues, jobs, projects } from '../db/schema.js';
 import { WORK_EVIDENCE_WAIVER_KIND } from '../issues/dependency-effects.js';
 import { logger } from '../logger.js';
-import { readableLiveBranch } from '../projects/release-model.js';
+import { chainLiveBranch } from '../projects/release-chain.js';
 
 const IMPLEMENTATION_STEPS = ['code', 'fix', 'drive'] as const;
 
@@ -44,8 +44,7 @@ export async function collectWorkEvidence(
       .select({
         sessionContext: issues.sessionContext,
         baseBranch: projects.baseBranch,
-        liveBranch: projects.liveBranch,
-        releaseModel: projects.releaseModel,
+        releaseChain: projects.releaseChain,
       })
       .from(issues)
       .innerJoin(projects, eq(projects.id, issues.projectId))
@@ -76,7 +75,7 @@ export async function collectWorkEvidence(
     (v): v is string => typeof v === 'string' && v.length > 0,
   );
   const projectRow = issueRows[0];
-  const excludedLive = projectRow ? readableLiveBranch(projectRow) : null;
+  const excludedLive = projectRow ? chainLiveBranch(projectRow.releaseChain) : null;
   const branch =
     named && named !== issueRows[0]?.baseBranch && named !== excludedLive ? named : null;
 
@@ -118,9 +117,10 @@ export const NO_WORK_EVIDENCE_DETAIL =
   'no branch, commit or code handoff is recorded for this issue — record the branch in ' +
   'sessionContext.branch or sessionContext.worklog.branch, or write the implementation step ' +
   'handoff with commitSha/filesModified, before advancing. A branch equal to the project base ' +
-  'branch is not evidence, and neither is the live branch on a project whose releaseModel is ' +
-  '`promote`: both name where work lands, not that any happened. On a `none` or `publish` ' +
-  'project the live branch is not read at all, so a branch of that name counts like any other';
+  'branch is not evidence, and neither is the last branch of a project whose release chain has ' +
+  'two or more entries: both name where work lands, not that any happened. Where the chain is ' +
+  'empty or names one branch there is no live branch to exclude, so a branch of that name ' +
+  'counts like any other';
 
 /**
  * The same check, letting its own failure out.

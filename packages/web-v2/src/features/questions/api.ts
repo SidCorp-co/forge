@@ -8,10 +8,10 @@ export const questionsApi = {
   listForIssue: (issueId: string) =>
     apiClient<QuestionListResponse>(`/questions?issueId=${encodeURIComponent(issueId)}`),
 
-  /** `GET /api/questions?projectId=&status=open` — one page of open decisions on one project. */
-  listOpenForProject: (projectId: string, cursor?: string, limit = PROJECT_PAGE_SIZE) =>
+  /** One page of the open decisions that name no issue; one on an issue is answered there. */
+  listOpenWithoutIssue: (projectId: string, cursor?: string, limit = PROJECT_PAGE_SIZE) =>
     apiClient<QuestionListResponse>(
-      `/questions?projectId=${encodeURIComponent(projectId)}&status=open&limit=${limit}` +
+      `/questions?projectId=${encodeURIComponent(projectId)}&status=open&issue=none&limit=${limit}` +
         (cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""),
     ),
 
