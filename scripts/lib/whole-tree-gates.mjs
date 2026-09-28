@@ -220,7 +220,7 @@ function scriptText(path) {
  */
 export function subprocessListing({ command, args = [], shell = false, cwd, root }) {
   const viaShell =
-    shell || args.length === 0
+    shell
       ? [command, ...args].join(' ')
       : ['sh', 'bash', 'zsh'].includes(basename(command)) && args[0] === '-c'
         ? args[1]

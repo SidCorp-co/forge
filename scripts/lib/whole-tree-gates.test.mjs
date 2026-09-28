@@ -89,6 +89,7 @@ describe('what a child process lists', () => {
 
   it('reads a shell string, a cd moving the rest', () => {
     expect(run('git ls-files', [], { shell: true })).toEqual([CORE]);
+    expect(run('git ls-files', [])).toEqual([]);
     expect(run('cd ../.. && find . -name "*.md"', [], { shell: true })).toEqual([ROOT]);
     expect(run('sh', ['-c', 'cd ../.. && git ls-files'])).toEqual([ROOT]);
     expect(run('echo hi | cat', [], { shell: true })).toEqual([]);
