@@ -4,6 +4,11 @@ import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
 import { projects } from '../db/schema.js';
 import { NON_OPEN_STATUSES } from '../issues/status-sets.js';
+import {
+  countClaimHeldIssuesByProject,
+  type LoopMonitorCoverage,
+  loopMonitorCoverage,
+} from '../jobs/loop-monitor-axis.js';
 import { loadVisibleProjectIds } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -37,6 +42,10 @@ interface ProjectHealthRow {
   members: string[];
   /** ISO timestamp of the most recent issue/run activity, or `null`. */
   lastActivityAt: string | null;
+  /** ISS-1273 — which axis the loop monitor sweeps for this project, and how many non-terminal
+   *  issues sit on the claim lane none of its hops reaches. A zero says the lane is empty; the
+   *  field's absence, which is what callers had before, said nothing at all. */
+  loopMonitor: LoopMonitorCoverage;
 }
 
 /** First 2 chars of the email local-part, uppercased — the avatar initials. */
@@ -88,6 +97,7 @@ projectHealthRoutes.get('/health', async (c) => {
 
   const projectIds = visibleProjects.map((p) => p.id);
   const agg = await readHealthAggregates(projectIds);
+  const claimHeldByProject = await countClaimHeldIssuesByProject(projectIds);
 
   const distByProject = new Map<string, Record<string, number>>();
   for (const r of agg.statusRows) {
@@ -159,6 +169,7 @@ projectHealthRoutes.get('/health', async (c) => {
       memberCount: memberCountByProject.get(p.id) ?? 0,
       members: membersByProject.get(p.id) ?? [],
       lastActivityAt: lastActivityByProject.get(p.id) ?? null,
+      loopMonitor: loopMonitorCoverage(claimHeldByProject.get(p.id) ?? 0),
     };
   });
 

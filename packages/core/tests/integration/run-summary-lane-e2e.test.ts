@@ -48,8 +48,25 @@ describe('ISS-1273 run summary lanes', () => {
     return createTestProject(harness.db, owner.id);
   }
 
-  /** A group run as `devices/run-session.ts` opens one: `issue_id` null, group in the metadata. */
+  /**
+   * A group run as `devices/run-session.ts` opens one: `issue_id` null, and BOTH group keys.
+   *
+   * `runIssues` is what the run still holds and shrinks as leases go back; `runGroup` is what it
+   * was opened over. A fixture writing only the first proves nothing about the second, so the
+   * shrink is exercised through the real writer in `run-group-membership-e2e.test.ts`.
+   */
   async function groupRun(projectId: string, runIssues: string[]): Promise<string> {
+    const runId = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status, metadata)
+      VALUES (${runId}, ${projectId}, NULL, 'system', 'running',
+              ${JSON.stringify({ type: 'run_session', runIssues, runGroup: runIssues })}::jsonb)
+    `);
+    return runId;
+  }
+
+  /** A run as it was written before the two keys were split: the shrinking array and nothing else. */
+  async function legacyGroupRun(projectId: string, runIssues: string[]): Promise<string> {
     const runId = randomUUID();
     await harness.db.execute(sql`
       INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status, metadata)
@@ -149,6 +166,38 @@ describe('ISS-1273 run summary lanes', () => {
     expect(summary?.step.source).toBe('none');
   });
 
+  // A run opened before the split has no `runGroup`, but `runIssueStatuses` was stamped at open
+  // by the same statement and never rewritten, so the group is still recoverable and the answer
+  // names where it came from. Members, not order: a jsonb map has none to give back.
+  it('recovers a pre-split run group from the statuses stamped at open', async () => {
+    const project = await seed();
+    const runId = await legacyGroupRun(project.id, []);
+    await harness.db.execute(sql`
+      UPDATE pipeline_runs
+         SET metadata = metadata || jsonb_build_object('runIssueStatuses',
+               jsonb_build_object('ISS-1273', 'in_progress', 'ISS-1271', 'open'))
+       WHERE id = ${runId}
+    `);
+
+    const summary = await mods.loadPipelineRunSummary(runId);
+    expect([...(summary?.runIssues ?? [])].sort()).toEqual(['ISS-1271', 'ISS-1273']);
+    expect(summary?.group.source).toBe('statuses_at_open');
+  });
+
+  // And where nothing on the row can answer, it says so rather than serving `[]`: an empty array
+  // beside prose asserting a group is what this issue was reopened for.
+  it('says the group is not recoverable rather than answering an empty array', async () => {
+    const project = await seed();
+    const runId = await legacyGroupRun(project.id, []);
+
+    const summary = await mods.loadPipelineRunSummary(runId);
+    expect(summary?.runIssues).toEqual([]);
+    expect(summary?.group.source).toBe('none');
+    expect(summary?.group.detail).toContain('not recoverable from this row');
+    expect(summary?.step.detail).toContain('a group this row no longer names');
+    expect(summary?.step.detail).not.toContain('over a group of issues and');
+  });
+
   it('leaves a job-lane run on its stamped step and its own issue', async () => {
     const project = await seed();
     const issueId = randomUUID();
@@ -166,6 +215,7 @@ describe('ISS-1273 run summary lanes', () => {
     const summary = await mods.loadPipelineRunSummary(runId);
     expect(summary?.lane).toBe('job');
     expect(summary?.runIssues).toEqual([]);
+    expect(summary?.group.detail).toContain('carries its one issue in its own column');
     expect(summary?.step).toEqual({ source: 'run_column', step: 'code', detail: null });
   });
 });

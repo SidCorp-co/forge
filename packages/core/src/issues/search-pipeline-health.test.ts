@@ -36,7 +36,12 @@ const dbSelect = vi.fn(() => ({ from: selectFrom }));
 vi.mock('../db/client.js', () => ({ db: { select: dbSelect } }));
 
 const safeHydratePipelineHealthForIssues = vi.fn(async () => new Map());
-vi.mock('./pipeline-health.js', () => ({ safeHydratePipelineHealthForIssues }));
+// ISS-1273 — only the loader is stubbed. `pipelineHealthUnderived` stays the real one, because
+// the fallback arm's SHAPE is what this suite's last case is about.
+vi.mock('./pipeline-health.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./pipeline-health.js')>()),
+  safeHydratePipelineHealthForIssues,
+}));
 
 vi.mock('./agent-sessions-hydrator.js', () => ({
   hydrateAgentSessionsForIssues: vi.fn(
@@ -134,12 +139,22 @@ describe('withPipelineHealth (ISS-903)', () => {
     expect(safeHydratePipelineHealthForIssues).toHaveBeenCalledTimes(1);
   });
 
-  it('grafts stage-only for every row when the hydration degrades to an empty map', async () => {
+  // ISS-1273 — this is the one site the judge found still grafting the bare `{ stage }` literal
+  // while its four siblings in `routes.ts` had been converted. The hydrator returns an empty map
+  // on any throw, so the arm is reachable, and `stage` alone is the status the caller already had.
+  it('says the derivation failed rather than serving `stage` back as health', async () => {
     safeHydratePipelineHealthForIssues.mockResolvedValueOnce(new Map());
     const { res, body } = await authorizedRequest('?withPipelineHealth=1');
     expect(res.status).toBe(200);
-    expect(body[0]).toMatchObject({ pipelineHealth: { stage: 'in_progress' } });
-    expect(body[1]).toMatchObject({ pipelineHealth: { stage: 'approved' } });
+    for (const [index, stage] of [
+      [0, 'in_progress'],
+      [1, 'approved'],
+    ] as const) {
+      const health = body[index]?.pipelineHealth as { stage: string; worker: { lane: string } };
+      expect(health.stage).toBe(stage);
+      expect(health.worker.lane).toBe('unreadable');
+      expect(Object.keys(health)).not.toEqual(['stage']);
+    }
   });
 
   it('composes with withAgentSessions=1 (both surfaces read one call)', async () => {

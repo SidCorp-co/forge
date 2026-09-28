@@ -3142,6 +3142,7 @@
 - **Removing a worktree now ends what is running inside it, or refuses and names it.** The sweep
   also reports processes stranded in worktree paths already gone. (ISS-1271)
 - **A live run now names the issues it is for and the step it is on, and an issue nobody is working says so in words.** Both came back blank before, which read the same as a quiet system.
+- **A finished run still names the issues it was opened over.** Four in ten showed an empty list, beside a sentence claiming a group. An issue with a finished session, or a lapsed claim, now reads correctly too.
 - **New issue in the top bar and the command palette now opens the form on the Issues list too.** It did nothing there before. Closing the form clears the link, so Back and reload no longer reopen it.
 - **The board drawer no longer labels an issue with nothing running as Queued.** Its header shows a run chip only for a run, Activity says when no pipeline run exists, and the issue's status appears once, named as itself.
 - **An issue waiting for a runner now shows as Queued everywhere on its page and in the board drawer.** The run chips said nothing while the agent panel said queued. A paused run reads Paused, not Idle.

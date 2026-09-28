@@ -18,10 +18,12 @@ import {
 } from '../helpers/index.js';
 
 type LoopMonitorModule = typeof import('../../src/jobs/loop-monitor.js');
+type AxisModule = typeof import('../../src/jobs/loop-monitor-axis.js');
 
 describe('ISS-1273 loop-monitor axis declaration', () => {
   let harness: TestDatabase;
   let mods: LoopMonitorModule;
+  let axis: AxisModule;
 
   beforeAll(async () => {
     harness = await setupTestDatabase();
@@ -37,6 +39,7 @@ describe('ISS-1273 loop-monitor axis declaration', () => {
     process.env.CORS_ORIGINS ??= 'http://localhost:3000';
     process.env.NODE_ENV ??= 'test';
     mods = (await import('../../src/jobs/loop-monitor.js')) as unknown as LoopMonitorModule;
+    axis = (await import('../../src/jobs/loop-monitor-axis.js')) as unknown as AxisModule;
   }, 60_000);
 
   afterAll(async () => {
@@ -123,5 +126,45 @@ describe('ISS-1273 loop-monitor axis declaration', () => {
 
     const tick = await mods.runLoopMonitor(new Date(), { projectId: project.id });
     expect(tick.outOfAxis).toEqual({ claimHeldIssues: 0, sweptBy: 'pipeline/idle-issues.ts' });
+  });
+
+  // ISS-1273 — `projects/health-routes.ts` is the reader that lets this count be judged at a
+  // deployment at all; it reads several projects at once, so the count has to stay per project
+  // rather than summing the box. A shared count would make one busy project read as every
+  // project being busy, which is the same "a number that means two things" defect again.
+  it('counts each project separately where several are read in one call', async () => {
+    const owner = await createTestUser(harness.db);
+    const busy = await createTestProject(harness.db, owner.id);
+    const quiet = await createTestProject(harness.db, owner.id);
+    for (const issSeq of [11, 12]) {
+      await claimedIssue(busy.id, {
+        issSeq,
+        status: 'in_progress',
+        holder: `iss-${issSeq}-live`,
+        ageHours: 0,
+      });
+    }
+    await claimedIssue(quiet.id, {
+      issSeq: 13,
+      status: 'in_progress',
+      holder: 'iss-13-expired',
+      ageHours: 5,
+    });
+
+    const counts = await axis.countClaimHeldIssuesByProject([busy.id, quiet.id]);
+    expect(counts.get(busy.id)).toBe(2);
+    expect(counts.get(quiet.id)).toBe(0);
+  });
+
+  it('answers zero for a project it was asked about and found nothing for', async () => {
+    const owner = await createTestUser(harness.db);
+    const project = await createTestProject(harness.db, owner.id);
+    const counts = await axis.countClaimHeldIssuesByProject([project.id]);
+    expect(counts.get(project.id)).toBe(0);
+    expect(counts.has(project.id)).toBe(true);
+  });
+
+  it('asked about nothing, queries nothing and answers an empty map', async () => {
+    expect((await axis.countClaimHeldIssuesByProject([])).size).toBe(0);
   });
 });

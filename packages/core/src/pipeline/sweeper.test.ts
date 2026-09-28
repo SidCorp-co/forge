@@ -5,6 +5,8 @@ vi.mock('../config/env.js', () => ({ env: { NODE_ENV: 'test' } }));
 const zeroAxis = { reaped: 0, killRequested: 0, awaitingKill: 0 };
 
 const zeroLoopResult = {
+  axis: 'job' as const,
+  outOfAxis: { claimHeldIssues: 0, sweptBy: 'pipeline/idle-issues.ts' as const },
   ackMisses: zeroAxis,
   sessions: { queueTimedOut: 0, turnNeverReported: 0, heartbeatTimedOut: 0, noClientAcked: 0 },
   sessionLostJobs: zeroAxis,
@@ -237,20 +239,17 @@ describe('runPipelineSweep — loop-first ordering (ISS-449)', () => {
   it('runs the loop monitor FIRST and reports its result', async () => {
     const ackMisses = { reaped: 1, killRequested: 0, awaitingKill: 0 };
     const sessionLostJobs = { reaped: 3, killRequested: 0, awaitingKill: 0 };
-    runLoopMonitorMock.mockResolvedValueOnce({
+    const loop = {
+      ...zeroLoopResult,
       ackMisses,
       sessions: { queueTimedOut: 2, turnNeverReported: 0, heartbeatTimedOut: 0, noClientAcked: 0 },
       sessionLostJobs,
       resultMisses: zeroAxis,
-    });
+    };
+    runLoopMonitorMock.mockResolvedValueOnce(loop);
     const result = await runPipelineSweep();
     expect(runLoopMonitorMock).toHaveBeenCalledTimes(1);
-    expect(result.loop).toEqual({
-      ackMisses,
-      sessions: { queueTimedOut: 2, turnNeverReported: 0, heartbeatTimedOut: 0, noClientAcked: 0 },
-      sessionLostJobs,
-      resultMisses: zeroAxis,
-    });
+    expect(result.loop).toEqual(loop);
     const firstAlarmCall = dbExecute.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY;
     const loopCall = runLoopMonitorMock.mock.invocationCallOrder[0] ?? Number.NaN;
     expect(loopCall).toBeLessThan(firstAlarmCall);

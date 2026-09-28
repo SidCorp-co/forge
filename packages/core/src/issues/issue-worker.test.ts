@@ -76,6 +76,31 @@ describe('classifyIssueWorker', () => {
     expect(worker.lane).toBe('none');
   });
 
+  // ISS-1273 — the judge found ISS-868 told 'no agent session is bound' while carrying its own
+  // uuid in `metadata.issueId`, the very key the job-lane bind joins on. The sentence has to say
+  // what is actually absent, which is a LIVE session.
+  it('does not say no session is bound where a finished one provably is', () => {
+    const worker = classifyIssueWorker({
+      sessions: [session({ status: 'completed' }), session({ id: 'sess-2', status: 'failed' })],
+      claim: null,
+    });
+    const detail = (worker as { detail: string }).detail;
+    expect(detail).not.toContain('no agent session is bound');
+    expect(detail).toContain('the 2 agent sessions bound to this issue on the job lane');
+    expect(detail).toContain('have all finished');
+  });
+
+  it('names both session lanes where a finished row sits on each', () => {
+    const worker = classifyIssueWorker({
+      sessions: [
+        session({ status: 'completed' }),
+        session({ id: 'sess-box', lane: 'run_session', status: 'failed' }),
+      ],
+      claim: null,
+    });
+    expect((worker as { detail: string }).detail).toContain('on the job and run_session lane');
+  });
+
   it('answers `none` with a sentence rather than an absent field when nothing holds the issue', () => {
     const worker = classifyIssueWorker({ sessions: [], claim: null });
     expect(worker).toEqual({
@@ -95,6 +120,32 @@ describe('classifyIssueWorker', () => {
       detail:
         'no agent session is bound to this issue on either session lane, and the claim by iss-1273-52b95148 reads expired: expired 12 minutes ago',
     });
+  });
+
+  // ISS-1273 — `pipeline/session-claim.ts` sets `detail` to '' for every verdict but `malformed`,
+  // which is the shape the deployment actually serves: the case above passes on a detail the
+  // production reader never produces. 295 of 1317 issues ended their sentence at a bare colon.
+  it('does not end the sentence at a colon where the claim reading carries no detail', () => {
+    const worker = classifyIssueWorker({
+      sessions: [],
+      claim: claim({ verdict: 'expired', detail: '' }),
+    });
+    expect(worker).toEqual({
+      lane: 'none',
+      detail:
+        'no agent session is bound to this issue on either session lane, and the claim by iss-1273-52b95148 reads expired',
+    });
+    expect((worker as { detail: string }).detail.endsWith(':')).toBe(false);
+  });
+
+  it('carries the reason where the reading does have one, so the colon is not simply dropped', () => {
+    const worker = classifyIssueWorker({
+      sessions: [],
+      claim: claim({ verdict: 'malformed', detail: 'holder is not a non-empty string' }),
+    });
+    expect((worker as { detail: string }).detail).toContain(
+      'reads malformed: holder is not a non-empty string',
+    );
   });
 
   it('a claim with a holder nobody named still produces a sentence, never a throw', () => {

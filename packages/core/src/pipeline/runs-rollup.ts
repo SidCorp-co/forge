@@ -29,14 +29,15 @@ import { UNHELD_LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { usageSessionMatch } from '../usage-records/rollup.js';
 import {
+  groupOf,
   laneOf,
+  type PipelineRunGroup,
   type PipelineRunLane,
   type PipelineRunStep,
-  runIssuesOf,
   stepOf,
 } from './runs-lane.js';
 
-export type { PipelineRunLane, PipelineRunStep } from './runs-lane.js';
+export type { PipelineRunGroup, PipelineRunLane, PipelineRunStep } from './runs-lane.js';
 
 export type PipelineStepStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
 
@@ -114,6 +115,9 @@ export interface PipelineRunSummary {
   issueId: string | null;
   lane: PipelineRunLane;
   step: PipelineRunStep;
+  /** ISS-1273 — where the group came from and, where there is none, why. `runIssues` IS
+   *  `group.issues`, as `currentStep` is `step.step`. */
+  group: PipelineRunGroup;
   /** ISS-1273 — the canonical keys this run was opened over; empty off the run-session lane. */
   runIssues: string[];
   /** ISS-460 — human ref (`ISS-<seq>`) of the run's issue; null for pm/system/interactive runs. */
@@ -327,13 +331,14 @@ async function loadAttemptsForRun(runId: string): Promise<{
 
 function rowToListItem(row: RunRow): PipelineRunListItem {
   const lane = laneOf(row);
+  const group = groupOf(row, lane);
   return {
     id: row.id,
     projectId: row.projectId,
     issueId: row.issueId,
     lane,
-    ...withStep(lane, row.currentStep),
-    runIssues: runIssuesOf(row.metadata),
+    ...withStep(lane, row.currentStep, undefined, group),
+    ...withGroup(group),
     // ISS-460 — resolved by callers that join `issues`; default null here.
     issueRef: null,
     issueTitle: null,
@@ -347,15 +352,19 @@ function rowToListItem(row: RunRow): PipelineRunListItem {
   };
 }
 
-/** ISS-1273 — the step and the column agree by construction: `currentStep` IS `step.step`, so a
- *  reader taking either gets the one answer `runs-lane.ts:stepOf` reached. */
+/** ISS-1273 — by construction, so a reader taking either gets the one answer `stepOf` reached. */
 function withStep(
   lane: PipelineRunLane,
   currentStep: string | null,
   openPhase?: string,
+  group?: PipelineRunGroup,
 ): { step: PipelineRunStep; currentStep: string | null } {
-  const step = stepOf(lane, currentStep, openPhase);
+  const step = stepOf(lane, currentStep, openPhase, group);
   return { step, currentStep: step.step };
+}
+
+function withGroup(group: PipelineRunGroup): { group: PipelineRunGroup; runIssues: string[] } {
+  return { group, runIssues: group.issues };
 }
 
 /** ISS-1273 — a box-driven run's step is its open `phase_journal` row. Two open rows mean a
@@ -422,7 +431,7 @@ export async function loadPipelineRunSummary(runId: string): Promise<PipelineRun
   const ref = row.issueId ? issueRefs.get(row.issueId) : undefined;
   return {
     ...listItem,
-    ...withStep(listItem.lane, row.currentStep, openPhase.get(runId)),
+    ...withStep(listItem.lane, row.currentStep, openPhase.get(runId), listItem.group),
     issueRef: ref?.issueRef ?? null,
     issueTitle: ref?.issueTitle ?? null,
     liveJobs: liveMap.get(runId)?.liveJobs ?? 0,
@@ -538,7 +547,7 @@ export async function listItemsFromRows(rows: RunRow[]): Promise<PipelineRunList
     const ref = r.issueId ? issueRefs.get(r.issueId) : undefined;
     return {
       ...item,
-      ...withStep(item.lane, r.currentStep, openPhases.get(r.id)),
+      ...withStep(item.lane, r.currentStep, openPhases.get(r.id), item.group),
       issueRef: ref?.issueRef ?? null,
       issueTitle: ref?.issueTitle ?? null,
       cost: costMap.get(r.id) ?? EMPTY_COST,
