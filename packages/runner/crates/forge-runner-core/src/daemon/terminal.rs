@@ -2415,6 +2415,9 @@ done
 
     const SHIM_PANE: &str = "forge-test-shim";
 
+    // cm:guard not on Windows: `shim_composer` feeds only the two tests below it, both gated
+    // off Windows for the same reason those tests carry on their own `cfg` — see there.
+    #[cfg(not(windows))]
     /// A capture drawn the way Claude Code draws its composer, holding `body`.
     fn shim_composer(body: &str) -> String {
         let rule = "\u{2500}".repeat(12);
@@ -2427,6 +2430,9 @@ done
     /// A shim tmux rather than a real one: `Presence::Unaskable` is a server
     /// this box cannot reach, which no real server reaches on request, and the
     /// wording that parts it from an absent session is the whole subject.
+    // cm:guard not on Windows: the shim is a `#!/bin/sh` script Windows cannot spawn, so no
+    // state it answers is reachable there; priced in full beside `shim_tmux` in `inbox.rs`.
+    #[cfg(not(windows))]
     #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn every_refusal_carries_the_sentence_it_always_carried() {
@@ -2533,6 +2539,9 @@ done
 
     /// `alive` answers exactly what it answered before `has_session` was split
     /// out under it: true only where tmux exited zero.
+    // cm:guard not on Windows: same shim, same reason as `every_refusal_carries_the_sentence_
+    // it_always_carried` above — its `cfg` doc-comments the trade in full.
+    #[cfg(not(windows))]
     #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn alive_still_collapses_the_two_answers_that_are_not_present() {
