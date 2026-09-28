@@ -17,8 +17,24 @@
 //! then waited on a pipe nothing would ever close — a red case read as a hung
 //! run. A test about processes outliving their owner cannot be one that does
 //! it.
+//!
+//! # The one platform this file can speak for
+//!
+//! The reading below is `living_in`, and it walks `/proc` directly rather than
+//! calling `residents_of` — the whole point of a real reproduction is a
+//! measurement the code under test did not produce. `/proc` is Linux's, so
+//! this file runs on Linux and nowhere else: on a box with no such table this
+//! reading cannot be taken at all, which is `residents_of`'s own `NoTable`
+//! case, priced in this issue's plan as a gap that stays open until the first
+//! orphan is observed on a non-Linux box. A `cfg` that leaves the file
+//! uncompiled there is what that price already buys: `cargo test` shows
+//! nothing standing in for a claim that was never measured, neither a pass
+//! earned by skipping the read nor a failure this platform cannot help. What
+//! `residents_of` and `end_residents` do with a planted `/proc` is proved
+//! platform-independently by this crate's own unit tests, which this file
+//! does not repeat.
 
-#![cfg(unix)]
+#![cfg(target_os = "linux")]
 
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
