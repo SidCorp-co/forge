@@ -24,6 +24,13 @@ import {
  * `unmigrated` is written with a raw UPDATE setting `permissions = NULL`,
  * which is exactly the state every production token is in the instant the
  * migration runs, and the assertion on it is that nothing changed.
+ *
+ * ISS-1255 closed the door that made an unstated grant the whole menu. The
+ * door now refuses a create that states no permissions and accepts `*` as
+ * full access chosen on purpose; the two legacy shapes at rest, `NULL` and
+ * `[]`, keep reaching everything, because a token already minted does not
+ * change power. Both halves are asserted below, and the second is the one
+ * that would go quiet if somebody decided to tidy the legacy reading away.
  */
 
 type AppVars = { Variables: import('../../src/middleware/request-id.js').RequestIdVars };
@@ -35,6 +42,8 @@ let projectId: string;
 let issueId: string;
 let unmigrated: string;
 let emptyGrant: string;
+let statedFull: string;
+let limitedUserId: string;
 let issuesReadOnly: string;
 let issuesWrite: string;
 let schedulesRead: string;
@@ -76,6 +85,8 @@ beforeAll(async () => {
   );
 
   emptyGrant = (await mintPat({ userId: user.id, name: 'empty', permissions: [] })).plaintext;
+  statedFull = (await mintPat({ userId: user.id, name: 'stated-full', permissions: ['*'] }))
+    .plaintext;
   issuesReadOnly = (
     await mintPat({ userId: user.id, name: 'issues-read', permissions: ['issues:read'] })
   ).plaintext;
@@ -99,6 +110,22 @@ beforeAll(async () => {
     })
   ).plaintext;
 
+  // A second holder, filled to the per-user cap with rows written straight to
+  // the table, so the create door's limit check is live for them and nothing
+  // this file mints for the first user counts against it.
+  const limited = await createTestUser(harness.db);
+  limitedUserId = limited.id;
+  await harness.db.execute(
+    sql`UPDATE users SET email_verified_at = now() WHERE id = ${limited.id}`,
+  );
+  const { env } = await import('../../src/config/env.js');
+  for (let n = 0; n < env.PAT_MAX_PER_USER; n += 1) {
+    await harness.db.execute(sql`
+      INSERT INTO personal_access_tokens (user_id, name, token_hash, token_prefix, scopes)
+      VALUES (${limited.id}, ${`filler-${n}`}, 'not-a-hash', ${`forge_pat_f${n}`}, ARRAY['read'])
+    `);
+  }
+
   ({ app } = await import('../../src/index.js'));
 });
 
@@ -112,10 +139,10 @@ afterAll(async () => {
  * `requireFreshAuth(5)` reads `users.last_fresh_auth_at` rather than anything
  * in the token, so the stamp is the whole of "recently re-authenticated".
  */
-async function sessionToken(): Promise<string> {
+async function sessionToken(who: string = userId): Promise<string> {
   const { signUserToken } = await import('../../src/auth/jwt.js');
-  await harness.db.execute(sql`UPDATE users SET last_fresh_auth_at = now() WHERE id = ${userId}`);
-  return signUserToken(userId);
+  await harness.db.execute(sql`UPDATE users SET last_fresh_auth_at = now() WHERE id = ${who}`);
+  return signUserToken(who);
 }
 
 async function send(method: string, path: string, token: string, body?: unknown) {
@@ -253,12 +280,6 @@ describe('the mint route offers the menu and refuses anything off it', () => {
     expect(rows).toHaveLength(0);
   });
 
-  it('mints the whole menu when the field is omitted, and says so as null', async () => {
-    const res = await send('POST', '/api/pat', await sessionToken(), { name: 'no-grants-given' });
-    expect(res.status).toBe(201);
-    expect(res.json?.permissions).toBeNull();
-  });
-
   it("reports each token's grants back on the list", async () => {
     const res = await send('GET', '/api/pat', await sessionToken());
     expect(res.status).toBe(200);
@@ -267,6 +288,118 @@ describe('the mint route offers the menu and refuses anything off it', () => {
     expect(byName.get('issues-read')).toEqual(['issues:read']);
     expect(byName.get('unmigrated')).toBeNull();
     expect(byName.get('empty')).toEqual([]);
+  });
+});
+
+/**
+ * ISS-1255 — the create door states what a token may reach, or refuses.
+ *
+ * The first four cases are the shapes a caller can send. The last two decide
+ * WHICH refusal a bad body gets: what is wrong with the body is answered
+ * before what is wrong with the account, or a caller who left the field out
+ * learns about a name collision instead.
+ */
+describe('a create states what the token may reach, or it is refused (ISS-1255)', () => {
+  const rowsNamed = (name: string) =>
+    harness.db.execute(sql`SELECT id FROM personal_access_tokens WHERE name = ${name}`);
+
+  it('refuses a body that states no permissions, and writes no row', async () => {
+    const res = await send('POST', '/api/pat', await sessionToken(), { name: 'no-grants-given' });
+    expect(res.status).toBe(400);
+    expect(codeOf(res)).toBe('PAT_PERMISSIONS_REQUIRED');
+    expect(await rowsNamed('no-grants-given')).toHaveLength(0);
+  });
+
+  it('tells the caller both shapes it may send', async () => {
+    const res = await send('POST', '/api/pat', await sessionToken(), { name: 'told-what-to-send' });
+    expect(res.text).toContain('permissions');
+    expect(res.text).toContain('["*"]');
+    expect(res.text).toContain('issues:read');
+  });
+
+  it('refuses an explicit null the same way, rather than as a malformed body', async () => {
+    const res = await send('POST', '/api/pat', await sessionToken(), {
+      name: 'null-grant',
+      permissions: null,
+    });
+    expect(res.status).toBe(400);
+    expect(codeOf(res)).toBe('PAT_PERMISSIONS_REQUIRED');
+    expect(await rowsNamed('null-grant')).toHaveLength(0);
+  });
+
+  it('refuses an empty list the same way, an empty choice being no choice', async () => {
+    const res = await send('POST', '/api/pat', await sessionToken(), {
+      name: 'empty-list-sent',
+      permissions: [],
+    });
+    expect(res.status).toBe(400);
+    expect(codeOf(res)).toBe('PAT_PERMISSIONS_REQUIRED');
+    expect(await rowsNamed('empty-list-sent')).toHaveLength(0);
+  });
+
+  it('refuses full access mixed with a named permission, and writes no row', async () => {
+    const res = await send('POST', '/api/pat', await sessionToken(), {
+      name: 'full-and-named',
+      permissions: ['*', 'issues:read'],
+    });
+    expect(res.status).toBe(400);
+    expect(codeOf(res)).toBe('PAT_PERMISSIONS_FULL_NOT_COMBINABLE');
+    expect(await rowsNamed('full-and-named')).toHaveLength(0);
+  });
+
+  it('answers the missing grant before the duplicate name', async () => {
+    const res = await send('POST', '/api/pat', await sessionToken(), { name: 'issues-read' });
+    expect(codeOf(res)).toBe('PAT_PERMISSIONS_REQUIRED');
+  });
+
+  it('answers the missing grant before the per-user limit', async () => {
+    const res = await send('POST', '/api/pat', await sessionToken(limitedUserId), {
+      name: 'at-the-cap',
+    });
+    expect(codeOf(res)).toBe('PAT_PERMISSIONS_REQUIRED');
+  });
+});
+
+describe('full access is a value the minter picks (ISS-1255)', () => {
+  it('mints it, and the column says it was chosen rather than left out', async () => {
+    const res = await send('POST', '/api/pat', await sessionToken(), {
+      name: 'minted-full-on-purpose',
+      permissions: ['*'],
+    });
+    expect(res.status).toBe(201);
+    expect(res.json?.permissions).toEqual(['*']);
+    const rows = await harness.db.execute(
+      sql`SELECT permissions FROM personal_access_tokens WHERE name = 'minted-full-on-purpose'`,
+    );
+    expect((rows[0] as { permissions: string[] }).permissions).toEqual(['*']);
+  });
+
+  it.each([
+    ['issues', () => `/api/issues/${issueId}`],
+    ['schedules', () => `/api/schedules?projectId=${projectId}`],
+    ['knowledge', () => `/api/knowledge?projectId=${projectId}`],
+  ] as const)('a stated-full token is not refused on %s', async (_label, path) => {
+    const res = await send('GET', path(), statedFull);
+    expect(codeOf(res)).not.toBe('PAT_PERMISSION_REQUIRED');
+    expect(codeOf(res)).not.toBe('PAT_NOT_PERMITTED');
+  });
+
+  it('is told apart from a legacy row on the listing', async () => {
+    const res = await send('GET', '/api/pat', await sessionToken());
+    const tokens = res.json?.tokens as { name: string; grant: string }[];
+    const byName = new Map(tokens.map((t) => [t.name, t.grant]));
+    expect(byName.get('stated-full')).toBe('full');
+    expect(byName.get('unmigrated')).toBe('legacy');
+    expect(byName.get('empty')).toBe('legacy');
+    expect(byName.get('issues-read')).toBe('named');
+  });
+
+  it('carries the menu the door accepts, so a form cannot offer a name it refuses', async () => {
+    const res = await send('GET', '/api/pat', await sessionToken());
+    const { PAT_PERMISSION_NAMES } = await import('../../src/auth/pat-permissions.js');
+    const menu = res.json?.menu as { permissions: string[]; full: string } | undefined;
+    expect(menu?.permissions).toEqual([...PAT_PERMISSION_NAMES]);
+    expect(menu?.full).toBe('*');
   });
 });
 

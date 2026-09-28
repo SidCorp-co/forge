@@ -1,6 +1,8 @@
 //! Local workspace management.
 //!
 //! - `worktree`   — git worktree add/remove/list (M2)
+//! - `worktree_processes` — who is living in a checkout, ended before it is given
+//!   back or named where they cannot be (ISS-1271)
 //! - `repo`       — resolve repo path from a binding; optional clone under
 //!   `projects_root/<slug>` (M4)
 //! - `skill_sync` — server-driven `.claude/skills/<name>/` seeding (ISS-278)
@@ -22,4 +24,5 @@ pub mod salvage;
 pub mod skill_sync;
 pub mod trust;
 pub mod worktree;
+pub mod worktree_processes;
 pub mod worktree_reap;

@@ -81,11 +81,26 @@ export function patPermissionWanted(path: string, level: PatPermissionLevel): Pa
   return resource ? `${resource}:${level}` : null;
 }
 
+/** Full access as a stated value: off the menu, so no named grant holds it. */
+export const PAT_PERMISSION_ALL = '*';
+
+export const PAT_GRANT_ALL: readonly string[] = Object.freeze([PAT_PERMISSION_ALL]);
+
+export function patGrantIsLegacy(granted: readonly string[] | null | undefined): boolean {
+  return granted === null || granted === undefined || granted.length === 0;
+}
+
+export function patGrantIsStatedFull(granted: readonly string[] | null | undefined): boolean {
+  return granted?.includes(PAT_PERMISSION_ALL) ?? false;
+}
+
 export function patGrantCovers(
   granted: readonly string[] | null | undefined,
   wanted: PatPermission | null,
 ): boolean {
   if (wanted === null) return false;
-  if (granted === null || granted === undefined || granted.length === 0) return true;
+  if (granted === null || granted === undefined) return true;
+  if (granted.length === 0) return true;
+  if (granted.includes(PAT_PERMISSION_ALL)) return true;
   return granted.includes(wanted);
 }
