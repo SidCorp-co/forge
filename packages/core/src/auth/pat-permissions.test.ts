@@ -195,6 +195,41 @@ describe('an absent grant is every group, in each of its three shapes', () => {
   });
 });
 
+/**
+ * ISS-1255 — the difference between a grant that says "everything" and one
+ * that says nothing at all.
+ *
+ * The two legacy shapes above keep their power, and this is the value a
+ * minter picks instead. It is held off the menu on purpose: were `*` a name
+ * the menu declared, a grant naming permissions could be holding it already,
+ * and reading it as full access would hand that token power it never had.
+ */
+describe('full access is a value, not an absence', () => {
+  it('is not a name the menu declares', () => {
+    expect(PAT_PERMISSION_NAMES).not.toContain('*');
+    expect(patPermissionWanted('/api/issues', 'read')).not.toBe('*');
+  });
+
+  it('covers every prefix on the menu, at both levels', () => {
+    for (const prefix of patPermissionPrefixes()) {
+      for (const level of PAT_PERMISSION_LEVELS) {
+        expect(covers(['*'], prefix, level), `${prefix} ${level}`).toBe(true);
+      }
+    }
+  });
+
+  it('covers nothing off the menu, which stays the surface refusal', () => {
+    for (const prefix of ['/api/pat', '/api/admin', '/api/uploads', '/api/agent-sessions']) {
+      expect(covers(['*'], prefix, 'read'), prefix).toBe(false);
+    }
+  });
+
+  it('answers for the whole menu wherever in the grant it sits, which is why the door refuses it beside a name', () => {
+    expect(covers(['issues:read'], '/api/schedules', 'read')).toBe(false);
+    expect(covers(['*', 'issues:read'], '/api/schedules', 'read')).toBe(true);
+  });
+});
+
 describe('a non-empty grant naming nothing the menu declares reaches nothing', () => {
   it('is the opposite direction to an absent grant, and deliberately so', () => {
     for (const prefix of patPermissionPrefixes()) {

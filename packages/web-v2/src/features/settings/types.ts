@@ -24,12 +24,22 @@ export interface Preferences {
 export type PatScope = "read" | "write" | "admin";
 export const PAT_SCOPES: PatScope[] = ["read", "write", "admin"];
 
+export type PatGrant = "legacy" | "full" | "named";
+
+/** What `GET /api/pat` says the create door will accept. */
+export interface PatMenu {
+  permissions: string[];
+  full: string;
+}
+
 export interface PatToken {
   id: string;
   name: string;
   prefix: string;
   scopes: PatScope[];
   projectIds: string[] | null;
+  permissions: string[] | null;
+  grant: PatGrant;
   /** ISS-497 — non-null = project-level token bound to exactly this project
    *  (X-Forge-Project-Slug header optional); null = user-level token. */
   boundProjectId: string | null;
@@ -48,6 +58,7 @@ export interface PatTokenCreated extends PatToken {
 export interface CreatePatInput {
   name: string;
   scopes: PatScope[];
+  permissions: string[];
   expiresAt?: string | null;
   /** ISS-497 — bind the token to a single project (project-level token).
    *  null/omitted = user-level (all the user's projects). */

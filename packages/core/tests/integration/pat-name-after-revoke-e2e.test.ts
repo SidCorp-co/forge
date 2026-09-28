@@ -134,6 +134,33 @@ describe('a PAT name is unique among a user’s live tokens (ISS-1184)', () => {
     expect(await liveCount(user.id, name)).toBe(1);
   });
 
+  /**
+   * ISS-1255 — a box's credential reaches the whole menu, and now says so.
+   *
+   * It always did: `issueDeviceCredential` named no permissions, `mintPat`
+   * wrote `null`, and `null` reached everything. The power is unchanged and
+   * the record of it is not — a listing that could not tell this row from one
+   * whose issuer never thought about it now can.
+   */
+  it('mints a device credential whose grant states the whole menu', async () => {
+    const user = await createTestUser(harness.db);
+    const { device } = await pairDevice({ ownerId: user.id, name: 'box', platform: 'linux' });
+
+    await issueDeviceCredential({ deviceId: device.id, holderUserId: user.id });
+
+    const rows = await harness.db
+      .select({ permissions: schema.personalAccessTokens.permissions })
+      .from(schema.personalAccessTokens)
+      .where(
+        and(
+          eq(schema.personalAccessTokens.name, deviceTokenNameFor(device.id)),
+          isNull(schema.personalAccessTokens.revokedAt),
+        ),
+      );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.permissions).toEqual(['*']);
+  });
+
   it('supersedes a device credential without renaming the row it replaces', async () => {
     const user = await createTestUser(harness.db);
     const { device } = await pairDevice({ ownerId: user.id, name: 'box', platform: 'linux' });
@@ -370,7 +397,9 @@ describe('a box credential belongs to the device’s current holder (ISS-1184)',
       app.request('/api/pat', {
         method: 'POST',
         headers: { authorization: `Bearer ${jwt}`, 'content-type': 'application/json' },
-        body: JSON.stringify({ name: 'ci' }),
+        // The door refuses a body that states no grant (ISS-1255); the
+        // subject here is the name, so the grant is stated and set aside.
+        body: JSON.stringify({ name: 'ci', permissions: ['issues:read'] }),
       });
 
     const first = await create();

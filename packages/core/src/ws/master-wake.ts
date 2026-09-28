@@ -4,6 +4,7 @@ import type { IssueStatus } from '../db/schema.js';
 import { runners } from '../db/schema.js';
 import { logger } from '../logger.js';
 import type { HooksBus } from '../pipeline/hooks.js';
+import { masterCharterPath } from '../projects/master-charter.js';
 import { deviceRoom } from './rooms.js';
 import { roomManager } from './server.js';
 
@@ -41,6 +42,8 @@ export async function wakeMastersForProject(args: {
     projectId: args.projectId,
     issueId: args.issueId,
     status: args.status,
+    // A pointer, not the charter itself (ISS-1313) — a reader taking only `projectId` is unaffected.
+    charter: masterCharterPath(args.projectId),
   });
 }
 

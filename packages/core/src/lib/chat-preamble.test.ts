@@ -58,7 +58,7 @@ describe('buildPipelinePreambleStructured', () => {
   });
 
   it('adds project-config + project-context (4 blocks) when branches resolve', async () => {
-    mockBranchSelect([{ baseBranch: 'main', liveBranch: 'main', releaseModel: 'none' }]);
+    mockBranchSelect([{ baseBranch: 'main', releaseChain: [] }]);
 
     const built = await buildPipelinePreambleStructured('p1');
     expect(built.blocks).toHaveLength(4);
@@ -71,7 +71,7 @@ describe('buildPipelinePreambleStructured', () => {
   });
 
   it('each block has { id, kind: "system", chars, estTokens } with chars === body.length', async () => {
-    mockBranchSelect([{ baseBranch: 'main', liveBranch: 'main', releaseModel: 'none' }]);
+    mockBranchSelect([{ baseBranch: 'main', releaseChain: [] }]);
 
     const built = await buildPipelinePreambleStructured('p1');
     for (const block of built.blocks) {
@@ -89,7 +89,7 @@ describe('buildPipelinePreambleStructured', () => {
   });
 
   it('inserts a state-block (after project-context) when a step is supplied', async () => {
-    mockBranchSelect([{ baseBranch: 'main', liveBranch: 'main', releaseModel: 'none' }]);
+    mockBranchSelect([{ baseBranch: 'main', releaseChain: [] }]);
 
     const built = await buildPipelinePreambleStructured('p1', { step: 'release_batch' });
     expect(built.blocks.map((b) => b.id)).toEqual([
@@ -104,7 +104,7 @@ describe('buildPipelinePreambleStructured', () => {
   });
 
   it('omits the state-block for a claimable step with no default, and when no step given', async () => {
-    mockBranchSelect([{ baseBranch: 'main', liveBranch: 'main', releaseModel: 'none' }]);
+    mockBranchSelect([{ baseBranch: 'main', releaseChain: [] }]);
 
     const noStep = await buildPipelinePreambleStructured('p1');
     expect(noStep.blocks.some((b) => b.id === 'state-block')).toBe(false);
@@ -117,7 +117,7 @@ describe('buildPipelinePreambleStructured', () => {
   });
 
   it('replace-mode override drops the shared prefix AND the state block', async () => {
-    mockBranchSelect([{ baseBranch: 'main', liveBranch: 'main', releaseModel: 'none' }]);
+    mockBranchSelect([{ baseBranch: 'main', releaseChain: [] }]);
 
     const built = await buildPipelinePreambleStructured('p1', {
       step: 'release_batch',
@@ -128,7 +128,7 @@ describe('buildPipelinePreambleStructured', () => {
   });
 
   it('append-mode override lands after the state block', async () => {
-    mockBranchSelect([{ baseBranch: 'main', liveBranch: 'main', releaseModel: 'none' }]);
+    mockBranchSelect([{ baseBranch: 'main', releaseChain: [] }]);
 
     const built = await buildPipelinePreambleStructured('p1', {
       step: 'release_batch',
@@ -150,7 +150,7 @@ describe('buildPipelinePreambleStructured', () => {
   it('content matches the unstructured buildPipelinePreamble for the same project', async () => {
     // Both functions independently call loadProjectBranches; give both calls
     // the same row so they take the same code path.
-    mockBranchSelect([{ baseBranch: 'main', liveBranch: 'main', releaseModel: 'none' }]);
+    mockBranchSelect([{ baseBranch: 'main', releaseChain: [] }]);
 
     const structured = await buildPipelinePreambleStructured('p1');
     const plain = await buildPipelinePreamble('p1');

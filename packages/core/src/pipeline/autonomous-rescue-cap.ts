@@ -118,7 +118,13 @@ async function parkForHuman(args: {
     },
     AUTONOMOUS_QUESTION_STATUS,
     { id: actorId, ownerId: actorId },
-    { reason: 'autonomous_rescue_cap_reached', skip: true },
+    {
+      reason: 'autonomous_rescue_cap_reached',
+      transitionReason: `The driver was rescued ${AUTONOMOUS_RESCUE_CAP} times on this run without progress, so it has stopped rather than try a fourth.`,
+      needs:
+        'Whether to send it back to the driver as it stands, or what to change first — answering returns the issue to open.',
+      skip: true,
+    },
   );
 
   await postCapReachedComment({

@@ -383,7 +383,7 @@ enum IssuesOver {
 /// this once and a transport that recovers hands the latch back.
 fn say_issue_status_unreadable(ledger: &mut Ledger, run: &Run, why: &str) {
     if !matches!(
-        ledger.note_kept(&run.run_id, "issue-status-unreadable"),
+        ledger.note_kept(&run.run_id, ISSUE_STATUS_UNREADABLE),
         Ok(true)
     ) {
         return;
@@ -458,13 +458,22 @@ fn silence_evidence(run: &Run) -> String {
     }
 }
 
+/// The `kept_notice` [`say_why_released`] latches on. Not `unanswered`, which
+/// 0.17.46 wrote for a release said and 0.17.52 for a keep, so that word
+/// latches neither writer: a release still owed after 0.17.46 said it is said
+/// once more, rather than a release after 0.17.52's keep never being said.
+const RELEASE_SAID: &str = "release-said";
+
+/// The `kept_notice` [`say_issue_status_unreadable`] latches on.
+const ISSUE_STATUS_UNREADABLE: &str = "issue-status-unreadable";
+
 /// Say, on the sweep that first owes it, why a run nobody here answers for is
 /// being released and what it holds. Said once, on the row as well as in the
 /// journal: a release that cannot even start — a project with no repo path on
 /// this box — is owed again every sweep, and the reason it is owed is not news
 /// the second time.
 fn say_why_released(ledger: &Ledger, run: &Run, over_ms: i64) {
-    match ledger.note_standing(&run.run_id, "unanswered") {
+    match ledger.note_standing(&run.run_id, RELEASE_SAID) {
         Ok(true) => {}
         Ok(false) => return,
         Err(e) => {
@@ -523,6 +532,19 @@ enum Standing {
     AwaitingCore,
 }
 
+/// The `kept_notice` [`say_standing`] latches on for a run standing this way.
+fn standing_notice(standing: Standing, state: &CloseState) -> &'static str {
+    match standing {
+        Standing::Unanswered if !state.session_terminal => "awaiting-session",
+        Standing::Unanswered if !state.checkout_returned => "awaiting",
+        Standing::Unanswered => "awaiting-leases",
+        Standing::ForeignBoot => "foreign-boot",
+        Standing::Decided => "decided",
+        Standing::AwaitingCore if !state.session_terminal => "core-awaiting-session",
+        Standing::AwaitingCore => "core-awaiting-leases",
+    }
+}
+
 /// Say once, in the journal and on the row, why this run stands and what ends
 /// it. Answers whether it has been said, now or on an earlier sweep, so the
 /// sweep's own per-sweep line can stand down; a notice that could not be
@@ -534,16 +556,7 @@ fn say_standing(
     state: &CloseState,
     standing: Standing,
 ) -> bool {
-    let notice = match standing {
-        Standing::Unanswered if !state.session_terminal => "awaiting-session",
-        Standing::Unanswered if !state.checkout_returned => "awaiting",
-        Standing::Unanswered => "awaiting-leases",
-        Standing::ForeignBoot => "foreign-boot",
-        Standing::Decided => "decided",
-        Standing::AwaitingCore if !state.session_terminal => "core-awaiting-session",
-        Standing::AwaitingCore => "core-awaiting-leases",
-    };
-    match ledger.note_standing(&run.run_id, notice) {
+    match ledger.note_standing(&run.run_id, standing_notice(standing, state)) {
         Ok(false) => return true,
         Ok(true) => {}
         Err(e) => {
@@ -683,8 +696,7 @@ fn say_standing(
 /// finished or cannot be read is still being kept, and what ends it.
 fn say_why_kept(ledger: &mut Ledger, run: &Run, now: i64) {
     let path = run.agent_transcript.as_deref();
-    let written = path.and_then(|p| transcript_age::written_at(Path::new(p)));
-    let evidence = subagent_end::read(run.turn_ended_at_ms, written, now);
+    let evidence = subagent_end::observe(run.turn_ended_at_ms, path.map(Path::new), now);
     let Some(notice) = subagent_end::notice(evidence) else {
         return;
     };
@@ -713,6 +725,7 @@ fn say_why_kept(ledger: &mut Ledger, run: &Run, now: i64) {
             "its subagent ended a turn {}m ago and has written nothing since",
             silent_ms / 60_000
         ),
+        subagent_end::Evidence::Unanswered { .. } => subagent_end::held_because(evidence, path),
         _ => format!(
             "its subagent ended a turn and this box cannot read its transcript ({}), so it cannot tell whether it resumed",
             path.unwrap_or("no path was recorded")
@@ -1973,6 +1986,36 @@ mod tests {
         );
     }
 
+    /// ISS-1312: the stop hooks append their own records after the box stamps
+    /// the stop, so the transcript is always written after it. Those records
+    /// are the stop, and the run is said quiet by the reading the drain uses.
+    #[tokio::test]
+    async fn a_subagent_whose_last_write_is_its_own_stop_hooks_is_said_quiet() {
+        let scratch = Scratch::new("iss-1312");
+        let (mut led, root, wt, transcript) = a_subagent_run_in_a_worktree(&scratch);
+        let beats = Beats::default();
+        let stop = now_ms() - 3 * 60 * MIN_MS;
+        std::fs::create_dir_all(transcript.parent().unwrap()).unwrap();
+        std::fs::write(&transcript, crate::daemon::transcript_age::STOP_TAIL).unwrap();
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(&transcript)
+            .unwrap()
+            .set_modified(
+                std::time::UNIX_EPOCH + std::time::Duration::from_millis(stop as u64 + 213),
+            )
+            .unwrap();
+        stop_at(&led, stop, Some(&transcript));
+        let r = sweep(&mut led, &master_alive(), &beats).await;
+        assert_still_held(&led, &r, &wt, "quiet is said, and ends nothing");
+        assert!(registered(&root, &wt));
+        assert_eq!(
+            kept(&led).as_deref(),
+            Some("quiet"),
+            "a write 213 ms after the stop made only of that stop's hook records is not a resumed turn"
+        );
+    }
+
     #[tokio::test]
     async fn the_iss_1217_judge_that_finished_keeps_its_tree_until_its_master_closes_it() {
         let scratch = Scratch::new("iss-1217");
@@ -2087,6 +2130,192 @@ mod tests {
             None,
             "and a minute of quiet is not yet worth a word"
         );
+    }
+
+    /// Criterion 12: a notification appended after the stop that nothing
+    /// answered for the quiet bound is said once, as no-reply and not quiet,
+    /// and the run is still kept for its master to close.
+    #[tokio::test]
+    async fn a_notification_nobody_answered_is_said_once_as_no_reply() {
+        let scratch = Scratch::new("unanswered");
+        let (mut led, wt, transcript) = a_subagent_run(&scratch);
+        let beats = Beats::default();
+        let stop = now_ms() - 3 * 24 * 60 * MIN_MS;
+        transcript_written_at(&transcript, stop);
+        std::fs::write(
+            &transcript,
+            format!(
+                "{}{}",
+                crate::daemon::transcript_age::STOP_TAIL,
+                crate::daemon::transcript_age::NOTIFIED_TAIL
+            ),
+        )
+        .unwrap();
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(&transcript)
+            .unwrap()
+            .set_modified(
+                std::time::UNIX_EPOCH
+                    + std::time::Duration::from_millis((now_ms() - 61 * MIN_MS) as u64),
+            )
+            .unwrap();
+        stop_at(&led, stop, Some(&transcript));
+        let r = sweep(&mut led, &master_alive(), &beats).await;
+        assert_still_held(&led, &r, &wt, "an unanswered notification ends nothing");
+        assert_eq!(kept(&led).as_deref(), Some("no-reply"));
+        assert!(
+            !led.note_kept("run-1", "no-reply").unwrap(),
+            "the notice is standing, so the next sweep has nothing new to say"
+        );
+    }
+
+    /// The second judge's control at bb4b24b: a run first kept on a
+    /// notification nobody answered, then left by its master past the bound,
+    /// is owed its release line as a quiet one is. Both notices share
+    /// `kept_notice`, so a keep written in the release's own marker silenced
+    /// the release it was never about.
+    #[test]
+    fn a_run_kept_on_an_unanswered_notification_still_says_its_release() {
+        for tail in [
+            crate::daemon::transcript_age::NOTIFIED_TAIL,
+            crate::daemon::transcript_age::NOTIFIED_WITH_CONTEXT_TAIL,
+        ] {
+            let scratch = Scratch::new("no-reply-then-released");
+            let (mut led, _root, _wt, transcript) = a_subagent_run_in_a_worktree(&scratch);
+            let written = now_ms() - 2 * HOUR_MS;
+            transcript_written_at(&transcript, written);
+            std::fs::write(
+                &transcript,
+                format!("{}{tail}", crate::daemon::transcript_age::STOP_TAIL),
+            )
+            .unwrap();
+            std::fs::OpenOptions::new()
+                .write(true)
+                .open(&transcript)
+                .unwrap()
+                .set_modified(
+                    std::time::UNIX_EPOCH + std::time::Duration::from_millis(written as u64),
+                )
+                .unwrap();
+            stop_at(&led, now_ms() - 3 * 24 * HOUR_MS, Some(&transcript));
+            block_on(async {
+                let r = sweep(&mut led, &master_alive(), &Beats::default()).await;
+                assert!(r.is_none(), "kept under a live master: {r:?}");
+            });
+            let kept_first = kept(&led);
+
+            led.backdate_session_terminal("run-1", (now_ms() - 2 * HOUR_MS) / 1000)
+                .unwrap();
+            let said = logged_while(|| {
+                block_on(async {
+                    let r = sweep(&mut led, &NoRegistryEntry, &Beats::default())
+                        .await
+                        .expect("answered");
+                    assert!(r.owed_release, "{r:?}");
+                })
+            });
+            assert!(
+                said.contains("no master on this box answers for it"),
+                "kept as {kept_first:?}, the release is still said: {said}"
+            );
+            assert_eq!(kept_first.as_deref(), Some("no-reply"));
+        }
+    }
+
+    /// A row either earlier release wrote `unanswered` on — 0.17.46 for a
+    /// release it said, 0.17.52 for a keep — latches no writer here.
+    #[test]
+    fn a_row_carrying_the_retired_unanswered_notice_still_says_its_release() {
+        let scratch = Scratch::new("retired-unanswered");
+        let (mut led, _root, _wt, transcript) = a_subagent_run_in_a_worktree(&scratch);
+        over_for(&led, &transcript, 2 * HOUR_MS, 2 * HOUR_MS);
+        assert!(led.note_standing("run-1", "unanswered").unwrap());
+        let said = logged_while(|| {
+            block_on(async {
+                let r = sweep(&mut led, &NoRegistryEntry, &Beats::default())
+                    .await
+                    .expect("answered");
+                assert!(r.owed_release, "{r:?}");
+            })
+        });
+        assert!(
+            said.contains("no master on this box answers for it"),
+            "a word two releases gave two meanings is no proof this release was said: {said}"
+        );
+        assert_eq!(kept(&led).as_deref(), Some(RELEASE_SAID));
+    }
+
+    /// Every writer of `kept_notice` latches on its own words. One column
+    /// holds one notice per run, so a value two writers share is one writer's
+    /// "already said" silencing the other: a keep written as `unanswered`
+    /// swallowed the release line that word latches (ISS-1312).
+    #[test]
+    fn no_two_writers_of_kept_notice_share_a_value() {
+        use crate::daemon::subagent_end::Evidence;
+        let evidence = [
+            Evidence::NoTurnEnd,
+            Evidence::Resumed { silent_ms: 0 },
+            Evidence::AwaitingReply { silent_ms: 0 },
+            Evidence::Recent { silent_ms: 0 },
+            Evidence::Quiet { silent_ms: 0 },
+            Evidence::Unanswered { silent_ms: 0 },
+            Evidence::Unreadable,
+            Evidence::TailUnreadable { silent_ms: 0 },
+        ];
+        for e in evidence {
+            // A new state fails to compile here until it is listed above.
+            match e {
+                Evidence::NoTurnEnd
+                | Evidence::Resumed { .. }
+                | Evidence::AwaitingReply { .. }
+                | Evidence::Recent { .. }
+                | Evidence::Quiet { .. }
+                | Evidence::Unanswered { .. }
+                | Evidence::Unreadable
+                | Evidence::TailUnreadable { .. } => {}
+            }
+        }
+        let mut standing = Vec::new();
+        for s in [
+            Standing::Unanswered,
+            Standing::ForeignBoot,
+            Standing::Decided,
+            Standing::AwaitingCore,
+        ] {
+            for (terminal, returned) in [(false, false), (true, false), (true, true)] {
+                let state = CloseState {
+                    session_terminal: terminal,
+                    checkout_returned: returned,
+                    leases_returned: 0,
+                    leases_total: 0,
+                };
+                standing.push(standing_notice(s, &state));
+            }
+        }
+        let writers: [(&str, Vec<&str>); 5] = [
+            (
+                "say_why_kept",
+                evidence
+                    .iter()
+                    .filter_map(|e| crate::daemon::subagent_end::notice(*e))
+                    .collect(),
+            ),
+            ("say_standing", standing),
+            ("say_why_released", vec![RELEASE_SAID]),
+            ("no writer: retired, see RELEASE_SAID", vec!["unanswered"]),
+            ("say_issue_status_unreadable", vec![ISSUE_STATUS_UNREADABLE]),
+        ];
+        for (i, (a, mine)) in writers.iter().enumerate() {
+            for (b, theirs) in writers.iter().skip(i + 1) {
+                for v in mine {
+                    assert!(
+                        !theirs.contains(v),
+                        "{a} and {b} both write kept_notice = {v:?}, so each reads the other's notice as its own already said"
+                    );
+                }
+            }
+        }
     }
 
     #[tokio::test]
@@ -2357,7 +2586,7 @@ mod tests {
         );
         assert_eq!(
             led.run("run-1").unwrap().unwrap().kept_notice.as_deref(),
-            Some("unanswered"),
+            Some(RELEASE_SAID),
             "and the row says what the box said"
         );
 

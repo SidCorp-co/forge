@@ -1,0 +1,112 @@
+import { zValidator } from '@hono/zod-validator';
+import { Hono } from 'hono';
+import { HTTPException } from 'hono/http-exception';
+import { z } from 'zod';
+import { assertProjectAccess } from '../lib/authz.js';
+import {
+  type AuthVars,
+  assertEmailVerified,
+  requireAuth,
+  restAuthored,
+} from '../middleware/auth.js';
+import { MASTER_CHARTER_IS_A_PERSONS_WRITE, parseMasterCharterWrite } from './master-charter.js';
+import {
+  declareCharter,
+  type MasterCharter,
+  readCharterVersions,
+  readCurrentCharter,
+} from './master-charter-service.js';
+import { badRequest, idParamSchema } from './route-errors.js';
+
+/**
+ * What a project's master is for, and the rules that bind it (ISS-1313).
+ *
+ * Two reads and one write. The reads are open to anything holding access to the
+ * project, a master's own token included — reading is the whole point. The
+ * write is a person's: an agent credential is refused by name before the body
+ * is looked at, so nothing an agent sends can reach the store even malformed.
+ */
+export const masterCharterRoutes = new Hono<{ Variables: AuthVars }>();
+masterCharterRoutes.use('*', requireAuth(), assertEmailVerified());
+
+const serialise = (charter: MasterCharter) => ({
+  version: charter.version,
+  goal: charter.goal,
+  rules: charter.rules,
+  declaredBy: charter.declaredBy,
+  declaredAt: charter.declaredAt.toISOString(),
+});
+
+/** What a project that has declared nothing answers with — 200, not 404. */
+const UNDECLARED = {
+  declared: false as const,
+  version: null,
+  goal: null,
+  rules: [] as string[],
+  declaredBy: null,
+  declaredAt: null,
+};
+
+masterCharterRoutes.get(
+  '/:id/master-charter',
+  zValidator('param', idParamSchema, (r) => {
+    if (!r.success) throw badRequest('invalid project id');
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    await assertProjectAccess(id, c.get('userId'), 'viewer');
+
+    const charter = await readCurrentCharter(id);
+    if (!charter) return c.json(UNDECLARED);
+    return c.json({ declared: true, ...serialise(charter) });
+  },
+);
+
+masterCharterRoutes.get(
+  '/:id/master-charter/versions',
+  zValidator('param', idParamSchema, (r) => {
+    if (!r.success) throw badRequest('invalid project id');
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    await assertProjectAccess(id, c.get('userId'), 'viewer');
+
+    const versions = await readCharterVersions(id);
+    return c.json({ versions: versions.map(serialise), returned: versions.length });
+  },
+);
+
+masterCharterRoutes.put(
+  '/:id/master-charter',
+  zValidator('param', idParamSchema, (r) => {
+    if (!r.success) throw badRequest('invalid project id');
+  }),
+  zValidator('json', z.unknown()),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    const userId = c.get('userId');
+    await assertProjectAccess(id, userId);
+
+    if (restAuthored(c) === 'agent') {
+      throw new HTTPException(403, {
+        message: MASTER_CHARTER_IS_A_PERSONS_WRITE,
+        cause: { code: 'MASTER_CHARTER_IS_A_PERSONS_WRITE' },
+      });
+    }
+
+    const parsed = parseMasterCharterWrite(c.req.valid('json'));
+    if (!parsed.ok) {
+      throw new HTTPException(400, {
+        message: parsed.refusal.message,
+        cause: { code: 'MASTER_CHARTER_SHAPE', details: { field: parsed.refusal.field } },
+      });
+    }
+
+    const { charter, created } = await declareCharter({
+      projectId: id,
+      userId,
+      write: parsed.value,
+    });
+    return c.json({ declared: true, created, ...serialise(charter) });
+  },
+);

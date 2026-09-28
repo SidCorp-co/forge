@@ -14,6 +14,7 @@
 import { and, eq, isNull, or, sql } from 'drizzle-orm';
 import { lockPatName, mintPat } from '../auth/pat.js';
 import { deviceTokenNameFor, workspaceTokenNameFor } from '../auth/pat-format.js';
+import { PAT_GRANT_ALL } from '../auth/pat-permissions.js';
 import { db } from '../db/client.js';
 import { personalAccessTokens } from '../db/schema.js';
 
@@ -76,6 +77,7 @@ export async function issueWorkspaceCredential(args: {
         userId: args.holderUserId,
         name,
         scopes: ['read', 'write'],
+        permissions: PAT_GRANT_ALL,
         projectIds: [args.projectId],
         deviceId: args.deviceId,
       },

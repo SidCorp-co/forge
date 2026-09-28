@@ -5,6 +5,7 @@ export { setupTestDatabase } from './db.js';
 export type { OpenDeviceSocket } from './device-socket.js';
 export { openDeviceSocket } from './device-socket.js';
 export {
+  bindTestRunner,
   type CreateTestDeviceOverrides,
   type CreateTestProjectMemberOverrides,
   type CreateTestProjectOverrides,

@@ -120,6 +120,7 @@ export interface LiveState {
   health: 'up' | 'down';
   /** `null` when the fleet does not agree on one commit, or none reports one. */
   identity: string | null;
+  answeredCommits: string[];
   /** One line per probe, in declaration order, whatever the outcome. */
   readings: string[];
   /** The probes whose reading is not a commit, by what went wrong. */
@@ -162,6 +163,7 @@ export async function readLiveState(
   return {
     health: unhealthy.length === 0 ? 'up' : 'down',
     identity: agreed,
+    answeredCommits: [...new Set(commits.map((r) => r.commit))],
     readings,
     unhealthy,
     unidentified,
@@ -240,6 +242,7 @@ export async function verifyDeployed(args: VerifyArgs): Promise<VerifyOutcome> {
   let state: LiveState = {
     health: 'down',
     identity: null,
+    answeredCommits: [],
     readings: [],
     unhealthy: [],
     unidentified: [],

@@ -1,66 +1,105 @@
 # The question entity has two writers, and only one of them creates a question
 
-Measured 2026-09-23 against `main` at `710ab641` and the installed plugin at `3.36.262`. Written
-because the split runs across a repository boundary this repo cannot gate, and the way it was found
-was an owner staring at an empty panel for nineteen hours (ISS-1210).
+First measured 2026-09-23 against `main` at `710ab641` and the installed plugin at `3.36.262`
+(ISS-1210); rewritten 2026-09-27 by ISS-1257, which coupled a question to the issue it stops
+without letting the question move the issue's status. Written because the split runs across a repository boundary this repo cannot gate, and the
+way it was found was an owner staring at an empty panel for nineteen hours.
 
 ## What core owns
 
-The entity, its two doors and everything that reads it:
+The entity, its doors and everything that reads it:
 
-- `packages/core/src/questions/` — `write.ts` (`askQuestion`, `askParkQuestion`, `answerQuestion`),
-  `read.ts` (`projectQuestionsFor`, `readQuestionsForIssue`, `registerWaiter`, `waiterFor`),
-  `routes.ts`, `screen.ts`, `stop.ts`, `origin.ts`, `protections.ts`
-- `POST /api/questions` on a personal access token, in `questions/routes.ts`
+- `packages/core/src/questions/` — `write.ts` (`insertAskedQuestion`, the one path every door's
+  question is written through; `askQuestion`, `askParkQuestion`, `answerQuestion`, `voidQuestion`),
+  `issue-coupling.ts` (the open questions on an issue, and the terminal refusal or void that rides
+  in the issue transition's transaction), `read.ts` (`askAs`, `projectQuestionsFor`,
+  `readQuestionsForIssue`, `registerWaiter`, `waiterFor`), `routes.ts`, `screen.ts`, `stop.ts`,
+  `origin.ts`, `protections.ts`
+- `POST /api/questions` on a personal access token, in `questions/routes.ts`, and the MCP tool
+  `forge_questions` (`mcp/tools/forge-questions.ts`) — both through `askAs`
 - `POST /api/devices/me/questions` and `GET /me/questions/:questionId?runId=` on a device pairing,
   in `devices/pool-routes.ts`
-- two screens: the issue decision panel (`web-v2` `features/questions/components/decision-panel.tsx`)
-  and the Agents screen's Questions tab (`features/agents/components/questions-pane.tsx`)
+- two screens: the issue decision panel (`web-v2` `features/questions/components/decision-panel.tsx`),
+  where a question on an issue is answered, and the Agents screen's Questions tab
+  (`features/agents/components/questions-pane.tsx`), which lists only the open questions that name
+  no issue. A question on an issue also shows on that issue's row in the Issues list, aged from the
+  oldest open question blocked on a person (`issues/list-projection.ts:REST_ISSUE_LIST_COLUMNS`).
 - two sweeps that key on a question row: `jobs/park-deadline.ts`'s `parkedOnAHuman`, which exempts a
   processless human park from the residency reaper, and `reapUnansweredParks`, which is that park's
   replacement clock
 
-`projectQuestionsFor` filters on project and status and never on issue, which is why a question
-carrying no issue — a box's own — reaches the Questions tab with no separate read path.
+## How the question and its issue stay in step
 
-## The three writers, and what each one produces
+`issues/apply-transition.ts:transitionIssueStatus` is the one writer to `issues.status`. A question
+and the status are two facts: the status says how far the work has got, and an open question with
+blocker kind `human` is the **marker** that a person owes the issue an answer. The marker is never
+stored — `questions/issue-coupling.ts:holdsOpenHumanQuestion` reads it from the question rows every
+time, so answering or voiding the last one clears it with no second write. The Issues list's
+`Needs you` (`orWaitingOnPerson` on the search, and `waitingOnPersonByStatus` in its buckets), the
+issue page's banner, the Attention count (`me/attention-buckets.ts`) and the row chip each read
+status OR marker.
 
-| Writer | Where it lives | Creates a question row |
-|---|---|---|
-| `mintParkQuestion` → `askParkQuestion` | `packages/core/src/issues/park-question.ts` | yes, on a park to the autonomous question status made on an agent or device credential |
-| `forge-runner question ask` → `transport::questions::ask` | `packages/runner/crates/forge-runner/src/cmd/question.rs` | yes, on the box's device pairing (added by ISS-1210) |
-| `forge record question` | `github.com/SidCorp-co/forge-plugin`, `plugin/` | **no** — it writes a `forge-record: question` comment and nothing else |
+- **An ask moves nothing.** `askAs`, behind `POST /api/questions` and `forge_questions`, writes the
+  question and leaves the issue at its rung, whatever the blocker kind.
+- **Into `needs_info`.** A park is a deliberate move, taken for want of a requirement. Every agent
+  or device park leaves an open question (`issues/park-question.ts`), `skip` or not: it mints one,
+  unless no `needs` was sent and a `human` question is already open — that is then the question it
+  waits on. A person's own move to `needs_info` mints nothing.
+- **Out to `closed` or `dropped`.** Refused with `OPEN_QUESTIONS` while a question on the issue is
+  open, naming the ids, unless the move carries `voidQuestions` — then each is voided with that
+  sentence, `ended_reason: 'issue_terminal'`. Every door refuses an ask on a terminal issue
+  (`QUESTION_ISSUE_TERMINAL`).
+- **Out of `needs_info` on an answer.** `pipeline/answer-resume.ts` moves the issue once its last
+  open question is answered, and not before: to `confirmed`, the rung that says the requirements
+  are settled, where the project's `poolBacklog.statuses` admit it; to `open` where they do not,
+  with a comment saying why, because nothing there reads `confirmed`. An answer at any other rung
+  moves nothing.
+- **The wedge reset** (`pipeline/reconciler.ts:resetAutonomousWedgesOnce`) leaves an issue holding
+  the marker at its rung: its next move is a person's, so it is not wedged.
 
-The third is the half this repo cannot gate. Its record reads correctly to a human in the thread,
-the run parks, the status moves and nothing fails; only the screen the person was pointed at is
-empty. That is filed on the `forge-plugin` project and named here so the next reader does not
-rediscover it from an empty panel.
+## The writers, and what each one produces
 
-## What binds the two halves that ARE here
+| Writer | Where it lives | Creates a question row | Moves the issue |
+|---|---|---|---|
+| `mintParkQuestion` | `packages/core/src/issues/park-question.ts` | yes, on every agent or device park to `needs_info` | it runs inside that park |
+| `askAs` | `packages/core/src/questions/read.ts`, behind `POST /api/questions` and `forge_questions` | yes | no |
+| `forge-runner question ask` → `transport::questions::ask` | `packages/runner/crates/forge-runner/src/cmd/question.rs` | yes, on the box's device pairing | no |
+| `forge record question` | `github.com/SidCorp-co/forge-plugin`, `plugin/` | **no** — it writes a `forge-record: question` comment and nothing else | no |
+
+The last is the half this repo cannot gate: its record reads correctly to a human in the thread,
+and no question row carries the options or the need it wrote. That, and the CLI having no verb that
+reaches `forge_questions`, are forge-plugin's to fix and are reported there.
+
+## What binds the halves that ARE here
 
 The runner and core do not import each other, so the body the box puts on the device door is pinned
 as a file both suites read: `packages/runner/crates/forge-runner-core/assets/question-ask-wire.jsonl`.
 The runner asserts it sends exactly those bodies (`cmd/question.rs`); core asserts the door takes
-them and stores what they carry (`devices/pool-routes-questions.test.ts`). A field renamed on one
-side and not the other goes red in both, rather than on a box where the question never appears. The
-same shape already binds the master-limit report through `assets/master-limit-wire.json`.
+them and stores what they carry (`tests/integration/question-runner-wire-e2e.test.ts`).
 
 ## What is still true and was not fixed
 
-`packages/runner/crates/forge-runner-core/src/runner/blocked.rs` — `arm_bounded` and
-`park_for_human` — still has no caller outside its own tests, so no run declares itself parked on a
-person. `question ask` deliberately does not park the run: declaring a park changes what the
-daemon's recovery and sweeps do with it, which ISS-1210 did not ask for and reproduced nothing
-about. While that stands, `parkedOnAHuman` matches nothing on a box, and both of the sweeps above
-have an empty subject set. Whether that is a defect or merely an unused defence is unproven either
-way, and repairing a sweep against a failure nobody has reproduced would be a guess.
+- **A person's answer at a rung other than `needs_info` reaches no session.** `answer-resume` hands
+  an answer to the session that asked only while the issue is parked; a run that asked about
+  finished work reads the answer back with `forge_questions` action `get`.
+- **No browser is told a question changed.** An ask or an answer publishes no websocket event, and
+  since neither moves the issue, an Issues list or an issue page already open shows the marker,
+  `Needs you`, its count and the banner as of its last fetch until it refetches (focus, remount, or
+  its own poll — which the issue page's question read skips while the issue holds none).
+- **23 of 33 live projects on beta (measured 2026-09-27) admit nothing at `confirmed`**, so an
+  answered park there returns to `open` instead. The day each autonomous project's admission reads
+  `confirmed`, `answer-resume.ts:answerTarget` loses its second branch.
+- **`issue_id` stays nullable.** A master's question from the device door may carry none, and those
+  are what the Questions tab still lists. Making the column `NOT NULL` breaks the runner's wire.
+- `packages/runner/crates/forge-runner-core/src/runner/blocked.rs` — `arm_bounded` and
+  `park_for_human` — still has no caller outside its own tests, so no run declares itself parked on
+  a person, and `parkedOnAHuman` matches nothing on a box.
 
 ## Honest costs
 
 | Cost | What it buys, and who pays |
 |---|---|
-| A third route to the same entity | A question can now be created three ways, and a reader asking "how did this row get here?" has three answers to check instead of two. The box gets a route it did not have; whoever debugs a stray question pays the widened search |
-| The wire is pinned in a file, so a field is renamed twice | `question-ask-wire.jsonl` has to be edited whenever the ask body changes, and a reviewer who edits it to make a suite green has silently moved the contract. What it buys is that the runner and core cannot drift apart in silence; the price is a fixture that looks like test data and is not |
-| `question ask` mints a run identity when none is given | A box that asks twice about the same work leaves two unrelated waiter rows, and nothing correlates them. That is the price of a verb a master can run with no run in hand; a caller that has a run id passes `--run` and pays none of it |
-| The verb asks and does not park | The run keeps its process and its slot while a person thinks, so a box asking often holds work open. Wiring the ask to `park_for_human` would release the slot and is the additive change this one leaves undone |
-| Writing the split down does not close it | This document has to be deleted or rewritten the day `forge record question` starts creating the entity, and until then it is a second place where the coupling is described. The alternative was leaving it discoverable only from an empty panel |
+| A close can now be refused for a question | An automated close (a release batch, a reconciler) that meets an open question fails that issue by name instead of closing it; the release path already records the failure and recovers the stranded row. The price is that a moot question must be answered or voided before the work reads done |
+| `voidQuestions` lets whoever closes void a person's question | Voiding stays off the REST token door (`POST /api/questions/:id/void` is a session's), and an agent voids only inside a close it makes, with a sentence on the record. An actor entitled to close the issue is trusted to say the question died with it |
+| Four routes to one entity | A reader asking "how did this row get here?" has four answers to check. The pinned wire file has to be edited whenever the device body changes |
+| Writing the split down does not close it | This document has to be rewritten the day `forge record question` creates the entity or the device door parks; until then it is a second place the coupling is described |

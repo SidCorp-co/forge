@@ -18,6 +18,7 @@ import {
   issuesWithUnearnedCriteria,
   unearnedCriteriaReports,
 } from '../../src/issues/criteria-verdicts.js';
+import type { ServingReading } from '../../src/release-batch/serving-reading.js';
 import {
   createTestProject,
   createTestUser,
@@ -27,8 +28,17 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
-/** The identity the issues seeded here record as serving them. */
+/** The identity this project's probes answer while these tests run. */
 const SERVING = '33637c612ef15be6f924520c0d201a0889d8ed7e';
+
+/** One reading, shared by every call below, so the only thing that moves is the citation. */
+const LIVE: ServingReading = {
+  kind: 'serving',
+  commits: [SERVING],
+  unread: [],
+  hosts: ['https://app.test/build-info'],
+  readAt: '2026-09-26T23:55:00.000Z',
+};
 
 function verdictBlock(criterion: number, verdict: string, cited: string[]): string {
   return [
@@ -83,7 +93,11 @@ describe('what a verdict cites, once the evidence is gone (ISS-1198)', () => {
   async function insertIssue(criteria: string): Promise<string> {
     seq += 1;
     const id = randomUUID();
-    const landing = JSON.stringify({ landing: { head: 'dce6f354c', deployment: SERVING } });
+    // `deployment` is deliberately a commit nothing serves: after ISS-1286 it gates nothing, and a
+    // row that carried the served head would pass here for the wrong reason.
+    const landing = JSON.stringify({
+      landing: { head: 'dce6f354c', deployment: 'da74b598bcae5a53a1c0f2b9e3d7a41f6c8b2d90' },
+    });
     await harness.db.execute(sql`
       INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id,
                           acceptance_criteria, session_context)
@@ -137,10 +151,10 @@ describe('what a verdict cites, once the evidence is gone (ISS-1198)', () => {
     await attachToIssue(issueId, 'c17-cleared.png');
     await postVerdict(issueId, verdictComment([verdictBlock(1, 'pass', ['c17-cleared.png'])]));
 
-    const [report] = await unearnedCriteriaReports([issueId]);
+    const [report] = await unearnedCriteriaReports([issueId], LIVE);
     expect(report?.unearned).toEqual([]);
     expect(report?.broken).toEqual([]);
-    expect(await issuesWithUnearnedCriteria([issueId])).toEqual([]);
+    expect(await issuesWithUnearnedCriteria([issueId], LIVE)).toEqual([]);
   });
 
   it('reports the citation as dangling once the capture is gone, same verdict, same read', async () => {
@@ -151,19 +165,19 @@ describe('what a verdict cites, once the evidence is gone (ISS-1198)', () => {
       verdictComment([verdictBlock(1, 'pass', ['c17-cleared.png'])]),
     );
 
-    const before = await unearnedCriteriaReports([issueId]);
+    const before = await unearnedCriteriaReports([issueId], LIVE);
     expect(before[0]?.broken).toEqual([]);
 
     // The wipe: the bytes and the row that stood for them go, the verdict does not.
     await harness.db.execute(sql`DELETE FROM issue_attachments WHERE issue_id = ${issueId}`);
 
-    const [after] = await unearnedCriteriaReports([issueId]);
+    const [after] = await unearnedCriteriaReports([issueId], LIVE);
     expect(after?.broken).toEqual([
       { criterion: 1, unresolved: [{ cited: 'c17-cleared.png', standing: 'dangling' }] },
     ]);
     expect(after?.unearned[0]?.why).toContain('c17-cleared.png');
     expect(after?.unearned[0]?.why).toContain('names no attachment this issue holds');
-    expect(await issuesWithUnearnedCriteria([issueId])).toEqual([issueId]);
+    expect(await issuesWithUnearnedCriteria([issueId], LIVE)).toEqual([issueId]);
 
     // The verdict itself is untouched: one comment, still saying `pass`.
     expect(await commentCount(issueId)).toBe(1);
@@ -177,11 +191,11 @@ describe('what a verdict cites, once the evidence is gone (ISS-1198)', () => {
       issueId,
       verdictComment([verdictBlock(1, 'pass', ['c16-en-confirm.png'])]),
     );
-    const [dangling] = await unearnedCriteriaReports([issueId]);
+    const [dangling] = await unearnedCriteriaReports([issueId], LIVE);
     expect(dangling?.broken[0]?.unresolved[0]?.standing).toBe('dangling');
 
     await attachToComment(commentId, 'c16-en-confirm.png');
-    const [held] = await unearnedCriteriaReports([issueId]);
+    const [held] = await unearnedCriteriaReports([issueId], LIVE);
     expect(held?.broken).toEqual([]);
     expect(held?.unearned).toEqual([]);
   });
@@ -200,7 +214,7 @@ describe('what a verdict cites, once the evidence is gone (ISS-1198)', () => {
       ),
     );
 
-    const [report] = await unearnedCriteriaReports([issueId]);
+    const [report] = await unearnedCriteriaReports([issueId], LIVE);
     expect(report?.broken.map((b) => b.criterion)).toEqual(
       Array.from({ length: 15 }, (_, i) => i + 1),
     );
@@ -220,8 +234,8 @@ describe('what a verdict cites, once the evidence is gone (ISS-1198)', () => {
     await postVerdict(issueId, verdictComment([verdictBlock(1, 'pass', ['c17-cleared.png'])]));
 
     const before = await attachmentCount(issueId);
-    await unearnedCriteriaReports([issueId]);
-    await issuesWithUnearnedCriteria([issueId]);
+    await unearnedCriteriaReports([issueId], LIVE);
+    await issuesWithUnearnedCriteria([issueId], LIVE);
     expect(await attachmentCount(issueId)).toBe(before);
     expect(await commentCount(issueId)).toBe(1);
   });

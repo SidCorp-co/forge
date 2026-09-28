@@ -8,7 +8,6 @@ import {
   type JobType,
   labels,
   projects,
-  type ReleaseModel,
 } from '../../db/schema.js';
 import { integrationGuideSlug, loadOrgGuideProviders } from '../../guides/integration-guides.js';
 import { grantHolds } from '../../integrations/agent-access.js';
@@ -34,6 +33,7 @@ import {
   type RESERVED_PROJECT_FACT_KEYS,
   unreservedProjectKeyRefusal,
 } from '../../projects/project-facts.js';
+import { chainLiveBranch, type ReleaseChain } from '../../projects/release-chain.js';
 import { effectivePipelineStates } from './effective-ladder.js';
 import { renderTestUrls, TEST_CREDS_POINTER } from './environment-keys.js';
 import {
@@ -66,7 +66,7 @@ export interface ProjectFactInputs {
   /** Raw project branch columns — lets a caller that already needs this read
    *  (e.g. the system-prompt builder) reuse it instead of reading `projects`
    *  a second time for the `## Project Config` block. */
-  branches: { baseBranch: string | null; liveBranch: string | null; releaseModel: ReleaseModel };
+  branches: { baseBranch: string | null; releaseChain: ReleaseChain };
   /** `pipelineConfig.reopenPolicy.noProgressRounds`, defaulted. Advisory —
    *  rendered into `## Project Config` for the agent to judge against. */
   noProgressRounds: number;
@@ -173,18 +173,16 @@ export function renderIntegrations(rows: IntegrationRow[]): string {
 
 export function makeProjectResolver(src: {
   baseBranch: string | null;
-  liveBranch: string | null;
-  releaseModel: ReleaseModel;
+  releaseChain: ReleaseChain;
   repoPath: string | null;
   environments: NormalizedEnvironments;
   integrations: IntegrationRow[];
 }): ProjectVarResolver {
   const reserved: Record<(typeof RESERVED_PROJECT_FACT_KEYS)[number], () => string | undefined> = {
     'base-branch': () => src.baseBranch ?? undefined,
-    'live-branch': () =>
-      src.releaseModel === 'promote' ? (src.liveBranch ?? undefined) : undefined,
+    'live-branch': () => chainLiveBranch(src.releaseChain) ?? undefined,
     'production-branch': () =>
-      '⚠️ `{{project:production-branch}}` was retired when a project gained a declared release model (ISS-1046). Use `{{project:live-branch}}`, which resolves only where the project declares `releaseModel: promote`. Update this skill body.',
+      '⚠️ `{{project:production-branch}}` was retired when a project gained a declared release model (ISS-1046). Use `{{project:live-branch}}`, which resolves only where this project declares a release chain of two or more branches. Update this skill body.',
     'repo-path': () => src.repoPath ?? undefined,
     'test-urls': () => renderTestUrls(src.environments),
     'test-creds': () => TEST_CREDS_POINTER,
@@ -218,8 +216,7 @@ export async function loadProjectModules(projectId: string): Promise<ProjectModu
 export async function loadProjectFactInputs(projectId: string): Promise<ProjectFactInputs> {
   let states: Record<string, { enabled?: boolean } | undefined> = {};
   let baseBranch: string | null = null;
-  let liveBranch: string | null = null;
-  let releaseModel: ReleaseModel = 'none';
+  let releaseChain: ReleaseChain = [];
   let repoPath: string | null = null;
   let environments: NormalizedEnvironments = normalizeEnvironments(null);
   let integrations: IntegrationRow[] = [];
@@ -238,8 +235,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
         repoPath: projects.repoPath,
         repoUrl: projects.repoUrl,
         baseBranch: projects.baseBranch,
-        liveBranch: projects.liveBranch,
-        releaseModel: projects.releaseModel,
+        releaseChain: projects.releaseChain,
         orgId: projects.orgId,
       })
       .from(projects)
@@ -253,8 +249,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
     noProgressRounds = resolveNoProgressRounds(row?.agentConfig);
     environments = normalizeEnvironments(row?.environments);
     baseBranch = row?.baseBranch ?? null;
-    liveBranch = row?.liveBranch ?? null;
-    releaseModel = row?.releaseModel ?? 'none';
+    releaseChain = row?.releaseChain ?? [];
     repoPath = row?.repoPath ?? null;
     repoUrl = row?.repoUrl ?? null;
 
@@ -271,7 +266,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
       selectOnDemandSlugsFromKnowledge(projectId),
       selectAllSlugsFromKnowledge(projectId),
     ]);
-    missingObligations = missingProjectKnowledge({ repoPath, repoUrl, releaseModel }, heldSlugs);
+    missingObligations = missingProjectKnowledge({ repoPath, repoUrl, releaseChain }, heldSlugs);
   } catch (err) {
     factsUnavailable = true;
     alwaysInjectFacts = [];
@@ -285,12 +280,11 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
 
   return {
     ladder: effectivePipelineStates(states),
-    branches: { baseBranch, liveBranch, releaseModel },
+    branches: { baseBranch, releaseChain },
     noProgressRounds,
     project: makeProjectResolver({
       baseBranch,
-      liveBranch,
-      releaseModel,
+      releaseChain,
       repoPath,
       environments,
       integrations,

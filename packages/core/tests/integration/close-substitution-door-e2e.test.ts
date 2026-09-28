@@ -67,7 +67,7 @@ async function seedGatedProject() {
     sql`UPDATE users SET email_verified_at = now(), kind = 'agent' WHERE id = ${user.id}::uuid`,
   );
   await harness.db.execute(
-    sql`UPDATE projects SET release_model = 'publish', base_branch = 'main' WHERE id = ${project.id}::uuid`,
+    sql`UPDATE projects SET release_chain = '[{"branch": "main"}]'::jsonb, base_branch = 'main' WHERE id = ${project.id}::uuid`,
   );
 
   const connectionId = randomUUID();

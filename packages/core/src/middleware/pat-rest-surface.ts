@@ -1,6 +1,7 @@
 import type { Context } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import {
+  PAT_PERMISSION_ALL,
   type PatPermission,
   type PatPermissionLevel,
   patGrantCovers,
@@ -93,7 +94,8 @@ function assertGranted(
     message:
       `this token was not granted '${wanted}', which is the permission ` +
       `${path} needs for a ${level} request. It holds: ${held.join(', ')}. ` +
-      'Mint a token that includes it, or use one granted nothing, which reaches the whole menu.',
+      `Mint a token that includes it, or one granted '${PAT_PERMISSION_ALL}', ` +
+      'which is full access chosen on purpose.',
     cause: { code: 'PAT_PERMISSION_REQUIRED', details: { wanted, held } },
   });
 }

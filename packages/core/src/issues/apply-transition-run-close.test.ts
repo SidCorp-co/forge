@@ -10,6 +10,7 @@ const selectWhere = vi.fn(() => ({ limit: selectLimit }));
 const selectFrom = vi.fn(() => ({ where: selectWhere }));
 
 // The archived-issue guard reads the row itself; these tests script every select, so it answers none.
+vi.mock('../questions/issue-coupling.js', () => ({ settleOpenQuestions: async () => null }));
 vi.mock('./archive.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./archive.js')>()),
   archivedAmong: vi.fn(async () => []),

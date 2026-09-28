@@ -85,10 +85,14 @@ Summarize what you plan to write, grouped by target, then ask "Write this?" (rul
   non-negotiable one — **never put a secret in `textContent`; store a pointer to where it lives
   instead.** Search (`forge_memory` action=search) before writing so you upsert an existing slug
   instead of duplicating a topic.
-- **Pipeline config** (`forge_config` action=update, `pipelineConfig`/`baseBranch`/
-  `productionBranch`) — propose ONLY when the survey found real evidence contradicting the current
-  default (e.g. the actual release branch differs from what bootstrap assumed). Do not propose
-  a change with nothing behind it.
+- **Pipeline config** (`forge_config` action=update, `pipelineConfig`) and the **release shape**
+  (`forge_projects` action=update, `baseBranch`/`releaseChain`) — propose ONLY when the survey
+  found real evidence contradicting the current default (e.g. the branch work merges into differs
+  from what bootstrap assumed, or the project promotes to a second branch and nothing says so).
+  `releaseChain` is the ordered release path and REPLACES the whole list: `[]` ships nothing,
+  `[{branch}]` deploys that branch, and each entry after the first carries the crossing into it.
+  Do not propose a change with nothing behind it — and an empty chain is a declaration, not a gap
+  to fill in.
 
 If the human confirms, write each group and acknowledge it (rule 3). If they decline a group,
 skip it and move on — do not re-propose it later in the same conversation unless asked.

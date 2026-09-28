@@ -294,11 +294,9 @@ export async function loadReleaseBatchContext(runId: string): Promise<ReleaseBat
 
   const project = (await readProjectBranches(run.projectId)) ?? {
     baseBranch: null,
-    liveBranch: null,
-    releaseModel: 'none' as const,
-    releaseStrategy: null,
+    releaseChain: [],
   };
-  const { baseBranch, liveBranch } = releaseBranches(project, project.releaseModel);
+  const { baseBranch, liveBranch } = releaseBranches(project);
 
   const claimedIssues = await db
     .select({

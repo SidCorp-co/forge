@@ -188,9 +188,11 @@ async function project(userId: string, release: 'promote' | 'publish') {
   await createTestProjectMember(harness.db, { userId, projectId: p.id, role: 'admin' });
   await harness.db.execute(sql`
     UPDATE projects SET base_branch = 'staging',
-      release_model = ${release},
-      live_branch = ${release === 'promote' ? 'master' : null},
-      release_strategy = ${release === 'promote' ? 'merge-branch' : null}
+      release_chain = ${
+        release === 'promote'
+          ? '[{"branch": "staging"}, {"branch": "master", "from": "merge-branch"}]'
+          : '[{"branch": "staging"}]'
+      }::jsonb
     WHERE id = ${p.id}
   `);
   return p;

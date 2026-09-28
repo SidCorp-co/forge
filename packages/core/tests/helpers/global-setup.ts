@@ -1,5 +1,5 @@
 import type { TestProject } from 'vitest/node';
-import { reapAbandoned, templateDbName } from './scratch-db.js';
+import { reapAbandoned, runToken, sweepRunScratchDbs, templateDbName } from './scratch-db.js';
 
 let stopContainer: (() => Promise<void>) | null = null;
 let ownedTemplate: { url: string; name: string } | null = null;
@@ -48,8 +48,17 @@ export async function setup(_project: TestProject): Promise<void> {
 export async function teardown(): Promise<void> {
   if (ownedTemplate) {
     const postgres = (await import('postgres')).default;
-    const admin = postgres(ownedTemplate.url, { max: 1 });
+    // A name the drain reached first comes back as `does not exist, skipping`, which is the sweep
+    // doing its job rather than anything to read. What a drop is REFUSED over, the sweep retries
+    // and then names.
+    const admin = postgres(ownedTemplate.url, { max: 1, onnotice: () => {} });
     try {
+      // Every scratch database this run minted and the drain did not reach — per case, per file,
+      // and each ground's own template — and here rather than in the cases and hooks that used
+      // them: this is the only teardown in the suite with no vitest budget over it, so a
+      // `DROP DATABASE` waiting on the cluster's checkpoint costs a run its wall time and never a
+      // case or a hook its verdict.
+      await sweepRunScratchDbs(admin, runToken(ownedTemplate.name));
       await admin.unsafe(`DROP DATABASE IF EXISTS "${ownedTemplate.name}" WITH (FORCE)`);
     } catch {
     } finally {

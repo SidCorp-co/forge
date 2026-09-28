@@ -3,7 +3,7 @@ import postgres, { type Sql } from 'postgres';
 import { startPostgresContainer } from './container.js';
 import { runMigrations } from './migrate.js';
 import { createTestSchema } from './schema-mode.js';
-import { workerDbName } from './scratch-db.js';
+import { drainRetiredScratchDbs, retireScratchDb, runToken, workerDbName } from './scratch-db.js';
 
 export type TestDb = PostgresJsDatabase<Record<string, unknown>>;
 
@@ -91,7 +91,7 @@ async function cloneFromTemplate(workerId: string): Promise<TestDatabase | null>
   const template = process.env.TEST_PG_TEMPLATE;
   if (!adminUrl || !template) return null;
 
-  const dbName = workerDbName(workerId);
+  const dbName = workerDbName(workerId, runToken(template));
 
   const admin = postgres(adminUrl, { max: 1 });
   try {
@@ -114,13 +114,20 @@ async function cloneFromTemplate(workerId: string): Promise<TestDatabase | null>
     cleanup: async () => {
       await quiesceOrReport(dbName);
       await client.end({ timeout: 5 }).catch(() => {});
-      const dropper = postgres(adminUrl, { max: 1 });
+      const reporter = postgres(adminUrl, { max: 1 });
       try {
-        await reportLingeringConnections(dropper, dbName);
-        await dropper.unsafe(`DROP DATABASE IF EXISTS "${dbName}" WITH (FORCE)`);
+        await reportLingeringConnections(reporter, dbName);
       } finally {
-        await dropper.end({ timeout: 5 });
+        await reporter.end({ timeout: 5 });
       }
+      // This runs inside the file's `afterAll`, which vitest gives 60s. `DROP DATABASE` forces a
+      // cluster-wide checkpoint and waits for it, which is a number this file does not own and
+      // which was sampled past that budget with two suites on one server. So the name goes to the
+      // drain and the wait is bounded by a grace instead: what the grace does not reach is the run
+      // sweep's, and after that the next run's reaper. Every file gives its database back the same
+      // way, which is the point — one file made safe by hand leaves the next reshuffle a new pair.
+      retireScratchDb(adminUrl, dbName);
+      await drainRetiredScratchDbs();
     },
   };
 }

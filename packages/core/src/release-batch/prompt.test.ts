@@ -12,8 +12,7 @@ const BASE = {
   runId: 'run-1',
   projectId: 'proj-1',
   baseBranch: 'dev',
-  liveBranch: 'master',
-  releaseModel: 'promote' as const,
+  releaseChain: [{ branch: 'dev' }, { branch: 'master', from: 'merge-branch' as const }],
   issues: [{ id: 'i1', displayId: 'ISS-9', title: 'checkout 500s' }],
   releaseRunnerPreferenceMet: true,
 };
@@ -131,18 +130,24 @@ describe('buildReleaseBatchPrompt', () => {
     expect(out).toMatch(/deploy channels: none/);
   });
 
-  it('names the live branch under promote and not under publish', () => {
-    const promoteOut = buildReleaseBatchPrompt({ ...BASE, plan: plan() });
-    expect(promoteOut).toContain('liveBranch: master');
-    expect(promoteOut).toContain('releaseModel: promote');
+  it('names the live branch for a chain that crosses, and none for a chain of one', () => {
+    const crossingOut = buildReleaseBatchPrompt({ ...BASE, plan: plan() });
+    expect(crossingOut).toContain('liveBranch: master');
+    expect(crossingOut).toContain('releaseChain: dev, then merge-branch → master');
 
-    const publishOut = buildReleaseBatchPrompt({
+    const oneBranchOut = buildReleaseBatchPrompt({
       ...BASE,
-      releaseModel: 'publish',
+      releaseChain: [{ branch: 'dev' }],
       plan: plan(),
     });
-    expect(publishOut).not.toContain('liveBranch');
-    expect(publishOut).toContain('releaseModel: publish');
+    expect(oneBranchOut).not.toContain('liveBranch');
+    expect(oneBranchOut).toContain('releaseChain: dev');
+  });
+
+  it('says out loud that an empty chain ships nothing, rather than printing a blank list', () => {
+    const out = buildReleaseBatchPrompt({ ...BASE, releaseChain: [], plan: plan() });
+
+    expect(out).toContain('releaseChain: empty — this project ships nothing');
   });
 
   it('still frames the issue title as untrusted data', () => {
@@ -412,8 +417,12 @@ describe('the branches a release prompt carries (ISS-1276)', () => {
     expect(out).not.toContain('baseBranch:');
   });
 
-  it('names no live branch line where a promote project declares none', () => {
-    const out = buildReleaseBatchPrompt({ ...BASE, liveBranch: null, plan: plan() });
+  it('names no live branch line where the chain crosses nothing', () => {
+    const out = buildReleaseBatchPrompt({
+      ...BASE,
+      releaseChain: [{ branch: 'dev' }],
+      plan: plan(),
+    });
 
     expect(out).not.toContain('liveBranch:');
   });

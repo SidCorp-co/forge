@@ -23,6 +23,7 @@ import { readPluginDesignations, unionPluginDesignations } from '../plugins/desi
 import { insertRunnerEvent } from '../runners/runner-events.js';
 import { annotateDeviceBuilds } from './build-state.js';
 import { revokeDeviceCredentials } from './credential.js';
+import { DEVICE_LIST_COLUMNS } from './device-columns.js';
 import { heartbeatGate, withDeviceGate } from './gate-report.js';
 import { heartbeatPatch } from './heartbeat-patch.js';
 import { mirrorHeartbeatToRunners } from './heartbeat-runner-mirror.js';
@@ -120,14 +121,11 @@ deviceOwnerRoutes.use('*', requireAuth(), assertEmailVerified());
 
 deviceOwnerRoutes.get('/me/devices', async (c) => {
   const userId = c.get('userId');
-  // ISS-477 — optional org scope. The Runners surface passes `?orgId=` so it
-  // shows only devices bound (via a runner) to a project in the active org;
-  // every other caller (sessions/attention device-name resolution) omits it and
-  // keeps the full owner-scoped list. `devices` has no org column — a device
-  // belongs to an org only through `devices → runners(device_id) →
-  // projects.org_id`, so an org with zero projects yields zero devices. Unbound
-  // (paired-but-unassigned) devices have no runner row and so appear under no org
-  // scope — they remain visible in the unfiltered (no-orgId) list.
+  // ISS-477 — optional org scope, NARROWING this owner-scoped list: the filter
+  // sits on top of `devices.ownerId`, so the answer is always a subset of the
+  // caller's own, and an unassigned box has no runner row and so falls under no
+  // org scope at all. The organisation's devices are a different population,
+  // served by `/api/orgs/:orgId/devices` in `devices/org-routes.ts` (ISS-1162).
   const orgIdParam = c.req.query('orgId');
   let orgId: string | undefined;
   if (orgIdParam !== undefined) {
@@ -137,32 +135,16 @@ deviceOwnerRoutes.get('/me/devices', async (c) => {
     await assertOrgAccess(orgId, userId, 'member');
   }
 
-  const deviceCols = {
-    id: devices.id,
-    name: devices.name,
-    platform: devices.platform,
-    agentVersion: devices.agentVersion,
-    agentCommit: devices.agentCommit,
-    status: devices.status,
-    disabledAt: devices.disabledAt,
-    lastSeenAt: devices.lastSeenAt,
-    pairedAt: devices.pairedAt,
-    capabilities: devices.capabilities,
-    gateReport: devices.gateReport,
-    gitCredentialRef: devices.gitCredentialRef,
-    createdAt: devices.createdAt,
-  };
-
   const rows = orgId
     ? await db
-        .selectDistinct(deviceCols)
+        .selectDistinct(DEVICE_LIST_COLUMNS)
         .from(devices)
         .innerJoin(runners, eq(runners.deviceId, devices.id))
         .innerJoin(projects, eq(projects.id, runners.projectId))
         .where(and(eq(devices.ownerId, userId), eq(projects.orgId, orgId)))
         .orderBy(desc(devices.pairedAt))
     : await db
-        .select(deviceCols)
+        .select(DEVICE_LIST_COLUMNS)
         .from(devices)
         .where(eq(devices.ownerId, userId))
         .orderBy(desc(devices.pairedAt));
@@ -170,7 +152,9 @@ deviceOwnerRoutes.get('/me/devices', async (c) => {
   // release AND the runner head on the default branch. The second is what catches
   // a release that was never cut, where every box reports the number the last one
   // carried and nothing reads as behind.
-  return c.json(withDeviceGate(await annotateDeviceBuilds(rows)));
+  const annotated = withDeviceGate(await annotateDeviceBuilds(rows));
+  // Literally true, not defaulted: the WHERE above filters on `devices.ownerId`.
+  return c.json(annotated.map((d) => ({ ...d, ownedByMe: true })));
 });
 
 const deviceIdParamSchema = z.object({ id: z.uuid() });

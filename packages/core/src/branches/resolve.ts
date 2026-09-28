@@ -2,9 +2,11 @@ export interface BranchConfig {
   baseBranch: string | null;
   targetBranch: string | null;
   /**
-   * Where a `promote` release lands. It carries NO claim that this project promotes: 25 of 32 fleet
-   * projects hold a value here from the era when the column had a `'main'` default, six of them a
-   * branch genuinely distinct from their base. `releaseModel` is what says whether it means anything.
+   * Where the last edge of the project's `releaseChain` lands, or `null` where it crosses none.
+   *
+   * Read it from `chainLiveBranch`, never from a stored column: ISS-1311 removed `live_branch`,
+   * whose value on 25 of 32 fleet projects was a leftover from the era when it defaulted to `main`
+   * and nothing promoted to it.
    */
   liveBranch: string | null;
 }

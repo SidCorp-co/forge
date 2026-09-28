@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { baseRef } from './base-branch.mjs';
 
 const DIRECTIONS = ['down', 'shrink', 'tighten'];
 
@@ -13,11 +14,13 @@ function git(args, cwd) {
 }
 
 /**
- * The revision this baseline is judged against.
+ * The revision this baseline is judged against: the merge-base with the branch this work will land
+ * on.
  *
- * Not `origin/main` directly: on a branch that is what the diff is measured from, but a
- * commit pushed STRAIGHT to main has `origin/main` equal to HEAD, and comparing a file to
- * itself passes everything.
+ * Not that branch's tip directly: on a feature branch the merge-base is what the diff is measured
+ * from, but a commit pushed STRAIGHT to the base branch has the tip equal to HEAD, and comparing a
+ * file to itself passes everything. `HEAD~1` is the answer for that push, and for a checkout whose
+ * merge target no ref here names.
  */
 export function baseRev(root) {
   let head;
@@ -26,10 +29,13 @@ export function baseRev(root) {
   } catch {
     return null;
   }
-  try {
-    const mb = git(['merge-base', 'origin/main', 'HEAD'], root);
-    if (mb && mb !== head) return mb;
-  } catch {}
+  const target = baseRef(root);
+  if (target.ref) {
+    try {
+      const mb = git(['merge-base', target.ref, 'HEAD'], root);
+      if (mb && mb !== head) return mb;
+    } catch {}
+  }
   try {
     return git(['rev-parse', 'HEAD~1'], root);
   } catch {

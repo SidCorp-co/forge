@@ -6,12 +6,12 @@ import {
   memberLenses,
   organizationMembers,
   projects,
-  type ReleaseModel,
 } from '../db/schema.js';
 import { estimateTokens } from '../lib/token-estimator.js';
 import { logger } from '../logger.js';
 import type { SystemPromptOverrideConfig } from '../pipeline/pipeline-config-schema.js';
 import { DEFAULT_NO_PROGRESS_ROUNDS } from '../pipeline/reopen-policy.js';
+import { chainLiveBranch, type ReleaseChain } from '../projects/release-chain.js';
 import { mandatoryPreambleBlocks } from './facts/mandatory-blocks.js';
 import { OPERATING_AFFORDANCES_TEXT } from './facts/registry.js';
 import {
@@ -152,17 +152,17 @@ ${fetch} Do NOT echo passwords in commits, PR descriptions, or tool output beyon
 
 export function formatProjectConfig(
   baseBranch: string | null,
-  liveBranch: string | null,
-  releaseModel: ReleaseModel,
+  releaseChain: ReleaseChain,
   noProgressRounds: number = DEFAULT_NO_PROGRESS_ROUNDS,
   step: JobType | null = null,
 ): string {
-  const promotes = releaseModel === 'promote';
+  const liveBranch = chainLiveBranch(releaseChain);
+  const promotes = liveBranch !== null;
   const b = baseBranch ?? BRANCH_SENTINEL;
   const park = step === 'drive' ? 'needs_info' : 'waiting';
-  const liveLine = promotes ? `\n- liveBranch: ${liveBranch ?? BRANCH_SENTINEL}` : '';
+  const liveLine = promotes ? `\n- liveBranch: ${liveBranch}` : '';
   let out = `## Project Config\n- baseBranch: ${b}${liveLine}\n- noProgressRounds: ${noProgressRounds} — a stop signal, NOT a cap. Nothing limits how many times an issue may be reopened. If you have fixed the same problem this many times and NOTHING changed (same failure, same symptom, no new information), stop and set \`${park}\` with what you tried and what you need. Rounds that each move something forward are normal work.`;
-  if (!baseBranch || (promotes && !liveBranch)) {
+  if (!baseBranch) {
     const ask =
       step === 'drive'
         ? 'abort and say so in a comment'
@@ -174,16 +174,14 @@ export function formatProjectConfig(
 
 async function loadProjectBranches(projectId: string): Promise<{
   baseBranch: string | null;
-  liveBranch: string | null;
-  releaseModel: ReleaseModel;
+  releaseChain: ReleaseChain;
   orgId: string | null;
 } | null> {
   try {
     const [project] = await db
       .select({
         baseBranch: projects.baseBranch,
-        liveBranch: projects.liveBranch,
-        releaseModel: projects.releaseModel,
+        releaseChain: projects.releaseChain,
         orgId: projects.orgId,
       })
       .from(projects)
@@ -209,7 +207,7 @@ export async function buildChatPreamble(
     : await resolveMemberLenses(projectId, userId ?? null);
   const sections: string[] = [
     buildChatNudge(lenses),
-    formatProjectConfig(project.baseBranch, project.liveBranch, project.releaseModel),
+    formatProjectConfig(project.baseBranch, project.releaseChain),
   ];
   const integrations = await renderChatIntegrations(projectId, project.orgId);
   if (integrations) sections.push(integrations);
@@ -294,8 +292,7 @@ export async function buildPipelinePreambleStructured(
       id: 'project-config',
       body: formatProjectConfig(
         project.baseBranch,
-        project.liveBranch,
-        project.releaseModel,
+        project.releaseChain,
         factInputs?.noProgressRounds ?? DEFAULT_NO_PROGRESS_ROUNDS,
         step,
       ),
