@@ -1,3 +1,4 @@
+import { PAT_GRANT_ALL } from '../../auth/pat-permissions.js';
 import type { ChatTurnFacts, McpContext } from '../../mcp/tools/lib.js';
 import type { McpPrincipal } from '../../middleware/require-pat.js';
 
@@ -12,7 +13,7 @@ export function buildChatToolContext(opts: {
 }): McpContext {
   const principal: McpPrincipal = {
     kind: 'pat',
-    permissions: null,
+    permissions: PAT_GRANT_ALL,
     agency: 'agent',
     agentUserId: null,
     deviceId: null,

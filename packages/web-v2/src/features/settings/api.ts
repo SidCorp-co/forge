@@ -3,6 +3,7 @@ import type {
   AssistantPreferences,
   CreatePatInput,
   NotificationRow,
+  PatMenu,
   PatToken,
   PatTokenCreated,
   PreferenceChange,
@@ -36,8 +37,8 @@ export const settingsApi = {
   restorePreferenceChange: (id: string) =>
     apiClient<AssistantPreferences>(`/auth/preferences/changes/${id}/restore`, { method: "POST" }),
 
-  /** `GET /api/pat` → `{ tokens }`. */
-  listTokens: () => apiClient<{ tokens: PatToken[] }>(`/pat`),
+  /** `GET /api/pat` → `{ tokens, menu }`, the menu being what the create door accepts. */
+  listTokens: () => apiClient<{ tokens: PatToken[]; menu: PatMenu }>(`/pat`),
 
   /** `POST /api/pat` → row + one-time `plaintext`. May 403 FRESH_AUTH_REQUIRED. */
   createToken: (input: CreatePatInput) =>

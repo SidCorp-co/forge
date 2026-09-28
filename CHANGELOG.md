@@ -13,6 +13,9 @@
 - **A box can only start work on a project it serves.** A box with no runner there, a disabled
   box or a withdrawn runner is refused before claiming anything, and told which, and what an
   admitted box is.
+- **A new token reaches only what its creator chose.** Creating one without picking permissions used
+  to hand over everything; it is now refused, and full access is something you tick on purpose.
+  Tokens you already hold are unchanged.
 
 - **The Attention inbox no longer shows you issues from projects you were removed from.**
   The "Awaiting input" list picked an issue because you were its assignee, or because you filed it

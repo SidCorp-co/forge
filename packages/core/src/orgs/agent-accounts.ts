@@ -14,6 +14,7 @@ import { HTTPException } from 'hono/http-exception';
 import { isAgentHandle, synthesizeAgentEmail } from '../auth/agent-account.js';
 import { mintPat } from '../auth/pat.js';
 import { patIsLive } from '../auth/pat-live.js';
+import { PAT_GRANT_ALL } from '../auth/pat-permissions.js';
 import { handleNameForProject } from '../conversations/handles.js';
 import { db, type Tx } from '../db/client.js';
 import {
@@ -152,7 +153,13 @@ export async function createAgentAccount(
   const minted = await withAgentFenceLock(created.id, async (tx) => {
     const fence = await agentCredentialFence(created.id, tx);
     return mintPat(
-      { userId: created.id, name: `agent:${input.handle}`, scopes: ['read', 'write'], ...fence },
+      {
+        userId: created.id,
+        name: `agent:${input.handle}`,
+        scopes: ['read', 'write'],
+        permissions: PAT_GRANT_ALL,
+        ...fence,
+      },
       tx,
     );
   });
@@ -294,7 +301,10 @@ async function mintDistinctlyNamed(
   for (const name of names) {
     try {
       const minted = await tx.transaction((sp) =>
-        mintPat({ userId, name, scopes: ['read', 'write'], ...fence }, sp),
+        mintPat(
+          { userId, name, scopes: ['read', 'write'], permissions: PAT_GRANT_ALL, ...fence },
+          sp,
+        ),
       );
       return minted.plaintext;
     } catch (err) {
