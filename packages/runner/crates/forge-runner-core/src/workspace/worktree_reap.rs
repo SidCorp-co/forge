@@ -28,7 +28,7 @@ use tokio::process::Command;
 
 use crate::error::Result;
 use crate::runner::ledger::Ledger;
-use crate::workspace::worktree_processes::{Clearing, Reading, Verdict};
+use crate::workspace::worktree_processes::{Clearing, Loud, Reading, Say, Verdict};
 
 pub const MIN_AGE: Duration = Duration::from_secs(14 * 24 * 3600);
 
@@ -257,7 +257,17 @@ pub async fn reap_repo_clearing(
                     tracing::warn!("[worktree-reap] {said}");
                     continue;
                 }
-                Verdict::Take(Some(said)) => tracing::warn!("[worktree-reap] {said}"),
+                // `warn` in this sweep is the stranded-process report above,
+                // which is the line nothing on this box wrote before. A
+                // removal that ended nothing arrives below it (ISS-1271).
+                Verdict::Take(Some(Say {
+                    loud: Loud::Notable,
+                    said,
+                })) => tracing::warn!("[worktree-reap] {said}"),
+                Verdict::Take(Some(Say {
+                    loud: Loud::Routine,
+                    said,
+                })) => tracing::info!("[worktree-reap] {said}"),
                 Verdict::Take(None) => {}
             }
             // The caller prints a count, and a count is not a path. Two
@@ -866,6 +876,8 @@ mod tests {
             std::fs::write(d.join("cmdline"), cmd.replace(' ', "\0")).expect("a cmdline");
         }
 
+        pub(super) use crate::workspace::worktree_processes::planted::Unaskable;
+
         pub(super) fn clearing<'a>(proc_root: &'a Path, hand: &'a Wont) -> Clearing<'a> {
             Clearing {
                 proc_root,
@@ -968,6 +980,47 @@ mod tests {
             "and the line says it signalled nothing, because their checkout went without them and \
              no owner is left to decide: {said}"
         );
+        let _ = std::fs::remove_dir_all(&repo);
+    }
+
+    /// The second door onto the same defect: a sweep that took a tree nobody
+    /// was living in warned about it, because the box it swept has other
+    /// people's processes on it — which every shared box does.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn an_uneventful_sweep_removal_is_not_reported_where_a_stranded_process_is() {
+        let (repo, wt) = repo_with_worktree("residents-routine").await;
+        let proc = repo.join("proc-of-this-test");
+        let unaskable = residents::Unaskable::at(&proc, 8123);
+
+        let (log, guard) = crate::log_capture::capturing();
+        let swept = reap_repo_clearing(
+            &repo,
+            NOW,
+            &led(),
+            &residents::clearing(&proc, &residents::Wont::default()),
+        )
+        .await;
+        drop(guard);
+        let said = log.said();
+
+        assert!(
+            swept.removed.contains(&wt),
+            "nobody this box may ask about is living in it, so the sweep takes it: {swept:?}"
+        );
+        assert!(
+            said.contains("1 pid(s) belong to another user"),
+            "the fixture plants a pid this box may not ask about, and a reading that could ask \
+             about it is not the shared box this is about at all: {said}"
+        );
+        assert!(
+            !said.contains("WARN"),
+            "the sweep's warnings are the processes stranded in checkouts already gone, which is \
+             the line nothing on this box wrote before. A warning on every ordinary removal puts \
+             a constant fact about the box in the same stream: {said}"
+        );
+
+        drop(unaskable);
         let _ = std::fs::remove_dir_all(&repo);
     }
 }

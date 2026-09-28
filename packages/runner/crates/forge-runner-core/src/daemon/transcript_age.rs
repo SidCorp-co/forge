@@ -70,10 +70,19 @@ const TAIL_CAP: u64 = 4 * 1024 * 1024;
 
 /// The attachments Claude Code writes beside a `user` entry, carrying context
 /// for the reply rather than being written by a turn: 19 ms after
-/// ISS-553/554's notification, `instructions` and `session_context`, and after
-/// a tool's result a `total_tokens_reminder`. The only kinds other than a hook
-/// record that end any of this box's 1098 subagent transcripts (ISS-1312).
-const CONTEXT_KINDS: [&str; 3] = ["instructions", "session_context", "total_tokens_reminder"];
+/// ISS-553/554's notification, `instructions` and `session_context`, after a
+/// tool's result a `total_tokens_reminder`, and a `deferred_tools_record`
+/// after either. The only kinds other than a hook record that end any of this
+/// box's 1098 subagent transcripts, and of the 1,185 read 2026-09-28 every
+/// `deferred_tools_record` stands after a `user` entry, 9,355 of them past a
+/// `total_tokens_reminder` (ISS-1312). A kind not named here is never read
+/// past, so a `queued_command` beside a user entry, itself a request, holds.
+const CONTEXT_KINDS: [&str; 4] = [
+    "instructions",
+    "session_context",
+    "total_tokens_reminder",
+    "deferred_tools_record",
+];
 
 /// What the newest entry in a subagent's transcript is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -490,6 +499,44 @@ mod tests {
                 &format!("{RESUMED_TAIL}{result}\n{reminder}\n")
             )),
             Some(Newest::AwaitingReply)
+        );
+    }
+
+    /// ISS-1312, criterion 26: the third judge's alternate shape, a
+    /// notification with `total_tokens_reminder` and `deferred_tools_record`
+    /// beside it, and the record alone.
+    #[test]
+    fn a_deferred_tools_record_beside_a_notification_is_read_past_to_it() {
+        let dir = Scratch::new("transcript-age");
+        let notified = NOTIFIED_WITH_CONTEXT_TAIL.lines().next().unwrap();
+        let reminder =
+            r#"{"type":"attachment","attachment":{"type":"total_tokens_reminder","text":"t"}}"#;
+        let deferred = r#"{"type":"attachment","attachment":{"type":"deferred_tools_record","entries":[{"name":"mcp__claude_ai_Claude_Docs__batch","description":"d"}]}}"#;
+        for (tail, shape) in [
+            (
+                format!("{notified}\n{reminder}\n{deferred}\n"),
+                "reminder, then record",
+            ),
+            (format!("{notified}\n{deferred}\n"), "record alone"),
+            (
+                format!("{NOTIFIED_WITH_CONTEXT_TAIL}{deferred}\n"),
+                "record after the other context",
+            ),
+        ] {
+            assert_eq!(
+                newest_entry(&transcript(&dir, &format!("{STOP_TAIL}{tail}"))),
+                Some(Newest::AwaitingReply),
+                "{shape}"
+            );
+        }
+        let queued = r#"{"type":"attachment","attachment":{"type":"queued_command","prompt":"p"}}"#;
+        assert_eq!(
+            newest_entry(&transcript(
+                &dir,
+                &format!("{STOP_TAIL}{notified}\n{queued}\n{deferred}\n")
+            )),
+            Some(Newest::Turn),
+            "a kind not named is never read past, however much named context stands over it"
         );
     }
 

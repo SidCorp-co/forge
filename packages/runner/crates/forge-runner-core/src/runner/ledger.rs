@@ -198,7 +198,23 @@ pub struct Run {
     /// its leases are still chased (ISS-1220). Cleared by the next turn-end, so each silence is
     /// said once.
     pub kept_notice: Option<String>,
+    /// When the run was declared, in wall-clock seconds.
+    pub created_at: i64,
+    /// When the process this run's subagent lived in was last known to end, in
+    /// wall-clock ms: this box started a new master pane for its project, or
+    /// read its master's pane as gone. A subagent shares its master's process,
+    /// so a turn it was in ended then. Anything heard from the subagent later
+    /// supersedes it, and a start of its subagent clears it (ISS-1312).
+    pub host_ended_at_ms: Option<i64>,
+    /// What that end was seen as: [`HOST_PANE_STARTED`] or [`HOST_PANE_GONE`].
+    pub host_ended_by: Option<String>,
 }
+
+/// A run's host ended because this box started a new master pane for its
+/// project, the one before it being absent.
+pub const HOST_PANE_STARTED: &str = "pane-started";
+/// A run's host ended because recovery read its master's pane as gone.
+pub const HOST_PANE_GONE: &str = "pane-gone";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MasterRow {
@@ -390,6 +406,8 @@ const RUN_COLUMNS: &[&str] = &[
     "turn_ended_at_ms",
     "agent_transcript",
     "kept_notice",
+    "host_ended_at_ms",
+    "host_ended_by",
 ];
 
 #[cfg(test)]
@@ -462,7 +480,9 @@ CREATE TABLE IF NOT EXISTS runs (
   release_attempts    INTEGER NOT NULL DEFAULT 0,
   turn_ended_at_ms    INTEGER,
   agent_transcript    TEXT,
-  kept_notice         TEXT
+  kept_notice         TEXT,
+  host_ended_at_ms    INTEGER,
+  host_ended_by       TEXT
 );
 CREATE TABLE IF NOT EXISTS run_issues (
   run_id            TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
@@ -541,6 +561,8 @@ const ADDED_COLUMNS: &[(&str, &str, &str)] = &[
     ("runs", "turn_ended_at_ms", "INTEGER"),
     ("runs", "agent_transcript", "TEXT"),
     ("runs", "kept_notice", "TEXT"),
+    ("runs", "host_ended_at_ms", "INTEGER"),
+    ("runs", "host_ended_by", "TEXT"),
     ("masters", "session_id", "TEXT"),
 ];
 
@@ -570,7 +592,8 @@ const SELECT_RUN: &str = "SELECT run_id, project_id, master_session_id, session_
         released_as, claim_owner, claim_generation, claim_expires_at, revival_token, revival_deadline_at,
         ended_by, ended_reason, agent_id, resume_choice, resume_choice_why, resume_owed_at,
         release_refused_at, release_refusal, release_terminal_at, release_attempts,
-        turn_ended_at_ms, agent_transcript, kept_notice
+        turn_ended_at_ms, agent_transcript, kept_notice, created_at, host_ended_at_ms,
+        host_ended_by
  FROM runs";
 
 /// Every read of an episode selects these columns in this order, so one mapper
@@ -671,6 +694,9 @@ fn map_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<Run> {
         turn_ended_at_ms: row.get(30)?,
         agent_transcript: row.get(31)?,
         kept_notice: row.get(32)?,
+        created_at: row.get(33)?,
+        host_ended_at_ms: row.get(34)?,
+        host_ended_by: row.get(35)?,
     })
 }
 
@@ -1004,6 +1030,67 @@ impl Ledger {
             .map_err(sql_err)?;
         let rows = stmt.query_map([], map_run).map_err(sql_err)?;
         rows.collect::<rusqlite::Result<Vec<_>>>().map_err(sql_err)
+    }
+
+    /// The runs a master pane started now for `project_id` inherits: declared on
+    /// this boot, not ended, and still holding the checkout they were given,
+    /// whichever master session declared them (ISS-1312).
+    pub fn inheritable_runs(&self, project_id: &str, boot_id: &str) -> Result<Vec<Run>> {
+        let mut stmt = self
+            .conn
+            .prepare(&format!(
+                "{SELECT_RUN} WHERE project_id = ?1 AND boot_id = ?2 AND ended_by IS NULL
+                   AND released_as IS NULL AND release_terminal_at IS NULL
+                 ORDER BY created_at"
+            ))
+            .map_err(sql_err)?;
+        let rows = stmt
+            .query_map(params![project_id, boot_id], map_run)
+            .map_err(sql_err)?;
+        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(sql_err)
+    }
+
+    /// Record that the process the subagent of `run_id` lived in ended at
+    /// `at_ms`, seen as `by`. Only a run with no process of its own is a
+    /// subagent's, so a run with a pid is left alone. A new pane started is a
+    /// later end than any before it and moves a mark already standing; a pane
+    /// read gone on every sweep is the same end read again, and writes only
+    /// where no mark stands.
+    pub fn note_host_ended(&self, run_id: &str, at_ms: i64, by: &str) -> Result<bool> {
+        let n = self
+            .conn
+            .execute(
+                "UPDATE runs SET host_ended_at_ms = ?2, host_ended_by = ?3
+                  WHERE run_id = ?1 AND pid IS NULL AND ended_by IS NULL
+                    AND (?3 = ?4 OR host_ended_at_ms IS NULL)",
+                params![run_id, at_ms, by, HOST_PANE_STARTED],
+            )
+            .map_err(sql_err)?;
+        Ok(n == 1)
+    }
+
+    /// A `SubagentStart` of this run's subagent at `at_ms`: it is running in a
+    /// live process again, so an earlier end of its host no longer speaks for
+    /// it. Where the lead's hook named where the subagent writes, that is kept
+    /// too, so what it writes before its first stop can be heard.
+    pub fn note_subagent_started(
+        &self,
+        run_id: &str,
+        at_ms: i64,
+        transcript: Option<&str>,
+    ) -> Result<()> {
+        self.conn
+            .execute(
+                "UPDATE runs SET agent_transcript = COALESCE(?3, agent_transcript),
+                        host_ended_by = CASE WHEN host_ended_at_ms <= ?2 THEN NULL
+                                             ELSE host_ended_by END,
+                        host_ended_at_ms = CASE WHEN host_ended_at_ms <= ?2 THEN NULL
+                                                ELSE host_ended_at_ms END
+                  WHERE run_id = ?1 AND ended_by IS NULL",
+                params![run_id, at_ms, transcript],
+            )
+            .map_err(sql_err)?;
+        Ok(())
     }
 
     pub fn reparent_run(&mut self, run_id: &str, master_session_id: &str) -> Result<()> {
@@ -3887,6 +3974,109 @@ mod tests {
         );
         drop(led);
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// ISS-1312: a ledger written before the host-end columns opens, gains
+    /// them, and its rows read as a pane nobody saw end.
+    #[test]
+    fn a_ledger_from_before_the_host_end_columns_opens_and_gains_them() {
+        let path = a_ledger_path("host-end");
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(SCHEMA).unwrap();
+            for column in ["host_ended_at_ms", "host_ended_by"] {
+                conn.execute_batch(&format!("ALTER TABLE runs DROP COLUMN {column};"))
+                    .unwrap();
+            }
+        }
+        {
+            let mut led = Ledger::open(&path).unwrap();
+            led.create_run_group(seed(&["ISS-1"])).unwrap();
+        }
+        let led = Ledger::open(&path).unwrap();
+        let run = led.run("run-1").unwrap().unwrap();
+        assert_eq!((run.host_ended_at_ms, run.host_ended_by), (None, None));
+        assert!(run.created_at > 0, "the declaration's own time reads back");
+        drop(led);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_pane_started_moves_the_host_end_and_a_pane_read_gone_does_not() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(seed(&["ISS-1"])).unwrap();
+        assert!(led.note_host_ended("run-1", 1_000, HOST_PANE_GONE).unwrap());
+        assert!(
+            !led.note_host_ended("run-1", 2_000, HOST_PANE_GONE).unwrap(),
+            "the same end read again on the next sweep is not a later one"
+        );
+        assert!(led
+            .note_host_ended("run-1", 3_000, HOST_PANE_STARTED)
+            .unwrap());
+        let run = led.run("run-1").unwrap().unwrap();
+        assert_eq!(run.host_ended_at_ms, Some(3_000));
+        assert_eq!(run.host_ended_by.as_deref(), Some(HOST_PANE_STARTED));
+        led.note_subagent_started("run-1", 2_999, None).unwrap();
+        assert_eq!(
+            led.run("run-1").unwrap().unwrap().host_ended_at_ms,
+            Some(3_000),
+            "a start from before the end says nothing about after it"
+        );
+        led.note_subagent_started("run-1", 3_001, Some("/t/agent-a.jsonl"))
+            .unwrap();
+        let run = led.run("run-1").unwrap().unwrap();
+        assert_eq!((run.host_ended_at_ms, run.host_ended_by), (None, None));
+        assert_eq!(run.agent_transcript.as_deref(), Some("/t/agent-a.jsonl"));
+    }
+
+    #[test]
+    fn a_run_with_a_process_of_its_own_has_no_host_to_end() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(seed(&["ISS-1"])).unwrap();
+        led.attach_pid("run-1", 4242).unwrap();
+        assert!(!led
+            .note_host_ended("run-1", 1_000, HOST_PANE_STARTED)
+            .unwrap());
+    }
+
+    /// ISS-1312, criterion 19: what a pane started now inherits is its
+    /// project's open runs on this boot that still hold their checkout,
+    /// whichever session declared them.
+    #[test]
+    fn a_pane_inherits_its_project_s_open_runs_on_this_boot_whoever_declared_them() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        let mut run = |id: &str, project: &str, master: &str, boot: &str| {
+            led.create_run_group(NewRun {
+                run_id: id.into(),
+                project_id: project.into(),
+                master_session_id: master.into(),
+                worktree_path: PathBuf::from(format!("/w/{id}")),
+                boot_id: boot.into(),
+                issue_keys: vec![format!("ISS-{id}")],
+            })
+            .unwrap();
+            led.bind_agent(id, &format!("child-{id}")).unwrap();
+        };
+        run("a", "proj-1", "master-old", "boot-a");
+        run("b", "proj-1", "master-new", "boot-a");
+        run("c", "proj-2", "master-old", "boot-a");
+        run("d", "proj-1", "master-old", "boot-old");
+        run("e", "proj-1", "master-old", "boot-a");
+        run("f", "proj-1", "master-old", "boot-a");
+        led.end_run("e", "master", "done").unwrap();
+        led.conn
+            .execute(
+                "UPDATE runs SET released_as = 'gone' WHERE run_id = 'f'",
+                [],
+            )
+            .unwrap();
+        let ids: Vec<String> = led
+            .inheritable_runs("proj-1", "boot-a")
+            .unwrap()
+            .into_iter()
+            .map(|r| r.run_id)
+            .collect();
+        assert_eq!(ids, ["a", "b"]);
     }
 
     #[test]

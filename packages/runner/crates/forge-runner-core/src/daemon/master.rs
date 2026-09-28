@@ -1156,16 +1156,25 @@ async fn sweep(
             .as_ref()
             .and_then(|led| led.master_for_project(&runner.project_id).ok().flatten())
             .and_then(|row| row.conversation_id);
-        let inherited: Vec<InheritedRun> = masters
-            .get(&runner.project_id)
-            .map(|(sid, _)| sid)
-            .and_then(|sid| {
-                ledger
-                    .as_ref()
-                    .map(|led| inherited_runs(led, &sid, &runner.project_id))
+        // Read by project and boot, not off the session this process last
+        // registered: a pane placed again is given a new master session, and a
+        // run declared under the one it replaced was otherwise listed by
+        // nobody after a restart and answerable by nobody after a resume
+        // (ISS-1312).
+        let inherited: Vec<InheritedRun> = ledger
+            .as_ref()
+            .and_then(|led| {
+                let boot = inheritance_boot(
+                    crate::runner::inflight::boot_identity(),
+                    led,
+                    &runner.project_id,
+                    &runner.slug,
+                )?;
+                Some(inherited_runs(led, &runner.project_id, &boot))
             })
             .unwrap_or_default();
         let told = std::sync::atomic::AtomicBool::new(false);
+        let started = std::sync::atomic::AtomicBool::new(false);
         let authority = AuthoritySink::default();
         let deaf = DeafSink::default();
         let pane = ensure_master(
@@ -1178,6 +1187,7 @@ async fn sweep(
                 inherited: &inherited,
                 lifted: lifted_episode.as_ref(),
                 stood_down_told: &told,
+                started: &started,
             },
             placement,
             &CapabilityPorts {
@@ -1198,6 +1208,22 @@ async fn sweep(
         // nobody reads four quarters of (ISS-1208).
         if let Some(found) = deaf.take() {
             deaf_found.push(found);
+        }
+        let placed = started.load(std::sync::atomic::Ordering::Relaxed)
+            && matches!(pane, PaneState::ColdStarted | PaneState::Resumed);
+        if placed {
+            if let (Some(led), Some((successor, _))) =
+                (ledger.as_mut(), masters.get(&runner.project_id))
+            {
+                placed_again(
+                    led,
+                    &inherited,
+                    &successor,
+                    pane == PaneState::Resumed,
+                    agent_activity::now_ms(),
+                    &resolved.slug,
+                );
+            }
         }
         if pane == PaneState::Absent {
             continue;
@@ -2004,13 +2030,19 @@ pub(crate) async fn say_resume_choices(
     said
 }
 
-fn inherited_runs(led: &Ledger, master_session_id: &str, _project_id: &str) -> Vec<InheritedRun> {
-    let Ok(runs) = led.unclosed_runs() else {
-        return Vec::new();
+pub(crate) fn inherited_runs(led: &Ledger, project_id: &str, boot_id: &str) -> Vec<InheritedRun> {
+    let runs = match led.inheritable_runs(project_id, boot_id) {
+        Ok(runs) => runs,
+        Err(e) => {
+            tracing::warn!(
+                "[master] {project_id}: cannot read the runs a pane placed now would inherit: {e} — a resumed pane is told of none"
+            );
+            return Vec::new();
+        }
     };
     runs.into_iter()
-        .filter(|r| r.master_session_id == master_session_id && r.ended_by.is_none())
         .map(|r| InheritedRun {
+            master_session_id: r.master_session_id.clone(),
             issue_keys: led
                 .issues(&r.run_id)
                 .map(|m| m.into_iter().map(|i| i.issue_key).collect())
@@ -2025,8 +2057,100 @@ fn inherited_runs(led: &Ledger, master_session_id: &str, _project_id: &str) -> V
         .collect()
 }
 
+/// The boot a pane placed now inherits the runs of.
+///
+/// Read fresh, as the declarations were stamped with it. Where this sweep
+/// cannot read it, the boot this daemon recorded against the project's master
+/// row stands in, because an empty identity matches no run and a resumed pane
+/// told of none can answer for none, with no later sweep to tell it again. Where
+/// neither answers, that is said and nothing is inherited (ISS-1312).
+pub(crate) fn inheritance_boot(
+    read: Option<String>,
+    led: &Ledger,
+    project_id: &str,
+    slug: &str,
+) -> Option<String> {
+    if let Some(boot) = read {
+        return Some(boot);
+    }
+    match led.master_for_project(project_id) {
+        Ok(Some(row)) => Some(row.boot_id),
+        Ok(None) => {
+            tracing::warn!(
+                "[master] {slug}: this box cannot read its boot identity this sweep and holds no master row to take it from, so a pane placed now is told of no inherited run and none is marked or adopted"
+            );
+            None
+        }
+        Err(e) => {
+            tracing::warn!(
+                "[master] {slug}: this box cannot read its boot identity this sweep, nor its master row ({e}), so a pane placed now is told of no inherited run and none is marked or adopted"
+            );
+            None
+        }
+    }
+}
+
+/// A master pane this sweep started, in place of one that was absent, takes
+/// over what the pane before it left.
+///
+/// A subagent runs inside its master pane's process, so every subagent the
+/// previous pane ran ended with it, whatever turn it was in: each inherited
+/// run is marked so, which is what lets the drain and recovery stop reading a
+/// dead subagent as one still in its first turn. A resumed pane continues the
+/// conversation that dispatched them and its brief lists them as its own, so
+/// they are recorded under its master session too, and its choice, its close
+/// and its next declaration match them. A cold-started pane is told of none
+/// and cannot resume one, so they stay where they were, for recovery to
+/// release once core calls each session over (ISS-1312).
+pub(crate) fn placed_again(
+    led: &mut Ledger,
+    inherited: &[InheritedRun],
+    successor: &str,
+    resumed: bool,
+    at_ms: i64,
+    slug: &str,
+) {
+    let mut ended = 0;
+    let mut adopted = 0;
+    for run in inherited {
+        match led.note_host_ended(&run.run_id, at_ms, crate::runner::ledger::HOST_PANE_STARTED) {
+            Ok(true) => ended += 1,
+            Ok(false) => {}
+            Err(e) => tracing::warn!(
+                "[master] {slug}: run {}: cannot record that the pane its subagent ran in is gone: {e} — the drain still reads it as a subagent at work",
+                run.run_id
+            ),
+        }
+        if !resumed || run.master_session_id == successor {
+            continue;
+        }
+        match led.reparent_run(&run.run_id, successor) {
+            Ok(()) => adopted += 1,
+            Err(e) => tracing::warn!(
+                "[master] {slug}: run {}: cannot record it under the resumed pane's session {successor}: {e} — it stays {}'s, which no pane on this box answers for",
+                run.run_id,
+                run.master_session_id
+            ),
+        }
+    }
+    if ended == 0 && adopted == 0 {
+        return;
+    }
+    let whose = if resumed {
+        format!("{adopted} of them declared under a master session this placement replaced are now recorded under this pane's session {successor}, so its choice, its close and its next declaration answer for them")
+    } else {
+        "a cold-started pane cannot resume any of them, so each stays with the session that declared it and is released once core calls its session over".to_string()
+    };
+    tracing::info!(
+        "[master] {slug}: this pane was started in place of one that is gone, so the subagents of {ended} run(s) it inherits ended with that pane; {whose}"
+    );
+}
+
 pub(crate) struct InheritedRun {
     pub run_id: String,
+    /// The master session that declared it, which a placement may have
+    /// replaced.
+    pub master_session_id: String,
     pub issue_keys: Vec<String>,
     pub worktree_path: String,
     pub incarnation: &'static str,
@@ -2327,6 +2451,10 @@ pub(crate) struct Carryover<'a> {
     /// brief failed to land was told nothing — stamping on either would spend
     /// the episode undelivered.
     stood_down_told: &'a std::sync::atomic::AtomicBool,
+    /// Raised when this call started a pane process of its own, which is what
+    /// proves the one before it gone: a pane found already up is somebody's
+    /// running process, and its subagents with it.
+    started: &'a std::sync::atomic::AtomicBool,
 }
 
 /// The verdict `ensure_master` reached about the capability a pane holds, on
@@ -2872,6 +3000,9 @@ async fn ensure_master(
     );
     remember(masters, project_id, &session);
     masters.clear_unplaced(project_id);
+    carry
+        .started
+        .store(started, std::sync::atomic::Ordering::Relaxed);
     // A pane is up. Where this call ended a deaf one on its way here, that is
     // the moment its account becomes a replacement rather than an ending; every
     // return between the kill and this line leaves it reading `ended`, which is
@@ -4776,6 +4907,7 @@ mod give_back_tests {
         (1..=3)
             .map(|n| InheritedRun {
                 run_id: format!("run-{n}"),
+                master_session_id: "master-1".into(),
                 issue_keys: vec![format!("ISS-{n}")],
                 worktree_path: format!("/w/{n}"),
                 incarnation: "starting",
@@ -8675,6 +8807,7 @@ mod servers_refusal_walk_tests {
                 inherited: &[],
                 lifted: None,
                 stood_down_told: &told,
+                started: &std::sync::atomic::AtomicBool::new(false),
             },
             Placement::AdoptOrStart,
             &CapabilityPorts {
