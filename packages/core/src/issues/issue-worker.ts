@@ -66,9 +66,10 @@ export function classifyIssueWorker(input: {
   return { lane: 'none', detail: absenceOf(claim, input.sessions) };
 }
 
-/** Why no lane answered. It may not say no session is bound where a terminal one is — the bind
- *  takes `completed` and `failed` too, so what is absent is a LIVE session — and it may not end
- *  at a bare colon, `session-claim.ts` leaving `detail` empty for all but `malformed`. */
+/** Why no lane answered. What is absent is a LIVE session — the bind takes non-live rows too —
+ *  and the clause reports their statuses rather than judging them, `liveSession` testing
+ *  queued-or-running while `idle` is neither live nor terminal. It also may not end at a bare
+ *  colon: `session-claim.ts` leaves `detail` empty for all but `malformed`. */
 function absenceOf(claim: LeaseReading | null, sessions: readonly WorkerSession[]): string {
   return `${sessionClause(sessions)}, and ${claimClause(claim)}`;
 }
@@ -78,8 +79,9 @@ function sessionClause(sessions: readonly WorkerSession[]): string {
     return 'no agent session is bound to this issue on either session lane';
   }
   const lanes = [...new Set(sessions.map((s) => s.lane))].sort().join(' and ');
+  const statuses = [...new Set(sessions.map((s) => s.status))].sort().join(', ');
   const n = sessions.length;
-  return `the ${n} agent session${n === 1 ? '' : 's'} bound to this issue on the ${lanes} lane ${n === 1 ? 'has' : 'have'} all finished`;
+  return `none of the ${n} agent session${n === 1 ? '' : 's'} bound to this issue on the ${lanes} lane is queued or running (${statuses})`;
 }
 
 function claimClause(claim: LeaseReading | null): string {

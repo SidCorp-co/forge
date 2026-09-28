@@ -86,8 +86,21 @@ describe('classifyIssueWorker', () => {
     });
     const detail = (worker as { detail: string }).detail;
     expect(detail).not.toContain('no agent session is bound');
-    expect(detail).toContain('the 2 agent sessions bound to this issue on the job lane');
-    expect(detail).toContain('have all finished');
+    expect(detail).toContain('none of the 2 agent sessions bound to this issue on the job lane');
+    expect(detail).toContain('(completed, failed)');
+  });
+
+  // `liveSession` tests queued-or-running, which is not the same as terminal: `idle` is the
+  // column's own default and is neither. A clause calling it finished would be a second sentence
+  // asserting more than the test behind it knows, which is the defect this round is repairing.
+  it('does not call a bound session finished where it is idle rather than terminal', () => {
+    const worker = classifyIssueWorker({
+      sessions: [session({ id: 'sess-idle', status: 'idle' })],
+      claim: null,
+    });
+    const detail = (worker as { detail: string }).detail;
+    expect(detail).not.toContain('finished');
+    expect(detail).toContain('is queued or running (idle)');
   });
 
   it('names both session lanes where a finished row sits on each', () => {
@@ -99,6 +112,7 @@ describe('classifyIssueWorker', () => {
       claim: null,
     });
     expect((worker as { detail: string }).detail).toContain('on the job and run_session lane');
+    expect((worker as { detail: string }).detail).toContain('(completed, failed)');
   });
 
   it('answers `none` with a sentence rather than an absent field when nothing holds the issue', () => {
