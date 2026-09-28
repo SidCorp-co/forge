@@ -1161,10 +1161,17 @@ async fn sweep(
         // run declared under the one it replaced was otherwise listed by
         // nobody after a restart and answerable by nobody after a resume
         // (ISS-1312).
-        let this_boot = crate::runner::inflight::boot_identity().unwrap_or_default();
         let inherited: Vec<InheritedRun> = ledger
             .as_ref()
-            .map(|led| inherited_runs(led, &runner.project_id, &this_boot))
+            .and_then(|led| {
+                let boot = inheritance_boot(
+                    crate::runner::inflight::boot_identity(),
+                    led,
+                    &runner.project_id,
+                    &runner.slug,
+                )?;
+                Some(inherited_runs(led, &runner.project_id, &boot))
+            })
             .unwrap_or_default();
         let told = std::sync::atomic::AtomicBool::new(false);
         let started = std::sync::atomic::AtomicBool::new(false);
@@ -2048,6 +2055,39 @@ pub(crate) fn inherited_runs(led: &Ledger, project_id: &str, boot_id: &str) -> V
             ended_by: r.ended_by,
         })
         .collect()
+}
+
+/// The boot a pane placed now inherits the runs of.
+///
+/// Read fresh, as the declarations were stamped with it. Where this sweep
+/// cannot read it, the boot this daemon recorded against the project's master
+/// row stands in, because an empty identity matches no run and a resumed pane
+/// told of none can answer for none, with no later sweep to tell it again. Where
+/// neither answers, that is said and nothing is inherited (ISS-1312).
+pub(crate) fn inheritance_boot(
+    read: Option<String>,
+    led: &Ledger,
+    project_id: &str,
+    slug: &str,
+) -> Option<String> {
+    if let Some(boot) = read {
+        return Some(boot);
+    }
+    match led.master_for_project(project_id) {
+        Ok(Some(row)) => Some(row.boot_id),
+        Ok(None) => {
+            tracing::warn!(
+                "[master] {slug}: this box cannot read its boot identity this sweep and holds no master row to take it from, so a pane placed now is told of no inherited run and none is marked or adopted"
+            );
+            None
+        }
+        Err(e) => {
+            tracing::warn!(
+                "[master] {slug}: this box cannot read its boot identity this sweep, nor its master row ({e}), so a pane placed now is told of no inherited run and none is marked or adopted"
+            );
+            None
+        }
+    }
 }
 
 /// A master pane this sweep started, in place of one that was absent, takes

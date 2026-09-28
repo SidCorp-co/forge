@@ -1262,7 +1262,12 @@ mod tests {
             led.attach_session(RUN, "a44e068d-e3b3-4bb8-a247-84f5c10a5b05")
                 .unwrap();
             assert!(led.bind_agent(RUN, "ad5b0350ec22adc17").unwrap());
-            crate::daemon::master::inherited_runs(led, PROJECT, "boot-a")
+            led.note_master(PROJECT, "forge-master-forge-dev", None, Some(OLD), "boot-a")
+                .unwrap();
+            let boot = crate::daemon::master::inheritance_boot(None, led, PROJECT, "forge-dev")
+                .expect("an unreadable boot identity falls back to the master row's");
+            assert_eq!(boot, "boot-a");
+            crate::daemon::master::inherited_runs(led, PROJECT, &boot)
         };
         let brief = crate::daemon::master::resumed_brief("conv-forge-dev", &inherited);
         assert!(brief.contains(RUN), "criterion 19: {brief}");
