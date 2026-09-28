@@ -92,10 +92,11 @@ export function installWatch(onListing, logPath) {
   process.env.NODE_OPTIONS = withPreload(process.env.NODE_OPTIONS);
   if (state.installed) return;
   state.installed = true;
+  // An unseen program counts where this repository's code started it, not as a tool's own helper.
   const tell = (entries) => {
-    if (entries.length === 0) return;
     const at = callSite();
-    state.onListing(entries.map((e) => ({ ...e, at })));
+    const kept = entries.filter((e) => !e.unseen || at !== null);
+    if (kept.length > 0) state.onListing(kept.map(({ unseen, ...e }) => ({ ...e, at })));
   };
   const fsRead = (name, args) => {
     try {
@@ -117,7 +118,7 @@ export function installWatch(onListing, logPath) {
     try {
       const cwd = call.opts.cwd ? resolve(process.cwd(), String(call.opts.cwd)) : process.cwd();
       const found = subprocessListing({ ...call, cwd, root: ROOT });
-      tell(found.map((e) => ({ dir: e.dir, via: `${name}() running ${e.via}` })));
+      tell(found.map((e) => ({ ...e, via: `${name}() running ${e.via}` })));
     } catch {
       // As above.
     }

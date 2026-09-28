@@ -1,3 +1,4 @@
+import { readFileSync, statSync } from 'node:fs';
 import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -133,8 +134,8 @@ function findStarts(rest) {
 
 /**
  * What one argv lists, given the directory it runs in, as `{ dir, via }`. A program that is not a
- * known lister, not Node, and not one of the readers above cannot be seen into, so it counts as
- * listing where it runs and each path it is handed: the guard fails closed on what it cannot read.
+ * known lister, not Node, and not one of the readers above cannot be seen into, and may walk from
+ * anywhere, so it counts as listing the root: the guard fails closed on what it cannot read.
  */
 function argvListing(argv, cwd, root) {
   const bin = basename(argv[0] ?? '');
@@ -172,20 +173,55 @@ function argvListing(argv, cwd, root) {
   }
   if (NODE_PROGRAMS.has(bin) || READS_NO_DIRECTORY.has(bin) || bin === 'cd' || bin === '')
     return [];
-  const via = `${bin} (a program the guard cannot see into, so counted as listing where it runs)`;
-  return [cwd, ...positionals(rest)].map((p) => ({ dir: resolve(cwd, p), via }));
+  if (!reachesRoot(argv, cwd, root)) return [];
+  return [
+    {
+      dir: root,
+      via: `${bin} (a program the guard cannot see into, so counted as listing the root)`,
+      unseen: true,
+    },
+  ];
+}
+
+/** A `..` segment anywhere in a text: a path somebody meant to climb with. */
+const CLIMB_RE = /(^|[\\/'"`\s=(])\.\.([\\/'"`\s)]|$)/;
+
+/**
+ * Whether a program the watch cannot see into may reach the root: it runs at or above it, or
+ * anything it is handed (a script file's text included) resolves there, climbs with `..`, or
+ * names the root.
+ */
+function reachesRoot(rest, cwd, root) {
+  if (coversRoot(root, cwd)) return true;
+  const escaped = root.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const named = new RegExp(`${escaped}(?![\\\\/]?[\\w.-])`);
+  const reaches = (text) => CLIMB_RE.test(text) || named.test(text);
+  return rest.some((arg) => {
+    if (reaches(arg) || coversRoot(root, resolve(cwd, arg))) return true;
+    const text = scriptText(resolve(cwd, arg));
+    return text !== null && reaches(text);
+  });
+}
+
+function scriptText(path) {
+  try {
+    const stat = statSync(path);
+    return stat.isFile() && stat.size < 262_144 ? readFileSync(path, 'utf8') : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
  * The directories a child process lists, as `{ dir, via }`: `git ls-files`/`ls-tree`/`grep`,
  * `find`, `ls`, `tree`, `du`, `rg`, `fd` and a recursive `grep` by their arguments, and any other
- * program `argvListing` cannot see into by where it runs, whether run directly or through a shell
+ * program `argvListing` cannot see into as the root, whether run directly or through a shell
  * string, where a `cd` moves the directory the rest run in.
  */
 export function subprocessListing({ command, args = [], shell = false, cwd, root }) {
   const viaShell =
     shell || args.length === 0
-      ? command
+      ? [command, ...args].join(' ')
       : ['sh', 'bash', 'zsh'].includes(basename(command)) && args[0] === '-c'
         ? args[1]
         : null;

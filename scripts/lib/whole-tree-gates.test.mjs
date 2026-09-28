@@ -111,28 +111,49 @@ describe('what a child process lists', () => {
   });
 
   it('reads the command a launcher runs, and not the launcher', () => {
-    expect(run('env', ['FOO=1', 'python3', 'walk.py'], { cwd: ROOT })).toEqual([
-      ROOT,
-      `${ROOT}/walk.py`,
-    ]);
+    expect(run('env', ['FOO=1', 'python3', 'walk.py'], { cwd: ROOT })).toEqual([ROOT]);
+    expect(run('env', ['FOO=1', 'python3', 'walk.py'])).toEqual([]);
     expect(run('timeout', ['5', 'find', '../..'])).toEqual([ROOT]);
     expect(run('cd ../.. && env -i ls', [], { shell: true })).toEqual([ROOT]);
     expect(run('env', ['FOO=1', 'cat', 'x'], { cwd: ROOT })).toEqual([]);
   });
 
-  it('counts a program it cannot see into as listing where it runs and what it is handed', () => {
+  it('counts a program it cannot see into as listing the root where it may reach it', () => {
+    const climbs = "import os; os.listdir('../..')";
     const [entry] = subprocessListing({
       command: 'python3',
-      args: ['walk.py'],
-      cwd: ROOT,
+      args: ['-c', climbs],
+      cwd: CORE,
       root: ROOT,
     });
     expect(entry).toEqual({
       dir: ROOT,
-      via: 'python3 (a program the guard cannot see into, so counted as listing where it runs)',
+      via: 'python3 (a program the guard cannot see into, so counted as listing the root)',
+      unseen: true,
     });
-    expect(run('python3', ['walk.py', '../..'])).toEqual([CORE, `${CORE}/walk.py`, ROOT]);
+    expect(run('python3', ['walk.py'], { cwd: ROOT })).toEqual([ROOT]);
+    expect(run('python3', ['-c', `os.listdir('${ROOT}')`])).toEqual([ROOT]);
     expect(run('cd ../.. && ./walk.sh', [], { shell: true })).toEqual([ROOT]);
+    expect(run('python3', ['-c', climbs], { shell: true })).toEqual([ROOT]);
+  });
+
+  it('reads the script an unseen program runs for a climb', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'whole-tree-script-'));
+    writeFileSync(join(dir, 'up.sh'), 'ls ../../..\n');
+    writeFileSync(join(dir, 'flat.sh'), 'git rev-parse HEAD\n');
+    const at = (script) =>
+      subprocessListing({ command: 'bash', args: [script], cwd: dir, root: ROOT }).map(
+        (e) => e.dir,
+      );
+    expect(at('up.sh')).toEqual([ROOT]);
+    expect(at('flat.sh')).toEqual([]);
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('leaves an unseen program below the root that is handed nothing reaching it', () => {
+    expect(run('python3', ['-c', 'print(1)'])).toEqual([]);
+    expect(run('python3', [`${ROOT}/packages/core/walk.py`])).toEqual([]);
+    expect(run('sh', ['-c', 'ulimit -f "$1" && shift && exec git "$@"', 'sh', '9'])).toEqual([]);
   });
 
   it('leaves Node, which the preload watches from inside, and a program that reads only files', () => {
