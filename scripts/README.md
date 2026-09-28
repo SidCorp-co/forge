@@ -45,7 +45,7 @@ passed, because the external record of what shipped belonged to none of them.
 | costs | `check-honest-costs` — `lang-check` | whether `docs/VISION.md` and every `docs/proposals/*.md` price what adopting them costs | whether the price stated is honest — that is review's |
 | relations | `archmap check` — `archmap` | which module may depend on which | how a file is written |
 | reachability | `check-test-reachability` — `conformance` | whether every tracked test file is collected, and whether a skipped suite says why | what a test asserts once it runs |
-| selection | `check-whole-tree-gates` — `whole-tree` | whether a test whose input is the whole repository runs on every change: it runs every test carrying `@gate-input whole-tree` under the vitest config that collects it, refuses a declared file that ran no case, and refuses an undeclared test that builds a path to the root and lists a directory | which jobs `changes` selects for everything else, and what a declared test asserts |
+| selection | `check-whole-tree-gates` — `whole-tree` | whether a test whose input is the whole repository runs on every change: it runs every test carrying `@gate-input whole-tree` under the vitest config that collects it, refuses a declared file that ran no case or failed to load, and refuses an undeclared test that builds a path to the root and lists a directory | which jobs `changes` selects for everything else, and what a declared test asserts |
 | behaviour | `check-test-signal` — `lang-check` | whether a test asserts behaviour or restates a declaration | how many tests exist, coverage % |
 | flows | `check-flow-coverage` — `core-integration` | whether the integration suite ENTERS the function every declared `cm:flow` step sits on | whether the flow ran through it — a function-hit cannot tell; which flows exist, `checkers.flow-coverage.flows` declares |
 | language | `check-source-language` — `lang-check` | English-only source policy | everything else |
@@ -98,7 +98,10 @@ module and wrong for a guard that walks every file: #710 changed only documents,
 skipped, `ci-passed` read the skip as a pass, and the guard the document broke left `main` red for
 the next branch to find (ISS-1314). A path list in the workflow would repeat that one directory
 later, so the declaration lives in the test and moves with it. The root-walk refusal is a backstop
-on the declaration and never the selection; over-declaring costs seconds. A test reading one NAMED
+on the declaration and never the selection; over-declaring costs seconds. It decides "reaches the
+root" by evaluating where each path expression resolves, never by counting its `..`: a counter
+read against the test's own depth passed `join(process.cwd(), '..', '..')` and a `dirname()` chain
+undeclared, though both list the root at runtime (ISS-1314, reopened). A test reading one NAMED
 file outside its package is not this checker's: see
 `docs/proposals/a-test-reading-a-named-file-outside-its-package-is-not-selected-by-it.md`.
 

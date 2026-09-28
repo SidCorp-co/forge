@@ -44,7 +44,11 @@ for (const path of tracked.filter((f) => SOURCE_FILE_RE.test(f))) {
   }
 }
 
-const { tests, declared, refused } = judgeDeclarations({ files });
+// A runner stands in the package that holds a test, so that is where its `process.cwd()` resolves.
+const packageDirs = tracked
+  .filter((f) => f === 'package.json' || f.endsWith('/package.json'))
+  .map((f) => dirname(f));
+const { tests, declared, refused } = judgeDeclarations({ files, packageDirs });
 
 function report(list) {
   for (const { path, why } of list) console.error(`  ${path}\n    ${why}`);
@@ -103,6 +107,7 @@ for (const config of configs) {
 }
 
 const executed = Object.fromEntries(declared.map((f) => [f, 0]));
+const loadErrors = {};
 let failed = false;
 const scratch = mkdtempSync(join(tmpdir(), 'whole-tree-gates-'));
 try {
@@ -136,14 +141,22 @@ try {
       const ran = (file.assertionResults ?? []).filter(
         (a) => a.status === 'passed' || a.status === 'failed',
       ).length;
-      if (rel in executed) executed[rel] += ran;
+      if (!(rel in executed)) continue;
+      executed[rel] += ran;
+      if (file.status === 'failed' && (file.assertionResults ?? []).length === 0) {
+        const first = (file.message ?? '')
+          .split('\n')
+          .map((l) => l.trim())
+          .find(Boolean);
+        loadErrors[rel] = first ?? 'vitest marked the suite failed and gave no message';
+      }
     }
   }
 } finally {
   rmSync(scratch, { recursive: true, force: true });
 }
 
-const run = judgeRun({ declared, collected, executed });
+const run = judgeRun({ declared, collected, executed, loadErrors });
 if (run.refused.length > 0) {
   console.error(`\nwhole-tree-gates: ${run.refused.length} declared file(s) proved nothing:\n`);
   report(run.refused);
