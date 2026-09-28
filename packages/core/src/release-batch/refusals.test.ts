@@ -32,13 +32,18 @@ function body(err: HTTPException): string {
  */
 describe('declarationRefusal — one sentence, whichever door', () => {
   it("answers RELEASE_TARGET_UNDECLARED with releaseBlockerSentence's own text", () => {
-    const err = new ReleaseTargetUndeclaredError('proj-1', 'promote');
+    const err = new ReleaseTargetUndeclaredError('proj-1', [
+      { branch: 'main' },
+      { branch: 'live', from: 'merge-branch' },
+    ]);
 
     const refusal = declarationRefusal(err);
 
     expect(refusal).not.toBeNull();
     expect(refusal?.message).toBe(
-      releaseBlockerSentence('RELEASE_TARGET_UNDECLARED', { releaseModel: 'promote' }),
+      releaseBlockerSentence('RELEASE_TARGET_UNDECLARED', {
+        releaseChain: [{ branch: 'main' }, { branch: 'live', from: 'merge-branch' }],
+      }),
     );
     // The bypassed literal named the project id; the shared sentence does not,
     // because every door that reads it is already scoped to one project.

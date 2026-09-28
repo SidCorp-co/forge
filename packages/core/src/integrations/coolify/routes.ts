@@ -21,6 +21,7 @@ import type { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import type { AuthVars } from '../../middleware/auth.js';
+import { DeployEnvironmentLockedError } from '../../pipeline/deploy-lock.js';
 import {
   assertAdmin,
   assertProjectMember,
@@ -75,6 +76,23 @@ const applicationsBodySchema = z.union([
 const asHttp = (err: unknown): never => {
   if (err instanceof CoolifyCommandError) {
     throw new HTTPException(400, { message: err.message, cause: { code: 'BAD_REQUEST' } });
+  }
+  throw err;
+};
+
+/**
+ * ISS-1279 — a resumed release refused its environment carries a holder, a
+ * subject, a since and what ends the hold. `errorHandler` turns anything that
+ * is not an `HTTPException` into a bare `INTERNAL_ERROR` in production, so
+ * without this the refusal reaches the person pressing the button as nothing
+ * at all.
+ */
+const lockedAsHttp = (err: unknown): never => {
+  if (err instanceof DeployEnvironmentLockedError) {
+    throw new HTTPException(409, {
+      message: err.message,
+      cause: { code: err.code },
+    });
   }
   throw err;
 };
@@ -245,7 +263,7 @@ export function registerCoolifyDeployRoutes(routes: Hono<{ Variables: AuthVars }
       });
     }
     const { confirmPendingProdDeploy } = await import('../../pipeline/release-coolify.js');
-    const result = await confirmPendingProdDeploy(id);
+    const result = await confirmPendingProdDeploy(id).catch(lockedAsHttp);
     broadcastIntegrationChanged(projectId, {
       bindingId: id,
       connectionId: existing.connection.id,

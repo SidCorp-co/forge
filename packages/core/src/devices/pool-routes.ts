@@ -195,15 +195,6 @@ const claimBodySchema = z.object({
   sessionId: z.string().uuid(),
 });
 
-devicePoolRoutes.post(
-  '/me/pool/claim',
-  requireDevice(),
-  zValidator('json', claimBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
-  }),
-  async (c) => c.json({ ok: false, reason: 'runner_too_old' as const }),
-);
-
 /**
  * Take a job without starting it (ISS-919 B2).
  *

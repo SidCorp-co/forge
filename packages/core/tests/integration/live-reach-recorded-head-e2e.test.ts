@@ -90,8 +90,8 @@ async function portalProject(userId: string) {
   const p = await createTestProject(harness.db, userId);
   await createTestProjectMember(harness.db, { userId, projectId: p.id, role: 'admin' });
   await harness.db.execute(sql`
-    UPDATE projects SET base_branch = 'staging', release_model = 'promote', live_branch = 'master',
-      release_strategy = 'merge-branch', repo_url = ${GITLAB}
+    UPDATE projects SET base_branch = 'staging', repo_url = ${GITLAB},
+      release_chain = '[{"branch": "staging"}, {"branch": "master", "from": "merge-branch"}]'::jsonb
     WHERE id = ${p.id}
   `);
   const keyId = randomUUID();

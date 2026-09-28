@@ -90,16 +90,46 @@ describe('master.wake — who it reaches', () => {
     expect(publish.mock.calls.map((c) => c[0])).toEqual(['device:dev-a', 'device:dev-b']);
     expect(publish.mock.calls[0]).toEqual([
       'device:dev-a',
-      { event: 'master.wake', data: { projectId: 'p1', issueId: 'i1', status: 'open' } },
+      {
+        event: 'master.wake',
+        data: {
+          projectId: 'p1',
+          issueId: 'i1',
+          status: 'open',
+          charter: '/api/projects/p1/master-charter',
+        },
+      },
     ]);
     expect(result).toEqual({ boxes: 2, delivered: 2 });
   });
 
-  it('carries no work, no token and no decision', async () => {
+  it('carries the three keys it carried before, plus exactly one new key, charter (ISS-1313 criterion 15)', async () => {
     servedBy(['dev-a']);
-    await wakeMastersForProject({ projectId: 'p1', issueId: 'i1', status: 'draft' });
+    for (const status of ['open', 'draft', 'awaiting_release'] as const) {
+      publish.mockClear();
+      await wakeMastersForProject({ projectId: 'p1', issueId: 'i1', status });
+      expect(Object.keys(publishedData(0)).sort()).toEqual([
+        'charter',
+        'issueId',
+        'projectId',
+        'status',
+      ]);
+    }
+  });
 
-    expect(Object.keys(publishedData(0)).sort()).toEqual(['issueId', 'projectId', 'status']);
+  it("the charter key carries that project's charter route, built from the projectId the frame already names (criterion 16)", async () => {
+    servedBy(['dev-a']);
+    await wakeMastersForProject({ projectId: 'proj-9', issueId: 'i1', status: 'open' });
+
+    expect(publishedData(0).charter).toBe('/api/projects/proj-9/master-charter');
+  });
+
+  it('a reader that takes only projectId off the frame behaves identically before and after this change (criterion 17)', async () => {
+    servedBy(['dev-a']);
+    await wakeMastersForProject({ projectId: 'p1', issueId: 'i1', status: 'open' });
+
+    const { projectId } = publishedData(0) as { projectId: string };
+    expect(projectId).toBe('p1');
   });
 
   it('publishes nothing for a project no box is bound to', async () => {

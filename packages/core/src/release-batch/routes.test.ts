@@ -4,7 +4,7 @@
  *
  * `resolveReleaseGate` and `releaseRunnerLabelOf` each throw a named error (proved in
  * `gate.test.ts` and `channel.test.ts`); neither was caught here, so a project that
- * declares `releaseModel` with no live deploy binding — or two live bindings naming
+ * declares a release chain with no live deploy binding — or two live bindings naming
  * different release runners — answered `500 Internal Server Error` on both the create
  * and the roster. An operator reading a 500 cannot tell a misdeclared project from a
  * broken server, which is the same silent shape the declaration exists to remove.
@@ -118,13 +118,16 @@ beforeEach(() => {
 describe('POST /:projectId/release-batches — the declaration refusals', () => {
   // ISS-1127 criterion 9: this text is `releaseBlockerSentence`'s, the same
   // function `GET /release-readiness` composes its own `RELEASE_TARGET_UNDECLARED`
-  // entry from (`blockers.ts`'s `blocker('RELEASE_TARGET_UNDECLARED', { releaseModel })`)
+  // entry from (`blockers.ts`'s `blocker('RELEASE_TARGET_UNDECLARED', { releaseChain })`)
   // — not the error class's own `.message`, which named the project id this
   // call is already scoped to and neither door needed.
-  it('answers 409 RELEASE_TARGET_UNDECLARED, naming the declared model and the remedy', async () => {
+  it('answers 409 RELEASE_TARGET_UNDECLARED, naming the declared chain and the remedy', async () => {
     mockAdmin();
     createReleaseBatchMock.mockRejectedValueOnce(
-      new ReleaseTargetUndeclaredError(PROJECT_ID, 'promote'),
+      new ReleaseTargetUndeclaredError(PROJECT_ID, [
+        { branch: 'main' },
+        { branch: 'live', from: 'merge-branch' },
+      ]),
     );
 
     const res = await createReq();
@@ -132,7 +135,7 @@ describe('POST /:projectId/release-batches — the declaration refusals', () => 
 
     expect(res.status).toBe(409);
     expect(body.code).toBe('RELEASE_TARGET_UNDECLARED');
-    expect(body.message).toContain('releaseModel `promote`');
+    expect(body.message).toContain('release chain ends at `live`');
     expect(body.message).toContain('no active deploy binding carrying the `live` stage');
   });
 
@@ -179,7 +182,7 @@ describe('GET /:projectId/release-batches/roster — the same two refusals', () 
   it('answers 409 RELEASE_TARGET_UNDECLARED rather than 500', async () => {
     mockAdmin();
     loadReleaseRosterMock.mockRejectedValueOnce(
-      new ReleaseTargetUndeclaredError(PROJECT_ID, 'publish'),
+      new ReleaseTargetUndeclaredError(PROJECT_ID, [{ branch: 'main' }]),
     );
 
     const res = await rosterReq();
@@ -332,7 +335,7 @@ describe('POST /:projectId/release-batches — the refusals that go through thei
   it('still answers 409 for an undeclared target, rather than the 500 an unmapped class gets', async () => {
     mockAdmin();
     createReleaseBatchMock.mockRejectedValueOnce(
-      new ReleaseTargetUndeclaredError(PROJECT_ID, 'publish'),
+      new ReleaseTargetUndeclaredError(PROJECT_ID, [{ branch: 'main' }]),
     );
 
     const res = await createReq();
@@ -342,7 +345,7 @@ describe('POST /:projectId/release-batches — the refusals that go through thei
 
   it('carries the rest of the list on a declaration refusal too', async () => {
     mockAdmin();
-    const err = new ReleaseTargetUndeclaredError(PROJECT_ID, 'publish');
+    const err = new ReleaseTargetUndeclaredError(PROJECT_ID, [{ branch: 'main' }]);
     Object.assign(err, {
       releaseBlockers: [
         { code: 'RELEASE_TARGET_UNDECLARED', message: 'thrown', evaluated: true, httpStatus: 409 },

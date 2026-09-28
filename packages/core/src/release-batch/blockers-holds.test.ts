@@ -84,9 +84,7 @@ function projectRow(over: Record<string, unknown> = {}) {
       repoPath: '/srv/app',
       repoUrl: null,
       baseBranch: 'main',
-      liveBranch: null,
-      releaseModel: 'publish',
-      releaseStrategy: null,
+      releaseChain: [{ branch: 'main' }],
       environments: {
         live: { url: 'https://app.example.test', commitUrl: 'https://example.test/api/health' },
       },
@@ -157,6 +155,15 @@ const RETIRED: RunnerHold = {
   reporting: true,
 };
 
+/** ISS-1286 — the enumerator reaches no network, so the caller hands it the reading. */
+const SERVING = {
+  kind: 'serving' as const,
+  commits: ['33637c612ef15be6f924520c0d201a0889d8ed7e'],
+  unread: [],
+  hosts: ['https://app.test/build-info'],
+  readAt: '2026-09-26T23:55:00.000Z',
+};
+
 const heldReport = (issueId: string, criteria: number[]) => ({
   issueId,
   unearned: criteria.map((criterion) => ({
@@ -166,6 +173,8 @@ const heldReport = (issueId: string, criteria: number[]) => ({
     why: 'no verdict was recorded for it',
   })),
   broken: [],
+  serving: SERVING,
+  uncorroborated: [],
 });
 
 describe('what NO_RUNNER_ONLINE says about the fleet', () => {
@@ -174,7 +183,7 @@ describe('what NO_RUNNER_ONLINE says about the fleet', () => {
     onlineIds.mockResolvedValue([]);
     runnerHolds.mockResolvedValue([RETIRED]);
 
-    const report = await collectReleaseBlockers(PROJECT_ID);
+    const report = await collectReleaseBlockers(PROJECT_ID, { serving: SERVING });
     const held = report.blockers.find((b) => b.code === 'NO_RUNNER_ONLINE');
 
     expect(held?.details?.runners).toEqual([RETIRED]);
@@ -190,7 +199,9 @@ describe('what NO_RUNNER_ONLINE says about the fleet', () => {
     onlineIds.mockResolvedValue([]);
     runnerHolds.mockRejectedValue(new Error('runners table unreadable'));
 
-    const codes = (await collectReleaseBlockers(PROJECT_ID)).blockers.map((b) => b.code);
+    const codes = (await collectReleaseBlockers(PROJECT_ID, { serving: SERVING })).blockers.map(
+      (b) => b.code,
+    );
 
     expect(codes).toContain('NO_RUNNER_ONLINE');
     expect(codes).toContain('RELEASE_CHECK_UNEVALUATED');
@@ -199,7 +210,7 @@ describe('what NO_RUNNER_ONLINE says about the fleet', () => {
   it('does not read the fleet at all where a box is eligible', async () => {
     ready();
 
-    await collectReleaseBlockers(PROJECT_ID);
+    await collectReleaseBlockers(PROJECT_ID, { serving: SERVING });
 
     expect(runnerHolds).not.toHaveBeenCalled();
   });
@@ -213,7 +224,7 @@ describe('the hold the unattended sweep puts on a waiting issue', () => {
 
     joinRows.mockResolvedValue([{ id: ISSUE_A, issSeq: 1127, issuePrefix: 'ISS' }]);
 
-    const report = await collectReleaseBlockers(PROJECT_ID);
+    const report = await collectReleaseBlockers(PROJECT_ID, { serving: SERVING });
     const held = report.blockers.find((b) => b.code === 'RELEASE_CRITERIA_UNEARNED');
 
     expect(held?.scope).toBe('roster');
@@ -243,7 +254,7 @@ describe('the hold the unattended sweep puts on a waiting issue', () => {
     ready();
     unearned.mockResolvedValue([heldReport(ISSUE_A, [3])]);
 
-    const report = await collectReleaseBlockers(PROJECT_ID);
+    const report = await collectReleaseBlockers(PROJECT_ID, { serving: SERVING });
 
     expect(report.blockers.map((b) => b.code)).not.toContain('RELEASE_CRITERIA_UNEARNED');
     expect(unearned).not.toHaveBeenCalled();
@@ -261,12 +272,12 @@ describe('the hold the unattended sweep puts on a waiting issue', () => {
     autoRelease.mockResolvedValue(true);
     unearned.mockResolvedValue([
       heldReport(ISSUE_A, [1]),
-      { issueId: ISSUE_B, unearned: [], broken: [] },
+      { issueId: ISSUE_B, unearned: [], broken: [], serving: SERVING, uncorroborated: [] },
     ]);
 
     joinRows.mockResolvedValue([{ id: ISSUE_A, issSeq: 1142, issuePrefix: 'ISS' }]);
 
-    const report = await collectReleaseBlockers(PROJECT_ID);
+    const report = await collectReleaseBlockers(PROJECT_ID, { serving: SERVING });
 
     expect(report.blockers.map((b) => b.code)).not.toContain('RELEASE_CRITERIA_UNEARNED');
     const warned = report.warnings.find((w) => w.code === 'RELEASE_CRITERIA_HELD_BACK');
@@ -283,7 +294,7 @@ describe('the hold the unattended sweep puts on a waiting issue', () => {
     unearned.mockResolvedValue([heldReport(ISSUE_A, [4])]);
     joinRows.mockRejectedValue(new Error('names unavailable'));
 
-    const report = await collectReleaseBlockers(PROJECT_ID);
+    const report = await collectReleaseBlockers(PROJECT_ID, { serving: SERVING });
     const codes = report.blockers.map((b) => b.code);
 
     expect(codes).toContain('RELEASE_CRITERIA_UNEARNED');
@@ -304,14 +315,69 @@ describe('the hold the unattended sweep puts on a waiting issue', () => {
     autoRelease.mockResolvedValue(true);
     unearned.mockResolvedValue([
       heldReport(ISSUE_A, [5]),
-      { issueId: ISSUE_B, unearned: [], broken: [] },
+      { issueId: ISSUE_B, unearned: [], broken: [], serving: SERVING, uncorroborated: [] },
     ]);
     joinRows.mockRejectedValue(new Error('names unavailable'));
 
-    const report = await collectReleaseBlockers(PROJECT_ID);
+    const report = await collectReleaseBlockers(PROJECT_ID, { serving: SERVING });
 
     expect(report.warnings.map((w) => w.code)).toContain('RELEASE_CRITERIA_HELD_BACK');
     expect(report.blockers.map((b) => b.code)).toContain('RELEASE_CHECK_UNEVALUATED');
+  });
+
+  /**
+   * ISS-1286 — `collectReleaseBlockers` promises its callers no outbound request, and three of
+   * them rely on it. The reading a criterion is weighed against is the caller's, and without one
+   * the check says it could not be run rather than guessing that nothing is declared.
+   */
+  it('makes no outbound request, and cannot run the criteria check without a reading', async () => {
+    ready();
+    autoRelease.mockResolvedValue(true);
+    unearned.mockResolvedValue([heldReport(ISSUE_A, [3])]);
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const report = await collectReleaseBlockers(PROJECT_ID);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(unearned).not.toHaveBeenCalled();
+    const unevaluated = report.blockers.find((b) => b.code === 'RELEASE_CHECK_UNEVALUATED');
+    expect(unevaluated?.evaluated).toBe(false);
+    expect(unevaluated?.message).toContain('criteria');
+    expect(report.blockers.map((b) => b.code)).not.toContain('RELEASE_CRITERIA_UNEARNED');
+    vi.unstubAllGlobals();
+  });
+
+  it('warns that a criterion earned on a runtime nothing could re-read is weaker evidence', async () => {
+    ready();
+    autoRelease.mockResolvedValue(true);
+    unearned.mockResolvedValue([
+      { issueId: ISSUE_A, unearned: [], broken: [], serving: SERVING, uncorroborated: [2, 5] },
+    ]);
+    joinRows.mockResolvedValue([{ id: ISSUE_A, issSeq: 1286, issuePrefix: 'ISS' }]);
+
+    const report = await collectReleaseBlockers(PROJECT_ID, { serving: { kind: 'undeclared' } });
+    const warned = report.warnings.find((w) => w.code === 'RELEASE_CRITERIA_UNCORROBORATED');
+
+    expect(report.blockers.map((b) => b.code)).not.toContain('RELEASE_CRITERIA_UNEARNED');
+    expect(warned?.message).toContain('`ISS-1286` on criterion 2, 5');
+    expect(warned?.message).toContain('declares no way to ask');
+    expect(warned?.message).toContain('absence of a reading is not a failure');
+    // The issue may still be held by another criterion: this warning says nothing about shipping.
+    expect(warned?.message).not.toContain('will be cut carrying');
+    expect(warned?.message).toContain('decided by its own criteria');
+  });
+
+  it('says nothing about corroboration where every criterion was weighed against a reading', async () => {
+    ready();
+    autoRelease.mockResolvedValue(true);
+    unearned.mockResolvedValue([
+      { issueId: ISSUE_A, unearned: [], broken: [], serving: SERVING, uncorroborated: [] },
+    ]);
+
+    const report = await collectReleaseBlockers(PROJECT_ID, { serving: SERVING });
+
+    expect(report.warnings.map((w) => w.code)).not.toContain('RELEASE_CRITERIA_UNCORROBORATED');
   });
 
   it('leaves the uuid standing where the name read came back without that row', async () => {
@@ -320,7 +386,7 @@ describe('the hold the unattended sweep puts on a waiting issue', () => {
     unearned.mockResolvedValue([heldReport(ISSUE_A, [2])]);
     joinRows.mockResolvedValue([]);
 
-    const report = await collectReleaseBlockers(PROJECT_ID);
+    const report = await collectReleaseBlockers(PROJECT_ID, { serving: SERVING });
     const held = report.blockers.find((b) => b.code === 'RELEASE_CRITERIA_UNEARNED');
 
     expect(held?.message).toContain(`\`${ISSUE_A}\` owes criterion 2`);

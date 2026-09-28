@@ -83,8 +83,9 @@ function pushBranch(world_, name, text) {
   return work;
 }
 
-function run(cwd) {
-  const r = spawnSync('node', [CHECKER], { cwd, encoding: 'utf8', env: SEALED_ENV });
+function run(cwd, extra = {}) {
+  const env = { ...SEALED_ENV, ...extra };
+  const r = spawnSync('node', [CHECKER], { cwd, encoding: 'utf8', env });
   return { code: r.status, out: `${r.stdout}${r.stderr}` };
 }
 
@@ -195,7 +196,7 @@ describe('check-migration-order, against real repositories', () => {
     expect(out).toContain('0289_stranded');
   });
 
-  it('exits 2 rather than 0 when there is no main to read a floor from', () => {
+  it('exits 2 rather than 0 when no merge target answers, naming every source it read', () => {
     const box = mkdtempSync(join(tmpdir(), 'migration-order-'));
     made.push(box);
     git(box, 'init', '--initial-branch=work', box);
@@ -207,7 +208,83 @@ describe('check-migration-order, against real repositories', () => {
 
     const { code, out } = run(box);
     expect(code).toBe(2);
-    expect(out).toContain('origin/main does not resolve');
+    expect(out).toContain('no merge target could be derived');
+    expect(out).toContain('$GITHUB_BASE_REF');
+    expect(out).toContain('refs/remotes/origin/HEAD');
+    expect(out).toContain('git remote set-head origin -a');
+  });
+
+  it('exits 2 when the merge target is named but resolves to no ref here', () => {
+    const w = world(journal([288, 1000, '0288_main']));
+    const work = pushBranch(w, 'iss-far', journal([288, 1000, '0288_main'], [289, 2000, '0289_x']));
+
+    const { code, out } = run(work, { GITHUB_BASE_REF: 'release/9' });
+    expect(code).toBe(2);
+    expect(out).toContain('`release/9`');
+    expect(out).toContain('origin/release/9');
+    expect(out).toContain('git fetch origin release/9');
+  });
+});
+
+/**
+ * The failure the whole issue is about, built rather than argued: `main` lags the branch the work
+ * is cut from, so a floor read off `main` clears a `when` the merge target has already spent, and
+ * drizzle skips that migration silently and for ever once both land.
+ */
+describe('check-migration-order, when the merge target is not `main`', () => {
+  function divergedWorld() {
+    const w = world(journal([288, 1000, '0288_base']));
+    // `dev` carries a migration `main` has not taken yet — which is what a promote-model base
+    // branch looks like between promotions.
+    const devWork = join(w.box, 'w-dev');
+    git(w.box, 'clone', '-b', 'main', w.origin, devWork);
+    git(devWork, 'config', 'user.email', 'check@example.invalid');
+    git(devWork, 'config', 'user.name', 'check');
+    git(devWork, 'checkout', '-b', 'dev');
+    writeJournal(devWork, journal([288, 1000, '0288_base'], [290, 3000, '0290_on_dev']));
+    git(devWork, 'add', '-A');
+    git(devWork, 'commit', '-m', 'dev');
+    git(devWork, 'push', 'origin', 'dev');
+
+    // The work, cut from `dev`, taking a number that clears `main`'s floor and not `dev`'s.
+    const work = join(w.box, 'w-iss');
+    git(w.box, 'clone', '-b', 'dev', w.origin, work);
+    git(work, 'config', 'user.email', 'check@example.invalid');
+    git(work, 'config', 'user.name', 'check');
+    git(work, 'checkout', '-b', 'iss-late');
+    writeJournal(
+      work,
+      journal([288, 1000, '0288_base'], [290, 3000, '0290_on_dev'], [289, 2000, '0289_late']),
+    );
+    git(work, 'add', '-A');
+    git(work, 'commit', '-m', 'iss-late');
+    git(work, 'push', 'origin', 'iss-late');
+    return { w, work };
+  }
+
+  it('refuses the entry a `main`-derived floor would have let through', () => {
+    const { work } = divergedWorld();
+    const { code, out } = run(work, { GITHUB_BASE_REF: 'dev' });
+    expect(code).toBe(1);
+    expect(out).toContain('0289_late');
+    expect(out).toContain('does not clear origin/dev');
+    expect(out).toContain('3000');
+  });
+
+  it('takes its floor and its next-free number from `dev`, not from `main`', () => {
+    const { work } = divergedWorld();
+    const { out } = run(work, { GITHUB_BASE_REF: 'dev' });
+    expect(out).toContain('origin/dev floor: 3000');
+    expect(out).toContain('merge target dev, from GITHUB_BASE_REF');
+    expect(out).toContain(`when ${3000 + 86_400_000}`);
+  });
+
+  it('is the same tree `main` as the base lets through, which is the defect', () => {
+    const { work } = divergedWorld();
+    const { code, out } = run(work, { GITHUB_BASE_REF: 'main' });
+    expect(code).toBe(0);
+    expect(out).toContain('origin/main floor: 1000');
+    expect(out).not.toContain('below-floor');
   });
 });
 

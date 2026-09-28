@@ -1,14 +1,25 @@
 import { and, eq, isNull, notInArray, sql } from 'drizzle-orm';
 import { requestSessionSend, resolveSessionSend } from '../agent-sessions/session-send.js';
 import { db } from '../db/client.js';
-import { agentSessions, issues, jobs, terminalAgentSessionStatuses } from '../db/schema.js';
+import {
+  agentSessions,
+  type IssueStatus,
+  issues,
+  jobs,
+  terminalAgentSessionStatuses,
+} from '../db/schema.js';
 import { agentQuestions, questionWaiters } from '../db/schema-questions.js';
 import { sessionInbox } from '../db/schema-session-inbox.js';
-import { transitionIssueStatus } from '../issues/apply-transition.js';
+import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
+import { postTransitionReasonComment } from '../issues/transition-reason.js';
 import type { LoopScope } from '../jobs/loop-monitor.js';
 import { logger } from '../logger.js';
-import { AUTONOMOUS_ENTRY_STATUS, AUTONOMOUS_QUESTION_STATUS } from './autonomous-mode.js';
-import { isAutonomousProject } from './autonomous-project.js';
+import {
+  AUTONOMOUS_ENTRY_STATUS,
+  AUTONOMOUS_QUESTION_STATUS,
+  isAutonomous,
+} from './autonomous-mode.js';
+import { readPipelineConfig } from './autonomous-project.js';
 import type { HooksBus } from './hooks.js';
 
 async function resumableIssue(issueId: string) {
@@ -23,8 +34,64 @@ async function resumableIssue(issueId: string) {
     .where(eq(issues.id, issueId))
     .limit(1);
   if (!issue || issue.status !== AUTONOMOUS_QUESTION_STATUS) return null;
-  if (!(await isAutonomousProject(issue.projectId))) return null;
-  return issue;
+  const cfg = await readPipelineConfig(issue.projectId);
+  if (!isAutonomous(cfg)) return null;
+  return { ...issue, target: answerTarget(cfg?.poolBacklog?.statuses ?? []) };
+}
+
+const SETTLED_STATUS: IssueStatus = 'confirmed';
+
+/**
+ * Where an answered park goes: `confirmed`, the rung that says its requirements are
+ * settled — where this project has a dispatcher that reads `confirmed`. A project
+ * whose admitted statuses leave it out would hold the issue there with nothing to
+ * pick it up, so it goes back to the driver's entry instead, and says why.
+ */
+function answerTarget(admitted: readonly string[]): { to: IssueStatus; why: string | null } {
+  if (admitted.includes(SETTLED_STATUS)) return { to: SETTLED_STATUS, why: null };
+  return {
+    to: AUTONOMOUS_ENTRY_STATUS,
+    why: `The last open question was answered. It returns to \`${AUTONOMOUS_ENTRY_STATUS}\` rather than \`${SETTLED_STATUS}\` because this project admits nothing at \`${SETTLED_STATUS}\` (pipelineConfig.poolBacklog.statuses), so no dispatcher here would read it there.`,
+  };
+}
+
+/** Resume, unless a question on the issue is still open once the transition has the row locked. */
+async function resumeUnasked(
+  issue: NonNullable<Awaited<ReturnType<typeof resumableIssue>>>,
+  answeredBy: string,
+): Promise<boolean> {
+  try {
+    await transitionIssueStatus(
+      issue,
+      issue.target.to,
+      { type: 'user', id: answeredBy },
+      {
+        requireNoOpenQuestions: true,
+        beforeStatusWrite: async (tx) => {
+          const why = issue.target.why;
+          if (!why) return;
+          await postTransitionReasonComment(
+            {
+              issueId: issue.id,
+              authorId: answeredBy,
+              fromStatus: issue.status,
+              toStatus: issue.target.to,
+              reason: why,
+            },
+            tx,
+          );
+        },
+      },
+    );
+    return true;
+  } catch (err) {
+    if (!(err instanceof TransitionError) || err.code !== 'OPEN_QUESTIONS') throw err;
+    logger.info(
+      { issueId: issue.id },
+      'answer-resume: another question on this issue is still open, so it waits on that one',
+    );
+    return false;
+  }
 }
 
 /**
@@ -105,13 +172,10 @@ export function registerAnswerResume(bus: HooksBus): void {
           );
           return;
         }
-        await transitionIssueStatus(issue, AUTONOMOUS_ENTRY_STATUS, {
-          type: 'user',
-          id: p.answeredBy,
-        });
+        if (!(await resumeUnasked(issue, p.answeredBy))) return;
         logger.info(
-          { issueId, questionId: p.questionId },
-          'answer-resume: question answered, issue returned to the driver',
+          { issueId, questionId: p.questionId, to: issue.target.to },
+          'answer-resume: the last open question was answered, and the park moved on',
         );
       } catch (err) {
         logger.error({ err, issueId }, 'answer-resume: resuming on an answer failed');
@@ -160,11 +224,11 @@ export async function resumeLapsedAnswers(
     if (outcome !== 'gone' || !issueId || !authorId) continue;
     const issue = await resumableIssue(issueId);
     if (!issue) continue;
-    await transitionIssueStatus(issue, AUTONOMOUS_ENTRY_STATUS, { type: 'user', id: authorId });
+    if (!(await resumeUnasked(issue, authorId))) continue;
     resumed += 1;
     logger.info(
-      { issueId, agentSessionId: inbox.agentSessionId, seq: inbox.seq },
-      'answer-resume: the session that asked is gone, returning the issue to the driver',
+      { issueId, agentSessionId: inbox.agentSessionId, seq: inbox.seq, to: issue.target.to },
+      'answer-resume: the session that asked is gone, so the park moved on',
     );
   }
   return resumed;

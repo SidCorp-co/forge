@@ -17,7 +17,7 @@ const TABS: TabItem[] = [
 ];
 
 export interface AgentsScreenProps {
-  scope: { projectId: string };
+  scope: { projectId: string; slug: string };
 }
 
 export function AgentsScreen({ scope }: AgentsScreenProps) {

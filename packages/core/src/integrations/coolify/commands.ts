@@ -13,6 +13,7 @@
 
 import type { DeployStage } from '../../db/schema.js';
 import { effectiveConfig, listActiveDeployBindingsForProvider } from '../../integrations/store.js';
+import { DeployEnvironmentLockedError } from '../../pipeline/deploy-lock.js';
 import {
   type DispatchOutcome,
   dispatchCoolifyDeployDirect,
@@ -152,15 +153,25 @@ export async function runCoolifyDeploy(input: {
     if ((await readRunMethod(input.pipelineRunId)) === null) {
       throw new CoolifyCommandError(RELEASE_DEPLOY_BEFORE_RECORDING);
     }
-    return shape(
-      await tryDispatchCoolifyRelease({
-        projectId,
-        issueId: null,
-        runId: input.pipelineRunId,
-        integrationId: input.integrationId ?? null,
-        allowLive: true,
-      }),
-    );
+    // ISS-1279 — the release path, and the only caller that takes the deploy lock: a release
+    // reaching an environment another is mid-deploy to is refused rather than queued.
+    try {
+      return shape(
+        await tryDispatchCoolifyRelease({
+          projectId,
+          issueId: null,
+          runId: input.pipelineRunId,
+          integrationId: input.integrationId ?? null,
+          allowLive: true,
+          takeEnvironmentLock: true,
+        }),
+      );
+    } catch (err) {
+      if (err instanceof DeployEnvironmentLockedError) {
+        throw new CoolifyCommandError(err.message);
+      }
+      throw err;
+    }
   }
 
   if (input.issueId) {

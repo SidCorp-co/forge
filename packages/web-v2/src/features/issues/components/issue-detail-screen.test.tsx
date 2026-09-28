@@ -18,6 +18,8 @@ let handoffs: ReturnType<typeof ok> | Record<string, unknown> = ok([]);
 let durations: ReturnType<typeof ok> = ok([]);
 let attachments: ReturnType<typeof ok> = ok([]);
 let pipelineHealth: Record<string, unknown> | undefined;
+let status = "open";
+let questions: Array<Record<string, unknown>> = [];
 
 const ISSUE = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -61,13 +63,16 @@ vi.mock("./html-attachment-card", () => ({
   HtmlAttachmentCard: ({ name }: { name: string }) => <div>preview {name}</div>,
 }));
 vi.mock("../detail-hooks", () => ({
-  useIssue: () => ok({ ...ISSUE, pipelineHealth }),
+  useIssue: () => ok({ ...ISSUE, status, pipelineHealth }),
   useComments: () => ok({ items: [], totalCount: 0 }),
   useActivity: () => ok({ items: [] }),
   useTasks: () => ok([]),
   useAttachments: () => attachments,
   useStepHandoffs: () => handoffs,
   useStepDurations: () => durations,
+}));
+vi.mock("@/features/questions/hooks", () => ({
+  useIssueQuestions: () => ok({ questions }),
 }));
 vi.mock("../hooks", () => ({
   useIssueCost: () => ok(undefined),
@@ -95,6 +100,8 @@ beforeEach(() => {
   durations = ok([]);
   attachments = ok([]);
   pipelineHealth = undefined;
+  status = "open";
+  questions = [];
 });
 afterEach(cleanup);
 
@@ -198,5 +205,22 @@ describe("the issue header's run", () => {
     expect(within(headerChips()).queryByText("Queued")).toBeNull();
     expect(within(headerChips()).queryByText("Running")).toBeNull();
     expect(screen.getByRole("button", { name: "Run pipeline" })).toBeInTheDocument();
+  });
+});
+
+// ISS-1257 — a question marks its issue and leaves its rung alone, so the banner reads the marker.
+describe("the issue page of work a person owes an answer", () => {
+  it("says so above an issue at testing holding an open question blocked on a person", () => {
+    status = "testing";
+    questions = [{ status: "open", blockerKind: "human", createdAt: "2026-09-27T10:00:00Z" }];
+    renderScreen();
+    expect(screen.getByText(/A person owes this issue an answer/)).toBeInTheDocument();
+  });
+
+  it("says nothing of the kind once that question is answered", () => {
+    status = "testing";
+    questions = [{ status: "answered", blockerKind: "human", createdAt: "2026-09-27T10:00:00Z" }];
+    renderScreen();
+    expect(screen.queryByText(/A person owes this issue an answer/)).toBeNull();
   });
 });

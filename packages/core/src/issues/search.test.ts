@@ -487,12 +487,14 @@ describe('withBuckets — the tab counts (ISS-1010)', () => {
     listWhereArgs.length = 0;
     const res = await req('?status=needs_info&withBuckets=1', await token());
     expect(res.status).toBe(200);
-    expect(bucketWhereArgs).toHaveLength(1);
+    expect(bucketWhereArgs).toHaveLength(2);
     expect(listWhereArgs).toHaveLength(1);
     expect(namesStatusColumn(listWhereArgs[0])).toBe(true);
-    expect(
-      namesStatusColumn(bucketWhereArgs[0]),
-      'the bucket read carried the status filter — every tab but the open one would read zero',
-    ).toBe(false);
+    for (const where of bucketWhereArgs) {
+      expect(
+        namesStatusColumn(where),
+        'a bucket read carried the status filter — every tab but the open one would read zero',
+      ).toBe(false);
+    }
   });
 });

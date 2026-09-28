@@ -57,6 +57,7 @@ import {
   forgeProjectsListTool,
   forgeProjectsUpdateTool,
 } from './tools/forge-projects.js';
+import { forgeQuestionsTool } from './tools/forge-questions.js';
 import { forgeReconcileTool } from './tools/forge-reconcile.js';
 import { forgeReleaseBatchTool } from './tools/forge-release-batch.js';
 import { forgeRunnersTool } from './tools/forge-runners.js';
@@ -139,6 +140,7 @@ export function createMcpServer(ctx: McpContext): Server {
     forgePhaseTool(ctx),
     forgeStepStartTool(ctx),
     forgeCommentsTool(ctx),
+    forgeQuestionsTool(ctx),
     forgeFeedbackTool(ctx),
     forgeUploadsTool(ctx),
     forgeConfigTool(ctx),

@@ -34,6 +34,7 @@ import {
 } from '../pipeline/runs.js';
 import { type GateCondition, RUN_GATE_METADATA_KEY } from './gate-report.js';
 import { liveMasterSessionId } from './master-owner.js';
+import { projectAdmission, RunnerNotAdmittedError } from './pool-admission.js';
 import { returnIssuesForRun } from './run-issue-return.js';
 
 export { RUN_SESSION_KIND } from '../jobs/session-kinds.js';
@@ -181,6 +182,15 @@ export async function openRunSession(args: {
       await announceOnce(existing, args.projectId);
       return { sessionId: existing.sessionId, runId: existing.runId };
     }
+  }
+  // After the replay, so a committed open whose reply was lost is answered, not orphaned.
+  const admission = await projectAdmission({ projectId: args.projectId, deviceId: args.deviceId });
+  if (!admission.admitted) {
+    throw new RunnerNotAdmittedError({
+      reason: admission.reason,
+      projectId: args.projectId,
+      deviceId: args.deviceId,
+    });
   }
   // Core issues the owner edge. The box is authenticated as a device and says
   // which project it is running for; which master that is, core already knows.

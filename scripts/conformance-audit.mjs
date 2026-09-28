@@ -23,6 +23,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { branchSetFaults, ciBranches, mergeTarget } from './lib/base-branch.mjs';
 import { SIZE_RULES } from './lib/lint-budget.mjs';
 import { absentPrerequisites, couldNotStart, remedyLines } from './lib/prerequisite.mjs';
 
@@ -126,6 +127,13 @@ for (const [name, spec] of Object.entries(axes)) {
 }
 
 const unfailable = [...ciText.matchAll(/continue-on-error:\s*true/g)].length;
+
+// R11's subject is one workflow, not every one of them: the promotion workflows fire on `main`
+// alone on purpose, and folding them into `ciText` would make the rule accuse them of it.
+const ciYml = read('.github/workflows/ci.yml');
+const target = mergeTarget(ROOT).branch ?? null;
+const branchFaults = ciYml === null ? null : branchSetFaults(ciYml, target);
+const gatedBranches = ciYml === null ? null : (ciBranches(ciYml).push ?? []).join(', ');
 
 const NON_BLOCKING = new Set(['warn', 'info', 'on']);
 
@@ -324,6 +332,18 @@ const RULES = [
       ? `not blocking: ${notBlocking.join(' · ')}`
       : `${Object.keys(axes).length} axes, all at level >= 2`,
     why: 'levels 0 and 1 both mean "produces a number nobody is held to", which is where every gate this repo lost was standing while documented as blocking; R1-R9 skip any axis that is not level 2, so without this an axis could declare 1 — or omit the key, or quote the digit — and pass the whole audit',
+  },
+  {
+    id: 'R11',
+    text: 'one branch set across the merge gate, and the merge target is in it',
+    pass: branchFaults === null ? null : branchFaults.length === 0,
+    detail:
+      branchFaults === null
+        ? 'no .github/workflows/ci.yml'
+        : branchFaults.length > 0
+          ? branchFaults.join(' · ')
+          : `${gatedBranches || '(none)'}, in all three${target ? `, merge target ${target} among them` : ' (no merge target here to check them against)'}`,
+    why: 'a workflow trigger cannot read a variable, so the branches CI gates are written three times over — the push trigger, the pull-request trigger, and the step that decides a tree a pull request already proved. A branch in one list and not the others is a pull request that runs no CI at all, or a whole gate re-run on every merge into it, and the first of those reports nothing: a pull request with no CI shows no failure, only an absence nobody is looking at. Three lists that agree on a set the merge target is not in are consistent and gate nothing, which is the same absence reached from the other side (ISS-1304)',
   },
 ];
 

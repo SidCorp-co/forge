@@ -11,6 +11,7 @@ import {
 import { issueWorkRecordsAt } from '../projects/issue-work-records.js';
 import { evidenceFor, issueRefPattern, type LiveReading } from '../projects/live-reach.js';
 import { liveReadingForRow, projectReleaseRows } from '../projects/live-reading.js';
+import { chainPromotes } from '../projects/release-chain.js';
 import { ageSeconds } from './pulse-folds.js';
 import type {
   PulseCapped,
@@ -137,8 +138,8 @@ export async function readPulseLive(
   thresholds: PulseThresholds,
   now: Date,
 ): Promise<PulseLive> {
-  const releaseRows = (await projectReleaseRows(projectIds)).filter(
-    (r) => r.releaseModel === 'promote',
+  const releaseRows = (await projectReleaseRows(projectIds)).filter((r) =>
+    chainPromotes(r.releaseChain),
   );
   if (releaseRows.length === 0) {
     return { notOnLive: { total: 0, shown: [] }, liveUnmeasured: { total: 0, shown: [] } };

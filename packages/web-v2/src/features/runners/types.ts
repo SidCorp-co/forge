@@ -5,6 +5,13 @@ export type { ProjectGitAccessView, SshConnTestResult } from "@forge/contracts";
 
 /** A row of `GET /api/me/devices` (owner-scoped). */
 export interface DeviceRow {
+	/**
+	 * Whether the signed-in user paired this box. Always true on the owner-scoped
+	 * list and answered per row on the org one, because rename, turn-off and
+	 * revoke are the owner's alone and a control that always 403s is worse than
+	 * no control (ISS-1162).
+	 */
+	ownedByMe: boolean;
 	id: string;
 	name: string;
 	platform: "macos" | "linux" | "windows";
@@ -42,6 +49,21 @@ export interface DeviceRow {
 	/** Non-secret label set when a git push credential was provisioned (ISS-305). */
 	gitCredentialRef: string | null;
 	createdAt: string;
+}
+
+/**
+ * A row of `GET /api/orgs/:orgId/devices` — the organisation's devices, over the
+ * projects this caller can see, whoever paired them (ISS-1162).
+ *
+ * Narrower than `DeviceRow`: `capabilities` and `gate` are a box's own
+ * diagnostics and stay with its owner. `runnerCount` is the bridge between the
+ * two nouns — a runner is one (device, project) binding, so one box stands
+ * behind several of the runners the Overview counts, and `projectNames` holds
+ * one entry per assignment.
+ */
+export interface OrgDeviceRow extends Omit<DeviceRow, "capabilities" | "gate"> {
+	runnerCount: number;
+	projectNames: string[];
 }
 
 /** `POST /api/devices/login/init` response — a fresh pairing code + verify URL. */

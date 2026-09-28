@@ -208,26 +208,58 @@ export function useSaveDescription(id: string) {
   };
 }
 
+type TransitionArgs = {
+  id: string;
+  toStatus: IssueStatus;
+  reason?: string;
+  waitingKind?: WaitingCause;
+  voidQuestions?: string;
+};
+
+/**
+ * ISS-1257 — the ids a terminal move was refused over, when it was refused because
+ * the issue still holds open questions; null for every other failure.
+ */
+export function openQuestionIdsOf(err: unknown): string[] | null {
+  if (!(err instanceof ApiError) || err.code !== "OPEN_QUESTIONS") return null;
+  const ids = (err.details as { openQuestionIds?: unknown } | undefined)?.openQuestionIds;
+  return Array.isArray(ids) ? ids.filter((x): x is string => typeof x === "string") : [];
+}
+
 export function useTransitionIssue() {
   const qc = useQueryClient();
-  const mut = useIssueMutation(
-    (args: { id: string; toStatus: IssueStatus; reason?: string; waitingKind?: WaitingCause }) =>
+  const { toast } = useToast();
+  const mut = useMutation({
+    mutationFn: (args: TransitionArgs) =>
       issuesApi.transition(args.id, args.toStatus, {
         reason: args.reason,
         waitingKind: args.waitingKind,
+        voidQuestions: args.voidQuestions,
       }),
-  );
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["issues"] });
+    },
+  });
   return {
     ...mut,
     mutate: (
-      args: { id: string; toStatus: IssueStatus; reason?: string; waitingKind?: WaitingCause },
-      options?: { onSuccess?: () => void },
+      args: TransitionArgs,
+      options?: { onSuccess?: () => void; onOpenQuestions?: (ids: string[]) => void },
     ) =>
       mut.mutate(args, {
         onSuccess: () => {
           qc.invalidateQueries({ queryKey: ["issue", args.id] });
           qc.invalidateQueries({ queryKey: ["activities", args.id] });
+          qc.invalidateQueries({ queryKey: ["questions", args.id] });
           options?.onSuccess?.();
+        },
+        onError: (err) => {
+          const ids = openQuestionIdsOf(err);
+          if (ids && options?.onOpenQuestions) {
+            options.onOpenQuestions(ids);
+            return;
+          }
+          toast({ title: "Update failed", description: formatApiError(err), tone: "error" });
         },
       }),
   };

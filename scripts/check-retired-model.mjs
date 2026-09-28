@@ -18,6 +18,7 @@ const ALLOW = [
   /^packages\/core\/tests\/integration\/release-axes-migration-ground\.ts$/,
   /^packages\/core\/tests\/integration\/release-axes-migration-e2e\.test\.ts$/,
   /^packages\/core\/tests\/integration\/release-axes-constraints-e2e\.test\.ts$/,
+  /^packages\/core\/tests\/integration\/release-axes-window-e2e\.test\.ts$/,
   /^packages\/core\/src\/prompt\/system\.release-model\.test\.ts$/,
   /^packages\/core\/src\/db\/retired-model-audit\.test\.ts$/,
   /^packages\/core\/src\/projects\/agent-config-schema\.ts$/,
@@ -28,6 +29,12 @@ const ALLOW = [
   /^CHANGELOG\.md$/,
   // This checker names what it hunts.
   /^scripts\/check-retired-model\.mjs$/,
+  // ISS-1311 — the ONE projection allowed to spell the retired axes, and its own test.
+  /^packages\/core\/src\/projects\/release-chain\.ts$/,
+  /^packages\/core\/src\/projects\/release-chain\.test\.ts$/,
+  /^packages\/core\/tests\/integration\/release-chain-migration-ground\.ts$/,
+  /^packages\/core\/tests\/integration\/release-chain-migration-e2e\.test\.ts$/,
+  /^packages\/core\/tests\/integration\/release-chain-constraints-e2e\.test\.ts$/,
 ];
 
 export const RULES = [
@@ -52,6 +59,18 @@ export const RULES = [
     id: 'inline-environment-union',
     re: /["'](?:staging|prod)["']\s*\|\s*["'](?:staging|prod)["']/g,
     why: 'an inline `"staging" | "prod"` union is a private copy of an enum that no longer exists. web-v2 held seven of these importing nothing from contracts, so the contracts change alone broke none of them. Use `BindingRole` and `DeployStage`.',
+  },
+  {
+    id: 'release-model-columns',
+    // `projects.releaseModel`, `row.releaseStrategy`, `release_model` / `live_branch` /
+    // `release_strategy` in a sql template, and the helper the columns were gated by.
+    re: /\bprojects\.(?:releaseModel|liveBranch|releaseStrategy)\b|\brelease_model\b|\blive_branch\b|\brelease_strategy\b|\breadableLiveBranch\b|\breleaseModelGap\b|\bLIVE_BRANCH_REQUIRED\b/g,
+    why: '`release_model`, `live_branch` and `release_strategy` were replaced by the single `projects.release_chain` column in ISS-1311 (ADR 0003): an ordered list whose first entry is where work merges and whose last is live. Nothing type-checks a `sql` template, so a read of one of these matches no row rather than failing. Read the chain — `chainShipsNothing`, `chainPromotes`, `chainLiveBranch`, `chainCrossesByCherryPick` in `projects/release-chain.ts`. The API still ANSWERS `releaseModel`/`liveBranch`/`releaseStrategy`, derived by `retiredReleaseAxes`; that projection is the one place allowed to spell them, and it expires with the forge-plugin issue.',
+  },
+  {
+    id: 'tag-mr-strategy',
+    re: /(['"`])tag-mr\1/g,
+    why: "`tag-mr` was removed by ISS-1311 (ADR 0003): it had no behaviour, no document and no project that declared it, and the migration aborts on a row carrying it rather than rewriting it. A release crosses an edge by `merge-branch` or `cherry-pick`, declared as that entry's `from`.",
   },
   {
     id: 'prod-binding-literal',

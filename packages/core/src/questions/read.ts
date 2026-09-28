@@ -5,7 +5,7 @@
 // latency and nothing else (ISS-964 criterion 12).
 
 import { randomUUID } from 'node:crypto';
-import { and, count, desc, eq, sql } from 'drizzle-orm';
+import { and, count, desc, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, type ProjectMemberRole } from '../db/schema.js';
 import {
@@ -20,6 +20,8 @@ import {
 } from '../db/schema-questions.js';
 import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
 import {
+  type AskAnswer,
+  type AskInput,
   answerQuestion,
   askQuestion,
   type GivenAnswer,
@@ -59,15 +61,16 @@ function seenBy<T extends { steps: QuestionStep[] }>(row: T, role: ProjectMember
 
 /**
  * Ask a question against one issue, as somebody, or `null` when that somebody
- * cannot reach the issue.
+ * cannot reach the issue. The ask writes the question and nothing else: the issue
+ * keeps its status, and an open `human` question is the marker that a person owes
+ * it an answer (ISS-1257).
  */
 export type AskAsInput = {
   userId: string;
   issueId: string;
   prompt: string;
   blockerKind: QuestionBlockerKind;
-  options: QuestionOption[];
-  recommendedOptionId: string;
+  answer: AskAnswer;
   assumed?: Record<string, unknown> | undefined;
   maxRounds?: number | undefined;
   parkDeadlineAt?: Date | undefined;
@@ -75,11 +78,7 @@ export type AskAsInput = {
 };
 
 export async function askAs(args: AskAsInput) {
-  const [issue] = await db
-    .select({ projectId: issues.projectId })
-    .from(issues)
-    .where(eq(issues.id, args.issueId))
-    .limit(1);
+  const issue = await readAskedIssue(args.issueId);
   if (!issue?.projectId) return null;
   const role = await roleOn(issue.projectId, args.userId);
   if (!role) return null;
@@ -88,22 +87,28 @@ export async function askAs(args: AskAsInput) {
       'asking a question writes a row, and this caller is a viewer on the project the issue belongs to',
     );
   }
-  return askQuestion({
+  const ask: AskInput = {
     id: randomUUID(),
     projectId: issue.projectId,
     issueId: args.issueId,
     prompt: args.prompt,
     blockerKind: args.blockerKind,
-    answer: {
-      shape: 'choice',
-      options: args.options,
-      recommendedOptionId: args.recommendedOptionId,
-    },
+    answer: args.answer,
     ...(args.assumed ? { assumed: args.assumed } : {}),
     ...(args.maxRounds === undefined ? {} : { maxRounds: args.maxRounds }),
     ...(args.parkDeadlineAt ? { parkDeadlineAt: args.parkDeadlineAt } : {}),
     ...(args.sensitive ? { sensitive: true } : {}),
-  });
+  };
+  return askQuestion(ask);
+}
+
+async function readAskedIssue(issueId: string) {
+  const [issue] = await db
+    .select({ projectId: issues.projectId })
+    .from(issues)
+    .where(eq(issues.id, issueId))
+    .limit(1);
+  return issue;
 }
 
 /**
@@ -156,12 +161,15 @@ export async function projectQuestionsFor(
   userId: string,
   status?: QuestionStatus,
   page: { limit: number; cursor?: QuestionCursor | undefined } = { limit: 50 },
+  issueless = false,
 ): Promise<ProjectQuestionPage | null> {
   const role = await roleOn(projectId, userId);
   if (!role) return null;
-  const scope = status
-    ? and(eq(agentQuestions.projectId, projectId), eq(agentQuestions.status, status))
-    : eq(agentQuestions.projectId, projectId);
+  const scope = and(
+    eq(agentQuestions.projectId, projectId),
+    status ? eq(agentQuestions.status, status) : undefined,
+    issueless ? isNull(agentQuestions.issueId) : undefined,
+  );
   const after = cursorPredicate(page.cursor);
   const where = after ? and(scope, after) : scope;
 

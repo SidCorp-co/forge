@@ -9,6 +9,8 @@
  * routes.ts` reaches `confirmPendingProdDeploy` through a dynamic `await import()`. The wrapper
  * `runCoolifyDeploy` is forbidden beside the three dispatchers, reaching it being
  * indistinguishable from reaching past it. Non-test files only: a test dispatches nothing.
+ *
+ * @gate-input whole-tree
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
@@ -141,6 +143,10 @@ describe('the key that armed the landing deploy survives nowhere but its own ret
     'packages/core/tests/integration/landing-deploy-key-removed-e2e.test.ts',
     'packages/core/drizzle/migrations/0305_no_code_fires_a_deploy.sql',
     'CHANGELOG.md',
+    // An ADR records the decision that retired the key, for the same reason the changelog does.
+    // `docs/adr/0002` landed at 2164d5b9 naming it, and this case was red on main from that commit
+    // until this one: the PR was docs-only, so `changes` skipped `core` and nothing ran the guard.
+    'docs/adr/0002-the-agent-cuts-the-release-tag.md',
   ]);
 
   it('no file outside the retirement mentions the key', () => {

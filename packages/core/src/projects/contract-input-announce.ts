@@ -4,12 +4,11 @@ export async function announceContractInput(
   projectId: string,
   patch: {
     baseBranch?: unknown;
-    liveBranch?: unknown;
-    releaseModel?: unknown;
+    releaseChain?: unknown;
   },
 ): Promise<void> {
   const moved: string[] = [];
-  for (const field of ['baseBranch', 'liveBranch', 'releaseModel'] as const) {
+  for (const field of ['baseBranch', 'releaseChain'] as const) {
     if (patch[field] !== undefined) moved.push(field);
   }
   if (moved.length === 0) return;
