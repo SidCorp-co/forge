@@ -264,9 +264,14 @@ fn agent_event(
         },
     );
     match (parsed, agent_id) {
-        (crate::daemon::agent_activity::Event::SubagentStarted, _) => {
-            bind_declared(ctl, agent_id, agent_type, session_id)
-        }
+        (crate::daemon::agent_activity::Event::SubagentStarted, _) => bind_declared(
+            ctl,
+            agent_id,
+            agent_type,
+            session_id,
+            at,
+            names.transcript_path.as_deref(),
+        ),
         (crate::daemon::agent_activity::Event::SubagentStopped, Some(child)) => {
             note_subagent_stop(ctl, child, at, names.transcript_path.as_deref())
         }
@@ -688,19 +693,37 @@ fn dispatch_gate_roles(dir: &Path) -> Option<std::collections::BTreeSet<String>>
 }
 
 /// A subagent started: it takes the run its master declared for it.
+///
+/// A start is also the subagent heard from, in a process that is running now,
+/// so an end recorded for the pane it ran in before no longer speaks for it,
+/// and where the lead's hook names its transcript the run keeps that path from
+/// its first turn rather than from its first stop (ISS-1312).
 #[cfg(unix)]
 fn bind_declared(
     ctl: &Arc<Control>,
     agent_id: Option<&str>,
     agent_type: Option<&str>,
     session_id: &str,
+    at_ms: i64,
+    lead: Option<&str>,
 ) {
     let Some(child) = agent_id else { return };
+    let transcript = lead
+        .map(Path::new)
+        .filter(|p| p.is_absolute())
+        .and_then(|p| crate::daemon::transcript_age::child_transcript(p, child))
+        .map(|p| p.to_string_lossy().into_owned());
     let mut held = ctl.ledger.lock().expect("ledger poisoned");
     let Some(led) = held.as_mut() else { return };
+    let heard = |led: &crate::runner::ledger::Ledger, run_id: &str| {
+        if let Err(e) = led.note_subagent_started(run_id, at_ms, transcript.as_deref()) {
+            tracing::warn!("[control] run {run_id}: cannot note that {child} started: {e}");
+        }
+    };
     match led.unbound_run_for_master(session_id, &ctl.boot_id) {
         Ok(Some(run)) => match led.bind_agent(&run.run_id, child) {
             Ok(true) => {
+                heard(led, &run.run_id);
                 ctl.promises
                     .lock()
                     .expect("promises poisoned")
@@ -719,9 +742,12 @@ fn bind_declared(
                 .map(|r| r.map(|run| run.run_id))
                 .map_err(|e| e.to_string()),
         ) {
-            StartKind::Replay(run_id) => tracing::debug!(
-                "[control] subagent {child} is already run {run_id}, so its start is a replay"
-            ),
+            StartKind::Replay(run_id) => {
+                heard(led, &run_id);
+                tracing::debug!(
+                    "[control] subagent {child} is already run {run_id}, so its start is a replay"
+                )
+            }
             StartKind::Undeclared => undeclared_child(ctl, child, agent_type),
             StartKind::Unreadable(e) => unreadable_ledger(ctl, child, &e),
         },
@@ -1207,6 +1233,102 @@ mod tests {
         )
     }
 
+    /// ISS-1312, criteria 16, 19-23 and 29, over this incident's own rows: run
+    /// 85be2c91 (forge-dev ISS-1314) was declared under master session
+    /// 3832432d, its subagent ad5b0350ec22adc17 bound and never stopped, and
+    /// the forge-dev pane was placed again and resumed under a new session. The
+    /// pane was told the run was its own and was refused at all three verbs.
+    #[cfg(unix)]
+    #[test]
+    fn a_resumed_pane_answers_for_the_run_the_session_it_replaced_declared() {
+        const OLD: &str = "3832432d-d554-4de3-a0d7-7531f1debd39";
+        const NEW: &str = "1dc7d61c-0000-4000-8000-000000000000";
+        const PROJECT: &str = "da368b0a-8e21-4763-9d90-8f7b9d0c7115";
+        const RUN: &str = "85be2c91-08e7-40d6-8b42-aa295d3a2e4c";
+        let (ctl, _t, _dir) = declaring_control(NEW, PROJECT);
+        let inherited = {
+            let mut held = ctl.ledger.lock().unwrap();
+            let led = held.as_mut().unwrap();
+            led.create_run_group(crate::runner::ledger::NewRun {
+                run_id: RUN.into(),
+                project_id: PROJECT.into(),
+                master_session_id: OLD.into(),
+                worktree_path: "/home/dev/forge/projects/forge-core/.claude/worktrees/iss-1314-r3"
+                    .into(),
+                boot_id: "boot-a".into(),
+                issue_keys: vec!["ISS-1314".into()],
+            })
+            .unwrap();
+            led.attach_session(RUN, "a44e068d-e3b3-4bb8-a247-84f5c10a5b05")
+                .unwrap();
+            assert!(led.bind_agent(RUN, "ad5b0350ec22adc17").unwrap());
+            led.note_master(PROJECT, "forge-master-forge-dev", None, Some(OLD), "boot-a")
+                .unwrap();
+            let boot = crate::daemon::master::inheritance_boot(None, led, PROJECT, "forge-dev")
+                .expect("an unreadable boot identity falls back to the master row's");
+            assert_eq!(boot, "boot-a");
+            crate::daemon::master::inherited_runs(led, PROJECT, &boot)
+        };
+        let brief = crate::daemon::master::resumed_brief("conv-forge-dev", &inherited);
+        assert!(brief.contains(RUN), "criterion 19: {brief}");
+        {
+            let mut held = ctl.ledger.lock().unwrap();
+            let led = held.as_mut().unwrap();
+            crate::daemon::master::placed_again(
+                led,
+                &inherited,
+                NEW,
+                true,
+                crate::daemon::agent_activity::now_ms(),
+                "forge-dev",
+            );
+            assert_eq!(
+                led.run(RUN).unwrap().unwrap().master_session_id,
+                NEW,
+                "criterion 20"
+            );
+            assert_eq!(led.owe_resume_choices(NEW, "boot-a").unwrap(), 1);
+            let drain = crate::daemon::live_sessions_from(
+                led.unclosed_runs(),
+                "boot-a",
+                |_| true,
+                |_| vec!["ISS-1314".into()],
+            );
+            assert!(drain.is_empty(), "criterion 16: {drain:?}");
+        }
+        let refused = run_declare(&ctl, PROJECT, &["ISS-1400".into()], "/w/other", NEW);
+        assert!(
+            !refused.ok && refused.reason.as_deref().unwrap_or("").contains(RUN),
+            "an unanswered inheritance still holds new work: {refused:?}"
+        );
+        let chose = run_choice(&ctl, RUN, "restart", "its subagent died with the pane", NEW);
+        assert!(chose.ok, "criterion 21: {chose:?}");
+        let closed = run_close(&ctl, RUN, Some("restarting ISS-1314"), NEW);
+        assert!(closed.ok, "criterion 22: {closed:?}");
+        {
+            let held = ctl.ledger.lock().unwrap();
+            let run = held.as_ref().unwrap().run(RUN).unwrap().unwrap();
+            assert_eq!(run.resume_choice.as_deref(), Some("restart"));
+            assert_eq!(run.ended_by.as_deref(), Some("master"));
+        }
+        let again = run_declare(
+            &ctl,
+            PROJECT,
+            &["ISS-1314".into()],
+            "/home/dev/forge/projects/forge-core/.claude/worktrees/iss-1314-r4",
+            NEW,
+        );
+        assert!(again.ok, "criterion 23: {again:?}");
+        let held = ctl.ledger.lock().unwrap();
+        let fresh = held
+            .as_ref()
+            .unwrap()
+            .run(again.job_id.as_deref().unwrap())
+            .unwrap()
+            .unwrap();
+        assert_eq!(fresh.master_session_id, NEW);
+    }
+
     fn asking(role: &str, tool_use: &str) -> crate::daemon::dispatch_gate::Dispatch {
         crate::daemon::dispatch_gate::Dispatch {
             agent_id: None,
@@ -1349,7 +1471,7 @@ mod tests {
 
         // 7. The subagent starts: the row is bound, the promise is released, and
         // the master is back to needing a fresh declaration.
-        bind_declared(&ctl, Some("child-1"), Some("runner"), "sess-a");
+        bind_declared(&ctl, Some("child-1"), Some("runner"), "sess-a", 0, None);
         assert_eq!(
             promised_to(&ctl, &run_id),
             None,
@@ -1410,7 +1532,7 @@ mod tests {
         // Both dispatches were allowed, so two children may start. Exactly one
         // binds, and the other is named rather than quietly losing its work.
         for child in ["child-1", "child-2"] {
-            bind_declared(&restarted, Some(child), Some("runner"), "sess-a");
+            bind_declared(&restarted, Some(child), Some("runner"), "sess-a", 0, None);
         }
         let held = restarted.ledger.lock().unwrap();
         let bound = held.as_ref().unwrap().run_for_agent("child-1").unwrap();
@@ -1444,7 +1566,7 @@ mod tests {
         };
         assert!(dispatch_gate_reply(&ctl, ask.clone(), "sess-a").ok);
 
-        bind_declared(&ctl, Some("child-1"), Some("runner"), "sess-a");
+        bind_declared(&ctl, Some("child-1"), Some("runner"), "sess-a", 0, None);
 
         assert!(
             dispatch_gate_reply(&ctl, ask.clone(), "sess-a").ok,
@@ -1644,6 +1766,8 @@ mod tests {
             Some("child-nobody-declared"),
             Some("runner"),
             "sess-a",
+            0,
+            None,
         );
 
         let (_, undeclared) = crate::daemon::degraded::tally(&dir);
@@ -1669,7 +1793,7 @@ mod tests {
         let dir = ship_roles(&ctl, &["runner", "reviewer"]);
 
         for role in [Some("general-purpose"), Some("Explore"), None] {
-            bind_declared(&ctl, Some("a-search"), role, "sess-a");
+            bind_declared(&ctl, Some("a-search"), role, "sess-a", 0, None);
         }
 
         let (_, undeclared) = crate::daemon::degraded::tally(&dir);
@@ -1713,7 +1837,7 @@ mod tests {
             .expect("declared");
 
         for _ in 0..3 {
-            bind_declared(&ctl, Some("child-1"), Some("runner"), "sess-a");
+            bind_declared(&ctl, Some("child-1"), Some("runner"), "sess-a", 0, None);
         }
 
         let (_, undeclared) = crate::daemon::degraded::tally(&dir);
@@ -1733,7 +1857,7 @@ mod tests {
             .job_id
             .expect("declared");
 
-        bind_declared(&ctl, Some("child-1"), Some("runner"), "sess-a");
+        bind_declared(&ctl, Some("child-1"), Some("runner"), "sess-a", 0, None);
 
         let (_, undeclared) = crate::daemon::degraded::tally(&dir);
         assert_eq!(undeclared.count, 0, "{undeclared:?}");
@@ -2384,7 +2508,7 @@ mod tests {
             assert!(choice.ok, "{:?}", choice.reason);
             // The pre-existing one-unbound-row rule is a separate gate; bind this one so the assertion
             // below is about the resume gate and not about that.
-            bind_declared(&ctl, Some("child-1"), None, "sess-a");
+            bind_declared(&ctl, Some("child-1"), None, "sess-a", 0, None);
 
             let reply = run_declare(&ctl, "proj-1", &["ISS-8".into()], "/w/eight", "sess-a");
             assert!(reply.ok, "{:?}", reply.reason);
@@ -2394,7 +2518,7 @@ mod tests {
             let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
             let first = run_declare(&ctl, "proj-1", &["ISS-7".into()], "/w/seven", "sess-a");
             assert!(first.ok, "{:?}", first.reason);
-            bind_declared(&ctl, Some("child-1"), None, "sess-a");
+            bind_declared(&ctl, Some("child-1"), None, "sess-a", 0, None);
 
             let second = run_declare(&ctl, "proj-1", &["ISS-8".into()], "/w/eight", "sess-a");
 
@@ -2483,7 +2607,7 @@ mod tests {
             let run_id = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a")
                 .job_id
                 .unwrap();
-            bind_declared(&ctl, Some("child-1"), None, "sess-a");
+            bind_declared(&ctl, Some("child-1"), None, "sess-a", 0, None);
             assert_eq!(run_of(&ctl, &run_id).agent_id.as_deref(), Some("child-1"));
             ctl.ledger
                 .lock()
@@ -2521,7 +2645,7 @@ mod tests {
             let run_id = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a")
                 .job_id
                 .unwrap();
-            bind_declared(&ctl, Some("child-1"), None, "sess-a");
+            bind_declared(&ctl, Some("child-1"), None, "sess-a", 0, None);
             let lead = crate::daemon::transcript_age::absolute_fixture("conv.jsonl");
             note_subagent_stop(&ctl, "child-1", 1_000, Some(&lead));
             note_subagent_stop(&ctl, "child-1", 5_000, None);
@@ -2540,7 +2664,7 @@ mod tests {
             let run_id = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a")
                 .job_id
                 .unwrap();
-            bind_declared(&ctl, Some("child-1"), None, "sess-a");
+            bind_declared(&ctl, Some("child-1"), None, "sess-a", 0, None);
             note_subagent_stop(&ctl, "child-1", 1_000, Some("conv.jsonl"));
             let run = run_of(&ctl, &run_id);
             assert_eq!(run.turn_ended_at_ms, Some(1_000));
@@ -2576,11 +2700,11 @@ mod tests {
             let run_a = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a")
                 .job_id
                 .unwrap();
-            bind_declared(&ctl, Some("child-a"), None, "sess-a");
+            bind_declared(&ctl, Some("child-a"), None, "sess-a", 0, None);
             let run_b = run_declare(&ctl, "proj-1", &["ISS-2".into()], "/w/two", "sess-a")
                 .job_id
                 .unwrap();
-            bind_declared(&ctl, Some("child-a"), None, "sess-a");
+            bind_declared(&ctl, Some("child-a"), None, "sess-a", 0, None);
             let held = ctl.ledger.lock().unwrap();
             let led = held.as_ref().unwrap();
             assert_eq!(
@@ -2599,12 +2723,12 @@ mod tests {
             let run_a = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a")
                 .job_id
                 .unwrap();
-            bind_declared(&ctl, Some("child-a"), None, "sess-a");
+            bind_declared(&ctl, Some("child-a"), None, "sess-a", 0, None);
             assert!(run_close(&ctl, &run_a, None, "sess-a").ok);
             let run_b = run_declare(&ctl, "proj-1", &["ISS-2".into()], "/w/two", "sess-a")
                 .job_id
                 .unwrap();
-            bind_declared(&ctl, Some("child-a"), None, "sess-a");
+            bind_declared(&ctl, Some("child-a"), None, "sess-a", 0, None);
             let held = ctl.ledger.lock().unwrap();
             assert!(
                 held.as_ref()
@@ -2621,7 +2745,7 @@ mod tests {
         #[test]
         fn a_subagent_answering_to_no_declared_run_binds_nothing_and_ends_nothing() {
             let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
-            bind_declared(&ctl, Some("stranger"), None, "sess-a");
+            bind_declared(&ctl, Some("stranger"), None, "sess-a", 0, None);
             note_subagent_stop(&ctl, "stranger", 1_790_000_000_000, None);
             assert!(ctl
                 .ledger

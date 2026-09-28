@@ -318,6 +318,9 @@ mod tests {
             turn_ended_at_ms: None,
             agent_transcript: None,
             kept_notice: None,
+            created_at: 0,
+            host_ended_at_ms: None,
+            host_ended_by: None,
         }
     }
 

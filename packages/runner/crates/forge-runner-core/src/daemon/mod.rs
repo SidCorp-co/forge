@@ -194,32 +194,34 @@ fn live_run_sessions() -> Vec<String> {
 
 /// Whether a subagent run reads quiet on its own evidence: its last turn ended
 /// an hour or more ago and nothing but that turn-end's own records, or an
-/// entry left an hour unanswered, was written after it. A restart touches
-/// neither the subagent, which lives in its master's process, nor its tree, so
-/// a quiet run does not hold one. One still working, or one whose transcript
-/// this box cannot read, still does (ISS-1246, ISS-1312).
+/// entry left an hour unanswered, was written after it; or the master pane its
+/// subagent lived in has ended since anything was heard from it. A restart
+/// touches neither the subagent, which lives in its master's process, nor its
+/// tree, so a quiet run does not hold one. One still working, or one whose
+/// transcript this box cannot read, still does (ISS-1246, ISS-1312).
+///
+/// A run declared and never bound is its declaring pane's, so that pane
+/// ending is the end of it too: nothing that pane would have started can bind
+/// it now.
 fn reads_quiet(run: &crate::runner::ledger::Run, now: i64) -> bool {
-    if run.agent_id.is_none() || run.pid.is_some() {
+    if run.pid.is_some() {
         return false;
     }
-    subagent_end::is_quiet(subagent_evidence(run, now))
-}
-
-fn subagent_evidence(run: &crate::runner::ledger::Run, now: i64) -> subagent_end::Evidence {
-    subagent_end::observe(
-        run.turn_ended_at_ms,
-        run.agent_transcript.as_deref().map(std::path::Path::new),
-        now,
-    )
+    let evidence = subagent_end::of_run(run, now);
+    match run.agent_id {
+        Some(_) => subagent_end::is_quiet(evidence),
+        None => matches!(evidence, subagent_end::Evidence::HostEnded { .. }),
+    }
 }
 
 /// Why the drain counts `run` as work a restart would stop, in its own line.
 fn why_held(run: &crate::runner::ledger::Run, now: i64) -> String {
     match (run.pid, run.agent_id.as_deref()) {
         (Some(pid), _) => format!("its process {pid} is alive"),
-        (None, Some(_)) => {
-            subagent_end::held_because(subagent_evidence(run, now), run.agent_transcript.as_deref())
-        }
+        (None, Some(_)) => subagent_end::held_because(
+            subagent_end::of_run(run, now),
+            run.agent_transcript.as_deref(),
+        ),
         (None, None) => "declared, and no subagent or process is bound to it yet".to_string(),
     }
 }
@@ -1708,8 +1710,150 @@ mod tests {
         seeded_run(&mut led, "run-1", "boot-a", None);
         assert_eq!(
             held_line(&led),
-            ["run run-1 (ISS-7): its subagent has not ended a turn"]
+            ["run run-1 (ISS-7): its subagent has not ended a turn since its run was declared 0m ago"],
+            "criterion 25: a first turn says how long it has run"
         );
+    }
+
+    /// ISS-1312, criteria 16 and 29: 85be2c91's shape. Declared, bound, no
+    /// turn-end ever recorded, and the master pane it ran in replaced by a new
+    /// one: the subagent died with that pane and must not hold the restart.
+    #[test]
+    fn a_subagent_whose_master_pane_was_started_again_does_not_hold_the_restart() {
+        let now = agent_activity::now_ms();
+        let mut led = Ledger::open_in_memory().unwrap();
+        seeded_run(&mut led, "run-1", "boot-a", None);
+        assert_eq!(
+            held_line(&led).len(),
+            1,
+            "before the placement it is a first turn"
+        );
+        assert!(led
+            .note_host_ended(
+                "run-1",
+                now - 5 * 60_000,
+                crate::runner::ledger::HOST_PANE_STARTED
+            )
+            .unwrap());
+        assert!(
+            held_line(&led).is_empty(),
+            "a subagent cannot outlive the pane it ran in: {:?}",
+            held_line(&led)
+        );
+    }
+
+    /// Criterion 17, the same with the pane read gone by recovery.
+    #[test]
+    fn a_subagent_whose_master_pane_is_gone_does_not_hold_the_restart() {
+        let now = agent_activity::now_ms();
+        let (led, dir) = a_stopped_subagent_writing(
+            now - 3 * HOUR_MS,
+            Some(now - 3 * HOUR_MS + 60_000),
+            &format!(
+                "{}{}",
+                transcript_age::STOP_TAIL,
+                transcript_age::RESUMED_TAIL
+            ),
+        );
+        assert_eq!(held_line(&led).len(), 1, "a resumed turn holds on its own");
+        assert!(led
+            .note_host_ended("run-1", now - 60_000, crate::runner::ledger::HOST_PANE_GONE)
+            .unwrap());
+        assert!(held_line(&led).is_empty(), "{:?}", held_line(&led));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// A declaration no subagent bound is its declaring pane's, and ends with it.
+    #[test]
+    fn a_declaration_whose_pane_was_started_again_does_not_hold_the_restart() {
+        let now = agent_activity::now_ms();
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(NewRun {
+            run_id: "run-1".into(),
+            project_id: "proj-1".into(),
+            master_session_id: "master-1".into(),
+            worktree_path: std::path::PathBuf::from("/tmp/forge-drain-absent-unbound"),
+            boot_id: "boot-a".into(),
+            issue_keys: vec!["ISS-7".into()],
+        })
+        .unwrap();
+        assert_eq!(
+            held_line(&led),
+            ["run run-1 (ISS-7): declared, and no subagent or process is bound to it yet"]
+        );
+        assert!(led
+            .note_host_ended("run-1", now, crate::runner::ledger::HOST_PANE_STARTED)
+            .unwrap());
+        assert!(held_line(&led).is_empty(), "{:?}", held_line(&led));
+    }
+
+    /// Criterion 18: heard from after the pane ended, a subagent is read as
+    /// it would be with no end recorded, whichever of the three it was heard by.
+    #[test]
+    fn a_subagent_heard_from_after_its_pane_ended_is_read_as_before() {
+        let now = agent_activity::now_ms();
+        let ended = now - 30 * 60_000;
+        let started = crate::runner::ledger::HOST_PANE_STARTED;
+
+        // A turn-end after it: a turn ended 10m ago, inside the bound.
+        let (led, dir) = a_stopped_subagent_writing(
+            now - 10 * 60_000,
+            Some(now - 10 * 60_000 + 213),
+            transcript_age::STOP_TAIL,
+        );
+        led.note_host_ended("run-1", ended, started).unwrap();
+        let held = held_line(&led);
+        assert!(
+            held.len() == 1
+                && (held[0].contains("ended a turn 9m ago")
+                    || held[0].contains("ended a turn 10m ago")),
+            "{held:?}"
+        );
+        let _ = std::fs::remove_dir_all(dir);
+
+        // A transcript write after it, over a stop before it: a resumed turn.
+        let (led, dir) = a_stopped_subagent_writing(
+            now - 2 * HOUR_MS,
+            Some(now - 5 * 60_000),
+            &format!(
+                "{}{}",
+                transcript_age::STOP_TAIL,
+                transcript_age::RESUMED_TAIL
+            ),
+        );
+        led.note_host_ended("run-1", ended, started).unwrap();
+        let held = held_line(&led);
+        assert!(
+            held.len() == 1 && held[0].contains("resumed turn"),
+            "{held:?}"
+        );
+        let _ = std::fs::remove_dir_all(dir);
+
+        // A start after it: the subagent is running again, in its first turn.
+        let mut led = Ledger::open_in_memory().unwrap();
+        seeded_run(&mut led, "run-1", "boot-a", None);
+        led.note_host_ended("run-1", ended, started).unwrap();
+        assert!(held_line(&led).is_empty());
+        led.note_subagent_started("run-1", ended + 1, None).unwrap();
+        let held = held_line(&led);
+        assert!(
+            held.len() == 1 && held[0].contains("has not ended a turn"),
+            "{held:?}"
+        );
+
+        // Nothing but a write from before the end: still over.
+        let (led, dir) = a_stopped_subagent_writing(
+            now - 2 * HOUR_MS,
+            Some(ended - 60_000),
+            &format!(
+                "{}{}",
+                transcript_age::STOP_TAIL,
+                transcript_age::RESUMED_TAIL
+            ),
+        );
+        led.note_host_ended("run-1", ended, started).unwrap();
+        assert!(held_line(&led).is_empty(), "{:?}", held_line(&led));
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
