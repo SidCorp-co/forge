@@ -1792,8 +1792,14 @@ done
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    // cm:guard shares ENV_TEST_LOCK with every `ScopedVar::set("PATH", …)` test: this test
+    // trusts ambient PATH to spawn a real `sh`, and a concurrent test narrowing PATH to its
+    // own scratch dir (UnaskableTmux, RefusingKill, ShimTmux) makes that spawn answer
+    // `NotFound` on whichever thread loses the race — measured once on `runner
+    // (windows-latest)`: "sh must run: Error { kind: NotFound, message: \"program not found\" }".
     #[test]
     fn a_transcript_path_survives_the_shell_tmux_runs_it_through() {
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         for hostile in [
             "/tmp/a b/log",
             "/tmp/it's",
@@ -1961,8 +1967,11 @@ done
         );
     }
 
+    // cm:guard same PATH race as `a_transcript_path_survives_the_shell_tmux_runs_it_through`;
+    // its `cfg` doc-comments the mechanism and the CI failure it produced.
     #[test]
     fn the_mcp_config_path_reaches_the_pane_quoted_and_without_strict() {
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let path =
             std::path::PathBuf::from("/home/o p/config/forge-runner/mcp/forge-master-mcp-x.json");
         let line = pane_argv(Some(&path), None)[2].clone();
