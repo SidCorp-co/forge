@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  cwdOf,
   declarationExit,
   declarationsIn,
-  deepestClimb,
   ENUMERATES_RE,
   judgeDeclarations,
   judgeRun,
   reachesRoot,
+  rootReach,
 } from './whole-tree-gates.mjs';
 
 // Every probe source is assembled from these pieces, so no line of THIS file reads as a climb, an
@@ -41,30 +42,83 @@ describe('reading a declaration', () => {
   });
 });
 
-describe('what a path expression climbs', () => {
-  it('counts a run of dot-dot arguments', () => {
-    expect(deepestClimb(`join(here, ${up(4)})`)).toBe(4);
-  });
-
-  it('counts a literal of dot-dot segments, with or without a tail', () => {
-    const tail = `'${'../'.repeat(3)}contracts/package.json'`;
-    expect(deepestClimb(`resolve(here, '${'../'.repeat(3)}..')`)).toBe(4);
-    expect(deepestClimb(`new URL(${tail}, import.meta.url)`)).toBe(3);
-  });
+describe('where a path expression resolves', () => {
+  // WALKER_PATH sits four directories below the root, in a package two below it.
+  const PKG = { cwd: 'packages/core' };
+  const at = (expr, opts = PKG, path = WALKER_PATH) =>
+    rootReach(path, `const p = ${expr};\n${LIST}(p);`, opts);
+  const tpl = (base, tail) => ['`', '$', '{', base, '}', tail, '`'].join('');
+  const dirnames = (n, inner) =>
+    Array.from({ length: n }).reduce((acc) => `dirname(${acc})`, inner);
 
   it('reaches the root from four deep with four, and not with three', () => {
-    expect(reachesRoot(WALKER_PATH, walker(4))).toBe(true);
-    expect(reachesRoot(WALKER_PATH, walker(3))).toBe(false);
+    expect(reachesRoot(WALKER_PATH, walker(4), PKG)).toBe(true);
+    expect(reachesRoot(WALKER_PATH, walker(3), PKG)).toBe(false);
+  });
+
+  it('reads the two spellings the literal counter caught', () => {
+    expect(at(`new URL('${'../'.repeat(4)}', import.meta.url)`)).not.toBeNull();
+    expect(at(`resolve(import.meta.dirname, '${'../'.repeat(3)}..')`)).not.toBeNull();
+  });
+
+  it('reads a climb from the directory the runner stands in', () => {
+    expect(at(`join(process.cwd(), ${up(2)})`)).toEqual({
+      line: 1,
+      text: `join(process.cwd(), ${up(2)})`,
+    });
+    expect(at(`resolve('${'../'.repeat(1)}..')`)).not.toBeNull();
+    expect(at(`join(process.cwd(), ${up(1)})`)).toBeNull();
+    expect(at('process.cwd()')).toBeNull();
+  });
+
+  it('reads a chain of dirname from the directory and from the file', () => {
+    expect(at(dirnames(4, 'import.meta.dirname'))).not.toBeNull();
+    expect(at(dirnames(3, 'import.meta.dirname'))).toBeNull();
+    expect(at(dirnames(5, 'fileURLToPath(import.meta.url)'))).not.toBeNull();
+    expect(at(dirnames(4, '__filename'))).toBeNull();
+  });
+
+  it('follows a climb split across bindings, a template and a +', () => {
+    const split = [
+      'const here = dirname(fileURLToPath(import.meta.url));',
+      `const pkg = join(here, ${up(2)});`,
+      'const root = dirname(dirname(pkg));',
+      `${LIST}(root);`,
+    ].join('\n');
+    expect(rootReach(WALKER_PATH, split, PKG)?.line).toBe(3);
+    expect(at(tpl('import.meta.dirname', '/../../../..'))).not.toBeNull();
+    expect(at(`__dirname + '/../../../..'`)).not.toBeNull();
+    expect(at(tpl('import.meta.dirname', '/../..'))).toBeNull();
+  });
+
+  it('takes a base it cannot read as the file’s own directory, only where the text climbs', () => {
+    expect(at(`new URL('${'../'.repeat(4)}', discovered())`)).not.toBeNull();
+    expect(at(tpl('discovered()', '/../../../..'))).not.toBeNull();
+    expect(at(`join(discovered(), ${up(4)})`)).not.toBeNull();
+    expect(at(tpl('discovered()', '/fixtures'))).toBeNull();
+    expect(at(`new URL('${'../'.repeat(4)}', 'https://example.com/a/b/c/d/')`)).toBeNull();
+    expect(at(`resolve('/tmp', ${up(1)})`)).toBeNull();
+  });
+
+  it('stands a test the root package holds at the root, so its bare cwd is the root', () => {
+    expect(at('process.cwd()', { cwd: '.' }, 'scripts/lib/walks.test.mjs')).not.toBeNull();
   });
 
   it('reaches the root through git itself', () => {
-    expect(reachesRoot(WALKER_PATH, TOPLEVEL)).toBe(true);
+    expect(reachesRoot(WALKER_PATH, TOPLEVEL, PKG)).toBe(true);
   });
 
   it('knows a listing call from a single read', () => {
     expect(ENUMERATES_RE.test(`${LIST}(dir)`)).toBe(true);
     expect(ENUMERATES_RE.test(LS_FILES)).toBe(true);
     expect(ENUMERATES_RE.test('readFileSync(path)')).toBe(false);
+  });
+
+  it('stands a test in the deepest package directory that holds it', () => {
+    const dirs = ['.', 'packages/core', 'packages/core-extra'];
+    expect(cwdOf(WALKER_PATH, dirs)).toBe('packages/core');
+    expect(cwdOf('packages/core-extra/x.test.ts', dirs)).toBe('packages/core-extra');
+    expect(cwdOf('scripts/lib/x.test.mjs', dirs)).toBe('.');
   });
 });
 
@@ -88,7 +142,19 @@ describe('judging the declarations', () => {
     expect(out.refused).toHaveLength(1);
     expect(out.refused[0].path).toBe(WALKER_PATH);
     expect(out.refused[0].why).toContain(`// ${MARK} whole-tree`);
+    expect(out.refused[0].why).toContain(`line 2 builds \`join(import.meta.dirname, ${up(4)})\``);
     expect(declarationExit(out)).toBe(1);
+  });
+
+  it('resolves process.cwd() in the package the test sits in', () => {
+    const source = `const ROOT = join(process.cwd(), ${up(2)});\n${LIST}(ROOT);`;
+    const files = [{ path: WALKER_PATH, source }];
+    expect(judgeDeclarations({ files, packageDirs: ['.', 'packages/core'] }).refused).toHaveLength(
+      1,
+    );
+    expect(judgeDeclarations({ files, packageDirs: ['.', 'packages/core/src'] }).refused).toEqual(
+      [],
+    );
   });
 
   it('lets an undeclared test through that reaches the root but lists nothing', () => {
@@ -155,5 +221,15 @@ describe('judging the run', () => {
     const collected = { 'packages/core/vitest.config.ts': one };
     const out = judgeRun({ declared: one, collected, executed: { [one[0]]: 0 } });
     expect(out.refused[0].why).toContain('executed no case');
+  });
+
+  it('names a declared file that failed to load as a load failure, carrying the error', () => {
+    const collected = { 'packages/core/vitest.config.ts': one };
+    const loadErrors = { [one[0]]: "Cannot find module './gone.js'" };
+    const out = judgeRun({ declared: one, collected, executed: { [one[0]]: 0 }, loadErrors });
+    expect(out.refused).toHaveLength(1);
+    expect(out.refused[0].why).toBe(
+      "failed to load, so none of its cases ran: Cannot find module './gone.js' — fix what it imports or evaluates at load; the declaration stays",
+    );
   });
 });

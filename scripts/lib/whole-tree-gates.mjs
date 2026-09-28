@@ -1,4 +1,4 @@
-import { posix } from 'node:path';
+import ts from 'typescript';
 
 export const DECLARATION_VALUES = ['whole-tree'];
 
@@ -9,17 +9,30 @@ export const TEST_FILE_RE = /\.(test|spec)\.(ts|tsx|mts|cts|mjs|cjs|js|jsx)$/;
 
 export const SOURCE_FILE_RE = /\.(ts|tsx|mts|cts|mjs|cjs|js|jsx|rs)$/;
 
-/** A run of `'..'` arguments, as `join(here, '..', '..')` spells a climb. */
-const DOTDOT_ARGS_RE = /(['"])\.\.\1(?:\s*,\s*(['"])\.\.\2)*/g;
-
-/** A literal opening with `../`, as `resolve(here, '../../..')` or `new URL('../../x', …)` spells one. */
-const DOTDOT_LITERAL_RE = /(['"`])((?:\.\.\/)+(?:\.\.)?)/g;
-
 const TOPLEVEL_RE = /rev-parse\s+--show-toplevel/;
 
-/** A call that lists a directory's entries, which is what makes a read a walk. */
-export const ENUMERATES_RE =
-  /\b(?:readdirSync|readdir|opendirSync|opendir|globSync|glob)\s*\(|\bls-files\b/;
+/** The calls that list a directory's entries, which is what makes a read a walk. */
+const LISTING_CALLS = new Set([
+  'readdirSync',
+  'readdir',
+  'opendirSync',
+  'opendir',
+  'globSync',
+  'glob',
+]);
+
+export const ENUMERATES_RE = new RegExp(
+  `\\b(?:${[...LISTING_CALLS].join('|')})\\s*\\(|\\bls-files\\b`,
+);
+
+/** Calls whose result names the same place as their first argument. */
+const SAME_PLACE = new Set([
+  'fileURLToPath',
+  'pathToFileURL',
+  'normalize',
+  'realpathSync',
+  'String',
+]);
 
 /** Every declaration the source carries, in order, with the 1-based line each sits on. */
 export function declarationsIn(source) {
@@ -31,31 +44,215 @@ export function declarationsIn(source) {
   return found;
 }
 
-/** The most directories any one path expression in the source climbs from the file's own. */
-export function deepestClimb(source) {
-  let most = 0;
-  for (const m of source.matchAll(DOTDOT_ARGS_RE)) {
-    most = Math.max(most, (m[0].match(/\.\./g) ?? []).length);
+const depthOf = (dir) => (dir === '.' || dir === '' ? 0 : dir.split('/').length);
+
+/** The package directory a runner stands in for this file: the deepest one that contains it. */
+export function cwdOf(file, packageDirs) {
+  let best = '.';
+  for (const dir of packageDirs) {
+    if ((dir === '.' || file.startsWith(`${dir}/`)) && depthOf(dir) > depthOf(best)) best = dir;
   }
-  for (const m of source.matchAll(DOTDOT_LITERAL_RE)) {
-    most = Math.max(most, (m[2].match(/\.\./g) ?? []).length);
+  return best;
+}
+
+function scriptKind(file) {
+  if (/\.(tsx)$/.test(file)) return ts.ScriptKind.TSX;
+  if (/\.(jsx)$/.test(file)) return ts.ScriptKind.JSX;
+  if (/\.(mjs|cjs|js)$/.test(file)) return ts.ScriptKind.JS;
+  return ts.ScriptKind.TS;
+}
+
+const calleeName = (expr) =>
+  ts.isIdentifier(expr) ? expr.text : ts.isPropertyAccessExpression(expr) ? expr.name.text : '';
+
+/** A place: `depth` directories below the root, `file` when its last segment is a file. */
+const place = (depth, file = false) => ({ depth, file });
+
+function walkSegments(from, text) {
+  let depth = from.depth;
+  const segs = text.split(/[\\/]/);
+  for (const seg of segs) {
+    if (seg === '' || seg === '.') continue;
+    depth += seg === '..' ? -1 : 1;
   }
-  return most;
+  return place(depth, !['', '.', '..'].includes(segs.at(-1)));
 }
 
 /**
- * True when a path the source builds reaches the repository root, the one place a walk covers
- * every path. A climb that stops inside `packages/` reads a sibling, which is not this checker's.
+ * Where each expression in a test's source resolves: import.meta.dirname, __dirname,
+ * import.meta.url, __filename and process.cwd() are anchored, and dirname, join, resolve,
+ * new URL, fileURLToPath, a template, a `+` and a const binding carry the place along. A base no
+ * rule reads is taken to be the file's own directory, which is what a climb from it usually is.
  */
-export function reachesRoot(file, source) {
-  if (TOPLEVEL_RE.test(source)) return true;
-  const dir = posix.dirname(file);
-  const depth = dir === '.' ? 0 : dir.split('/').length;
-  return deepestClimb(source) >= depth;
+function resolver(file, source, cwd) {
+  const sf = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, scriptKind(file));
+  const bindings = new Map();
+  const collect = (node) => {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
+      const list = bindings.get(node.name.text) ?? [];
+      list.push(node.initializer);
+      bindings.set(node.name.text, list);
+    }
+    ts.forEachChild(node, collect);
+  };
+  collect(sf);
+  const fileDepth = depthOf(file);
+  const own = place(fileDepth - 1);
+  const cwdPlace = place(depthOf(cwd));
+  const literal = (n) =>
+    ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n) ? n.text : null;
+  const relative = (text) => (text.startsWith('/') || /^[a-z]+:/i.test(text) ? null : text);
+
+  /** A string literal, or a name bound to one and nothing else. */
+  function textOf(node, seen) {
+    const text = literal(node);
+    if (text !== null || !ts.isIdentifier(node) || seen.has(node.text)) return text;
+    const inits = bindings.get(node.text) ?? [];
+    return inits.length === 1 ? literal(inits[0]) : null;
+  }
+
+  function evaluate(node, seen = new Set()) {
+    if (!node) return null;
+    if (
+      ts.isParenthesizedExpression(node) ||
+      ts.isAsExpression(node) ||
+      ts.isNonNullExpression(node) ||
+      ts.isSatisfiesExpression?.(node)
+    ) {
+      return evaluate(node.expression, seen);
+    }
+    const text = literal(node);
+    if (text !== null) return relative(text) === null ? null : walkSegments(cwdPlace, text);
+    if (ts.isIdentifier(node)) {
+      if (node.text === '__dirname') return own;
+      if (node.text === '__filename') return place(fileDepth, true);
+      if (seen.has(node.text)) return null;
+      const next = new Set(seen).add(node.text);
+      const found = (bindings.get(node.text) ?? []).map((init) => evaluate(init, next));
+      return shallowest(found);
+    }
+    if (ts.isPropertyAccessExpression(node)) {
+      if (ts.isMetaProperty(node.expression)) {
+        if (node.name.text === 'dirname') return own;
+        if (node.name.text === 'filename' || node.name.text === 'url')
+          return place(fileDepth, true);
+        return null;
+      }
+      if (['pathname', 'href'].includes(node.name.text)) return evaluate(node.expression, seen);
+      return null;
+    }
+    if (ts.isCallExpression(node)) return evaluateCall(node, seen);
+    if (ts.isNewExpression(node) && calleeName(node.expression) === 'URL') {
+      const [spec, base] = node.arguments ?? [];
+      const specText = spec ? textOf(spec, seen) : null;
+      if (!base || specText === null || relative(specText) === null) return null;
+      if (literal(base) !== null) return null;
+      const from = evaluate(base, seen) ?? place(fileDepth, true);
+      return walkSegments(from.file ? place(from.depth - 1) : from, specText);
+    }
+    if (ts.isTemplateExpression(node)) {
+      if (node.head.text !== '' || node.templateSpans.length !== 1) return null;
+      const [span] = node.templateSpans;
+      return climbFrom(span.expression, span.literal.text, seen);
+    }
+    if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+      const tail = literal(node.right);
+      return tail === null ? null : climbFrom(node.left, tail, seen);
+    }
+    return null;
+  }
+
+  /** `${base}<tail>` or `base + '<tail>'`: a base no rule reads counts as the file's own directory
+   * only where the tail climbs, since that is when the text is a path being built. */
+  function climbFrom(baseNode, tail, seen) {
+    const from = evaluate(baseNode, seen);
+    if (from) return walkSegments(place(from.depth), tail);
+    return /(^|[\\/])\.\.([\\/]|$)/.test(tail) ? walkSegments(own, tail) : null;
+  }
+
+  function evaluateCall(node, seen) {
+    const name = calleeName(node.expression);
+    const args = node.arguments;
+    if (name === 'cwd' && ts.isPropertyAccessExpression(node.expression)) return cwdPlace;
+    if (SAME_PLACE.has(name)) return evaluate(args[0], seen);
+    if (name === 'toString' && ts.isPropertyAccessExpression(node.expression)) {
+      return evaluate(node.expression.expression, seen);
+    }
+    if (name === 'dirname') {
+      const from = evaluate(args[0], seen) ?? place(fileDepth);
+      return place(from.depth - 1);
+    }
+    if (name !== 'join' && name !== 'resolve') return null;
+    if (args.length === 0) return name === 'resolve' ? cwdPlace : null;
+    let at = null;
+    for (const [i, arg] of args.entries()) {
+      const text = textOf(arg, seen);
+      if (text !== null) {
+        if (relative(text) === null) return null;
+        at = walkSegments(at ?? cwdPlace, text);
+        continue;
+      }
+      const value = evaluate(arg, seen);
+      if (value && (i === 0 || name === 'resolve')) at = place(value.depth);
+      else if (i === 0) at = own;
+      else return null;
+    }
+    return at;
+  }
+
+  return { sf, evaluate };
+}
+
+function shallowest(values) {
+  let best = null;
+  for (const v of values) if (v && (best === null || v.depth < best.depth)) best = v;
+  return best;
+}
+
+/**
+ * The first expression in the source that resolves to the repository root or above it, the one
+ * place a walk covers every path, as `{ line, text }`, or null. `cwd` is the directory a runner
+ * stands in for this file, which is where `process.cwd()` and a bare relative path resolve.
+ */
+export function rootReach(file, source, { cwd = '.' } = {}) {
+  const top = source.match(TOPLEVEL_RE);
+  if (top) return { line: source.slice(0, top.index).split('\n').length, text: top[0] };
+  const { sf, evaluate } = resolver(file, source, cwd);
+  let hit = null;
+  const visit = (node) => {
+    if (hit) return;
+    if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) return;
+    const pathy =
+      ts.isCallExpression(node) ||
+      ts.isNewExpression(node) ||
+      ts.isTemplateExpression(node) ||
+      ts.isBinaryExpression(node) ||
+      (ts.isPropertyAccessExpression(node) && ts.isMetaProperty(node.expression));
+    const listed =
+      ts.isCallExpression(node) && LISTING_CALLS.has(calleeName(node.expression))
+        ? node.arguments[0]
+        : null;
+    for (const candidate of [pathy ? node : null, listed]) {
+      const at = candidate && evaluate(candidate);
+      if (at && at.depth <= 0) {
+        const line = sf.getLineAndCharacterOfPosition(candidate.getStart(sf)).line + 1;
+        hit = { line, text: candidate.getText(sf).replace(/\s+/g, ' ') };
+        return;
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return hit;
+}
+
+/** True when a path the source builds resolves to the repository root. */
+export function reachesRoot(file, source, options) {
+  return rootReach(file, source, options) !== null;
 }
 
 /** Which of `[{ path, source }]` declare a whole-tree input, and each refused, with its remedy. */
-export function judgeDeclarations({ files }) {
+export function judgeDeclarations({ files, packageDirs = ['.'] }) {
   const declared = [];
   const refused = [];
   let tests = 0;
@@ -64,11 +261,15 @@ export function judgeDeclarations({ files }) {
     if (isTest) tests++;
     const found = declarationsIn(source);
     if (found.length === 0) {
-      if (isTest && reachesRoot(path, source) && ENUMERATES_RE.test(source)) {
+      const reach =
+        isTest && ENUMERATES_RE.test(source)
+          ? rootReach(path, source, { cwd: cwdOf(path, packageDirs) })
+          : null;
+      if (reach) {
         refused.push({
           path,
           why:
-            'builds a path to the repository root and lists a directory, so its input is the ' +
+            `line ${reach.line} builds \`${reach.text}\`, which resolves to the repository root, and it lists a directory, so its input is the ` +
             'whole tree and not the paths its job is selected by — add a line `// @gate-input whole-tree` (or ' +
             '` * @gate-input whole-tree` in its opening docblock) so it runs on every change',
         });
@@ -100,9 +301,10 @@ export function judgeDeclarations({ files }) {
 /**
  * What a run of the declared files proves: every one collected by some configuration, and every
  * one executing at least one case. `collected` maps a configuration to the declared files it
- * collects; `executed` maps a file to the number of cases that passed or failed in it.
+ * collects; `executed` maps a file to the number of cases that passed or failed in it;
+ * `loadErrors` maps a file whose suite errored before recording any case to vitest's message.
  */
-export function judgeRun({ declared, collected, executed }) {
+export function judgeRun({ declared, collected, executed, loadErrors = {} }) {
   const reached = new Set(Object.values(collected).flat());
   const refused = [];
   for (const path of declared) {
@@ -110,6 +312,11 @@ export function judgeRun({ declared, collected, executed }) {
       refused.push({
         path,
         why: 'no vitest configuration collects it, so declaring it runs nothing — bring it into a config’s include list',
+      });
+    } else if (path in loadErrors && !(executed[path] > 0)) {
+      refused.push({
+        path,
+        why: `failed to load, so none of its cases ran: ${loadErrors[path]} — fix what it imports or evaluates at load; the declaration stays`,
       });
     } else if (!(executed[path] > 0)) {
       refused.push({
