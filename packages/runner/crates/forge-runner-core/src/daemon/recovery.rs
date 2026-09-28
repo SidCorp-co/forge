@@ -12,7 +12,7 @@ use crate::daemon::run_exit::{self, Reported, Verdict};
 use crate::daemon::{subagent_end, transcript_age};
 use crate::error::Result;
 use crate::runner::close_loop::{self, CloseState, LeaseKeeper, SessionReader};
-use crate::runner::ledger::{Ledger, Liveness, Run};
+use crate::runner::ledger::{Ledger, Liveness, Run, HOST_PANE_GONE, HOST_PANE_STARTED};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -101,6 +101,28 @@ pub struct Recovered {
     /// The box may end this run itself, for the cause named.
     pub owed_exit: Option<run_exit::ExitCause>,
     pub owed_death_report: bool,
+    /// The run's subagent is gone because the master pane it ran in is, and
+    /// how that was seen, which is what its ended row says rather than that a
+    /// process of its own is gone (ISS-1312).
+    pub host: Option<HostEnd>,
+}
+
+/// How the master pane a subagent ran in was seen to end.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HostEnd {
+    /// The registry names the pane and tmux has no such pane.
+    PaneGone,
+    /// This box started a new master pane for the project in its place.
+    PaneStarted,
+}
+
+impl HostEnd {
+    fn from_wire(by: Option<&str>) -> Self {
+        match by {
+            Some(HOST_PANE_STARTED) => HostEnd::PaneStarted,
+            _ => HostEnd::PaneGone,
+        }
+    }
 }
 
 impl Recovered {
@@ -110,6 +132,12 @@ impl Recovered {
         if self.issues_over {
             "every issue this run holds has reached a terminal status at core, so nothing \
              further will be done on any of them"
+        } else if self.host == Some(HostEnd::PaneGone) {
+            "its master's pane is gone, and its subagent ran inside that pane's process, so it is \
+             gone too; core's session row is terminal"
+        } else if self.host == Some(HostEnd::PaneStarted) {
+            "its master's pane was started again, and its subagent, which ran inside the pane \
+             before it, has not been heard from since; core's session row is terminal"
         } else if self.unanswered && self.clock_alone {
             "no master on this box answers for it and core's session row has been terminal for \
              the whole bound; no readable transcript was recorded, so the clock alone decided"
@@ -131,7 +159,7 @@ pub async fn reconcile(
     watch: RunWatch<'_>,
 ) -> Result<Vec<Recovered>> {
     let mut out = Vec::new();
-    for run in ledger.unclosed_runs()? {
+    for mut run in ledger.unclosed_runs()? {
         if run.is_parked_on_human() {
             if masters.state(&run.master_session_id).await != MasterPresence::Alive {
                 if let Some(project) = run.project_id.as_deref() {
@@ -152,7 +180,23 @@ pub async fn reconcile(
         let master = masters.state(&run.master_session_id).await;
         let dead_in_the_ledger =
             matches!(Ledger::liveness(&run, boot_id, pid_refuted), Liveness::Dead);
-        let agent_gone = dead_in_the_ledger || master == MasterPresence::Gone;
+        // A subagent shares its master's process, so a pane read gone is the
+        // end of the subagent too, and it goes on the row for the drain,
+        // which reads the ledger and not this registry (ISS-1312).
+        if run.pid.is_none() && master == MasterPresence::Gone && run.host_ended_at_ms.is_none() {
+            let at = now_ms();
+            if ledger.note_host_ended(&run.run_id, at, HOST_PANE_GONE)? {
+                run.host_ended_at_ms = Some(at);
+                run.host_ended_by = Some(HOST_PANE_GONE.to_string());
+            }
+        }
+        let host = (run.pid.is_none()
+            && matches!(
+                subagent_end::of_run(&run, now_ms()),
+                subagent_end::Evidence::HostEnded { .. }
+            ))
+        .then(|| HostEnd::from_wire(run.host_ended_by.as_deref()));
+        let agent_gone = dead_in_the_ledger || master == MasterPresence::Gone || host.is_some();
         let orphaned =
             run.boot_id != boot_id || dead_in_the_ledger || master != MasterPresence::Alive;
         // A subagent run under a live master is kept, and what ends that keep
@@ -217,6 +261,7 @@ pub async fn reconcile(
                     standing_said: false,
                     owed_exit: Some(cause),
                     owed_death_report: false,
+                    host: None,
                 });
                 continue;
             }
@@ -272,6 +317,10 @@ pub async fn reconcile(
         if let Some(over_ms) = unanswered.filter(|_| announce) {
             say_why_released(ledger, &run, over_ms);
         }
+        let host = host.filter(|_| !dead_in_the_ledger);
+        if let Some(how) = host.filter(|_| owed_release && run.release_refused_at.is_none()) {
+            say_why_released_host(ledger, &run, how);
+        }
         let owed_death_report = agent_gone
             && run.ended_by.is_none()
             && run.boot_id == boot_id
@@ -317,6 +366,7 @@ pub async fn reconcile(
             standing_said,
             owed_exit: None,
             owed_death_report,
+            host: host.filter(|_| !issues_over),
         });
     }
     Ok(out)
@@ -509,6 +559,57 @@ fn say_why_released(ledger: &Ledger, run: &Run, over_ms: i64) {
     );
 }
 
+/// Say once, on the sweep that first owes it, that a subagent run is being
+/// released because the master pane it ran in ended, and which way that was
+/// seen. Latched on the same word as [`say_why_released`], since the two never
+/// both speak for one release.
+fn say_why_released_host(ledger: &Ledger, run: &Run, how: HostEnd) {
+    match ledger.note_standing(&run.run_id, RELEASE_SAID) {
+        Ok(true) => {}
+        Ok(false) => return,
+        Err(e) => {
+            tracing::warn!(
+                "[recovery] run {}: cannot record why it is being released: {e}",
+                run.run_id
+            );
+            return;
+        }
+    }
+    let issues = ledger
+        .issues(&run.run_id)
+        .map(|m| {
+            m.iter()
+                .map(|i| i.issue_key.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        })
+        .unwrap_or_default();
+    tracing::warn!("{}", host_release_line(run, &issues, how, now_ms()));
+}
+
+/// The line [`say_why_released_host`] says, naming which way the pane ended.
+fn host_release_line(run: &Run, issues: &str, how: HostEnd, now: i64) -> String {
+    let ago = run
+        .host_ended_at_ms
+        .map_or(0, |at| now.saturating_sub(at) / 60_000);
+    let seen = match how {
+        HostEnd::PaneGone => format!("the master pane its subagent ran in is gone ({ago}m ago)"),
+        HostEnd::PaneStarted => format!(
+            "a new master pane was started {ago}m ago in place of the one its subagent ran in"
+        ),
+    };
+    format!(
+        "[recovery] run {} ({issues}): {seen}, and nothing has been heard from its subagent since, \
+         so it ended with that pane (it answered to {}); core has called its session over — \
+         releasing {} now. Its commits are kept before the checkout goes; a release that refuses \
+         says why next, and is decided after {}s",
+        run.run_id,
+        run.master_session_id,
+        run.worktree_path.display(),
+        crate::runner::terminate::RELEASE_GRACE_SECS
+    )
+}
+
 /// Why an orphaned run nothing can close this sweep is still standing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Standing {
@@ -696,7 +797,7 @@ fn say_standing(
 /// finished or cannot be read is still being kept, and what ends it.
 fn say_why_kept(ledger: &mut Ledger, run: &Run, now: i64) {
     let path = run.agent_transcript.as_deref();
-    let evidence = subagent_end::observe(run.turn_ended_at_ms, path.map(Path::new), now);
+    let evidence = subagent_end::of_run(run, now);
     let Some(notice) = subagent_end::notice(evidence) else {
         return;
     };
@@ -725,7 +826,9 @@ fn say_why_kept(ledger: &mut Ledger, run: &Run, now: i64) {
             "its subagent ended a turn {}m ago and has written nothing since",
             silent_ms / 60_000
         ),
-        subagent_end::Evidence::Unanswered { .. } => subagent_end::held_because(evidence, path),
+        subagent_end::Evidence::Unanswered { .. } | subagent_end::Evidence::HostEnded { .. } => {
+            subagent_end::held_because(evidence, path)
+        }
         _ => format!(
             "its subagent ended a turn and this box cannot read its transcript ({}), so it cannot tell whether it resumed",
             path.unwrap_or("no path was recorded")
@@ -2254,7 +2357,8 @@ mod tests {
     fn no_two_writers_of_kept_notice_share_a_value() {
         use crate::daemon::subagent_end::Evidence;
         let evidence = [
-            Evidence::NoTurnEnd,
+            Evidence::NoTurnEnd { since_ms: 0 },
+            Evidence::HostEnded { silent_ms: 0 },
             Evidence::Resumed { silent_ms: 0 },
             Evidence::AwaitingReply { silent_ms: 0 },
             Evidence::Recent { silent_ms: 0 },
@@ -2266,7 +2370,8 @@ mod tests {
         for e in evidence {
             // A new state fails to compile here until it is listed above.
             match e {
-                Evidence::NoTurnEnd
+                Evidence::NoTurnEnd { .. }
+                | Evidence::HostEnded { .. }
                 | Evidence::Resumed { .. }
                 | Evidence::AwaitingReply { .. }
                 | Evidence::Recent { .. }
@@ -2359,8 +2464,32 @@ mod tests {
             "a subagent runs inside its master's process and cannot outlive the pane: {r:?}"
         );
         assert!(
-            !r.unanswered && r.release_reason().contains("process is gone"),
-            "a pane observed gone is an observation, and its reason says so: {r:?}"
+            !r.unanswered
+                && r.release_reason().contains("master's pane is gone")
+                && !r.release_reason().contains("process is gone"),
+            "criterion 28: a pane observed gone is an observation, and the ended row says it was \
+             the pane, not a process of the run's own: {r:?}"
+        );
+        assert_eq!(r.host, Some(HostEnd::PaneGone));
+        let run = led.run("run-1").unwrap().unwrap();
+        assert_eq!(
+            run.host_ended_by.as_deref(),
+            Some(HOST_PANE_GONE),
+            "criterion 17: the pane read gone goes on the row, where the drain reads it"
+        );
+        assert_eq!(
+            kept(&led).as_deref(),
+            Some(RELEASE_SAID),
+            "criterion 27: the release is said once, latched on the row"
+        );
+        let line = host_release_line(&run, "ISS-1135", HostEnd::PaneGone, now_ms());
+        assert!(
+            line.contains("is gone") && line.contains("releasing"),
+            "{line}"
+        );
+        assert!(
+            !led.note_standing("run-1", RELEASE_SAID).unwrap(),
+            "the latch stands, so a second sweep says nothing"
         );
     }
 
@@ -2374,9 +2503,9 @@ mod tests {
             .expect("owed");
         assert!(r.owed_release, "{r:?}");
         assert_eq!(
-            kept(&led),
-            None,
-            "nothing is said about keeping a run the box is giving back"
+            kept(&led).as_deref(),
+            Some(RELEASE_SAID),
+            "nothing is said about keeping a run the box is giving back, and its release is said"
         );
     }
 
@@ -2453,6 +2582,104 @@ mod tests {
             .build()
             .unwrap()
             .block_on(f)
+    }
+
+    /// ISS-1312, criteria 24, 27 and 28: 85be2c91's shape under a
+    /// cold-started successor. Bound, never stopped, declared under a session
+    /// no pane on this box answers for, and the pane it ran in replaced. Core
+    /// has just called the session over: no bound is waited out, because
+    /// nothing is being concluded from a silence.
+    #[test]
+    fn a_first_turn_subagent_whose_pane_was_started_again_is_released_once_core_calls_it_over() {
+        let scratch = Scratch::new("pane-started");
+        let (mut led, _wt, _transcript) = a_subagent_run(&scratch);
+        led.backdate_session_terminal("run-1", now_ms() / 1000)
+            .unwrap();
+        assert!(led
+            .note_host_ended("run-1", now_ms() - 5 * MIN_MS, HOST_PANE_STARTED)
+            .unwrap());
+        let first = logged_while(|| {
+            block_on(async {
+                let r = sweep(&mut led, &NoRegistryEntry, &Beats::default())
+                    .await
+                    .expect("answered");
+                assert!(r.owed_release, "criterion 24: {r:?}");
+                assert_eq!(r.host, Some(HostEnd::PaneStarted), "{r:?}");
+                assert!(
+                    r.release_reason().contains("started again")
+                        && !r.release_reason().contains("process is gone")
+                        && !r.release_reason().contains("no master on this box answers"),
+                    "criterion 28: {}",
+                    r.release_reason()
+                );
+            })
+        });
+        assert_eq!(
+            first
+                .matches("a new master pane was started 5m ago")
+                .count(),
+            1,
+            "criterion 27: {first}"
+        );
+        let second = logged_while(|| {
+            block_on(async {
+                sweep(&mut led, &NoRegistryEntry, &Beats::default()).await;
+            })
+        });
+        assert!(
+            !second.contains("a new master pane was started"),
+            "said once, not every sweep: {second}"
+        );
+    }
+
+    /// Criterion 14 holds apart from 24: with no end of its pane recorded, a
+    /// first-turn subagent nobody answers for still waits out the bound.
+    #[tokio::test]
+    async fn without_its_pane_ending_a_first_turn_subagent_nobody_answers_for_waits_the_bound() {
+        let scratch = Scratch::new("pane-unknown");
+        let (mut led, _wt, _transcript) = a_subagent_run(&scratch);
+        led.backdate_session_terminal("run-1", now_ms() / 1000)
+            .unwrap();
+        let r = sweep(&mut led, &NoRegistryEntry, &Beats::default())
+            .await
+            .expect("answered");
+        assert!(!r.owed_release && r.host.is_none(), "{r:?}");
+    }
+
+    /// A subagent started again after its pane ended is its successor's work,
+    /// and nothing about the old pane releases it.
+    #[tokio::test]
+    async fn a_subagent_started_after_its_pane_ended_is_not_released_for_that_end() {
+        let scratch = Scratch::new("pane-restarted");
+        let (mut led, _wt, _transcript) = a_subagent_run(&scratch);
+        led.backdate_session_terminal("run-1", now_ms() / 1000)
+            .unwrap();
+        let ended = now_ms() - 5 * MIN_MS;
+        led.note_host_ended("run-1", ended, HOST_PANE_STARTED)
+            .unwrap();
+        led.note_subagent_started("run-1", ended + 1, None).unwrap();
+        let run = led.run("run-1").unwrap().unwrap();
+        assert_eq!((run.host_ended_at_ms, run.host_ended_by), (None, None));
+        let r = sweep(&mut led, &NoRegistryEntry, &Beats::default())
+            .await
+            .expect("answered");
+        assert!(!r.owed_release && r.host.is_none(), "{r:?}");
+    }
+
+    /// Criterion 4's twin for 16: a successor that inherited a dead subagent
+    /// keeps it, and is told once why.
+    #[tokio::test]
+    async fn a_live_successor_keeps_a_run_whose_subagent_ended_with_the_pane_before_it() {
+        let scratch = Scratch::new("pane-successor");
+        let (mut led, wt, _transcript) = a_subagent_run(&scratch);
+        led.note_host_ended("run-1", now_ms() - 5 * MIN_MS, HOST_PANE_STARTED)
+            .unwrap();
+        let r = sweep(&mut led, &master_alive(), &Beats::default()).await;
+        assert_still_held(&led, &r, &wt, "the pane that inherited it decides");
+        assert_eq!(kept(&led).as_deref(), Some("host-ended"));
+        let r = sweep(&mut led, &master_alive(), &Beats::default()).await;
+        assert_still_held(&led, &r, &wt, "a second sweep");
+        assert!(!led.note_kept("run-1", "host-ended").unwrap(), "said once");
     }
 
     #[tokio::test]

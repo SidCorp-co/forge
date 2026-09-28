@@ -20,14 +20,21 @@ use std::time::Duration;
 
 use crate::daemon::run_exit::RUN_SILENT_BEFORE_EXIT;
 use crate::daemon::transcript_age::{self, Newest};
+use crate::runner::ledger::Run;
 
 /// Silence after a turn-end past which a subagent run reads as quiet.
 pub const SUBAGENT_QUIET: Duration = RUN_SILENT_BEFORE_EXIT;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Evidence {
-    /// No turn-end is recorded, so the subagent is taken to be in its first turn.
-    NoTurnEnd,
+    /// No turn-end is recorded, so the subagent is taken to be in its first
+    /// turn. `since_ms` is since its run was declared.
+    NoTurnEnd { since_ms: i64 },
+    /// The process the subagent lived in ended `silent_ms` ago, and nothing has
+    /// been heard from the subagent since: its master's pane was read gone, or
+    /// this box started a new one. A subagent cannot outlive the process it
+    /// runs in, so whatever turn it was in ended then (ISS-1312).
+    HostEnded { silent_ms: i64 },
     /// The newest entry after the last stop is a turn's own: a turn resumed,
     /// and its end has not been heard. `silent_ms` is since that entry.
     Resumed { silent_ms: i64 },
@@ -52,18 +59,22 @@ pub enum Evidence {
     TailUnreadable { silent_ms: i64 },
 }
 
-/// `turn_ended_at` and `written_at` are wall-clock ms: the last `SubagentStop`
-/// and the newest write to the subagent's own transcript. `newest` is what that
-/// transcript's newest entry is, `None` where it could not be read; it is read
-/// only where the write follows the stop.
+/// `declared_at`, `turn_ended_at` and `written_at` are wall-clock ms: when the
+/// run was declared, the last `SubagentStop` and the newest write to the
+/// subagent's own transcript. `newest` is what that transcript's newest entry
+/// is, `None` where it could not be read; it is read only where the write
+/// follows the stop.
 pub fn read(
+    declared_at: i64,
     turn_ended_at: Option<i64>,
     written_at: Option<i64>,
     newest: Option<Newest>,
     now: i64,
 ) -> Evidence {
     let Some(stop) = turn_ended_at else {
-        return Evidence::NoTurnEnd;
+        return Evidence::NoTurnEnd {
+            since_ms: now.saturating_sub(declared_at),
+        };
     };
     let Some(written) = written_at else {
         return Evidence::Unreadable;
@@ -108,8 +119,37 @@ pub fn read(
     }
 }
 
+/// What `run`'s own evidence says, the one reading the drain and recovery both
+/// take. An end of the process its subagent lived in speaks first, unless the
+/// subagent has been heard from since: a turn-end or a transcript write later
+/// than it, or a start, which clears it on the row.
+pub fn of_run(run: &Run, now: i64) -> Evidence {
+    let transcript = run.agent_transcript.as_deref().map(Path::new);
+    if let Some(ended) = run.host_ended_at_ms {
+        let heard = run
+            .turn_ended_at_ms
+            .max(transcript.and_then(transcript_age::written_at));
+        if heard.is_none_or(|h| h <= ended) {
+            return Evidence::HostEnded {
+                silent_ms: now.saturating_sub(ended),
+            };
+        }
+    }
+    observe(
+        run.created_at.saturating_mul(1000),
+        run.turn_ended_at_ms,
+        transcript,
+        now,
+    )
+}
+
 /// [`read`], with the transcript at `transcript` read for it.
-pub fn observe(turn_ended_at: Option<i64>, transcript: Option<&Path>, now: i64) -> Evidence {
+pub fn observe(
+    declared_at: i64,
+    turn_ended_at: Option<i64>,
+    transcript: Option<&Path>,
+    now: i64,
+) -> Evidence {
     let written = transcript.and_then(transcript_age::written_at);
     let after_stop = matches!((turn_ended_at, written), (Some(stop), Some(w)) if w > stop);
     let newest = if after_stop {
@@ -117,14 +157,14 @@ pub fn observe(turn_ended_at: Option<i64>, transcript: Option<&Path>, now: i64) 
     } else {
         None
     };
-    read(turn_ended_at, written, newest, now)
+    read(declared_at, turn_ended_at, written, newest, now)
 }
 
 /// Whether a subagent in this state is not work a daemon restart would stop.
 pub fn is_quiet(evidence: Evidence) -> bool {
     matches!(
         evidence,
-        Evidence::Quiet { .. } | Evidence::Unanswered { .. }
+        Evidence::Quiet { .. } | Evidence::Unanswered { .. } | Evidence::HostEnded { .. }
     )
 }
 
@@ -134,12 +174,13 @@ pub fn is_quiet(evidence: Evidence) -> bool {
 /// (`recovery::tests::no_two_writers_of_kept_notice_share_a_value`).
 pub fn notice(evidence: Evidence) -> Option<&'static str> {
     match evidence {
-        Evidence::NoTurnEnd
+        Evidence::NoTurnEnd { .. }
         | Evidence::Resumed { .. }
         | Evidence::AwaitingReply { .. }
         | Evidence::Recent { .. } => None,
         Evidence::Quiet { .. } => Some("quiet"),
         Evidence::Unanswered { .. } => Some("no-reply"),
+        Evidence::HostEnded { .. } => Some("host-ended"),
         Evidence::Unreadable | Evidence::TailUnreadable { .. } => Some("unreadable"),
     }
 }
@@ -150,7 +191,15 @@ pub fn held_because(evidence: Evidence, transcript: Option<&str>) -> String {
     let bound = SUBAGENT_QUIET.as_secs() / 60;
     let path = transcript.unwrap_or("no path was recorded");
     match evidence {
-        Evidence::NoTurnEnd => "its subagent has not ended a turn".to_string(),
+        Evidence::NoTurnEnd { since_ms } => format!(
+            "its subagent has not ended a turn since its run was declared {}m ago",
+            since_ms / 60_000
+        ),
+        Evidence::HostEnded { silent_ms } => format!(
+            "the master pane its subagent ran in ended {}m ago, and nothing has been heard from \
+             its subagent since",
+            silent_ms / 60_000
+        ),
         Evidence::Resumed { silent_ms } => format!(
             "its subagent's transcript has an entry written {}m ago, after its last turn-end, that is \
              neither that turn-end's own record nor one awaiting a reply, so a resumed turn is taken to be running",
@@ -194,25 +243,39 @@ mod tests {
     /// How long after the stamp the stop hooks' records landed on ISS-1312's
     /// two runs: 213 ms and 120 ms.
     const HOOKS_LAND: i64 = 213;
+    /// When the run under test was declared: an hour before its stop.
+    const DECLARED: i64 = STOP - 60 * MIN;
 
     #[test]
     fn a_run_that_never_ended_a_turn_is_working() {
-        assert_eq!(read(None, None, None, STOP), Evidence::NoTurnEnd);
+        assert_eq!(
+            read(DECLARED, None, None, None, STOP),
+            Evidence::NoTurnEnd { since_ms: 60 * MIN }
+        );
         assert_eq!(
             read(
+                DECLARED,
                 None,
                 Some(STOP),
                 Some(Newest::StopRecord),
                 STOP + 10 * WINDOW
             ),
-            Evidence::NoTurnEnd
+            Evidence::NoTurnEnd {
+                since_ms: STOP + 10 * WINDOW - DECLARED
+            }
         );
     }
 
     #[test]
     fn a_turn_ended_moments_ago_is_not_quiet() {
         assert_eq!(
-            read(Some(STOP), Some(STOP), Some(Newest::Turn), STOP + MIN),
+            read(
+                DECLARED,
+                Some(STOP),
+                Some(STOP),
+                Some(Newest::Turn),
+                STOP + MIN
+            ),
             Evidence::Recent { silent_ms: MIN }
         );
     }
@@ -221,6 +284,7 @@ mod tests {
     fn quiet_starts_at_the_window_and_not_a_millisecond_before() {
         assert_eq!(
             read(
+                DECLARED,
                 Some(STOP),
                 Some(STOP),
                 Some(Newest::Turn),
@@ -231,7 +295,13 @@ mod tests {
             }
         );
         assert_eq!(
-            read(Some(STOP), Some(STOP), Some(Newest::Turn), STOP + WINDOW),
+            read(
+                DECLARED,
+                Some(STOP),
+                Some(STOP),
+                Some(Newest::Turn),
+                STOP + WINDOW
+            ),
             Evidence::Quiet { silent_ms: WINDOW }
         );
     }
@@ -243,6 +313,7 @@ mod tests {
         let written = STOP + HOOKS_LAND;
         assert_eq!(
             read(
+                DECLARED,
                 Some(STOP),
                 Some(written),
                 Some(Newest::StopRecord),
@@ -252,6 +323,7 @@ mod tests {
         );
         assert_eq!(
             read(
+                DECLARED,
                 Some(STOP),
                 Some(written),
                 Some(Newest::Turn),
@@ -266,7 +338,7 @@ mod tests {
     fn silence_is_measured_from_the_stop_records_where_they_land_after_the_stamp() {
         let written = STOP + 30 * MIN;
         assert_eq!(
-            read(Some(STOP), Some(written), Some(Newest::StopRecord), STOP + WINDOW),
+            read(DECLARED, Some(STOP), Some(written), Some(Newest::StopRecord), STOP + WINDOW),
             Evidence::Recent {
                 silent_ms: WINDOW - 30 * MIN
             },
@@ -277,7 +349,7 @@ mod tests {
     #[test]
     fn a_write_after_the_stop_is_a_resumed_turn_however_long_ago() {
         assert_eq!(
-            read(Some(STOP), Some(STOP + 10 * MIN), Some(Newest::Turn), STOP + 70 * MIN),
+            read(DECLARED, Some(STOP), Some(STOP + 10 * MIN), Some(Newest::Turn), STOP + 70 * MIN),
             Evidence::Resumed { silent_ms: 60 * MIN },
             "resumed at minute 10 with no stop heard since: its turn is still running, and only the next stop can make it quiet again"
         );
@@ -287,6 +359,7 @@ mod tests {
     fn a_write_older_than_the_stop_is_no_sign_of_a_resumed_turn() {
         assert_eq!(
             read(
+                DECLARED,
                 Some(STOP),
                 Some(STOP - 5 * MIN),
                 Some(Newest::Turn),
@@ -300,6 +373,7 @@ mod tests {
     fn an_unreadable_transcript_is_no_evidence_and_never_silence() {
         assert_eq!(
             read(
+                DECLARED,
                 Some(STOP),
                 None,
                 Some(Newest::StopRecord),
@@ -311,7 +385,11 @@ mod tests {
 
     #[test]
     fn quiet_unanswered_and_unreadable_are_the_states_something_is_said_about() {
-        assert_eq!(notice(Evidence::NoTurnEnd), None);
+        assert_eq!(notice(Evidence::NoTurnEnd { since_ms: MIN }), None);
+        assert_eq!(
+            notice(Evidence::HostEnded { silent_ms: MIN }),
+            Some("host-ended")
+        );
         assert_eq!(notice(Evidence::Resumed { silent_ms: MIN }), None);
         assert_eq!(notice(Evidence::AwaitingReply { silent_ms: MIN }), None);
         assert_eq!(notice(Evidence::Recent { silent_ms: MIN }), None);
@@ -331,7 +409,7 @@ mod tests {
     fn each_holding_state_is_named_apart() {
         let path = Some("/t/agent-a.jsonl");
         let lines = [
-            held_because(Evidence::NoTurnEnd, None),
+            held_because(Evidence::NoTurnEnd { since_ms: 95 * MIN }, None),
             held_because(
                 Evidence::Resumed {
                     silent_ms: 125 * MIN,
@@ -348,7 +426,11 @@ mod tests {
             ),
             held_because(Evidence::AwaitingReply { silent_ms: 7 * MIN }, None),
         ];
-        assert!(lines[0].contains("has not ended a turn"), "{}", lines[0]);
+        assert!(
+            lines[0].contains("has not ended a turn") && lines[0].contains("declared 95m ago"),
+            "{}",
+            lines[0]
+        );
         assert!(
             lines[1].contains("resumed turn") && lines[1].contains("written 125m ago"),
             "{}",
@@ -379,7 +461,7 @@ mod tests {
         let written = transcript_age::written_at(&path).unwrap();
         let stop = written - HOOKS_LAND;
         assert!(matches!(
-            observe(Some(stop), Some(&path), written + WINDOW),
+            observe(DECLARED, Some(stop), Some(&path), written + WINDOW),
             Evidence::Quiet { .. }
         ));
         let resumed = format!(
@@ -390,7 +472,7 @@ mod tests {
         std::fs::write(&path, &resumed).unwrap();
         let written = transcript_age::written_at(&path).unwrap();
         assert_eq!(
-            observe(Some(stop), Some(&path), written + 10 * WINDOW),
+            observe(DECLARED, Some(stop), Some(&path), written + 10 * WINDOW),
             Evidence::Resumed {
                 silent_ms: 10 * WINDOW
             }
@@ -402,11 +484,11 @@ mod tests {
         std::fs::write(&path, format!("{resumed}{ended}\n")).unwrap();
         let written = transcript_age::written_at(&path).unwrap();
         assert_eq!(
-            observe(Some(stop), Some(&path), written + MIN),
+            observe(DECLARED, Some(stop), Some(&path), written + MIN),
             Evidence::Recent { silent_ms: MIN }
         );
         assert!(matches!(
-            observe(Some(stop), Some(&path), written + WINDOW),
+            observe(DECLARED, Some(stop), Some(&path), written + WINDOW),
             Evidence::Quiet { .. }
         ));
     }
@@ -414,7 +496,13 @@ mod tests {
     #[test]
     fn a_write_after_the_stop_that_cannot_be_opened_is_named_as_that() {
         assert_eq!(
-            read(Some(STOP), Some(STOP + HOOKS_LAND), None, STOP + 3 * WINDOW),
+            read(
+                DECLARED,
+                Some(STOP),
+                Some(STOP + HOOKS_LAND),
+                None,
+                STOP + 3 * WINDOW
+            ),
             Evidence::TailUnreadable {
                 silent_ms: 3 * WINDOW - HOOKS_LAND
             },
@@ -427,12 +515,18 @@ mod tests {
         let written = STOP + 5 * MIN;
         let entry = Some(Newest::AwaitingReply);
         assert_eq!(
-            read(Some(STOP), Some(written), entry, written + WINDOW - 1),
+            read(
+                DECLARED,
+                Some(STOP),
+                Some(written),
+                entry,
+                written + WINDOW - 1
+            ),
             Evidence::AwaitingReply {
                 silent_ms: WINDOW - 1
             }
         );
-        let unanswered = read(Some(STOP), Some(written), entry, written + WINDOW);
+        let unanswered = read(DECLARED, Some(STOP), Some(written), entry, written + WINDOW);
         assert_eq!(unanswered, Evidence::Unanswered { silent_ms: WINDOW });
         assert!(is_quiet(unanswered));
         assert!(!is_quiet(Evidence::AwaitingReply { silent_ms: MIN }));
@@ -447,7 +541,7 @@ mod tests {
     #[test]
     fn a_tail_that_cannot_be_opened_before_the_stop_is_not_read_at_all() {
         assert_eq!(
-            read(Some(STOP), Some(STOP - MIN), None, STOP + WINDOW),
+            read(DECLARED, Some(STOP), Some(STOP - MIN), None, STOP + WINDOW),
             Evidence::Quiet { silent_ms: WINDOW },
             "a write at or before the stop is no sign of a turn after it, whatever it holds"
         );
@@ -467,11 +561,16 @@ mod tests {
             let written = transcript_age::written_at(&path).unwrap();
             let stop = written - 10 * MIN;
             assert_eq!(
-                observe(Some(stop), Some(&path), written + MIN),
+                observe(DECLARED, Some(stop), Some(&path), written + MIN),
                 Evidence::AwaitingReply { silent_ms: MIN }
             );
             assert_eq!(
-                observe(Some(stop), Some(&path), written + 3 * 24 * 60 * MIN),
+                observe(
+                    DECLARED,
+                    Some(stop),
+                    Some(&path),
+                    written + 3 * 24 * 60 * MIN
+                ),
                 Evidence::Unanswered {
                     silent_ms: 3 * 24 * 60 * MIN
                 }
