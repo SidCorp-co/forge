@@ -1736,11 +1736,11 @@ mod tests {
             a_stopped_subagent_writing(written - 213, Some(written), transcript_age::STOP_TAIL);
         let transcript = dir.join("agent-child-run-1.jsonl");
         std::fs::set_permissions(&transcript, std::fs::Permissions::from_mode(0o000)).unwrap();
-        if std::fs::File::open(&transcript).is_ok() {
-            // A process that reads through mode 000 cannot plant this.
-            let _ = std::fs::remove_dir_all(dir);
-            return;
-        }
+        assert!(
+            std::fs::File::open(&transcript).is_err(),
+            "the plant did not take: this process opens a mode-000 file, as root does, so it cannot \
+             prove an unopenable transcript is named as one"
+        );
         let held = held_line(&led);
         std::fs::set_permissions(&transcript, std::fs::Permissions::from_mode(0o600)).unwrap();
         let _ = std::fs::remove_dir_all(dir);

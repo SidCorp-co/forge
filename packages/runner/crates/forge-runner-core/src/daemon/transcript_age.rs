@@ -422,11 +422,14 @@ mod tests {
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
         let opened = std::fs::File::open(&path).is_ok();
         let got = newest_entry(&path);
+        let written = written_at(&path);
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
-        if !opened {
-            assert_eq!(got, None);
-            assert!(written_at(&path).is_some(), "its time is still read");
-        }
+        assert!(
+            !opened,
+            "the plant did not take: this process opens a mode-000 file, as root does"
+        );
+        assert_eq!(got, None);
+        assert!(written.is_some(), "its time is still read");
     }
 
     #[test]
