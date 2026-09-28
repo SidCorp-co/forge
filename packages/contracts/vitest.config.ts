@@ -16,6 +16,8 @@ import { defineConfig } from 'vitest/config';
  */
 export default defineConfig({
   test: {
+    // The guard fails a test that lists the repository root without declaring it (ISS-1314).
+    setupFiles: ['../../scripts/lib/whole-tree-guard.mjs'],
     typecheck: {
       enabled: true,
       include: ['src/**/*.test.ts'],

@@ -39,6 +39,11 @@ vi.mock('./label-service.js', () => ({
 }));
 vi.mock('./pipeline-health.js', () => ({
   safeHydratePipelineHealthForIssues: async () => new Map(),
+  // ISS-1273 — the arm the route takes when the loader answered for nothing.
+  pipelineHealthUnderived: (stage: string) => ({
+    stage,
+    worker: { lane: 'unreadable', detail: 'stub' },
+  }),
 }));
 vi.mock('./agent-sessions-hydrator.js', () => ({
   hydrateAgentSessionsForIssues: async () => new Map(),

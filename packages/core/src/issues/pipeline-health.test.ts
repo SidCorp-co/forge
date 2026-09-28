@@ -66,7 +66,49 @@ function job(
 describe('classifyPipelineHealthForIssue', () => {
   it('returns `{ stage }` only when no queued jobs exist', () => {
     const out = classifyPipelineHealthForIssue(baseInput());
-    expect(out).toEqual({ stage: 'approved' });
+    expect(out).toEqual({
+      stage: 'approved',
+      worker: {
+        lane: 'none',
+        detail:
+          'no agent session is bound to this issue on either session lane, and its record carries no claim',
+      },
+    });
+  });
+
+  // ISS-1273 — the shape this issue exists to refuse: `stage` alone restates the status column
+  // the caller already had, and says nothing a reader can tell from a quiet system.
+  it('never answers with stage as its only key', () => {
+    const out = classifyPipelineHealthForIssue(baseInput());
+    expect(Object.keys(out).sort()).not.toEqual(['stage']);
+    expect(out.worker).toBeDefined();
+  });
+
+  it('names the run-session lane when the only bind is the run issue lease', () => {
+    const out = classifyPipelineHealthForIssue(
+      baseInput({
+        sessions: [{ id: 'sess-box', status: 'running', metadata: null, lane: 'run_session' }],
+      }),
+    );
+    expect(out.worker).toMatchObject({ lane: 'run_session', sessionId: 'sess-box' });
+    expect(out.activeSession).toMatchObject({ id: 'sess-box' });
+  });
+
+  it('names the claim lane when a driver holds the issue with no session row at all', () => {
+    const out = classifyPipelineHealthForIssue(
+      baseInput({
+        claim: {
+          verdict: 'live',
+          holder: 'iss-1273-52b95148',
+          expiresAt: new Date('2026-09-27T11:00:00.000Z'),
+          fanout: 1,
+          stopped: false,
+          silentMs: null,
+          detail: 'held',
+        },
+      }),
+    );
+    expect(out.worker).toMatchObject({ lane: 'claim', holder: 'iss-1273-52b95148' });
   });
 
   it('exposes activeSession for a running session', () => {
@@ -77,6 +119,7 @@ describe('classifyPipelineHealthForIssue', () => {
             id: 'sess-1',
             status: 'running',
             metadata: { skill: 'forge-code' },
+            lane: 'job',
           },
         ],
       }),
@@ -91,7 +134,7 @@ describe('classifyPipelineHealthForIssue', () => {
   it('classifies issue_busy when a sibling session is running', () => {
     const out = classifyPipelineHealthForIssue(
       baseInput({
-        sessions: [{ id: 'sess-x', status: 'running', metadata: null }],
+        sessions: [{ id: 'sess-x', status: 'running', metadata: null, lane: 'job' }],
         jobs: [job()],
       }),
     );

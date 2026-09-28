@@ -51,7 +51,7 @@ import { issueListPageQuery, serializeRestListRow } from './list-projection.js';
 import { liveReachForIssue } from './live-reach-read.js';
 import { isSelfReferentialBranch, issueMetadataSchema } from './metadata.js';
 import { collectIssueFieldUpdates, SHARED_ISSUE_PATCH_FIELDS } from './patch-fields.js';
-import { safeHydratePipelineHealthForIssues } from './pipeline-health.js';
+import { pipelineHealthUnderived, safeHydratePipelineHealthForIssues } from './pipeline-health.js';
 import { findIssueByDisplaySeq, findIssueById, type IssueRow } from './read-service.js';
 import { issueRelationInputSchema } from './relations-service.js';
 import { jobHistoryForStep } from './search.js';
@@ -291,7 +291,7 @@ issueProjectRoutes.get(
     return c.json({
       ...serialized,
       ...creatorMap.get(issue.id),
-      pipelineHealth: healthMap.get(issue.id) ?? { stage: serialized.status },
+      pipelineHealth: healthMap.get(issue.id) ?? pipelineHealthUnderived(serialized.status),
       liveReach: await liveReachForIssue(issue),
       labels: labelRows,
       comments: [],
@@ -362,7 +362,7 @@ issueProjectRoutes.get(
           serialized.map((r) => ({
             ...r,
             ...creatorMap.get(r.id),
-            pipelineHealth: healthMap.get(r.id) ?? { stage: r.status },
+            pipelineHealth: healthMap.get(r.id) ?? pipelineHealthUnderived(r.status),
           })),
           total,
           q,
@@ -381,7 +381,7 @@ issueProjectRoutes.get(
             ...creatorMap.get(r.id),
             agentSessions: bucket?.agentSessions ?? [],
             agentStatus: bucket?.agentStatus ?? null,
-            pipelineHealth: healthMap.get(r.id) ?? { stage: r.status },
+            pipelineHealth: healthMap.get(r.id) ?? pipelineHealthUnderived(r.status),
           };
         }),
         total,
@@ -433,7 +433,7 @@ issueRoutes.get(
       ...creatorMap.get(issue.id),
       agentSessions: agentBucket?.agentSessions ?? [],
       agentStatus: agentBucket?.agentStatus ?? null,
-      pipelineHealth: healthMap.get(issue.id) ?? { stage: serialized.status },
+      pipelineHealth: healthMap.get(issue.id) ?? pipelineHealthUnderived(serialized.status),
       liveReach: await liveReachForIssue(issue),
       labels: labelRows,
       comments: [],
