@@ -236,6 +236,52 @@ pub enum Ending {
     },
 }
 
+/// How loudly the line a removal owes arrives.
+///
+/// `warn` in this daemon's journal is where the stranded-process report lands,
+/// which is the line this module exists to make readable. A level taken from
+/// whether there is a line AT ALL puts every other kind there too — and
+/// `not_asked` is never zero on a shared box: 837 of `sid-xeon-1`'s pids
+/// belonged to another user the day this shipped, so every uneventful removal
+/// warned, carrying a constant fact about the box rather than anything about
+/// that removal. So the level is the verdict's own answer and turns on whether
+/// anything HAPPENED, never on whether anything was said.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Loud {
+    /// Nothing was ended and nothing is owed a reader's attention. The line is
+    /// the reading's own completeness, which is still said on every removal:
+    /// a claim that a checkout is clear is only ever a claim about the pids
+    /// this box was allowed to ask about.
+    Routine,
+    /// Something was ended, or the question could not be put on this platform
+    /// at all. Both are about THIS removal, and both are what `warn` in this
+    /// journal means.
+    Notable,
+}
+
+/// The line a removal owes a reader, and how loudly it arrives.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Say {
+    pub loud: Loud,
+    pub said: String,
+}
+
+impl Say {
+    fn routine(said: String) -> Option<Self> {
+        Some(Self {
+            loud: Loud::Routine,
+            said,
+        })
+    }
+
+    fn notable(said: String) -> Option<Self> {
+        Some(Self {
+            loud: Loud::Notable,
+            said,
+        })
+    }
+}
+
 /// What a removal may do about the checkout, and the one line it owes a reader
 /// either way.
 ///
@@ -246,8 +292,9 @@ pub enum Ending {
 /// a clear reading, and those are not the same claim.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Verdict {
-    /// The directory may be taken. `Some` is a line to say first.
-    Take(Option<String>),
+    /// The directory may be taken. `Some` is a line to say first, at the level
+    /// it carries.
+    Take(Option<Say>),
     /// It may not, and why.
     Refuse(String),
 }
@@ -286,15 +333,21 @@ impl Ending {
     /// Whether the checkout at `at` may be taken now.
     pub fn verdict(&self, at: &Path) -> Verdict {
         match self {
+            // Nothing was ended, and the directory goes: the uneventful case,
+            // which on a shared box is every case. The reading's completeness
+            // is still owed — a run of this box could not have started
+            // another user's process, but a line saying the checkout is clear
+            // is a claim about the whole table and this one asked part of it —
+            // so it is said, and said where a routine fact belongs.
             Ending::Clear { ended, not_asked } if ended.is_empty() => match not_asked {
                 0 => Verdict::Take(None),
-                n => Verdict::Take(Some(format!(
+                n => Verdict::Take(Say::routine(format!(
                     "nobody this box may ask about is living in {}, and {}",
                     at.display(),
                     unasked(*n)
                 ))),
             },
-            Ending::Clear { ended, not_asked } => Verdict::Take(Some(format!(
+            Ending::Clear { ended, not_asked } => Verdict::Take(Say::notable(format!(
                 "ended {} process(es) living in {} before taking it — {}{}",
                 ended.len(),
                 at.display(),
@@ -305,7 +358,7 @@ impl Ending {
                     .join("; "),
                 also(*not_asked)
             ))),
-            Ending::NoTable(said) => Verdict::Take(Some(format!(
+            Ending::NoTable(said) => Verdict::Take(Say::notable(format!(
                 "who is living in {} cannot be asked on this platform ({said}) — the directory is \
                  taken anyway, and a process left standing in it would keep its port and its \
                  connections with nothing on this box naming it",
@@ -425,7 +478,12 @@ pub fn residents_of_with(
     identity: impl Fn(u32) -> Option<String>,
 ) -> Reading {
     let want = resolved(worktree);
-    each_pid(proc_root, identity, |at, _gone| under(&want, at))
+    each_pid(proc_root, identity, read_cwd, |at, _gone| under(&want, at))
+}
+
+/// The `cwd` link as the kernel answers it.
+fn read_cwd(at: &Path) -> std::io::Result<PathBuf> {
+    std::fs::read_link(at)
 }
 
 /// Every pid under `proc_root` whose working directory is a path already
@@ -443,13 +501,47 @@ pub fn deleted_residents_under(proc_root: &Path, roots: &[PathBuf]) -> Reading {
     each_pid(
         proc_root,
         crate::daemon::serving::start_ticks,
+        read_cwd,
         |at, gone| gone && wants.iter().any(|w| under(w, at)),
     )
 }
 
+/// What the kernel answers for a task that went between the listing and the
+/// read.
+///
+/// An entry under `/proc/<pid>` is resolved against a LIVE task, so a read
+/// taken as that task exits answers `ESRCH` — no such process — where the same
+/// read answers `ENOENT` once the directory itself has gone.
+/// `std::io::ErrorKind` has no name for `ESRCH`, so it arrives uncategorised
+/// and was read as a reading this box should have been able to take: one
+/// unrelated process exiting anywhere on the box refused an entire removal,
+/// and on this box processes exit all the time. Seen in this crate's own
+/// suite on 2026-09-28 — `the working directory of pid 3962457 could not be
+/// read (No such process (os error 3))` — refusing a removal that pid had
+/// nothing to do with.
+///
+/// The number is safe to read on every platform: Windows' own error 3 is
+/// `ERROR_PATH_NOT_FOUND`, which `ErrorKind` already names `NotFound`, so this
+/// arm says the same thing there that the arm above it does.
+const ESRCH: i32 = 3;
+
+/// Whether `e` says the process is gone, rather than that this box failed to
+/// take a read it should have taken.
+fn the_pid_went(e: &std::io::Error) -> bool {
+    matches!(e.kind(), std::io::ErrorKind::NotFound) || e.raw_os_error() == Some(ESRCH)
+}
+
+/// The reading, with the `cwd` link read through `cwd`.
+///
+/// The reader is a seam and not a parameter anybody passes twice: the states
+/// this reading has to get right are a pid that exits mid-read and a pid of
+/// another user, and neither is a state a planted process root can be made to
+/// enter. A test that could not reach them would be leaving the two arms that
+/// decide whether a removal happens at all unproved.
 fn each_pid(
     proc_root: &Path,
     identity: impl Fn(u32) -> Option<String>,
+    cwd: impl Fn(&Path) -> std::io::Result<PathBuf>,
     wanted: impl Fn(&Path, bool) -> bool,
 ) -> Reading {
     let mut not_asked = 0usize;
@@ -483,11 +575,11 @@ fn each_pid(
             continue;
         };
         let before = identity(pid);
-        let raw = match std::fs::read_link(entry.path().join("cwd")) {
+        let raw = match cwd(&entry.path().join("cwd")) {
             Ok(raw) => raw,
             // The pid went between the listing and this line. There is no
             // process here to be living anywhere.
-            Err(e) if matches!(e.kind(), std::io::ErrorKind::NotFound) => continue,
+            Err(e) if the_pid_went(&e) => continue,
             // The kernel will not show this process's working directory, which
             // it does for a process of another user. Two things follow and
             // neither is a refusal: a run of this box executes as this user, so
@@ -579,15 +671,24 @@ fn parent_of(proc_root: &Path, pid: u32) -> Option<u32> {
 /// to those still there, the second grace, and one more reading. A pid in
 /// `ours`, and one whose identity moved since the reading, are never signalled
 /// at all and stand under their own reasons.
+///
+/// `not_asked` comes from the reading this ending is taken over and is not
+/// something this function can know: it is handed a list of residents, not a
+/// process table. It was written here as a constant zero, and the answer is
+/// carried straight out to a caller on the arm that REFUSES — so the clause
+/// saying how complete the reading was reached every removal that succeeded
+/// and none that refused, which is the inverse of where a reader needs it. A
+/// kept directory is a decision somebody may have to finish by hand, and what
+/// the box could not see is half of what that decision rests on.
 pub async fn end_residents(
     residents: Vec<Resident>,
+    not_asked: usize,
     ours: &BTreeSet<u32>,
     grace: Grace,
     hand: &dyn Hand,
 ) -> Ending {
     let (mine, theirs): (Vec<Resident>, Vec<Resident>) =
         residents.into_iter().partition(|r| ours.contains(&r.pid));
-    let not_asked = 0;
 
     let mut handed_on: BTreeSet<u32> = BTreeSet::new();
     let mut refused: Vec<(u32, String)> = Vec::new();
@@ -725,9 +826,12 @@ impl Clearing<'_> {
             Reading::NoTable(why) => return Ending::NoTable(why),
             Reading::Unreadable(why) => return Ending::Unreadable(why),
             Reading::Read { residents, .. } if residents.is_empty() => Vec::new(),
-            Reading::Read { residents, .. } => {
+            Reading::Read {
+                residents,
+                not_asked,
+            } => {
                 let ours = ancestry(self.proc_root, std::process::id());
-                match end_residents(residents, &ours, self.grace, self.hand).await {
+                match end_residents(residents, not_asked, &ours, self.grace, self.hand).await {
                     Ending::Clear { ended, .. } => ended,
                     standing => return standing,
                 }
@@ -758,6 +862,50 @@ impl Clearing<'_> {
     /// The processes living in paths under `roots` that are already unlinked.
     pub fn stranded(&self, roots: &[PathBuf]) -> Reading {
         deleted_residents_under(self.proc_root, roots)
+    }
+}
+
+/// What a test plants to stand where a process of another user stands.
+///
+/// Here rather than beside either caller because both removal routes take the
+/// same reading, so both owe the same fixture — and this crate has already
+/// paid for the other answer once: the log-capture helper reached eight copies
+/// across the daemon, several of them saying in a comment that the shared one
+/// was out of reach, before ISS-1271 put one where every test could reach it.
+#[cfg(all(test, unix))]
+pub(crate) mod planted {
+    use std::path::{Path, PathBuf};
+
+    /// A pid this box may list and may not ask about, with the permission put
+    /// back when the test is done with it — on a panic too, which is why it is
+    /// a guard and not a pair of calls.
+    ///
+    /// The kernel answers `EACCES` for the working directory of another user's
+    /// process, and a directory with no search bit answers the same way for
+    /// the link inside it. It is the ordinary case and not a rare one: 837 of
+    /// `sid-xeon-1`'s pids answered that way at the reading that measured
+    /// ISS-1271, so a removal on this box is ALWAYS taken over a partial
+    /// reading. A test run as root reads every `cwd` and plants nothing, which
+    /// each caller asserts rather than assumes.
+    pub(crate) struct Unaskable(PathBuf);
+
+    impl Unaskable {
+        pub(crate) fn at(proc_root: &Path, pid: u32) -> Self {
+            use std::os::unix::fs::PermissionsExt;
+            let d = proc_root.join(pid.to_string());
+            std::fs::create_dir_all(&d).expect("a pid directory");
+            std::os::unix::fs::symlink("/", d.join("cwd")).expect("a cwd link");
+            std::fs::set_permissions(&d, std::fs::Permissions::from_mode(0o600))
+                .expect("a pid directory this box may not walk into");
+            Self(d)
+        }
+    }
+
+    impl Drop for Unaskable {
+        fn drop(&mut self) {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&self.0, std::fs::Permissions::from_mode(0o700));
+        }
     }
 }
 
@@ -866,13 +1014,13 @@ mod tests {
         }
     }
 
-    fn ending(residents: Vec<Resident>, ours: &[u32], hand: &Fake) -> Ending {
+    fn ending(residents: Vec<Resident>, ours: &[u32], not_asked: usize, hand: &Fake) -> Ending {
         let ours: BTreeSet<u32> = ours.iter().copied().collect();
         tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
             .expect("a runtime")
-            .block_on(end_residents(residents, &ours, NO_WAIT, hand))
+            .block_on(end_residents(residents, not_asked, &ours, NO_WAIT, hand))
     }
 
     #[test]
@@ -1006,7 +1154,12 @@ mod tests {
     #[test]
     fn every_resident_it_may_signal_is_asked_to_go_before_any_of_them_is_taken() {
         let hand = Fake::default();
-        let _ = ending(vec![resident(51), resident(52), resident(53)], &[], &hand);
+        let _ = ending(
+            vec![resident(51), resident(52), resident(53)],
+            &[],
+            0,
+            &hand,
+        );
 
         let sent = hand.sent();
         let last_term = sent.iter().rposition(|(_, s)| *s == Sig::Term);
@@ -1023,7 +1176,7 @@ mod tests {
         let hand = Fake::default()
             .dying_on(61, Sig::Term)
             .dying_on(62, Sig::Kill);
-        let _ = ending(vec![resident(61), resident(62)], &[], &hand);
+        let _ = ending(vec![resident(61), resident(62)], &[], 0, &hand);
 
         assert!(
             !hand.sent().contains(&(61, Sig::Kill)),
@@ -1040,7 +1193,7 @@ mod tests {
     #[test]
     fn this_process_and_its_own_ancestors_are_never_signalled_at_all() {
         let hand = Fake::default();
-        let _ = ending(vec![resident(71), resident(72)], &[71], &hand);
+        let _ = ending(vec![resident(71), resident(72)], &[71], 0, &hand);
 
         assert_eq!(
             hand.sent().iter().filter(|(p, _)| *p == 71).count(),
@@ -1053,7 +1206,7 @@ mod tests {
     #[test]
     fn a_pid_handed_to_another_process_since_the_reading_is_never_signalled() {
         let hand = Fake::default().handed_on(75);
-        let _ = ending(vec![resident(75), resident(76)], &[], &hand);
+        let _ = ending(vec![resident(75), resident(76)], &[], 0, &hand);
 
         assert_eq!(
             hand.sent().iter().filter(|(p, _)| *p == 75).count(),
@@ -1072,7 +1225,7 @@ mod tests {
     #[test]
     fn a_resident_still_there_after_sigkill_stands_and_the_removal_is_told_which() {
         let hand = Fake::default().dying_on(81, Sig::Term);
-        let outcome = ending(vec![resident(81), resident(82)], &[], &hand);
+        let outcome = ending(vec![resident(81), resident(82)], &[], 0, &hand);
 
         let Ending::Standing {
             standing, ended, ..
@@ -1093,7 +1246,7 @@ mod tests {
     #[test]
     fn a_resident_this_box_may_not_signal_stands_under_its_own_reason() {
         let hand = Fake::default();
-        let outcome = ending(vec![resident(91)], &[91], &hand);
+        let outcome = ending(vec![resident(91)], &[91], 0, &hand);
 
         let Ending::Standing { standing, .. } = outcome else {
             panic!("an unsignallable resident is not a clear checkout: {outcome:?}");
@@ -1104,7 +1257,7 @@ mod tests {
     #[test]
     fn a_pid_that_moved_stands_under_its_own_reason_rather_than_counting_as_ended() {
         let hand = Fake::default().handed_on(93);
-        let outcome = ending(vec![resident(93)], &[], &hand);
+        let outcome = ending(vec![resident(93)], &[], 0, &hand);
 
         let Ending::Standing {
             standing, ended, ..
@@ -1119,7 +1272,7 @@ mod tests {
     #[test]
     fn a_kernel_that_refuses_the_signal_stands_under_what_it_said() {
         let hand = Fake::default().refusing(95);
-        let outcome = ending(vec![resident(95)], &[], &hand);
+        let outcome = ending(vec![resident(95)], &[], 0, &hand);
 
         let Ending::Standing { standing, .. } = outcome else {
             panic!("a refused signal is not a clear checkout: {outcome:?}");
@@ -1136,7 +1289,7 @@ mod tests {
         let hand = Fake::default()
             .dying_on(101, Sig::Term)
             .dying_on(102, Sig::Kill);
-        let outcome = ending(vec![resident(101), resident(102)], &[], &hand);
+        let outcome = ending(vec![resident(101), resident(102)], &[], 0, &hand);
 
         let Ending::Clear { ended, .. } = outcome else {
             panic!("everybody went, so the directory may be taken: {outcome:?}");
@@ -1387,13 +1540,24 @@ mod tests {
             not_asked: 804,
         }
         .verdict(Path::new("/wt"));
-        let Verdict::Take(Some(said)) = said else {
+        let Verdict::Take(Some(say)) = said else {
             panic!(
                 "a reading that could not ask about 804 pids is not the same claim as one that \
                  asked about every one and found nobody: {said:?}"
             );
         };
-        assert!(said.contains("804 pid(s) belong to another user"), "{said}");
+        assert!(
+            say.said.contains("804 pid(s) belong to another user"),
+            "{}",
+            say.said
+        );
+        assert_eq!(
+            say.loud,
+            Loud::Routine,
+            "and it is a routine fact about the box, not a strand: nothing was ended and the \
+             directory went. Every removal on this box carries this clause, so putting it where \
+             the stranded report goes is what made that report unreadable"
+        );
     }
 
     #[test]
@@ -1421,12 +1585,103 @@ mod tests {
             "a box that HAS a process table and would not read it has not established that \
              nobody is in the checkout"
         );
-        let Verdict::Take(Some(said)) = Ending::NoTable("no /proc here".into()).verdict(at) else {
+        let Verdict::Take(Some(say)) = Ending::NoTable("no /proc here".into()).verdict(at) else {
             panic!(
                 "a platform that keeps no process table reclaims its disk as it did before this \
                  module, and says on every removal that it could not look"
             );
         };
-        assert!(said.contains("cannot be asked on this platform"), "{said}");
+        assert!(
+            say.said.contains("cannot be asked on this platform"),
+            "{}",
+            say.said
+        );
+        assert_eq!(
+            say.loud,
+            Loud::Notable,
+            "and it stays a warning on every removal it takes: that arm is the priced amnesty \
+             this change took, and a platform where the outcome is not enforced says so each \
+             time rather than passing quietly"
+        );
+    }
+
+    /// The count belongs to the READING, and an ending is taken over one.
+    ///
+    /// It was written as a constant zero here, so the completeness clause
+    /// appeared on every removal that succeeded — those read the table again
+    /// afterwards and took the count off that — and on none that refused,
+    /// which return this value straight through. That is the inverse of where
+    /// a reader needs it.
+    #[test]
+    fn an_ending_carries_the_completeness_of_the_reading_it_was_taken_over() {
+        let hand = Fake::default().dying_on(91, Sig::Term);
+        let cleared = ending(vec![resident(91)], &[], 804, &hand);
+        assert_eq!(
+            cleared,
+            Ending::Clear {
+                ended: vec![resident(91)],
+                not_asked: 804
+            },
+            "an ending that ended everybody it found still only looked at the pids this box was \
+             allowed to ask about"
+        );
+
+        let hand = Fake::default();
+        let standing = ending(vec![resident(92)], &[], 804, &hand);
+        let Ending::Standing { not_asked, .. } = standing else {
+            panic!("{standing:?}");
+        };
+        assert_eq!(
+            not_asked, 804,
+            "and a refusal is where that matters most: the directory stays, and whoever finishes \
+             it by hand is owed how much of the box the reading behind it could see"
+        );
+    }
+
+    /// A pid that exits as the reading reaches it must not refuse a removal it
+    /// has nothing to do with.
+    ///
+    /// `/proc/<pid>/cwd` is resolved against a live task, so the read answers
+    /// `ESRCH` and not `ENOENT` — which has no `ErrorKind` name, arrived
+    /// uncategorised, and was read as a reading this box should have been able
+    /// to take. Seen for real in this crate's own suite on 2026-09-28: `the
+    /// working directory of pid 3962457 could not be read (No such process (os
+    /// error 3))` refused a removal over a pid that had already gone, on a box
+    /// where pids come and go by the second.
+    #[test]
+    fn a_pid_that_exits_as_the_reading_reaches_it_does_not_refuse_the_whole_removal() {
+        let scratch = Scratch::new("wtproc-esrch");
+        let proc = scratch.join("proc");
+        let wt = scratch.join("wt");
+        std::fs::create_dir_all(&wt).expect("a checkout");
+        plant(&proc, 71, &wt.to_string_lossy(), "still here");
+        plant(&proc, 72, &wt.to_string_lossy(), "on its way out");
+
+        let went = |at: &Path| match at.starts_with(proc.join("72")) {
+            true => Err(std::io::Error::from_raw_os_error(ESRCH)),
+            false => read_cwd(at),
+        };
+        let reading = each_pid(&proc, |pid| Some(format!("proc-{pid}")), went, |_, _| true);
+
+        let Reading::Read {
+            residents,
+            not_asked,
+        } = reading
+        else {
+            panic!(
+                "a process that exited is not a reading this box failed to take, and refusing \
+                 over one stops a removal that pid was never part of: {reading:?}"
+            );
+        };
+        assert_eq!(
+            residents.iter().map(|r| r.pid).collect::<Vec<_>>(),
+            vec![71],
+            "the one that went is left out, and the one still there is still a resident"
+        );
+        assert_eq!(
+            not_asked, 0,
+            "and it is not counted as a pid this box was refused either: nobody refused it, it \
+             stopped existing"
+        );
     }
 }
