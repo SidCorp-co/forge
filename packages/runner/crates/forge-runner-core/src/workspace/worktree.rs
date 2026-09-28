@@ -225,7 +225,12 @@ fn could_be_filed_as(have: &std::ffi::OsStr, want: &std::ffi::OsStr) -> bool {
 /// the refusals carry. On Windows that is the verbatim `\\?\` form, which is
 /// uglier to read than git's answer and is the only one a caller can hold
 /// against a row; the refusals name the ledger's own path beside it.
-fn resolved_for_compare(path: &Path) -> PathBuf {
+///
+/// `pub(crate)`: [`worktree_processes`](super::worktree_processes) compares a
+/// path a process still sits in against one whose directory is already gone,
+/// which is this same problem from the other side and not a second one to
+/// solve twice.
+pub(crate) fn resolved_for_compare(path: &Path) -> PathBuf {
     if let Ok(real) = path.canonicalize() {
         return real;
     }

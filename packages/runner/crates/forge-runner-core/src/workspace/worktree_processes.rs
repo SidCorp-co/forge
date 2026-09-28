@@ -366,8 +366,19 @@ fn link_target(raw: &Path) -> (PathBuf, bool) {
 }
 
 /// The one spelling every path in this module is compared by.
+///
+/// A live checkout's own path canonicalises outright. A `(deleted)` one
+/// cannot — the directory it names is exactly what is gone — so this is
+/// [`worktree::resolved_for_compare`], which canonicalises the longest
+/// ancestor that still exists and reattaches the rest unchanged. Calling
+/// `resolved` on only one side of a comparison is the bug this module was
+/// filed to fix from the other direction: on a box where an ancestor
+/// canonicalises to a different spelling — `/var` to `/private/var` on
+/// macOS is ISS-1193's own case — a root read straight off disk and a
+/// `(deleted)` path built from the same root would stop comparing equal the
+/// moment only one of them was resolved.
 fn resolved(p: &Path) -> PathBuf {
-    p.canonicalize().unwrap_or_else(|_| p.to_path_buf())
+    super::worktree::resolved_for_compare(p)
 }
 
 /// Whether `at` is `root` or lies beneath it.
@@ -502,7 +513,14 @@ fn each_pid(
             }
         };
         let (base, gone) = link_target(&raw);
-        let at = if gone { base } else { resolved(&base) };
+        // Both branches now spell `at` the same way, gone or not: `resolved`
+        // canonicalises what still exists and reattaches what does not, which
+        // for a live path is the whole of it and for a `(deleted)` one is
+        // everything above the removed leaf. Special-casing `gone` here to
+        // skip resolution is exactly what made a live root and a stranded
+        // path stop comparing equal on a box where an ancestor's spelling
+        // moves under canonicalisation.
+        let at = resolved(&base);
         if !wanted(&at, gone) {
             continue;
         }
@@ -1148,6 +1166,47 @@ mod tests {
             pids(&deleted_residents_under(&proc, &[root])),
             vec![111],
             "nothing on this box names these today, which is the state the issue was filed from"
+        );
+    }
+
+    /// The same case, with the root reached through a symlinked ancestor —
+    /// what `/var` resolving to `/private/var` on macOS does to a temp
+    /// directory, reproduced without depending on macOS or its layout.
+    ///
+    /// `root` here canonicalises to a different spelling than the one it is
+    /// written with. `deleted_residents_under` still has to find pid 111:
+    /// canonicalising only the live `root` side of the comparison and
+    /// leaving the `(deleted)` side as written is precisely the asymmetry
+    /// that read as an empty list on `runner (macos-latest)` for a root this
+    /// module itself built and had never stopped existing.
+    #[test]
+    fn a_stranded_path_is_found_through_a_symlinked_ancestor_the_root_also_resolves_through() {
+        let scratch = Scratch::new("wtproc-stranded-symlink");
+        let proc = scratch.join("proc");
+        let real = scratch.join("real");
+        std::fs::create_dir_all(real.join("repo/.claude/worktrees")).expect("the real tree");
+        let via_link = scratch.join("via-link");
+        symlink(&real, &via_link).expect("a symlinked ancestor");
+
+        let root = via_link.join("repo/.claude/worktrees");
+        let gone = root.join("iss-1217-judge");
+        assert_ne!(
+            root,
+            root.canonicalize().expect("the live root resolves"),
+            "the fixture proves nothing unless the symlink actually changes root's spelling"
+        );
+
+        plant(
+            &proc,
+            111,
+            &format!("{}{}", gone.display(), crate::exe::DELETED_SUFFIX),
+            "chrome --headless",
+        );
+
+        assert_eq!(
+            pids(&deleted_residents_under(&proc, &[root])),
+            vec![111],
+            "a root reached by two different spellings is still one root, resolved or not"
         );
     }
 
