@@ -60,10 +60,20 @@ pub fn written_at(path: &Path) -> Option<i64> {
     modified_ms(path)
 }
 
-/// How much of a transcript's end [`newest_entry`] reads. A stop hook's
-/// record is a few hundred bytes; a newest entry longer than this is not one,
-/// and reads as the turn that wrote it.
+/// How much of a transcript's end [`newest_entry`] reads first.
 const TAIL_BYTES: u64 = 64 * 1024;
+
+/// The widest end [`newest_entry`] reads before an entry it has not read
+/// whole is taken as a turn. 1,491 of 146,876 user entries on this box were
+/// longer than [`TAIL_BYTES`], and the longest 1.3 MB (ISS-1312).
+const TAIL_CAP: u64 = 4 * 1024 * 1024;
+
+/// The attachments Claude Code writes beside a `user` entry, carrying context
+/// for the reply rather than being written by a turn: 19 ms after
+/// ISS-553/554's notification, `instructions` and `session_context`, and after
+/// a tool's result a `total_tokens_reminder`. The only kinds other than a hook
+/// record that end any of this box's 1098 subagent transcripts (ISS-1312).
+const CONTEXT_KINDS: [&str; 3] = ["instructions", "session_context", "total_tokens_reminder"];
 
 /// What the newest entry in a subagent's transcript is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -78,7 +88,8 @@ pub enum Newest {
     /// closed it.
     StopRecord,
     /// A `user` entry — a prompt, a notification, a tool's result — which is
-    /// the model's to answer. A turn that takes one up writes its reply
+    /// the model's to answer, with nothing after it but the context written
+    /// beside it ([`CONTEXT_KINDS`]). A turn that takes one up writes its reply
     /// promptly: measured over this box's 1075 subagent transcripts
     /// 2026-09-28, 277 notifications were each answered within 29 s and
     /// 145,297 answered entries within 20 min. One nobody answers is left by a
@@ -88,32 +99,61 @@ pub enum Newest {
     Turn,
 }
 
-/// The newest entry in the transcript at `path`. `None` where the file cannot
-/// be opened or read, which says nothing about what was written.
+/// The newest entry in the transcript at `path`, read past the context
+/// written beside a `user` entry. `None` where the file cannot be opened or
+/// read, which says nothing about what was written.
 pub fn newest_entry(path: &Path) -> Option<Newest> {
     use std::io::{Read, Seek, SeekFrom};
     let mut file = std::fs::File::open(path).ok()?;
     let len = file.metadata().ok()?.len();
-    file.seek(SeekFrom::Start(len.saturating_sub(TAIL_BYTES)))
-        .ok()?;
-    let mut tail = Vec::new();
-    file.read_to_end(&mut tail).ok()?;
-    let tail = String::from_utf8_lossy(&tail);
-    let Some(newest) = tail.lines().rev().find(|l| !l.trim().is_empty()) else {
-        return Some(Newest::Turn);
-    };
-    let Ok(entry) = serde_json::from_str::<serde_json::Value>(newest) else {
-        return Some(Newest::Turn);
-    };
-    Some(
-        if entry["type"] == "attachment" && entry["attachment"]["hookEvent"] == "SubagentStop" {
-            Newest::StopRecord
-        } else if entry["type"] == "user" {
+    let mut window = TAIL_BYTES;
+    loop {
+        let start = len.saturating_sub(window);
+        file.seek(SeekFrom::Start(start)).ok()?;
+        let mut tail = Vec::new();
+        file.read_to_end(&mut tail).ok()?;
+        let whole = start == 0;
+        if let Some(newest) = decide(&String::from_utf8_lossy(&tail), whole) {
+            return Some(newest);
+        }
+        if whole || window >= TAIL_CAP {
+            return Some(Newest::Turn);
+        }
+        window = (window * 4).min(TAIL_CAP);
+    }
+}
+
+/// What `tail` says the newest entry is, or `None` where the entry that
+/// decides begins before it. Unless the tail is the `whole` file its first
+/// line may be cut where the read began, so it is never read.
+fn decide(tail: &str, whole: bool) -> Option<Newest> {
+    let mut lines = tail.lines();
+    if !whole {
+        lines.next();
+    }
+    let mut under_context = false;
+    for line in lines.rev().filter(|l| !l.trim().is_empty()) {
+        let Ok(entry) = serde_json::from_str::<serde_json::Value>(line) else {
+            return Some(Newest::Turn);
+        };
+        let attachment = &entry["attachment"];
+        let is_attachment = entry["type"] == "attachment";
+        if is_attachment
+            && attachment["hookEvent"].is_null()
+            && CONTEXT_KINDS.iter().any(|kind| attachment["type"] == *kind)
+        {
+            under_context = true;
+            continue;
+        }
+        return Some(if entry["type"] == "user" {
             Newest::AwaitingReply
+        } else if is_attachment && attachment["hookEvent"] == "SubagentStop" && !under_context {
+            Newest::StopRecord
         } else {
             Newest::Turn
-        },
-    )
+        });
+    }
+    whole.then_some(Newest::Turn)
 }
 
 fn modified_ms(path: &Path) -> Option<i64> {
@@ -159,6 +199,20 @@ pub(crate) const STOP_TAIL: &str = concat!(
 #[cfg(test)]
 pub(crate) const NOTIFIED_TAIL: &str = concat!(
     r#"{"isSidechain":true,"agentId":"a9860d00885b2b2d0","type":"user","message":{"role":"user","content":"<task-notification>the suite finished</task-notification>"},"timestamp":"2026-09-27T11:11:13.000Z"}"#,
+    "\n",
+);
+
+/// The end of ISS-553/554's `agent-a433d2e9b20a24d06.jsonl`, cut to the
+/// fields that decide: a notification after the stop, then the context
+/// Claude Code (2.1.280, 2.1.282) wrote beside it 19 ms later, and nothing
+/// since.
+#[cfg(test)]
+pub(crate) const NOTIFIED_WITH_CONTEXT_TAIL: &str = concat!(
+    r#"{"isSidechain":true,"agentId":"a433d2e9b20a24d06","type":"user","isMeta":true,"message":{"role":"user","content":"[SYSTEM NOTIFICATION - NOT USER INPUT]\n<task-notification>the suite finished</task-notification>"},"timestamp":"2026-09-26T00:26:06.307Z"}"#,
+    "\n",
+    r#"{"isSidechain":true,"agentId":"a433d2e9b20a24d06","attachment":{"type":"instructions","files":[],"changed":true,"reason":"compaction"},"type":"attachment","timestamp":"2026-09-26T00:26:06.326Z"}"#,
+    "\n",
+    r#"{"isSidechain":true,"agentId":"a433d2e9b20a24d06","attachment":{"type":"session_context","context":{},"changed":true,"reason":"compaction"},"type":"attachment","timestamp":"2026-09-26T00:26:06.326Z"}"#,
     "\n",
 );
 
@@ -410,6 +464,106 @@ mod tests {
         assert_eq!(
             newest_entry(&transcript(&dir, &format!("{RESUMED_TAIL}{result}\n"))),
             Some(Newest::AwaitingReply)
+        );
+    }
+
+    /// ISS-1312, criterion 10: ISS-553/554's notification is the newest
+    /// entry, and the context written beside it is not.
+    #[test]
+    fn the_context_written_beside_a_notification_is_read_past_to_it() {
+        let dir = Scratch::new("transcript-age");
+        let body = format!("{STOP_TAIL}{NOTIFIED_WITH_CONTEXT_TAIL}");
+        assert_eq!(
+            newest_entry(&transcript(&dir, &body)),
+            Some(Newest::AwaitingReply)
+        );
+    }
+
+    #[test]
+    fn a_token_reminder_beside_a_tool_s_result_is_read_past_to_it() {
+        let dir = Scratch::new("transcript-age");
+        let result = r#"{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}}"#;
+        let reminder = r#"{"type":"attachment","attachment":{"type":"total_tokens_reminder","text":"<total_tokens>1 tokens left</total_tokens>"}}"#;
+        assert_eq!(
+            newest_entry(&transcript(
+                &dir,
+                &format!("{RESUMED_TAIL}{result}\n{reminder}\n")
+            )),
+            Some(Newest::AwaitingReply)
+        );
+    }
+
+    #[test]
+    fn context_over_anything_but_the_entry_it_accompanies_is_a_turn() {
+        let dir = Scratch::new("transcript-age");
+        let context = NOTIFIED_WITH_CONTEXT_TAIL
+            .split_inclusive('\n')
+            .skip(1)
+            .collect::<String>();
+        for (below, why) in [
+            (
+                STOP_TAIL,
+                "context after the stop's own records is written for a request, which is a turn",
+            ),
+            (RESUMED_TAIL, "context over the model's own entry is a turn"),
+            ("", "context alone accompanies nothing that was read"),
+        ] {
+            assert_eq!(
+                newest_entry(&transcript(&dir, &format!("{below}{context}"))),
+                Some(Newest::Turn),
+                "{why}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_attachment_of_a_kind_not_named_as_context_is_never_read_past() {
+        let dir = Scratch::new("transcript-age");
+        let unknown =
+            r#"{"type":"attachment","attachment":{"type":"a_kind_no_release_wrote_yet"}}"#;
+        assert_eq!(
+            newest_entry(&transcript(
+                &dir,
+                &format!("{STOP_TAIL}{NOTIFIED_TAIL}{unknown}\n")
+            )),
+            Some(Newest::Turn),
+            "only the kinds measured beside a user entry are passed over; anything else holds"
+        );
+    }
+
+    /// 1,491 of 146,876 user entries on this box were longer than one tail,
+    /// the longest 1.3 MB, so the entry under the context may start before it.
+    #[test]
+    fn an_entry_longer_than_the_tail_under_its_context_is_still_read_whole() {
+        let dir = Scratch::new("transcript-age");
+        let long = format!(
+            r#"{{"type":"user","message":{{"role":"user","content":[{{"type":"tool_result","tool_use_id":"t1","content":"{}"}}]}}}}"#,
+            "x".repeat(3 * TAIL_BYTES as usize)
+        );
+        let reminder =
+            r#"{"type":"attachment","attachment":{"type":"total_tokens_reminder","text":"t"}}"#;
+        assert_eq!(
+            newest_entry(&transcript(
+                &dir,
+                &format!("{STOP_TAIL}{long}\n{reminder}\n")
+            )),
+            Some(Newest::AwaitingReply)
+        );
+    }
+
+    #[test]
+    fn an_entry_longer_than_the_widest_read_is_a_turn_and_not_a_guess() {
+        let dir = Scratch::new("transcript-age");
+        let long = format!(
+            r#"{{"type":"user","message":{{"role":"user","content":"{}"}}}}"#,
+            "x".repeat(TAIL_CAP as usize + 1)
+        );
+        let reminder =
+            r#"{"type":"attachment","attachment":{"type":"total_tokens_reminder","text":"t"}}"#;
+        assert_eq!(
+            newest_entry(&transcript(&dir, &format!("{long}\n{reminder}\n"))),
+            Some(Newest::Turn),
+            "what was never read whole is held rather than guessed at"
         );
     }
 
