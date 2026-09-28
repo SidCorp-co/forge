@@ -4,7 +4,12 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { countActivePatsForUser, mintPat, revokePat, rotatePat } from '../auth/pat.js';
-import { PAT_PERMISSION_NAMES } from '../auth/pat-permissions.js';
+import {
+  PAT_PERMISSION_ALL,
+  PAT_PERMISSION_NAMES,
+  patGrantIsLegacy,
+  patGrantIsStatedFull,
+} from '../auth/pat-permissions.js';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { mcpAuditLog, personalAccessTokens } from '../db/schema.js';
@@ -23,7 +28,10 @@ const createBodySchema = z
     scopes: z.array(z.enum(SCOPES)).optional(),
     projectIds: z.array(z.uuid()).max(50).nullable().optional(),
     boundProjectId: z.uuid().nullable().optional(),
-    permissions: z.array(z.enum(PAT_PERMISSION_NAMES)).optional(),
+    permissions: z
+      .array(z.enum([...PAT_PERMISSION_NAMES, PAT_PERMISSION_ALL]))
+      .nullable()
+      .optional(),
     expiresAt: z.iso.datetime().optional(),
   })
   .strict();
@@ -45,6 +53,15 @@ const badRequest = (details: unknown) =>
 const notFound = () =>
   new HTTPException(404, { message: 'not found', cause: { code: 'NOT_FOUND' } });
 
+/**
+ * Which of the three grants a row carries, read once here so a listing does
+ * not have to work it out from the array and reach a different answer.
+ */
+function grantOf(permissions: string[] | null): 'legacy' | 'full' | 'named' {
+  if (patGrantIsLegacy(permissions)) return 'legacy';
+  return patGrantIsStatedFull(permissions) ? 'full' : 'named';
+}
+
 function publicShape(row: typeof personalAccessTokens.$inferSelect) {
   return {
     id: row.id,
@@ -53,6 +70,7 @@ function publicShape(row: typeof personalAccessTokens.$inferSelect) {
     scopes: row.scopes,
     projectIds: row.projectIds ?? null,
     permissions: row.permissions ?? null,
+    grant: grantOf(row.permissions ?? null),
     boundProjectId: row.boundProjectId ?? null,
     expiresAt: row.expiresAt,
     createdAt: row.createdAt,
@@ -74,7 +92,10 @@ patRoutes.get('/pat', async (c) => {
     .from(personalAccessTokens)
     .where(eq(personalAccessTokens.userId, userId))
     .orderBy(desc(personalAccessTokens.createdAt));
-  return c.json({ tokens: rows.map(publicShape) });
+  return c.json({
+    tokens: rows.map(publicShape),
+    menu: { permissions: PAT_PERMISSION_NAMES, full: PAT_PERMISSION_ALL },
+  });
 });
 
 patRoutes.post(
@@ -86,6 +107,33 @@ patRoutes.post(
   async (c) => {
     const userId = c.get('userId');
     const body = c.req.valid('json');
+
+    // What is wrong with the body is answered before what is wrong with the
+    // account, so a caller at the token limit still reads which field it left
+    // out rather than a limit it would have met either way.
+    if (!body.permissions || body.permissions.length === 0) {
+      throw new HTTPException(400, {
+        message:
+          'a token states what it may reach: send `permissions` naming the groups this token ' +
+          `needs, or ["${PAT_PERMISSION_ALL}"] for full access chosen on purpose. An omitted ` +
+          'grant used to mint a token reaching the whole menu, and no longer does.',
+        cause: {
+          code: 'PAT_PERMISSIONS_REQUIRED',
+          details: { menu: PAT_PERMISSION_NAMES, full: [PAT_PERMISSION_ALL] },
+        },
+      });
+    }
+    if (body.permissions.includes(PAT_PERMISSION_ALL) && body.permissions.length > 1) {
+      throw new HTTPException(400, {
+        message:
+          `full access is the whole grant: send ["${PAT_PERMISSION_ALL}"] on its own, or name ` +
+          'the permissions this token needs without it.',
+        cause: {
+          code: 'PAT_PERMISSIONS_FULL_NOT_COMBINABLE',
+          details: { sent: body.permissions },
+        },
+      });
+    }
 
     const active = await countActivePatsForUser(userId);
     if (active >= env.PAT_MAX_PER_USER) {
@@ -143,7 +191,7 @@ patRoutes.post(
       scopes: body.scopes,
       projectIds: body.projectIds ?? null,
       boundProjectId: body.boundProjectId ?? null,
-      permissions: body.permissions ?? null,
+      permissions: body.permissions,
       expiresAt: body.expiresAt ? new Date(body.expiresAt) : null,
     });
 

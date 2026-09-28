@@ -22,6 +22,8 @@ import {
   Field,
   Input,
   MonoTag,
+  Radio,
+  RadioGroup,
   SectionTitle,
   Select,
   Skeleton,
@@ -89,10 +91,18 @@ export function TokensTab() {
 
   const [name, setName] = useState("");
   const [scopes, setScopes] = useState<PatScope[]>(["read"]);
+  // ISS-1255 — the form picks no power on the minter's behalf. "" is "nothing
+  // chosen yet", and it is what the create button is refused on.
+  const [grantMode, setGrantMode] = useState<"" | "full" | "named">("");
+  const [permissions, setPermissions] = useState<string[]>([]);
   const [expiresAt, setExpiresAt] = useState("");
   // ISS-497 — "" = None (user-level); a project id = bind the token to it.
   const [boundProjectId, setBoundProjectId] = useState("");
-  const [errors, setErrors] = useState<{ name?: string; scopes?: string }>({});
+  const [errors, setErrors] = useState<{
+    name?: string;
+    scopes?: string;
+    permissions?: string;
+  }>({});
 
   const projects = projectsQ.data ?? [];
   const projectsById = new Map(projects.map((p) => [p.id, p]));
@@ -114,6 +124,9 @@ export function TokensTab() {
   const [password, setPassword] = useState("");
 
   const tokens = tokensQ.data?.tokens ?? [];
+  // The menu the door will accept, served beside the list so the form cannot
+  // offer a name the create call would be refused for.
+  const menu = tokensQ.data?.menu ?? null;
 
   // Consume the SSO reauth outcome on return: restore the draft on success,
   // surface the typed error on failure, and strip the params either way so a
@@ -142,11 +155,15 @@ export function TokensTab() {
           const draft = JSON.parse(raw) as {
             name?: string;
             scopes?: PatScope[];
+            grantMode?: "" | "full" | "named";
+            permissions?: string[];
             expiresAt?: string;
             boundProjectId?: string;
           };
           setName(draft.name ?? "");
           if (draft.scopes?.length) setScopes(draft.scopes);
+          setGrantMode(draft.grantMode ?? "");
+          setPermissions(draft.permissions ?? []);
           setExpiresAt(draft.expiresAt ?? "");
           setBoundProjectId(draft.boundProjectId ?? "");
         } catch {
@@ -171,7 +188,10 @@ export function TokensTab() {
   function startSsoReauth(provider: string) {
     const input = buildInput();
     if (!input) return;
-    sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ name, scopes, expiresAt, boundProjectId }));
+    sessionStorage.setItem(
+      DRAFT_KEY,
+      JSON.stringify({ name, scopes, grantMode, permissions, expiresAt, boundProjectId }),
+    );
     window.location.href = reauthStartUrl(provider, RETURN_PATH);
   }
 
@@ -181,17 +201,28 @@ export function TokensTab() {
     );
   }
 
+  function togglePermission(permission: string) {
+    setPermissions((prev) =>
+      prev.includes(permission) ? prev.filter((p) => p !== permission) : [...prev, permission],
+    );
+  }
+
   function buildInput(): CreatePatInput | null {
     const next: typeof errors = {};
     if (!name.trim()) next.name = "Name is required.";
     else if (tokens.some((t) => t.name === name.trim() && !t.revokedAt))
       next.name = "An active token already uses this name.";
     if (scopes.length === 0) next.scopes = "Select at least one scope.";
+    if (!grantMode) next.permissions = "Choose what this token may reach.";
+    else if (grantMode === "named" && permissions.length === 0)
+      next.permissions = "Pick at least one permission, or choose full access.";
+    else if (!menu) next.permissions = "The permission menu hasn't loaded yet.";
     setErrors(next);
-    if (Object.keys(next).length > 0) return null;
+    if (Object.keys(next).length > 0 || !menu) return null;
     return {
       name: name.trim(),
       scopes,
+      permissions: grantMode === "full" ? [menu.full] : permissions,
       ...(expiresAt ? { expiresAt: new Date(expiresAt).toISOString() } : {}),
       ...(boundProjectId ? { boundProjectId } : {}),
     };
@@ -200,6 +231,8 @@ export function TokensTab() {
   function resetForm() {
     setName("");
     setScopes(["read"]);
+    setGrantMode("");
+    setPermissions([]);
     setExpiresAt("");
     setBoundProjectId("");
     setErrors({});
@@ -280,6 +313,30 @@ export function TokensTab() {
                   />
                 ))}
               </div>
+            </Field>
+
+            <Field
+              label="Permissions"
+              required
+              error={errors.permissions}
+              hint="Which of the API this token reaches. Full access covers every permission, including any added later."
+            >
+              <RadioGroup name="pat-grant" value={grantMode} onChange={(v) => setGrantMode(v as "" | "full" | "named")}>
+                <Radio value="full" label="Full access — every permission on the menu" />
+                <Radio value="named" label="Only the permissions I pick" />
+              </RadioGroup>
+              {grantMode === "named" && (
+                <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                  {(menu?.permissions ?? []).map((permission) => (
+                    <Checkbox
+                      key={permission}
+                      checked={permissions.includes(permission)}
+                      onChange={() => togglePermission(permission)}
+                      label={permission}
+                    />
+                  ))}
+                </div>
+              )}
             </Field>
 
             <Field label="Expires" hint="Optional. Leave blank for a non-expiring token.">
@@ -405,6 +462,7 @@ export function TokensTab() {
                     <TH>Level</TH>
                     <TH>Prefix</TH>
                     <TH>Scopes</TH>
+                    <TH>Grant</TH>
                     <TH>Expires</TH>
                     <TH>Last used</TH>
                     <TH className="text-right">Actions</TH>
@@ -474,6 +532,24 @@ export function TokensTab() {
   );
 }
 
+/**
+ * What this token may reach, in the three shapes the column has: full access
+ * its minter chose, the names it was given, and the legacy shape a token
+ * minted before a grant could be stated still carries — which reaches
+ * everything too, and says so rather than reading as an absence.
+ */
+function GrantBadge({ token }: { token: PatToken }) {
+  if (token.grant === "full") return <Badge tone="red">Full access</Badge>;
+  if (token.grant === "legacy")
+    return <Badge tone="amber">Legacy — full access, never stated</Badge>;
+  const names = token.permissions ?? [];
+  return (
+    <Badge tone="neutral">
+      {names.length} permission{names.length === 1 ? "" : "s"}
+    </Badge>
+  );
+}
+
 function ScopeBadges({ scopes }: { scopes: PatScope[] }) {
   return (
     <div className="flex flex-wrap gap-1">
@@ -512,6 +588,9 @@ function TokenRow({
       </TD>
       <TD>
         <ScopeBadges scopes={token.scopes} />
+      </TD>
+      <TD>
+        <GrantBadge token={token} />
       </TD>
       <TD className="font-mono text-muted">{fmtDate(token.expiresAt)}</TD>
       <TD className="font-mono text-muted">{fmtDate(token.lastUsedAt)}</TD>
@@ -566,8 +645,9 @@ function TokenMobileCard({
             Revoke
           </Button>
         </div>
-        <div className="mt-3">
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
           <ScopeBadges scopes={token.scopes} />
+          <GrantBadge token={token} />
         </div>
         <p className="fg-caption mt-2 font-mono">
           Expires {fmtDate(token.expiresAt)} · Last used {fmtDate(token.lastUsedAt)}

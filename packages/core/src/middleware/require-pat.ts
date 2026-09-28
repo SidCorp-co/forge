@@ -24,8 +24,8 @@ export type PatPrincipal = {
   projectIds: readonly string[] | null;
   boundProjectId: string | null;
   /**
-   * The permission names this token was granted, or absent where it was
-   * granted none — which is every group, not no group.
+   * The names granted, `['*']` for full access, or absent — which is every
+   * group, not no group.
    */
   permissions?: readonly string[] | null;
   /**
