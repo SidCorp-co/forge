@@ -513,6 +513,22 @@ jobs:
       - uses: actions/checkout@v7
       - run: node scripts/build-images.mjs
 
+  # A test whose input is the whole repository, selected by its own declaration rather than by
+  # where it lives. `changes` picks a job by the paths a pull request touched, which is right for a
+  # test of one module and wrong for a guard that walks every file: #710 changed only documents,
+  # `core` was skipped, and the guard that document broke merged green and left `main` red for the
+  # next branch to find (ISS-1314). A test carrying `@gate-input whole-tree` runs here on every
+  # change; the checker refuses one that walks from the root without it. NOT path-filtered on
+  # purpose, and it rides `proved` alone for the reason `images` does.
+  whole-tree:
+    needs: changes
+    if: needs.changes.outputs.proved != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-workspace
+      - run: node scripts/check-whole-tree-gates.mjs --run
+
   # ───────────────────────────────────────────────────────────────────────
   # Single aggregate gate. Branch protection should require ONLY this check
   # (drop the lone `changes` requirement). Requiring the individual jobs
@@ -546,6 +562,7 @@ jobs:
         archmap,
         conformance,
         images,
+        whole-tree,
       ]
     runs-on: ubuntu-latest
     steps:
@@ -563,7 +580,8 @@ jobs:
             "injected-docs:${{ needs.injected-docs.result }}" \
             "archmap:${{ needs.archmap.result }}" \
             "conformance:${{ needs.conformance.result }}" \
-            "images:${{ needs.images.result }}"; do
+            "images:${{ needs.images.result }}" \
+            "whole-tree:${{ needs.whole-tree.result }}"; do
             echo "$r"
             result="${r##*:}"
             if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
