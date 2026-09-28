@@ -1,10 +1,10 @@
 /**
  * A run session as core knows it: one box, one worktree, a GROUP of issues.
  *
- * Membership lives in `pipeline_runs.metadata.runIssues` because
- * `pipeline_runs.issue_id` is one column and a run carries many. Core reads it
- * by run id, to say which issues came back when a box is lost, and a jsonb
- * array serves that.
+ * Membership lives in `pipeline_runs.metadata` because `issue_id` is one column and a run
+ * carries many. Under TWO keys: `runIssues` is what the run is still carrying, which
+ * `releaseIssueLease` shrinks so `run-issue-return.ts` gives back only what a lost box owes;
+ * `runGroup` is what it was opened over, which nothing rewrites (ISS-1273).
  *
  * It is no longer what says who HOLDS an issue (ISS-1109). No index can
  * constrain an array element, so nothing refused the second taker and every
@@ -36,20 +36,25 @@ import { type GateCondition, RUN_GATE_METADATA_KEY } from './gate-report.js';
 import { liveMasterSessionId } from './master-owner.js';
 import { projectAdmission, RunnerNotAdmittedError } from './pool-admission.js';
 import { returnIssuesForRun } from './run-issue-return.js';
-import { RUN_ISSUES_METADATA_KEY } from './run-session-keys.js';
+import {
+  RUN_GROUP_METADATA_KEY,
+  RUN_ISSUE_STATUSES_METADATA_KEY,
+  RUN_ISSUES_METADATA_KEY,
+} from './run-session-keys.js';
 
 export { RUN_SESSION_KIND } from '../jobs/session-kinds.js';
 
-export { RUN_ISSUES_METADATA_KEY } from './run-session-keys.js';
+export {
+  RUN_GROUP_METADATA_KEY,
+  RUN_ISSUE_STATUSES_METADATA_KEY,
+  RUN_ISSUES_METADATA_KEY,
+} from './run-session-keys.js';
 
 /** The box's own run id for this dispatch, so the two records can be joined. */
 export const BOX_RUN_ID_METADATA_KEY = 'boxRunId';
 
 /** Set on the run once its open event has actually reached the subscribers. */
 export const RUN_ANNOUNCED_METADATA_KEY = 'runSessionAnnouncedAt';
-
-/** Where each issue's status AT OPEN lives, beside the group itself. */
-export const RUN_ISSUE_STATUSES_METADATA_KEY = 'runIssueStatuses';
 
 /**
  * The BOX's gate condition when the run opened — not this dispatch's own admission,
@@ -214,6 +219,7 @@ export async function openRunSession(args: {
       type: RUN_SESSION_KIND,
       deviceId: args.deviceId,
       [RUN_ISSUES_METADATA_KEY]: canonical.keys,
+      [RUN_GROUP_METADATA_KEY]: canonical.keys,
       [RUN_ISSUE_STATUSES_METADATA_KEY]: openingStatuses,
       ...(args.boxRunId ? { [BOX_RUN_ID_METADATA_KEY]: args.boxRunId } : {}),
       ...(args.gate ? { [RUN_GATE_METADATA_KEY]: args.gate } : {}),

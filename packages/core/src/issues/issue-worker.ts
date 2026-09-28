@@ -1,9 +1,6 @@
-/**
- * ISS-1273 — who is working one issue, on whichever of the three lanes opened the work: the job
- * lane's `agent_sessions.metadata.issueId`, the run-session lane's `issue_leases` row (one run
- * over a GROUP, so its session names no issue), and `issues.session_context.lease`, all a claim
- * leaves. `none` carries its reason: an absent field reads as a quiet system.
- */
+/** ISS-1273 — who is working one issue, on whichever of the three lanes opened the work: the job
+ *  lane's `agent_sessions.metadata.issueId`, the run-session lane's `issue_leases` row, and
+ *  `issues.session_context.lease`. `none` carries its reason: an absent field reads as quiet. */
 
 import {
   type LeaseReading,
@@ -66,13 +63,29 @@ export function classifyIssueWorker(input: {
     };
   }
 
-  return { lane: 'none', detail: absenceOf(claim) };
+  return { lane: 'none', detail: absenceOf(claim, input.sessions) };
 }
 
-function absenceOf(claim: LeaseReading | null): string {
-  if (claim === null || claim.verdict === 'none') {
-    return 'no agent session is bound to this issue on either session lane, and its record carries no claim';
+/** Why no lane answered. What is absent is a LIVE session, and the clause names their statuses
+ *  rather than judging them: `idle` is neither live nor terminal. It may not end at a bare colon
+ *  either — `session-claim.ts` leaves `detail` empty for every verdict but `malformed`. */
+function absenceOf(claim: LeaseReading | null, sessions: readonly WorkerSession[]): string {
+  return `${sessionClause(sessions)}, and ${claimClause(claim)}`;
+}
+
+function sessionClause(sessions: readonly WorkerSession[]): string {
+  if (sessions.length === 0) {
+    return 'no agent session is bound to this issue on either session lane';
   }
+  const lanes = [...new Set(sessions.map((s) => s.lane))].sort().join(' and ');
+  const statuses = [...new Set(sessions.map((s) => s.status))].sort().join(', ');
+  const n = sessions.length;
+  return `none of the ${n} agent session${n === 1 ? '' : 's'} bound to this issue on the ${lanes} lane is queued or running (${statuses})`;
+}
+
+function claimClause(claim: LeaseReading | null): string {
+  if (claim === null || claim.verdict === 'none') return 'its record carries no claim';
   const holder = claim.holder === null ? 'an unnamed holder' : claim.holder;
-  return `no agent session is bound to this issue on either session lane, and the claim by ${holder} reads ${claim.verdict}: ${claim.detail}`;
+  const why = claim.detail === '' ? '' : `: ${claim.detail}`;
+  return `the claim by ${holder} reads ${claim.verdict}${why}`;
 }

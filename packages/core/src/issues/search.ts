@@ -17,6 +17,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import {
+  type IssueStatus,
   issueLabels,
   issuePriorities,
   issueStatuses,
@@ -43,7 +44,7 @@ import { hydrateHeldForIssues } from './held-hydrator.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
 import { listModulesForIssues, resolveModuleIdsTolerant } from './label-service.js';
 import { issueListPageQuery, serializeRestListRow } from './list-projection.js';
-import { safeHydratePipelineHealthForIssues } from './pipeline-health.js';
+import { pipelineHealthUnderived, safeHydratePipelineHealthForIssues } from './pipeline-health.js';
 import { buildIssueSearchCondition, matchedSearchFieldsSql } from './search-predicate.js';
 import { buildIssueOrderBy, issueSortValues } from './sort.js';
 
@@ -368,7 +369,11 @@ searchRoutes.get(
       );
       serialized = serialized.map((r) => ({
         ...r,
-        pipelineHealth: healthMap.get(r.id as string) ?? { stage: r.status },
+        // ISS-1273 — `safeHydratePipelineHealthForIssues` answers an EMPTY map when the loader
+        // throws, so this arm is reachable. `{ stage }` alone is the shape the issue was filed
+        // against: the status column the caller already had, served back as computed health.
+        pipelineHealth:
+          healthMap.get(r.id as string) ?? pipelineHealthUnderived(r.status as IssueStatus),
       }));
     }
 

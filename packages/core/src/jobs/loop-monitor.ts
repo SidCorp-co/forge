@@ -17,8 +17,9 @@ import {
 } from './kill-gate.js';
 import {
   countClaimHeldIssues,
-  LOOP_MONITOR_AXIS,
+  type LOOP_MONITOR_AXIS,
   type LoopMonitorOutOfAxis,
+  reportLoopMonitorCoverage,
 } from './loop-monitor-axis.js';
 import { getLoopThresholds, RESULT_QUIET_MINUTES } from './loop-monitor-thresholds.js';
 import { reapExpiredParks, reapUnansweredParks } from './park-deadline.js';
@@ -594,10 +595,10 @@ export async function runLoopMonitor(
   const sessionLostJobs = await reapSessionLostJobs(now, scope);
   const resultMisses = await reapResultMisses(now, scope);
   const lapsedAnswers = await resumeLapsedAnswers(now, scope);
-  const claimHeldIssues = await countClaimHeldIssues(now, scope);
+  const { axis, ...outOfAxis } = reportLoopMonitorCoverage(await countClaimHeldIssues(now, scope));
   return {
-    axis: LOOP_MONITOR_AXIS,
-    outOfAxis: { claimHeldIssues, sweptBy: 'pipeline/idle-issues.ts' },
+    axis,
+    outOfAxis,
     ackMisses,
     sessions,
     ...parkClocks,
