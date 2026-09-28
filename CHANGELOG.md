@@ -13,6 +13,9 @@
 - **A box can only start work on a project it serves.** A box with no runner there, a disabled
   box or a withdrawn runner is refused before claiming anything, and told which, and what an
   admitted box is.
+- **A new token reaches only what its creator chose.** Creating one without picking permissions used
+  to hand over everything; it is now refused, and full access is something you tick on purpose.
+  Tokens you already hold are unchanged.
 
 - **The Attention inbox no longer shows you issues from projects you were removed from.**
   The "Awaiting input" list picked an issue because you were its assignee, or because you filed it
@@ -2497,6 +2500,13 @@
   in `metrics/interventions-report.ts`. No MCP tool was added — that surface is under a documented
   shrink and `forge_metrics.*` is in its "free to go" group. (ISS-944)
 
+- **A project can now declare what its master is for.** A goal and rules, written by a person and
+  versioned, reach the master over the API instead of living only in one machine's hook string.
+  (ISS-1313)
+- **Project knowledge can now say when it is worth reading.** An entry may name the verb a master
+  is performing or the board status it is looking at; unset entries behave exactly as before.
+  (ISS-1313)
+
 ### Removed
 - **Forge no longer writes your release steps.** A project that declares its own procedure gets it;
   one that declares none is told where its method lives, instead of being refused for a deploy
@@ -3129,6 +3139,8 @@
   what body.** The same refusal repeating is reported once, escalated once, then held quiet until it
   changes or clears.
 - **A question an agent asks now waits for an answer without moving its issue.** Its row says a person owes an answer and for how long, and closing it asks why open questions no longer matter.
+- **Removing a worktree now ends what is running inside it, or refuses and names it.** The sweep
+  also reports processes stranded in worktree paths already gone. (ISS-1271)
 - **New issue in the top bar and the command palette now opens the form on the Issues list too.** It did nothing there before. Closing the form clears the link, so Back and reload no longer reopen it.
 - **The board drawer no longer labels an issue with nothing running as Queued.** Its header shows a run chip only for a run, Activity says when no pipeline run exists, and the issue's status appears once, named as itself.
 - **An issue waiting for a runner now shows as Queued everywhere on its page and in the board drawer.** The run chips said nothing while the agent panel said queued. A paused run reads Paused, not Idle.

@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { and, eq, isNull, or, sql } from 'drizzle-orm';
 import { lockPatName, mintPat } from '../auth/pat.js';
 import { deviceTokenNameFor } from '../auth/pat-format.js';
+import { PAT_GRANT_ALL } from '../auth/pat-permissions.js';
 import { env } from '../config/env.js';
 import { db, type Tx } from '../db/client.js';
 import { personalAccessTokens } from '../db/schema.js';
@@ -57,14 +58,17 @@ export async function issueDeviceCredential(args: {
   if (!args.holderIsAgent) {
     return db.transaction(async (tx) => {
       await supersede(tx);
-      const { plaintext } = await mintPat({ ...common, projectIds: [] }, tx);
+      const { plaintext } = await mintPat(
+        { ...common, permissions: PAT_GRANT_ALL, projectIds: [] },
+        tx,
+      );
       return plaintext;
     });
   }
   return withAgentFenceLock(args.holderUserId, async (tx) => {
     await supersede(tx);
     const fence = await agentCredentialFence(args.holderUserId, tx);
-    const { plaintext } = await mintPat({ ...common, ...fence }, tx);
+    const { plaintext } = await mintPat({ ...common, permissions: PAT_GRANT_ALL, ...fence }, tx);
     return plaintext;
   });
 }

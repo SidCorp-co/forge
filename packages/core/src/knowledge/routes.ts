@@ -3,6 +3,8 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { RULES } from '../config/rate-limits.js';
+import { issueStatuses } from '../db/schema.js';
+import { masterVerbs } from '../db/schema-master-charter.js';
 import { EMBEDDING_UNAVAILABLE, EmbeddingUnavailableError } from '../embeddings/index.js';
 import { assertProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -15,6 +17,7 @@ import {
   deleteKnowledgeEntry,
   getKnowledgeEntry,
   listKnowledgeEntries,
+  ReadWhenShapeError,
   slugSchema,
   upsertKnowledgeEntry,
   upsertKnowledgeInputSchema,
@@ -38,9 +41,34 @@ const listQuerySchema = z.object({
     .enum(['overview', 'scenario', 'workflow', 'rule', 'guide', 'reference', 'glossary'])
     .optional(),
   injection: z.enum(['always', 'on_demand', 'none']).optional(),
+  // Left as bare strings rather than a zod enum so a bad value is refused with the message below
+  // — naming the field and every value that IS valid — rather than zValidator's generic
+  // "invalid query params" (ISS-1313 criteria 24, 25).
+  verb: z.string().optional(),
+  status: z.string().optional(),
 });
 
 const badRequest = (message: string) => new HTTPException(400, { message });
+
+function parseVerbQuery(raw: string | undefined): (typeof masterVerbs)[number] | undefined {
+  if (raw === undefined) return undefined;
+  if (!(masterVerbs as readonly string[]).includes(raw)) {
+    throw badRequest(
+      `\`verb\` names "${raw}", which is not a verb a master performs. Valid verbs: ${masterVerbs.join(', ')}.`,
+    );
+  }
+  return raw as (typeof masterVerbs)[number];
+}
+
+function parseStatusQuery(raw: string | undefined): (typeof issueStatuses)[number] | undefined {
+  if (raw === undefined) return undefined;
+  if (!(issueStatuses as readonly string[]).includes(raw)) {
+    throw badRequest(
+      `\`status\` names "${raw}", which is not an issue status. Valid statuses: ${issueStatuses.join(', ')}.`,
+    );
+  }
+  return raw as (typeof issueStatuses)[number];
+}
 const badSlug = (slug: string) =>
   badRequest(
     `"${slug}" is not a knowledge slug: a slug is kebab-case — lower-case letters and digits separated by hyphens, starting with a letter or digit, at most 512 characters — and carries no slash, so there are no nested slugs. A path like "convention/my-rule" is not an entry that is hard to reach, it is a name this store cannot hold; write it as "convention-my-rule". Memory documents DO carry slash-separated source refs and are a different store, reached through forge_memory rather than forge_knowledge.`,
@@ -60,11 +88,13 @@ knowledgeRoutes.get(
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    const { kind, injection } = c.req.valid('query');
+    const { kind, injection, verb: verbRaw, status: statusRaw } = c.req.valid('query');
+    const verb = parseVerbQuery(verbRaw);
+    const status = parseStatusQuery(statusRaw);
     const userId = c.get('userId');
     await assertProjectAccess(id, userId);
 
-    const result = await listKnowledgeEntries({ projectId: id, kind, injection });
+    const result = await listKnowledgeEntries({ projectId: id, kind, injection, verb, status });
     return c.json({
       ...result,
       maxAlwaysInjectChars: ALWAYS_INJECT_MAX_CHARS,
@@ -150,6 +180,12 @@ knowledgeRoutes.put(
         throw new HTTPException(503, {
           message: 'embeddings service unavailable',
           cause: { code: 'EMBEDDING_UNAVAILABLE' },
+        });
+      }
+      if (err instanceof ReadWhenShapeError) {
+        throw new HTTPException(400, {
+          message: err.refusal.message,
+          cause: { code: 'KNOWLEDGE_READ_WHEN_SHAPE', details: { field: err.refusal.field } },
         });
       }
       throw err;

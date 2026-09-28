@@ -7,6 +7,7 @@ export default defineConfig({
     './src/db/schema-activity.ts',
     './src/db/schema-admin-thresholds.ts',
     './src/db/schema-journal.ts',
+    './src/db/schema-master-charter.ts',
     './src/db/schema-questions.ts',
     './src/db/schema-rocketchat.ts',
     './src/db/schema-agent-session-events.ts',

@@ -28,6 +28,7 @@ import {
   agentSessionStatuses,
   sessionRuntimeStates,
 } from './session-vocabulary.js';
+import { skillActivityEventTypes, skillActivityTriggers } from './skill-activity-vocabulary.js';
 
 export {
   type AgentSessionFailureReason,
@@ -40,6 +41,12 @@ export {
   sessionRuntimeStates,
   terminalAgentSessionStatuses,
 } from './session-vocabulary.js';
+export {
+  type SkillActivityEventType,
+  type SkillActivityTrigger,
+  skillActivityEventTypes,
+  skillActivityTriggers,
+} from './skill-activity-vocabulary.js';
 
 import * as axes from './release-axes.js';
 import { identSearchColumn, MEMORY_EMBEDDING_DIM, pgVector, tsVector } from './schema-types.js';
@@ -1439,38 +1446,6 @@ export const deviceSkills = pgTable(
   }),
 );
 
-export const skillActivityEventTypes = [
-  'packet.published',
-  'policy.landed',
-  'reconcile.started',
-  'reconcile.decided',
-  'reconcile.failed',
-  'skill.body.changed',
-  'verify.failed',
-  'reconcile.escalated',
-  'manifest.changed',
-  'device.skill.applied',
-  'device.skill.pruned',
-  'device.sync.failed',
-  'device.skill.observed',
-  'device.skill.shadowed',
-  'job.ran.with',
-  'skill.pinned',
-  'charter.changed',
-  'reconcile.acknowledged',
-] as const;
-export type SkillActivityEventType = (typeof skillActivityEventTypes)[number];
-
-export const skillActivityTriggers = [
-  'push',
-  'poll',
-  'cli',
-  'provision',
-  'deploy',
-  'manual',
-] as const;
-export type SkillActivityTrigger = (typeof skillActivityTriggers)[number];
-
 export const skillActivityOutcomes = ['ok', 'failed', 'skipped'] as const;
 export type SkillActivityOutcome = (typeof skillActivityOutcomes)[number];
 
@@ -1636,6 +1611,16 @@ export const knowledgeEntries = pgTable(
     injection: text('injection', { enum: ['always', 'on_demand', 'none'] })
       .notNull()
       .default('on_demand'),
+    /**
+     * When this entry is worth reading, or `null` where nobody has said
+     * (ISS-1313). `{ verbs?: MasterVerb[], statuses?: IssueStatus[] }`, held to
+     * that shape by `knowledge_entries_read_when_chk`. It is a second axis
+     * beside `injection` and not a replacement for it: `injection` decides
+     * whether an entry is carried into every prompt, and this decides whether
+     * it is worth fetching for the act in hand. Never a file glob — a master
+     * dispatches and moves issues rather than editing files.
+     */
+    readWhen: jsonb('read_when'),
     confidence: text('confidence', { enum: ['verified', 'inferred', 'deprecated'] })
       .notNull()
       .default('inferred'),
@@ -1670,6 +1655,11 @@ export const knowledgeEntries = pgTable(
     embeddingBackfillIdx: index('knowledge_entries_embedding_backfill_idx')
       .on(t.updatedAt)
       .where(sql`embedding IS NULL AND archived_at IS NULL`),
+    // Mirrors `parseReadWhen` (ISS-1313); declared here too so drizzle-kit's model has it.
+    readWhenChk: check(
+      'knowledge_entries_read_when_chk',
+      sql`knowledge_read_when_ok(${t.readWhen})`,
+    ),
   }),
 );
 

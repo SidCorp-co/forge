@@ -9,6 +9,8 @@ pub mod config;
 pub mod daemon;
 pub mod error;
 pub mod exe;
+#[cfg(test)]
+pub(crate) mod log_capture;
 pub mod mcp;
 pub mod observability;
 #[cfg(test)]

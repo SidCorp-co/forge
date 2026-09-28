@@ -1,8 +1,17 @@
-import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, isNull, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { knowledgeEntries, type knowledgeKinds } from '../db/schema.js';
+import { type IssueStatus, knowledgeEntries, type knowledgeKinds } from '../db/schema.js';
+import type { MasterVerb } from '../db/schema-master-charter.js';
 import { logger } from '../logger.js';
+import { parseReadWhen, type ReadWhenCondition, ReadWhenShapeError } from './read-when.js';
+
+export {
+  parseReadWhen,
+  type ReadWhenCondition,
+  type ReadWhenRefusal,
+  ReadWhenShapeError,
+} from './read-when.js';
 
 const MAX_EMBED_CHARS = 8192;
 
@@ -52,6 +61,15 @@ export const upsertKnowledgeInputSchema = z.object({
   authoredBy: z.enum(knowledgeAuthoredByEnum).default('agent'),
   orderIndex: z.number().int().default(0),
   metadata: z.record(z.string(), z.unknown()).optional(),
+  /**
+   * Left unvalidated here on purpose: an absent key and an explicit `null`
+   * both have to survive to `upsertKnowledgeEntries` untouched by zod's
+   * `.optional()` collapsing them, because they mean different things to the
+   * write — absent leaves the stored condition alone, `null` removes it. The
+   * shape itself is refused by `parseReadWhen`, with the field named, rather
+   * than by a generic schema failure.
+   */
+  readWhen: z.unknown().optional(),
 });
 
 export type UpsertKnowledgeInput = z.infer<typeof upsertKnowledgeInputSchema>;
@@ -129,46 +147,98 @@ export async function upsertKnowledgeEntries(
     );
   }
 
-  const rows = await db
-    .insert(knowledgeEntries)
-    .values(
-      entries.map((input, i) => ({
-        projectId: input.projectId,
-        slug: input.slug,
-        title: input.title,
-        body: input.body,
-        kind: input.kind,
-        injection: input.injection,
-        confidence: input.confidence,
-        authoredBy: input.authoredBy,
-        orderIndex: input.orderIndex,
-        embedding: vectors[i] ?? null,
-        metadata: input.metadata ?? {},
-      })),
-    )
-    .onConflictDoUpdate({
-      target: [knowledgeEntries.projectId, knowledgeEntries.slug],
-      set: {
-        title: sql`excluded.title`,
-        body: sql`excluded.body`,
-        kind: sql`excluded.kind`,
-        injection: sql`excluded.injection`,
-        confidence: sql`excluded.confidence`,
-        authoredBy: sql`excluded.authored_by`,
-        orderIndex: sql`excluded.order_index`,
-        embedding: degraded
-          ? sql`CASE WHEN ${knowledgeEntries.body} = excluded.body AND ${knowledgeEntries.title} = excluded.title THEN ${knowledgeEntries.embedding} ELSE excluded.embedding END`
-          : sql`excluded.embedding`,
-        metadata: sql`excluded.metadata`,
-        archivedAt: sql`null`,
-        updatedAt: sql`now()`,
-      },
-    })
-    .returning({
-      id: knowledgeEntries.id,
-      slug: knowledgeEntries.slug,
-      projectId: knowledgeEntries.projectId,
-    });
+  // `readWhen` is a leave-alone-by-default column: an entry whose write names no `readWhen` at
+  // all must not erase a condition a person set on an earlier write, so "the key was absent" and
+  // "the key was sent as `null`" are told apart HERE, before either reaches SQL — `undefined`
+  // never touches the column, `null` clears it, an object replaces it. Because a single
+  // `ON CONFLICT ... SET` clause is one shape for the whole statement, the batch is split into the
+  // rows that touch the column and the rows that do not, each its own insert (ISS-1313 criteria
+  // 19–23, 31–32).
+  const readWhenPlans = entries.map((input) => {
+    if (input.readWhen === undefined) return { touch: false as const, value: null };
+    const parsed = parseReadWhen(input.readWhen);
+    if (!parsed.ok) throw new ReadWhenShapeError(parsed.refusal);
+    return { touch: true as const, value: parsed.value };
+  });
+
+  const baseRow = (input: UpsertKnowledgeInput, i: number) => ({
+    projectId: input.projectId,
+    slug: input.slug,
+    title: input.title,
+    body: input.body,
+    kind: input.kind,
+    injection: input.injection,
+    confidence: input.confidence,
+    authoredBy: input.authoredBy,
+    orderIndex: input.orderIndex,
+    embedding: vectors[i] ?? null,
+    metadata: input.metadata ?? {},
+  });
+
+  const baseSet = {
+    title: sql`excluded.title`,
+    body: sql`excluded.body`,
+    kind: sql`excluded.kind`,
+    injection: sql`excluded.injection`,
+    confidence: sql`excluded.confidence`,
+    authoredBy: sql`excluded.authored_by`,
+    orderIndex: sql`excluded.order_index`,
+    embedding: degraded
+      ? sql`CASE WHEN ${knowledgeEntries.body} = excluded.body AND ${knowledgeEntries.title} = excluded.title THEN ${knowledgeEntries.embedding} ELSE excluded.embedding END`
+      : sql`excluded.embedding`,
+    metadata: sql`excluded.metadata`,
+    archivedAt: sql`null`,
+    updatedAt: sql`now()`,
+  };
+
+  const returning = {
+    id: knowledgeEntries.id,
+    slug: knowledgeEntries.slug,
+    projectId: knowledgeEntries.projectId,
+  };
+
+  const touchedIdx = entries.map((_, i) => i).filter((i) => readWhenPlans[i]?.touch);
+  const untouchedIdx = entries.map((_, i) => i).filter((i) => !readWhenPlans[i]?.touch);
+
+  // Both branches share one transaction: two separate top-level statements would let the first
+  // commit while the second fails (an invalid project id, say), turning one logical upsert into a
+  // partial write — a regression from the single multi-row statement this replaced.
+  const rows = await db.transaction(async (tx) => {
+    const out: Array<{ id: string; slug: string; projectId: string }> = [];
+
+    if (untouchedIdx.length > 0) {
+      // biome-ignore lint/style/noNonNullAssertion: idx drawn from entries.map, always in range
+      const values = untouchedIdx.map((i) => baseRow(entries[i]!, i));
+      const r = await tx
+        .insert(knowledgeEntries)
+        .values(values)
+        .onConflictDoUpdate({
+          target: [knowledgeEntries.projectId, knowledgeEntries.slug],
+          set: baseSet,
+        })
+        .returning(returning);
+      out.push(...r);
+    }
+
+    if (touchedIdx.length > 0) {
+      const values = touchedIdx.map((i) => ({
+        // biome-ignore lint/style/noNonNullAssertion: idx drawn from entries.map, always in range
+        ...baseRow(entries[i]!, i),
+        readWhen: readWhenPlans[i]?.value ?? null,
+      }));
+      const r = await tx
+        .insert(knowledgeEntries)
+        .values(values)
+        .onConflictDoUpdate({
+          target: [knowledgeEntries.projectId, knowledgeEntries.slug],
+          set: { ...baseSet, readWhen: sql`excluded.read_when` },
+        })
+        .returning(returning);
+      out.push(...r);
+    }
+
+    return out;
+  });
 
   const idByKey = new Map(rows.map((r) => [entryKey(r), r.id]));
   return inputs.map((input) => {
@@ -183,6 +253,11 @@ export interface ListKnowledgeInput {
   projectId: string;
   kind?: (typeof knowledgeKindEnum)[number] | undefined;
   injection?: (typeof knowledgeInjectionEnum)[number] | undefined;
+  /** Match an entry whose `readWhen.verbs` names this verb — combined with `status` by OR:
+   *  what a master wants is everything worth reading at this moment, not only an entry that
+   *  happens to declare both axes (ISS-1313 criterion 34). */
+  verb?: MasterVerb | undefined;
+  status?: IssueStatus | undefined;
 }
 
 export interface KnowledgeListRow {
@@ -195,6 +270,7 @@ export interface KnowledgeListRow {
   authoredBy: string;
   orderIndex: number;
   updatedAt: Date;
+  readWhen: ReadWhenCondition | null;
 }
 
 export interface ListKnowledgeResult {
@@ -239,11 +315,21 @@ function trimToResponseCap(rows: KnowledgeListRow[]): KnowledgeListRow[] {
 export async function listKnowledgeEntries(
   input: ListKnowledgeInput,
 ): Promise<ListKnowledgeResult> {
+  const verbMatch = input.verb
+    ? sql`${knowledgeEntries.readWhen} -> 'verbs' @> ${JSON.stringify([input.verb])}::jsonb`
+    : undefined;
+  const statusMatch = input.status
+    ? sql`${knowledgeEntries.readWhen} -> 'statuses' @> ${JSON.stringify([input.status])}::jsonb`
+    : undefined;
+  const conditionMatch =
+    verbMatch && statusMatch ? or(verbMatch, statusMatch) : (verbMatch ?? statusMatch);
+
   const where = [
     eq(knowledgeEntries.projectId, input.projectId),
     isNull(knowledgeEntries.archivedAt),
     ...(input.kind ? [eq(knowledgeEntries.kind, input.kind)] : []),
     ...(input.injection ? [eq(knowledgeEntries.injection, input.injection)] : []),
+    ...(conditionMatch ? [conditionMatch] : []),
   ];
 
   const fetched = await db
@@ -257,6 +343,7 @@ export async function listKnowledgeEntries(
       authoredBy: knowledgeEntries.authoredBy,
       orderIndex: knowledgeEntries.orderIndex,
       updatedAt: knowledgeEntries.updatedAt,
+      readWhen: knowledgeEntries.readWhen,
       total: sql<number>`count(*) over ()`.mapWith(Number),
     })
     .from(knowledgeEntries)
@@ -265,7 +352,10 @@ export async function listKnowledgeEntries(
     .limit(MAX_LIST_ROWS);
 
   const total = fetched[0]?.total ?? 0;
-  const rows: KnowledgeListRow[] = fetched.map(({ total: _total, ...row }) => row);
+  const rows: KnowledgeListRow[] = fetched.map(({ total: _total, ...row }) => ({
+    ...row,
+    readWhen: (row.readWhen as ReadWhenCondition | null) ?? null,
+  }));
 
   const kept = trimToResponseCap(rows);
   return { rows: kept, truncated: kept.length < total, returned: kept.length, total };
@@ -285,6 +375,7 @@ export interface GetKnowledgeResult {
   archivedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  readWhen: ReadWhenCondition | null;
 }
 
 export async function getKnowledgeEntry(
@@ -306,11 +397,13 @@ export async function getKnowledgeEntry(
       archivedAt: knowledgeEntries.archivedAt,
       createdAt: knowledgeEntries.createdAt,
       updatedAt: knowledgeEntries.updatedAt,
+      readWhen: knowledgeEntries.readWhen,
     })
     .from(knowledgeEntries)
     .where(and(eq(knowledgeEntries.projectId, projectId), eq(knowledgeEntries.slug, slug)))
     .limit(1);
-  return row ?? null;
+  if (!row) return null;
+  return { ...row, readWhen: (row.readWhen as ReadWhenCondition | null) ?? null };
 }
 
 export async function deleteKnowledgeEntry(projectId: string, slug: string): Promise<number> {
