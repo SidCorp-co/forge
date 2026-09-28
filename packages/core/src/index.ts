@@ -478,10 +478,8 @@ if (isMain) {
   registerCommentMirror(hooks);
   registerPhaseJournalClose(hooks);
   registerPausedRunWedgeResolve(hooks);
-
   registerOutboxWorker();
   await registerReconciler();
-
   registerRunnerReleaseRefetch();
 
   const server = serve({ fetch: app.fetch, port }, (info) => {

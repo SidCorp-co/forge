@@ -44,9 +44,10 @@ export const projectMasterCharters = pgTable(
       t.projectId,
       t.version,
     ),
-    // Declared here too, not just in the migration, so drizzle-kit's own model of this table
-    // knows both constraints exist (ISS-1313 codex consult ff4bb2).
     goalNotBlankChk: check('master_charter_goal_not_blank_chk', sql`btrim(${t.goal}) <> ''`),
-    rulesShapeChk: check('master_charter_rules_shape_chk', sql`master_charter_rules_ok(${t.rules})`),
+    rulesShapeChk: check(
+      'master_charter_rules_shape_chk',
+      sql`master_charter_rules_ok(${t.rules})`,
+    ),
   }),
 );
