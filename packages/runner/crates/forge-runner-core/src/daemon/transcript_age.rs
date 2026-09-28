@@ -60,21 +60,37 @@ pub fn written_at(path: &Path) -> Option<i64> {
     modified_ms(path)
 }
 
-/// How much of a transcript's end [`ends_on_stop_records`] reads. A stop
-/// hook's record is a few hundred bytes; a newest entry longer than this is
-/// not one, and reads as the turn that wrote it.
+/// How much of a transcript's end [`newest_entry`] reads. A stop hook's
+/// record is a few hundred bytes; a newest entry longer than this is not one,
+/// and reads as the turn that wrote it.
 const TAIL_BYTES: u64 = 64 * 1024;
 
-/// Whether the newest entry in the transcript at `path` is a record a
-/// `SubagentStop` hook left. `None` where the file cannot be read.
-///
-/// Claude Code appends one such record per hook once the hook returns, which is
-/// after the box stamped the stop, so a subagent's transcript is always written
-/// after the stop it records — 120 to 210 ms after, on both runs ISS-1312
-/// measured. Read by its time alone, that write is a resumed turn, and every
-/// finished subagent held every restart until its master closed it. An entry of
-/// any other kind after those records, or one that does not parse, is a turn.
-pub fn ends_on_stop_records(path: &Path) -> Option<bool> {
+/// What the newest entry in a subagent's transcript is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Newest {
+    /// A record a `SubagentStop` hook left.
+    ///
+    /// Claude Code appends one such record per hook once the hook returns,
+    /// which is after the box stamped the stop, so a subagent's transcript is
+    /// always written after the stop it records — 120 to 210 ms after, on both
+    /// runs ISS-1312 measured. Read by its time alone, that write is a resumed
+    /// turn, and every finished subagent held every restart until its master
+    /// closed it.
+    StopRecord,
+    /// A `user` entry — a prompt, a notification, a tool's result — which is
+    /// the model's to answer. A turn that takes one up writes its reply
+    /// promptly: measured over this box's 1075 subagent transcripts
+    /// 2026-09-28, 277 notifications were each answered within 29 s and
+    /// 145,297 answered entries within 20 min. One nobody answers is left by a
+    /// background task that finished after its subagent stopped (ISS-1312).
+    AwaitingReply,
+    /// Anything else, or an entry that does not parse: a turn wrote it.
+    Turn,
+}
+
+/// The newest entry in the transcript at `path`. `None` where the file cannot
+/// be opened or read, which says nothing about what was written.
+pub fn newest_entry(path: &Path) -> Option<Newest> {
     use std::io::{Read, Seek, SeekFrom};
     let mut file = std::fs::File::open(path).ok()?;
     let len = file.metadata().ok()?.len();
@@ -84,12 +100,20 @@ pub fn ends_on_stop_records(path: &Path) -> Option<bool> {
     file.read_to_end(&mut tail).ok()?;
     let tail = String::from_utf8_lossy(&tail);
     let Some(newest) = tail.lines().rev().find(|l| !l.trim().is_empty()) else {
-        return Some(false);
+        return Some(Newest::Turn);
     };
     let Ok(entry) = serde_json::from_str::<serde_json::Value>(newest) else {
-        return Some(false);
+        return Some(Newest::Turn);
     };
-    Some(entry["type"] == "attachment" && entry["attachment"]["hookEvent"] == "SubagentStop")
+    Some(
+        if entry["type"] == "attachment" && entry["attachment"]["hookEvent"] == "SubagentStop" {
+            Newest::StopRecord
+        } else if entry["type"] == "user" {
+            Newest::AwaitingReply
+        } else {
+            Newest::Turn
+        },
+    )
 }
 
 fn modified_ms(path: &Path) -> Option<i64> {
@@ -130,10 +154,21 @@ pub(crate) const STOP_TAIL: &str = concat!(
     "\n",
 );
 
-/// A turn resumed after that stop: a background notification arrived.
+/// A background notification that arrived after that stop, which the model
+/// answers if the notification resumes it.
+#[cfg(test)]
+pub(crate) const NOTIFIED_TAIL: &str = concat!(
+    r#"{"isSidechain":true,"agentId":"a9860d00885b2b2d0","type":"user","message":{"role":"user","content":"<task-notification>the suite finished</task-notification>"},"timestamp":"2026-09-27T11:11:13.000Z"}"#,
+    "\n",
+);
+
+/// A turn resumed after that stop: the notification, and the model's reply
+/// starting a tool that can run for hours without a write.
 #[cfg(test)]
 pub(crate) const RESUMED_TAIL: &str = concat!(
     r#"{"isSidechain":true,"agentId":"a9860d00885b2b2d0","type":"user","message":{"role":"user","content":"<task-notification>the suite finished</task-notification>"},"timestamp":"2026-09-27T11:11:13.000Z"}"#,
+    "\n",
+    r#"{"isSidechain":true,"agentId":"a9860d00885b2b2d0","type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":"cargo test"}}]},"timestamp":"2026-09-27T11:11:17.000Z"}"#,
     "\n",
 );
 
@@ -314,8 +349,17 @@ mod tests {
     fn a_transcript_ending_on_its_stop_hooks_records_ends_on_its_stop() {
         let dir = Scratch::new("transcript-age");
         assert_eq!(
-            ends_on_stop_records(&transcript(&dir, STOP_TAIL)),
-            Some(true)
+            newest_entry(&transcript(&dir, STOP_TAIL)),
+            Some(Newest::StopRecord)
+        );
+    }
+
+    #[test]
+    fn a_notification_after_the_stop_records_awaits_a_reply() {
+        let dir = Scratch::new("transcript-age");
+        assert_eq!(
+            newest_entry(&transcript(&dir, &format!("{STOP_TAIL}{NOTIFIED_TAIL}"))),
+            Some(Newest::AwaitingReply)
         );
     }
 
@@ -324,8 +368,9 @@ mod tests {
         let dir = Scratch::new("transcript-age");
         let resumed = format!("{STOP_TAIL}{RESUMED_TAIL}");
         assert_eq!(
-            ends_on_stop_records(&transcript(&dir, &resumed)),
-            Some(false)
+            newest_entry(&transcript(&dir, &resumed)),
+            Some(Newest::Turn),
+            "the reply to the notification is the turn it resumed"
         );
     }
 
@@ -333,8 +378,8 @@ mod tests {
     fn a_newest_entry_that_does_not_parse_is_never_read_as_a_stop() {
         let dir = Scratch::new("transcript-age");
         let torn = format!("{STOP_TAIL}{{\"type\":\"attach");
-        assert_eq!(ends_on_stop_records(&transcript(&dir, &torn)), Some(false));
-        assert_eq!(ends_on_stop_records(&transcript(&dir, "")), Some(false));
+        assert_eq!(newest_entry(&transcript(&dir, &torn)), Some(Newest::Turn));
+        assert_eq!(newest_entry(&transcript(&dir, "")), Some(Newest::Turn));
     }
 
     #[test]
@@ -342,8 +387,8 @@ mod tests {
         let dir = Scratch::new("transcript-age");
         let pre_tool = r#"{"type":"attachment","attachment":{"type":"hook_success","hookEvent":"PreToolUse"}}"#;
         assert_eq!(
-            ends_on_stop_records(&transcript(&dir, &format!("{STOP_TAIL}{pre_tool}\n"))),
-            Some(false)
+            newest_entry(&transcript(&dir, &format!("{STOP_TAIL}{pre_tool}\n"))),
+            Some(Newest::Turn)
         );
     }
 
@@ -352,12 +397,44 @@ mod tests {
         let dir = Scratch::new("transcript-age");
         let long = format!("{}{STOP_TAIL}", RESUMED_TAIL.repeat(2_000));
         assert!(long.len() as u64 > 4 * TAIL_BYTES);
-        assert_eq!(ends_on_stop_records(&transcript(&dir, &long)), Some(true));
+        assert_eq!(
+            newest_entry(&transcript(&dir, &long)),
+            Some(Newest::StopRecord)
+        );
+    }
+
+    #[test]
+    fn a_tool_s_result_is_the_model_s_to_answer_too() {
+        let dir = Scratch::new("transcript-age");
+        let result = r#"{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"}]}}"#;
+        assert_eq!(
+            newest_entry(&transcript(&dir, &format!("{RESUMED_TAIL}{result}\n"))),
+            Some(Newest::AwaitingReply)
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_transcript_that_cannot_be_opened_says_nothing_about_what_was_written() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = Scratch::new("transcript-age");
+        let path = transcript(&dir, STOP_TAIL);
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let opened = std::fs::File::open(&path).is_ok();
+        let got = newest_entry(&path);
+        let written = written_at(&path);
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        assert!(
+            !opened,
+            "the plant did not take: this process opens a mode-000 file, as root does"
+        );
+        assert_eq!(got, None);
+        assert!(written.is_some(), "its time is still read");
     }
 
     #[test]
     fn a_transcript_that_is_not_there_says_nothing_about_a_stop() {
         let dir = Scratch::new("transcript-age");
-        assert_eq!(ends_on_stop_records(&dir.path().join("gone.jsonl")), None);
+        assert_eq!(newest_entry(&dir.path().join("gone.jsonl")), None);
     }
 }

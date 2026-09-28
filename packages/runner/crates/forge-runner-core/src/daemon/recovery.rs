@@ -712,6 +712,7 @@ fn say_why_kept(ledger: &mut Ledger, run: &Run, now: i64) {
             "its subagent ended a turn {}m ago and has written nothing since",
             silent_ms / 60_000
         ),
+        subagent_end::Evidence::Unanswered { .. } => subagent_end::held_because(evidence, path),
         _ => format!(
             "its subagent ended a turn and this box cannot read its transcript ({}), so it cannot tell whether it resumed",
             path.unwrap_or("no path was recorded")
@@ -2115,6 +2116,44 @@ mod tests {
             kept(&led),
             None,
             "and a minute of quiet is not yet worth a word"
+        );
+    }
+
+    /// Criterion 12: a notification appended after the stop that nothing
+    /// answered for the quiet bound is said once, as unanswered and not quiet,
+    /// and the run is still kept for its master to close.
+    #[tokio::test]
+    async fn a_notification_nobody_answered_is_said_once_as_unanswered() {
+        let scratch = Scratch::new("unanswered");
+        let (mut led, wt, transcript) = a_subagent_run(&scratch);
+        let beats = Beats::default();
+        let stop = now_ms() - 3 * 24 * 60 * MIN_MS;
+        transcript_written_at(&transcript, stop);
+        std::fs::write(
+            &transcript,
+            format!(
+                "{}{}",
+                crate::daemon::transcript_age::STOP_TAIL,
+                crate::daemon::transcript_age::NOTIFIED_TAIL
+            ),
+        )
+        .unwrap();
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(&transcript)
+            .unwrap()
+            .set_modified(
+                std::time::UNIX_EPOCH
+                    + std::time::Duration::from_millis((now_ms() - 61 * MIN_MS) as u64),
+            )
+            .unwrap();
+        stop_at(&led, stop, Some(&transcript));
+        let r = sweep(&mut led, &master_alive(), &beats).await;
+        assert_still_held(&led, &r, &wt, "an unanswered notification ends nothing");
+        assert_eq!(kept(&led).as_deref(), Some("unanswered"));
+        assert!(
+            !led.note_kept("run-1", "unanswered").unwrap(),
+            "the notice is standing, so the next sweep has nothing new to say"
         );
     }
 
