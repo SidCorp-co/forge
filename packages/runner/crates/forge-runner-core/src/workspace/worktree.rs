@@ -12,7 +12,7 @@ use std::process::Stdio;
 use tokio::process::Command;
 
 use crate::error::{Error, Result};
-use crate::workspace::worktree_processes::{Clearing, Verdict};
+use crate::workspace::worktree_processes::{Clearing, Loud, Say, Verdict};
 
 async fn git(repo: &str, args: &[&str]) -> Result<std::process::Output> {
     Command::new("git")
@@ -404,7 +404,18 @@ pub async fn remove_at_clearing(
             tracing::warn!("[worktree] {repo}: {said}");
             return Err(Error::Other(said));
         }
-        Verdict::Take(Some(said)) => tracing::warn!("[worktree] {repo}: {said}"),
+        // The level is the verdict's, because a removal that ended something
+        // and one that only said how complete its reading was are not the
+        // same event — and the second is every removal on a box with other
+        // people's processes on it (ISS-1271, the judging run's observation 2).
+        Verdict::Take(Some(Say {
+            loud: Loud::Notable,
+            said,
+        })) => tracing::warn!("[worktree] {repo}: {said}"),
+        Verdict::Take(Some(Say {
+            loud: Loud::Routine,
+            said,
+        })) => tracing::info!("[worktree] {repo}: {said}"),
         Verdict::Take(None) => {}
     }
     let out = git(
@@ -1061,6 +1072,8 @@ pub(crate) mod tests {
             after_kill: std::time::Duration::ZERO,
         };
 
+        pub(super) use crate::workspace::worktree_processes::planted::Unaskable;
+
         /// A process root naming one pid whose working directory is `at`.
         pub(super) fn one_living_in(root: &Path, at: &Path) {
             let d = root.join("4242");
@@ -1197,6 +1210,107 @@ pub(crate) mod tests {
             "{refused}"
         );
         assert!(linked.is_dir(), "{}", linked.display());
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The uneventful removal must not arrive where the strand report does.
+    ///
+    /// `not_asked` is never zero on a shared box, so a level taken from
+    /// whether there is a line at all put a WARN on EVERY tree that went,
+    /// carrying a constant fact about the box rather than anything about that
+    /// removal — into the same stream as the stranded-process report this
+    /// change exists to make readable. Measured in production on the first
+    /// sweep after it shipped, at 11:42:45Z on `epodsystem-core/iss-306`.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn an_ordinary_removal_on_a_box_full_of_other_peoples_processes_is_not_a_warning() {
+        let root = repo("residents-routine").await;
+        let r = root.to_string_lossy().to_string();
+        let linked = create(&r, "ISS-1271", None).await.unwrap();
+        let proc = root.join("proc");
+        let unaskable = residents::Unaskable::at(&proc, 8123);
+
+        let (log, guard) = crate::log_capture::capturing();
+        remove_at_clearing(
+            &r,
+            &linked,
+            "the run is over",
+            &Clearing {
+                proc_root: &proc,
+                grace: residents::NO_WAIT,
+                hand: &residents::Wont,
+            },
+        )
+        .await
+        .expect("nobody this box may ask about is living in it, so it goes");
+        drop(guard);
+        let said = log.said();
+
+        assert!(
+            !linked.exists(),
+            "the directory went, which is the case this is about: {}",
+            linked.display()
+        );
+        assert!(
+            said.contains("1 pid(s) belong to another user"),
+            "the fixture plants a pid this box may not ask about, and a reading that could ask \
+             about it is not the shared box this is about at all — as root every cwd reads and \
+             this proves nothing: {said}"
+        );
+        assert!(
+            !said.contains("WARN"),
+            "a removal that ended nothing and took its directory is the uneventful case. Saying \
+             how complete its reading was is owed on every one of them, and arriving at the level \
+             a real strand arrives at is what makes that stream unreadable: {said}"
+        );
+
+        drop(unaskable);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A refusal is exactly where the completeness of a reading belongs.
+    ///
+    /// The keep it leaves is a decision an operator may have to finish by
+    /// hand, and what this box could not see is half of what that decision
+    /// rests on. The clause reached the removals that SUCCEEDED and never the
+    /// ones that refused, because the ending carried a count it was never
+    /// given.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_refusal_says_how_much_of_the_box_the_reading_behind_it_could_see() {
+        let root = repo("residents-standing-partial").await;
+        let r = root.to_string_lossy().to_string();
+        let linked = create(&r, "ISS-1271", None).await.unwrap();
+        let proc = root.join("proc");
+        residents::one_living_in(&proc, &linked);
+        let unaskable = residents::Unaskable::at(&proc, 8123);
+
+        let refused = remove_at_clearing(
+            &r,
+            &linked,
+            "the run is over",
+            &Clearing {
+                proc_root: &proc,
+                grace: residents::NO_WAIT,
+                hand: &residents::Wont,
+            },
+        )
+        .await
+        .expect_err("a checkout with a process still in it is not given back");
+
+        let said = refused.to_string();
+        assert!(
+            said.contains("pid 4242"),
+            "the refusal names who is in there: {said}"
+        );
+        assert!(
+            said.contains("1 pid(s) belong to another user"),
+            "and how complete the reading behind it was. The same reading produced the count on a \
+             removal that succeeds; dropping it here tells an operator holding a kept directory \
+             that the box saw everything in it: {said}"
+        );
+
+        drop(unaskable);
         let _ = std::fs::remove_dir_all(&root);
     }
 }

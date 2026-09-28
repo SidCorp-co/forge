@@ -3140,7 +3140,12 @@
   changes or clears.
 - **A question an agent asks now waits for an answer without moving its issue.** Its row says a person owes an answer and for how long, and closing it asks why open questions no longer matter.
 - **Removing a worktree now ends what is running inside it, or refuses and names it.** The sweep
-  also reports processes stranded in worktree paths already gone. (ISS-1271)
+  also reports processes stranded in worktree paths already gone. An uneventful clean-up no longer
+  warns, and a refusal says what went unread. (ISS-1271)
+
+- **A working copy is no longer kept back because an unrelated program exited while the machine was
+  being read.** The clean-up took a process that had already gone for a reading it could not
+  take. (ISS-1271)
 - **A live run now names the issues it is for and the step it is on, and an issue nobody is working says so in words.** Both came back blank before, which read the same as a quiet system.
 - **A message a master's pane refuses is no longer reported as a session that ended.** A prompt holding unsent text, or a tmux nobody could reach, now leaves the answer waiting rather than restarting the issue.
 - **New issue in the top bar and the command palette now opens the form on the Issues list too.** It did nothing there before. Closing the form clears the link, so Back and reload no longer reopen it.
