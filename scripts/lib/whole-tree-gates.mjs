@@ -177,7 +177,7 @@ function argvListing(argv, cwd, root) {
   return [
     {
       dir: root,
-      via: `${bin} (a program the guard cannot see into, so counted as listing the root)`,
+      via: `\`${argv[0].slice(0, 60)}\` (a program the guard cannot see into, so counted as listing the root)`,
       unseen: true,
     },
   ];

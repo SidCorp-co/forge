@@ -128,7 +128,7 @@ describe('what a child process lists', () => {
     });
     expect(entry).toEqual({
       dir: ROOT,
-      via: 'python3 (a program the guard cannot see into, so counted as listing the root)',
+      via: '`python3` (a program the guard cannot see into, so counted as listing the root)',
       unseen: true,
     });
     expect(run('python3', ['walk.py'], { cwd: ROOT })).toEqual([ROOT]);
