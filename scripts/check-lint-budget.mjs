@@ -21,6 +21,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { baseRef } from './lib/base-branch.mjs';
 import {
   freezeFaults,
   loadBaseline,
@@ -170,9 +171,11 @@ function git(args) {
 
 function branchDelta() {
   const head = git(['rev-parse', 'HEAD']);
-  const base = git(['merge-base', 'origin/main', 'HEAD']);
   if (!head) return { skip: 'no git HEAD' };
-  if (!base) return { skip: 'no origin/main to compare against (shallow or detached checkout)' };
+  const target = baseRef(ROOT);
+  if (target.refusal) return { skip: target.summary };
+  const base = git(['merge-base', target.ref, 'HEAD']);
+  if (!base) return { skip: `no merge-base with ${target.ref} (shallow or detached checkout)` };
   if (base === head) return { skip: `merge-base is HEAD (${base.slice(0, 8)}) — no branch delta` };
 
   const names = git(['diff', '--name-only', base]);

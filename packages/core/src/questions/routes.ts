@@ -90,6 +90,7 @@ const REFUSAL_STATUS: Record<QuestionRefusalCode, ContentfulStatusCode> = {
   QUESTION_OPTION_UNKNOWN: 400,
   QUESTION_AUTHORITY_REQUIRED: 403,
   QUESTION_ISSUE_ELSEWHERE: 400,
+  QUESTION_ISSUE_TERMINAL: 409,
   QUESTION_REASON_REQUIRED: 400,
   QUESTION_OPTIONS_REQUIRED: 400,
   QUESTION_RECOMMENDED_UNKNOWN: 400,
@@ -142,6 +143,10 @@ questionRoutes.get('/', async (c) => {
   if (issueId && projectId) {
     throw badRequest('name issueId or projectId, not both — they are two different questions');
   }
+  const issueScope = c.req.query('issue');
+  if (issueScope !== undefined && issueScope !== 'none') {
+    throw badRequest('issue takes one value, `none`, for the questions that name no issue');
+  }
   const status = c.req.query('status');
   if (status && !questionStatuses.includes(status as (typeof questionStatuses)[number])) {
     throw badRequest(`status must be one of ${questionStatuses.join(', ')}`);
@@ -159,6 +164,7 @@ questionRoutes.get('/', async (c) => {
         c.get('userId'),
         status as (typeof questionStatuses)[number] | undefined,
         page.data,
+        issueScope === 'none',
       );
       if (!open) throw notFound();
       return c.json(open);
@@ -177,11 +183,15 @@ questionRoutes.post('/', async (c) => {
   const body = await c.req.json().catch(() => null);
   const parsed = askSchema.safeParse(body);
   if (!parsed.success) throw badRequest(z.prettifyError(parsed.error));
-  const { parkDeadlineAt, blockerKind, options, ...rest } = parsed.data;
+  const { parkDeadlineAt, blockerKind, options, recommendedOptionId, ...rest } = parsed.data;
   try {
     const asked = await askAs({
       ...rest,
-      options: options.map(({ fingerprint, ...o }) => (fingerprint ? { ...o, fingerprint } : o)),
+      answer: {
+        shape: 'choice',
+        options: options.map(({ fingerprint, ...o }) => (fingerprint ? { ...o, fingerprint } : o)),
+        recommendedOptionId,
+      },
       blockerKind: blockerKind ?? 'human',
       parkDeadlineAt: parkDeadlineAt ? new Date(parkDeadlineAt) : undefined,
       userId: c.get('userId'),

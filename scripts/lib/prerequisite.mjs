@@ -8,13 +8,20 @@ export const PREREQUISITES = {
     paths: ['node_modules', 'packages/core/node_modules', 'packages/web-v2/node_modules'],
   },
   'archmap-resolver': {
+    // The probe is the absence of ONE path, and two unrelated things empty it, so the message says
+    // what was looked for rather than why it was not there. Naming one cause sent a reader chasing a
+    // version that was never installed (ISS-1287).
     what:
-      'archmap has no TypeScript resolver to spawn: dependency-cruiser is installed but carries no ' +
-      'bin/dependency-cruise.mjs, the entry point archmap 0.1.4 walks node_modules for ' +
-      '(dependency-cruiser 18.3.0 renamed it to bin/dependency-cruiser.mjs)',
+      'archmap has no TypeScript resolver to spawn: this repository root has no ' +
+      'node_modules/dependency-cruiser/bin/dependency-cruise.mjs, the entry point archmap 0.1.4 ' +
+      'walks node_modules for. Two things empty that path and this probe cannot tell them apart: ' +
+      'dependency-cruiser 18.3.0 renamed the bin to bin/dependency-cruiser.mjs, and a non-hoisting ' +
+      'node-linker leaves the bin under the package that declares it instead of at the root',
     remedy:
-      'locally only, and do not commit it: pnpm --filter @forge/core add -D dependency-cruiser@18.2.0 ' +
-      "— the real fix is archmap's, tracked on ISS-1098",
+      'read `ls packages/*/node_modules/dependency-cruiser/bin` first — a dependency-cruise.mjs ' +
+      'there means the root is simply not hoisting, and .npmrc is what to read, not the version. ' +
+      'Otherwise, locally only and do not commit it: pnpm --filter @forge/core add -D ' +
+      "dependency-cruiser@18.2.0 — the real fix is archmap's, tracked on ISS-1098",
     paths: ['node_modules/dependency-cruiser/bin/dependency-cruise.mjs'],
   },
   'observability-build': {

@@ -8,6 +8,7 @@ import { db } from '../db/client.js';
 import { commentAttachments, comments, issueAttachments, issues } from '../db/schema.js';
 import { parseForgeRecord } from '../messaging/forge-record.js';
 import { criterionBlocksIn } from '../messaging/verdict-identity.js';
+import type { ServingReading } from '../release-batch/serving-reading.js';
 import { type CitationReport, citationSentence, unresolvedCitations } from './evidence-standing.js';
 import {
   type IssueIdentities,
@@ -20,6 +21,9 @@ import {
 
 // `short` is the CLI's own "met short of its wording, judged not to block" — a real judgement.
 const EARNED_VERDICTS: ReadonlySet<string> = new Set(['pass', 'short']);
+
+// A verdict nothing could re-read is weaker evidence, not a refusal, so it earns (ISS-1286).
+const EARNED_STANDINGS: ReadonlySet<VerdictStanding> = new Set(['stands', 'uncorroborated']);
 
 /** The numbered top-level lines of an acceptance-criteria field, in order written. */
 export function acceptanceCriteriaNumbers(text: string | null | undefined): number[] {
@@ -92,8 +96,10 @@ export interface IssueCriteriaReport {
   readonly unearned: readonly UnearnedCriterion[];
   /** Named beside `unearned` so a reader gets the citation and not only the consequence. */
   readonly broken: readonly BrokenCitations[];
-  /** The deployment this issue records as serving it: the identity a `runtime:` verdict must name. */
-  readonly serving: string | null;
+  /** What the project's declared probes answered when these verdicts were weighed. */
+  readonly serving: ServingReading;
+  /** Criteria earned on a runtime nothing could re-read: earned, and weaker than a checked one. */
+  readonly uncorroborated: readonly number[];
 }
 
 /** Every name the tracker holds an attachment under for this issue, its comments' included. */
@@ -116,14 +122,15 @@ const NEVER_JUDGED = 'no verdict was recorded for it';
 function reasonsAgainst(
   pair: CriterionVerdict,
   standing: VerdictStanding,
+  serving: ServingReading,
   identities: IssueIdentities,
   unresolved: readonly CitationReport[],
 ): string[] {
   const out: string[] = [];
   if (!EARNED_VERDICTS.has(pair.verdict)) {
     out.push(`its verdict is \`${pair.verdict}\`, which is not earned`);
-  } else if (standing !== 'stands') {
-    out.push(standingSentence(standing, pair.at, identities));
+  } else if (!EARNED_STANDINGS.has(standing)) {
+    out.push(standingSentence(standing, pair.at, serving, identities));
   }
   if (unresolved.length > 0) out.push(citationSentence(unresolved));
   return out;
@@ -132,16 +139,19 @@ function reasonsAgainst(
 interface CriteriaFindings {
   readonly unearned: UnearnedCriterion[];
   readonly broken: BrokenCitations[];
+  readonly uncorroborated: number[];
 }
 
 function findingsFor(
   numbers: readonly number[],
   latest: ReadonlyMap<number, CriterionVerdict>,
+  serving: ServingReading,
   identities: IssueIdentities,
   held: ReadonlySet<string>,
 ): CriteriaFindings {
   const unearned: UnearnedCriterion[] = [];
   const broken: BrokenCitations[] = [];
+  const uncorroborated: number[] = [];
   for (const criterion of numbers) {
     const pair = latest.get(criterion);
     if (!pair) {
@@ -150,12 +160,13 @@ function findingsFor(
     }
     const unresolved = unresolvedCitations(pair.cited, held);
     if (unresolved.length > 0) broken.push({ criterion, unresolved });
-    const standing = verdictStanding(pair.at, identities);
-    const reasons = reasonsAgainst(pair, standing, identities, unresolved);
+    const standing = verdictStanding(pair.at, serving, identities);
+    const reasons = reasonsAgainst(pair, standing, serving, identities, unresolved);
+    if (standing === 'uncorroborated' && reasons.length === 0) uncorroborated.push(criterion);
     if (reasons.length === 0) continue;
     unearned.push({ criterion, verdict: pair.verdict, standing, why: reasons.join('; and ') });
   }
-  return { unearned, broken };
+  return { unearned, broken, uncorroborated };
 }
 
 /** The issue rows this check reads, and the only ones it reads. */
@@ -166,26 +177,36 @@ interface CriteriaRow {
   mergedCommitSha: string | null;
 }
 
-async function reportFor(row: CriteriaRow): Promise<IssueCriteriaReport> {
+async function reportFor(row: CriteriaRow, serving: ServingReading): Promise<IssueCriteriaReport> {
   // No parseable criteria is a different, already-owned gap, not this check's to refuse.
   const identities = issueIdentities(row);
   const numbers = acceptanceCriteriaNumbers(row.acceptanceCriteria);
   if (numbers.length === 0) {
-    return { issueId: row.id, unearned: [], broken: [], serving: identities.serving };
+    return { issueId: row.id, unearned: [], broken: [], serving, uncorroborated: [] };
   }
   const latest = await latestCriterionVerdicts(row.id);
   const held = await heldAttachmentNames(row.id);
-  const found = findingsFor(numbers, latest, identities, held);
+  const found = findingsFor(numbers, latest, serving, identities, held);
   return {
     issueId: row.id,
     unearned: found.unearned,
     broken: found.broken,
-    serving: identities.serving,
+    serving,
+    uncorroborated: found.uncorroborated,
   };
 }
 
-/** Every criterion these issues cannot be shown to have earned, and why each one is not earned. */
-export async function unearnedCriteriaReports(issueIds: string[]): Promise<IssueCriteriaReport[]> {
+/**
+ * Every criterion these issues cannot be shown to have earned, and why each one is not earned.
+ *
+ * `serving` is ONE reading the caller took, shared by every issue here: one project, one answer
+ * about it, one moment. It is required rather than defaulted, because a missing reading earns every
+ * runtime verdict exactly as a project with no probe does, and the two must not look alike.
+ */
+export async function unearnedCriteriaReports(
+  issueIds: string[],
+  serving: ServingReading,
+): Promise<IssueCriteriaReport[]> {
   if (issueIds.length === 0) return [];
   const rows = (await db
     .select({
@@ -197,12 +218,15 @@ export async function unearnedCriteriaReports(issueIds: string[]): Promise<Issue
     .from(issues)
     .where(inArray(issues.id, issueIds))) as CriteriaRow[];
   const out: IssueCriteriaReport[] = [];
-  for (const row of rows) out.push(await reportFor(row));
+  for (const row of rows) out.push(await reportFor(row, serving));
   return out;
 }
 
 /** Issues carrying a criterion that is not earned: never judged, `skipped`, `fail`, or stale. */
-export async function issuesWithUnearnedCriteria(issueIds: string[]): Promise<string[]> {
-  const reports = await unearnedCriteriaReports(issueIds);
+export async function issuesWithUnearnedCriteria(
+  issueIds: string[],
+  serving: ServingReading,
+): Promise<string[]> {
+  const reports = await unearnedCriteriaReports(issueIds, serving);
   return reports.filter((r) => r.unearned.length > 0).map((r) => r.issueId);
 }

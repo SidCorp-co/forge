@@ -12,6 +12,7 @@ import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
+  bindTestRunner,
   createTestDevice,
   createTestProject,
   createTestUser,
@@ -420,6 +421,7 @@ describe('a run session under a prefixed project', () => {
     `);
 
     const deviceId = (await createTestDevice(harness.db, userId)).id;
+    await bindTestRunner(harness.db, { projectId: p.id, deviceId });
 
     const session = await openRunSession({
       deviceId,
@@ -466,6 +468,7 @@ describe('a run session under a prefixed project', () => {
     const p = await project();
     await assign(p.id, 'FD');
     const deviceId = (await createTestDevice(harness.db, userId)).id;
+    await bindTestRunner(harness.db, { projectId: p.id, deviceId });
     await expect(
       openRunSession({ deviceId, projectId: p.id, issueKeys: ['FP-977'], name: 'foreign' }),
     ).rejects.toThrow(/FP/);

@@ -27,20 +27,17 @@ const { ReleaseTargetUndeclaredError, resolveReleaseDeclaration, resolveReleaseG
 
 const PROJECT_ID = '33333333-3333-4333-8333-333333333333';
 
+/** A `projects` row as `resolveReleaseDeclaration` selects it: base branch plus the chain. */
 const project = (
-  releaseModel: 'none' | 'promote' | 'publish',
-  over: {
-    baseBranch?: string | null;
-    liveBranch?: string | null;
-    releaseStrategy?: string | null;
-  } = {},
-) => [
-  {
-    baseBranch: over.baseBranch ?? 'main',
-    liveBranch: over.liveBranch ?? null,
-    releaseModel,
-    releaseStrategy: over.releaseStrategy ?? null,
-  },
+  releaseChain: { branch: string; from?: string }[],
+  over: { baseBranch?: string | null } = {},
+) => [{ baseBranch: over.baseBranch ?? 'main', releaseChain }];
+
+const SHIPS_NOTHING: { branch: string; from?: string }[] = [];
+const publishes = (branch = 'main') => [{ branch }];
+const promotes = (live = 'master', from = 'merge-branch', base = 'main') => [
+  { branch: base },
+  { branch: live, from },
 ];
 
 const liveBinding = (provider = 'coolify', config: Record<string, unknown> = {}) => [
@@ -56,32 +53,26 @@ beforeEach(() => {
 describe('resolveReleaseGate', () => {
   it('gives the gate to a promote project with a live deploy binding', async () => {
     selectLimit.mockResolvedValue(
-      project('promote', {
-        baseBranch: 'staging',
-        liveBranch: 'master',
-        releaseStrategy: 'merge-branch',
-      }),
+      project(promotes('master', 'merge-branch', 'staging'), { baseBranch: 'staging' }),
     );
     listBindings.mockResolvedValue(liveBinding());
     await expect(resolveReleaseGate(PROJECT_ID)).resolves.toBe('awaiting_release');
   });
 
-  it('gives the gate to a publish project with a live deploy binding, with no branch involved', async () => {
-    selectLimit.mockResolvedValue(project('publish', { baseBranch: 'main', liveBranch: null }));
+  it('gives the gate to a chain of one with a live deploy binding, with no branch crossed', async () => {
+    selectLimit.mockResolvedValue(project(publishes(), { baseBranch: 'main' }));
     listBindings.mockResolvedValue(liveBinding('epodsystem'));
     await expect(resolveReleaseGate(PROJECT_ID)).resolves.toBe('awaiting_release');
   });
 
-  it('refuses the gate to a none project even with a live deploy binding', async () => {
-    selectLimit.mockResolvedValue(project('none'));
+  it('refuses the gate to an empty chain even with a live deploy binding', async () => {
+    selectLimit.mockResolvedValue(project(SHIPS_NOTHING));
     listBindings.mockResolvedValue(liveBinding('epodsystem'));
     await expect(resolveReleaseGate(PROJECT_ID)).resolves.toBeNull();
   });
 
-  it('refuses the gate to a none project whose two branches differ', async () => {
-    selectLimit.mockResolvedValue(
-      project('none', { baseBranch: 'release/stg', liveBranch: 'release/production' }),
-    );
+  it('refuses the gate to an empty chain on a project that names a base branch', async () => {
+    selectLimit.mockResolvedValue(project(SHIPS_NOTHING, { baseBranch: 'release/stg' }));
     listBindings.mockResolvedValue(liveBinding());
     await expect(resolveReleaseGate(PROJECT_ID)).resolves.toBeNull();
   });
@@ -93,36 +84,32 @@ describe('resolveReleaseGate', () => {
   });
 });
 
-describe('a release model with nothing to release onto', () => {
+describe('a release chain with nothing to release onto', () => {
   it('throws RELEASE_TARGET_UNDECLARED when the project has no live deploy binding at all', async () => {
-    selectLimit.mockResolvedValue(
-      project('promote', { liveBranch: 'master', releaseStrategy: 'merge-branch' }),
-    );
+    selectLimit.mockResolvedValue(project(promotes()));
     listBindings.mockResolvedValue([]);
     await expect(resolveReleaseGate(PROJECT_ID)).rejects.toThrow(ReleaseTargetUndeclaredError);
     await expect(resolveReleaseGate(PROJECT_ID)).rejects.toThrow(/RELEASE_TARGET_UNDECLARED/);
   });
 
   it('throws the same named error when the only live deploy binding is inactive', async () => {
-    selectLimit.mockResolvedValue(project('publish'));
+    selectLimit.mockResolvedValue(project(publishes()));
     listBindings.mockResolvedValue([]);
     await expect(resolveReleaseGate(PROJECT_ID)).rejects.toThrow(/RELEASE_TARGET_UNDECLARED/);
   });
 
-  it('names the project and the model in the message, so an operator knows which half to fix', async () => {
-    selectLimit.mockResolvedValue(project('publish'));
+  it('names the project and the branch in the message, so an operator knows which half to fix', async () => {
+    selectLimit.mockResolvedValue(project(publishes('trunk')));
     listBindings.mockResolvedValue([]);
     await expect(resolveReleaseGate(PROJECT_ID)).rejects.toThrow(
-      new RegExp(`${PROJECT_ID}[\\s\\S]*publish`),
+      new RegExp(`${PROJECT_ID}[\\s\\S]*trunk`),
     );
   });
 });
 
 describe('resolveReleaseDeclaration', () => {
   it('returns the whole live set, not its first member', async () => {
-    selectLimit.mockResolvedValue(
-      project('promote', { liveBranch: 'master', releaseStrategy: 'merge-branch' }),
-    );
+    selectLimit.mockResolvedValue(project(promotes()));
     listBindings.mockResolvedValue([
       {
         binding: { provider: 'coolify', config: {}, role: 'deploy', stages: ['live'] },
@@ -138,19 +125,26 @@ describe('resolveReleaseDeclaration', () => {
     expect(decl?.kind === 'gated' && decl.liveBindings).toHaveLength(2);
   });
 
-  it('carries the declared strategy through for a promote project', async () => {
-    selectLimit.mockResolvedValue(
-      project('promote', { liveBranch: 'master', releaseStrategy: 'cherry-pick' }),
-    );
+  // The declaration carries every edge. Reducing a chain to one crossing puts a per-project
+  // strategy back — the spelling ADR 0003 removed — and a reader would take the last edge for
+  // the whole path.
+  it('carries EVERY edge of a long chain, not just the one that reaches live', async () => {
+    const chain = [
+      { branch: 'main' },
+      { branch: 'stg', from: 'merge-branch' as const },
+      { branch: 'live', from: 'cherry-pick' as const },
+    ];
+    selectLimit.mockResolvedValue(project(chain));
     listBindings.mockResolvedValue(liveBinding());
     const decl = await resolveReleaseDeclaration(PROJECT_ID);
-    expect(decl?.kind === 'gated' && decl.releaseStrategy).toBe('cherry-pick');
+    expect(decl?.kind === 'gated' && decl.releaseChain).toEqual(chain);
+    expect(decl?.kind === 'gated' && decl.liveBranch).toBe('live');
   });
 
-  it('answers no-release for a none project without reading its bindings at all', async () => {
-    selectLimit.mockResolvedValue(project('none'));
+  it('answers no-release for an empty chain without reading its bindings at all', async () => {
+    selectLimit.mockResolvedValue(project(SHIPS_NOTHING));
     const decl = await resolveReleaseDeclaration(PROJECT_ID);
-    expect(decl).toEqual({ kind: 'no-release', releaseModel: 'none', baseBranch: 'main' });
+    expect(decl).toEqual({ kind: 'no-release', releaseChain: [], baseBranch: 'main' });
     expect(listBindings).not.toHaveBeenCalled();
   });
 });

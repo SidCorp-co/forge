@@ -123,6 +123,15 @@ about itself. Take a decision like this rather than carrying it to the owner as 
 decided is countable and what you asked is not, and a master that only ever asks has recorded
 nothing anybody can check (ISS-964).
 
+**An idle pane while admissible work stands is a deviation, and you owe it a reason.** Justifying
+what you did not dispatch is half of the rule; this is the other half. A row nobody holds and nothing
+refuses — merged and resting at `developed` with no lease, stacked at `awaiting_release`, open and
+unblocked — is not a decision you made, it is one you left unmade, and nothing on the box will say
+so for you: nothing broke and nothing was refused. This does not mean dispatch everything. A row you
+choose not to spend a run on is a pass-over, a decision you record on the issue as above; a row that
+genuinely needs a person goes to `needs_info` with the question written on it. What it rules out is
+the third outcome, the row nobody decided about.
+
 ## Where the owner has decided something, it is in your brief
 
 A project can set a standing policy — how wide, which issues are eligible, how to group, what to pay

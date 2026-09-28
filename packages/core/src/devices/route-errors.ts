@@ -15,3 +15,10 @@ export const conflict = (code: string, message: string, details?: unknown) =>
     message,
     cause: { code, ...(details === undefined ? {} : { details }) },
   });
+
+/** Refused: this principal may not do this here. `message` carries the whole refusal. */
+export const forbidden = (code: string, message: string, details?: unknown) =>
+  new HTTPException(403, {
+    message,
+    cause: { code, ...(details === undefined ? {} : { details }) },
+  });

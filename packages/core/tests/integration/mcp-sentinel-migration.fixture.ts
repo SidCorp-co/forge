@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { readMigrationFiles } from 'drizzle-orm/migrator';
 import postgres, { type Sql } from 'postgres';
 import { afterAll, beforeAll } from 'vitest';
+import { caseDbName, drainRetiredScratchDbs, retireScratchDb } from '../helpers/scratch-db.js';
 
 const MIGRATIONS = fileURLToPath(new URL('../../drizzle/migrations', import.meta.url));
 const ROLLBACK_DIR = fileURLToPath(new URL('../../drizzle/rollback/', import.meta.url));
@@ -80,7 +81,7 @@ beforeAll(async () => {
   adminUrl = process.env.TEST_PG_ADMIN_URL ?? process.env.TEST_DATABASE_URL ?? '';
   if (!adminUrl) throw new Error('no TEST_PG_ADMIN_URL — global setup did not run');
   admin = postgres(adminUrl, { max: 1, onnotice: () => {} });
-  template = `iss1071_tpl_${randomUUID().replace(/-/g, '').slice(0, 12)}`;
+  template = caseDbName('iss1071tpl');
   await admin.unsafe(`CREATE DATABASE "${template}"`);
   const url = new URL(adminUrl);
   url.pathname = `/${template}`;
@@ -96,13 +97,14 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (admin) {
-    await admin.unsafe(`DROP DATABASE IF EXISTS "${template}" WITH (FORCE)`).catch(() => {});
+    retireScratchDb(adminUrl, template);
+    await drainRetiredScratchDbs();
     await admin.end({ timeout: 5 });
   }
 });
 
 export async function fresh(): Promise<Fresh> {
-  const name = `iss1071_${randomUUID().replace(/-/g, '').slice(0, 16)}`;
+  const name = caseDbName('iss1071');
   await admin.unsafe(`CREATE DATABASE "${name}" TEMPLATE "${template}"`);
   const url = new URL(adminUrl);
   url.pathname = `/${name}`;
@@ -116,7 +118,7 @@ export async function fresh(): Promise<Fresh> {
     notices,
     drop: async () => {
       await sql.end({ timeout: 5 }).catch(() => {});
-      await admin.unsafe(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`).catch(() => {});
+      retireScratchDb(adminUrl, name);
     },
   };
 }
@@ -164,8 +166,8 @@ export async function plantProject(
 ): Promise<string> {
   const id = randomUUID();
   await sql.unsafe(
-    `INSERT INTO projects (id, slug, name, created_by, org_id, agent_config, release_model)
-     VALUES ($1, $2, $3, $4, $5, $6, 'none')`,
+    `INSERT INTO projects (id, slug, name, created_by, org_id, agent_config)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
     [id, slug, slug, g.ownerId, g.orgId, agentConfig === null ? null : sql.json(agentConfig)],
   );
   return id;

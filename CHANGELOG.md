@@ -10,6 +10,10 @@
 
 ### Security
 
+- **A box can only start work on a project it serves.** A box with no runner there, a disabled
+  box or a withdrawn runner is refused before claiming anything, and told which, and what an
+  admitted box is.
+
 - **The Attention inbox no longer shows you issues from projects you were removed from.**
   The "Awaiting input" list picked an issue because you were its assignee, or because you filed it
   and nobody else owns it. That is a fair question to ask — is this mine to answer? — but it was the
@@ -113,9 +117,15 @@
 
 ### Added
 
+- **How to contribute, and who decides, are now in the repository.** `CONTRIBUTING.md`,
+  `GOVERNANCE.md` and `docs/adr/` state the rules and the decisions behind them, including that
+  this file is the release note and there is no second changelog.
 - **The public documentation has three doors and a search.** Choose "I use Forge", "I'm connecting
   an AI assistant" or "I'm an agent or a script"; every page says who it is for, and search
   reaches all of them.
+- **Two releases can no longer deploy to the same environment at once.** The second is refused as
+  `DEPLOY_ENVIRONMENT_LOCKED`, naming the release that holds it, what it is deploying, since when,
+  and when the hold lifts.
 - **Two help pages for people filing work: how to ask for a change, and how to tell it is done.**
   A finished issue's page now shows its release note — what changed, or what will once it ships.
 - **You can now attach a picture when you talk to the agent on the web, see what you are typing as
@@ -2487,6 +2497,13 @@
   in `metrics/interventions-report.ts`. No MCP tool was added — that surface is under a documented
   shrink and `forge_metrics.*` is in its "free to go" group. (ISS-944)
 
+- **A project can now declare what its master is for.** A goal and rules, written by a person and
+  versioned, reach the master over the API instead of living only in one machine's hook string.
+  (ISS-1313)
+- **Project knowledge can now say when it is worth reading.** An entry may name the verb a master
+  is performing or the board status it is looking at; unset entries behave exactly as before.
+  (ISS-1313)
+
 ### Removed
 - **Forge no longer writes your release steps.** A project that declares its own procedure gets it;
   one that declares none is told where its method lives, instead of being refused for a deploy
@@ -3112,12 +3129,25 @@
 
 ### Fixed
 
+- **A documents-only change can no longer pass CI over a check that reads the whole repository.**
+  Such checks now run on every change, so a document that breaks one fails on its own pull request.
+
+- **A runner refused its provisioning poll now says which endpoint answered, with what status and
+  what body.** The same refusal repeating is reported once, escalated once, then held quiet until it
+  changes or clears.
+- **A question an agent asks now waits for an answer without moving its issue.** Its row says a person owes an answer and for how long, and closing it asks why open questions no longer matter.
 - **Removing a worktree now ends what is running inside it, or refuses and names it.** The sweep
   also reports processes stranded in worktree paths already gone. (ISS-1271)
-
 - **New issue in the top bar and the command palette now opens the form on the Issues list too.** It did nothing there before. Closing the form clears the link, so Back and reload no longer reopen it.
 - **The board drawer no longer labels an issue with nothing running as Queued.** Its header shows a run chip only for a run, Activity says when no pipeline run exists, and the issue's status appears once, named as itself.
 - **An issue waiting for a runner now shows as Queued everywhere on its page and in the board drawer.** The run chips said nothing while the agent panel said queued. A paused run reads Paused, not Idle.
+- **A run the control plane refuses as malformed now stops after one attempt.** It was re-sent every twenty seconds for ever. The box now names the field refused, ends the run, and builds names and reasons that fit.
+- **The automatic release now asks your live host what it is serving, instead of a commit written on the issue weeks ago.** A verdict judged at what is running counts; where nothing can be asked, it still counts.
+- **The Runners page says which devices it lists, and can show your organisation's.** It listed only boxes you paired while promising the organisation, so an admin read zero beside an Overview reading forty. Both counts now show at once.
+- **A red integration suite now means the code is wrong, not that two suites ran at once.** Each
+  test tore down its own database on its own clock, and that teardown waits on the whole
+  server.
+
 - **`pnpm verify` no longer says `ci-passed` gates a check it does not gate.** CodeQL sits outside the merge gate, so it now has its own heading instead of standing under one that covers everything above it.
 - **Links between help pages open the page they name.** Every one opened Getting started; a link to a missing page now says so. Release notes render their formatting, and Reopen stays on screen at phone width.
 - **Throughput counts each shipped issue once, on the day it first shipped.** An issue passing through awaiting release then closed, or reopened and closed again, counted each time. Project health and cost per closed now agree.
@@ -6053,7 +6083,13 @@
   deploy. Shipped 2026-09-02; this line was owed then and is written now. (ISS-870)
 
 ### Changed
+- **A project's route to live is now one ordered list of branches.** Release model, live branch
+  and strategy could disagree; a list cannot. Every project keeps the shape it released by, and
+  longer paths can now be described.
+
 - **Closing an issue now means the work shipped.** A close is refused unless the issue says the code landed. Work that turned out not to be work leaves by Dropped, which frees whatever was waiting on it just the same.
+- **Every check now measures against the branch your work will actually land on**, not always
+  `main`. A repository on another base gets real checks instead of quiet passes.
 
 - **Every change of an issue's status is now recorded in the same ledger as the rest of the work.** Who moved it, when, and under whose authority is answered from that record instead of from a comment somebody wrote.
 

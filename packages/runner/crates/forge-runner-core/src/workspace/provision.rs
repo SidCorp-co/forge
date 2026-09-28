@@ -35,7 +35,7 @@ pub async fn run_pending(client: &CoreClient, cfg: &Config) {
     let pending = match provision::pull_pending(client).await {
         Ok(p) => p,
         Err(e) => {
-            tracing::warn!("[provision] pull failed: {e}");
+            provision::report_pull_refusal(&e);
             return;
         }
     };

@@ -67,6 +67,17 @@ describe('absentPrerequisites', () => {
     expect(missing[0].what).toContain('dependency-cruiser 18.3.0');
   });
 
+  it('does not blame the rename when the bin is on disk under the package that declares it', () => {
+    placeAll('deps');
+    place('packages/observability/dist/index.js');
+    place('packages/core/node_modules/dependency-cruiser/bin/dependency-cruise.mjs');
+
+    const missing = absentPrerequisites(root, ['deps', 'archmap-resolver', 'observability-build']);
+    expect(missing.map((m) => m.name)).toEqual(['archmap-resolver']);
+    expect(missing[0].what).toContain('non-hoisting');
+    expect(missing[0].remedy).toContain('packages/*/node_modules/dependency-cruiser/bin');
+  });
+
   it('is present once the entry point archmap spawns is on disk', () => {
     placeAll('deps');
     place('packages/observability/dist/index.js');

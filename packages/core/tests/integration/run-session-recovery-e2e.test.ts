@@ -10,6 +10,7 @@
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
+  bindTestRunner,
   createTestDevice,
   createTestProject,
   createTestUser,
@@ -56,6 +57,7 @@ async function aBoxWithARun(issueKeys: string[]) {
   const user = await createTestUser(harness.db);
   const project = await createTestProject(harness.db, user.id);
   const device = await createTestDevice(harness.db, user.id);
+  await bindTestRunner(harness.db, { projectId: project.id, deviceId: device.id });
   const session = await mods.openRunSession({
     deviceId: device.id,
     projectId: project.id,

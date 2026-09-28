@@ -96,6 +96,8 @@ export interface IssueRow {
   liveReach?: LiveReach | null;
   createdAt: string;
   updatedAt: string;
+  /** ISS-1257 — the oldest open question blocked on a person; null or absent when none is. */
+  waitingOnPersonSince?: string | null;
   agentSessions?: IssueAgentSession[];
   agentStatus?: IssueAgentStatus;
   estimatedCost?: number;

@@ -16,6 +16,7 @@ import {
   ReleaseTargetUndeclaredError,
   resolveReleaseGate,
 } from '../release-batch/gate.js';
+import { readServingNow, whyUncorroborated } from '../release-batch/serving-reading.js';
 import { loadCreatedBy } from '../schedules/release-batch-dispatch.js';
 import { cutWaitingRelease } from '../schedules/release-batch-run.js';
 import { projectAutoProdDeploy } from './release-coolify.js';
@@ -163,6 +164,20 @@ function reportHeldBack(projectId: string, held: readonly IssueCriteriaReport[])
   }
 }
 
+/** An issue cut on a runtime nothing could re-read leaves that on the record, not only the cut. */
+function reportUncorroborated(projectId: string, reports: readonly IssueCriteriaReport[]): void {
+  for (const report of reports) {
+    if (report.uncorroborated.length === 0) continue;
+    const why = whyUncorroborated(report.serving);
+    logger.warn(
+      { projectId, issueId: report.issueId, criteria: report.uncorroborated, why },
+      `release-sweep: ${report.issueId} earned criterion ${report.uncorroborated.join(', ')} at a ` +
+        `runtime nothing here could re-read — ${why} The verdict counts, and it is weaker ` +
+        'evidence than a reading would have made it; whether this issue ships is its own criteria',
+    );
+  }
+}
+
 /** Every issue waiting unclaimed at the gate on this project, oldest merge first. */
 async function waitingIssueIds(projectId: string): Promise<string[]> {
   const rows = await db
@@ -218,13 +233,22 @@ async function readGate(
   }
 }
 
-/** The criteria reports, or a hold naming why the verdicts could not be read. */
+/**
+ * The criteria reports, or a hold naming why the verdicts could not be read.
+ *
+ * One reading of what the project is serving is taken here and shared by every waiting issue: they
+ * are one project's rows weighed against one answer about that project, at one moment (ISS-1286).
+ * `readServingNow` answers rather than throwing for a host that will not talk — an unreachable
+ * probe is a reading this gate has, not a criteria read that failed — so only a tracker or database
+ * failure reaches the catch below.
+ */
 async function readCriteria(
   projectId: string,
   waiting: string[],
 ): Promise<{ ok: true; value: IssueCriteriaReport[] } | { ok: false; hold: ReleaseHold }> {
   try {
-    return { ok: true, value: await unearnedCriteriaReports(waiting) };
+    const serving = await readServingNow(projectId);
+    return { ok: true, value: await unearnedCriteriaReports(waiting, serving) };
   } catch (err) {
     logger.error({ err, projectId }, 'release-sweep: the criteria could not be read');
     return {
@@ -260,6 +284,7 @@ async function sweepProject(
     await hold({ ...base, issueIds: waiting, holdFor: () => reports.hold });
     return;
   }
+  reportUncorroborated(projectId, reports.value);
   const held = reports.value.filter((r) => r.unearned.length > 0);
   const heldById = new Map(held.map((r) => [r.issueId, r]));
   const eligible = waiting.filter((id) => !heldById.has(id));

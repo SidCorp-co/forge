@@ -30,6 +30,7 @@ import { issueArchiveSide } from '../issues/archive.js';
 import { creatorIsAgentCondition } from '../issues/creator.js';
 import { ISSUE_RESOLVED_STATUSES } from '../issues/status-sets.js';
 import { visibleProjectsWhere } from '../lib/authz.js';
+import { holdsOpenHumanQuestion } from '../questions/issue-coupling.js';
 
 export const NEEDS_REVIEW_STATUSES = ['developed', 'reopen'] as const;
 export const AWAITING_INPUT_STATUSES = ['waiting', 'needs_info'] as const;
@@ -115,7 +116,14 @@ export function selectNeedsReview(userId: string): Promise<AttentionIssueRow[]> 
     .select(issueFields)
     .from(issues)
     .innerJoin(projects, eq(projects.id, issues.projectId))
-    .where(and(eq(issues.assigneeId, userId), inArray(issues.status, [...NEEDS_REVIEW_STATUSES])))
+    .where(
+      and(
+        eq(issues.assigneeId, userId),
+        inArray(issues.status, [...NEEDS_REVIEW_STATUSES]),
+        // A person owes it an answer, so it is counted once, as awaiting input.
+        sql`not ${holdsOpenHumanQuestion(issues.id)}`,
+      ),
+    )
     .orderBy(desc(issues.updatedAt))
     .limit(PER_BUCKET) as Promise<AttentionIssueRow[]>;
 }
@@ -156,7 +164,7 @@ export function selectAwaitingInput(userId: string): Promise<AttentionAwaitingRo
     .where(
       and(
         ownedForAnswer(userId),
-        inArray(issues.status, [...AWAITING_INPUT_STATUSES]),
+        or(inArray(issues.status, [...AWAITING_INPUT_STATUSES]), holdsOpenHumanQuestion(issues.id)),
         ...visibleProjectsWhere(),
       ),
     )

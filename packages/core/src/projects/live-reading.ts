@@ -6,7 +6,7 @@ import type { LiveDivergence } from '../integrations/github/live-divergence.js';
 import { logger } from '../logger.js';
 import type { LiveReading } from './live-reach.js';
 import { readProjectDivergence } from './live-source.js';
-import { readableLiveBranch } from './release-model.js';
+import { chainCrossesByCherryPick, chainLiveBranch, type ReleaseChain } from './release-chain.js';
 
 /** How long one reading answers for a project before the next read takes another. */
 export const LIVE_READING_HOLD_MS = 5 * 60_000;
@@ -26,10 +26,8 @@ const defaultDeps: LiveReadingDeps = {
 
 export interface ProjectReleaseRow {
   id: string;
-  releaseModel: string | null;
-  releaseStrategy: string | null;
   baseBranch: string | null;
-  liveBranch: string | null;
+  releaseChain: ReleaseChain;
 }
 
 interface Held {
@@ -43,7 +41,7 @@ const held = new Map<string, Held>();
 const inFlight = new Map<string, { key: string; reading: Promise<LiveReading>; stale: boolean }>();
 
 function keyOf(row: ProjectReleaseRow): string {
-  return [row.baseBranch, row.liveBranch ?? '', row.releaseStrategy ?? ''].join('\0');
+  return [row.baseBranch, JSON.stringify(row.releaseChain)].join('\0');
 }
 
 /** Drop what is held for a project, so the next read compares the branches again. */
@@ -78,9 +76,9 @@ export async function takeLiveReading(
       `this project names no base branch, so there is nothing to compare ${row.liveBranch} against — set one in its settings`,
     );
   }
-  if (row.releaseStrategy === 'cherry-pick') {
+  if (chainCrossesByCherryPick(row.releaseChain)) {
     return refused(
-      `this project promotes by cherry-pick, which gives every commit a new sha on ${row.liveBranch}, so whether ${row.baseBranch}'s commits reached it cannot be read from the branches`,
+      `this project's release chain crosses at least one edge by cherry-pick, which gives every commit a new sha further down, so whether ${row.baseBranch}'s commits reached ${row.liveBranch} cannot be read from the branches`,
     );
   }
   try {
@@ -154,7 +152,7 @@ export async function liveReadingForRow(
   row: ProjectReleaseRow,
   deps: LiveReadingDeps = defaultDeps,
 ): Promise<LiveReading | null> {
-  const liveBranch = readableLiveBranch(row);
+  const liveBranch = chainLiveBranch(row.releaseChain);
   if (!liveBranch) {
     forgetLiveReading(row.id);
     return null;
@@ -175,10 +173,8 @@ export async function liveReadingForRow(
 
 export const releaseColumns = {
   id: projects.id,
-  releaseModel: projects.releaseModel,
-  releaseStrategy: projects.releaseStrategy,
   baseBranch: projects.baseBranch,
-  liveBranch: projects.liveBranch,
+  releaseChain: projects.releaseChain,
 };
 
 export async function projectReleaseRows(projectIds: string[]): Promise<ProjectReleaseRow[]> {
