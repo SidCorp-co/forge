@@ -40,6 +40,11 @@ pub struct Project {
     pub project_id: Option<String>,
     pub core_slug: Option<String>,
     pub repo: Option<PathBuf>,
+    /// The master skill installed in `repo`, read on the row it belongs to:
+    /// two rows may share a display key, and never share a reading.
+    pub skill: Option<Skill>,
+    /// What the forge CLI resolves from `repo`.
+    pub cli: Option<Slug>,
 }
 
 pub struct Snapshot {
@@ -48,12 +53,12 @@ pub struct Snapshot {
     pub config: Read<Config>,
     pub binary: Vec<String>,
     pub discovery: Read<Vec<MeRunner>>,
+    /// When `discovery` was asked.
+    pub discovery_at: i64,
     pub projects: Vec<Project>,
     pub ledger: Read<ledger_ro::View>,
     pub boot: Option<String>,
     pub sessions: Read<Sessions>,
-    pub skills: HashMap<String, Skill>,
-    pub slugs: HashMap<String, Slug>,
     /// Keyed by worktree path: when it was walked, and what the walk found.
     pub trees: HashMap<PathBuf, (i64, TreeAge)>,
     pub jobs: Read<Jobs>,
@@ -101,8 +106,8 @@ pub async fn frame(ctx: &Ctx, carry: &mut Carry) -> Snapshot {
     let binary_lines = binary::lines(&record, &probe, daemon.as_ref(), now_ms);
     let exe = daemon_exe(carry, daemon.as_ref());
 
-    let discovery = discover(ctx, config.as_ref().ok(), carry, now_ms).await;
-    let projects = projects(config.as_ref().ok(), discovery.as_ref().ok());
+    let (discovery_at, discovery) = discover(ctx, config.as_ref().ok(), carry, now_ms).await;
+    let mut projects = projects(config.as_ref().ok(), discovery.as_ref().ok());
 
     let ledger = Ledger::default_path()
         .map_err(|e| Unreadable::new("ledger", e))
@@ -110,15 +115,14 @@ pub async fn frame(ctx: &Ctx, carry: &mut Carry) -> Snapshot {
     let sessions = panes::list();
 
     let cli_dir = cli_slug::cli_config_dir(|k| std::env::var(k).ok(), dirs_next::home_dir());
-    let mut skills = HashMap::new();
-    let mut slugs = HashMap::new();
-    for p in &projects {
+    for p in &mut projects {
         if let Some(repo) = &p.repo {
-            skills.insert(p.key.clone(), skill::read(repo, &exe));
-            slugs.insert(
-                p.key.clone(),
-                cli_slug::read(cli_dir.as_deref(), repo, p.core_slug.as_deref()),
-            );
+            p.skill = Some(skill::read(repo, &exe));
+            p.cli = Some(cli_slug::read(
+                cli_dir.as_deref(),
+                repo,
+                p.core_slug.as_deref(),
+            ));
         }
     }
 
@@ -171,12 +175,11 @@ pub async fn frame(ctx: &Ctx, carry: &mut Carry) -> Snapshot {
         config,
         binary: binary_lines,
         discovery,
+        discovery_at,
         projects,
         ledger,
         boot: forge_runner_core::runner::inflight::boot_identity(),
         sessions,
-        skills,
-        slugs,
         trees: carry.trees.clone(),
         jobs,
         core,
@@ -210,10 +213,10 @@ async fn discover(
     cfg: Option<&Config>,
     carry: &mut Carry,
     now_ms: i64,
-) -> Read<Vec<MeRunner>> {
+) -> (i64, Read<Vec<MeRunner>>) {
     if let Some((at, held)) = &carry.discovery {
         if now_ms - at < CORE_EVERY_MS {
-            return held.clone();
+            return (*at, held.clone());
         }
     }
     let route = "GET /api/devices/me/runners";
@@ -238,7 +241,7 @@ async fn discover(
             .map_err(|e| Unreadable::new(route, e)),
     };
     carry.discovery = Some((now_ms, got.clone()));
-    got
+    (now_ms, got)
 }
 
 /// Every project this box binds or core serves it, each once, resolved to its
@@ -266,6 +269,8 @@ pub fn projects(cfg: Option<&Config>, served: Option<&Vec<MeRunner>>) -> Vec<Pro
             project_id: b.project_id.clone(),
             core_slug,
             repo,
+            skill: None,
+            cli: None,
         });
     }
     for r in served {
@@ -282,6 +287,8 @@ pub fn projects(cfg: Option<&Config>, served: Option<&Vec<MeRunner>>) -> Vec<Pro
             repo: dispatch::resolve_repo(served, cfg_ref, &r.project_id)
                 .ok()
                 .map(|x| x.repo_path),
+            skill: None,
+            cli: None,
         });
     }
     out.sort_by(|a, b| a.key.cmp(&b.key));
@@ -416,6 +423,8 @@ mod tests {
             project_id: Some(id.into()),
             core_slug: None,
             repo: None,
+            skill: None,
+            cli: None,
         }
     }
 

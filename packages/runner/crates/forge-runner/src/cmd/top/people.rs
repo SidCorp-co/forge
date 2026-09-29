@@ -111,10 +111,25 @@ fn jobs_from(dir: &Path, listing: impl Iterator<Item = std::io::Result<PathBuf>>
             ));
             continue;
         };
+        // No report yet is a job that has said nothing; a report that does not
+        // parse is one this view cannot read, and may be the one that waits.
+        let seen = match &v["seen"] {
+            Value::Null => None,
+            report => match Reported::from_json(report) {
+                Some(r) => Some(r),
+                None => {
+                    out.unreadable.push(Unreadable::new(
+                        path.display().to_string(),
+                        format!("its `seen` report does not parse: {report}"),
+                    ));
+                    continue;
+                }
+            },
+        };
         out.records.push(Job {
             job_id: job_id.to_string(),
             pane: pane.to_string(),
-            seen: Reported::from_json(&v["seen"]),
+            seen,
             opened_at: v["openedAt"].as_i64(),
         });
     }
@@ -502,6 +517,35 @@ mod tests {
         let b = blockers("/r", &ready).unwrap();
         assert_eq!(b[0].code, "NO_RELEASE_GATE");
         assert!(blockers("/r", &serde_json::json!({})).is_err());
+    }
+
+    /// Whole-set consult at 4505806, F3: a record with no report yet is a job
+    /// that has said nothing; one whose report does not parse is unreadable,
+    /// since it may be the one that waits.
+    #[test]
+    fn a_report_that_does_not_parse_is_unreadable_and_none_is_silence() {
+        let s = Scratch::new("top-jobs-seen");
+        std::fs::write(
+            s.path().join("job-1.json"),
+            r#"{"pane":"forge-job-job-1","seen":{"doing":"awaiting_permission"}}"#,
+        )
+        .unwrap();
+        std::fs::write(s.path().join("job-2.json"), r#"{"pane":"forge-job-job-2"}"#).unwrap();
+        std::fs::write(
+            s.path().join("job-3.json"),
+            r#"{"pane":"forge-job-job-3","seen":null}"#,
+        )
+        .unwrap();
+        let got = jobs(s.path()).unwrap();
+        assert_eq!(got.unreadable.len(), 1, "{got:?}");
+        let e = got.unreadable[0].to_string();
+        assert!(
+            e.contains("job-1.json") && e.contains("its `seen` report does not parse"),
+            "{e}"
+        );
+        let ids: Vec<&str> = got.records.iter().map(|j| j.job_id.as_str()).collect();
+        assert_eq!(ids, vec!["job-2", "job-3"]);
+        assert!(got.records.iter().all(|j| j.seen.is_none()));
     }
 
     /// Consult whole-set F1: an entry the listing could not yield may be the

@@ -53,9 +53,10 @@ fn projects(s: &Snapshot, out: &mut Vec<String>) {
     out.push(match (&s.config, &s.discovery) {
         (Err(e), _) => format!("PROJECTS  {e}"),
         (Ok(_), Ok(served)) => format!(
-            "PROJECTS  {bound} bound ← {}; {} served to this box ← GET /api/devices/me/runners",
+            "PROJECTS  {bound} bound ← {}; {} served to this box{} ← GET /api/devices/me/runners",
             s.config_path,
-            served.len()
+            served.len(),
+            asked(s.now_ms, s.discovery_at)
         ),
         (Ok(_), Err(e)) => format!(
             "PROJECTS  {e}. Listed are only the {bound} project(s) bound in {}; any core serves this box beyond them cannot be seen",
@@ -117,13 +118,13 @@ fn project(s: &Snapshot, p: &Project, runs: Option<&Vec<&Run>>, out: &mut Vec<St
         .unwrap_or_else(|| "no checkout on this box".into());
     out.push(format!("{I1}{}  [{id}]  {repo}", p.key));
     master(s, p, out);
-    match s.skills.get(&p.key) {
+    match &p.skill {
         Some(k) => out.push(format!("{I2}skill    {}", skill_line(s, p, k))),
         None => out.push(format!(
             "{I2}skill    no checkout, so no installed skill to read"
         )),
     }
-    if let Some(slug) = s.slugs.get(&p.key) {
+    if let Some(slug) = &p.cli {
         out.push(format!("{I2}cli      {}", slug_line(slug)));
     }
     releasable(s, p, out);
@@ -388,8 +389,17 @@ fn waiting(s: &Snapshot, out: &mut Vec<String>) {
 
 fn core_age(s: &Snapshot) -> String {
     match &s.core {
-        Ok((at, _)) if s.now_ms - at > 1_000 => format!(" (asked {})", ago(s.now_ms, *at)),
-        _ => String::new(),
+        Ok((at, _)) => asked(s.now_ms, *at),
+        Err(_) => String::new(),
+    }
+}
+
+/// How old a kept answer is, where it is old enough to say.
+fn asked(now: i64, at: i64) -> String {
+    if now - at > 1_000 {
+        format!(" (asked {})", ago(now, at))
+    } else {
+        String::new()
     }
 }
 
@@ -682,6 +692,78 @@ fn clip(s: &str, n: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cmd::top::gather::Project;
+    use crate::cmd::top::source::Unreadable;
+    use forge_runner_core::config::Config;
+
+    const NOW: i64 = 1_790_726_400_000;
+
+    fn snap(projects: Vec<Project>) -> Snapshot {
+        let no = || Unreadable::new("test", "not planted");
+        Snapshot {
+            now_ms: NOW,
+            config_path: "/c/config.toml".into(),
+            config: Ok(Config::default()),
+            binary: Vec::new(),
+            discovery: Ok(Vec::new()),
+            discovery_at: NOW,
+            projects,
+            ledger: Err(no()),
+            boot: None,
+            sessions: Err(no()),
+            trees: Default::default(),
+            jobs: Err(no()),
+            core: Err(no()),
+            gate: Vec::new(),
+            gate_source: "/c/gate-marks.jsonl".into(),
+            pool: Vec::new(),
+            pool_source: String::new(),
+        }
+    }
+
+    fn row(key: &str, id: &str, skill_at: &str) -> Project {
+        Project {
+            key: key.into(),
+            project_id: Some(id.into()),
+            core_slug: Some(key.into()),
+            repo: Some(skill_at.into()),
+            skill: Some(Skill::Absent {
+                path: std::path::PathBuf::from(skill_at).join("SKILL.md"),
+            }),
+            cli: None,
+        }
+    }
+
+    /// Whole-set consult at 4505806, F1: an answer kept from an earlier frame
+    /// says how old it is.
+    #[test]
+    fn a_kept_project_list_says_how_old_it_is() {
+        let mut s = snap(Vec::new());
+        let head = |s: &Snapshot| frame(s, None).join("\n");
+        assert!(!head(&s).contains("(asked"), "{}", head(&s));
+        s.discovery_at = NOW - 30_000;
+        assert!(
+            head(&s).contains("0 served to this box (asked 30s ago) ← GET /api/devices/me/runners"),
+            "{}",
+            head(&s)
+        );
+    }
+
+    /// Whole-set consult at 4505806, F2: two rows sharing a display key each
+    /// show their own reading, never the other's.
+    #[test]
+    fn rows_that_share_a_key_keep_their_own_readings() {
+        let s = snap(vec![
+            row("alpha", "id-a", "/repo/a"),
+            row("alpha", "id-b", "/repo/b"),
+        ]);
+        let text = frame(&s, None).join("\n");
+        assert!(
+            text.contains("no file at /repo/a/SKILL.md")
+                && text.contains("no file at /repo/b/SKILL.md"),
+            "{text}"
+        );
+    }
 
     /// Criterion 7: a walk that did not see the whole tree says PARTIAL even
     /// where it met no file, and a whole walk with no file says so plainly.
