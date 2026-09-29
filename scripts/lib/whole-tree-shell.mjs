@@ -357,8 +357,60 @@ const RECURSE_WHEN_TOLD = new Set([
 ]);
 /** Listers: each reads what it is handed, or where it runs when handed nothing. */
 const LISTERS = new Set(['ls', 'tree', 'du', 'rg', 'fd', 'fdfind', 'exa', 'eza']);
-/** Listers that search where they run whatever else they are handed. */
-const SEARCH_HERE = new Set(['rg', 'fd', 'fdfind', 'grep', 'egrep', 'fgrep']);
+/** Searchers that take a pattern before their paths, and the options each takes a value after. */
+const SEARCHERS = {
+  grep: ['-e', '-f', '-A', '-B', '-C', '-m', '-d', '-D', '--label', '--binary-files'],
+  rg: [
+    ...['-e', '-f', '-g', '-t', '-T', '-A', '-B', '-C', '-m', '-j', '-M', '-E', '-r', '-d'],
+    ...['--glob', '--iglob', '--type', '--type-not', '--type-add', '--threads', '--encoding'],
+    ...['--max-depth', '--sort', '--sortr', '--max-filesize', '--ignore-file', '--engine'],
+  ],
+};
+SEARCHERS.egrep = SEARCHERS.grep;
+SEARCHERS.fgrep = SEARCHERS.grep;
+const PATTERN_FLAGS = ['-e', '-f', '--regexp', '--file'];
+/** Long options of theirs that take no value, so they leave no doubt about the next word. */
+const SEARCH_SWITCHES = new Set([
+  ...['--files', '--type-list', '--recursive', '--line-number', '--count', '--files-with-matches'],
+  ...['--files-without-match', '--ignore-case', '--hidden', '--no-ignore', '--fixed-strings'],
+  ...['--word-regexp', '--invert-match', '--null', '--json', '--quiet', '--no-heading', '--follow'],
+  ...['--with-filename', '--no-filename', '--multiline', '--only-matching', '--smart-case'],
+  ...['--case-sensitive', '--text', '--no-messages', '--extended-regexp', '--perl-regexp'],
+]);
+
+/**
+ * What a searcher reads: its paths once its pattern and option values are set aside, or where it
+ * runs when none remains. A long option it does not know may take the next word, so a search
+ * holding one also counts where it runs. `rg --pre` runs a program, which counts as the root.
+ */
+function searchListing(bin, rest, cwd, root) {
+  const takesValue = SEARCHERS[bin];
+  const words = [];
+  let patternGiven = false;
+  let doubt = false;
+  for (let k = 0; k < rest.length; k++) {
+    const a = rest[k];
+    if (!isOption(a)) words.push(a);
+    else if (a === '--') words.push(...rest.slice(k + 1).map((w) => ({ path: w })));
+    else {
+      const flag = a.includes('=') ? a.slice(0, a.indexOf('=')) : a;
+      if (flag === '--pre') return [unread(`\`${bin} --pre\``, root)];
+      if (
+        PATTERN_FLAGS.includes(flag) ||
+        (bin === 'rg' && ['--files', '--type-list'].includes(flag))
+      )
+        patternGiven = true;
+      if (!a.includes('=') && takesValue.includes(flag)) k++;
+      else if (a.startsWith('--') && !a.includes('=') && !SEARCH_SWITCHES.has(a)) doubt = true;
+    }
+    if (a === '--') break;
+  }
+  const bare = words.filter((w) => !(w && typeof w === 'object'));
+  const tail = words.filter((w) => w && typeof w === 'object').map((w) => w.path);
+  const paths = [...(patternGiven ? bare : bare.slice(1)), ...tail];
+  const dirs = paths.length === 0 || doubt ? [...paths, '.'] : paths;
+  return dirs.map((p) => place(at(cwd, isWord(p) ? globBase(p) : p), bin, root));
+}
 
 const recursive = (args) =>
   args.some(
@@ -405,9 +457,12 @@ function listingOf(argv, cwd, root, env, blind) {
     return jsRunner(bin, rest, cwd, root, env);
   }
   if (bin === 'find') return findListing(rest, cwd, root, env);
-  if (LISTERS.has(bin) || (RECURSE_WHEN_TOLD.has(bin) && recursive(rest))) {
+  const recurses = RECURSE_WHEN_TOLD.has(bin) && recursive(rest);
+  if (Object.hasOwn(SEARCHERS, bin) && (bin === 'rg' || recurses))
+    return searchListing(bin, rest, cwd, root);
+  if (LISTERS.has(bin) || recurses) {
     const paths = rest.filter((a) => !isOption(a));
-    const dirs = SEARCH_HERE.has(bin) || paths.length === 0 ? [...paths, '.'] : paths;
+    const dirs = paths.length > 0 ? paths : ['.'];
     return dirs.map((p) => place(at(cwd, isWord(p) ? globBase(p) : p), bin, root));
   }
   if (bin === 'sort' && !rest.some((a) => isWord(a) && a.startsWith('--compress-program')))

@@ -146,8 +146,14 @@ describe('the programs around git', () => {
     expect(dirs('find', ['-L', '--', '../..'])).toEqual([ROOT]);
     expect(dirs('find')).toEqual([CORE]);
     expect(dirs('ls', ['-la', '../..'])).toEqual([ROOT]);
-    expect(dirs('rg', ['--files', '../..'])).toEqual([ROOT, CORE]);
-    expect(dirs('grep', ['-rn', 'x', 'src'])).toEqual([join(CORE, 'x'), join(CORE, 'src'), CORE]);
+    expect(dirs('rg', ['--files', '../..'])).toEqual([ROOT]);
+    expect(dirs('rg', ['pattern'])).toEqual([CORE]);
+    expect(dirs('rg', ['-g', '*.md', 'pattern', '../..'])).toEqual([ROOT]);
+    expect(dirs('grep', ['-rn', 'x', 'src'])).toEqual([join(CORE, 'src')]);
+    expect(dirs('grep', ['-rn', '-e', 'src', '../..'])).toEqual([ROOT]);
+    expect(dirs('grep', ['-rn', 'x'], { cwd: ROOT })).toEqual([ROOT]);
+    expect(dirs('grep', ['-r', '--unknown-flag', 'x', 'src'])).toEqual([join(CORE, 'src'), CORE]);
+    expect(dirs('rg', ['--pre', 'walk', 'x'], { cwd: '/elsewhere' })).toEqual([ROOT]);
     expect(dirs('grep', ['x', 'file.txt'])).toEqual([]);
     expect(dirs('cp', ['-r', '../..', '/elsewhere'])).toEqual([ROOT, '/elsewhere']);
     expect(dirs('cp', ['a', 'b'])).toEqual([]);
@@ -161,7 +167,6 @@ describe('the programs around git', () => {
     expect(sh('echo . | xargs ls')).toEqual([ROOT]);
     expect(dirs('pnpm', ['exec', 'rg', '--files', '/elsewhere'], { cwd: '/elsewhere' })).toEqual([
       '/elsewhere',
-      '/elsewhere',
     ]);
   });
 
@@ -169,6 +174,8 @@ describe('the programs around git', () => {
     expect(dirs('node', ['x.mjs'])).toEqual([]);
     expect(dirs('pnpm', ['exec', 'vitest', 'run'])).toEqual([]);
     expect(sh('env -i node x.mjs')).toEqual([ROOT]);
+    expect(sh('env -i pnpm exec vitest run')).toEqual([ROOT]);
+    expect(sh('NODE_OPTIONS= pnpm exec vitest run')).toEqual([ROOT]);
     expect(sh('NODE_OPTIONS= node x.mjs')).toEqual([ROOT]);
     expect(dirs('env', ['-u', 'NODE_OPTIONS', 'node', 'x.mjs'])).toEqual([ROOT]);
   });
