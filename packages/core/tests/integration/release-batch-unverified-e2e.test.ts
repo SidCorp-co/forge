@@ -247,6 +247,34 @@ describe('the unverified note, once per issue per release run', () => {
   });
 });
 
+describe('a recorded release whose not-verified note cannot be written', () => {
+  it('closes none of the issues it could not note', async () => {
+    await fx.declareProduction({ verify: null });
+    const a = await fx.insertIssue();
+    await harness.db.execute(sql`
+      CREATE OR REPLACE FUNCTION refuse_unverified_note() RETURNS trigger AS $$
+      BEGIN RAISE EXCEPTION 'comment store unavailable'; END; $$ LANGUAGE plpgsql
+    `);
+    await harness.db.execute(sql`
+      CREATE TRIGGER refuse_unverified_note BEFORE INSERT ON comments
+      FOR EACH ROW WHEN (NEW.body LIKE '%not verified%') EXECUTE FUNCTION refuse_unverified_note()
+    `);
+    try {
+      const res = await call('POST', '/release-records', {
+        issueIds: [a],
+        commit: RELEASED,
+        account: ACCOUNT,
+      });
+
+      expect(res.body.closed).toEqual([]);
+      expect((res.body.failed as Array<{ id: string }>).map((f) => f.id)).toEqual([a]);
+      expect(await fx.stored(a)).toMatchObject({ status: 'awaiting_release', claim: null });
+    } finally {
+      await harness.db.execute(sql`DROP TRIGGER IF EXISTS refuse_unverified_note ON comments`);
+    }
+  });
+});
+
 describe('a verify Forge cannot parse is still refused, by name', () => {
   beforeEach(async () => {
     await fx.declareProduction({ verify: { probes: [] } });

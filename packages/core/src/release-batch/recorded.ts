@@ -173,6 +173,14 @@ export async function recordPerformedRelease(
       await db.insert(comments).values({ issueId: issue.id, authorId: userId, body: note });
     } catch (err) {
       logger.warn({ err, issueId: issue.id, runId: run.id }, 'release-record: comment failed');
+      // With no probe the note is the issue's only word that nothing verified it, so no close.
+      if (!outcome) {
+        failed.push({
+          id: issue.id,
+          reason: `its not-verified note could not be written: ${err instanceof Error ? err.message : String(err)}`,
+        });
+        continue;
+      }
     }
     try {
       await transitionIssueStatus(
