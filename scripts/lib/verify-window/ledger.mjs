@@ -44,7 +44,7 @@ export function renderLedger(ledger) {
     `## Verify window ${ledger.window}`,
     '',
     `- Base: ${ledger.base.branch} at \`${ledger.base.sha}\``,
-    `- Thresholds: ${ledger.thresholds ? `count ${ledger.thresholds.count}, wait ${ledger.thresholds.waitHours}h, read from ${ledger.thresholds.source}` : 'none recorded'}`,
+    `- Thresholds: ${ledger.thresholds ? `size ${ledger.thresholds.size}, minutes ${ledger.thresholds.minutes}${ledger.thresholds.maxSize ? `, maxSize ${ledger.thresholds.maxSize}` : ''}, read from ${ledger.thresholds.source}` : 'none recorded'}`,
     `- Declarations: ${ledger.declarations}`,
     `- Open branches outside the window read for migration numbers: ${ledger.openBranches.length}`,
     `- Combination: \`${ledger.chain.head}\`, ${ledger.chain.landed} member(s) entered`,

@@ -33,7 +33,7 @@ describe('renderLedger', () => {
     const md = renderLedger({
       window: 'w1',
       base: { branch: 'main', sha: 'b'.repeat(40) },
-      thresholds: { count: 10, waitHours: 6, source: 'release-cohort' },
+      thresholds: { size: 5, minutes: 90, source: 'the train config' },
       declarations: '.forge/verify-queue.json at bbb',
       openBranches: [],
       members: [
@@ -52,6 +52,6 @@ describe('renderLedger', () => {
     expect(md).toMatch(/\| 1 \| ISS-1 \|.*\| `cccccccccccc` \|/);
     expect(md).toMatch(/\| 2 \| ISS-2 \|.*\| isolated \|/);
     expect(md).toContain('- ISS-2 isolated (assembly): ISS-2 conflicts on src/a.txt');
-    expect(md).toContain('count 10, wait 6h, read from release-cohort');
+    expect(md).toContain('size 5, minutes 90, read from the train config');
   });
 });

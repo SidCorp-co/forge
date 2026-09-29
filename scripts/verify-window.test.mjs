@@ -99,7 +99,7 @@ function windowFiles(name, members, checks) {
     JSON.stringify({
       window: name,
       base: 'main',
-      thresholds: { count: 10, waitHours: 6, source: 'fixture' },
+      thresholds: { size: 10, minutes: 360, source: 'fixture' },
       members: members.map(([issue, br, head]) => ({
         issue,
         branch: br,

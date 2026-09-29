@@ -23,8 +23,10 @@ branch, head, arrival time and priority.
    success at that head, its head is not already on the base, and its diff touches no ineligible
    surface. The declarations are read from `.forge/verify-queue.json` **at the base commit**, so a
    member cannot loosen the rule it is judged by.
-2. **`fire`** — the count, the oldest member's wait measured from its recorded arrival, or a
-   critical member. A manifest declaring no thresholds is refused; there is no default.
+2. **`fire`** — `size` members waiting, the oldest member's wait from its recorded arrival reaching
+   `minutes`, or a critical member; a window above an optional `maxSize` is refused. These are the
+   release train's keys (`docs/proposals/release-train.md`), which this project has not yet set, so
+   a manifest declaring none is refused and there is no default.
 3. **`assemble`** — a worktree at the base commit, and one `git merge --no-ff` per member in order.
    What the repository orders across branches is re-derived as each member enters (below). A
    path the declarations name as a union — `CHANGELOG.md`, where every pull request adds its entry

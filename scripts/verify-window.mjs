@@ -119,7 +119,7 @@ if (verb === 'fire') {
   console.log(
     r.fired
       ? `fired on ${r.by.join('; ')}`
-      : `not fired: ${manifest.members.length} member(s), oldest waited ${r.waitedHours.toFixed(1)}h`,
+      : `not fired: ${manifest.members.length} member(s), oldest waited ${Math.floor(r.waitedMinutes)} minute(s)`,
   );
   process.exit(r.fired ? 0 : 1);
 }
