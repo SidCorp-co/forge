@@ -419,6 +419,25 @@ describe('assemble, attribute, isolate and land', () => {
     expect(r.status).toBe(1);
     expect(r.stderr).toContain(`origin/main is at ${after} and the window was built on ${before}`);
   });
+
+  it('replays each member on the base the window was built on, not the one the remote moved to', () => {
+    branch('main', { 'src/later.txt': 'moved after the window was built\n' });
+    const cmd = 'test ! -f src/later.txt';
+    const r = run(
+      c,
+      'attribute',
+      '--window',
+      w.manifest,
+      '--checks',
+      w.checksFile,
+      '--tree',
+      w.tree,
+      '--unit',
+      cmd,
+    );
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toMatch(/did not fail on the replay at all/);
+  });
 });
 
 describe('a journal entry a member edits rather than adds', () => {

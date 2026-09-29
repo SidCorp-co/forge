@@ -84,9 +84,10 @@ function enter({ t, config, member, open, landed, window }) {
 
 /**
  * Fetch, then read what every step is judged against: the base commit, the declarations at it and
- * the open branches outside the window. @returns {{ refusal: string } | object}
+ * the open branches outside the window. `pinBase` is a replay's: the base the window was built on,
+ * never wherever the remote has moved since. @returns {{ refusal: string } | object}
  */
-export function prepareWindow({ repoDir, manifest }) {
+export function prepareWindow({ repoDir, manifest, pinBase }) {
   const g = gitIn(repoDir);
   const trimmed = (args) => g.run(args)?.trim() ?? null;
   if (
@@ -98,7 +99,9 @@ export function prepareWindow({ repoDir, manifest }) {
     };
   }
   const baseRef = `origin/${manifest.base}`;
-  const baseSha = trimmed(['rev-parse', '--verify', '--quiet', baseRef]);
+  const baseSha = pinBase
+    ? trimmed(['rev-parse', '--verify', '--quiet', `${pinBase}^{commit}`])
+    : trimmed(['rev-parse', '--verify', '--quiet', baseRef]);
   if (!baseSha)
     return { refusal: `${baseRef} does not exist, so there is no base to build the window on` };
   const read = parseConfig(showAt(g, baseSha, CONFIG_PATH), `${CONFIG_PATH} at ${baseSha}`);
@@ -130,12 +133,13 @@ export function prepareWindow({ repoDir, manifest }) {
 }
 
 /**
- * `admit: false` is for a replay tree, whose member was admitted by the window it came from.
- * @param {{ repoDir: string, manifest: object, treeDir: string, readCheck: Function, admit?: boolean }} input
+ * `admit: false` and `pinBase` are for a replay tree, whose member the window it came from admitted
+ * and built on that window's base.
+ * @param {{ repoDir: string, manifest: object, treeDir: string, readCheck: Function, admit?: boolean, pinBase?: string }} input
  * @returns {{ refusal: string } | { ledger: object }}
  */
-export function assemble({ repoDir, manifest, treeDir, readCheck, admit = true }) {
-  const ready = prepareWindow({ repoDir, manifest });
+export function assemble({ repoDir, manifest, treeDir, readCheck, admit = true, pinBase }) {
+  const ready = prepareWindow({ repoDir, manifest, pinBase });
   if (ready.refusal) return ready;
   const { g, baseSha, config, open } = ready;
   if (existsSync(treeDir))
