@@ -20,12 +20,10 @@ import {
   type PipelineRunStatus,
   pipelineRuns,
   projects,
-  terminalAgentSessionStatuses,
   usageRecords,
 } from '../db/schema.js';
 import { type RunGate, readRunGate } from '../devices/gate-report.js';
 import { RETRY_MAX_ROUNDS, readAutoRetryPayload } from '../jobs/retry.js';
-import { UNHELD_LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { usageSessionMatch } from '../usage-records/rollup.js';
 import {
@@ -34,10 +32,17 @@ import {
   type PipelineRunGroup,
   type PipelineRunLane,
   type PipelineRunStep,
+  type ResidentMaster,
   stepOf,
 } from './runs-lane.js';
+import { loadRunLivenessByRunIds, residentMasterOn } from './runs-liveness.js';
 
-export type { PipelineRunGroup, PipelineRunLane, PipelineRunStep } from './runs-lane.js';
+export type {
+  PipelineRunGroup,
+  PipelineRunLane,
+  PipelineRunStep,
+  ResidentMaster,
+} from './runs-lane.js';
 
 export type PipelineStepStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped';
 
@@ -141,6 +146,9 @@ export interface PipelineRunSummary {
    * this run, or `null` where the run has none.
    */
   lastSessionBeatAt: string | null;
+  /** ISS-1335 — the live master session on a `master`-lane run; `null` off that lane, and on a
+   *  master run nothing holds any more. A session of another kind never fills it. */
+  residentMaster: ResidentMaster | null;
   /** ISS-411 — per-attempt device/retry timeline (jobs-sourced). */
   attempts: PipelineRunAttempt[];
   /** ISS-411 — round-robin headline; null when the run never retried. */
@@ -349,6 +357,7 @@ function rowToListItem(row: RunRow): PipelineRunListItem {
     cost: EMPTY_COST,
     liveJobs: 0,
     lastSessionBeatAt: null,
+    residentMaster: null,
   };
 }
 
@@ -358,8 +367,9 @@ function withStep(
   currentStep: string | null,
   openPhase?: string,
   group?: PipelineRunGroup,
+  master?: ResidentMaster | null,
 ): { step: PipelineRunStep; currentStep: string | null } {
-  const step = stepOf(lane, currentStep, openPhase, group);
+  const step = stepOf(lane, currentStep, openPhase, group, master);
   return { step, currentStep: step.step };
 }
 
@@ -429,61 +439,27 @@ export async function loadPipelineRunSummary(runId: string): Promise<PipelineRun
   ]);
 
   const ref = row.issueId ? issueRefs.get(row.issueId) : undefined;
+  const residentMaster = residentMasterOn(listItem.lane, liveMap.get(runId));
   return {
     ...listItem,
-    ...withStep(listItem.lane, row.currentStep, openPhase.get(runId), listItem.group),
+    ...withStep(
+      listItem.lane,
+      row.currentStep,
+      openPhase.get(runId),
+      listItem.group,
+      residentMaster,
+    ),
     issueRef: ref?.issueRef ?? null,
     issueTitle: ref?.issueTitle ?? null,
     liveJobs: liveMap.get(runId)?.liveJobs ?? 0,
     lastSessionBeatAt: liveMap.get(runId)?.beat ?? null,
+    residentMaster,
     steps,
     cost,
     attempts: attemptRollup.attempts,
     retrySummary: attemptRollup.retrySummary,
     gateAtOpen: readRunGate(row.metadata, runId),
   };
-}
-
-const sqlList = (values: readonly string[]) =>
-  sql.join(
-    values.map((v) => sql`${v}`),
-    sql`, `,
-  );
-
-/**
- * Both halves of run liveness for many runs, in ONE statement. `live_jobs`
- * counts work the pipeline is moving, so it asks
- * {@link UNHELD_LIVE_JOB_STATUSES} rather than `jobs/status-sets.ts`'s
- * `LIVE_JOB_STATUSES`: a run whose only job is parked on a person is not work
- * in flight, and counting it would keep that run out of the stalled band for
- * as long as it waits.
- */
-async function loadRunLivenessByRunIds(
-  runIds: string[],
-): Promise<Map<string, { liveJobs: number; beat: string | null }>> {
-  const out = new Map<string, { liveJobs: number; beat: string | null }>();
-  if (runIds.length === 0) return out;
-  const rows = await db.execute<{
-    run_id: string;
-    live_jobs: number | string;
-    last_beat: Date | string | null;
-  }>(sql`
-    SELECT
-      r.id AS run_id,
-      (SELECT count(*) FROM ${jobs} j
-        WHERE j.pipeline_run_id = r.id
-          AND j.status IN (${sqlList(UNHELD_LIVE_JOB_STATUSES)})) AS live_jobs,
-      (SELECT max(s.last_heartbeat_at) FROM ${agentSessions} s
-        WHERE s.pipeline_run_id = r.id
-          AND s.status NOT IN (${sqlList(terminalAgentSessionStatuses)})) AS last_beat
-    FROM ${pipelineRuns} r
-    WHERE r.id IN (${sqlList(runIds)})
-  `);
-  for (const r of rows) {
-    if (!r.run_id) continue;
-    out.set(r.run_id, { liveJobs: Number(r.live_jobs), beat: toIso(r.last_beat) });
-  }
-  return out;
 }
 
 /**
@@ -545,14 +521,16 @@ export async function listItemsFromRows(rows: RunRow[]): Promise<PipelineRunList
   return items.map((item, index) => {
     const r = rows[index] as RunRow;
     const ref = r.issueId ? issueRefs.get(r.issueId) : undefined;
+    const residentMaster = residentMasterOn(item.lane, liveMap.get(r.id));
     return {
       ...item,
-      ...withStep(item.lane, r.currentStep, openPhases.get(r.id), item.group),
+      ...withStep(item.lane, r.currentStep, openPhases.get(r.id), item.group, residentMaster),
       issueRef: ref?.issueRef ?? null,
       issueTitle: ref?.issueTitle ?? null,
       cost: costMap.get(r.id) ?? EMPTY_COST,
       liveJobs: liveMap.get(r.id)?.liveJobs ?? 0,
       lastSessionBeatAt: liveMap.get(r.id)?.beat ?? null,
+      residentMaster,
     };
   });
 }
