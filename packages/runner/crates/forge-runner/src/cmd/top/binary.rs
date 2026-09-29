@@ -33,22 +33,17 @@ impl Daemon {
     }
 }
 
-/// The running daemon, named from its record where the record's pid is still
-/// that process, else from a `forge-runner start` process serving this
-/// configuration. `None` where neither names one.
+/// The running daemon, named from its record where the record's pid is proven
+/// still that process, else from the one `forge-runner start` process serving
+/// this configuration. A record that cannot be proven the same process — no
+/// start time in it — names nothing by itself, since its pid may have been
+/// handed to another program. `None` where neither names one.
 pub fn daemon(
     record: &Result<Option<serving::Record>, serving::Unreadable>,
     probe: &Probe,
 ) -> Option<Daemon> {
     let pid = match record {
-        Ok(Some(r))
-            if matches!(
-                serving::liveness(r, probe),
-                Liveness::Same | Liveness::Unverified
-            ) =>
-        {
-            Some(r.pid)
-        }
+        Ok(Some(r)) if serving::liveness(r, probe) == Liveness::Same => Some(r.pid),
         _ => (probe.daemons)().and_then(|all| {
             let mine: Vec<u32> = all
                 .iter()
@@ -161,6 +156,54 @@ mod tests {
         let line = exe_line(&d);
         assert!(line.contains("UNREADABLE"), "{line}");
         assert!(exe_bytes(s.path(), 7).is_err());
+    }
+
+    fn record(pid: u32, start_ticks: Option<&str>) -> serving::Record {
+        serving::Record {
+            pid,
+            boot_id: None,
+            start_ticks: start_ticks.map(str::to_string),
+            version: "0.17.0".into(),
+            commit: "abc".into(),
+            started_at_ms: 0,
+            drain: None,
+        }
+    }
+
+    fn probe(daemons: fn() -> Option<Vec<serving::Running>>) -> Probe {
+        Probe {
+            alive: |_| true,
+            start_ticks: |_| Some("555".into()),
+            boot_id: None,
+            daemons,
+        }
+    }
+
+    fn one_daemon_at_9() -> Option<Vec<serving::Running>> {
+        Some(vec![serving::Running {
+            pid: 9,
+            exe: "/usr/bin/forge-runner".into(),
+            replaced: Some(false),
+            serves: Serves::This,
+        }])
+    }
+
+    /// Whole-set consult at a366fa8, F2: a record with no start time cannot be
+    /// proven the process now holding its pid, so that pid is never taken for
+    /// the daemon by itself — the one daemon serving this configuration is.
+    #[test]
+    fn a_record_that_cannot_be_proven_names_no_daemon_by_itself() {
+        let unproven = Ok(Some(record(4242, None)));
+        assert_eq!(
+            daemon(&unproven, &probe(one_daemon_at_9)).map(|d| d.pid),
+            Some(9)
+        );
+        assert!(daemon(&unproven, &probe(|| Some(Vec::new()))).is_none());
+        let proven = Ok(Some(record(4242, Some("555"))));
+        assert_eq!(
+            daemon(&proven, &probe(one_daemon_at_9)).map(|d| d.pid),
+            Some(4242)
+        );
     }
 
     #[cfg(target_os = "linux")]

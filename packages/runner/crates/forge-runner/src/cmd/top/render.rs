@@ -322,10 +322,12 @@ pub fn tree_line(now: i64, measured: i64, age: &TreeAge) -> String {
             entries,
             unread: 0,
             capped: false,
+            ..
         } => format!("no file under the worktree ({entries} entries read){when}"),
         TreeAge::NoFiles {
             entries,
             unread,
+            first_unread,
             capped,
         } => {
             let mut l = format!("no file read under the worktree ({entries} entries)");
@@ -338,6 +340,9 @@ pub fn tree_line(now: i64, measured: i64, age: &TreeAge) -> String {
                 l.push_str(&format!(
                     " — PARTIAL: {unread} entr(ies) could not be read, so a file may be among them"
                 ));
+                if let Some(first) = first_unread {
+                    l.push_str(&format!(" (first: UNREADABLE — {first})"));
+                }
             }
             l.push_str(&when);
             l
@@ -349,6 +354,7 @@ pub fn tree_line(now: i64, measured: i64, age: &TreeAge) -> String {
             entries,
             capped,
             unread,
+            first_unread,
         } => {
             let mut l = format!("newest write {}: {}", ago(now, *at_ms), path.display());
             if *capped {
@@ -362,6 +368,9 @@ pub fn tree_line(now: i64, measured: i64, age: &TreeAge) -> String {
                 l.push_str(&format!(
                     " — PARTIAL: {unread} entr(ies) could not be read, so a newer file may be among them"
                 ));
+                if let Some(first) = first_unread {
+                    l.push_str(&format!(" (first: UNREADABLE — {first})"));
+                }
             }
             l.push_str(&when);
             l
@@ -685,6 +694,7 @@ mod tests {
                 &TreeAge::NoFiles {
                     entries: 7,
                     unread,
+                    first_unread: (unread > 0).then(|| "a/b: Permission denied".to_string()),
                     capped,
                 },
             )
@@ -695,6 +705,11 @@ mod tests {
         );
         assert!(line(true, 0).contains("PARTIAL: the walk stopped at 7 entries"));
         assert!(line(false, 2).contains("PARTIAL: 2 entr(ies) could not be read"));
+        assert!(
+            line(false, 2).contains("(first: UNREADABLE — a/b: Permission denied)"),
+            "{}",
+            line(false, 2)
+        );
         assert!(!line(true, 0).starts_with("no file under the worktree"));
     }
 }

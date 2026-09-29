@@ -28,6 +28,8 @@ pub enum TreeAge {
     NoFiles {
         entries: usize,
         unread: usize,
+        /// The first entry that could not be read, as `<path>: <reason>`.
+        first_unread: Option<String>,
         /// The walk stopped at the cap, so a file may stand unvisited.
         capped: bool,
     },
@@ -42,6 +44,8 @@ pub enum TreeAge {
         /// would not list, or an entry whose metadata would not come — so a
         /// newer file may stand among them.
         unread: usize,
+        /// The first of them, as `<path>: <reason>`.
+        first_unread: Option<String>,
     },
     /// The root itself could not be read.
     Unreadable(String),
@@ -62,17 +66,33 @@ pub fn newest(root: &Path, cap: usize) -> TreeAge {
     let device = device_of(&meta);
     let mut stack = vec![root.to_path_buf()];
     let (mut entries, mut unread) = (0usize, 0usize);
+    let mut first_unread: Option<String> = None;
+    // Every entry that cannot be read is counted, and the first is kept with
+    // its path and reason, so the line can say which and why.
+    let mut miss = |at: &Path, why: &dyn std::fmt::Display| {
+        unread += 1;
+        if first_unread.is_none() {
+            let rel = at.strip_prefix(root).unwrap_or(at);
+            first_unread = Some(format!("{}: {why}", rel.display()));
+        }
+    };
     let mut best: Option<(i64, PathBuf)> = None;
     let mut capped = false;
     'walk: while let Some(dir) = stack.pop() {
-        let Ok(listing) = std::fs::read_dir(&dir) else {
-            unread += 1;
-            continue;
+        let listing = match std::fs::read_dir(&dir) {
+            Ok(l) => l,
+            Err(e) => {
+                miss(&dir, &e);
+                continue;
+            }
         };
         for entry in listing {
-            let Ok(entry) = entry else {
-                unread += 1;
-                continue;
+            let entry = match entry {
+                Ok(e) => e,
+                Err(e) => {
+                    miss(&dir, &format!("an entry of the listing: {e}"));
+                    continue;
+                }
             };
             if entries >= cap {
                 capped = true;
@@ -80,9 +100,12 @@ pub fn newest(root: &Path, cap: usize) -> TreeAge {
             }
             entries += 1;
             // `DirEntry::metadata` does not traverse a symlink on unix.
-            let Ok(m) = entry.metadata() else {
-                unread += 1;
-                continue;
+            let m = match entry.metadata() {
+                Ok(m) => m,
+                Err(e) => {
+                    miss(&entry.path(), &e);
+                    continue;
+                }
             };
             let kind = m.file_type();
             if kind.is_dir() {
@@ -96,7 +119,7 @@ pub fn newest(root: &Path, cap: usize) -> TreeAge {
                             best = Some((at, entry.path()));
                         }
                     }
-                    None => unread += 1,
+                    None => miss(&entry.path(), &"no modification time"),
                 }
             }
         }
@@ -111,10 +134,12 @@ pub fn newest(root: &Path, cap: usize) -> TreeAge {
             entries,
             capped,
             unread,
+            first_unread,
         },
         None => TreeAge::NoFiles {
             entries,
             unread,
+            first_unread,
             capped,
         },
     }
@@ -221,6 +246,7 @@ mod tests {
             TreeAge::NoFiles {
                 entries: 2,
                 unread: 0,
+                first_unread: None,
                 capped: false
             }
         );
@@ -241,9 +267,19 @@ mod tests {
         let got = newest(s.path(), ENTRY_CAP);
         std::fs::set_permissions(&shut, std::fs::Permissions::from_mode(0o755)).unwrap();
         match got {
-            TreeAge::Newest { path, unread, .. } => {
+            TreeAge::Newest {
+                path,
+                unread,
+                first_unread,
+                ..
+            } => {
                 assert_eq!(path, PathBuf::from("old.txt"));
                 assert_eq!(unread, 1, "the shut directory is one unread entry");
+                assert_eq!(
+                    first_unread.as_deref(),
+                    Some("shut: Permission denied (os error 13)"),
+                    "which entry, and why"
+                );
             }
             other => panic!("{other:?}"),
         }
@@ -259,6 +295,7 @@ mod tests {
             TreeAge::NoFiles {
                 entries: 1,
                 unread: 1,
+                first_unread: Some("shut: Permission denied (os error 13)".into()),
                 capped: false
             }
         );
@@ -276,6 +313,7 @@ mod tests {
             TreeAge::NoFiles {
                 entries: 1,
                 unread: 0,
+                first_unread: None,
                 capped: true
             }
         );
