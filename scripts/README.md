@@ -346,6 +346,8 @@ its name or its cost:
 A change touching a surface `.forge/verify-queue.json` declares ineligible (the gate itself among
 them) is not given the entry layer: `--entry` says which surface and runs the whole gate instead,
 judged by the declarations at the merge base, so a change cannot loosen its own rule.
+Where the merge base declares nothing, `--entry` exits `2` naming the missing file rather than
+reading every change as eligible: no admission rule is assumed.
 
 ### Modes
 
