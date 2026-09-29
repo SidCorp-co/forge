@@ -106,10 +106,45 @@ fn the_repositorys_own_credential_decides_the_publish_check_not_an_inherited_one
     git(&work, &["commit", "-qm", "more"]);
     let after = rt.block_on(publish(&work, "main", &cred));
     assert_eq!(
-        after,
-        Publication::Published,
+        (&after.publication, &after.refused),
+        (&Publication::Published, &None),
         "the push that publishes a held checkout's branch offered {} and did not land",
         cred.source()
+    );
+
+    // A key that reads and cannot write passes the check and fails the push,
+    // which is the most common way the two split. The push's refusal has to
+    // carry git's own words and the credential, or that split is invisible.
+    let hook = remote.join("hooks").join("pre-receive");
+    std::fs::write(
+        &hook,
+        "#!/bin/sh\necho 'this key may read and not write' >&2\nexit 1\n",
+    )
+    .expect("hook");
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).expect("mode");
+    }
+    std::fs::write(work.join("c.txt"), "c\n").expect("file");
+    git(&work, &["add", "c.txt"]);
+    git(&work, &["commit", "-qm", "refused"]);
+    let refused = rt.block_on(publish(&work, "main", &cred));
+    std::fs::remove_file(&hook).expect("unhook");
+    let why = refused
+        .refused
+        .unwrap_or_else(|| panic!("a push the remote declined was reported as taken"));
+    assert!(
+        why.contains("this key may read and not write"),
+        "git's own refusal must survive into the report: {why}"
+    );
+    assert!(
+        why.contains(&right.display().to_string()),
+        "and so must the credential the push offered: {why}"
+    );
+    assert_eq!(
+        refused.publication,
+        Publication::Unpublished { commits: 1 },
+        "the publication read after a refused push is still read"
     );
 
     // And so does the push a failed job's salvage makes.
