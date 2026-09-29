@@ -23,6 +23,9 @@ pub enum MasterPresence {
     Gone,
     /// This box has no entry for that master, which is not the same as it being over.
     Unknown,
+    /// The registry named a pane and tmux could not be asked about it, so
+    /// nothing was observed either way (ISS-1312).
+    Unanswered,
 }
 
 /// Whether the master that started a run is still there to finish it.
@@ -159,9 +162,16 @@ pub async fn reconcile(
     watch: RunWatch<'_>,
 ) -> Result<Vec<Recovered>> {
     let mut out = Vec::new();
+    let mut unanswered_reads: Vec<String> = Vec::new();
     for mut run in ledger.unclosed_runs()? {
         if run.is_parked_on_human() {
-            if masters.state(&run.master_session_id).await != MasterPresence::Alive {
+            // A read tmux did not answer observed nothing, so the park stays
+            // with the master it answers to rather than moving on it (ISS-1312).
+            let read = masters.state(&run.master_session_id).await;
+            if read == MasterPresence::Unanswered {
+                unanswered_reads.push(run.run_id.clone());
+            }
+            if !matches!(read, MasterPresence::Alive | MasterPresence::Unanswered) {
                 if let Some(project) = run.project_id.as_deref() {
                     if let Some(parent) = masters.live_master_for_project(project).await {
                         ledger.reparent_run(&run.run_id, &parent)?;
@@ -177,19 +187,44 @@ pub async fn reconcile(
             Some(pid) => procs.is_gone(pid).await,
             None => false,
         };
-        let master = masters.state(&run.master_session_id).await;
+        let read = masters.state(&run.master_session_id).await;
         let dead_in_the_ledger =
             matches!(Ledger::liveness(&run, boot_id, pid_refuted), Liveness::Dead);
         // A subagent shares its master's process, so a pane read gone is the
         // end of the subagent too, and it goes on the row for the drain,
         // which reads the ledger and not this registry (ISS-1312).
-        if run.pid.is_none() && master == MasterPresence::Gone && run.host_ended_at_ms.is_none() {
+        if run.pid.is_none() && read == MasterPresence::Gone && run.host_ended_at_ms.is_none() {
             let at = now_ms();
             if ledger.note_host_ended(&run.run_id, at, HOST_PANE_GONE)? {
                 run.host_ended_at_ms = Some(at);
                 run.host_ended_by = Some(HOST_PANE_GONE.to_string());
             }
         }
+        // The same pane read alive again says the read that marked it saw
+        // nothing end, and a mark left standing lets the drain restart over a
+        // live pane's run (ISS-1312).
+        if read == MasterPresence::Alive
+            && run.host_ended_by.as_deref() == Some(HOST_PANE_GONE)
+            && ledger.withdraw_pane_gone(&run.run_id)?
+        {
+            tracing::info!(
+                "[recovery] run {}: its master's pane reads alive again, so the earlier read of it as gone is withdrawn and its subagent is read by its own evidence",
+                run.run_id
+            );
+            run.host_ended_at_ms = None;
+            run.host_ended_by = None;
+        }
+        // A read tmux could not answer observed nothing, so this sweep decides
+        // as it would under the pane last seen: no end is recorded, no death is
+        // reported and the keep is not dropped on a question nobody answered.
+        // A pane that is really gone reads gone once tmux answers again.
+        if read == MasterPresence::Unanswered {
+            unanswered_reads.push(run.run_id.clone());
+        }
+        let master = match read {
+            MasterPresence::Unanswered => MasterPresence::Alive,
+            other => other,
+        };
         let host = (run.pid.is_none()
             && matches!(
                 subagent_end::of_run(&run, now_ms()),
@@ -368,6 +403,13 @@ pub async fn reconcile(
             owed_death_report,
             host: host.filter(|_| !issues_over),
         });
+    }
+    if !unanswered_reads.is_empty() {
+        tracing::warn!(
+            "[recovery] tmux could not be asked whether the master pane of {} run(s) is there ({}), so this sweep recorded no end for any of them and decided each as under a pane still standing. Until tmux answers, this box cannot tell a live master from a dead one",
+            unanswered_reads.len(),
+            unanswered_reads.join(", ")
+        );
     }
     Ok(out)
 }
@@ -1664,6 +1706,87 @@ mod tests {
         );
     }
 
+    /// The master a park answers to, on a sweep tmux could not be asked about
+    /// its pane, while the registry holds another live master for the project.
+    struct UnansweredBesideASuccessor;
+    #[async_trait::async_trait]
+    impl MasterLiveness for UnansweredBesideASuccessor {
+        async fn state(&self, _: &str) -> MasterPresence {
+            MasterPresence::Unanswered
+        }
+        async fn live_master_for_project(&self, _: &str) -> Option<String> {
+            Some("master-new".to_string())
+        }
+    }
+
+    /// ISS-1312: a read tmux did not answer observed nothing, so a park is not
+    /// moved off the master it answers to on the strength of it. Reparenting
+    /// on every state but `Alive` moved a human's park onto another pane over
+    /// one failed tmux read.
+    #[tokio::test]
+    async fn a_park_whose_master_tmux_could_not_be_asked_about_stays_with_it() {
+        let mut led = parked("run-1", "master-old", "boot-a");
+        reconcile(
+            &mut led,
+            "boot-a",
+            &UnansweredBesideASuccessor,
+            &nothing_refuted(),
+            Closing {
+                sessions: &Sessions,
+                leases: &Leases(Mutex::new(HashSet::new())),
+                roots: &Roots,
+            },
+            RunWatch {
+                beat: &Beats::default(),
+                idle: &NeverReports,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            led.run("run-1").unwrap().unwrap().master_session_id,
+            "master-old",
+            "a question nobody answered is not a master that went"
+        );
+    }
+
+    /// The sweep's one line naming the runs tmux could not be asked about
+    /// names a park among them, which `continue`d past it before.
+    #[test]
+    fn a_park_whose_master_tmux_could_not_be_asked_about_is_in_the_sweeps_line() {
+        let out = logged_while(|| {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            rt.block_on(async {
+                let mut led = parked("run-parked", "master-old", "boot-a");
+                reconcile(
+                    &mut led,
+                    "boot-a",
+                    &UnansweredBesideASuccessor,
+                    &nothing_refuted(),
+                    Closing {
+                        sessions: &Sessions,
+                        leases: &Leases(Mutex::new(HashSet::new())),
+                        roots: &Roots,
+                    },
+                    RunWatch {
+                        beat: &Beats::default(),
+                        idle: &NeverReports,
+                    },
+                )
+                .await
+                .unwrap();
+            });
+        });
+        let line = out
+            .lines()
+            .find(|l| l.contains("tmux could not be asked"))
+            .unwrap_or_else(|| panic!("no line names the unanswered read: {out}"));
+        assert!(line.contains("run-parked"), "{line}");
+    }
+
     #[tokio::test]
     async fn a_park_keeps_beating_so_cores_reaper_leaves_it_alone() {
         let mut led = parked("run-1", "master-dead", "boot-a");
@@ -2490,6 +2613,104 @@ mod tests {
         assert!(
             !led.note_standing("run-1", RELEASE_SAID).unwrap(),
             "the latch stands, so a second sweep says nothing"
+        );
+    }
+
+    /// A registry entry whose pane tmux could not be asked about this sweep.
+    struct TmuxUnanswered;
+    #[async_trait::async_trait]
+    impl MasterLiveness for TmuxUnanswered {
+        async fn state(&self, _: &str) -> MasterPresence {
+            MasterPresence::Unanswered
+        }
+        async fn live_master_for_project(&self, _: &str) -> Option<String> {
+            None
+        }
+    }
+
+    fn drain_names(led: &Ledger) -> Vec<String> {
+        crate::daemon::live_sessions_from(
+            led.unclosed_runs(),
+            "boot-a",
+            |_| true,
+            |_| vec!["ISS-1135".into()],
+        )
+    }
+
+    /// ISS-1312 criteria 31 and 32, the fourth judge's N2: `pane_pid` answers
+    /// `None` alike for a tmux that could not answer and a pane that is absent,
+    /// and the first such read wrote a `pane-gone` mark that outlived it, so
+    /// the drain stopped holding a live pane's run.
+    #[tokio::test]
+    async fn a_sweep_tmux_could_not_answer_records_no_end_and_the_drain_still_holds_the_run() {
+        let scratch = Scratch::new("tmux-unanswered");
+        let (mut led, wt, _transcript) = a_subagent_run(&scratch);
+        assert_eq!(
+            drain_names(&led).len(),
+            1,
+            "the control: a first turn holds"
+        );
+        let beats = Beats::default();
+
+        let r = sweep(&mut led, &TmuxUnanswered, &beats).await;
+
+        let run = led.run("run-1").unwrap().unwrap();
+        assert_eq!(
+            (run.host_ended_at_ms, run.host_ended_by.as_deref()),
+            (None, None),
+            "criterion 31: a read nobody answered is not an end"
+        );
+        assert_still_held(&led, &r, &wt, "a sweep that established nothing");
+        let held = drain_names(&led);
+        assert_eq!(held.len(), 1, "criterion 32: {held:?}");
+        assert!(
+            held[0].contains("has not ended a turn"),
+            "held as criteria 1-18 read it: {held:?}"
+        );
+    }
+
+    /// ISS-1312 criterion 33: a `pane-gone` mark is withdrawn once the same
+    /// pane reads alive, where before it stood until the subagent was heard
+    /// from and the drain let a live pane's run go.
+    #[tokio::test]
+    async fn a_pane_read_alive_again_withdraws_the_gone_mark_an_earlier_sweep_wrote() {
+        let scratch = Scratch::new("pane-back");
+        let (mut led, wt, _transcript) = a_subagent_run(&scratch);
+        let _ = sweep(&mut led, &Masters(HashSet::new()), &Beats::default()).await;
+        assert_eq!(
+            led.run("run-1").unwrap().unwrap().host_ended_by.as_deref(),
+            Some(HOST_PANE_GONE),
+            "the plant: a sweep that read the pane gone marks it"
+        );
+        assert!(drain_names(&led).is_empty(), "and the drain lets it go");
+
+        let r = sweep(&mut led, &master_alive(), &Beats::default()).await;
+
+        let run = led.run("run-1").unwrap().unwrap();
+        assert_eq!(
+            (run.host_ended_at_ms, run.host_ended_by.as_deref()),
+            (None, None),
+            "criterion 33: the pane is there, so nothing ended with it"
+        );
+        assert_still_held(&led, &r, &wt, "a live master's first-turn run");
+        assert_eq!(drain_names(&led).len(), 1, "criterion 33: held again");
+    }
+
+    /// The boundary of criterion 33: the mark a placement wrote is not a read
+    /// of this pane, so an alive read of a pane does not withdraw it.
+    #[tokio::test]
+    async fn an_alive_read_leaves_a_placement_mark_standing() {
+        let scratch = Scratch::new("pane-started-stays");
+        let (mut led, _wt, _transcript) = a_subagent_run(&scratch);
+        assert!(led
+            .note_host_ended("run-1", now_ms() - MIN_MS, HOST_PANE_STARTED)
+            .unwrap());
+
+        let _ = sweep(&mut led, &master_alive(), &Beats::default()).await;
+
+        assert_eq!(
+            led.run("run-1").unwrap().unwrap().host_ended_by.as_deref(),
+            Some(HOST_PANE_STARTED)
         );
     }
 

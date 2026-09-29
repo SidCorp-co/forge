@@ -2053,6 +2053,7 @@ pub(crate) fn inherited_runs(led: &Ledger, project_id: &str, boot_id: &str) -> V
             work: r.work.wire(),
             agent_id: r.agent_id,
             ended_by: r.ended_by,
+            pid: r.pid,
         })
         .collect()
 }
@@ -2113,7 +2114,12 @@ pub(crate) fn placed_again(
     let mut ended = 0;
     let mut adopted = 0;
     for run in inherited {
-        match led.note_host_ended(&run.run_id, at_ms, crate::runner::ledger::HOST_PANE_STARTED) {
+        let marked = if run.ends_with_placement() {
+            led.note_host_ended(&run.run_id, at_ms, crate::runner::ledger::HOST_PANE_STARTED)
+        } else {
+            Ok(false)
+        };
+        match marked {
             Ok(true) => ended += 1,
             Ok(false) => {}
             Err(e) => tracing::warn!(
@@ -2157,6 +2163,16 @@ pub(crate) struct InheritedRun {
     pub work: &'static str,
     pub agent_id: Option<String>,
     pub ended_by: Option<String>,
+    pub pid: Option<u32>,
+}
+
+impl InheritedRun {
+    /// A run with no process of its own is a subagent's, living inside its
+    /// master's pane, so a pane started in place of that one is its end. The
+    /// one predicate [`placed_again`] records and [`resumed_brief`] states.
+    pub(crate) fn ends_with_placement(&self) -> bool {
+        self.pid.is_none() && self.ended_by.is_none()
+    }
 }
 
 /// What a pane placed after a stand-down was lifted is told about the gap.
@@ -2199,7 +2215,10 @@ requirement, so what ended the wait is not on this box's record.\n"
     out
 }
 
-pub(crate) fn resumed_brief(conversation: &str, runs: &[InheritedRun]) -> String {
+/// `placed` is whether this pane was started in place of an absent one, which
+/// [`placed_again`] records as the end of every inherited run's subagent the
+/// brief must then not state as live (ISS-1312).
+pub(crate) fn resumed_brief(conversation: &str, runs: &[InheritedRun], placed: bool) -> String {
     let mut out = format!(
         "\nThis pane was RESUMED, not started fresh: it is continuing conversation `{conversation}`, \
 so what you remember of this project may be from before the interruption that ended the last pane.\n"
@@ -2219,12 +2238,19 @@ judges none of them; the judgement is yours:\n",
         runs.len()
     ));
     for r in runs {
+        let incarnation = if placed && r.ends_with_placement() {
+            "not running: its subagent ended with the pane this one was started in place of, \
+inside whose process it ran"
+                .to_string()
+        } else {
+            r.incarnation.to_string()
+        };
         out.push_str(&format!(
             "\n- run `{}`\n  issues: {}\n  worktree: {}\n  incarnation: {}\n  work: {}\n  subagent: {}\n  ended: {}\n",
             r.run_id,
             if r.issue_keys.is_empty() { "none recorded".to_string() } else { r.issue_keys.join(", ") },
             r.worktree_path,
-            r.incarnation,
+            incarnation,
             r.work,
             r.agent_id.as_deref().unwrap_or("never bound"),
             r.ended_by.as_deref().unwrap_or("not ended"),
@@ -3046,7 +3072,7 @@ surface it reads",
         &reach,
     );
     let brief = match resume.as_deref() {
-        Some(conv) => format!("{brief}{}", resumed_brief(conv, inherited)),
+        Some(conv) => format!("{brief}{}", resumed_brief(conv, inherited, started)),
         None => brief,
     };
     let brief = match carry.lifted {
@@ -4914,20 +4940,21 @@ mod give_back_tests {
                 work: "runnable",
                 agent_id: None,
                 ended_by: None,
+                pid: None,
             })
             .collect()
     }
 
     #[test]
     fn a_resumed_pane_is_told_that_it_was_resumed() {
-        let brief = resumed_brief("conv-abc", &three_inherited());
+        let brief = resumed_brief("conv-abc", &three_inherited(), true);
         assert!(brief.contains("RESUMED"), "{brief}");
         assert!(brief.contains("conv-abc"), "{brief}");
     }
 
     #[test]
     fn the_inherited_block_carries_no_recommendation_and_no_suggested_action() {
-        let brief = resumed_brief("conv-abc", &three_inherited());
+        let brief = resumed_brief("conv-abc", &three_inherited(), true);
         for verdict in [
             "recommend",
             "suggest",
@@ -4946,7 +4973,7 @@ mod give_back_tests {
 
     #[test]
     fn every_inherited_run_appears_as_raw_fields() {
-        let brief = resumed_brief("conv-abc", &three_inherited());
+        let brief = resumed_brief("conv-abc", &three_inherited(), true);
         for n in 1..=3 {
             assert!(brief.contains(&format!("run-{n}")), "{brief}");
             assert!(brief.contains(&format!("ISS-{n}")), "{brief}");
@@ -4961,9 +4988,49 @@ mod give_back_tests {
         assert!(brief.contains("leave"), "{brief}");
     }
 
+    /// ISS-1312 criteria 34 and 35: the placement that resumes a pane records
+    /// each inherited subagent run as ended with the pane before it, and the
+    /// brief it is handed stated the same run as `incarnation: live`, which a
+    /// pane can read as a reason to `continue` and wait for it.
+    #[test]
+    fn a_subagent_run_the_placement_ends_is_not_called_live_in_the_brief() {
+        let mut runs = three_inherited();
+        for r in runs.iter_mut() {
+            r.incarnation = "live";
+        }
+        runs[0].agent_id = Some("child-1".into());
+        runs[1].pid = Some(4242);
+        fn block<'a>(brief: &'a str, run_id: &str) -> &'a str {
+            brief
+                .split("\n- run `")
+                .find(|b| b.starts_with(&format!("{run_id}`")))
+                .unwrap_or_else(|| panic!("{run_id} is not listed: {brief}"))
+        }
+
+        let brief = resumed_brief("conv-abc", &runs, true);
+
+        for id in ["run-1", "run-3"] {
+            let said = block(&brief, id);
+            assert!(
+                said.contains("ended with the pane this one was started in place of"),
+                "criterion 34, {id}: {said}"
+            );
+            assert!(!said.contains("live"), "criterion 35, {id}: {said}");
+        }
+        assert!(
+            block(&brief, "run-2").contains("incarnation: live"),
+            "a run with a process of its own did not live in the pane, and is stated as its row reads: {brief}"
+        );
+        let unplaced = resumed_brief("conv-abc", &runs, false);
+        assert!(
+            block(&unplaced, "run-1").contains("incarnation: live"),
+            "the control: a brief no placement came with states the row as it reads: {unplaced}"
+        );
+    }
+
     #[test]
     fn a_resumed_pane_holding_nothing_is_asked_for_nothing() {
-        let brief = resumed_brief("conv-abc", &[]);
+        let brief = resumed_brief("conv-abc", &[], true);
         assert!(brief.contains("RESUMED"), "{brief}");
         assert!(brief.contains("nothing to decide"), "{brief}");
     }
@@ -8827,6 +8894,147 @@ mod servers_refusal_walk_tests {
             .unplaced
             .get("proj-walk")
             .cloned()
+    }
+
+    /// ISS-1312 criterion 30, the fourth judge's N1: the placement's mark was
+    /// covered only by tests that call `placed_again` themselves, so a sweep
+    /// that never called it left every test green. This one takes the sweep
+    /// whole: core serves a project with claimable work and no pane is up, so
+    /// the sweep starts one — a stub standing in for `claude` — over a ledger
+    /// holding a first-turn run declared under the session that pane replaces.
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_sweep_that_starts_a_pane_records_the_end_of_the_subagents_it_inherits() {
+        use crate::runner::ledger::{Ledger, NewRun, HOST_PANE_STARTED};
+        let _serialised = terminal::testing::ONE_AT_A_TIME.lock().await;
+        let _env = crate::auth::cred_store::ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let iso = terminal::testing::IsolatedServer::new("sweepplace");
+        if !terminal::available() {
+            terminal::testing::cannot_run(
+                "tmux is not installed here — the transport this rests on cannot run",
+            );
+            return;
+        }
+        if !iso.took() {
+            terminal::testing::cannot_run("this box does not resolve its tmux socket from the config dir, so the only server here is its own — not starting a pane on it");
+            return;
+        }
+        let Some(boot) = crate::runner::inflight::boot_identity() else {
+            terminal::testing::cannot_run(
+                "this box reads no boot identity, so no run is inherited by a pane placed on it",
+            );
+            return;
+        };
+        let claude_home = crate::test_scratch::Scratch::new("sweepplace-claude");
+        let _trust = ScopedVar::set("CLAUDE_CONFIG_DIR", claude_home.path());
+        let stub_dir = crate::test_scratch::Scratch::new("sweepplace-stub");
+        let stub = stub_dir.join("claude");
+        std::fs::write(
+            &stub,
+            "#!/bin/sh\n[ \"$1\" = --probe ] && exit 0\nexec sleep 120\n",
+        )
+        .expect("the stub is written");
+        let mut perms = std::fs::metadata(&stub).expect("stub mode").permissions();
+        std::os::unix::fs::PermissionsExt::set_mode(&mut perms, 0o755);
+        std::fs::set_permissions(&stub, perms).expect("the stub is executable");
+        // A sibling thread that forked while the write above was open holds
+        // its descriptor until its own exec, and until then the kernel refuses
+        // to run the stub, so the pane would die and read as a sweep that
+        // started nothing. One run that gets through says no writer is left.
+        let runs = (0..50).any(|_| {
+            let ok = std::process::Command::new(&stub)
+                .arg("--probe")
+                .status()
+                .is_ok_and(|s| s.success());
+            if !ok {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            ok
+        });
+        assert!(
+            runs,
+            "the stub never ran, so no pane could be started with it"
+        );
+        let _claude = crate::runner::process::testing::StubClaude::installed(&stub);
+        let repo = crate::test_scratch::Scratch::new("sweepplace-repo");
+        let map = crate::test_scratch::Scratch::new("sweepplace-map").at("control-tokens.json");
+        let store = session_tokens::SessionTokens::at(map.to_path_buf());
+        let runners: &'static str = Box::leak(
+            format!(
+                r#"[{{"projectId":"proj-sweep","runnerId":"r-1","slug":"sweepplace","baseBranch":null,"repoPath":{},"branch":null,"status":"active"}}]"#,
+                serde_json::to_string(&repo.path().to_string_lossy()).unwrap()
+            )
+            .into_boxed_str(),
+        );
+        let routes: &'static [(&'static str, &'static str, &'static str)] = Box::leak(
+            vec![
+                ("/api/devices/me/runners", "200 OK", runners),
+                (
+                    "/api/devices/me/issues/admissible",
+                    "200 OK",
+                    r#"{"items":[{"issueId":"i-1","issueKey":"ISS-1","projectId":"proj-sweep","status":"open"}]}"#,
+                ),
+                (REGISTER, "200 OK", SESSION),
+                (SERVERS, "200 OK", DECLARES),
+            ]
+            .into_boxed_slice(),
+        );
+        let core = fake_core::serve_routes(routes).await;
+        let mut ledger = Some(Ledger::open_in_memory().unwrap());
+        {
+            let led = ledger.as_mut().unwrap();
+            led.create_run_group(NewRun {
+                run_id: "run-old".into(),
+                project_id: "proj-sweep".into(),
+                master_session_id: "sess-before".into(),
+                worktree_path: "/w/old".into(),
+                boot_id: boot.clone(),
+                issue_keys: vec!["ISS-1314".into()],
+            })
+            .unwrap();
+            assert!(led.bind_agent("run-old", "child-old").unwrap());
+        }
+        let masters = Arc::new(Masters::new());
+        let (_adopted_tx, adopted) = tokio::sync::watch::channel(true);
+        let mut said = None;
+
+        let _ = sweep(
+            &CoreClient::new(core, "device-token"),
+            &Config::default(),
+            &masters,
+            &agent_activity::Activities::new(),
+            &Arc::new(JobPanes::new()),
+            &crate::daemon::pool_jobs::NoRecords,
+            &adopted,
+            &mut ledger,
+            Some(&store),
+            &mut said,
+            &crate::daemon::drain::Drain::unrecorded(),
+        )
+        .await;
+
+        let pane = terminal::session_name(terminal::MASTER_PREFIX, "sweepplace");
+        let up = terminal::alive(&pane).await;
+        let _ = terminal::kill(&pane).await;
+        assert!(up, "the plant: the sweep started a pane for the project");
+        let led = ledger.as_ref().unwrap();
+        assert_eq!(
+            led.run("run-old").unwrap().unwrap().host_ended_by.as_deref(),
+            Some(HOST_PANE_STARTED),
+            "criterion 30: the pane this sweep started is the end of the subagent the pane before it ran"
+        );
+        let drain = crate::daemon::live_sessions_from(
+            led.unclosed_runs(),
+            &boot,
+            |_| true,
+            |_| vec!["ISS-1314".into()],
+        );
+        assert!(
+            drain.is_empty(),
+            "criterion 16, through the sweep: {drain:?}"
+        );
     }
 
     /// Criterion 12, against a pane that is up and deaf. Its capability map
