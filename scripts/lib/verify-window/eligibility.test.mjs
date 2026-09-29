@@ -69,6 +69,31 @@ describe('parseDiff', () => {
     ]);
   });
 
+  it('reads an added line starting with ++ as content, not as a file header', () => {
+    const files = parseDiff(
+      [
+        'diff --git a/src/a.mjs b/src/a.mjs',
+        '--- a/src/a.mjs',
+        '+++ b/src/a.mjs',
+        '@@ -1,0 +1,2 @@',
+        '+++ counter;',
+        "+process.env.PATH = '/tmp';",
+      ].join('\n'),
+    );
+    expect(files).toEqual([
+      {
+        path: 'src/a.mjs',
+        added: [
+          { line: 1, text: '++ counter;' },
+          { line: 2, text: "process.env.PATH = '/tmp';" },
+        ],
+      },
+    ]);
+    expect(judgeEligibility({ issue: 'ISS-9', files }, config)[0].message).toMatch(
+      /ISS-9 adds src\/a\.mjs:2/,
+    );
+  });
+
   it('keeps a deleted file among the touched paths', () => {
     expect(parseDiff(diff).map((f) => f.path)).toContain('runner/src/main.rs');
   });

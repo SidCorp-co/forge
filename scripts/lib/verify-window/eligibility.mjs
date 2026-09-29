@@ -44,14 +44,16 @@ export function parseDiff(text) {
   const files = [];
   let file = null;
   let next = 0;
+  let inHunk = false;
   for (const raw of text.split('\n')) {
     if (raw.startsWith('diff --git ')) {
       file = { path: headerPath(raw.slice('diff --git '.length)), added: [] };
       files.push(file);
+      inHunk = false;
       continue;
     }
     if (!file) continue;
-    if (raw.startsWith('+++ ') || raw.startsWith('--- ')) {
+    if (!inHunk && (raw.startsWith('+++ ') || raw.startsWith('--- '))) {
       const side = unquotePath(raw.slice(4));
       if (side !== '/dev/null' && raw.startsWith('+++ ')) file.path = side.replace(/^b\//, '');
       continue;
@@ -59,6 +61,7 @@ export function parseDiff(text) {
     const hunk = raw.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
     if (hunk) {
       next = Number(hunk[1]);
+      inHunk = true;
       continue;
     }
     if (raw.startsWith('+')) {
