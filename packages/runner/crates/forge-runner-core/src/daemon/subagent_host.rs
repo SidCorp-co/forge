@@ -32,6 +32,18 @@ pub enum HostRead {
     Unreadable,
 }
 
+/// Whether a process on this box names a conversation in its arguments.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Running {
+    /// This process does.
+    Found(u32),
+    /// The whole table was read and no process does.
+    Absent,
+    /// The table, or a process in it, could not be read, so neither can be
+    /// said. Off Linux this is every answer.
+    Unreadable,
+}
+
 /// What this box's process table says, as the daemon reads it.
 pub trait Hosts: Send + Sync {
     /// Whether the process recorded as `pid` started at `start` still runs.
@@ -40,7 +52,7 @@ pub trait Hosts: Send + Sync {
     /// far end of a control-socket connection.
     fn above(&self, peer: u32) -> Option<Host>;
     /// A process whose arguments name `conversation`, other than this one.
-    fn running(&self, conversation: &str) -> Option<u32>;
+    fn running(&self, conversation: &str) -> Running;
 }
 
 /// The process table under `root`, or none at all off Linux.
@@ -85,8 +97,11 @@ impl Hosts for ProcHosts {
         above_at(self.root.as_deref()?, peer)
     }
 
-    fn running(&self, conversation: &str) -> Option<u32> {
-        running_at(self.root.as_deref()?, conversation, std::process::id())
+    fn running(&self, conversation: &str) -> Running {
+        match &self.root {
+            Some(root) => running_at(root, conversation, std::process::id()),
+            None => Running::Unreadable,
+        }
     }
 }
 
@@ -139,14 +154,16 @@ pub fn read_at(root: &Path, pid: u32, start: &str) -> HostRead {
 }
 
 fn cmdline(root: &Path, pid: u32) -> Vec<String> {
-    std::fs::read(root.join(pid.to_string()).join("cmdline"))
-        .map(|raw| {
-            raw.split(|b| *b == 0)
-                .filter(|a| !a.is_empty())
-                .map(|a| String::from_utf8_lossy(a).into_owned())
-                .collect()
-        })
-        .unwrap_or_default()
+    read_cmdline(root, pid).unwrap_or_default()
+}
+
+fn read_cmdline(root: &Path, pid: u32) -> std::io::Result<Vec<String>> {
+    std::fs::read(root.join(pid.to_string()).join("cmdline")).map(|raw| {
+        raw.split(|b| *b == 0)
+            .filter(|a| !a.is_empty())
+            .map(|a| String::from_utf8_lossy(a).into_owned())
+            .collect()
+    })
 }
 
 fn file_name(path: &str) -> &str {
@@ -194,15 +211,36 @@ pub fn above_at(root: &Path, peer: u32) -> Option<Host> {
     None
 }
 
-pub fn running_at(root: &Path, conversation: &str, own: u32) -> Option<u32> {
-    let mut pids: Vec<u32> = std::fs::read_dir(root)
-        .ok()?
-        .filter_map(|e| e.ok()?.file_name().to_str()?.parse().ok())
-        .filter(|pid| *pid != own)
-        .collect();
+/// A process that exits while the table is read was never going to be the
+/// answer and is passed over; any other read that fails leaves the answer
+/// unknown unless a process that could be read names the conversation.
+pub fn running_at(root: &Path, conversation: &str, own: u32) -> Running {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return Running::Unreadable;
+    };
+    let mut pids: Vec<u32> = Vec::new();
+    let mut unread = false;
+    for entry in entries {
+        match entry {
+            Ok(e) => pids.extend(e.file_name().to_str().and_then(|n| n.parse::<u32>().ok())),
+            Err(_) => unread = true,
+        }
+    }
+    pids.retain(|pid| *pid != own);
     pids.sort_unstable();
-    pids.into_iter()
-        .find(|pid| cmdline(root, *pid).iter().any(|a| a == conversation))
+    for pid in pids {
+        match read_cmdline(root, pid) {
+            Ok(args) if args.iter().any(|a| a == conversation) => return Running::Found(pid),
+            Ok(_) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(_) => unread = true,
+        }
+    }
+    if unread {
+        Running::Unreadable
+    } else {
+        Running::Absent
+    }
 }
 
 #[cfg(test)]
@@ -217,6 +255,8 @@ pub(crate) mod testing {
         pub(crate) reads: Mutex<HashMap<u32, HostRead>>,
         pub(crate) peers: Mutex<HashMap<u32, Host>>,
         pub(crate) conversations: Mutex<HashMap<String, u32>>,
+        /// Every conversation scan answers that the table could not be read.
+        pub(crate) table_unreadable: std::sync::atomic::AtomicBool,
     }
 
     impl FakeHosts {
@@ -245,12 +285,17 @@ pub(crate) mod testing {
             self.peers.lock().unwrap().get(&peer).cloned()
         }
 
-        fn running(&self, conversation: &str) -> Option<u32> {
-            self.conversations
-                .lock()
-                .unwrap()
-                .get(conversation)
-                .copied()
+        fn running(&self, conversation: &str) -> Running {
+            if self
+                .table_unreadable
+                .load(std::sync::atomic::Ordering::SeqCst)
+            {
+                return Running::Unreadable;
+            }
+            match self.conversations.lock().unwrap().get(conversation) {
+                Some(pid) => Running::Found(*pid),
+                None => Running::Absent,
+            }
         }
     }
 }
@@ -411,16 +456,52 @@ mod tests {
         let root = Scratch::new("proc-conv");
         background_session(&root);
         let conv = "19793a14-07b1-4970-9f51-3262792c1414";
-        assert_eq!(running_at(&root, conv, 1), Some(3850261));
+        assert_eq!(running_at(&root, conv, 1), Running::Found(3850261));
         assert_eq!(
             running_at(&root, conv, 3850261),
-            None,
+            Running::Absent,
             "this process is never the answer"
         );
         assert_eq!(
             running_at(&root, "19793a14", 1),
-            None,
+            Running::Absent,
             "a prefix names no conversation"
+        );
+    }
+
+    /// Criterion 71: a table that could not be read, whole or in part, is not
+    /// a table in which no process names the conversation.
+    #[test]
+    fn a_table_that_cannot_be_read_says_nothing_of_who_names_a_conversation() {
+        let conv = "19793a14-07b1-4970-9f51-3262792c1414";
+        let root = Scratch::new("proc-conv-unread");
+        assert_eq!(
+            running_at(&root.join("no-such-proc"), conv, 1),
+            Running::Unreadable,
+            "a table that cannot be listed"
+        );
+        background_session(&root);
+        std::fs::create_dir_all(root.join("4000000").join("cmdline")).unwrap();
+        assert_eq!(
+            running_at(&root, "some-other-conversation", 1),
+            Running::Unreadable,
+            "a process whose arguments cannot be read might be the one"
+        );
+        assert_eq!(
+            running_at(&root, conv, 1),
+            Running::Found(3850261),
+            "a process that could be read naming it is still found"
+        );
+        std::fs::remove_dir_all(root.join("4000000")).unwrap();
+        assert_eq!(
+            running_at(&root, "some-other-conversation", 1),
+            Running::Absent,
+            "the whole table read, and none names it"
+        );
+        assert_eq!(
+            ProcHosts { root: None }.running(conv),
+            Running::Unreadable,
+            "a platform with no table this code reads"
         );
     }
 

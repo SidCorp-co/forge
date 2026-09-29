@@ -878,6 +878,22 @@ pub(crate) mod testing {
     pub(crate) const SHIM_PROBE: &str = "--forge-shim-probe";
     const PROBE_LINE: &str = "[ \"$1\" = --forge-shim-probe ] && exit 0\n";
 
+    /// The one way a shim here is made: `script` must open with the probe, and
+    /// the file is handed back only once a probe of it has run.
+    pub(crate) fn write_shim(shim: &std::path::Path, script: &str) {
+        assert!(
+            script.starts_with(&format!("#!/bin/sh\n{PROBE_LINE}")),
+            "{} does not open with the probe, so nothing can tell when it is safe to run",
+            shim.display()
+        );
+        std::fs::write(shim, script).expect("the shim is written");
+        #[cfg(unix)]
+        {
+            executable(shim);
+            until_it_runs(shim);
+        }
+    }
+
     /// Wait until `shim` runs, and only then hand it out.
     ///
     /// A sibling test thread that forked while the shim's write was open holds
@@ -1027,19 +1043,13 @@ pub(crate) mod testing {
             let real = which::which("tmux").expect("a real tmux to pass everything else to");
             let dir = crate::test_scratch::Scratch::new("refuse");
             let shim = dir.join("tmux");
-            std::fs::write(
-            &shim,
-            format!(
-                "#!/bin/sh\n{PROBE_LINE}for a in \"$@\"; do\n  case \"$a\" in\n    -*) ;;\n    kill-session) echo 'refused' >&2; exit 1 ;;\n    *) ;;\n  esac\ndone\nexec {} \"$@\"\n",
-                shim_quote(&real.to_string_lossy())
-            ),
-        )
-        .expect("shim");
-            #[cfg(unix)]
-            {
-                executable(&shim);
-                until_it_runs(&shim);
-            }
+            write_shim(
+                &shim,
+                &format!(
+                    "#!/bin/sh\n{PROBE_LINE}for a in \"$@\"; do\n  case \"$a\" in\n    -*) ;;\n    kill-session) echo 'refused' >&2; exit 1 ;;\n    *) ;;\n  esac\ndone\nexec {} \"$@\"\n",
+                    shim_quote(&real.to_string_lossy())
+                ),
+            );
             Self {
                 _installed: Installed::new(shim, Vec::new()),
                 _dir: dir,
@@ -1119,12 +1129,7 @@ exit 0
         pub(crate) fn installed(asked: Asked, capture: &str, fail: Option<&str>) -> Self {
             let dir = crate::test_scratch::Scratch::new("shim-tmux");
             let shim = dir.join("tmux");
-            std::fs::write(&shim, SHIM).expect("the shim is written");
-            #[cfg(unix)]
-            {
-                executable(&shim);
-                until_it_runs(&shim);
-            }
+            write_shim(&shim, SHIM);
             let capture_at = dir.join("capture.txt");
             std::fs::write(&capture_at, capture).expect("the capture is written");
             let log = dir.join("verbs.log");
@@ -1211,29 +1216,40 @@ mod tests {
         assert!(runs(), "and once handed out it runs");
     }
 
+    /// Criterion 67 for every shim here: none is made but through the writer,
+    /// and the writer makes none that does not open with the probe. A shim
+    /// added later is held to it by the writer, with no count to update.
     #[test]
-    fn every_shim_here_answers_the_probe_before_anything_else() {
+    fn a_shim_that_does_not_open_with_the_probe_is_never_made() {
+        use super::testing::{write_shim, SHIM_PROBE};
+        let dir = crate::test_scratch::Scratch::new("shim-unprobed");
+        let shim = dir.join("tmux");
+        let refused = std::panic::catch_unwind(|| write_shim(&shim, "#!/bin/sh\nexit 0\n"));
+        assert!(
+            refused.is_err(),
+            "a shim with no probe was made, and nothing can tell when it is safe to run"
+        );
+        assert!(!shim.exists(), "and nothing was written");
+        write_shim(
+            &shim,
+            "#!/bin/sh\n[ \"$1\" = --forge-shim-probe ] && exit 0\nexit 3\n",
+        );
+        #[cfg(unix)]
+        assert!(
+            std::process::Command::new(&shim)
+                .arg(SHIM_PROBE)
+                .status()
+                .is_ok_and(|s| s.success()),
+            "the probe is answered from the shim's own first line"
+        );
         let testing = THIS_SOURCE
             .split("pub(crate) mod testing")
             .nth(1)
             .and_then(|rest| rest.split("\nmod tests {").next())
             .expect("the module");
-        for (name, script) in [
-            ("RefusingKill", "\"#!/bin/sh\\n{PROBE_LINE}"),
-            (
-                "ShimTmux",
-                "r#\"#!/bin/sh\n[ \"$1\" = --forge-shim-probe ] && exit 0\n",
-            ),
-        ] {
-            assert!(
-                testing.contains(script),
-                "{name}'s script does not open with the probe"
-            );
-        }
-        assert_eq!(
-            testing.matches("until_it_runs(&shim);").count(),
-            2,
-            "both shims wait for their probe before they are handed out"
+        assert!(
+            !testing.contains("fs::write(&shim"),
+            "a shim here is written past the writer that checks it"
         );
     }
     use super::*;

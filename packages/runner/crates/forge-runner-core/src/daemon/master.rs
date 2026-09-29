@@ -265,6 +265,12 @@ pub(crate) enum Unplaced {
         conversation: String,
         pid: u32,
     },
+    /// As [`Unplaced::ConversationElsewhere`], where this box could not read
+    /// its process table to tell whether a process still names that
+    /// conversation. Not knowing is not its end (ISS-1312, F1).
+    ConversationUnaskable {
+        conversation: String,
+    },
 }
 
 impl std::fmt::Display for Unplaced {
@@ -351,6 +357,10 @@ impl std::fmt::Display for Unplaced {
                 f,
                 "the pane this box last placed for it resumed conversation {conversation} and exited, printing that Claude Code runs that conversation as a background session, and process {pid} on this box names it now. A pane placed again would exit the same way, so none is placed while a process names that conversation. `claude stop {conversation}` ends the background session, and the next sweep then places a pane resuming it"
             ),
+            Self::ConversationUnaskable { conversation } => write!(
+                f,
+                "the pane this box last placed for it resumed conversation {conversation} and exited, printing that Claude Code runs that conversation as a background session, and this box cannot read its process table to tell whether one still does. A pane placed again would exit the same way while it does, so none is placed until a sweep reads the whole table and finds no process naming it, or this daemon restarts and forgets the exit. `claude stop {conversation}` ends the background session if it still runs"
+            ),
             Self::StaleCapability { session, pane } => write!(
                 f,
                 "its pane {pane} is up but this box cannot hear it — the capability that pane holds names a session core has since replaced, core's session for it is now {session}, and a running pane cannot be handed a new capability. Every declaration it makes is refused and it is not being nudged while it stands like this. `tmux kill-session -t {pane}` ends it, which is what lets a master carrying the current capability be placed — placement itself still answers to the same gates as any other"
@@ -400,6 +410,7 @@ impl Unplaced {
                 | Self::CapabilityUnminted { .. }
                 | Self::PaneUnstarted { .. }
                 | Self::ConversationElsewhere { .. }
+                | Self::ConversationUnaskable { .. }
         )
     }
 }
@@ -2933,14 +2944,16 @@ async fn ensure_master(
 
     // The last pane placed here exited because Claude Code runs this
     // conversation as a background session. Another would exit the same way,
-    // so none is placed while a process on this box still names it; once none
-    // does, the session has ended and a pane resuming it can run (ISS-1312, F1).
+    // so none is placed while a process on this box still names it, or while
+    // this box cannot read whether one does; once the whole table reads that
+    // none does, the session has ended and a pane resuming it can run
+    // (ISS-1312, F1).
     if let Some(conversation) = masters
         .elsewhere(project_id)
         .filter(|c| stored_conversation == Some(c.as_str()))
     {
         match carry.hosts.running(&conversation) {
-            Some(pid) => {
+            subagent_host::Running::Found(pid) => {
                 say_unplaced(
                     masters,
                     project_id,
@@ -2949,7 +2962,16 @@ async fn ensure_master(
                 );
                 return PaneState::Absent;
             }
-            None => {
+            subagent_host::Running::Unreadable => {
+                say_unplaced(
+                    masters,
+                    project_id,
+                    &resolved.slug,
+                    Unplaced::ConversationUnaskable { conversation },
+                );
+                return PaneState::Absent;
+            }
+            subagent_host::Running::Absent => {
                 tracing::info!(
                     "[master] {}: no process on this box names conversation {conversation} any more, so its background session has ended and a pane resuming it is placed",
                     resolved.slug
@@ -9144,6 +9166,28 @@ mod servers_refusal_walk_tests {
         tokens: Option<&session_tokens::SessionTokens>,
         deaf: &DeafSink,
     ) -> PaneState {
+        walk_over(
+            core,
+            masters,
+            resolved,
+            tokens,
+            deaf,
+            None,
+            &subagent_host::testing::FakeHosts::default(),
+        )
+        .await
+    }
+
+    /// [`walk`] resuming `conversation`, over a process table the test sets.
+    async fn walk_over(
+        core: String,
+        masters: &Arc<Masters>,
+        resolved: &crate::daemon::dispatch::Resolved,
+        tokens: Option<&session_tokens::SessionTokens>,
+        deaf: &DeafSink,
+        conversation: Option<&str>,
+        hosts: &dyn subagent_host::Hosts,
+    ) -> PaneState {
         let told = std::sync::atomic::AtomicBool::new(false);
         let authority = AuthoritySink::default();
         ensure_master(
@@ -9152,12 +9196,12 @@ mod servers_refusal_walk_tests {
             "proj-walk",
             resolved,
             &Carryover {
-                conversation: None,
+                conversation,
                 inherited: &[],
                 lifted: None,
                 stood_down_told: &told,
                 started: &std::sync::atomic::AtomicBool::new(false),
-                hosts: &subagent_host::testing::FakeHosts::default(),
+                hosts,
             },
             Placement::AdoptOrStart,
             &CapabilityPorts {
@@ -9167,6 +9211,148 @@ mod servers_refusal_walk_tests {
             },
         )
         .await
+    }
+
+    /// ISS-1312 criterion 71, the review's F2 on rework 8: a process table
+    /// this box could not read answered the conversation scan as one in which
+    /// no process names it, and the hold lifted on not knowing. It holds on
+    /// not knowing, said by name, and lifts only on a table read whole.
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_pane_is_withheld_while_this_box_cannot_read_who_runs_its_conversation() {
+        use subagent_host::testing::FakeHosts;
+        let _serialised = terminal::testing::ONE_AT_A_TIME.lock().await;
+        let _env = crate::auth::cred_store::ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let iso = terminal::testing::IsolatedServer::new("walkbg");
+        if !terminal::available() {
+            terminal::testing::cannot_run(
+                "tmux is not installed here — the transport this rests on cannot run",
+            );
+            return;
+        }
+        if !iso.took() {
+            terminal::testing::cannot_run("this box does not resolve its tmux socket from the config dir, so the only server here is its own — not starting a pane on it");
+            return;
+        }
+        let repo = crate::test_scratch::Scratch::new("walkbg-repo");
+        let map = crate::test_scratch::Scratch::new("walkbg-map").at("control-tokens.json");
+        let store = session_tokens::SessionTokens::at(map.to_path_buf());
+        let name = terminal::session_name(terminal::MASTER_PREFIX, "walkbg");
+        let core = fake_core::serve_routes(&[
+            (REGISTER, "200 OK", SESSION),
+            (SERVERS, "520 Origin Error", GATEWAY_PAGE),
+        ])
+        .await;
+        let conv = "19793a14-07b1-4970-9f51-3262792c1414";
+        let masters = Arc::new(Masters::new());
+        masters.note_elsewhere("proj-walk", conv.to_string());
+        let deaf = DeafSink::default();
+        let hosts = FakeHosts::default();
+        let walkbg = resolved("walkbg", &repo);
+        macro_rules! at {
+            ($hosts:expr) => {
+                walk_over(
+                    core.clone(),
+                    &masters,
+                    &walkbg,
+                    Some(&store),
+                    &deaf,
+                    Some(conv),
+                    $hosts,
+                )
+            };
+        }
+
+        let buf = std::sync::Arc::new(std::sync::Mutex::new(Vec::<u8>::new()));
+        let made = buf.clone();
+        #[derive(Clone)]
+        struct Buf(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+        impl std::io::Write for Buf {
+            fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(b);
+                Ok(b.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        crate::daemon::keep_tracing_capturable();
+        let _logs = tracing::subscriber::set_default(
+            tracing_subscriber::fmt()
+                .with_writer(move || Buf(made.clone()))
+                .with_ansi(false)
+                .finish(),
+        );
+        let said = || {
+            String::from_utf8_lossy(&buf.lock().unwrap())
+                .matches("cannot read its process table")
+                .count()
+        };
+
+        hosts
+            .table_unreadable
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        assert_eq!(at!(&hosts).await, PaneState::Absent);
+        assert_eq!(at!(&hosts).await, PaneState::Absent, "criterion 71: again");
+        assert_eq!(
+            said(),
+            1,
+            "criterion 71: said once, naming the conversation: {}",
+            String::from_utf8_lossy(&buf.lock().unwrap())
+        );
+        assert!(String::from_utf8_lossy(&buf.lock().unwrap()).contains(conv));
+        match recorded(&masters) {
+            Some(Unplaced::ConversationUnaskable { conversation }) => {
+                assert_eq!(conversation, conv, "criterion 71")
+            }
+            other => panic!("criterion 71: {:?}", other.map(|w| w.to_string())),
+        }
+        assert!(!terminal::alive(&name).await, "criterion 71: no pane");
+        assert_eq!(
+            masters.elsewhere("proj-walk").as_deref(),
+            Some(conv),
+            "criterion 71: not knowing lifts nothing"
+        );
+
+        hosts
+            .table_unreadable
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+        hosts
+            .conversations
+            .lock()
+            .unwrap()
+            .insert(conv.to_string(), 3_850_261);
+        assert_eq!(at!(&hosts).await, PaneState::Absent);
+        assert!(
+            recorded(&masters)
+                == Some(Unplaced::ConversationElsewhere {
+                    conversation: conv.to_string(),
+                    pid: 3_850_261,
+                }),
+            "criterion 61: {:?}",
+            recorded(&masters).map(|w| w.to_string())
+        );
+
+        hosts.conversations.lock().unwrap().clear();
+        let _ = at!(&hosts).await;
+        assert_eq!(
+            masters.elsewhere("proj-walk"),
+            None,
+            "criterion 64: a table read whole naming no process lifts the hold"
+        );
+        assert!(
+            !matches!(
+                recorded(&masters),
+                Some(
+                    Unplaced::ConversationElsewhere { .. } | Unplaced::ConversationUnaskable { .. }
+                )
+            ),
+            "and placement goes on to what it answers to next: {:?}",
+            recorded(&masters).map(|w| w.to_string())
+        );
+        let _ = terminal::kill(&name).await;
     }
 
     fn recorded(masters: &Masters) -> Option<Unplaced> {
