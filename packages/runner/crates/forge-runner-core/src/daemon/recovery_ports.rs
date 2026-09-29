@@ -22,10 +22,7 @@ pub struct PaneMasters<'a> {
 impl MasterLiveness for PaneMasters<'_> {
     async fn state(&self, master_session_id: &str) -> MasterPresence {
         match self.masters.pane_for_session(master_session_id) {
-            Some(name) => match terminal::pane_pid(&name).await {
-                Some(_) => MasterPresence::Alive,
-                None => absent_or_unanswered(&name).await,
-            },
+            Some(name) => pane_presence(&name).await,
             None => MasterPresence::Unknown,
         }
     }
@@ -33,6 +30,15 @@ impl MasterLiveness for PaneMasters<'_> {
     async fn live_master_for_project(&self, project_id: &str) -> Option<String> {
         let (session_id, name) = self.masters.live_for_project(project_id)?;
         terminal::pane_pid(&name).await.map(|_| session_id)
+    }
+}
+
+/// What tmux says of the pane named `name`: the one reading both recovery and
+/// the master sweep take, so neither ends a master the other still holds.
+pub(crate) async fn pane_presence(name: &str) -> MasterPresence {
+    match terminal::pane_pid(name).await {
+        Some(_) => MasterPresence::Alive,
+        None => absent_or_unanswered(name).await,
     }
 }
 
