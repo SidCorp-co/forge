@@ -173,8 +173,8 @@ describe("a batch release the server accepts", () => {
 
 // The judge's findings at ea73cf8 (bd150873): backticks shown raw, a retry nothing on screen
 // told apart from the first press, and a hidden toast that repeated the banner after Cancel.
-const GATELESS =
-  "This project has no release gate configured, so there is no release to start — an agent `closed` here is already `closed`.";
+const EMPTY_ROSTER =
+  "Nothing is waiting at the release gate, so there is no release to cut. An issue reaches it by moving to `awaiting_release`, which is an act of its own.";
 
 function held() {
   let settle: (status: number, body: unknown) => void = () => {};
@@ -189,14 +189,14 @@ function held() {
 
 describe("a refusal, said once and where it can be read", () => {
   it("shows the sentence's code spans as code, with no backtick left in it", async () => {
-    answer(409, { code: "NO_RELEASE_GATE", message: GATELESS });
+    answer(409, { code: "RELEASE_ROSTER_EMPTY", message: EMPTY_ROSTER });
     draw();
     press();
 
     const alert = await within(screen.getByRole("dialog")).findByRole("alert");
     expect(alert.textContent).not.toContain("`");
-    expect(within(alert).getAllByText("closed").every((el) => el.tagName === "CODE")).toBe(true);
-    expect(alert).toHaveTextContent("an agent closed here is already closed");
+    expect(within(alert).getByText("awaiting_release").tagName).toBe("CODE");
+    expect(alert).toHaveTextContent("moving to awaiting_release, which is an act of its own");
   });
 
   it("shows that a second press went out, and that it failed as well", async () => {
