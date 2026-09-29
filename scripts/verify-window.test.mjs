@@ -835,6 +835,35 @@ describe('a member whose own tag is one the combination already holds', () => {
   });
 });
 
+describe('a base carrying no journal where its declarations name the migrations', () => {
+  it('is refused by name, never read as a base with no migrations', () => {
+    git(seed, 'checkout', '-q', '-B', 'no-journal', 'origin/main');
+    git(seed, 'rm', '-q', JOURNAL);
+    git(seed, 'commit', '-q', '-m', 'no journal');
+    git(seed, 'push', '-q', 'origin', 'HEAD:refs/heads/no-journal');
+    const c = clone('no-journal-window');
+    const w = windowFiles('w-no-journal', [['ISS-4', 'ISS-4-after', heads.m4]], green(heads.m4));
+    const manifest = JSON.parse(readFileSync(w.manifest, 'utf8'));
+    writeFileSync(w.manifest, JSON.stringify({ ...manifest, base: 'no-journal' }));
+    try {
+      const r = run(
+        c,
+        'assemble',
+        '--window',
+        w.manifest,
+        '--checks',
+        w.checksFile,
+        '--tree',
+        w.tree,
+      );
+      expect(r.status).toBe(2);
+      expect(r.stderr).toContain(`the base carries no ${JOURNAL}, which its declarations name`);
+    } finally {
+      git(seed, 'push', '-q', 'origin', '--delete', 'no-journal');
+    }
+  });
+});
+
 describe('the tree isolate rebuilds in', () => {
   it('refuses any tree but the recorded one, and deletes nothing it did not build', () => {
     const c = clone('tree-window');

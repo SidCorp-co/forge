@@ -157,7 +157,10 @@ export function prepareWindow({ repoDir, manifest, replay, rebuild = false }) {
       parse: entriesOf,
       afterFetch: () => {
         const text = showAt(g, baseSha, journal);
-        return text === null ? [] : entriesOf(text, `${baseRef}:${journal}`);
+        if (text === null) {
+          throw new Unreadable(`the base carries no ${journal}, which its declarations name`);
+        }
+        return entriesOf(text, `${baseRef}:${journal}`);
       },
     });
   } catch (err) {
