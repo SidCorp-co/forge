@@ -132,7 +132,13 @@ beforeAll(() => {
     [`${DIR}/meta/0001_snapshot.json`]: snapshot('s1', '00000000', BASE_TABLES),
     'CHANGELOG.md': '# Changelog\n\n## [Unreleased]\n\n- base entry\n',
     'src/shared.txt': 'one\ntwo\n',
-    'prepare.mjs': "import { writeFileSync } from 'node:fs';\nwriteFileSync('.prepared', 'yes');\n",
+    '.gitignore': '.prepared\n.unpreparable\n',
+    'prepare.mjs': [
+      "import { existsSync, writeFileSync } from 'node:fs';",
+      "if (existsSync('.unpreparable')) process.exit(3);",
+      "writeFileSync('.prepared', 'yes');",
+      '',
+    ].join('\n'),
     'gate.mjs': [
       "import { existsSync } from 'node:fs';",
       "if (!existsSync('.prepared')) { console.error('gate-check: not prepared'); process.exit(2); }",
@@ -923,10 +929,37 @@ describe('validate', () => {
     const w = windowFiles('w-unprepared', [['ISS-4', 'ISS-4-after', heads.m4]], green(heads.m4));
     const flags = ['--window', w.manifest, '--checks', w.checksFile, '--tree', w.tree];
     expect(run(c, 'assemble', ...flags).status).toBe(0);
-    rmSync(join(w.tree, 'prepare.mjs'));
+    writeFileSync(join(w.tree, '.unpreparable'), 'yes');
     const r = run(c, 'validate', ...flags);
     expect(r.status).toBe(2);
     expect(r.stderr).toContain('`node prepare.mjs` did not prepare');
+    expect(JSON.parse(readFileSync(w.ledger, 'utf8')).passes).toBeUndefined();
+  });
+
+  it.each([
+    ['a tracked file edited', (tree) => rmSync(join(tree, 'src/shared.txt')), /holds changes/],
+    [
+      'an untracked file added',
+      (tree) => writeFileSync(join(tree, 'src/stray.txt'), 'x\n'),
+      /holds changes/,
+    ],
+    [
+      'HEAD moved off the chain head',
+      (tree) => git(tree, 'checkout', '-q', '--detach', 'HEAD~1'),
+      /is at [0-9a-f]{40}, not the chain head/,
+    ],
+  ])('refuses to validate a tree with %s, and records no pass', (label, spoil, why) => {
+    const name = label.split(' ').slice(0, 3).join('-').toLowerCase();
+    const c = clone(`validate-${name}`);
+    const w = windowFiles(`w-${name}`, [['ISS-4', 'ISS-4-after', heads.m4]], green(heads.m4));
+    const flags = ['--window', w.manifest, '--checks', w.checksFile, '--tree', w.tree];
+    const built = run(c, 'assemble', ...flags);
+    expect(built.status, built.stderr).toBe(0);
+    spoil(w.tree);
+    const r = run(c, 'validate', ...flags);
+    expect(r.status).toBe(2);
+    expect(r.stderr).toMatch(why);
+    expect(r.stderr).toContain('so the gate was not run');
     expect(JSON.parse(readFileSync(w.ledger, 'utf8')).passes).toBeUndefined();
   });
 });

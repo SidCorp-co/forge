@@ -43,8 +43,10 @@ branch, head, arrival time and priority.
 4. **`validate`** — the `gate` the declarations name, `node scripts/verify.mjs --window`, prepared
    and run once in the window's tree. It pays the shared layer's sweeps that no member's own run
    paid, plus the entry layer again, where two members' edits meet in one file (scoped to the
-   combination's diff for a check that declares a scoped form). The ledger records each pass as
-   the window's cost figure: what it took and how many members shared it. Red, it prints the gate's own words, which step 5 attributes.
+   combination's diff for a check that declares a scoped form). It refuses, and records nothing,
+   where the tree is not exactly the chain head before or after preparing: HEAD elsewhere, a tracked
+   change, or an untracked file the gate would read as the combination's. The ledger records each
+   pass as the window's cost figure: what it took and how many members shared it. Red, it prints the gate's own words, which step 5 attributes.
    **One pull request** of the chain head into the base follows, and its `ci-passed`, with its full
    needs list, stays the required check.
 5. **`attribute`** — a refusal naming a path belongs to the last landing that changed it. One naming

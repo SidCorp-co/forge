@@ -280,7 +280,7 @@ if (verb === 'validate') {
   );
   if (declared.refusal) die(declared.refusal);
   const gate = declared.config.gate;
-  const r = runGate({ tree: ledger.chain.tree, gate });
+  const r = runGate({ tree: ledger.chain.tree, head: ledger.chain.head, gate });
   const n = (ledger.passes ?? []).length + 1;
   const log = `${manifestPath.replace(/\.json$/, '')}.pass-${n}.log`;
   writeFileSync(log, r.output);
