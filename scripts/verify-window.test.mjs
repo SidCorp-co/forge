@@ -792,6 +792,49 @@ describe('a renumbered tag named in a union path both members add to', () => {
   });
 });
 
+describe('a member whose own tag is one the combination already holds', () => {
+  it('is isolated before any reference is rewritten, so no tag is moved twice', () => {
+    const tagged = (tag, idx, id) =>
+      branch(`ISS-${id}-t`, {
+        [JOURNAL]: journal(entry(1, W, '0001_init'), entry(idx, W + idx * DAY, tag)),
+        [`${DIR}/${tag}.sql`]: `-- ${tag}\n`,
+        [`${DIR}/meta/${String(idx).padStart(4, '0')}_snapshot.json`]: snapshot(`s-${id}`, 's1', {
+          ...BASE_TABLES,
+          [`public.t${id}`]: table(`t${id}`, ['id']),
+        }),
+      });
+    const a = tagged('0002_update', 2, 27);
+    const b = tagged('0003_update', 3, 28);
+    const c = clone('ambiguous-tag');
+    const w = windowFiles(
+      'w-ambiguous-tag',
+      [
+        ['ISS-27', 'ISS-27-t', a],
+        ['ISS-28', 'ISS-28-t', b],
+      ],
+      green(a, b),
+    );
+    const r = run(
+      c,
+      'assemble',
+      '--window',
+      w.manifest,
+      '--checks',
+      w.checksFile,
+      '--tree',
+      w.tree,
+    );
+    git(seed, 'push', '-q', 'origin', '--delete', 'ISS-27-t', 'ISS-28-t');
+    const ledger = JSON.parse(readFileSync(w.ledger, 'utf8'));
+    const [first, second] = ledger.members;
+    expect(first.renumbered[0].to.tag, r.stderr).toBe('0003_update');
+    expect(second.landing).toBeNull();
+    expect(second.isolated.because).toBe(
+      'ISS-28 changes the journal entry 0003_update, which a window keeps as the combination holds it',
+    );
+  });
+});
+
 describe('the tree isolate rebuilds in', () => {
   it('refuses any tree but the recorded one, and deletes nothing it did not build', () => {
     const c = clone('tree-window');

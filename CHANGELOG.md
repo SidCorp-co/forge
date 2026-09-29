@@ -120,7 +120,7 @@
 
 ### Added
 
-- **Finished changes can share one validation and still land as separate merge commits.**
+- **Finished changes can land together on one validation, each keeping its own merge commit.**
   `pnpm verify --entry` runs only the checks a change can fail alone; a verify window runs the
   repository-wide sweeps once and names which change failed.
 
