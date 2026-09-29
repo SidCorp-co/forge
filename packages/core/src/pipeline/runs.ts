@@ -470,6 +470,7 @@ export async function listPipelineRuns(q: PipelineRunQuery) {
       finishedAt: pipelineRuns.finishedAt,
       createdAt: pipelineRuns.createdAt,
       updatedAt: pipelineRuns.updatedAt,
+      metadata: pipelineRuns.metadata,
       liveJobs: sql<number>`(
         SELECT count(*)::int FROM jobs lj
         WHERE lj.pipeline_run_id = pipeline_runs.id
