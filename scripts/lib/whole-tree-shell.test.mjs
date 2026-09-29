@@ -152,7 +152,15 @@ describe('the programs around git', () => {
     expect(dirs('grep', ['-rn', 'x', 'src'])).toEqual([join(CORE, 'src')]);
     expect(dirs('grep', ['-rn', '-e', 'src', '../..'])).toEqual([ROOT]);
     expect(dirs('grep', ['-rn', 'x'], { cwd: ROOT })).toEqual([ROOT]);
-    expect(dirs('grep', ['-r', '--unknown-flag', 'x', 'src'])).toEqual([join(CORE, 'src'), CORE]);
+    expect(dirs('grep', ['-r', '--unknown-flag', 'x', 'src'])).toEqual([
+      join(CORE, 'x'),
+      join(CORE, 'src'),
+      CORE,
+    ]);
+    expect(dirs('rg', ['-ex', '../..', 'src'])).toEqual([ROOT, join(CORE, 'src')]);
+    expect(dirs('rg', ['--', 'needle'], { cwd: ROOT })).toEqual([ROOT]);
+    expect(dirs('grep', ['-rnC', '3', 'x', 'src'])).toEqual([join(CORE, 'src')]);
+    expect(dirs('grep', ['-rK', 'x', 'src'])).toEqual([join(CORE, 'x'), join(CORE, 'src'), CORE]);
     expect(dirs('rg', ['--pre', 'walk', 'x'], { cwd: '/elsewhere' })).toEqual([ROOT]);
     expect(dirs('grep', ['x', 'file.txt'])).toEqual([]);
     expect(dirs('cp', ['-r', '../..', '/elsewhere'])).toEqual([ROOT, '/elsewhere']);
