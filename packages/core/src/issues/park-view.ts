@@ -145,7 +145,9 @@ async function movesOf(issueId: string): Promise<ParkMove[]> {
     db
       .select({ payload: activityLog.payload, at: activityLog.createdAt })
       .from(activityLog)
-      .where(and(eq(activityLog.issueId, issueId), eq(activityLog.action, 'issue.statusChanged'), scope))
+      .where(
+        and(eq(activityLog.issueId, issueId), eq(activityLog.action, 'issue.statusChanged'), scope),
+      )
       .orderBy(desc(activityLog.createdAt))
       .limit(1);
   const [newest] = await newestWhere(undefined);
