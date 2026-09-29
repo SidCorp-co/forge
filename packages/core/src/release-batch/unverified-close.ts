@@ -1,10 +1,5 @@
-// What an unverified release leaves on each issue it closes (ISS-1321).
-//
-// A release on a project that declares no verify probe closes its roster on the release agent's
-// word, which is the shape sid-desk ISS-191 was found in: 42 issues closed on a release that was
-// not running. The owner ruled on 2026-09-29 that the absence is reported on the release rather
-// than made a condition of it, so this note is the half that keeps a reader able to tell an
-// unverified close from a verified one.
+// An unverified close says so on each issue, so it never reads as a verified one: sid-desk ISS-191
+// closed 42 issues on a release that was not running (ISS-1042, ISS-1321).
 
 import { and, eq, like } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -34,11 +29,8 @@ function authorOf(actor: TransitionActor): { authorId: string; authorDeviceId: s
     : { authorId: actor.ownerId, authorDeviceId: actor.id };
 }
 
-/**
- * Write the note on every issue named that does not already carry this run's marker, BEFORE the
- * issue closes. A pass that resumes an attempt writes none twice, and a later run writes its own.
- * A write that fails throws: a close that cannot say it was unverified does not happen.
- */
+/** Before each close, on every issue not already carrying this run's marker. A failed write
+ *  throws: a close that cannot say it was unverified does not happen. */
 export async function noteUnverifiedCloses(args: {
   runId: string;
   issueIds: readonly string[];

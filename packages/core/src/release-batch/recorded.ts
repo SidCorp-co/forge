@@ -3,9 +3,8 @@
 // `createReleaseBatch` is the normal path and stays it. This one is gated on
 // evidence rather than machinery — the application answers, every probe agrees
 // on one commit, and that commit is the one the caller claims — so no runner,
-// label or job is needed to record a release that shipped (ISS-1129). Where the
-// project declares no probe there is no evidence to read, and the record says
-// so: verdict `unverified`, on the ledger, the run and every issue (ISS-1321).
+// label or job is needed to record a release that shipped (ISS-1129). With no
+// probe declared there is nothing to read, and it is recorded `unverified` (ISS-1321).
 //
 // It does NOT establish per-issue ancestry: that needs a git provider, and
 // requiring one would put the coupling straight back. `merged_at` is required
@@ -238,7 +237,6 @@ async function writeLedger(
     health: outcome ? 'up' : null,
     identity: outcome?.identity ?? null,
     readings: outcome?.readings ?? [],
-    // `unverified` beside `ok` and `failed`, never a quiet `ok` over an empty reading list.
     verdict: outcome ? 'ok' : 'unverified',
     verdictReason: outcome
       ? `every probe agrees the deployment is serving ${outcome.identity}, which is the commit this record claims`

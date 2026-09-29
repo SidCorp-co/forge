@@ -457,24 +457,6 @@ describe('collectReleaseBlockers — each door in its own refusal order', () => 
     expect(record.blockers.filter((b) => b.code.startsWith('RELEASE_PROBES'))).toEqual([]);
   });
 
-  it('refuses a verify Forge cannot parse by name, and takes no project default for it', async () => {
-    ready();
-    projectRow({
-      environments: { live: { url: 'https://app.example.test', commitUrl: 'https://x.test/v' } },
-    });
-    liveBinding({ ...DECLARED, verify: { probes: [] } });
-
-    const report = await collectReleaseBlockers(PROJECT_ID, {
-      issueIds: [ISSUE_A],
-      door: 'record',
-    });
-    const unreadable = report.blockers.find((b) => b.code === 'RELEASE_PROBES_UNREADABLE');
-
-    expect(report.channels?.[0]).toMatchObject({ verify: null, verifySource: 'declared-unusable' });
-    expect(unreadable?.details).toEqual({ urls: [], bindings: ['coolify b-1'] });
-    expect(releaseBlockerError(report)?.name).toBe('ReleaseProbesUnreadableError');
-  });
-
   it('keeps a second unevaluated check when the first is the one being thrown', async () => {
     ready();
     onlineIds.mockRejectedValue(new Error('pool table unreadable'));

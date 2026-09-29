@@ -125,7 +125,6 @@ function carrying(err: unknown, code: ReleaseBlockerCode, message: string): HTTP
   });
 }
 
-/** A declared probe no request can be made to, named with what was wrong in it. */
 export function unreadableProbes(err: ReleaseProbesUnreadableError): HTTPException {
   const details: Record<string, unknown> =
     err.bindings.length > 0 ? { urls: err.urls, bindings: err.bindings } : { urls: err.urls };

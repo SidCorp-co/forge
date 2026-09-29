@@ -92,8 +92,7 @@ export interface CreateReleaseBatchResult {
    * identity rather than by a transition. Said here and not at the fifth finish (ISS-1199).
    */
   openedAfterRelease: boolean;
-  /** `unverified` where no live binding declares a probe: the release opens, and every issue its
-   *  finish closes says nothing read the deployment (ISS-1321). */
+  /** `unverified` where no live binding declares a probe, which every issue it closes says. */
   verification: ReleaseVerification;
 }
 
@@ -336,7 +335,6 @@ export async function assertFinishable(
   // opened by it.
   if (!run.releaseVersion) throw new ReleaseVersionMissingError(runId);
 
-  // A `verify` refused as a declaration throws `RELEASE_PROBES_UNREADABLE` here, before any close.
   return closeVerification(await resolveReleaseChannels(run.projectId));
 }
 
@@ -382,7 +380,6 @@ export async function finishReleaseBatch(
       }
     }
     await options.onVerified?.(verification.kind);
-    // After the abort check `onVerified` makes, so an aborted batch is told nothing is closing.
     if (verification.kind === 'unverified') {
       await noteUnverifiedCloses({
         runId,
