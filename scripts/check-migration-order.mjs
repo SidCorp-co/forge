@@ -98,6 +98,10 @@ if (landing.length === 0 && !isBase) {
 function readOpenBranches() {
   const read = readOpenSet({
     git: (args) => git(args, root),
+    isAncestor: (ref, commit) => {
+      const r = spawnSync('git', ['merge-base', '--is-ancestor', ref, commit], { cwd: root });
+      return r.status === 0 ? true : r.status === 1 ? false : null;
+    },
     journal: JOURNAL,
     baseRef,
     baseCommit: baseRef,
@@ -112,6 +116,12 @@ function readOpenBranches() {
       return baseEntries;
     },
   });
+  if (read?.hole?.kind === 'ancestry') {
+    die(
+      `whether ${read.hole.ref} is already on ${baseRef} could not be read, so whether its\n` +
+        'migrations are open is unknown. An unknown is not an absence. Exit 2, not a pass.',
+    );
+  }
   if (read?.hole?.kind === 'tree') {
     die(
       `${read.hole.ref}'s tree could not be read, so whether it carries a ${JOURNAL} is unknown.\n` +

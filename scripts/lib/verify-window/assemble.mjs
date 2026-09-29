@@ -151,6 +151,10 @@ export function prepareWindow({ repoDir, manifest, replay, rebuild = false, with
   try {
     openSet = readOpenSet({
       git: trimmed,
+      isAncestor: (ref, commit) => {
+        const r = g.raw(['merge-base', '--is-ancestor', ref, commit]);
+        return r.status === 0 ? true : r.status === 1 ? false : null;
+      },
       journal,
       baseRef,
       baseCommit: baseSha,

@@ -264,18 +264,19 @@ describe('readJournal', () => {
 describe('readOpenSet', () => {
   const journal = 'db/meta/_journal.json';
   const held = JSON.stringify({ entries: [at(5, 5 * DAY, '0005_outside')] });
-  // origin/outside was merged into origin/main after the window's base B, so it is an ancestor of
-  // the moved ref and not of B.
   const git = (args) => {
     if (args[0] === 'for-each-ref') return 'origin/main\norigin/outside';
-    if (args[0] === 'merge-base') return args[3] === 'origin/main' ? '' : null;
     if (args[0] === 'ls-tree') return journal;
     if (args[0] === 'show') return held;
     return null;
   };
-  const read = (baseCommit) =>
+  // origin/outside was merged into origin/main after the window's base B, so it is an ancestor of
+  // the moved ref and not of B.
+  const landedAfterB = (ref, commit) => commit === 'origin/main';
+  const read = (baseCommit, isAncestor = landedAfterB) =>
     readOpenSet({
       git,
+      isAncestor,
       journal,
       baseRef: 'origin/main',
       baseCommit,
@@ -293,5 +294,9 @@ describe('readOpenSet', () => {
 
   it('skips a branch already on the base commit', () => {
     expect(read('origin/main').open).toEqual([]);
+  });
+
+  it('reads an ancestry git could not answer as a hole, never as an open or a landed branch', () => {
+    expect(read('B', () => null)).toEqual({ hole: { ref: 'origin/outside', kind: 'ancestry' } });
   });
 });

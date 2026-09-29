@@ -177,13 +177,14 @@ export function checkSet({ base, baseRef, self, siblings }) {
 
 /**
  * Every open remote branch's entries above the base's journal; `null` where the remote could not be
- * read, a `hole` where one branch's tree or journal would not — an unknown, never an absence, which
+ * read, a `hole` where one branch's ancestry, tree or journal would not — an unknown, never an absence, which
  * is why absence is read off `ls-tree` and not `cat-file -e`. `afterFetch` re-reads the base.
  * `baseRef` is the ref skipped as the base itself; `baseCommit` is what a branch already landed is
  * judged against, which a replay pins to the window's base rather than wherever the ref has moved.
  */
 export function readOpenSet({
   git,
+  isAncestor,
   journal,
   baseRef,
   baseCommit,
@@ -194,6 +195,8 @@ export function readOpenSet({
 }) {
   if (!baseCommit)
     throw new TypeError('readOpenSet needs the baseCommit it judges ancestry against');
+  if (typeof isAncestor !== 'function')
+    throw new TypeError('readOpenSet needs isAncestor, answering true, false or null for unknown');
   if (fetch) {
     const fetched = git([
       'fetch',
@@ -210,7 +213,9 @@ export function readOpenSet({
   const open = [];
   for (const ref of refs.split('\n').filter(Boolean)) {
     if (ref === 'origin/HEAD' || ref === baseRef || isOurs(ref)) continue;
-    if (git(['merge-base', '--is-ancestor', ref, baseCommit]) !== null) continue;
+    const landed = isAncestor(ref, baseCommit);
+    if (landed === null) return { hole: { ref, kind: 'ancestry' } };
+    if (landed) continue;
     const listed = git(['ls-tree', '--name-only', ref, '--', journal]);
     if (listed === null) return { hole: { ref, kind: 'tree' } };
     if (listed === '') continue;
