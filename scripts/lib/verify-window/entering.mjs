@@ -2,7 +2,7 @@ import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { newEntries, readJournal } from '../migration-order.mjs';
 import { showAt } from './git.mjs';
-import { allocate, rebaseSnapshot, snapshotFile } from './migrations.mjs';
+import { allocate, rebaseSnapshot, rewriteReferences, snapshotFile } from './migrations.mjs';
 import { unionInsertions } from './union.mjs';
 
 /**
@@ -174,22 +174,22 @@ function rederive({ t, dir, member, open }) {
   return { moves: renumbered ? moves : [], rewrites };
 }
 
-/** Every other file in the tree naming a renumbered tag, rewritten to the new one. */
+/** Every other file in the tree naming a renumbered tag, each rewritten once to the new tags. */
 function rewriteTags(t, moves, journalPath) {
-  const touched = new Set();
-  for (const { from, to } of moves) {
-    if (from.tag === to.tag) continue;
-    const hits = (t.run(['grep', '-l', '-F', from.tag]) ?? '').split('\n').filter(Boolean);
-    for (const path of hits) {
-      if (path === journalPath) continue;
-      const abs = join(t.cwd, path);
-      if (!existsSync(abs)) continue;
-      writeFileSync(abs, readFileSync(abs, 'utf8').split(from.tag).join(to.tag));
-      t.must(['add', '--', path]);
-      touched.add(path);
-    }
+  const moved = moves.filter((m) => m.from.tag !== m.to.tag);
+  if (moved.length === 0) return [];
+  const patterns = moved.flatMap((m) => ['-e', m.from.tag]);
+  const hits = (t.run(['grep', '-l', '-z', '-F', ...patterns]) ?? '').split('\0').filter(Boolean);
+  const touched = [];
+  for (const path of hits) {
+    if (path === journalPath) continue;
+    const abs = join(t.cwd, path);
+    if (!existsSync(abs)) continue;
+    writeFileSync(abs, rewriteReferences(readFileSync(abs, 'utf8'), moved));
+    t.must(['add', '--', path]);
+    touched.push(path);
   }
-  return [...touched].sort();
+  return touched.sort();
 }
 
 /** Resolve each declared union path that is unmerged: the member's additions beside the combination's. */

@@ -98,7 +98,8 @@ numbers only where the first clears the base, the combination so far and every o
 the window — `checkSet`'s `next` in `scripts/lib/migration-order.mjs`, the number
 `scripts/check-migration-order.mjs` prints as `Next free:`, read through the same `readOpenSet`.
 Otherwise they take consecutive numbers from it, their `.sql` and snapshot files are renamed, and
-every other file naming the old tag is rewritten; the ledger lists each renumbering and each
+every other file naming an old tag is rewritten, all of its tags in one pass so a tag moved onto
+another's old number is not moved twice; the ledger lists each renumbering and each
 rewritten file. A member's new entries are the ones missing where it forks from the combination, so
 a member stacked on an earlier one does not bring that one's migration back in under the tag it had
 before the window renumbered it, and its snapshot is rebased from the parent in its own tree.
@@ -109,7 +110,8 @@ snapshot onto the combination's head snapshot object by object: two members addi
 tables, or different columns to one table, compose. A member is isolated, with the object named,
 where it and an earlier member both touch one table, enum, view, sequence, role, policy or schema
 and either removes or changes what was in it — an index added by one and its column dropped by the
-other is the case — or where one points (a foreign key's `tableTo`, an enum-typed column) at an
+other is the case — where both add one object or one column, identically or not, since two
+migrations cannot both create it, or where one points (a foreign key's `tableTo`, an enum-typed column) at an
 object the other removed or changed. That member's repair is the regeneration the README describes,
 in its own run.
 

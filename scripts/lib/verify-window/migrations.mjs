@@ -29,6 +29,18 @@ export function retag(tag, idx) {
   return /^\d+_/.test(tag) ? tag.replace(/^\d+_/, `${pad(idx)}_`) : tag;
 }
 
+/** Every renumbered tag in `text` replaced in one pass, longest first, so none is moved twice. */
+export function rewriteReferences(text, moves) {
+  const to = new Map(
+    moves.filter((m) => m.from.tag !== m.to.tag).map((m) => [m.from.tag, m.to.tag]),
+  );
+  if (to.size === 0) return text;
+  const alternatives = [...to.keys()]
+    .sort((a, b) => b.length - a.length)
+    .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  return text.replace(new RegExp(alternatives.join('|'), 'g'), (t) => to.get(t));
+}
+
 export function snapshotFile(dir, idx) {
   return `${dir}/meta/${pad(idx)}_snapshot.json`;
 }
@@ -104,18 +116,28 @@ export function referencesOf(value, into = new Set()) {
   return into;
 }
 
-const CONFLICT = Symbol('conflict');
+/** Where a three-way merge of two additions cannot stand: they disagree, or both make one key. */
+class Conflict {
+  constructor(twice, at) {
+    this.twice = twice;
+    this.at = at;
+  }
+}
 
-/** A three-way merge of two additive changes to one value; `CONFLICT` where they disagree. */
-function mergeAdditive(base, ours, theirs) {
-  if (same(ours, theirs)) return ours;
+/**
+ * A three-way merge of two additive changes to one value, or a `Conflict`. A key both sides add,
+ * even identically, is two migrations each creating it, which the second cannot.
+ */
+function mergeAdditive(base, ours, theirs, at = []) {
   if (same(base, ours)) return theirs;
   if (same(base, theirs)) return ours;
-  if (!isObj(base) || !isObj(ours) || !isObj(theirs)) return CONFLICT;
+  if (base === undefined || !isObj(base) || !isObj(ours) || !isObj(theirs)) {
+    return new Conflict(same(ours, theirs), at);
+  }
   const out = {};
   for (const k of new Set([...Object.keys(ours), ...Object.keys(theirs)])) {
-    const merged = mergeAdditive(base[k], ours[k], theirs[k]);
-    if (merged === CONFLICT) return CONFLICT;
+    const merged = mergeAdditive(base[k], ours[k], theirs[k], [...at, k]);
+    if (merged instanceof Conflict) return merged;
     if (merged !== undefined) out[k] = merged;
   }
   return out;
@@ -169,7 +191,14 @@ export function rebaseSnapshot({ oldParent, newParent, snap }) {
     else if (!other) out[coll][name] = structuredClone(d.value);
     else {
       const merged = mergeAdditive(oldParent?.[coll]?.[name], other.value, d.value);
-      if (merged === CONFLICT) {
+      if (merged instanceof Conflict && merged.twice) {
+        const at =
+          merged.at.length > 0
+            ? `added to by this member and by an earlier member alike, at ${merged.at.join('.')}`
+            : 'added by this member and by an earlier member alike';
+        return { refusal: `${key} is ${at}, and two migrations cannot both create it` };
+      }
+      if (merged instanceof Conflict) {
         return {
           refusal: `${key} is added to by this member and an earlier member, and the two additions disagree`,
         };
@@ -182,7 +211,7 @@ export function rebaseSnapshot({ oldParent, newParent, snap }) {
     danglingReference(theirs, mine, 'an earlier member', 'this member');
   if (byRef) return { refusal: byRef };
   const meta = mergeAdditive(oldParent?._meta, newParent._meta, snap._meta);
-  if (meta === CONFLICT)
+  if (meta instanceof Conflict)
     return { refusal: 'the snapshot `_meta` rename maps disagree with the combination' };
   out._meta = meta;
   out.id = snap.id;

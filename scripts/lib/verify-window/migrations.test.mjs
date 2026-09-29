@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { allocate, objectDelta, rebaseSnapshot, referencesOf, retag } from './migrations.mjs';
+import {
+  allocate,
+  objectDelta,
+  rebaseSnapshot,
+  referencesOf,
+  retag,
+  rewriteReferences,
+} from './migrations.mjs';
 
 const DAY = 86_400_000;
 const W = 1_800_000_000_000;
@@ -40,6 +47,26 @@ describe('allocate', () => {
   it('keeps a tag with no numeric prefix, moving only its numbers', () => {
     expect(retag('hand_written', 7)).toBe('hand_written');
     expect(retag('0002_x_y', 12)).toBe('0012_x_y');
+  });
+});
+
+describe('rewriteReferences', () => {
+  it('moves each tag once, so a tag renumbered onto another renumbered tag keeps its own target', () => {
+    const moves = [
+      { from: { tag: '0002_update' }, to: { tag: '0003_update' } },
+      { from: { tag: '0003_update' }, to: { tag: '0004_update' } },
+    ];
+    expect(rewriteReferences('first 0002_update, then 0003_update', moves)).toBe(
+      'first 0003_update, then 0004_update',
+    );
+  });
+
+  it('moves the longer of two tags one prefixes as itself', () => {
+    const moves = [
+      { from: { tag: '0002_add' }, to: { tag: '0005_add' } },
+      { from: { tag: '0002_add_col' }, to: { tag: '0006_add_col' } },
+    ];
+    expect(rewriteReferences('0002_add and 0002_add_col', moves)).toBe('0005_add and 0006_add_col');
   });
 });
 
@@ -117,6 +144,22 @@ describe('rebaseSnapshot', () => {
     });
     expect(rebaseSnapshot({ oldParent: withB, newParent, snap: mine }).refusal).toBe(
       'tables:public.c in this member points at tables:public.b, which an earlier member removes',
+    );
+  });
+
+  it('isolates two members that create one table identically, since both migrations create it', () => {
+    const newParent = snap('s1', 's0', { ...base.tables, 'public.b': table('b', ['id']) });
+    const mine = snap('s2', 's0', { ...base.tables, 'public.b': table('b', ['id']) });
+    expect(rebaseSnapshot({ oldParent: base, newParent, snap: mine }).refusal).toBe(
+      'tables:public.b is added by this member and by an earlier member alike, and two migrations cannot both create it',
+    );
+  });
+
+  it('isolates two members that add one column identically, since both migrations add it', () => {
+    const newParent = snap('s1', 's0', { 'public.a': table('a', ['id', 'name', 'x']) });
+    const mine = snap('s2', 's0', { 'public.a': table('a', ['id', 'name', 'x']) });
+    expect(rebaseSnapshot({ oldParent: base, newParent, snap: mine }).refusal).toBe(
+      'tables:public.a is added to by this member and by an earlier member alike, at columns.x, and two migrations cannot both create it',
     );
   });
 

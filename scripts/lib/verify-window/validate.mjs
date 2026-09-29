@@ -20,11 +20,7 @@ function timed(argv, cwd) {
   };
 }
 
-/**
- * Run the declared `gate.prepare` steps in `tree`, in order, as validate and every replay tree do
- * before the command they run, so an unprepared tree never reads as a failing one.
- * @returns {{ refusal?: string, output: string, seconds: number }}
- */
+/** The declared `gate.prepare` steps, in order, so an unprepared tree never reads as a failing one. */
 export function prepareTree({ tree, prepare }) {
   let output = '';
   let seconds = 0;
@@ -43,11 +39,7 @@ export function prepareTree({ tree, prepare }) {
   return { output, seconds: Math.round(seconds * 10) / 10 };
 }
 
-/**
- * Why `tree` is not exactly the commit a pass is recorded against, or `null`: its HEAD is elsewhere,
- * or it holds a change or an untracked file the commit does not, which the gate would read as the
- * combination's own.
- */
+/** Why `tree` is not exactly `head` — HEAD elsewhere, or a change or untracked file — or `null`. */
 function driftOf(tree, head, when) {
   const git = (args) => spawnSync('git', args, { cwd: tree, encoding: 'utf8' });
   const at = git(['rev-parse', 'HEAD']);
