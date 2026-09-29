@@ -1,6 +1,8 @@
 import { type Db, db } from '../db/client.js';
 import type { IssueStatus, WaitingKind } from '../db/schema.js';
 import { comments } from '../db/schema.js';
+import { actorAgency, type TransitionActor } from './actor-agency.js';
+import { AWAITING_INPUT_STATUSES } from './status-sets.js';
 
 export const REASON_REQUIRED_STATUSES = new Set<IssueStatus>(['reopen', 'waiting', 'needs_info']);
 
@@ -30,6 +32,45 @@ export function buildTransitionReasonBody(
 ): string {
   const heading = HEADINGS[toStatus]?.(fromStatus, waitingKind) ?? `**→ \`${toStatus}\`**`;
   return [heading, '', reason].join('\n');
+}
+
+/**
+ * Whether this move out of a park — a status a person is stopped at — carries a person's reason the thread has not already got: the
+ * next run reads the thread, and a park undone with no word there is one it puts back.
+ */
+export function announcesLeave(
+  from: IssueStatus,
+  to: IssueStatus,
+  reason: string | undefined,
+  agency: 'human' | 'agent',
+): boolean {
+  if (!AWAITING_INPUT_STATUSES.includes(from) || from === to || agency !== 'human') return false;
+  return !requiresAuthoredReason(from, to) && Boolean(reason?.trim());
+}
+
+export function buildLeaveBody(from: IssueStatus, to: IssueStatus, reason: string): string {
+  return [`↩ **Left \`${from}\` for \`${to}\`**`, '', reason.trim()].join('\n');
+}
+
+/** Post a person's reason for leaving a park, in the transition's own transaction. */
+export async function postLeaveComment(
+  args: {
+    issue: { id: string };
+    fromStatus: IssueStatus;
+    toStatus: IssueStatus;
+    actor: TransitionActor;
+    options: { transitionReason?: string | undefined };
+  },
+  executor: Pick<Db, 'insert'>,
+): Promise<void> {
+  const reason = args.options.transitionReason ?? '';
+  if (!announcesLeave(args.fromStatus, args.toStatus, reason, actorAgency(args.actor))) return;
+  await executor.insert(comments).values({
+    issueId: args.issue.id,
+    authorId: args.actor.type === 'user' ? args.actor.id : args.actor.ownerId,
+    body: buildLeaveBody(args.fromStatus, args.toStatus, reason),
+    parentId: null,
+  });
 }
 
 /**
