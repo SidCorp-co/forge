@@ -125,6 +125,11 @@ describe('a project with no verify probe releases unverified', () => {
     expect(res.body.verification).toBe('unverified');
     expect((await fx.stored(a)).status).toBe('releasing');
     expect((await runMetadata(String(res.body.runId))).verification).toBe('unverified');
+
+    // The open batch says so too, where `live: null` would otherwise stand unexplained.
+    const state = await call('GET', `/release-batches/${String(res.body.runId)}/state`);
+    expect(state.status).toBe(200);
+    expect(state.body).toMatchObject({ live: null, verification: 'unverified' });
   });
 
   it('answers GET /deployment with what it knows instead of refusing', async () => {

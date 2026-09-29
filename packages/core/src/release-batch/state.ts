@@ -7,6 +7,7 @@ import { ReleaseProbesUnreadableError } from './errors.js';
 import { type ReleaseFinishRecord, readFinishRecord } from './finish-job.js';
 import { listAttempts, type ReleaseAttemptRow } from './ledger.js';
 import { type ReleaseMethod, readMethod } from './method.js';
+import type { ReleaseVerification } from './plan.js';
 import { loadReleaseRoster, type ReleaseRoster } from './queries.js';
 import { type LiveState, readLiveState, type VerifyConfig } from './verify.js';
 
@@ -20,6 +21,11 @@ export interface ReleaseRunState {
   attempts: ReleaseAttemptRow[];
   /** Read at request time from the probes the close reads; `null` where there are none to read. */
   live: LiveState | null;
+  /**
+   * How the close is proved, as the run recorded it: at the open, then again by the close itself,
+   * so an open run's value is its opening forecast. `null` on a run that recorded none.
+   */
+  verification: ReleaseVerification | null;
   bounds: BoundsReading;
   /** `null` when the run never announced one. */
   method: ReleaseMethod | null;
@@ -38,6 +44,19 @@ function liveProbes(channels: ReleaseChannel[]): VerifyConfig | null {
     if (err instanceof ReleaseProbesUnreadableError) return null;
     throw err;
   }
+}
+
+/** The run's own record of how its close is proved, stamped at create and again at the close. */
+export function recordedVerification(
+  meta: Record<string, unknown>,
+  runId: string,
+): ReleaseVerification | null {
+  const value = meta.verification;
+  if (value === undefined || value === null) return null;
+  if (value === 'probed' || value === 'unverified') return value;
+  throw new Error(
+    `RELEASE_VERIFICATION_UNREADABLE: release run ${runId} records verification ${JSON.stringify(value)}, which is neither "probed" nor "unverified"`,
+  );
 }
 
 async function readRun(runId: string) {
@@ -83,6 +102,7 @@ export async function readReleaseRunState(runId: string): Promise<ReleaseRunStat
     roster,
     attempts,
     live,
+    verification: recordedVerification(meta, runId),
     bounds: readBounds(attempts),
     method,
     methodUnloaded: method !== null && !method.loaded,

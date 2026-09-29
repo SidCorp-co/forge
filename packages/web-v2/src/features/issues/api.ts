@@ -183,6 +183,7 @@ export interface CreateReleaseBatchResult {
   jobId: string;
   issueIds: string[];
   gateStatus: string;
+  verification: "probed" | "unverified";
 }
 
 export type { ReleaseRoster, ReleaseRosterEntry } from "@/features/releases/roster";

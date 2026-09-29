@@ -30,7 +30,7 @@ const GAP_TEXT: Record<ReleaseReadiness["gaps"][number], string> = {
   "rollback-prose":
     "A live Coolify binding declares its rollback as free text, which Forge no longer executes — convert it to the Coolify rollback action, or a failed release aborts and comments.",
   "verify-probes":
-    "A live binding declares no verify probe — a release batch is refused, because a gate with no probes closes on the agent's word.",
+    "A live binding declares no verify probe — a release still runs, but nothing reads the deployment, so it closes unverified and each issue it closes says so.",
   "live-commit-endpoint":
     "This project records no live commit endpoint — nothing holds the address a release ships to, so every live binding has to declare its own probe. Set it under Settings → Testing → Live.",
 };

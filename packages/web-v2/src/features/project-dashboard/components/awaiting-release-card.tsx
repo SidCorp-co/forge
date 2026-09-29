@@ -18,7 +18,6 @@ import {
   Icon,
   StatusChip,
 } from "@/design";
-import { useBatchRelease } from "@/features/issues/hooks";
 import { BatchReleaseDialog, type BatchReleaseIssue } from "@/features/issues/components/batch-release-dialog";
 import { formatUsd } from "@/features/pipeline/derive";
 import type { PipelineRunListItem } from "@/features/pipeline/types";
@@ -42,7 +41,6 @@ export function AwaitingReleaseCard({
 }) {
   const router = useRouter();
   const qc = useQueryClient();
-  const batch = useBatchRelease(projectId);
   const [expanded, setExpanded] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [batchDialogOpen, setBatchDialogOpen] = useState(false);
@@ -116,7 +114,6 @@ export function AwaitingReleaseCard({
                   size="sm"
                   className="ml-auto"
                   disabled={selectedCount === 0}
-                  loading={batch.isPending}
                   onClick={() => setBatchDialogOpen(true)}
                 >
                   {selectedCount > 0 ? `Release ${selectedCount}` : "Release"}
