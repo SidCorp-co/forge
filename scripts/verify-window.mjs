@@ -20,7 +20,7 @@ import { decideFire } from './lib/verify-window/fire.mjs';
 import { gitIn, showAt } from './lib/verify-window/git.mjs';
 import { planLanding, windowBranch } from './lib/verify-window/land.mjs';
 import { readManifest, renderLedger } from './lib/verify-window/ledger.mjs';
-import { passLine, runGate } from './lib/verify-window/validate.mjs';
+import { passLine, prepareTree, runGate } from './lib/verify-window/validate.mjs';
 
 const USAGE = `Usage: node scripts/verify-window.mjs <verb> --window <manifest.json> [flags]
   admit                       judge each member's admission and build nothing
@@ -224,8 +224,20 @@ if (verb === 'attribute') {
     const repeat = Number(values.repeat ?? 1);
     if (!Number.isInteger(repeat) || repeat < 1)
       die(`--repeat ${values.repeat} is not a whole number of runs`);
+    const declared = parseConfig(
+      showAt(gitIn(repoDir), ledger.base.sha, CONFIG_PATH),
+      `${CONFIG_PATH} at ${ledger.base.sha}`,
+    );
+    if (declared.refusal) die(declared.refusal);
+    const ready = (tree) => {
+      const r = prepareTree({ tree, prepare: declared.config.gate.prepare });
+      if (!r.refusal) return;
+      if (tree !== ledger.chain.tree) removeTree(tree);
+      die(`${r.refusal}, so the replay could not run there and nothing is attributed`);
+    };
     const baseTree = `${treeDir}-replay-base`;
     gitIn(repoDir).must(['worktree', 'add', '-q', '--detach', baseTree, ledger.base.sha]);
+    ready(baseTree);
     const base = replay(values.unit, baseTree, repeat);
     removeTree(baseTree);
     const members = landed.map((m) => {
@@ -247,10 +259,12 @@ if (verb === 'attribute') {
           unbuilt: rebuilt.isolated?.because ?? 'not rebuilt',
         };
       }
+      ready(alone);
       const r = replay(values.unit, alone, repeat);
       removeTree(alone);
       return { issue: m.issue, ...r };
     });
+    ready(ledger.chain.tree);
     const window = replay(values.unit, ledger.chain.tree, repeat);
     found.push({
       subject: values.unit,

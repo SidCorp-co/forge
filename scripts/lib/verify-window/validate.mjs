@@ -21,6 +21,29 @@ function timed(argv, cwd) {
 }
 
 /**
+ * Run the declared `gate.prepare` steps in `tree`, in order, as validate and every replay tree do
+ * before the command they run, so an unprepared tree never reads as a failing one.
+ * @returns {{ refusal?: string, output: string, seconds: number }}
+ */
+export function prepareTree({ tree, prepare }) {
+  let output = '';
+  let seconds = 0;
+  for (const argv of prepare) {
+    const step = timed(argv, tree);
+    seconds += step.seconds;
+    output += `$ ${argv.join(' ')}\n${step.stdout}${step.stderr}\n`;
+    if (step.status !== 0) {
+      return {
+        refusal: `\`${argv.join(' ')}\` did not prepare ${tree} (${step.error ?? `exit ${step.status}`})`,
+        output,
+        seconds,
+      };
+    }
+  }
+  return { output, seconds: Math.round(seconds * 10) / 10 };
+}
+
+/**
  * Why `tree` is not exactly the commit a pass is recorded against, or `null`: its HEAD is elsewhere,
  * or it holds a change or an untracked file the commit does not, which the gate would read as the
  * combination's own.
@@ -50,19 +73,10 @@ export function runGate({ tree, head, gate }) {
   const notRun = 'so the gate was not run and nothing was validated';
   const before = driftOf(tree, head, 'before preparing');
   if (before) return { refusal: `${before}, ${notRun}`, output: '' };
-  let output = '';
-  let prepareSeconds = 0;
-  for (const argv of gate.prepare) {
-    const step = timed(argv, tree);
-    prepareSeconds += step.seconds;
-    output += `$ ${argv.join(' ')}\n${step.stdout}${step.stderr}\n`;
-    if (step.status !== 0) {
-      return {
-        refusal: `\`${argv.join(' ')}\` did not prepare ${tree} (${step.error ?? `exit ${step.status}`}), ${notRun}`,
-        output,
-      };
-    }
-  }
+  const prepared = prepareTree({ tree, prepare: gate.prepare });
+  let output = prepared.output;
+  const prepareSeconds = prepared.seconds;
+  if (prepared.refusal) return { refusal: `${prepared.refusal}, ${notRun}`, output };
   const after = driftOf(tree, head, 'after preparing');
   if (after) return { refusal: `${after}, ${notRun}`, output };
   const run = timed(gate.run, tree);
@@ -72,7 +86,7 @@ export function runGate({ tree, head, gate }) {
   return {
     status,
     seconds: run.seconds,
-    prepareSeconds: Math.round(prepareSeconds * 10) / 10,
+    prepareSeconds,
     output,
     words: status === 0 ? null : said.split('\n').slice(-WORDS).join('\n'),
   };

@@ -46,7 +46,8 @@ branch, head, arrival time and priority.
    combination's diff for a check that declares a scoped form). It refuses, and records nothing,
    where the tree is not exactly the chain head before or after preparing: HEAD elsewhere, a tracked
    change, or an untracked file the gate would read as the combination's. The ledger records each
-   pass as the window's cost figure: what it took and how many members shared it. Red, it prints the gate's own words, which step 5 attributes.
+   pass as the window's cost figure: what it took and how many members shared it. Red, it prints
+   the gate's own words, which step 5 attributes.
    **One pull request** of the chain head into the base follows, and its `ci-passed`, with its full
    needs list, stays the required check.
 5. **`attribute`** — a refusal naming a path belongs to the last landing that changed it. One naming
@@ -54,7 +55,9 @@ branch, head, arrival time and priority.
    failure on the base is pre-existing, on exactly one member alone is that member's, on no member
    alone but on the combination is an interaction, and anything else names no owner. A member alone
    is rebuilt from its ledger row on the base the window was built on, with no branch of the window
-   counted among the open branches its migrations are numbered against.
+   counted among the open branches its migrations are numbered against. Every replay tree is
+   prepared with the declared `gate.prepare` first, so an unprepared tree never reads as a failure
+   on the base; a step that cannot prepare one stops the replay, attributing nothing.
 6. **`isolate --member <ISS> --because "<the checker's words>"`** — rebuild without that member,
    recording why, in the tree the ledger recorded; a window with no ledger, any other `--tree`, or a
    path there that is no longer a worktree of the repository is refused and nothing is deleted. The

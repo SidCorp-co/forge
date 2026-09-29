@@ -902,6 +902,10 @@ describe('validate', () => {
     );
     const owner = run(c, 'attribute', ...flags, '--path', 'src/fail.txt');
     expect(owner.stdout).toContain('ISS-24');
+    const replayed = run(c, 'attribute', ...flags, '--unit', 'node gate.mjs');
+    expect(replayed.status, replayed.stderr).toBe(0);
+    expect(replayed.stdout).toMatch(/^node gate\.mjs: .*ISS-24/m);
+    expect(replayed.stdout).not.toMatch(/did not fail on the replay|fails on the base/);
     const words = 'gate-check: src/fail.txt holds a sweep failure the entry layer cannot see';
     expect(run(c, 'isolate', ...flags, '--member', 'ISS-24', '--because', words).status).toBe(1);
     const again = run(c, 'validate', ...flags);

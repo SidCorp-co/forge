@@ -64,6 +64,10 @@
         "reason": "the integration suite's shared database harness, which every integration file and its container go through"
       },
       {
+        "glob": "eslint.config.mjs",
+        "reason": "comment-budget reads its rules and ignores, and the entry layer lints only the changed files with it, so a change to it moves the verdict on files no member opened"
+      },
+      {
         "glob": "scripts/verify.mjs",
         "reason": "the gate's own entrypoint: a change to what the gate runs, or to which layer a check is in, is judged by the whole gate it changes, never by a window validating with it"
       },

@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { globToRegExp, parseConfig } from './config.mjs';
+import { judgeEligibility } from './eligibility.mjs';
 
 const good = {
   check: 'ci-passed',
@@ -88,6 +89,21 @@ describe('parseConfig', () => {
     const read = parseConfig(text, '.forge/verify-queue.json');
     expect(read.refusal).toBeUndefined();
     expect(read.config.check).toBe('ci-passed');
+  });
+
+  it.each([
+    'eslint.config.mjs',
+    'scripts/verify.mjs',
+    'scripts/check-comment-budget.mjs',
+    'scripts/lib/debt-ratchet.mjs',
+  ])('sends a change to the gate-wide surface %s to the whole gate', (path) => {
+    const text = readFileSync(
+      new URL('../../../.forge/verify-queue.json', import.meta.url),
+      'utf8',
+    );
+    const { config } = parseConfig(text, '.forge/verify-queue.json');
+    const refusals = judgeEligibility({ issue: 'ISS-9', files: [{ path, added: [] }] }, config);
+    expect(refusals.map((r) => r.message).join('\n')).toContain(`ISS-9 touches ${path}`);
   });
 });
 
