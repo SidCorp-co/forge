@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { newEntries, readJournal } from '../migration-order.mjs';
+import { parseDiff } from './eligibility.mjs';
 import { showAt } from './git.mjs';
 import { allocate, rebaseSnapshot, rewriteReferences, snapshotFile } from './migrations.mjs';
 import { unionInsertions } from './union.mjs';
@@ -187,9 +188,9 @@ function rederive({ t, dir, member, open, earlier = [], landed = [] }) {
 }
 
 /**
- * Every file this member's merge brings that names a renumbered tag — its own, or one an earlier
- * member was moved off — rewritten once. Files already in the combination were rewritten when the
- * member that moved the tag entered, so they are not read again.
+ * Every line this member's merge adds that names a renumbered tag — its own, or one an earlier
+ * member was moved off — rewritten once. Lines already in the combination were rewritten when the
+ * member that moved the tag entered, so they are never read again.
  */
 export function rewriteTags(t, moves, dir) {
   const journalPath = `${dir}/meta/_journal.json`;
@@ -205,7 +206,15 @@ export function rewriteTags(t, moves, dir) {
     if (path === journalPath) continue;
     const abs = join(t.cwd, path);
     if (!existsSync(abs)) continue;
-    writeFileSync(abs, rewriteReferences(readFileSync(abs, 'utf8'), moved));
+    const diff = t.run(['diff', '--cached', '--unified=0', '--no-renames', 'HEAD', '--', path]);
+    const added = new Set((parseDiff(diff ?? '')[0]?.added ?? []).map((a) => a.line));
+    const before = readFileSync(abs, 'utf8');
+    const after = before
+      .split('\n')
+      .map((line, i) => (added.has(i + 1) ? rewriteReferences(line, moved) : line))
+      .join('\n');
+    if (after === before) continue;
+    writeFileSync(abs, after);
     t.must(['add', '--', path]);
     touched.push(path);
   }

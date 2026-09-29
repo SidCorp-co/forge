@@ -896,6 +896,64 @@ describe('two members adding the same journal entry', () => {
   });
 });
 
+describe("a later member editing a file an earlier member's renumbering rewrote", () => {
+  it('leaves the references already in the combination as they were rewritten', () => {
+    const a = branch('ISS-32-two', {
+      [JOURNAL]: journal(
+        entry(1, W, '0001_init'),
+        entry(2, W + DAY, '0002_update'),
+        entry(3, W + 2 * DAY, '0003_update'),
+      ),
+      [`${DIR}/0002_update.sql`]: '-- 0002_update\n',
+      [`${DIR}/0003_update.sql`]: '-- 0003_update\n',
+      [`${DIR}/meta/0002_snapshot.json`]: snapshot('s-u2', 's1', {
+        ...BASE_TABLES,
+        'public.u2': table('u2', ['id']),
+      }),
+      [`${DIR}/meta/0003_snapshot.json`]: snapshot('s-u3', 's-u2', {
+        ...BASE_TABLES,
+        'public.u2': table('u2', ['id']),
+        'public.u3': table('u3', ['id']),
+      }),
+      'docs/m.md': 'first 0002_update\nsecond 0003_update\none\ntwo\nthree\nfour\ntail\n',
+    });
+    const b = branch(
+      'ISS-33-edit',
+      {
+        'docs/m.md': 'first 0002_update\nsecond 0003_update\none\ntwo\nthree\nfour\ntail, edited\n',
+      },
+      'ISS-32-two',
+    );
+    const c = clone('rewritten-kept');
+    const w = windowFiles(
+      'w-rewritten-kept',
+      [
+        ['ISS-32', 'ISS-32-two', a],
+        ['ISS-33', 'ISS-33-edit', b],
+      ],
+      green(a, b),
+    );
+    const r = run(
+      c,
+      'assemble',
+      '--window',
+      w.manifest,
+      '--checks',
+      w.checksFile,
+      '--tree',
+      w.tree,
+    );
+    git(seed, 'push', '-q', 'origin', '--delete', 'ISS-32-two', 'ISS-33-edit');
+    expect(r.status, r.stdout + r.stderr).toBe(0);
+    const ledger = JSON.parse(readFileSync(w.ledger, 'utf8'));
+    const [to2, to3] = ledger.members[0].renumbered.map((m) => m.to.tag);
+    expect([to2, to3]).toEqual(['0003_update', '0004_update']);
+    expect(git(w.tree, 'show', `${ledger.chain.head}:docs/m.md`)).toBe(
+      `first ${to2}\nsecond ${to3}\none\ntwo\nthree\nfour\ntail, edited`,
+    );
+  });
+});
+
 describe('a snapshot serialized without the spacing drizzle writes', () => {
   it('is still found as the parent a renumbered migration chains off', () => {
     const compact = branch('ISS-31-compact', {

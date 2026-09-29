@@ -105,9 +105,9 @@ numbers only where the first clears the base, the combination so far and every o
 the window — `checkSet`'s `next` in `scripts/lib/migration-order.mjs`, the number
 `scripts/check-migration-order.mjs` prints as `Next free:`, read through the same `readOpenSet`.
 Otherwise they take consecutive numbers from it, their `.sql` and snapshot files are renamed, and
-every file the member brings that names an old tag — its own, or one an earlier member was moved
-off — is rewritten, all of its tags in one pass so a tag moved onto another's old number is not
-moved twice; the ledger lists each renumbering and each
+every line the member's merge adds that names an old tag — its own, or one an earlier member was
+moved off — is rewritten, all of its tags in one pass, and no line already in the combination is
+read again, so a tag moved onto another's old number is never moved twice; the ledger lists each renumbering and each
 rewritten file. A member's new entries are the ones missing where it forks from the combination, so
 a member stacked on an earlier one does not bring that one's migration back in under the tag it had
 before the window renumbered it, and its snapshot is rebased from the parent in its own tree.
