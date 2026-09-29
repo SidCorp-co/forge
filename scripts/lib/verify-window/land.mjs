@@ -78,7 +78,7 @@ export function planLanding({ repoDir, ledger, readCheck }) {
     '',
     "Merge the window's one pull request with a merge commit, so each member keeps its own landing:",
     `  gh pr merge ${branch} --merge --match-head-commit ${ledger.chain.head}`,
-    `Its push to ${ledger.base.branch} has two parents, which ci.yml's proved step reads as already proved.`,
+    `Its push to ${ledger.base.branch} has two parents; ci.yml's proved step is meant to skip the suites for that shape and has never fired (ISS-1340), so the push re-proves the tree.`,
   );
   return { refusals, lines, validation };
 }

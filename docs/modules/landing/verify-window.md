@@ -68,11 +68,15 @@ branch, head, arrival time and priority.
 ## How it composes with `ci.yml`
 
 Nothing in `.github/workflows/ci.yml` changes. The window's pull request is an ordinary
-`pull_request` run, so every job its paths select runs and `ci-passed` gates it as any other. Its
-merge commit's push to `main` has two parents, and the changes job's step *Whether a pull_request
-run already proved this exact tree* sets `proved=true` for exactly that shape, so `core`,
-`core-integration`, `web`, `runner`, `images` and `whole-tree` are not paid again. The always-on
-cheap jobs still run on that push.
+`pull_request` run, so every job its paths select runs and `ci-passed` gates it as any other.
+
+Its merge commit's push to `main` has two parents, the shape the changes job's step *Whether a
+pull_request run already proved this exact tree* is meant to read as `proved=true`, skipping
+`core`, `core-integration`, `web`, `runner`, `images` and `whole-tree` on that push. **That step has
+never fired**: it counts parents in a depth-1 checkout, where every commit reads as having none, so
+today `main` re-proves the window's merge like any other (`docs/proposals/where-the-time-goes.md`,
+ISS-1340). What the window saves does not depend on it: the sweeps no member's own run paid and one
+validation for the set. The push-side saving arrives with ISS-1340's fix and needs nothing here.
 
 ## Migrations
 
