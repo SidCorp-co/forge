@@ -2,9 +2,8 @@
  *  stored (ISS-1346). A deployment's commit is read off the provider's own record of it, so the
  *  identity is one Forge observed; a deploy made outside Forge is not seen. */
 
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { integrationDeliveries } from '../db/schema.js';
 import { getAdapter } from '../integrations/registry.js';
 import {
   type BindingWithConnection,
@@ -39,17 +38,26 @@ interface TargetAnswer {
 
 type ReadCommit = (deploymentId: string) => Promise<string | null>;
 
-/** A bound deploy target, as a binding's config lists it and a finished delivery names it. */
+/** A bound deploy target: its id and the resource it points at are its identity, the label its
+ *  name. A target repointed under the same label is a different target (ISS-1346 review, F2). */
 interface DeployTarget {
+  readonly id: string;
   readonly label: string;
+  readonly resource: string;
 }
+
+const text = (value: unknown): string | null =>
+  typeof value === 'string' && value !== '' ? value : null;
 
 function targetsOf(ctx: AdapterContext): DeployTarget[] {
   const listed: unknown = ctx.config.targets;
   if (!Array.isArray(listed)) return [];
-  return listed.flatMap((t: { label?: unknown } | null) =>
-    typeof t?.label === 'string' && t.label !== '' ? [{ label: t.label }] : [],
-  );
+  return listed.flatMap((t: Record<string, unknown> | null) => {
+    const id = text(t?.id);
+    const label = text(t?.label);
+    const resource = text(t?.resourceUuid);
+    return id && label && resource ? [{ id, label, resource }] : [];
+  });
 }
 
 /** Whether this binding's provider can say which commit one of its deployments built. */
@@ -70,28 +78,33 @@ function targetName(pair: BindingWithConnection, target: DeployTarget): string {
   return `${providerName(pair)} target \`${target.label}\` (${stagesOf(pair)})`;
 }
 
+/**
+ * The latest deployment Forge dispatched to this target — a deploy or a rollback — that it then saw
+ * finish. The outbound row is what names the target and the resource it was sent to; the inbound
+ * row, joined on the deployment the provider handed back, is what says it finished.
+ */
 async function latestFinished(
   bindingId: string,
-  label: string,
+  target: DeployTarget,
 ): Promise<{ uuid: string; at: string } | null> {
-  const [row] = await db
-    .select({
-      uuid: sql<string | null>`${integrationDeliveries.payload} ->> 'deployment_uuid'`,
-      at: integrationDeliveries.createdAt,
-    })
-    .from(integrationDeliveries)
-    .where(
-      and(
-        eq(integrationDeliveries.bindingId, bindingId),
-        eq(integrationDeliveries.direction, 'inbound'),
-        eq(integrationDeliveries.eventName, 'deploy.succeeded'),
-        sql`${integrationDeliveries.payload} ->> 'targetLabel' = ${label}`,
-      ),
-    )
-    .orderBy(desc(integrationDeliveries.createdAt))
-    .limit(1);
+  const rows = (await db.execute(sql`
+    SELECT i.payload ->> 'deployment_uuid' AS uuid, i.created_at AS at
+      FROM integration_deliveries i
+      JOIN integration_deliveries o
+        ON o.binding_id = i.binding_id
+       AND o.direction = 'outbound'
+       AND o.response ->> 'deployment_uuid' = i.payload ->> 'deployment_uuid'
+     WHERE i.binding_id = ${bindingId}
+       AND i.direction = 'inbound'
+       AND i.event_name = 'deploy.succeeded'
+       AND o.payload ->> 'targetId' = ${target.id}
+       AND o.payload ->> 'resourceUuid' = ${target.resource}
+     ORDER BY i.created_at DESC
+     LIMIT 1
+  `)) as unknown as Array<{ uuid: string | null; at: string | Date }>;
+  const row = rows[0];
   if (!row?.uuid) return null;
-  return { uuid: row.uuid, at: row.at.toISOString() };
+  return { uuid: row.uuid, at: new Date(row.at).toISOString() };
 }
 
 async function readTarget(
@@ -100,7 +113,7 @@ async function readTarget(
   readCommit: ReadCommit,
 ): Promise<TargetAnswer> {
   const name = targetName(pair, target);
-  const last = await latestFinished(pair.binding.id, target.label);
+  const last = await latestFinished(pair.binding.id, target);
   if (!last) {
     return {
       commit: null,

@@ -76,13 +76,17 @@ beforeEach(async () => {
   await fx.seedReleaseRunner();
 });
 
-const TARGETS = [
-  { id: 't-app', label: 'App', resourceUuid: 'app-uuid' },
-  { id: 't-api', label: 'Api', resourceUuid: 'api-uuid' },
-];
+interface Target {
+  id: string;
+  label: string;
+  resourceUuid: string;
+}
+const APP: Target = { id: 't-app', label: 'App', resourceUuid: 'app-uuid' };
+const API: Target = { id: 't-api', label: 'Api', resourceUuid: 'api-uuid' };
+const WEB: Target = { id: 't-web', label: 'Web', resourceUuid: 'web-uuid' };
 
 /** A live Coolify binding declaring no probe, as anhome's and portal-lighthuman's are. */
-async function bindCoolify(targets = TARGETS.slice(0, 1)): Promise<string> {
+async function bindCoolify(targets: Target[] = [APP]): Promise<string> {
   await fx.declareProduction({ verify: null, baseUrl: coolifyUrl, targets });
   const rows = (await harness.db.execute(sql`
     SELECT id FROM integration_bindings WHERE project_id = ${projectId}
@@ -91,13 +95,33 @@ async function bindCoolify(targets = TARGETS.slice(0, 1)): Promise<string> {
 }
 
 /** What `confirm.ts` writes once Coolify says a deployment Forge made has finished. */
-async function deployed(bindingId: string, label: string, uuid: string, at: string) {
+async function deployed(
+  bindingId: string,
+  target: Target,
+  uuid: string,
+  at: string,
+  sent = 'release.requested',
+) {
+  // A rollback's confirmation carries the label the control gives it, as `controls.ts` writes it.
+  const finishedAs =
+    sent === 'deploy.rollback.requested' ? `${target.label} rollback` : target.label;
+  const request = {
+    targetId: target.id,
+    targetLabel: target.label,
+    resourceUuid: target.resourceUuid,
+  };
+  await harness.db.execute(sql`
+    INSERT INTO integration_deliveries (binding_id, direction, event_name, request_id, status,
+                                        payload, response, created_at)
+    VALUES (${bindingId}, 'outbound', ${sent}, ${`out:${uuid}`}, 'ok', ${JSON.stringify(request)}::jsonb,
+            ${JSON.stringify({ deployment_uuid: uuid, targetId: target.id })}::jsonb, ${at}::timestamptz)
+  `);
   await harness.db.execute(sql`
     INSERT INTO integration_deliveries (binding_id, direction, event_name, request_id, status,
                                         payload, created_at)
     VALUES (${bindingId}, 'inbound', 'deploy.succeeded', ${uuid}, 'ok',
-            ${JSON.stringify({ source: 'poll', deployment_uuid: uuid, status: 'succeeded', targetLabel: label })}::jsonb,
-            ${at}::timestamptz)
+            ${JSON.stringify({ source: 'poll', deployment_uuid: uuid, status: 'succeeded', targetLabel: finishedAs })}::jsonb,
+            ${at}::timestamptz + interval '2 minutes')
   `);
 }
 
@@ -164,8 +188,8 @@ describe('what Forge deployed is the reading where no probe is declared', () => 
     const binding = await bindCoolify();
     deployments.set('dep-old', OLDER);
     deployments.set('dep-new', SERVED);
-    await deployed(binding, 'App', 'dep-old', '2026-09-29T10:00:00Z');
-    await deployed(binding, 'App', 'dep-new', '2026-09-29T11:00:00Z');
+    await deployed(binding, APP, 'dep-old', '2026-09-29T10:00:00Z');
+    await deployed(binding, APP, 'dep-new', '2026-09-29T11:00:00Z');
 
     const reading = await servingNow();
 
@@ -177,15 +201,11 @@ describe('what Forge deployed is the reading where no probe is declared', () => 
   });
 
   it('names a target with no Forge deployment, and one whose record fails, while the answering one decides', async () => {
-    const binding = await bindCoolify([
-      TARGETS[0] as (typeof TARGETS)[number],
-      TARGETS[1] as (typeof TARGETS)[number],
-      { id: 't-web', label: 'Web', resourceUuid: 'web-uuid' },
-    ]);
+    const binding = await bindCoolify([APP, API, WEB]);
     deployments.set('dep-app', SERVED);
     deployments.set('dep-api', 503);
-    await deployed(binding, 'App', 'dep-app', '2026-09-29T11:00:00Z');
-    await deployed(binding, 'Api', 'dep-api', '2026-09-29T11:00:00Z');
+    await deployed(binding, APP, 'dep-app', '2026-09-29T11:00:00Z');
+    await deployed(binding, API, 'dep-api', '2026-09-29T11:00:00Z');
 
     const reading = await servingNow();
 
@@ -195,6 +215,45 @@ describe('what Forge deployed is the reading where no probe is declared', () => 
     const unread = reading.unread.join('\n');
     expect(unread).toContain('`Web` (live) has no deployment Forge made and saw finish on record');
     expect(unread).toMatch(/dep-api to Coolify target `Api` \(live\).*could not be read/);
+  });
+
+  it('counts a rollback Forge made to the target as what it now runs', async () => {
+    const binding = await bindCoolify();
+    deployments.set('dep-deploy', SERVED);
+    deployments.set('dep-rollback', OLDER);
+    await deployed(binding, APP, 'dep-deploy', '2026-09-29T10:00:00Z');
+    await deployed(
+      binding,
+      APP,
+      'dep-rollback',
+      '2026-09-29T11:00:00Z',
+      'deploy.rollback.requested',
+    );
+
+    const reading = await servingNow();
+
+    expect(reading.kind === 'serving' ? reading.commits : reading).toEqual([OLDER]);
+  });
+
+  // Review 1881fe F2: the label is a name; the target is its id and the resource it points at.
+  it('does not carry a deployment of the old resource onto a target repointed under the same label', async () => {
+    const binding = await bindCoolify([{ ...APP, resourceUuid: 'new-app-uuid' }]);
+    deployments.set('dep-old-resource', SERVED);
+    await deployed(binding, APP, 'dep-old-resource', '2026-09-29T11:00:00Z');
+
+    const reading = await servingNow();
+
+    expect(reading.kind).toBe('unreadable');
+  });
+
+  it("keeps a target's deployment when only its label changed", async () => {
+    const binding = await bindCoolify([{ ...APP, label: 'Frontend' }]);
+    deployments.set('dep-renamed', SERVED);
+    await deployed(binding, APP, 'dep-renamed', '2026-09-29T11:00:00Z');
+
+    const reading = await servingNow();
+
+    expect(reading.kind === 'serving' ? reading.commits : reading).toEqual([SERVED]);
   });
 
   it('says unreadable, naming the target, where the route exists and nothing is on record yet', async () => {
@@ -223,7 +282,7 @@ describe('a row held before the route existed is carried by the next sweep', () 
        WHERE id = ${id}
     `);
     deployments.set('dep-1', SERVED);
-    await deployed(binding, 'App', 'dep-1', '2026-09-29T11:00:00Z');
+    await deployed(binding, APP, 'dep-1', '2026-09-29T11:00:00Z');
 
     const result = await sweep();
 
@@ -236,7 +295,7 @@ describe('a row held before the route existed is carried by the next sweep', () 
     const binding = await bindCoolify();
     const id = await waitingRow(OLDER, '2026-09-29T09:00:00Z');
     deployments.set('dep-2', SERVED);
-    await deployed(binding, 'App', 'dep-2', '2026-09-29T11:00:00Z');
+    await deployed(binding, APP, 'dep-2', '2026-09-29T11:00:00Z');
 
     const result = await sweep();
 
