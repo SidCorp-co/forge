@@ -120,9 +120,9 @@
 
 ### Added
 
-- **Finished changes can land together on one validation, each keeping its own merge commit.**
-  `pnpm verify --entry` runs only the checks a change can fail alone; a verify window runs the
-  repository-wide sweeps once and names which change failed.
+- **Finished changes can land together on one validation, each as its own merge commit.**
+  `pnpm verify --entry` runs only the checks one change can fail; a window runs the rest once,
+  naming the change a failure belongs to, if any.
 
 - **How to contribute, and who decides, are now in the repository.** `CONTRIBUTING.md`,
   `GOVERNANCE.md` and `docs/adr/` state the rules and the decisions behind them, including that
