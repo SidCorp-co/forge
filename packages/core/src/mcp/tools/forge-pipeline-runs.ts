@@ -73,7 +73,13 @@ export async function pipelineRunsListHandler(
   const liveness = await loadRunLivenessByRunIds(rows.map((r) => r.id));
   const items = rows.map(({ metadata, ...row }) => {
     const lane = laneOf({ issueId: row.issueId, metadata });
-    return { ...row, lane, residentMaster: residentMasterOn(lane, liveness.get(row.id)) };
+    const live = liveness.get(row.id);
+    return {
+      ...row,
+      liveJobs: live?.liveJobs ?? 0,
+      lane,
+      residentMaster: residentMasterOn(lane, live),
+    };
   });
 
   return buildListEnvelope({
