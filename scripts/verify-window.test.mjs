@@ -890,6 +890,9 @@ describe('validate', () => {
     expect(ledger.passes[0].words).toContain('src/fail.txt holds a sweep failure');
     expect(ledger.members[1].isolated.because).toBe(words);
     const md = readFileSync(w.ledger.replace(/\.json$/, '.md'), 'utf8');
+    expect(md).toContain(
+      '  ```\n  gate-check: src/fail.txt holds a sweep failure the entry layer cannot see\n  ```',
+    );
     expect(md).toMatch(
       /Pass 2: `node gate\.mjs` at `[0-9a-f]{40}` took [\d.]+s \(prepare [\d.]+s\), shared by 1 member\(s\), [\d.]+s each: green/,
     );

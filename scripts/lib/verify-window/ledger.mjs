@@ -81,7 +81,15 @@ export function renderLedger(ledger) {
     notes.push(`- Attribution (${a.kind}${a.owner ? `, ${a.owner}` : ''}): ${a.says}`);
   for (const pass of ledger.passes ?? []) {
     notes.push(`- ${passLine(pass)}`);
-    if (pass.words) notes.push(`  In the gate's own words: ${pass.words.split('\n').at(-1)}`);
+    if (pass.words) {
+      notes.push(
+        "  In the gate's own words:",
+        '',
+        '  ```',
+        ...pass.words.split('\n').map((l) => `  ${l}`),
+        '  ```',
+      );
+    }
   }
   if (ledger.validation) {
     notes.push(
