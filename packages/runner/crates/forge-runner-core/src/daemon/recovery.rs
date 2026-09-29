@@ -167,10 +167,11 @@ pub async fn reconcile(
         if run.is_parked_on_human() {
             // A read tmux did not answer observed nothing, so the park stays
             // with the master it answers to rather than moving on it (ISS-1312).
-            if !matches!(
-                masters.state(&run.master_session_id).await,
-                MasterPresence::Alive | MasterPresence::Unanswered
-            ) {
+            let read = masters.state(&run.master_session_id).await;
+            if read == MasterPresence::Unanswered {
+                unanswered_reads.push(run.run_id.clone());
+            }
+            if !matches!(read, MasterPresence::Alive | MasterPresence::Unanswered) {
                 if let Some(project) = run.project_id.as_deref() {
                     if let Some(parent) = masters.live_master_for_project(project).await {
                         ledger.reparent_run(&run.run_id, &parent)?;
@@ -1747,6 +1748,43 @@ mod tests {
             "master-old",
             "a question nobody answered is not a master that went"
         );
+    }
+
+    /// The sweep's one line naming the runs tmux could not be asked about
+    /// names a park among them, which `continue`d past it before.
+    #[test]
+    fn a_park_whose_master_tmux_could_not_be_asked_about_is_in_the_sweeps_line() {
+        let out = logged_while(|| {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            rt.block_on(async {
+                let mut led = parked("run-parked", "master-old", "boot-a");
+                reconcile(
+                    &mut led,
+                    "boot-a",
+                    &UnansweredBesideASuccessor,
+                    &nothing_refuted(),
+                    Closing {
+                        sessions: &Sessions,
+                        leases: &Leases(Mutex::new(HashSet::new())),
+                        roots: &Roots,
+                    },
+                    RunWatch {
+                        beat: &Beats::default(),
+                        idle: &NeverReports,
+                    },
+                )
+                .await
+                .unwrap();
+            });
+        });
+        let line = out
+            .lines()
+            .find(|l| l.contains("tmux could not be asked"))
+            .unwrap_or_else(|| panic!("no line names the unanswered read: {out}"));
+        assert!(line.contains("run-parked"), "{line}");
     }
 
     #[tokio::test]

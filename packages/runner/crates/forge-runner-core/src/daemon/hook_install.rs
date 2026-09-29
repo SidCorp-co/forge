@@ -702,7 +702,9 @@ mod tests {
                 .env("FORGE_HOOK_MARKER", marker)
                 .output()
                 .expect("sh");
-            if !String::from_utf8_lossy(&out.stderr).contains("Text file busy") {
+            let busy = !out.status.success()
+                && String::from_utf8_lossy(&out.stderr).contains("Text file busy");
+            if !busy {
                 return out;
             }
             std::thread::sleep(std::time::Duration::from_millis(20));
