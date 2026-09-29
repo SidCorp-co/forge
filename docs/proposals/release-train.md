@@ -17,11 +17,16 @@ are therefore part of the deliverable, not decoration.**
 | The rule, with the measurements | knowledge entry `a-release-train-batches-the-system-proof-not-a-changes-own-proof` | the figures, the config keys, the preconditions |
 | The merge-queue half | ISS-1203 | `N^2/2` landings under `strict: true`, attribution, Uber SubmitQueue prior art |
 | A local role written during the rediscovery | `.claude/skills/forge-integrator/` | the operating procedure, not the economics |
-| A duplicate entry from the rediscovery | knowledge entry `release-cohort` | nothing the first entry does not, under a name retired everywhere else |
 
-`release-cohort` is a duplicate and is to be folded into the first entry and removed. The word
-`cohort` was replaced by `window` in the role's own text while that entry kept it, so the slug now
-contradicts every other surface.
+There were four. The fourth, a duplicate entry `release-cohort` written during the rediscovery, was
+folded into the first and **deleted on 2026-09-29**. What it held that the first did not is now
+there: how to tell a change's own gate from the train's, what must not board a train, the rule that
+a member's wait runs from when it arrived, and the counters that judge whether any of it worked.
+
+One thing of its own was **not** carried over. It declared thresholds — ten changes, six hours —
+derived from this project's merge rate. The first entry says no value for `minutes` or `size` is
+derivable from today's data, and it is right: merge rate answers how fast a train fills, never what
+size it can still attribute. Inventing the numbers is the failure the entry exists to refuse.
 
 ## The number that makes it worth doing
 
