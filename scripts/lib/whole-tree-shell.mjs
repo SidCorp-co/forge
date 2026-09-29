@@ -4,8 +4,8 @@
 // subcommand or setting it does not know, and a program it does not know each count as listing the
 // repository root. A reading of spellings that passed whatever it had not listed failed three times.
 
-import { existsSync } from 'node:fs';
-import { basename, isAbsolute, resolve, sep } from 'node:path';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
 
 /** A word the reader cannot evaluate: a substitution, or a variable the environment does not set. */
 export const UNKNOWN = Symbol('unevaluable');
@@ -13,11 +13,13 @@ export const UNKNOWN = Symbol('unevaluable');
 /** The file every watched Node process preloads; a NODE_OPTIONS still naming it keeps the watch. */
 export const PRELOAD_MARK = 'whole-tree-child.mjs';
 
+const MAGIC_SEGMENT = /[*?[\]{}()!+@]/;
+
 /** The directory a glob pattern starts listing from: its segments before the first magic one. */
 export function globBase(pattern) {
   const kept = [];
   for (const seg of pattern.split(/[\\/]/)) {
-    if (/[*?[\]{}()!+@]/.test(seg)) break;
+    if (MAGIC_SEGMENT.test(seg)) break;
     kept.push(seg);
   }
   const base = kept.join('/');
@@ -25,10 +27,36 @@ export function globBase(pattern) {
   return pattern.startsWith('/') ? '/' : '.';
 }
 
-/** `base` joined with `word`, or null where either cannot be evaluated. */
+/**
+ * Whether a glob climbs with a `..` after its first magic segment: the walk then ends wherever the
+ * matches lead, which no reading of the prefix says, so such a pattern counts as the root.
+ */
+export function climbsAfterMagic(pattern) {
+  let magic = false;
+  for (const seg of pattern.split(/[\\/]/)) {
+    if (magic && seg === '..') return true;
+    if (MAGIC_SEGMENT.test(seg)) magic = true;
+  }
+  return false;
+}
+
+/**
+ * Where the kernel resolves a path: the realpath of the path as written, its parent segments not
+ * collapsed first, so a symlink's `..` and `/proc/self/cwd` land where a listing of them lands. A
+ * path that does not exist keeps its lexical placement.
+ */
+export function physical(path) {
+  try {
+    return realpathSync.native(path);
+  } catch {
+    return resolve(path);
+  }
+}
+
+/** `base` joined with `word` where the kernel would take it, or null where either is unevaluable. */
 function at(base, word) {
   if (base === null || word === UNKNOWN || word === undefined) return null;
-  return resolve(base, word);
+  return physical(isAbsolute(word) ? word : `${base}/${word}`);
 }
 
 const isWord = (w) => typeof w === 'string';
@@ -103,28 +131,35 @@ function expansion(s, i, cmds) {
 /**
  * A shell string cut into simple commands, each a list of words, each word a list of parts. Quotes,
  * escapes, substitutions, redirections, comments and here-documents are read here; control words
- * are left to the reader of each command.
+ * are left to the reader of each command. A part the shell sees unquoted is `bare`, since only
+ * those take part in pathname and brace expansion, and a command's redirection targets are kept
+ * apart on `redirects`, since the shell expands them too.
  */
 function scan(src) {
   const s = src.replace(/\\\r?\n/g, '');
   const cmds = [];
   const heredocs = [];
   let words = [];
+  let redirects = [];
   let word = null;
-  let dropNext = false;
+  let redirectNext = false;
   const part = (p) => {
     word ??= [];
     word.push(p);
   };
+  const bare = (v) => part({ t: 'lit', v, bare: true });
   const endWord = () => {
-    if (word && dropNext) dropNext = false;
-    else if (word) words.push(word);
+    if (word && redirectNext) {
+      redirects.push(word);
+      redirectNext = false;
+    } else if (word) words.push(word);
     word = null;
   };
   const endCmd = () => {
     endWord();
-    if (words.length > 0) cmds.push(words);
+    if (words.length > 0 || redirects.length > 0) cmds.push(Object.assign(words, { redirects }));
     words = [];
+    redirects = [];
   };
   let i = 0;
   while (i < s.length) {
@@ -151,8 +186,13 @@ function scan(src) {
       i++;
     } else if (c === '$' || c === '`') {
       const [p, next] = expansion(s, i, cmds);
-      part(p);
+      part({ ...p, bare: true });
       i = next;
+    } else if (c === '(' && /^[@+!?*]$/.test(word?.at(-1)?.bare ? word.at(-1).v : '')) {
+      // An extglob, `@(a|b)` and its like: one pattern word, not a subshell.
+      const end = matching(s, i + 1, '(', ')');
+      part({ t: 'lit', v: s.slice(i, end + 1), bare: true, extglob: true });
+      i = end + 1;
     } else if (c === '#' && word === null) {
       i = closing(s, '\n', i);
     } else if (c === '\n') {
@@ -175,7 +215,7 @@ function scan(src) {
       if (s[i] === '&') {
         i++;
         while (/[\d-]/.test(s[i] ?? '')) i++;
-      } else dropNext = true;
+      } else redirectNext = true;
     } else if (';&|()'.includes(c)) {
       endCmd();
       i++;
@@ -186,7 +226,7 @@ function scan(src) {
       part({ t: 'tilde' });
       i++;
     } else {
-      part(lit(c));
+      bare(c);
       i++;
     }
   }
@@ -215,21 +255,60 @@ function hereDocuments(s, from, docs, cmds) {
   return i;
 }
 
-/** One word's values: one string, one UNKNOWN, or the positional parameters `$@` stands for. */
-function evaluate(word, ctx) {
+const GLOB_CHAR = /[*?[]/;
+/** A pattern in the text the shell sees unquoted: `*`, `?`, or a bracket with a close. */
+const PATTERN = /[*?]|\[[^\]]+\]/;
+/** An unquoted brace expansion, `{a,b}` or `{1..3}`, in a word's unquoted text. */
+const BRACE = /\{[^{}]*(?:,|\.\.)[^{}]*\}/;
+
+/**
+ * One word's values: one string, one UNKNOWN, or the positional parameters `$@` stands for. A word
+ * the shell expands as a pathname pattern is a listing the shell makes itself, whatever program
+ * the words go to, so each is recorded on `ctx.expansions`; `assigned` marks an assignment's value,
+ * which the shell does not expand. A brace expansion, or a glob climbing after a wildcard, makes
+ * words nothing here can name, so it is UNKNOWN.
+ */
+function evaluate(word, ctx, assigned = false) {
   const parts = word.filter((p) => p.t !== 'lit' || p.v !== '');
-  if (parts.length === 1 && parts[0].t === 'param' && parts[0].name === '@') return ctx.params;
+  if (parts.length === 1 && parts[0].t === 'param' && parts[0].name === '@') {
+    if (!parts[0].bare || assigned) return ctx.params;
+    return ctx.params.map((v) => (isWord(v) && PATTERN.test(v) ? expanded(v, false, ctx) : v));
+  }
   let out = '';
+  // The text brace expansion reads, and the text pathname expansion reads: what the shell sees
+  // unquoted, each quoted character held by a NUL so it matches nothing.
+  let unquoted = '';
+  let globbed = '';
   for (const p of word) {
-    if (p.t === 'lit') out += p.v;
-    else if (p.t === 'tilde' && isWord(ctx.vars.HOME)) out += ctx.vars.HOME;
-    else if (p.t === 'param') {
+    if (p.t === 'lit') {
+      out += p.v;
+      const held = p.bare ? p.v : '\0'.repeat(p.v.length);
+      unquoted += held;
+      globbed += p.extglob ? '*' : held;
+    } else if (p.t === 'tilde' && isWord(ctx.vars.HOME)) {
+      out += ctx.vars.HOME;
+      unquoted += '\0';
+      globbed += '\0';
+    } else if (p.t === 'param') {
       const v = param(p.name, ctx);
       if (v === UNKNOWN || v.some((x) => !isWord(x))) return [UNKNOWN];
       out += v.join(' ');
+      unquoted += '\0';
+      globbed += p.bare ? v.join(' ') : '\0';
     } else return [UNKNOWN];
   }
-  return [out];
+  if (assigned) return [out];
+  const glob = PATTERN.test(globbed);
+  const brace = BRACE.test(unquoted);
+  if (!glob && !brace) return [out];
+  return [expanded(out, brace, ctx)];
+}
+
+/** The shell's expansion of a pattern word: recorded as a listing, and the word it leaves. */
+function expanded(pattern, brace, ctx) {
+  const unknown = brace || climbsAfterMagic(pattern);
+  ctx.expansions.push({ pattern, unknown });
+  return unknown ? UNKNOWN : pattern;
 }
 
 function param(name, ctx) {
@@ -248,7 +327,7 @@ function assignment(word, ctx) {
   while (k < word.length && word[k].t === 'lit' && !text.includes('=')) text += word[k++].v;
   const m = /^([A-Za-z_]\w*)=/.exec(text);
   if (!m) return null;
-  const [value] = evaluate([lit(text.slice(m[0].length)), ...word.slice(k)], ctx);
+  const [value] = evaluate([lit(text.slice(m[0].length)), ...word.slice(k)], ctx, true);
   return { name: m[1], value };
 }
 
@@ -261,18 +340,20 @@ const NO_PROGRAM = new Set(['for', 'case', 'select', 'function', '[[', ']]']);
 const INERT = new Set([
   ...['exit', 'return', 'true', 'false', ':', 'local', 'readonly', 'declare', 'typeset', 'unset'],
   ...['read', 'wait', 'trap', 'ulimit', 'umask', 'break', 'continue', 'hash', 'alias', 'unalias'],
-  ...['echo', 'printf', 'test', '[', 'type', 'getopts', 'jobs', 'disown', 'let'],
+  ...['echo', 'printf', 'test', '[', 'type', 'getopts', 'jobs', 'disown', 'let', 'shopt'],
 ]);
 
 /**
  * Everything a shell string lists, run command by command in the order the shell runs them: a `cd`
  * moves the directory the rest run in, an assignment sets what a later `$NAME` reads, and `shift`
- * and `set --` move the positional parameters.
+ * and `set --` move the positional parameters. A pattern the shell expands lists the directory it
+ * starts from, in the directory the command runs in, before the program sees a word of it.
  */
 export function shellListing(text, { cwd, root, env = {}, name, params = [] }) {
-  const ctx = { dir: cwd, vars: { ...env }, name, params: [...params] };
+  const ctx = { dir: cwd, vars: { ...env }, name, params: [...params], expansions: [] };
   const found = [];
   for (const words of scan(text)) {
+    ctx.expansions = [];
     const own = {};
     let k = 0;
     for (; k < words.length; k++) {
@@ -281,15 +362,21 @@ export function shellListing(text, { cwd, root, env = {}, name, params = [] }) {
       own[a.name] = a.value;
     }
     const argv = words.slice(k).flatMap((w) => evaluate(w, ctx));
+    for (const w of words.redirects) evaluate(w, ctx);
+    for (const { pattern, unknown } of ctx.expansions) {
+      const via = `the shell's expansion of \`${pattern}\``;
+      found.push(place(unknown ? null : at(ctx.dir, globBase(pattern)), via, root));
+    }
     if (argv.length === 0) Object.assign(ctx.vars, own);
     while (argv.length > 0 && OPENERS.has(argv[0])) argv.shift();
     const head = argv[0];
     if (head === undefined || CLOSERS.has(head) || NO_PROGRAM.has(head) || INERT.has(head))
       continue;
     if (head === 'cd' || head === 'pushd') {
+      // `cd` is logical: a `..` leaves the symlink it came through, and only then is it resolved.
       const target = argv.slice(1).find((w) => !isOption(w)) ?? ctx.vars.HOME ?? UNKNOWN;
-      const glob = isWord(target) && (target === '-' || /[*?[]/.test(target));
-      ctx.dir = glob ? null : at(ctx.dir, target);
+      const glob = !isWord(target) || target === '-' || GLOB_CHAR.test(target);
+      ctx.dir = glob || ctx.dir === null ? null : physical(resolve(ctx.dir, target));
     } else if (head === 'popd') ctx.dir = null;
     else if (head === 'shift') ctx.params.splice(0, Number(argv[1] ?? 1) || 1);
     else if (head === 'set') {
@@ -335,11 +422,14 @@ const NODE_PROGRAMS = new Set(['node', 'nodejs', 'pnpm', 'npm', 'npx', 'yarn', '
 const NODE_BINS = new Set(['tsx', 'vitest', 'tsc', 'eslint', 'prettier', 'next', 'drizzle-kit']);
 const SHELLS = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh']);
 
-/** Programs that read the files they are named, run no other program and never list a directory. */
+/**
+ * Programs that read the files they are named, run no other program and never list a directory.
+ * `ln` is not one: a link it makes reroutes a later listing through it.
+ */
 const READS_NO_DIRECTORY = new Set([
   ...['echo', 'printf', 'true', 'false', 'test', '[', 'sleep', 'which', 'type', 'seq', 'yes'],
   ...['cat', 'head', 'tail', 'wc', 'uniq', 'tr', 'cut', 'cmp', 'tee', 'base64', 'expr', 'nproc'],
-  ...['mkdir', 'rmdir', 'mv', 'touch', 'ln', 'readlink', 'realpath', 'basename', 'dirname'],
+  ...['mkdir', 'rmdir', 'mv', 'touch', 'readlink', 'realpath', 'basename', 'dirname'],
   ...['pwd', 'date', 'id', 'whoami', 'uname', 'hostname', 'kill', 'pkill', 'pgrep', 'ps'],
   ...['sha256sum', 'sha1sum', 'md5sum', 'shasum', 'mktemp', 'stat', 'file', 'getconf'],
 ]);
@@ -471,11 +561,32 @@ export function programListing(argv, cwd, root, env = {}, blind = false) {
   );
 }
 
+/** Where the system's own programs and the installed packages' live: a name found there is read by it. */
+const TRUSTED_PLACE =
+  /^\/(usr\/(local\/)?)?s?bin\/|^\/usr\/(lib|libexec)\/|^\/opt\/homebrew\/|\/node_modules\//;
+
+/** The executable a program name runs: a path where it is one, or the first on the call's PATH. */
+function executable(head, cwd, env) {
+  if (head.includes('/')) return cwd === null && !isAbsolute(head) ? null : at(cwd, head);
+  if (!isWord(env.PATH)) return null;
+  for (const dir of env.PATH.split(':')) {
+    const candidate = join(dir || '.', head);
+    if (existsSync(candidate))
+      return physical(isAbsolute(candidate) ? candidate : `${cwd}/${candidate}`);
+  }
+  return null;
+}
+
 function listingOf(argv, cwd, root, env, blind) {
   const [head, ...rest] = argv;
   if (head === undefined) return [];
   if (!isWord(head)) return [unread('a program named by a substitution', root)];
   const bin = basename(head);
+  // A program is read by its name only where the name is the system's: a `cat` the test put first
+  // on PATH, or named by a path of its own, is a program nobody has read.
+  const runs = NODE_PROGRAMS.has(bin) || NODE_BINS.has(bin) ? null : executable(head, cwd, env);
+  if (runs !== null && !TRUSTED_PLACE.test(runs))
+    return [unread(`\`${head}\` at ${runs}, which the test's own PATH or path chose`, root)];
   if (bin === 'git') return gitListing(rest, cwd, root, env);
   if (SHELLS.has(bin)) return shellProgram(bin, rest, cwd, root, env);
   if (Object.hasOwn(LAUNCHERS, bin)) return launched(bin, rest, cwd, root, env, blind);
@@ -606,20 +717,19 @@ function findListing(rest, cwd, root, env) {
 
 // --- git -----------------------------------------------------------------------------------------
 
-/** Subcommands that never enumerate the work tree, the index or a tree's paths. */
+/**
+ * Subcommands shown to print nothing of a tree's paths or content and to change no work tree: a
+ * ref, an id, a message, a named file. Every subcommand not named in this section counts as the
+ * root, so the list is what has been read, never what has not.
+ */
 const GIT_NO_LISTING = new Set([
-  ...['rev-parse', 'config', 'init', 'clone', 'fetch', 'push', 'pull', 'remote', 'symbolic-ref'],
-  ...['update-ref', 'show-ref', 'for-each-ref', 'cat-file', 'hash-object', 'commit-tree', 'mktree'],
-  ...['mktag', 'rev-list', 'merge-base', 'branch', 'tag', 'log', 'show', 'describe', 'var'],
-  ...['version', 'help', 'reflog', 'notes', 'worktree', 'checkout', 'switch', 'restore', 'reset'],
-  ...['commit', 'merge', 'rebase', 'cherry-pick', 'revert', 'am', 'apply', 'format-patch', 'gc'],
-  ...['fsck', 'count-objects', 'verify-pack', 'pack-objects', 'unpack-objects', 'bundle'],
-  ...['ls-remote', 'check-ref-format', 'name-rev', 'shortlog', 'blame', 'cherry', 'read-tree'],
-  ...['write-tree', 'update-index', 'diff-tree', 'range-diff', 'maintenance', 'prune', 'repack'],
-  ...['check-ignore', 'check-attr', 'mv', 'fast-import', 'fast-export', 'index-pack', 'replace'],
-  ...['update-server-info', 'upload-pack', 'receive-pack', 'send-pack', 'fetch-pack'],
-  ...['stripspace', 'interpret-trailers', 'mailinfo', 'mailsplit', 'patch-id', 'verify-commit'],
-  'verify-tag',
+  ...['rev-parse', 'init', 'symbolic-ref', 'update-ref', 'show-ref', 'for-each-ref', 'var'],
+  ...['hash-object', 'commit-tree', 'mktree', 'mktag', 'merge-base', 'branch', 'tag', 'describe'],
+  ...['version', 'help', 'notes', 'name-rev', 'cherry', 'shortlog', 'check-ref-format', 'blame'],
+  ...['ls-remote', 'merge-file', 'check-ignore', 'check-attr', 'stripspace', 'interpret-trailers'],
+  ...['mailinfo', 'mailsplit', 'patch-id', 'count-objects', 'gc'],
+  ...['prune', 'maintenance', 'repack', 'verify-pack', 'index-pack', 'unpack-objects', 'replace'],
+  ...['update-server-info', 'receive-pack', 'send-pack', 'fast-import'],
 ]);
 /** Subcommands listing from where git runs, narrowed by pathspecs, mapped to value-taking flags. */
 const GIT_FROM_HERE = {
@@ -638,11 +748,355 @@ const GIT_FROM_HERE = {
   rm: [],
   add: [],
 };
-/** Subcommands that list the whole work tree unless handed pathspecs after `--`. */
-const GIT_WHOLE = new Set(['status', 'diff', 'diff-files', 'diff-index', 'stash', 'archive']);
+/** Subcommands that read or change the work tree, unless handed pathspecs after `--`. */
+const GIT_WORK_TREE = new Set([
+  ...['status', 'diff', 'diff-files', 'diff-index', 'stash', 'checkout', 'switch', 'restore'],
+  ...['reset', 'merge', 'rebase', 'cherry-pick', 'revert', 'am', 'apply', 'commit', 'read-tree'],
+  ...['write-tree', 'update-index', 'mv', 'worktree', 'pull'],
+]);
+/** Subcommands that print the paths or content of the repository's trees, narrowed after `--`. */
+const GIT_TREE_READERS = new Set([
+  'diff-tree',
+  'whatchanged',
+  'format-patch',
+  'range-diff',
+  'fsck',
+]);
+/** Subcommands that copy the repository's objects whole, which no pathspec narrows. */
+const GIT_STORE_COPIERS = new Set(['fast-export', 'bundle', 'pack-objects', 'push', 'archive']);
+/**
+ * Options that select, order or format commits and print no path and no content, for `log`,
+ * `reflog`, `rev-list` and a quiet `show`; the second set take a value, `=`-joined or as the next
+ * word. Anything else — a patch, a stat, `--name-only`, `-S`, `-G`, `-L`, `--objects` — counts.
+ */
+const COMMIT_ONLY = new Set([
+  ...['--oneline', '--abbrev-commit', '--no-abbrev-commit', '--decorate', '--no-decorate'],
+  ...['--reverse', '--first-parent', '--merges', '--no-merges', '--all', '--branches', '--tags'],
+  ...['--remotes', '--topo-order', '--date-order', '--author-date-order', '--ancestry-path'],
+  ...['--no-walk', '--do-walk', '--graph', '--parents', '--children', '--left-right', '--boundary'],
+  ...['--cherry-pick', '--cherry-mark', '--cherry', '--left-only', '--right-only', '--not'],
+  ...['--simplify-by-decoration', '--full-history', '--dense', '--sparse', '--simplify-merges'],
+  ...['--show-pulls', '--no-color', '--color', '-z', '--null', '--count', '-i', '-E', '-F', '-P'],
+  ...['--regexp-ignore-case', '--extended-regexp', '--fixed-strings', '--basic-regexp'],
+  ...['--perl-regexp', '--all-match', '--invert-grep', '--use-mailmap', '--mailmap'],
+  ...['--no-mailmap', '--quiet', '--header', '--timestamp', '--source', '--no-notes'],
+  ...['--relative-date', '--walk-reflogs', '-g', '--expand-tabs', '--no-expand-tabs', '-s'],
+  ...['--no-patch', '--in-commit-order', '--single-worktree'],
+]);
+const COMMIT_ONLY_VALUED = new Set([
+  ...['-n', '--max-count', '--skip', '--since', '--after', '--until', '--before', '--max-age'],
+  ...['--min-age', '--author', '--committer', '--grep', '--grep-reflog', '--format', '--pretty'],
+  ...['--date', '--abbrev', '--encoding', '--glob', '--exclude', '--min-parents', '--max-parents'],
+  ...['--decorate-refs', '--decorate-refs-exclude', '--since-as-filter', '--notes'],
+]);
+/** Long options of those that are only ever `=`-joined, so the next word is never their value. */
+const JOINED_ONLY = new Set(['--format', '--pretty', '--abbrev', '--notes', '--decorate']);
 /** `-c` settings that change what git prints or records and never run a program. */
 const SAFE_CONFIG =
-  /^(user|author|committer|init|advice|color|column|i18n|log|safe|format|pull|merge|rebase|fetch|transfer|gc|receive|pack|protocol|http)\.[\w.-]+=|^core\.(autocrlf|safecrlf|quotepath|filemode|ignorecase|precomposeunicode|longpaths|abbrev|logallrefupdates|bare|compression|symlinks)=|^(commit|tag)\.gpgsign=/i;
+  /^(user|author|committer|init|advice|color|column|i18n|log|safe|format|pull|merge|rebase|fetch|transfer|gc|receive|pack|protocol|http)\.[\w.-]+=|^core\.(autocrlf|safecrlf|quotepath|filemode|ignorecase|precomposeunicode|longpaths|abbrev|logallrefupdates|bare|compression|symlinks)=|^uploadpack\.(allow\w+|hiderefs)=|^(commit|tag)\.gpgsign=(false|no|off|0)$/i;
+/** Keys under those sections that do run a program, or copy a directory. */
+const UNSAFE_CONFIG = /^(merge\..+\.driver|init\.templatedir)=/i;
+const safeConfig = (setting) => SAFE_CONFIG.test(setting) && !UNSAFE_CONFIG.test(setting);
+/** Variables under which git runs a program of the caller's choosing for any subcommand. */
+const GIT_PROGRAM_ENV = ['GIT_EXTERNAL_DIFF'];
+/** Variables naming the program a transport other than a local path runs. */
+const GIT_TRANSPORT_ENV = ['GIT_SSH_COMMAND', 'GIT_SSH', 'GIT_PROXY_COMMAND'];
+/** An editor that runs nothing: what git sets for its own hooks, and what a test sets to mean none. */
+const NO_EDITOR = /^(true|:|)$/;
+
+/**
+ * Settings under which git runs a program the repository names, each by the kind of work that
+ * runs it, and the subcommands doing that work. A test that writes a fixture's `.git/config` or
+ * hooks decides these without a word of the argv naming them.
+ */
+const PROGRAM_SETTINGS = [
+  [/^core\.fsmonitor$/i, 'fsmonitor'],
+  [/^core\.hookspath$/i, 'hooks'],
+  [/^(core\.sshcommand|core\.gitproxy|credential\.(.+\.)?helper)$/i, 'transport'],
+  [/^(diff\.external|diff\..+\.(textconv|command))$/i, 'diff'],
+  [/^filter\..+\.(clean|smudge|process)$/i, 'filter'],
+  [/^merge\..+\.driver$/i, 'merge'],
+  [/^(commit|tag)\.gpgsign$/i, 'signing'],
+];
+const WORK_SUBS = [
+  ...['status', 'diff', 'add', 'commit', 'checkout', 'switch', 'reset', 'stash', 'ls-files'],
+  ...['update-index', 'restore', 'rm', 'mv', 'clean', 'grep', 'merge', 'rebase', 'pull'],
+  ...['cherry-pick', 'revert', 'am', 'apply', 'worktree', 'hash-object'],
+];
+const RUNS = {
+  fsmonitor: new Set(WORK_SUBS),
+  filter: new Set([...WORK_SUBS, 'cat-file', 'archive']),
+  hooks: new Set([
+    ...['commit', 'merge', 'rebase', 'am', 'push', 'checkout', 'switch', 'pull', 'cherry-pick'],
+    ...['revert', 'gc', 'worktree', 'receive-pack'],
+  ]),
+  merge: new Set(['merge', 'rebase', 'cherry-pick', 'revert', 'am', 'pull', 'stash', 'checkout']),
+  diff: new Set([
+    ...['diff', 'log', 'show', 'diff-tree', 'diff-files', 'diff-index', 'format-patch', 'blame'],
+    ...['grep', 'cat-file', 'whatchanged', 'range-diff', 'stash', 'reflog'],
+  ]),
+  signing: new Set(['commit', 'tag', 'merge', 'rebase', 'cherry-pick', 'revert', 'am']),
+};
+
+/**
+ * Every setting a config file holds, as lower-cased `section.sub.key` names, with the files its
+ * `include.path` and `includeIf.*.path` name read too, as far as three deep. A file that cannot be
+ * read holds nothing, as git reads a missing include.
+ */
+function configKeys(file, depth = 0) {
+  let text;
+  try {
+    text = readFileSync(file, 'utf8');
+  } catch {
+    return [];
+  }
+  const keys = [];
+  let section = '';
+  for (const line of text.split('\n')) {
+    const header = /^\s*\[\s*([^\]\s"]+)(?:\s+"([^"]*)")?\s*\]/.exec(line);
+    if (header) {
+      // Section and key names are case-blind to git; a subsection, the remote's name, is not.
+      const name = header[1].toLowerCase();
+      section = header[2] === undefined ? name : `${name}.${header[2]}`;
+      continue;
+    }
+    const entry = /^\s*([A-Za-z][\w-]*)\s*(?:=\s*(.*?)\s*)?$/.exec(line);
+    if (!entry || !section) continue;
+    const key = `${section}.${entry[1].toLowerCase()}`;
+    const value = (entry[2] ?? 'true').replace(/^"(.*)"$/, '$1');
+    keys.push({ key, value });
+    if (depth < 3 && /^(include|includeif\..+)\.path$/.test(key))
+      keys.push(
+        ...configKeys(
+          resolve(dirname(file), value.replace(/^~(?=\/)/, process.env.HOME ?? '~')),
+          depth + 1,
+        ),
+      );
+  }
+  return keys;
+}
+
+/**
+ * The programs the repository git runs in is set to run, by kind: from its config (and a config
+ * file the environment names), and from a hook in its hooks directory. The user's own global
+ * config is not read: docs/proposals/a-test-reading-a-named-file-outside-its-package-is-not-selected-by-it.md.
+ */
+function configuredPrograms(dir, gitDir, env) {
+  const g = dir === null ? null : gitDir === undefined ? gitDirOf(dir) : at(dir, gitDir);
+  const files = [g === null ? null : join(g, 'config')];
+  for (const key of ['GIT_CONFIG_GLOBAL', 'GIT_CONFIG_SYSTEM'])
+    if (isWord(env[key]) && env[key] !== '/dev/null') files.push(at(dir ?? '/', env[key]));
+  const found = [];
+  for (const file of files.filter(Boolean)) {
+    for (const { key, value } of configKeys(file)) {
+      const kind = PROGRAM_SETTINGS.find(([re]) => re.test(key))?.[1];
+      if (kind === 'signing' && /^(false|no|off|0)$/i.test(value)) continue;
+      if (kind) found.push({ kind, what: `the setting ${key}` });
+    }
+  }
+  // Probed by name rather than listed: a listing here would be one more the watch records.
+  const hook = g === null ? undefined : GIT_HOOKS.find((h) => existsSync(join(g, 'hooks', h)));
+  if (hook !== undefined) found.push({ kind: 'hooks', what: `the hook ${hook}` });
+  return found;
+}
+
+/** Every hook git runs, by the name it looks for in the hooks directory. */
+const GIT_HOOKS = [
+  ...['applypatch-msg', 'pre-applypatch', 'post-applypatch', 'pre-commit', 'pre-merge-commit'],
+  ...['prepare-commit-msg', 'commit-msg', 'post-commit', 'pre-rebase', 'post-checkout'],
+  ...['post-merge', 'pre-push', 'pre-receive', 'update', 'proc-receive', 'post-receive'],
+  ...['post-update', 'reference-transaction', 'push-to-checkout', 'pre-auto-gc', 'post-rewrite'],
+  ...['sendemail-validate', 'fsmonitor-watchman', 'post-index-change', 'p4-pre-submit'],
+];
+
+/** Whether a call opens an editor: a message it was not handed, or an edit it asked for. */
+function opensEditor(sub, tail) {
+  const has = (re) => tail.some((a) => isWord(a) && re.test(a));
+  const message = has(/^(--(message|file|reuse-message|no-edit|fixup)|-[a-zA-Z]*[mFC])/);
+  if (sub === 'commit') return !message;
+  if (sub === 'tag') return has(/^(-[a-zA-Z]*[asu]|--(annotate|sign|local-user))/) && !message;
+  if (sub === 'merge' || sub === 'cherry-pick') return has(/^(-e|--edit)$/);
+  if (sub === 'revert') return !has(/^(--no-edit|-n|--no-commit)$/);
+  if (sub === 'rebase') return has(/^(-i|--interactive|--edit-todo)$/);
+  if (sub === 'notes') return ['add', 'edit', 'append'].includes(tail[0]) && !message;
+  if (sub === 'replace') return has(/^--edit$/);
+  if (sub === 'am') return has(/^(-i|--interactive)$/);
+  return false;
+}
+
+/** Whether a call signs or verifies with gpg: asked for on the command line. */
+function asksToSign(sub, tail) {
+  if (sub === 'verify-commit' || sub === 'verify-tag') return true;
+  const has = (re) => tail.some((a) => isWord(a) && re.test(a));
+  if (sub === 'tag') return has(/^(-[a-zA-Z]*[suv]|--(sign|local-user|verify))/);
+  if (sub === 'log' || sub === 'show') return has(/^--show-signature$/);
+  return RUNS.signing.has(sub) && has(/^(-S|--gpg-sign|--verify-signatures)/);
+}
+
+/**
+ * The program git will run for this call without the argv naming it: a hook, a driver, an editor,
+ * a signer or a transport command, from the environment or the repository's own config.
+ */
+function programRun(sub, tail, entries, dir, gitDir, env) {
+  const editorEnv = ['GIT_EDITOR', 'GIT_SEQUENCE_EDITOR'].find(
+    (k) => isWord(env[k]) && !NO_EDITOR.test(env[k]),
+  );
+  const editing = opensEditor(sub, tail);
+  if (editing && (editorEnv || !isWord(env.GIT_EDITOR)))
+    return editorEnv ?? 'the editor git starts for its message';
+  if (asksToSign(sub, tail)) return 'the gpg program it signs with';
+  const printsContent =
+    entries.length > 0 ||
+    sub === 'blame' ||
+    tail.some((a) => /^--(textconv|filters|ext-diff)$/.test(a));
+  for (const { kind, what } of configuredPrograms(dir, gitDir, env)) {
+    if (kind === 'diff' ? RUNS.diff.has(sub) && printsContent : RUNS[kind]?.has(sub)) return what;
+  }
+  return null;
+}
+
+const NETWORK_SUBS = new Set(['clone', 'fetch', 'pull', 'push', 'ls-remote', 'remote']);
+
+/**
+ * The transport program a call reaching another host runs: an ssh or proxy command the
+ * environment or the repository's config names. A local path runs none.
+ */
+function remoteTransport(sub, tail, dir, gitDir, env) {
+  if (!NETWORK_SUBS.has(sub)) return null;
+  const named =
+    GIT_TRANSPORT_ENV.find((k) => isWord(env[k]) && env[k] !== '') ??
+    configuredPrograms(dir, gitDir, env).find((p) => p.kind === 'transport')?.what;
+  if (named === undefined) return null;
+  const words = tail.filter((a) => !isOption(a));
+  const word = sub === 'remote' ? words.at(-1) : (words[0] ?? 'origin');
+  const url =
+    isWord(word) && !word.includes('/') && !word.includes(':') && dir !== null
+      ? remoteUrls(dir, gitDir)?.[word]
+      : word;
+  if (url !== undefined && localRepository(url, dir, '/') !== undefined) return null;
+  return named;
+}
+
+/**
+ * The settings the environment hands git, as `key=value`: `GIT_CONFIG_PARAMETERS`, which git sets
+ * for its own children under `-c`, and `GIT_CONFIG_KEY_<n>`. An exec path outside git's own
+ * `git-core` directory runs subcommands of the caller's choosing, so it reads as a setting no list
+ * holds.
+ */
+function envConfig(env) {
+  const found = [];
+  const params = env.GIT_CONFIG_PARAMETERS;
+  if (isWord(params)) {
+    for (const m of params.matchAll(/'((?:[^']|'\\'')*)'(?:=('(?:[^']|'\\'')*'))?/g))
+      found.push(`${m[1]}=${(m[2] ?? '').slice(1, -1)}`);
+  }
+  const count = Number(env.GIT_CONFIG_COUNT ?? 0);
+  for (let n = 0; n < count; n++)
+    found.push(`${env[`GIT_CONFIG_KEY_${n}`] ?? ''}=${env[`GIT_CONFIG_VALUE_${n}`] ?? ''}`);
+  if (isWord(env.GIT_EXEC_PATH) && !/\/git-core\/?$/.test(env.GIT_EXEC_PATH))
+    found.push(`GIT_EXEC_PATH ${env.GIT_EXEC_PATH}`);
+  return found;
+}
+
+/** `init` and `clone` copy a template directory they are handed into the new repository. */
+function templateListing(tail, dir, via, root) {
+  const k = tail.findIndex((a) => isWord(a) && /^--template(=|$)/.test(a));
+  if (k === -1) return [];
+  const value = tail[k].includes('=') ? tail[k].slice(tail[k].indexOf('=') + 1) : tail[k + 1];
+  return [place(at(dir, value), `${via} --template`, root)];
+}
+
+/** Settings naming a repository that a later fetch reads from. */
+const REPOSITORY_CONFIG = /^(remote\..+\.(url|pushurl)|url\..+\.(insteadof|pushinsteadof))$/i;
+
+/**
+ * A subcommand's words once its options are read: the non-option words before `--` (revisions,
+ * objects, paths), the words after it, and whether every option is one that prints no path and no
+ * content.
+ */
+function commitWords(tail) {
+  const words = [];
+  let understood = true;
+  const dash = tail.indexOf('--');
+  const before = dash === -1 ? tail : tail.slice(0, dash);
+  for (let k = 0; k < before.length; k++) {
+    const a = before[k];
+    if (!isWord(a)) words.push(a);
+    else if (!isOption(a)) words.push(a);
+    else if (/^-\d+$/.test(a) || /^-n\d+$/.test(a)) continue;
+    else {
+      const flag = a.includes('=') ? a.slice(0, a.indexOf('=')) : a;
+      if (COMMIT_ONLY_VALUED.has(flag)) {
+        if (!a.includes('=') && !JOINED_ONLY.has(flag)) k++;
+      } else if (!COMMIT_ONLY.has(flag)) understood = false;
+    }
+  }
+  return { words, specs: dash === -1 ? [] : tail.slice(dash + 1), understood };
+}
+
+/** The repository a path names — a work tree, its `.git`, or its object directory — as its top. */
+function repositoryAt(dir, path, root) {
+  let p = at(dir, path);
+  if (p === null) return null;
+  if (basename(p) === 'objects') p = dirname(p);
+  if (basename(p) === '.git') p = dirname(p);
+  return topOf(p, root);
+}
+
+/** A repository argument on this machine — a path, or a `file://` URL — as its top, else undefined. */
+function localRepository(word, dir, root) {
+  if (!isWord(word)) return null;
+  if (/^file:\/\//i.test(word)) return repositoryAt(dir, word.replace(/^file:\/\//i, ''), root);
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(word) || /^[^/]+:/.test(word)) return undefined;
+  return repositoryAt(dir, word, root);
+}
+
+/** The `.git` directory holding the config git reads where it runs, found upwards from `dir`. */
+function gitDirOf(dir) {
+  for (let d = dir; ; d = dirname(d)) {
+    const candidate = join(d, '.git');
+    if (existsSync(candidate)) {
+      try {
+        const pointer = /^gitdir:\s*(.+)$/m.exec(readFileSync(candidate, 'utf8'));
+        const worktreeDir = pointer ? resolve(d, pointer[1].trim()) : null;
+        if (worktreeDir === null) return candidate;
+        const common = join(worktreeDir, 'commondir');
+        return existsSync(common)
+          ? resolve(worktreeDir, readFileSync(common, 'utf8').trim())
+          : worktreeDir;
+      } catch {
+        return candidate;
+      }
+    }
+    if (dirname(d) === d) return null;
+  }
+}
+
+/** Each remote's URL, from the config of the repository git runs in; null where there is none. */
+function remoteUrls(dir, gitDir) {
+  const g = gitDir === undefined ? gitDirOf(dir) : at(dir, gitDir);
+  if (g === null || !existsSync(join(g, 'config'))) return null;
+  const urls = {};
+  for (const { key, value } of configKeys(join(g, 'config'))) {
+    const m = /^remote\.(.+)\.url$/.exec(key);
+    if (m) urls[m[1]] = value;
+  }
+  return urls;
+}
+
+/** What fetching from `word` lists: the repository it names, where that is on this machine. */
+function sourceListing(word, all, dir, gitDir, root, via, byName = true) {
+  const named = byName && isWord(word) && !word.includes('/') && !word.includes(':');
+  if (dir === null || all || (named && !existsSync(at(dir, word)))) {
+    const urls = dir === null ? null : remoteUrls(dir, gitDir);
+    const wanted = all ? Object.values(urls ?? {}) : [urls?.[word]];
+    if (urls === null || wanted.includes(undefined))
+      return [place(null, `${via} from a remote whose URL the guard cannot read`, root)];
+    return wanted.flatMap((url) => sourceListing(url, false, dir, gitDir, root, via, false));
+  }
+  const top = localRepository(word, dir, root);
+  return top === undefined ? [] : [place(top, via, root)];
+}
 
 /** What one git call lists, from the directory it runs in and every option that moves that. */
 function gitListing(rest, cwd, root, env) {
@@ -657,7 +1111,7 @@ function gitListing(rest, cwd, root, env) {
     else if (a === '-c' || a.startsWith('--config-env')) {
       const setting = a === '-c' ? rest[++i] : optionValue(a);
       const probe = isWord(setting) && a !== '-c' ? setting.replace(/=.*/s, '=') : setting;
-      if (!isWord(probe) || !SAFE_CONFIG.test(probe))
+      if (!isWord(probe) || !safeConfig(probe))
         return [unread(`\`git ${a} ${isWord(setting) ? setting : '…'}\``, root)];
     } else if (a.startsWith('--git-dir')) gitDir = optionValue(a);
     else if (a.startsWith('--work-tree')) workTree = at(dir, optionValue(a));
@@ -667,17 +1121,64 @@ function gitListing(rest, cwd, root, env) {
   if (sub === undefined) return [];
   if (!isWord(sub)) return [unread('`git` running a subcommand named by a substitution', root)];
   const tail = rest.slice(i + 1);
+  // The work tree git reads, and the repository whose objects it reads: one place, unless a git
+  // directory or an object directory was named apart from where it runs.
   let top = topOf(dir, root);
   if (gitDir !== undefined) top = dir;
   if (workTree !== undefined) top = workTree;
+  const stores = [gitDir === undefined ? topOf(dir, root) : repositoryAt(dir, gitDir, root)];
+  for (const key of ['GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES']) {
+    if (!isWord(env[key])) continue;
+    for (const path of env[key].split(':').filter(Boolean))
+      stores.push(repositoryAt(dir, path, root));
+  }
   const via = `git ${sub}`;
-  if (GIT_NO_LISTING.has(sub)) {
-    const all = tail.some((a) => isWord(a) && (a === '--all' || /^-[a-zA-Z]*a/.test(a)));
-    return sub === 'commit' && all ? [place(top, 'git commit -a', root)] : [];
+  const programEnv = GIT_PROGRAM_ENV.find((key) => isWord(env[key]) && env[key] !== '');
+  if (programEnv) return [unread(`\`${via}\` under ${programEnv}`, root)];
+  const configEnv = envConfig(env).find((setting) => !safeConfig(setting));
+  if (configEnv !== undefined) return [unread(`\`${via}\` under a setting ${configEnv}`, root)];
+  const entries = gitReading({ sub, tail, dir, top, stores, gitDir, root, via });
+  const program = programRun(sub, tail, entries, dir, gitDir, env);
+  if (program !== null) return [unread(`\`${via}\` running ${program}`, root)];
+  const transport = remoteTransport(sub, tail, dir, gitDir, env);
+  if (transport !== null) return [unread(`\`${via}\` over ${transport}`, root)];
+  return entries;
+}
+
+/** What one git subcommand reads, once where it runs and whose objects it reads are known. */
+function gitReading({ sub, tail, dir, top, stores, gitDir, root, via }) {
+  const inStore = () => inRepository(stores, via, root);
+  const narrowed = (specs, base) =>
+    specs.length === 0 ? base : specs.flatMap((s) => pathspecDir(s, dir, top, via, root));
+  if (tail.some((a) => isWord(a) && /^--(upload-pack|receive-pack|exec)\b/.test(a)))
+    return [unread(`\`${via}\` handed a program to run`, root)];
+  if (sub === 'verify-commit' || sub === 'verify-tag') return [];
+  if (GIT_NO_LISTING.has(sub)) return templateListing(tail, dir, via, root);
+  if (sub === 'config') return configListing(tail, dir, root);
+  if (sub === 'log' || sub === 'reflog') {
+    const { specs, understood } = commitWords(sub === 'reflog' ? reflogTail(tail) : tail);
+    if (sub === 'reflog' && ['expire', 'delete', 'exists'].includes(tail[0])) return [];
+    return understood ? [] : narrowed(specs, inStore());
+  }
+  if (sub === 'rev-list') return commitWords(tail).understood ? [] : inStore();
+  if (sub === 'show') return showListing(tail, dir, top, stores, root);
+  if (sub === 'cat-file') return catFileListing(tail, dir, stores, root);
+  if (sub === 'clone' || sub === 'fetch' || sub === 'pull' || sub === 'remote') {
+    const reads = repositoryReads(sub, tail, dir, gitDir, root);
+    const merged = sub === 'pull' ? [place(top, via, root)] : [];
+    return [...reads, ...merged, ...templateListing(tail, dir, via, root)];
+  }
+  if (GIT_TREE_READERS.has(sub)) return narrowed(commitWords(tail).specs, inStore());
+  if (GIT_STORE_COPIERS.has(sub)) {
+    if (sub === 'archive' && tail.some((a) => isWord(a) && a.startsWith('--remote')))
+      return [unread('`git archive --remote`', root)];
+    return inStore();
   }
   if (tail.some((a) => isWord(a) && a.startsWith('--pathspec-from-file')))
     return [unread(`\`${via} --pathspec-from-file\``, root)];
   if (Object.hasOwn(GIT_FROM_HERE, sub)) {
+    // A git directory named apart from the work tree has no prefix here to narrow by.
+    if (gitDir !== undefined && !stores.includes(top)) return inStore();
     const specs = gitPathspecs(sub, tail, GIT_FROM_HERE[sub], dir);
     const base = sub === 'ls-tree' && tail.includes('--full-tree') ? top : dir;
     if (specs.length > 0) return specs.flatMap((s) => pathspecDir(s, base, top, via, root));
@@ -685,13 +1186,121 @@ function gitListing(rest, cwd, root, env) {
     const all = tail.some((a) => ['-A', '--all', '-u', '--update'].includes(a));
     return all ? [place(top, via, root)] : [];
   }
-  if (GIT_WHOLE.has(sub)) {
+  if (GIT_WORK_TREE.has(sub)) {
     const dash = tail.indexOf('--');
     const specs = dash === -1 ? [] : tail.slice(dash + 1);
-    if (specs.length === 0) return [place(top, via, root)];
-    return specs.flatMap((s) => pathspecDir(s, dir, top, via, root));
+    const whole = [...new Set([top, ...stores])].map((d) => place(d, via, root));
+    return narrowed(specs, whole);
   }
   return [unread(`\`${via}\``, root)];
+}
+
+/** `git reflog show` takes log's options; its other subcommands print no path. */
+function reflogTail(tail) {
+  return tail[0] === 'show' ? tail.slice(1) : tail;
+}
+
+/**
+ * `git config`: reading a value lists nothing; setting one that names a repository counts that
+ * repository, and setting one outside the settings that run no program counts as the root.
+ */
+function configListing(tail, dir, root) {
+  const words = tail.filter((a) => !isOption(a));
+  const reading = tail.some(
+    (a) => isWord(a) && /^(--get|--list|-l|--get-all|--get-regexp)/.test(a),
+  );
+  if (reading || words.length < 2) return [];
+  const [key, value] = words;
+  if (!isWord(key)) return [unread('`git config` setting a key named by a substitution', root)];
+  if (REPOSITORY_CONFIG.test(key)) {
+    const top = localRepository(value, dir, root);
+    return top === undefined ? [] : [place(top, `git config ${key}`, root)];
+  }
+  if (safeConfig(`${key}=${isWord(value) ? value : ''}`)) return [];
+  return [unread(`\`git config ${key}\``, root)];
+}
+
+/**
+ * `git show`: an object `REV:path` is that path, `REV:` the repository's top, and a `^{…}` peel the
+ * top; a commit is shown with its patch, which reads the repository, unless `-s` or `--no-patch`
+ * with options that print no path and no content.
+ */
+function showListing(tail, dir, top, stores, root) {
+  const { words, specs, understood } = commitWords(tail);
+  const quiet = understood && tail.some((a) => a === '-s' || a === '--no-patch');
+  const found = [];
+  let commits = words.length === 0;
+  for (const w of words) {
+    if (isWord(w) && w.includes(':') && !w.includes('^{'))
+      found.push(objectPlace(w, dir, stores[0], 'git show', root));
+    else if (!isWord(w) || w.includes('^{')) found.push(...inRepository(stores, 'git show', root));
+    else commits = true;
+  }
+  if (commits && !quiet) {
+    const whole = inRepository(stores, 'git show', root);
+    const narrow = specs.flatMap((s) => pathspecDir(s, dir, top, 'git show', root));
+    found.push(...(specs.length === 0 ? whole : narrow));
+  }
+  return found;
+}
+
+/** A listing of the whole repository whose objects git reads, once per store. */
+function inRepository(stores, via, root) {
+  return [...new Set(stores)].map((s) => place(s, via, root));
+}
+
+/** `git cat-file`: `-t`, `-s` and `-e` print no content; every other form reads each object. */
+function catFileListing(tail, dir, stores, root) {
+  if (tail.some((a) => isWord(a) && a.startsWith('--batch')))
+    return inRepository(stores, 'git cat-file --batch', root);
+  if (tail.some((a) => a === '-t' || a === '-s' || a === '-e')) return [];
+  const objects = tail.filter((a) => !isOption(a));
+  if (isWord(objects[0]) && /^(blob|tree|commit|tag)$/.test(objects[0])) objects.shift();
+  return objects.flatMap((o) =>
+    isWord(o) && o.includes(':') && !o.includes('^{')
+      ? [objectPlace(o, dir, stores[0], 'git cat-file', root)]
+      : inRepository(stores, 'git cat-file', root),
+  );
+}
+
+/** An object named `REV:path`: `path` from the top, or from where git runs when it opens `./`. */
+function objectPlace(object, dir, top, via, root) {
+  const path = object.slice(object.indexOf(':') + 1);
+  if (top === null || (dir === null && /^\.\.?(\/|$)/.test(path))) return place(null, via, root);
+  const from = /^\.\.?(\/|$)/.test(path) ? dir : top;
+  return place(path === '' ? top : at(from, path), `${via} ${object}`, root);
+}
+
+/**
+ * The repositories `clone`, `fetch`, `pull` and `remote add`/`set-url` read or register: each
+ * one on this machine counts as its top, a named remote by the URL its config holds.
+ */
+function repositoryReads(sub, tail, dir, gitDir, root) {
+  const valued = ['-b', '--branch', '-o', '--origin', '--depth', '-j', '--jobs', '-c', '--config'];
+  const words = [];
+  const found = [];
+  for (let k = 0; k < tail.length; k++) {
+    const a = tail[k];
+    if (!isOption(a)) words.push(a);
+    else if (/^--reference(-if-able)?/.test(a)) {
+      const value = a.includes('=') ? a.slice(a.indexOf('=') + 1) : tail[++k];
+      const top = localRepository(value, dir, root);
+      if (top !== undefined) found.push(place(top, `git ${sub} --reference`, root));
+    } else if (!a.includes('=') && [...valued, '--separate-git-dir', '--filter'].includes(a)) k++;
+  }
+  const via = `git ${sub}`;
+  if (sub === 'remote') {
+    if (!['add', 'set-url'].includes(words[0])) return found;
+    const top = localRepository(words.at(-1), dir, root);
+    return top === undefined ? found : [...found, place(top, `git remote ${words[0]}`, root)];
+  }
+  if (sub === 'clone') {
+    if (tail.includes('-u')) return [unread('`git clone -u`', root)];
+    const top = localRepository(words[0], dir, root);
+    return top === undefined ? found : [...found, place(top, via, root)];
+  }
+  const all = tail.some((a) => a === '--all' || a === '--multiple');
+  return [...found, ...sourceListing(words[0] ?? 'origin', all, dir, gitDir, root, via)];
 }
 
 /** The work tree a directory inside this repository belongs to: the root, as far as this reads. */
@@ -748,7 +1357,7 @@ function pathspecDir(spec, base, top, via, root) {
     if (magic.some((x) => x === '/' || x === 'top')) from = top;
     s = m[3];
   }
-  if (from === null) return [place(null, via, root)];
+  if (from === null || climbsAfterMagic(s)) return [place(null, via, root)];
   return [
     place(isAbsolute(s) ? resolve(globBase(s)) : resolve(from, globBase(s || '.')), via, root),
   ];
