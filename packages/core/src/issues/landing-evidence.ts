@@ -56,15 +56,22 @@ export const mergedLandingSchema = z
   .min(1, 'landing must name where the work landed — a URL, a CMS entry, a storefront resource')
   .max(MERGED_LANDING_MAX, `landing must be at most ${MERGED_LANDING_MAX} characters`);
 
-/** How work that did land is claimed on this shape, written once for every refusal naming it. */
-export function landingRoute(shape: LandingShape): string {
+/** How work that did land is claimed on this shape, written once for every refusal naming it.
+ *  `held` is the mark already on the row: the first stamp wins, so a bare one is cleared first. */
+export function landingRoute(shape: LandingShape, held: MergeMarkKind = 'unmarked'): string {
   if (shape === 'git') {
     return (
       'Where the work DID land outside the pipeline, claim it first with `forge_issues` ' +
       '`mark_merged` naming where it landed, then close.'
     );
   }
+  const clear =
+    held === 'asserted'
+      ? 'This issue already carries a mark naming nothing, and the first stamp wins, so `unmark` ' +
+        'it first (`forge_issues` `unmark`, or Unmark on the rail). '
+      : '';
   return (
+    clear +
     "This project's work lands outside git (kind `website`), so claim it with `forge_issues` " +
     '`mark_merged` carrying `data.landing` — the live URL, CMS entry or storefront resource the ' +
     'work now is (`landing` on `POST /api/issues/:id/merge`, or "Where it landed" on the issue\'s ' +

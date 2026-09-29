@@ -71,6 +71,14 @@ describe('the route a refusal names is the one the shape has', () => {
     expect(route).toContain('`data.landing`');
     expect(route).toContain('`landing` on `POST /api/issues/:id/merge`');
     expect(route).toContain('a commit is not asked for');
+    expect(route).not.toContain('`unmark`');
+  });
+
+  it('names unmark first where a bare mark already holds the row, since the first stamp wins', () => {
+    expect(landingRoute('outside_git', 'asserted')).toMatch(
+      /^This issue already carries .*`unmark`/,
+    );
+    expect(landingRoute('git', 'asserted')).not.toContain('`unmark`');
   });
 });
 

@@ -4882,7 +4882,7 @@
         },
         "issues_merged_landing_chk": {
           "name": "issues_merged_landing_chk",
-          "value": "\"issues\".\"merged_landing\" IS NULL OR (\"issues\".\"merged_at\" IS NOT NULL AND btrim(\"issues\".\"merged_landing\") <> '' AND char_length(\"issues\".\"merged_landing\") <= 2000)"
+          "value": "\"issues\".\"merged_landing\" IS NULL OR (\"issues\".\"merged_at\" IS NOT NULL AND \"issues\".\"merged_landing\" ~ '[^[:space:]]' AND char_length(\"issues\".\"merged_landing\") <= 2000)"
         }
       },
       "isRLSEnabled": false

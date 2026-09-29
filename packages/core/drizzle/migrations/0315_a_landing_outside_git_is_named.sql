@@ -9,4 +9,4 @@
 -- row's data moves, and the CHECK holds on every row today because no row carries a landing yet.
 -- Rollback: the column can stay unread, or `ALTER TABLE issues DROP COLUMN merged_landing`.
 ALTER TABLE "issues" ADD COLUMN "merged_landing" text;--> statement-breakpoint
-ALTER TABLE "issues" ADD CONSTRAINT "issues_merged_landing_chk" CHECK ("issues"."merged_landing" IS NULL OR ("issues"."merged_at" IS NOT NULL AND btrim("issues"."merged_landing") <> '' AND char_length("issues"."merged_landing") <= 2000));
+ALTER TABLE "issues" ADD CONSTRAINT "issues_merged_landing_chk" CHECK ("issues"."merged_landing" IS NULL OR ("issues"."merged_at" IS NOT NULL AND "issues"."merged_landing" ~ '[^[:space:]]' AND char_length("issues"."merged_landing") <= 2000));

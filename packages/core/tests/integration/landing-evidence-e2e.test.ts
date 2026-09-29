@@ -229,7 +229,18 @@ describe('a project whose work lands outside git (kind website)', () => {
     const refusal = await refusalOf(() => close(w, id));
     expect(refusal.code).toBe('CLOSE_REQUIRES_SHIPPED');
     expect(refusal.message).toContain('`mark_merged` carrying `data.landing`');
+    expect(refusal.message).toContain('`unmark` it first');
     expect((await stored(id)).status).toBe('awaiting_release');
+
+    // The remedy the refusal names, taken whole, is what closes it.
+    expect((await rest('DELETE', `/api/issues/${id}/merge`, w.token, {})).status).toBe(200);
+    const marked = await rest('POST', `/api/issues/${id}/merge`, w.token, {
+      target: 'ISS-49',
+      landing: LANDING,
+    });
+    expect((await marked.json()).mark).toBe('landed');
+    await close(w, id);
+    expect((await stored(id)).status).toBe('closed');
   });
 
   it('refuses the close of an issue with no mark at all, naming the same route', async () => {
@@ -392,6 +403,23 @@ describe('the landing field is refused malformed, at both doors and in the colum
     expect(viaTool.isError).toBe(true);
     expect(viaTool.text).toContain('landing');
     expect((await stored(id)).merged_at).toBeNull();
+  });
+
+  it.each([
+    ['a tab', '\t'],
+    ['a newline', '\n'],
+  ])('refuses a landing of only %s in the table itself', async (_what, landing) => {
+    const w = await world('website');
+    const id = await seedIssue(w);
+    const refusal = await refusalOf(() =>
+      harness.db.execute(
+        sql`UPDATE issues SET merged_at = now(), merged_landing = ${landing} WHERE id = ${id}`,
+      ),
+    );
+    const chain = [refusal.message, String((refusal as { cause?: unknown }).cause ?? '')].join(
+      '\n',
+    );
+    expect(chain).toContain('issues_merged_landing_chk');
   });
 
   it('refuses a landing with no merged_at in the table itself, whatever wrote it', async () => {

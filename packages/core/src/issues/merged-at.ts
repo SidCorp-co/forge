@@ -5,7 +5,7 @@ import {
   landingShortfall,
   readLandingEvidence,
 } from './landing-evidence.js';
-import type { MergeRecordExecutor } from './merge-record.js';
+import { type MergeMarkKind, type MergeRecordExecutor, mergeMarkKindOf } from './merge-record.js';
 
 /** The status an issue stands at while its release is waiting to be pressed. */
 export const BASE_MERGE_STATE: IssueStatus = 'awaiting_release';
@@ -17,11 +17,11 @@ export interface ShippedRuleRefusal {
 }
 
 /** The sentence every close refusal carries, naming the route this project's shape has. */
-export function closedMeansShipped(shape: LandingShape): string {
+export function closedMeansShipped(shape: LandingShape, held?: MergeMarkKind): string {
   return (
     '`closed` means the work shipped. Use `dropped` for work that turned out not to be work — ' +
     'a note, a question, a duplicate, something already done — which is terminal without the claim ' +
-    `and releases every \`blocks\` dependent the same way. ${landingRoute(shape)}`
+    `and releases every \`blocks\` dependent the same way. ${landingRoute(shape, held)}`
   );
 }
 
@@ -41,7 +41,7 @@ export async function refuseUnshippedClose(
   }
   const { columns, shape } = evidence;
   return {
-    detail: `${landingShortfall(columns, shape)}, so nothing on it shows where the work landed. ${closedMeansShipped(shape)}`,
+    detail: `${landingShortfall(columns, shape)}, so nothing on it shows where the work landed. ${closedMeansShipped(shape, mergeMarkKindOf(columns))}`,
     details: { requires: 'mergedLanding', shape, useInstead: 'dropped' },
   };
 }

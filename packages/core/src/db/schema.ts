@@ -1080,7 +1080,7 @@ export const issues = pgTable(
     ),
     mergedLandingChk: check(
       'issues_merged_landing_chk',
-      sql`${t.mergedLanding} IS NULL OR (${t.mergedAt} IS NOT NULL AND btrim(${t.mergedLanding}) <> '' AND char_length(${t.mergedLanding}) <= 2000)`,
+      sql`${t.mergedLanding} IS NULL OR (${t.mergedAt} IS NOT NULL AND ${t.mergedLanding} ~ '[^[:space:]]' AND char_length(${t.mergedLanding}) <= 2000)`,
     ),
     projectIssSeqUq: uniqueIndex('issues_project_iss_seq_uq').on(t.projectId, t.issSeq),
     projectStatusIdx: index('issues_project_status_idx').on(t.projectId, t.status),
