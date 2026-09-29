@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkSet, floorOf, newEntries, readJournal } from './migration-order.mjs';
+import { checkSet, floorOf, newEntries, readJournal, readOpenSet } from './migration-order.mjs';
 
 const DAY = 86_400_000;
 
@@ -258,5 +258,40 @@ describe('readJournal', () => {
     ['{"entries":[{"idx":1,"tag":"a"}]}', /holds an entry without idx, when and tag: \{"idx":1/],
   ])('names what is wrong with %s', (text, why) => {
     expect(readJournal(text, 'x').problem).toMatch(why);
+  });
+});
+
+describe('readOpenSet', () => {
+  const journal = 'db/meta/_journal.json';
+  const held = JSON.stringify({ entries: [at(5, 5 * DAY, '0005_outside')] });
+  // origin/outside was merged into origin/main after the window's base B, so it is an ancestor of
+  // the moved ref and not of B.
+  const git = (args) => {
+    if (args[0] === 'for-each-ref') return 'origin/main\norigin/outside';
+    if (args[0] === 'merge-base') return args[3] === 'origin/main' ? '' : null;
+    if (args[0] === 'ls-tree') return journal;
+    if (args[0] === 'show') return held;
+    return null;
+  };
+  const read = (baseCommit) =>
+    readOpenSet({
+      git,
+      journal,
+      baseRef: 'origin/main',
+      baseCommit,
+      fetch: false,
+      isOurs: () => false,
+      parse: (text) => JSON.parse(text).entries,
+      afterFetch: () => [],
+    });
+
+  it('judges a branch open against the commit it is given, not wherever the base ref has moved', () => {
+    expect(read('B').open).toEqual([
+      { branch: 'origin/outside', entries: [at(5, 5 * DAY, '0005_outside')] },
+    ]);
+  });
+
+  it('skips a branch already on the base commit', () => {
+    expect(read('origin/main').open).toEqual([]);
   });
 });

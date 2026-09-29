@@ -143,6 +143,7 @@ export function prepareWindow({ repoDir, manifest, replay }) {
       git: trimmed,
       journal,
       baseRef,
+      baseCommit: baseSha,
       fetch: false,
       isOurs: memberRefs.has.bind(memberRefs),
       parse: entriesOf,

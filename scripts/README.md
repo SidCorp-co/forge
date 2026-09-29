@@ -332,8 +332,10 @@ Every check declares a `layer` and, in `reads`, what it reads; `verify` exits `2
 does not (`lib/verify-layers.mjs:unlayered`). The partition is by what a check measures, never by
 its name or its cost:
 
-- **`entry`** — a verdict on each file from that file alone, or a read of one declared file. A
-  change cannot turn it red anywhere but in what it touched, so the developer's own run pays it.
+- **`entry`** — a verdict on each file from that file alone, or a read of the fixed files the check
+  names by path (`ci-parity` reads two: `ci.yml` and the setup-workspace composite, both under the
+  ineligible `.github/**`). A change cannot turn it red anywhere but in what it touched, so the
+  developer's own run pays it.
   A check declaring a `scoped` form runs that over the change: `comment-budget` lints the changed
   files with `--changed` instead of 29 seconds of the tree with `--all`. One without runs over the
   tree, as the whole gate does, and on a base the whole gate left green it can only report what the
