@@ -124,7 +124,6 @@ export async function acceptReleaseBatchFinish(
     if (!(run.status === 'completed' && (left?.n ?? 0) === 0)) {
       const verification = await assertFinishable(runId, run);
       const before = (run.metadata as { commitBefore?: unknown } | null)?.commitBefore;
-      // With no probe there is nothing to compare, so no claimless finish is refused for it.
       if (verification.kind === 'probed' && commit === null && typeof before !== 'string') {
         throw new ReleaseNotVerifiedError(NOTHING_TO_COMPARE, null);
       }
@@ -324,7 +323,7 @@ export async function runReleaseBatchFinish(
   try {
     await finishReleaseBatch(runId, record.requestedBy, {
       commit: record.commit ?? undefined,
-      alreadyVerified: record.state === 'closing',
+      alreadyVerified: record.state === 'closing' && record.verification !== 'unverified',
       whileVerifying: () => refuseIfAborted(runId),
       onVerified: async (verification) => {
         await refuseIfAborted(runId);

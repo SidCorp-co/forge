@@ -39,8 +39,8 @@ export interface ReleaseFinishRecord {
   closed: string[] | null;
   failed: Array<{ id: string; reason: string }> | null;
   refusal: FinishRefusal | null;
-  /** How the roster's close was proved, once that is known; `unverified` is a close no probe read
-   *  (ISS-1321). `null` before the attempt got that far, and on records written before the field. */
+  /** How the close was proved (ISS-1321); a resume re-reads an `unverified` one. `null` before
+   *  that is known, and on older records, whose `closing` was only ever reached by a green probe. */
   verification: ReleaseVerification | null;
   finishedAt: string | null;
 }

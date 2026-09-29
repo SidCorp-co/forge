@@ -124,7 +124,7 @@ export function closeVerification(channels: readonly ReleaseChannel[]): CloseVer
  *  than met as a thrown `new URL` mid-verify. */
 export function finishVerification(channels: readonly ReleaseChannel[]): CloseVerification {
   const verification = closeVerification(channels);
-  const urls = verification.kind === 'probed' ? invalidProbeUrls(verification.cfg) : [];
+  const urls = channels.flatMap((c) => (c.verify ? invalidProbeUrls(c.verify) : []));
   if (urls.length > 0) throw new ReleaseProbesUnreadableError(urls);
   return verification;
 }
