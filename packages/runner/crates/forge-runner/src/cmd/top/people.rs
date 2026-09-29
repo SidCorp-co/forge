@@ -214,7 +214,7 @@ async fn all_questions(pat: &CoreClient, project_id: &str) -> Read<Questions> {
     let mut cursor: Option<String> = None;
     for _ in 0..PAGES {
         let route = match &cursor {
-            Some(c) => format!("{base}&cursor={c}"),
+            Some(c) => format!("{base}&cursor={}", query_value(c)),
             None => base.clone(),
         };
         let v = get_json(pat, &route).await?;
@@ -352,17 +352,62 @@ pub fn blockers(route: &str, v: &Value) -> Read<Vec<Blocker>> {
         .collect()
 }
 
-/// `YYYY-MM-DDTHH:MM:SS[.fff](Z|+00:00)` → wall-clock ms. Anything else is `None`.
+/// `s` as one query-string value: every byte outside RFC 3986's unreserved set
+/// percent-encoded, so a cursor carrying `+`, `&` or `=` reaches core whole.
+pub fn query_value(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        if b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.' | b'~') {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
+}
+
+/// A run of ASCII digits of exactly `n`, as a number.
+fn digits(s: &str, n: usize) -> Option<i64> {
+    (s.len() == n && s.bytes().all(|b| b.is_ascii_digit()))
+        .then(|| s.parse().ok())
+        .flatten()
+}
+
+/// `YYYY-MM-DDTHH:MM:SS[.fff…](Z|+00:00)` → wall-clock ms. Anything else —
+/// a field out of its range, a day the month does not have — is `None`, so a
+/// stamp core could not have written is never turned into an age.
 pub fn parse_utc_ms(s: &str) -> Option<i64> {
     let (date, rest) = s.split_once('T')?;
-    let mut d = date.splitn(3, '-').map(|p| p.parse::<i64>().ok());
-    let (y, m, day) = (d.next()??, d.next()??, d.next()??);
+    let mut d = date.splitn(3, '-');
+    let (y, m, day) = (
+        digits(d.next()?, 4)?,
+        digits(d.next()?, 2)?,
+        digits(d.next()?, 2)?,
+    );
     let rest = rest
         .strip_suffix('Z')
         .or_else(|| rest.strip_suffix("+00:00"))?;
     let (hms, frac) = rest.split_once('.').unwrap_or((rest, "0"));
-    let mut t = hms.splitn(3, ':').map(|p| p.parse::<i64>().ok());
-    let (hh, mm, ss) = (t.next()??, t.next()??, t.next()??);
+    let mut t = hms.splitn(3, ':');
+    let (hh, mm, ss) = (
+        digits(t.next()?, 2)?,
+        digits(t.next()?, 2)?,
+        digits(t.next()?, 2)?,
+    );
+    let leap = (y % 4 == 0 && y % 100 != 0) || y % 400 == 0;
+    let month_days = match m {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if leap => 29,
+        2 => 28,
+        _ => return None,
+    };
+    if !(1..=month_days).contains(&day) || hh > 23 || mm > 59 || ss > 59 {
+        return None;
+    }
+    if frac.is_empty() || !frac.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
     let millis: i64 = format!("{frac:0<3}").get(..3)?.parse().ok()?;
     // Days from the civil date (Howard Hinnant's algorithm).
     let y = if m <= 2 { y - 1 } else { y };
@@ -546,5 +591,44 @@ mod tests {
             Some(1_790_726_400_000)
         );
         assert_eq!(parse_utc_ms("yesterday"), None);
+        assert_eq!(
+            parse_utc_ms("2028-02-29T00:00:00Z"),
+            Some(1_835_395_200_000)
+        );
+    }
+
+    /// Whole-set consult at c0d0604, F4: a stamp shaped like a time but naming
+    /// none is refused, so no age is made up from it.
+    #[test]
+    fn a_stamp_out_of_range_is_no_time() {
+        for bad in [
+            "2026-13-01T00:00:00Z",
+            "2026-00-01T00:00:00Z",
+            "2026-04-31T00:00:00Z",
+            "2027-02-29T00:00:00Z",
+            "2026-99-99T99:99:99Z",
+            "2026-09-30T24:00:00Z",
+            "2026-09-30T00:60:00Z",
+            "2026-09-30T00:00:60Z",
+            "2026-09-30T00:00:00.12xZ",
+            "2026-09-30T00:00:00.Z",
+            "2026-9-30T00:00:00Z",
+            "+2026-09-30T00:00:00Z",
+        ] {
+            assert_eq!(parse_utc_ms(bad), None, "{bad}");
+        }
+        let q = serde_json::json!({"questions": [{"blockerKind": "human", "createdAt": "2026-99-99T99:99:99Z", "askedAt": "", "prompt": "x"}]});
+        assert!(questions("/q", &q)
+            .unwrap_err()
+            .to_string()
+            .starts_with("UNREADABLE — GET /q"));
+    }
+
+    /// Whole-set consult at c0d0604, F3: a cursor goes back to core whole.
+    #[test]
+    fn a_cursor_is_sent_as_one_query_value() {
+        assert_eq!(query_value("MjAyNi0wOS0zMHxhYmM"), "MjAyNi0wOS0zMHxhYmM");
+        assert_eq!(query_value("a+b&c=="), "a%2Bb%26c%3D%3D");
+        assert_eq!(query_value("x/y z"), "x%2Fy%20z");
     }
 }

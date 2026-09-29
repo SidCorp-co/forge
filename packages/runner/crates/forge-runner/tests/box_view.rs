@@ -506,6 +506,44 @@ fn a_project_list_core_refuses_is_said_to_be_partial() {
         ),
         "no slug from core is not a match: {projects}"
     );
+    // Whole-set consult at c0d0604, F2: the daemon names a master pane from
+    // core's slug alone. With that slug unread, the pane is the one the ledger
+    // recorded, or it cannot be named — never `forge-master-<binding key>`.
+    assert!(
+        projects.contains("master   forge-master-alpha "),
+        "the ledger's recorded pane: {projects}"
+    );
+    assert!(
+        projects.contains(
+            "master   its pane cannot be named: core's slug for this project is unreadable"
+        ),
+        "{projects}"
+    );
+    assert!(
+        !projects.contains("forge-master-beta "),
+        "a pane guessed from the binding key: {projects}"
+    );
+}
+
+/// Whole-set consult at c0d0604, F1: no project is claimed only where both
+/// sources that name projects were read.
+#[test]
+fn an_empty_project_list_is_claimed_only_from_sources_read() {
+    let core = fake_core("401 Unauthorized");
+    let b = plant(&core.url);
+    let cfg = b.root.join("c/forge-runner/config.toml");
+    std::fs::write(&cfg, format!("core_url = \"{}\"\n", core.url)).unwrap();
+    let text = String::from_utf8_lossy(&top(&b, &["--once"]).stdout).into_owned();
+    let projects = section(&text, "PROJECTS");
+    assert!(
+        projects
+            .contains("none bound here — PARTIAL: whether core serves this box any cannot be seen"),
+        "{projects}"
+    );
+    assert!(
+        !projects.contains("no project is bound here or served to this box"),
+        "{projects}"
+    );
 }
 
 /// Criterion 22, for the sources a box can lose: the ledger, the pool-job

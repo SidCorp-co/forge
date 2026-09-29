@@ -63,9 +63,15 @@ fn projects(s: &Snapshot, out: &mut Vec<String>) {
         ),
     });
     if s.projects.is_empty() {
-        out.push(format!(
-            "{I1}no project is bound here or served to this box"
-        ));
+        out.push(match (&s.config, &s.discovery) {
+            (Ok(_), Ok(_)) => format!("{I1}no project is bound here or served to this box"),
+            (Ok(_), Err(_)) => format!(
+                "{I1}none bound here — PARTIAL: whether core serves this box any cannot be seen, above"
+            ),
+            (Err(_), _) => format!(
+                "{I1}no project can be listed — PARTIAL: the bindings cannot be read, above"
+            ),
+        });
     }
     let runs = runs_by_project(s);
     for p in &s.projects {
@@ -137,8 +143,13 @@ fn project(s: &Snapshot, p: &Project, runs: Option<&Vec<&Run>>, out: &mut Vec<St
 }
 
 fn master(s: &Snapshot, p: &Project, out: &mut Vec<String>) {
-    let slug = p.core_slug.as_deref().unwrap_or(&p.key);
-    let pane = terminal::session_name(terminal::MASTER_PREFIX, slug);
+    let pane = match master_pane(s, p) {
+        Ok(pane) => pane,
+        Err(why) => {
+            out.push(format!("{I2}master   {why}"));
+            return ledger_master(s, p, out);
+        }
+    };
     out.push(match &s.sessions {
         Err(e) => format!("{I2}master   {pane}: {e}"),
         Ok(sessions) => match sessions.get(&pane) {
@@ -149,6 +160,36 @@ fn master(s: &Snapshot, p: &Project, out: &mut Vec<String>) {
             None => format!("{I2}master   {pane} not running ← tmux list-sessions"),
         },
     });
+    ledger_master(s, p, out);
+}
+
+/// The name the daemon gives this project's master pane: `forge-master-` and
+/// core's slug for it (`daemon/master.rs`, from the runner row). Where that
+/// slug cannot be read, the name the ledger recorded for the pane it placed,
+/// and where neither can, why — a binding's own key is not the pane's name.
+fn master_pane(s: &Snapshot, p: &Project) -> Result<String, String> {
+    if let Some(slug) = p.core_slug.as_deref() {
+        return Ok(terminal::session_name(terminal::MASTER_PREFIX, slug));
+    }
+    let recorded = p.project_id.as_deref().and_then(|id| {
+        s.ledger
+            .as_ref()
+            .ok()
+            .and_then(|v| v.masters.get(id))
+            .map(|m| m.pane_name.clone())
+    });
+    match (recorded, &s.discovery) {
+        (Some(pane), _) => Ok(pane),
+        (None, Err(_)) => Err(
+            "its pane cannot be named: core's slug for this project is unreadable, above, and the ledger records no master for it".into(),
+        ),
+        (None, Ok(_)) => Err(
+            "no pane — core does not serve this project to this box, so the daemon places no master for it".into(),
+        ),
+    }
+}
+
+fn ledger_master(s: &Snapshot, p: &Project, out: &mut Vec<String>) {
     let Ok(view) = &s.ledger else { return };
     let Some(id) = p.project_id.as_deref() else {
         return;
@@ -207,8 +248,7 @@ fn skill_line(s: &Snapshot, p: &Project, k: &Skill) -> String {
 }
 
 fn pane_started_ms(s: &Snapshot, p: &Project) -> Option<i64> {
-    let slug = p.core_slug.as_deref().unwrap_or(&p.key);
-    let pane = terminal::session_name(terminal::MASTER_PREFIX, slug);
+    let pane = master_pane(s, p).ok()?;
     s.sessions.as_ref().ok()?.get(&pane).map(|c| c * 1000)
 }
 
