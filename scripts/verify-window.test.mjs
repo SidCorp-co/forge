@@ -970,6 +970,32 @@ describe('validate', () => {
   });
 });
 
+describe('a window id already pushed', () => {
+  it('is refused on a fresh assemble, so its branch cannot hide from the open set', () => {
+    const c = clone('reused-window');
+    git(seed, 'push', '-q', 'origin', `${heads.m4}:refs/heads/chore/verify-window-w-reused`);
+    const w = windowFiles('w-reused', [['ISS-4', 'ISS-4-after', heads.m4]], green(heads.m4));
+    try {
+      const r = run(
+        c,
+        'assemble',
+        '--window',
+        w.manifest,
+        '--checks',
+        w.checksFile,
+        '--tree',
+        w.tree,
+      );
+      expect(r.status).toBe(2);
+      expect(r.stderr).toContain(
+        'origin/chore/verify-window-w-reused already exists, and a fresh window cannot tell it from a stale one',
+      );
+    } finally {
+      git(seed, 'push', '-q', 'origin', '--delete', 'chore/verify-window-w-reused');
+    }
+  });
+});
+
 describe('the push a rebuilt window prints', () => {
   it('replaces the pushed chain under a lease that refuses once anyone moved the branch', () => {
     const d = branch('ISS-18-d', { 'src/d18.txt': 'd\n' });

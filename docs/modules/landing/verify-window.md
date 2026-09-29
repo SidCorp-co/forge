@@ -32,6 +32,8 @@ branch, head, arrival time and priority.
    release train's keys (`docs/proposals/release-train.md`), which this project has not yet set, so
    a manifest declaring none is refused and there is no default.
 3. **`assemble`** — a worktree at the base commit, and one `git merge --no-ff` per member in order.
+   A window id whose `chore/verify-window-<id>` branch is already pushed is refused: the window's
+   own branch is left out of the open set, and a fresh window cannot tell its own from a stale one.
    What the repository orders across branches is re-derived as each member enters (below). A
    path the declarations name as a union — `CHANGELOG.md`, where every pull request adds its entry
    at the same place — takes the member's added lines beside the combination's, each after the

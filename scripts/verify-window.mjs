@@ -110,8 +110,8 @@ function removeTree(dir) {
   g.must(['worktree', 'remove', '--force', dir]);
 }
 
-function build(dir, m = manifest, replay = undefined) {
-  const r = assemble({ repoDir, manifest: m, treeDir: dir, readCheck, replay });
+function build(dir, m = manifest, replay = undefined, rebuild = false) {
+  const r = assemble({ repoDir, manifest: m, treeDir: dir, readCheck, replay, rebuild });
   if (r.refusal) die(r.refusal);
   return r.ledger;
 }
@@ -198,7 +198,7 @@ if (verb === 'isolate') {
   };
   const before = recorded.attributions;
   removeTree(treeDir);
-  const ledger = build(treeDir, next);
+  const ledger = build(treeDir, next, undefined, true);
   writeFileSync(manifestPath, `${JSON.stringify(next, null, 2)}\n`);
   ledger.attributions = before;
   ledger.passes = recorded.passes ?? [];

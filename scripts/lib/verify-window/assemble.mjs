@@ -110,7 +110,7 @@ function enter({ t, config, member, open, landed, outside, window }) {
  * never wherever the remote has moved since, and every branch of that window.
  * @returns {{ refusal: string } | object}
  */
-export function prepareWindow({ repoDir, manifest, replay }) {
+export function prepareWindow({ repoDir, manifest, replay, rebuild = false }) {
   const g = gitIn(repoDir);
   const trimmed = (args) => g.run(args)?.trim() ?? null;
   if (
@@ -130,6 +130,12 @@ export function prepareWindow({ repoDir, manifest, replay }) {
   const read = parseConfig(showAt(g, baseSha, CONFIG_PATH), `${CONFIG_PATH} at ${baseSha}`);
   if (read.refusal) return { refusal: read.refusal };
   const config = read.config;
+  const pushed = `origin/${windowBranch(manifest.window)}`;
+  if (!replay && !rebuild && trimmed(['rev-parse', '--verify', '--quiet', pushed]) !== null) {
+    return {
+      refusal: `${pushed} already exists, and a fresh window cannot tell it from a stale one: its migrations would be left out of the open set. Name a new window id, or rebuild this one with isolate`,
+    };
+  }
   const journal = `${config.migrationsDir}/meta/_journal.json`;
   const inWindow = [
     windowBranch(manifest.window),
@@ -175,8 +181,8 @@ export function prepareWindow({ repoDir, manifest, replay }) {
  *   replay?: { base: string, branches: string[] } }} input
  * @returns {{ refusal: string } | { ledger: object }}
  */
-export function assemble({ repoDir, manifest, treeDir, readCheck, replay }) {
-  const ready = prepareWindow({ repoDir, manifest, replay });
+export function assemble({ repoDir, manifest, treeDir, readCheck, replay, rebuild }) {
+  const ready = prepareWindow({ repoDir, manifest, replay, rebuild });
   if (ready.refusal) return ready;
   const { g, baseSha, config, open } = ready;
   if (existsSync(treeDir))
