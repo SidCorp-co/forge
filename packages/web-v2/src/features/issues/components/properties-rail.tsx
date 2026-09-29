@@ -22,6 +22,7 @@ import type {
   IssueDetail,
   IssuePriority,
   IssueStatus,
+  MergeMarkKind,
 } from "../types";
 
 function fmtDate(iso: string): string {
@@ -73,10 +74,26 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 function MergeMarkBadge({
   mark,
   commitSha,
+  landing,
 }: {
-  mark?: "unmarked" | "asserted" | "observed";
+  mark?: MergeMarkKind;
   commitSha?: string | null;
+  landing?: string | null;
 }) {
+  if (mark === "landed") {
+    // ISS-1327 — the landing is the evidence, so it is shown as text rather than kept on a hover
+    // that keyboard, touch and screen-reader users never reach.
+    return (
+      <>
+        <Badge tone="cobalt">landed</Badge>
+        {landing && (
+          <span className="fg-body-sm min-w-0 break-all font-mono text-muted" data-testid="merged-landing">
+            {landing}
+          </span>
+        )}
+      </>
+    );
+  }
   if (mark === "observed") {
     return (
       <span title={`Forge observed this merge at ${commitSha ?? "a commit it recorded"}`}>
@@ -272,12 +289,17 @@ export function PropertiesRail({
         <Row label="Merged">
           <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
             <span className="fg-body-sm whitespace-nowrap font-mono text-muted">{fmtDate(issue.mergedAt)}</span>
-            <MergeMarkBadge mark={issue.mergeMark} commitSha={issue.mergedCommitSha} />
+            <MergeMarkBadge
+              mark={issue.mergeMark}
+              commitSha={issue.mergedCommitSha}
+              landing={issue.mergedLanding}
+            />
             {canMarkMerged && (
               <MergeMarkerControl
                 issueId={issue.id}
                 mergedAt={issue.mergedAt}
                 suggestedTarget={issue.displayId}
+                landingShape={issue.landingShape}
               />
             )}
           </div>
@@ -315,7 +337,12 @@ export function PropertiesRail({
               </Button>
             )}
             {offerMerge && (
-              <MergeMarkerControl issueId={issue.id} mergedAt={null} suggestedTarget={issue.displayId} />
+              <MergeMarkerControl
+                issueId={issue.id}
+                mergedAt={null}
+                suggestedTarget={issue.displayId}
+                landingShape={issue.landingShape}
+              />
             )}
           </div>
         </Row>

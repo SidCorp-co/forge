@@ -10,8 +10,9 @@ function buildMockExecutor(row: Record<string, unknown> | undefined): {
   const updateCall = vi.fn();
   const select = vi.fn().mockImplementation((...args: unknown[]) => {
     readCall(...args);
+    const limited = { limit: async () => (row ? [row] : []) };
     return {
-      from: () => ({ where: () => ({ limit: async () => (row ? [row] : []) }) }),
+      from: () => ({ innerJoin: () => ({ where: () => limited }), where: () => limited }),
     };
   });
   const update = vi.fn().mockImplementation(() => {
@@ -23,8 +24,16 @@ function buildMockExecutor(row: Record<string, unknown> | undefined): {
   return { executor, readCall, updateCall };
 }
 
-const SHIPPED = { mergedAt: new Date('2026-09-18T00:00:00Z') };
-const UNSHIPPED = { mergedAt: null };
+const AT = new Date('2026-09-18T00:00:00Z');
+const mark = (kind: string, over: Record<string, unknown> = {}) => ({
+  mergedAt: null,
+  mergedCommitSha: null,
+  mergedLanding: null,
+  kind,
+  ...over,
+});
+const SHIPPED = mark('standard', { mergedAt: AT });
+const UNSHIPPED = mark('standard');
 
 describe('refuseUnshippedClose — the statuses it does not judge', () => {
   it.each([
@@ -43,7 +52,7 @@ describe('refuseUnshippedClose — the statuses it does not judge', () => {
   });
 });
 
-describe('refuseUnshippedClose — a close', () => {
+describe('refuseUnshippedClose — a close on a project that lands in git', () => {
   it('permits a close on an issue that carries merged_at', async () => {
     const { executor } = buildMockExecutor(SHIPPED);
     expect(
@@ -57,7 +66,9 @@ describe('refuseUnshippedClose — a close', () => {
     expect(refusal).not.toBeNull();
     expect(refusal?.detail).toContain('nothing on it shows the work shipped');
     expect(refusal?.detail).toContain('`dropped`');
-    expect(refusal?.details).toMatchObject({ requires: 'mergedAt', useInstead: 'dropped' });
+    expect(refusal?.detail).toContain('`mark_merged` naming where it landed');
+    expect(refusal?.detail).not.toContain('landing');
+    expect(refusal?.details).toEqual({ requires: 'mergedAt', useInstead: 'dropped' });
   });
 
   it('refuses a close on an issue the read cannot find, rather than letting it through', async () => {
@@ -74,5 +85,52 @@ describe('refuseUnshippedClose — a close', () => {
     await refuseUnshippedClose(second, { issueId: 'iss-1', toStatus: 'closed' });
     expect(updateCall).not.toHaveBeenCalled();
     expect(secondUpdate).not.toHaveBeenCalled();
+  });
+});
+
+describe('refuseUnshippedClose — a close on a project whose work lands outside git', () => {
+  it('permits a close on a mark naming where the work landed', async () => {
+    const { executor } = buildMockExecutor(
+      mark('website', { mergedAt: AT, mergedLanding: 'https://shop.example/products/a' }),
+    );
+    expect(
+      await refuseUnshippedClose(executor, { issueId: 'iss-1', toStatus: 'closed' }),
+    ).toBeNull();
+  });
+
+  it('permits a close on a merge Forge observed', async () => {
+    const { executor } = buildMockExecutor(
+      mark('website', { mergedAt: AT, mergedCommitSha: 'abc1234' }),
+    );
+    expect(
+      await refuseUnshippedClose(executor, { issueId: 'iss-1', toStatus: 'closed' }),
+    ).toBeNull();
+  });
+
+  it('refuses a bare timestamp, naming data.landing as the route', async () => {
+    const { executor } = buildMockExecutor(mark('website', { mergedAt: AT }));
+    const refusal = await refuseUnshippedClose(executor, { issueId: 'iss-1', toStatus: 'closed' });
+    expect(refusal?.detail).toContain('a CLAIM Forge did not observe');
+    expect(refusal?.detail).toContain('`data.landing`');
+    expect(refusal?.details).toEqual({
+      requires: 'mergedLanding',
+      shape: 'outside_git',
+      useInstead: 'dropped',
+    });
+  });
+
+  it('refuses no mark at all with the same route', async () => {
+    const { executor } = buildMockExecutor(mark('website'));
+    const refusal = await refuseUnshippedClose(executor, { issueId: 'iss-1', toStatus: 'closed' });
+    expect(refusal?.detail).toContain('no merged mark');
+    expect(refusal?.detail).toContain('`data.landing`');
+    expect(refusal?.details).toMatchObject({ requires: 'mergedLanding' });
+  });
+
+  it('refuses by name a project kind nothing writes, rather than guessing its shape', async () => {
+    const { executor } = buildMockExecutor(mark('storefront', { mergedAt: AT }));
+    await expect(
+      refuseUnshippedClose(executor, { issueId: 'iss-1', toStatus: 'closed' }),
+    ).rejects.toThrow('project kind `storefront` is not one of');
   });
 });

@@ -17,7 +17,12 @@ const USER_ID = '44444444-4444-4444-8444-444444444444';
 const AT = new Date('2026-09-20T14:59:37.646Z');
 const OBSERVED_SHA = '9a78b0c93f1a2b3c4d5e6f708192a3b4c5d6e7f8';
 
-function issueRow(id: string, sha: string | null, at: Date | null = AT) {
+function issueRow(
+  id: string,
+  sha: string | null,
+  at: Date | null = AT,
+  landing: string | null = null,
+) {
   return {
     id,
     projectId: PROJECT_ID,
@@ -38,6 +43,7 @@ function issueRow(id: string, sha: string | null, at: Date | null = AT) {
     reopenCount: 0,
     mergedAt: at,
     mergedCommitSha: sha,
+    mergedLanding: landing,
     createdAt: AT,
     updatedAt: AT,
   };
@@ -112,6 +118,12 @@ vi.mock('../../pipeline/work-evidence.js', () => ({
   collectWorkEvidence: async () => ({ handoffCommitSha: null }),
 }));
 vi.mock('../../pipeline/hooks.js', () => ({ hooks: { emit: async () => undefined } }));
+/** The shape `landing-evidence.ts` reads off the project's kind, set per case. */
+let shape: 'git' | 'outside_git' = 'git';
+vi.mock('../../issues/landing-evidence.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../issues/landing-evidence.js')>()),
+  readLandingShape: async () => shape,
+}));
 
 const { forgeIssuesTool } = await import('./forge-issues.js');
 const { forgeIssuesDescription } = await import('./forge-issues-description.js');
@@ -135,16 +147,17 @@ const call = (args: Record<string, unknown>) =>
 function asAsserted(sha: string | null = null) {
   stored = issueRow(ISSUE_ID, sha);
   projectionRows = [];
-  stampedRows = [{ mergedAt: AT, mergedCommitSha: sha }];
+  stampedRows = [{ mergedAt: AT, mergedCommitSha: sha, mergedLanding: null }];
 }
 
 function asObserved(sha = OBSERVED_SHA) {
   stored = issueRow(ISSUE_ID, sha);
   projectionRows = [{ sha, at: AT }];
-  stampedRows = [{ mergedAt: AT, mergedCommitSha: sha }];
+  stampedRows = [{ mergedAt: AT, mergedCommitSha: sha, mergedLanding: null }];
 }
 
 beforeEach(() => {
+  shape = 'git';
   asAsserted();
   listRows = [];
   setPayloads.length = 0;
@@ -277,5 +290,52 @@ describe('what the tool description tells an agent about the column', () => {
       data: { issueId: ISSUE_ID, target: 'base', commit: 'abc1234' },
     });
     for (const p of setPayloads) expect(p).not.toHaveProperty('mergedCommitSha');
+  });
+});
+
+describe('forge_issues on a project whose work lands outside git (ISS-1327)', () => {
+  const LANDING = 'https://mowmentbrand.com/products/linen-tee';
+
+  it('marks the issue landed when mark_merged carries data.landing', async () => {
+    shape = 'outside_git';
+    stored = issueRow(ISSUE_ID, null, AT, LANDING);
+    stampedRows = [{ mergedAt: AT, mergedCommitSha: null, mergedLanding: LANDING }];
+    const answer = await call({
+      action: 'mark_merged',
+      data: { issueId: ISSUE_ID, target: 'prod', landing: LANDING },
+    });
+    expect(answer.mark).toBe('landed');
+    expect(setPayloads.some((p) => p.mergedLanding === LANDING)).toBe(true);
+  });
+
+  it('answers get with mergeMark landed and the landing itself', async () => {
+    stored = issueRow(ISSUE_ID, null, AT, LANDING);
+    const got = await call({ action: 'get', documentId: ISSUE_ID });
+    expect(got.mergeMark).toBe('landed');
+    expect(got.mergedLanding).toBe(LANDING);
+  });
+
+  it('refuses a mark naming no landing, by name', async () => {
+    shape = 'outside_git';
+    await expect(
+      call({ action: 'mark_merged', data: { issueId: ISSUE_ID, target: 'prod' } }),
+    ).rejects.toThrow('LANDING_REQUIRED');
+    expect(setPayloads).toEqual([]);
+  });
+
+  it('refuses a landing on a project that lands in git, by name', async () => {
+    await expect(
+      call({
+        action: 'mark_merged',
+        data: { issueId: ISSUE_ID, target: 'base', landing: LANDING },
+      }),
+    ).rejects.toThrow('LANDING_NOT_THIS_SHAPE');
+    expect(setPayloads).toEqual([]);
+  });
+
+  it('tells an agent in its description which projects owe a landing', () => {
+    const text = forgeIssuesDescription('<ref clause>');
+    expect(text).toContain('data.landing');
+    expect(text).toContain('LANDING_REQUIRED');
   });
 });

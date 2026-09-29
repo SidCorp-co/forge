@@ -51,13 +51,18 @@ export function forgeIssuesDescription(refClause: string): string {
     'passed and it no longer gates dispatch.\n' +
     'TRANSITION. on_hold is a deliberate pause, waiting parks the issue for human review, and ' +
     'closed means the work shipped: a close on an issue with no merged_at is refused ' +
-    '(CLOSE_REQUIRES_SHIPPED), and work that turned out not to be work leaves by dropped.\n' +
-    'MERGE MARK. mark_merged (data.issueId, data.target, optional data.commit / data.mergedAt ' +
-    'ISO / data.note) stamps merged_at. It writes merged_commit_sha ONLY where Forge already ' +
+    '(CLOSE_REQUIRES_SHIPPED), and work that turned out not to be work leaves by dropped. On a ' +
+    'project whose work lands outside git (kind website) the close also needs the mark to name ' +
+    'where it landed, and a bare merged_at is refused the same way.\n' +
+    'MERGE MARK. mark_merged (data.issueId, data.target, optional data.commit / data.landing / ' +
+    'data.mergedAt ISO / data.note) stamps merged_at. data.landing is the live URL, CMS entry or ' +
+    'storefront resource the work now is, required on a website project unless Forge observed a ' +
+    'merged pull request (LANDING_REQUIRED) and refused on any other (LANDING_NOT_THIS_SHAPE); ' +
+    'it is stored in merged_landing and the mark reads landed. It writes merged_commit_sha ONLY where Forge already ' +
     'holds its own record of the merge - a pull request it saw merged - and the sha it writes ' +
     "there is that record's, never data.commit. Your commit never reaches the column: it " +
     'reaches the audit trail as YOUR CLAIM. The answer, and every row this tool returns, ' +
-    'carries mark/mergeMark (observed | asserted | unmarked) plus detail - observed means ' +
+    'carries mark/mergeMark (observed | landed | asserted | unmarked) plus detail - observed means ' +
     'Forge witnessed the merge itself, asserted means it witnessed none and took your word ' +
     "for it. Marking unblocks nothing: a blocks edge is released by the blocker's STATUS " +
     '(ISS-1100) and no dispatch decision reads merged_at. target is an audit label. unmark ' +

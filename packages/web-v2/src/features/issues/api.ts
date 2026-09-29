@@ -150,10 +150,11 @@ export const issuesApi = {
 
   /**
    * `POST /api/issues/:id/merge` — claim that this issue's work shipped, for work finished outside
-   * the pipeline. `target` names where it landed and is required; `note` is free text kept on the
-   * audit comment the server writes.
+   * the pipeline. `target` is the audit label and is required; `landing` is where the work landed
+   * outside git, which a project whose `landingShape` is `outside_git` must send; `note` is free
+   * text kept on the audit comment the server writes.
    */
-  markMerged: (id: string, body: { target: string; note?: string }) =>
+  markMerged: (id: string, body: MarkMergedBody) =>
     apiClient<{ id: string; action: "merged" | "unmarked" }>(`/issues/${id}/merge`, {
       method: "POST",
       body: JSON.stringify(body),
@@ -205,3 +206,9 @@ export const releaseBatchApi = {
       },
     ),
 };
+
+export interface MarkMergedBody {
+  target: string;
+  landing?: string;
+  note?: string;
+}

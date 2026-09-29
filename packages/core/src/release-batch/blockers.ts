@@ -7,7 +7,8 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
-import { issues } from '../db/schema.js';
+import { issues, projects } from '../db/schema.js';
+import { landingShapeOf, landingShortfall } from '../issues/landing-evidence.js';
 import { issuesMissingReleaseRecord } from '../issues/release-record-required.js';
 import { releaseIneligibleRunners } from '../runners/ineligible.js';
 import { onlineCapableDeviceIds } from '../runners/select.js';
@@ -147,17 +148,29 @@ async function rosterBlockers(
     out.push(blocker('RELEASE_RECORD_MISSING', { issueIds: unrecorded }));
   }
   if (door !== 'record') return;
-  const rows = await evaluate(
+  // Unmerged means what the close would refuse, on this project's shape: `landing-evidence.ts`.
+  // Judged inside the read, so a kind the reader cannot place is this check unevaluated, by name.
+  const unmerged = await evaluate(
     'merged',
-    async () =>
-      await db
-        .select({ id: issues.id, mergedAt: issues.mergedAt })
+    async () => {
+      const rows = await db
+        .select({
+          id: issues.id,
+          mergedAt: issues.mergedAt,
+          mergedCommitSha: issues.mergedCommitSha,
+          mergedLanding: issues.mergedLanding,
+          kind: projects.kind,
+        })
         .from(issues)
-        .where(inArray(issues.id, issueIds)),
+        .innerJoin(projects, eq(projects.id, issues.projectId))
+        .where(inArray(issues.id, issueIds));
+      return rows
+        .filter((r) => landingShortfall(r, landingShapeOf(r.kind)) !== null)
+        .map((r) => r.id);
+    },
     out,
   );
-  if (!rows) return;
-  const unmerged = rows.filter((r) => r.mergedAt === null).map((r) => r.id);
+  if (!unmerged) return;
   if (unmerged.length > 0) out.push(blocker('RELEASE_WORK_UNMERGED', { issueIds: unmerged }));
 }
 

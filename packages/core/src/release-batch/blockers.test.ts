@@ -56,6 +56,8 @@ registerAllIntegrations();
 const PROJECT_ID = '55555555-5555-4555-8555-555555555555';
 const ISSUE_A = '66666666-6666-4666-8666-666666666666';
 const ISSUE_B = '77777777-7777-4777-8777-777777777777';
+/** The mark's other columns and the project's kind, on a project that lands in git. */
+const GIT = { mergedCommitSha: null, mergedLanding: null, kind: 'standard' };
 
 const PROBES = { probes: [{ url: 'https://example.test/api/health', commitPath: 'commit' }] };
 
@@ -102,7 +104,7 @@ function ready() {
   projectRow();
   liveBinding(DECLARED);
   selectRows.mockResolvedValue([
-    { id: ISSUE_A, status: 'awaiting_release', claimed: null, mergedAt: new Date() },
+    { id: ISSUE_A, status: 'awaiting_release', claimed: null, mergedAt: new Date(), ...GIT },
   ]);
   execRows.mockResolvedValue([{ device_id: 'dev-1' }]);
   onlineIds.mockResolvedValue(['dev-1']);
@@ -308,7 +310,7 @@ describe('collectReleaseBlockers', () => {
     execRows.mockResolvedValue([]);
     onlineIds.mockResolvedValue([]);
     selectRows.mockResolvedValue([
-      { id: ISSUE_A, status: 'awaiting_release', claimed: null, mergedAt: null },
+      { id: ISSUE_A, status: 'awaiting_release', claimed: null, mergedAt: null, ...GIT },
     ]);
 
     const codes = (
@@ -324,7 +326,7 @@ describe('collectReleaseBlockers', () => {
     ready();
     missingNotes.mockResolvedValue([ISSUE_A]);
     selectRows.mockResolvedValue([
-      { id: ISSUE_A, status: 'awaiting_release', claimed: null, mergedAt: null },
+      { id: ISSUE_A, status: 'awaiting_release', claimed: null, mergedAt: null, ...GIT },
     ]);
 
     const err = releaseBlockerError(

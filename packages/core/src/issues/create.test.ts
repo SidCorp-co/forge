@@ -9,6 +9,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const TEST_SECRET = 'test-secret-at-least-32-chars-long-abcdef';
 
+// The detail answer carries the project's landing shape; these cases stand on a git project.
+vi.mock('./landing-evidence.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./landing-evidence.js')>()),
+  readLandingShape: async () => 'git',
+}));
 vi.mock('../config/env.js', () => ({
   env: { JWT_SECRET: TEST_SECRET, NODE_ENV: 'test' },
 }));

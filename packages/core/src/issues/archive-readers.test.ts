@@ -69,9 +69,9 @@ const NOT_DISCOVERY: Record<string, string> = {
   'issues/held-hydrator.ts': 'the ids passed in',
   'issues/list-projection.ts':
     'runs the where its callers build; the list and search routes compose the predicate into it',
+  'issues/landing-evidence.ts': 'by issue id, a guard',
   'issues/merge-record.ts': 'by issue id',
   'issues/merge-routes.ts': 'by issue id',
-  'issues/merged-at.ts': 'by issue id, a guard',
   'issues/pipeline-health.ts': 'the ids passed in',
   'issues/read-service.ts': 'retrieval by id or key, which answers an archived issue by design',
   'issues/release-record-required.ts': 'the ids passed in',

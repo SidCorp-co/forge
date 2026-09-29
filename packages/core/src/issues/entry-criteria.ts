@@ -1,11 +1,11 @@
 import { eq } from 'drizzle-orm';
 import { type Db, db } from '../db/client.js';
-import { type IssueStatus, issues } from '../db/schema.js';
+import { type IssueStatus, issues, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { readPipelineConfig } from '../pipeline/autonomous-project.js';
 import { findMissingWorkEvidence, missingWorkEvidenceStrict } from '../pipeline/work-evidence.js';
 import type { EntryCriterionKey } from './entry-criteria-keys.js';
-import { mergedMarkShortfall } from './entry-criteria-merge-mark.js';
+import { landingShapeOf, landingShortfall } from './landing-evidence.js';
 
 type CriterionExecutor = Pick<Db, 'select'>;
 
@@ -19,6 +19,8 @@ type IssueRecord = {
   releaseNotes: unknown;
   mergedAt: Date | null;
   mergedCommitSha: string | null;
+  mergedLanding: string | null;
+  projectKind: string;
 };
 
 type Criterion = (
@@ -46,8 +48,11 @@ const criteriaWith = (
         "`{ section: 'Skip', userFacing: '-' }` when the change has no user-facing half"
       : null,
   work_evidence: (id, _record, executor) => workEvidence(id, executor),
-  // Which kinds count as landed, and the refusal: `entry-criteria-merge-mark.ts`.
-  merged_mark: (_id, record) => mergedMarkShortfall(record),
+  // Which kinds count as landed on this project's shape: `landing-evidence.ts`, and nowhere else.
+  merged_mark: (_id, record) => {
+    const short = landingShortfall(record, landingShapeOf(record.projectKind));
+    return short ? `${short} — mark it merged before this status` : null;
+  },
 });
 
 const CRITERIA = criteriaWith((id, executor) => findMissingWorkEvidence(id, executor));
@@ -92,8 +97,11 @@ export async function findUnmetEntryCriteria(args: {
       releaseNotes: issues.releaseNotes,
       mergedAt: issues.mergedAt,
       mergedCommitSha: issues.mergedCommitSha,
+      mergedLanding: issues.mergedLanding,
+      projectKind: projects.kind,
     })
     .from(issues)
+    .innerJoin(projects, eq(projects.id, issues.projectId))
     .where(eq(issues.id, args.issueId))
     .limit(1);
   if (!record) return null;
@@ -147,8 +155,11 @@ export async function readEntryCriteriaStrict(args: {
       releaseNotes: issues.releaseNotes,
       mergedAt: issues.mergedAt,
       mergedCommitSha: issues.mergedCommitSha,
+      mergedLanding: issues.mergedLanding,
+      projectKind: projects.kind,
     })
     .from(issues)
+    .innerJoin(projects, eq(projects.id, issues.projectId))
     .where(eq(issues.id, args.issueId))
     .limit(1);
   if (!record) throw new Error(`no issue row for ${args.issueId}`);

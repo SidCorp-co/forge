@@ -41,6 +41,12 @@ vi.mock('../pipeline/work-evidence.js', () => ({
 const ISSUE_ID = '11111111-1111-4111-8111-111111111111';
 const PROJECT_ID = '33333333-3333-4333-8333-333333333333';
 
+// The project's shape is `landing-evidence.ts`'s own read; here it stands on a git project.
+vi.mock('./landing-evidence.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./landing-evidence.js')>()),
+  readLandingShape: async () => 'git',
+}));
+
 vi.mock('./read-service.js', () => ({
   findIssueById: async () => ({ id: ISSUE_ID, mergedAt: null, mergedCommitSha: null }),
 }));

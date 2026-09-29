@@ -9,13 +9,19 @@ type IssueRecord = {
   acceptanceCriteria: string | null;
   releaseNotes: unknown;
   mergedAt: Date | null;
+  mergedLanding?: string | null;
+  projectKind?: string;
 };
 
 let row: IssueRecord | undefined;
 
-const selectLimit = vi.fn(async () => (row ? [row] : []));
+// The mark's other columns and the project's kind ride the same statement; a case that names
+// neither stands on a `standard` project with no commit and no landing.
+const selectLimit = vi.fn(async () =>
+  row ? [{ mergedCommitSha: null, mergedLanding: null, projectKind: 'standard', ...row }] : [],
+);
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
-const selectFrom = vi.fn(() => ({ where: selectWhere }));
+const selectFrom = vi.fn(() => ({ where: selectWhere, innerJoin: () => ({ where: selectWhere }) }));
 const select = vi.fn(() => ({ from: selectFrom }));
 
 vi.mock('../db/client.js', () => ({ db: { select } }));
@@ -141,6 +147,24 @@ describe('findUnmetEntryCriteria', () => {
       '`releaseNotes`',
     );
     expect(shortfall?.unmet.find((u) => u.key === 'merged_mark')?.detail).toContain('merged mark');
+  });
+
+  it('fails merged_mark on a website project whose mark names no landing', async () => {
+    row = { ...complete, projectKind: 'website' };
+    const shortfall = await findUnmetEntryCriteria({
+      issueId: ISSUE_ID,
+      declared: ['merged_mark'],
+    });
+    const detail = shortfall?.unmet.find((u) => u.key === 'merged_mark')?.detail ?? '';
+    expect(detail).toContain('a CLAIM Forge did not observe');
+    expect(detail).toContain('lands outside git accepts `landed` or `observed`');
+  });
+
+  it('passes merged_mark on a website project whose mark names a landing', async () => {
+    row = { ...complete, projectKind: 'website', mergedLanding: 'cms://entries/42' };
+    expect(
+      await findUnmetEntryCriteria({ issueId: ISSUE_ID, declared: ['merged_mark'] }),
+    ).toBeNull();
   });
 
   it('treats whitespace-only prose as no record at all', async () => {

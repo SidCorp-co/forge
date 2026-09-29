@@ -7,7 +7,7 @@ const dbUpdate = vi.fn(() => ({ set: updateSet }));
 const txExecute = vi.fn(async () => undefined);
 const selectLimit = vi.fn(async () => [] as unknown[]);
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
-const selectFrom = vi.fn(() => ({ where: selectWhere }));
+const selectFrom = vi.fn(() => ({ where: selectWhere, innerJoin: () => ({ where: selectWhere }) }));
 
 // The archived-issue guard reads the row itself; these tests script every select, so it answers none.
 vi.mock('../questions/issue-coupling.js', () => ({ settleOpenQuestions: async () => null }));
@@ -76,7 +76,14 @@ describe('transitionIssueStatus — run-closing decoupled from terminal-for-disp
   it('entering `closed` DOES close the open run', async () => {
     // The row shows it shipped, or ISS-1108's rule refuses the close before
     // this case reaches the question it is about.
-    selectLimit.mockResolvedValueOnce([{ mergedAt: new Date('2026-09-18T00:00:00Z') }]);
+    selectLimit.mockResolvedValueOnce([
+      {
+        mergedAt: new Date('2026-09-18T00:00:00Z'),
+        mergedCommitSha: null,
+        mergedLanding: null,
+        kind: 'standard',
+      },
+    ]);
     queueUpdate('closed');
     const result = await transitionIssueStatus(
       { id: ISSUE_ID, projectId: PROJECT_ID, status: 'awaiting_release', reopenCount: 0 },

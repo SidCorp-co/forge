@@ -25,6 +25,7 @@ import {
   type ResolvedLabelAttach,
   resolveLabelIdsForWrite,
 } from '../../issues/label-service.js';
+import { mergedLandingSchema } from '../../issues/landing-evidence.js';
 import { type IssueListRow, listIssueRows } from '../../issues/list-service.js';
 import {
   applyMergeMarker,
@@ -125,6 +126,7 @@ const dataObject = z
     releaseNotes: ReleaseNotesSchema.nullable().optional(),
     target: z.enum(['feature', 'base', 'prod']).optional(),
     commit: mergedCommitShaSchema.optional(),
+    landing: mergedLandingSchema.optional(),
     mergedAt: z.string().optional(),
     note: z.string().max(10_000).optional(),
     issueId: issueRefSchema.optional(),
@@ -784,6 +786,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
             ...(input.data?.target ? { target: input.data.target } : {}),
             ...(input.data?.note ? { note: input.data.note } : {}),
             ...(input.data?.commit ? { commit: input.data.commit } : {}),
+            ...(input.data?.landing ? { landing: input.data.landing } : {}),
             ...(input.data?.mergedAt
               ? { mergedAt: parseDate(input.data.mergedAt, 'mergedAt') }
               : {}),

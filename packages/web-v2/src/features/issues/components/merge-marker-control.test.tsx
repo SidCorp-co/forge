@@ -59,3 +59,58 @@ describe("MergeMarkerControl", () => {
     expect(unmark).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("MergeMarkerControl on a project whose work lands outside git (ISS-1327)", () => {
+  const open = () => {
+    render(
+      <MergeMarkerControl
+        issueId="i1"
+        mergedAt={null}
+        suggestedTarget="ISS-38"
+        landingShape="outside_git"
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Mark merged" }));
+  };
+  const submit = () => {
+    const buttons = screen.getAllByRole("button", { name: "Mark merged" });
+    fireEvent.click(buttons[buttons.length - 1] as HTMLElement);
+  };
+
+  it("asks where the work landed, as a URL, a CMS entry or a storefront resource", () => {
+    open();
+    expect(screen.getByText(/the live URL, the CMS entry or the storefront resource/)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/https:\/\/shop\.example\.com/)).toHaveValue("");
+  });
+
+  it("sends the answer as the landing, with the issue key as the audit label", () => {
+    open();
+    fireEvent.change(screen.getByPlaceholderText(/https:\/\/shop\.example\.com/), {
+      target: { value: "  https://mowmentbrand.com/products/linen-tee  " },
+    });
+    submit();
+    expect(mark).toHaveBeenCalledWith({
+      target: "ISS-38",
+      landing: "https://mowmentbrand.com/products/linen-tee",
+    });
+  });
+
+  it("will not send a mark that names no landing", () => {
+    open();
+    const buttons = screen.getAllByRole("button", { name: "Mark merged" });
+    expect(buttons[buttons.length - 1]).toBeDisabled();
+  });
+});
+
+describe("MergeMarkerControl on a project that lands in git keeps its form", () => {
+  it("prefills the branch target and sends no landing", () => {
+    render(
+      <MergeMarkerControl issueId="i1" mergedAt={null} suggestedTarget="ISS-791" landingShape="git" />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Mark merged" }));
+    expect(screen.getByPlaceholderText(/branch or PR/)).toHaveValue("ISS-791");
+    const buttons = screen.getAllByRole("button", { name: "Mark merged" });
+    fireEvent.click(buttons[buttons.length - 1] as HTMLElement);
+    expect(mark).toHaveBeenCalledWith({ target: "ISS-791" });
+  });
+});
