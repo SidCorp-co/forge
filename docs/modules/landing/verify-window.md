@@ -45,7 +45,9 @@ branch, head, arrival time and priority.
 4. **`validate`** — the `gate` the declarations name, `node scripts/verify.mjs --window`, prepared
    and run once in the window's tree. It pays the shared layer's sweeps that no member's own run
    paid, plus the entry layer again, where two members' edits meet in one file (scoped to the
-   combination's diff for a check that declares a scoped form). It refuses, and records nothing,
+   combination's diff for a check that declares a scoped form). Its steps, and every replay step 5
+   runs, see `GITHUB_BASE_REF` set to the window's base branch, so the gate resolves the target the
+   window was built on and not the operator's default. It refuses, and records nothing,
    where the tree is not exactly the chain head before or after preparing: HEAD elsewhere, a tracked
    change, or an untracked file the gate would read as the combination's. The ledger records each
    pass as the window's cost figure: what it took and how many members shared it. Red, it prints
@@ -102,8 +104,9 @@ numbers only where the first clears the base, the combination so far and every o
 the window — `checkSet`'s `next` in `scripts/lib/migration-order.mjs`, the number
 `scripts/check-migration-order.mjs` prints as `Next free:`, read through the same `readOpenSet`.
 Otherwise they take consecutive numbers from it, their `.sql` and snapshot files are renamed, and
-every other file naming an old tag is rewritten, all of its tags in one pass so a tag moved onto
-another's old number is not moved twice; the ledger lists each renumbering and each
+every file the member brings that names an old tag — its own, or one an earlier member was moved
+off — is rewritten, all of its tags in one pass so a tag moved onto another's old number is not
+moved twice; the ledger lists each renumbering and each
 rewritten file. A member's new entries are the ones missing where it forks from the combination, so
 a member stacked on an earlier one does not bring that one's migration back in under the tag it had
 before the window renumbered it, and its snapshot is rebased from the parent in its own tree.

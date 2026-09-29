@@ -20,7 +20,13 @@ import { decideFire } from './lib/verify-window/fire.mjs';
 import { gitIn, showAt } from './lib/verify-window/git.mjs';
 import { planLanding, windowBranch } from './lib/verify-window/land.mjs';
 import { readManifest, renderLedger } from './lib/verify-window/ledger.mjs';
-import { passLine, prepareTree, runGate, treeDrift } from './lib/verify-window/validate.mjs';
+import {
+  passLine,
+  prepareTree,
+  runGate,
+  treeDrift,
+  windowEnv,
+} from './lib/verify-window/validate.mjs';
 
 const USAGE = `Usage: node scripts/verify-window.mjs <verb> --window <manifest.json> [flags]
   admit                       judge each member's admission and build nothing
@@ -229,6 +235,7 @@ if (verb === 'attribute') {
       `${CONFIG_PATH} at ${ledger.base.sha}`,
     );
     if (declared.refusal) die(declared.refusal);
+    const env = windowEnv(ledger.base.branch);
     const unattributed = 'so the replay could not run there and nothing is attributed';
     const clean = (when) => {
       const drift = treeDrift(ledger.chain.tree, ledger.chain.head, when);
@@ -236,7 +243,11 @@ if (verb === 'attribute') {
     };
     clean('before replaying');
     const ready = (tree) => {
-      const r = prepareTree({ tree, prepare: declared.config.gate.prepare });
+      const r = prepareTree({
+        tree,
+        prepare: declared.config.gate.prepare,
+        base: ledger.base.branch,
+      });
       if (!r.refusal) return;
       if (tree !== ledger.chain.tree) removeTree(tree);
       die(`${r.refusal}, ${unattributed}`);
@@ -244,7 +255,7 @@ if (verb === 'attribute') {
     const baseTree = `${treeDir}-replay-base`;
     gitIn(repoDir).must(['worktree', 'add', '-q', '--detach', baseTree, ledger.base.sha]);
     ready(baseTree);
-    const base = replay(values.unit, baseTree, repeat);
+    const base = replay(values.unit, baseTree, repeat, env);
     removeTree(baseTree);
     const members = landed.map((m) => {
       const alone = `${treeDir}-replay-${m.issue.toLowerCase()}`;
@@ -266,13 +277,13 @@ if (verb === 'attribute') {
         };
       }
       ready(alone);
-      const r = replay(values.unit, alone, repeat);
+      const r = replay(values.unit, alone, repeat, env);
       removeTree(alone);
       return { issue: m.issue, ...r };
     });
     ready(ledger.chain.tree);
     clean('after preparing');
-    const window = replay(values.unit, ledger.chain.tree, repeat);
+    const window = replay(values.unit, ledger.chain.tree, repeat, env);
     found.push({
       subject: values.unit,
       ...classifyReplay({ base, members, window }),
@@ -301,7 +312,12 @@ if (verb === 'validate') {
   );
   if (declared.refusal) die(declared.refusal);
   const gate = declared.config.gate;
-  const r = runGate({ tree: ledger.chain.tree, head: ledger.chain.head, gate });
+  const r = runGate({
+    tree: ledger.chain.tree,
+    head: ledger.chain.head,
+    base: ledger.base.branch,
+    gate,
+  });
   const n = (ledger.passes ?? []).length + 1;
   const log = `${manifestPath.replace(/\.json$/, '')}.pass-${n}.log`;
   writeFileSync(log, r.output);

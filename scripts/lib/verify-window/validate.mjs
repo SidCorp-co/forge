@@ -8,9 +8,14 @@ import { spawnSync } from 'node:child_process';
 
 const WORDS = 40;
 
-function timed(argv, cwd) {
+/** The environment a window's commands run in: the operator's, with the merge target the window's. */
+export function windowEnv(base) {
+  return { ...process.env, GITHUB_BASE_REF: base };
+}
+
+function timed(argv, cwd, env) {
   const started = Date.now();
-  const r = spawnSync(argv[0], argv.slice(1), { cwd, encoding: 'utf8', maxBuffer: 1 << 28 });
+  const r = spawnSync(argv[0], argv.slice(1), { cwd, env, encoding: 'utf8', maxBuffer: 1 << 28 });
   return {
     status: r.error ? null : r.status,
     error: r.error?.message,
@@ -21,11 +26,11 @@ function timed(argv, cwd) {
 }
 
 /** The declared `gate.prepare` steps, in order, so an unprepared tree never reads as a failing one. */
-export function prepareTree({ tree, prepare }) {
+export function prepareTree({ tree, prepare, base }) {
   let output = '';
   let seconds = 0;
   for (const argv of prepare) {
-    const step = timed(argv, tree);
+    const step = timed(argv, tree, windowEnv(base));
     seconds += step.seconds;
     output += `$ ${argv.join(' ')}\n${step.stdout}${step.stderr}\n`;
     if (step.status !== 0) {
@@ -57,21 +62,21 @@ export function treeDrift(tree, head, when) {
 }
 
 /**
- * @param {{ tree: string, head: string, gate: { prepare: string[][], run: string[] } }} input
+ * @param {{ tree: string, head: string, base: string, gate: { prepare: string[][], run: string[] } }} input
  * @returns {{ refusal: string, output: string } | { status: number, seconds: number,
  *   prepareSeconds: number, output: string, words: string|null }}
  */
-export function runGate({ tree, head, gate }) {
+export function runGate({ tree, head, base, gate }) {
   const notRun = 'so the gate was not run and nothing was validated';
   const before = treeDrift(tree, head, 'before preparing');
   if (before) return { refusal: `${before}, ${notRun}`, output: '' };
-  const prepared = prepareTree({ tree, prepare: gate.prepare });
+  const prepared = prepareTree({ tree, prepare: gate.prepare, base });
   let output = prepared.output;
   const prepareSeconds = prepared.seconds;
   if (prepared.refusal) return { refusal: `${prepared.refusal}, ${notRun}`, output };
   const after = treeDrift(tree, head, 'after preparing');
   if (after) return { refusal: `${after}, ${notRun}`, output };
-  const run = timed(gate.run, tree);
+  const run = timed(gate.run, tree, windowEnv(base));
   output += `$ ${gate.run.join(' ')}\n${run.stdout}${run.stderr}`;
   const status = run.status === 0 ? 0 : run.status === 1 ? 1 : 2;
   const said = run.stderr.trim() || run.stdout.trim();

@@ -102,9 +102,14 @@ const NOT_RUN = new Set([2, 126, 127, null]);
  * Run `cmd` in `cwd` up to `repeat` times; failed as soon as one run exits 1 or any other code
  * a failure reports, `unran` where it exits in a way that says it never measured anything.
  */
-export function replay(cmd, cwd, repeat) {
+export function replay(cmd, cwd, repeat, env = process.env) {
   for (let i = 1; i <= repeat; i++) {
-    const r = spawnSync('sh', ['-c', cmd], { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+    const r = spawnSync('sh', ['-c', cmd], {
+      cwd,
+      env,
+      encoding: 'utf8',
+      maxBuffer: 64 * 1024 * 1024,
+    });
     if (r.status !== 0) {
       const tail = `${r.stdout ?? ''}${r.stderr ?? ''}`.trim().split('\n').slice(-5).join('\n');
       const status = r.error ? null : r.status;

@@ -64,7 +64,8 @@ function enter({ t, config, member, open, landed, outside, window }) {
       `git merge of ${member.head} did not run: ${(merge.stderr || merge.stdout).trim()}`,
     );
   }
-  const mig = enterMigrations({ t, dir: config.migrationsDir, member, open });
+  const earlier = landed.flatMap((m) => m.renumbered ?? []);
+  const mig = enterMigrations({ t, dir: config.migrationsDir, member, open, earlier });
   if (mig.refusal) return isolate(t, member, mig.refusal);
   const unmergedNow = () =>
     (t.run(['diff', '--name-only', '--diff-filter=U']) ?? '').split('\n').filter(Boolean);

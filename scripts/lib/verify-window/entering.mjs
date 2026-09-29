@@ -104,18 +104,19 @@ export function enterMigrations(input) {
   }
 }
 
-function rederive({ t, dir, member, open }) {
+function rederive({ t, dir, member, open, earlier = [] }) {
+  const journalPath = `${dir}/meta/_journal.json`;
   const combined = journalOf(t, 'HEAD', dir);
   const theirs = journalOf(t, member.head, dir);
   const fork = t.run(['merge-base', 'HEAD', member.head])?.trim();
   const before = fork ? journalOf(t, fork, dir) : null;
-  if (!combined || !theirs) return { moves: [], rewrites: [] };
+  if (!combined || !theirs) return { moves: [], rewrites: rewriteTags(t, earlier, journalPath) };
   const edited = editedEntries(member, combined, before, theirs);
   if (edited) return { refusal: edited };
   // New against where the member forked, not against the combination: a member stacked on an
   // earlier one carries that one's entries under the tags it had before the window renumbered them.
   const fresh = newEntries(theirs.entries, (before ?? combined).entries);
-  if (fresh.length === 0) return { moves: [], rewrites: [] };
+  if (fresh.length === 0) return { moves: [], rewrites: rewriteTags(t, earlier, journalPath) };
 
   const { moves, renumbered } = allocate({ combined: combined.entries, member: fresh, open });
   const sources = moves.map((m) => ({
@@ -155,7 +156,6 @@ function rederive({ t, dir, member, open }) {
     newParent = next;
   }
 
-  const journalPath = `${dir}/meta/_journal.json`;
   for (const p of [
     journalPath,
     ...sources.flatMap((s) => [
@@ -170,18 +170,25 @@ function rederive({ t, dir, member, open }) {
   for (const s of sources) write(t, `${dir}/${s.move.to.tag}.sql`, s.sql);
   for (const s of snaps) write(t, s.path, `${JSON.stringify(s.body, null, 2)}\n`);
 
-  const rewrites = renumbered ? rewriteTags(t, moves, journalPath) : [];
+  const rewrites = rewriteTags(t, [...earlier, ...(renumbered ? moves : [])], journalPath);
   return { moves: renumbered ? moves : [], rewrites };
 }
 
-/** Every other file in the tree naming a renumbered tag, each rewritten once to the new tags. */
+/**
+ * Every file this member's merge brings that names a renumbered tag — its own, or one an earlier
+ * member was moved off — rewritten once. Files already in the combination were rewritten when the
+ * member that moved the tag entered, so they are not read again.
+ */
 function rewriteTags(t, moves, journalPath) {
   const moved = moves.filter((m) => m.from.tag !== m.to.tag);
   if (moved.length === 0) return [];
+  const brought = new Set(
+    (t.run(['diff', '--cached', '--name-only', '-z', 'HEAD']) ?? '').split('\0').filter(Boolean),
+  );
   const patterns = moved.flatMap((m) => ['-e', m.from.tag]);
   const hits = (t.run(['grep', '-l', '-z', '-F', ...patterns]) ?? '').split('\0').filter(Boolean);
   const touched = [];
-  for (const path of hits) {
+  for (const path of hits.filter((p) => brought.has(p))) {
     if (path === journalPath) continue;
     const abs = join(t.cwd, path);
     if (!existsSync(abs)) continue;

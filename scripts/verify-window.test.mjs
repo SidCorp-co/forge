@@ -146,7 +146,7 @@ beforeAll(() => {
       "  console.error('gate-check: src/fail.txt holds a sweep failure the entry layer cannot see');",
       '  process.exit(1);',
       '}',
-      "console.log('gate-check: 0 red');",
+      'console.log(`gate-check: 0 red against ${process.env.GITHUB_BASE_REF}`);',
       '',
     ].join('\n'),
   });
@@ -716,6 +716,41 @@ describe('a member stacked on an earlier member the window renumbered', () => {
   });
 });
 
+describe('a member stacked on a renumbered member, with no migration of its own', () => {
+  it("has its reference to that member's old tag rewritten to the tag it landed at", () => {
+    const uses = branch('ISS-25-uses', { 'src/uses-b.txt': 'reads 0002_add_b.sql\n' }, 'ISS-1-b');
+    const c = clone('stacked-reference');
+    const w = windowFiles(
+      'w-stacked-ref',
+      [
+        ['ISS-2', 'ISS-2-c', heads.m2],
+        ['ISS-1', 'ISS-1-b', heads.m1],
+        ['ISS-25', 'ISS-25-uses', uses],
+      ],
+      green(heads.m2, heads.m1, uses),
+    );
+    const r = run(
+      c,
+      'assemble',
+      '--window',
+      w.manifest,
+      '--checks',
+      w.checksFile,
+      '--tree',
+      w.tree,
+    );
+    git(seed, 'push', '-q', 'origin', '--delete', 'ISS-25-uses');
+    expect(r.status, r.stderr).toBe(0);
+    const ledger = JSON.parse(readFileSync(w.ledger, 'utf8'));
+    const moved = ledger.members.find((m) => m.issue === 'ISS-1').renumbered;
+    const to = moved.find((m) => m.from.tag === '0002_add_b').to.tag;
+    expect(to).not.toBe('0002_add_b');
+    const text = git(w.tree, 'show', `${ledger.chain.head}:src/uses-b.txt`);
+    expect(text).toBe(`reads ${to}.sql`);
+    expect(ledger.members.find((m) => m.issue === 'ISS-25').rewrites).toEqual(['src/uses-b.txt']);
+  });
+});
+
 describe('the tree isolate rebuilds in', () => {
   it('refuses any tree but the recorded one, and deletes nothing it did not build', () => {
     const c = clone('tree-window');
@@ -940,6 +975,21 @@ describe('validate', () => {
     expect(r.status).toBe(2);
     expect(r.stderr).toMatch(/holds changes the chain head does not/);
     expect(JSON.parse(readFileSync(w.ledger, 'utf8')).attributions ?? []).toEqual([]);
+  });
+
+  it("runs the gate against the window's base branch, whatever the operator's environment names", () => {
+    const c = clone('validate-base');
+    const w = windowFiles('w-validate-base', [['ISS-4', 'ISS-4-after', heads.m4]], green(heads.m4));
+    const flags = ['--window', w.manifest, '--checks', w.checksFile, '--tree', w.tree];
+    expect(run(c, 'assemble', ...flags).status).toBe(0);
+    const r = spawnSync('node', [CLI, 'validate', ...flags], {
+      cwd: c,
+      encoding: 'utf8',
+      env: { ...SEALED_ENV, GITHUB_BASE_REF: 'elsewhere' },
+    });
+    expect(r.status, r.stderr).toBe(0);
+    const [pass] = JSON.parse(readFileSync(w.ledger, 'utf8')).passes;
+    expect(readFileSync(pass.log, 'utf8')).toContain('gate-check: 0 red against main');
   });
 
   it('refuses to validate when a prepare step fails, and runs no gate', () => {
