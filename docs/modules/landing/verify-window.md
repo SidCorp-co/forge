@@ -57,7 +57,9 @@ branch, head, arrival time and priority.
    is rebuilt from its ledger row on the base the window was built on, with no branch of the window
    counted among the open branches its migrations are numbered against. Every replay tree is
    prepared with the declared `gate.prepare` first, so an unprepared tree never reads as a failure
-   on the base; a step that cannot prepare one stops the replay, attributing nothing.
+   on the base; a step that cannot prepare one stops the replay, attributing nothing. A replay that
+   exits 2 (a checker that could not run), 126 or 127 (a command the shell could not run) or on a
+   signal measured nothing, and names no owner, whichever tree it was in.
 6. **`isolate --member <ISS> --because "<the checker's words>"`** — rebuild without that member,
    recording why, in the tree the ledger recorded; a window with no ledger, any other `--tree`, or a
    path there that is no longer a worktree of the repository is refused and nothing is deleted. The

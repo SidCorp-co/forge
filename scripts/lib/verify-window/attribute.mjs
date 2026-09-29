@@ -36,6 +36,18 @@ export function ownerOfPath({ landed, changed }) {
  *   window: { failed: boolean } }} replay
  */
 export function classifyReplay({ base, members, window }) {
+  const unran = [
+    { where: 'the base', r: base },
+    ...members.map((m) => ({ where: `${m.issue} alone`, r: m })),
+    { where: 'the combination', r: window },
+  ].find((x) => x.r.unran);
+  if (unran) {
+    return {
+      kind: 'undetermined',
+      owner: null,
+      says: `it could not run on ${unran.where} (${unran.r.unran}), so no replay measured it and no owner is named`,
+    };
+  }
   const unbuilt = members.find((m) => m.unbuilt);
   if (unbuilt) {
     return {
@@ -80,13 +92,28 @@ export function classifyReplay({ base, members, window }) {
   };
 }
 
-/** Run `cmd` in `cwd` up to `repeat` times; failed as soon as one run exits non-zero. */
+/**
+ * The exits that say the command did not run rather than that it failed: a checker's own exit 2,
+ * the shell's 126 (not executable) and 127 (not found), and no exit at all (a signal or a spawn error).
+ */
+const NOT_RUN = new Set([2, 126, 127, null]);
+
+/**
+ * Run `cmd` in `cwd` up to `repeat` times; failed as soon as one run exits 1 or any other code
+ * a failure reports, `unran` where it exits in a way that says it never measured anything.
+ */
 export function replay(cmd, cwd, repeat) {
   for (let i = 1; i <= repeat; i++) {
     const r = spawnSync('sh', ['-c', cmd], { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
     if (r.status !== 0) {
       const tail = `${r.stdout ?? ''}${r.stderr ?? ''}`.trim().split('\n').slice(-5).join('\n');
-      return { failed: true, runs: i, exit: r.status, tail };
+      const status = r.error ? null : r.status;
+      const unran = NOT_RUN.has(status)
+        ? status === null
+          ? (r.error?.message ?? `killed by ${r.signal}`)
+          : `exit ${status}`
+        : undefined;
+      return { failed: true, runs: i, exit: status, tail, ...(unran ? { unran } : {}) };
     }
   }
   return { failed: false, runs: repeat, exit: 0, tail: '' };
