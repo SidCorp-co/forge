@@ -77,19 +77,3 @@ it cannot read.
 |---|---|
 | Kernel-level tracing | Closing native code needs every directory enumeration traced (strace, seccomp or eBPF on `getdents64`) and attributed to the one test file that caused it. That means one file per process, and a Linux-only gate. |
 | Nothing closes delegation from inside | A listing made by a process the test did not start is visible only to that process. The honest guard for it is the declaration itself, written by whoever knows what the service reads. |
-
-### The guard's own files select one of the three jobs whose runs they are part of
-
-`scripts/lib/whole-tree-guard.mjs` and the files it loads run as a setup file in every vitest
-configuration: core, core-integration, web-v2 and contracts. `changes` matches `scripts/**` to
-`core` alone. So a change to the guard runs it under core and skips `web` and `core-integration`,
-and a skipped job passes `ci-passed`. ISS-1314's fourth build hit exactly this: on #745, `web` and
-`core-integration` were skipped, and both suites were run whole by hand instead (web-v2 146 files,
-core-integration 223 files, nothing refused).
-
-What would close it is `scripts/lib/whole-tree-*.mjs` under the `web` and `core` filters in
-`.github/workflows/ci.yml`. When the fourth build was cut, other runs' trees held that file.
-
-| Cost | What it takes |
-|---|---|
-| A web build and a Testcontainers run on every guard edit | About 1m40s of web build and 18m of core-integration. It is paid only when those few files change. |
