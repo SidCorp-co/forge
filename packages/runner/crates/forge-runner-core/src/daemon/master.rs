@@ -6663,7 +6663,10 @@ mod give_back_tests {
 
     #[test]
     fn the_sweep_asks_a_held_master_before_the_empty_set_can_skip_it() {
-        let body = THIS_SOURCE
+        // LF, or the two-line needle below never matches a Windows checkout's CRLF
+        // and the refusal it asserts passes there without reading anything.
+        let source = THIS_SOURCE.replace("\r\n", "\n");
+        let body = source
             .split("\n#[cfg(test)]")
             .next()
             .and_then(|p| p.split("\nasync fn sweep(").nth(1))
@@ -9237,17 +9240,12 @@ mod servers_refusal_walk_tests {
     /// ISS-1312 criterion 45: `supervise` read an unaskable tmux as a pane gone,
     /// closed the master's core session and forgot it, so recovery then read
     /// that master's runs as having none.
-    #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn a_sweep_tmux_cannot_answer_leaves_the_master_and_its_session_open() {
-        let _serialised = terminal::testing::ONE_AT_A_TIME.lock().await;
-        let _env = crate::auth::cred_store::ENV_TEST_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
         let (core, sent) = fake_core::serve_recording("200 OK", "{}").await;
         let masters = Arc::new(Masters::new());
         masters.remember_for_test("proj-sup", "sess-sup", "forge-master-sup");
-        let _no_tmux = terminal::testing::UnaskableTmux::installed();
+        let no_tmux = terminal::testing::UnaskableTmux::installed();
 
         supervise(
             &CoreClient::new(core, "device-token"),
@@ -9258,6 +9256,7 @@ mod servers_refusal_walk_tests {
         )
         .await;
 
+        assert!(no_tmux.asked() > 0, "the sweep asked the fake tmux");
         assert!(
             masters.get("proj-sup").is_some(),
             "criterion 45: a read tmux did not answer keeps the master registered"

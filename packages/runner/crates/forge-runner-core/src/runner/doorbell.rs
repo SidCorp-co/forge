@@ -325,14 +325,8 @@ mod tests {
     /// The defect ISS-1131 was filed for: a child forked while the door was
     /// armed inherits the read end, and the kernel then counts it as a reader
     /// long after the ear that armed the door has gone.
-    // cm:guard shares ENV_TEST_LOCK with daemon/terminal.rs's PATH-narrowing tests: this
-    // spawns `sh` off ambient PATH, which a concurrent PATH narrowed elsewhere in the same
-    // process can starve — see terminal.rs's own note for the CI failure that shape produced.
     #[test]
     fn a_child_that_inherited_the_door_is_not_a_listener() {
-        let _env = crate::auth::cred_store::ENV_TEST_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
         let p = led_path();
         let dir = p.parent().unwrap().to_path_buf();
         let ear = listen(&p, "run-1").unwrap();
