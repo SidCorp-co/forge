@@ -102,11 +102,25 @@ function reportBuilt(ledger) {
   saveLedger(ledger);
   process.stdout.write(renderLedger(ledger));
   const branch = windowBranch(ledger.window);
-  console.log(`\nValidate it once, as one pull request whose ci-passed is the whole gate:`);
-  console.log(`  git push origin ${ledger.chain.head}:refs/heads/${branch}`);
-  console.log(
-    `  gh pr create --base ${ledger.base.branch} --head ${branch} --body-file ${ledgerPath.replace(/\.json$/, '.md')}`,
-  );
+  const pushed = gitIn(repoDir)
+    .run(['rev-parse', '--verify', '--quiet', `refs/remotes/origin/${branch}`])
+    ?.trim();
+  if (!pushed) {
+    console.log(`\nValidate it once, as one pull request whose ci-passed is the whole gate:`);
+    console.log(`  git push origin ${ledger.chain.head}:refs/heads/${branch}`);
+    console.log(
+      `  gh pr create --base ${ledger.base.branch} --head ${branch} --body-file ${ledgerPath.replace(/\.json$/, '.md')}`,
+    );
+  } else if (pushed === ledger.chain.head) {
+    console.log(`\norigin/${branch} already carries this chain head; read its ci-passed there.`);
+  } else {
+    console.log(
+      `\nReplace the chain origin/${branch} carries (${pushed}) on its open pull request. The lease refuses if anyone moved it since:`,
+    );
+    console.log(
+      `  git push --force-with-lease=refs/heads/${branch}:${pushed} origin ${ledger.chain.head}:refs/heads/${branch}`,
+    );
+  }
   console.log(`Ledger: ${ledgerPath}`);
   process.exit(ledger.members.every((m) => m.landing) ? 0 : 1);
 }

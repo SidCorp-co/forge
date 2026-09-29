@@ -619,6 +619,46 @@ describe('a member carrying one the window isolated', () => {
   });
 });
 
+describe('the push a rebuilt window prints', () => {
+  it('replaces the pushed chain under a lease that refuses once anyone moved the branch', () => {
+    const d = branch('ISS-18-d', { 'src/d18.txt': 'd\n' });
+    const c = clone('push-window');
+    const other = clone('push-window-other');
+    const w = windowFiles(
+      'w-push',
+      [
+        ['ISS-18', 'ISS-18-d', d],
+        ['ISS-4', 'ISS-4-after', heads.m4],
+      ],
+      green(d, heads.m4),
+    );
+    const printed = (out) => out.match(/^ {2}(git push .*)$/m)[1].split(' ').slice(1);
+    const pushIn = (dir, args) =>
+      spawnSync('git', args, { cwd: dir, encoding: 'utf8', env: SEALED_ENV });
+    const tree = ['--window', w.manifest, '--checks', w.checksFile, '--tree', w.tree];
+    const built = run(c, 'assemble', ...tree);
+    expect(built.status, built.stderr).toBe(0);
+    expect(pushIn(c, printed(built.stdout)).status).toBe(0);
+    const first = JSON.parse(readFileSync(w.ledger, 'utf8')).chain.head;
+    const again = run(c, 'isolate', ...tree, '--member', 'ISS-18', '--because', 'red');
+    const rebuilt = JSON.parse(readFileSync(w.ledger, 'utf8')).chain.head;
+    const replace = printed(again.stdout);
+    expect(replace).toContain(`--force-with-lease=refs/heads/chore/verify-window-w-push:${first}`);
+    git(other, 'fetch', '-q', 'origin');
+    git(other, 'checkout', '-q', '-b', 'mover', 'origin/chore/verify-window-w-push');
+    put(other, { 'src/mover.txt': 'moved\n' });
+    git(other, 'add', 'src/mover.txt');
+    git(other, 'commit', '-q', '-m', 'someone else moved the window branch');
+    git(other, 'push', '-q', 'origin', 'HEAD:refs/heads/chore/verify-window-w-push');
+    expect(pushIn(c, replace).status).not.toBe(0);
+    git(other, 'push', '-q', '-f', 'origin', `${first}:refs/heads/chore/verify-window-w-push`);
+    expect(pushIn(c, replace).status).toBe(0);
+    const remote = git(seed, 'ls-remote', 'origin', 'refs/heads/chore/verify-window-w-push');
+    expect(remote.split(/\s/)[0]).toBe(rebuilt);
+    git(seed, 'push', '-q', 'origin', '--delete', 'ISS-18-d', 'chore/verify-window-w-push');
+  });
+});
+
 describe('a journal entry a member edits rather than adds', () => {
   it('isolates the member instead of dropping its edit', () => {
     const c = clone('edit-window');
