@@ -163,7 +163,7 @@ if (verb === 'fire') {
 }
 
 if (verb === 'admit') {
-  const ready = prepareWindow({ repoDir, manifest });
+  const ready = prepareWindow({ repoDir, manifest, withOpenSet: false });
   if (ready.refusal) die(ready.refusal);
   const judged = admitMembers({ ...ready, members: manifest.members, readCheck });
   for (const m of judged) {

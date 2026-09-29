@@ -896,6 +896,64 @@ describe('two members adding the same journal entry', () => {
   });
 });
 
+describe('a snapshot serialized without the spacing drizzle writes', () => {
+  it('is still found as the parent a renumbered migration chains off', () => {
+    const compact = branch('ISS-31-compact', {
+      [`${DIR}/meta/0001_snapshot.json`]: JSON.stringify(snapshot('s1', '00000000', BASE_TABLES)),
+      [JOURNAL]: journal(entry(1, W, '0001_init'), entry(2, W + DAY, '0002_add_z')),
+      [`${DIR}/0002_add_z.sql`]: '-- 0002_add_z\n',
+      [`${DIR}/meta/0002_snapshot.json`]: snapshot('s-z', 's1', {
+        ...BASE_TABLES,
+        'public.z': table('z', ['id']),
+      }),
+    });
+    const c = clone('compact-snapshot');
+    const w = windowFiles('w-compact', [['ISS-31', 'ISS-31-compact', compact]], green(compact));
+    const r = run(
+      c,
+      'assemble',
+      '--window',
+      w.manifest,
+      '--checks',
+      w.checksFile,
+      '--tree',
+      w.tree,
+    );
+    git(seed, 'push', '-q', 'origin', '--delete', 'ISS-31-compact');
+    const [member] = JSON.parse(readFileSync(w.ledger, 'utf8')).members;
+    expect(member.isolated, r.stderr).toBeNull();
+    expect(member.renumbered[0].to.tag).not.toBe('0002_add_z');
+  });
+});
+
+describe('admit with an unrelated branch whose journal cannot be read', () => {
+  it('still gives each member its verdict, leaving the open set to assemble', () => {
+    const broken = branch('open-broken', { [JOURNAL]: '{ not json' });
+    const c = clone('admit-broken-open');
+    const w = windowFiles('w-admit-broken', [['ISS-4', 'ISS-4-after', heads.m4]], green(heads.m4));
+    try {
+      const r = run(c, 'admit', '--window', w.manifest, '--checks', w.checksFile);
+      expect(r.status, r.stderr).toBe(0);
+      expect(r.stdout).toMatch(/^admitted {2}ISS-4$/m);
+      const built = run(
+        c,
+        'assemble',
+        '--window',
+        w.manifest,
+        '--checks',
+        w.checksFile,
+        '--tree',
+        w.tree,
+      );
+      expect(built.status).toBe(2);
+      expect(built.stderr).toContain('origin/open-broken');
+    } finally {
+      git(seed, 'push', '-q', 'origin', '--delete', 'open-broken');
+      expect(broken).toMatch(/^[0-9a-f]{40}$/);
+    }
+  });
+});
+
 describe('a base carrying no journal where its declarations name the migrations', () => {
   it('is refused by name, never read as a base with no migrations', () => {
     git(seed, 'checkout', '-q', '-B', 'no-journal', 'origin/main');

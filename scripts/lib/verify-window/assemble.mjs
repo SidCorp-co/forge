@@ -113,7 +113,7 @@ function enter({ t, config, member, open, landed, outside, window }) {
  * never wherever the remote has moved since, and every branch of that window.
  * @returns {{ refusal: string } | object}
  */
-export function prepareWindow({ repoDir, manifest, replay, rebuild = false }) {
+export function prepareWindow({ repoDir, manifest, replay, rebuild = false, withOpenSet = true }) {
   const g = gitIn(repoDir);
   const trimmed = (args) => g.run(args)?.trim() ?? null;
   if (
@@ -146,6 +146,7 @@ export function prepareWindow({ repoDir, manifest, replay, rebuild = false }) {
     ...(replay?.branches ?? []),
   ];
   const memberRefs = new Set(inWindow.map((b) => `origin/${b}`));
+  if (!withOpenSet) return { g, baseSha, config, open: [] };
   let openSet;
   try {
     openSet = readOpenSet({

@@ -52,14 +52,17 @@ function write(t, path, text) {
   t.must(['add', '--', path]);
 }
 
-/** The snapshot in `rev`'s tree whose `id` is `id`, parsed, or `null`. */
+/** The snapshot in `rev`'s tree whose `id` is `id`, parsed, or `null`: the id is read, not its spacing. */
 function snapshotById(t, rev, dir, id) {
-  const hit = t.run(['grep', '-l', '-F', `"id": "${id}"`, rev, '--', `${dir}/meta/`]);
-  const path = hit
-    ?.split('\n')
-    .find(Boolean)
-    ?.slice(rev.length + 1);
-  return path ? snapshotOf(showAt(t, rev, path), `${rev}:${path}`) : null;
+  const hits = (t.run(['grep', '-l', '-F', id, rev, '--', `${dir}/meta/`]) ?? '')
+    .split('\n')
+    .filter(Boolean)
+    .map((h) => h.slice(rev.length + 1));
+  for (const path of hits) {
+    const snap = snapshotOf(showAt(t, rev, path), `${rev}:${path}`);
+    if (snap.id === id) return snap;
+  }
+  return null;
 }
 
 function headSnapshot(t, dir) {

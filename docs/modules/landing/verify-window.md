@@ -22,7 +22,9 @@ branch, head, arrival time and priority.
 1. **`admit`** — each member's branch still points at the recorded head, its required check is a
    success at that head, its head is not already on the base, and its diff touches no ineligible
    surface. The declarations are read from `.forge/verify-queue.json` **at the base commit**, so a
-   member cannot loosen the rule it is judged by. Every key that would otherwise read as permission
+   member cannot loosen the rule it is judged by. Admission reads no migration numbers, so a branch
+   outside the window whose journal cannot be read refuses at `assemble`, where numbers are
+   allocated, and never withholds a member's verdict. Every key that would otherwise read as permission
    is required: `gate.prepare` (`[]` where the gate needs no preparation), `ineligible.paths` and
    `ineligible.lines`, so an omission is refused by name rather than read as nothing to prepare or
    nothing ineligible. Read without `--checks`, the required check comes from GitHub; an `origin`
