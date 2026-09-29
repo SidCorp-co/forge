@@ -18,8 +18,9 @@ export const releaseAttempts = pgTable(
     providerRef: text('provider_ref'),
     health: text('health').$type<'up' | 'down'>(),
     identity: text('identity'),
-    /** Core's verdict. NULL until the act reports back. */
-    verdict: text('verdict').$type<'ok' | 'failed'>(),
+    /** Core's verdict. NULL until the act reports back; `unverified` where no probe was declared
+     *  to read, which is neither a pass nor a red (ISS-1321). A text column, so no migration. */
+    verdict: text('verdict').$type<'ok' | 'failed' | 'unverified'>(),
     /** Why the verdict, in core's words. */
     verdictReason: text('verdict_reason'),
     /** One line per probe, in declaration order, whatever the outcome. */

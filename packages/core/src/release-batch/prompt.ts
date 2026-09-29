@@ -123,10 +123,15 @@ function renderProcedure(plan: ReleasePlan): string {
     blocks.push(
       `### Proof (the server checks this, you do not)\nWhen you call \`finish\`, pass \`commit\` — the SHA you pushed. \`finish\` answers at once with the attempt at \`accepted\`; the server then reads these probes itself:\n${urls}\nIt goes green when the live build matches your \`commit\` — a finish naming no commit goes green only when the live build CHANGED from what was serving when this batch opened, and is refused where nothing was recorded serving then — and then closes the roster on its own. Read the verdict with \`${RELEASE_BATCH_TOOL}\` action \`state\`: \`finish.state\` ends at \`finished\` or \`failed\`, and a \`failed\` one carries its \`refusal\`. A healthy site still serving the old build is a RED: at that reading the deploy had not landed, and nothing you can pass to \`finish\` works around it. A \`failed\` attempt is not the end of the batch. Once the deploy has landed — it was still coming up when the window closed, or you repaired forward and deployed again — call \`finish\` again with the commit you last pushed, which starts a new attempt. Where it will not land inside this run, the next section says what to do.`,
     );
+  } else if (plan.channels.length > 0) {
+    blocks.push(UNVERIFIED_PROOF);
   }
   blocks.push(renderRepairForward(plan));
   return `\n${blocks.join('\n\n')}\n`;
 }
+
+const UNVERIFIED_PROOF = `### Proof (this project declares none)
+No live deploy binding on this project declares a verify probe, so the server reads nothing when you call \`finish\`: it closes the roster on your call alone, and every issue it closes carries a note that this release was NOT verified. That makes your own check the only one there is. Call \`finish\` only once you have seen the deploy come up serving what you pushed, pass \`commit\` — the SHA you pushed — so the record names it, and say in what you record how you saw it. Read the outcome with \`${RELEASE_BATCH_TOOL}\` action \`state\`: \`finish.verification\` reads \`unverified\`.`;
 
 const UNDECLARED_PROCEDURE = `### This project's release procedure
 This project has declared none to Forge.

@@ -6,6 +6,9 @@ import {
   releaseAttempts,
 } from '../db/schema-release-ledger.js';
 
+import { type ReleaseChannel, refusedVerifyBindings } from './channel.js';
+import { readLiveState } from './verify.js';
+
 export type { ReleaseAttemptRow, ReleaseAttemptStage };
 
 /** Longer than this and the tail is cut, and said to have been cut. */
@@ -59,7 +62,7 @@ export interface SettleAttemptArgs {
   idempotencyKey: string;
   health?: 'up' | 'down' | null;
   identity?: string | null;
-  verdict: 'ok' | 'failed';
+  verdict: 'ok' | 'failed' | 'unverified';
   verdictReason?: string | null;
   readings?: string[] | null;
 }
@@ -150,4 +153,42 @@ export async function readAttempt(
     )
     .limit(1);
   return (row as ReleaseAttemptRow | undefined) ?? null;
+}
+
+/** Core's reading beside an attempt's account: the probes, a refused declaration, or none at all. */
+export async function attemptReading(
+  channels: readonly ReleaseChannel[],
+): Promise<Omit<SettleAttemptArgs, 'runId' | 'idempotencyKey'>> {
+  const refused = refusedVerifyBindings(channels);
+  if (refused.length > 0) {
+    return {
+      health: null,
+      identity: null,
+      readings: null,
+      verdict: 'failed' as const,
+      verdictReason: `the live deploy binding ${refused.join(', ')} declares a \`verify\` Forge cannot read, so nothing could be read`,
+    };
+  }
+  const verify = channels.find((ch) => ch.verify !== null)?.verify ?? null;
+  if (!verify) {
+    return {
+      health: null,
+      identity: null,
+      readings: null,
+      verdict: 'unverified' as const,
+      verdictReason:
+        'this project declares no verification probes, so nothing was read: the attempt stands on its account alone',
+    };
+  }
+  const live = await readLiveState(verify);
+  return {
+    health: live.health,
+    identity: live.identity,
+    readings: live.readings,
+    verdict: live.health === 'up' ? ('ok' as const) : ('failed' as const),
+    verdictReason:
+      live.health === 'up'
+        ? `the application answered and reports ${live.identity ?? 'no commit'}`
+        : `the application is not answering: ${live.unhealthy.join('; ')}`,
+  };
 }

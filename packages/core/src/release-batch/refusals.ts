@@ -27,7 +27,7 @@ import {
   ReleaseFinishedForOtherCommitError,
   ReleaseFinishInFlightError,
   ReleaseNotVerifiedError,
-  ReleaseProbesUndeclaredError,
+  ReleaseProbesUnreadableError,
   ReleaseVersionMissingError,
 } from './errors.js';
 import { ReleaseTargetUndeclaredError } from './gate.js';
@@ -125,12 +125,11 @@ function carrying(err: unknown, code: ReleaseBlockerCode, message: string): HTTP
   });
 }
 
-export function undeclaredProbes(err?: unknown): HTTPException {
-  return carrying(
-    err,
-    'RELEASE_PROBES_UNDECLARED',
-    releaseBlockerSentence('RELEASE_PROBES_UNDECLARED'),
-  );
+/** A declared probe no request can be made to, named with what was wrong in it. */
+export function unreadableProbes(err: ReleaseProbesUnreadableError): HTTPException {
+  const details: Record<string, unknown> =
+    err.bindings.length > 0 ? { urls: err.urls, bindings: err.bindings } : { urls: err.urls };
+  return releaseBlockerHttp(err, 'RELEASE_PROBES_UNREADABLE', details);
 }
 
 export function issuesUnnamed(projectId: string): HTTPException {
@@ -170,7 +169,7 @@ export function holding(err: ReleaseRunHoldingError): HTTPException {
 /**
  * Each refusal under the name the batch route already gives it.
  *
- * One vocabulary across both doors: a caller that learns `RELEASE_PROBES_UNDECLARED`
+ * One vocabulary across both doors: a caller that learns `RELEASE_PROBES_UNREADABLE`
  * from a batch must not meet a second name for the same fact here.
  */
 export function recordRefusal(err: unknown): HTTPException {
@@ -185,7 +184,7 @@ export function recordRefusal(err: unknown): HTTPException {
       'This project has no release gate configured, so there is no release to record — an agent `closed` here is already `closed`',
     );
   }
-  if (err instanceof ReleaseProbesUndeclaredError) return undeclaredProbes(err);
+  if (err instanceof ReleaseProbesUnreadableError) return unreadableProbes(err);
   if (err instanceof ReleaseNotVerifiedError) {
     return new HTTPException(409, {
       message: err.reason,
@@ -209,7 +208,7 @@ export function finishRefusal(err: unknown): HTTPException | null {
       cause: { code: 'RELEASE_NOT_VERIFIED', details: { live: err.live } },
     });
   }
-  if (err instanceof ReleaseProbesUndeclaredError) return undeclaredProbes(err);
+  if (err instanceof ReleaseProbesUnreadableError) return unreadableProbes(err);
   if (err instanceof ReleaseVersionMissingError) {
     return conflict('RELEASE_VERSION_MISSING', err.message);
   }

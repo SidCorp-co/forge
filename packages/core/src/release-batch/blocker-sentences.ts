@@ -23,7 +23,6 @@ export type ReleaseBlockerCode =
   | 'RELEASE_RECORD_MISSING'
   | 'RELEASE_WORK_UNMERGED'
   | 'RELEASE_RUNNER_AMBIGUOUS'
-  | 'RELEASE_PROBES_UNDECLARED'
   | 'RELEASE_PROBES_UNREADABLE'
   | 'RELEASE_POOL_EMPTY'
   | 'NO_RUNNER_ONLINE'
@@ -119,8 +118,6 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
     '{n} issue(s) named here have no merge Forge watched land, so nothing says their work is on the branch this release deployed. Mark the merge on each of them first — a release records what shipped, and an issue nobody merged did not.',
   RELEASE_RUNNER_AMBIGUOUS:
     'Two live deploy bindings name different release runners, so there is no one box the release job may be offered to. Make the labels agree, or clear all but one.',
-  RELEASE_PROBES_UNDECLARED:
-    'One of this project\'s live deploy bindings declares no verification probes, so nothing but the agent\'s own word could say the release happened. Two ways out. Either record where this project is deployed — `environments.live.commitUrl`, the endpoint that reports the running commit, and `environments.live.commitPath`, the dot path to it inside that endpoint\'s JSON body (`commit`, or `data.commit`; leave it empty where the whole body is the commit) — which answers this for every live binding at once. Or declare probes on the binding itself, which overrides the project\'s: `verify` = `{"probes":[{"url":"https://<host>/api/health","commitPath":"commit"}]}`. A binding that declares a `verify` Forge cannot read takes NO project default: correct it or remove it.',
   RELEASE_PROBES_UNREADABLE:
     'A declared verification probe holds a url that is not a url, so no request could ever be made to it and the release would fail while reading what production is serving. Correct the probe, including its scheme.',
   RELEASE_POOL_EMPTY:
@@ -160,7 +157,6 @@ export const REMEDY_COST: Record<ReleaseReasonCode, readonly RemedyAct[]> = {
   RELEASE_RECORD_MISSING: [],
   RELEASE_WORK_UNMERGED: [],
   RELEASE_RUNNER_AMBIGUOUS: [],
-  RELEASE_PROBES_UNDECLARED: [],
   RELEASE_PROBES_UNREADABLE: [],
   RELEASE_POOL_EMPTY: [],
   NO_RUNNER_ONLINE: [],
@@ -329,6 +325,7 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
   }
   const issueIds = details?.issueIds;
   if (Array.isArray(issueIds)) return remedy.replace('{n}', String(issueIds.length));
+  if (code === 'RELEASE_PROBES_UNREADABLE') return unreadableSentence(remedy, details);
   const urls = details?.urls;
   if (Array.isArray(urls) && urls.length > 0) return `${urls.join(', ')} — ${remedy}`;
   const check = details?.check;
@@ -336,6 +333,24 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
   const waiting = details?.waiting;
   if (typeof waiting === 'number') return `${waiting} waiting. ${remedy}`;
   return remedy;
+}
+
+/** A `verify` Forge refused takes no project default, so removing it is a repair and not silence. */
+const REFUSED_DECLARATION_SENTENCE =
+  'declares a `verify` Forge cannot read — it names no probe with a url — and a declared `verify` takes NO project default, so no release can be proved there and none closes past it. Correct it to `{"probes":[{"url":"https://<host>/api/health","commitPath":"commit"}]}`, or remove it: the project\'s `environments.live.commitUrl` then answers, and with neither the release is recorded unverified.';
+
+function unreadableSentence(remedy: string, details?: Record<string, unknown>): string {
+  const urls = Array.isArray(details?.urls) ? (details.urls as string[]) : [];
+  const bindings = Array.isArray(details?.bindings) ? (details.bindings as string[]) : [];
+  const parts: string[] = [];
+  if (urls.length > 0) parts.push(`${urls.join(', ')} — ${remedy}`);
+  if (bindings.length > 0) {
+    const which = bindings.map((b) => `\`${b}\``).join(', ');
+    parts.push(
+      `The live deploy binding${bindings.length === 1 ? '' : 's'} ${which} ${REFUSED_DECLARATION_SENTENCE}`,
+    );
+  }
+  return parts.length > 0 ? parts.join(' ') : remedy;
 }
 
 /** The sweep is cutting a release and leaving these behind, which stops nothing. */

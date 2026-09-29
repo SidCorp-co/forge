@@ -37,7 +37,13 @@ import {
   stampAbort,
 } from './abort-stamp.js';
 import { collectReleaseBlockers, releaseBlockerError } from './blockers.js';
-import { resolveReleaseChannels, resolveReleasePlan } from './channel.js';
+import {
+  type CloseVerification,
+  closeVerification,
+  type ReleaseVerification,
+  resolveReleaseChannels,
+  resolveReleasePlan,
+} from './channel.js';
 import { claimConflictAt } from './claim-conflicts.js';
 import {
   BatchInFlightError,
@@ -45,7 +51,6 @@ import {
   ReleaseFinishFenceLostError,
   ReleaseIssuesUnnamedError,
   ReleaseNotVerifiedError,
-  ReleaseProbesUndeclaredError,
   ReleaseVersionMissingError,
 } from './errors.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
@@ -56,7 +61,8 @@ import {
   recoverStrandedReleasing,
 } from './releasing-recovery.js';
 import { RELEASE_UNSTARTED_DEADLINE_MS } from './unstarted-recovery.js';
-import { liveCarriesRoster, readLiveCommit, type VerifyConfig, verifyDeployed } from './verify.js';
+import { noteUnverifiedCloses } from './unverified-close.js';
+import { liveCarriesRoster, readLiveCommit, verifyDeployed } from './verify.js';
 import { cutReleaseVersion, markReleaseShipped } from './version-store.js';
 
 export * from './errors.js';
@@ -86,6 +92,9 @@ export interface CreateReleaseBatchResult {
    * identity rather than by a transition. Said here and not at the fifth finish (ISS-1199).
    */
   openedAfterRelease: boolean;
+  /** `unverified` where no live binding declares a probe: the release opens, and every issue its
+   *  finish closes says nothing read the deployment (ISS-1321). */
+  verification: ReleaseVerification;
 }
 
 export async function createReleaseBatch(
@@ -127,8 +136,9 @@ export async function createReleaseBatch(
   };
   const { baseBranch, promotePlanned } = releaseBranches(project);
   const deployPlanned = plan.channels.length > 0;
-  const firstVerify = plan.channels[0]?.verify ?? null;
-  const commitBefore = firstVerify ? await readLiveCommit(firstVerify) : null;
+  const verification = closeVerification(plan.channels);
+  const commitBefore =
+    verification.kind === 'probed' ? await readLiveCommit(verification.cfg) : null;
 
   const issueRows = await db
     .select({
@@ -159,6 +169,7 @@ export async function createReleaseBatch(
       promotePlanned,
       commitBefore,
       openedAfterRelease,
+      verification: verification.kind,
       releaseRunner: { label: plan.releaseRunnerLabel, preferenceMet },
     },
   };
@@ -255,6 +266,7 @@ export async function createReleaseBatch(
     version,
     ownerDeadlineAt: new Date(Date.now() + RELEASE_UNSTARTED_DEADLINE_MS).toISOString(),
     openedAfterRelease,
+    verification: verification.kind,
   };
 }
 
@@ -269,8 +281,9 @@ export interface FinishReleaseBatchOptions {
   /** An earlier worker on this same attempt already saw the probes go green, so they are not read again. */
   alreadyVerified?: boolean | undefined;
   whileVerifying?: (() => Promise<void>) | undefined;
-  /** Called once verification is green, before the first issue closes. */
-  onVerified?: (() => Promise<void>) | undefined;
+  /** Called once verification is green — or, with no probe declared, once it is known there is
+   *  none to read — before the first issue closes. */
+  onVerified?: ((verification: ReleaseVerification) => Promise<void>) | undefined;
   /** Called with the roster's outcome before the claims are released, so it outlives them. */
   onRosterClosed?: ((result: FinishReleaseBatchResult) => Promise<void>) | undefined;
   /**
@@ -308,10 +321,13 @@ export async function readReleaseRun(runId: string): Promise<ReleaseRunRow | und
 }
 
 /**
- * Every refusal a finish can decide from the database alone, and the probe declaration the
- * verification will read. Nothing here makes an outbound request, so a door may call it inline.
+ * Every refusal a finish can decide from the database alone, and how the release will be proved.
+ * Nothing here makes an outbound request, so a door may call it inline.
  */
-export async function assertFinishable(runId: string, run: ReleaseRunRow): Promise<VerifyConfig> {
+export async function assertFinishable(
+  runId: string,
+  run: ReleaseRunRow,
+): Promise<CloseVerification> {
   if (batchAborted(run)) throw await abortedError(runId);
   // A release closes its roster claiming a ship. Without a version nothing afterwards can name
   // WHICH release carried these issues, which is the one thing this path exists to make true, so
@@ -320,12 +336,8 @@ export async function assertFinishable(runId: string, run: ReleaseRunRow): Promi
   // opened by it.
   if (!run.releaseVersion) throw new ReleaseVersionMissingError(runId);
 
-  const channels = await resolveReleaseChannels(run.projectId);
-  const closeVerify = channels[0]?.verify ?? null;
-  if (channels.length === 0 || channels.some((c) => !c.verify) || !closeVerify) {
-    throw new ReleaseProbesUndeclaredError();
-  }
-  return closeVerify;
+  // A `verify` refused as a declaration throws `RELEASE_PROBES_UNREADABLE` here, before any close.
+  return closeVerification(await resolveReleaseChannels(run.projectId));
 }
 
 export async function finishReleaseBatch(
@@ -352,11 +364,11 @@ export async function finishReleaseBatch(
   }
 
   if (run) {
-    const closeVerify = await assertFinishable(runId, run);
-    if (!options.alreadyVerified) {
+    const verification = await assertFinishable(runId, run);
+    if (verification.kind === 'probed' && !options.alreadyVerified) {
       const meta = (run.metadata ?? {}) as Record<string, unknown>;
       const outcome = await verifyDeployed({
-        cfg: closeVerify,
+        cfg: verification.cfg,
         commitBefore: typeof meta.commitBefore === 'string' ? meta.commitBefore : null,
         expected: options.commit ?? null,
         checkpoint: options.whileVerifying,
@@ -369,7 +381,16 @@ export async function finishReleaseBatch(
         );
       }
     }
-    await options.onVerified?.();
+    await options.onVerified?.(verification.kind);
+    // After the abort check `onVerified` makes, so an aborted batch is told nothing is closing.
+    if (verification.kind === 'unverified') {
+      await noteUnverifiedCloses({
+        runId,
+        issueIds: claimed.map((c) => c.id),
+        actor,
+        commit: options.commit ?? null,
+      });
+    }
   }
 
   const closed: string[] = [];

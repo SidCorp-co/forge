@@ -5,7 +5,9 @@ import { getIntegration } from '../integrations/registry.js';
 import { effectiveConfig, listActiveDeployBindingsForStage } from '../integrations/store.js';
 import { getKnowledgeEntry } from '../knowledge/service.js';
 import { normalizeEnvironments } from '../projects/environments.js';
+import { ReleaseProbesUnreadableError } from './errors.js';
 import {
+  type CloseVerification,
   RELEASE_PROCEDURE_FACT,
   type ReleaseChannel,
   type ReleasePlan,
@@ -13,7 +15,13 @@ import {
 } from './plan.js';
 import { parseVerifyConfig, type VerifyConfig } from './verify.js';
 
-export type { ReleaseChannel, ReleasePlan, ReleaseRollback } from './plan.js';
+export type {
+  CloseVerification,
+  ReleaseChannel,
+  ReleasePlan,
+  ReleaseRollback,
+  ReleaseVerification,
+} from './plan.js';
 export { RELEASE_PROCEDURE_FACT } from './plan.js';
 
 /**
@@ -86,6 +94,30 @@ export async function resolveReleaseChannels(projectId: string): Promise<Release
       releaseRunnerLabel: typeof label === 'string' && label.length > 0 ? label : null,
     };
   });
+}
+
+/** How the binding is named where a person has to find it: provider, store slug, id. */
+export function bindingName(channel: ReleaseChannel): string {
+  const named = channel.label ? `${channel.provider} [${channel.label}]` : channel.provider;
+  return `${named} ${channel.bindingId}`;
+}
+
+/** The live bindings whose `verify` Forge refused as a declaration. */
+export function refusedVerifyBindings(channels: readonly ReleaseChannel[]): string[] {
+  return channels.filter((c) => c.verifySource === 'declared-unusable').map(bindingName);
+}
+
+/**
+ * How this release is proved, the one reading every door takes. THROWS where a binding's `verify`
+ * was refused: that is a declaration to correct, and reading it as `unverified` would release past
+ * the probes somebody meant to declare. Otherwise the first channel with probes proves it, whichever
+ * binding sorts first; with none, the release is `unverified` and recorded as such.
+ */
+export function closeVerification(channels: readonly ReleaseChannel[]): CloseVerification {
+  const refused = refusedVerifyBindings(channels);
+  if (refused.length > 0) throw new ReleaseProbesUnreadableError([], refused);
+  const cfg = channels.find((c) => c.verify !== null)?.verify ?? null;
+  return cfg ? { kind: 'probed', cfg } : { kind: 'unverified' };
 }
 
 /** Thrown where the live deploy bindings disagree about which box may ship the project. */

@@ -125,13 +125,13 @@ describe('cutWaitingRelease', () => {
     const err = Object.assign(new NoRunnerOnlineError('no runner'), {
       releaseBlockers: [
         { code: 'NO_RUNNER_ONLINE', message: 'No runner is online.' },
-        { code: 'RELEASE_PROBES_UNDECLARED', message: 'The probes are undeclared.' },
+        { code: 'RELEASE_RECORD_MISSING', message: 'A release note is missing.' },
       ],
     });
     createReleaseBatchMock.mockRejectedValueOnce(err);
     const outcome = await cutWaitingRelease({ projectId: 'p1', userId: 'u1', issueIds: ['iss-1'] });
     expect(outcome.code).toBe('NO_RUNNER_ONLINE');
-    expect(outcome.reasons).toEqual(['No runner is online.', 'The probes are undeclared.']);
+    expect(outcome.reasons).toEqual(['No runner is online.', 'A release note is missing.']);
   });
 
   // `releaseBlockerError` throws a class per readiness code, most of them outside the list above

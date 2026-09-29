@@ -25,6 +25,7 @@ import {
   projectRunnerDeviceIds,
   type ReleaseChannel,
   ReleaseRunnerAmbiguousError,
+  refusedVerifyBindings,
   releaseRunnerLabelOf,
   resolveReleaseChannels,
   resolveReleaseDeviceIds,
@@ -160,7 +161,8 @@ async function rosterBlockers(
   if (unmerged.length > 0) out.push(blocker('RELEASE_WORK_UNMERGED', { issueIds: unmerged }));
 }
 
-/** The label, the probes, and how many live bindings one reading would answer for. */
+/** The label, and how many live bindings one reading would answer for. A channel declaring no
+ *  probe is no reason here: its release is recorded unverified (ISS-1321). */
 function channelBlockers(
   projectId: string,
   channels: ReleaseChannel[],
@@ -168,8 +170,8 @@ function channelBlockers(
   out: ReleaseBlocker[],
 ): string | null {
   let label: string | null = null;
-  // `soleVerifyConfig` checks the channel COUNT before the probes; the batch
-  // path checks it last. Each door keeps its own order (ISS-1127).
+  // The record door checks the channel COUNT first; the batch path checks it
+  // last. Each door keeps its own order (ISS-1127).
   if (door === 'record' && channels.length > 1) {
     out.push(blocker('RELEASE_MULTI_CHANNEL_UNSUPPORTED', { count: channels.length }));
   }
@@ -180,7 +182,6 @@ function channelBlockers(
     const labels = err instanceof ReleaseRunnerAmbiguousError ? err.labels : [];
     out.push(blocker('RELEASE_RUNNER_AMBIGUOUS', { labels }));
   }
-  if (channels.some((c) => !c.verify)) out.push(blocker('RELEASE_PROBES_UNDECLARED'));
   return label;
 }
 
@@ -244,7 +245,7 @@ async function heldFleetBlocker(projectId: string, out: ReleaseBlocker[]): Promi
 }
 
 /**
- * A probe url no request could be made to.
+ * A probe url no request could be made to, or a `verify` Forge refused as a declaration.
  *
  * Reported where the LIVE READ stands — last on a batch, after the roster on a
  * record — because that read is where this state fails. Any earlier and it
@@ -252,7 +253,11 @@ async function heldFleetBlocker(projectId: string, out: ReleaseBlocker[]): Promi
  */
 function unreadableProbeBlockers(channels: ReleaseChannel[], out: ReleaseBlocker[]): void {
   const urls = channels.flatMap((c) => (c.verify ? invalidProbeUrls(c.verify) : []));
-  if (urls.length > 0) out.push(blocker('RELEASE_PROBES_UNREADABLE', { urls }));
+  const bindings = refusedVerifyBindings(channels);
+  if (urls.length === 0 && bindings.length === 0) return;
+  out.push(
+    blocker('RELEASE_PROBES_UNREADABLE', bindings.length > 0 ? { urls, bindings } : { urls }),
+  );
 }
 
 /**

@@ -334,15 +334,16 @@ describe('the door refuses what the database can refuse, and records nothing', (
     expect(await rawFinish(aborted.runId)).toBeNull();
   });
 
-  it('refuses a project that declares no probes', async () => {
+  it('refuses a project whose verify became one Forge cannot parse, recording nothing', async () => {
     const { runId } = await batch(1, 20);
     await harness.db.execute(sql`
-      UPDATE integration_bindings SET config = config - 'verify' WHERE project_id = ${projectId}
+      UPDATE integration_bindings SET config = config || '{"verify": {"probes": []}}'::jsonb
+      WHERE project_id = ${projectId}
     `);
 
-    const res = await finish(runId);
+    const res = await finish(runId, { commit: PUSHED });
 
-    expect(res.body.code).toBe('RELEASE_PROBES_UNDECLARED');
+    expect(res.body.code).toBe('RELEASE_PROBES_UNREADABLE');
     expect(await rawFinish(runId)).toBeNull();
   });
 });

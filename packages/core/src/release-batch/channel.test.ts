@@ -26,6 +26,7 @@ vi.mock('../integrations/store.js', async (importActual) => {
 
 const {
   classifyRollback,
+  closeVerification,
   ReleaseRunnerAmbiguousError,
   releaseRunnerLabelOf,
   resolveReleaseChannels,
@@ -33,6 +34,7 @@ const {
   resolveReleaseDeviceIds,
   resolveReleasePlan,
 } = await import('./channel.js');
+const { ReleaseProbesUnreadableError } = await import('./errors.js');
 
 // The code under test asks the registry what a provider DECLARES (its rollback representability,
 // its webhook header) rather than naming providers (ISS-1071). An empty registry throws rather
@@ -222,6 +224,78 @@ describe('resolveReleaseChannels — the probe a live address earns', () => {
     listBindings.mockResolvedValue([]);
     expect(await resolveReleaseChannels(PROJECT_ID)).toEqual([]);
     expect(selectLimit).not.toHaveBeenCalled();
+  });
+});
+
+describe('closeVerification (ISS-1321)', () => {
+  type Channels = Parameters<typeof closeVerification>[0];
+  const readable = { probes: [{ url: 'https://api.example.test/version' }] };
+  const probed = {
+    bindingId: 'b-a',
+    provider: 'coolify',
+    label: '',
+    verify: readable,
+    verifySource: 'binding',
+  };
+  const none = {
+    bindingId: 'b-b',
+    provider: 'coolify',
+    label: 'eu',
+    verify: null,
+    verifySource: 'none',
+  };
+  const refused = {
+    bindingId: 'b-c',
+    provider: 'coolify',
+    label: '',
+    verify: null,
+    verifySource: 'declared-unusable',
+  };
+
+  it('answers probed with the channel probes where a binding declares them', () => {
+    expect(closeVerification([probed] as unknown as Channels)).toEqual({
+      kind: 'probed',
+      cfg: readable,
+    });
+  });
+
+  it('answers unverified where no live binding declares a probe, and where there is none', () => {
+    expect(closeVerification([none] as unknown as Channels)).toEqual({ kind: 'unverified' });
+    expect(closeVerification([])).toEqual({ kind: 'unverified' });
+  });
+
+  it('is proved by the readable probes whichever binding sorts first', () => {
+    const first = closeVerification([none, probed] as unknown as Channels);
+    const last = closeVerification([probed, none] as unknown as Channels);
+    expect(first).toEqual({ kind: 'probed', cfg: readable });
+    expect(last).toEqual(first);
+  });
+
+  it('throws RELEASE_PROBES_UNREADABLE naming a binding whose verify was refused', () => {
+    const run = () => closeVerification([probed, refused] as unknown as Channels);
+    expect(run).toThrow(ReleaseProbesUnreadableError);
+    expect(run).toThrow(/RELEASE_PROBES_UNREADABLE: binding coolify b-c/);
+  });
+
+  it('names the store slug where the binding carries one', () => {
+    const run = () => closeVerification([{ ...refused, label: 'eu' }] as unknown as Channels);
+    expect(run).toThrow(/coolify \[eu\] b-c/);
+  });
+});
+
+describe('resolveReleaseChannels — a refused verify takes no project default', () => {
+  it('reads a `verify` naming no probe as declared-unusable, with no fallback probe', async () => {
+    selectLimit.mockResolvedValue([
+      { environments: { live: { commitUrl: 'https://api.example.test/version' } } },
+    ]);
+    listBindings.mockResolvedValue([binding({ bindingConfig: { verify: { probes: [] } } })]);
+
+    const [channel] = await resolveReleaseChannels(PROJECT_ID);
+
+    expect(channel).toMatchObject({ verify: null, verifySource: 'declared-unusable' });
+    expect(() => closeVerification([channel as NonNullable<typeof channel>])).toThrow(
+      ReleaseProbesUnreadableError,
+    );
   });
 });
 

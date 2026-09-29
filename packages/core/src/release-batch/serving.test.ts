@@ -73,12 +73,57 @@ describe('readServingDeployment', () => {
     });
   });
 
-  it('refuses by name when the project declares no probe, without reading anything', async () => {
-    collectReleaseBlockers.mockResolvedValue({ projectExists: true, channels: [channel(null)] });
+  it('answers an unverified deployment when no probe is declared, reading nothing', async () => {
+    collectReleaseBlockers.mockResolvedValue({
+      projectExists: true,
+      channels: [{ verify: null, verifySource: 'none' }],
+    });
 
     const read = await readServingDeployment(PROJECT);
 
-    expect(read).toMatchObject({ ok: false, code: 'PROBES_UNDECLARED' });
+    expect(read).toMatchObject({
+      ok: true,
+      deployment: {
+        verified: false,
+        identity: null,
+        health: 'unknown',
+        readings: [],
+        verifySource: 'none',
+      },
+    });
+    expect(readLiveState).not.toHaveBeenCalled();
+  });
+
+  it('says a probed deployment was verified', async () => {
+    collectReleaseBlockers.mockResolvedValue({
+      projectExists: true,
+      channels: [channel({ probes: [{ url: 'https://api/version' }] })],
+    });
+    readLiveState.mockResolvedValue(state());
+
+    await expect(readServingDeployment(PROJECT)).resolves.toMatchObject({
+      deployment: { verified: true },
+    });
+  });
+
+  it('refuses a verify Forge refused as a declaration by name, reading nothing', async () => {
+    collectReleaseBlockers.mockResolvedValue({
+      projectExists: true,
+      channels: [
+        {
+          bindingId: 'b-1',
+          provider: 'coolify',
+          label: '',
+          verify: null,
+          verifySource: 'declared-unusable',
+        },
+      ],
+    });
+
+    const read = await readServingDeployment(PROJECT);
+
+    expect(read).toMatchObject({ ok: false, code: 'PROBES_UNREADABLE' });
+    expect(read.ok ? '' : 'detail' in read ? read.detail : '').toContain('coolify b-1');
     expect(readLiveState).not.toHaveBeenCalled();
   });
 

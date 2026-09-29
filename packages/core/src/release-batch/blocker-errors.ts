@@ -14,7 +14,7 @@ import {
   NoRunnerOnlineError,
   ReleaseMultiChannelUnsupportedError,
   ReleasePoolEmptyError,
-  ReleaseProbesUndeclaredError,
+  ReleaseProbesUnreadableError,
   ReleaseRecordMissingError,
   ReleaseWorkUnmergedError,
 } from './errors.js';
@@ -41,14 +41,6 @@ export class ReleaseCheckUnevaluatedError extends Error {
   constructor(public readonly check: string) {
     super(`RELEASE_CHECK_UNEVALUATED: ${check}`);
     this.name = 'ReleaseCheckUnevaluatedError';
-  }
-}
-
-/** The probes declare a url no request could be made to. */
-export class ReleaseProbesUnreadableError extends Error {
-  constructor(public readonly urls: string[]) {
-    super(`RELEASE_PROBES_UNREADABLE: ${urls.join(', ')}`);
-    this.name = 'ReleaseProbesUnreadableError';
   }
 }
 
@@ -100,10 +92,11 @@ function errorFor(
         report.projectId,
         (first.details?.labels as string[]) ?? [],
       );
-    case 'RELEASE_PROBES_UNDECLARED':
-      return new ReleaseProbesUndeclaredError();
     case 'RELEASE_PROBES_UNREADABLE':
-      return new ReleaseProbesUnreadableError((first.details?.urls as string[]) ?? []);
+      return new ReleaseProbesUnreadableError(
+        (first.details?.urls as string[] | undefined) ?? [],
+        (first.details?.bindings as string[] | undefined) ?? [],
+      );
     case 'RELEASE_POOL_EMPTY':
       return new ReleasePoolEmptyError();
     case 'NO_RUNNER_ONLINE':

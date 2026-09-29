@@ -397,17 +397,17 @@ describe('sweepAutomaticReleases — declined cuts', () => {
 
   it.each([
     ['NO_RUNNER_ONLINE', 'human'],
-    ['RELEASE_PROBES_UNDECLARED', 'human'],
+    ['RELEASE_TARGET_UNDECLARED', 'human'],
     ['BATCH_IN_FLIGHT', 'agent'],
   ])('writes a %s refusal with every reason standing, owed by %s', async (code, owes) => {
     candidateRows = [candidateRow('proj-1', 'iss-1', '2026-09-22T00:00:00Z')];
     waitingIds = ['iss-1'];
-    const reasons = ['The first reason.', 'Also: the probes are undeclared.'];
+    const reasons = ['The first reason.', 'Also: the target is undeclared.'];
     cutWaitingReleaseMock.mockResolvedValueOnce({ status: 'skipped', output: 'x', code, reasons });
     await sweepAutomaticReleases();
     expect(insertedComments).toEqual([]);
     expect(holds['iss-1']).toMatchObject({ code, owes });
-    expect(holds['iss-1']?.reason).toContain('The first reason. Also: the probes are undeclared.');
+    expect(holds['iss-1']?.reason).toContain('The first reason. Also: the target is undeclared.');
   });
 
   it('writes RELEASE_CUT_FAILED on an untouched row when the cut fails, with no second comment', async () => {

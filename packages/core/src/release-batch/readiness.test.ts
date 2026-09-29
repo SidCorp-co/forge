@@ -287,6 +287,8 @@ describe('loadReleaseReadiness', () => {
 
     expect(out?.gaps).toContain('verify-probes');
     expect(out?.hasVerify).toBe(false);
+    // ISS-1321: the absence is reported, and is no reason a release will not start.
+    expect(out?.blockers.filter((b) => b.code.startsWith('RELEASE_PROBES'))).toEqual([]);
   });
 });
 

@@ -1,11 +1,14 @@
 import { collectReleaseBlockers } from './blockers.js';
-import type { ReleaseChannel } from './channel.js';
+import { refusedVerifyBindings } from './channel.js';
 import type { VerifySource } from './plan.js';
 import { type LiveState, readLiveState } from './verify.js';
 
 export interface ServingDeployment {
+  /** False where no live binding declares a probe: nothing was read, and nothing is claimed. */
+  verified: boolean;
   identity: string | null;
-  health: 'up' | 'down';
+  /** `unknown` only where nothing was read — never a quiet `up` (ISS-1321). */
+  health: 'up' | 'down' | 'unknown';
   readings: string[];
   unhealthy: string[];
   unidentified: string[];
@@ -17,7 +20,7 @@ export interface ServingDeployment {
 export type ServingRead =
   | { ok: true; deployment: ServingDeployment }
   | { ok: false; code: 'NO_PROJECT' }
-  | { ok: false; code: 'PROBES_UNDECLARED'; detail: string }
+  | { ok: false; code: 'PROBES_UNREADABLE'; detail: string }
   | { ok: false; code: 'PROBE_URL_INVALID'; detail: string };
 
 // cm:guard the identity is DERIVED on every call and never stored — a commit copied onto a row is
@@ -29,14 +32,31 @@ export async function readServingDeployment(projectId: string): Promise<ServingR
   const report = await collectReleaseBlockers(projectId);
   if (!report.projectExists) return { ok: false, code: 'NO_PROJECT' };
 
-  const channel: ReleaseChannel | null = report.channels?.[0] ?? null;
-  const cfg = channel?.verify ?? null;
-  if (!cfg || cfg.probes.length === 0) {
+  const channels = report.channels ?? [];
+  const refused = refusedVerifyBindings(channels);
+  if (refused.length > 0) {
     return {
       ok: false,
-      code: 'PROBES_UNDECLARED',
-      detail:
-        'this project declares no verify probe, so there is no deployment to read. Declare one on the live deploy binding, or in `environments.live.commitUrl`.',
+      code: 'PROBES_UNREADABLE',
+      detail: `the live deploy binding ${refused.join(', ')} declares a \`verify\` Forge cannot read, and a declared \`verify\` takes no project default. Correct it, or remove it.`,
+    };
+  }
+  const channel = channels.find((c) => c.verify !== null) ?? null;
+  const cfg = channel?.verify ?? null;
+  if (!cfg) {
+    return {
+      ok: true,
+      deployment: {
+        verified: false,
+        identity: null,
+        health: 'unknown',
+        readings: [],
+        unhealthy: [],
+        unidentified: [],
+        disagreement: null,
+        readAt: new Date().toISOString(),
+        verifySource: channels[0]?.verifySource ?? 'none',
+      },
     };
   }
 
@@ -54,6 +74,7 @@ export async function readServingDeployment(projectId: string): Promise<ServingR
   return {
     ok: true,
     deployment: {
+      verified: true,
       identity: state.identity,
       health: state.health,
       readings: state.readings,
