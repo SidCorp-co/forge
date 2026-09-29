@@ -149,6 +149,17 @@ dispatched over more than one issue; `redBatch: attribute-then-split` as the plu
 `rank.batchCap` and `rank.windowCap` as unset config keys; `parallel runs` unset, so a wave is
 sized by whoever dispatches it.
 
+## Honest costs
+
+| What adopting this costs | The price |
+|---|---|
+| A finished change waits | A change green at its own head no longer starts its system proof immediately: it sits until the train cuts, up to `minutes`. A single urgent change is **slower** than it is today, and that is the trade the whole design makes. |
+| A red train costs attribution work nobody pays today | The serial path gets a refusal already attached to one change. A train must run a probe to say which member owns the red, and that probe is time the amortisation has to earn back before the train is worth anything. |
+| A silently dropped member is multiplied by `size` | While a batched brief can lose an issue, every member of a train is a chance to lose one quietly, so the failure the train makes worse is the one that is hardest to see. ISS-1286 is the standing example. |
+| The word `batch` now means two different things | `forge next` batches by file overlap and wants small batches; the train batches to divide a fixed cost and wants large ones. Every reader and every future change has to hold both, and conflating them silently picks the wrong size. |
+| The first trains run on guessed numbers | Neither `minutes` nor `size` is derivable from today's data, so the opening settings are guesses that must be measured and revised. Running trains before the pass rate is recorded buys the cost without the evidence. |
+| Four more config keys, rolled out by hand | The keys live in the plugin's per-project JSON and are set for forge-dev alone, so somebody decides per project rather than the default deciding, and an unset project must keep behaving exactly as it does now. |
+
 ## Scope
 
 **forge-dev only.** The master of forge-dev directs the rollout here first and does not set `train`
