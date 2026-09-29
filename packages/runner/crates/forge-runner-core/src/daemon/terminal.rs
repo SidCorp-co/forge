@@ -101,10 +101,19 @@ fn socket_args() -> Vec<String> {
     }
 }
 
+/// The one place a tmux process is built, so a test build can hand the
+/// transport a tmux of its own without moving the process's `PATH`, which
+/// every other test's spawn by bare name resolves through (ISS-1312). The test
+/// build's twin is `testing::tmux_command`.
+#[cfg(not(test))]
+fn tmux_command() -> Command {
+    Command::new("tmux")
+}
+
 async fn tmux(args: &[&str]) -> Result<std::process::Output> {
     let mut all = socket_args();
     all.extend(args.iter().map(|a| (*a).to_string()));
-    Command::new("tmux")
+    tmux_command()
         .args(&all)
         .stdin(Stdio::null())
         .output()
@@ -657,7 +666,7 @@ nothing confirmed its prompt was empty before typing"
             .iter()
             .map(|a| (*a).to_string()),
     );
-    let mut child = Command::new("tmux")
+    let mut child = tmux_command()
         .args(&load)
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
@@ -784,9 +793,85 @@ pub fn pane_env() -> Vec<(String, String)> {
 /// module's transport and the rules they break are `daemon/master.rs`'s. A
 /// second copy over there would be a second thing to keep true.
 #[cfg(test)]
+use testing::tmux_command;
+
+#[cfg(test)]
 pub(crate) mod testing {
     use super::*;
     use crate::auth::cred_store::ScopedVar;
+    use std::cell::{Cell, RefCell};
+    use std::rc::Rc;
+
+    /// A tmux a test put in place of the real one: the program spawned, and
+    /// the variables that program reads, set on its own command rather than
+    /// on the process.
+    struct Fake {
+        program: std::path::PathBuf,
+        env: Vec<(&'static str, std::ffi::OsString)>,
+        built: Cell<usize>,
+    }
+
+    thread_local! {
+        static FAKE: RefCell<Option<Rc<Fake>>> = const { RefCell::new(None) };
+    }
+
+    /// The test build of `tmux_command`: the fake installed on this thread,
+    /// or the real tmux where none is.
+    ///
+    /// The fake is the installing thread's alone, as `runner/process.rs`'s
+    /// `StubClaude` is. The fakes used to move `PATH` instead, and one that
+    /// emptied it made every `git` spawned by name beside it fail `NotFound`:
+    /// 266 of 300 loaded runs of `give_back_tests` and `runner::terminate`
+    /// (ISS-1312). A test installing one reaches tmux on its own thread, as a
+    /// current-thread `#[tokio::test]` does.
+    pub(super) fn tmux_command() -> Command {
+        FAKE.with(|f| match f.borrow().as_ref() {
+            Some(fake) => {
+                fake.built.set(fake.built.get() + 1);
+                let mut cmd = Command::new(&fake.program);
+                cmd.envs(fake.env.iter().map(|(k, v)| (*k, v)));
+                cmd
+            }
+            None => Command::new("tmux"),
+        })
+    }
+
+    /// Holds a fake in place until dropped, then puts back whatever fake stood
+    /// before it, so a guard taken inside another hands the outer one back.
+    struct Installed {
+        fake: Rc<Fake>,
+        before: Option<Rc<Fake>>,
+    }
+
+    impl Installed {
+        fn new(program: std::path::PathBuf, env: Vec<(&'static str, std::ffi::OsString)>) -> Self {
+            let fake = Rc::new(Fake {
+                program,
+                env,
+                built: Cell::new(0),
+            });
+            let before = FAKE.with(|f| f.borrow_mut().replace(Rc::clone(&fake)));
+            Self { fake, before }
+        }
+
+        fn built(&self) -> usize {
+            self.fake.built.get()
+        }
+    }
+
+    impl Drop for Installed {
+        fn drop(&mut self) {
+            let before = self.before.take();
+            FAKE.with(|f| *f.borrow_mut() = before);
+        }
+    }
+
+    #[cfg(unix)]
+    fn executable(path: &std::path::Path) {
+        let mut perms = std::fs::metadata(path).expect("shim mode").permissions();
+        std::os::unix::fs::PermissionsExt::set_mode(&mut perms, 0o755);
+        std::fs::set_permissions(path, perms).expect("shim executable");
+    }
 
     /// Every test that reaches a tmux server takes this first.
     ///
@@ -866,21 +951,29 @@ pub(crate) mod testing {
     /// postcondition reading that as `the session is gone` reports a kill on
     /// the strength of a question nobody answered.
     pub(crate) struct UnaskableTmux {
-        _path: ScopedVar,
+        installed: Installed,
         _dir: crate::test_scratch::Scratch,
     }
 
     impl UnaskableTmux {
         pub(crate) fn installed() -> Self {
             let dir = crate::test_scratch::Scratch::new("unaskable");
-            // An empty PATH, so the spawn fails rather than the command
-            // answering something. `available()` was resolved at startup and
-            // is cached, which is the production shape of this: tmux was there
-            // when the daemon started and cannot be run now.
+            // A program that is not there, so the spawn fails `NotFound` as it
+            // does for a tmux gone from `PATH`. `available()` was resolved at
+            // startup and is cached, which is the production shape of this:
+            // tmux was there when the daemon started and cannot be run now.
             Self {
-                _path: ScopedVar::set("PATH", &dir),
+                installed: Installed::new(dir.join("tmux"), Vec::new()),
                 _dir: dir,
             }
+        }
+
+        /// How many tmux commands were built on this fake, counted before
+        /// each spawn: the fake never starts, so nothing it runs could count.
+        /// A test asserts it is not zero, or it would pass on a tmux call that
+        /// went somewhere else.
+        pub(crate) fn asked(&self) -> usize {
+            self.installed.built()
         }
     }
 
@@ -892,7 +985,7 @@ pub(crate) mod testing {
     /// two to the pair tmux itself produces — `kill-session` exits 1, the
     /// session is still there — is the fault, not a model of it.
     pub(crate) struct RefusingKill {
-        _path: ScopedVar,
+        _installed: Installed,
         _dir: crate::test_scratch::Scratch,
     }
 
@@ -910,17 +1003,9 @@ pub(crate) mod testing {
         )
         .expect("shim");
             #[cfg(unix)]
-            {
-                let mut perms = std::fs::metadata(&shim).expect("shim mode").permissions();
-                std::os::unix::fs::PermissionsExt::set_mode(&mut perms, 0o755);
-                std::fs::set_permissions(&shim, perms).expect("shim executable");
-            }
-            let ahead = match std::env::var_os("PATH") {
-                Some(p) => format!("{}:{}", dir.to_string_lossy(), p.to_string_lossy()),
-                None => dir.to_string_lossy().into_owned(),
-            };
+            executable(&shim);
             Self {
-                _path: ScopedVar::set("PATH", ahead),
+                _installed: Installed::new(shim, Vec::new()),
                 _dir: dir,
             }
         }
@@ -960,11 +1045,7 @@ pub(crate) mod testing {
     /// verb it is asked for, which is how a test reads back that nothing was
     /// typed at a pane after the capture refused the message.
     pub(crate) struct ShimTmux {
-        _path: ScopedVar,
-        _asked: ScopedVar,
-        _capture: ScopedVar,
-        _fail: ScopedVar,
-        _log: ScopedVar,
+        _installed: Installed,
         log: std::path::PathBuf,
         _dir: crate::test_scratch::Scratch,
     }
@@ -1003,25 +1084,19 @@ exit 0
             let shim = dir.join("tmux");
             std::fs::write(&shim, SHIM).expect("the shim is written");
             #[cfg(unix)]
-            {
-                let mut perms = std::fs::metadata(&shim).expect("shim mode").permissions();
-                std::os::unix::fs::PermissionsExt::set_mode(&mut perms, 0o755);
-                std::fs::set_permissions(&shim, perms).expect("shim executable");
-            }
+            executable(&shim);
             let capture_at = dir.join("capture.txt");
             std::fs::write(&capture_at, capture).expect("the capture is written");
             let log = dir.join("verbs.log");
             std::fs::write(&log, "").expect("the journal starts empty");
-            let ahead = match std::env::var_os("PATH") {
-                Some(p) => format!("{}:{}", dir.to_string_lossy(), p.to_string_lossy()),
-                None => dir.to_string_lossy().into_owned(),
-            };
+            let env = vec![
+                ("FORGE_TEST_TMUX_ASKED", asked.as_env().into()),
+                ("FORGE_TEST_TMUX_CAPTURE", capture_at.into_os_string()),
+                ("FORGE_TEST_TMUX_FAIL", fail.unwrap_or("").into()),
+                ("FORGE_TEST_TMUX_LOG", log.clone().into_os_string()),
+            ];
             Self {
-                _path: ScopedVar::set("PATH", ahead),
-                _asked: ScopedVar::set("FORGE_TEST_TMUX_ASKED", asked.as_env()),
-                _capture: ScopedVar::set("FORGE_TEST_TMUX_CAPTURE", &capture_at),
-                _fail: ScopedVar::set("FORGE_TEST_TMUX_FAIL", fail.unwrap_or("")),
-                _log: ScopedVar::set("FORGE_TEST_TMUX_LOG", &log),
+                _installed: Installed::new(shim, env),
                 log,
                 _dir: dir,
             }
@@ -1349,7 +1424,7 @@ mod tests {
             // And the state a `bool` cannot hold: not `the session is gone`,
             // but `this box could not ask`. Raised as F1 on the review of
             // ba415f04f.
-            let _unaskable = UnaskableTmux::installed();
+            let unaskable = UnaskableTmux::installed();
             assert!(
                 !alive(&name).await,
                 "this is the collapse the postcondition may not rest on: `alive` answers false for a probe that never ran, exactly as it does for a session that is gone"
@@ -1358,6 +1433,7 @@ mod tests {
                 kill(&name).await.is_err(),
                 "a kill whose outcome could not be established is not a kill that took, and answering Ok here reports one on the strength of a question nobody answered"
             );
+            assert!(unaskable.asked() > 0, "the questions went to the fake tmux");
         }
 
         // And the two answers that must stay success, or a box that cannot end
@@ -1792,14 +1868,8 @@ done
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    // cm:guard shares ENV_TEST_LOCK with every `ScopedVar::set("PATH", …)` test: this test
-    // trusts ambient PATH to spawn a real `sh`, and a concurrent test narrowing PATH to its
-    // own scratch dir (UnaskableTmux, RefusingKill, ShimTmux) makes that spawn answer
-    // `NotFound` on whichever thread loses the race — measured once on `runner
-    // (windows-latest)`: "sh must run: Error { kind: NotFound, message: \"program not found\" }".
     #[test]
     fn a_transcript_path_survives_the_shell_tmux_runs_it_through() {
-        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         for hostile in [
             "/tmp/a b/log",
             "/tmp/it's",
@@ -1967,11 +2037,8 @@ done
         );
     }
 
-    // cm:guard same PATH race as `a_transcript_path_survives_the_shell_tmux_runs_it_through`;
-    // its `cfg` doc-comments the mechanism and the CI failure it produced.
     #[test]
     fn the_mcp_config_path_reaches_the_pane_quoted_and_without_strict() {
-        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let path =
             std::path::PathBuf::from("/home/o p/config/forge-runner/mcp/forge-master-mcp-x.json");
         let line = pane_argv(Some(&path), None)[2].clone();
@@ -2038,18 +2105,26 @@ done
         let production = THIS_SOURCE.split("#[cfg(test)]").next().unwrap();
         assert_eq!(
             production.matches("Command::new(\"tmux\")").count(),
+            1,
+            "one constructor builds every tmux, which is what lets a test put its own in place without moving PATH"
+        );
+        let spawns: Vec<&str> = production
+            .split("tmux_command()\n        .args(")
+            .skip(1)
+            .collect();
+        assert_eq!(
+            spawns.len(),
             2,
             "the wrapper and load-buffer are the only two, and both take `socket_args()`"
         );
-        let load = production
-            .split("Command::new(\"tmux\")")
-            .nth(2)
-            .expect("the load-buffer spawn");
         assert!(
-            production.contains("let mut load = socket_args();"),
-            "load-buffer builds its args from the socket"
+            production.contains("let mut all = socket_args();") && spawns[0].starts_with("&all)"),
+            "the wrapper builds its args from the socket and passes them"
         );
-        assert!(load.contains("&load"), "and passes them");
+        assert!(
+            production.contains("let mut load = socket_args();") && spawns[1].starts_with("&load)"),
+            "load-buffer builds its args from the socket and passes them"
+        );
     }
 
     #[test]
@@ -2519,23 +2594,15 @@ done
     }
 
     /// The branch the shim cannot reach: tmux is not runnable at all, so the
-    /// spawn fails and no process ever answers.
-    ///
-    /// `UnaskableTmux` empties `PATH` process-wide, which is why this sits here
-    /// and holds it across exactly one failed spawn rather than at the inbox,
-    /// where the same guard held across a socket bind and an HTTP round trip
-    /// and took two unrelated suites down with it (measured on this branch,
-    /// 2026-09-27). What the inbox does with the classification is proved three
-    /// other ways in `daemon/inbox.rs`.
-    #[allow(clippy::await_holding_lock)]
+    /// spawn fails and no process ever answers. What the inbox does with the
+    /// classification is proved three other ways in `daemon/inbox.rs`.
     #[tokio::test]
     async fn a_tmux_that_cannot_be_run_at_all_is_not_a_session_that_ended() {
-        let _serialised = ONE_AT_A_TIME.lock().await;
-        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let _no_tmux = UnaskableTmux::installed();
+        let no_tmux = UnaskableTmux::installed();
         let why = send_line(SHIM_PANE, "MESSAGE")
             .await
             .expect_err("nothing could be asked, so nothing was typed");
+        assert!(no_tmux.asked() > 0, "the question went to the fake tmux");
         assert!(
             matches!(why, NotTyped::Failed(_)),
             "a question nobody answered is not a session that ended: {why:?}"
@@ -2544,6 +2611,58 @@ done
             !why.to_string().contains("no session named"),
             "and it may not borrow the sentence minted for one: {why}"
         );
+    }
+
+    /// ISS-1312: the fakes of tmux used to move `PATH`, and the one that
+    /// emptied it failed every `git` spawned by name beside it.
+    #[test]
+    fn a_fake_tmux_leaves_the_process_environment_as_it_found_it() {
+        let read = || {
+            [
+                "PATH",
+                "FORGE_TEST_TMUX_ASKED",
+                "FORGE_TEST_TMUX_CAPTURE",
+                "FORGE_TEST_TMUX_FAIL",
+                "FORGE_TEST_TMUX_LOG",
+            ]
+            .map(std::env::var_os)
+        };
+        let before = read();
+        let _unaskable = UnaskableTmux::installed();
+        #[cfg(not(windows))]
+        let _shim = ShimTmux::installed(Asked::Present, "", Some("send-keys"));
+        assert_eq!(
+            read(),
+            before,
+            "a fake tmux is the installing thread's, never a change to the process"
+        );
+    }
+
+    #[test]
+    fn a_fake_tmux_is_not_what_another_thread_spawns() {
+        let _unaskable = UnaskableTmux::installed();
+        let here = tmux_command().as_std().get_program().to_os_string();
+        let there = std::thread::spawn(|| tmux_command().as_std().get_program().to_os_string())
+            .join()
+            .unwrap();
+        assert_ne!(here, "tmux", "this thread spawns the fake");
+        assert_eq!(
+            there, "tmux",
+            "a test spawning tmux beside this one would reach the fake"
+        );
+    }
+
+    #[test]
+    fn a_fake_tmux_taken_inside_another_gives_the_outer_one_back() {
+        let outer = UnaskableTmux::installed();
+        let outer_program = tmux_command().as_std().get_program().to_os_string();
+        {
+            let _inner = UnaskableTmux::installed();
+            assert_ne!(tmux_command().as_std().get_program(), outer_program);
+        }
+        assert_eq!(tmux_command().as_std().get_program(), outer_program);
+        drop(outer);
+        assert_eq!(tmux_command().as_std().get_program(), "tmux");
     }
 
     /// `alive` answers exactly what it answered before `has_session` was split
