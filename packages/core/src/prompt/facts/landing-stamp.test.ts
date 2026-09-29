@@ -25,4 +25,19 @@ describe('the stamp the prompt teaches names a landing on a website project', ()
     expect(stamps).toContain('kind `website`');
     expect(stamps).toMatch(/landing/);
   });
+
+  // Owner ruling on ISS-1327: a website project has no commit to check, and none is a false mark.
+  it.each([
+    ['drive rules', mandatoryPreambleBlocks('drive').pipelineRules],
+    ['pipeline rules', mandatoryPreambleBlocks('code').pipelineRules],
+  ])('%s never asks a website agent to check a commit before it stamps', (_surface, text) => {
+    const website = text
+      .split(/(?<=[.;])\s+/)
+      .filter((s) => s.includes('kind `website`'))
+      .join('\n');
+    expect(website).toContain('no commit to check');
+    expect(website).not.toMatch(/reachable|merge-base|ON THE REMOTE/);
+    // The git check still stands, and names its own shape.
+    expect(text).toMatch(/On a project that lands in git, confirm the commits/);
+  });
 });
