@@ -24,7 +24,7 @@ impl MasterLiveness for PaneMasters<'_> {
         match self.masters.pane_for_session(master_session_id) {
             Some(name) => match terminal::pane_pid(&name).await {
                 Some(_) => MasterPresence::Alive,
-                None => MasterPresence::Gone,
+                None => absent_or_unanswered(&name).await,
             },
             None => MasterPresence::Unknown,
         }
@@ -33,6 +33,24 @@ impl MasterLiveness for PaneMasters<'_> {
     async fn live_master_for_project(&self, project_id: &str) -> Option<String> {
         let (session_id, name) = self.masters.live_for_project(project_id)?;
         terminal::pane_pid(&name).await.map(|_| session_id)
+    }
+}
+
+/// What a pane `pane_pid` read nothing for is.
+///
+/// `pane_pid` answers `None` alike for a pane tmux does not have and for a tmux
+/// that could not be asked, and recovery writes `Gone` on the run's row as the
+/// end of its subagent. So absence is taken only from a session list tmux did
+/// give that lacks the name. An empty list is no answer, the same way
+/// `terminal::has_session` reads a server nobody reached (ISS-1265, ISS-1312).
+async fn absent_or_unanswered(name: &str) -> MasterPresence {
+    let listed = terminal::names_with_prefix("").await;
+    if listed.is_empty() {
+        MasterPresence::Unanswered
+    } else if listed.iter().any(|n| n == name) {
+        MasterPresence::Alive
+    } else {
+        MasterPresence::Gone
     }
 }
 
@@ -151,16 +169,76 @@ mod tests {
         );
     }
 
+    /// Taken on a tmux server of the test's own, holding one other session, so
+    /// the absence is one tmux answered for rather than a server nobody
+    /// reached.
+    #[cfg(unix)]
+    #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn a_registered_pane_tmux_does_not_have_is_gone_rather_than_unknown() {
+        let _serialised = terminal::testing::ONE_AT_A_TIME.lock().await;
+        let _env = crate::auth::cred_store::ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let iso = terminal::testing::IsolatedServer::new("portgone");
+        if !terminal::available() {
+            terminal::testing::cannot_run("tmux is not installed here — the read this rests on cannot run");
+            return;
+        }
+        if !iso.took() {
+            terminal::testing::cannot_run("this box does not resolve its tmux socket from the config dir, so the only server here is its own — not asking it about a pane");
+            return;
+        }
+        let dir = crate::test_scratch::Scratch::new("portgone");
+        let other = terminal::session_name(terminal::MASTER_PREFIX, "portgone-other");
+        terminal::ensure(&other, &dir, &["sleep".to_string(), "60".to_string()], &[], None)
+            .await
+            .expect("the session that makes tmux answer");
         let registry = Registry::new();
         registry.remember_for_test("proj-1", "sess-1", "forge-no-such-pane-iss1050");
+        registry.remember_for_test("proj-2", "sess-2", &other);
         let port = PaneMasters { masters: &registry };
 
         assert_eq!(
             port.state("sess-1").await,
             MasterPresence::Gone,
             "the registry named a pane and tmux has no such pane; that is an observation, and softening it would leave every dead master unrecoverable"
+        );
+        assert_eq!(port.state("sess-2").await, MasterPresence::Alive);
+        let _ = terminal::kill(&other).await;
+    }
+
+    /// ISS-1312 criterion 31: `pane_pid` answers `None` for a tmux server
+    /// nobody reached exactly as for a pane that is absent, and the port read
+    /// that as `Gone`, which recovery writes on the row as the end of the run's
+    /// subagent. The server is one of the test's own that was never started,
+    /// rather than a narrowed `PATH`, which every test spawning a process at
+    /// the same moment would inherit.
+    #[cfg(unix)]
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_pane_tmux_could_not_be_asked_about_is_unanswered_rather_than_gone() {
+        let _serialised = terminal::testing::ONE_AT_A_TIME.lock().await;
+        let _env = crate::auth::cred_store::ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let iso = terminal::testing::IsolatedServer::new("portunasked");
+        if !terminal::available() {
+            terminal::testing::cannot_run("tmux is not installed here — the read this rests on cannot run");
+            return;
+        }
+        if !iso.took() {
+            terminal::testing::cannot_run("this box does not resolve its tmux socket from the config dir, so the only server here is its own — not asking it about a pane");
+            return;
+        }
+        let registry = Registry::new();
+        registry.remember_for_test("proj-1", "sess-1", "forge-master-portunasked");
+        let port = PaneMasters { masters: &registry };
+
+        assert_eq!(
+            port.state("sess-1").await,
+            MasterPresence::Unanswered,
+            "a question nobody answered is not a pane that ended"
         );
     }
 

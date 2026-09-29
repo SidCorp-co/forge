@@ -854,9 +854,16 @@ impl Ledger {
         let tx = self.conn.transaction().map_err(sql_err)?;
         for key in &new.issue_keys {
             if let Some(holder) = Self::live_run_holding(&tx, key, &new.boot_id)? {
-                return Err(Error::Other(format!(
-                    "ledger: issue {key} already belongs to live run {holder}"
-                )));
+                return Err(Error::Other(match Self::host_ended_by(&tx, &holder)? {
+                    Some(by) => format!(
+                        "ledger: issue {key} is held by run {holder}, which is not running: its subagent ran inside a master pane that {} and ended with it. Its row stays open until recovery releases it, on the first recovery sweep after core calls that run's session over, or until the master its row names closes it",
+                        match by.as_str() {
+                            HOST_PANE_STARTED => "this box has since started again",
+                            _ => "this box read as gone",
+                        }
+                    ),
+                    None => format!("ledger: issue {key} already belongs to live run {holder}"),
+                }));
             }
         }
         let path = new.worktree_path.to_string_lossy().to_string();
@@ -910,6 +917,18 @@ impl Ledger {
             |row| row.get::<_, String>(0),
         )
         .optional()
+        .map_err(sql_err)
+    }
+
+    /// How this box saw the master pane of `run_id` end, where it has.
+    fn host_ended_by(tx: &rusqlite::Transaction<'_>, run_id: &str) -> Result<Option<String>> {
+        tx.query_row(
+            "SELECT host_ended_by FROM runs WHERE run_id = ?1 AND host_ended_at_ms IS NOT NULL",
+            params![run_id],
+            |row| row.get::<_, Option<String>>(0),
+        )
+        .optional()
+        .map(Option::flatten)
         .map_err(sql_err)
     }
 
@@ -1069,6 +1088,22 @@ impl Ledger {
         Ok(n == 1)
     }
 
+    /// Take back a [`HOST_PANE_GONE`] mark on an open run, because its master's
+    /// pane has since read alive: the earlier read saw nothing end. A
+    /// [`HOST_PANE_STARTED`] mark is a placement rather than a read of a pane,
+    /// and stands (ISS-1312).
+    pub fn withdraw_pane_gone(&self, run_id: &str) -> Result<bool> {
+        let n = self
+            .conn
+            .execute(
+                "UPDATE runs SET host_ended_at_ms = NULL, host_ended_by = NULL
+                  WHERE run_id = ?1 AND host_ended_by = ?2 AND ended_by IS NULL",
+                params![run_id, HOST_PANE_GONE],
+            )
+            .map_err(sql_err)?;
+        Ok(n == 1)
+    }
+
     /// A `SubagentStart` of this run's subagent at `at_ms`: it is running in a
     /// live process again, so an earlier end of its host no longer speaks for
     /// it. Where the lead's hook named where the subagent writes, that is kept
@@ -1210,7 +1245,7 @@ impl Ledger {
             .execute(
                 "UPDATE runs SET resume_choice = ?3, resume_choice_why = ?4
                   WHERE run_id = ?1 AND master_session_id = ?2
-                    AND resume_owed_at IS NOT NULL",
+                    AND resume_owed_at IS NOT NULL AND resume_choice IS NULL",
                 params![run_id, master_session_id, choice, why],
             )
             .map_err(sql_err)?;
@@ -2249,6 +2284,61 @@ mod tests {
             worktree_path: PathBuf::from("/w/one"),
             boot_id: "boot-a".into(),
             issue_keys: issues.iter().map(|s| (*s).to_string()).collect(),
+        }
+    }
+
+    /// ISS-1312 criterion 36: a cold-started successor redeclaring an orphan's
+    /// issue was told the issue "already belongs to live run" of a row this box
+    /// had itself marked as ended with its pane, and nothing said what would
+    /// free it.
+    #[test]
+    fn an_issue_held_by_a_run_that_ended_with_its_pane_is_refused_as_not_running() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(seed(&["ISS-1314"])).unwrap();
+        let successor = |run_id: &str| NewRun {
+            run_id: run_id.into(),
+            master_session_id: "master-2".into(),
+            worktree_path: PathBuf::from("/w/two"),
+            ..seed(&["ISS-1314"])
+        };
+
+        let unmarked = led.create_run_group(successor("run-2")).unwrap_err().to_string();
+        assert!(
+            unmarked.contains("already belongs to live run run-1"),
+            "the control: a holder nothing has ended is still a live run: {unmarked}"
+        );
+
+        for by in [HOST_PANE_STARTED, HOST_PANE_GONE] {
+            led.conn
+                .execute(
+                    "UPDATE runs SET host_ended_at_ms = NULL, host_ended_by = NULL WHERE run_id = 'run-1'",
+                    [],
+                )
+                .unwrap();
+            assert!(led.note_host_ended("run-1", 1_790_000_000_000, by).unwrap());
+
+            let said = led.create_run_group(successor("run-3")).unwrap_err().to_string();
+
+            assert!(
+                !said.contains("live run"),
+                "a run this box marked as ended with its pane is not called live ({by}): {said}"
+            );
+            for part in [
+                "ISS-1314",
+                "run-1",
+                "not running",
+                "master pane",
+                "first recovery sweep after core calls that run's session over",
+            ] {
+                assert!(
+                    said.contains(part),
+                    "the refusal says what holds the issue and what frees it, missing `{part}` ({by}): {said}"
+                );
+            }
+            assert!(
+                led.run("run-3").unwrap().is_none(),
+                "a refused declaration writes no row"
+            );
         }
     }
 

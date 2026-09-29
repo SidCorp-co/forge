@@ -41,6 +41,10 @@ pub(crate) fn mcp_tool_timeout_default(existing: Option<&OsStr>) -> Option<&'sta
 /// Resolve the `claude` binary: `$PATH` first, then common install dirs.
 #[cfg(not(target_os = "windows"))]
 pub fn resolve_claude_bin() -> &'static str {
+    #[cfg(test)]
+    if let Some(stub) = testing::stub() {
+        return stub;
+    }
     static CLAUDE_BIN: OnceLock<String> = OnceLock::new();
     CLAUDE_BIN.get_or_init(|| {
         if let Ok(p) = which::which("claude") {
@@ -74,6 +78,40 @@ pub fn resolve_claude_bin() -> &'static str {
 #[cfg(target_os = "windows")]
 pub fn resolve_claude_bin() -> &'static str {
     "claude"
+}
+
+/// A stand-in for `claude` that a test can start a real pane with.
+///
+/// The resolution above is cached for the life of the process, so a stub put
+/// on `PATH` reaches only a test that happens to run before anything else
+/// resolved `claude`, and a pane started otherwise runs the real one.
+#[cfg(test)]
+pub(crate) mod testing {
+    use std::sync::Mutex;
+
+    static STUB: Mutex<Option<&'static str>> = Mutex::new(None);
+
+    pub(super) fn stub() -> Option<&'static str> {
+        *STUB.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// Every `claude` this process resolves is `bin` until this is dropped.
+    /// Held under `ENV_TEST_LOCK`, as the other process-wide overrides are.
+    pub(crate) struct StubClaude;
+
+    impl StubClaude {
+        pub(crate) fn installed(bin: &std::path::Path) -> Self {
+            let leaked: &'static str = Box::leak(bin.to_string_lossy().into_owned().into_boxed_str());
+            *STUB.lock().unwrap_or_else(|e| e.into_inner()) = Some(leaked);
+            StubClaude
+        }
+    }
+
+    impl Drop for StubClaude {
+        fn drop(&mut self) {
+            *STUB.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        }
+    }
 }
 
 pub fn build_command(args: &[String], repo_path: &str) -> Command {

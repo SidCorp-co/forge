@@ -317,6 +317,19 @@ fn run_choice(
     let Some(led) = held.as_mut() else {
         return ClaimReply::refused("this daemon has no ledger open, so it can record nothing");
     };
+    // A choice is recorded once, and core is told the one recorded: a second
+    // choice answered `ok` and replaced the first with nothing said (ISS-1312).
+    if let Ok(Some(run)) = led.run(run_id) {
+        if let (true, Some(chosen)) = (
+            run.master_session_id == session_id,
+            run.resume_choice.as_deref(),
+        ) {
+            return ClaimReply::refused(format!(
+                "run {run_id} already has `{chosen}` recorded for it: \u{ab}{}\u{bb}. A choice is recorded once, so `{choice}` changed nothing",
+                run.resume_choice_why.as_deref().unwrap_or("no reason recorded")
+            ));
+        }
+    }
     match led.record_resume_choice(run_id, session_id, choice, why) {
         Ok(true) => {
             tracing::info!("[control] run {run_id}: this master chose to {choice} — {why}");
@@ -471,6 +484,15 @@ fn run_close(
     };
     match led.run(run_id) {
         Ok(Some(run)) if run.master_session_id == session_id => {
+            // An ending is recorded once. A second close answered `ok` and
+            // wrote its own reason over the first, so the row said whatever
+            // the last caller typed (ISS-1312).
+            if let Some(by) = run.ended_by.as_deref() {
+                return ClaimReply::refused(format!(
+                    "run {run_id} is already ended by {by}: \u{ab}{}\u{bb}. An ending is recorded once, so this close changed nothing",
+                    run.ended_reason.as_deref().unwrap_or("no reason recorded")
+                ));
+            }
             if let Err(e) = led.end_run(run_id, "master", reason.unwrap_or("the master said so")) {
                 return ClaimReply::refused(e.to_string());
             }
@@ -1269,8 +1291,12 @@ mod tests {
             assert_eq!(boot, "boot-a");
             crate::daemon::master::inherited_runs(led, PROJECT, &boot)
         };
-        let brief = crate::daemon::master::resumed_brief("conv-forge-dev", &inherited);
+        let brief = crate::daemon::master::resumed_brief("conv-forge-dev", &inherited, true);
         assert!(brief.contains(RUN), "criterion 19: {brief}");
+        assert!(
+            brief.contains("ended with the pane") && !brief.contains("incarnation: live"),
+            "criteria 34 and 35: {brief}"
+        );
         {
             let mut held = ctl.ledger.lock().unwrap();
             let led = held.as_mut().unwrap();
@@ -2192,6 +2218,63 @@ mod tests {
             assert!(
                 !reply.ok,
                 "another pane's run is not this pane's to answer for"
+            );
+        }
+
+        /// ISS-1312 criteria 37 and 38: an ending is recorded once. A second
+        /// close used to answer `ok` and write its own reason over the first,
+        /// so the row said whatever the last caller typed.
+        #[test]
+        fn a_second_close_is_refused_quoting_the_first_and_changes_nothing() {
+            let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
+            let run_id = run_declare(&ctl, "proj-1", &["ISS-7".into()], "/w/seven", "sess-a")
+                .job_id
+                .expect("declared");
+            assert!(run_close(&ctl, &run_id, Some("its report is in"), "sess-a").ok);
+
+            let again = run_close(&ctl, &run_id, Some("second thoughts"), "sess-a");
+
+            assert!(!again.ok, "a run already ended cannot be ended again");
+            let reason = again.reason.unwrap_or_default();
+            for said in [run_id.as_str(), "master", "its report is in"] {
+                assert!(
+                    reason.contains(said),
+                    "the refusal quotes the ending already recorded, missing `{said}`: {reason}"
+                );
+            }
+            let held = ctl.ledger.lock().unwrap();
+            let row = held.as_ref().unwrap().run(&run_id).unwrap().unwrap();
+            assert_eq!(
+                (row.ended_by.as_deref(), row.ended_reason.as_deref()),
+                (Some("master"), Some("its report is in")),
+                "the first ending stands"
+            );
+        }
+
+        /// ISS-1312 criteria 39 and 40: a choice is recorded once. A second one
+        /// used to answer `ok` and replace the first reason with nothing said.
+        #[test]
+        fn a_second_choice_is_refused_quoting_the_first_and_changes_nothing() {
+            let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
+            let run_id = declared_and_inherited(&ctl, "proj-1", "sess-a");
+            assert!(run_choice(&ctl, &run_id, "continue", "the branch stands", "sess-a").ok);
+
+            let again = run_choice(&ctl, &run_id, "restart", "on reflection", "sess-a");
+
+            assert!(!again.ok, "a run already answered for cannot be answered for again");
+            let reason = again.reason.unwrap_or_default();
+            for said in [run_id.as_str(), "continue", "the branch stands"] {
+                assert!(
+                    reason.contains(said),
+                    "the refusal quotes the choice already recorded, missing `{said}`: {reason}"
+                );
+            }
+            let held = ctl.ledger.lock().unwrap();
+            let row = held.as_ref().unwrap().run(&run_id).unwrap().unwrap();
+            assert_eq!(
+                (row.resume_choice.as_deref(), row.resume_choice_why.as_deref()),
+                (Some("continue"), Some("the branch stands")),
+                "the first choice stands"
             );
         }
 
