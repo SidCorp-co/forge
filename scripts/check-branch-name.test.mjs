@@ -1,3 +1,4 @@
+// @gate-input whole-tree — it runs a shell script, which the root-walk guard cannot see into.
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';

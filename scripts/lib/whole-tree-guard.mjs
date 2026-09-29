@@ -1,14 +1,15 @@
 // The vitest setup file every config names: it fails a file in `afterAll` when what the file ran
-// listed a directory covering the repository root and the file does not declare `@gate-input
-// whole-tree` (ISS-1314). It reads calls, not source: each reading of the text was a list of
-// spellings. It cannot see a listing the run never executes (the run that does is refused), nor an
-// unreadable program reaching the root by a route none of its inputs spell.
+// listed a directory covering the repository root and it does not declare `@gate-input whole-tree`
+// (ISS-1314). It reads calls, not source, bar the file's own `import.meta.glob`, which vite expands
+// before the file runs. It cannot see a listing the run never executes, native code, or a listing
+// delegated to a process the test did not start: docs/proposals/a-test-reading-a-named-file-*.md.
 
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { afterAll, expect } from 'vitest';
-import { guardVerdict } from './whole-tree-gates.mjs';
+import { GLOB_CALL_RE, globListings, guardVerdict } from './whole-tree-gates.mjs';
 import { installWatch, ROOT } from './whole-tree-watch.mjs';
 
 const KEY = Symbol.for('forge.whole-tree-guard');
@@ -38,17 +39,26 @@ function childHits() {
     .map((line) => JSON.parse(line));
 }
 
+/** The file's own globs, read with the TypeScript compiler core declares, loaded only on a match. */
+function globHits(source, filepath) {
+  if (!GLOB_CALL_RE.test(source)) return [];
+  const ts = createRequire(join(ROOT, 'packages/core/package.json'))('typescript');
+  return globListings({ source, file: filepath, root: ROOT, ts });
+}
+
 afterAll(() => {
   const filepath = expect.getState().testPath;
   const hits = [...state.hits, ...childHits()];
   state.hits = [];
-  if (!filepath || hits.length === 0) return;
+  if (!filepath) return;
   let source = '';
   try {
     source = readFileSync(filepath, 'utf8');
   } catch {
     return;
   }
+  hits.push(...globHits(source, filepath));
+  if (hits.length === 0) return;
   const refusal = guardVerdict({ file: relative(ROOT, filepath), source, hits, root: ROOT });
   if (refusal) throw new Error(refusal);
 });
