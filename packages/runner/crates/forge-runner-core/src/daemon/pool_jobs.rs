@@ -1837,18 +1837,14 @@ mod tests {
     }
 
     /// The production port, over a tmux that cannot be run: not gone.
-    #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn the_tmux_port_reads_a_tmux_nobody_could_ask_as_not_gone() {
-        let _serialised = terminal::testing::ONE_AT_A_TIME.lock().await;
-        let _env = crate::auth::cred_store::ENV_TEST_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let _no_tmux = terminal::testing::UnaskableTmux::installed();
+        let no_tmux = terminal::testing::UnaskableTmux::installed();
         assert!(
             !TmuxPanes.gone("forge-job-j1").await,
             "a question tmux could not answer is not a pane that ended"
         );
+        assert!(no_tmux.asked() > 0, "the port asked the fake tmux");
     }
 
     #[tokio::test]

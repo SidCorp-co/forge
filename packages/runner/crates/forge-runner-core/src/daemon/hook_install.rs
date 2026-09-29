@@ -518,15 +518,9 @@ mod tests {
         assert_ne!(GATE_EVENT, Event::SubagentStarted.wire());
     }
 
-    // cm:guard shares ENV_TEST_LOCK with daemon/terminal.rs's PATH-narrowing tests: this
-    // spawns `sh` off ambient PATH, which a concurrent PATH narrowed elsewhere in the same
-    // process can starve — see terminal.rs's own note for the CI failure that shape produced.
     #[cfg(unix)]
     #[test]
     fn a_runner_under_a_path_with_a_space_is_what_the_hook_actually_invokes() {
-        let _env = crate::auth::cred_store::ENV_TEST_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
         let (dir, exe) = scratch_runner("forge hooks with spaces");
         let cmd = reporting_command(&exe);
 
@@ -541,13 +535,9 @@ mod tests {
     }
 
     /// The same, for a path holding the quote character the quoting is made of.
-    // cm:guard same PATH race as the test above; its `cfg` comment names the mechanism.
     #[cfg(unix)]
     #[test]
     fn a_runner_under_a_path_holding_a_quote_is_still_invoked() {
-        let _env = crate::auth::cred_store::ENV_TEST_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
         let (dir, exe) = scratch_runner("forge o'brien hooks");
         let cmd = reporting_command(&exe);
 
