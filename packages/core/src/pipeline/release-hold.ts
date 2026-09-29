@@ -265,6 +265,19 @@ export function releaseHoldComment(hold: ReleaseHold): string {
   ].join('\n');
 }
 
+/**
+ * A named row carries its hold's comment even where the hold was stored before anyone could write
+ * one — no owner then, or the row only now the oldest of those held (ISS-1346 review, 38d791 F1).
+ */
+async function commentOnce(issueId: string, authorId: string, body: string): Promise<void> {
+  const [posted] = await db
+    .select({ id: comments.id })
+    .from(comments)
+    .where(and(eq(comments.issueId, issueId), eq(comments.body, body)))
+    .limit(1);
+  if (!posted) await db.insert(comments).values({ issueId, authorId, body });
+}
+
 export interface ReleaseHoldTally {
   /** Rows whose hold was written or replaced this call. */
   written: number;
@@ -303,6 +316,9 @@ export async function writeReleaseHolds(args: {
     const hold = args.holdFor(row.id);
     if (sameReleaseHold(readReleaseHold(row.held), hold)) {
       tally.unchanged += 1;
+      if (args.authorId && args.commentOn?.has(row.id)) {
+        await commentOnce(row.id, args.authorId, releaseHoldComment(hold));
+      }
       continue;
     }
     const stored: StoredReleaseHold = {

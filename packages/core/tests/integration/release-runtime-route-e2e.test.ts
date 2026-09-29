@@ -351,6 +351,21 @@ describe('a project nothing can read is told once', () => {
     expect(await holdComments(oldest)).toBe(1);
   }, 30_000);
 
+  it('moves the one comment to the next oldest once the oldest leaves the gate', async () => {
+    await bindUnreporting();
+    const oldest = await waitingRow(SERVED, '2026-09-27T09:00:00Z');
+    const next = await waitingRow(SERVED, '2026-09-28T09:00:00Z');
+    const last = await waitingRow(SERVED, '2026-09-29T09:00:00Z');
+    await sweep();
+    await harness.db.execute(sql`UPDATE issues SET status = 'developed' WHERE id = ${oldest}`);
+
+    await sweep();
+    await sweep();
+
+    expect(await holdComments(next)).toBe(1);
+    expect(await holdComments(last)).toBe(0);
+  }, 30_000);
+
   it('answers one project-level blocker naming what is missing, in place of the per-row one', async () => {
     await bindUnreporting();
     await waitingRow(SERVED, '2026-09-27T09:00:00Z');
