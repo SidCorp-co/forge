@@ -6113,6 +6113,10 @@
   deploy. Shipped 2026-09-02; this line was owed then and is written now. (ISS-870)
 
 ### Changed
+- **A release is taken by the project's master, not by whichever box polls first.** Pressing
+  Release now refuses by name when no box could take it, naming what stops each, and one nobody
+  takes in time returns to the gate.
+
 - **A project's route to live is now one ordered list of branches.** Release model, live branch
   and strategy could disagree; a list cannot. Every project keeps the shape it released by, and
   longer paths can now be described.

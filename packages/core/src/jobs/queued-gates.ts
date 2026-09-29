@@ -2,7 +2,6 @@ import { eq, type SQL, sql } from 'drizzle-orm';
 import { type Db, db } from '../db/client.js';
 import type { JobType, RunnerType } from '../db/schema.js';
 import { jobs } from '../db/schema.js';
-import { runnerMayTakeJob } from '../devices/release-label.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import { RUNNER_CAPABILITIES } from '../pipeline/registry.js';
 import { claimCapableSql } from '../runners/device-cap.js';
@@ -21,8 +20,7 @@ export type GateSkipReason =
   | 'retry_cooldown'
   | 'issue_busy'
   | 'runner_too_old'
-  | 'runner_stale'
-  | 'release_label_missing';
+  | 'runner_stale';
 
 /**
  * What {@link assertDispatchable} answers. `ok: false` carries the first
@@ -133,20 +131,6 @@ function buildGateReasonCase(predicates: BarrierFragments['predicates']): SQL {
           SELECT 1 FROM fresh_capable_runners WHERE project_id = j.project_id AND claim_capable
         )
           THEN 'runner_too_old'
-        -- ISS-1128 — a question about the JOB: may anything that could claim
-        -- take it. Since the label became a preference, and since ISS-1275 made
-        -- no preference admit the pool, that leaves one shape: two live deploy
-        -- bindings naming DIFFERENT labels, which resolves to no box to prefer
-        -- and is a person's to reconcile. A box that merely carries the wrong
-        -- label is ordinary routing and waits on nobody, and a project that
-        -- declares nothing is not waiting either.
-        WHEN j.type = 'release_batch'
-          AND NOT EXISTS (
-            SELECT 1 FROM fresh_capable_runners fcr
-            WHERE fcr.project_id = j.project_id
-              AND fcr.claim_capable AND ${runnerMayTakeJob(sql`fcr.labels`)}
-          )
-          THEN 'release_label_missing'
         ELSE NULL
       END`;
 }

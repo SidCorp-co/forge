@@ -26,6 +26,7 @@ import type {
 	ReleaseBoundsReading,
 	ReleaseLiveState,
 	ReleaseMethod,
+	ReleaseOwner,
 	ReleaseRunState,
 } from "../types";
 import { ReleaseTimeline } from "./release-timeline";
@@ -174,6 +175,71 @@ function Bounds({ bounds }: { bounds: ReleaseBoundsReading }) {
 	);
 }
 
+/** Who holds this release, and while nobody does, what stops each box from taking it. */
+function Owner({ owner }: { owner: ReleaseOwner | null }) {
+	if (!owner) {
+		return (
+			<p className="text-sm text-muted" data-testid="owner">
+				This release was cut before a release was owned by a run session;
+				the job that ran it owned it.
+			</p>
+		);
+	}
+	const lastRefusal = owner.refusals[owner.refusals.length - 1];
+	return (
+		<div className="flex flex-col gap-2" data-testid="owner">
+			{owner.state === "awaiting" ? (
+				<>
+					<p className="text-sm">
+						Waiting for this project&apos;s master to take it, since{" "}
+						<time dateTime={owner.since}>{owner.since}</time>. Nobody taking
+						it by <time dateTime={owner.deadlineAt}>{owner.deadlineAt}</time>{" "}
+						cancels it and hands every issue back to the release gate.
+					</p>
+					<ul className="flex flex-col gap-1">
+						{owner.boxes.map((box) => (
+							<li
+								key={box.deviceName}
+								className={`text-xs ${box.able ? "text-green" : "text-muted"}`}
+							>
+								{box.clause}
+							</li>
+						))}
+						{owner.boxes.length === 0 ? (
+							<li className="text-xs text-amber">
+								No box serves this project.
+							</li>
+						) : null}
+					</ul>
+				</>
+			) : null}
+			{owner.state === "owned" ? (
+				<p className="text-sm">
+					Owned by run session <MonoTag>{owner.sessionId}</MonoTag> on{" "}
+					<MonoTag>{owner.deviceName}</MonoTag>, taken at{" "}
+					<time dateTime={owner.takenAt ?? undefined}>{owner.takenAt}</time>.
+				</p>
+			) : null}
+			{owner.state === "lost" || owner.state === "orphaned" ? (
+				<p className="text-sm font-medium text-amber">
+					{owner.state === "lost"
+						? "Cancelled with no owner: "
+						: "Held for a person, its owner gone after a promotion: "}
+					{owner.why}
+					{owner.endedAt ? ` (${owner.endedAt})` : ""}.
+				</p>
+			) : null}
+			{lastRefusal ? (
+				<p className="text-xs text-subtle">
+					Last refused take
+					{lastRefusal.deviceName ? ` from ${lastRefusal.deviceName}` : ""}:{" "}
+					{lastRefusal.reason}
+				</p>
+			) : null}
+		</div>
+	);
+}
+
 function Roster({ state }: { state: ReleaseRunState }) {
 	const { roster } = state;
 	return (
@@ -280,6 +346,15 @@ export function ReleaseRunScreen({ projectId, runId }: ReleaseRunScreenProps) {
 					</CardContent>
 				</Card>
 			</div>
+
+			<Card>
+				<CardHeader>
+					<CardTitle>Owner</CardTitle>
+				</CardHeader>
+				<CardContent>
+					<Owner owner={data.owner} />
+				</CardContent>
+			</Card>
 
 			<Card>
 				<CardHeader>

@@ -19,6 +19,12 @@ const select = vi.fn(() => {
 
 vi.mock('../db/client.js', () => ({ db: { execute, select } }));
 
+// The rosters this box may take are owner-take's own reading; here only how the list folds them in.
+const takeable = vi.fn(async (_args: unknown): Promise<string[]> => []);
+vi.mock('../release-batch/owner-take.js', () => ({
+  takeableRosterIssueIds: (args: unknown) => takeable(args),
+}));
+
 const { readAdmissibleIssues, readAdmissions } = await import('./admissible.js');
 const { BLOCKER_SETTLED_STATUSES, DISPATCH_GATING_KIND } = await import(
   '../issues/dependency-effects.js'
@@ -48,6 +54,8 @@ const issueRow = (over: Record<string, unknown> = {}) => ({
 
 beforeEach(() => {
   execute.mockReset();
+  takeable.mockReset();
+  takeable.mockResolvedValue([]);
 });
 
 describe('readAdmissions', () => {
@@ -223,5 +231,41 @@ describe('readAdmissibleIssues', () => {
     execute.mockResolvedValueOnce([issueRow({ iss_seq: null })]);
     const [row] = await readAdmissibleIssues({ deviceId: DEVICE });
     expect(row?.issueKey).toBeNull();
+  });
+});
+
+// ISS-1281: a release is handed to a project's master, so a box with a roster to take places and
+// nudges its master even where the project admits nothing — the roster's issues are on the list.
+describe('the rosters this box may take', () => {
+  const ROSTERED = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+
+  it('lists a waiting roster where the project admits nothing at all', async () => {
+    execute.mockResolvedValueOnce([projectRow({ states: { open: { mode: 'manual' } } })]);
+    takeable.mockResolvedValueOnce([ROSTERED]);
+    execute.mockResolvedValueOnce([issueRow({ id: ROSTERED, status: 'releasing' })]);
+
+    const rows = await readAdmissibleIssues({ deviceId: DEVICE });
+
+    expect(rows.map((r) => r.issueId)).toEqual([ROSTERED]);
+    expect(rows[0]?.status).toBe('releasing');
+    expect(JSON.stringify(execute.mock.calls[1]?.[0])).toContain(ROSTERED);
+  });
+
+  it('does not list an issue twice when the backlog already carries it', async () => {
+    const listed = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    execute.mockResolvedValueOnce([projectRow({ poolBacklog: { statuses: ['draft'] } })]);
+    execute.mockResolvedValueOnce([issueRow({ id: listed })]);
+    takeable.mockResolvedValueOnce([listed]);
+
+    const rows = await readAdmissibleIssues({ deviceId: DEVICE });
+
+    expect(rows.map((r) => r.issueId)).toEqual([listed]);
+    expect(execute, 'nothing left to read once the backlog carried it').toHaveBeenCalledTimes(2);
+  });
+
+  it('asks owner-take about this box and the project the caller named', async () => {
+    execute.mockResolvedValueOnce([]);
+    await readAdmissibleIssues({ deviceId: DEVICE, projectId: PROJECT });
+    expect(takeable).toHaveBeenCalledWith({ deviceId: DEVICE, projectId: PROJECT });
   });
 });

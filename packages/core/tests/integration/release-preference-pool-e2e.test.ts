@@ -26,7 +26,11 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
-import { RELEASE_LABEL, releaseBatchFixture } from '../helpers/release-batch-fixture.js';
+import {
+  makeReleaseOwner,
+  RELEASE_LABEL,
+  releaseBatchFixture,
+} from '../helpers/release-batch-fixture.js';
 
 describe('a release runner label ranks the pool it does not filter', () => {
   let harness: TestDatabase;
@@ -60,9 +64,9 @@ describe('a release runner label ranks the pool it does not filter', () => {
   const { declareProduction, insertIssue, stored, claim } = fx;
 
   /**
-   * One box on the project. Every case below moves exactly one of `labels`,
-   * `status` and `agentVersion`, which are the three ways a box stops being
-   * eligible to take the release.
+   * One box on the project, with a master of it running there and a heartbeat that ships the
+   * release role (ISS-1281). Every case below moves exactly one of `labels`, `status` and
+   * `agentVersion`, the three ways its runner stops it taking the release.
    */
   async function seedBox(opts: {
     labels: string[];
@@ -81,6 +85,7 @@ describe('a release runner label ranks the pool it does not filter', () => {
         ${JSON.stringify(opts.labels)}::jsonb
       )
     `);
+    await makeReleaseOwner(harness.db, { projectId, userId: ownerId, deviceId: device.id });
     return device.id;
   }
 
@@ -211,15 +216,13 @@ describe('a release runner label ranks the pool it does not filter', () => {
     expect(await releaseRunnerOf(runId)).toEqual({ label: null, preferenceMet: true });
   });
 
-  it('tells the release agent the label, whether it was met, and the box that took the job', async () => {
+  it('tells the release agent the label, whether it was met, and the box whose master took it', async () => {
     await declareProduction();
     await seedBox({ labels: [] });
-    const a = await insertIssue();
-    const { runId, jobId } = await claim([a]);
     const took = await seedBox({ labels: [] });
-    await harness.db.execute(sql`
-      UPDATE jobs SET device_id = ${took} WHERE id = ${jobId}
-    `);
+    const a = await insertIssue();
+    const { runId } = await claim([a]);
+    await fx.take(runId, took);
 
     const { loadReleaseBatchContext } = await import('../../src/release-batch/queries.js');
 
@@ -228,5 +231,15 @@ describe('a release runner label ranks the pool it does not filter', () => {
       preferenceMet: false,
       claimedByDeviceId: took,
     });
+  });
+
+  it('records the preference as met once a labelled box takes it', async () => {
+    await declareProduction();
+    const labelled = await seedBox({ labels: [RELEASE_LABEL] });
+    const a = await insertIssue();
+    const { runId } = await claim([a]);
+    await fx.take(runId, labelled);
+
+    expect(await releaseRunnerOf(runId)).toEqual({ label: RELEASE_LABEL, preferenceMet: true });
   });
 });

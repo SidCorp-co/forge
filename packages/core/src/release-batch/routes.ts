@@ -41,7 +41,9 @@ import {
   loadReleaseRoster,
   NoReleaseGateError,
   ReleaseIssuesUnnamedError,
+  ReleaseOwnerUnavailableError,
   ReleaseRecutRefusedError,
+  ReleaseRosterOverRunError,
   ReleaseVersionConflictError,
   ReleaseVersionExhaustedError,
 } from './service.js';
@@ -118,7 +120,22 @@ releaseBatchRoutes.post(
       if (err instanceof ClaimConflictError) {
         throw releaseBlockerHttp(err, 'CLAIM_CONFLICT', err.details ?? { issueIds: err.issueIds });
       }
-      if (err instanceof BatchInFlightError) throw releaseBlockerHttp(err, 'BATCH_IN_FLIGHT');
+      if (err instanceof BatchInFlightError) {
+        throw releaseBlockerHttp(
+          err,
+          'BATCH_IN_FLIGHT',
+          err.existingRunId ? { runId: err.existingRunId } : undefined,
+        );
+      }
+      if (err instanceof ReleaseOwnerUnavailableError) {
+        throw new HTTPException(503, {
+          message: err.message,
+          cause: { code: err.code, details: { boxes: err.boxes } },
+        });
+      }
+      if (err instanceof ReleaseRosterOverRunError) {
+        throw conflict(err.code, err.message, { named: err.named, cap: err.cap });
+      }
       if (err instanceof ReleaseIssuesUnnamedError) throw issuesUnnamed(projectId);
       if (err instanceof ReleaseRecutRefusedError) {
         throw conflict('RELEASE_RECUT_REFUSED', err.message);

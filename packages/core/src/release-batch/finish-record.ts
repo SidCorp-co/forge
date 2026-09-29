@@ -7,6 +7,7 @@ import { pipelineRuns } from '../db/schema.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { logger } from '../logger.js';
 import { RUN_NOT_ABORTED } from './abort-stamp.js';
+import { OWNER_NOT_LOST } from './owner-record.js';
 import type { ReleaseVerification } from './plan.js';
 
 export type FinishState = 'accepted' | 'verifying' | 'closing' | 'finished' | 'failed';
@@ -126,7 +127,7 @@ export async function compareAndSet(
     expected === null
       ? sql`${pipelineRuns.metadata} -> 'finish' IS NULL`
       : sql`(${pipelineRuns.metadata} -> 'finish' ->> 'version')::int = ${expected}`;
-  const guard = runOpen ? and(version, RUN_NOT_ABORTED) : version;
+  const guard = runOpen ? and(version, RUN_NOT_ABORTED, OWNER_NOT_LOST) : version;
   const rows = await db
     .update(pipelineRuns)
     .set({

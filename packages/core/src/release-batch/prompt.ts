@@ -1,9 +1,10 @@
-// ISS-764 — prompt assembly for the release_batch job.
+// ISS-764 — the brief a master hands the subagent that runs one release (ISS-1281).
 // Pattern: buildSmokeCanaryPrompt (skills/smoke-verify.ts:429).
 // Untrusted issue text is wrapped via markUntrusted (same as every state prompt).
 
 import { chainLiveBranch, type ReleaseChain } from '../projects/release-chain.js';
 import { markUntrusted } from '../prompt/sanitize.js';
+import { releaseBatchStatePrompt } from '../prompt/state-prompts/release-batch.js';
 import { RELEASE_BATCH_SKILL, RELEASE_BATCH_TOOL, type ReleasePlan } from './plan.js';
 
 interface IssueSummary {
@@ -24,6 +25,11 @@ interface BuildReleaseBatchPromptArgs {
   releaseRunnerPreferenceMet: boolean;
 }
 
+/** The whole of what a release subagent is handed: no system prompt of a job carries the state. */
+export function buildReleaseBrief(args: BuildReleaseBatchPromptArgs): string {
+  return `${releaseBatchStatePrompt}\n\n${buildReleaseBatchPrompt(args)}`;
+}
+
 export function buildReleaseBatchPrompt(args: BuildReleaseBatchPromptArgs): string {
   const { runId, projectId, baseBranch, releaseChain, issues, plan } = args;
   const roster = issues
@@ -32,14 +38,14 @@ export function buildReleaseBatchPrompt(args: BuildReleaseBatchPromptArgs): stri
   const baseLine = baseBranch ? `\nbaseBranch: ${baseBranch}` : '';
   const liveBranch = chainLiveBranch(releaseChain);
   const liveLine = liveBranch ? `\nliveBranch: ${liveBranch}` : '';
-  // What was true when the batch was CUT, never where it ended up running: the
-  // job is claimed after this string is built, and a box carrying the label can
+  // What was true when the batch was CUT, never where it ended up running: a
+  // master takes it after this string is built, and a box carrying the label can
   // come online in between. The box that took it is in the batch context.
   const runnerLine = plan.releaseRunnerLabel
     ? `\nrelease runner: this project prefers a box labelled \`${plan.releaseRunnerLabel}\`${
         args.releaseRunnerPreferenceMet
           ? ''
-          : ' — no box eligible to release carried it when this batch was cut. Read `releaseRunner` in the batch context for the box this job was claimed on, and say in what you record whether the preference was honoured.'
+          : ' — no box able to take this release carried it when this batch was cut. Read `releaseRunner` in the batch context for the box whose master took it, and say in what you record whether the preference was honoured.'
       }`
     : '';
   const channelLines =
@@ -58,13 +64,25 @@ ${channelLines}
 
 ### Issues in this batch (${issues.length})
 ${roster}
-${renderReach(runId)}${renderMethod()}${renderProcedure(plan)}
+${renderOwnership(runId)}${renderReach(runId)}${renderMethod()}${renderProcedure(plan)}
 Start by reading the batch context: \`${RELEASE_BATCH_TOOL}\` action \`get\` with runId \`${runId}\`.
 `;
 }
 
 /**
- * Every call this job makes to Forge goes through one tool, on the credential
+ * Who this release belongs to. The run session the master declared over the roster owns it, and
+ * a subagent that finds it owned by nobody — the declaration was refused, or a deadline passed —
+ * is working a release the recovery pass will give back.
+ */
+function renderOwnership(runId: string): string {
+  return `
+### Who owns this release
+The run your master declared over exactly this roster owns it. \`${RELEASE_BATCH_TOOL}\` action \`state\` with runId \`${runId}\` reads \`owner\`: go on only where \`owner.state\` is \`owned\`. Where it reads \`awaiting\` a minute after the declaration, \`owner.refusals\` says why no run took it; where it reads \`lost\` or \`orphaned\`, the release is no longer yours. In either case change nothing and end the turn quoting what it says.
+`;
+}
+
+/**
+ * Every call this release makes to Forge goes through one tool, on the credential
  * its pane was opened with — the one \`forge_coolify_deploy\` deploys on. A run
  * that cannot reach it cannot record a release, so it is told to stop before
  * the release rather than discover that at \`finish\` (ISS-1211).
@@ -79,12 +97,9 @@ If \`${RELEASE_BATCH_TOOL}\` is not in your tool list, or refuses your first cal
 }
 
 /**
- * The line that points at the method, off the SAME constant the job's `skillName` carries.
- *
- * `skillName` named `release-flow` and nothing invoked it: the runner reads no such column, and this
- * prompt never mentioned it, so the field selected nothing while reading like a designation
- * (ISS-1042). The name reaching the agent is what makes it true. It points; it no longer gates
- * (ISS-1276) — the procedure above is the method, and this is a way of loading one shape of it.
+ * The line that points at the method. The name reaching the agent is what makes it true (ISS-1042).
+ * It points and does not gate (ISS-1276): the procedure below is the method, and this is a way of
+ * loading one shape of it.
  */
 function renderMethod(): string {
   return `

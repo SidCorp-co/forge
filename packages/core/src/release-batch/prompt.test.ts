@@ -186,11 +186,11 @@ describe('the release runner preference the agent is told about', () => {
       releaseRunnerPreferenceMet: false,
     });
 
-    expect(out).toContain('no box eligible to release carried it when this batch was cut');
+    expect(out).toContain('no box able to take this release carried it when this batch was cut');
     expect(out).toContain('whether the preference was honoured');
   });
 
-  // The job is claimed after this string is built, so a labelled box coming
+  // The release is taken after this string is built, so a labelled box coming
   // online in between would make any claim about where it ran a guess.
   it('says where the box that took it is read, rather than asserting where it ran', () => {
     const out = buildReleaseBatchPrompt({
@@ -201,6 +201,39 @@ describe('the release runner preference the agent is told about', () => {
 
     expect(out).toContain('Read `releaseRunner` in the batch context');
     expect(out).not.toContain('is running somewhere else');
+  });
+});
+
+// ISS-1281: the brief is written before any master takes the release, so it cannot say who owns
+// it; it says where to read that, and that nothing moves until the reading says `owned`.
+describe('who owns the release the brief hands over', () => {
+  const out = () => buildReleaseBatchPrompt({ ...BASE, plan: plan() });
+
+  it('sends the run to its own owner reading before it touches anything', () => {
+    const text = out();
+    const owns = text.indexOf('### Who owns this release');
+    expect(owns).toBeGreaterThan(-1);
+    expect(owns, 'the ownership check comes before the method').toBeLessThan(
+      text.indexOf('### Your method'),
+    );
+    expect(text).toMatch(/action `state` with runId `run-1` reads `owner`/);
+    expect(text).toContain('go on only where `owner.state` is `owned`');
+  });
+
+  // A job carried the state block in its system prompt; a release subagent is handed the brief
+  // alone, so the brief carries it or the subagent never reads what `finish` means.
+  it('hands the release subagent the ordering contract ahead of the batch', async () => {
+    const { buildReleaseBrief } = await import('./prompt.js');
+    const brief = buildReleaseBrief({ ...BASE, plan: plan() });
+    expect(brief.startsWith(releaseBatchStatePrompt)).toBe(true);
+    expect(brief).toContain('### Ordering contract');
+    expect(brief.indexOf('### Ordering contract')).toBeLessThan(brief.indexOf('## Batch Release'));
+  });
+
+  it('names every state that means the release is not this run to carry', () => {
+    const text = out();
+    for (const state of ['awaiting', 'lost', 'orphaned']) expect(text).toContain(`\`${state}\``);
+    expect(text).toContain('change nothing and end the turn');
   });
 });
 

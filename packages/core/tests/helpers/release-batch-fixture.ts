@@ -9,7 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { sql } from 'drizzle-orm';
-import { afterAll } from 'vitest';
+import { afterAll, expect } from 'vitest';
 import type { CreateReleaseBatchResult } from '../../src/release-batch/service.js';
 import { createTestDevice, type TestDatabase } from './index.js';
 
@@ -22,9 +22,51 @@ export interface StoredIssue {
   claim: unknown;
 }
 
-export interface StoredJob {
-  status: string;
-  exitCode: number | null;
+export interface ReleaseBoxOver {
+  /** Defaults to the release label, so the binding's preference is met. */
+  labels?: string[];
+  /** Defaults to true. */
+  master?: boolean;
+  /** Defaults to shipping the role with an open admission. */
+  capabilities?: Record<string, unknown> | null;
+  runnerStatus?: 'online' | 'offline';
+  name?: string;
+}
+
+export const OPEN_RELEASE_BOX = { releaseRole: true, admission: { state: 'open' } };
+
+/**
+ * Make a box already bound to the project able to own its releases: the heartbeat fields a runner
+ * sends (`capabilities`), and a live master session of the project on it. Suites that seed their
+ * own runner call this beside it, so every one of them plants the same owner (ISS-1281).
+ */
+export async function makeReleaseOwner(
+  db: TestDatabase['db'],
+  args: {
+    projectId: string;
+    userId: string;
+    deviceId: string;
+    capabilities?: Record<string, unknown> | null;
+    master?: boolean;
+  },
+): Promise<void> {
+  const capabilities = args.capabilities === undefined ? OPEN_RELEASE_BOX : args.capabilities;
+  await db.execute(sql`
+    UPDATE devices SET capabilities = ${capabilities === null ? null : JSON.stringify(capabilities)}::jsonb
+     WHERE id = ${args.deviceId}
+  `);
+  if (args.master === false) return;
+  const masterRun = randomUUID();
+  await db.execute(sql`
+    INSERT INTO pipeline_runs (id, project_id, kind, status)
+    VALUES (${masterRun}, ${args.projectId}, 'system', 'running')
+  `);
+  await db.execute(sql`
+    INSERT INTO agent_sessions (id, project_id, pipeline_run_id, user_id, device_id, kind,
+                                status, last_heartbeat_at)
+    VALUES (${randomUUID()}, ${args.projectId}, ${masterRun}, ${args.userId}, ${args.deviceId},
+            'master', 'running', now())
+  `);
 }
 
 export interface ReleaseBatchFixture {
@@ -39,19 +81,34 @@ export interface ReleaseBatchFixture {
   serve(commit: string): void;
   /** Announce the method a run loaded, as an agent would. */
   announceMethod(runId: string, over?: { skill?: string; loaded?: boolean }): Promise<void>;
-  seedReleaseRunner(): Promise<void>;
+  /**
+   * A box that can own a release (ISS-1281): its runner live and labelled, a master of this
+   * project running on it, and a heartbeat saying it ships the release role and is not draining.
+   * `over` plants the one thing that stops it.
+   */
+  seedReleaseRunner(over?: ReleaseBoxOver): Promise<{ deviceId: string; deviceName: string }>;
+  /** Open the run session a master would, over exactly the roster of `releaseRunId`. */
+  take(
+    releaseRunId: string,
+    deviceId: string,
+    issueIds?: string[],
+  ): Promise<{ sessionId: string; runId: string }>;
   /** `merged` defaults to true: a roster issue is work that LANDED, which ISS-1108 made the
    *  precondition of the close, so a fixture leaving the claim off is asking for the refusal. */
   insertIssue(status?: string, note?: unknown, merged?: boolean): Promise<string>;
   stored(id: string): Promise<StoredIssue>;
   runStatus(runId: string): Promise<string>;
-  storedJob(jobId: string): Promise<StoredJob>;
   commentCount(issueId: string): Promise<number>;
   /**
    * Whatever `createReleaseBatch` returns, named by its own type rather than copied. The copy
    * this replaced went stale the moment ISS-1120 put `version` on the result.
    */
   claim(ids: string[], opts?: { deploy?: boolean }): Promise<CreateReleaseBatchResult>;
+  /**
+   * A batch as one cut before ISS-1281 stands in the field: no owner record, and the queued
+   * `release_batch` job that owned it, enqueued through `insertAndEnqueueJob` as such a batch was.
+   */
+  claimLegacy(ids: string[]): Promise<CreateReleaseBatchResult & { jobId: string }>;
   waitFor(cond: () => Promise<boolean>): Promise<void>;
 }
 
@@ -101,16 +158,56 @@ export function releaseBatchFixture(
     `);
   }
 
-  async function seedReleaseRunner(): Promise<void> {
+  async function seedReleaseRunner(
+    over: ReleaseBoxOver = {},
+  ): Promise<{ deviceId: string; deviceName: string }> {
     const { projectId, ownerId } = ids();
-    const device = await createTestDevice(harness().db, ownerId, { status: 'online' });
+    const device = await createTestDevice(harness().db, ownerId, {
+      status: 'online',
+      ...(over.name ? { name: over.name } : {}),
+    });
     await harness().db.execute(sql`
       INSERT INTO runners (id, project_id, type, device_id, name, status, last_seen_at, labels)
       VALUES (
         ${randomUUID()}, ${projectId}, 'claude-code', ${device.id}, 'release-runner',
-        'online', now(), ${JSON.stringify([RELEASE_LABEL])}::jsonb
+        ${over.runnerStatus ?? 'online'}, now(), ${JSON.stringify(over.labels ?? [RELEASE_LABEL])}::jsonb
       )
     `);
+    await makeReleaseOwner(harness().db, {
+      projectId,
+      userId: ownerId,
+      deviceId: device.id,
+      capabilities: over.capabilities === undefined ? OPEN_RELEASE_BOX : over.capabilities,
+      master: over.master !== false,
+    });
+    return { deviceId: device.id, deviceName: device.name };
+  }
+
+  async function take(
+    releaseRunId: string,
+    deviceId: string,
+    issueIds?: string[],
+  ): Promise<{ sessionId: string; runId: string }> {
+    const { projectId } = ids();
+    const rows = (await harness().db.execute(sql`
+      SELECT iss_seq FROM issues
+       WHERE ${
+         issueIds
+           ? sql`id IN (${sql.join(
+               issueIds.map((i) => sql`${i}`),
+               sql`, `,
+             )})`
+           : sql`release_batch_run_id = ${releaseRunId}`
+}
+       ORDER BY iss_seq
+    `)) as unknown as Array<{ iss_seq: number }>;
+    const { openRunSession } = await import('../../src/devices/run-session.js');
+    return openRunSession({
+      deviceId,
+      projectId,
+      issueKeys: rows.map((r) => `ISS-${r.iss_seq}`),
+      name: 'release',
+    });
   }
 
   async function insertIssue(
@@ -151,14 +248,6 @@ export function releaseBatchFixture(
     return String(rows[0]?.status);
   }
 
-  async function storedJob(jobId: string): Promise<StoredJob> {
-    const rows = await harness().db.execute(sql`
-      SELECT status, exit_code FROM jobs WHERE id = ${jobId}
-    `);
-    const exit = rows[0]?.exit_code;
-    return { status: String(rows[0]?.status), exitCode: exit == null ? null : Number(exit) };
-  }
-
   async function commentCount(issueId: string): Promise<number> {
     const rows = await harness().db.execute(sql`
       SELECT count(*)::int AS n FROM comments WHERE issue_id = ${issueId}
@@ -173,6 +262,37 @@ export function releaseBatchFixture(
     if (opts.deploy !== false) served = `commit-pushed-by-run-${result.runId}`;
     await announceMethodFor(result.runId);
     return result;
+  }
+
+  async function claimLegacy(idList: string[]) {
+    const { projectId, ownerId } = ids();
+    const result = await claim(idList);
+    const rows = (await harness().db.execute(sql`
+      UPDATE pipeline_runs SET metadata = metadata - 'owner' - 'brief'
+       WHERE id = ${result.runId}
+       RETURNING metadata
+    `)) as unknown as Array<{ metadata: unknown }>;
+    expect(rows).toHaveLength(1);
+    const [{ insertAndEnqueueJob }, { RELEASE_BATCH_SKILL }] = await Promise.all([
+      import('../../src/pipeline/enqueue-helper.js'),
+      import('../../src/release-batch/plan.js'),
+    ]);
+    const { jobId } = await insertAndEnqueueJob({
+      projectId,
+      issueId: null,
+      pipelineRunId: result.runId,
+      createdBy: ownerId,
+      type: 'release_batch',
+      skillName: RELEASE_BATCH_SKILL,
+      promptString: 'a release cut before ISS-1281',
+      payloadExtras: {
+        releaseBatch: true,
+        gateStatus: result.gateStatus,
+        issueIds: result.issueIds,
+        timeoutSeconds: 3600,
+      },
+    });
+    return { ...result, jobId };
   }
 
   async function announceMethodFor(
@@ -206,12 +326,13 @@ export function releaseBatchFixture(
     },
     announceMethod: announceMethodFor,
     seedReleaseRunner,
+    take,
     insertIssue,
     stored,
     runStatus,
-    storedJob,
     commentCount,
     claim,
+    claimLegacy,
     waitFor,
   };
 }

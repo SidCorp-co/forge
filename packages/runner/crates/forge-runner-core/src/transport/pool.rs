@@ -76,7 +76,6 @@ pub enum Refusal {
     RunnerWithdrawn,
     DeviceDisabled,
     RunnerUnbound,
-    ReleaseLabelMissing,
     Unknown(String),
 }
 
@@ -92,7 +91,6 @@ impl Refusal {
             "runner_withdrawn" => Self::RunnerWithdrawn,
             "device_disabled" => Self::DeviceDisabled,
             "runner_unbound" => Self::RunnerUnbound,
-            "release_label_missing" => Self::ReleaseLabelMissing,
             other => Self::Unknown(other.to_string()),
         }
     }
@@ -109,7 +107,6 @@ impl Refusal {
             Self::RunnerWithdrawn => "runner_withdrawn",
             Self::DeviceDisabled => "device_disabled",
             Self::RunnerUnbound => "runner_unbound",
-            Self::ReleaseLabelMissing => "release_label_missing",
             Self::Unknown(raw) => raw,
         }
     }
@@ -552,7 +549,6 @@ mod tests {
             "runner_withdrawn",
             "device_disabled",
             "runner_unbound",
-            "release_label_missing",
         ] {
             let refusal = Refusal::of(raw);
             assert!(

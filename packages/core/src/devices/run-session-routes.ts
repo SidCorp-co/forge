@@ -13,6 +13,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { IssueLeaseHeldError } from '../issues/issue-lease.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
+import { ReleaseOwnershipRefusedError } from '../release-batch/owner-take.js';
 import { gateConditionSchema } from './gate-report.js';
 import { RunnerNotAdmittedError } from './pool-admission.js';
 import { badRequest, conflict, forbidden, notFound, sessionParamsSchema } from './route-errors.js';
@@ -25,13 +26,14 @@ import {
   writeRunEvidence,
 } from './run-evidence.js';
 import { closeRunSession, openRunSession } from './run-session.js';
+import { RUN_SESSION_ISSUE_LIMIT } from './run-session-limit.js';
 
 export const deviceRunSessionRoutes = new Hono<{ Variables: DeviceVars }>();
 
 const runSessionBodySchema = z.object({
   projectId: z.string().uuid(),
   runId: z.string().uuid(),
-  issueKeys: z.array(z.string().min(1)).min(1).max(16),
+  issueKeys: z.array(z.string().min(1)).min(1).max(RUN_SESSION_ISSUE_LIMIT),
   name: z.string().min(1).max(60),
   // Validated here rather than absorbed: a run is kernel, and a gate condition
   // this route cannot read is a contract break the box is told about by name
@@ -63,6 +65,9 @@ deviceRunSessionRoutes.post(
       // failed retries against the same holder until the lease lapses.
       if (err instanceof IssueLeaseHeldError) {
         throw conflict(err.code, err.message, { holders: err.holders });
+      }
+      if (err instanceof ReleaseOwnershipRefusedError) {
+        throw conflict(err.code, err.message, { releaseRunId: err.releaseRunId });
       }
       if (err instanceof RunnerNotAdmittedError) {
         throw forbidden(err.code, err.message, {

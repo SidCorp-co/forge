@@ -41,6 +41,13 @@ import {
   RUN_ISSUE_STATUSES_METADATA_KEY,
   RUN_ISSUES_METADATA_KEY,
 } from './run-session-keys.js';
+import {
+  noteRefusedTake,
+  type ReleaseAdoption,
+  releaseAdoption,
+  releaseRunMetadata,
+  takeReleaseInOpen,
+} from './run-session-release.js';
 
 export { RUN_SESSION_KIND } from '../jobs/session-kinds.js';
 
@@ -163,6 +170,70 @@ function boxRunLockKey(args: { deviceId: string; boxRunId?: string }): SQL<numbe
   return sql<number>`hashtextextended(${`run-session:${args.deviceId}:${args.boxRunId}`}, 0)`;
 }
 
+type OpenArgs = Parameters<typeof openRunSession>[0];
+
+/**
+ * The run, the session and the leases in one transaction, and the release this run takes with
+ * them where it takes one: a refused take rolls the whole open back, so a box is left with
+ * nothing rather than a session over issues another master owns.
+ */
+async function openInTransaction(
+  args: OpenArgs,
+  spec: OneShotRunSpec,
+  keys: string[],
+  masterSessionId: string | null,
+  release: ReleaseAdoption | null,
+): Promise<{ existing?: FoundRunSession; opened?: RunSession }> {
+  try {
+    return await db.transaction(async (tx) => {
+      if (args.boxRunId) {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(${boxRunLockKey(args)})`);
+        const winner = await openSessionForBoxRun(tx, {
+          deviceId: args.deviceId,
+          boxRunId: args.boxRunId,
+        });
+        if (winner) return { existing: winner };
+      }
+      const run = await insertOneShotRun(tx, spec);
+      const [row] = await tx
+        .insert(agentSessions)
+        .values({
+          projectId: args.projectId,
+          deviceId: args.deviceId,
+          pipelineRunId: run.id,
+          title: `run: ${args.name}`,
+          kind: RUN_SESSION_KIND,
+          parentSessionId: masterSessionId,
+          status: 'running',
+          startedAt: new Date(),
+          lastHeartbeatAt: new Date(),
+          metadata: { terminalName: args.name, deviceId: args.deviceId },
+        })
+        .returning({ id: agentSessions.id });
+      if (!row) throw new Error('openRunSession: insert returned no row');
+      // Inside the transaction on purpose: a key somebody live already holds
+      // rolls the run and the session back with it, so a refused open leaves a
+      // box with nothing rather than with half a group.
+      await takeIssueLeases(tx, {
+        projectId: args.projectId,
+        deviceId: args.deviceId,
+        sessionId: row.id,
+        runId: run.id,
+        issueKeys: keys,
+      });
+      await takeReleaseInOpen(tx, release, {
+        deviceId: args.deviceId,
+        sessionId: row.id,
+        runId: run.id,
+      });
+      return { opened: { sessionId: row.id, runId: run.id } };
+    });
+  } catch (err) {
+    await noteRefusedTake(err, release, args.deviceId);
+    throw err;
+  }
+}
+
 export async function openRunSession(args: {
   deviceId: string;
   projectId: string;
@@ -211,6 +282,13 @@ export async function openRunSession(args: {
     );
   }
   const canonical = await canonicaliseIssueKeys(args.projectId, args.issueKeys);
+  // A run over exactly a waiting roster owns that roster's release; one that touches a roster and
+  // cannot take it is refused here, before anything is opened (ISS-1281).
+  const release = await releaseAdoption({
+    projectId: args.projectId,
+    deviceId: args.deviceId,
+    issueKeys: canonical.keys,
+  });
   const openingStatuses = await readIssueStatuses(args.projectId, canonical.seqs);
   const spec: OneShotRunSpec = {
     projectId: args.projectId,
@@ -223,46 +301,10 @@ export async function openRunSession(args: {
       [RUN_ISSUE_STATUSES_METADATA_KEY]: openingStatuses,
       ...(args.boxRunId ? { [BOX_RUN_ID_METADATA_KEY]: args.boxRunId } : {}),
       ...(args.gate ? { [RUN_GATE_METADATA_KEY]: args.gate } : {}),
+      ...releaseRunMetadata(release),
     },
   };
-  const claimed = await db.transaction(async (tx) => {
-    if (args.boxRunId) {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(${boxRunLockKey(args)})`);
-      const winner = await openSessionForBoxRun(tx, {
-        deviceId: args.deviceId,
-        boxRunId: args.boxRunId,
-      });
-      if (winner) return { existing: winner };
-    }
-    const run = await insertOneShotRun(tx, spec);
-    const [row] = await tx
-      .insert(agentSessions)
-      .values({
-        projectId: args.projectId,
-        deviceId: args.deviceId,
-        pipelineRunId: run.id,
-        title: `run: ${args.name}`,
-        kind: RUN_SESSION_KIND,
-        parentSessionId: masterSessionId,
-        status: 'running',
-        startedAt: new Date(),
-        lastHeartbeatAt: new Date(),
-        metadata: { terminalName: args.name, deviceId: args.deviceId },
-      })
-      .returning({ id: agentSessions.id });
-    if (!row) throw new Error('openRunSession: insert returned no row');
-    // Inside the transaction on purpose: a key somebody live already holds
-    // rolls the run and the session back with it, so a refused open leaves a
-    // box with nothing rather than with half a group.
-    await takeIssueLeases(tx, {
-      projectId: args.projectId,
-      deviceId: args.deviceId,
-      sessionId: row.id,
-      runId: run.id,
-      issueKeys: canonical.keys,
-    });
-    return { opened: { sessionId: row.id, runId: run.id } };
-  });
+  const claimed = await openInTransaction(args, spec, canonical.keys, masterSessionId, release);
   if (claimed.existing) {
     logger.info(
       { ...claimed.existing, boxRunId: args.boxRunId, deviceId: args.deviceId },

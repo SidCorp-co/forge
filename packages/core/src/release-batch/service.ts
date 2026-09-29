@@ -1,7 +1,5 @@
-// create: opens a system run, atomically claims N gate-status issues, moves each
-// to `releasing`, enqueues one release_batch job. finish: closes every claimed
-// issue and completes the run. abort: cancels the run and every job under it
-// and closes no issue.
+// create: claims N gate-status issues onto a system run at `releasing`, handed to this project's
+// masters (`owner-take.ts`). finish: closes them and completes the run. abort: cancels it.
 //
 // Both outcomes take the run terminal, and by different outcomes: `completed`
 // for a finish, `cancelled` for an abort. That is what stops
@@ -20,7 +18,6 @@ import { TransitionError, transitionIssueStatus } from '../issues/apply-transiti
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
-import { ActiveJobConflictError, insertAndEnqueueJob } from '../pipeline/enqueue-helper.js';
 import {
   announceOneShotRun,
   cancelConcludedRun,
@@ -55,8 +52,11 @@ import {
   ReleaseVersionMissingError,
 } from './errors.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
-import { RELEASE_BATCH_SKILL, releaseBranches } from './plan.js';
-import { buildReleaseBatchPrompt } from './prompt.js';
+import { requireReleaseOwners } from './owner-boxes.js';
+import { awaitingOwner, RELEASE_OWNER_KEY } from './owner-record.js';
+import { assertRosterFitsOneRun, handToMasters } from './owner-take.js';
+import { releaseBranches } from './plan.js';
+import { buildReleaseBrief } from './prompt.js';
 import {
   type RecoverStrandedReleasingResult,
   recoverStrandedReleasing,
@@ -80,12 +80,11 @@ export interface CreateReleaseBatchArgs {
 
 export interface CreateReleaseBatchResult {
   runId: string;
-  jobId: string;
   issueIds: string[];
   gateStatus: IssueStatus;
   /** The version this release cut. Its identity from the instant its row existed. */
   version: string;
-  /** When this batch must have an owner, or it is cancelled and its roster handed back. */
+  /** When a master must have taken this batch, or it is cancelled and its roster handed back. */
   ownerDeadlineAt: string;
   /**
    * Whether what was already serving when this batch opened carries a roster issue's merge — so
@@ -120,15 +119,11 @@ export async function createReleaseBatch(
   // this call named none of them, which is the caller's list to fix.
   if (issueIds.length === 0) throw new ReleaseIssuesUnnamedError();
 
+  assertRosterFitsOneRun(issueIds.length);
+
   const gateStatus = RELEASE_GATE_STATUS;
   const plan = await resolveReleasePlan(projectId);
-  const preferenceMet = report.warnings.every((w) => w.code !== 'RELEASE_RUNNER_PREFERENCE_UNMET');
-  if (!preferenceMet) {
-    logger.warn(
-      { projectId, releaseRunnerLabel: plan.releaseRunnerLabel },
-      'release-batch: no box eligible to release carries the declared label, so this batch goes to the pool this project has',
-    );
-  }
+  const { preferenceMet } = await requireReleaseOwners(projectId, plan.releaseRunnerLabel);
 
   const project = (await readProjectBranches(projectId)) ?? {
     baseBranch: null,
@@ -158,6 +153,7 @@ export async function createReleaseBatch(
   // the number after `openOneShotRun` returned would leave a window — a crash in it, and a
   // subscriber reading the announcement during it — in which a committed release row has no
   // identity. `insertOneShotRun` takes its executor for exactly this.
+  const owner = awaitingOwner(new Date(), RELEASE_UNSTARTED_DEADLINE_MS);
   const runSpec: OneShotRunSpec = {
     projectId,
     kind: 'system',
@@ -171,9 +167,22 @@ export async function createReleaseBatch(
       openedAfterRelease,
       verification: verification.kind,
       releaseRunner: { label: plan.releaseRunnerLabel, preferenceMet },
+      [RELEASE_OWNER_KEY]: owner,
     },
   };
   const { run, version } = await db.transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtextextended(${`release-batch:${projectId}`}, 0))`,
+    );
+    const [open] = await tx.execute<{ id: string }>(sql`
+      SELECT id FROM pipeline_runs
+       WHERE project_id = ${projectId}
+         AND kind = 'system'
+         AND status IN ('running', 'paused')
+         AND metadata ->> 'source' = 'release-batch'
+       LIMIT 1
+    `);
+    if (open) throw new BatchInFlightError(open.id);
     const row = await insertOneShotRun(tx, runSpec);
     const cut = await cutReleaseVersion(tx, { runId: row.id, projectId, recutOf });
     return { run: row, version: cut };
@@ -214,7 +223,7 @@ export async function createReleaseBatch(
   }
 
   const batchPrefix = await activeIssuePrefix(projectId);
-  const promptString = buildReleaseBatchPrompt({
+  const promptString = buildReleaseBrief({
     runId: run.id,
     projectId,
     baseBranch,
@@ -228,43 +237,14 @@ export async function createReleaseBatch(
     })),
   });
 
-  let jobId: string;
-  try {
-    const result = await insertAndEnqueueJob({
-      projectId,
-      issueId: null,
-      pipelineRunId: run.id,
-      createdBy: userId,
-      type: 'release_batch',
-      skillName: RELEASE_BATCH_SKILL,
-      promptString,
-      payloadExtras: {
-        releaseBatch: true,
-        gateStatus,
-        issueIds,
-        timeoutSeconds: 3600,
-      },
-    });
-    jobId = result.jobId;
-  } catch (err) {
-    if (err instanceof ActiveJobConflictError) {
-      await recoverStrandedReleasing(run.id, {
-        reason: 'another batch was already in flight, so this one never started',
-        actorUserId: userId,
-      });
-      await closeRunIfOneShot(run.id, 'cancelled');
-      throw new BatchInFlightError(err.existingJobId);
-    }
-    throw err;
-  }
+  await handToMasters({ projectId, releaseRunId: run.id, brief: promptString });
 
   return {
     runId: run.id,
-    jobId,
     issueIds,
     gateStatus,
     version,
-    ownerDeadlineAt: new Date(Date.now() + RELEASE_UNSTARTED_DEADLINE_MS).toISOString(),
+    ownerDeadlineAt: owner.deadlineAt,
     openedAfterRelease,
     verification: verification.kind,
   };

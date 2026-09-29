@@ -30,10 +30,8 @@ import {
   resolveRunnerForDevice,
 } from '../jobs/prepare-claimed-job.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { logger } from '../logger.js';
 import { hooks } from '../pipeline/hooks.js';
 import { runnerAdmission } from './pool-admission.js';
-import { releaseLabelVerdict } from './release-label.js';
 
 export type PrepareResult =
   | {
@@ -54,7 +52,6 @@ export type PrepareResult =
         | 'runner_withdrawn'
         | 'device_disabled'
         | 'runner_unbound'
-        | 'release_label_missing'
         | 'no_prompt';
     };
 
@@ -80,21 +77,6 @@ export async function prepareJobForMaster(args: {
   const admission = await runnerAdmission({ jobId: args.jobId, deviceId: args.deviceId });
   if (!admission.admitted) {
     return { ok: false, reason: admission.reason };
-  }
-
-  const releaseLabel = await releaseLabelVerdict({ jobId: args.jobId, deviceId: args.deviceId });
-  if (!releaseLabel.allowed) {
-    logger.warn(
-      { jobId: args.jobId, deviceId: args.deviceId, ...releaseLabel },
-      'claim: release job refused, a box carrying the project release label is available',
-    );
-    return { ok: false, reason: 'release_label_missing' };
-  }
-  if (!releaseLabel.preferenceMet) {
-    logger.warn(
-      { jobId: args.jobId, deviceId: args.deviceId, releaseRunnerLabel: releaseLabel.label },
-      'claim: release job taken by a box that does not carry the declared release label, because no eligible box does',
-    );
   }
 
   if (await refusedForNoPrompt(args.jobId)) return { ok: false, reason: 'no_prompt' };

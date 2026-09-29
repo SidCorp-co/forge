@@ -174,7 +174,7 @@ describe("the Release section's prose", () => {
 		draw(<ReleaseSection projectId={PROJECT_ID} />);
 
 		expect(
-			screen.getByText("none — a release goes to any box in this project's pool"),
+			screen.getByText("none — a release is taken by this project's master on any box able to take it"),
 		).toBeInTheDocument();
 		expect(screen.queryByText("—")).toBeNull();
 	});
@@ -190,7 +190,7 @@ describe("the Release section's prose", () => {
 
 		expect(screen.getByText("release")).toBeInTheDocument();
 		expect(
-			screen.queryByText("none — a release goes to any box in this project's pool"),
+			screen.queryByText("none — a release is taken by this project's master on any box able to take it"),
 		).toBeNull();
 	});
 

@@ -23,6 +23,7 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
+import { makeReleaseOwner } from '../helpers/release-batch-fixture.js';
 
 let harness: TestDatabase;
 // biome-ignore lint/suspicious/noExplicitAny: test-only mount
@@ -130,6 +131,11 @@ async function seed(shape: Shape = {}): Promise<World> {
     INSERT INTO runners (id, project_id, type, device_id, name, status, last_seen_at, labels)
     VALUES (${randomUUID()}, ${project.id}, 'claude-code', ${device.id}, 'box', 'online', now(), '[]'::jsonb)
   `);
+  await makeReleaseOwner(harness.db, {
+    projectId: project.id,
+    userId: user.id,
+    deviceId: device.id,
+  });
   return { projectId: project.id, userId: user.id, token: await signUserToken(user.id) };
 }
 
@@ -163,11 +169,14 @@ async function create(w: World, issueIds: string[]) {
 }
 
 /** What the release run is actually handed, read off the job the create enqueued. */
+/** The brief a master hands its release subagent, as the cut stored it on the run (ISS-1281). */
 async function promptOf(runId: string): Promise<string> {
-  const rows = await harness.db.execute<{ payload: { promptString?: string } }>(sql`
-    SELECT payload FROM jobs WHERE pipeline_run_id = ${runId} AND type = 'release_batch' LIMIT 1
+  const rows = await harness.db.execute<{ brief: string | null }>(sql`
+    SELECT metadata ->> 'brief' AS brief FROM pipeline_runs WHERE id = ${runId}
   `);
-  return rows[0]?.payload?.promptString ?? '';
+  const brief = rows[0]?.brief;
+  if (typeof brief !== 'string') throw new Error(`release run ${runId} carries no brief`);
+  return brief;
 }
 
 async function contextOf(w: World, runId: string) {

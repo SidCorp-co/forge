@@ -1,17 +1,16 @@
 /**
  * What "this box is live enough to be handed work" is, in SQL, once.
  *
- * Three readers ask it — the dispatch candidate query in `select.ts`, the
- * `fresh_capable_runners` barrier CTE in `jobs/queued-gates.ts`, and the
- * release preference probe in `devices/release-label.ts`. A fourth spelling is
- * how a job reads as dispatchable to one of them and invisible to another; the
- * barrier CTE already carried a comment saying its device gate MUST mirror
- * `select.ts`, which is the drift this file removes.
+ * Two readers ask it — the dispatch candidate query in `select.ts` and the
+ * `fresh_capable_runners` barrier CTE in `jobs/queued-gates.ts`. A third
+ * spelling is how a job reads as dispatchable to one of them and invisible to
+ * the other; the barrier CTE already carried a comment saying its device gate
+ * MUST mirror `select.ts`, which is the drift this file removes.
  *
  * The claim-capable agent-version floor is deliberately NOT here.
- * `onlineCapableDeviceIds` filters on it, the barrier carries it as its own
+ * `onlineCapableDeviceIds` filters on it, and the barrier carries it as its own
  * `claim_capable` column so `runner_too_old` stays a different answer from
- * `runner_stale`, and the preference probe applies it itself.
+ * `runner_stale`.
  *
  * Every fragment takes the `runners` alias in the caller's query.
  */
@@ -55,12 +54,4 @@ export function deviceNotDisabled(alias: string): SQL {
     SELECT 1 FROM devices liveness_d
     WHERE liveness_d.id = ${col(alias, 'device_id')} AND liveness_d.disabled_at IS NOT NULL
   )`;
-}
-
-/** All four at once, for a reader that wants the whole question. */
-export function runnerLive(alias: string, seconds = livenessSeconds()): SQL {
-  return sql`${runnerFresh(alias, seconds)}
-    AND ${runnerUnlimited(alias)}
-    AND ${runnerWorkspaceReady(alias)}
-    AND ${deviceNotDisabled(alias)}`;
 }

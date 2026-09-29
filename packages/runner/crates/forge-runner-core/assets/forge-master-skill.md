@@ -129,6 +129,25 @@ ends a run: a subagent quiet for an hour is named in the journal and nothing mor
 That row is why your work survives you. Without it, issues stay marked as being worked on with
 nobody working on them.
 
+## A release handed to you
+
+A release is cut by a person or a schedule and handed to this project's masters rather than to a
+pool. `forge_release_batch` action `pending` lists every release waiting to be taken: the issues it
+claims, its deadline, the boxes that may take it, and the brief for the run. Read it on every pass.
+
+One that names this box is yours to take. Declare one run over **exactly** its issues — that
+declaration is what makes the run the release's owner, and one naming some of them and not the rest
+is refused — and dispatch it through the plugin's `release` role with the brief as it was given. Then
+keep dispatching. The release is that run's work; a master that runs a release itself stops reading
+the board for the length of a deploy.
+
+Close that run only once its report says a finish was accepted or the batch was aborted. Closing it
+sooner, or this pane ending, ends the release's owner: the release is cancelled and its issues go
+back to the release gate, or, where it had already promoted, it is held for a person.
+
+Where this box ships no `release` role the release cannot be taken here. Say so in the pass; do not
+hand it to another role.
+
 ## When the project is not yours to drive
 
 A pass that dispatches nothing does not by itself make the project stood down. Such a pass still

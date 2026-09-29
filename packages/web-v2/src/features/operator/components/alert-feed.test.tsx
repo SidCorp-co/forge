@@ -119,3 +119,12 @@ describe("the reap control", () => {
     );
   });
 });
+
+// ISS-1281: a release waiting for a master to take it is the master-side twin of A3.
+describe("A6", () => {
+  it("is titled by what it counts, not by its id", () => {
+    renderFeed([alert("A6", "warn", [{ ref: "p1", kind: "project", label: "forge-dev · 1 waiting" }])]);
+    expect(screen.getByText("Releases waiting for a master")).toBeInTheDocument();
+    expect(screen.getByText("forge-dev · 1 waiting")).toBeInTheDocument();
+  });
+});

@@ -30,11 +30,11 @@ class NoRunnerOnlineError extends Error {}
 class ReleasePoolEmptyError extends Error {}
 class NoReleaseGateError extends Error {}
 class ReleaseRecordMissingError extends Error {}
+class ReleaseOwnerUnavailableError extends Error {}
 
 const createReleaseBatchMock = vi.fn(
   async (_args: { projectId: string; issueIds: string[]; userId: string }) => ({
     runId: 'run-1',
-    jobId: 'job-1',
     issueIds: ['iss-1'],
     gateStatus: 'awaiting_release' as const,
     version: '1.0.0',
@@ -50,6 +50,7 @@ vi.mock('../release-batch/service.js', () => ({
   ReleasePoolEmptyError,
   NoReleaseGateError,
   ReleaseRecordMissingError,
+  ReleaseOwnerUnavailableError,
 }));
 
 vi.mock('../logger.js', () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
@@ -60,7 +61,6 @@ beforeEach(() => {
   createReleaseBatchMock.mockReset();
   createReleaseBatchMock.mockResolvedValue({
     runId: 'run-1',
-    jobId: 'job-1',
     issueIds: ['iss-1'],
     gateStatus: 'awaiting_release',
     version: '1.0.0',
@@ -111,6 +111,11 @@ describe('cutWaitingRelease', () => {
       new ReleaseRecordMissingError('no note'),
       'RELEASE_RECORD_MISSING',
     ],
+    [
+      'ReleaseOwnerUnavailableError',
+      new ReleaseOwnerUnavailableError('no box could own it'),
+      'RELEASE_NO_OWNER',
+    ],
   ])('classifies %s as skipped under its code, not failed', async (_name, err, code) => {
     createReleaseBatchMock.mockRejectedValueOnce(err);
     const outcome = await cutWaitingRelease({ projectId: 'p1', userId: 'u1', issueIds: ['iss-1'] });
@@ -157,8 +162,9 @@ describe('cutWaitingRelease', () => {
     expect(outcome.status).toBe('failed');
   });
 
-  // The enumerator refuses more than one release may carry, so the cut takes the
-  // oldest fifty the roster lists first and leaves the rest for the next tick.
+  // A release is owned by one run session over its whole roster, so the cut takes the oldest
+  // sixteen the roster lists first — a run session's cap, under the roster's fifty — and leaves
+  // the rest for the next tick (ISS-1281).
   it('names one release of the oldest merges when more are waiting than it may carry', async () => {
     const waiting = Array.from({ length: 75 }, (_, i) => `iss-${i}`);
 
@@ -166,20 +172,20 @@ describe('cutWaitingRelease', () => {
 
     expect(createReleaseBatchMock).toHaveBeenCalledWith({
       projectId: 'p1',
-      issueIds: waiting.slice(0, 50),
+      issueIds: waiting.slice(0, 16),
       userId: 'u1',
     });
-    expect(outcome.named).toEqual(waiting.slice(0, 50));
+    expect(outcome.named).toEqual(waiting.slice(0, 16));
   });
 
-  it('names the same fifty on a failure, so nothing reports on the tail it never sent', async () => {
+  it('names the same sixteen on a failure, so nothing reports on the tail it never sent', async () => {
     createReleaseBatchMock.mockRejectedValueOnce(new Error('advisory lock timeout'));
     const waiting = Array.from({ length: 75 }, (_, i) => `iss-${i}`);
 
     const outcome = await cutWaitingRelease({ projectId: 'p1', userId: 'u1', issueIds: waiting });
 
     expect(outcome.status).toBe('failed');
-    expect(outcome.named).toEqual(waiting.slice(0, 50));
+    expect(outcome.named).toEqual(waiting.slice(0, 16));
   });
 
   it('classifies an unrecognised error as failed, carrying the message', async () => {

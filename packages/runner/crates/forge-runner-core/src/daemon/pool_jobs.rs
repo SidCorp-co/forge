@@ -1520,14 +1520,11 @@ mod tests {
     async fn a_refusal_is_reported_by_the_word_core_chose() {
         let w = world(
             vec![entry("j1", None)],
-            Some(Prepared::Refused(Refusal::ReleaseLabelMissing)),
+            Some(Prepared::Refused(Refusal::RunnerUnbound)),
             None,
         );
 
-        assert_eq!(
-            take(&w, 2).await,
-            Took::Refused("release_label_missing".into())
-        );
+        assert_eq!(take(&w, 2).await, Took::Refused("runner_unbound".into()));
         assert!(w.rec.opened.lock().unwrap().is_empty());
     }
 

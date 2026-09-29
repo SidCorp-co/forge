@@ -34,7 +34,12 @@ const fx = releaseBatchFixture(
   () => ({ projectId, ownerId }),
 );
 const { declareProduction, seedReleaseRunner, insertIssue, stored } = fx;
-const { runStatus, storedJob, claim } = fx;
+const { runStatus, claim } = fx;
+
+async function jobCount(): Promise<number> {
+  const rows = await harness.db.execute(sql`SELECT count(*)::int AS n FROM jobs`);
+  return Number(rows[0]?.n ?? 0);
+}
 
 const actor = () => ({ type: 'user', id: ownerId }) as const;
 
@@ -101,26 +106,18 @@ describe('release batch finish takes its run terminal', () => {
     expect(outcome).not.toBeInstanceOf(BatchInFlightError);
   });
 
-  it('flips the still-queued `release_batch` job to `done`', async () => {
+  // ISS-1281: a release is owned by the run session a master opens over its roster, so the cut
+  // queues nothing for a box to claim, and a finish has no job to reap.
+  it('cuts a release that queues no job, and finishes it with none', async () => {
     const { finishReleaseBatch } = await import('../../src/release-batch/service.js');
     const a = await insertIssue();
-    const { runId, jobId } = await claim([a]);
-    expect((await storedJob(jobId)).status).toBe('queued');
+    const { runId } = await claim([a]);
+    expect(await jobCount()).toBe(0);
 
     await finishReleaseBatch(runId, actor());
 
-    expect((await storedJob(jobId)).status).toBe('done');
-  });
-
-  it('gives that reaped `release_batch` job exit code 0', async () => {
-    const { finishReleaseBatch } = await import('../../src/release-batch/service.js');
-    const a = await insertIssue();
-    const { runId, jobId } = await claim([a]);
-    expect((await storedJob(jobId)).exitCode).toBeNull();
-
-    await finishReleaseBatch(runId, actor());
-
-    expect((await storedJob(jobId)).exitCode).toBe(0);
+    expect(await jobCount()).toBe(0);
+    expect(await runStatus(runId)).toBe('completed');
   });
 
   it('reports a finish differently from an abort', async () => {
@@ -183,7 +180,7 @@ describe('a finish already run answers from the record', () => {
       WHERE project_id = ${projectId} AND provider = 'coolify' AND 'live' = ANY(stages)
     `);
     const a = await insertIssue();
-    const { runId, jobId } = await claim([a]);
+    const { runId } = await claim([a]);
     serving = PUSHED;
 
     const first = await finishReleaseBatch(runId, actor(), { commit: serving });
@@ -198,8 +195,7 @@ describe('a finish already run answers from the record', () => {
     expect({
       run: await runStatus(runId),
       issue: (await stored(a)).status,
-      job: await storedJob(jobId),
-    }).toEqual({ run: 'completed', issue: 'closed', job: { status: 'done', exitCode: 0 } });
+    }).toEqual({ run: 'completed', issue: 'closed' });
   }, 60_000);
 
   it('raises nothing when `finish` is called a second time', async () => {
@@ -228,29 +224,17 @@ describe('a finish already run answers from the record', () => {
     expect((await stored(a)).claim).toBeNull();
   });
 
-  it('leaves the run, the issue and the job where the first `finish` left them', async () => {
+  it('leaves the run and the issue where the first `finish` left them', async () => {
     const { finishReleaseBatch } = await import('../../src/release-batch/service.js');
     const a = await insertIssue();
-    const { runId, jobId } = await claim([a]);
+    const { runId } = await claim([a]);
     await finishReleaseBatch(runId, actor());
-    const before = {
-      run: await runStatus(runId),
-      issue: (await stored(a)).status,
-      job: await storedJob(jobId),
-    };
-    expect(before).toEqual({
-      run: 'completed',
-      issue: 'closed',
-      job: { status: 'done', exitCode: 0 },
-    });
+    const before = { run: await runStatus(runId), issue: (await stored(a)).status };
+    expect(before).toEqual({ run: 'completed', issue: 'closed' });
 
     await finishReleaseBatch(runId, actor());
 
-    expect({
-      run: await runStatus(runId),
-      issue: (await stored(a)).status,
-      job: await storedJob(jobId),
-    }).toEqual(before);
+    expect({ run: await runStatus(runId), issue: (await stored(a)).status }).toEqual(before);
   });
 });
 

@@ -34,6 +34,7 @@ const ALERT_TITLES: Record<AdminAlert['id'], string> = {
   A3: 'Runner starvation detected',
   A4: 'Spend spike detected',
   A5: 'Automation failing',
+  A6: 'A release is waiting for a master',
 };
 
 async function claimOrEscalate(input: {

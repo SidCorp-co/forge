@@ -11,7 +11,7 @@
 // the ledger, the method gate and the promotion-aware abort landed.
 
 import { and, eq, sql } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import { type IssueStatus, issues, jobs, pipelineRuns, schedules } from '../db/schema.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -19,6 +19,7 @@ import { readProjectBranches } from '../projects/service.js';
 import { nextRunFor } from '../schedules/cron.js';
 import { releaseRunnerLabelOf, resolveReleaseChannels } from './channel.js';
 import { RELEASE_GATE_STATUS, resolveReleaseGate } from './gate.js';
+import { readOwner } from './owner-record.js';
 import { releaseBranches } from './plan.js';
 import { currentReleaseVersion } from './version-store.js';
 
@@ -231,7 +232,7 @@ export interface ReleaseRunnerAccount {
   label: string | null;
   /** False where no box eligible to release carried the label. */
   preferenceMet: boolean;
-  /** The box the release job was claimed on, or `null` while nobody has. */
+  /** The box whose master took the release, or `null` while none has. */
   claimedByDeviceId: string | null;
 }
 
@@ -251,6 +252,22 @@ export interface ReleaseBatchContext {
   issues: ReleaseBatchIssue[];
 }
 
+/** The owner's box; on a batch cut before ISS-1281, the box its job was claimed on. */
+async function claimingDevice(
+  runId: string,
+  meta: Record<string, unknown>,
+): Promise<string | null> {
+  const owner = readOwner(meta, runId);
+  if (owner) return owner.deviceId;
+  const [job] = await db
+    .select({ deviceId: jobs.deviceId })
+    .from(jobs)
+    .where(and(eq(jobs.pipelineRunId, runId), eq(jobs.type, 'release_batch')))
+    .orderBy(sql`${jobs.queuedAt} DESC`)
+    .limit(1);
+  return job?.deviceId ?? null;
+}
+
 /** The declared preference and its verdict, off the run's own metadata. */
 async function releaseRunnerAccount(
   runId: string,
@@ -259,16 +276,10 @@ async function releaseRunnerAccount(
   const recorded = meta.releaseRunner;
   if (typeof recorded !== 'object' || recorded === null) return null;
   const { label, preferenceMet } = recorded as { label?: unknown; preferenceMet?: unknown };
-  const [job] = await db
-    .select({ deviceId: jobs.deviceId })
-    .from(jobs)
-    .where(and(eq(jobs.pipelineRunId, runId), eq(jobs.type, 'release_batch')))
-    .orderBy(sql`${jobs.queuedAt} DESC`)
-    .limit(1);
   return {
     label: typeof label === 'string' && label.length > 0 ? label : null,
     preferenceMet: preferenceMet === true,
-    claimedByDeviceId: job?.deviceId ?? null,
+    claimedByDeviceId: await claimingDevice(runId, meta),
   };
 }
 
@@ -328,4 +339,42 @@ export async function loadReleaseBatchContext(runId: string): Promise<ReleaseBat
       status: r.status,
     })),
   };
+}
+
+export interface ReleaseRosterRow extends Record<string, unknown> {
+  id: string;
+  metadata: unknown;
+  release_version: string | null;
+  seqs: number[];
+}
+
+/**
+ * Every open release run of this project, with the issue numbers its roster claims (ISS-1281).
+ * Archived or not: a claimed issue is the release's until the release gives it back, so a run
+ * session over the roster declares it either way.
+ */
+export async function openReleaseRosters(
+  executor: Tx | typeof db,
+  projectId: string,
+): Promise<ReleaseRosterRow[]> {
+  return (await executor.execute<ReleaseRosterRow>(sql`
+    SELECT r.id, r.metadata, r.release_version,
+           array_agg(i.iss_seq ORDER BY i.iss_seq) AS seqs
+      FROM pipeline_runs r
+      JOIN issues i ON i.release_batch_run_id = r.id
+     WHERE r.project_id = ${projectId}
+       AND r.kind = 'system'
+       AND r.status IN ('running', 'paused')
+       AND r.metadata ->> 'source' = 'release-batch'
+       AND i.iss_seq IS NOT NULL
+     GROUP BY r.id
+  `)) as unknown as ReleaseRosterRow[];
+}
+
+/** The ids of the issues one release run claims. */
+export async function releaseRosterIssueIds(runId: string): Promise<string[]> {
+  const rows = (await db.execute(sql`
+    SELECT id FROM issues WHERE release_batch_run_id = ${runId}
+  `)) as unknown as Array<{ id: string }>;
+  return rows.map((r) => r.id);
 }

@@ -29,6 +29,7 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
+import { makeReleaseOwner } from '../helpers/release-batch-fixture.js';
 
 let harness: TestDatabase;
 // biome-ignore lint/suspicious/noExplicitAny: test-only mount
@@ -140,6 +141,11 @@ async function seedRunner(w: World): Promise<void> {
     VALUES (${randomUUID()}, ${w.projectId}, 'claude-code', ${device.id}, 'box', 'online', now(),
             ${JSON.stringify([LABEL])}::jsonb)
   `);
+  await makeReleaseOwner(harness.db, {
+    projectId: w.projectId,
+    userId: w.userId,
+    deviceId: device.id,
+  });
 }
 
 async function seedAutoRelease(w: World): Promise<void> {
@@ -334,6 +340,11 @@ describe('release-readiness and the create door answer the same question', () =>
       VALUES (${randomUUID()}, ${w.projectId}, 'claude-code', ${device.id}, 'unlabelled',
               'online', now(), '[]'::jsonb)
     `);
+    await makeReleaseOwner(harness.db, {
+      projectId: w.projectId,
+      userId: w.userId,
+      deviceId: device.id,
+    });
     const issue = await seedIssue(w);
 
     const answer = await readiness(w);

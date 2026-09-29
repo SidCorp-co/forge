@@ -1,0 +1,18 @@
+{
+  "draining": {
+    "releaseRole": true,
+    "admission": {
+      "state": "draining",
+      "cause": "update 0.17.57 → 0.17.60",
+      "sinceMs": 1790236800000,
+      "boundSecs": 7200
+    }
+  },
+  "open": {
+    "releaseRole": true,
+    "admission": { "state": "open" }
+  },
+  "roleless": {
+    "releaseRole": false
+  }
+}

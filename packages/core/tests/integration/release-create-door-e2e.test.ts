@@ -26,6 +26,7 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
+import { makeReleaseOwner } from '../helpers/release-batch-fixture.js';
 
 let harness: TestDatabase;
 // biome-ignore lint/suspicious/noExplicitAny: test-only mount
@@ -127,6 +128,11 @@ async function seedRunner(
             ${over.status ?? 'online'}, ${lastSeen === null ? null : lastSeen.toISOString()},
             ${JSON.stringify([LABEL])}::jsonb)
   `);
+  await makeReleaseOwner(harness.db, {
+    projectId: w.projectId,
+    userId: w.userId,
+    deviceId: device.id,
+  });
 }
 
 let seq = 0;

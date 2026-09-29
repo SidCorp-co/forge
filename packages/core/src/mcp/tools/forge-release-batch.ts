@@ -1,13 +1,15 @@
 /**
- * `forge_release_batch` — every call a `release_batch` job's prompt names, on
- * the credential the job's pane already holds.
+ * `forge_release_batch` — every call a release run's brief names, on the
+ * credential its master's pane already holds, and the one call a master makes
+ * to learn there is a release to take (`pending`, ISS-1281).
  *
- * A pool job opens in the project's provisioned checkout, whose `.mcp.json`
+ * A master stands in the project's provisioned checkout, whose `.mcp.json`
  * carries the per-(device × project) workspace credential core minted at
- * provision. The deploy half of a release rides it (`forge_coolify_deploy`),
- * and so does the recording half here, so a box holding only what its daemon
- * holds can say what it did to production (ISS-1211). The REST routes stay
- * the door for a person's own token.
+ * provision, and the release subagent it dispatches inherits it. The deploy
+ * half of a release rides it (`forge_coolify_deploy`), and so does the
+ * recording half here, so a box holding only what its daemon holds can say
+ * what it did to production (ISS-1211). The REST routes stay the door for a
+ * person's own token.
  *
  * `finish` and `abort` call the same service functions the REST routes call.
  * This is a second door onto one close, not a second close: `finish` takes the
@@ -19,6 +21,7 @@ import { z } from 'zod';
 import type { McpPrincipal } from '../../middleware/require-pat.js';
 import { acceptReleaseBatchFinish } from '../../release-batch/finish-job.js';
 import { announceMethod } from '../../release-batch/method.js';
+import { pendingReleases } from '../../release-batch/owner-take.js';
 import { RELEASE_BATCH_SKILL, RELEASE_BATCH_TOOL } from '../../release-batch/plan.js';
 import {
   finishedForSentence,
@@ -47,9 +50,10 @@ import {
 
 const inputSchema = z
   .object({
-    action: z.enum(['get', 'state', 'method', 'finish', 'abort']),
+    action: z.enum(['pending', 'get', 'state', 'method', 'finish', 'abort']),
     projectId: z.uuid().optional(),
-    runId: z.uuid(),
+    /** Every action but `pending`. */
+    runId: z.uuid().optional(),
     /** method: the skill the run loaded. */
     skill: z.string().trim().min(1).max(200).optional(),
     /** method: false when the skill would not load. */
@@ -133,7 +137,11 @@ function finishRefusal(err: unknown): Error {
   return err instanceof Error ? err : new Error(String(err));
 }
 
-async function run(principal: McpPrincipal, input: Input, projectId: string): Promise<unknown> {
+async function run(
+  principal: McpPrincipal,
+  input: Input & { action: Exclude<Input['action'], 'pending'>; runId: string },
+  projectId: string,
+): Promise<unknown> {
   const { runId } = input;
   switch (input.action) {
     case 'get':
@@ -188,8 +196,10 @@ async function run(principal: McpPrincipal, input: Input, projectId: string): Pr
 export const forgeReleaseBatchTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: RELEASE_BATCH_TOOL,
   description:
-    'Read and record one release batch from inside the release_batch job that runs it — the calls its prompt names, ' +
-    'on the credential the job already holds. Actions: `get` (the batch context: roster, release notes, branches, deploy plan; ' +
+    'Read and record one release batch from inside the release run that owns it — the calls its brief names, ' +
+    "on the credential the run already holds. `pending` (projectId only, no runId) is the master's read: every release of this " +
+    'project waiting for a master to take it, with the issue keys to declare a run over exactly, the deadline, the boxes that may ' +
+    'take it and the brief to hand the release subagent verbatim. Actions: `get` (the batch context: roster, release notes, branches, deploy plan; ' +
     'call it FIRST), `state` (roster, attempts, live reading, bounds, announced method), `method` (announce the method loaded: ' +
     '`skill` + `loaded`, optional `detail`; a Coolify deploy is refused until this run has recorded something, and this is the ' +
     'call that records it first), `finish` (`commit` = the SHA pushed to ' +
@@ -199,7 +209,7 @@ export const forgeReleaseBatchTool: ContextScopedMcpToolFactory = (ctx) => ({
     'on a run that recorded no promotion it releases every claim and moves the issues still at `releasing` back to the release gate, answered as `recovered` — ' +
     'a roster whose run already promoted is left at `releasing` still claimed unless `promotedRoster: "return-to-gate"` names the settlement, which returns it ' +
     'to the release gate for `POST /release-records` to close against what production is serving). ' +
-    'Every action needs `runId`, and a token with the write scope: a credential that could read the batch but not record it is ' +
+    'Every action but `pending` needs `runId`, and a token with the write scope: a credential that could read the batch but not record it is ' +
     'refused at `get`, before anything changes.',
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
@@ -207,7 +217,11 @@ export const forgeReleaseBatchTool: ContextScopedMcpToolFactory = (ctx) => ({
     const projectId = await resolveEffectiveProjectId(ctx, input.projectId ?? null);
     await assertPrincipalIsWriter(ctx.principal, projectId);
     assertCanRecord(ctx.principal);
+    if (input.action === 'pending') return { releases: await pendingReleases(projectId) };
+    if (!input.runId) {
+      throw new Error(`BAD_REQUEST: ${input.action} needs \`runId\`, the release run it acts on`);
+    }
     await assertRunOfProject(input.runId, projectId);
-    return run(ctx.principal, input, projectId);
+    return run(ctx.principal, { ...input, action: input.action, runId: input.runId }, projectId);
   },
 });

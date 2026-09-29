@@ -1,13 +1,14 @@
 // The unattended cut: everything sitting at the release gate, on a cadence.
 //
 // A `release_batch` schedule needs no prompt, no script and no runner of its own — it
-// claims what is waiting and enqueues the one batch job, which is the same thing a
+// claims what is waiting and hands it to the project's master, which is the same thing a
 // person pressing "Release now" does, without someone remembering to.
 //
 // It skips rather than fails when nothing is waiting: an empty gate is the
 // normal state of a healthy project, and a nightly cron that reports failure on
 // a quiet night trains everyone to ignore it.
 
+import { RUN_SESSION_ISSUE_LIMIT } from '../devices/run-session-limit.js';
 import { logger } from '../logger.js';
 import { blockersOf, RELEASE_ROSTER_LIMIT } from '../release-batch/blocker-sentences.js';
 import { loadReleaseRoster } from '../release-batch/queries.js';
@@ -17,6 +18,7 @@ import {
   createReleaseBatch,
   NoReleaseGateError,
   NoRunnerOnlineError,
+  ReleaseOwnerUnavailableError,
   ReleasePoolEmptyError,
   ReleaseRecordMissingError,
 } from '../release-batch/service.js';
@@ -41,7 +43,11 @@ const CLASSIFIED_REFUSALS: ReadonlyArray<readonly [new (...args: never[]) => Err
   [ReleasePoolEmptyError, 'RELEASE_POOL_EMPTY'],
   [NoReleaseGateError, 'NO_RELEASE_GATE'],
   [ReleaseRecordMissingError, 'RELEASE_RECORD_MISSING'],
+  [ReleaseOwnerUnavailableError, 'RELEASE_NO_OWNER'],
 ];
+
+/** One release is one run session's worth of issues, and never more than the roster limit. */
+const CUT_SIZE = Math.min(RELEASE_ROSTER_LIMIT, RUN_SESSION_ISSUE_LIMIT);
 
 function reasonsOf(err: unknown): string[] {
   const carried = blockersOf(err).map((b) => b.message);
@@ -59,7 +65,7 @@ export async function cutWaitingRelease(args: {
     return { status: 'skipped', output: 'nothing is waiting at the release gate', named: [] };
   }
 
-  const named = args.issueIds.slice(0, RELEASE_ROSTER_LIMIT);
+  const named = args.issueIds.slice(0, CUT_SIZE);
   try {
     const result = await createReleaseBatch({
       projectId: args.projectId,

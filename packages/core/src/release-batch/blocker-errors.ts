@@ -112,7 +112,9 @@ function errorFor(
     case 'RELEASE_MULTI_CHANNEL_UNSUPPORTED':
       return new ReleaseMultiChannelUnsupportedError(Number(first.details?.count ?? 0));
     case 'BATCH_IN_FLIGHT':
-      return new BatchInFlightError(null);
+      return new BatchInFlightError(
+        typeof first.details?.runId === 'string' ? first.details.runId : null,
+      );
     case 'RELEASE_CRITERIA_UNEARNED':
       // Roster-scoped, so no door that throws can reach it: both call with a
       // named list. The arm is here because the switch is exhaustive, and it

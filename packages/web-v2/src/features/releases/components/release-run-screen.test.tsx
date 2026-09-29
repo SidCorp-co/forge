@@ -37,6 +37,7 @@ function state(over: Partial<ReleaseRunState>) {
 			bounds: { holding: true, crossedNames: [], bounds: [] },
 			method: null,
 			methodUnloaded: false,
+			owner: null,
 			...over,
 		} satisfies ReleaseRunState,
 		isLoading: false,
@@ -170,5 +171,115 @@ describe("the unverified close, in the tense of the run's own status", () => {
 		const card = screen.getByTestId("live-none").textContent ?? "";
 		expect(card).toMatch(/no verification probe/i);
 		expect(card).not.toMatch(/close/i);
+	});
+});
+
+// ISS-1281: a release is owned by the run session a master opens over its roster, and the screen
+// is where a person reads who holds it — or, while nobody does, what stops each box.
+describe("the owner", () => {
+	const base = {
+		since: "2026-09-30T10:00:00.000Z",
+		deadlineAt: "2026-09-30T10:30:00.000Z",
+		takenAt: null,
+		deviceName: null,
+		sessionId: null,
+		endedAt: null,
+		why: null,
+		refusals: [],
+		boxes: [],
+	};
+
+	it("names every box and what stops it while the release waits", () => {
+		state({
+			owner: {
+				...base,
+				state: "awaiting",
+				boxes: [
+					{ deviceName: "box-a", able: false, clause: "`box-a`: draining for update", returnAt: null },
+					{ deviceName: "box-b", able: true, clause: "`box-b`: able to take it", returnAt: null },
+				],
+			},
+		});
+
+		render(<ReleaseRunScreen projectId="p1" runId="run-1" />);
+
+		const card = screen.getByTestId("owner");
+		expect(card.textContent).toMatch(/Waiting for this project's master/);
+		expect(card).toHaveTextContent("`box-a`: draining for update");
+		expect(card).toHaveTextContent("`box-b`: able to take it");
+		expect(card.textContent).toMatch(/hands every issue back to the release gate/);
+	});
+
+	it("says no box serves the project rather than showing an empty list", () => {
+		state({ owner: { ...base, state: "awaiting" } });
+
+		render(<ReleaseRunScreen projectId="p1" runId="run-1" />);
+
+		expect(screen.getByTestId("owner")).toHaveTextContent("No box serves this project.");
+	});
+
+	it("names the session and the box that took it", () => {
+		state({
+			owner: {
+				...base,
+				state: "owned",
+				takenAt: "2026-09-30T10:02:00.000Z",
+				deviceName: "box-b",
+				sessionId: "sess-9",
+			},
+		});
+
+		render(<ReleaseRunScreen projectId="p1" runId="run-1" />);
+
+		const card = screen.getByTestId("owner");
+		expect(card).toHaveTextContent("sess-9");
+		expect(card).toHaveTextContent("box-b");
+		expect(card.textContent).not.toMatch(/Waiting/);
+	});
+
+	it.each([
+		["lost", /Cancelled with no owner/],
+		["orphaned", /Held for a person/],
+	] as const)("a %s release says why", (ownerState, words) => {
+		state({
+			owner: {
+				...base,
+				state: ownerState,
+				why: "the run session that owned this release ended before a finish was accepted",
+				endedAt: "2026-09-30T10:40:00.000Z",
+			},
+		});
+
+		render(<ReleaseRunScreen projectId="p1" runId="run-1" />);
+
+		const card = screen.getByTestId("owner");
+		expect(card.textContent).toMatch(words);
+		expect(card.textContent).toMatch(/ended before a finish was accepted/);
+	});
+
+	it("shows the last refused take", () => {
+		state({
+			owner: {
+				...base,
+				state: "awaiting",
+				refusals: [
+					{ at: "2026-09-30T10:01:00.000Z", deviceName: "box-c", reason: "declare all of ISS-1, ISS-2 and nothing else" },
+				],
+			},
+		});
+
+		render(<ReleaseRunScreen projectId="p1" runId="run-1" />);
+
+		expect(screen.getByTestId("owner").textContent).toMatch(
+			/Last refused take from box-c: declare all of ISS-1, ISS-2 and nothing else/,
+		);
+	});
+
+	it("a batch cut before owners says its job owned it", () => {
+		state({ owner: null });
+
+		render(<ReleaseRunScreen projectId="p1" runId="run-1" />);
+
+		expect(screen.getByTestId("owner").textContent).toMatch(/the job that ran it owned it/);
 	});
 });

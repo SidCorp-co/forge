@@ -78,4 +78,30 @@ export interface ReleaseRunState {
 	/** `null` when the run never announced one. */
 	method: ReleaseMethod | null;
 	methodUnloaded: boolean;
+	/** Who owns the release; `null` on a batch cut before a run session owned one. */
+	owner: ReleaseOwner | null;
+}
+
+/** `lost` gave the roster back to the gate; `orphaned` lost its owner after a promotion. */
+export interface ReleaseOwner {
+	state: "awaiting" | "owned" | "lost" | "orphaned";
+	since: string;
+	deadlineAt: string;
+	takenAt: string | null;
+	deviceName: string | null;
+	sessionId: string | null;
+	endedAt: string | null;
+	why: string | null;
+	refusals: Array<{
+		at: string;
+		deviceName: string | null;
+		reason: string;
+	}>;
+	/** While it waits: every box serving the project and what stops it, read now. */
+	boxes: Array<{
+		deviceName: string;
+		able: boolean;
+		clause: string;
+		returnAt: string | null;
+	}>;
 }

@@ -116,7 +116,7 @@ describe("the release runner label on a deploy binding", () => {
 		);
 
 		expect(
-			screen.getByText("none — a release goes to any box in this project's pool"),
+			screen.getByText("none — a release is taken by this project's master on any box able to take it"),
 		).toBeInTheDocument();
 	});
 
@@ -213,11 +213,11 @@ describe("the release runner label on a shared connection", () => {
 		);
 
 		expect(screen.getByText("other")).toBeInTheDocument();
-		// A credential is not a project, so nothing here calls the pool one.
-		expect(screen.queryByText(/this project's pool/)).not.toBeInTheDocument();
+		// A credential is not a project, so nothing here speaks for one project's master.
+		expect(screen.queryByText(/this project's master/)).not.toBeInTheDocument();
 	});
 
-	it("says what a credential declaring none means, which is not a project's pool", () => {
+	it("says what a credential declaring none means, which is not one project's master", () => {
 		draw(
 			<ConnectionReleaseRunnerField
 				connection={{ id: CONNECTION_ID, config: {} }}
@@ -228,7 +228,7 @@ describe("the release runner label on a shared connection", () => {
 
 		expect(
 			screen.getByText(
-				"none — each project bound to this credential uses its own binding, or its own pool",
+				"none — each project bound to this credential uses its own binding, or any box able to take its release",
 			),
 		).toBeInTheDocument();
 	});

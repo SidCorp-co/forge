@@ -1,5 +1,6 @@
 /**
- * ISS-1080 criterion 12 — the notification cannot be stranded by a crash.
+ * ISS-1080 criterion 12 — the notification cannot be stranded by a crash, on a batch cut before
+ * ISS-1281, which its queued job owns (`claimLegacy`).
  *
  * `recoverUnstartedReleaseBatches` runs four writes in a row, and only one of
  * them is a point of no return: closing the run is what stops the pass's own
@@ -77,7 +78,7 @@ const fx = releaseBatchFixture(
   () => harness,
   () => ({ projectId, ownerId }),
 );
-const { declareProduction, seedReleaseRunner, insertIssue, stored, claim, runStatus } = fx;
+const { declareProduction, seedReleaseRunner, insertIssue, stored, claimLegacy, runStatus } = fx;
 
 beforeEach(async () => {
   await declareProduction();
@@ -101,7 +102,7 @@ async function wedgesFor(jobId: string): Promise<number> {
 describe('a recovery whose notification will not write', () => {
   it('leaves the run open, so the next tick finishes both halves', async () => {
     const a = await insertIssue();
-    const { runId, jobId } = await claim([a]);
+    const { runId, jobId } = await claimLegacy([a]);
     await ageJob(jobId, deadlineMinutes + 5);
 
     await expect(recoverUnstartedReleaseBatches(new Date())).rejects.toThrow(REFUSAL);

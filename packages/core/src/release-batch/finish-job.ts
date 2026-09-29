@@ -24,6 +24,7 @@ import {
   ReleaseFinishFenceLostError,
   ReleaseFinishInFlightError,
   ReleaseNotVerifiedError,
+  ReleaseOwnerLostError,
 } from './errors.js';
 import {
   compareAndSet,
@@ -34,6 +35,7 @@ import {
   readFinishRecord,
   stamp,
 } from './finish-record.js';
+import { readOwner } from './owner-record.js';
 import { finishRefusal } from './refusals.js';
 import { assertFinishable, finishReleaseBatch, readReleaseRun } from './service.js';
 import { claimedCommit, NOTHING_TO_COMPARE, notAWholeCommit } from './verify.js';
@@ -92,6 +94,8 @@ export async function acceptReleaseBatchFinish(
     // Before any record is answered: an aborted batch answers as aborted whatever its last
     // attempt wrote, so a record cannot stand in for the abort.
     if (batchAborted(run)) throw await abortedError(runId);
+    const owner = readOwner(run.metadata, runId);
+    if (owner?.state === 'lost') throw new ReleaseOwnerLostError(runId, owner.why);
     const current = readFinishRecord(run.metadata);
 
     if (current && isInFlight(current)) {

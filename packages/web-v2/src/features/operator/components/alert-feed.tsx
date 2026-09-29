@@ -25,6 +25,7 @@ const ALERT_TITLE: Record<string, string> = {
   A3: "Runner-starved projects",
   A4: "Spend spike",
   A5: "Automation failing",
+  A6: "Releases waiting for a master",
 };
 
 const STATUS_TONE: Record<AdminAlertStatus, "green" | "amber" | "red"> = {
@@ -54,7 +55,7 @@ export function AlertFeedSkeleton() {
         <CardTitle>Alerts</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
-        {[0, 1, 2, 3, 4].map((i) => (
+        {[0, 1, 2, 3, 4, 5].map((i) => (
           <div key={i} className="flex items-center gap-3">
             <Skeleton variant="circle" className="h-2 w-2" />
             <Skeleton variant="text" className="w-32" />

@@ -10,7 +10,7 @@
  * run session itself — so the name is the fact now rather than the pool key.
  *
  * Opt-in per project via `pipelineConfig.poolBacklog`. A project that has not
- * declared one contributes nothing.
+ * declared one contributes only the release rosters this box may take.
  */
 
 import { sql } from 'drizzle-orm';
@@ -28,6 +28,7 @@ import {
   isEntryGateClosed,
 } from '../pipeline/autonomous-mode.js';
 import { pipelineConfigSchema } from '../pipeline/pipeline-config-schema.js';
+import { takeableRosterIssueIds } from '../release-batch/owner-take.js';
 import type { PoolRelation } from './pool.js';
 
 const DEFAULT_ADMISSIBLE_LIMIT = 20;
@@ -121,6 +122,60 @@ const RELATIONS = sql`
   ), '[]'::json) AS relations
 `;
 
+const ISSUE_COLUMNS = sql`
+  i.id, i.iss_seq, i.project_id, i.title, i.description, i.priority,
+  i.category, i.status, i.merged_at,
+  i.session_context->>'branch' AS branch,
+  EXTRACT(EPOCH FROM (now() - i.created_at)) / 60 AS age_minutes,
+  ip.issue_prefix
+`;
+
+async function toAdmissible(rows: Array<Record<string, unknown>>): Promise<AdmissibleIssue[]> {
+  const byIssue = await readPullRequestsForIssues(rows.map((r) => String(r.id)));
+  return rows.map((row) => ({
+    issueId: String(row.id),
+    issueKey:
+      row.iss_seq == null
+        ? null
+        : formatIssueRef(row.issue_prefix as string | null, Number(row.iss_seq)),
+    projectId: String(row.project_id),
+    title: (row.title as string | null) ?? null,
+    description: (row.description as string | null) ?? null,
+    priority: (row.priority as string | null) ?? null,
+    category: (row.category as string | null) ?? null,
+    status: String(row.status),
+    ageMinutes: Number(row.age_minutes ?? 0),
+    relations: (row.relations as PoolRelation[] | null) ?? [],
+    mergedAt: row.merged_at == null ? null : new Date(row.merged_at as string).toISOString(),
+    branch: (row.branch as string | null) || null,
+    pullRequests: byIssue.get(String(row.id)) ?? [],
+  }));
+}
+
+/**
+ * The issues of every release waiting for a master that this box may take (ISS-1281). A project
+ * need not admit `releasing` for these to reach its master: the roster was handed to it, and a
+ * box with nothing else to do places and nudges its master for exactly this.
+ */
+async function takeableRosters(
+  args: { deviceId: string; projectId?: string | undefined },
+  listed: Set<string>,
+): Promise<AdmissibleIssue[]> {
+  const ids = (await takeableRosterIssueIds(args)).filter((id) => !listed.has(id));
+  if (ids.length === 0) return [];
+  const rows = (await db.execute(sql`
+    SELECT ${ISSUE_COLUMNS}, ${RELATIONS}
+      FROM issues i
+      JOIN projects ip ON ip.id = i.project_id
+     WHERE i.id IN (${sql.join(
+       ids.map((id) => sql`${id}`),
+       sql`, `,
+     )})
+     ORDER BY i.created_at ASC
+  `)) as unknown as Array<Record<string, unknown>>;
+  return toAdmissible(rows);
+}
+
 /**
  * The admissible issues for one device, across every project it serves.
  *
@@ -134,7 +189,6 @@ export async function readAdmissibleIssues(args: {
   projectId?: string | undefined;
 }): Promise<AdmissibleIssue[]> {
   const admissions = await readAdmissions(args);
-  if (admissions.length === 0) return [];
 
   const out: AdmissibleIssue[] = [];
   for (const a of admissions) {
@@ -147,12 +201,7 @@ export async function readAdmissibleIssues(args: {
       sql`, `,
     );
     const rows = (await db.execute(sql`
-      SELECT i.id, i.iss_seq, i.project_id, i.title, i.description, i.priority,
-             i.category, i.status, i.merged_at,
-             i.session_context->>'branch' AS branch,
-             EXTRACT(EPOCH FROM (now() - i.created_at)) / 60 AS age_minutes,
-             ip.issue_prefix,
-             ${RELATIONS}
+      SELECT ${ISSUE_COLUMNS}, ${RELATIONS}
       FROM issues i
       JOIN projects ip ON ip.id = i.project_id
       WHERE i.project_id = ${a.projectId}
@@ -188,28 +237,8 @@ export async function readAdmissibleIssues(args: {
       LIMIT ${a.limit}
     `)) as unknown as Array<Record<string, unknown>>;
 
-    const byIssue = await readPullRequestsForIssues(rows.map((r) => String(r.id)));
-
-    for (const row of rows) {
-      out.push({
-        issueId: String(row.id),
-        issueKey:
-          row.iss_seq == null
-            ? null
-            : formatIssueRef(row.issue_prefix as string | null, Number(row.iss_seq)),
-        projectId: String(row.project_id),
-        title: (row.title as string | null) ?? null,
-        description: (row.description as string | null) ?? null,
-        priority: (row.priority as string | null) ?? null,
-        category: (row.category as string | null) ?? null,
-        status: String(row.status),
-        ageMinutes: Number(row.age_minutes ?? 0),
-        relations: (row.relations as PoolRelation[] | null) ?? [],
-        mergedAt: row.merged_at == null ? null : new Date(row.merged_at as string).toISOString(),
-        branch: (row.branch as string | null) || null,
-        pullRequests: byIssue.get(String(row.id)) ?? [],
-      });
-    }
+    out.push(...(await toAdmissible(rows)));
   }
+  out.push(...(await takeableRosters(args, new Set(out.map((i) => i.issueId)))));
   return out;
 }

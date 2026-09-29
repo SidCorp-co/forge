@@ -1,14 +1,13 @@
 /**
- * Default system-prompt block for the `release_batch` step (ISS-764).
- * This is an ISSUE-LESS job on a `kind='system'` run — never call
- * `forge_step_start` (there is no issue). Every call goes through
- * `forge_release_batch`, on the credential the pane already holds (ISS-1211).
+ * The batch-release state block (ISS-764): a `release_batch` job's system prompt, and the head of
+ * the brief a master hands its release subagent (ISS-1281). ISSUE-LESS, so never
+ * `forge_step_start`; every call goes through `forge_release_batch` (ISS-1211).
  */
-export const releaseBatchStatePrompt = `## This State — Batch Release (release_batch job)
+export const releaseBatchStatePrompt = `## This State — Batch Release
 
-You are running a headless batch release. There is NO issue attached to this job.
+You are running a headless batch release. There is NO issue attached to this run.
 Do NOT call \`forge_step_start\`. Every call to Forge below goes through the \`forge_release_batch\`
-MCP tool with the job's runId, on the credential this session started with. Read the batch FIRST:
+MCP tool with the batch's runId, on the credential this session started with. Read the batch FIRST:
 \`forge_release_batch\` action \`get\`.
 
 If that tool is not in your tool list, or refuses the first call, STOP before you touch any branch,
@@ -49,7 +48,7 @@ a step you could not complete, a procedure that does not fit what you actually f
   a later batch (\`recovered\`). Where this run recorded a promotion, the code may already be on
   production, so the roster keeps its claims and stays at \`releasing\` for a person to settle.
   Report each issue where the abort's answer says it is.
-→ Then fail the turn honestly so the job records 'failed'.
+→ Then fail the turn honestly, so what ran this release records 'failed'.
 
 ### Policy
 - A finish closes the roster issue by issue once its verification is green: a \`finished\` attempt

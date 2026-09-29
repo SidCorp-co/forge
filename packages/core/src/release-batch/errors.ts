@@ -169,9 +169,61 @@ export class ReleaseRecordMissingError extends Error {
 }
 
 export class BatchInFlightError extends Error {
-  constructor(public readonly existingJobId: string | null) {
+  /** The release run already open on this project, where the door that refused read one. */
+  constructor(public readonly existingRunId: string | null) {
     super('BATCH_IN_FLIGHT');
     this.name = 'BatchInFlightError';
+  }
+}
+
+/**
+ * No box serving the project could open the run session a release is owned by (ISS-1281). Thrown
+ * before the run row exists, so nothing is claimed; `boxes` carries one answer per box.
+ */
+export class ReleaseOwnerUnavailableError extends Error {
+  readonly code = 'RELEASE_NO_OWNER';
+  constructor(
+    message: string,
+    public readonly boxes: ReadonlyArray<{
+      deviceName: string;
+      reason: string | null;
+      detail: string | null;
+      returnAt: string | null;
+    }>,
+  ) {
+    super(message);
+    this.name = 'ReleaseOwnerUnavailableError';
+  }
+}
+
+/** A release is owned by one run session, and a run session carries at most `cap` issues. */
+export class ReleaseRosterOverRunError extends Error {
+  readonly code = 'RELEASE_ROSTER_OVER_RUN';
+  constructor(
+    public readonly named: number,
+    public readonly cap: number,
+  ) {
+    super(
+      `A release is owned by one run session, and a run session carries at most ${cap} issues; ` +
+        `this release names ${named}. Cut it in parts of ${cap} or fewer, oldest merge first.`,
+    );
+    this.name = 'ReleaseRosterOverRunError';
+  }
+}
+
+/** The recovery pass declared this batch's owner lost, so no finish is taken on it. */
+export class ReleaseOwnerLostError extends Error {
+  readonly code = 'RELEASE_OWNER_LOST';
+  constructor(
+    public readonly runId: string,
+    why: string | null,
+  ) {
+    super(
+      `RELEASE_OWNER_LOST: release ${runId} has no owner any more (${why ?? 'its owner ended'}), and its ` +
+        'roster went back to the release gate, so a finish here would close issues nothing is releasing. ' +
+        'Cut the release again.',
+    );
+    this.name = 'ReleaseOwnerLostError';
   }
 }
 

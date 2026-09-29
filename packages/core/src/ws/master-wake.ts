@@ -47,6 +47,19 @@ export async function wakeMastersForProject(args: {
   });
 }
 
+/** One `master.wake` per box: a release waits for this project's master (ISS-1281). */
+export async function wakeMastersForRelease(args: {
+  projectId: string;
+  releaseRunId: string;
+}): Promise<{ boxes: number; delivered: number }> {
+  return publishWake(args.projectId, {
+    projectId: args.projectId,
+    issueId: null,
+    releaseRunId: args.releaseRunId,
+    charter: masterCharterPath(args.projectId),
+  });
+}
+
 /**
  * Publish one `master.wake` per box because a question this project was
  * waiting on has been answered.

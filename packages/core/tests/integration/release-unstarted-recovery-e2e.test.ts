@@ -1,5 +1,5 @@
 /**
- * ISS-1080 criteria 6-13 — a release batch nothing ever started does not keep its roster.
+ * ISS-1080 criteria 6-13 — a job-owned batch (`claimLegacy`) nothing started gives its roster back.
  * `createReleaseBatch` claims the roster and moves every issue to `releasing` before the job runs;
  * when no box takes it, the only writer reaching those issues runs on the run going terminal, and
  * nothing makes it. `pixelight` held one there for 16 hours.
@@ -62,7 +62,8 @@ const fx = releaseBatchFixture(
   () => harness,
   () => ({ projectId, ownerId }),
 );
-const { declareProduction, seedReleaseRunner, insertIssue, stored, claim, runStatus } = fx;
+const { declareProduction, seedReleaseRunner, insertIssue, stored, claim, claimLegacy, runStatus } =
+  fx;
 
 beforeEach(async () => {
   await declareProduction();
@@ -113,7 +114,7 @@ describe('a release batch whose job no box ever took', () => {
       [b, (await stored(b)).mergedAt],
     ]);
     expect(before.get(b)).toBeNull();
-    const { runId, jobId } = await claim([a, b]);
+    const { runId, jobId } = await claimLegacy([a, b]);
     expect((await stored(a)).status).toBe('releasing');
     await ageJob(jobId, overdue());
 
@@ -134,7 +135,7 @@ describe('a release batch whose job no box ever took', () => {
 
   it('says so on a surface, because the sweep writes no comment', async () => {
     const a = await insertIssue();
-    const { jobId } = await claim([a]);
+    const { jobId } = await claimLegacy([a]);
     await ageJob(jobId, overdue());
 
     await mods.recoverUnstartedReleaseBatches(new Date());
@@ -144,7 +145,7 @@ describe('a release batch whose job no box ever took', () => {
 
   it('leaves a batch that has not reached the deadline alone', async () => {
     const a = await insertIssue();
-    const { runId, jobId } = await claim([a]);
+    const { runId, jobId } = await claimLegacy([a]);
     await ageJob(jobId, stillWaiting());
 
     expect(await mods.recoverUnstartedReleaseBatches(new Date())).toEqual({ recovered: 0 });
@@ -158,7 +159,7 @@ describe('a release batch whose job no box ever took', () => {
 describe('what the pass must not touch', () => {
   it('leaves a batch whose job reached a box', async () => {
     const a = await insertIssue();
-    const { runId, jobId } = await claim([a]);
+    const { runId, jobId } = await claimLegacy([a]);
     await ageJob(jobId, overdue());
     await harness.db.execute(sql`
       UPDATE jobs SET status = 'dispatched', dispatched_at = now() WHERE id = ${jobId}
@@ -173,7 +174,7 @@ describe('what the pass must not touch', () => {
 
   it('leaves a batch whose job ran once and was requeued from a hold', async () => {
     const a = await insertIssue();
-    const { runId, jobId } = await claim([a]);
+    const { runId, jobId } = await claimLegacy([a]);
     await harness.db.execute(sql`
       UPDATE jobs SET dispatched_at = now() - interval '2 hours' WHERE id = ${jobId}
     `);
@@ -188,7 +189,7 @@ describe('what the pass must not touch', () => {
 
   it('steps aside for a batch a box is in the middle of taking', async () => {
     const a = await insertIssue();
-    const { runId, jobId } = await claim([a]);
+    const { runId, jobId } = await claimLegacy([a]);
     await ageJob(jobId, overdue());
     await harness.db.execute(sql`
       UPDATE jobs SET held_by = gen_random_uuid(), held_at = now() WHERE id = ${jobId}
@@ -203,7 +204,7 @@ describe('what the pass must not touch', () => {
 
   it('leaves a batch that recorded a promotion exactly where it stands', async () => {
     const a = await insertIssue();
-    const { runId, jobId } = await claim([a]);
+    const { runId, jobId } = await claimLegacy([a]);
     await recordPromotion(runId);
     await ageJob(jobId, overdue());
 
@@ -217,7 +218,7 @@ describe('what the pass must not touch', () => {
 describe('the fence against a box that is starting the job', () => {
   it('makes the job unstartable, so a start arriving after it loses', async () => {
     const a = await insertIssue();
-    const { jobId } = await claim([a]);
+    const { jobId } = await claimLegacy([a]);
     await ageJob(jobId, overdue());
 
     await mods.recoverUnstartedReleaseBatches(new Date());
@@ -257,7 +258,7 @@ describe('a fence whose cleanup never ran', () => {
     registerReleaseBatchClaimSubscriber(hooks);
 
     const a = await insertIssue();
-    const { runId, jobId } = await claim([a]);
+    const { runId, jobId } = await claimLegacy([a]);
     // the fence landed and nothing after it ran
     await harness.db.execute(sql`
       UPDATE jobs SET status = 'cancelled', finished_at = now() WHERE id = ${jobId}
@@ -283,7 +284,7 @@ describe('a fence whose cleanup never ran', () => {
 describe('a fence this pass already made', () => {
   it('is picked up on the next tick, roster and wedge both', async () => {
     const a = await insertIssue();
-    const { runId, jobId } = await claim([a]);
+    const { runId, jobId } = await claimLegacy([a]);
     await ageJob(jobId, overdue());
     // the fence committed and the worker died before anything after it
     await harness.db.execute(sql`
@@ -303,7 +304,7 @@ describe('a fence this pass already made', () => {
 
   it('leaves a batch cancelled by anything else alone', async () => {
     const a = await insertIssue();
-    const { runId, jobId } = await claim([a]);
+    const { runId, jobId } = await claimLegacy([a]);
     await ageJob(jobId, overdue());
     await harness.db.execute(sql`
       UPDATE jobs SET status = 'cancelled', finished_at = now(),
@@ -346,7 +347,7 @@ describe('a fence this pass already made', () => {
 
   it('finishes a recovery that got as far as the roster', async () => {
     const a = await insertIssue();
-    const { runId, jobId } = await claim([a]);
+    const { runId, jobId } = await claimLegacy([a]);
     await ageJob(jobId, overdue());
     await harness.db.execute(sql`
       UPDATE jobs SET status = 'cancelled', finished_at = now(),
@@ -369,7 +370,7 @@ describe('a fence this pass already made', () => {
 
   it('stops matching once the roster is back', async () => {
     const a = await insertIssue();
-    const { jobId } = await claim([a]);
+    const { jobId } = await claimLegacy([a]);
     await ageJob(jobId, overdue());
 
     expect(await mods.recoverUnstartedReleaseBatches(new Date())).toEqual({ recovered: 1 });

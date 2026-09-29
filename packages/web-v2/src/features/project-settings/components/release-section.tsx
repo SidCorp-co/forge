@@ -55,7 +55,7 @@ const UNREAD = "could not be read";
  *  `Rollback` abort and comment, `Deploy verified by` nothing. This one said
  *  `—`, which left a reader unable to tell a settled state from an outstanding
  *  one, on the card about the very question ISS-1275 was filed on. */
-const NO_RELEASE_RUNNER_LABEL = "none — a release goes to any box in this project's pool";
+const NO_RELEASE_RUNNER_LABEL = "none — a release is taken by this project's master on any box able to take it";
 
 const FACT_GAPS = new Set(["build-commands", "test-commands", "release-procedure"]);
 

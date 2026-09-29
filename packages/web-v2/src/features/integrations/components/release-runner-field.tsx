@@ -19,10 +19,10 @@ export const RELEASE_RUNNER_HEADING = "Release runner label";
 
 /** The same words the Release card uses for the same state (ISS-1275). */
 export const NO_RELEASE_RUNNER_LABEL =
-  "none — a release goes to any box in this project's pool";
+  "none — a release is taken by this project's master on any box able to take it";
 
 export const NO_CONNECTION_RUNNER_LABEL =
-  "none — each project bound to this credential uses its own binding, or its own pool";
+  "none — each project bound to this credential uses its own binding, or any box able to take its release";
 
 const WHERE_THE_CONNECTION_IS_EDITED = "Integrations in the workspace rail";
 
@@ -31,7 +31,7 @@ function declaredIn(config: Record<string, unknown> | undefined | null): string 
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
-/** A label ranks the pool a RELEASE is offered to, so only a live deploy binding
+/** A label ranks the boxes a RELEASE may be taken on, so only a live deploy binding
  *  has one to declare. Rendering it elsewhere would offer a setting that decides
  *  nothing. */
 export function labelDecidesFor(
@@ -75,7 +75,7 @@ function Editor({
         {declared ? (
           <>
             <span className="font-mono">{declared}</span> — a release prefers a box carrying
-            it, and still runs on the pool it has where no box does.
+            it, and is still taken on another box where no box carrying it is able to.
           </>
         ) : inherited ? (
           <>
@@ -159,7 +159,7 @@ export function BindingReleaseRunnerField({
       inherited={declared === null ? effective : null}
       canEdit={canEdit}
       disabledReason="Only a project admin can change this."
-      hint="Which box this project's releases should prefer, matched against a runner's labels under Settings → Runners. Clearing it falls back to the shared connection's label where that declares one, and otherwise to any box in this project's pool."
+      hint="Which box this project's releases should prefer, matched against a runner's labels under Settings → Runners. Clearing it falls back to the shared connection's label where that declares one, and otherwise to any box able to take the release."
       none={NO_RELEASE_RUNNER_LABEL}
       busy={update.isPending}
       failure={failure}

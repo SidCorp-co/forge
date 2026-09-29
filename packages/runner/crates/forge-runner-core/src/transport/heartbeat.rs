@@ -8,6 +8,13 @@
 //! It carries this box's pool reads for the same reason: a read answered 520 at
 //! the gateway never reaches core, and this route answered normally around every
 //! one measured (ISS-1234).
+//!
+//! And it carries the two things core cannot see about whether this box's master
+//! could take a release (ISS-1281): whether the plugin copy ships the role a
+//! master hands a release to, and whether the daemon is draining. They ride the
+//! `capabilities` record the route has always accepted, because its body schema
+//! refuses any key it does not know, and a new key reaching a core that predates
+//! it would refuse the whole beat and take the box offline.
 
 use super::{status, CoreClient, CALL_DEADLINE};
 use crate::error::{Error, Result};
@@ -59,6 +66,44 @@ pub struct Conditions {
     /// even an empty one, is the box's whole picture. A record that exists and
     /// cannot be read is no picture, so it is `None`, never an empty list.
     pub pool: Option<Vec<crate::daemon::pool_reads::Condition>>,
+    /// `None` sends no `capabilities` key, which a core stores as nothing new.
+    pub capabilities: Option<serde_json::Value>,
+}
+
+/// The plugin role a master dispatches a release through, as `plugin/agents/<role>.md` names it.
+/// Core names the same role in `release-batch/owner-boxes.ts:RELEASE_ROLE`.
+pub const RELEASE_ROLE: &str = "release";
+
+/// What this box says about taking a release: the role, and the drain.
+pub fn capabilities(config_dir: &std::path::Path) -> serde_json::Value {
+    let release_role = crate::daemon::dispatch_gate::shipped_roles(config_dir)
+        .is_some_and(|roles| roles.contains(RELEASE_ROLE));
+    let mut caps = serde_json::json!({ "releaseRole": release_role });
+    if let Some(admission) = admission(config_dir) {
+        caps["admission"] = admission;
+    }
+    caps
+}
+
+/// The drain the daemon last recorded, as core reads it. `None` where the
+/// record is missing or unreadable: an admission nobody reported is not open.
+fn admission(config_dir: &std::path::Path) -> Option<serde_json::Value> {
+    use crate::daemon::serving::{self, DrainState};
+    let record = serving::read(config_dir).ok()??;
+    Some(match record.drain {
+        Some(DrainState::Draining {
+            cause,
+            since_ms,
+            bound_secs,
+            ..
+        }) => serde_json::json!({
+            "state": "draining",
+            "cause": cause,
+            "sinceMs": since_ms,
+            "boundSecs": bound_secs,
+        }),
+        Some(DrainState::Deferred { .. }) | None => serde_json::json!({ "state": "open" }),
+    })
 }
 
 impl Conditions {
@@ -71,6 +116,7 @@ impl Conditions {
         Self {
             gate: Some(crate::daemon::degraded::report(dir, now_ms).degraded),
             pool: crate::daemon::pool_reads::report(dir, now_ms).ok(),
+            capabilities: Some(capabilities(dir)),
         }
     }
 }
@@ -167,6 +213,9 @@ pub(crate) fn heartbeat_body(
     if let Some(pool) = &conditions.pool {
         body["pool"] = pool_body(pool);
     }
+    if let Some(caps) = &conditions.capabilities {
+        body["capabilities"] = caps.clone();
+    }
     body
 }
 
@@ -260,6 +309,7 @@ mod tests {
             &Conditions {
                 gate: Some(gate.clone()),
                 pool: None,
+                capabilities: None,
             },
         );
         assert_eq!(with["agentVersion"], "0.17.17");
@@ -468,5 +518,100 @@ mod tests {
             gate_refusal(r.pool).as_deref(),
             Some("pool.projects.0.verdict: bad enum")
         );
+    }
+
+    const CAPABILITIES_FIXTURE: &str = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../core/src/release-batch/box-capabilities.fixture.json"
+    );
+
+    fn capabilities_fixture() -> serde_json::Value {
+        serde_json::from_str(
+            &std::fs::read_to_string(CAPABILITIES_FIXTURE)
+                .expect("the capabilities fixture both languages read"),
+        )
+        .expect("the capabilities fixture is json")
+    }
+
+    fn plant_roles(dir: &std::path::Path, roles: &[&str]) {
+        let agents = dir.join("marketplaces/sidcorp-co__forge-plugin/plugin/agents");
+        std::fs::create_dir_all(&agents).unwrap();
+        for role in roles {
+            std::fs::write(agents.join(format!("{role}.md")), "---\nname: x\n---\n").unwrap();
+        }
+    }
+
+    fn plant_drain(dir: &std::path::Path, drain: Option<crate::daemon::serving::DrainState>) {
+        let mut record = crate::daemon::serving::Record::this_process(NOW);
+        record.drain = drain;
+        crate::daemon::serving::write(dir, &record).unwrap();
+    }
+
+    /// ISS-1281 criterion 6. A box shipping the release role and draining says both, in the
+    /// shape core's `readBoxCapabilities` parses off the same fixture.
+    #[test]
+    fn a_draining_box_with_the_release_role_sends_the_fixture() {
+        let dir = scratch("caps-draining");
+        plant_roles(&dir, &["runner", RELEASE_ROLE]);
+        plant_drain(
+            &dir,
+            Some(crate::daemon::serving::DrainState::Draining {
+                cause: "update 0.17.57 → 0.17.60".into(),
+                since_ms: 1_790_236_800_000,
+                bound_secs: 7200,
+                outstanding: vec!["run r-1".into()],
+            }),
+        );
+        let body = heartbeat_body("0.17.18", None, &Conditions::read(Some(&dir), NOW));
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(
+            body["capabilities"],
+            capabilities_fixture()["draining"],
+            "{body}"
+        );
+    }
+
+    #[test]
+    fn a_box_whose_drain_gave_up_reads_as_open() {
+        let dir = scratch("caps-deferred");
+        plant_roles(&dir, &[RELEASE_ROLE]);
+        plant_drain(
+            &dir,
+            Some(crate::daemon::serving::DrainState::Deferred {
+                cause: "update".into(),
+                gave_up_at_ms: NOW,
+                outstanding: vec![],
+                next_attempt: "the next credential rotation".into(),
+                next_attempt_at_ms: NOW + 1,
+            }),
+        );
+        let body = heartbeat_body("0.17.18", None, &Conditions::read(Some(&dir), NOW));
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(
+            body["capabilities"],
+            capabilities_fixture()["open"],
+            "{body}"
+        );
+    }
+
+    /// ISS-1281 criterion 7, the box's half: a plugin copy shipping no release role says so,
+    /// and a daemon that wrote no serving record reports no admission rather than an open one.
+    #[test]
+    fn a_box_without_the_role_or_a_serving_record_says_only_that() {
+        let dir = scratch("caps-roleless");
+        plant_roles(&dir, &["runner", "qa"]);
+        let body = heartbeat_body("0.17.18", None, &Conditions::read(Some(&dir), NOW));
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(
+            body["capabilities"],
+            capabilities_fixture()["roleless"],
+            "{body}"
+        );
+    }
+
+    #[test]
+    fn a_box_with_no_config_directory_sends_no_capabilities_key() {
+        let none = heartbeat_body("0.17.18", None, &Conditions::read(None, NOW));
+        assert!(none.get("capabilities").is_none(), "{none}");
     }
 }

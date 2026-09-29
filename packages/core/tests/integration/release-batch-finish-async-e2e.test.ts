@@ -182,8 +182,9 @@ describe('the door answers inside its own bound (the reproduction)', () => {
     expect(after.runStatus).toBe('running');
   }, 40_000);
 
-  it('answers a roster of twenty inside the same bound as a roster of one', async () => {
-    const { runId } = await batch(20, 8);
+  // Sixteen is the most a release carries: one run session owns it, and that is its cap.
+  it('answers the largest roster a release carries inside the same bound as a roster of one', async () => {
+    const { runId } = await batch(16, 8);
 
     const res = await finish(runId, { commit: PUSHED });
 

@@ -27,6 +27,7 @@ import {
   ReleaseFinishedForOtherCommitError,
   ReleaseFinishInFlightError,
   ReleaseNotVerifiedError,
+  ReleaseOwnerLostError,
   ReleaseProbesUnreadableError,
   ReleaseVersionMissingError,
 } from './errors.js';
@@ -204,6 +205,7 @@ export function finishRefusal(err: unknown): HTTPException | null {
   if (err instanceof ReleaseVersionMissingError) {
     return conflict('RELEASE_VERSION_MISSING', err.message);
   }
+  if (err instanceof ReleaseOwnerLostError) return conflict(err.code, err.message);
   if (err instanceof ReleaseBatchAbortedError) {
     return conflict(
       'RELEASE_BATCH_ABORTED',

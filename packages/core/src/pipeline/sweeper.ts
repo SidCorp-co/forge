@@ -459,6 +459,9 @@ export async function reapOrphanedOneShotRuns(
     WHERE r.kind IN ('system', 'interactive')
       AND r.status IN ('running', 'paused')
       AND r.started_at < ${cutoffIso}
+      -- A release run has no job and no session of its own: its owner is the run session a
+      -- master opened over its roster, and release-batch/owner-loss.ts is what reads it.
+      AND r.metadata ->> 'source' IS DISTINCT FROM 'release-batch'
       AND NOT EXISTS (
         SELECT 1 FROM jobs j WHERE j.pipeline_run_id = r.id
       )

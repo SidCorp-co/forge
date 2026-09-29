@@ -5,10 +5,12 @@ import { syncAgentSessionLifecycle } from '../jobs/agent-session-link.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { emitPipelineWedge } from '../pipeline/wedge.js';
+import { recoverReleaseOwners } from './owner-loss.js';
 import { recoverStrandedReleasing, runRecordedPromotion } from './releasing-recovery.js';
 
 /**
- * How long a release batch may wait for a box to take its job.
+ * How long a release batch may wait for a master to take it, and how long a batch cut before
+ * ISS-1281 may wait for a box to take its job.
  */
 export const RELEASE_UNSTARTED_DEADLINE_MS = (() => {
   const raw = Number(process.env.FORGE_RELEASE_UNSTARTED_DEADLINE_MS);
@@ -29,7 +31,9 @@ interface UnstartedRow extends Record<string, unknown> {
 const REASON = 'no box took this release batch before its deadline, so it never started';
 
 /**
- * Every release batch whose job is still waiting, past the deadline.
+ * Every release batch whose job is still waiting, past the deadline. Only a batch cut before
+ * ISS-1281 has a job, so this pass is deleted once no `release_batch` job is left queued: the
+ * last such batch finished, aborted, or recovered here.
  */
 async function unstartedBatches(cutoffIso: string): Promise<UnstartedRow[]> {
   return (await db.execute<UnstartedRow>(sql`
@@ -125,6 +129,7 @@ export async function registerReleaseUnstartedRecovery(): Promise<void> {
   await (boss as any).createQueue(RECOVERY_QUEUE);
   // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
   await (boss as any).work(RECOVERY_QUEUE, async () => {
+    await recoverReleaseOwners();
     await recoverUnstartedReleaseBatches();
   });
   // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions

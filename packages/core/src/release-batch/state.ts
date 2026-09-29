@@ -7,6 +7,8 @@ import { ReleaseProbesUnreadableError } from './errors.js';
 import { type ReleaseFinishRecord, readFinishRecord } from './finish-job.js';
 import { listAttempts, type ReleaseAttemptRow } from './ledger.js';
 import { type ReleaseMethod, readMethod } from './method.js';
+import { ownerBoxClause, readOwnerCandidates } from './owner-boxes.js';
+import { type ReleaseOwner, readOwner } from './owner-record.js';
 import type { ReleaseVerification } from './plan.js';
 import { loadReleaseRoster, type ReleaseRoster } from './queries.js';
 import { type LiveState, readLiveState, type VerifyConfig } from './verify.js';
@@ -33,6 +35,36 @@ export interface ReleaseRunState {
   methodUnloaded: boolean;
   /** The last finish attempt, `null` before the first `finish` call. */
   finish: ReleaseFinishRecord | null;
+  /** Who owns the release, `null` on a batch cut before ISS-1281, which its job owned. */
+  owner: ReleaseOwnerReading | null;
+}
+
+export interface ReleaseOwnerReading extends ReleaseOwner {
+  /** While it waits: every box serving the project, with what stops it, read now. */
+  boxes: Array<{ deviceName: string; able: boolean; clause: string; returnAt: string | null }>;
+}
+
+/** The owner record, and while it waits, why each box has not taken it. */
+async function readOwnerNow(
+  projectId: string,
+  runId: string,
+  meta: Record<string, unknown>,
+): Promise<ReleaseOwnerReading | null> {
+  const owner = readOwner(meta, runId);
+  if (!owner) return null;
+  if (owner.state !== 'awaiting') return { ...owner, boxes: [] };
+  const label = (meta.releaseRunner as { label?: unknown } | undefined)?.label;
+  const candidates = await readOwnerCandidates(projectId, typeof label === 'string' ? label : null);
+  const able = new Set(candidates.eligible.map((b) => b.deviceId));
+  return {
+    ...owner,
+    boxes: candidates.boxes.map((b) => ({
+      deviceName: b.deviceName,
+      able: able.has(b.deviceId),
+      clause: ownerBoxClause(b),
+      returnAt: b.returnAtMs === null ? null : new Date(b.returnAtMs).toISOString(),
+    })),
+  };
 }
 
 /** The probes the close reads, or none: a refused declaration has nothing to read either. */
@@ -107,6 +139,7 @@ export async function readReleaseRunState(runId: string): Promise<ReleaseRunStat
     method,
     methodUnloaded: method !== null && !method.loaded,
     finish: readFinishRecord(meta),
+    owner: await readOwnerNow(run.projectId, runId, meta),
   };
 }
 
