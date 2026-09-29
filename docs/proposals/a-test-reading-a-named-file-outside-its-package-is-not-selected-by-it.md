@@ -34,3 +34,46 @@ someone to remember to add a line when a test starts reading a new file.
 | More runs of `core` | Every runner-fixture or contracts-manifest change would pay a `core` run, and `core-integration` for the e2e test, whose run was 18m37s on the pull request ISS-1314 measured. |
 | A second declaration shape | `@gate-input` would carry paths as well as `whole-tree`, and the checker has to parse `ci.yml`'s filters, which today only `dorny/paths-filter` reads. |
 | The Rust side | `orientation.rs` is not a vitest file, so its declaration needs a reader of its own, or the runner filter takes `.forge/orientation.md` by hand. |
+
+## Two more a declaration does not reach
+
+ISS-1314's guard refuses an undeclared test that lists a directory covering the root. Two kinds of
+reach it leaves unrefused, measured on the tree its fourth build was cut from.
+
+### A listing of one directory below the root
+
+A test that lists `docs/`, `.github/` or a sibling package lists a directory below the root. So the
+guard does not refuse it, and its job's filter selects it by the paths the test lives under. The
+#710 document lived in `docs/`: an undeclared core test running
+`globSync('docs/**/*.md', { cwd: <root> })` or `globSync('../../docs/**/*.md')` passes, and a
+documents-only pull request skips it (ISS-1314's third judging, plants `wj5-n5` and `wj5-n9`).
+
+What would close it is the same shape as the named-file reads above. The test declares the
+directories it lists outside its package, and a checker refuses a declared directory that the
+filter of the job running the test does not match.
+
+| Cost | What it takes |
+|---|---|
+| A guard that knows each test's package | The refusal has to be read against the test's own package, not the root, so a listing inside the package stays free. |
+| More declarations | Every test listing a sibling package declares it, and the checker parses `ci.yml`'s filters, as above. |
+
+### What no observer inside a test's own processes can see
+
+The guard watches the `node:fs` calls, the spawns and the workers of a test's process and of every
+Node process it starts. It reads each spawned program by its arguments, and counts a program it
+cannot see into as the root. Two routes pass through none of that.
+
+- **Native code.** An addon, WASI, or Node's own bindings lists a directory with a call to the
+  kernel that no JavaScript wrapper sees.
+- **A listing delegated to a process the test did not start**, such as a server, a daemon or a
+  container it talks to over a socket. That process runs outside the test, so nothing the test
+  loads is inside it.
+
+So "every undeclared test that lists the root is refused" cannot be met by observation.
+ISS-1314's criterion 8 was corrected to the routes the guard observes, with criterion 19 for what
+it cannot read.
+
+| Cost | What it takes |
+|---|---|
+| Kernel-level tracing | Closing native code needs every directory enumeration traced (strace, seccomp or eBPF on `getdents64`) and attributed to the one test file that caused it. That means one file per process, and a Linux-only gate. |
+| Nothing closes delegation from inside | A listing made by a process the test did not start is visible only to that process. The honest guard for it is the declaration itself, written by whoever knows what the service reads. |

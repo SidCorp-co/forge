@@ -317,6 +317,8 @@ jobs:
               - 'packages/core/**'
               - '.npmrc'
               - '.github/workflows/ci.yml'
+              - 'scripts/lib/whole-tree-*.mjs'
+              - 'scripts/check-whole-tree-gates.mjs'
             # `.npmrc` sits under both because it decides how EVERY package resolves its
             # modules: `node-linker=hoisted` is what lets four packages only `@forge/core`
             # declares resolve from the repository root, and `pnpm verify` loses five
@@ -334,6 +336,8 @@ jobs:
               - 'package.json'
               - '.npmrc'
               - '.github/workflows/ci.yml'
+              - 'scripts/lib/whole-tree-*.mjs'
+              - 'scripts/check-whole-tree-gates.mjs'
             runner:
               - 'packages/runner/**'
               - '.github/workflows/ci.yml'

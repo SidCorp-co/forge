@@ -20,8 +20,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { CONFIG_RE } from './lib/test-reachability.mjs';
 import {
   declarationExit,
+  GLOB_CALL_RE,
   judgeConfigs,
   judgeDeclarations,
+  judgeGlobs,
   judgeRun,
   SOURCE_FILE_RE,
   suiteMessage,
@@ -51,6 +53,15 @@ for (const path of tracked.filter((f) => SOURCE_FILE_RE.test(f))) {
 const configs = tracked.filter((f) => CONFIG_RE.test(f));
 const judged = judgeDeclarations({ files });
 const { tests, declared } = judged;
+// vite expands `import.meta.glob` before a test runs, where no watch sees it, so every tracked file
+// is read for one here; the TypeScript compiler is core's own, loaded only when a file holds one.
+const globs = files.some((f) => GLOB_CALL_RE.test(f.source))
+  ? judgeGlobs({
+      files,
+      root: ROOT,
+      ts: createRequire(join(ROOT, 'packages/core/package.json'))('typescript'),
+    })
+  : [];
 /** The `test.setupFiles` vitest resolves for a config, loaded by the vitest its package declares. */
 async function setupFilesOf(path) {
   const dir = resolve(ROOT, dirname(path));
@@ -66,7 +77,8 @@ async function setupFilesOf(path) {
 
 const loaded = [];
 for (const path of configs) loaded.push(await setupFilesOf(path));
-const refused = [...judged.refused, ...judgeConfigs(loaded, ROOT)];
+const configRefused = judgeConfigs(loaded, ROOT);
+const refused = [...judged.refused, ...globs, ...configRefused];
 
 function report(list) {
   for (const { path, why } of list) console.error(`  ${path}\n    ${why}`);
@@ -76,10 +88,18 @@ const exit = declarationExit({ declared, refused });
 if (exit === 1) {
   console.error(`whole-tree-gates: ${refused.length} file(s) refused:\n`);
   report(refused);
-  console.error(
-    '\nA test whose input is the repository is selected by nothing but its declaration, so one',
-  );
-  console.error('it does not carry runs only when its own directory happens to change.');
+  if (refused.length > configRefused.length) {
+    console.error(
+      '\nA test whose input is the repository is selected by nothing but its declaration, so one',
+    );
+    console.error('it does not carry runs only when its own directory happens to change.');
+  }
+  if (configRefused.length > 0) {
+    console.error(
+      '\nA configuration that does not install the guard runs its tests with nothing watching what',
+    );
+    console.error('they list, so an undeclared walk of the root passes under it unrefused.');
+  }
   process.exit(1);
 }
 
