@@ -222,4 +222,17 @@ describe('ISS-1335 a resident master run reads as a master', () => {
     });
     expect((await mcpRow(principal, project.id, live.runId)).residentMaster).toBeNull();
   });
+
+  // The description is what an agent reads before it reads a row: it must name the two fields,
+  // and must not send the reader to a second source to tell a live master from an orphan.
+  it('tells an agent to read lane and residentMaster, not agent_sessions', async () => {
+    const { principal } = await seed();
+    const { forgeProjectPipelineRunsTool } = await import(
+      '../../src/mcp/tools/forge-project-pipeline-runs.js'
+    );
+    const { description } = forgeProjectPipelineRunsTool({ principal } as never);
+    expect(description).toContain('`lane`');
+    expect(description).toContain('`residentMaster`');
+    expect(description).not.toContain('agent_sessions');
+  });
 });
