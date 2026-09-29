@@ -334,8 +334,10 @@ its name or its cost:
 
 - **`entry`** — a verdict on each file from that file alone, or a read of one declared file. A
   change cannot turn it red anywhere but in what it touched, so the developer's own run pays it.
-  Where the checker can scope, the entry layer runs it over the change only: `comment-budget`
-  lints the changed files with `--changed` instead of the tree with `--all`.
+  A check declaring a `scoped` form runs that over the change: `comment-budget` lints the changed
+  files with `--changed` instead of 29 seconds of the tree with `--all`. One without runs over the
+  tree, as the whole gate does, and on a base the whole gate left green it can only report what the
+  change touched; the rest cost about two seconds together, so none of them is scoped.
 - **`shared`** — a sweep whose verdict on one file depends on files the change never opened, or on
   other branches: the import graph, the typed program, citations, status vocabularies, the open
   migration set, the conformance levels. A change can turn it red elsewhere, so a verify window
@@ -349,8 +351,8 @@ judged by the declarations at the merge base, so a change cannot loosen its own 
 
 - (none) — the whole gate, both layers, each check over the whole tree, as it has always run
 - `--entry` — the entry layer, for a developer run of a queue-eligible change
-- `--window` — the shared layer's sweeps plus the entry layer over the diff, run once by a verify
-  window on its combination (the `gate` the declarations name)
+- `--window` — the shared layer plus the entry layer, scoped forms over the combination's diff,
+  run once by a verify window (the `gate` the declarations name)
 - `--ci-parity` — only the parity proof; cheap, zero-dep, no install needed
 
 Exit codes: `0` clean, `1` violations, `2` a check could not run.

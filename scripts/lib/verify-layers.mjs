@@ -13,8 +13,8 @@ export const LAYERS = ['entry', 'shared'];
 
 export const MODES = {
   whole: 'every check, each over the whole tree',
-  entry: "the entry layer: this change's own files, scoped where the checker can scope",
-  window: "the shared layer's sweeps, plus the entry layer over the combination's diff",
+  entry: 'the entry layer, each check scoped to the change where it declares a scoped form',
+  window: 'the shared layer, plus the entry layer scoped to the diff where a check can be',
 };
 
 /** Every check that carries no layer or no reason for it, as the sentence that refuses it. */
@@ -24,7 +24,7 @@ export function unlayered(checks) {
     .map((c) => `${c.label}: layer \`${c.layer}\` and a \`reads\` saying what it reads`);
 }
 
-/** The checks a mode runs; an entry check runs its `scoped` form wherever it judges a change. */
+/** The checks a mode runs; an entry check without a `scoped` form runs over the tree. */
 export function checksFor(mode, checks) {
   const scoped = (c) => (c.scoped ? { ...c, ...c.scoped, scoped: undefined } : c);
   if (mode === 'whole') return checks;

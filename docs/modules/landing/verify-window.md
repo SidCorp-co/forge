@@ -38,8 +38,8 @@ branch, head, arrival time and priority.
    as JSON and as the markdown each member's issue carries.
 4. **`validate`** — the `gate` the declarations name, `node scripts/verify.mjs --window`, prepared
    and run once in the window's tree. It pays the shared layer's sweeps that no member's own run
-   paid, plus the entry layer over the combination's diff, where two members' edits meet in one
-   file. The ledger records each pass as the window's cost figure: what it took and how many
+   paid, plus the entry layer again, where two members' edits meet in one file (scoped to the
+   combination's diff for a check that declares a scoped form). The ledger records each pass as the window's cost figure: what it took and how many
    members shared it. Red, it prints the gate's own words, which step 5 attributes.
    **One pull request** of the chain head into the base follows, and its `ci-passed`, with its full
    needs list, stays the required check.

@@ -284,6 +284,13 @@ const CHECKS = [
   },
 ];
 
+/** The parity proof every mode runs last; its layer is declared like any check's. */
+const CI_PARITY = {
+  label: 'ci-parity',
+  layer: 'entry',
+  reads: 'ci.yml and the setup-workspace composite, two declared files',
+};
+
 const CI_COVERAGE = {
   'node scripts/check-honest-costs.mjs': 'verify',
   'node scripts/check-status-tuples.mjs --all': 'verify',
@@ -383,7 +390,7 @@ function assertEverySkipIsCovered() {
 }
 
 function assertEveryCheckIsLayered() {
-  const missing = unlayered(CHECKS);
+  const missing = unlayered([...CHECKS, CI_PARITY]);
   if (missing.length === 0) return;
   console.error(
     `verify: ${missing.length} check(s) declare no layer, or no reason for it:\n` +
@@ -695,7 +702,7 @@ function report(results, parity) {
     );
   }
   console.log(
-    `  ${parity === 0 ? 'ok  ' : 'FAIL'}  ${'meta'.padEnd(10)} ${'entry'.padEnd(6)} ci-parity`,
+    `  ${parity === 0 ? 'ok  ' : 'FAIL'}  ${'meta'.padEnd(10)} ${CI_PARITY.layer.padEnd(6)} ${CI_PARITY.label}`,
   );
   console.log(`\n  ${tallyLine(tally([...results, { code: parity }]))}`);
   reportBlocked(results);
