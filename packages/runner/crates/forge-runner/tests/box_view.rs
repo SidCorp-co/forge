@@ -70,8 +70,29 @@ fn fake_core(runners_status: &'static str) -> FakeCore {
     FakeCore { url, seen }
 }
 
+/// The mode a fake core answers in: `200 OK` or a refusal for discovery, or
+/// `QUIET_ALPHA_REFUSED_BETA`, where alpha holds nothing and beta's reads are
+/// refused.
+const QUIET_ALPHA_REFUSED_BETA: &str = "quiet-alpha/refused-beta";
+
 fn answer(path: &str, runners_status: &str) -> (String, String) {
     let ok = |b: String| ("200 OK".to_string(), b);
+    let split = runners_status == QUIET_ALPHA_REFUSED_BETA;
+    let runners_status = if split { "200 OK" } else { runners_status };
+    if split && !path.starts_with("/api/devices/") {
+        if path.contains(BETA) {
+            return ("403 Forbidden".into(), r#"{"error":"not a member"}"#.into());
+        }
+        if path.starts_with("/api/questions?") {
+            return ok(r#"{"questions":[],"total":0,"hasMore":false,"nextCursor":null}"#.into());
+        }
+        if path.contains("/issues?") {
+            return ok(
+                r#"{"items":[],"returned":0,"total":0,"limit":200,"offset":0,"hasMore":false}"#
+                    .into(),
+            );
+        }
+    }
     if path.starts_with("/api/devices/me/runners") {
         if runners_status != "200 OK" {
             return (
@@ -540,6 +561,36 @@ fn no_waiting_job_among_records_partly_unread_is_partial() {
     );
     assert!(
         !waiting.contains("none reports waiting on a permission answer"),
+        "{waiting}"
+    );
+}
+
+/// Whole-set consult at 912de89, F1: a project core would not answer is not a
+/// project with nothing waiting, so "none" is said only of the ones read.
+#[test]
+fn none_waiting_is_said_only_of_the_projects_read() {
+    let core = fake_core(QUIET_ALPHA_REFUSED_BETA);
+    let b = plant(&core.url);
+    let text = String::from_utf8_lossy(&top(&b, &["--once"]).stdout).into_owned();
+    let waiting = section(&text, "WAITING ON A PERSON");
+    assert!(
+        waiting.contains("questions  beta: UNREADABLE — GET /api/questions?projectId=")
+            && waiting.contains("releases   beta: UNREADABLE — GET /api/projects/"),
+        "{waiting}"
+    );
+    assert!(
+        waiting.contains(
+            "questions  none open on the 1 project(s) read — PARTIAL: 1 not read, named above"
+        ),
+        "{waiting}"
+    );
+    assert!(
+        waiting.contains("releases   none without a release path on the 1 project(s) read — PARTIAL: 1 not read, named above"),
+        "{waiting}"
+    );
+    assert!(
+        !waiting.contains("none open on any project listed")
+            && !waiting.contains("no issue rests at awaiting_release without a release path"),
         "{waiting}"
     );
 }

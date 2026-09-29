@@ -377,6 +377,8 @@ async fn ask_core(
     }
     let mut out = BTreeMap::new();
     while let Some(done) = asks.join_next().await {
+        // A read whose task failed leaves its id out, which `render::core_of`
+        // names as a read that did not finish rather than an empty project.
         if let Ok((id, core)) = done {
             out.insert(id, core);
         }

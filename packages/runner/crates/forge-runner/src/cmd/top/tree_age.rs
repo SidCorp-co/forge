@@ -24,8 +24,13 @@ pub const ENTRY_CAP: usize = 400_000;
 pub enum TreeAge {
     /// Nothing stands at the path.
     Gone,
-    /// The walk read `entries` entries and found no regular file.
-    NoFiles { entries: usize, unread: usize },
+    /// The walk read `entries` entries and found no regular file among them.
+    NoFiles {
+        entries: usize,
+        unread: usize,
+        /// The walk stopped at the cap, so a file may stand unvisited.
+        capped: bool,
+    },
     Newest {
         at_ms: i64,
         /// Relative to the tree's root.
@@ -107,7 +112,11 @@ pub fn newest(root: &Path, cap: usize) -> TreeAge {
             capped,
             unread,
         },
-        None => TreeAge::NoFiles { entries, unread },
+        None => TreeAge::NoFiles {
+            entries,
+            unread,
+            capped,
+        },
     }
 }
 
@@ -211,7 +220,8 @@ mod tests {
             newest(s.path(), ENTRY_CAP),
             TreeAge::NoFiles {
                 entries: 2,
-                unread: 0
+                unread: 0,
+                capped: false
             }
         );
     }
@@ -248,7 +258,25 @@ mod tests {
             got,
             TreeAge::NoFiles {
                 entries: 1,
-                unread: 1
+                unread: 1,
+                capped: false
+            }
+        );
+    }
+
+    /// Whole-set consult at 912de89, F2: a cap reached before any file is
+    /// met leaves the rest unvisited, which is not a tree with no file in it.
+    #[test]
+    fn a_cap_reached_before_any_file_is_partial_not_empty() {
+        let s = Scratch::new("tree-cap-nofile");
+        std::fs::create_dir_all(s.path().join("a")).unwrap();
+        std::fs::write(s.path().join("a/deep.txt"), "x").unwrap();
+        assert_eq!(
+            newest(s.path(), 1),
+            TreeAge::NoFiles {
+                entries: 1,
+                unread: 0,
+                capped: true
             }
         );
     }

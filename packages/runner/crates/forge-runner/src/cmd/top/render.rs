@@ -278,12 +278,30 @@ pub fn tree_line(now: i64, measured: i64, age: &TreeAge) -> String {
     };
     match age {
         TreeAge::Gone => "no worktree on disk at this path".to_string(),
-        TreeAge::NoFiles { entries, unread: 0 } => {
-            format!("no file under the worktree ({entries} entries read){when}")
+        TreeAge::NoFiles {
+            entries,
+            unread: 0,
+            capped: false,
+        } => format!("no file under the worktree ({entries} entries read){when}"),
+        TreeAge::NoFiles {
+            entries,
+            unread,
+            capped,
+        } => {
+            let mut l = format!("no file read under the worktree ({entries} entries)");
+            if *capped {
+                l.push_str(&format!(
+                    " — PARTIAL: the walk stopped at {entries} entries, so a file may be unread"
+                ));
+            }
+            if *unread > 0 {
+                l.push_str(&format!(
+                    " — PARTIAL: {unread} entr(ies) could not be read, so a file may be among them"
+                ));
+            }
+            l.push_str(&when);
+            l
         }
-        TreeAge::NoFiles { entries, unread } => format!(
-            "no file read under the worktree ({entries} entries) — PARTIAL: {unread} entr(ies) could not be read, so a file may be among them{when}"
-        ),
         TreeAge::Unreadable(e) => format!("worktree UNREADABLE — {e}"),
         TreeAge::Newest {
             at_ms,
@@ -331,13 +349,21 @@ fn questions(s: &Snapshot, out: &mut Vec<String>) {
         Err(e) => return out.push(format!("{I1}questions  {e}")),
         Ok(c) => c,
     };
-    let mut any = false;
+    let (mut any, mut unread) = (false, 0usize);
     for p in &s.projects {
-        let Some(core) = p.project_id.as_deref().and_then(|id| all.get(id)) else {
-            continue;
+        let core = match core_of(p, all) {
+            Ok(c) => c,
+            Err(why) => {
+                unread += 1;
+                out.push(format!("{I1}questions  {}: {why}", p.key));
+                continue;
+            }
         };
         match &core.questions {
-            Err(e) => out.push(format!("{I1}questions  {}: {e}", p.key)),
+            Err(e) => {
+                unread += 1;
+                out.push(format!("{I1}questions  {}: {e}", p.key))
+            }
             Ok(q) if q.total == 0 => {}
             Ok(q) => {
                 any = true;
@@ -366,9 +392,15 @@ fn questions(s: &Snapshot, out: &mut Vec<String>) {
             }
         }
     }
-    if !any {
+    if !any && unread == 0 {
         out.push(format!(
             "{I1}questions  none open on any project listed{} ← GET /api/questions per project",
+            core_age(s)
+        ));
+    } else if !any {
+        out.push(format!(
+            "{I1}questions  none open on the {} project(s) read — PARTIAL: {unread} not read, named above{} ← GET /api/questions per project",
+            s.projects.len() - unread,
             core_age(s)
         ));
     }
@@ -458,14 +490,22 @@ fn releases(s: &Snapshot, out: &mut Vec<String>) {
         Err(e) => return out.push(format!("{I1}releases   {e}")),
         Ok(c) => c,
     };
-    let mut any = false;
+    let (mut any, mut unread) = (false, 0usize);
     for p in &s.projects {
-        let Some(core) = p.project_id.as_deref().and_then(|id| all.get(id)) else {
-            continue;
+        let core = match core_of(p, all) {
+            Ok(c) => c,
+            Err(why) => {
+                unread += 1;
+                out.push(format!("{I1}releases   {}: {why}", p.key));
+                continue;
+            }
         };
         let id = p.project_id.as_deref().unwrap_or("");
         match &core.awaiting {
-            Err(e) => out.push(format!("{I1}releases   {}: {e}", p.key)),
+            Err(e) => {
+                unread += 1;
+                out.push(format!("{I1}releases   {}: {e}", p.key))
+            }
             Ok(a) if a.total == 0 => {}
             Ok(a) => match &a.blockers {
                 Err(e) => {
@@ -496,12 +536,34 @@ fn releases(s: &Snapshot, out: &mut Vec<String>) {
             },
         }
     }
-    if !any {
+    if !any && unread == 0 {
         out.push(format!(
             "{I1}releases   no issue rests at awaiting_release without a release path{} ← GET /api/projects/:id/issues?status=awaiting_release per project",
             core_age(s)
         ));
+    } else if !any {
+        out.push(format!(
+            "{I1}releases   none without a release path on the {} project(s) read — PARTIAL: {unread} not read, named above{} ← GET /api/projects/:id/issues?status=awaiting_release per project",
+            s.projects.len() - unread,
+            core_age(s)
+        ));
     }
+}
+
+/// Core's answer for one project, or why there is none to show: a binding
+/// with no project id is never asked, and an id core's reads did not answer
+/// is a read that did not finish. Neither is a project with nothing waiting.
+fn core_of<'a>(
+    p: &Project,
+    all: &'a BTreeMap<String, ProjectCore>,
+) -> Result<&'a ProjectCore, String> {
+    let Some(id) = p.project_id.as_deref() else {
+        return Err(
+            "not asked — its binding names no project id, so core cannot be asked about it".into(),
+        );
+    };
+    all.get(id)
+        .ok_or_else(|| format!("UNREADABLE — core's reads for project {id} did not finish"))
 }
 
 fn health(s: &Snapshot, out: &mut Vec<String>) {
@@ -566,4 +628,33 @@ fn clip(s: &str, n: usize) -> String {
     let mut out: String = s.chars().take(n.saturating_sub(1)).collect();
     out.push('…');
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Criterion 7: a walk that did not see the whole tree says PARTIAL even
+    /// where it met no file, and a whole walk with no file says so plainly.
+    #[test]
+    fn a_walk_that_met_no_file_says_partial_when_it_did_not_see_everything() {
+        let line = |capped, unread| {
+            tree_line(
+                0,
+                0,
+                &TreeAge::NoFiles {
+                    entries: 7,
+                    unread,
+                    capped,
+                },
+            )
+        };
+        assert_eq!(
+            line(false, 0),
+            "no file under the worktree (7 entries read)"
+        );
+        assert!(line(true, 0).contains("PARTIAL: the walk stopped at 7 entries"));
+        assert!(line(false, 2).contains("PARTIAL: 2 entr(ies) could not be read"));
+        assert!(!line(true, 0).starts_with("no file under the worktree"));
+    }
 }
