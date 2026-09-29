@@ -13,8 +13,7 @@ type RunRow = typeof pipelineRuns.$inferSelect;
  *  a resident master's own run (ISS-1335): no issue, no job and no step, for as long as it lives. */
 export type PipelineRunLane = 'job' | 'run_session' | 'master' | 'system';
 
-/** ISS-1335 — the live `kind = 'master'` session on a master-lane run, in the shape the Runners
- *  screen reads (`residentMasterSql`). `null` is a master run nothing holds any more. */
+/** ISS-1335 — the live master session on a master-lane run, as `residentMasterSql` shapes it. */
 export interface ResidentMaster {
   sessionId: string;
   name: string | null;
@@ -83,8 +82,7 @@ export function laneOf(row: Pick<RunRow, 'issueId' | 'metadata'>): PipelineRunLa
   return type === MASTER_SESSION_METADATA_TYPE ? 'master' : 'system';
 }
 
-/** ISS-1335 — said from the live master session, never from the lane alone: `closeMasterSession`
- *  completes the session and leaves the run `running`, and that row is an orphan. */
+/** ISS-1335 — never from the lane alone: `closeMasterSession` leaves the run `running`. */
 function masterDetail(master: ResidentMaster | null | undefined): string {
   if (!master) {
     return 'this run was opened for a resident master and no master session on it is live, so nothing holds it';

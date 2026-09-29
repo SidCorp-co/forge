@@ -30,13 +30,12 @@ export interface RunLiveness {
 }
 
 /**
- * Run liveness for many runs, in ONE statement. `live_jobs`
- * counts work the pipeline is moving, so it asks
+ * Run liveness for many runs, in ONE statement. `live_jobs` asks
  * {@link UNHELD_LIVE_JOB_STATUSES} rather than `jobs/status-sets.ts`'s
  * `LIVE_JOB_STATUSES`: a run whose only job is parked on a person is not work
- * in flight, and counting it would keep that run out of the stalled band for
- * as long as it waits. `last_beat` is any live session's; the master columns
- * are a live master's alone, so another session cannot vouch for a dead one.
+ * in flight, and counting it would keep that run out of the stalled band.
+ * `last_beat` is any live session's; the master columns are a live master's
+ * alone, so another session cannot vouch for a dead one.
  */
 export async function loadRunLivenessByRunIds(runIds: string[]): Promise<Map<string, RunLiveness>> {
   const out = new Map<string, RunLiveness>();
