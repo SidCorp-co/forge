@@ -875,6 +875,7 @@ pub(crate) mod testing {
 
     /// The first line of every shim here: asked this, it answers from its own
     /// code and runs nothing else.
+    #[cfg(unix)]
     pub(crate) const SHIM_PROBE: &str = "--forge-shim-probe";
     const PROBE_LINE: &str = "[ \"$1\" = --forge-shim-probe ] && exit 0\n";
 
@@ -904,6 +905,7 @@ pub(crate) mod testing {
     /// its session gone, once in 1200 runs (ISS-1312, F3). One run of the
     /// probe says no writer is left, and none can appear: the descriptor was
     /// closed before the probe ran.
+    #[cfg(unix)]
     pub(crate) fn until_it_runs(shim: &std::path::Path) {
         for _ in 0..100 {
             let ran = std::process::Command::new(shim)
@@ -1221,7 +1223,7 @@ mod tests {
     /// added later is held to it by the writer, with no count to update.
     #[test]
     fn a_shim_that_does_not_open_with_the_probe_is_never_made() {
-        use super::testing::{write_shim, SHIM_PROBE};
+        use super::testing::write_shim;
         let dir = crate::test_scratch::Scratch::new("shim-unprobed");
         let shim = dir.join("tmux");
         let refused = std::panic::catch_unwind(|| write_shim(&shim, "#!/bin/sh\nexit 0\n"));
@@ -1235,13 +1237,16 @@ mod tests {
             "#!/bin/sh\n[ \"$1\" = --forge-shim-probe ] && exit 0\nexit 3\n",
         );
         #[cfg(unix)]
-        assert!(
-            std::process::Command::new(&shim)
-                .arg(SHIM_PROBE)
-                .status()
-                .is_ok_and(|s| s.success()),
-            "the probe is answered from the shim's own first line"
-        );
+        {
+            use super::testing::SHIM_PROBE;
+            assert!(
+                std::process::Command::new(&shim)
+                    .arg(SHIM_PROBE)
+                    .status()
+                    .is_ok_and(|s| s.success()),
+                "the probe is answered from the shim's own first line"
+            );
+        }
         let testing = THIS_SOURCE
             .split("pub(crate) mod testing")
             .nth(1)

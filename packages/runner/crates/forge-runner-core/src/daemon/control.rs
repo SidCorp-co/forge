@@ -2038,6 +2038,7 @@ mod tests {
     /// master's `run declare`, then its subagent's own start and stop hooks.
     /// Run e67c08e0's ran in a background session outside the pane, which is
     /// why the pane cannot stand in for it.
+    #[cfg(unix)]
     #[test]
     fn a_run_records_the_claude_code_process_above_what_reported_for_it() {
         use crate::daemon::subagent_host::Host;
@@ -2127,6 +2128,7 @@ mod tests {
     /// Criterion 56 through the socket itself: the process a declaration is
     /// recorded under is the one on the far end of the connection, read off
     /// the socket, and nothing the frame says can name another.
+    #[cfg(unix)]
     #[tokio::test]
     async fn a_declaration_over_the_socket_records_the_process_on_its_far_end() {
         use crate::daemon::subagent_host::Host;
