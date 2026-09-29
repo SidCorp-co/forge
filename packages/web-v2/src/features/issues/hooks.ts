@@ -331,6 +331,12 @@ export function useBatchRelease(projectId: string) {
       qc.invalidateQueries({ queryKey: ["release-roster"] });
       toast({
         title: `Batch release started — ${result.issueIds.length} issue${result.issueIds.length === 1 ? "" : "s"}`,
+        ...(result.verification === "unverified"
+          ? {
+              description:
+                "This project declares no verify probe, so nothing will read the deployment: the release will close unverified, and each issue it closes will say so.",
+            }
+          : {}),
         tone: "success",
       });
     },

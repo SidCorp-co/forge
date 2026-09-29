@@ -183,6 +183,8 @@ export interface CreateReleaseBatchResult {
   jobId: string;
   issueIds: string[];
   gateStatus: string;
+  /** `unverified` where no live binding declares a probe: nothing will read the deployment. */
+  verification: "probed" | "unverified";
 }
 
 export type { ReleaseRoster, ReleaseRosterEntry } from "@/features/releases/roster";

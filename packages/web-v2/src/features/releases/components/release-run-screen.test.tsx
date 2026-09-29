@@ -33,6 +33,7 @@ function state(over: Partial<ReleaseRunState>) {
 			},
 			attempts: [],
 			live: null,
+			verification: null,
 			bounds: { holding: true, crossedNames: [], bounds: [] },
 			method: null,
 			methodUnloaded: false,
@@ -114,5 +115,29 @@ describe("the method line", () => {
 		expect(line).toHaveTextContent("could not load");
 		expect(line).toHaveTextContent("the skill did not resolve on this box");
 		expect(line.textContent).not.toMatch(/cannot be finished/i);
+	});
+});
+
+// ISS-1322, routed from ISS-1321's judge: a batch with no probe runs and closes unverified, and
+// this card said a batch could not be created without one.
+describe("production, for a release no probe reads", () => {
+	it("says the release will close unverified, not that it could not be created", () => {
+		state({ live: null, verification: "unverified" });
+
+		render(<ReleaseRunScreen projectId="p1" runId="run-1" />);
+
+		const card = screen.getByTestId("live-none");
+		expect(card.textContent).toMatch(/close unverified/i);
+		expect(card.textContent).not.toMatch(/can no longer be created/i);
+	});
+
+	it("does not call a release unverified when the run recorded no verification", () => {
+		state({ live: null, verification: null });
+
+		render(<ReleaseRunScreen projectId="p1" runId="run-1" />);
+
+		const card = screen.getByTestId("live-none");
+		expect(card.textContent).not.toMatch(/unverified/i);
+		expect(card.textContent).not.toMatch(/can no longer be created/i);
 	});
 });

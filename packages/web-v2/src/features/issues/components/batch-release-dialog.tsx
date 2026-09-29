@@ -1,6 +1,8 @@
 "use client";
 
-import { Button, SlideOver } from "@/design";
+import { useEffect } from "react";
+import { Banner, Button, SlideOver } from "@/design";
+import { formatApiError } from "@/lib/api/error";
 import { useBatchRelease } from "../hooks";
 
 /** Minimal issue shape required by the dialog — avoids coupling to the full IssueRow. */
@@ -25,6 +27,12 @@ export function BatchReleaseDialog({
   onSuccess: () => void;
 }) {
   const batch = useBatchRelease(projectId);
+  const { reset } = batch;
+
+  // A refusal belongs to the press that met it, so a dialog opened again starts clean.
+  useEffect(() => {
+    if (open) reset();
+  }, [open, reset]);
 
   const handleConfirm = () => {
     const issueIds = selectedIssues.map((i) => i.id);
@@ -60,6 +68,13 @@ export function BatchReleaseDialog({
             </li>
           ))}
         </ul>
+
+        {/* The hook's toast paints beneath this drawer's scrim, so the refusal is said here. */}
+        {batch.isError && (
+          <div role="alert">
+            <Banner tone="danger">{formatApiError(batch.error)}</Banner>
+          </div>
+        )}
 
         <div className="flex items-center gap-2 pt-2">
           <Button

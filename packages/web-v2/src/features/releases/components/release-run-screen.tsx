@@ -55,18 +55,21 @@ function ReadAt({ at, refreshing }: { at: number; refreshing: boolean }) {
 
 function LiveReading({
 	live,
+	verification,
 	readAt,
 	refreshing,
 }: {
 	live: ReleaseLiveState | null;
+	verification: ReleaseRunState["verification"];
 	readAt: number;
 	refreshing: boolean;
 }) {
 	if (!live) {
 		return (
-			<p className="text-sm text-muted">
-				This project declares no verification probes, so Forge has nowhere to
-				look. A release batch can no longer be created without them.
+			<p className="text-sm text-muted" data-testid="live-none">
+				{verification === "unverified"
+					? "This project declares no verification probe, so nothing reads production. The release will close unverified, and each issue it closes will say so."
+					: "Forge has no verification probe it can read for this project, so it has nowhere to look."}
 			</p>
 		);
 	}
@@ -236,6 +239,7 @@ export function ReleaseRunScreen({ projectId, runId }: ReleaseRunScreenProps) {
 					<CardContent>
 						<LiveReading
 							live={data.live}
+							verification={data.verification}
 							readAt={dataUpdatedAt}
 							refreshing={isFetching}
 						/>
