@@ -219,6 +219,19 @@ describe('the unverified note, once per issue per release run', () => {
     expect(await markedComments(a, first)).toBe(1);
     expect(await markedComments(a, second)).toBe(1);
   });
+
+  it('writes one note when two workers of one run reach the same issue at once', async () => {
+    const a = await fx.insertIssue();
+    const { noteUnverifiedCloses } = await import('../../src/release-batch/unverified-close.js');
+    const runId = '33333333-3333-4333-8333-333333333333';
+    const actor = { type: 'user', id: ownerId } as const;
+    const pass = () => noteUnverifiedCloses({ runId, issueIds: [a], actor, commit: null });
+
+    const written = await Promise.all([pass(), pass(), pass()]);
+
+    expect(written.reduce((n, w) => n + w, 0)).toBe(1);
+    expect(await markedComments(a, runId)).toBe(1);
+  });
 });
 
 describe('a verify Forge cannot parse is still refused, by name', () => {

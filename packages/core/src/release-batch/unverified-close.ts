@@ -3,7 +3,7 @@
 
 import { and, eq, like } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { comments } from '../db/schema.js';
+import { comments, issues } from '../db/schema.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { logger } from '../logger.js';
 
@@ -42,14 +42,20 @@ export async function noteUnverifiedCloses(args: {
   const author = authorOf(args.actor);
   let written = 0;
   for (const issueId of args.issueIds) {
-    const [already] = await db
-      .select({ id: comments.id })
-      .from(comments)
-      .where(and(eq(comments.issueId, issueId), like(comments.body, `%${marker}%`)))
-      .limit(1);
-    if (already) continue;
-    await db.insert(comments).values({ issueId, ...author, body });
-    written += 1;
+    // The issue row's lock serialises two workers of one attempt, so the check and the insert
+    // cannot interleave.
+    const wrote = await db.transaction(async (tx) => {
+      await tx.select({ id: issues.id }).from(issues).where(eq(issues.id, issueId)).for('update');
+      const [already] = await tx
+        .select({ id: comments.id })
+        .from(comments)
+        .where(and(eq(comments.issueId, issueId), like(comments.body, `%${marker}%`)))
+        .limit(1);
+      if (already) return false;
+      await tx.insert(comments).values({ issueId, ...author, body });
+      return true;
+    });
+    if (wrote) written += 1;
   }
   if (written > 0) {
     logger.warn(
