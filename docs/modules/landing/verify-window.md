@@ -41,7 +41,9 @@ branch, head, arrival time and priority.
 5. **`attribute`** — a refusal naming a path belongs to the last landing that changed it. One naming
    no path is replayed with `--unit "<command>"` on the base alone and on each member alone: a
    failure on the base is pre-existing, on exactly one member alone is that member's, on no member
-   alone but on the combination is an interaction, and anything else names no owner.
+   alone but on the combination is an interaction, and anything else names no owner. A member alone
+   is rebuilt from its ledger row on the base the window was built on, with no branch of the window
+   counted among the open branches its migrations are numbered against.
 6. **`isolate --member <ISS> --because "<the checker's words>"`** — rebuild without that member,
    recording why, then push the new chain head to the same pull request.
 7. **`land`** — refused where the base or a landed member's branch moved since assembly, where the
