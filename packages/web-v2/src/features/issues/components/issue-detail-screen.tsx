@@ -33,7 +33,6 @@ import {
 import { useResumeRun } from "@/features/pipeline/hooks";
 import { useProjects } from "@/features/projects/hooks";
 import { DECISION_PANEL_ANCHOR, DecisionPanel } from "@/features/questions/components/decision-panel";
-import { useIssueQuestions } from "@/features/questions/hooks";
 import { buildShareLink, useRecents } from "@/features/shell";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
@@ -45,13 +44,13 @@ import { useEffect, useMemo, useState } from "react";
 import {
   canonicalIssueId,
   deriveBlockerState,
-  waitingOnPersonSinceOf,
   deriveStepOutcomes,
   isLiveRun,
   runningStepOf,
   issueQueryKey,
   parseChecklist,
   runStatusChip,
+  threadQuestionOf,
   statusLabel,
   statusToChip,
 } from "../derive";
@@ -60,6 +59,7 @@ import {
   useActivity,
   useAttachments,
   useComments,
+  useCreateComment,
   useIssue,
   useStepDurations,
   useStepHandoffs,
@@ -71,6 +71,7 @@ import {
   usePatchIssue,
   useProjectMembers,
 } from "../hooks";
+import { useIssuePark } from "../park";
 import type { IssueAgentSession, IssueStatus, TaskRow } from "../types";
 import { ActivityFeed } from "./activity-feed";
 import { AwaitingReleaseBanner } from "./awaiting-release-banner";
@@ -145,8 +146,12 @@ export function IssueDetailScreen({
   const durationsQ = useStepDurations(projectId, canonicalId);
 
   const patch = usePatchIssue();
-  const { requestTransition, dialog: reasonDialog, isPending: transitionPending } =
-    useGuardedTransition();
+  const {
+    requestTransition,
+    requestParkLeave,
+    dialog: reasonDialog,
+    isPending: transitionPending,
+  } = useGuardedTransition();
   const qc = useQueryClient();
   const resumeRun = useResumeRun();
   // ISS-1160 — a display-key load keys `useIssue` on `id`+`projectId` (never
@@ -161,7 +166,9 @@ export function IssueDetailScreen({
   const pending = patch.isPending || transitionPending || resumeRun.isPending;
 
   const issue = issueQ.data;
-  const questionsQ = useIssueQuestions(issue?.id ?? "");
+  // ISS-1310 — one reading of what a person owes this issue, for the banner, the status control and the decision panel.
+  const park = useIssuePark(issue?.id, issue?.status);
+  const answerInThread = useCreateComment(issue?.id ?? "");
   const checklist = useMemo(() => {
     const criteria = parseChecklist(issue?.acceptanceCriteria);
     const counts = new Map<string, number>();
@@ -218,17 +225,10 @@ export function IssueDetailScreen({
   const onPatch = (body: Parameters<typeof patch.mutate>[0]["body"]) =>
     patch.mutate({ id: issue.id, body }, { onSuccess: refreshIssue });
 
-  const onApprove = () =>
-    requestTransition(issue.id, "approved", { successMessage: "Issue approved", onSuccess: refreshIssue });
   const onBannerResume = () =>
     requestTransition(issue.id, "reopen", { successMessage: "Issue resumed", onSuccess: refreshIssue });
 
-  const blocker = deriveBlockerState(
-    issue,
-    issue.pipelineHealth,
-    depsQ.data,
-    waitingOnPersonSinceOf(questionsQ.data?.questions),
-  );
+  const blocker = deriveBlockerState(issue, issue.pipelineHealth, depsQ.data, park);
   const liveStep = issue.pipelineHealth?.activeSession?.skill ?? null;
   const stepOutcomes = deriveStepOutcomes(handoffsQ.data, durationsQ.data, {
     activeStep: runningStepOf(issue.pipelineHealth),
@@ -249,6 +249,17 @@ export function IssueDetailScreen({
       );
     }
   };
+
+  const parkActions = {
+    answer: focusDecisions,
+    move: onTransition,
+    notNeeded: (at: IssueStatus) =>
+      requestParkLeave(issue.id, "not_needed", [at], { onSuccess: refreshIssue }),
+    moveAnyway: (targets: IssueStatus[]) =>
+      requestParkLeave(issue.id, "move_anyway", targets, { onSuccess: refreshIssue }),
+  };
+  const statusPark = canWrite ? { reading: park, actions: parkActions } : undefined;
+  const threadQuestion = park.state === "ready" && park.park ? threadQuestionOf(park.park) : null;
 
   const isTerminal = issue.status === "awaiting_release" || issue.status === "closed";
   const isParked = issue.status === "on_hold";
@@ -402,14 +413,21 @@ export function IssueDetailScreen({
               blocker={blocker}
               slug={slug}
               pending={pending || !canWrite}
-              onApprove={onApprove}
               onResume={onBannerResume}
+              onResumePark={onTransition}
               onResumeRun={onResumeRun}
               onProvideInfo={focusDecisions}
             />
           )}
 
-          <DecisionPanel issueId={issue.id} parkedForInfo={issue.status === "needs_info"} />
+          <DecisionPanel
+            issueId={issue.id}
+            parkedForInfo={issue.status === "needs_info"}
+            threadQuestion={threadQuestion}
+            onAnswerInThread={
+              canWrite ? (text) => answerInThread.mutateAsync({ body: text }) : undefined
+            }
+          />
 
           <AwaitingReleaseBanner
             projectId={issue.projectId}
@@ -584,6 +602,7 @@ export function IssueDetailScreen({
                 onTransition={onTransition}
                 onEditModules={canWrite ? () => setModulePickerOpen(true) : undefined}
                 canMarkMerged={canWrite}
+                park={statusPark}
               />
             </CardContent>
           </Card>
@@ -600,6 +619,7 @@ export function IssueDetailScreen({
               onTransition={onTransition}
               onEditModules={canWrite ? () => setModulePickerOpen(true) : undefined}
               canMarkMerged={canWrite}
+              park={statusPark}
             />
           </Collapsible>
         </div>

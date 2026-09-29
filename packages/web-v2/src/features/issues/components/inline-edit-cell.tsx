@@ -9,6 +9,8 @@ import { Menu, NativeSelect, Select, StatusChip, type MenuItem, type SelectOptio
 import { groupedTransitions, statusLabel, statusToChip, transitionLabels } from "../derive";
 import { AGENT_HOLDS_MOVE, heldByAgent } from "../edit-lock";
 import { useStatusExits } from "../hooks";
+import type { ParkReading } from "../derive";
+import { type ParkMenuActions, parkMenuItems } from "../park";
 import type { IssueAgentStatus, IssueStatus } from "../types";
 
 interface InlineSelectProps {
@@ -67,6 +69,8 @@ interface StatusEditProps {
   onTransition: (toStatus: IssueStatus) => void;
   disabled?: boolean;
   size?: "sm" | "md";
+  /** On the issue page: what a person owes this issue, so a park offers its decision first (ISS-1310). */
+  park?: { reading: ParkReading; actions: ParkMenuActions };
 }
 
 /**
@@ -75,7 +79,7 @@ interface StatusEditProps {
  * registry — forward move first, then the bounces, then the discards. A rung
  * with no exit says so rather than opening empty (ISS-982).
  */
-export function StatusEdit({ status, agentStatus, onTransition, disabled, size }: StatusEditProps) {
+export function StatusEdit({ status, agentStatus, onTransition, disabled, size, park }: StatusEditProps) {
   const { exits, isPending, isError } = useStatusExits();
   const grouped = groupedTransitions(exits, status);
   const held = heldByAgent(status, agentStatus);
@@ -96,6 +100,10 @@ export function StatusEdit({ status, agentStatus, onTransition, disabled, size }
       separatorBefore: g.startsGroup,
       onSelect: () => onTransition(g.to),
     }));
+    const parkItems = park
+      ? parkMenuItems({ status, reading: park.reading, exits, ordinary: items, actions: park.actions })
+      : null;
+    if (parkItems) items = parkItems;
   }
   const chip = <StatusChip status={statusToChip(status)} label={statusLabel(status)} size={size} />;
   if (disabled) return chip;
