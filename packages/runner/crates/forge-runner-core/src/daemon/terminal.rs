@@ -2079,7 +2079,10 @@ done
             }
         }
     }
-    const THIS_SOURCE: &str = include_str!("terminal.rs");
+    /// This file as its tests read it, with a Windows checkout's CRLF made LF,
+    /// so a needle spanning a line break matches on all three OSes (ISS-1274).
+    static THIS_SOURCE: std::sync::LazyLock<String> =
+        std::sync::LazyLock::new(|| include_str!("terminal.rs").replace("\r\n", "\n"));
 
     #[test]
     fn a_socket_path_too_long_to_bind_is_refused_before_it_is_used() {
@@ -2355,7 +2358,7 @@ done
 
         let mut scanned = 0usize;
         for needle in needles {
-            for call in calls(THIS_SOURCE, needle) {
+            for call in calls(&THIS_SOURCE, needle) {
                 scanned += 1;
                 assert!(
                     !call.contains(forbidden),

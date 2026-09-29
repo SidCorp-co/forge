@@ -6663,7 +6663,10 @@ mod give_back_tests {
 
     #[test]
     fn the_sweep_asks_a_held_master_before_the_empty_set_can_skip_it() {
-        let body = THIS_SOURCE
+        // LF, or the two-line needle below never matches a Windows checkout's CRLF
+        // and the refusal it asserts passes there without reading anything.
+        let source = THIS_SOURCE.replace("\r\n", "\n");
+        let body = source
             .split("\n#[cfg(test)]")
             .next()
             .and_then(|p| p.split("\nasync fn sweep(").nth(1))
