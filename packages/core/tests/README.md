@@ -63,7 +63,7 @@ a Postgres object, on files the change never touched (ISS-937).
 
 `tests/helpers/integration-workers.ts:integrationWorkers` decides, from the machine the run is on,
 and global setup prints what vitest resolved before the first file:
-`[integration] 4 worker(s) on 4 core(s) — a GitHub-hosted runner, 1 per core`.
+`[integration] 6 worker(s) on 4 core(s) — a GitHub-hosted runner, 1.5 per core`.
 
 | Where | Workers | Why |
 | ----- | ------- | --- |

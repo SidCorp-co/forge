@@ -2,9 +2,8 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 import { BaseSequencer, type TestSpecification } from 'vitest/node';
 
-// The nested run `file-database-isolation-e2e` starts. It has no global setup of its own: its files
-// clone the outer run's template through the inherited TEST_PG_ADMIN_URL and TEST_PG_TEMPLATE, so
-// what they mint carries the outer run's token and that run's teardown sweeps it.
+// No global setup: the files clone the outer run's template (inherited TEST_PG_ADMIN_URL and
+// TEST_PG_TEMPLATE), so what they mint carries that run's token and its teardown sweeps it.
 class WriterFirst extends BaseSequencer {
   override async sort(files: TestSpecification[]): Promise<TestSpecification[]> {
     const writer = (f: TestSpecification): number =>
@@ -22,6 +21,10 @@ export default defineConfig({
     fileParallelism: true,
     maxWorkers: Number(process.env.ISOLATION_WORKERS),
     sequence: { sequencer: WriterFirst },
+    // Absolute, because vitest resolves this against `root` and the gate against this file's dir.
+    setupFiles: [
+      fileURLToPath(new URL('../../../../../scripts/lib/whole-tree-guard.mjs', import.meta.url)),
+    ],
     hookTimeout: 60_000,
     testTimeout: 30_000,
   },

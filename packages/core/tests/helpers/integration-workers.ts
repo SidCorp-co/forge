@@ -7,8 +7,9 @@ export interface WorkerCount {
 
 type Env = Readonly<Record<string, string | undefined>>;
 
-// Probed PROBE_DATE on ubuntu-24.04, 4 vCPU: PROBE_WALLS. Rule and re-probe: tests/README.md.
-export const HOSTED_WORKERS_PER_CORE = 1;
+// Probed 2026-09-29, ubuntu-24.04 4 vCPU, mean job wall of two runs at 1/2/4/6/8 workers:
+// 1236/750/630/496/592s (run 36619530249). Rule and re-probe: tests/README.md.
+export const HOSTED_WORKERS_PER_CORE = 1.5;
 
 const POSITIVE_WHOLE = /^[1-9][0-9]*$/;
 
