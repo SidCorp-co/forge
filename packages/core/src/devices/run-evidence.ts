@@ -198,9 +198,9 @@ export function buildHeldWorktreeBody(args: { sessionId: string; held: HeldWorkt
         'again on every sweep.',
       ]
     : [
-        "**The box's reading does not refuse the checkout's removal**: the commits do not depend on",
-        "the directory. Whether it is then removed is the release's to decide and the box's journal",
-        'to record; this report is taken before that and says nothing about it.',
+        "**The box's reading does not refuse the checkout's removal.** Whether it is then removed is",
+        "the release's to decide and the box's journal to record; this report is taken before that and",
+        'says nothing about it.',
       ];
   return [
     count === null
@@ -222,8 +222,10 @@ export function buildHeldWorktreeBody(args: { sessionId: string; held: HeldWorkt
     '',
     `What the box read: ${held.reason}`,
     '',
-    "Nothing about this issue has been moved. This is here so that work no remote holds is somebody's",
-    "to see rather than nobody's.",
+    'Nothing about this issue has been moved.',
+    count === null
+      ? "This records what the box read, so that work which may be on one machine only is somebody's to see rather than nobody's."
+      : "This records what the box read, so that work no remote holds is somebody's to see rather than nobody's.",
   ].join('\n');
 }
 

@@ -9,8 +9,6 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -410,6 +408,8 @@ describe('a checkout this box is still holding, said on the issues it holds', ()
     expect(body).toContain('commits on no remote: _not counted_');
     expect(body).not.toContain('commits on no remote: 0');
     expect(body).toContain('branch: _not read_');
+    expect(body).not.toContain('work no remote holds');
+    expect(body).not.toContain('## Work on this issue is on one machine only');
   });
 
   it('accepts a hold reported for a session core has already reaped', async () => {
@@ -446,20 +446,15 @@ describe('a checkout this box is still holding, said on the issues it holds', ()
 });
 
 /**
- * ISS-1250 criteria 6, 7, 8, 15 — the comment a person reads, from the payload
- * the box actually sends.
- *
- * The runner's suite pins what `Held::to_json` puts on the wire for two real
- * repositories — mowment's shape (no remote, the release takes the directory)
- * and a retention the box cannot read (the release refuses) — and this suite
- * posts those same lines. A test that read only the runner's reason string is
- * how the posted sentence said "not released" four times about checkouts the
- * box removed seconds later.
+ * ISS-1250 criteria 6, 7, 8, 15 — the comment a person reads, from the payload the box sends.
+ * The runner's suite pins what `Held::to_json` sends for three real repositories, one per state
+ * of the release's predicate; this suite posts those lines. Reading only the runner's reason
+ * string is how the posted sentence said "not released" about checkouts the box then removed.
  */
 const HELD_WIRE = readFileSync(
-  resolve(
-    dirname(fileURLToPath(import.meta.url)),
+  new URL(
     '../../../runner/crates/forge-runner-core/assets/held-worktree-wire.jsonl',
+    import.meta.url,
   ),
   'utf8',
 )
@@ -484,7 +479,6 @@ describe('the held report a person reads says what the box read, from what the b
     expect(body).toContain("The box's reading does not refuse the checkout's removal");
     expect(body).not.toContain('has **not** been released');
     expect(body).not.toContain('refuses to remove');
-    expect(body).not.toContain('Why it is held');
     expect(body).not.toContain('releases the checkout');
     expect(body).toContain('this repository has no remote to publish them to');
     expect(body).not.toContain('push');
@@ -499,7 +493,18 @@ describe('the held report a person reads says what the box read, from what the b
 
     expect(body).toContain('This box refuses to remove the checkout');
     expect(body).not.toContain('does not refuse');
-    expect(body).not.toContain('releases the checkout');
+  });
+
+  it('claims no ref already holds commits that only the checkout names', async () => {
+    const needsARef = HELD_WIRE[2] as Record<string, unknown>;
+    expect(needsARef.kept).toBe(false);
+
+    const body = await postedFor(needsARef);
+
+    expect(body).toContain("The box's reading does not refuse the checkout's removal");
+    expect(body).toContain('a release must give them a ref of their own');
+    expect(body).not.toContain('do not depend on');
+    expect(body).toContain('branch: _not read_');
   });
 
   it('refuses a report that does not say whether the box keeps the checkout, naming the field', () => {

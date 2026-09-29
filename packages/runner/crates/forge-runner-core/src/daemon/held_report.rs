@@ -88,7 +88,12 @@ pub async fn at_risk(run: &Run, cred: &RepoCred) -> Option<Held> {
         return None;
     }
     let head = git_line(worktree, &["rev-parse", "HEAD"]).await?;
-    let branch = git_line(worktree, &["rev-parse", "--abbrev-ref", "HEAD"]).await;
+    // A detached checkout answers `HEAD`, which is no branch at all, and a
+    // report naming it as one sends a reader looking for a branch that is not
+    // there — the one shape `Fate::NeedsARef` exists for.
+    let branch = git_line(worktree, &["rev-parse", "--abbrev-ref", "HEAD"])
+        .await
+        .filter(|b| b != "HEAD");
     // Publication first, and the order is load-bearing rather than incidental.
     // `publication_of` runs `git fetch --prune --all`, which writes exactly the
     // `refs/remotes/*` that retention counts against, so a fate read before it
@@ -831,6 +836,48 @@ mod tests {
         assert_eq!(
             sent, pinned,
             "the payload drifted from assets/held-worktree-wire.jsonl line 2, which core's suite \
+             posts; this is what is sent now:\n{sent}"
+        );
+    }
+
+    /// The third state: a detached checkout that committed, whose commits
+    /// only its HEAD names. The release gives them a ref before it takes the
+    /// directory, so the reading does not refuse the removal — and nothing
+    /// sent may say the commits already survive it (whole-set consult F1, F3).
+    #[tokio::test]
+    async fn commits_only_head_names_are_sent_as_not_kept_and_as_needing_a_ref() {
+        let root = temp_path("wire-needsaref");
+        let _ = std::fs::remove_dir_all(&root);
+        let wt = root.join("ISS-45");
+        std::fs::create_dir_all(&wt).expect("mkdir");
+        sh(&wt, &["init", "-q", "-b", "main"]);
+        sh(&wt, &["config", "user.email", "t@t"]);
+        sh(&wt, &["config", "user.name", "t"]);
+        std::fs::write(wt.join("base.txt"), "base\n").expect("write");
+        sh(&wt, &["add", "-A"]);
+        sh(&wt, &["commit", "-qm", "base"]);
+        sh(&wt, &["switch", "--detach", "-q"]);
+        std::fs::write(wt.join("work.txt"), "work\n").expect("write");
+        sh(&wt, &["add", "-A"]);
+        sh(&wt, &["commit", "-qm", "on no branch at all"]);
+
+        let run = a_run_at(&wt);
+        let cred = RepoCred::of(None, &wt).await;
+        let held = at_risk(&run, &cred).await.expect("reported");
+        let fate = salvage::fate_of(&wt).await;
+        let pinned = wire_line(2);
+        let sent = as_pinned(&held, &wt, &pinned);
+        let _ = std::fs::remove_dir_all(&root);
+
+        assert_eq!(fate, Fate::NeedsARef { commits: 1 }, "the premise");
+        assert_eq!(held.kept, matches!(fate, Fate::Kept { .. }));
+        assert_eq!(
+            held.branch, None,
+            "a detached checkout is on no branch, and `HEAD` is not the name of one"
+        );
+        assert_eq!(
+            sent, pinned,
+            "the payload drifted from assets/held-worktree-wire.jsonl line 3, which core's suite \
              posts; this is what is sent now:\n{sent}"
         );
     }
