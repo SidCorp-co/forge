@@ -45,7 +45,8 @@ branch, head, arrival time and priority.
    is rebuilt from its ledger row on the base the window was built on, with no branch of the window
    counted among the open branches its migrations are numbered against.
 6. **`isolate --member <ISS> --because "<the checker's words>"`** — rebuild without that member,
-   recording why. The new chain does not descend from the one already pushed, so the push it prints
+   recording why, in the tree the ledger recorded; any other `--tree`, or a path there that is no
+   longer a worktree of the repository, is refused and nothing is deleted. The new chain does not descend from the one already pushed, so the push it prints
    replaces the window's branch with a lease on the head it read there, and refuses if anyone moved
    that branch since.
 7. **`land`** — refused where the base or a landed member's branch moved since assembly, where the

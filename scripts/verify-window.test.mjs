@@ -676,6 +676,35 @@ describe('a member stacked on an earlier member the window renumbered', () => {
   });
 });
 
+describe('the tree isolate rebuilds in', () => {
+  it('refuses any tree but the recorded one, and deletes nothing it did not build', () => {
+    const c = clone('tree-window');
+    const w = windowFiles('w-tree', [['ISS-4', 'ISS-4-after', heads.m4]], green(heads.m4));
+    const flags = ['--window', w.manifest, '--checks', w.checksFile];
+    expect(run(c, 'assemble', ...flags, '--tree', w.tree).status).toBe(0);
+    const unrelated = join(box, 'unrelated');
+    put(unrelated, { 'keep.txt': 'still here\n' });
+    const other = join(box, 'tree-window-other');
+    git(c, 'worktree', 'add', '-q', '--detach', other, 'HEAD');
+    const isolate = (tree) =>
+      run(c, 'isolate', ...flags, '--tree', tree, '--member', 'ISS-4', '--because', 'red');
+    for (const tree of [unrelated, other]) {
+      const r = isolate(tree);
+      expect(r.status).toBe(2);
+      expect(r.stderr).toContain(`--tree ${tree} is not the tree window w-tree was built in`);
+    }
+    expect(readFileSync(join(unrelated, 'keep.txt'), 'utf8')).toBe('still here\n');
+    expect(existsSync(join(other, '.git'))).toBe(true);
+    git(c, 'worktree', 'remove', '--force', w.tree);
+    put(w.tree, { 'keep.txt': 'not a worktree any more\n' });
+    const r = isolate(w.tree);
+    expect(r.status).toBe(2);
+    expect(r.stderr).toContain(`${w.tree} is not a worktree of`);
+    expect(readFileSync(join(w.tree, 'keep.txt'), 'utf8')).toBe('not a worktree any more\n');
+    expect(JSON.parse(readFileSync(w.manifest, 'utf8')).isolated ?? []).toEqual([]);
+  });
+});
+
 describe('the push a rebuilt window prints', () => {
   it('replaces the pushed chain under a lease that refuses once anyone moved the branch', () => {
     const d = branch('ISS-18-d', { 'src/d18.txt': 'd\n' });

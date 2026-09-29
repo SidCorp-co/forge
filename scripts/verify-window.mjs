@@ -8,7 +8,7 @@
  * Exit 0 as asked · 1 a member refused or isolated, not fired, or not landable · 2 could not run.
  */
 
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { admitMembers } from './lib/verify-window/admit.mjs';
@@ -85,11 +85,26 @@ function saveLedger(ledger) {
   writeFileSync(ledgerPath.replace(/\.json$/, '.md'), renderLedger(ledger));
 }
 
+/** Remove a tree this tool built. Anything that is not a registered worktree of the repository is
+ * refused rather than deleted, so a mistaken `--tree` never takes an unrelated directory with it. */
 function removeTree(dir) {
   const g = gitIn(repoDir);
-  if (existsSync(dir)) g.run(['worktree', 'remove', '--force', dir]);
-  rmSync(dir, { recursive: true, force: true });
-  g.run(['worktree', 'prune']);
+  if (!existsSync(dir)) {
+    g.run(['worktree', 'prune']);
+    return;
+  }
+  const registered = (g.run(['worktree', 'list', '--porcelain']) ?? '')
+    .split('\n')
+    .filter((l) => l.startsWith('worktree '))
+    .map((l) => l.slice('worktree '.length))
+    .filter((p) => existsSync(p))
+    .map((p) => realpathSync(p));
+  if (!registered.includes(realpathSync(dir))) {
+    die(
+      `${dir} is not a worktree of ${repoDir}, so it is not a tree this window built; nothing removed`,
+    );
+  }
+  g.must(['worktree', 'remove', '--force', dir]);
 }
 
 function build(dir, m = manifest, replay = undefined) {
@@ -159,6 +174,10 @@ if (verb === 'isolate') {
     die('isolate needs --member <ISS-n> and --because "<the refusal, in the checker\'s words>"');
   if (!manifest.members.some((m) => m.issue === values.member))
     die(`${values.member} is not a member of window ${manifest.window}`);
+  const recorded = existsSync(ledgerPath) ? loadLedger().chain.tree : null;
+  if (recorded && resolve(recorded) !== treeDir) {
+    die(`--tree ${treeDir} is not the tree window ${manifest.window} was built in (${recorded})`);
+  }
   const kept = (manifest.isolated ?? []).filter((i) => i.issue !== values.member);
   const next = {
     ...manifest,
@@ -172,9 +191,9 @@ if (verb === 'isolate') {
       },
     ],
   };
-  writeFileSync(manifestPath, `${JSON.stringify(next, null, 2)}\n`);
   const before = existsSync(ledgerPath) ? loadLedger().attributions : [];
   removeTree(treeDir);
+  writeFileSync(manifestPath, `${JSON.stringify(next, null, 2)}\n`);
   const ledger = build(treeDir, next);
   ledger.attributions = before;
   reportBuilt(ledger);
