@@ -99,10 +99,16 @@ skipped, `ci-passed` read the skip as a pass, and the guard the document broke l
 the next branch to find (ISS-1314). A path list in the workflow would repeat that one directory
 later, so the declaration lives in the test and moves with it. The root-walk refusal is a backstop
 on the declaration and never the selection; over-declaring costs seconds. It decides "reaches the
-root" by evaluating where each path expression resolves, never by counting its `..`: a counter
-read against the test's own depth passed `join(process.cwd(), '..', '..')` and a `dirname()` chain
-undeclared, though both list the root at runtime (ISS-1314, reopened). A test reading one NAMED
-file outside its package is not this checker's: see
+root" by what a test's run really lists, never by reading its source: `lib/whole-tree-guard.mjs`
+watches the `node:fs` listing calls, spawns and workers of the test's process and of every Node
+process it starts, and `lib/whole-tree-shell.mjs` reads each spawned program by its argv or shell
+string, counting what it cannot evaluate — a substitution, a program, git subcommand or setting it
+does not know — as the root. Three readings of the source by its spellings each passed one they had
+not listed (ISS-1314). `import.meta.glob` is the one text read, in every tracked file, since vite
+expands it before the test runs and accepts only literals. The guard's own files select `core`,
+`core-integration` and `web`, the three jobs whose suites it runs in. A test reading one NAMED file
+outside its package is not this checker's, and neither is what no observer inside the test sees —
+native code, and a listing delegated to a process the test did not start. All three are recorded in
 `docs/proposals/a-test-reading-a-named-file-outside-its-package-is-not-selected-by-it.md`.
 
 ### Why flows is where the two axes meet

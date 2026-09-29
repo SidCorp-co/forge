@@ -1,6 +1,7 @@
-import { readFileSync, statSync } from 'node:fs';
-import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path';
+import { existsSync } from 'node:fs';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { globBase } from './whole-tree-shell.mjs';
 
 export const DECLARATION_VALUES = ['whole-tree'];
 
@@ -19,6 +20,8 @@ export const FS_LISTING_CALLS = [
   'opendirSync',
   'glob',
   'globSync',
+  'cp',
+  'cpSync',
 ];
 
 /** Every declaration the source carries, in order, with the 1-based line each sits on. */
@@ -45,193 +48,29 @@ export function coversRoot(root, dir) {
 
 function toPath(value, cwd) {
   if (typeof value === 'string') return resolve(cwd, value);
-  if (value instanceof URL)
-    return value.protocol === 'file:' ? resolve(fileURLToPath(value)) : null;
+  if (value instanceof URL && value.protocol === 'file:') return resolve(fileURLToPath(value));
   if (Buffer.isBuffer(value)) return resolve(cwd, value.toString());
   return null;
 }
 
-/** The directory a glob pattern starts listing from: its segments before the first magic one. */
-function globBase(pattern) {
-  const kept = [];
-  for (const seg of pattern.split(/[\\/]/)) {
-    if (/[*?[\]{}()!+@]/.test(seg)) break;
-    kept.push(seg);
-  }
-  return kept.join('/') || '.';
-}
-
 /**
  * The absolute directories one `node:fs` listing call lists, read off the arguments it was really
- * called with: whatever spelling built the path, this is where it landed.
+ * called with: whatever spelling built the path, this is where it landed. A path argument that is
+ * none of a string, a Buffer or a file URL is `null`: a listing the guard cannot place, which the
+ * watch counts as the root. `cp` and `cpSync` list the tree they copy.
  */
 export function fsListing(name, args, cwd) {
   if (name === 'glob' || name === 'globSync') {
     const opts = args[1] && typeof args[1] === 'object' ? args[1] : {};
-    const base = toPath(opts.cwd ?? '.', cwd) ?? cwd;
-    const patterns = [].concat(args[0]).filter((p) => typeof p === 'string');
-    return patterns.map((p) => (isAbsolute(p) ? resolve(globBase(p)) : resolve(base, globBase(p))));
+    const base = toPath(opts.cwd ?? '.', cwd);
+    const patterns = [].concat(args[0]);
+    return patterns.map((p) => {
+      if (typeof p !== 'string' || base === null) return null;
+      return isAbsolute(p) ? resolve(globBase(p)) : resolve(base, globBase(p));
+    });
   }
-  const dir = toPath(args[0], cwd);
-  return dir ? [dir] : [];
-}
-
-/** A shell string cut into simple commands, each an argv, quotes dropped. Rough by design. */
-function shellCommands(text) {
-  return text
-    .split(/&&|\|\||[;|\n]/)
-    .map((part) =>
-      (part.match(/"[^"]*"|'[^']*'|\S+/g) ?? []).map((t) => t.replace(/^['"]|['"]$/g, '')),
-    )
-    .filter((argv) => argv.length > 0);
-}
-
-const positionals = (argv) => argv.filter((a) => !a.startsWith('-'));
-
-/** Programs whose own listings the watch sees from inside, since each runs Node with the preload. */
-const NODE_PROGRAMS = new Set(['node', 'pnpm', 'npm', 'npx', 'yarn', 'corepack', 'tsx', 'vitest']);
-
-/** Programs that read the files they are named and never a directory's entries. */
-const READS_NO_DIRECTORY = new Set([
-  ...['echo', 'printf', 'true', 'false', 'test', '[', 'sleep', 'which', 'type'],
-  ...['cat', 'head', 'tail', 'wc', 'sort', 'uniq', 'tr', 'cut', 'sed', 'awk', 'diff', 'cmp'],
-  ...['grep', 'mkdir', 'rm', 'rmdir', 'cp', 'mv', 'touch', 'chmod', 'ln', 'readlink', 'realpath'],
-  ...['basename', 'dirname', 'pwd', 'date', 'id', 'whoami', 'uname', 'kill', 'tee'],
-]);
-
-/** Programs that run the command after their own options, which is then what is read. */
-const LAUNCHERS = new Set([
-  'env',
-  'xargs',
-  'command',
-  'exec',
-  'nice',
-  'nohup',
-  'time',
-  'timeout',
-  'stdbuf',
-  'sudo',
-]);
-
-/** A launcher's command: its argv after options, assignments and a `timeout` duration. */
-function launched(bin, rest) {
-  let i = 0;
-  while (i < rest.length && (rest[i].startsWith('-') || /^[A-Za-z_][A-Za-z0-9_]*=/.test(rest[i])))
-    i++;
-  if (bin === 'timeout' && i < rest.length) i++;
-  return rest.slice(i);
-}
-
-/** `find`'s starting points: after its leading `-H`/`-L`/`-P`/`-O<n>`/`-D <opts>`/`--`, up to
- * the first predicate. */
-function findStarts(rest) {
-  let i = 0;
-  while (i < rest.length && /^(-[HLP]|-O\d*|-D|--)$/.test(rest[i])) i += rest[i] === '-D' ? 2 : 1;
-  const tail = rest.slice(i);
-  const stop = tail.findIndex((a) => /^[-(!]/.test(a));
-  return tail.slice(0, stop === -1 ? tail.length : stop);
-}
-
-/**
- * What one argv lists, given the directory it runs in, as `{ dir, via }`. A program that is not a
- * known lister, not Node, and not one of the readers above cannot be seen into, and may walk from
- * anywhere, so it counts as listing the root: the guard fails closed on what it cannot read.
- */
-function argvListing(argv, cwd, root) {
-  const bin = basename(argv[0] ?? '');
-  const rest = argv.slice(1);
-  const at = (via, paths) =>
-    (paths.length > 0 ? paths : ['.']).map((p) => ({ dir: resolve(cwd, p), via }));
-  if (bin === 'git') {
-    let dir = cwd;
-    let i = 0;
-    while (i < rest.length && rest[i].startsWith('-')) {
-      if (rest[i] === '-C') dir = resolve(dir, rest[++i] ?? '.');
-      else if (rest[i] === '-c') i++;
-      i++;
-    }
-    const sub = rest[i];
-    if (!['ls-files', 'ls-tree', 'grep'].includes(sub)) return [];
-    const tail = rest.slice(i + 1);
-    const top = tail.some(
-      (a) => a === '--full-tree' || a.startsWith(':/') || a.startsWith(':(top)'),
-    );
-    return [{ dir: top ? root : dir, via: `git ${sub}` }];
-  }
-  if (['find', 'ls', 'tree', 'du'].includes(bin)) {
-    return at(bin, bin === 'find' ? findStarts(rest) : positionals(rest));
-  }
-  if (LAUNCHERS.has(bin)) {
-    const inner = launched(bin, rest);
-    return inner.length > 0 ? argvListing(inner, cwd, root) : [];
-  }
-  const recursiveGrep =
-    bin === 'grep' && rest.some((a) => /^-[a-zA-Z]*[rR]/.test(a) || a === '--recursive');
-  if (bin === 'rg' || bin === 'fd' || recursiveGrep) {
-    const pos = positionals(rest);
-    return at(bin, bin === 'rg' && rest.includes('--files') ? pos : pos.slice(1));
-  }
-  if (NODE_PROGRAMS.has(bin) || READS_NO_DIRECTORY.has(bin) || bin === 'cd' || bin === '')
-    return [];
-  if (!reachesRoot(argv, cwd, root)) return [];
-  return [
-    {
-      dir: root,
-      via: `\`${argv[0].slice(0, 60)}\` (a program the guard cannot see into, so counted as listing the root)`,
-      unseen: true,
-    },
-  ];
-}
-
-/** A `..` segment anywhere in a text: a path somebody meant to climb with. */
-const CLIMB_RE = /(^|[\\/'"`\s=(])\.\.([\\/'"`\s)]|$)/;
-
-/**
- * Whether a program the watch cannot see into may reach the root: it runs at or above it, or
- * anything it is handed (a script file's text included) resolves there, climbs with `..`, or
- * names the root.
- */
-function reachesRoot(rest, cwd, root) {
-  if (coversRoot(root, cwd)) return true;
-  const escaped = root.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const named = new RegExp(`${escaped}(?![\\\\/]?[\\w.-])`);
-  const reaches = (text) => CLIMB_RE.test(text) || named.test(text);
-  return rest.some((arg) => {
-    if (reaches(arg) || coversRoot(root, resolve(cwd, arg))) return true;
-    const text = scriptText(resolve(cwd, arg));
-    return text !== null && reaches(text);
-  });
-}
-
-function scriptText(path) {
-  try {
-    const stat = statSync(path);
-    return stat.isFile() && stat.size < 262_144 ? readFileSync(path, 'utf8') : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * The directories a child process lists, as `{ dir, via }`: `git ls-files`/`ls-tree`/`grep`,
- * `find`, `ls`, `tree`, `du`, `rg`, `fd` and a recursive `grep` by their arguments, and any other
- * program `argvListing` cannot see into as the root, whether run directly or through a shell
- * string, where a `cd` moves the directory the rest run in.
- */
-export function subprocessListing({ command, args = [], shell = false, cwd, root }) {
-  const viaShell = shell
-    ? [command, ...args].join(' ')
-    : ['sh', 'bash', 'zsh'].includes(basename(command)) && args[0] === '-c'
-      ? args[1]
-      : null;
-  if (viaShell === null) return argvListing([command, ...args], cwd, root);
-  const found = [];
-  let dir = cwd;
-  for (const argv of shellCommands(String(viaShell))) {
-    if (argv[0] === 'cd') dir = resolve(dir, argv[1] ?? root);
-    else found.push(...argvListing(argv, dir, root));
-  }
-  return found;
+  if (args[0] instanceof URL && args[0].protocol !== 'file:') return [];
+  return [toPath(args[0], cwd)];
 }
 
 /**
@@ -367,4 +206,115 @@ export function judgeRun({ declared, collected, executed, suiteErrors = {} }) {
 export function declarationExit({ declared, refused }) {
   if (refused.length > 0) return 1;
   return declared.length === 0 ? 2 : 0;
+}
+
+/** vite 6's own match for a glob import, which it runs on code with its literals stripped. */
+export const GLOB_CALL_RE = /\bimport\.meta\.glob(?:<\w+>)?\s*\(/;
+
+/** The directory vite resolves a `/` or `**` glob from: the nearest package above the file. */
+function packageOf(dir, root) {
+  for (let d = dir; d === root || d.startsWith(`${root}${sep}`); d = dirname(d)) {
+    if (existsSync(join(d, 'package.json'))) return d;
+    if (d === root) break;
+  }
+  return root;
+}
+
+/** Where one glob pattern starts listing, resolved as vite 6's `toAbsoluteGlob` resolves it;
+ * `null` for one it hands to a resolver (an alias, a `#` import), which nothing here can follow. */
+function globDir(pattern, file, root) {
+  if (pattern.startsWith('/'))
+    return resolve(packageOf(dirname(file), root), globBase(pattern.slice(1)));
+  if (pattern.startsWith('./') || pattern.startsWith('../'))
+    return resolve(dirname(file), globBase(pattern));
+  if (pattern.startsWith('**')) return packageOf(dirname(file), root);
+  return null;
+}
+
+/**
+ * Every `import.meta.glob` call in `source` as `{ dir, via, at }`: vite expands it before the test
+ * runs, in vitest's own process, where no watch sees it, and it refuses any pattern that is not a
+ * literal, so reading the literals is all vite can expand. A pattern that is not a literal, or that
+ * vite would hand a resolver, counts as the root. `ts` is the TypeScript compiler the package
+ * declares, read only when the text holds a match.
+ */
+export function globListings({ source, file, root, ts }) {
+  if (!GLOB_CALL_RE.test(source)) return [];
+  const kind = /\.[jt]sx$/.test(file)
+    ? ts.ScriptKind.TSX
+    : /\.[cm]?js$/.test(file)
+      ? ts.ScriptKind.JS
+      : ts.ScriptKind.TS;
+  const sf = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, kind);
+  const shown = relative(root, file);
+  const found = [];
+  const literal = (n) =>
+    ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n) ? n.text : null;
+  const visit = (node) => {
+    const callee = ts.isCallExpression(node) ? node.expression : null;
+    if (
+      callee &&
+      ts.isPropertyAccessExpression(callee) &&
+      callee.name.text === 'glob' &&
+      ts.isMetaProperty(callee.expression) &&
+      callee.expression.keywordToken === ts.SyntaxKind.ImportKeyword
+    ) {
+      const line = sf.getLineAndCharacterOfPosition(node.getStart(sf)).line + 1;
+      const arg = node.arguments[0];
+      const items = arg && ts.isArrayLiteralExpression(arg) ? [...arg.elements] : [arg];
+      for (const item of items) {
+        const pattern = item ? literal(item) : null;
+        if (pattern?.startsWith('!')) continue;
+        const dir = pattern === null ? null : globDir(pattern, file, root);
+        const text = pattern === null ? (item?.getText(sf) ?? '').slice(0, 60) : `'${pattern}'`;
+        const call = `import.meta.glob(${text})`;
+        const at = `${shown}:${line}`;
+        found.push(
+          dir === null
+            ? {
+                dir: root,
+                via: `${call} (a pattern the guard cannot resolve, so counted as the root)`,
+                at,
+                call,
+                line,
+                resolved: false,
+              }
+            : { dir, via: call, at, call, line, resolved: true },
+        );
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  return found;
+}
+
+/**
+ * Which tracked source files expand a glob covering the root, each refused but a declared test:
+ * a module cannot carry the declaration, because it would not travel with an import of the module.
+ */
+export function judgeGlobs({ files, root, ts }) {
+  const refused = [];
+  for (const { path, source } of files) {
+    if (!GLOB_CALL_RE.test(source)) continue;
+    const covering = globListings({ source, file: resolve(root, path), root, ts }).filter((g) =>
+      coversRoot(root, g.dir),
+    );
+    if (covering.length === 0) continue;
+    const isTest = TEST_FILE_RE.test(path);
+    if (isTest && declaresWholeTree(source)) continue;
+    for (const g of covering) {
+      const from = g.resolved
+        ? 'from the repository root'
+        : 'with a pattern the guard cannot resolve (an alias, a `#` import, or not a literal), which counts as the root';
+      refused.push({
+        path,
+        kind: 'glob',
+        why: isTest
+          ? `line ${g.line} expands ${g.call} ${from} before the test runs, so its input is the whole tree — add a line \`// @gate-input whole-tree\` (or \` * @gate-input whole-tree\` in its opening docblock) so it runs on every change`
+          : `line ${g.line} expands ${g.call} ${from}, and a declaration cannot travel with an import of a module — move the glob into a test that declares \`@gate-input whole-tree\`, or narrow the pattern below the root`,
+      });
+    }
+  }
+  return refused;
 }
