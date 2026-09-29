@@ -1,4 +1,3 @@
-import { cpus } from 'node:os';
 import type { TestProject } from 'vitest/node';
 import { integrationWorkers } from './integration-workers.js';
 import { reapAbandoned, runToken, sweepRunScratchDbs, templateDbName } from './scratch-db.js';
@@ -38,7 +37,7 @@ function reportWorkers(project: TestProject): void {
       ? ''
       : `; the command line asked for ${resolved} over its ${chosen.count}`;
   console.log(
-    `[integration] ${resolved} worker(s) on ${cpus().length} core(s) — ${chosen.rule}${overruled}`,
+    `[integration] ${resolved} worker(s) on ${chosen.cores} core(s) — ${chosen.rule}${overruled}`,
   );
 }
 

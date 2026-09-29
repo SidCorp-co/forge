@@ -13,8 +13,11 @@ describe('integrationWorkers on a GitHub-hosted runner', () => {
     expect(integrationWorkers(HOSTED, 4).count).toBeGreaterThan(1);
   });
 
-  it('says which rule chose the count', () => {
-    expect(integrationWorkers(HOSTED, 4).rule).toMatch(/GitHub-hosted/);
+  it('says which rule chose the count, and from how many cores', () => {
+    expect(integrationWorkers(HOSTED, 4)).toMatchObject({
+      cores: 4,
+      rule: expect.stringMatching(/GitHub-hosted/),
+    });
   });
 });
 

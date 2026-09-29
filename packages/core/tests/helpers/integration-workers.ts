@@ -1,7 +1,8 @@
-import { cpus } from 'node:os';
+import { availableParallelism } from 'node:os';
 
 export interface WorkerCount {
   count: number;
+  cores: number;
   rule: string;
 }
 
@@ -16,7 +17,7 @@ const POSITIVE_WHOLE = /^[1-9][0-9]*$/;
 /** Files at once on the machine this run is on; why each machine gets what: tests/README.md. */
 export function integrationWorkers(
   env: Env = process.env,
-  cores = cpus().length || 1,
+  cores = availableParallelism(),
 ): WorkerCount {
   const override = env.VITEST_MAX_WORKERS;
   if (override !== undefined && override !== '') {
@@ -26,16 +27,18 @@ export function integrationWorkers(
           'number such as 4, or is left unset so the machine this run is on decides.',
       );
     }
-    return { count: Number(override), rule: `VITEST_MAX_WORKERS=${override}` };
+    return { count: Number(override), cores, rule: `VITEST_MAX_WORKERS=${override}` };
   }
   if (env.GITHUB_ACTIONS === 'true' && env.RUNNER_ENVIRONMENT === 'github-hosted') {
     return {
       count: Math.max(1, Math.round(cores * HOSTED_WORKERS_PER_CORE)),
+      cores,
       rule: `a GitHub-hosted runner, ${HOSTED_WORKERS_PER_CORE} per core`,
     };
   }
   return {
     count: Math.max(1, Math.min(3, Math.floor(cores / 4))),
+    cores,
     rule: 'a shared machine, a quarter of the cores and at most 3',
   };
 }
