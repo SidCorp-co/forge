@@ -32,7 +32,8 @@ A run passes through several phases, so the `runs` column does not sum to 431 an
 Orientation — phases 0 and 1, everything before a line is written — is **9,651 minutes, 34%**. It
 costs **more than proving** and more than twice implementing.
 
-**CI.** One full run, 36602136404, by job in seconds:
+**CI.** One full run, 36602136404 — the push to `main` of the merge of #746, which paid the whole
+gate because of the defect in cut 2 — by job in seconds:
 
     core-integration 1293 | core 222 | images 221 | web 211 | conformance 116 | whole-tree 52
     archmap 48 | docs 39 | install-check 20 | lang-check 15 | injected-docs 10 | changes 8
@@ -70,10 +71,17 @@ two workers share a database.
 open PR behind and each must be brought up to date and re-gated. ISS-1203 measured this as roughly
 `N^2/2` validation cycles for N landings.
 
-Half of this is already solved and should not be rebuilt: a push to `main` whose commit has two
-parents sets `proved=true` in the `changes` job, and the expensive suites skip, because a
-pull_request run already proved that tree. That is why runs on `main` are 4 minutes rather than 22.
-**The waste is entirely on the PR side.**
+Part of it was meant to be solved already, and is not. A push to `main` whose commit has two parents
+is supposed to set `proved=true` in the `changes` job so the expensive suites skip, because a
+pull_request run already proved that tree. **It has never fired.** The step counts parents with
+`git rev-list --parents -n 1 HEAD` in a depth-1 checkout, where the shallow graft leaves every
+commit with no parents, so the count is 1 and `proved` is `false` for every merge. Reproduced
+locally: `rev-list` reads 1, `git cat-file -p HEAD` reads 2 parents, on the same commit.
+
+Of the 29 push runs on `main` in the two days to 2026-09-29T17:43Z, **11 paid the full gate,
+median 19.6 minutes, and every one of those heads is a merge commit.** The short ones are short
+because paths-filter selected nothing expensive, not because `proved` held. Filed as **ISS-1340**,
+complexity `xs`: the cheapest time on this page to take back.
 
 The release train is the remaining half: validate one combination once instead of re-validating each
 member every time the base moves. `docs/proposals/release-train.md` holds its logic, ISS-1203 builds
@@ -166,6 +174,7 @@ without touching what is proved, and their result should be measured before anyt
 | The role split makes one change slower end to end | A builder that stops at `developed` hands its change to a queue, so that change waits longer before it lands than it does today. What improves is slot turnover and cost per landed issue; anyone judging by how fast one issue felt will read this as a regression. |
 | Measuring orientation costs a pass nobody has budgeted | Cut 4 is the biggest share and the least understood. Putting a number on it means instrumenting what a run reads and why, which is work that produces no landed change. |
 | Selection needs an index, and an index needs upkeep | Cut 5 has the largest published ratio behind it and brings a second artefact that can be stale, wrong, or silently incomplete. A stale index is worse than no selection, because it is trusted. |
+| Fixing `proved` stops `main` re-proving merges | Under `strict: true` the merged tree and the pull_request merge ref are the same tree, so the content is not the risk. Two things are. A merge taken past a red check with an administrator's override also carries two parents and would read `proved=true` over a tree nothing proved green. And a flaky or environment-dependent failure loses the second draw it gets today. |
 | Every number here ages | These are one window: 431 runs over nine days and 24 hours of CI. The shape will hold longer than the figures. Re-measure before acting on a figure rather than citing this page. |
 
 ## Scope
