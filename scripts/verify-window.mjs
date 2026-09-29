@@ -195,14 +195,17 @@ if (verb === 'isolate') {
   };
   const before = recorded.attributions;
   removeTree(treeDir);
-  writeFileSync(manifestPath, `${JSON.stringify(next, null, 2)}\n`);
   const ledger = build(treeDir, next);
+  writeFileSync(manifestPath, `${JSON.stringify(next, null, 2)}\n`);
   ledger.attributions = before;
   reportBuilt(ledger);
 }
 
 if (verb === 'attribute') {
   const ledger = loadLedger();
+  if (!existsSync(ledger.chain.tree)) {
+    die(`the window's tree ${ledger.chain.tree} is gone; rebuild it with isolate or assemble first`);
+  }
   const landed = ledger.members.filter((m) => m.landing);
   const t = gitIn(ledger.chain.tree);
   const found = [];

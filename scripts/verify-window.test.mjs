@@ -720,6 +720,30 @@ describe('the tree isolate rebuilds in', () => {
   });
 });
 
+describe('an isolate whose rebuild fails', () => {
+  it('writes neither manifest nor ledger, and the next isolate rebuilds where the ledger recorded', () => {
+    const c = clone('failed-rebuild');
+    const w = windowFiles('w-failed', [['ISS-4', 'ISS-4-after', heads.m4]], green(heads.m4));
+    const flags = ['--window', w.manifest, '--checks', w.checksFile, '--tree', w.tree];
+    expect(run(c, 'assemble', ...flags).status).toBe(0);
+    const [manifest, ledger] = [w.manifest, w.ledger].map((p) => readFileSync(p, 'utf8'));
+    const url = git(c, 'remote', 'get-url', 'origin');
+    git(c, 'remote', 'set-url', 'origin', join(box, 'no-such-origin.git'));
+    const failed = run(c, 'isolate', ...flags, '--member', 'ISS-4', '--because', 'red');
+    expect(failed.status).toBe(2);
+    expect(failed.stderr).toContain('git fetch origin did not answer');
+    expect(readFileSync(w.manifest, 'utf8')).toBe(manifest);
+    expect(readFileSync(w.ledger, 'utf8')).toBe(ledger);
+    const gone = run(c, 'attribute', ...flags, '--path', 'src/m4.txt');
+    expect(gone.stderr).toContain(`the window's tree ${w.tree} is gone`);
+    git(c, 'remote', 'set-url', 'origin', url);
+    const again = run(c, 'isolate', ...flags, '--member', 'ISS-4', '--because', 'red');
+    expect(again.status, again.stderr).toBe(1);
+    expect(JSON.parse(readFileSync(w.ledger, 'utf8')).members[0].isolated.because).toBe('red');
+    expect(existsSync(join(w.tree, '.git'))).toBe(true);
+  });
+});
+
 describe('the push a rebuilt window prints', () => {
   it('replaces the pushed chain under a lease that refuses once anyone moved the branch', () => {
     const d = branch('ISS-18-d', { 'src/d18.txt': 'd\n' });

@@ -1,12 +1,26 @@
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 
+/** `text` parsed as a JSON array, or `null` where it is not one. */
+function listOf(text) {
+  try {
+    const value = JSON.parse(text || '[]');
+    return Array.isArray(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * The state one required check reported at one commit. From GitHub through `gh api`, or — for a
  * window run where the remote is not GitHub, or replayed later — from a file saved from it, shaped
  * `{ "<sha>": { "<check>": "<conclusion>" } }`. An absent check is `absent`, never a pass.
  */
-export function checkReader({ repoSlug, file }) {
+export function checkReader({
+  repoSlug,
+  file,
+  gh = (args) => spawnSync('gh', args, { encoding: 'utf8' }),
+}) {
   if (file) {
     let saved;
     try {
@@ -18,13 +32,18 @@ export function checkReader({ repoSlug, file }) {
   }
   return (sha, name) => {
     const path = `repos/${repoSlug}/commits/${sha}/check-runs?check_name=${encodeURIComponent(name)}`;
-    const r = spawnSync('gh', ['api', path, '--jq', '.check_runs'], { encoding: 'utf8' });
+    const r = gh(['api', path, '--jq', '.check_runs']);
     if (r.status !== 0) {
       return {
         refusal: `\`gh api ${path}\` did not answer (${(r.stderr || '').trim()}), so ${name} at ${sha} is unknown`,
       };
     }
-    const runs = JSON.parse(r.stdout || '[]');
+    const runs = listOf(r.stdout);
+    if (!runs) {
+      return {
+        refusal: `\`gh api ${path}\` answered \`${(r.stdout || '').trim().slice(0, 80)}\`, not a list of check runs, so ${name} at ${sha} is unknown`,
+      };
+    }
     if (runs.length === 0) return { state: 'absent' };
     const newest = runs.sort((a, b) => String(b.started_at).localeCompare(String(a.started_at)))[0];
     return {
