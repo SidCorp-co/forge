@@ -154,13 +154,23 @@ async fn keep_before_release(
             salvage::publication_of(worktree, cred).await,
             salvage::Publication::Published
         ) {
-            let published = salvage::publish(worktree, branch, cred).await;
-            if !matches!(published, salvage::Publication::Published) {
-                tracing::info!(
-                    "[terminate] run {run_id}: `{branch}` in {} did not reach a remote ({published:?}) — \
-                     the release goes on the refs this repository keeps instead",
+            let pushed = salvage::publish(worktree, branch, cred).await;
+            match (&pushed.refused, &pushed.publication) {
+                (_, salvage::Publication::Published) => {}
+                (Some(refused), publication) => tracing::info!(
+                    "[terminate] run {run_id}: `{branch}` in {} did not reach a remote: {refused}; \
+                     afterwards {publication} — the release goes on the refs this repository \
+                     keeps instead",
                     worktree.display()
-                );
+                ),
+                // git took the push, so nothing here may say it did not land:
+                // what is not known is what the reading after it found.
+                (None, publication) => tracing::info!(
+                    "[terminate] run {run_id}: git took the push of `{branch}` in {}, and \
+                     afterwards {publication} — the release goes on the refs this repository \
+                     keeps instead",
+                    worktree.display()
+                ),
             }
         }
     }
@@ -251,10 +261,16 @@ async fn take_the_directory(
             "run {run_id} is over and the ref its release wrote no longer named the work, so \
              {at_risk} commit(s) at its HEAD were given {name} before this"
         ),
-        (None, Commits::AlreadyNamed) => format!(
-            "run {run_id} is over and every commit at its HEAD is already named by a ref this \
-             repository keeps"
-        ),
+        (None, Commits::AlreadyNamed) => match salvage::named_by(worktree).await {
+            Some(name) => format!(
+                "run {run_id} is over and every commit at its HEAD is already named by {name}, \
+                 which this repository keeps"
+            ),
+            None => format!(
+                "run {run_id} is over and every commit at its HEAD is already named by a ref this \
+                 repository keeps, though git would not say which"
+            ),
+        },
         (None, Commits::NamedBy(name)) => format!(
             "run {run_id} is over and the commits at its HEAD were given {name} first, which \
              outlives the directory"
@@ -1668,6 +1684,108 @@ mod tests {
         assert!(!wt.exists());
         assert!(l.0.lock().unwrap().contains("ISS-964"));
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// criteria 14, 17, 18 — the journal lines an operator reads when the push
+    /// is refused. The judge at 2d11341 met only `did not reach a remote
+    /// (Unpublished { commits: 1 })`: no git error, no credential, the enum's
+    /// own shape, and a removal line alluding to a ref it never named.
+    #[tokio::test]
+    async fn a_refused_push_is_journalled_with_gits_words_and_the_credential_in_plain_words() {
+        let (root, wt) = repo("refused-said").await;
+        git(&wt, &["add", "work.txt"]).await;
+        git(&wt, &["commit", "-qm", "work the remote will not take"]).await;
+        refuse_pushes(&root).await;
+
+        let mut led = ledger_for(&wt, Incarnation::Exited, "boot-a");
+        let (p, s, l) = (
+            Procs(Mutex::new(Vec::new())),
+            Sessions,
+            Leases(Mutex::new(HashSet::new())),
+        );
+
+        let (said, guard) = crate::log_capture::capturing();
+        let out = force_terminal(
+            &mut led,
+            "run-1",
+            forcing(&root, "boot-a"),
+            ports(&p, &s, &l),
+        )
+        .await;
+        drop(guard);
+        let said = said.said();
+        let _ = std::fs::remove_dir_all(&root);
+
+        assert!(out.is_ok(), "{out:?}");
+        let line = said
+            .lines()
+            .find(|l| l.contains("did not reach a remote"))
+            .unwrap_or_else(|| panic!("the release says the push did not land: {said}"));
+        assert!(
+            line.contains("refused by policy"),
+            "git's own refusal must survive into the line: {line}"
+        );
+        assert!(
+            line.contains("offering "),
+            "and the credential the push offered: {line}"
+        );
+        assert!(
+            line.contains("1 commit(s) here are on no remote"),
+            "what the box read afterwards, in words: {line}"
+        );
+        assert!(
+            !line.contains("Unpublished {") && !line.contains("Some("),
+            "no program-internal value reaches an operator: {line}"
+        );
+        let removed = said
+            .lines()
+            .find(|l| l.contains("removed"))
+            .unwrap_or_else(|| panic!("the removal is journalled: {said}"));
+        assert!(
+            removed.contains("already named by refs/heads/ISS-964"),
+            "the removal names the ref that holds the commits: {removed}"
+        );
+    }
+
+    /// A push git took, and a reading after it that cannot answer, is not a
+    /// push that "did not reach a remote" (whole-set consult F1 at 249eaf2ca).
+    #[tokio::test]
+    async fn a_push_git_took_is_never_journalled_as_not_reaching_a_remote() {
+        let (root, wt) = repo("took-unknown").await;
+        git(&wt, &["add", "work.txt"]).await;
+        git(&wt, &["commit", "-qm", "work"]).await;
+        // `fetch --all` asks every remote, so one that cannot be reached makes
+        // the reading after a successful push to `origin` unknowable.
+        git(&wt, &["remote", "add", "mirror", "/nonexistent/mirror.git"]).await;
+
+        let mut led = ledger_for(&wt, Incarnation::Exited, "boot-a");
+        let (p, s, l) = (
+            Procs(Mutex::new(Vec::new())),
+            Sessions,
+            Leases(Mutex::new(HashSet::new())),
+        );
+        let (said, guard) = crate::log_capture::capturing();
+        let out = force_terminal(
+            &mut led,
+            "run-1",
+            forcing(&root, "boot-a"),
+            ports(&p, &s, &l),
+        )
+        .await;
+        drop(guard);
+        let said = said.said();
+        let _ = std::fs::remove_dir_all(&root);
+
+        assert!(out.is_ok(), "{out:?}");
+        assert!(
+            !said.contains("did not reach a remote"),
+            "git took this push, so no line may say it did not land: {said}"
+        );
+        assert!(
+            said.contains("git took the push of `ISS-964`")
+                && said.contains("whether the work here is on a remote is unknown"),
+            "what is unknown is the reading after the push, and the line says so: {said}"
+        );
     }
 
     #[tokio::test]

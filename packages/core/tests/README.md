@@ -59,6 +59,34 @@ runs entering setup together destroyed each other's template and the loser
 reported `template database "forge_test_tpl" does not exist` — a failure naming
 a Postgres object, on files the change never touched (ISS-937).
 
+### How many files run at once
+
+`tests/helpers/integration-workers.ts:integrationWorkers` decides, from the machine the run is on,
+and global setup prints what vitest resolved before the first file:
+`[integration] 6 worker(s) on 4 core(s) — a GitHub-hosted runner, 1.5 per core`.
+
+| Where | Workers | Why |
+| ----- | ------- | --- |
+| A GitHub-hosted runner (`GITHUB_ACTIONS=true` and `RUNNER_ENVIRONMENT=github-hosted`) | its cores × `HOSTED_WORKERS_PER_CORE` | One job and one package on a VM of its own: nothing to share the cores with. |
+| Anywhere else | a quarter of the cores, at least 1, at most 3 | vitest's default is one worker per core PER PACKAGE and turbo fans packages out together, which put a 12-core box at load average 27. |
+| Either, with `VITEST_MAX_WORKERS=<n>` | `n` | A one-off run. A value that is not a positive whole number is refused by name; an empty one reads as unset. |
+
+A `--maxWorkers` on the command line beats the machine's rule, and the printed line says so; it
+does not beat `VITEST_MAX_WORKERS`, which vitest itself reads after the command line.
+
+Running files in parallel is safe because every file clones a database of its own (see *Concurrent
+runs on one server*); `tests/integration/file-database-isolation-e2e.test.ts` goes red the day two
+files are given the same one.
+
+**Re-deriving the factor.** It is a measurement, not a preference, and it goes stale when the
+runner image or the suite changes. Push a throwaway branch carrying a workflow that runs this job's
+own steps at `VITEST_MAX_WORKERS` = 1, 2, 4, 6 and 8, two runs each, and read each job's wall off
+the Actions API. The factor is the smallest count whose mean wall is within 5% of the lowest mean,
+divided by the runner's cores — a tie goes to the smaller count, because workers past the knee buy
+flakes and no wall. Record the walls and the date beside `HOSTED_WORKERS_PER_CORE`, then delete the
+branch. A leg that fails is read for a test that depends on order; that test is the finding, and
+lowering the count to hide it is not an answer.
+
 ## Running
 
 ### Unit tests (always safe, no DB)
