@@ -4,6 +4,7 @@ import { admitMembers } from './admit.mjs';
 import { CONFIG_PATH, parseConfig } from './config.mjs';
 import { enterMigrations, resolveUnions } from './entering.mjs';
 import { gitIn, showAt } from './git.mjs';
+import { windowBranch } from './land.mjs';
 
 /**
  * Build a window's combination: a worktree at the base commit, and on it one `--no-ff` merge
@@ -35,6 +36,16 @@ function isolate(t, member, because) {
 
 /** Merge one member into the combination; its ledger row, landed or isolated. */
 function enter({ t, config, member, open, landed, window }) {
+  if (t.ok(['merge-base', '--is-ancestor', member.head, 'HEAD'])) {
+    const carrier = landed.find((m) =>
+      t.ok(['merge-base', '--is-ancestor', member.head, m.landing]),
+    );
+    return isolate(
+      t,
+      member,
+      `${member.issue}'s head ${member.head} is already in the combination, carried by ${carrier?.issue ?? 'the base'}; it lands with that change, not as a landing of its own`,
+    );
+  }
   const merge = t.raw(['merge', '--no-ff', '--no-commit', member.head]);
   if (merge.status !== 0 && !/CONFLICT|Automatic merge failed/.test(merge.stdout + merge.stderr)) {
     return isolate(
@@ -84,9 +95,9 @@ function enter({ t, config, member, open, landed, window }) {
 
 /**
  * Fetch, then read what every step is judged against: the base commit, the declarations at it and
- * the open branches outside the window. A `replay` — one member rebuilt for `attribute --unit` —
- * names the window it came from: its base, never wherever the remote has moved since, and every
- * branch of that window, none of which is an open branch outside it.
+ * the open branches outside the window, which never include the window's own pushed branch. A
+ * `replay` — one member rebuilt for `attribute --unit` — names the window it came from: its base,
+ * never wherever the remote has moved since, and every branch of that window.
  * @returns {{ refusal: string } | object}
  */
 export function prepareWindow({ repoDir, manifest, replay }) {
@@ -110,7 +121,11 @@ export function prepareWindow({ repoDir, manifest, replay }) {
   if (read.refusal) return { refusal: read.refusal };
   const config = read.config;
   const journal = `${config.migrationsDir}/meta/_journal.json`;
-  const inWindow = [...manifest.members.map((m) => m.branch), ...(replay?.branches ?? [])];
+  const inWindow = [
+    windowBranch(manifest.window),
+    ...manifest.members.map((m) => m.branch),
+    ...(replay?.branches ?? []),
+  ];
   const memberRefs = new Set(inWindow.map((b) => `origin/${b}`));
   const openSet = readOpenSet({
     git: trimmed,

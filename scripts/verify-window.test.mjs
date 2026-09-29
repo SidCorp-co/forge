@@ -486,7 +486,11 @@ describe('a replay of one member alone', () => {
     expect(
       run(c, 'assemble', '--window', w.manifest, '--checks', w.checksFile, '--tree', w.tree).status,
     ).toBe(0);
-    const inflated = `! grep -q '"when": ${W + 6 * DAY}' ${JOURNAL}`;
+    const ledger = JSON.parse(readFileSync(w.ledger, 'utf8'));
+    git(c, 'push', '-q', 'origin', `${ledger.chain.head}:refs/heads/chore/verify-window-w-replay`);
+    const inflated = [6, 4]
+      .map((d) => `! grep -q '"when": ${W + d * DAY}' ${JOURNAL}`)
+      .join(' && ');
     const r = run(
       c,
       'attribute',
@@ -501,7 +505,50 @@ describe('a replay of one member alone', () => {
     );
     expect(r.status, r.stderr).toBe(0);
     expect(r.stdout).toMatch(/did not fail on the replay at all/);
-    git(seed, 'push', '-q', 'origin', '--delete', 'ISS-12-late', 'ISS-13-early');
+    git(
+      seed,
+      'push',
+      '-q',
+      'origin',
+      '--delete',
+      'ISS-12-late',
+      'ISS-13-early',
+      'chore/verify-window-w-replay',
+    );
+  });
+});
+
+describe('a member another member already carries', () => {
+  it('is isolated by name, and the members after it still enter', () => {
+    const a = branch('ISS-14-a', { 'src/a14.txt': 'a\n' });
+    const b = branch('ISS-15-b', { 'src/b15.txt': 'b\n' }, 'ISS-14-a');
+    const c = clone('carried-window');
+    const w = windowFiles(
+      'w-carried',
+      [
+        ['ISS-15', 'ISS-15-b', b],
+        ['ISS-14', 'ISS-14-a', a],
+        ['ISS-4', 'ISS-4-after', heads.m4],
+      ],
+      green(a, b, heads.m4),
+    );
+    const r = run(
+      c,
+      'assemble',
+      '--window',
+      w.manifest,
+      '--checks',
+      w.checksFile,
+      '--tree',
+      w.tree,
+    );
+    expect(r.status, r.stderr).toBe(1);
+    const ledger = JSON.parse(readFileSync(w.ledger, 'utf8'));
+    expect(ledger.members[1].isolated.because).toBe(
+      `ISS-14's head ${a} is already in the combination, carried by ISS-15; it lands with that change, not as a landing of its own`,
+    );
+    expect(ledger.members[2].landing).toMatch(/^[0-9a-f]{40}$/);
+    git(seed, 'push', '-q', 'origin', '--delete', 'ISS-14-a', 'ISS-15-b');
   });
 });
 
