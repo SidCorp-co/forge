@@ -2,12 +2,13 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
 import { type BoundsReading, readBounds } from './bounds.js';
-import { resolveReleaseChannels } from './channel.js';
+import { closeVerification, type ReleaseChannel, resolveReleaseChannels } from './channel.js';
+import { ReleaseProbesUnreadableError } from './errors.js';
 import { type ReleaseFinishRecord, readFinishRecord } from './finish-job.js';
 import { listAttempts, type ReleaseAttemptRow } from './ledger.js';
 import { type ReleaseMethod, readMethod } from './method.js';
 import { loadReleaseRoster, type ReleaseRoster } from './queries.js';
-import { type LiveState, readLiveState } from './verify.js';
+import { type LiveState, readLiveState, type VerifyConfig } from './verify.js';
 
 export interface ReleaseRunState {
   runId: string;
@@ -17,7 +18,7 @@ export interface ReleaseRunState {
   version: string | null;
   roster: ReleaseRoster;
   attempts: ReleaseAttemptRow[];
-  /** Read at request time. `null` only when the project declares no probes. */
+  /** Read at request time from the probes the close reads; `null` where there are none to read. */
   live: LiveState | null;
   bounds: BoundsReading;
   /** `null` when the run never announced one. */
@@ -26,6 +27,17 @@ export interface ReleaseRunState {
   methodUnloaded: boolean;
   /** The last finish attempt, `null` before the first `finish` call. */
   finish: ReleaseFinishRecord | null;
+}
+
+/** The probes the close reads, or none: a refused declaration has nothing to read either. */
+function liveProbes(channels: ReleaseChannel[]): VerifyConfig | null {
+  try {
+    const verification = closeVerification(channels);
+    return verification.kind === 'probed' ? verification.cfg : null;
+  } catch (err) {
+    if (err instanceof ReleaseProbesUnreadableError) return null;
+    throw err;
+  }
 }
 
 async function readRun(runId: string) {
@@ -53,7 +65,7 @@ export async function readReleaseRunState(runId: string): Promise<ReleaseRunStat
   if ((first.metadata as { source?: unknown } | null)?.source !== 'release-batch') return null;
 
   const channels = await resolveReleaseChannels(first.projectId);
-  const verify = channels[0]?.verify ?? null;
+  const verify = liveProbes(channels);
   const [roster, attempts, live] = await Promise.all([
     loadReleaseRoster(first.projectId),
     listAttempts(runId),

@@ -337,6 +337,18 @@ describe('a batch whose probes changed after it opened', () => {
     expect(await markedComments(a, runId)).toBe(1);
   }, 40_000);
 
+  it('reads, in the run state, the probes a later binding declared, as the close does', async () => {
+    await fx.declareProduction({ verify: null });
+    const a = await fx.insertIssue();
+    const { runId } = await fx.claim([a]);
+    // A second live binding, created after the first, declaring the probes the first does not.
+    await fx.declareProduction();
+
+    const { body } = await call('GET', `/release-batches/${runId}/state`);
+
+    expect(body.live).toMatchObject({ health: 'up', identity: fx.serving() });
+  });
+
   it('refuses a probe url that is not a url by name, before any close', async () => {
     await fx.declareProduction();
     const a = await fx.insertIssue();
