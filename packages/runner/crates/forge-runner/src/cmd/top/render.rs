@@ -813,8 +813,12 @@ mod tests {
         ]);
         let text = frame(&s, None).join("\n");
         assert!(
-            text.contains("no file at /repo/a/SKILL.md")
-                && text.contains("no file at /repo/b/SKILL.md"),
+            ["/repo/a", "/repo/b"]
+                .iter()
+                .all(|r| text.contains(&format!(
+                    "no file at {}",
+                    std::path::PathBuf::from(r).join("SKILL.md").display()
+                ))),
             "{text}"
         );
     }
