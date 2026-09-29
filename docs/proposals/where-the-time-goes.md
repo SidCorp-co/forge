@@ -71,17 +71,19 @@ two workers share a database.
 open PR behind and each must be brought up to date and re-gated. ISS-1203 measured this as roughly
 `N^2/2` validation cycles for N landings.
 
-Part of it was meant to be solved already, and is not. A push to `main` whose commit has two parents
-is supposed to set `proved=true` in the `changes` job so the expensive suites skip, because a
-pull_request run already proved that tree. **It has never fired.** The step counts parents with
-`git rev-list --parents -n 1 HEAD` in a depth-1 checkout, where the shallow graft leaves every
-commit with no parents, so the count is 1 and `proved` is `false` for every merge. Reproduced
-locally: `rev-list` reads 1, `git cat-file -p HEAD` reads 2 parents, on the same commit.
+Part of it was meant to be solved already. A push to `main` whose commit has two parents is
+supposed to set `proved=true` in the `changes` job so the expensive suites skip, because a
+pull_request run already proved that tree. Until ISS-1340 it never fired: the step counted parents
+with `git rev-list --parents -n 1 HEAD` in a depth-1 checkout, where the shallow graft leaves every
+commit with no parents, so the count was 1 and `proved` was `false` for every merge. Of the 29 push
+runs on `main` in the two days to 2026-09-29T17:43Z, **11 paid the full gate, median 19.6 minutes,
+and every one of those heads is a merge commit.**
 
-Of the 29 push runs on `main` in the two days to 2026-09-29T17:43Z, **11 paid the full gate,
-median 19.6 minutes, and every one of those heads is a merge commit.** The short ones are short
-because paths-filter selected nothing expensive, not because `proved` held. Filed as **ISS-1340**,
-complexity `xs`: the cheapest time on this page to take back.
+The step now reads three things and needs all three: two parents off the commit object's header, a
+tree equal to the second parent's, and that parent's latest `ci-passed` concluded `success`. The
+last is what a parent count could not see — a merge taken past red with an administrator's
+override carries two parents too. `scripts/lib/proved-step.test.mjs` runs the step's own shell in
+depth-1 clones. What it saves is read off the first merge push after it lands, not off this page.
 
 The release train is the remaining half: validate one combination once instead of re-validating each
 member every time the base moves. `docs/proposals/release-train.md` holds its logic, ISS-1203 builds
@@ -174,7 +176,7 @@ without touching what is proved, and their result should be measured before anyt
 | The role split makes one change slower end to end | A builder that stops at `developed` hands its change to a queue, so that change waits longer before it lands than it does today. What improves is slot turnover and cost per landed issue; anyone judging by how fast one issue felt will read this as a regression. |
 | Measuring orientation costs a pass nobody has budgeted | Cut 4 is the biggest share and the least understood. Putting a number on it means instrumenting what a run reads and why, which is work that produces no landed change. |
 | Selection needs an index, and an index needs upkeep | Cut 5 has the largest published ratio behind it and brings a second artefact that can be stale, wrong, or silently incomplete. A stale index is worse than no selection, because it is trusted. |
-| Fixing `proved` stops `main` re-proving merges | Under `strict: true` the merged tree and the pull_request merge ref are the same tree, so the content is not the risk. Two things are. A merge taken past a red check with an administrator's override also carries two parents and would read `proved=true` over a tree nothing proved green. And a flaky or environment-dependent failure loses the second draw it gets today. |
+| Fixing `proved` stops `main` re-proving merges | A merge taken past red is not the risk: the step reads the second parent's `ci-passed` and keeps the full gate unless it concluded `success`. What remains is that a flaky or environment-dependent failure the pull_request run happened to pass loses the second draw a merge push used to give it, for as long as merges skip the suites. |
 | Every number here ages | These are one window: 431 runs over nine days and 24 hours of CI. The shape will hold longer than the figures. Re-measure before acting on a figure rather than citing this page. |
 
 ## Scope
