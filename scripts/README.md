@@ -353,7 +353,7 @@ reading every change as eligible: no admission rule is assumed.
 
 ### Modes
 
-- (none) — the whole gate, both layers, each check over the whole tree, as it has always run
+- (none) — the whole gate, both layers, every check in the form the whole gate has always run it
 - `--entry` — the entry layer, for a developer run of a queue-eligible change
 - `--window` — the shared layer plus the entry layer, scoped forms over the combination's diff,
   run once by a verify window (the `gate` the declarations name)

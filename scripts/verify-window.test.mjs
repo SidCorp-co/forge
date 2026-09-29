@@ -930,6 +930,18 @@ describe('validate', () => {
     );
   });
 
+  it('refuses to replay on a combination tree holding a stray file, and attributes nothing', () => {
+    const c = clone('attribute-dirty');
+    const w = windowFiles('w-attr-dirty', [['ISS-4', 'ISS-4-after', heads.m4]], green(heads.m4));
+    const flags = ['--window', w.manifest, '--checks', w.checksFile, '--tree', w.tree];
+    expect(run(c, 'assemble', ...flags).status).toBe(0);
+    writeFileSync(join(w.tree, 'src/unrelated.txt'), 'stray\n');
+    const r = run(c, 'attribute', ...flags, '--unit', 'test ! -e src/unrelated.txt');
+    expect(r.status).toBe(2);
+    expect(r.stderr).toMatch(/holds changes the chain head does not/);
+    expect(JSON.parse(readFileSync(w.ledger, 'utf8')).attributions ?? []).toEqual([]);
+  });
+
   it('refuses to validate when a prepare step fails, and runs no gate', () => {
     const c = clone('validate-unprepared');
     const w = windowFiles('w-unprepared', [['ISS-4', 'ISS-4-after', heads.m4]], green(heads.m4));

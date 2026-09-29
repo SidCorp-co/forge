@@ -61,7 +61,9 @@ branch, head, arrival time and priority.
    prepared with the declared `gate.prepare` first, so an unprepared tree never reads as a failure
    on the base; a step that cannot prepare one stops the replay, attributing nothing. A replay that
    exits 2 (a checker that could not run), 126 or 127 (a command the shell could not run) or on a
-   signal measured nothing, and names no owner, whichever tree it was in.
+   signal measured nothing, and names no owner, whichever tree it was in. The combination's tree is
+   held to the chain head as `validate` holds it, before and after preparing, so a stray edit there
+   is refused rather than replayed as a member's.
 6. **`isolate --member <ISS> --because "<the checker's words>"`** — rebuild without that member,
    recording why, in the tree the ledger recorded; a window with no ledger, any other `--tree`, or a
    path there that is no longer a worktree of the repository is refused and nothing is deleted. The

@@ -12,7 +12,7 @@ import { judgeEligibility, parseDiff } from './verify-window/eligibility.mjs';
 export const LAYERS = ['entry', 'shared'];
 
 export const MODES = {
-  whole: 'every check, each over the whole tree',
+  whole: 'every check, in the form the whole gate has always run it',
   entry: 'the entry layer, each check scoped to the change where it declares a scoped form',
   window: 'the shared layer, plus the entry layer scoped to the diff where a check can be',
 };

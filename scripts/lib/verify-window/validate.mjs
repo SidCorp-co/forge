@@ -40,7 +40,7 @@ export function prepareTree({ tree, prepare }) {
 }
 
 /** Why `tree` is not exactly `head` — HEAD elsewhere, or a change or untracked file — or `null`. */
-function driftOf(tree, head, when) {
+export function treeDrift(tree, head, when) {
   const git = (args) => spawnSync('git', args, { cwd: tree, encoding: 'utf8' });
   const at = git(['rev-parse', 'HEAD']);
   if (at.status !== 0) return `${tree} is not a git worktree ${when}`;
@@ -63,13 +63,13 @@ function driftOf(tree, head, when) {
  */
 export function runGate({ tree, head, gate }) {
   const notRun = 'so the gate was not run and nothing was validated';
-  const before = driftOf(tree, head, 'before preparing');
+  const before = treeDrift(tree, head, 'before preparing');
   if (before) return { refusal: `${before}, ${notRun}`, output: '' };
   const prepared = prepareTree({ tree, prepare: gate.prepare });
   let output = prepared.output;
   const prepareSeconds = prepared.seconds;
   if (prepared.refusal) return { refusal: `${prepared.refusal}, ${notRun}`, output };
-  const after = driftOf(tree, head, 'after preparing');
+  const after = treeDrift(tree, head, 'after preparing');
   if (after) return { refusal: `${after}, ${notRun}`, output };
   const run = timed(gate.run, tree);
   output += `$ ${gate.run.join(' ')}\n${run.stdout}${run.stderr}`;

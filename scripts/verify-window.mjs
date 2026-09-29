@@ -20,7 +20,7 @@ import { decideFire } from './lib/verify-window/fire.mjs';
 import { gitIn, showAt } from './lib/verify-window/git.mjs';
 import { planLanding, windowBranch } from './lib/verify-window/land.mjs';
 import { readManifest, renderLedger } from './lib/verify-window/ledger.mjs';
-import { passLine, prepareTree, runGate } from './lib/verify-window/validate.mjs';
+import { passLine, prepareTree, runGate, treeDrift } from './lib/verify-window/validate.mjs';
 
 const USAGE = `Usage: node scripts/verify-window.mjs <verb> --window <manifest.json> [flags]
   admit                       judge each member's admission and build nothing
@@ -229,11 +229,17 @@ if (verb === 'attribute') {
       `${CONFIG_PATH} at ${ledger.base.sha}`,
     );
     if (declared.refusal) die(declared.refusal);
+    const unattributed = 'so the replay could not run there and nothing is attributed';
+    const clean = (when) => {
+      const drift = treeDrift(ledger.chain.tree, ledger.chain.head, when);
+      if (drift) die(`${drift}, ${unattributed}`);
+    };
+    clean('before replaying');
     const ready = (tree) => {
       const r = prepareTree({ tree, prepare: declared.config.gate.prepare });
       if (!r.refusal) return;
       if (tree !== ledger.chain.tree) removeTree(tree);
-      die(`${r.refusal}, so the replay could not run there and nothing is attributed`);
+      die(`${r.refusal}, ${unattributed}`);
     };
     const baseTree = `${treeDir}-replay-base`;
     gitIn(repoDir).must(['worktree', 'add', '-q', '--detach', baseTree, ledger.base.sha]);
@@ -265,6 +271,7 @@ if (verb === 'attribute') {
       return { issue: m.issue, ...r };
     });
     ready(ledger.chain.tree);
+    clean('after preparing');
     const window = replay(values.unit, ledger.chain.tree, repeat);
     found.push({
       subject: values.unit,
