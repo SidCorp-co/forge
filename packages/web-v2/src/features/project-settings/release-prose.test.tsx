@@ -193,6 +193,20 @@ describe("the Release section's prose", () => {
 			screen.queryByText("none — a release goes to any box in this project's pool"),
 		).toBeNull();
 	});
+
+	// ISS-1321 took the probe out of the gate: a release with none runs and closes unverified.
+	it("says a release with no verify probe closes unverified, not that it is refused", () => {
+		readiness.mockReturnValue({
+			isLoading: false,
+			error: null,
+			data: ready({ hasVerify: false, gaps: ["verify-probes"] }),
+		});
+
+		const { container } = draw(<ReleaseSection projectId={PROJECT_ID} />);
+
+		expect(container.textContent).toMatch(/closes unverified/i);
+		expect(container.textContent).not.toMatch(/refused/i);
+	});
 });
 
 describe("the Runner pools matrix", () => {

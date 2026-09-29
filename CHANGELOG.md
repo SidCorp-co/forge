@@ -3132,6 +3132,10 @@
 
 ### Fixed
 
+- **A refused batch release now says why, inside the release dialog, and keeps your selection.**
+  A release with no verify probe says it will close unverified, and each issue it closes says what
+  to check.
+
 - **A documents-only change can no longer pass CI over a check that reads the whole repository.**
   Such checks now run on every change, so a document that breaks one fails on its own pull request.
 

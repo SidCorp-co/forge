@@ -15,11 +15,15 @@ export function unverifiedMarker(runId: string): string {
 }
 
 export function unverifiedCloseNote(runId: string, commit: string | null): string {
-  const at = commit ? ` at \`${commit}\`` : '';
+  const reported = commit
+    ? `The release reported shipping \`${commit}\`, and nothing checked that it is serving.`
+    : 'The release reported no commit, so nothing names what it shipped.';
   return [
     '**This issue is being closed by a release that was not verified.**',
     '',
-    `This project declares no live verify probe, so nothing read the deployment, and only the release run's own account says the change is serving${at}. Declare \`environments.live.commitUrl\` (with \`commitPath\`), or a \`verify\` on the live deploy binding, and the releases after that are verified.`,
+    `This project declares no verify probe, so nothing read the live deployment. ${reported}`,
+    '',
+    'Look at the live deployment for this change, and reopen this issue if it is not there. If your live deployment can report the commit it serves, declaring `environments.live.commitUrl` (with `commitPath`), or a `verify` on the live deploy binding, makes the releases after that verified.',
     '',
     `\`${unverifiedMarker(runId)}\``,
   ].join('\n');
