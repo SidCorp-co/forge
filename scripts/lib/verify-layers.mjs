@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { lstatSync, readFileSync, readlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { CONFIG_PATH, parseConfig } from './verify-window/config.mjs';
 import { judgeEligibility, parseDiff } from './verify-window/eligibility.mjs';
@@ -62,8 +62,16 @@ export function entryEligibility(root, base) {
   }
   const files = parseDiff(diff);
   for (const path of untracked.split('\0').filter(Boolean)) {
-    const lines = readFileSync(join(root, path), 'utf8').split('\n');
-    files.push({ path, added: lines.map((text, i) => ({ line: i + 1, text })) });
+    const abs = join(root, path);
+    let text;
+    try {
+      text = lstatSync(abs).isSymbolicLink() ? readlinkSync(abs) : readFileSync(abs, 'utf8');
+    } catch (err) {
+      return {
+        refusal: `the untracked ${path} could not be read (${err.code ?? err.message}), so this change's eligibility cannot be judged`,
+      };
+    }
+    files.push({ path, added: text.split('\n').map((t, i) => ({ line: i + 1, text: t })) });
   }
   const surfaces = judgeEligibility({ issue: 'this change', files }, read.config).map(
     (r) => r.message,

@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -116,6 +116,14 @@ describe('entryEligibility', () => {
         'this change touches runner/main.rs, which `runner/**` declares ineligible: runs on three platforms',
       ],
     });
+  });
+
+  it('reads an untracked symlink as the path it names, and never throws on one to a directory', () => {
+    const { dir, base } = repo('untracked-link', {});
+    mkdirSync(join(dir, 'elsewhere'));
+    put(dir, { '.gitignore': 'elsewhere/\n' });
+    symlinkSync(join(dir, 'elsewhere'), join(dir, 'src/linked'));
+    expect(entryEligibility(dir, base)).toEqual({ eligible: true });
   });
 
   it('reads an untracked file as added, so a new file cannot slip past the line rules', () => {
