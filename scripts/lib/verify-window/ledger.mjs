@@ -32,7 +32,19 @@ export function readManifest(raw) {
       return { refusal: `${m.issue} is listed twice; a member enters a window once` };
     seen.add(m.issue);
   }
-  return { manifest: { isolated: [], ...raw } };
+  const isolated = raw.isolated ?? [];
+  if (!Array.isArray(isolated)) {
+    return {
+      refusal: '`isolated` must be a list of isolations, each an issue, because, kind and at',
+    };
+  }
+  for (const [i, x] of isolated.entries()) {
+    for (const k of ['issue', 'because', 'kind', 'at']) {
+      if (typeof x?.[k] !== 'string' || x[k] === '')
+        return { refusal: `isolated[${i}] carries no \`${k}\`` };
+    }
+  }
+  return { manifest: { ...raw, isolated } };
 }
 
 function cell(v) {

@@ -29,7 +29,7 @@ export function retag(tag, idx) {
   return /^\d+_/.test(tag) ? tag.replace(/^\d+_/, `${pad(idx)}_`) : tag;
 }
 
-/** Every renumbered tag in `text` replaced in one pass, longest first, so none is moved twice. */
+/** Every renumbered tag standing whole in `text` replaced in one pass, so none is moved twice. */
 export function rewriteReferences(text, moves) {
   const to = new Map(
     moves.filter((m) => m.from.tag !== m.to.tag).map((m) => [m.from.tag, m.to.tag]),
@@ -38,7 +38,8 @@ export function rewriteReferences(text, moves) {
   const alternatives = [...to.keys()]
     .sort((a, b) => b.length - a.length)
     .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-  return text.replace(new RegExp(alternatives.join('|'), 'g'), (t) => to.get(t));
+  const whole = new RegExp(`(?<![A-Za-z0-9_])(?:${alternatives.join('|')})(?![A-Za-z0-9_-])`, 'g');
+  return text.replace(whole, (t) => to.get(t));
 }
 
 export function snapshotFile(dir, idx) {

@@ -17,6 +17,14 @@ describe('readManifest', () => {
       /full 40-character commit/,
     ],
     [{ window: 'w1', base: 'main', members: [member, member] }, /ISS-1 is listed twice/],
+    [
+      { window: 'w1', base: 'main', members: [member], isolated: {} },
+      /`isolated` must be a list of isolations/,
+    ],
+    [
+      { window: 'w1', base: 'main', members: [member], isolated: [{ issue: 'ISS-1' }] },
+      /isolated\[0\] carries no `because`/,
+    ],
   ])('refuses %j by name', (raw, want) => {
     expect(readManifest(raw).refusal).toMatch(want);
   });

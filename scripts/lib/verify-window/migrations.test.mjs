@@ -61,6 +61,13 @@ describe('rewriteReferences', () => {
     );
   });
 
+  it('moves a tag only where it stands whole, leaving a longer tag it prefixes alone', () => {
+    const moves = [{ from: { tag: '0002_add' }, to: { tag: '0005_add' } }];
+    expect(rewriteReferences("'0002_add.sql', 0002_add_column, db/0002_add", moves)).toBe(
+      "'0005_add.sql', 0002_add_column, db/0005_add",
+    );
+  });
+
   it('moves the longer of two tags one prefixes as itself', () => {
     const moves = [
       { from: { tag: '0002_add' }, to: { tag: '0005_add' } },
