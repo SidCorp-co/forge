@@ -323,6 +323,16 @@ export interface IntegrationAdapterMethods<
     config: Record<string, unknown>;
   }): Promise<Record<string, unknown>>;
   healthcheck(ctx: AdapterContext<TConfig, TSecrets>): Promise<HealthCheckResult>;
+  /**
+   * The commit one deployment this provider ran reports having built, read off its own record of
+   * that deployment; null where the record names none. Absent on a provider whose deployments name
+   * no commit, which is how the release gate learns it cannot read what such a project serves.
+   */
+  deployedCommit?(
+    ctx: AdapterContext<TConfig, TSecrets>,
+    deploymentId: string,
+    timeoutMs: number,
+  ): Promise<string | null>;
   dispatchOutbound?(
     ctx: AdapterContext<TConfig, TSecrets>,
     input: OutboundDispatchInput,

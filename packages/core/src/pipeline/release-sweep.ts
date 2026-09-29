@@ -33,6 +33,7 @@ import {
   queuedBehindHold,
   type ReleaseHold,
   refusalHold,
+  runtimeUnroutedHold,
   targetUndeclaredHold,
   writeReleaseHolds,
 } from './release-hold.js';
@@ -201,6 +202,7 @@ interface HoldWrite {
   authorId: string | null;
   now: Date;
   result: AutomaticReleaseSweepResult;
+  commentOn?: ReadonlySet<string>;
 }
 
 async function hold(write: HoldWrite): Promise<void> {
@@ -212,6 +214,33 @@ async function hold(write: HoldWrite): Promise<void> {
       'release-sweep: the reason these issues are held is written on each of them',
     );
   }
+}
+
+/**
+ * Each held row's criteria hold — or, where nothing can read what the project serves, the one
+ * project-level reason, commented on the oldest held row alone (ISS-1346): fifty comments telling
+ * a person the same thing about the project is fifty debts where there is one.
+ */
+async function holdOnCriteria(
+  write: Omit<HoldWrite, 'holdFor'>,
+  waiting: readonly string[],
+  heldById: ReadonlyMap<string, IssueCriteriaReport>,
+): Promise<void> {
+  const serving = heldById.values().next().value?.serving;
+  if (serving?.kind !== 'undeclared') {
+    await hold({
+      ...write,
+      holdFor: (id) => criteriaHold(heldById.get(id) as IssueCriteriaReport),
+    });
+    return;
+  }
+  const unrouted = runtimeUnroutedHold(serving.missing);
+  const oldest = waiting.find((id) => heldById.has(id));
+  await hold({
+    ...write,
+    holdFor: () => unrouted,
+    commentOn: new Set(oldest ? [oldest] : []),
+  });
 }
 
 /** The gate, or the hold every waiting row gets because there is none to read. */
@@ -291,11 +320,7 @@ async function sweepProject(
   result.issuesExcluded += held.length;
   if (held.length > 0) {
     reportHeldBack(projectId, held);
-    await hold({
-      ...base,
-      issueIds: held.map((r) => r.issueId),
-      holdFor: (id) => criteriaHold(heldById.get(id) as IssueCriteriaReport),
-    });
+    await holdOnCriteria({ ...base, issueIds: held.map((r) => r.issueId) }, waiting, heldById);
   }
 
   if (eligible.length === 0) {

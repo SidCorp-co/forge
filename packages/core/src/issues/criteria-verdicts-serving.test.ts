@@ -35,7 +35,11 @@ const { issuesWithUnearnedCriteria, unearnedCriteriaReports } = await import(
 
 const SOURCE = 'dce6f354c727baa81c681f144cbadf30050eabfc';
 const READ_AT = '2026-09-26T23:55:00.000Z';
-const UNDECLARED: ServingReading = { kind: 'undeclared' };
+const UNDECLARED: ServingReading = {
+  kind: 'undeclared',
+  missing:
+    'this project has no active deploy binding, so Forge makes no deployment it could read a commit from',
+};
 
 function verdictBlock(criterion: number, verdict: string, runtime: string): string {
   return [

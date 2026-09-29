@@ -180,6 +180,18 @@ describe('runCoolifyRollback', () => {
       commit: 'sha-a',
     });
     expect(out).toMatchObject({ performed: true, deploymentUuid: 'dep-9' });
+    // The release gate joins a finished deployment to this row by target id and resource (ISS-1346).
+    expect(recordDelivery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        direction: 'outbound',
+        eventName: 'deploy.rollback.requested',
+        payload: expect.objectContaining({ targetId: expect.any(String), resourceUuid: 'app-1' }),
+      }),
+    );
+    expect(updateDelivery).toHaveBeenCalledWith(
+      'delivery-1',
+      expect.objectContaining({ response: expect.objectContaining({ deployment_uuid: 'dep-9' }) }),
+    );
     expect(enqueueCoolifyConfirm).toHaveBeenCalledWith(
       expect.objectContaining({ deploymentUuid: 'dep-9', runId: null }),
       { startAfterSeconds: 0 },

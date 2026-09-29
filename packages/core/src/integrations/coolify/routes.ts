@@ -29,6 +29,7 @@ import {
   notFound,
 } from '../route-helpers.js';
 import { buildContextFromBinding, findBindingWithConnectionById } from '../store.js';
+import { CoolifyApiError, describeCoolifyForbidden } from './client.js';
 import {
   CoolifyCommandError,
   coolifyDeliveryStatus,
@@ -76,6 +77,14 @@ const applicationsBodySchema = z.union([
 const asHttp = (err: unknown): never => {
   if (err instanceof CoolifyCommandError) {
     throw new HTTPException(400, { message: err.message, cause: { code: 'BAD_REQUEST' } });
+  }
+  // Coolify's own answer, named: unmapped it reached the caller as a bare INTERNAL_ERROR (ISS-1346).
+  if (err instanceof CoolifyApiError) {
+    const said =
+      err.status === 403
+        ? describeCoolifyForbidden(err)
+        : `Coolify answered HTTP ${err.status} to ${err.route ?? 'the request Forge made'}`;
+    throw new HTTPException(502, { message: said, cause: { code: 'COOLIFY_API_ERROR' } });
   }
   throw err;
 };

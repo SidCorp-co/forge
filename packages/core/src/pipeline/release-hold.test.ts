@@ -8,6 +8,7 @@ import {
   readReleaseHold,
   refusalHold,
   releaseHoldComment,
+  runtimeUnroutedHold,
   sameReleaseHold,
   withoutAges,
   withoutReadingTimes,
@@ -82,11 +83,13 @@ describe('the hold a row carries (ISS-1215)', () => {
     expect(reason).not.toContain('records as serving it');
   });
 
-  it('says a project declaring no way to ask so, and names what to declare', () => {
-    const reason = criteriaHold({ ...REPORT, serving: { kind: 'undeclared' } }).reason;
-    expect(reason).toContain('declares no way to ask a host what it is serving');
+  it('says what is missing where nothing can be read, and names the two routes and no commitUrl', () => {
+    const missing = 'this project has no active deploy binding';
+    const reason = criteriaHold({ ...REPORT, serving: { kind: 'undeclared', missing } }).reason;
+    expect(reason).toContain(`nothing here can read what this project is serving: ${missing}`);
+    expect(reason).toContain('Coolify deploy binding');
     expect(reason).toContain('verify.probes');
-    expect(reason).toContain('environments.live.commitUrl');
+    expect(reason).not.toContain('commitUrl');
     expect(reason).not.toContain(SERVING);
   });
 
@@ -118,7 +121,7 @@ describe('the hold a row carries (ISS-1215)', () => {
     }).reason;
     expect(reason).toContain(SERVING);
     expect(reason).toContain(other);
-    expect(reason).toContain('a rollout that has not finished');
+    expect(reason).toContain('more than one commit is running');
   });
 
   it('reads back what was stored, and refuses a shape it cannot read', () => {
@@ -236,5 +239,44 @@ describe('a standing refusal is one reason however long it stands (ISS-1215)', (
     expect(withoutAges('No runner is online. Pair a box.')).toBe(
       'No runner is online. Pair a box.',
     );
+  });
+});
+
+/** ISS-1346 — where nothing can read what a project serves, the hold is the project's. */
+describe('the hold a project with no runtime route carries', () => {
+  const missing = 'its deploy bindings go through epodsystem, and none of them reports the commit';
+
+  it('names the missing piece and both routes, and owes a person', () => {
+    const hold = runtimeUnroutedHold(missing);
+    expect(hold.code).toBe('RELEASE_RUNTIME_UNROUTED');
+    expect(hold.owes).toBe('human');
+    expect(hold.reason).toContain(missing);
+    expect(hold.reason).toContain('Coolify deploy binding');
+    expect(hold.reason).toContain('verify.probes');
+  });
+
+  it("says it is the project's to answer, and where its comment went", () => {
+    const reason = runtimeUnroutedHold(missing).reason;
+    expect(reason).toContain("the project's to answer and not this issue's");
+    expect(reason).toContain('oldest of them alone');
+  });
+});
+
+describe('no hold sentence names the retired commit endpoint (ISS-1346)', () => {
+  const readings: ServingReading[] = [
+    live(),
+    { kind: 'undeclared', missing: 'this project has no active deploy binding' },
+    { kind: 'unreadable', why: 'down', hosts: [HOST], readAt: READ_AT },
+    { kind: 'unreadable', why: 'refused', hosts: [], readAt: READ_AT },
+  ];
+
+  it('the criteria hold carries no commitUrl, whichever reading it was written from', () => {
+    for (const serving of readings) {
+      expect(criteriaHold({ ...REPORT, serving }).reason).not.toMatch(/commitUrl|commit endpoint/);
+    }
+  });
+
+  it('the unrouted hold carries no commitUrl', () => {
+    expect(runtimeUnroutedHold('x').reason).not.toMatch(/commitUrl|commit endpoint/);
   });
 });
