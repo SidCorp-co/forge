@@ -1,0 +1,158 @@
+//! Whether a master pane stands on the skill the running daemon ships.
+//!
+//! The daemon writes `assets/forge-master-skill.md` into a checkout's
+//! `.claude/skills/forge-master/SKILL.md` byte for byte, and only when it
+//! places a pane (`daemon/master.rs:install_skill`). A pane it adopts after a
+//! restart onto a newer build keeps the copy it was placed with — measured
+//! 2026-09-30, the forge-dev pane on a 12144-byte copy under a daemon whose
+//! asset is 9134 bytes. The asset is an `include_str!`, so it sits verbatim in
+//! the daemon's executable: the installed file is that build's skill exactly
+//! when its bytes occur there.
+
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+use super::source::{mtime_ms, Read, Unreadable};
+
+pub const RELATIVE: &str = ".claude/skills/forge-master/SKILL.md";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Skill {
+    /// No file at the path, so no master has been placed from this checkout.
+    Absent {
+        path: PathBuf,
+    },
+    Read {
+        path: PathBuf,
+        bytes: usize,
+        written_ms: Option<i64>,
+        /// Whether the bytes are the daemon binary's asset. `Err` where the
+        /// daemon's executable could not be read, which says nothing either way.
+        matches: Read<bool>,
+    },
+    Unreadable(Unreadable),
+}
+
+pub fn read(repo: &Path, daemon_exe: &Read<Arc<Vec<u8>>>) -> Skill {
+    let path = repo.join(RELATIVE);
+    let installed = match std::fs::read(&path) {
+        Ok(b) => b,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Skill::Absent { path },
+        Err(e) => return Skill::Unreadable(Unreadable::new(path.display().to_string(), e)),
+    };
+    let written_ms = std::fs::metadata(&path).ok().as_ref().and_then(mtime_ms);
+    let matches = if installed.is_empty() {
+        Ok(false)
+    } else {
+        daemon_exe
+            .as_ref()
+            .map(|exe| contains(exe, &installed))
+            .map_err(Clone::clone)
+    };
+    Skill::Read {
+        path,
+        bytes: installed.len(),
+        written_ms,
+        matches,
+    }
+}
+
+/// Whether `needle` occurs in `hay`, anchored on its first bytes so the common
+/// case costs one pass of a byte comparison.
+pub fn contains(hay: &[u8], needle: &[u8]) -> bool {
+    if needle.len() > hay.len() {
+        return false;
+    }
+    let head = &needle[..needle.len().min(32)];
+    let last_start = hay.len() - needle.len();
+    let mut from = 0;
+    while from <= last_start {
+        let Some(at) = hay[from..=last_start]
+            .iter()
+            .position(|b| *b == head[0])
+            .map(|i| i + from)
+        else {
+            return false;
+        };
+        if hay[at..].starts_with(head) && hay[at..].starts_with(needle) {
+            return true;
+        }
+        from = at + 1;
+    }
+    false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use forge_runner_core::test_scratch::Scratch;
+
+    const ASSET: &str = include_str!("../../../../forge-runner-core/assets/forge-master-skill.md");
+
+    fn exe_holding(asset: &str) -> Read<Arc<Vec<u8>>> {
+        let mut bytes = b"\x7fELF padding padding ---\n".to_vec();
+        bytes.extend_from_slice(asset.as_bytes());
+        bytes.extend_from_slice(b"\0more rodata");
+        Ok(Arc::new(bytes))
+    }
+
+    fn install(repo: &Path, text: &str) {
+        let p = repo.join(RELATIVE);
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(p, text).unwrap();
+    }
+
+    /// Criterion 9, both answers.
+    #[test]
+    fn the_installed_skill_is_judged_against_the_daemon_binary() {
+        let s = Scratch::new("top-skill");
+        install(s.path(), ASSET);
+        let Skill::Read { matches, bytes, .. } = read(s.path(), &exe_holding(ASSET)) else {
+            panic!()
+        };
+        assert_eq!(matches, Ok(true));
+        assert_eq!(bytes, ASSET.len());
+
+        let older = ASSET.replace("forge-master", "forge-master-before");
+        install(s.path(), &older);
+        let Skill::Read { matches, .. } = read(s.path(), &exe_holding(ASSET)) else {
+            panic!()
+        };
+        assert_eq!(
+            matches,
+            Ok(false),
+            "a copy the daemon does not carry is drift"
+        );
+    }
+
+    /// Criterion 22. An unreadable daemon file is carried as unreadable, not as
+    /// a match or as drift.
+    #[test]
+    fn a_daemon_file_that_cannot_be_read_judges_nothing() {
+        let s = Scratch::new("top-skill-noexe");
+        install(s.path(), ASSET);
+        let exe: Read<Arc<Vec<u8>>> = Err(Unreadable::new("/proc/9/exe", "permission denied"));
+        let Skill::Read { matches, .. } = read(s.path(), &exe) else {
+            panic!()
+        };
+        assert!(matches.is_err());
+    }
+
+    #[test]
+    fn a_checkout_no_master_was_placed_from_has_no_skill_file() {
+        let s = Scratch::new("top-skill-absent");
+        assert!(matches!(
+            read(s.path(), &exe_holding(ASSET)),
+            Skill::Absent { .. }
+        ));
+    }
+
+    #[test]
+    fn containment_finds_a_needle_at_every_position_and_nothing_else() {
+        assert!(contains(b"abcdef", b"abc"));
+        assert!(contains(b"abcdef", b"def"));
+        assert!(contains(b"aaab", b"aab"));
+        assert!(!contains(b"abcdef", b"abd"));
+        assert!(!contains(b"ab", b"abc"));
+    }
+}

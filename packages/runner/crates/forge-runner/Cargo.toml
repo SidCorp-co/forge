@@ -21,6 +21,8 @@ tracing-subscriber = { workspace = true }
 which = { workspace = true }
 dirs-next = { workspace = true }
 webbrowser = { workspace = true }
+# ISS-1341 — `top` reads the ledger opened read-only, which `Ledger::open` cannot do.
+rusqlite = { workspace = true }
 
 [dev-dependencies]
 forge-runner-core = { path = "../forge-runner-core", features = ["test-support"] }
