@@ -1,4 +1,4 @@
-/** A release blocker's code spans are markdown, authored once for API callers and this screen.
+/** A release blocker's code spans are markdown, authored once for API callers and every screen showing one.
  *  `fg-code` is the design system's span; `bg-subtle` named a FOREGROUND token (ISS-1127). */
 
 import type { ReactNode } from "react";

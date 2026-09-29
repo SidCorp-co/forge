@@ -320,7 +320,8 @@ export function useReleaseRoster(projectId: string | undefined) {
   });
 }
 
-export function useBatchRelease(projectId: string) {
+/** `showsRefusal` answers, when a refusal lands, whether the caller is showing it itself. */
+export function useBatchRelease(projectId: string, { showsRefusal }: { showsRefusal?: () => boolean } = {}) {
   const qc = useQueryClient();
   const { toast } = useToast();
   return useMutation<CreateReleaseBatchResult, unknown, { issueIds: string[] }>({
@@ -341,6 +342,7 @@ export function useBatchRelease(projectId: string) {
       });
     },
     onError: (err) => {
+      if (showsRefusal?.()) return;
       toast({
         title: "Batch release failed",
         description: formatApiError(err),

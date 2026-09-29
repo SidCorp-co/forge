@@ -53,14 +53,28 @@ function ReadAt({ at, refreshing }: { at: number; refreshing: boolean }) {
 	);
 }
 
+/** Only a run still open has a close ahead of it, and only a completed one has had it. */
+function unverifiedSentence(runStatus: string): string {
+	const probe = "This project declares no verification probe, so nothing reads production.";
+	if (runStatus === "running" || runStatus === "paused") {
+		return `${probe} The release will close unverified, and each issue it closes will say so.`;
+	}
+	if (runStatus === "completed") {
+		return `${probe} The release closed unverified, and each issue it closed says so.`;
+	}
+	return probe;
+}
+
 function LiveReading({
 	live,
 	verification,
+	runStatus,
 	readAt,
 	refreshing,
 }: {
 	live: ReleaseLiveState | null;
 	verification: ReleaseRunState["verification"];
+	runStatus: string;
 	readAt: number;
 	refreshing: boolean;
 }) {
@@ -68,7 +82,7 @@ function LiveReading({
 		return (
 			<p className="text-sm text-muted" data-testid="live-none">
 				{verification === "unverified"
-					? "This project declares no verification probe, so nothing reads production. The release will close unverified, and each issue it closes will say so."
+					? unverifiedSentence(runStatus)
 					: "Forge has no verification probe it can read for this project, so it has nowhere to look."}
 			</p>
 		);
@@ -240,6 +254,7 @@ export function ReleaseRunScreen({ projectId, runId }: ReleaseRunScreenProps) {
 						<LiveReading
 							live={data.live}
 							verification={data.verification}
+							runStatus={data.runStatus}
 							readAt={dataUpdatedAt}
 							refreshing={isFetching}
 						/>

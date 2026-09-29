@@ -16,16 +16,38 @@ changed.
 - So a toast raised while a drawer is open is painted under the blurred scrim for its four seconds.
   Where the drawer also stays unchanged on failure, the press reads as accepted.
 
-Derived from the CSS, not observed in a browser: jsdom has no stacking or blur, so no unit test here
-can go red on it. Proof needs a rendered page.
+Observed in a browser by ISS-1322's judge at `ea73cf8`: after a refused batch release the lane held
+`Batch release failed` and `elementFromPoint` at the toast landed inside the drawer's overlay. jsdom
+has no stacking or blur, so no unit test here can go red on it.
 
-Drawers counted at `55f99a1e` that raise an `error` toast or carry an `onError` while a `SlideOver`
-may be open, and so may be hiding a failure the same way (a count of sites, not a count of confirmed
-defects — each one closes itself on failure or not):
-`features/orgs/components/org-members-card.tsx`, `features/settings/components/tokens-tab.tsx`,
-`features/pipeline/components/run-detail.tsx`, `features/session/components/session-screen.tsx`,
-`features/resources/components/private-keys-screen.tsx`, `features/issues/components/new-issue-dialog.tsx`,
-`features/integrations/components/connection-edit-drawer.tsx`.
+Walked in code at `7148be6`, for a failure raised only as a toast while a drawer stays open with
+nothing inline (each one read in the source, none on screen):
+
+- `features/orgs/components/org-members-card.tsx` — the Rename drawer's `submitRename` toasts
+  `Request failed` and stays open.
+- `features/settings/components/tokens-tab.tsx` — the Token created drawer's `copyPlaintext` toasts
+  `Copy failed`, and `Copied to clipboard`, both beneath it. Token creation is not in a drawer.
+- `features/pipeline/components/run-detail.tsx` — Pause, Resume and Stop fail through
+  `pipeline/hooks.ts:useRunControl`'s `Run control failed` toast; `copyLink` toasts its own failure.
+- `features/session/components/session-screen.tsx` — rendered inside
+  `sessions/components/session-reply-panel.tsx`'s drawer (`embedded`), every mutation it runs
+  fails through `useToastError` (send, regenerate, fork, edit, cancel, rerun).
+- `features/resources/components/private-keys-screen.tsx` — the Test drawer's run fails through
+  `useTestSshKey`'s `Couldn't test connection` toast and shows no result.
+- `features/integrations/components/connection-edit-drawer.tsx` — `saveKey`, the rename, Activate,
+  Deactivate and Remove fail through `useUpdateConnection` and `useRemoveConnection`'s toasts.
+
+Not one: `features/issues/components/new-issue-dialog.tsx` puts a failure in its inline
+`errors.form` banner and closes before it toasts. `features/issues/components/batch-release-dialog.tsx`
+now says its refusal inline and raises no toast while open (ISS-1322).
+
+Not walked: every other file rendering a `SlideOver` — `conversations-screen.tsx`,
+`skill-studio-drawer.tsx`, `add-agent-dialog.tsx`, `conversation-members.tsx`,
+`conversation-sidebar.tsx`, `add-person-dialog.tsx`, `new-project-dialog.tsx`,
+`issue-quick-actions.tsx`, `transition-reason-dialog.tsx`, `issues-list-view.tsx`,
+`module-picker.tsx`, `context-rail.tsx`, `merge-marker-control.tsx`, `device-detail.tsx`,
+`project-runners-screen.tsx`, `connection-detail-drawer.tsx`, `integrations-screen.tsx`,
+`graph-tab.tsx`, `private-key-create-slideover.tsx`, and the mobile chat drawer in `app/(workspace)/layout.tsx`.
 
 ## The choice nobody has made
 
@@ -40,6 +62,6 @@ defects — each one closes itself on failure or not):
 
 | Choice | Cost |
 |---|---|
-| 1, inline per drawer | seven drawers to audit, and every new drawer has to remember it; nothing enforces it |
+| 1, inline per drawer | six drawers found and twenty not walked, and every new drawer has to remember it; nothing enforces it |
 | 2, lane above the scrim | a toast covers the bottom of a drawer, including a chat composer's input, for four seconds |
 | leaving it | a failure raised under any open drawer stays invisible, and the next report looks like ISS-1322's |
