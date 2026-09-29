@@ -552,6 +552,48 @@ describe('a member another member already carries', () => {
   });
 });
 
+describe('a member carrying one the window isolated', () => {
+  it('is isolated with it, so the isolated change does not come back in', () => {
+    const a = branch('ISS-16-a', { 'src/a16.txt': 'a\n' });
+    const b = branch('ISS-17-b', { 'src/b17.txt': 'b\n' }, 'ISS-16-a');
+    const c = clone('dependent-window');
+    const w = windowFiles(
+      'w-dependent',
+      [
+        ['ISS-16', 'ISS-16-a', a],
+        ['ISS-17', 'ISS-17-b', b],
+        ['ISS-4', 'ISS-4-after', heads.m4],
+      ],
+      green(a, b, heads.m4),
+    );
+    expect(
+      run(c, 'assemble', '--window', w.manifest, '--checks', w.checksFile, '--tree', w.tree).status,
+    ).toBe(0);
+    const r = run(
+      c,
+      'isolate',
+      '--window',
+      w.manifest,
+      '--checks',
+      w.checksFile,
+      '--tree',
+      w.tree,
+      '--member',
+      'ISS-16',
+      '--because',
+      'red at the gate',
+    );
+    expect(r.status, r.stderr).toBe(1);
+    const ledger = JSON.parse(readFileSync(w.ledger, 'utf8'));
+    expect(ledger.members[1].isolated.because).toBe(
+      `ISS-17 carries ISS-16's head ${a}, which is not in this window; merging it would bring that change back in`,
+    );
+    expect(ledger.members[2].landing).toMatch(/^[0-9a-f]{40}$/);
+    expect(existsSync(join(w.tree, 'src/a16.txt'))).toBe(false);
+    git(seed, 'push', '-q', 'origin', '--delete', 'ISS-16-a', 'ISS-17-b');
+  });
+});
+
 describe('a journal entry a member edits rather than adds', () => {
   it('isolates the member instead of dropping its edit', () => {
     const c = clone('edit-window');

@@ -34,8 +34,17 @@ function isolate(t, member, because) {
   return { ...member, landing: null, isolated: { because, kind: 'assembly' } };
 }
 
-/** Merge one member into the combination; its ledger row, landed or isolated. */
-function enter({ t, config, member, open, landed, window }) {
+/** Merge one member into the combination; its ledger row, landed or isolated. `outside` are the
+ * members not in the combination, whose commits a member carrying them would bring back in. */
+function enter({ t, config, member, open, landed, outside, window }) {
+  const needs = outside.find((m) => t.ok(['merge-base', '--is-ancestor', m.head, member.head]));
+  if (needs) {
+    return isolate(
+      t,
+      member,
+      `${member.issue} carries ${needs.issue}'s head ${needs.head}, which is not in this window; merging it would bring that change back in`,
+    );
+  }
   if (t.ok(['merge-base', '--is-ancestor', member.head, 'HEAD'])) {
     const carrier = landed.find((m) =>
       t.ok(['merge-base', '--is-ancestor', member.head, m.landing]),
@@ -60,9 +69,9 @@ function enter({ t, config, member, open, landed, window }) {
     (t.run(['diff', '--name-only', '--diff-filter=U']) ?? '').split('\n').filter(Boolean);
   const unions = resolveUnions({ t, unmerged: unmergedNow(), union: config.union });
   if (unions.refusal) return isolate(t, member, unions.refusal);
-  const left = unmergedNow();
-  if (left.length > 0) {
-    const named = left.map((p) => {
+  const conflicted = unmergedNow();
+  if (conflicted.length > 0) {
+    const named = conflicted.map((p) => {
       const owners = earlierOwners(t, landed, p).map((o) => o.issue);
       return owners.length > 0
         ? `${p} (changed earlier in this window by ${owners.join(', ')})`
@@ -187,10 +196,17 @@ export function assemble({ repoDir, manifest, treeDir, readCheck, replay }) {
       continue;
     }
     const landed = rows.filter((r) => r.landing);
+    const outside = manifest.members.filter(
+      (m, k) =>
+        m.issue !== member.issue &&
+        (admissions[k].refusals.length > 0 ||
+          prior.has(m.issue) ||
+          rows.some((r) => r.issue === m.issue && !r.landing)),
+    );
     rows.push({
       admission: 'admitted',
       refusals: [],
-      ...enter({ t, config, member, open, landed, window: manifest.window }),
+      ...enter({ t, config, member, open, landed, outside, window: manifest.window }),
     });
   }
   const head = t.must(['rev-parse', 'HEAD']).trim();
