@@ -68,7 +68,9 @@ pub trait Panes: Send + Sync {
         prompt: &str,
         env: &[(String, String)],
     ) -> Result<()>;
-    async fn alive(&self, name: &str) -> bool;
+    /// Whether tmux answered that it holds no pane by this name. A question it
+    /// could not answer is not an ending, so it is not `gone` (ISS-1312).
+    async fn gone(&self, name: &str) -> bool;
     async fn kill(&self, name: &str) -> Result<()>;
     /// Every job pane on this box right now, by name.
     async fn names(&self) -> Vec<String>;
@@ -692,7 +694,7 @@ pub async fn supervise(
 ) {
     let now = now_ms();
     for live in registry.live() {
-        if !panes.alive(&live.pane).await {
+        if panes.gone(&live.pane).await {
             let reason = format!(
                 "the job's pane `{}` ended without reporting an outcome",
                 live.pane
@@ -1040,8 +1042,9 @@ impl Panes for TmuxPanes {
         terminal::brief_new_pane(name, prompt).await
     }
 
-    async fn alive(&self, name: &str) -> bool {
-        terminal::alive(name).await
+    async fn gone(&self, name: &str) -> bool {
+        crate::daemon::recovery_ports::pane_presence(name).await
+            == crate::daemon::recovery::MasterPresence::Gone
     }
 
     async fn kill(&self, name: &str) -> Result<()> {
@@ -1187,6 +1190,8 @@ mod tests {
         rec: Arc<Recorder>,
         open_fails: bool,
         alive: Mutex<Vec<String>>,
+        /// tmux could not be asked about any pane.
+        unanswered: bool,
         names: Vec<String>,
         kill_errs: Mutex<usize>,
     }
@@ -1213,8 +1218,8 @@ mod tests {
             self.alive.lock().unwrap().push(name.to_string());
             Ok(())
         }
-        async fn alive(&self, name: &str) -> bool {
-            self.alive.lock().unwrap().iter().any(|n| n == name)
+        async fn gone(&self, name: &str) -> bool {
+            !self.unanswered && !self.alive.lock().unwrap().iter().any(|n| n == name)
         }
         async fn kill(&self, name: &str) -> Result<()> {
             let mut left = self.kill_errs.lock().unwrap();
@@ -1337,6 +1342,7 @@ mod tests {
                 rec: rec.clone(),
                 open_fails: false,
                 alive: Mutex::new(Vec::new()),
+                unanswered: false,
                 names: Vec::new(),
                 kill_errs: Mutex::new(0),
             },
@@ -1811,6 +1817,38 @@ mod tests {
         assert!(failed[0].1.contains("forge-job-j1"));
         assert_eq!(w.registry.count(), 0);
         assert!(w.rec.beats.lock().unwrap().is_empty());
+    }
+
+    /// ISS-1312: the job supervisor read an unaskable tmux as a pane that
+    /// ended, and told core the job failed on a question nobody answered.
+    #[tokio::test]
+    async fn a_pane_tmux_could_not_be_asked_about_is_not_failed_as_ended() {
+        let mut w = world(vec![], None, None);
+        w.panes.unanswered = true;
+        w.registry.note("j1", "forge-job-j1", Watch::Unhooked);
+
+        sup(&w).await;
+
+        assert!(
+            w.rec.failed.lock().unwrap().is_empty(),
+            "no failure is reported for a pane nobody could ask about"
+        );
+        assert_eq!(w.registry.count(), 1, "the job stays this box's");
+    }
+
+    /// The production port, over a tmux that cannot be run: not gone.
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn the_tmux_port_reads_a_tmux_nobody_could_ask_as_not_gone() {
+        let _serialised = terminal::testing::ONE_AT_A_TIME.lock().await;
+        let _env = crate::auth::cred_store::ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let _no_tmux = terminal::testing::UnaskableTmux::installed();
+        assert!(
+            !TmuxPanes.gone("forge-job-j1").await,
+            "a question tmux could not answer is not a pane that ended"
+        );
     }
 
     #[tokio::test]

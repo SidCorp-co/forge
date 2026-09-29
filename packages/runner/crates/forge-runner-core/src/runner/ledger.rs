@@ -216,6 +216,13 @@ pub const HOST_PANE_STARTED: &str = "pane-started";
 /// A run's host ended because recovery read its master's pane as gone.
 pub const HOST_PANE_GONE: &str = "pane-gone";
 
+/// `close_loop::CloseState::is_closed` over a row aliased `r`: the session is
+/// over, the checkout is back and every lease is back. Such a run holds
+/// nothing, whatever its incarnation reads, because the close loop sets these
+/// marks without ending the row (ISS-1312 criteria 41-44).
+const CLOSED_BY_ITS_MARKS: &str = "(r.session_terminal_at IS NOT NULL AND r.released_as IS NOT NULL
+      AND NOT EXISTS (SELECT 1 FROM run_issues m WHERE m.run_id = r.run_id AND m.lease_returned_at IS NULL))";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MasterRow {
     pub project_id: String,
@@ -856,10 +863,19 @@ impl Ledger {
             if let Some(holder) = Self::live_run_holding(&tx, key, &new.boot_id)? {
                 return Err(Error::Other(match Self::host_ended_by(&tx, &holder)? {
                     Some(by) => format!(
-                        "ledger: issue {key} is held by run {holder}, which is not running: its subagent ran inside a master pane that {} and ended with it. Its row stays open until recovery releases it, on the first recovery sweep after core calls that run's session over, or until the master its row names closes it",
+                        "ledger: issue {key} is held by run {holder}, which is not running: its subagent ran inside a master pane that {} and ended with it. {}",
                         match by.as_str() {
                             HOST_PANE_STARTED => "this box has since started again",
                             _ => "this box read as gone",
+                        },
+                        // Only the session the row names may close it, so the
+                        // refusal offers `run close` to that session alone: a
+                        // cold-started successor is refused its close as
+                        // another master's (ISS-1312 criteria 48 and 49).
+                        if Self::master_of(&tx, &holder)?.as_deref() == Some(new.master_session_id.as_str()) {
+                            format!("Close it with `forge-runner run close {holder}` to free the issue now; otherwise recovery releases it on the first recovery sweep after core calls that run's session over")
+                        } else {
+                            "Recovery releases it on the first recovery sweep after core calls that run's session over. It was declared under another master session, so nothing this master can do frees it sooner".to_string()
                         }
                     ),
                     None => format!("ledger: issue {key} already belongs to live run {holder}"),
@@ -910,10 +926,24 @@ impl Ledger {
         boot_id: &str,
     ) -> Result<Option<String>> {
         tx.query_row(
-            "SELECT r.run_id FROM runs r JOIN run_issues i ON i.run_id = r.run_id
-             WHERE i.issue_key = ?1 AND r.incarnation = 'live' AND r.boot_id = ?2
-             LIMIT 1",
+            &format!(
+                "SELECT r.run_id FROM runs r JOIN run_issues i ON i.run_id = r.run_id
+                  WHERE i.issue_key = ?1 AND r.incarnation = 'live' AND r.boot_id = ?2
+                    AND NOT {CLOSED_BY_ITS_MARKS}
+                  LIMIT 1"
+            ),
             params![issue_key, boot_id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(sql_err)
+    }
+
+    /// The master session `run_id`'s row answers to.
+    fn master_of(tx: &rusqlite::Transaction<'_>, run_id: &str) -> Result<Option<String>> {
+        tx.query_row(
+            "SELECT master_session_id FROM runs WHERE run_id = ?1",
+            params![run_id],
             |row| row.get::<_, String>(0),
         )
         .optional()
@@ -955,10 +985,10 @@ impl Ledger {
     ) -> Result<Option<String>> {
         let wanted = std::fs::canonicalize(path).ok();
         let mut stmt = tx
-            .prepare(
-                "SELECT run_id, worktree_path FROM runs
-                  WHERE incarnation = 'live' AND boot_id = ?1",
-            )
+            .prepare(&format!(
+                "SELECT r.run_id, r.worktree_path FROM runs r
+                  WHERE r.incarnation = 'live' AND r.boot_id = ?1 AND NOT {CLOSED_BY_ITS_MARKS}"
+            ))
             .map_err(sql_err)?;
         let rows = stmt
             .query_map(params![boot_id], |row| {
@@ -2342,10 +2372,113 @@ mod tests {
                 );
             }
             assert!(
+                !said.contains("run close") && !said.contains("closes it"),
+                "criterion 48: another session cannot close the run, so the refusal offers it no close ({by}): {said}"
+            );
+            assert!(
                 led.run("run-3").unwrap().is_none(),
                 "a refused declaration writes no row"
             );
+
+            let own = led
+                .create_run_group(NewRun {
+                    run_id: "run-4".into(),
+                    worktree_path: PathBuf::from("/w/four"),
+                    ..seed(&["ISS-1314"])
+                })
+                .unwrap_err()
+                .to_string();
+            for part in [
+                "not running",
+                "`forge-runner run close run-1`",
+                "first recovery sweep after core calls that run's session over",
+            ] {
+                assert!(
+                    own.contains(part),
+                    "criterion 49: the session the row names can close it, and is told so, missing `{part}` ({by}): {own}"
+                );
+            }
         }
+    }
+
+    /// ISS-1312 criteria 41-44: the close loop sets a run's three marks without
+    /// ending its row, and `live_run_holding` and `live_run_at_path` read the
+    /// incarnation alone, so a run holding nothing kept refusing a declaration
+    /// of its issues, and of its path, for the rest of the boot. 45 rows on the
+    /// box j5 judged had that shape.
+    #[test]
+    fn a_run_its_three_marks_closed_holds_neither_its_issues_nor_its_path() {
+        type Mark = (&'static str, fn(&Ledger));
+        let marks: [Mark; 3] = [
+            ("session over", |l| {
+                l.mark_session_terminal_observed("run-1").unwrap()
+            }),
+            ("checkout back", |l| {
+                l.mark_checkout_returned_observed("run-1", CheckoutReturn::Gone)
+                    .unwrap()
+            }),
+            ("leases back", |l| {
+                l.mark_lease_returned_observed("run-1", "ISS-1248").unwrap();
+                l.mark_lease_returned_observed("run-1", "ISS-1249").unwrap();
+            }),
+        ];
+        let over_issue = |run_id: &str| NewRun {
+            run_id: run_id.into(),
+            master_session_id: "master-2".into(),
+            worktree_path: PathBuf::from("/w/elsewhere"),
+            issue_keys: vec!["ISS-1249".into()],
+            ..seed(&[])
+        };
+        let at_path = |run_id: &str| NewRun {
+            run_id: run_id.into(),
+            master_session_id: "master-3".into(),
+            issue_keys: vec!["ISS-9".into()],
+            ..seed(&[])
+        };
+
+        for unset in 0..marks.len() {
+            let mut led = Ledger::open_in_memory().unwrap();
+            led.create_run_group(seed(&["ISS-1248", "ISS-1249"]))
+                .unwrap();
+            for (i, (_, set)) in marks.iter().enumerate() {
+                if i != unset {
+                    set(&led);
+                }
+            }
+            let name = marks[unset].0;
+            let issue = led
+                .create_run_group(over_issue("run-2"))
+                .unwrap_err()
+                .to_string();
+            assert!(
+                issue.contains("already belongs to live run run-1"),
+                "criterion 43: with `{name}` unset the run still holds its issues: {issue}"
+            );
+            let path = led
+                .create_run_group(at_path("run-3"))
+                .unwrap_err()
+                .to_string();
+            assert!(
+                path.contains("already held by live run run-1"),
+                "criterion 44: with `{name}` unset the run still holds its path: {path}"
+            );
+        }
+
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(seed(&["ISS-1248", "ISS-1249"]))
+            .unwrap();
+        for (_, set) in &marks {
+            set(&led);
+        }
+        assert_eq!(
+            led.run("run-1").unwrap().unwrap().incarnation,
+            Incarnation::Live,
+            "the plant: the close loop's marks leave the row reading live"
+        );
+        led.create_run_group(over_issue("run-2"))
+            .expect("criterion 41: a run holding nothing does not hold its issues");
+        led.create_run_group(at_path("run-3"))
+            .expect("criterion 42: a run holding nothing does not hold its path");
     }
 
     fn columns(led: &Ledger, table: &str) -> Vec<String> {

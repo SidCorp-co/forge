@@ -35,7 +35,7 @@ use crate::daemon::master_limit;
 use crate::daemon::pool_jobs::{self, JobPanes, Records};
 use crate::daemon::pool_reads;
 use crate::daemon::recovery;
-use crate::daemon::recovery_ports::{CoreBeat, CoreRunState, PaneMasters, SignalProbe};
+use crate::daemon::recovery_ports::{self, CoreBeat, CoreRunState, PaneMasters, SignalProbe};
 use crate::daemon::run_exit;
 use crate::daemon::run_record;
 use crate::daemon::session_tokens;
@@ -144,6 +144,10 @@ struct Registry {
     /// reads the map at face value again, which is the residual named in
     /// `docs/proposals/a-panes-control-capability-cannot-outlive-its-session-row.md`.
     unwithdrawn: HashMap<String, String>,
+    /// The projects whose master pane tmux could not be asked about on the last
+    /// sweep, so the account is given when the read first goes unanswered and
+    /// not on every sweep it stays that way.
+    unanswered: std::collections::HashSet<String>,
 }
 
 #[derive(Default, Clone, PartialEq, Eq)]
@@ -741,6 +745,17 @@ impl Masters {
             .unwithdrawn
             .get(project_id)
             .cloned()
+    }
+
+    /// Record whether this sweep's read of the project's pane went unanswered,
+    /// and answer whether that is a change from the last sweep's.
+    fn note_unanswered(&self, project_id: &str, unanswered: bool) -> bool {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        if unanswered {
+            reg.unanswered.insert(project_id.to_string())
+        } else {
+            reg.unanswered.remove(project_id)
+        }
     }
 
     fn note_capability(&self, project_id: &str, said: &'static str) -> bool {
@@ -3538,7 +3553,18 @@ async fn supervise(
         return;
     };
 
-    if !terminal::alive(&name).await {
+    // The reading recovery takes of the same pane (ISS-1312 criteria 45 and
+    // 46). `terminal::alive` folds a tmux nobody could ask into `false`, and
+    // closing on that ends a master that may be running and makes recovery
+    // read its runs as having no master at all.
+    let read = recovery_ports::pane_presence(&name).await;
+    let unanswered = read == recovery::MasterPresence::Unanswered;
+    if masters.note_unanswered(project_id, unanswered) && unanswered {
+        tracing::warn!(
+            "[master] {slug}: tmux could not be asked whether resident session {name} is there, so its core session is left open and it stays this project's master until tmux answers"
+        );
+    }
+    if read == recovery::MasterPresence::Gone {
         tracing::warn!("[master] {slug}: resident session {name} is gone — closing its row");
         end_master(
             client,
@@ -9034,6 +9060,267 @@ mod servers_refusal_walk_tests {
         assert!(
             drain.is_empty(),
             "criterion 16, through the sweep: {drain:?}"
+        );
+    }
+
+    /// ISS-1312 criterion 47: judge j5 planted `false` at `ensure_master`'s
+    /// `resumed_brief` call and every test stayed green while the pane was told
+    /// "incarnation: live" again. This one reads the brief the pane was typed,
+    /// through the sweep itself.
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_sweep_that_resumes_a_pane_tells_it_the_inherited_subagent_ended_with_the_one_before()
+    {
+        use crate::runner::ledger::{Ledger, NewRun};
+        let _serialised = terminal::testing::ONE_AT_A_TIME.lock().await;
+        let _env = crate::auth::cred_store::ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let iso = terminal::testing::IsolatedServer::new("sweepbrief");
+        if !terminal::available() {
+            terminal::testing::cannot_run(
+                "tmux is not installed here — the transport this rests on cannot run",
+            );
+            return;
+        }
+        if !iso.took() {
+            terminal::testing::cannot_run("this box does not resolve its tmux socket from the config dir, so the only server here is its own — not starting a pane on it");
+            return;
+        }
+        let Some(boot) = crate::runner::inflight::boot_identity() else {
+            terminal::testing::cannot_run(
+                "this box reads no boot identity, so no run is inherited by a pane placed on it",
+            );
+            return;
+        };
+        let home = crate::test_scratch::Scratch::new("sweepbrief-home");
+        let _home = ScopedVar::set("HOME", home.path());
+        let claude_home = crate::test_scratch::Scratch::new("sweepbrief-claude");
+        let _trust = ScopedVar::set("CLAUDE_CONFIG_DIR", claude_home.path());
+        let stub_dir = crate::test_scratch::Scratch::new("sweepbrief-stub");
+        let stub = stub_dir.join("claude");
+        let typed = home.join("typed.txt");
+        std::fs::write(
+            &stub,
+            format!(
+                "#!/bin/sh\n[ \"$1\" = --probe ] && exit 0\nexec cat > {}\n",
+                typed.display()
+            ),
+        )
+        .expect("the stub is written");
+        let mut perms = std::fs::metadata(&stub).expect("stub mode").permissions();
+        std::os::unix::fs::PermissionsExt::set_mode(&mut perms, 0o755);
+        std::fs::set_permissions(&stub, perms).expect("the stub is executable");
+        // The same guard the placement test above takes against a sibling
+        // thread still holding the stub's write descriptor.
+        let runs = (0..50).any(|_| {
+            let ok = std::process::Command::new(&stub)
+                .arg("--probe")
+                .status()
+                .is_ok_and(|s| s.success());
+            if !ok {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            ok
+        });
+        assert!(
+            runs,
+            "the stub never ran, so no pane could be started with it"
+        );
+        let _claude = crate::runner::process::testing::StubClaude::installed(&stub);
+        let repo = crate::test_scratch::Scratch::new("sweepbrief-repo");
+        let conv = "conv-sweep-resumed";
+        let transcript = conversation_transcript(repo.path(), conv).expect("a home to put it in");
+        std::fs::create_dir_all(transcript.parent().unwrap()).unwrap();
+        std::fs::write(&transcript, "{}\n").unwrap();
+        let map = crate::test_scratch::Scratch::new("sweepbrief-map").at("control-tokens.json");
+        let store = session_tokens::SessionTokens::at(map.to_path_buf());
+        let runners: &'static str = Box::leak(
+            format!(
+                r#"[{{"projectId":"proj-brief","runnerId":"r-1","slug":"sweepbrief","baseBranch":null,"repoPath":{},"branch":null,"status":"active"}}]"#,
+                serde_json::to_string(&repo.path().to_string_lossy()).unwrap()
+            )
+            .into_boxed_str(),
+        );
+        let routes: &'static [(&'static str, &'static str, &'static str)] = Box::leak(
+            vec![
+                ("/api/devices/me/runners", "200 OK", runners),
+                (
+                    "/api/devices/me/issues/admissible",
+                    "200 OK",
+                    r#"{"items":[{"issueId":"i-1","issueKey":"ISS-1","projectId":"proj-brief","status":"open"}]}"#,
+                ),
+                (
+                    REGISTER,
+                    "200 OK",
+                    r#"{"sessionId":"sess-after","name":"forge-master-sweepbrief","created":true}"#,
+                ),
+                (SERVERS, "200 OK", DECLARES),
+            ]
+            .into_boxed_slice(),
+        );
+        let core = fake_core::serve_routes(routes).await;
+        let mut ledger = Some(Ledger::open_in_memory().unwrap());
+        {
+            let led = ledger.as_mut().unwrap();
+            led.note_master(
+                "proj-brief",
+                "forge-master-sweepbrief",
+                Some(conv),
+                Some("sess-before"),
+                &boot,
+            )
+            .unwrap();
+            led.create_run_group(NewRun {
+                run_id: "run-old".into(),
+                project_id: "proj-brief".into(),
+                master_session_id: "sess-before".into(),
+                worktree_path: "/w/old".into(),
+                boot_id: boot.clone(),
+                issue_keys: vec!["ISS-1314".into()],
+            })
+            .unwrap();
+            assert!(led.bind_agent("run-old", "child-old").unwrap());
+        }
+        let masters = Arc::new(Masters::new());
+        let (_adopted_tx, adopted) = tokio::sync::watch::channel(true);
+        let mut said = None;
+
+        let _ = sweep(
+            &CoreClient::new(core, "device-token"),
+            &Config::default(),
+            &masters,
+            &agent_activity::Activities::new(),
+            &Arc::new(JobPanes::new()),
+            &crate::daemon::pool_jobs::NoRecords,
+            &adopted,
+            &mut ledger,
+            Some(&store),
+            &mut said,
+            &crate::daemon::drain::Drain::unrecorded(),
+        )
+        .await;
+
+        let block = |got: &str| {
+            got.split("\n- run `")
+                .find(|b| b.starts_with("run-old`"))
+                .and_then(|b| b.split("\n\n").next())
+                .map(str::to_string)
+        };
+        let mut got = String::new();
+        for _ in 0..100 {
+            got = std::fs::read_to_string(&typed).unwrap_or_default();
+            if block(&got).is_some_and(|b| b.contains("ended:")) {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        let pane = terminal::session_name(terminal::MASTER_PREFIX, "sweepbrief");
+        let _ = terminal::kill(&pane).await;
+        assert!(
+            got.contains("RESUMED"),
+            "the plant: the sweep resumed the pane on its conversation and typed it the resumed brief: {got:?}"
+        );
+        let block = block(&got).unwrap_or_else(|| panic!("the inherited run is listed: {got:?}"));
+        assert!(
+            block.contains(
+                "incarnation: not running: its subagent ended with the pane this one was started in place of"
+            ),
+            "criterion 47: the pane is told the inherited subagent ended with the one it replaces: {block}"
+        );
+        assert!(
+            !block.contains("incarnation: live"),
+            "criterion 47: the pane is not told that subagent is live: {block}"
+        );
+    }
+
+    /// ISS-1312 criterion 45: `supervise` read an unaskable tmux as a pane gone,
+    /// closed the master's core session and forgot it, so recovery then read
+    /// that master's runs as having none.
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_sweep_tmux_cannot_answer_leaves_the_master_and_its_session_open() {
+        let _serialised = terminal::testing::ONE_AT_A_TIME.lock().await;
+        let _env = crate::auth::cred_store::ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let (core, sent) = fake_core::serve_recording("200 OK", "{}").await;
+        let masters = Arc::new(Masters::new());
+        masters.remember_for_test("proj-sup", "sess-sup", "forge-master-sup");
+        let _no_tmux = terminal::testing::UnaskableTmux::installed();
+
+        supervise(
+            &CoreClient::new(core, "device-token"),
+            &masters,
+            None,
+            "proj-sup",
+            "sup",
+        )
+        .await;
+
+        assert!(
+            masters.get("proj-sup").is_some(),
+            "criterion 45: a read tmux did not answer keeps the master registered"
+        );
+        let sent = sent.lock().unwrap().clone();
+        assert!(
+            !sent.iter().any(|b| b.contains("sess-sup")),
+            "criterion 45: no close of the master's core session is sent on a read nobody answered: {sent:?}"
+        );
+    }
+
+    /// ISS-1312 criterion 46: the definite absence still ends the master.
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_sweep_tmux_lists_without_the_pane_closes_the_master() {
+        let _serialised = terminal::testing::ONE_AT_A_TIME.lock().await;
+        let _env = crate::auth::cred_store::ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let iso = terminal::testing::IsolatedServer::new("supgone");
+        if !terminal::available() {
+            terminal::testing::cannot_run(
+                "tmux is not installed here — the transport this rests on cannot run",
+            );
+            return;
+        }
+        if !iso.took() {
+            terminal::testing::cannot_run("this box does not resolve its tmux socket from the config dir, so the only server here is its own — not starting a session on it");
+            return;
+        }
+        let sock = terminal::socket_path().expect("the isolated socket");
+        let started = std::process::Command::new("tmux")
+            .args(["-S", &sock.to_string_lossy()])
+            .args(["new-session", "-d", "-s", "somebody-else", "sleep 120"])
+            .stdin(std::process::Stdio::null())
+            .status()
+            .expect("tmux runs");
+        assert!(
+            started.success(),
+            "the plant: a server that answers, holding another session"
+        );
+        let (core, sent) = fake_core::serve_recording("200 OK", "{}").await;
+        let masters = Arc::new(Masters::new());
+        masters.remember_for_test("proj-sup", "sess-sup", "forge-master-sup");
+
+        supervise(
+            &CoreClient::new(core, "device-token"),
+            &masters,
+            None,
+            "proj-sup",
+            "sup",
+        )
+        .await;
+
+        assert!(
+            masters.get("proj-sup").is_none(),
+            "criterion 46: a pane tmux listed its sessions without is forgotten"
+        );
+        let sent = sent.lock().unwrap().clone();
+        assert!(
+            sent.iter()
+                .any(|b| b.contains("sess-sup") && b.contains("terminal session vanished")),
+            "criterion 46: the master's core session is closed: {sent:?}"
         );
     }
 
