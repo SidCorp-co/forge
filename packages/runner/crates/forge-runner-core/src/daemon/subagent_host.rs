@@ -121,7 +121,16 @@ enum StatRead {
 fn stat(root: &Path, pid: u32) -> StatRead {
     let text = match std::fs::read_to_string(root.join(pid.to_string()).join("stat")) {
         Ok(t) => t,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return StatRead::Missing,
+        // A stat not found says the pid is gone only where the pid's own entry
+        // is gone too. An entry that is there with no stat to read is no
+        // evidence either way, and Windows answers a path through a file as
+        // not found where Linux answers that it is not a directory.
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            return match std::fs::symlink_metadata(root.join(pid.to_string())) {
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => StatRead::Missing,
+                _ => StatRead::Unreadable,
+            };
+        }
         Err(_) => return StatRead::Unreadable,
     };
     // The command name is parenthesised and may hold spaces and parentheses of
@@ -448,6 +457,12 @@ mod tests {
             read_at(&root, 61, "7"),
             HostRead::Unreadable,
             "a pid that is there and cannot be read is no evidence either way"
+        );
+        std::fs::create_dir(root.join("62")).unwrap();
+        assert_eq!(
+            read_at(&root, 62, "7"),
+            HostRead::Unreadable,
+            "a pid whose entry is there and holds no stat is not a pid that is gone"
         );
     }
 
