@@ -73,7 +73,6 @@ export interface ReleaseRunState {
 	attempts: ReleaseAttempt[];
 	/** `null` when the project declares no probes, or none that can be read. */
 	live: ReleaseLiveState | null;
-	/** How the close is proved, as the run recorded it; `null` on a run that recorded none. */
 	verification: "probed" | "unverified" | null;
 	bounds: ReleaseBoundsReading;
 	/** `null` when the run never announced one. */
