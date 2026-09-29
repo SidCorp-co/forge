@@ -867,10 +867,43 @@ pub(crate) mod testing {
     }
 
     #[cfg(unix)]
-    fn executable(path: &std::path::Path) {
+    pub(crate) fn executable(path: &std::path::Path) {
         let mut perms = std::fs::metadata(path).expect("shim mode").permissions();
         std::os::unix::fs::PermissionsExt::set_mode(&mut perms, 0o755);
         std::fs::set_permissions(path, perms).expect("shim executable");
+    }
+
+    /// The first line of every shim here: asked this, it answers from its own
+    /// code and runs nothing else.
+    pub(crate) const SHIM_PROBE: &str = "--forge-shim-probe";
+    const PROBE_LINE: &str = "[ \"$1\" = --forge-shim-probe ] && exit 0\n";
+
+    /// Wait until `shim` runs, and only then hand it out.
+    ///
+    /// A sibling test thread that forked while the shim's write was open holds
+    /// that descriptor until its own exec, and until then the kernel refuses to
+    /// run the file (`ETXTBSY`). Through `posix_spawn` that refusal is no error:
+    /// the child exits 127, so a tmux call answers as a tmux that failed, and
+    /// `a_kill_tmux_refused_is_never_answered_as_one_that_took` read that as
+    /// its session gone, once in 1200 runs (ISS-1312, F3). One run of the
+    /// probe says no writer is left, and none can appear: the descriptor was
+    /// closed before the probe ran.
+    pub(crate) fn until_it_runs(shim: &std::path::Path) {
+        for _ in 0..100 {
+            let ran = std::process::Command::new(shim)
+                .arg(SHIM_PROBE)
+                .stdin(std::process::Stdio::null())
+                .status()
+                .is_ok_and(|s| s.success());
+            if ran {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        panic!(
+            "{} never ran its own code, so no tmux call may be handed it",
+            shim.display()
+        );
     }
 
     /// Every test that reaches a tmux server takes this first.
@@ -997,13 +1030,16 @@ pub(crate) mod testing {
             std::fs::write(
             &shim,
             format!(
-                "#!/bin/sh\nfor a in \"$@\"; do\n  case \"$a\" in\n    -*) ;;\n    kill-session) echo 'refused' >&2; exit 1 ;;\n    *) ;;\n  esac\ndone\nexec {} \"$@\"\n",
+                "#!/bin/sh\n{PROBE_LINE}for a in \"$@\"; do\n  case \"$a\" in\n    -*) ;;\n    kill-session) echo 'refused' >&2; exit 1 ;;\n    *) ;;\n  esac\ndone\nexec {} \"$@\"\n",
                 shim_quote(&real.to_string_lossy())
             ),
         )
         .expect("shim");
             #[cfg(unix)]
-            executable(&shim);
+            {
+                executable(&shim);
+                until_it_runs(&shim);
+            }
             Self {
                 _installed: Installed::new(shim, Vec::new()),
                 _dir: dir,
@@ -1051,6 +1087,7 @@ pub(crate) mod testing {
     }
 
     const SHIM: &str = r#"#!/bin/sh
+[ "$1" = --forge-shim-probe ] && exit 0
 verb=''
 for a in "$@"; do
   case "$a" in
@@ -1084,7 +1121,10 @@ exit 0
             let shim = dir.join("tmux");
             std::fs::write(&shim, SHIM).expect("the shim is written");
             #[cfg(unix)]
-            executable(&shim);
+            {
+                executable(&shim);
+                until_it_runs(&shim);
+            }
             let capture_at = dir.join("capture.txt");
             std::fs::write(&capture_at, capture).expect("the capture is written");
             let log = dir.join("verbs.log");
@@ -1120,6 +1160,82 @@ exit 0
 #[cfg(test)]
 mod tests {
     use super::testing::{cannot_run, Asked, RefusingKill, ShimTmux, UnaskableTmux, ONE_AT_A_TIME};
+
+    /// ISS-1312 criteria 67 and 68: a shim is handed to no tmux call while
+    /// anything can still write it. A sibling thread's fork holds the write
+    /// descriptor it inherited until that fork execs; the test holds one open
+    /// itself, which is the same state for as long as it chooses.
+    #[cfg(unix)]
+    #[test]
+    fn a_shim_is_handed_out_only_once_nothing_can_still_write_it() {
+        use super::testing::{executable, until_it_runs, SHIM_PROBE};
+        let dir = crate::test_scratch::Scratch::new("shim-busy");
+        let shim = dir.join("tmux");
+        std::fs::write(
+            &shim,
+            "#!/bin/sh\n[ \"$1\" = --forge-shim-probe ] && exit 0\nexit 0\n",
+        )
+        .unwrap();
+        executable(&shim);
+        let runs = || {
+            std::process::Command::new(&shim)
+                .arg(SHIM_PROBE)
+                .status()
+                .is_ok_and(|s| s.success())
+        };
+        let writer = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&shim)
+            .unwrap();
+        if cfg!(target_os = "linux") {
+            assert!(
+                !runs(),
+                "the control: Linux refuses to run a file something can still write, and a tmux call handed it now answers 127"
+            );
+        }
+        let held = std::time::Duration::from_millis(300);
+        let letting_go = std::thread::spawn(move || {
+            std::thread::sleep(held);
+            drop(writer);
+        });
+        let asked = std::time::Instant::now();
+        until_it_runs(&shim);
+        if cfg!(target_os = "linux") {
+            assert!(
+                asked.elapsed() >= held,
+                "criterion 67: handed out after {:?}, before the writer let go",
+                asked.elapsed()
+            );
+        }
+        letting_go.join().unwrap();
+        assert!(runs(), "and once handed out it runs");
+    }
+
+    #[test]
+    fn every_shim_here_answers_the_probe_before_anything_else() {
+        let testing = THIS_SOURCE
+            .split("pub(crate) mod testing")
+            .nth(1)
+            .and_then(|rest| rest.split("\nmod tests {").next())
+            .expect("the module");
+        for (name, script) in [
+            ("RefusingKill", "\"#!/bin/sh\\n{PROBE_LINE}"),
+            (
+                "ShimTmux",
+                "r#\"#!/bin/sh\n[ \"$1\" = --forge-shim-probe ] && exit 0\n",
+            ),
+        ] {
+            assert!(
+                testing.contains(script),
+                "{name}'s script does not open with the probe"
+            );
+        }
+        assert_eq!(
+            testing.matches("until_it_runs(&shim);").count(),
+            2,
+            "both shims wait for their probe before they are handed out"
+        );
+    }
     use super::*;
     use crate::auth::cred_store::{ScopedVar, ENV_TEST_LOCK};
 

@@ -41,6 +41,7 @@ pub mod session_tokens;
 pub mod setup_agent;
 pub mod skill_pull;
 pub mod subagent_end;
+pub mod subagent_host;
 pub mod terminal;
 pub mod transcript_age;
 pub mod turn_evidence;
@@ -1090,6 +1091,7 @@ pub async fn run(
             config_dir: control::config_dir(),
             promises: std::sync::Mutex::new(control::GateMemory::default()),
             drain: drain.clone(),
+            hosts: Arc::new(subagent_host::ProcHosts::system()),
         });
         let cancel_rx = cancel_rx.clone();
         tokio::spawn(async move {
@@ -1424,6 +1426,9 @@ mod tests {
         assert_eq!(held, ["run run-1 (ISS-run-1): its process 4242 is alive"]);
     }
 
+    /// The Claude Code process a test records a subagent as running in.
+    const HOST: u32 = 7_700_001;
+
     fn seeded_run(led: &mut Ledger, run_id: &str, boot: &str, pid: Option<u32>) {
         led.create_run_group(NewRun {
             run_id: run_id.into(),
@@ -1728,6 +1733,7 @@ mod tests {
             1,
             "before the placement it is a first turn"
         );
+        led.note_host("run-1", HOST, "4400").unwrap();
         assert!(led
             .note_host_ended(
                 "run-1",
@@ -1737,7 +1743,7 @@ mod tests {
             .unwrap());
         assert!(
             held_line(&led).is_empty(),
-            "a subagent cannot outlive the pane it ran in: {:?}",
+            "a subagent cannot outlive the Claude Code process it ran in: {:?}",
             held_line(&led)
         );
     }
@@ -1756,6 +1762,7 @@ mod tests {
             ),
         );
         assert_eq!(held_line(&led).len(), 1, "a resumed turn holds on its own");
+        led.note_host("run-1", HOST, "4400").unwrap();
         assert!(led
             .note_host_ended("run-1", now - 60_000, crate::runner::ledger::HOST_PANE_GONE)
             .unwrap());
@@ -1781,6 +1788,7 @@ mod tests {
             held_line(&led),
             ["run run-1 (ISS-7): declared, and no subagent or process is bound to it yet"]
         );
+        led.note_host("run-1", HOST, "4400").unwrap();
         assert!(led
             .note_host_ended("run-1", now, crate::runner::ledger::HOST_PANE_STARTED)
             .unwrap());
@@ -1801,6 +1809,7 @@ mod tests {
             Some(now - 10 * 60_000 + 213),
             transcript_age::STOP_TAIL,
         );
+        led.note_host("run-1", HOST, "4400").unwrap();
         led.note_host_ended("run-1", ended, started).unwrap();
         let held = held_line(&led);
         assert!(
@@ -1821,6 +1830,7 @@ mod tests {
                 transcript_age::RESUMED_TAIL
             ),
         );
+        led.note_host("run-1", HOST, "4400").unwrap();
         led.note_host_ended("run-1", ended, started).unwrap();
         let held = held_line(&led);
         assert!(
@@ -1832,6 +1842,7 @@ mod tests {
         // A start after it: the subagent is running again, in its first turn.
         let mut led = Ledger::open_in_memory().unwrap();
         seeded_run(&mut led, "run-1", "boot-a", None);
+        led.note_host("run-1", HOST, "4400").unwrap();
         led.note_host_ended("run-1", ended, started).unwrap();
         assert!(held_line(&led).is_empty());
         led.note_subagent_started("run-1", ended + 1, None).unwrap();
@@ -1851,9 +1862,36 @@ mod tests {
                 transcript_age::RESUMED_TAIL
             ),
         );
+        led.note_host("run-1", HOST, "4400").unwrap();
         led.note_host_ended("run-1", ended, started).unwrap();
         assert!(held_line(&led).is_empty(), "{:?}", held_line(&led));
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// ISS-1312 criterion 55: rows the box marked before it recorded a
+    /// subagent's process carry a pane's end, which is not the subagent's. On
+    /// such a row the mark ends nothing, and the run is held as its own
+    /// evidence reads.
+    #[test]
+    fn a_pane_mark_on_a_row_that_records_no_process_ends_nothing() {
+        let now = agent_activity::now_ms();
+        let mut led = Ledger::open_in_memory().unwrap();
+        seeded_run(&mut led, "run-1", "boot-a", None);
+        led.note_host("run-1", HOST, "4400").unwrap();
+        assert!(led
+            .note_host_ended("run-1", now, crate::runner::ledger::HOST_PANE_STARTED)
+            .unwrap());
+        assert!(
+            held_line(&led).is_empty(),
+            "the control: {:?}",
+            held_line(&led)
+        );
+        led.forget_host("run-1").unwrap();
+        let held = held_line(&led);
+        assert!(
+            held.len() == 1 && held[0].contains("has not ended a turn"),
+            "{held:?}"
+        );
     }
 
     #[test]
