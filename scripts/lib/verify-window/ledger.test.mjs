@@ -18,6 +18,14 @@ describe('readManifest', () => {
     ],
     [{ window: 'w1', base: 'main', members: [member, member] }, /ISS-1 is listed twice/],
     [
+      { window: 'w1', base: 'main', members: [{ ...member, priority: 'critcal' }] },
+      /members\[0\]\.priority is `critcal`; it is one of critical, high, medium, low, or absent/,
+    ],
+    [
+      { window: 'w1', base: 'main', members: [{ ...member, priority: 'Critical' }] },
+      /members\[0\]\.priority is `Critical`/,
+    ],
+    [
       { window: 'w1', base: 'main', members: [member], isolated: {} },
       /`isolated` must be a list of isolations/,
     ],

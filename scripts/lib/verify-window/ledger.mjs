@@ -7,6 +7,7 @@ import { passLine } from './validate.mjs';
  */
 
 const WINDOW_ID = /^[a-z0-9][a-z0-9-]{1,40}$/;
+const PRIORITIES = ['critical', 'high', 'medium', 'low'];
 
 /** A manifest's shape, refused by name. @returns {{ refusal: string } | { manifest: object }} */
 export function readManifest(raw) {
@@ -25,6 +26,11 @@ export function readManifest(raw) {
     for (const k of ['issue', 'branch', 'head', 'arrivedAt']) {
       if (typeof m?.[k] !== 'string' || m[k] === '')
         return { refusal: `members[${i}] carries no \`${k}\`` };
+    }
+    if (m.priority !== undefined && !PRIORITIES.includes(m.priority)) {
+      return {
+        refusal: `members[${i}].priority is \`${m.priority}\`; it is one of ${PRIORITIES.join(', ')}, or absent`,
+      };
     }
     if (!/^[0-9a-f]{40}$/.test(m.head))
       return { refusal: `members[${i}].head must be a full 40-character commit, not ${m.head}` };

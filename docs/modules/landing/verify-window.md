@@ -17,7 +17,8 @@ once for the set.
 
 The integrator writes a manifest outside the checkout: the window id, the base branch, the
 thresholds with where they were read, and the members in landing order, each with its issue,
-branch, head, arrival time and priority.
+branch, head, arrival time and priority (`critical`, `high`, `medium` or `low`; any other value is
+refused by name rather than read as ordinary).
 
 1. **`admit`** — each member's branch still points at the recorded head, its required check is a
    success at that head, its head is not already on the base, and its diff touches no ineligible

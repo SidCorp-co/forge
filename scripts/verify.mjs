@@ -27,7 +27,7 @@ const CHECKS = [
     axis: 'record',
     label: 'release-record',
     layer: 'entry',
-    reads: 'CHANGELOG.md against its base revision, one declared file',
+    reads: 'CHANGELOG.md against its base revision, one fixed file',
     cmd: ['node', 'scripts/check-release-record.mjs'],
     scanned: /^release-record: (\d+) entr/m,
     unit: 'release entries',
@@ -246,7 +246,7 @@ const CHECKS = [
     axis: 'meta',
     label: 'lockfile-transport',
     layer: 'entry',
-    reads: 'pnpm-lock.yaml, one declared file',
+    reads: 'pnpm-lock.yaml, one fixed file',
     cmd: ['node', 'scripts/check-lockfile-transport.mjs'],
     scanned: /^lockfile-transport: (\d+) resolution\(s\), none over SSH/m,
     unit: 'resolutions',
@@ -288,7 +288,7 @@ const CHECKS = [
 const CI_PARITY = {
   label: 'ci-parity',
   layer: 'entry',
-  reads: 'ci.yml and the setup-workspace composite, two declared files',
+  reads: 'ci.yml and the setup-workspace composite, two fixed files',
   scanned: /^ci-parity: (\d+) CI step\(s\) declared/m,
   unit: 'CI steps',
 };
@@ -397,7 +397,8 @@ function assertEveryCheckIsLayered() {
   console.error(
     `verify: ${missing.length} check(s) declare no layer, or no reason for it:\n` +
       missing.map((m) => `  ${m}`).join('\n') +
-      '\nA check belongs to `entry` when it judges each file from that file alone, and to\n' +
+      '\nA check belongs to `entry` when it judges each file from that file alone, or fixed files\n' +
+      'it names by path, and to\n' +
       '`shared` when its verdict on one file depends on others or on other branches — by what it\n' +
       'reads, never by its name or its cost (scripts/lib/verify-layers.mjs). Exit 2.\n',
   );

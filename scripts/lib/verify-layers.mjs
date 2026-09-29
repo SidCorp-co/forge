@@ -6,8 +6,8 @@ import { judgeEligibility, parseDiff } from './verify-window/eligibility.mjs';
 
 /**
  * The gate's two layers, partitioned by what a check READS. `entry`: a verdict on each file from
- * that file alone, which a developer run pays. `shared`: a sweep whose verdict depends on files or
- * branches the change never opened, which a verify window pays once for a set.
+ * that file alone, or on fixed files the check names by path, which a developer run pays. `shared`:
+ * a sweep whose verdict depends on files or branches the change never opened, paid once per window.
  */
 export const LAYERS = ['entry', 'shared'];
 
