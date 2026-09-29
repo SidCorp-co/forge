@@ -87,10 +87,10 @@ fn answer(path: &str, runners_status: &str) -> (String, String) {
     // page lists less than core holds.
     if path.starts_with(&format!("/api/questions?projectId={ALPHA}")) && path.contains("&cursor=c2")
     {
-        return ok(r#"{"questions":[{"id":"q2","blockerKind":"human","createdAt":"2026-09-30T01:10:00.000Z","prompt":"Rotate the key?"}],"total":1,"hasMore":false,"nextCursor":null}"#.into());
+        return ok(r#"{"questions":[{"id":"q2","blockerKind":"human","createdAt":"2026-09-30T01:10:00.000Z","askedAt":"","prompt":"Rotate the key?"}],"total":1,"hasMore":false,"nextCursor":null}"#.into());
     }
     if path.starts_with(&format!("/api/questions?projectId={ALPHA}")) {
-        return ok(r#"{"questions":[{"id":"q1","blockerKind":"human","createdAt":"2026-09-30T01:00:00.000Z","prompt":"Ship the migration?\nIt drops a column."}],"total":1,"hasMore":true,"nextCursor":"c2"}"#.into());
+        return ok(r#"{"questions":[{"id":"q1","blockerKind":"human","createdAt":"2026-09-30T01:00:00.000Z","askedAt":"2026-09-30T01:00:00.000Z","prompt":"Ship the migration?\nIt drops a column."}],"total":1,"hasMore":true,"nextCursor":"c2"}"#.into());
     }
     if path.starts_with("/api/questions?") {
         return ok(r#"{"questions":[],"total":0,"hasMore":false,"nextCursor":null}"#.into());

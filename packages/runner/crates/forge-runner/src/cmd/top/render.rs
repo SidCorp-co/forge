@@ -349,7 +349,7 @@ fn questions(s: &Snapshot, out: &mut Vec<String>) {
                 ));
                 for one in &q.listed {
                     let prompt = if one.prompt.is_empty() {
-                        "(core holds no prompt for it)".to_string()
+                        "(the question holds no step yet)".to_string()
                     } else {
                         clip(&one.prompt, 110)
                     };

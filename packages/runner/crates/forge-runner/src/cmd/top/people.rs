@@ -255,9 +255,11 @@ fn field<'a>(route: &str, row: &'a Value, key: &str, what: &str) -> Read<&'a str
         .ok_or_else(|| shape(route, &format!("`{key}` on a {what}")))
 }
 
-/// One page of `projectQuestionsFor`'s answer. A question with no step has an
-/// empty prompt, which core means; one with no blocker kind or creation time
-/// is not a question core writes, and is refused rather than shown half.
+/// One page of `projectQuestionsFor`'s answer. Core's `shapeOf` writes
+/// `prompt` and `askedAt` on every question, as `''` when it holds no step yet,
+/// so an empty one is an answer and an absent one — like an absent blocker kind
+/// or creation time — is not a question core writes, and is refused rather
+/// than shown half.
 pub fn questions(route: &str, v: &Value) -> Read<Vec<Question>> {
     let list = v["questions"]
         .as_array()
@@ -265,8 +267,7 @@ pub fn questions(route: &str, v: &Value) -> Read<Vec<Question>> {
     list.iter()
         .map(|q| {
             let created = field(route, q, "createdAt", "question")?;
-            let asked = q["askedAt"]
-                .as_str()
+            let asked = Some(field(route, q, "askedAt", "question")?)
                 .filter(|s| !s.is_empty())
                 .unwrap_or(created);
             Ok(Question {
@@ -274,9 +275,7 @@ pub fn questions(route: &str, v: &Value) -> Read<Vec<Question>> {
                 asked_ms: Some(parse_utc_ms(asked).ok_or_else(|| {
                     shape(route, &format!("readable time on a question (`{asked}`)"))
                 })?),
-                prompt: q["prompt"]
-                    .as_str()
-                    .unwrap_or("")
+                prompt: field(route, q, "prompt", "question")?
                     .lines()
                     .next()
                     .unwrap_or("")
@@ -425,13 +424,22 @@ mod tests {
         let q = serde_json::json!({"questions": [{"prompt": "x"}]});
         let e = questions("/q", &q).unwrap_err();
         assert!(e.reason.contains("`createdAt`"), "{e}");
-        let q = serde_json::json!({"questions": [{"prompt": "x", "createdAt": "2026-09-30T01:00:00Z"}]});
+        let q = serde_json::json!({"questions": [{"prompt": "x", "createdAt": "2026-09-30T01:00:00Z", "askedAt": ""}]});
         assert!(questions("/q", &q)
             .unwrap_err()
             .reason
             .contains("`blockerKind`"));
-        let q = serde_json::json!({"questions": [{"blockerKind": "human", "createdAt": "soon"}]});
+        let q = serde_json::json!({"questions": [{"blockerKind": "human", "createdAt": "soon", "askedAt": "", "prompt": ""}]});
         assert!(questions("/q", &q).is_err());
+        // Recheck 4c46d2: `shapeOf` writes both on every question, so absence
+        // is not a shape core answers with.
+        let q = serde_json::json!({"questions": [{"blockerKind": "human", "createdAt": "2026-09-30T01:00:00Z", "askedAt": ""}]});
+        assert!(questions("/q", &q).unwrap_err().reason.contains("`prompt`"));
+        let q = serde_json::json!({"questions": [{"blockerKind": "human", "createdAt": "2026-09-30T01:00:00Z", "prompt": ""}]});
+        assert!(questions("/q", &q)
+            .unwrap_err()
+            .reason
+            .contains("`askedAt`"));
         let rows = serde_json::json!({"items": [{}]});
         assert!(awaiting_rows("/r", &rows)
             .unwrap_err()
@@ -439,11 +447,13 @@ mod tests {
             .contains("`displayId`"));
         let b = serde_json::json!({"blockers": [{"code": "X"}]});
         assert!(blockers("/r", &b).unwrap_err().reason.contains("`message`"));
-        let empty = serde_json::json!({"questions": [{"blockerKind": "human", "createdAt": "2026-09-30T01:00:00Z"}]});
+        let empty = serde_json::json!({"questions": [{"blockerKind": "human", "createdAt": "2026-09-30T01:00:00Z", "askedAt": "", "prompt": ""}]});
+        let got = questions("/q", &empty).unwrap();
+        assert_eq!(got[0].prompt, "", "a question with no step has no prompt");
         assert_eq!(
-            questions("/q", &empty).unwrap()[0].prompt,
-            "",
-            "a question with no step has no prompt"
+            got[0].asked_ms,
+            parse_utc_ms("2026-09-30T01:00:00Z"),
+            "and was asked when it was created"
         );
     }
 
