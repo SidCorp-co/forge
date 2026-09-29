@@ -39,6 +39,7 @@ use crate::daemon::recovery_ports::{self, CoreBeat, CoreRunState, PaneMasters, S
 use crate::daemon::run_exit;
 use crate::daemon::run_record;
 use crate::daemon::session_tokens;
+use crate::daemon::subagent_host;
 use crate::daemon::terminal;
 use crate::runner::close_loop;
 use crate::runner::ledger::{Ledger, MasterAuthority, MasterStanding, Run};
@@ -148,6 +149,14 @@ struct Registry {
     /// sweep, so the account is given when the read first goes unanswered and
     /// not on every sweep it stays that way.
     unanswered: std::collections::HashSet<String>,
+    /// Where the output of the pane this box last placed for each project is
+    /// kept, and how long that file was when the pane started, so what the
+    /// pane printed is read without what earlier panes printed before it.
+    placed_output: HashMap<String, (std::path::PathBuf, u64)>,
+    /// The conversation a pane this box placed exited over, saying Claude Code
+    /// runs it as a background session. No pane resuming it is placed while a
+    /// process on this box names it (ISS-1312, F1).
+    elsewhere: HashMap<String, String>,
 }
 
 #[derive(Default, Clone, PartialEq, Eq)]
@@ -248,6 +257,20 @@ pub(crate) enum Unplaced {
     PaneUnstarted {
         detail: String,
     },
+    /// The pane last placed for this project resumed its conversation and
+    /// exited, printing that Claude Code runs that conversation as a
+    /// background session; `pid` is a process on this box naming it now. A
+    /// pane placed again would exit the same way (ISS-1312, F1).
+    ConversationElsewhere {
+        conversation: String,
+        pid: u32,
+    },
+    /// As [`Unplaced::ConversationElsewhere`], where this box could not read
+    /// its process table to tell whether a process still names that
+    /// conversation. Not knowing is not its end (ISS-1312, F1).
+    ConversationUnaskable {
+        conversation: String,
+    },
 }
 
 impl std::fmt::Display for Unplaced {
@@ -330,6 +353,14 @@ impl std::fmt::Display for Unplaced {
                 f,
                 "everything it needs was in place and the pane itself did not start ({detail})"
             ),
+            Self::ConversationElsewhere { conversation, pid } => write!(
+                f,
+                "the pane this box last placed for it resumed conversation {conversation} and exited, printing that Claude Code runs that conversation as a background session, and process {pid} on this box names it now. A pane placed again would exit the same way, so none is placed while a process names that conversation. `claude stop {conversation}` ends the background session, and the next sweep then places a pane resuming it"
+            ),
+            Self::ConversationUnaskable { conversation } => write!(
+                f,
+                "the pane this box last placed for it resumed conversation {conversation} and exited, printing that Claude Code runs that conversation as a background session, and this box cannot read its process table to tell whether one still does. A pane placed again would exit the same way while it does, so none is placed until a sweep reads the whole table and finds no process naming it, or this daemon restarts and forgets the exit. `claude stop {conversation}` ends the background session if it still runs"
+            ),
             Self::StaleCapability { session, pane } => write!(
                 f,
                 "its pane {pane} is up but this box cannot hear it — the capability that pane holds names a session core has since replaced, core's session for it is now {session}, and a running pane cannot be handed a new capability. Every declaration it makes is refused and it is not being nudged while it stands like this. `tmux kill-session -t {pane}` ends it, which is what lets a master carrying the current capability be placed — placement itself still answers to the same gates as any other"
@@ -378,6 +409,8 @@ impl Unplaced {
                 | Self::ServersUnwritable { .. }
                 | Self::CapabilityUnminted { .. }
                 | Self::PaneUnstarted { .. }
+                | Self::ConversationElsewhere { .. }
+                | Self::ConversationUnaskable { .. }
         )
     }
 }
@@ -843,6 +876,31 @@ impl Masters {
         changed
     }
 
+    fn note_placed_output(&self, project_id: &str, at: (std::path::PathBuf, u64)) {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        reg.placed_output.insert(project_id.to_string(), at);
+    }
+
+    fn take_placed_output(&self, project_id: &str) -> Option<(std::path::PathBuf, u64)> {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        reg.placed_output.remove(project_id)
+    }
+
+    fn note_elsewhere(&self, project_id: &str, conversation: String) {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        reg.elsewhere.insert(project_id.to_string(), conversation);
+    }
+
+    fn elsewhere(&self, project_id: &str) -> Option<String> {
+        let reg = self.0.lock().expect("masters poisoned");
+        reg.elsewhere.get(project_id).cloned()
+    }
+
+    fn clear_elsewhere(&self, project_id: &str) {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        reg.elsewhere.remove(project_id);
+    }
+
     /// This project's pane was placed; nothing stands against it any more.
     pub(crate) fn clear_unplaced(&self, project_id: &str) {
         let mut reg = self.0.lock().expect("masters poisoned");
@@ -1192,6 +1250,7 @@ async fn sweep(
         let started = std::sync::atomic::AtomicBool::new(false);
         let authority = AuthoritySink::default();
         let deaf = DeafSink::default();
+        let hosts = subagent_host::ProcHosts::system();
         let pane = ensure_master(
             client,
             masters,
@@ -1203,6 +1262,7 @@ async fn sweep(
                 lifted: lifted_episode.as_ref(),
                 stood_down_told: &told,
                 started: &started,
+                hosts: &hosts,
             },
             placement,
             &CapabilityPorts {
@@ -1237,6 +1297,7 @@ async fn sweep(
                     pane == PaneState::Resumed,
                     agent_activity::now_ms(),
                     &resolved.slug,
+                    &hosts,
                 );
             }
         }
@@ -2069,6 +2130,7 @@ pub(crate) fn inherited_runs(led: &Ledger, project_id: &str, boot_id: &str) -> V
             agent_id: r.agent_id,
             ended_by: r.ended_by,
             pid: r.pid,
+            host: r.host_pid.zip(r.host_start),
         })
         .collect()
 }
@@ -2109,10 +2171,11 @@ pub(crate) fn inheritance_boot(
 /// A master pane this sweep started, in place of one that was absent, takes
 /// over what the pane before it left.
 ///
-/// A subagent runs inside its master pane's process, so every subagent the
-/// previous pane ran ended with it, whatever turn it was in: each inherited
-/// run is marked so, which is what lets the drain and recovery stop reading a
-/// dead subagent as one still in its first turn. A resumed pane continues the
+/// A subagent runs inside the Claude Code process recorded for it, so each
+/// inherited run whose process is read gone ended with it, whatever turn it
+/// was in, and is marked so: that is what lets the drain and recovery stop
+/// reading a dead subagent as one still in its first turn. One whose process
+/// is alive, or unrecorded, is not: the pane was not where it ran. A resumed pane continues the
 /// conversation that dispatched them and its brief lists them as its own, so
 /// they are recorded under its master session too, and its choice, its close
 /// and its next declaration match them. A cold-started pane is told of none
@@ -2125,11 +2188,12 @@ pub(crate) fn placed_again(
     resumed: bool,
     at_ms: i64,
     slug: &str,
+    hosts: &dyn subagent_host::Hosts,
 ) {
     let mut ended = 0;
     let mut adopted = 0;
     for run in inherited {
-        let marked = if run.ends_with_placement() {
+        let marked = if run.ends_with_placement(hosts) {
             led.note_host_ended(&run.run_id, at_ms, crate::runner::ledger::HOST_PANE_STARTED)
         } else {
             Ok(false)
@@ -2138,7 +2202,7 @@ pub(crate) fn placed_again(
             Ok(true) => ended += 1,
             Ok(false) => {}
             Err(e) => tracing::warn!(
-                "[master] {slug}: run {}: cannot record that the pane its subagent ran in is gone: {e} — the drain still reads it as a subagent at work",
+                "[master] {slug}: run {}: cannot record that the process its subagent ran in is gone: {e} — the drain still reads it as a subagent at work",
                 run.run_id
             ),
         }
@@ -2163,7 +2227,7 @@ pub(crate) fn placed_again(
         "a cold-started pane cannot resume any of them, so each stays with the session that declared it and is released once core calls its session over".to_string()
     };
     tracing::info!(
-        "[master] {slug}: this pane was started in place of one that is gone, so the subagents of {ended} run(s) it inherits ended with that pane; {whose}"
+        "[master] {slug}: this pane was started in place of one that is gone, and the Claude Code process the subagents of {ended} run(s) it inherits ran in is gone too, so they ended with it; {whose}"
     );
 }
 
@@ -2179,14 +2243,23 @@ pub(crate) struct InheritedRun {
     pub agent_id: Option<String>,
     pub ended_by: Option<String>,
     pub pid: Option<u32>,
+    /// The Claude Code process recorded for its subagent, and its start time.
+    pub host: Option<(u32, String)>,
 }
 
 impl InheritedRun {
-    /// A run with no process of its own is a subagent's, living inside its
-    /// master's pane, so a pane started in place of that one is its end. The
-    /// one predicate [`placed_again`] records and [`resumed_brief`] states.
-    pub(crate) fn ends_with_placement(&self) -> bool {
-        self.pid.is_none() && self.ended_by.is_none()
+    /// A run with no process of its own is a subagent's, living inside the
+    /// Claude Code process recorded for it. A pane started in place of its
+    /// master's is its end only where that process is read gone: the
+    /// conversation can run as a background session outside any pane, and
+    /// its subagents with it (ISS-1312, run e67c08e0). The one predicate
+    /// [`placed_again`] records and [`resumed_brief`] states.
+    pub(crate) fn ends_with_placement(&self, hosts: &dyn subagent_host::Hosts) -> bool {
+        self.pid.is_none()
+            && self.ended_by.is_none()
+            && self.host.as_ref().is_some_and(|(pid, start)| {
+                hosts.read(*pid, start) == subagent_host::HostRead::Gone
+            })
     }
 }
 
@@ -2233,7 +2306,12 @@ requirement, so what ended the wait is not on this box's record.\n"
 /// `placed` is whether this pane was started in place of an absent one, which
 /// [`placed_again`] records as the end of every inherited run's subagent the
 /// brief must then not state as live (ISS-1312).
-pub(crate) fn resumed_brief(conversation: &str, runs: &[InheritedRun], placed: bool) -> String {
+pub(crate) fn resumed_brief(
+    conversation: &str,
+    runs: &[InheritedRun],
+    placed: bool,
+    hosts: &dyn subagent_host::Hosts,
+) -> String {
     let mut out = format!(
         "\nThis pane was RESUMED, not started fresh: it is continuing conversation `{conversation}`, \
 so what you remember of this project may be from before the interruption that ended the last pane.\n"
@@ -2253,9 +2331,9 @@ judges none of them; the judgement is yours:\n",
         runs.len()
     ));
     for r in runs {
-        let incarnation = if placed && r.ends_with_placement() {
+        let incarnation = if placed && r.ends_with_placement(hosts) {
             "not running: its subagent ended with the pane this one was started in place of, \
-inside whose process it ran"
+and the Claude Code process it ran in is gone"
                 .to_string()
         } else {
             r.incarnation.to_string()
@@ -2496,6 +2574,9 @@ pub(crate) struct Carryover<'a> {
     /// proves the one before it gone: a pane found already up is somebody's
     /// running process, and its subagents with it.
     started: &'a std::sync::atomic::AtomicBool,
+    /// The box's process table: where each inherited subagent runs, and what
+    /// runs a conversation outside this box's panes.
+    hosts: &'a dyn subagent_host::Hosts,
 }
 
 /// The verdict `ensure_master` reached about the capability a pane holds, on
@@ -2861,6 +2942,45 @@ async fn ensure_master(
         return PaneState::Absent;
     }
 
+    // The last pane placed here exited because Claude Code runs this
+    // conversation as a background session. Another would exit the same way,
+    // so none is placed while a process on this box still names it, or while
+    // this box cannot read whether one does; once the whole table reads that
+    // none does, the session has ended and a pane resuming it can run
+    // (ISS-1312, F1).
+    if let Some(conversation) = masters
+        .elsewhere(project_id)
+        .filter(|c| stored_conversation == Some(c.as_str()))
+    {
+        match carry.hosts.running(&conversation) {
+            subagent_host::Running::Found(pid) => {
+                say_unplaced(
+                    masters,
+                    project_id,
+                    &resolved.slug,
+                    Unplaced::ConversationElsewhere { conversation, pid },
+                );
+                return PaneState::Absent;
+            }
+            subagent_host::Running::Unreadable => {
+                say_unplaced(
+                    masters,
+                    project_id,
+                    &resolved.slug,
+                    Unplaced::ConversationUnaskable { conversation },
+                );
+                return PaneState::Absent;
+            }
+            subagent_host::Running::Absent => {
+                tracing::info!(
+                    "[master] {}: no process on this box names conversation {conversation} any more, so its background session has ended and a pane resuming it is placed",
+                    resolved.slug
+                );
+                masters.clear_elsewhere(project_id);
+            }
+        }
+    }
+
     // Before anything is installed or minted: a pane that will not be started
     // leaves no capability behind it and nothing to withdraw.
     let declared = match servers_for_start(&asked) {
@@ -2980,6 +3100,9 @@ async fn ensure_master(
         }
     }
     let resume = resume_for(&resolved.slug, &resolved.repo_path, stored_conversation);
+    let output_from = transcript
+        .as_deref()
+        .map(|p| std::fs::metadata(p).map_or(0, |m| m.len()));
     let started = match terminal::ensure(
         &name,
         &resolved.repo_path,
@@ -3041,6 +3164,9 @@ async fn ensure_master(
     );
     remember(masters, project_id, &session);
     masters.clear_unplaced(project_id);
+    if let (true, Some(path), Some(from)) = (started, transcript.clone(), output_from) {
+        masters.note_placed_output(project_id, (path, from));
+    }
     carry
         .started
         .store(started, std::sync::atomic::Ordering::Relaxed);
@@ -3087,7 +3213,10 @@ surface it reads",
         &reach,
     );
     let brief = match resume.as_deref() {
-        Some(conv) => format!("{brief}{}", resumed_brief(conv, inherited, started)),
+        Some(conv) => format!(
+            "{brief}{}",
+            resumed_brief(conv, inherited, started, carry.hosts)
+        ),
         None => brief,
     };
     let brief = match carry.lifted {
@@ -3542,6 +3671,69 @@ async fn nudge_master(
     }
 }
 
+/// What Claude Code prints when asked to resume a conversation it is already
+/// running as a background session, captured from a pane on sid-xeon-1
+/// (2026-09-29): `Session <id> is running as a background session (<short>).
+/// Run `claude attach <short>` to open it, or `claude stop <short>` first to
+/// resume it here.`
+const BACKGROUND_SESSION: &str = "is running as a background session";
+
+/// A pane's raw output as the words a person reads on it. Claude Code places
+/// each word with a cursor move rather than a space, so an escape sequence is
+/// read as a space and every other control character is dropped.
+fn screen_words(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    let mut chars = raw.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\x1b' {
+            match chars.next() {
+                Some('[') => {
+                    while chars
+                        .next()
+                        .is_some_and(|b| !('\x40'..='\x7e').contains(&b))
+                    {}
+                }
+                Some('(' | ')') => {
+                    chars.next();
+                }
+                _ => {}
+            }
+            out.push(' ');
+        } else if c.is_control() {
+            out.push(' ');
+        } else {
+            out.push(c);
+        }
+    }
+    out.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// The conversation `raw` pane output says is running as a background
+/// session, taken from the last such sentence in it.
+pub(crate) fn background_session_named(raw: &str) -> Option<String> {
+    let text = screen_words(raw);
+    let before = &text[..text.rfind(BACKGROUND_SESSION)?];
+    let id = before.rsplit("Session ").next()?.trim();
+    (!id.is_empty() && !id.contains(char::is_whitespace)).then(|| id.to_string())
+}
+
+/// How much of a pane's output is read for why it exited: the sentence is
+/// printed last, and a pane that ran for hours printed a great deal first.
+const EXIT_TAIL: u64 = 64 * 1024;
+
+/// The conversation the output at `path`, written from byte `from` on, says
+/// is running as a background session.
+fn exited_over_a_background_session(path: &std::path::Path, from: u64) -> Option<String> {
+    use std::io::{Read, Seek, SeekFrom};
+    let mut file = std::fs::File::open(path).ok()?;
+    let len = file.metadata().ok()?.len();
+    let start = from.max(len.saturating_sub(EXIT_TAIL)).min(len);
+    file.seek(SeekFrom::Start(start)).ok()?;
+    let mut raw = Vec::new();
+    file.read_to_end(&mut raw).ok()?;
+    background_session_named(&String::from_utf8_lossy(&raw))
+}
+
 async fn supervise(
     client: &CoreClient,
     masters: &Arc<Masters>,
@@ -3566,6 +3758,18 @@ async fn supervise(
     }
     if read == recovery::MasterPresence::Gone {
         tracing::warn!("[master] {slug}: resident session {name} is gone — closing its row");
+        // Why the pane this box placed is gone, where it printed why: a pane
+        // resuming a conversation Claude Code runs as a background session
+        // exits at once saying so, and placing another only repeats that.
+        if let Some(conversation) = masters
+            .take_placed_output(project_id)
+            .and_then(|(path, from)| exited_over_a_background_session(&path, from))
+        {
+            tracing::warn!(
+                "[master] {slug}: {name} exited printing that conversation {conversation} is running as a background session"
+            );
+            masters.note_elsewhere(project_id, conversation);
+        }
         end_master(
             client,
             masters,
@@ -4967,20 +5171,66 @@ mod give_back_tests {
                 agent_id: None,
                 ended_by: None,
                 pid: None,
+                host: Some((100 + n, format!("start-{n}"))),
             })
             .collect()
     }
 
+    fn no_hosts() -> subagent_host::testing::FakeHosts {
+        subagent_host::testing::FakeHosts::default()
+    }
+
+    /// The bytes forge-master-sid-desk's pane wrote on sid-xeon-1
+    /// (2026-09-29, `~/.config/forge-runner/master/sid-desk/transcript.log`):
+    /// Claude Code places each word with a cursor move, not a space.
+    const SID_DESK_EXIT: &str = "\x1b[?25h\x1b[38;5;211mSession\x1b[9G19793a14-07b1-4970-9f51-3262792c1414\x1b[46Gis\x1b[49Grunning\x1b[57Gas\x1b[60Ga\x1b[62Gbackground\x1b[73Gsession\x1b[81G(19793a14).\x1b[93GRun\x1b[97G`claude\x1b[105Gattach\x1b[112G19793a14`\x1b[122Gto\x1b[125Gopen\x1b[130Git,\x1b[134Gor\x1b[137G`claude\x1b[145Gstop\x1b[150G19793a14`\x1b[160Gfirst\x1b[166Gto\x1b[169Gresume\x1b[176Git\x1b[179Ghere.\x1b[39m\r\r\n\x1b[38;5;211mcopy\x1b[6Ginstead.\x1b[39m\r\r\n\x1b[?25h\x1b(B\x0f\x1b[?1016l\x1b7\x1b[r\x1b8";
+
+    #[test]
+    fn a_pane_s_own_bytes_name_the_conversation_running_as_a_background_session() {
+        assert_eq!(
+            background_session_named(SID_DESK_EXIT).as_deref(),
+            Some("19793a14-07b1-4970-9f51-3262792c1414")
+        );
+        assert_eq!(
+            background_session_named("Session abc exited\r\n"),
+            None,
+            "a pane that exited for anything else names nothing"
+        );
+    }
+
+    #[test]
+    fn only_what_the_pane_this_box_placed_printed_is_read() {
+        let dir = crate::test_scratch::Scratch::new("pane-exit");
+        let path = dir.join("transcript.log");
+        std::fs::write(&path, SID_DESK_EXIT).unwrap();
+        let from = std::fs::metadata(&path).unwrap().len();
+        assert_eq!(
+            exited_over_a_background_session(&path, 0).as_deref(),
+            Some("19793a14-07b1-4970-9f51-3262792c1414")
+        );
+        assert_eq!(
+            exited_over_a_background_session(&path, from),
+            None,
+            "an earlier pane's sentence is not why this one exited"
+        );
+        let mut later = std::fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .unwrap();
+        std::io::Write::write_all(&mut later, b"\x1b[2J\x1b[Hbye\r\n").unwrap();
+        assert_eq!(exited_over_a_background_session(&path, from), None);
+    }
+
     #[test]
     fn a_resumed_pane_is_told_that_it_was_resumed() {
-        let brief = resumed_brief("conv-abc", &three_inherited(), true);
+        let brief = resumed_brief("conv-abc", &three_inherited(), true, &no_hosts());
         assert!(brief.contains("RESUMED"), "{brief}");
         assert!(brief.contains("conv-abc"), "{brief}");
     }
 
     #[test]
     fn the_inherited_block_carries_no_recommendation_and_no_suggested_action() {
-        let brief = resumed_brief("conv-abc", &three_inherited(), true);
+        let brief = resumed_brief("conv-abc", &three_inherited(), true, &no_hosts());
         for verdict in [
             "recommend",
             "suggest",
@@ -4999,7 +5249,7 @@ mod give_back_tests {
 
     #[test]
     fn every_inherited_run_appears_as_raw_fields() {
-        let brief = resumed_brief("conv-abc", &three_inherited(), true);
+        let brief = resumed_brief("conv-abc", &three_inherited(), true, &no_hosts());
         for n in 1..=3 {
             assert!(brief.contains(&format!("run-{n}")), "{brief}");
             assert!(brief.contains(&format!("ISS-{n}")), "{brief}");
@@ -5033,7 +5283,9 @@ mod give_back_tests {
                 .unwrap_or_else(|| panic!("{run_id} is not listed: {brief}"))
         }
 
-        let brief = resumed_brief("conv-abc", &runs, true);
+        let hosts = subagent_host::testing::FakeHosts::with(101, subagent_host::HostRead::Gone);
+        hosts.set(103, subagent_host::HostRead::Gone);
+        let brief = resumed_brief("conv-abc", &runs, true, &hosts);
 
         for id in ["run-1", "run-3"] {
             let said = block(&brief, id);
@@ -5047,16 +5299,39 @@ mod give_back_tests {
             block(&brief, "run-2").contains("incarnation: live"),
             "a run with a process of its own did not live in the pane, and is stated as its row reads: {brief}"
         );
-        let unplaced = resumed_brief("conv-abc", &runs, false);
+        let unplaced = resumed_brief("conv-abc", &runs, false, &hosts);
         assert!(
             block(&unplaced, "run-1").contains("incarnation: live"),
             "the control: a brief no placement came with states the row as it reads: {unplaced}"
         );
     }
 
+    /// ISS-1312 criterion 69, and 53-54 for the brief: run e67c08e0's
+    /// subagent ran in a Claude Code background session outside the pane
+    /// this placement replaced, so the pane's end was not its end. A run whose
+    /// process reads alive, or cannot be read, or was never recorded, is
+    /// stated as its row reads.
+    #[test]
+    fn a_subagent_run_whose_process_is_alive_is_not_called_ended_in_the_brief() {
+        let mut runs = three_inherited();
+        for r in runs.iter_mut() {
+            r.incarnation = "live";
+            r.agent_id = Some(format!("child-{}", r.run_id));
+        }
+        runs[2].host = None;
+        let hosts = subagent_host::testing::FakeHosts::with(101, subagent_host::HostRead::Alive);
+        hosts.set(102, subagent_host::HostRead::Unreadable);
+        let brief = resumed_brief("conv-abc", &runs, true, &hosts);
+        for block in brief.split("\n- run `").skip(1) {
+            assert!(block.contains("incarnation: live"), "{block}");
+            assert!(!block.contains("ended with"), "{block}");
+        }
+        assert_eq!(brief.matches("incarnation: live").count(), 3, "{brief}");
+    }
+
     #[test]
     fn a_resumed_pane_holding_nothing_is_asked_for_nothing() {
-        let brief = resumed_brief("conv-abc", &[], true);
+        let brief = resumed_brief("conv-abc", &[], true, &no_hosts());
         assert!(brief.contains("RESUMED"), "{brief}");
         assert!(brief.contains("nothing to decide"), "{brief}");
     }
@@ -8891,6 +9166,28 @@ mod servers_refusal_walk_tests {
         tokens: Option<&session_tokens::SessionTokens>,
         deaf: &DeafSink,
     ) -> PaneState {
+        walk_over(
+            core,
+            masters,
+            resolved,
+            tokens,
+            deaf,
+            None,
+            &subagent_host::testing::FakeHosts::default(),
+        )
+        .await
+    }
+
+    /// [`walk`] resuming `conversation`, over a process table the test sets.
+    async fn walk_over(
+        core: String,
+        masters: &Arc<Masters>,
+        resolved: &crate::daemon::dispatch::Resolved,
+        tokens: Option<&session_tokens::SessionTokens>,
+        deaf: &DeafSink,
+        conversation: Option<&str>,
+        hosts: &dyn subagent_host::Hosts,
+    ) -> PaneState {
         let told = std::sync::atomic::AtomicBool::new(false);
         let authority = AuthoritySink::default();
         ensure_master(
@@ -8899,11 +9196,12 @@ mod servers_refusal_walk_tests {
             "proj-walk",
             resolved,
             &Carryover {
-                conversation: None,
+                conversation,
                 inherited: &[],
                 lifted: None,
                 stood_down_told: &told,
                 started: &std::sync::atomic::AtomicBool::new(false),
+                hosts,
             },
             Placement::AdoptOrStart,
             &CapabilityPorts {
@@ -8913,6 +9211,148 @@ mod servers_refusal_walk_tests {
             },
         )
         .await
+    }
+
+    /// ISS-1312 criterion 71, the review's F2 on rework 8: a process table
+    /// this box could not read answered the conversation scan as one in which
+    /// no process names it, and the hold lifted on not knowing. It holds on
+    /// not knowing, said by name, and lifts only on a table read whole.
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_pane_is_withheld_while_this_box_cannot_read_who_runs_its_conversation() {
+        use subagent_host::testing::FakeHosts;
+        let _serialised = terminal::testing::ONE_AT_A_TIME.lock().await;
+        let _env = crate::auth::cred_store::ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let iso = terminal::testing::IsolatedServer::new("walkbg");
+        if !terminal::available() {
+            terminal::testing::cannot_run(
+                "tmux is not installed here — the transport this rests on cannot run",
+            );
+            return;
+        }
+        if !iso.took() {
+            terminal::testing::cannot_run("this box does not resolve its tmux socket from the config dir, so the only server here is its own — not starting a pane on it");
+            return;
+        }
+        let repo = crate::test_scratch::Scratch::new("walkbg-repo");
+        let map = crate::test_scratch::Scratch::new("walkbg-map").at("control-tokens.json");
+        let store = session_tokens::SessionTokens::at(map.to_path_buf());
+        let name = terminal::session_name(terminal::MASTER_PREFIX, "walkbg");
+        let core = fake_core::serve_routes(&[
+            (REGISTER, "200 OK", SESSION),
+            (SERVERS, "520 Origin Error", GATEWAY_PAGE),
+        ])
+        .await;
+        let conv = "19793a14-07b1-4970-9f51-3262792c1414";
+        let masters = Arc::new(Masters::new());
+        masters.note_elsewhere("proj-walk", conv.to_string());
+        let deaf = DeafSink::default();
+        let hosts = FakeHosts::default();
+        let walkbg = resolved("walkbg", &repo);
+        macro_rules! at {
+            ($hosts:expr) => {
+                walk_over(
+                    core.clone(),
+                    &masters,
+                    &walkbg,
+                    Some(&store),
+                    &deaf,
+                    Some(conv),
+                    $hosts,
+                )
+            };
+        }
+
+        let buf = std::sync::Arc::new(std::sync::Mutex::new(Vec::<u8>::new()));
+        let made = buf.clone();
+        #[derive(Clone)]
+        struct Buf(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+        impl std::io::Write for Buf {
+            fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(b);
+                Ok(b.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        crate::daemon::keep_tracing_capturable();
+        let _logs = tracing::subscriber::set_default(
+            tracing_subscriber::fmt()
+                .with_writer(move || Buf(made.clone()))
+                .with_ansi(false)
+                .finish(),
+        );
+        let said = || {
+            String::from_utf8_lossy(&buf.lock().unwrap())
+                .matches("cannot read its process table")
+                .count()
+        };
+
+        hosts
+            .table_unreadable
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        assert_eq!(at!(&hosts).await, PaneState::Absent);
+        assert_eq!(at!(&hosts).await, PaneState::Absent, "criterion 71: again");
+        assert_eq!(
+            said(),
+            1,
+            "criterion 71: said once, naming the conversation: {}",
+            String::from_utf8_lossy(&buf.lock().unwrap())
+        );
+        assert!(String::from_utf8_lossy(&buf.lock().unwrap()).contains(conv));
+        match recorded(&masters) {
+            Some(Unplaced::ConversationUnaskable { conversation }) => {
+                assert_eq!(conversation, conv, "criterion 71")
+            }
+            other => panic!("criterion 71: {:?}", other.map(|w| w.to_string())),
+        }
+        assert!(!terminal::alive(&name).await, "criterion 71: no pane");
+        assert_eq!(
+            masters.elsewhere("proj-walk").as_deref(),
+            Some(conv),
+            "criterion 71: not knowing lifts nothing"
+        );
+
+        hosts
+            .table_unreadable
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+        hosts
+            .conversations
+            .lock()
+            .unwrap()
+            .insert(conv.to_string(), 3_850_261);
+        assert_eq!(at!(&hosts).await, PaneState::Absent);
+        assert!(
+            recorded(&masters)
+                == Some(Unplaced::ConversationElsewhere {
+                    conversation: conv.to_string(),
+                    pid: 3_850_261,
+                }),
+            "criterion 61: {:?}",
+            recorded(&masters).map(|w| w.to_string())
+        );
+
+        hosts.conversations.lock().unwrap().clear();
+        let _ = at!(&hosts).await;
+        assert_eq!(
+            masters.elsewhere("proj-walk"),
+            None,
+            "criterion 64: a table read whole naming no process lifts the hold"
+        );
+        assert!(
+            !matches!(
+                recorded(&masters),
+                Some(
+                    Unplaced::ConversationElsewhere { .. } | Unplaced::ConversationUnaskable { .. }
+                )
+            ),
+            "and placement goes on to what it answers to next: {:?}",
+            recorded(&masters).map(|w| w.to_string())
+        );
+        let _ = terminal::kill(&name).await;
     }
 
     fn recorded(masters: &Masters) -> Option<Unplaced> {
@@ -9024,6 +9464,11 @@ mod servers_refusal_walk_tests {
             })
             .unwrap();
             assert!(led.bind_agent("run-old", "child-old").unwrap());
+            // This process's pid under a start time it never had: a process
+            // that has ended, as the old pane's Claude Code has.
+            assert!(led
+                .note_host("run-old", std::process::id(), "not-a-start-time")
+                .unwrap());
         }
         let masters = Arc::new(Masters::new());
         let (_adopted_tx, adopted) = tokio::sync::watch::channel(true);
@@ -9184,6 +9629,26 @@ mod servers_refusal_walk_tests {
             })
             .unwrap();
             assert!(led.bind_agent("run-old", "child-old").unwrap());
+            assert!(led
+                .note_host("run-old", std::process::id(), "not-a-start-time")
+                .unwrap());
+            // Criterion 69: a run whose subagent's process is this one, which
+            // runs, as e67c08e0's ran in a background session.
+            led.create_run_group(NewRun {
+                run_id: "run-live".into(),
+                project_id: "proj-brief".into(),
+                master_session_id: "sess-before".into(),
+                worktree_path: "/w/live".into(),
+                boot_id: boot.clone(),
+                issue_keys: vec!["ISS-1315".into()],
+            })
+            .unwrap();
+            assert!(led.bind_agent("run-live", "child-live").unwrap());
+            let me = std::process::id();
+            let start = subagent_host::ProcHosts::system()
+                .start_of(me)
+                .expect("this process's own start time");
+            assert!(led.note_host("run-live", me, &start).unwrap());
         }
         let masters = Arc::new(Masters::new());
         let (_adopted_tx, adopted) = tokio::sync::watch::channel(true);
@@ -9204,16 +9669,19 @@ mod servers_refusal_walk_tests {
         )
         .await;
 
-        let block = |got: &str| {
+        let block_of = |got: &str, run: &str| {
             got.split("\n- run `")
-                .find(|b| b.starts_with("run-old`"))
+                .find(|b| b.starts_with(&format!("{run}`")))
                 .and_then(|b| b.split("\n\n").next())
                 .map(str::to_string)
         };
+        let block = |got: &str| block_of(got, "run-old");
         let mut got = String::new();
         for _ in 0..100 {
             got = std::fs::read_to_string(&typed).unwrap_or_default();
-            if block(&got).is_some_and(|b| b.contains("ended:")) {
+            if block_of(&got, "run-live").is_some_and(|b| b.contains("ended:"))
+                && block(&got).is_some_and(|b| b.contains("ended:"))
+            {
                 break;
             }
             tokio::time::sleep(std::time::Duration::from_millis(50)).await;
@@ -9234,6 +9702,250 @@ mod servers_refusal_walk_tests {
         assert!(
             !block.contains("incarnation: live"),
             "criterion 47: the pane is not told that subagent is live: {block}"
+        );
+        let live =
+            block_of(&got, "run-live").unwrap_or_else(|| panic!("the live run is listed: {got:?}"));
+        assert!(
+            live.contains("incarnation: live") && !live.contains("ended with"),
+            "criterion 69: a run whose subagent's process runs is not told it ended: {live}"
+        );
+        let led = ledger.as_ref().unwrap();
+        assert_eq!(
+            led.run("run-live").unwrap().unwrap().host_ended_at_ms,
+            None,
+            "criterion 50: the placement records no end of it"
+        );
+    }
+
+    /// ISS-1312 criteria 61-64, from sid-desk on sid-xeon-1 (2026-09-29): its
+    /// master conversation 19793a14 ran as a Claude Code background session,
+    /// and every pane the sweep placed resuming it printed that it was
+    /// running as a background session and exited within 5 s. The box placed
+    /// one 55 times in 27 minutes and never read why. The stub here prints the
+    /// sentence as that pane did, cursor moves between its words, and exits.
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_pane_that_exits_over_a_background_session_is_not_placed_again_while_it_runs() {
+        use crate::runner::ledger::Ledger;
+        let _serialised = terminal::testing::ONE_AT_A_TIME.lock().await;
+        let _env = crate::auth::cred_store::ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let iso = terminal::testing::IsolatedServer::new("sweepbg");
+        if !terminal::available() {
+            terminal::testing::cannot_run(
+                "tmux is not installed here — the transport this rests on cannot run",
+            );
+            return;
+        }
+        if !iso.took() {
+            terminal::testing::cannot_run("this box does not resolve its tmux socket from the config dir, so the only server here is its own — not starting a pane on it");
+            return;
+        }
+        if !cfg!(target_os = "linux") {
+            terminal::testing::cannot_run(
+                "no process table this box can read names a conversation off Linux",
+            );
+            return;
+        }
+        let home = crate::test_scratch::Scratch::new("sweepbg-home");
+        let _home = ScopedVar::set("HOME", home.path());
+        let claude_home = crate::test_scratch::Scratch::new("sweepbg-claude");
+        let _trust = ScopedVar::set("CLAUDE_CONFIG_DIR", claude_home.path());
+        let stub_dir = crate::test_scratch::Scratch::new("sweepbg-stub");
+        let stub = stub_dir.join("claude");
+        std::fs::write(
+            &stub,
+            "#!/bin/sh\n[ \"$1\" = --probe ] && exit 0\nconv=''\nwhile [ $# -gt 0 ]; do [ \"$1\" = --resume ] && conv=\"$2\"; shift; done\nsleep 1\nprintf '\\033[38;5;211mSession\\033[9G%s\\033[46Gis\\033[49Grunning\\033[57Gas\\033[60Ga\\033[62Gbackground\\033[73Gsession\\033[81G(x).\\033[93GRun\\033[97G`claude\\033[105Gattach`\\033[39m\\r\\r\\n' \"$conv\"\nsleep 1\n",
+        )
+        .expect("the stub is written");
+        let mut perms = std::fs::metadata(&stub).expect("stub mode").permissions();
+        std::os::unix::fs::PermissionsExt::set_mode(&mut perms, 0o755);
+        std::fs::set_permissions(&stub, perms).expect("the stub is executable");
+        let runs = (0..50).any(|_| {
+            let ok = std::process::Command::new(&stub)
+                .arg("--probe")
+                .status()
+                .is_ok_and(|s| s.success());
+            if !ok {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            ok
+        });
+        assert!(
+            runs,
+            "the stub never ran, so no pane could be started with it"
+        );
+        let _claude = crate::runner::process::testing::StubClaude::installed(&stub);
+        let repo = crate::test_scratch::Scratch::new("sweepbg-repo");
+        let conv = format!("19793a14-07b1-4970-9f51-{:012}", std::process::id());
+        let transcript = conversation_transcript(repo.path(), &conv).expect("a home to put it in");
+        std::fs::create_dir_all(transcript.parent().unwrap()).unwrap();
+        std::fs::write(&transcript, "{}\n").unwrap();
+        let map = crate::test_scratch::Scratch::new("sweepbg-map").at("control-tokens.json");
+        let store = session_tokens::SessionTokens::at(map.to_path_buf());
+        let runners: &'static str = Box::leak(
+            format!(
+                r#"[{{"projectId":"proj-bg","runnerId":"r-1","slug":"sweepbg","baseBranch":null,"repoPath":{},"branch":null,"status":"active"}}]"#,
+                serde_json::to_string(&repo.path().to_string_lossy()).unwrap()
+            )
+            .into_boxed_str(),
+        );
+        let routes: &'static [(&'static str, &'static str, &'static str)] = Box::leak(
+            vec![
+                ("/api/devices/me/runners", "200 OK", runners),
+                (
+                    "/api/devices/me/issues/admissible",
+                    "200 OK",
+                    r#"{"items":[{"issueId":"i-1","issueKey":"ISS-1","projectId":"proj-bg","status":"open"}]}"#,
+                ),
+                (
+                    REGISTER,
+                    "200 OK",
+                    r#"{"sessionId":"sess-bg","name":"forge-master-sweepbg","created":true}"#,
+                ),
+                (SERVERS, "200 OK", DECLARES),
+            ]
+            .into_boxed_slice(),
+        );
+        let core = fake_core::serve_routes(routes).await;
+        let mut ledger = Some(Ledger::open_in_memory().unwrap());
+        let boot = crate::runner::inflight::boot_identity().unwrap_or_default();
+        ledger
+            .as_ref()
+            .unwrap()
+            .note_master("proj-bg", "forge-master-sweepbg", Some(&conv), None, &boot)
+            .unwrap();
+        // The background session, as this box's process table shows it: a
+        // process naming the conversation among its arguments.
+        let mut session = std::process::Command::new("sh")
+            .args(["-c", "sleep 300; :", &conv])
+            .spawn()
+            .expect("a process standing in for the background session");
+
+        let buf = std::sync::Arc::new(std::sync::Mutex::new(Vec::<u8>::new()));
+        let made = buf.clone();
+        #[derive(Clone)]
+        struct Buf(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+        impl std::io::Write for Buf {
+            fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(b);
+                Ok(b.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        crate::daemon::keep_tracing_capturable();
+        let _logs = tracing::subscriber::set_default(
+            tracing_subscriber::fmt()
+                .with_writer(move || Buf(made.clone()))
+                .with_ansi(false)
+                .finish(),
+        );
+        let logged = || String::from_utf8_lossy(&buf.lock().unwrap()).into_owned();
+        let client = CoreClient::new(core, "device-token");
+        let masters = Arc::new(Masters::new());
+        let (_adopted_tx, adopted) = tokio::sync::watch::channel(true);
+        let mut said = None;
+        let pane = terminal::session_name(terminal::MASTER_PREFIX, "sweepbg");
+        macro_rules! a_sweep {
+            () => {
+                let _ = sweep(
+                    &client,
+                    &Config::default(),
+                    &masters,
+                    &agent_activity::Activities::new(),
+                    &Arc::new(JobPanes::new()),
+                    &crate::daemon::pool_jobs::NoRecords,
+                    &adopted,
+                    &mut ledger,
+                    Some(&store),
+                    &mut said,
+                    &crate::daemon::drain::Drain::unrecorded(),
+                )
+                .await;
+            };
+        }
+        let until_gone = || async {
+            for _ in 0..100 {
+                if !terminal::alive(&pane).await {
+                    return true;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+            false
+        };
+        let withheld = |m: &Masters| m.0.lock().unwrap().unplaced.get("proj-bg").cloned();
+
+        a_sweep!();
+        let placed_once = logged().matches("resumed from conversation").count();
+        assert_eq!(
+            placed_once,
+            1,
+            "the plant: the first sweep places a pane: {}",
+            logged()
+        );
+        assert!(
+            until_gone().await,
+            "the stub's pane exits, as the real one did"
+        );
+
+        a_sweep!();
+        assert!(
+            logged().contains(&format!(
+                "exited printing that conversation {conv} is running as a background session"
+            )),
+            "the sweep read why the pane exited: {}",
+            logged()
+        );
+        match withheld(&masters) {
+            Some(Unplaced::ConversationElsewhere { conversation, pid }) => assert_eq!(
+                (conversation.as_str(), pid),
+                (conv.as_str(), session.id()),
+                "criterion 61"
+            ),
+            other => panic!(
+                "criterion 61: {:?}\n{}",
+                other.map(|w| w.to_string()),
+                logged()
+            ),
+        }
+        assert!(
+            !terminal::alive(&pane).await,
+            "criterion 61: no pane was placed"
+        );
+
+        a_sweep!();
+        let line = "none is placed while a process names that conversation";
+        assert_eq!(
+            logged().matches(line).count(),
+            1,
+            "criteria 62 and 63: said once, naming the conversation and the process: {}",
+            logged()
+        );
+        assert!(logged().contains(&format!("process {} on this box names it", session.id())));
+        assert_eq!(
+            logged().matches("resumed from conversation").count(),
+            1,
+            "criterion 61: two sweeps placed nothing: {}",
+            logged()
+        );
+
+        let _ = session.kill();
+        let _ = session.wait();
+        a_sweep!();
+        let _ = terminal::kill(&pane).await;
+        assert_eq!(
+            logged().matches("resumed from conversation").count(),
+            2,
+            "criterion 64: with no process naming it, a pane resuming it is placed again: {}",
+            logged()
+        );
+        assert!(
+            logged().contains("its background session has ended"),
+            "{}",
+            logged()
         );
     }
 

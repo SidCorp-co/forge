@@ -321,6 +321,8 @@ mod tests {
             created_at: 0,
             host_ended_at_ms: None,
             host_ended_by: None,
+            host_pid: None,
+            host_start: None,
         }
     }
 
