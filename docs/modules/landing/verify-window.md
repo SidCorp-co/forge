@@ -88,13 +88,12 @@ branch, head, arrival time and priority.
 Nothing in `.github/workflows/ci.yml` changes. The window's pull request is an ordinary
 `pull_request` run, so every job its paths select runs and `ci-passed` gates it as any other.
 
-Its merge commit's push to `main` has two parents, the shape the changes job's step *Whether a
-pull_request run already proved this exact tree* is meant to read as `proved=true`, skipping
-`core`, `core-integration`, `web`, `runner`, `images` and `whole-tree` on that push. **That step has
-never fired**: it counts parents in a depth-1 checkout, where every commit reads as having none, so
-today `main` re-proves the window's merge like any other (`docs/proposals/where-the-time-goes.md`,
-ISS-1340). What the window saves does not depend on it: the sweeps no member's own run paid and one
-validation for the set. The push-side saving arrives with ISS-1340's fix and needs nothing here.
+Its merge commit's push to `main` is what the changes job's step *Whether a pull_request run
+already proved this exact tree* reads (ISS-1340): two parents off the commit object, a tree equal
+to the second parent's, and that parent's latest `ci-passed` concluded `success`. `land`'s
+`gh pr merge --merge --match-head-commit <chain head>`, on a window branch `strict` has kept up to
+date, gives all three, so that push skips `core`, `core-integration`, `web`, `runner`, `images`
+and `whole-tree`. A merge taken any other way, or past red, re-proves the tree as any push does.
 
 ## Migrations
 

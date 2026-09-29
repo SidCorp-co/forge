@@ -93,7 +93,8 @@ function editedEntries(member, combined, before, theirs) {
 
 /**
  * Re-derive `member`'s migrations against HEAD and stage the result.
- * @returns {{ moves: object[], rewrites: string[] } | { refusal: string }}
+ * `retag` is the moves `rewriteTags` applies once the merge's conflicts are settled.
+ * @returns {{ moves: object[], retag: object[] } | { refusal: string }}
  */
 export function enterMigrations(input) {
   try {
@@ -110,13 +111,13 @@ function rederive({ t, dir, member, open, earlier = [] }) {
   const theirs = journalOf(t, member.head, dir);
   const fork = t.run(['merge-base', 'HEAD', member.head])?.trim();
   const before = fork ? journalOf(t, fork, dir) : null;
-  if (!combined || !theirs) return { moves: [], rewrites: rewriteTags(t, earlier, journalPath) };
+  if (!combined || !theirs) return { moves: [], retag: earlier };
   const edited = editedEntries(member, combined, before, theirs);
   if (edited) return { refusal: edited };
   // New against where the member forked, not against the combination: a member stacked on an
   // earlier one carries that one's entries under the tags it had before the window renumbered them.
   const fresh = newEntries(theirs.entries, (before ?? combined).entries);
-  if (fresh.length === 0) return { moves: [], rewrites: rewriteTags(t, earlier, journalPath) };
+  if (fresh.length === 0) return { moves: [], retag: earlier };
 
   const { moves, renumbered } = allocate({ combined: combined.entries, member: fresh, open });
   const sources = moves.map((m) => ({
@@ -170,8 +171,7 @@ function rederive({ t, dir, member, open, earlier = [] }) {
   for (const s of sources) write(t, `${dir}/${s.move.to.tag}.sql`, s.sql);
   for (const s of snaps) write(t, s.path, `${JSON.stringify(s.body, null, 2)}\n`);
 
-  const rewrites = rewriteTags(t, [...earlier, ...(renumbered ? moves : [])], journalPath);
-  return { moves: renumbered ? moves : [], rewrites };
+  return { moves: renumbered ? moves : [], retag: [...earlier, ...(renumbered ? moves : [])] };
 }
 
 /**
@@ -179,7 +179,8 @@ function rederive({ t, dir, member, open, earlier = [] }) {
  * member was moved off — rewritten once. Files already in the combination were rewritten when the
  * member that moved the tag entered, so they are not read again.
  */
-function rewriteTags(t, moves, journalPath) {
+export function rewriteTags(t, moves, dir) {
+  const journalPath = `${dir}/meta/_journal.json`;
   const moved = moves.filter((m) => m.from.tag !== m.to.tag);
   if (moved.length === 0) return [];
   const brought = new Set(

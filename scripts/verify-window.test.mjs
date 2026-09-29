@@ -751,6 +751,47 @@ describe('a member stacked on a renumbered member, with no migration of its own'
   });
 });
 
+describe('a renumbered tag named in a union path both members add to', () => {
+  it('is rewritten in the unioned file, which keeps both entries and no conflict marker', () => {
+    const e = branch('ISS-26-e', {
+      [JOURNAL]: journal(entry(1, W, '0001_init'), entry(2, W + DAY, '0002_add_e')),
+      [`${DIR}/0002_add_e.sql`]: '-- 0002_add_e\n',
+      [`${DIR}/meta/0002_snapshot.json`]: snapshot('s-e', 's1', {
+        ...BASE_TABLES,
+        'public.e': table('e', ['id']),
+      }),
+      'CHANGELOG.md': '# Changelog\n\n## [Unreleased]\n\n- adds 0002_add_e\n- base entry\n',
+    });
+    const c = clone('union-retag');
+    const w = windowFiles(
+      'w-union-retag',
+      [
+        ['ISS-1', 'ISS-1-b', heads.m1],
+        ['ISS-26', 'ISS-26-e', e],
+      ],
+      green(heads.m1, e),
+    );
+    const r = run(
+      c,
+      'assemble',
+      '--window',
+      w.manifest,
+      '--checks',
+      w.checksFile,
+      '--tree',
+      w.tree,
+    );
+    git(seed, 'push', '-q', 'origin', '--delete', 'ISS-26-e');
+    expect(r.status, r.stderr).toBe(0);
+    const ledger = JSON.parse(readFileSync(w.ledger, 'utf8'));
+    const to = ledger.members.find((m) => m.issue === 'ISS-26').renumbered[0].to.tag;
+    const log = git(w.tree, 'show', `${ledger.chain.head}:CHANGELOG.md`);
+    expect(log).not.toMatch(/^[<=>]{7}/m);
+    expect(log).toContain('- one entry');
+    expect(log).toContain(`- adds ${to}`);
+  });
+});
+
 describe('the tree isolate rebuilds in', () => {
   it('refuses any tree but the recorded one, and deletes nothing it did not build', () => {
     const c = clone('tree-window');

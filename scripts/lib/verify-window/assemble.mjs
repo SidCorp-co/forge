@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { readJournal, readOpenSet } from '../migration-order.mjs';
 import { admitMembers } from './admit.mjs';
 import { CONFIG_PATH, parseConfig } from './config.mjs';
-import { enterMigrations, resolveUnions, Unreadable } from './entering.mjs';
+import { enterMigrations, resolveUnions, rewriteTags, Unreadable } from './entering.mjs';
 import { gitIn, showAt } from './git.mjs';
 import { windowBranch } from './land.mjs';
 
@@ -85,6 +85,7 @@ function enter({ t, config, member, open, landed, outside, window }) {
       `${member.issue} conflicts on ${named.join('; ')}; the later admission owns a same-path refusal`,
     );
   }
+  const rewrites = rewriteTags(t, mig.retag, config.migrationsDir);
   t.must([
     'commit',
     '-q',
@@ -98,7 +99,7 @@ function enter({ t, config, member, open, landed, outside, window }) {
     ...member,
     landing,
     renumbered: mig.moves,
-    rewrites: mig.rewrites,
+    rewrites,
     unions: unions.resolved,
     isolated: null,
   };
