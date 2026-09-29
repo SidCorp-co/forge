@@ -78,7 +78,7 @@ function main() {
   }
 
   const files = ROOTS.reduce((acc, rel) => walk(rel, acc), []);
-  if (files.length === 0) die('no source files found under ' + ROOTS.join(', '));
+  if (files.length === 0) die(`no source files found under ${ROOTS.join(', ')}`);
 
   const faults = files.flatMap((rel) => faultsIn(rel, readFileSync(join(ROOT, rel), 'utf8')));
 
