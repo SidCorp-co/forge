@@ -75,7 +75,9 @@ the window — `checkSet`'s `next` in `scripts/lib/migration-order.mjs`, the num
 `scripts/check-migration-order.mjs` prints as `Next free:`, read through the same `readOpenSet`.
 Otherwise they take consecutive numbers from it, their `.sql` and snapshot files are renamed, and
 every other file naming the old tag is rewritten; the ledger lists each renumbering and each
-rewritten file.
+rewritten file. A member's new entries are the ones missing where it forks from the combination, so
+a member stacked on an earlier one does not bring that one's migration back in under the tag it had
+before the window renumbered it, and its snapshot is rebased from the parent in its own tree.
 
 `packages/core/drizzle/migrations/README.md` tells a developer to regenerate a snapshot on the
 merged tree rather than renumber by hand. The window renumbers by tool, and rebases a member's

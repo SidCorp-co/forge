@@ -31,14 +31,14 @@ function write(t, path, text) {
   t.must(['add', '--', path]);
 }
 
-/** The snapshot in HEAD's tree whose `id` is `id`, parsed, or `null`. */
-function snapshotById(t, dir, id) {
-  const hit = t.run(['grep', '-l', '-F', `"id": "${id}"`, 'HEAD', '--', `${dir}/meta/`]);
+/** The snapshot in `rev`'s tree whose `id` is `id`, parsed, or `null`. */
+function snapshotById(t, rev, dir, id) {
+  const hit = t.run(['grep', '-l', '-F', `"id": "${id}"`, rev, '--', `${dir}/meta/`]);
   const path = hit
     ?.split('\n')
     .find(Boolean)
-    ?.replace(/^HEAD:/, '');
-  return path ? JSON.parse(showAt(t, 'HEAD', path)) : null;
+    ?.slice(rev.length + 1);
+  return path ? JSON.parse(showAt(t, rev, path)) : null;
 }
 
 function headSnapshot(t, dir) {
@@ -55,9 +55,7 @@ function headSnapshot(t, dir) {
  * rewritten as the combination's entries plus the member's new ones, so an edit to an existing
  * entry would otherwise be dropped without a word.
  */
-function editedEntries(t, member, dir, combined, theirs) {
-  const fork = t.run(['merge-base', 'HEAD', member.head])?.trim();
-  const before = fork ? journalOf(t, fork, dir) : null;
+function editedEntries(member, combined, before, theirs) {
   const inCombined = new Map(combined.entries.map((e) => [e.tag, e]));
   for (const e of theirs.entries) {
     const c = inCombined.get(e.tag);
@@ -80,9 +78,13 @@ export function enterMigrations({ t, dir, member, open }) {
   const combined = journalOf(t, 'HEAD', dir);
   const theirs = journalOf(t, member.head, dir);
   if (!combined || !theirs) return { moves: [], rewrites: [] };
-  const edited = editedEntries(t, member, dir, combined, theirs);
+  const fork = t.run(['merge-base', 'HEAD', member.head])?.trim();
+  const before = fork ? journalOf(t, fork, dir) : null;
+  const edited = editedEntries(member, combined, before, theirs);
   if (edited) return { refusal: edited };
-  const fresh = newEntries(theirs.entries, combined.entries);
+  // New against where the member forked, not against the combination: a member stacked on an
+  // earlier one carries that one's entries under the tags it had before the window renumbered them.
+  const fresh = newEntries(theirs.entries, (before ?? combined).entries);
   if (fresh.length === 0) return { moves: [], rewrites: [] };
 
   const { moves, renumbered } = allocate({ combined: combined.entries, member: fresh, open });
@@ -103,14 +105,14 @@ export function enterMigrations({ t, dir, member, open }) {
   const snaps = [];
   for (const s of sources.filter((x) => x.snap !== null)) {
     const snap = JSON.parse(s.snap);
-    const oldParent = previous ?? snapshotById(t, dir, snap.prevId);
+    const oldParent = previous ?? snapshotById(t, member.head, dir, snap.prevId);
     if (!oldParent) {
       return {
-        refusal: `${member.issue}'s ${snapshotFile(dir, s.move.from.idx)} chains off ${snap.prevId}, which no snapshot in the combination carries`,
+        refusal: `${member.issue}'s ${snapshotFile(dir, s.move.from.idx)} chains off ${snap.prevId}, which no snapshot in its own tree carries`,
       };
     }
     let next = snap;
-    if (newParent && oldParent.id !== newParent.id) {
+    if (newParent && JSON.stringify(oldParent) !== JSON.stringify(newParent)) {
       const r = rebaseSnapshot({ oldParent, newParent, snap });
       if (r.refusal)
         return {

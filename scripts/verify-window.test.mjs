@@ -619,6 +619,63 @@ describe('a member carrying one the window isolated', () => {
   });
 });
 
+describe('a member stacked on an earlier member the window renumbered', () => {
+  it('enters its own migration once, and rebases its snapshot onto what that member became', () => {
+    // ISS-8 and ISS-9 stay open with a 0002 each, so the window numbers from 0003.
+    const tables = (...names) =>
+      Object.fromEntries([
+        ['public.a', BASE_TABLES['public.a']],
+        ...names.map((n) => [`public.${n}`, table(n, ['id'])]),
+      ]);
+    const b = branch(
+      'ISS-19-d',
+      {
+        [JOURNAL]: journal(
+          entry(1, W, '0001_init'),
+          entry(2, W + DAY, '0002_add_b'),
+          entry(3, W + 2 * DAY, '0003_add_d'),
+        ),
+        [`${DIR}/0003_add_d.sql`]: '-- 0003_add_d\n',
+        [`${DIR}/meta/0003_snapshot.json`]: snapshot('s-dd', 's-b', tables('b', 'd')),
+      },
+      'ISS-1-b',
+    );
+    const c = clone('stacked-window');
+    const w = windowFiles(
+      'w-stacked',
+      [
+        ['ISS-2', 'ISS-2-c', heads.m2],
+        ['ISS-1', 'ISS-1-b', heads.m1],
+        ['ISS-19', 'ISS-19-d', b],
+      ],
+      green(heads.m2, heads.m1, b),
+    );
+    const tree = ['--window', w.manifest, '--checks', w.checksFile, '--tree', w.tree];
+    const r = run(c, 'assemble', ...tree);
+    git(seed, 'push', '-q', 'origin', '--delete', 'ISS-19-d');
+    expect(r.status, r.stderr).toBe(0);
+    const head = JSON.parse(readFileSync(w.ledger, 'utf8')).chain.head;
+    const at = (path) =>
+      spawnSync('git', ['show', `${head}:${path}`], { cwd: w.tree, encoding: 'utf8' });
+    expect(JSON.parse(at(JOURNAL).stdout).entries.map((e) => [e.idx, e.tag])).toEqual([
+      [1, '0001_init'],
+      [3, '0003_add_c'],
+      [4, '0004_add_b'],
+      [5, '0005_add_d'],
+    ]);
+    expect(at(`${DIR}/0002_add_b.sql`).status).not.toBe(0);
+    expect(at(`${DIR}/0005_add_d.sql`).stdout).toBe('-- 0005_add_d\n');
+    const last = JSON.parse(at(`${DIR}/meta/0005_snapshot.json`).stdout);
+    expect(last.prevId).toBe('s-b');
+    expect(Object.keys(last.tables).sort()).toEqual([
+      'public.a',
+      'public.b',
+      'public.c',
+      'public.d',
+    ]);
+  });
+});
+
 describe('the push a rebuilt window prints', () => {
   it('replaces the pushed chain under a lease that refuses once anyone moved the branch', () => {
     const d = branch('ISS-18-d', { 'src/d18.txt': 'd\n' });
