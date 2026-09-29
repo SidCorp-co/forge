@@ -1,9 +1,9 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { newEntries } from '../migration-order.mjs';
 import { showAt } from './git.mjs';
 import { allocate, rebaseSnapshot, snapshotFile } from './migrations.mjs';
+import { unionInsertions } from './union.mjs';
 
 /**
  * What one member's entry into the combination does to the files the repository orders across
@@ -136,28 +136,15 @@ function rewriteTags(t, moves, journalPath) {
   return [...touched].sort();
 }
 
-/** Resolve each declared union path that is unmerged by keeping both sides' lines. */
+/** Resolve each declared union path that is unmerged: the member's additions beside the combination's. */
 export function resolveUnions({ t, unmerged, union }) {
   const resolved = [];
-  const scratch = mkdtempSync(join(tmpdir(), 'verify-window-union-'));
-  try {
-    for (const path of unmerged.filter((p) => union.includes(p))) {
-      const files = [2, 1, 3].map((n) => {
-        const f = join(scratch, `stage-${n}`);
-        writeFileSync(f, t.run(['show', `:${n}:${path}`]) ?? '');
-        return f;
-      });
-      const merged = t.raw(['merge-file', '-p', '--union', ...files]);
-      if (merged.status !== 0) {
-        return {
-          refusal: `git merge-file --union could not merge ${path}: ${merged.stderr.trim()}`,
-        };
-      }
-      write(t, path, merged.stdout);
-      resolved.push(path);
-    }
-  } finally {
-    rmSync(scratch, { recursive: true, force: true });
+  for (const path of unmerged.filter((p) => union.includes(p))) {
+    const [base, ours, theirs] = [1, 2, 3].map((n) => t.run(['show', `:${n}:${path}`]) ?? '');
+    const merged = unionInsertions({ base, ours, theirs, path });
+    if (merged.refusal) return { refusal: merged.refusal };
+    write(t, path, merged.text);
+    resolved.push(path);
   }
   return { resolved };
 }

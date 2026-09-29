@@ -27,8 +27,12 @@ branch, head, arrival time and priority.
    critical member. A manifest declaring no thresholds is refused; there is no default.
 3. **`assemble`** — a worktree at the base commit, and one `git merge --no-ff` per member in order.
    What the repository orders across branches is re-derived as each member enters (below). A
-   member conflicting on any other path is isolated with the path and the earlier member that
-   changed it named; the members after it still enter. The ledger is written beside the manifest
+   path the declarations name as a union — `CHANGELOG.md`, where every pull request adds its entry
+   at the same place — takes the member's added lines beside the combination's, each after the
+   base line it follows; a member that removed or rewrote a line there is isolated instead, since
+   keeping both versions would publish the old entry beside the new one. A member conflicting on
+   any other path is isolated with the path and the earlier member that changed it named; the
+   members after it still enter. The ledger is written beside the manifest
    as JSON and as the markdown each member's issue carries.
 4. **One pull request** of the chain head into the base. Its `ci-passed`, with its full needs list,
    is the one validation.
