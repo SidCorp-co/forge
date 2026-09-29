@@ -278,6 +278,43 @@ describe('a verify Forge cannot parse is still refused, by name', () => {
   });
 });
 
+describe('a batch whose probes changed after it opened', () => {
+  it('records the close as it was proved, on the finish and on the run alike', async () => {
+    await fx.declareProduction();
+    const a = await fx.insertIssue();
+    const { runId, verification } = await fx.claim([a]);
+    expect(verification).toBe('probed');
+    await harness.db.execute(sql`
+      UPDATE integration_bindings SET config = config - 'verify' WHERE project_id = ${projectId}
+    `);
+
+    await call('POST', `/release-batches/${runId}/finish`, {});
+    const settled = await finished(runId);
+
+    expect(settled).toMatchObject({ state: 'finished', verification: 'unverified' });
+    expect((await runMetadata(runId)).verification).toBe('unverified');
+    expect(await markedComments(a, runId)).toBe(1);
+  }, 40_000);
+
+  it('refuses a probe url that is not a url by name, before any close', async () => {
+    await fx.declareProduction();
+    const a = await fx.insertIssue();
+    const { runId } = await fx.claim([a]);
+    await harness.db.execute(sql`
+      UPDATE integration_bindings
+      SET config = config || '{"verify": {"probes": [{"url": "api/version"}]}}'::jsonb
+      WHERE project_id = ${projectId}
+    `);
+
+    const res = await call('POST', `/release-batches/${runId}/finish`, { commit: RELEASED });
+
+    expect(res.status).toBe(409);
+    expect(res.body.code).toBe('RELEASE_PROBES_UNREADABLE');
+    expect(res.body.details).toMatchObject({ urls: ['api/version'] });
+    expect((await fx.stored(a)).status).toBe('releasing');
+  });
+});
+
 describe('a batch whose verify became unparseable after it opened', () => {
   it('refuses the finish by name and closes nothing', async () => {
     await fx.declareProduction();

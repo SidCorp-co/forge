@@ -1,11 +1,12 @@
 // An unverified close says so on each issue, so it never reads as a verified one: sid-desk ISS-191
 // closed 42 issues on a release that was not running (ISS-1042, ISS-1321).
 
-import { and, eq, like } from 'drizzle-orm';
+import { and, eq, like, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { comments, issues } from '../db/schema.js';
+import { comments, issues, pipelineRuns } from '../db/schema.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { logger } from '../logger.js';
+import type { ReleaseVerification } from './plan.js';
 
 /** The line a reader, or a query, finds an unverified close by. One per issue per release run. */
 export function unverifiedMarker(runId: string): string {
@@ -64,4 +65,17 @@ export async function noteUnverifiedCloses(args: {
     );
   }
   return written;
+}
+
+/** The run carries how its close was proved, which may differ from how it opened. */
+export async function stampRunVerification(
+  runId: string,
+  kind: ReleaseVerification,
+): Promise<void> {
+  await db
+    .update(pipelineRuns)
+    .set({
+      metadata: sql`coalesce(${pipelineRuns.metadata}, '{}'::jsonb) || ${JSON.stringify({ verification: kind })}::jsonb`,
+    })
+    .where(eq(pipelineRuns.id, runId));
 }

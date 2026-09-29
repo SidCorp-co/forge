@@ -40,6 +40,7 @@ import { collectReleaseBlockers, releaseBlockerError } from './blockers.js';
 import {
   type CloseVerification,
   closeVerification,
+  finishVerification,
   type ReleaseVerification,
   resolveReleaseChannels,
   resolveReleasePlan,
@@ -61,7 +62,7 @@ import {
   recoverStrandedReleasing,
 } from './releasing-recovery.js';
 import { RELEASE_UNSTARTED_DEADLINE_MS } from './unstarted-recovery.js';
-import { noteUnverifiedCloses } from './unverified-close.js';
+import { noteUnverifiedCloses, stampRunVerification } from './unverified-close.js';
 import { liveCarriesRoster, readLiveCommit, verifyDeployed } from './verify.js';
 import { cutReleaseVersion, markReleaseShipped } from './version-store.js';
 
@@ -335,7 +336,7 @@ export async function assertFinishable(
   // opened by it.
   if (!run.releaseVersion) throw new ReleaseVersionMissingError(runId);
 
-  return closeVerification(await resolveReleaseChannels(run.projectId));
+  return finishVerification(await resolveReleaseChannels(run.projectId));
 }
 
 export async function finishReleaseBatch(
@@ -380,6 +381,7 @@ export async function finishReleaseBatch(
       }
     }
     await options.onVerified?.(verification.kind);
+    await stampRunVerification(runId, verification.kind);
     if (verification.kind === 'unverified') {
       await noteUnverifiedCloses({
         runId,

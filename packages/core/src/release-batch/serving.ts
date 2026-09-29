@@ -1,5 +1,6 @@
 import { collectReleaseBlockers } from './blockers.js';
-import { refusedVerifyBindings } from './channel.js';
+import { type CloseVerification, closeVerification } from './channel.js';
+import { ReleaseProbesUnreadableError } from './errors.js';
 import type { VerifySource } from './plan.js';
 import { type LiveState, readLiveState } from './verify.js';
 
@@ -33,17 +34,18 @@ export async function readServingDeployment(projectId: string): Promise<ServingR
   if (!report.projectExists) return { ok: false, code: 'NO_PROJECT' };
 
   const channels = report.channels ?? [];
-  const refused = refusedVerifyBindings(channels);
-  if (refused.length > 0) {
+  let verification: CloseVerification;
+  try {
+    verification = closeVerification(channels);
+  } catch (err) {
+    if (!(err instanceof ReleaseProbesUnreadableError)) throw err;
     return {
       ok: false,
       code: 'PROBES_UNREADABLE',
-      detail: `the live deploy binding ${refused.join(', ')} declares a \`verify\` Forge cannot read, and a declared \`verify\` takes no project default. Correct it, or remove it.`,
+      detail: `the live deploy binding ${err.bindings.join(', ')} declares a \`verify\` Forge cannot read, and a declared \`verify\` takes no project default. Correct it, or remove it.`,
     };
   }
-  const channel = channels.find((c) => c.verify !== null) ?? null;
-  const cfg = channel?.verify ?? null;
-  if (!cfg) {
+  if (verification.kind === 'unverified') {
     return {
       ok: true,
       deployment: {
@@ -60,6 +62,8 @@ export async function readServingDeployment(projectId: string): Promise<ServingR
     };
   }
 
+  const { cfg } = verification;
+  const channel = channels.find((c) => c.verify === cfg);
   let state: LiveState;
   try {
     state = await readLiveState(cfg);

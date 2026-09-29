@@ -6,7 +6,8 @@ import {
   releaseAttempts,
 } from '../db/schema-release-ledger.js';
 
-import { type ReleaseChannel, refusedVerifyBindings } from './channel.js';
+import { type CloseVerification, closeVerification, type ReleaseChannel } from './channel.js';
+import { ReleaseProbesUnreadableError } from './errors.js';
 import { readLiveState } from './verify.js';
 
 export type { ReleaseAttemptRow, ReleaseAttemptStage };
@@ -159,18 +160,20 @@ export async function readAttempt(
 export async function attemptReading(
   channels: readonly ReleaseChannel[],
 ): Promise<Omit<SettleAttemptArgs, 'runId' | 'idempotencyKey'>> {
-  const refused = refusedVerifyBindings(channels);
-  if (refused.length > 0) {
+  let verification: CloseVerification;
+  try {
+    verification = closeVerification(channels);
+  } catch (err) {
+    if (!(err instanceof ReleaseProbesUnreadableError)) throw err;
     return {
       health: null,
       identity: null,
       readings: null,
       verdict: 'failed' as const,
-      verdictReason: `the live deploy binding ${refused.join(', ')} declares a \`verify\` Forge cannot read, so nothing could be read`,
+      verdictReason: `the live deploy binding ${err.bindings.join(', ')} declares a \`verify\` Forge cannot read, so nothing could be read`,
     };
   }
-  const verify = channels.find((ch) => ch.verify !== null)?.verify ?? null;
-  if (!verify) {
+  if (verification.kind === 'unverified') {
     return {
       health: null,
       identity: null,
@@ -180,7 +183,7 @@ export async function attemptReading(
         'this project declares no verification probes, so nothing was read: the attempt stands on its account alone',
     };
   }
-  const live = await readLiveState(verify);
+  const live = await readLiveState(verification.cfg);
   return {
     health: live.health,
     identity: live.identity,

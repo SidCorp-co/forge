@@ -13,7 +13,7 @@ import {
   type ReleasePlan,
   type ReleaseRollback,
 } from './plan.js';
-import { parseVerifyConfig, type VerifyConfig } from './verify.js';
+import { invalidProbeUrls, parseVerifyConfig, type VerifyConfig } from './verify.js';
 
 export type {
   CloseVerification,
@@ -118,6 +118,15 @@ export function closeVerification(channels: readonly ReleaseChannel[]): CloseVer
   if (refused.length > 0) throw new ReleaseProbesUnreadableError([], refused);
   const cfg = channels.find((c) => c.verify !== null)?.verify ?? null;
   return cfg ? { kind: 'probed', cfg } : { kind: 'unverified' };
+}
+
+/** `closeVerification` for a finish, where a probe url no request can be made to is named rather
+ *  than met as a thrown `new URL` mid-verify. */
+export function finishVerification(channels: readonly ReleaseChannel[]): CloseVerification {
+  const verification = closeVerification(channels);
+  const urls = verification.kind === 'probed' ? invalidProbeUrls(verification.cfg) : [];
+  if (urls.length > 0) throw new ReleaseProbesUnreadableError(urls);
+  return verification;
 }
 
 /** Thrown where the live deploy bindings disagree about which box may ship the project. */
