@@ -63,6 +63,7 @@ const SET_DOWN: IssueStatus[] = ["on_hold", "dropped"];
 export function parkMenuItems(args: {
 	status: IssueStatus;
 	reading: ParkReading;
+	/** `undefined` while the map is unread: `ordinary` then says why, in Move anyway's place. */
 	exits: StatusExits | undefined;
 	ordinary: MenuItem[];
 	actions: ParkMenuActions;
@@ -70,19 +71,23 @@ export function parkMenuItems(args: {
 	const { status, reading, exits, ordinary, actions } = args;
 	const parked = PARKED.has(status);
 	const map = allowedTransitions(exits, status);
-	const anyway: MenuItem = {
-		label: MOVE_ANYWAY_LABEL,
-		separatorBefore: true,
-		disabled: map.length === 0,
-		onSelect: () => actions.moveAnyway(map),
-	};
+	const anyway: MenuItem[] = exits
+		? [
+				{
+					label: MOVE_ANYWAY_LABEL,
+					separatorBefore: true,
+					disabled: map.length === 0,
+					onSelect: () => actions.moveAnyway(map),
+				},
+			]
+		: ordinary.map((item) => ({ ...item, separatorBefore: true }));
 	if (reading.state !== "ready") {
 		if (!parked) return null;
 		const said =
 			reading.state === "loading"
 				? "Reading what this park waits on…"
 				: "Couldn't read what this park waits on, so no resume rung is offered";
-		return [{ label: said, disabled: true }, anyway];
+		return [{ label: said, disabled: true }, ...anyway];
 	}
 	const park = reading.park;
 	if (!park) return null;
@@ -92,7 +97,7 @@ export function parkMenuItems(args: {
 		const below = ordinary.map((item, i) => (i === 0 ? { ...item, separatorBefore: true } : item));
 		return [...answer, ...below];
 	}
-	return [...answer, ...resumeItems(park, asks, actions), ...setDownItems(map, actions), anyway];
+	return [...answer, ...resumeItems(park, asks, actions), ...setDownItems(map, actions), ...anyway];
 }
 
 function resumeItems(park: IssuePark, asks: boolean, actions: ParkMenuActions): MenuItem[] {

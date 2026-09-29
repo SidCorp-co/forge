@@ -197,6 +197,21 @@ describe('GET /api/issues/:id/park reads the resume rung off the park record', (
     expect(body.park?.record).toBeNull();
   });
 
+  it('keeps its own boundary after more park-to-park moves than a page of history holds', async () => {
+    const issueId = await insertIssue('needs_info');
+    await commented(issueId, parkRecord('screen-review', 'testing'), 200);
+    await moved(issueId, 'waiting', 'developed', 180);
+    await moved(issueId, 'developed', 'needs_info', 170);
+    for (let i = 0; i < 51; i += 1) {
+      const [from, to] = i % 2 === 0 ? ['needs_info', 'waiting'] : ['waiting', 'needs_info'];
+      await moved(issueId, from, to, 160 - i);
+    }
+    await moved(issueId, 'waiting', 'needs_info', 100);
+    const { body } = await getPark(issueId);
+    expect(body.park).toMatchObject({ resume: { at: null } });
+    expect(body.park?.record).toBeNull();
+  });
+
   it('answers null for an issue nobody owes anything, and 404 for none at all', async () => {
     const issueId = await insertIssue('in_progress');
     expect((await getPark(issueId)).body.park).toBeNull();

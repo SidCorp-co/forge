@@ -2,7 +2,7 @@
 // the status, the park record in the thread and the open question rows (ISS-1310).
 
 import type { IssuePark, ParkOwes, ParkResume } from '@forge/contracts';
-import { and, desc, eq, gt, like, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, like, notInArray, or, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   comments,
@@ -134,13 +134,23 @@ export function readPark(input: ParkInput): IssuePark | null {
   };
 }
 
+const toOf = sql<string>`${activityLog.payload}->>'to'`;
+
+/**
+ * The two moves `readPark` reads — the newest, and the newest into a working rung — each found in
+ * the whole history, so a park that has cycled through side statuses keeps its own boundary.
+ */
 async function movesOf(issueId: string): Promise<ParkMove[]> {
-  const rows = await db
-    .select({ payload: activityLog.payload, at: activityLog.createdAt })
-    .from(activityLog)
-    .where(and(eq(activityLog.issueId, issueId), eq(activityLog.action, 'issue.statusChanged')))
-    .orderBy(desc(activityLog.createdAt))
-    .limit(50);
+  const newestWhere = (scope: SQL | undefined) =>
+    db
+      .select({ payload: activityLog.payload, at: activityLog.createdAt })
+      .from(activityLog)
+      .where(and(eq(activityLog.issueId, issueId), eq(activityLog.action, 'issue.statusChanged'), scope))
+      .orderBy(desc(activityLog.createdAt))
+      .limit(1);
+  const [newest] = await newestWhere(undefined);
+  const [boundary] = await newestWhere(notInArray(toOf, [...SIDE_STATUSES]));
+  const rows = [newest, boundary].filter((r) => r !== undefined);
   return rows.map((r) => {
     const p = (r.payload ?? {}) as { to?: unknown; reason?: unknown };
     return {

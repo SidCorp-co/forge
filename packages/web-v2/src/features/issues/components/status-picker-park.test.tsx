@@ -173,6 +173,46 @@ describe("the status control at a park (ISS-1310)", () => {
     expect(labels()).toEqual([said, "Move anyway…"]);
   });
 
+  it.each([
+    ["loading", "Reading what this park waits on…"],
+    ["error", "Couldn't read what this park waits on, so no resume rung is offered"],
+  ] as const)("says the park is %s while the map is unread too, and offers no Move anyway", async (state, said) => {
+    get.mockReturnValue(new Promise(() => {}));
+    wrap(<StatusEdit status="waiting" onTransition={vi.fn()} park={{ reading: { state }, actions: actions() }} />);
+    fireEvent.click(screen.getByLabelText(`Change status (currently ${statusLabel("waiting")})`));
+    expect(labels()).toEqual([said, "Loading status moves…"]);
+  });
+
+  it("offers the recorded rung while the map cannot be read, and says the map failed", async () => {
+    get.mockRejectedValue(new Error("down"));
+    const acts = actions();
+    wrap(
+      <StatusEdit
+        status="waiting"
+        onTransition={vi.fn()}
+        park={{ reading: park({ resume: { at: "developed", recordId: "c1" } }), actions: acts }}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText(`Change status (currently ${statusLabel("waiting")})`));
+    await waitFor(() => expect(labels()).toEqual(["Resume at Developed", "Couldn't load status moves"]));
+    fireEvent.click(screen.getByText("Resume at Developed"));
+    expect(acts.move).toHaveBeenCalledWith("developed");
+  });
+
+  it("offers the recorded rung where the map has no move from the park at all", async () => {
+    get.mockResolvedValue({ version: 7, runnerCapabilities: {}, statusExits: { ...STATUS_EXITS, waiting: [] } });
+    wrap(
+      <StatusEdit
+        status="waiting"
+        onTransition={vi.fn()}
+        park={{ reading: park({ resume: { at: "developed", recordId: "c1" } }), actions: actions() }}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText(`Change status (currently ${statusLabel("waiting")})`));
+    await waitFor(() => expect(labels()).toEqual(["Resume at Developed", "Move anyway…"]));
+    expect(screen.getByText("Move anyway…")).toHaveAttribute("aria-disabled", "true");
+  });
+
   it("puts Answer above a working rung's own moves when a question is open there", async () => {
     await openAt(
       "testing",

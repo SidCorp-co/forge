@@ -63,6 +63,29 @@ export function InlineSelect({
   );
 }
 
+/** The map's own moves from this rung, or the one inert line that says why there are none. */
+function ordinaryItems(args: {
+  status: IssueStatus;
+  grouped: ReturnType<typeof groupedTransitions>;
+  isPending: boolean;
+  isError: boolean;
+  onTransition: (toStatus: IssueStatus) => void;
+}): MenuItem[] {
+  const { status, grouped, isPending, isError, onTransition } = args;
+  if (isPending) return [{ label: "Loading status moves…", disabled: true }];
+  if (isError) return [{ label: "Couldn't load status moves", disabled: true }];
+  if (grouped.length === 0) {
+    return [{ label: `No move from ${statusLabel(status)} — re-file instead`, disabled: true }];
+  }
+  const names = transitionLabels(grouped.map((g) => g.to));
+  return grouped.map((g, i) => ({
+    label: names[i],
+    danger: g.kind === "discard",
+    separatorBefore: g.startsGroup,
+    onSelect: () => onTransition(g.to),
+  }));
+}
+
 interface StatusEditProps {
   status: IssueStatus;
   agentStatus?: IssueAgentStatus;
@@ -86,22 +109,17 @@ export function StatusEdit({ status, agentStatus, onTransition, disabled, size, 
   let items: MenuItem[];
   if (held) {
     items = [{ label: AGENT_HOLDS_MOVE, disabled: true }];
-  } else if (isPending) {
-    items = [{ label: "Loading status moves…", disabled: true }];
-  } else if (isError) {
-    items = [{ label: "Couldn't load status moves", disabled: true }];
-  } else if (grouped.length === 0) {
-    items = [{ label: `No move from ${statusLabel(status)} — re-file instead`, disabled: true }];
   } else {
-    const names = transitionLabels(grouped.map((g) => g.to));
-    items = grouped.map((g, i) => ({
-      label: names[i],
-      danger: g.kind === "discard",
-      separatorBefore: g.startsGroup,
-      onSelect: () => onTransition(g.to),
-    }));
+    items = ordinaryItems({ status, grouped, isPending, isError, onTransition });
+    const mapRead = !isPending && !isError;
     const parkItems = park
-      ? parkMenuItems({ status, reading: park.reading, exits, ordinary: items, actions: park.actions })
+      ? parkMenuItems({
+          status,
+          reading: park.reading,
+          exits: mapRead ? (exits ?? {}) : undefined,
+          ordinary: items,
+          actions: park.actions,
+        })
       : null;
     if (parkItems) items = parkItems;
   }
