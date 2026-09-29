@@ -712,4 +712,27 @@ mod tests {
         );
         assert!(!line(true, 0).starts_with("no file under the worktree"));
     }
+
+    /// Consult f10906 F1: a walk that found a newest file and could not read
+    /// some entries names the first of them with its reason.
+    #[test]
+    fn a_partial_walk_with_a_newest_file_names_what_it_could_not_read() {
+        let l = tree_line(
+            0,
+            0,
+            &TreeAge::Newest {
+                at_ms: 0,
+                path: "src/a.rs".into(),
+                entries: 9,
+                capped: false,
+                unread: 3,
+                first_unread: Some("node_modules/x: Permission denied".into()),
+            },
+        );
+        assert!(
+            l.contains("PARTIAL: 3 entr(ies) could not be read")
+                && l.contains("(first: UNREADABLE — node_modules/x: Permission denied)"),
+            "{l}"
+        );
+    }
 }
