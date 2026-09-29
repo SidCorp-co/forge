@@ -3132,6 +3132,10 @@
 
 ### Fixed
 
+- **Automatic release works again without a verify probe.** An issue judged at what Forge last
+  deployed through your Coolify binding now ships. A project nothing can be read from is told once,
+  on its release card and oldest waiting issue.
+
 - **A storefront project can close work that landed outside git.** Mark it merged naming where it
   landed — a live page, CMS entry or store resource — and it closes. No commit is asked; a mark
   naming nothing is refused.

@@ -52,6 +52,14 @@ export class ReleaseCriteriaUnearnedError extends Error {
   }
 }
 
+/** Nothing can read what this project serves, so no waiting issue's criteria can be earned. */
+export class ReleaseRuntimeUnroutedError extends Error {
+  constructor(public readonly missing: string) {
+    super(`RELEASE_RUNTIME_UNROUTED: ${missing}`);
+    this.name = 'ReleaseRuntimeUnroutedError';
+  }
+}
+
 /** The roster read for this project cannot be cut as one release. */
 export class ReleaseRosterUnusableError extends Error {
   constructor(
@@ -110,6 +118,9 @@ function errorFor(
       // named list. The arm is here because the switch is exhaustive, and it
       // refuses by name rather than falling through.
       return new ReleaseCriteriaUnearnedError((first.details?.held as HeldIssueRef[]) ?? []);
+    case 'RELEASE_RUNTIME_UNROUTED':
+      // Roster-scoped like the arm above, and refused by name for the same reason.
+      return new ReleaseRuntimeUnroutedError(String(first.details?.missing ?? 'unknown'));
     case 'RELEASE_CHECK_UNEVALUATED':
       return new ReleaseCheckUnevaluatedError(String(first.details?.check ?? 'unknown'));
   }

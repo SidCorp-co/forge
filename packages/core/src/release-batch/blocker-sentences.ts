@@ -29,6 +29,7 @@ export type ReleaseBlockerCode =
   | 'RELEASE_MULTI_CHANNEL_UNSUPPORTED'
   | 'BATCH_IN_FLIGHT'
   | 'RELEASE_CRITERIA_UNEARNED'
+  | 'RELEASE_RUNTIME_UNROUTED'
   | 'RELEASE_CHECK_UNEVALUATED';
 
 export type ReleaseWarningCode =
@@ -130,6 +131,8 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
     'A release is already running for this project, and a second one would claim the same issues. Let it finish, or abort it with what you found.',
   RELEASE_CRITERIA_UNEARNED:
     'This project releases without a person acting, and the sweep that cuts its releases is holding back every issue waiting at the gate: each still owes a judging run on an acceptance criterion. Record a verdict for each criterion named below, or move the issue out of `awaiting_release` if it is not to ship.',
+  RELEASE_RUNTIME_UNROUTED:
+    'This project releases without a person acting, only an issue whose every acceptance criterion is earned at what it is serving, and nothing here can read what it is serving — so no verdict a run records can earn one, and every issue waiting at the gate is held on that one reason. Deploy through a Coolify deploy binding, or declare `verify.probes` on the live one, and the next sweep weighs every waiting issue again.',
   RELEASE_CHECK_UNEVALUATED:
     'One of the checks that decides whether a release may start could not be run, so this answer cannot say a release would succeed: whatever that check would have found is missing from this list. Every other reason here was reached by a check of its own — act on the ones carrying `evaluated: true`, and retry EVERY entry shaped like this one, each naming the read of its own that has to answer first.',
 };
@@ -163,6 +166,7 @@ export const REMEDY_COST: Record<ReleaseReasonCode, readonly RemedyAct[]> = {
   RELEASE_MULTI_CHANNEL_UNSUPPORTED: [],
   BATCH_IN_FLIGHT: [],
   RELEASE_CRITERIA_UNEARNED: [],
+  RELEASE_RUNTIME_UNROUTED: [],
   RELEASE_CHECK_UNEVALUATED: [],
   RELEASE_RUNNER_PREFERENCE_UNMET: [],
   RELEASE_CRITERIA_HELD_BACK: [],
@@ -306,6 +310,10 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
   if (code === 'RELEASE_CRITERIA_UNEARNED') {
     const held = (details?.held as HeldIssueRef[] | undefined) ?? [];
     return held.length === 0 ? remedy : heldIssuesSentence(remedy, held);
+  }
+  if (code === 'RELEASE_RUNTIME_UNROUTED' && typeof details?.missing === 'string') {
+    const held = (details.held as HeldIssueRef[] | undefined) ?? [];
+    return `${remedy} What is missing: ${details.missing}. Held: ${held.length} issue(s).`;
   }
   if (code === 'RELEASE_TARGET_UNDECLARED' && Array.isArray(details?.releaseChain)) {
     const chain = details.releaseChain as { branch?: unknown }[];

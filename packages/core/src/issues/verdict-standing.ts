@@ -1,9 +1,11 @@
 /**
- * What the identity a verdict names is worth once it is stored. A runtime verdict resolves against
- * a READING of what a project is serving — `release-batch/serving-reading.ts` — taken when the
+ * What the identity a verdict names is worth once it is stored. A verdict resolves against a
+ * READING of what a project is serving — `release-batch/serving-reading.ts` — taken when the
  * verdict is weighed; `sessionContext.landing.deployment` gates nothing, a commit stored on a row
- * being unable to say what a host serves now (ISS-1286). A source verdict resolves against the
- * issue's own source. The shapes an identity may be written in: `messaging/verdict-identity.ts`.
+ * being unable to say what a host serves now (ISS-1286). Where that reading names what is running,
+ * it decides a verdict written in either field, the observation being Forge's (ISS-1346); where it
+ * names nothing, a source verdict resolves against the issue's own source. The shapes an identity
+ * may be written in: `messaging/verdict-identity.ts`.
  */
 
 import { sameIdentity } from '../messaging/verdict-identity.js';
@@ -62,6 +64,15 @@ function runtimeStanding(value: string, serving: ServingReading): VerdictStandin
   return serving.commits.some((commit) => sameIdentity(value, commit)) ? 'stands' : 'superseded';
 }
 
+// A source may be abbreviated to seven characters, as the write door lets it be.
+function servedSource(value: string, serving: ServingReading): VerdictStanding | null {
+  if (serving.kind !== 'serving') return null;
+  const served = serving.commits.some((commit) =>
+    sameIdentity(value, commit, { abbreviating: true }),
+  );
+  return served ? 'stands' : 'superseded';
+}
+
 export function verdictStanding(
   at: VerdictIdentity | null,
   serving: ServingReading,
@@ -69,6 +80,8 @@ export function verdictStanding(
 ): VerdictStanding {
   if (!at) return 'unanchored';
   if (at.kind === 'runtime') return runtimeStanding(at.value, serving);
+  const observed = servedSource(at.value, serving);
+  if (observed) return observed;
   if (identities.source === null) return 'unanchored';
   return sameIdentity(at.value, identities.source, { abbreviating: true })
     ? 'unwitnessed'
@@ -91,13 +104,27 @@ function uncorroboratedSentence(at: VerdictIdentity | null, serving: ServingRead
   if (serving.kind === 'unreadable') {
     return `judged at the runtime ${runtime}, and nothing could be read from what this project declares${askedClause(serving)}: ${serving.why}. A verdict nothing could check is weaker evidence than one that was checked, and it is not a refusal`;
   }
-  return `judged at the runtime ${runtime}, and this project declares no way to ask a host what it is serving, so nothing here could check that reading. A verdict nothing could check is weaker evidence than one that was checked, and it is not a refusal`;
+  return `judged at the runtime ${runtime}, and nothing here can read what this project is serving${missingClause(serving)}, so nothing could check that reading. A verdict nothing could check is weaker evidence than one that was checked, and it is not a refusal`;
+}
+
+function missingClause(serving: ServingReading): string {
+  return serving.kind === 'undeclared' ? ` — ${serving.missing}` : '';
+}
+
+function unwitnessedWhy(serving: ServingReading): string {
+  if (serving.kind === 'undeclared') {
+    return `, and nothing here can read what this project is serving: ${serving.missing}`;
+  }
+  if (serving.kind === 'unreadable') {
+    return `, and what this project answers through could not be read${askedClause(serving)}: ${serving.why}`;
+  }
+  return '';
 }
 
 /** What a reading of more than one commit, or one taken beside a probe that failed, has to add. */
 function partialClause(serving: ServingReading): string {
   if (serving.kind !== 'serving') return '';
-  const rollout = serving.commits.length > 1 ? ' — a rollout that has not finished' : '';
+  const rollout = serving.commits.length > 1 ? ' — more than one commit is running' : '';
   const unread = serving.unread.length === 0 ? '' : ` (${serving.unread.join('; ')})`;
   return `${rollout}${unread}`;
 }
@@ -108,7 +135,7 @@ function supersededSentence(
   identities: IssueIdentities,
 ): string {
   const judged = named(at?.value ?? null);
-  if (at?.kind !== 'runtime') {
+  if (at?.kind !== 'runtime' && serving.kind !== 'serving') {
     return `judged at ${judged}, and this issue now stands at ${named(identities.source)}`;
   }
   if (serving.kind !== 'serving') {
@@ -132,7 +159,7 @@ export function standingSentence(
       : 'judged without naming what it was judged against, so nothing says where it held';
   }
   if (standing === 'unwitnessed') {
-    return `judged against source ${named(at?.value ?? null)}, which is still the source this issue stands at, but no runtime witnessed it — a source identity says which code was read, never that the code was running`;
+    return `judged against source ${named(at?.value ?? null)}, which is still the source this issue stands at, but no runtime witnessed it — a source identity says which code was read, never that the code was running${unwitnessedWhy(serving)}`;
   }
   if (standing === 'uncorroborated') return uncorroboratedSentence(at, serving);
   return supersededSentence(at, serving, identities);

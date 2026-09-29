@@ -356,12 +356,18 @@ describe('the hold the unattended sweep puts on a waiting issue', () => {
     ]);
     joinRows.mockResolvedValue([{ id: ISSUE_A, issSeq: 1286, issuePrefix: 'ISS' }]);
 
-    const report = await collectReleaseBlockers(PROJECT_ID, { serving: { kind: 'undeclared' } });
+    const report = await collectReleaseBlockers(PROJECT_ID, {
+      serving: {
+        kind: 'undeclared',
+        missing:
+          'this project has no active deploy binding, so Forge makes no deployment it could read a commit from',
+      },
+    });
     const warned = report.warnings.find((w) => w.code === 'RELEASE_CRITERIA_UNCORROBORATED');
 
     expect(report.blockers.map((b) => b.code)).not.toContain('RELEASE_CRITERIA_UNEARNED');
     expect(warned?.message).toContain('`ISS-1286` on criterion 2, 5');
-    expect(warned?.message).toContain('declares no way to ask');
+    expect(warned?.message).toContain('nothing here can read what this project is serving');
     expect(warned?.message).toContain('absence of a reading is not a failure');
     // The issue may still be held by another criterion: this warning says nothing about shipping.
     expect(warned?.message).not.toContain('will be cut carrying');

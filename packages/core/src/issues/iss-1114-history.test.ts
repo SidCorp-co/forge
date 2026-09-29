@@ -116,13 +116,13 @@ describe("ISS-1114's history before the 2026-09-22 correction", () => {
     expect(await issuesWithUnearnedCriteria(['iss-1114'], LIVE)).toEqual(['iss-1114']);
   });
 
-  it('names all thirteen, each judged against a source no runtime witnessed', async () => {
+  it('names all thirteen, each judged at a commit the reading says is not what is running', async () => {
     const [report] = await unearnedCriteriaReports(['iss-1114'], LIVE);
     expect(report?.unearned.map((c) => c.criterion)).toEqual([
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
     ]);
-    expect(report?.unearned.every((c) => c.standing === 'unwitnessed')).toBe(true);
-    expect(report?.unearned[12]?.why).toContain('no runtime witnessed it');
+    expect(report?.unearned.every((c) => c.standing === 'superseded')).toBe(true);
+    expect(report?.unearned[12]?.why).toContain('what this project is serving');
   });
 
   it('reads criterion 13 as the pass that superseded the skipped one by recency alone', async () => {
