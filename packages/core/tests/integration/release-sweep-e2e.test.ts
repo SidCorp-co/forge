@@ -185,6 +185,23 @@ describe('release sweep E2E (ISS-1117)', () => {
     expect(await holdOf(earnedId)).toBeNull();
   }, 30_000);
 
+  it('cuts a release for a project that declares no probe, writing no hold (ISS-1321)', async () => {
+    await harness.db.execute(sql`
+      UPDATE integration_bindings SET config = config - 'verify' WHERE project_id = ${projectId}
+    `);
+    const id = await insertIssue();
+    await setCriteria(id, '1. ok');
+    await setLanding(id, SERVING);
+    await postVerdict(id, verdictComment([verdictBlock(1, 'a', 'pass')]));
+
+    const { sweepAutomaticReleases } = await import('../../src/pipeline/release-sweep.js');
+    const result = await sweepAutomaticReleases();
+
+    expect(result.issuesCut).toBe(1);
+    expect((await stored(id)).status).toBe('releasing');
+    expect(await holdOf(id)).toBeNull();
+  }, 30_000);
+
   it('touches nothing when every waiting issue is unearned', async () => {
     const id = await insertIssue();
     await setCriteria(id, '1. ok');

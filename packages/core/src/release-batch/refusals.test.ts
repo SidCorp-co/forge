@@ -8,6 +8,7 @@ import {
   ReleaseBatchAbortedError,
   ReleaseFinishedForOtherCommitError,
   ReleaseFinishInFlightError,
+  ReleaseProbesUnreadableError,
   ReleaseVersionMissingError,
 } from './errors.js';
 import { ReleaseTargetUndeclaredError } from './gate.js';
@@ -15,8 +16,9 @@ import {
   declarationRefusal,
   finishRefusal,
   issuesUnnamed,
+  recordRefusal,
   reportedRefusal,
-  undeclaredProbes,
+  unreadableProbes,
 } from './refusals.js';
 import { ReleaseMultiChannelUnsupportedError } from './service.js';
 
@@ -75,32 +77,45 @@ describe('declarationRefusal — one sentence, whichever door', () => {
   });
 });
 
-describe('undeclaredProbes', () => {
-  it('answers 409 under the code the routes translate', () => {
-    const err = undeclaredProbes();
+describe('unreadableProbes', () => {
+  const refused = new ReleaseProbesUnreadableError([], ['coolify b-1']);
+
+  it('answers 409 under the code the routes translate, naming the binding', () => {
+    const err = unreadableProbes(refused);
     expect(err.status).toBe(409);
-    expect(body(err)).toContain('RELEASE_PROBES_UNDECLARED');
-  });
-
-  it('names the project field as a way out', () => {
-    const text = body(undeclaredProbes());
-    expect(text).toContain('environments.live.commitUrl');
-    expect(text).toContain('environments.live.commitPath');
-  });
-
-  it('names the binding field as the other way out', () => {
-    expect(body(undeclaredProbes())).toContain('verify');
-    expect(body(undeclaredProbes())).toContain('probes');
-  });
-
-  it('says what a commit path looks like, including the empty case', () => {
-    const text = body(undeclaredProbes());
-    expect(text).toContain('data.commit');
-    expect(text).toMatch(/whole body/i);
+    expect(err.cause).toEqual({
+      code: 'RELEASE_PROBES_UNREADABLE',
+      details: { urls: [], bindings: ['coolify b-1'] },
+    });
+    expect(err.message).toContain('`coolify b-1`');
   });
 
   it('says a binding declaring an unreadable verify takes no project default', () => {
-    expect(body(undeclaredProbes())).toMatch(/takes NO project default/i);
+    expect(body(unreadableProbes(refused))).toMatch(/takes NO project default/);
+  });
+
+  it('names the shape a readable verify takes, and what removing it leaves', () => {
+    const text = body(unreadableProbes(refused));
+    expect(text).toContain('"probes"');
+    expect(text).toContain('environments.live.commitUrl');
+    expect(text).toContain('recorded unverified');
+  });
+
+  it('keeps the url sentence for a url that is not a url, with no binding clause', () => {
+    const err = unreadableProbes(new ReleaseProbesUnreadableError(['not a url']));
+    expect(err.cause).toEqual({
+      code: 'RELEASE_PROBES_UNREADABLE',
+      details: { urls: ['not a url'] },
+    });
+    expect(err.message).toBe(
+      releaseBlockerSentence('RELEASE_PROBES_UNREADABLE', { urls: ['not a url'] }),
+    );
+    expect(err.message).not.toContain('binding');
+  });
+
+  it('is what both the finish and the record door answer it with', () => {
+    expect(finishRefusal(refused)?.cause).toEqual(unreadableProbes(refused).cause);
+    expect(recordRefusal(refused).cause).toEqual(unreadableProbes(refused).cause);
   });
 });
 

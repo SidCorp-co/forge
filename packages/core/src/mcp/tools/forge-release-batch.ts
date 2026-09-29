@@ -33,7 +33,7 @@ import {
   ReleaseFinishedForOtherCommitError,
   ReleaseFinishInFlightError,
   ReleaseNotVerifiedError,
-  ReleaseProbesUndeclaredError,
+  ReleaseProbesUnreadableError,
   ReleaseVersionMissingError,
 } from '../../release-batch/service.js';
 import { readReleaseRunState } from '../../release-batch/state.js';
@@ -103,7 +103,7 @@ async function assertRunOfProject(runId: string, projectId: string): Promise<voi
 }
 
 function finishRefusal(err: unknown): Error {
-  if (err instanceof ReleaseNotVerifiedError || err instanceof ReleaseProbesUndeclaredError) {
+  if (err instanceof ReleaseNotVerifiedError || err instanceof ReleaseProbesUnreadableError) {
     return fromHttp(recordRefusal(err));
   }
   if (err instanceof ReleaseVersionMissingError) {

@@ -63,7 +63,6 @@ const BLOCKER_CODES = [
   'RELEASE_RECORD_MISSING',
   'RELEASE_WORK_UNMERGED',
   'RELEASE_RUNNER_AMBIGUOUS',
-  'RELEASE_PROBES_UNDECLARED',
   'RELEASE_PROBES_UNREADABLE',
   'RELEASE_POOL_EMPTY',
   'NO_RUNNER_ONLINE',
@@ -91,6 +90,13 @@ function everyMessage(): Array<{ code: ReasonCode; message: string }> {
     {
       code: 'RELEASE_ROSTER_EMPTY' as ReasonCode,
       message: releaseBlockerSentence('RELEASE_ROSTER_EMPTY', { nearGate: 3 }),
+    },
+    {
+      code: 'RELEASE_PROBES_UNREADABLE' as ReasonCode,
+      message: releaseBlockerSentence('RELEASE_PROBES_UNREADABLE', {
+        urls: ['not a url'],
+        bindings: ['coolify b-1'],
+      }),
     },
     {
       code: 'RELEASE_CRITERIA_UNEARNED' as ReasonCode,

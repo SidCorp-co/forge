@@ -439,25 +439,22 @@ describe('collectReleaseBlockers — each door in its own refusal order', () => 
     expect(report.blockers.map((b) => b.code)).toContain('RELEASE_CHECK_UNEVALUATED');
   });
 
-  it('refuses a record by the probes, as that door did, and carries the roster with it', async () => {
+  it('refuses neither door for a project that declares no probe (ISS-1321)', async () => {
     ready();
     // No binding probe AND no project-level live endpoint, or the channel takes
     // the project's fallback and declares probes after all.
     projectRow({ environments: {} });
     liveBinding({ releaseRunnerLabel: 'prod-box', rollback: { mode: 'coolify-image' } });
-    missingNotes.mockResolvedValue([ISSUE_A]);
-    selectRows.mockResolvedValue([
-      { id: ISSUE_A, status: 'awaiting_release', claimed: null, mergedAt: null },
-    ]);
 
-    const err = releaseBlockerError(
-      await collectReleaseBlockers(PROJECT_ID, { issueIds: [ISSUE_A], door: 'record' }),
-    );
+    const batch = await collectReleaseBlockers(PROJECT_ID);
+    const record = await collectReleaseBlockers(PROJECT_ID, {
+      issueIds: [ISSUE_A],
+      door: 'record',
+    });
 
-    expect(err?.name).toBe('ReleaseProbesUndeclaredError');
-    const rest = err?.releaseBlockers?.map((b) => b.code) ?? [];
-    expect(rest).toContain('RELEASE_RECORD_MISSING');
-    expect(rest).toContain('RELEASE_WORK_UNMERGED');
+    expect(batch.channels?.[0]?.verifySource).toBe('none');
+    expect(batch.blockers.map((b) => b.code)).toEqual([]);
+    expect(record.blockers.filter((b) => b.code.startsWith('RELEASE_PROBES'))).toEqual([]);
   });
 
   it('keeps a second unevaluated check when the first is the one being thrown', async () => {

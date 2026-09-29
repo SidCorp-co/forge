@@ -7,6 +7,7 @@ import { pipelineRuns } from '../db/schema.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { logger } from '../logger.js';
 import { RUN_NOT_ABORTED } from './abort-stamp.js';
+import type { ReleaseVerification } from './plan.js';
 
 export type FinishState = 'accepted' | 'verifying' | 'closing' | 'finished' | 'failed';
 
@@ -38,8 +39,13 @@ export interface ReleaseFinishRecord {
   closed: string[] | null;
   failed: Array<{ id: string; reason: string }> | null;
   refusal: FinishRefusal | null;
+  /** How the close was proved (ISS-1321); a resume re-reads an `unverified` one. `null` before
+   *  that is known, and on older records, whose `closing` was only ever reached by a green probe. */
+  verification: ReleaseVerification | null;
   finishedAt: string | null;
 }
+
+const VERIFICATIONS: ReadonlySet<string> = new Set<ReleaseVerification>(['probed', 'unverified']);
 
 function str(v: unknown): string | null {
   return typeof v === 'string' && v.length > 0 ? v : null;
@@ -94,6 +100,9 @@ export function readFinishRecord(metadata: unknown): ReleaseFinishRecord | null 
             live: str(refusal.live),
           }
         : null,
+    verification: VERIFICATIONS.has(str(r.verification) ?? '')
+      ? (r.verification as ReleaseVerification)
+      : null,
     finishedAt: str(r.finishedAt),
   };
 }

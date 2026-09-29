@@ -174,6 +174,24 @@ describe('the sweep takes up an attempt nobody is working', () => {
     expect((await fx.stored(issueId)).status).toBe('closed');
   }, 30_000);
 
+  it('probes again a resumed unverified attempt once a probe has been declared (ISS-1321)', async () => {
+    const { runId, issueId } = await batch();
+    await plant(runId, {
+      state: 'closing',
+      verification: 'unverified',
+      owner: 'dead-worker',
+      leaseUntil: iso(-1_000),
+    });
+
+    expect(await sweep()).toEqual([runId]);
+
+    expect(await stored(runId)).toMatchObject({
+      state: 'failed',
+      refusal: { code: 'RELEASE_NOT_VERIFIED' },
+    });
+    expect(await closesOf(issueId)).toBe(0);
+  }, 30_000);
+
   it('completes the run of a finished attempt whose worker died before the run closed', async () => {
     const { runId, issueId } = await batch();
     const planted = await plant(runId, { state: 'finished', closed: [issueId], failed: [] });

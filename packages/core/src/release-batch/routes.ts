@@ -7,7 +7,13 @@ import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { resolveReleaseChannels } from './channel.js';
 import { acceptReleaseBatchFinish } from './finish-job.js';
-import { openAttempt, readAttempt, recordAccount, settleAttempt } from './ledger.js';
+import {
+  attemptReading,
+  openAttempt,
+  readAttempt,
+  recordAccount,
+  settleAttempt,
+} from './ledger.js';
 import { announceMethod } from './method.js';
 import { loadReleaseReadiness } from './readiness.js';
 import { readReleaseRecord, recordPerformedRelease } from './recorded.js';
@@ -41,7 +47,6 @@ import {
 } from './service.js';
 import { readServingDeployment } from './serving.js';
 import { assertRunNotHolding, ReleaseRunHoldingError, readReleaseRunState } from './state.js';
-import { readLiveState } from './verify.js';
 
 const projectParamSchema = z.object({ projectId: z.uuid() });
 
@@ -426,22 +431,10 @@ releaseBatchRoutes.post(
       providerRef: (body.providerRef as string | undefined) ?? null,
       logTail: (body.logTail as string | undefined) ?? null,
     });
-    const channels = await resolveReleaseChannels(projectId);
-    const verify = channels[0]?.verify ?? null;
-    const live = verify ? await readLiveState(verify) : null;
     const settled = await settleAttempt({
       runId,
       idempotencyKey: key,
-      health: live?.health ?? null,
-      identity: live?.identity ?? null,
-      readings: live?.readings ?? null,
-      verdict: live === null ? 'failed' : live.health === 'up' ? 'ok' : 'failed',
-      verdictReason:
-        live === null
-          ? 'this project declares no verification probes, so nothing could be read'
-          : live.health === 'up'
-            ? `the application answered and reports ${live.identity ?? 'no commit'}`
-            : `the application is not answering: ${live.unhealthy.join('; ')}`,
+      ...(await attemptReading(await resolveReleaseChannels(projectId))),
     });
     return c.json(settled);
   },

@@ -388,23 +388,17 @@ describe('a release that did not happen is refused by name', () => {
     expect((await stored(a)).status).toBe('awaiting_release');
   });
 
-  it('refuses a project that declares no probes, naming RELEASE_PROBES_UNDECLARED', async () => {
+  it('records a project that declares no probes as unverified, reading nothing', async () => {
     const w = await seed({ probes: false });
     const a = await insertIssue(w);
+    served = NEVER_DEPLOYED;
 
     const res = await record(w, { issueIds: [a], commit: RELEASED, account: ACCOUNT });
 
-    expect(res.status).toBe(409);
-    expect((await causeOf(res)).code).toBe('RELEASE_PROBES_UNDECLARED');
-  });
-
-  it('leaves every issue at the gate when the project declares no probes', async () => {
-    const w = await seed({ probes: false });
-    const a = await insertIssue(w);
-
-    await record(w, { issueIds: [a], commit: RELEASED, account: ACCOUNT });
-
-    expect(await stored(a)).toEqual({ status: 'awaiting_release', claim: null });
+    expect(res.status).toBe(201);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body).toMatchObject({ identity: null, readings: [], verification: 'unverified' });
+    expect((await stored(a)).status).toBe('closed');
   });
 
   it('refuses an issue that is not at the release gate, naming CLAIM_CONFLICT', async () => {

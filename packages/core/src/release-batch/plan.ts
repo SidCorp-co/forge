@@ -71,6 +71,13 @@ export interface ReleaseChannel {
   rollback: ReleaseRollback | null;
 }
 
+/** How a release is proved: by one live channel's probes, or — where no live channel declares
+ *  any — not at all, which every door records by that name rather than refusing (ISS-1321). */
+export type CloseVerification = { kind: 'probed'; cfg: VerifyConfig } | { kind: 'unverified' };
+
+/** What a release stamps on its run, its finish and its answers: the kind, by itself. */
+export type ReleaseVerification = CloseVerification['kind'];
+
 export interface ReleasePlan {
   /** EVERY live deploy binding. Empty means Forge reaches no deploy this project declared. */
   channels: ReleaseChannel[];

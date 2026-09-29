@@ -3,7 +3,8 @@
 // `createReleaseBatch` is the normal path and stays it. This one is gated on
 // evidence rather than machinery — the application answers, every probe agrees
 // on one commit, and that commit is the one the caller claims — so no runner,
-// label or job is needed to record a release that shipped (ISS-1129).
+// label or job is needed to record a release that shipped (ISS-1129). With no
+// probe declared there is nothing to read, and it is recorded `unverified` (ISS-1321).
 //
 // It does NOT establish per-issue ancestry: that needs a git provider, and
 // requiring one would put the coupling straight back. `merged_at` is required
@@ -17,13 +18,9 @@ import { TransitionError, transitionIssueStatus } from '../issues/apply-transiti
 import { logger } from '../logger.js';
 import { closeRunIfOneShot, openOneShotRun } from '../pipeline/runs.js';
 import { collectReleaseBlockers, releaseBlockerError } from './blockers.js';
-import type { ReleaseChannel } from './channel.js';
+import { closeVerification, type ReleaseVerification } from './channel.js';
 import { claimConflictAt, RELEASE_RECORD_SOURCE } from './claim-conflicts.js';
-import {
-  NoReleaseGateError,
-  ReleaseNotVerifiedError,
-  ReleaseProbesUndeclaredError,
-} from './errors.js';
+import { NoReleaseGateError, ReleaseNotVerifiedError } from './errors.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
 import { type ServingNowOutcome, verifyServingNow } from './verify.js';
 
@@ -53,20 +50,13 @@ export interface RecordPerformedReleaseResult {
   runId: string;
   /** What the caller claimed, normalized by nothing. */
   commit: string;
-  /** What every probe agreed the deployment is serving. */
-  identity: string;
+  /** What every probe agreed the deployment is serving; `null` where none was declared. */
+  identity: string | null;
   readings: string[];
+  verification: ReleaseVerification;
   closed: string[];
   failed: Array<{ id: string; reason: string }>;
   issues: RecordedIssue[];
-}
-
-/** The one verification config, taken from the report rather than read again:
- *  a second read would refuse in its own order (ISS-1127). */
-function soleVerifyConfig(channels: ReleaseChannel[] | null) {
-  const verify = channels?.[0]?.verify ?? null;
-  if (!verify) throw new ReleaseProbesUndeclaredError();
-  return verify;
 }
 
 /** Every issue this record may close, read once and refused by name. */
@@ -86,17 +76,20 @@ async function admissibleIssues(projectId: string, issueIds: string[]): Promise<
 /** The account, as the issue itself will carry it. */
 function issueNote(args: {
   commit: string;
-  identity: string;
+  identity: string | null;
   account: string;
   providerRef: string | null;
 }): string {
   const handle = args.providerRef ? ` The provider's handle on it: \`${args.providerRef}\`.` : '';
-  return (
-    `Released outside a release batch, and recorded from what production is serving.\n\n` +
-    `- commit claimed: \`${args.commit}\`\n` +
-    `- deployment identity read back from the live probes: \`${args.identity}\`\n\n` +
-    `${args.account}${handle}`
-  );
+  const read =
+    args.identity === null
+      ? '- **not verified**: this project declares no live verify probe, so nothing read the deployment and only the account below says this commit is serving\n\n'
+      : `- deployment identity read back from the live probes: \`${args.identity}\`\n\n`;
+  const how =
+    args.identity === null
+      ? 'Released outside a release batch, and recorded on the account of whoever released it.'
+      : 'Released outside a release batch, and recorded from what production is serving.';
+  return `${how}\n\n- commit claimed: \`${args.commit}\`\n${read}${args.account}${handle}`;
 }
 
 /**
@@ -122,11 +115,18 @@ export async function recordPerformedRelease(
   const issueIds = args.issueIds.map((id) => id.toLowerCase());
 
   const gateStatus = RELEASE_GATE_STATUS;
-  const verify = soleVerifyConfig(report.channels);
+  // Taken from the report rather than read again: a second read would refuse in its own order
+  // (ISS-1127). A refused declaration is already the report's blocker, so this cannot throw.
+  const verification = closeVerification(report.channels ?? []);
   const roster = await admissibleIssues(projectId, issueIds);
 
-  const outcome = await verifyServingNow({ cfg: verify, expected: commit });
-  if (!outcome.ok) throw new ReleaseNotVerifiedError(outcome.reason, outcome.live);
+  let outcome: Extract<ServingNowOutcome, { ok: true }> | null = null;
+  if (verification.kind === 'probed') {
+    const read = await verifyServingNow({ cfg: verification.cfg, expected: commit });
+    if (!read.ok) throw new ReleaseNotVerifiedError(read.reason, read.live);
+    outcome = read;
+  }
+  const identity = outcome?.identity ?? null;
 
   const run = await openOneShotRun({
     projectId,
@@ -136,7 +136,8 @@ export async function recordPerformedRelease(
       gateStatus,
       issueIds,
       commit,
-      identity: outcome.identity,
+      identity,
+      verification: verification.kind,
       providerRef,
       recordedBy: userId,
       issues: roster,
@@ -163,7 +164,7 @@ export async function recordPerformedRelease(
 
   await writeLedger(run.id, { commit, outcome, account, providerRef });
 
-  const note = issueNote({ commit, identity: outcome.identity, account, providerRef });
+  const note = issueNote({ commit, identity, account, providerRef });
   const closed: string[] = [];
   const failed: Array<{ id: string; reason: string }> = [];
 
@@ -172,6 +173,14 @@ export async function recordPerformedRelease(
       await db.insert(comments).values({ issueId: issue.id, authorId: userId, body: note });
     } catch (err) {
       logger.warn({ err, issueId: issue.id, runId: run.id }, 'release-record: comment failed');
+      // With no probe the note is the issue's only word that nothing verified it, so no close.
+      if (!outcome) {
+        failed.push({
+          id: issue.id,
+          reason: `its not-verified note could not be written: ${err instanceof Error ? err.message : String(err)}`,
+        });
+        continue;
+      }
     }
     try {
       await transitionIssueStatus(
@@ -206,24 +215,26 @@ export async function recordPerformedRelease(
   return {
     runId: run.id,
     commit,
-    identity: outcome.identity,
-    readings: outcome.readings,
+    identity,
+    readings: outcome?.readings ?? [],
+    verification: verification.kind,
     closed,
     failed,
     issues: roster,
   };
 }
 
-/** The ledger row: the intent, the account, and what the probes said, in that order. */
+/** The ledger row: the intent, the account, and what the probes said — or that none was read. */
 async function writeLedger(
   runId: string,
   args: {
     commit: string;
-    outcome: Extract<ServingNowOutcome, { ok: true }>;
+    outcome: Extract<ServingNowOutcome, { ok: true }> | null;
     account: string;
     providerRef: string | null;
   },
 ): Promise<void> {
+  const { outcome } = args;
   await db.insert(releaseAttempts).values({
     runId,
     stage: 'verify',
@@ -231,11 +242,13 @@ async function writeLedger(
     commit: args.commit,
     providerRef: args.providerRef,
     account: args.account,
-    health: 'up',
-    identity: args.outcome.identity,
-    readings: args.outcome.readings,
-    verdict: 'ok',
-    verdictReason: `every probe agrees the deployment is serving ${args.outcome.identity}, which is the commit this record claims`,
+    health: outcome ? 'up' : null,
+    identity: outcome?.identity ?? null,
+    readings: outcome?.readings ?? [],
+    verdict: outcome ? 'ok' : 'unverified',
+    verdictReason: outcome
+      ? `every probe agrees the deployment is serving ${outcome.identity}, which is the commit this record claims`
+      : 'this project declares no live verify probe, so nothing read the deployment and only the account says this commit is serving',
     settledAt: new Date(),
   });
 }
@@ -249,6 +262,8 @@ export interface ReleaseRecordView {
   providerRef: string | null;
   account: string | null;
   readings: string[];
+  /** Records written before ISS-1321 could only be `probed`: that door refused a project with none. */
+  verification: ReleaseVerification;
   issues: RecordedIssue[];
 }
 
@@ -300,6 +315,7 @@ export async function readReleaseRecord(
     providerRef: attempt?.providerRef ?? null,
     account: attempt?.account ?? null,
     readings: attempt?.readings ?? [],
+    verification: meta.verification === 'unverified' ? 'unverified' : 'probed',
     issues: Array.isArray(meta.issues) ? (meta.issues as RecordedIssue[]) : [],
   };
 }

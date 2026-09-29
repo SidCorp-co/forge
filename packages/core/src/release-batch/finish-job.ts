@@ -122,9 +122,9 @@ export async function acceptReleaseBatchFinish(
       .from(issues)
       .where(eq(issues.releaseBatchRunId, runId));
     if (!(run.status === 'completed' && (left?.n ?? 0) === 0)) {
-      await assertFinishable(runId, run);
+      const verification = await assertFinishable(runId, run);
       const before = (run.metadata as { commitBefore?: unknown } | null)?.commitBefore;
-      if (commit === null && typeof before !== 'string') {
+      if (verification.kind === 'probed' && commit === null && typeof before !== 'string') {
         throw new ReleaseNotVerifiedError(NOTHING_TO_COMPARE, null);
       }
     }
@@ -145,6 +145,7 @@ export async function acceptReleaseBatchFinish(
       closed: current?.closed ?? null,
       failed: current?.failed ?? null,
       refusal: null,
+      verification: null,
       finishedAt: null,
     };
     // Conditioned on the run too: an abort landing after the read above refuses on the next round.
@@ -322,11 +323,11 @@ export async function runReleaseBatchFinish(
   try {
     await finishReleaseBatch(runId, record.requestedBy, {
       commit: record.commit ?? undefined,
-      alreadyVerified: record.state === 'closing',
+      alreadyVerified: record.state === 'closing' && record.verification !== 'unverified',
       whileVerifying: () => refuseIfAborted(runId),
-      onVerified: async () => {
+      onVerified: async (verification) => {
         await refuseIfAborted(runId);
-        await hold.commit(() => ({ state: 'closing' }));
+        await hold.commit(() => ({ state: 'closing', verification }));
         await hooks.afterVerified?.();
       },
       fence: hold.fence,

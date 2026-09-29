@@ -427,3 +427,34 @@ describe('the branches a release prompt carries (ISS-1276)', () => {
     expect(out).not.toContain('liveBranch:');
   });
 });
+
+describe('the proof a release run is told about (ISS-1321)', () => {
+  const probed = channel({
+    verify: { probes: [{ url: 'https://api.example.test/version' }] },
+    verifySource: 'binding',
+  });
+
+  it('says a project with no probe is read by nothing and closed unverified', () => {
+    const out = buildReleaseBatchPrompt({ ...BASE, plan: plan({ channels: [channel()] }) });
+
+    expect(out).toContain('### Proof (this project declares none)');
+    expect(out).toContain('the server reads nothing when you call `finish`');
+    expect(out).toContain('this release was NOT verified');
+    expect(out).toContain('`finish.verification` reads `unverified`');
+    expect(out).not.toContain('### Proof (the server checks this, you do not)');
+  });
+
+  it('keeps the probed proof, and only it, where a probe is declared', () => {
+    const out = buildReleaseBatchPrompt({ ...BASE, plan: plan({ channels: [probed] }) });
+
+    expect(out).toContain('### Proof (the server checks this, you do not)');
+    expect(out).toContain('- https://api.example.test/version');
+    expect(out).not.toContain('### Proof (this project declares none)');
+  });
+
+  it('prints no proof at all where nothing deploys', () => {
+    const out = buildReleaseBatchPrompt({ ...BASE, plan: plan() });
+
+    expect(out).not.toContain('### Proof');
+  });
+});
