@@ -31,9 +31,19 @@ export function ownerOfPath({ landed, changed }) {
 }
 
 /**
- * @param {{ base: { failed: boolean }, members: { issue: string, failed: boolean }[], window: { failed: boolean } }} replay
+ * A member that could not be rebuilt alone was never replayed, so no owner is named past it.
+ * @param {{ base: { failed: boolean }, members: { issue: string, failed: boolean, unbuilt?: string }[],
+ *   window: { failed: boolean } }} replay
  */
 export function classifyReplay({ base, members, window }) {
+  const unbuilt = members.find((m) => m.unbuilt);
+  if (unbuilt) {
+    return {
+      kind: 'undetermined',
+      owner: null,
+      says: `${unbuilt.issue} could not be rebuilt alone (${unbuilt.unbuilt}), so no replay of it ran and no owner is named`,
+    };
+  }
   if (base.failed) {
     return {
       kind: 'pre-existing',

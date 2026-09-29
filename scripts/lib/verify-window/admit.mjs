@@ -35,6 +35,8 @@ export function admitMembers({ g, baseSha, members, config, readCheck }) {
       );
     }
     const diff = g.run([
+      '-c',
+      'core.quotePath=false',
       'diff',
       '--unified=0',
       '--no-renames',

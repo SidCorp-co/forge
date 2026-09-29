@@ -3,8 +3,40 @@
  * green on arrival and red where every other member pays for the round. Judged by surface, not size.
  */
 
+const ESCAPES = { a: 7, b: 8, t: 9, n: 10, v: 11, f: 12, r: 13, '"': 34, '\\': 92 };
+
+/** A path as git prints it: bare, or C-quoted with octal bytes for what it will not print raw. */
+export function unquotePath(word) {
+  if (!word.startsWith('"')) return word;
+  const bytes = [];
+  for (let i = 1; i < word.length - 1; i++) {
+    if (word[i] !== '\\') {
+      bytes.push(...Buffer.from(word[i]));
+      continue;
+    }
+    const octal = word.slice(i + 1, i + 4);
+    if (/^[0-7]{3}$/.test(octal)) {
+      bytes.push(Number.parseInt(octal, 8));
+      i += 3;
+    } else {
+      bytes.push(ESCAPES[word[i + 1]] ?? word.charCodeAt(i + 1));
+      i += 1;
+    }
+  }
+  return Buffer.from(bytes).toString('utf8');
+}
+
+/** The destination path of a `diff --git` header, quoted or bare. */
+function headerPath(rest) {
+  const quoted = rest.match(/"b\/(?:[^"\\]|\\.)*"$/);
+  if (quoted) return unquotePath(quoted[0]).slice(2);
+  const bare = rest.match(/^a\/(.+) b\/(.+)$/);
+  return bare ? bare[2] : rest;
+}
+
 /**
- * The paths a `git diff --unified=0 --no-renames` touched, each with its added lines numbered.
+ * The paths a `git diff --unified=0 --no-renames` touched, each with its added lines numbered; a
+ * quoted path is decoded, so a declared glob sees the name the tree holds.
  * @returns {{ path: string, added: { line: number, text: string }[] }[]}
  */
 export function parseDiff(text) {
@@ -13,13 +45,16 @@ export function parseDiff(text) {
   let next = 0;
   for (const raw of text.split('\n')) {
     if (raw.startsWith('diff --git ')) {
-      const m = raw.match(/^diff --git a\/(.+) b\/(.+)$/);
-      file = { path: m ? m[2] : raw.slice(11), added: [] };
+      file = { path: headerPath(raw.slice('diff --git '.length)), added: [] };
       files.push(file);
       continue;
     }
     if (!file) continue;
-    if (raw.startsWith('+++ ') || raw.startsWith('--- ')) continue;
+    if (raw.startsWith('+++ ') || raw.startsWith('--- ')) {
+      const side = unquotePath(raw.slice(4));
+      if (side !== '/dev/null' && raw.startsWith('+++ ')) file.path = side.replace(/^b\//, '');
+      continue;
+    }
     const hunk = raw.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
     if (hunk) {
       next = Number(hunk[1]);

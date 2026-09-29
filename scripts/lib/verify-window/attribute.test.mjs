@@ -59,3 +59,20 @@ describe('classifyReplay', () => {
     );
   });
 });
+
+describe('classifyReplay with a member that could not be rebuilt', () => {
+  it('names no owner and says which member and why', () => {
+    const r = classifyReplay({
+      base: { failed: false },
+      members: [
+        { issue: 'ISS-1', failed: false, unbuilt: 'conflicts on x' },
+        { issue: 'ISS-2', failed: false },
+      ],
+      window: { failed: true },
+    });
+    expect(r).toMatchObject({ kind: 'undetermined', owner: null });
+    expect(r.says).toBe(
+      'ISS-1 could not be rebuilt alone (conflicts on x), so no replay of it ran and no owner is named',
+    );
+  });
+});

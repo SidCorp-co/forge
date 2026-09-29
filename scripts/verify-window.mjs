@@ -191,7 +191,18 @@ if (verb === 'attribute') {
         members: [{ issue: m.issue, branch: m.branch, head: m.head, arrivedAt: m.arrivedAt }],
         isolated: [],
       };
-      build(alone, one, { base: ledger.base.sha, branches: ledger.members.map((x) => x.branch) });
+      const rebuilt = build(alone, one, {
+        base: ledger.base.sha,
+        branches: ledger.members.map((x) => x.branch),
+      }).members[0];
+      if (!rebuilt.landing) {
+        removeTree(alone);
+        return {
+          issue: m.issue,
+          failed: false,
+          unbuilt: rebuilt.isolated?.because ?? 'not rebuilt',
+        };
+      }
       const r = replay(values.unit, alone, repeat);
       removeTree(alone);
       return { issue: m.issue, ...r };

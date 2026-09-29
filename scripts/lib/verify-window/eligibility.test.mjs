@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseConfig } from './config.mjs';
-import { judgeEligibility, parseDiff } from './eligibility.mjs';
+import { judgeEligibility, parseDiff, unquotePath } from './eligibility.mjs';
 
 const { config } = parseConfig(
   JSON.stringify({
@@ -76,5 +76,31 @@ describe('judgeEligibility', () => {
   it('admits a diff that touches no declared surface', () => {
     const clean = parseDiff('diff --git a/src/b.mjs b/src/b.mjs\n@@ -1 +1 @@\n+const y = 2;');
     expect(judgeEligibility({ issue: 'ISS-8', files: clean }, config)).toEqual([]);
+  });
+});
+
+describe('a quoted path', () => {
+  const quoted = [
+    'diff --git "a/runner/src/\\303\\251.rs" "b/runner/src/\\303\\251.rs"',
+    'new file mode 100644',
+    '--- /dev/null',
+    '+++ "b/runner/src/\\303\\251.rs"',
+    '@@ -0,0 +1 @@',
+    '+fn e() {}',
+  ].join('\n');
+
+  it('is decoded to the name the tree holds', () => {
+    expect(parseDiff(quoted).map((f) => f.path)).toEqual(['runner/src/é.rs']);
+  });
+
+  it('is still refused by the glob that covers it', () => {
+    const r = judgeEligibility({ issue: 'ISS-9', files: parseDiff(quoted) }, config);
+    expect(r[0].message).toMatch(
+      /^ISS-9 touches runner\/src\/é\.rs, which `runner\/\*\*` declares ineligible/,
+    );
+  });
+
+  it('decodes an escaped quote and backslash', () => {
+    expect(unquotePath('"b/a\\"b\\\\c"')).toBe('b/a"b\\c');
   });
 });
