@@ -6,6 +6,7 @@
 // convention, and dependency edges (rendered as clickable `ISS-X` badges linking
 // to the related issue — ISS-331).
 
+import type { ComponentProps } from "react";
 import { Avatar, Badge, Button, MonoTag, Stat, StatusChip } from "@/design";
 import { COMPLEXITY_OPTIONS, PRIORITY_OPTIONS } from "./issue-table-row";
 import { IssueRefBadge } from "./issue-ref-badge";
@@ -182,6 +183,8 @@ interface PropertiesRailProps {
   onEditModules?: (() => void) | undefined;
   /** ISS-791 — offer the shipped-work claim. False for a reader who cannot write. */
   canMarkMerged?: boolean | undefined;
+  /** What a person owes this issue, so the status control at a park offers that decision first. */
+  park?: ComponentProps<typeof StatusEdit>["park"];
 }
 
 export function PropertiesRail({
@@ -194,6 +197,7 @@ export function PropertiesRail({
   onTransition,
   onEditModules,
   canMarkMerged,
+  park,
 }: PropertiesRailProps) {
   const modules = (issue.labels ?? []).filter((l) => l.kind === "module");
   const plainLabels = (issue.labels ?? []).filter((l) => l.kind !== "module");
@@ -228,6 +232,7 @@ export function PropertiesRail({
           agentStatus={issue.agentStatus}
           disabled={pending}
           onTransition={onTransition}
+          park={park}
         />
       </Row>
       {runChip && (

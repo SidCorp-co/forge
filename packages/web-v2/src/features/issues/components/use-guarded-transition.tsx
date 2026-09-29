@@ -31,6 +31,13 @@ interface RequestOptions {
 
 export interface GuardedTransition {
   requestTransition: (id: string, toStatus: IssueStatus, opts?: RequestOptions) => void;
+  /** ISS-1310 — Move anyway (pick from `targets`) or Not needed (void, then resume at `targets[0]`); both ask why. */
+  requestParkLeave: (
+    id: string,
+    mode: "move_anyway" | "not_needed",
+    targets: IssueStatus[],
+    opts?: RequestOptions,
+  ) => void;
   dialog: ReactNode;
   isPending: boolean;
 }
@@ -51,6 +58,7 @@ export function useGuardedTransition(): GuardedTransition {
     successMessage: string;
     onSuccess?: () => void;
     openQuestions?: number;
+    targets?: IssueStatus[];
   } | null>(null);
 
   const succeed = (title: string, extra?: () => void) => () => {
@@ -87,31 +95,49 @@ export function useGuardedTransition(): GuardedTransition {
     );
   };
 
-  const onConfirm = (reason: string, waitingKind?: WaitingCause) => {
+  const requestParkLeave: GuardedTransition["requestParkLeave"] = (id, mode, targets, opts) => {
+    const first = targets[0];
+    if (!first) return;
+    setPrompt({
+      id,
+      status: mode,
+      target: first,
+      targets,
+      successMessage: opts?.successMessage ?? (mode === "not_needed" ? "Question withdrawn" : "Moved"),
+      onSuccess: opts?.onSuccess,
+    });
+  };
+
+  const onConfirm = (reason: string, waitingKind?: WaitingCause, picked?: IssueStatus) => {
     if (!prompt) return;
-    const { id, status, target, successMessage, onSuccess } = prompt;
+    const { id, status, successMessage, onSuccess } = prompt;
+    const target = status === "move_anyway" ? (picked ?? prompt.target) : prompt.target;
+    const kind = waitingKind ? { waitingKind } : {};
     const body =
       status === "void_questions"
         ? { id, toStatus: target, voidQuestions: reason }
-        : { id, toStatus: target, reason, ...(waitingKind ? { waitingKind } : {}) };
-    transition.mutate(
-      body,
-      {
-        onSuccess: succeed(successMessage, () => {
-          setPrompt(null);
-          onSuccess?.();
-        }),
-      },
-    );
+        : status === "not_needed"
+          ? { id, toStatus: target, reason, voidQuestions: reason }
+          : { id, toStatus: target, reason, ...kind };
+    transition.mutate(body, {
+      onSuccess: succeed(successMessage, () => {
+        setPrompt(null);
+        onSuccess?.();
+      }),
+      onOpenQuestions: (ids) =>
+        setPrompt({ id, status: "void_questions", target, successMessage, onSuccess, openQuestions: ids.length }),
+    });
   };
 
   return {
     requestTransition,
+    requestParkLeave,
     isPending: transition.isPending,
     dialog: (
       <TransitionReasonDialog
         status={prompt?.status ?? null}
         openQuestions={prompt?.openQuestions}
+        targets={prompt?.targets}
         loading={transition.isPending}
         onConfirm={onConfirm}
         onClose={() => setPrompt(null)}

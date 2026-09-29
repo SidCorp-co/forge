@@ -29,9 +29,11 @@ import type {
 	IssueDependencyEdge,
 	IssueDetail,
 	IssueFilter,
+	IssuePark,
 	IssuePriority,
 	IssueRow,
 	IssueStatus,
+	ParkOwes,
 	PipelineHealth,
 	StepDurationRow,
 	StepHandoffRow,
@@ -556,9 +558,9 @@ export function heartbeatState(
 }
 
 export type BlockerCtaKind =
-	| "approve"
 	| "provide-info"
 	| "resume"
+	| "resume-park"
 	| "resume-run"
 	| "open-blocker"
 	| "none";
@@ -573,8 +575,8 @@ export interface BlockingRef {
 
 /** Single server-derived "why is it stuck" verdict for the blocker banner
  *  (AC#1/#2). Computed in ONE place from status / pipelineHealth.waitingOn /
- *  blocks edges — the component never re-joins those sources. `null` ⇒ not
- *  blocked ⇒ render nothing. */
+ *  blocks edges / the park view — the component never re-joins those sources.
+ *  `null` ⇒ not blocked ⇒ render nothing. */
 export interface BlockerState {
 	tone: "danger" | "attention" | "info";
 	reason: string;
@@ -583,10 +585,94 @@ export interface BlockerState {
 	/** The paused `pipeline_runs.id` the `resume-run` CTA acts on. Set only
 	 *  alongside that kind. */
 	runId?: string;
+	/** The rung the park recorded, which the `resume-park` CTA moves to. Set only alongside that kind. */
+	resumeAt?: IssueStatus;
 	/** Open `blocks` issues this one is waiting on. */
 	blockingRefs?: BlockingRef[];
 	/** Extra context (failure classification, hold-until), Tier-2 detail. */
 	detail?: string;
+}
+
+/**
+ * The park view as the page holds it: still being read, unreadable, or read — where a read
+ * `null` means nobody owes the issue anything (ISS-1310).
+ */
+export type ParkReading =
+	| { state: "loading" }
+	| { state: "error" }
+	| { state: "ready"; park: IssuePark | null };
+
+export const NO_PARK: ParkReading = { state: "ready", park: null };
+
+/** Whether Answer the question has anything to take the reader to. */
+export function parkAsksAQuestion(park: IssuePark): boolean {
+	if (park.openQuestionIds.length > 0) return true;
+	return threadQuestionOf(park) !== null;
+}
+
+/** The question a `needs_info` park asked only in the thread — its words and readings — or `null` where a question row carries it or none was asked. */
+export function threadQuestionOf(
+	park: IssuePark,
+): { prompt: string | null; readings: string[] } | null {
+	if (park.shape !== "park" || park.status !== "needs_info") return null;
+	if (park.openQuestionIds.length > 0) return null;
+	const prompt = park.record?.why ?? park.reason;
+	if (!prompt && park.readings.length === 0) return null;
+	return { prompt, readings: park.readings };
+}
+
+/** What the person owes, in their words rather than the enum's. */
+export const PARK_OWES_COPY: Record<ParkOwes | "unstated", { reason: string; who: string }> = {
+	information: {
+		reason: "This issue is waiting for information — an answer to a question.",
+		who: "Anyone on the project can answer it; the question is below.",
+	},
+	decision: {
+		reason: "This issue is waiting for a decision — a judgement only a person can make.",
+		who: "Whoever owns the call decides, then resumes it where it stopped.",
+	},
+	resource: {
+		reason:
+			"This issue is waiting for something only a person can supply — an account, a credential, or data.",
+		who: "Supply it, then resume it where it stopped.",
+	},
+	unstated: {
+		reason: "This issue is stopped until a person acts, and its park did not say for what.",
+		who: "Read what it waits on in the thread, then resume it or move it on.",
+	},
+};
+
+function parkBlocker(park: IssuePark, blockingRefs: BlockingRef[]): BlockerState {
+	const copy = PARK_OWES_COPY[park.owes ?? "unstated"];
+	const refs = blockingRefs.length ? { blockingRefs } : {};
+	if (parkAsksAQuestion(park)) {
+		return {
+			tone: "attention",
+			reason: copy.reason,
+			whoMustAct: PARK_OWES_COPY.information.who,
+			cta: { label: "Answer it", kind: "provide-info" },
+			...refs,
+		};
+	}
+	const at = park.resume.at;
+	if (at) {
+		return {
+			tone: "attention",
+			reason: copy.reason,
+			whoMustAct: copy.who,
+			cta: { label: `Resume at ${statusLabel(at)}`, kind: "resume-park" },
+			resumeAt: at,
+			...refs,
+		};
+	}
+	return {
+		tone: "attention",
+		reason: copy.reason,
+		whoMustAct: copy.who,
+		cta: { label: "", kind: "none" },
+		detail: "No rung to resume at was recorded for this park — Move anyway… in the status menu lists every move.",
+		...refs,
+	};
 }
 
 const SETTLED_BLOCKERS: ReadonlySet<string> = new Set(BLOCKER_SETTLED_STATUSES);
@@ -614,10 +700,9 @@ export function openBlockingRefs(
 
 /**
  * Derive the single blocker verdict for an issue, or `null` when it is actively
- * progressing. Precedence (richest signal first): needs_info → an open question
- * blocked on a person →
- * waiting-for-approve → on_hold → pipelineHealth capacity/dep waits → open
- * `blocks` edges.
+ * progressing. Precedence (richest signal first): a paused run → the park view
+ * (every park shape, and an open question at any rung) → on_hold →
+ * pipelineHealth capacity/dep waits → open `blocks` edges.
  *
  * ISS-393 removed the manual-hold failure card: a mechanically-failed job now
  * reverts the issue to its stage entry-status (auto re-dispatch) or parks it at
@@ -627,8 +712,8 @@ export function deriveBlockerState(
 	issue: Pick<IssueDetail, "status">,
 	pipelineHealth: PipelineHealth | undefined,
 	deps: IssueDependencies | undefined,
-	/** When the oldest open question blocked on a person was asked; the marker that one is owed. */
-	waitingOnPersonSince: string | null = null,
+	/** The park view: what a person owes this issue, read once for the banner and the status control. */
+	park: ParkReading = NO_PARK,
 ): BlockerState | null {
 	const blockingRefs = openBlockingRefs(deps);
 
@@ -646,52 +731,17 @@ export function deriveBlockerState(
 		};
 	}
 
-	if (issue.status === "needs_info") {
+	if (park.state === "ready" && park.park) return parkBlocker(park.park, blockingRefs);
+
+	if (statusesForLabels("needs_human").includes(issue.status)) {
 		return {
 			tone: "attention",
-			reason: "The pipeline needs more information before it can continue.",
-			whoMustAct: "Anyone on the project can act on it; what the run is waiting on is below.",
-			cta: { label: "Provide info", kind: "provide-info" },
-			...(blockingRefs.length ? { blockingRefs } : {}),
-		};
-	}
-
-	// ISS-1257 — a question marks the issue and leaves its rung alone, so the banner reads the
-	// marker as well as the status: work at `testing` can be waiting on a person too.
-	if (waitingOnPersonSince && issue.status !== "waiting") {
-		return {
-			tone: "attention",
-			reason: "A person owes this issue an answer before its work can go on.",
-			whoMustAct: "Anyone on the project can answer it; the question is below.",
-			cta: { label: "Answer it", kind: "provide-info" },
-			...(blockingRefs.length ? { blockingRefs } : {}),
-		};
-	}
-
-	const isWaiting = issue.status === "waiting";
-	const waitingKind = isWaiting
-		? (pipelineHealth?.waitingCause?.kind ?? null)
-		: null;
-
-	if (waitingKind === "needs_decision") {
-		return {
-			tone: "attention",
-			reason: "A human decision is needed before the pipeline can continue.",
+			reason: "This issue is stopped until a person acts.",
 			whoMustAct:
-				"A maintainer must decide — the agent left the question in the comments — then move the issue on.",
-			cta: { label: "Approve", kind: "approve" },
-			...(blockingRefs.length ? { blockingRefs } : {}),
-		};
-	}
-
-	if (waitingKind === "needs_resource") {
-		return {
-			tone: "attention",
-			reason:
-				"A step needs something only a person can supply — an account, credentials, or third-party data.",
-			whoMustAct:
-				"Supply it (see the comments for what is missing), then approve to resume.",
-			cta: { label: "Approve", kind: "approve" },
+				park.state === "error"
+					? "What it waits on could not be read — reload the page, or read the thread."
+					: "Reading what it waits on…",
+			cta: { label: "", kind: "none" },
 			...(blockingRefs.length ? { blockingRefs } : {}),
 		};
 	}
@@ -717,17 +767,6 @@ export function deriveBlockerState(
 			cta: blockingRefs.length
 				? { label: "Open blocking issue", kind: "open-blocker" }
 				: { label: "", kind: "none" },
-			...(blockingRefs.length ? { blockingRefs } : {}),
-		};
-	}
-
-	if (isWaiting) {
-		return {
-			tone: "attention",
-			reason: "A human is needed before the pipeline can continue.",
-			whoMustAct:
-				"A maintainer must act — the reason is in the comments — then move the issue on.",
-			cta: { label: "Approve", kind: "approve" },
 			...(blockingRefs.length ? { blockingRefs } : {}),
 		};
 	}
@@ -1061,14 +1100,4 @@ export function canonicalIssueId(rawId: string, fetchedId: string | undefined): 
 
 export function issueQueryKey(id: string | undefined, projectId: string | undefined): readonly unknown[] {
 	return !id || UUID_RE.test(id) ? ["issue", id] : ["issue", id, projectId];
-}
-
-export function waitingOnPersonSinceOf(
-	questions: ReadonlyArray<{ status: string; blockerKind: string; createdAt: string }> | undefined,
-): string | null {
-	const asked = (questions ?? [])
-		.filter((q) => q.status === "open" && q.blockerKind === "human")
-		.map((q) => q.createdAt)
-		.sort();
-	return asked[0] ?? null;
 }

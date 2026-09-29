@@ -9,11 +9,15 @@
 import { useEffect, useState } from "react";
 import { Button, Field, Radio, RadioGroup, Textarea } from "@/design";
 import { SlideOver } from "@/design/patterns/slide-over";
-import type { WaitingCause } from "../types";
+import { statusLabel } from "../derive";
+import type { IssueStatus, WaitingCause } from "../types";
 
 export type ReasonStatus = "reopen" | "waiting" | "needs_info";
-/** ISS-1257 — a close or drop the server refused because questions on the issue are still open. */
-export type DialogMode = ReasonStatus | "void_questions";
+/**
+ * ISS-1257 — a close or drop the server refused because questions on the issue are still open.
+ * ISS-1310 — the two ways out of a park that leave its question unanswered, each asking why.
+ */
+export type DialogMode = ReasonStatus | "void_questions" | "move_anyway" | "not_needed";
 
 interface CopySpec {
   title: string;
@@ -44,6 +48,20 @@ const COPY: Record<DialogMode, CopySpec> = {
       "The question is posted as a comment before the status flips. Ask it in full here — this is the only place the reporter will see it.",
     placeholder: "e.g. which environment did you see this on, and was the user an org admin?",
   },
+  move_anyway: {
+    title: "Move this issue anyway",
+    confirm: "Move",
+    blurb:
+      "This leaves the park without the answer it waits on. Say why in one line: it is posted on the thread, where the next run reads it before it puts the park back.",
+    placeholder: "e.g. settled on the call — the build can go on without the tenant",
+  },
+  not_needed: {
+    title: "The question is not needed any more",
+    confirm: "Withdraw it and resume",
+    blurb:
+      "Withdraws the open question with your reason and resumes the issue at the rung its park recorded, in one move. The reason is posted on the thread and kept on the question.",
+    placeholder: "e.g. the owner decided in standup — ship the smaller reading",
+  },
   void_questions: {
     title: "Questions are still open on this issue",
     confirm: "Withdraw them and continue",
@@ -62,20 +80,24 @@ interface TransitionReasonDialogProps {
   status: DialogMode | null;
   /** How many open questions a `void_questions` confirm withdraws. */
   openQuestions?: number;
+  /** Every target a `move_anyway` may pick, the transitions map unchanged. */
+  targets?: IssueStatus[];
   loading: boolean;
-  onConfirm: (reason: string, waitingKind?: WaitingCause) => void;
+  onConfirm: (reason: string, waitingKind?: WaitingCause, target?: IssueStatus) => void;
   onClose: () => void;
 }
 
 export function TransitionReasonDialog({
   status,
   openQuestions,
+  targets,
   loading,
   onConfirm,
   onClose,
 }: TransitionReasonDialogProps) {
   const [reason, setReason] = useState("");
   const [kind, setKind] = useState<WaitingCause>("needs_decision");
+  const [target, setTarget] = useState<IssueStatus | null>(null);
   /** Set on the first confirm, so a second click before `loading` arrives sends no second move. */
   const [sent, setSent] = useState(false);
 
@@ -83,6 +105,7 @@ export function TransitionReasonDialog({
     if (status) {
       setReason("");
       setKind("needs_decision");
+      setTarget(null);
       setSent(false);
     }
   }, [status]);
@@ -93,6 +116,9 @@ export function TransitionReasonDialog({
   if (!status) return null;
   const copy = COPY[status];
   const trimmed = reason.trim();
+  const picking = status === "move_anyway";
+  const asksKind = status === "waiting" || (picking && target === "waiting");
+  const ready = trimmed.length > 0 && (!picking || target !== null);
 
   return (
     <SlideOver open onClose={onClose} title={copy.title} width={480}>
@@ -103,7 +129,20 @@ export function TransitionReasonDialog({
             {openQuestions === 1 ? "1 question is" : `${openQuestions} questions are`} open.
           </p>
         )}
-        {status === "waiting" && (
+        {picking && (
+          <Field label="Move to" required>
+            <RadioGroup
+              name="moveAnywayTarget"
+              value={target ?? ""}
+              onChange={(v) => setTarget(v as IssueStatus)}
+            >
+              {(targets ?? []).map((to) => (
+                <Radio key={to} value={to} label={statusLabel(to)} />
+              ))}
+            </RadioGroup>
+          </Field>
+        )}
+        {asksKind && (
           <Field label="What is needed" required>
             <RadioGroup
               name="waitingKind"
@@ -131,11 +170,13 @@ export function TransitionReasonDialog({
             type="button"
             variant="primary"
             loading={loading || sent}
-            disabled={trimmed.length === 0 || sent}
+            disabled={!ready || sent}
             onClick={() => {
               if (sent) return;
               setSent(true);
-              onConfirm(trimmed, status === "waiting" ? kind : undefined);
+              const kindSent = asksKind ? kind : undefined;
+              if (picking && target) onConfirm(trimmed, kindSent, target);
+              else onConfirm(trimmed, kindSent);
             }}
           >
             {copy.confirm}
