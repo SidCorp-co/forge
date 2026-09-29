@@ -250,6 +250,12 @@ jobs:
 
   changes:
     runs-on: ubuntu-latest
+    # A job's own `permissions` replace the workflow's, so the two it reads are restated beside
+    # the one the `proved` step adds: `checks: read`, for the ci-passed run it asks about.
+    permissions:
+      contents: read
+      pull-requests: read
+      checks: read
     outputs:
       web: ${{ steps.filter.outputs.web }}
       core: ${{ steps.filter.outputs.core }}
@@ -268,11 +274,19 @@ jobs:
       # The two merge-commit reds in that window were both infrastructure, not
       # drift: a Docker Hub manifest timeout pulling pgvector, and a pg-boss
       # enqueue failure — neither reachable by this filter.
-      # The parent count is read from the commit object, which a depth-1 checkout
-      # still carries. Anything not a 2-parent push to a gated branch is
-      # `proved=false`, so a DIRECT push — the owner lane, which sees no
-      # pull_request run at all — keeps the full gate. It went red 16 times in
-      # that same window.
+      # A parent count alone proves none of that, so three things are read and all
+      # three must hold. Two parents, off the commit object's header: this checkout
+      # is depth 1, where the shallow graft leaves every commit parentless to
+      # `git rev-list` and `git log`, so either would count 1 on every merge
+      # (ISS-1340). A tree equal to the second parent's, so a merge
+      # carrying content its pull request never held — resolved by hand, or taken
+      # past `strict` — is not waved through. And that parent's latest `ci-passed`
+      # concluded `success`, because `enforce_admins` is false and a merge taken
+      # past red carries two parents too. Anything else, or a read that fails, is
+      # `proved=false` with its reason logged, so a DIRECT push — the owner lane,
+      # which sees no pull_request run at all — keeps the full gate. It went red 16
+      # times in that same window. `scripts/lib/proved-step.test.mjs` runs this
+      # shell as written.
       # The cheap always-on jobs (lang-check, conformance, archmap, docs,
       # injected-docs, install-check) are NOT gated on this: they cost seconds,
       # they are ungated by paths-filter on purpose, and `docs` walks the whole
@@ -280,18 +294,42 @@ jobs:
       - name: Whether a pull_request run already proved this exact tree
         id: proved
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           proved=false
+          why="a ${GITHUB_EVENT_NAME} event to ${GITHUB_REF}, which no pull_request run precedes"
           gated="refs/heads/main refs/heads/dev"
           case " $gated " in
-            *" ${{ github.ref }} "*) on_gated_branch=true ;;
+            *" ${GITHUB_REF} "*) on_gated_branch=true ;;
             *) on_gated_branch=false ;;
           esac
-          if [ "${{ github.event_name }}" = "push" ] && [ "$on_gated_branch" = true ]; then
-            parents=$(git rev-list --parents -n 1 HEAD | wc -w)
-            if [ "$parents" -ge 3 ]; then proved=true; fi
+          if [ "${GITHUB_EVENT_NAME}" = "push" ] && [ "$on_gated_branch" = true ]; then
+            # Header lines only: a message line reading `parent <sha>` is not a parent.
+            parents=$(git cat-file -p HEAD | sed -n '/^$/,$d; s/^parent //p')
+            tree=$(git cat-file -p HEAD | sed -n '/^$/,$d; s/^tree //p')
+            count=0
+            for _ in $parents; do count=$((count + 1)); done
+            pr_head=$(printf '%s\n' "$parents" | sed -n 2p)
+            if [ "$count" -ne 2 ]; then
+              why="HEAD has $count parent(s), and only a two-parent merge follows a pull_request run"
+            elif ! git fetch --quiet --no-tags --depth=1 origin "$pr_head"; then
+              why="could not fetch the second parent $pr_head to read its tree"
+            elif [ "$(git rev-parse "$pr_head^{tree}")" != "$tree" ]; then
+              why="HEAD's tree differs from its second parent $pr_head's, so no pull_request run built it"
+            elif ! verdict=$(gh api "repos/${GITHUB_REPOSITORY}/commits/$pr_head/check-runs?check_name=ci-passed" \
+                --jq '[.check_runs[] | select(.app.slug == "github-actions")] | sort_by(.id) | last
+                      | if . == null then "absent" elif .status != "completed" then .status else .conclusion end'); then
+              why="could not read ci-passed on $pr_head from the check-runs API"
+            elif [ "$verdict" != "success" ]; then
+              why="ci-passed on $pr_head reads ${verdict:-nothing}, not success"
+            else
+              proved=true
+              why="two parents, the tree of $pr_head, and its ci-passed concluded success"
+            fi
           fi
           echo "proved=$proved" >> "$GITHUB_OUTPUT"
+          echo "why: $why"
           echo "pull_request run already proved this tree: $proved"
       - uses: dorny/paths-filter@v4
         id: filter
