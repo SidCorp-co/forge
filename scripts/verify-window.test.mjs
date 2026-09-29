@@ -175,6 +175,9 @@ beforeAll(() => {
     'ISS-9-drop',
     migration('0002_drop_name', 's-d', { 'public.a': table('a', ['id']) }),
   );
+  heads.edit = branch('ISS-11-edit', {
+    [JOURNAL]: journal({ ...entry(1, W, '0001_init'), breakpoints: false }),
+  });
   git(seed, 'push', '-q', 'origin', '--delete', 'other-open');
 });
 
@@ -415,6 +418,28 @@ describe('assemble, attribute, isolate and land', () => {
     const r = run(c, 'land', '--window', w.manifest, '--checks', w.checksFile, '--tree', w.tree);
     expect(r.status).toBe(1);
     expect(r.stderr).toContain(`origin/main is at ${after} and the window was built on ${before}`);
+  });
+});
+
+describe('a journal entry a member edits rather than adds', () => {
+  it('isolates the member instead of dropping its edit', () => {
+    const c = clone('edit-window');
+    const w = windowFiles('w-edit', [['ISS-11', 'ISS-11-edit', heads.edit]], green(heads.edit));
+    const r = run(
+      c,
+      'assemble',
+      '--window',
+      w.manifest,
+      '--checks',
+      w.checksFile,
+      '--tree',
+      w.tree,
+    );
+    expect(r.status).toBe(1);
+    const ledger = JSON.parse(readFileSync(w.ledger, 'utf8'));
+    expect(ledger.members[0].isolated.because).toBe(
+      'ISS-11 changes the journal entry 0001_init, which a window keeps as the combination holds it',
+    );
   });
 });
 

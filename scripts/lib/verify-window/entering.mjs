@@ -51,6 +51,28 @@ function headSnapshot(t, dir) {
 }
 
 /**
+ * A journal entry the member changed or removed rather than added, as its refusal: the journal is
+ * rewritten as the combination's entries plus the member's new ones, so an edit to an existing
+ * entry would otherwise be dropped without a word.
+ */
+function editedEntries(t, member, dir, combined, theirs) {
+  const fork = t.run(['merge-base', 'HEAD', member.head])?.trim();
+  const before = fork ? journalOf(t, fork, dir) : null;
+  const inCombined = new Map(combined.entries.map((e) => [e.tag, e]));
+  for (const e of theirs.entries) {
+    const c = inCombined.get(e.tag);
+    if (c && JSON.stringify(c) !== JSON.stringify(e)) {
+      return `${member.issue} changes the journal entry ${e.tag}, which a window keeps as the combination holds it`;
+    }
+  }
+  const kept = new Set(theirs.entries.map((e) => e.tag));
+  const removed = (before?.entries ?? []).find((e) => !kept.has(e.tag));
+  return removed
+    ? `${member.issue} removes the journal entry ${removed.tag}, which a window keeps as the combination holds it`
+    : null;
+}
+
+/**
  * Re-derive `member`'s migrations against HEAD and stage the result.
  * @returns {{ moves: object[], rewrites: string[] } | { refusal: string }}
  */
@@ -58,6 +80,8 @@ export function enterMigrations({ t, dir, member, open }) {
   const combined = journalOf(t, 'HEAD', dir);
   const theirs = journalOf(t, member.head, dir);
   if (!combined || !theirs) return { moves: [], rewrites: [] };
+  const edited = editedEntries(t, member, dir, combined, theirs);
+  if (edited) return { refusal: edited };
   const fresh = newEntries(theirs.entries, combined.entries);
   if (fresh.length === 0) return { moves: [], rewrites: [] };
 
