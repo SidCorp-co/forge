@@ -1,17 +1,27 @@
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 
-/** `text` parsed as a JSON array, or `null` where it is not one. */
-function listOf(text) {
+const isRecord = (v) => typeof v === 'object' && v !== null && !Array.isArray(v);
+
+/** A check run as `gh api` returns it: timed, with a status, and a conclusion once completed. */
+function isRun(run) {
+  return (
+    isRecord(run) &&
+    typeof run.started_at === 'string' &&
+    typeof run.status === 'string' &&
+    (run.status !== 'completed' || typeof run.conclusion === 'string')
+  );
+}
+
+/** `text` parsed as a JSON array of check runs, or `null` where it is not one. */
+function runsOf(text) {
   try {
     const value = JSON.parse(text || '[]');
-    return Array.isArray(value) ? value : null;
+    return Array.isArray(value) && value.every(isRun) ? value : null;
   } catch {
     return null;
   }
 }
-
-const isRecord = (v) => typeof v === 'object' && v !== null && !Array.isArray(v);
 
 /** Why a saved checks document is not `{ "<sha>": { "<check>": "<conclusion>" } }`, or `null`. */
 function shapeOfSaved(saved) {
@@ -53,10 +63,10 @@ export function checkReader({
         refusal: `\`gh api ${path}\` did not answer (${(r.stderr || '').trim()}), so ${name} at ${sha} is unknown`,
       };
     }
-    const runs = listOf(r.stdout);
+    const runs = runsOf(r.stdout);
     if (!runs) {
       return {
-        refusal: `\`gh api ${path}\` answered \`${(r.stdout || '').trim().slice(0, 80)}\`, not a list of check runs, so ${name} at ${sha} is unknown`,
+        refusal: `\`gh api ${path}\` answered \`${(r.stdout || '').trim().slice(0, 80)}\`, not a list of check runs each with its start, status and conclusion, so ${name} at ${sha} is unknown`,
       };
     }
     if (runs.length === 0) return { state: 'absent' };

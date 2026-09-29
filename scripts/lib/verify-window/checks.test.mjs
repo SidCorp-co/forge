@@ -31,9 +31,18 @@ describe('checkReader over gh api', () => {
   });
 
   it('refuses by name a reply that is not a list of runs', () => {
-    for (const reply of ['not-json', '{}', 'null']) {
+    const runs = (...r) => JSON.stringify(r);
+    for (const reply of [
+      'not-json',
+      '{}',
+      'null',
+      runs(null),
+      runs({}),
+      runs({ started_at: null, status: 'queued' }),
+      runs({ started_at: 'x', status: 'completed' }),
+    ]) {
       expect(read(reply).refusal).toBe(
-        `\`gh api repos/o/r/commits/${SHA}/check-runs?check_name=ci-passed\` answered \`${reply}\`, not a list of check runs, so ci-passed at ${SHA} is unknown`,
+        `\`gh api repos/o/r/commits/${SHA}/check-runs?check_name=ci-passed\` answered \`${reply}\`, not a list of check runs each with its start, status and conclusion, so ci-passed at ${SHA} is unknown`,
       );
     }
   });

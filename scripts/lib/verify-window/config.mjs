@@ -47,7 +47,10 @@ export function parseConfig(text, where) {
   } catch (err) {
     return refuse(where, `not readable JSON (${err.message})`);
   }
-  const dir = raw?.migrations?.dir;
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    return refuse(where, 'the declarations must be one JSON object');
+  }
+  const dir = raw.migrations?.dir;
   if (typeof dir !== 'string' || dir === '') {
     return refuse(where, '`migrations.dir` must name the drizzle migrations directory');
   }

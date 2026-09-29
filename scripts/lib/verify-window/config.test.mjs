@@ -44,6 +44,10 @@ describe('parseConfig', () => {
     expect(parseConfig(JSON.stringify({ ...good, ...patch }), 'x').refusal).toBe(`x: ${why}`);
   });
 
+  it.each(['null', '[]', '"x"'])('refuses the document %s as not one object', (text) => {
+    expect(parseConfig(text, 'x').refusal).toBe('x: the declarations must be one JSON object');
+  });
+
   it('refuses a pattern that does not compile', () => {
     const bad = {
       ...good,
