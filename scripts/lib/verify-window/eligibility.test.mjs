@@ -6,7 +6,7 @@ const { config } = parseConfig(
   JSON.stringify({
     check: 'ci-passed',
     migrations: { dir: 'db/migrations' },
-    gate: { run: ['node', 'gate.mjs'] },
+    gate: { prepare: [], run: ['node', 'gate.mjs'] },
     ineligible: {
       paths: [{ glob: 'runner/**', reason: 'runs on three platforms' }],
       linesIn: ['**/*.mjs'],

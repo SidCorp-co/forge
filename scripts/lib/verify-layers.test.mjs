@@ -78,7 +78,7 @@ function put(dir, files) {
 const DECLARATIONS = JSON.stringify({
   check: 'ci-passed',
   migrations: { dir: 'db' },
-  gate: { run: ['node', 'gate.mjs'] },
+  gate: { prepare: [], run: ['node', 'gate.mjs'] },
   ineligible: {
     paths: [{ glob: 'runner/**', reason: 'runs on three platforms' }],
     linesIn: ['**/*.mjs'],

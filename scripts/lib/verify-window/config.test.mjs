@@ -5,7 +5,7 @@ import { globToRegExp, parseConfig } from './config.mjs';
 const good = {
   check: 'ci-passed',
   migrations: { dir: 'db/migrations/' },
-  gate: { run: ['node', 'gate.mjs'] },
+  gate: { prepare: [], run: ['node', 'gate.mjs'] },
   union: [{ path: 'CHANGELOG.md', reason: 'both entries are meant to stand' }],
   ineligible: {
     paths: [{ glob: 'runner/**', reason: 'runs on three platforms' }],
@@ -30,7 +30,7 @@ describe('parseConfig', () => {
   });
 
   it('refuses an entry that carries no reason, naming the entry', () => {
-    const bad = { ...good, ineligible: { paths: [{ glob: 'x/**' }] } };
+    const bad = { ...good, ineligible: { paths: [{ glob: 'x/**' }], lines: [] } };
     expect(parseConfig(JSON.stringify(bad), 'x').refusal).toMatch(
       /ineligible\.paths\[0\] needs a `glob` and a `reason`/,
     );
@@ -39,8 +39,11 @@ describe('parseConfig', () => {
   it.each([
     [{ union: {} }, '`union` must be a list of entries'],
     [{ ineligible: { paths: {} } }, '`ineligible.paths` must be a list of entries'],
-    [{ ineligible: { lines: 'x' } }, '`ineligible.lines` must be a list of entries'],
+    [{ ineligible: { paths: [], lines: 'x' } }, '`ineligible.lines` must be a list of entries'],
     [{ ineligible: [] }, '`ineligible` must be an object of `paths`, `lines` and `linesIn`'],
+    [{ ineligible: undefined }, '`ineligible` must be an object of `paths`, `lines` and `linesIn`'],
+    [{ ineligible: { lines: [] } }, '`ineligible.paths` must be a list of entries'],
+    [{ ineligible: { paths: [] } }, '`ineligible.lines` must be a list of entries'],
   ])('refuses %j by name rather than throwing', (patch, why) => {
     expect(parseConfig(JSON.stringify({ ...good, ...patch }), 'x').refusal).toBe(`x: ${why}`);
   });
@@ -51,6 +54,7 @@ describe('parseConfig', () => {
 
   it.each([
     [{ gate: undefined }, '`gate.run` must name the command'],
+    [{ gate: { run: ['node'] } }, '`gate.prepare` must be a list of argv lists'],
     [{ gate: { run: [] } }, '`gate.run` must name the command'],
     [
       { gate: { run: ['node'], prepare: ['pnpm install'] } },
@@ -63,7 +67,7 @@ describe('parseConfig', () => {
   it('refuses a pattern that does not compile', () => {
     const bad = {
       ...good,
-      ineligible: { lines: [{ pattern: '(', reason: 'a reason long enough' }] },
+      ineligible: { paths: [], lines: [{ pattern: '(', reason: 'a reason long enough' }] },
     };
     expect(parseConfig(JSON.stringify(bad), 'x').refusal).toMatch(
       /lines\[0\]\.pattern does not compile/,

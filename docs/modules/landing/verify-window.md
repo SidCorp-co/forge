@@ -22,7 +22,11 @@ branch, head, arrival time and priority.
 1. **`admit`** — each member's branch still points at the recorded head, its required check is a
    success at that head, its head is not already on the base, and its diff touches no ineligible
    surface. The declarations are read from `.forge/verify-queue.json` **at the base commit**, so a
-   member cannot loosen the rule it is judged by.
+   member cannot loosen the rule it is judged by. Every key that would otherwise read as permission
+   is required: `gate.prepare` (`[]` where the gate needs no preparation), `ineligible.paths` and
+   `ineligible.lines`, so an omission is refused by name rather than read as nothing to prepare or
+   nothing ineligible. Read without `--checks`, the required check comes from GitHub; an `origin`
+   that is not on GitHub is refused, naming `--checks`, rather than asked about as `repos/null`.
 2. **`fire`** — `size` members waiting, the oldest member's wait from its recorded arrival reaching
    `minutes`, or a critical member; a window above an optional `maxSize` is refused. These are the
    release train's keys (`docs/proposals/release-train.md`), which this project has not yet set, so
@@ -39,8 +43,8 @@ branch, head, arrival time and priority.
 4. **`validate`** — the `gate` the declarations name, `node scripts/verify.mjs --window`, prepared
    and run once in the window's tree. It pays the shared layer's sweeps that no member's own run
    paid, plus the entry layer again, where two members' edits meet in one file (scoped to the
-   combination's diff for a check that declares a scoped form). The ledger records each pass as the window's cost figure: what it took and how many
-   members shared it. Red, it prints the gate's own words, which step 5 attributes.
+   combination's diff for a check that declares a scoped form). The ledger records each pass as
+   the window's cost figure: what it took and how many members shared it. Red, it prints the gate's own words, which step 5 attributes.
    **One pull request** of the chain head into the base follows, and its `ci-passed`, with its full
    needs list, stays the required check.
 5. **`attribute`** — a refusal naming a path belongs to the last landing that changed it. One naming

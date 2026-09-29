@@ -67,20 +67,20 @@ export function parseConfig(text, where) {
       '`gate.run` must name the command a window validates its combination with, as an argv list',
     );
   }
-  const prepare = gate.prepare ?? [];
+  const prepare = gate.prepare;
   if (!Array.isArray(prepare) || !prepare.every(isArgv)) {
     return refuse(
       where,
-      '`gate.prepare` must be a list of argv lists, run in order before `gate.run`',
+      '`gate.prepare` must be a list of argv lists, run in order before `gate.run`, and `[]` where the gate needs none',
     );
   }
-  const ineligible = raw.ineligible ?? {};
-  if (typeof ineligible !== 'object' || Array.isArray(ineligible)) {
+  const ineligible = raw.ineligible;
+  if (!ineligible || typeof ineligible !== 'object' || Array.isArray(ineligible)) {
     return refuse(where, '`ineligible` must be an object of `paths`, `lines` and `linesIn`');
   }
   const union = raw.union ?? [];
-  const paths = ineligible.paths ?? [];
-  const lines = ineligible.lines ?? [];
+  const paths = ineligible.paths;
+  const lines = ineligible.lines;
   for (const [key, value] of [
     ['union', union],
     ['ineligible.paths', paths],

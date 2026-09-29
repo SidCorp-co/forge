@@ -49,6 +49,21 @@ describe('checkReader over gh api', () => {
     }
   });
 
+  it('refuses a remote that is not on GitHub, naming --checks, and never calls gh', () => {
+    let called = false;
+    const readNull = checkReader({
+      repoSlug: null,
+      gh: () => {
+        called = true;
+        return { status: 0, stdout: '[]' };
+      },
+    });
+    expect(readNull(SHA, 'ci-passed').refusal).toMatch(
+      /origin is not a GitHub remote, so ci-passed at a+ cannot be read from GitHub: pass `--checks <file>`/,
+    );
+    expect(called).toBe(false);
+  });
+
   it('refuses when gh does not answer', () => {
     expect(read('', 1).refusal).toMatch(
       /did not answer \(no route\), so ci-passed at a+ is unknown$/,

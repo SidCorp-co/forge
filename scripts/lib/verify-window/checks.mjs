@@ -55,6 +55,11 @@ export function checkReader({
     if (bad) return () => ({ refusal: `the checks file ${file} ${bad}` });
     return (sha, name) => ({ state: saved[sha]?.[name] ?? 'absent' });
   }
+  if (!repoSlug) {
+    return (sha, name) => ({
+      refusal: `origin is not a GitHub remote, so ${name} at ${sha} cannot be read from GitHub: pass \`--checks <file>\` saved from the check runs instead`,
+    });
+  }
   return (sha, name) => {
     const path = `repos/${repoSlug}/commits/${sha}/check-runs?check_name=${encodeURIComponent(name)}`;
     const r = gh(['api', path, '--jq', '.check_runs']);
