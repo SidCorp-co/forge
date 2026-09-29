@@ -73,6 +73,9 @@ pub struct Carry {
     discovery: Option<(i64, Read<Vec<MeRunner>>)>,
     core: Option<CoreAnswer>,
     core_at: i64,
+    /// The project ids `core` was asked about: an answer is kept for these
+    /// alone, so a project listed since is asked, never shown as unanswered.
+    core_ids: Vec<String>,
     trees: HashMap<PathBuf, (i64, TreeAge)>,
     /// The daemon executable last read, under the pid and link it was read at.
     exe: Option<HeldExe>,
@@ -331,15 +334,32 @@ async fn core_reads(
     carry: &mut Carry,
     now_ms: i64,
 ) -> CoreAnswer {
-    if let Some(held) = &carry.core {
-        if now_ms - carry.core_at < CORE_EVERY_MS {
-            return held.clone();
-        }
+    let ids = project_ids(projects);
+    if let Some(held) = held_core(carry, &ids, now_ms) {
+        return held;
     }
     let got = ask_core(ctx, cfg, projects, now_ms).await;
     carry.core = Some(got.clone());
     carry.core_at = now_ms;
+    carry.core_ids = ids;
     got
+}
+
+fn project_ids(projects: &[Project]) -> Vec<String> {
+    let mut ids: Vec<String> = projects
+        .iter()
+        .filter_map(|p| p.project_id.clone())
+        .collect();
+    ids.sort();
+    ids.dedup();
+    ids
+}
+
+/// The answer kept from an earlier frame, where it is young enough and was
+/// asked about exactly these projects.
+fn held_core(carry: &Carry, ids: &[String], now_ms: i64) -> Option<CoreAnswer> {
+    let held = carry.core.as_ref()?;
+    (now_ms - carry.core_at < CORE_EVERY_MS && carry.core_ids == ids).then(|| held.clone())
 }
 
 async fn ask_core(
@@ -384,4 +404,43 @@ async fn ask_core(
         }
     }
     Ok((now_ms, out))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn project(id: &str) -> Project {
+        Project {
+            key: id.into(),
+            project_id: Some(id.into()),
+            core_slug: None,
+            repo: None,
+        }
+    }
+
+    /// Whole-set consult at 6698e5c, F1: an answer is kept only for the
+    /// projects it was asked about, so one listed since is asked in its turn.
+    #[test]
+    fn a_kept_answer_is_for_the_projects_it_was_asked_about() {
+        let mut carry = Carry::default();
+        let alpha = project_ids(&[project("alpha")]);
+        carry.core = Some(Ok((1_000, BTreeMap::new())));
+        carry.core_at = 1_000;
+        carry.core_ids = alpha.clone();
+        assert!(
+            held_core(&carry, &alpha, 2_000).is_some(),
+            "young, same set"
+        );
+        let both = project_ids(&[project("beta"), project("alpha")]);
+        assert!(
+            held_core(&carry, &both, 2_000).is_none(),
+            "a project listed since"
+        );
+        assert!(
+            held_core(&carry, &alpha, 1_000 + CORE_EVERY_MS).is_none(),
+            "old"
+        );
+        assert_eq!(both, vec!["alpha".to_string(), "beta".to_string()]);
+    }
 }
