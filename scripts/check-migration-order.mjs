@@ -11,7 +11,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { baseRef as resolveBase } from './lib/base-branch.mjs';
-import { checkSet, floorOf, newEntries } from './lib/migration-order.mjs';
+import { checkSet, floorOf, newEntries, readOpenSet } from './lib/migration-order.mjs';
 
 const JOURNAL = 'packages/core/drizzle/migrations/meta/_journal.json';
 const LABEL = 'migration-order';
@@ -106,56 +106,35 @@ if (landing.length === 0 && !isBase) {
 
 /** Every open branch's new entries, or `null` where the remote could not be read at all. */
 function readOpenBranches() {
-  const fetched = git(
-    ['fetch', '--no-tags', '--prune', 'origin', '+refs/heads/*:refs/remotes/origin/*'],
-    root,
-  );
-  if (fetched === null) return null;
-  const refs = git(['for-each-ref', '--format=%(refname:short)', 'refs/remotes/origin'], root);
-  if (refs === null) return null;
-
-  // The fetch may have moved the base under us, and the floor was read before it. Re-read rather
-  // than compare against a number the remote has already left behind.
-  baseEntries = journalAt(baseRef);
-  landing = newEntries(here, baseEntries);
-  isBase = git(['rev-parse', 'HEAD'], root) === git(['rev-parse', baseRef], root);
-
-  const open = [];
-  for (const ref of refs.split('\n').filter(Boolean)) {
-    if (ref === 'origin/HEAD' || ref === baseRef || isOurs(ref)) continue;
-    // Already merged: its entries are the base's, and a branch nobody deleted is not a pending merge.
-    if (
-      spawnSync('git', ['merge-base', '--is-ancestor', ref, baseRef], { cwd: root }).status === 0
-    ) {
-      continue;
-    }
-    // A branch with no journal file carries no migration and is nothing to order against. A
-    // journal that IS there and will not read is a hole in the set, and a hole is not an absence:
-    // passing over it would be exactly the unmeasured landing this check exists to refuse.
-    //
-    // Absence is established POSITIVELY, by listing the tree. Probing the path instead — `cat-file
-    // -e` — answers non-zero for "not in this tree" and for "git could not inspect the object"
-    // alike, so the second would leave the branch out of the set under the name of the first.
-    const listed = git(['ls-tree', '--name-only', ref, '--', JOURNAL], root);
-    if (listed === null) {
-      die(
-        `${ref}'s tree could not be read, so whether it carries a ${JOURNAL} is unknown.\n` +
-          'An unknown is not an absence. Exit 2, not a pass.',
-      );
-    }
-    if (listed === '') continue;
-    const text = git(['show', `${ref}:${JOURNAL}`], root);
-    if (text === null) {
-      die(
-        `${ref} has a ${JOURNAL} that will not read, so the open set has a hole in it.\n` +
-          'Nothing can be said about an order that leaves one branch out, and this tree is\n' +
-          `landing ${landing.map((e) => e.tag).join(', ') || 'no migration'}. Exit 2, not a pass.`,
-      );
-    }
-    const entries = newEntries(entriesOf(text, `${ref}:${JOURNAL}`), baseEntries);
-    if (entries.length > 0) open.push({ branch: ref, entries });
+  const read = readOpenSet({
+    git: (args) => git(args, root),
+    journal: JOURNAL,
+    baseRef,
+    isOurs,
+    parse: entriesOf,
+    // The fetch may have moved the base under us, and the floor was read before it. Re-read rather
+    // than compare against a number the remote has already left behind.
+    afterFetch: () => {
+      baseEntries = journalAt(baseRef);
+      landing = newEntries(here, baseEntries);
+      isBase = git(['rev-parse', 'HEAD'], root) === git(['rev-parse', baseRef], root);
+      return baseEntries;
+    },
+  });
+  if (read?.hole?.kind === 'tree') {
+    die(
+      `${read.hole.ref}'s tree could not be read, so whether it carries a ${JOURNAL} is unknown.\n` +
+        'An unknown is not an absence. Exit 2, not a pass.',
+    );
   }
-  return open;
+  if (read?.hole?.kind === 'journal') {
+    die(
+      `${read.hole.ref} has a ${JOURNAL} that will not read, so the open set has a hole in it.\n` +
+        'Nothing can be said about an order that leaves one branch out, and this tree is\n' +
+        `landing ${landing.map((e) => e.tag).join(', ') || 'no migration'}. Exit 2, not a pass.`,
+    );
+  }
+  return read === null ? null : read.open;
 }
 
 const siblings = readOpenBranches();

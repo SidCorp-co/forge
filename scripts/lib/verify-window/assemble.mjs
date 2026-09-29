@@ -1,0 +1,188 @@
+import { existsSync } from 'node:fs';
+import { readOpenSet } from '../migration-order.mjs';
+import { admitMembers } from './admit.mjs';
+import { CONFIG_PATH, parseConfig } from './config.mjs';
+import { enterMigrations, resolveUnions } from './entering.mjs';
+import { gitIn, showAt } from './git.mjs';
+
+/**
+ * Build a window's combination: a worktree at the base commit, and on it one `--no-ff` merge
+ * commit per member that enters, in the window's order, each re-deriving what the repository
+ * orders across branches as it enters. The combination is a validation artifact; the landing is
+ * that same chain merged through one pull request (`land.mjs`).
+ */
+
+function entriesOf(text, where) {
+  const doc = JSON.parse(text);
+  if (!Array.isArray(doc?.entries)) throw new Error(`${where} carries no \`entries\` array`);
+  return doc.entries;
+}
+
+/** The earlier landed members whose own landing commit changed `path`, latest last. */
+export function earlierOwners(t, landed, path) {
+  return landed.filter(
+    (m) =>
+      (t.run(['diff', '--name-only', `${m.landing}^1`, m.landing, '--', path]) ?? '').trim() !== '',
+  );
+}
+
+function isolate(t, member, because) {
+  t.run(['merge', '--abort']);
+  t.must(['reset', '--hard', 'HEAD']);
+  t.must(['clean', '-fdq']);
+  return { ...member, landing: null, isolated: { because, kind: 'assembly' } };
+}
+
+/** Merge one member into the combination; its ledger row, landed or isolated. */
+function enter({ t, config, member, open, landed, window }) {
+  const merge = t.raw(['merge', '--no-ff', '--no-commit', member.head]);
+  if (merge.status !== 0 && !/CONFLICT|Automatic merge failed/.test(merge.stdout + merge.stderr)) {
+    return isolate(
+      t,
+      member,
+      `git merge of ${member.head} did not run: ${(merge.stderr || merge.stdout).trim()}`,
+    );
+  }
+  const mig = enterMigrations({ t, dir: config.migrationsDir, member, open });
+  if (mig.refusal) return isolate(t, member, mig.refusal);
+  const unmergedNow = () =>
+    (t.run(['diff', '--name-only', '--diff-filter=U']) ?? '').split('\n').filter(Boolean);
+  const unions = resolveUnions({ t, unmerged: unmergedNow(), union: config.union });
+  if (unions.refusal) return isolate(t, member, unions.refusal);
+  const left = unmergedNow();
+  if (left.length > 0) {
+    const named = left.map((p) => {
+      const owners = earlierOwners(t, landed, p).map((o) => o.issue);
+      return owners.length > 0
+        ? `${p} (changed earlier in this window by ${owners.join(', ')})`
+        : `${p} (changed on the base)`;
+    });
+    return isolate(
+      t,
+      member,
+      `${member.issue} conflicts on ${named.join('; ')}; the later admission owns a same-path refusal`,
+    );
+  }
+  t.must([
+    'commit',
+    '-q',
+    '-m',
+    `verify window ${window}: ${member.issue} (${member.branch} at ${member.head.slice(0, 9)})`,
+    '-m',
+    `Verify-Window: ${window}\nIssue: ${member.issue}\nReviewed-Head: ${member.head}`,
+  ]);
+  const landing = t.must(['rev-parse', 'HEAD']).trim();
+  return {
+    ...member,
+    landing,
+    renumbered: mig.moves,
+    rewrites: mig.rewrites,
+    unions: unions.resolved,
+    isolated: null,
+  };
+}
+
+/**
+ * Fetch, then read what every step is judged against: the base commit, the declarations at it and
+ * the open branches outside the window. @returns {{ refusal: string } | object}
+ */
+export function prepareWindow({ repoDir, manifest }) {
+  const g = gitIn(repoDir);
+  const trimmed = (args) => g.run(args)?.trim() ?? null;
+  if (
+    trimmed(['fetch', '--no-tags', '--prune', 'origin', '+refs/heads/*:refs/remotes/origin/*']) ===
+    null
+  ) {
+    return {
+      refusal: 'git fetch origin did not answer, so neither the base nor any member can be read',
+    };
+  }
+  const baseRef = `origin/${manifest.base}`;
+  const baseSha = trimmed(['rev-parse', '--verify', '--quiet', baseRef]);
+  if (!baseSha)
+    return { refusal: `${baseRef} does not exist, so there is no base to build the window on` };
+  const read = parseConfig(showAt(g, baseSha, CONFIG_PATH), `${CONFIG_PATH} at ${baseSha}`);
+  if (read.refusal) return { refusal: read.refusal };
+  const config = read.config;
+  const journal = `${config.migrationsDir}/meta/_journal.json`;
+  const memberRefs = new Set(manifest.members.map((m) => `origin/${m.branch}`));
+  const openSet = readOpenSet({
+    git: trimmed,
+    journal,
+    baseRef,
+    fetch: false,
+    isOurs: memberRefs.has.bind(memberRefs),
+    parse: entriesOf,
+    afterFetch: () => {
+      const text = showAt(g, baseSha, journal);
+      return text === null ? [] : entriesOf(text, `${baseRef}:${journal}`);
+    },
+  });
+  if (openSet === null)
+    return {
+      refusal: 'the open branches could not be enumerated, so no migration number can be allocated',
+    };
+  if (openSet.hole)
+    return {
+      refusal: `${openSet.hole.ref}'s ${openSet.hole.kind} could not be read, and an unknown is not an absence`,
+    };
+  return { g, baseSha, config, open: openSet.open };
+}
+
+/**
+ * `admit: false` is for a replay tree, whose member was admitted by the window it came from.
+ * @param {{ repoDir: string, manifest: object, treeDir: string, readCheck: Function, admit?: boolean }} input
+ * @returns {{ refusal: string } | { ledger: object }}
+ */
+export function assemble({ repoDir, manifest, treeDir, readCheck, admit = true }) {
+  const ready = prepareWindow({ repoDir, manifest });
+  if (ready.refusal) return ready;
+  const { g, baseSha, config, open } = ready;
+  if (existsSync(treeDir))
+    return { refusal: `${treeDir} already exists; a window is built in a tree of its own` };
+
+  const admissions = admit
+    ? admitMembers({ g, baseSha, members: manifest.members, config, readCheck })
+    : manifest.members.map((m) => ({ issue: m.issue, refusals: [] }));
+  g.must(['worktree', 'add', '-q', '--detach', treeDir, baseSha]);
+  const t = gitIn(treeDir);
+  const prior = new Map((manifest.isolated ?? []).map((i) => [i.issue, i]));
+  const rows = [];
+  for (const [i, member] of manifest.members.entries()) {
+    const refusals = admissions[i].refusals;
+    if (refusals.length > 0) {
+      rows.push({ ...member, admission: 'refused', refusals, landing: null, isolated: null });
+      continue;
+    }
+    if (prior.has(member.issue)) {
+      rows.push({
+        ...member,
+        admission: 'admitted',
+        refusals: [],
+        landing: null,
+        isolated: prior.get(member.issue),
+      });
+      continue;
+    }
+    const landed = rows.filter((r) => r.landing);
+    rows.push({
+      admission: 'admitted',
+      refusals: [],
+      ...enter({ t, config, member, open, landed, window: manifest.window }),
+    });
+  }
+  const head = t.must(['rev-parse', 'HEAD']).trim();
+  return {
+    ledger: {
+      window: manifest.window,
+      base: { branch: manifest.base, sha: baseSha },
+      thresholds: manifest.thresholds ?? null,
+      declarations: `${CONFIG_PATH} at ${baseSha}`,
+      openBranches: open.map((b) => b.branch),
+      members: rows,
+      chain: { head, tree: treeDir, landed: rows.filter((r) => r.landing).length },
+      attributions: [],
+      validation: null,
+    },
+  };
+}
