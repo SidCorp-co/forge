@@ -50,6 +50,25 @@ describe('parseDiff', () => {
     ]);
   });
 
+  it('counts context lines, so a diff taken with context still numbers each added line', () => {
+    const withContext = parseDiff(
+      [
+        'diff --git a/src/c.mjs b/src/c.mjs',
+        '@@ -1,4 +1,5 @@',
+        ' one',
+        ' two',
+        '-gone',
+        "+process.env.PATH = '/tmp';",
+        ' three',
+        '+four',
+      ].join('\n'),
+    );
+    expect(withContext[0].added).toEqual([
+      { line: 3, text: "process.env.PATH = '/tmp';" },
+      { line: 5, text: 'four' },
+    ]);
+  });
+
   it('keeps a deleted file among the touched paths', () => {
     expect(parseDiff(diff).map((f) => f.path)).toContain('runner/src/main.rs');
   });

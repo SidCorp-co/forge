@@ -58,8 +58,9 @@ branch, head, arrival time and priority.
    that branch since.
 7. **`land`** — refused where the base or a landed member's branch moved since assembly, where the
    window's branch on the remote does not point at the chain head the ledger holds (a rebuild not
-   yet pushed), where the required check at that head is not a success, or where a member's reviewed
-   head is not an ancestor of its landing. Otherwise it prints each landing beside its reviewed head
+   yet pushed), where the required check at that head is not a success, where a member's reviewed
+   head is not an ancestor of its landing, or where no member has a landing at all, since a window
+   whose every member was refused or isolated has nothing to land. Otherwise it prints each landing beside its reviewed head
    and the merge, pinned to that head:
    `gh pr merge chore/verify-window-<id> --merge --match-head-commit <chain head>`. Never squash and
    never rebase it: the point of the chain is that a revert (`git revert -m 1 <landing>`) still names

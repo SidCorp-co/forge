@@ -35,8 +35,9 @@ function headerPath(rest) {
 }
 
 /**
- * The paths a `git diff --unified=0 --no-renames` touched, each with its added lines numbered; a
- * quoted path is decoded, so a declared glob sees the name the tree holds.
+ * The paths a `git diff --no-renames` touched, each added line numbered as it stands in the new
+ * file whatever the context width; a quoted path is decoded, so a declared glob sees the name the
+ * tree holds.
  * @returns {{ path: string, added: { line: number, text: string }[] }[]}
  */
 export function parseDiff(text) {
@@ -62,6 +63,8 @@ export function parseDiff(text) {
     }
     if (raw.startsWith('+')) {
       file.added.push({ line: next, text: raw.slice(1) });
+      next += 1;
+    } else if (raw.startsWith(' ')) {
       next += 1;
     }
   }

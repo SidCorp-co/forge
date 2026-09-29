@@ -49,6 +49,11 @@ export function planLanding({ repoDir, ledger, readCheck }) {
   );
   if (read.refusal) return { refusals: [...refusals, read.refusal], lines: [], validation: null };
   const landed = ledger.members.filter((m) => m.landing);
+  if (landed.length === 0) {
+    refusals.push(
+      "no member of this window has a landing: every one was refused or isolated, so there is nothing to land, and the window's pull request is closed unmerged",
+    );
+  }
   const lines = [];
   for (const [i, m] of landed.entries()) {
     const now = g

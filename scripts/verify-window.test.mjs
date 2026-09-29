@@ -421,6 +421,26 @@ describe('assemble, attribute, isolate and land', () => {
     expect(r.stdout).not.toMatch(/--squash|--rebase/);
   });
 
+  it('refuses to land a window in which no member has a landing, naming that there is nothing to land', () => {
+    const original = readFileSync(w.ledger, 'utf8');
+    const checks = readFileSync(w.checksFile, 'utf8');
+    const empty = JSON.parse(original);
+    for (const m of empty.members) m.landing = null;
+    writeFileSync(w.ledger, JSON.stringify(empty));
+    writeFileSync(w.checksFile, JSON.stringify(green(ledger.chain.head)));
+    git(c, 'push', '-q', 'origin', `${ledger.chain.head}:refs/heads/chore/verify-window-w1`);
+    try {
+      const r = run(c, 'land', '--window', w.manifest, '--checks', w.checksFile, '--tree', w.tree);
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain('no member of this window has a landing');
+      expect(r.stdout).not.toContain('gh pr merge');
+    } finally {
+      git(c, 'push', '-q', 'origin', '--delete', 'chore/verify-window-w1');
+      writeFileSync(w.ledger, original);
+      writeFileSync(w.checksFile, checks);
+    }
+  });
+
   it('refuses to land while the window branch is absent, so the plan never names an unpushed chain', () => {
     const r = run(c, 'land', '--window', w.manifest, '--checks', w.checksFile, '--tree', w.tree);
     expect(r.status).toBe(1);
