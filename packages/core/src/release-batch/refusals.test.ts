@@ -5,6 +5,7 @@ import { blocker, releaseBlockerError } from './blockers.js';
 import { ReleaseRunnerAmbiguousError } from './channel.js';
 import {
   type AbortAccount,
+  NoReleaseGateError,
   ReleaseBatchAbortedError,
   ReleaseFinishedForOtherCommitError,
   ReleaseFinishInFlightError,
@@ -350,5 +351,14 @@ describe('finishRefusal — a finished batch asked about another commit', () => 
 
     expect(refusal.message).toContain('already finished with no named commit');
     expect(refusal.message).not.toContain('finished for null');
+  });
+});
+
+describe('recordRefusal — a project with no release step', () => {
+  it('answers with the one NO_RELEASE_GATE sentence every door reads, not a copy of its own', () => {
+    const refused = recordRefusal(new NoReleaseGateError());
+    expect(refused.status).toBe(409);
+    expect(refused.message).toBe(releaseBlockerSentence('NO_RELEASE_GATE'));
+    expect((refused.cause as { code?: string }).code).toBe('NO_RELEASE_GATE');
   });
 });

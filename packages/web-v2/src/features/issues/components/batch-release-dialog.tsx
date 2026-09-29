@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Banner, Button, SlideOver } from "@/design";
+import { inlineCode } from "@/features/project-settings/components/inline-code";
 import { formatApiError } from "@/lib/api/error";
 import { useBatchRelease } from "../hooks";
 
@@ -26,12 +27,21 @@ export function BatchReleaseDialog({
   /** Called after a successful batch create so the parent can clear selection. */
   onSuccess: () => void;
 }) {
-  const batch = useBatchRelease(projectId);
-  const { reset } = batch;
+  const openRef = useRef(open);
+  openRef.current = open;
+  const showsRefusal = useCallback(() => openRef.current, []);
+  const batch = useBatchRelease(projectId, { showsRefusal });
+  const { reset, isPending } = batch;
+  const [refusal, setRefusal] = useState<{ message: string; tries: number } | null>(null);
 
-  // A refusal belongs to the press that met it, so a dialog opened again starts clean.
+  // A refusal belongs to the press that met it, so a dialog opened again starts clean; a press
+  // still in flight is kept, since resetting it would leave its answer nowhere to land.
+  const pendingRef = useRef(isPending);
+  pendingRef.current = isPending;
   useEffect(() => {
-    if (open) reset();
+    if (!open) return;
+    setRefusal(null);
+    if (!pendingRef.current) reset();
   }, [open, reset]);
 
   const handleConfirm = () => {
@@ -40,9 +50,12 @@ export function BatchReleaseDialog({
       { issueIds },
       {
         onSuccess: () => {
+          setRefusal(null);
           onClose();
           onSuccess();
         },
+        onError: (err) =>
+          setRefusal((prev) => ({ message: formatApiError(err), tries: (prev?.tries ?? 0) + 1 })),
       },
     );
   };
@@ -69,10 +82,17 @@ export function BatchReleaseDialog({
           ))}
         </ul>
 
-        {/* The hook's toast paints beneath this drawer's scrim, so the refusal is said here. */}
-        {batch.isError && (
+        {/* A toast paints beneath this drawer's scrim, so the refusal is said here and only here. */}
+        {refusal && (
           <div role="alert">
-            <Banner tone="danger">{formatApiError(batch.error)}</Banner>
+            <Banner tone="danger">
+              {isPending ? (
+                <p className="font-medium">Sending try {refusal.tries + 1}…</p>
+              ) : refusal.tries > 1 ? (
+                <p className="font-medium">Try {refusal.tries} failed as well.</p>
+              ) : null}
+              <p>{inlineCode(refusal.message)}</p>
+            </Banner>
           </div>
         )}
 

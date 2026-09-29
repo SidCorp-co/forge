@@ -3139,6 +3139,10 @@
 - **A refused batch release now says why, inside the release dialog, and keeps your selection.**
   A release with no verify probe says it will close unverified, and each issue it closes says what
   to check.
+- **The release dialog says a refusal once, where you pressed, and shows when a second try failed
+  too.** A finished release run says it closed unverified instead of saying it will.
+- **A release refused because the project has no release step now says so in plain words:** there,
+  closing an issue is what ships it, and it names where to set a release up instead.
 
 - **A documents-only change can no longer pass CI over a check that reads the whole repository.**
   Such checks now run on every change, so a document that breaks one fails on its own pull request.

@@ -249,3 +249,24 @@ describe('the codes this change did not touch', () => {
     );
   });
 });
+
+// ISS-1322's judge read this one in the release dialog as "an agent `closed` here is already
+// `closed` … or leave it empty": a status named twice and a remedy that is the state it is in.
+describe('NO_RELEASE_GATE — what it means for the issues named', () => {
+  const sentence = releaseBlockerSentence('NO_RELEASE_GATE');
+
+  it('says that on this project closing an issue is what ships it', () => {
+    expect(sentence).toMatch(/closing an issue is what ships it/);
+    expect(sentence).toMatch(/Close these issues to ship them/);
+  });
+
+  it('names no status in a code span and offers no remedy that is the state it is in', () => {
+    expect(sentence).not.toContain('`');
+    expect(sentence).not.toMatch(/already closed|leave it empty/i);
+  });
+
+  it('names the screens where releasing through Forge is set up, both halves of it', () => {
+    expect(sentence).toMatch(/release chain under Settings → Repository/);
+    expect(sentence).toMatch(/live deploy binding under Settings → Integrations/);
+  });
+});

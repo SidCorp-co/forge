@@ -141,3 +141,34 @@ describe("production, for a release no probe reads", () => {
 		expect(card.textContent).not.toMatch(/can no longer be created/i);
 	});
 });
+
+// ISS-1322's judge saw "will close unverified" beside a `completed` chip: the tense is the run's.
+describe("the unverified close, in the tense of the run's own status", () => {
+	it.each(["running", "paused"])("a %s run is told the release will close unverified", (runStatus) => {
+		state({ live: null, verification: "unverified", runStatus });
+
+		render(<ReleaseRunScreen projectId="p1" runId="run-1" />);
+
+		expect(screen.getByTestId("live-none").textContent).toMatch(/will close unverified/i);
+	});
+
+	it("a completed run is told the release closed unverified", () => {
+		state({ live: null, verification: "unverified", runStatus: "completed" });
+
+		render(<ReleaseRunScreen projectId="p1" runId="run-1" />);
+
+		const card = screen.getByTestId("live-none").textContent ?? "";
+		expect(card).toMatch(/closed unverified/i);
+		expect(card).not.toMatch(/will close/i);
+	});
+
+	it.each(["failed", "cancelled"])("a %s run is told nothing about how the release closes", (runStatus) => {
+		state({ live: null, verification: "unverified", runStatus });
+
+		render(<ReleaseRunScreen projectId="p1" runId="run-1" />);
+
+		const card = screen.getByTestId("live-none").textContent ?? "";
+		expect(card).toMatch(/no verification probe/i);
+		expect(card).not.toMatch(/close/i);
+	});
+});
