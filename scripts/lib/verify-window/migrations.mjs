@@ -38,7 +38,7 @@ export function rewriteReferences(text, moves) {
   const alternatives = [...to.keys()]
     .sort((a, b) => b.length - a.length)
     .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-  const whole = new RegExp(`(?<![A-Za-z0-9_])(?:${alternatives.join('|')})(?![A-Za-z0-9_-])`, 'g');
+  const whole = new RegExp(`(?<![A-Za-z0-9_-])(?:${alternatives.join('|')})(?![A-Za-z0-9_-])`, 'g');
   return text.replace(whole, (t) => to.get(t));
 }
 

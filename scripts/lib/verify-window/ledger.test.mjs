@@ -62,4 +62,30 @@ describe('renderLedger', () => {
     expect(md).toContain('- ISS-2 isolated (assembly): ISS-2 conflicts on src/a.txt');
     expect(md).toContain('size 5, minutes 90, read from the train config');
   });
+
+  it('escapes a member field that carries a cell separator or a line break, adding no row', () => {
+    const md = renderLedger({
+      window: 'w1',
+      base: { branch: 'main', sha: 'b'.repeat(40) },
+      thresholds: null,
+      declarations: 'x',
+      openBranches: [],
+      members: [
+        {
+          ...member,
+          issue: 'ISS-1|x',
+          arrivedAt: '2026|spoof\n| 9 | injected |',
+          admission: 'admitted',
+          landing: 'c'.repeat(40),
+          isolated: null,
+          refusals: [],
+        },
+      ],
+      chain: { head: 'c'.repeat(40), landed: 1 },
+    });
+    const rows = md.split('\n').filter((l) => /^\| \d+ \|/.test(l));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toContain('ISS-1\\|x');
+    expect(rows[0]).toContain('2026\\|spoof');
+  });
 });

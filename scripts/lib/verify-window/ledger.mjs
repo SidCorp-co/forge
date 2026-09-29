@@ -73,7 +73,7 @@ export function renderLedger(ledger) {
         ? 'isolated'
         : 'refused';
     out.push(
-      `| ${i + 1} | ${m.issue} | ${cell(m.branch)} | \`${m.head.slice(0, 12)}\` | ${m.arrivedAt} | ${m.admission} | ${landing} |`,
+      `| ${i + 1} | ${cell(m.issue)} | ${cell(m.branch)} | \`${m.head.slice(0, 12)}\` | ${cell(m.arrivedAt)} | ${cell(m.admission)} | ${landing} |`,
     );
   }
   const notes = [];
