@@ -99,7 +99,10 @@ async function aRunOver(issSeqs: number[], next?: string | null) {
   const user = await createTestUser(harness.db);
   const project = await createTestProject(harness.db, user.id);
   const device = await createTestDevice(harness.db, user.id);
-  await bindTestRunner(harness.db, { projectId: project.id, deviceId: device.id });
+  await bindTestRunner(harness.db, {
+    projectId: project.id,
+    deviceId: device.id,
+  });
   const issueIds: string[] = [];
   for (const seq of issSeqs) {
     issueIds.push(
@@ -307,7 +310,8 @@ const A_HELD = {
   branch: 'ISS-9-feature',
   head: 'cccccccccccc',
   commitsUnpushed: 3,
-  reason: '3 commit(s) here are on no remote — this box keeps this checkout: it cannot tell (x)',
+  reason:
+    "3 commit(s) here are on no remote — this reading refuses this checkout's removal: it cannot tell (x)",
   kept: true,
 };
 
@@ -345,6 +349,65 @@ describe('a checkout this box is still holding, said on the issues it holds', ()
     const first = issueIds[0];
     if (!first) throw new Error('no issue');
     expect(await bodiesOn(first)).toHaveLength(1);
+  });
+
+  it('says it again when the reading changes, and again when it changes back', async () => {
+    const { device, issueIds, session } = await aRunOver([9], 'x');
+    const report = (kept: boolean) =>
+      mods.writeHeldWorktreeReport({
+        deviceId: device.id,
+        sessionId: session.sessionId,
+        held: { ...A_HELD, kept },
+      });
+
+    expect(await report(true)).toEqual({ issues: 1, written: 1 });
+    expect(await report(false)).toEqual({ issues: 1, written: 1 });
+    expect(await report(false)).toEqual({ issues: 1, written: 0 });
+    expect(await report(true)).toEqual({ issues: 1, written: 1 });
+
+    const bodies = await bodiesOn(issueIds[0] as string);
+    expect(bodies).toHaveLength(3);
+    expect(bodies[0]).toContain("The reading this box took refuses the checkout's removal");
+    expect(bodies[1]).toContain("The reading this box took does not refuse the checkout's removal");
+    expect(bodies[2]).toContain("The reading this box took refuses the checkout's removal");
+  });
+
+  it('says the reading once more over a report written before the reading was marked', async () => {
+    const { device, issueIds, session } = await aRunOver([9], 'x');
+    const first = issueIds[0] as string;
+    await harness.db.execute(sql`
+      INSERT INTO comments (issue_id, author_id, body)
+      VALUES (${first}, ${device.ownerId},
+              ${`## Work on this issue is on one machine only\n\n\`held-worktree: ${session.sessionId}:${A_HELD.head}\``})
+    `);
+
+    const result = await mods.writeHeldWorktreeReport({
+      deviceId: device.id,
+      sessionId: session.sessionId,
+      held: A_HELD,
+    });
+
+    expect(result).toEqual({ issues: 1, written: 1 });
+    expect(await bodiesOn(first)).toHaveLength(2);
+  });
+
+  it('names the box that took the reading and where its journal is read', async () => {
+    const { device, issueIds, session } = await aRunOver([9], 'x');
+
+    for (const kept of [true, false]) {
+      await mods.writeHeldWorktreeReport({
+        deviceId: device.id,
+        sessionId: session.sessionId,
+        held: { ...A_HELD, kept },
+      });
+    }
+
+    const bodies = await bodiesOn(issueIds[0] as string);
+    expect(bodies).toHaveLength(2);
+    for (const body of bodies) {
+      expect(body).toContain(`- box: \`${device.name}\``);
+      expect(body).toContain('`forge-runner logs`');
+    }
   });
 
   it('says it again when the head the box is holding has moved', async () => {
@@ -466,7 +529,11 @@ describe('the held report a person reads says what the box read, from what the b
   async function postedFor(payload: Record<string, unknown>): Promise<string> {
     const { device, issueIds, session } = await aRunOver([9], 'x');
     const held = mods.heldWorktreeSchema.parse(payload);
-    await mods.writeHeldWorktreeReport({ deviceId: device.id, sessionId: session.sessionId, held });
+    await mods.writeHeldWorktreeReport({
+      deviceId: device.id,
+      sessionId: session.sessionId,
+      held,
+    });
     return (await bodiesOn(issueIds[0] as string)).join('\n');
   }
 
@@ -476,7 +543,7 @@ describe('the held report a person reads says what the box read, from what the b
 
     const body = await postedFor(released);
 
-    expect(body).toContain("The box's reading does not refuse the checkout's removal");
+    expect(body).toContain("The reading this box took does not refuse the checkout's removal");
     expect(body).not.toContain('has **not** been released');
     expect(body).not.toContain('refuses to remove');
     expect(body).not.toContain('releases the checkout');
@@ -485,14 +552,27 @@ describe('the held report a person reads says what the box read, from what the b
     expect(body).toContain('commits on no remote: 2');
   });
 
-  it('says of a checkout the release refuses that the box refuses to remove it', async () => {
+  it('says of a checkout the release refuses that the reading refused it, and nothing past that reading', async () => {
     const kept = HELD_WIRE[1] as Record<string, unknown>;
     expect(kept.kept).toBe(true);
 
     const body = await postedFor(kept);
 
-    expect(body).toContain('This box refuses to remove the checkout');
+    expect(body).toContain("The reading this box took refuses the checkout's removal");
     expect(body).not.toContain('does not refuse');
+    for (const future of [
+      'stays',
+      'remains',
+      ' will ',
+      'every sweep',
+      'is kept',
+      'keeps this checkout',
+    ]) {
+      expect(
+        body,
+        `a kept report says one reading, not the directory's future: ${future}`,
+      ).not.toContain(future);
+    }
   });
 
   it('claims no ref already holds commits that only the checkout names', async () => {
@@ -501,7 +581,7 @@ describe('the held report a person reads says what the box read, from what the b
 
     const body = await postedFor(needsARef);
 
-    expect(body).toContain("The box's reading does not refuse the checkout's removal");
+    expect(body).toContain("The reading this box took does not refuse the checkout's removal");
     expect(body).toContain('a release must give them a ref of their own');
     expect(body).not.toContain('do not depend on');
     expect(body).toContain('branch: _not read_');

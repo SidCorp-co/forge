@@ -130,7 +130,7 @@ async fn answer(dir: Option<&Path>, token: Option<&str>, d: &Dispatch) -> String
     }
     let asked = tokio::time::timeout(
         ANSWER_WITHIN,
-        control::request_dispatch_gate(&sock, &token, d),
+        control::request_dispatch_gate(&sock, token, d),
     )
     .await;
     match asked {

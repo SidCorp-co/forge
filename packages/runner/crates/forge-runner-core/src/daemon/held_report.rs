@@ -151,9 +151,9 @@ fn why(
 ) -> String {
     let directory = match fate {
         Fate::Kept { why } => format!(
-            "this box keeps this checkout: it cannot tell whether the commits here are named by \
-             any ref besides this checkout's own HEAD ({why}), and not knowing is not the same as \
-             knowing it is safe"
+            "this reading refuses this checkout's removal: it cannot tell whether the commits \
+             here are named by any ref besides this checkout's own HEAD ({why}), and not knowing \
+             is not the same as knowing it is safe"
         ),
         Fate::NeedsARef { commits } => format!(
             "{commits} commit(s) here are named by this checkout's HEAD and by nothing else, so a \
@@ -238,20 +238,19 @@ pub async fn report_held_worktrees(
         match reporter.report(&session_id, &held).await {
             Ok(()) => {
                 tracing::warn!(
-                    "[held-report] run {} {} {} — {}",
+                    "[held-report] run {}: this reading {} the removal of {} — {}",
                     run.run_id,
-                    // "keeps" is a claim about the directory and is made only
-                    // where this reading refuses its removal. Everything else
-                    // "holds", which is the premise of this whole pass and
-                    // promises nothing about what the release then does.
-                    if held.kept { "keeps" } else { "holds" },
+                    // One reading and what it answered, never what the release
+                    // then does: "keeps" and "holds" both read as a claim about
+                    // the directory's future (ISS-1250, judge j2 finding 4).
+                    if held.kept { "refused" } else { "did not refuse" },
                     held.worktree,
                     held.reason
                 );
                 said += 1;
             }
             Err(e) => tracing::warn!(
-                "[held-report] run {}: core would not take the report ({e}) — the tree is still held, so the next sweep tries again",
+                "[held-report] run {}: core would not take the report ({e}) — the next sweep reads the checkout again and reports what it reads then",
                 run.run_id
             ),
         }
@@ -576,7 +575,8 @@ mod tests {
     }
 
     /// The other side of the same rule: where the release really does refuse,
-    /// the word is "keeps" and the directory outlives the sweep.
+    /// the reason says this reading refuses the removal, and says it as one
+    /// reading rather than as what becomes of the directory.
     #[tokio::test]
     async fn a_checkout_whose_retention_cannot_be_read_is_reported_as_kept() {
         let (root, wt) = a_box_with_a_worktree("unreadable");
@@ -604,8 +604,14 @@ mod tests {
             held.reason
         );
         assert!(
-            held.reason.contains("this box keeps this checkout"),
+            held.reason
+                .contains("this reading refuses this checkout's removal"),
             "and says so in the words that reach the issue: {}",
+            held.reason
+        );
+        assert!(
+            !held.reason.contains("keeps this checkout"),
+            "\"keeps\" reads as the directory's future, which one reading cannot say: {}",
             held.reason
         );
     }
@@ -654,8 +660,8 @@ mod tests {
     /// `terminate::force_terminal` preserves a repository's own main working
     /// tree whatever retention says, and refuses a checkout whose diff it could
     /// not preserve. So the journal line for everything that is not kept says
-    /// the run HOLDS the checkout — the premise of this pass — and promises
-    /// nothing about what the release does next.
+    /// this reading did not refuse the removal, and promises nothing about
+    /// what the release does next (ISS-1250 criterion 25).
     #[test]
     fn a_report_that_is_not_a_keep_claims_no_removal_either() {
         let rt = tokio::runtime::Builder::new_current_thread()
@@ -679,13 +685,63 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
 
         assert!(
-            said.contains("holds"),
-            "the line says what this pass knows — the run holds the checkout: {said}"
+            said.contains(&format!(
+                "this reading did not refuse the removal of {}",
+                wt.display()
+            )),
+            "the line says what this reading answered, about which path: {said}"
         );
+        for future in ["holds", "keeps this checkout", "still held"] {
+            assert!(
+                !said.contains(future),
+                "\"{future}\" is a claim about the directory past this reading: {said}"
+            );
+        }
         assert!(
             !said.contains("releases"),
             "and never what only the release may say: {said}"
         );
+    }
+
+    /// criterion 25 — the kept side of the same journal line: the reading
+    /// refused the removal, and nothing is said about what the directory does.
+    #[test]
+    fn a_kept_report_says_the_reading_refused_and_nothing_past_it() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        let (root, wt) = a_box_with_a_worktree("keptline");
+        std::fs::write(wt.join("work.txt"), "work\n").expect("write");
+        sh(&wt, &["add", "-A"]);
+        sh(&wt, &["commit", "-qm", "work"]);
+        let forge_refs = root.join("work").join(".git").join("refs").join("forge");
+        std::fs::create_dir_all(&forge_refs).expect("refs dir");
+        std::fs::write(forge_refs.join("broken"), "not-a-sha\n").expect("ref");
+        let mut led = a_ledger_holding(&wt, Incarnation::Exited);
+        let spy = Spy::default();
+
+        let said = crate::workspace::worktree::tests::logged_while(|| {
+            assert_eq!(
+                rt.block_on(report_held_worktrees(&spy, &mut led, "boot-a")),
+                1
+            );
+        });
+        let _ = std::fs::remove_dir_all(&root);
+
+        assert!(
+            said.contains(&format!(
+                "this reading refused the removal of {}",
+                wt.display()
+            )),
+            "the line says what this reading answered, about which path: {said}"
+        );
+        for future in ["holds", "keeps this checkout", "still held", "stays"] {
+            assert!(
+                !said.contains(future),
+                "\"{future}\" is a claim about the directory past this reading: {said}"
+            );
+        }
     }
 
     /// One `Run` at a path, without the ledger ceremony the reporting loop
