@@ -757,7 +757,11 @@ describe('the push a rebuilt window prints', () => {
       ],
       green(d, heads.m4),
     );
-    const printed = (out) => out.match(/^ {2}(git push .*)$/m)[1].split(' ').slice(1);
+    const printed = (out) =>
+      out
+        .match(/^ {2}(git push .*)$/m)[1]
+        .split(' ')
+        .slice(1);
     const pushIn = (dir, args) =>
       spawnSync('git', args, { cwd: dir, encoding: 'utf8', env: SEALED_ENV });
     const tree = ['--window', w.manifest, '--checks', w.checksFile, '--tree', w.tree];

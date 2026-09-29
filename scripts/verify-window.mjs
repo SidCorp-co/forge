@@ -204,7 +204,9 @@ if (verb === 'isolate') {
 if (verb === 'attribute') {
   const ledger = loadLedger();
   if (!existsSync(ledger.chain.tree)) {
-    die(`the window's tree ${ledger.chain.tree} is gone; rebuild it with isolate or assemble first`);
+    die(
+      `the window's tree ${ledger.chain.tree} is gone; rebuild it with isolate or assemble first`,
+    );
   }
   const landed = ledger.members.filter((m) => m.landing);
   const t = gitIn(ledger.chain.tree);

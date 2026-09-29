@@ -5,7 +5,9 @@ import { describe, expect, it } from 'vitest';
 import { checkReader } from './checks.mjs';
 
 const SHA = 'a'.repeat(40);
-const answering = (stdout, status = 0) => () => ({ status, stdout, stderr: 'no route' });
+const answering =
+  (stdout, status = 0) =>
+  () => ({ status, stdout, stderr: 'no route' });
 const read = (stdout, status) =>
   checkReader({ repoSlug: 'o/r', gh: answering(stdout, status) })(SHA, 'ci-passed');
 
