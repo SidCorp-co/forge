@@ -5,6 +5,7 @@ import { and, eq, like, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { comments, issues, pipelineRuns } from '../db/schema.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
+import { issueArchiveSide } from '../issues/archive.js';
 import { logger } from '../logger.js';
 import type { ReleaseVerification } from './plan.js';
 
@@ -43,10 +44,15 @@ export async function noteUnverifiedCloses(args: {
   const author = authorOf(args.actor);
   let written = 0;
   for (const issueId of args.issueIds) {
-    // The issue row's lock serialises two workers of one attempt, so the check and the insert
-    // cannot interleave.
+    // The row lock serialises two workers of one attempt. An archived issue's close is refused by
+    // the transition, so it takes no note saying it is being closed.
     const wrote = await db.transaction(async (tx) => {
-      await tx.select({ id: issues.id }).from(issues).where(eq(issues.id, issueId)).for('update');
+      const [live] = await tx
+        .select({ id: issues.id })
+        .from(issues)
+        .where(and(eq(issues.id, issueId), ...issueArchiveSide(false)))
+        .for('update');
+      if (!live) return false;
       const [already] = await tx
         .select({ id: comments.id })
         .from(comments)

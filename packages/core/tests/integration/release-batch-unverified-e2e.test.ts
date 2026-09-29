@@ -220,6 +220,19 @@ describe('the unverified note, once per issue per release run', () => {
     expect(await markedComments(a, second)).toBe(1);
   });
 
+  it('writes no note on an archived issue, whose close the transition refuses', async () => {
+    const a = await fx.insertIssue();
+    await harness.db.execute(sql`UPDATE issues SET archived_at = now() WHERE id = ${a}`);
+    const { noteUnverifiedCloses } = await import('../../src/release-batch/unverified-close.js');
+    const runId = '44444444-4444-4444-8444-444444444444';
+    const actor = { type: 'user', id: ownerId } as const;
+
+    const written = await noteUnverifiedCloses({ runId, issueIds: [a], actor, commit: null });
+
+    expect(written).toBe(0);
+    expect(await markedComments(a, runId)).toBe(0);
+  });
+
   it('writes one note when two workers of one run reach the same issue at once', async () => {
     const a = await fx.insertIssue();
     const { noteUnverifiedCloses } = await import('../../src/release-batch/unverified-close.js');
