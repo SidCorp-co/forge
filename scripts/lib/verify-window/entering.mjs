@@ -76,10 +76,15 @@ function headSnapshot(t, dir) {
  * rewritten as the combination's entries plus the member's new ones, so an edit to an existing
  * entry would otherwise be dropped without a word.
  */
-function editedEntries(member, combined, before, theirs) {
+function editedEntries(member, combined, before, theirs, landed) {
   const inCombined = new Map(combined.entries.map((e) => [e.tag, e]));
+  const inherited = new Set((before?.entries ?? []).map((e) => e.tag));
   for (const e of theirs.entries) {
     const c = inCombined.get(e.tag);
+    if (c && !inherited.has(e.tag)) {
+      const owner = landed.find((m) => m.addedTags?.includes(e.tag))?.issue ?? 'an earlier member';
+      return `${member.issue} adds the journal entry ${e.tag}, which ${owner} already added in this window; one of them regenerates it under another name`;
+    }
     if (c && JSON.stringify(c) !== JSON.stringify(e)) {
       return `${member.issue} changes the journal entry ${e.tag}, which a window keeps as the combination holds it`;
     }
@@ -105,14 +110,14 @@ export function enterMigrations(input) {
   }
 }
 
-function rederive({ t, dir, member, open, earlier = [] }) {
+function rederive({ t, dir, member, open, earlier = [], landed = [] }) {
   const journalPath = `${dir}/meta/_journal.json`;
   const combined = journalOf(t, 'HEAD', dir);
   const theirs = journalOf(t, member.head, dir);
   const fork = t.run(['merge-base', 'HEAD', member.head])?.trim();
   const before = fork ? journalOf(t, fork, dir) : null;
   if (!combined || !theirs) return { moves: [], retag: earlier };
-  const edited = editedEntries(member, combined, before, theirs);
+  const edited = editedEntries(member, combined, before, theirs, landed);
   if (edited) return { refusal: edited };
   // New against where the member forked, not against the combination: a member stacked on an
   // earlier one carries that one's entries under the tags it had before the window renumbered them.
@@ -171,7 +176,11 @@ function rederive({ t, dir, member, open, earlier = [] }) {
   for (const s of sources) write(t, `${dir}/${s.move.to.tag}.sql`, s.sql);
   for (const s of snaps) write(t, s.path, `${JSON.stringify(s.body, null, 2)}\n`);
 
-  return { moves: renumbered ? moves : [], retag: [...earlier, ...(renumbered ? moves : [])] };
+  return {
+    moves: renumbered ? moves : [],
+    added: moves.map((m) => m.to.tag),
+    retag: [...earlier, ...(renumbered ? moves : [])],
+  };
 }
 
 /**

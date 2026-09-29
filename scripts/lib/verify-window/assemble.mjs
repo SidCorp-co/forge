@@ -65,7 +65,7 @@ function enter({ t, config, member, open, landed, outside, window }) {
     );
   }
   const earlier = landed.flatMap((m) => m.renumbered ?? []);
-  const mig = enterMigrations({ t, dir: config.migrationsDir, member, open, earlier });
+  const mig = enterMigrations({ t, dir: config.migrationsDir, member, open, earlier, landed });
   if (mig.refusal) return isolate(t, member, mig.refusal);
   const unmergedNow = () =>
     (t.run(['diff', '--name-only', '--diff-filter=U']) ?? '').split('\n').filter(Boolean);
@@ -99,6 +99,7 @@ function enter({ t, config, member, open, landed, outside, window }) {
     ...member,
     landing,
     renumbered: mig.moves,
+    addedTags: mig.added ?? [],
     rewrites,
     unions: unions.resolved,
     isolated: null,

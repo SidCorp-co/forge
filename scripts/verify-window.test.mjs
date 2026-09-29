@@ -830,8 +830,69 @@ describe('a member whose own tag is one the combination already holds', () => {
     expect(first.renumbered[0].to.tag, r.stderr).toBe('0003_update');
     expect(second.landing).toBeNull();
     expect(second.isolated.because).toBe(
-      'ISS-28 changes the journal entry 0003_update, which a window keeps as the combination holds it',
+      'ISS-28 adds the journal entry 0003_update, which ISS-27 already added in this window; one of them regenerates it under another name',
     );
+  });
+});
+
+describe('two members adding the same journal entry', () => {
+  it("isolates the later one, leaving the earlier one's references alone", () => {
+    const adds = (id, name) =>
+      branch(`ISS-${id}-same`, {
+        [JOURNAL]: journal(entry(1, W, '0001_init'), entry(2, W + DAY, '0002_update')),
+        [`${DIR}/0002_update.sql`]: `-- ${name}\n`,
+        [`${DIR}/meta/0002_snapshot.json`]: snapshot(`s-${id}`, 's1', {
+          ...BASE_TABLES,
+          [`public.${name}`]: table(name, ['id']),
+        }),
+        'CHANGELOG.md': `# Changelog\n\n## [Unreleased]\n\n- ${name} in 0002_update\n- base entry\n`,
+      });
+    const a = adds(29, 'first');
+    const b = adds(30, 'second');
+    const c = clone('same-entry');
+    const holding = {
+      'ISS-1-b': heads.m1,
+      'ISS-2-c': heads.m2,
+      'ISS-8-index': heads.idx,
+      'ISS-9-drop': heads.drop,
+    };
+    git(c, 'push', '-q', 'origin', '--delete', ...Object.keys(holding));
+    const w = windowFiles(
+      'w-same-entry',
+      [
+        ['ISS-29', 'ISS-29-same', a],
+        ['ISS-30', 'ISS-30-same', b],
+      ],
+      green(a, b),
+    );
+    try {
+      const r = run(
+        c,
+        'assemble',
+        '--window',
+        w.manifest,
+        '--checks',
+        w.checksFile,
+        '--tree',
+        w.tree,
+      );
+      const ledger = JSON.parse(readFileSync(w.ledger, 'utf8'));
+      const [first, second] = ledger.members;
+      expect(first.landing, r.stderr).toMatch(/^[0-9a-f]{40}$/);
+      expect(first.renumbered, JSON.stringify(ledger.openBranches)).toEqual([]);
+      expect(second.landing).toBeNull();
+      expect(second.isolated.because).toBe(
+        'ISS-30 adds the journal entry 0002_update, which ISS-29 already added in this window; one of them regenerates it under another name',
+      );
+      expect(git(w.tree, 'show', `${ledger.chain.head}:CHANGELOG.md`)).toContain(
+        '- first in 0002_update',
+      );
+    } finally {
+      for (const [name, head] of Object.entries(holding)) {
+        git(seed, 'push', '-q', 'origin', `${head}:refs/heads/${name}`);
+      }
+      git(seed, 'push', '-q', 'origin', '--delete', 'ISS-29-same', 'ISS-30-same');
+    }
   });
 });
 
