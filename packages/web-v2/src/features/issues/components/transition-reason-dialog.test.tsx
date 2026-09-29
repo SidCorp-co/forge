@@ -58,3 +58,55 @@ describe("TransitionReasonDialog's confirm", () => {
     expect(onConfirm).toHaveBeenCalledTimes(2);
   });
 });
+
+// ISS-1310 — the two ways out of a park that leave its question unanswered each ask why.
+describe("TransitionReasonDialog, leaving a park without the answer", () => {
+  it("sends Move anyway only once a target is picked and a reason is typed", () => {
+    const onConfirm = vi.fn();
+    render(
+      <TransitionReasonDialog
+        status="move_anyway"
+        targets={["open", "in_progress", "needs_info", "on_hold", "dropped"]}
+        loading={false}
+        onConfirm={onConfirm}
+        onClose={vi.fn()}
+      />,
+    );
+    const move = () => screen.getByRole("button", { name: "Move" });
+    expect(move()).toBeDisabled();
+    fireEvent.click(screen.getByLabelText("In progress"));
+    expect(move()).toBeDisabled();
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "settled on the call" } });
+    expect(move()).toBeEnabled();
+    fireEvent.click(move());
+    expect(onConfirm).toHaveBeenCalledWith("settled on the call", undefined, "in_progress");
+  });
+
+  it("lists every target it was given, unchanged", () => {
+    const targets = ["open", "in_progress", "needs_info", "on_hold", "dropped"] as const;
+    render(
+      <TransitionReasonDialog
+        status="move_anyway"
+        targets={[...targets]}
+        loading={false}
+        onConfirm={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getAllByRole("radio")).toHaveLength(targets.length);
+  });
+
+  it("refuses Not needed until a reason is typed", () => {
+    const onConfirm = vi.fn();
+    render(
+      <TransitionReasonDialog status="not_needed" loading={false} onConfirm={onConfirm} onClose={vi.fn()} />,
+    );
+    const send = () => screen.getByRole("button", { name: /Withdraw it and resume/ });
+    expect(send()).toBeDisabled();
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "   " } });
+    expect(send()).toBeDisabled();
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "decided in standup" } });
+    fireEvent.click(send());
+    expect(onConfirm).toHaveBeenCalledWith("decided in standup", undefined);
+  });
+});

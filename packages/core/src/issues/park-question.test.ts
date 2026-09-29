@@ -8,7 +8,12 @@ vi.mock('../config/env.js', () => ({
   },
 }));
 
-const { parkQuestionNotMinted } = await import('./park-question.js');
+const askParkQuestion = vi.fn(async (_tx: unknown, _input: unknown) => ({}));
+const personOwesAnAnswer = vi.fn(async () => false);
+vi.mock('../questions/write.js', () => ({ askParkQuestion }));
+vi.mock('../questions/issue-coupling.js', () => ({ personOwesAnAnswer }));
+
+const { mintParkQuestion, parkQuestionNotMinted } = await import('./park-question.js');
 
 const ISSUE = { id: 'i1', projectId: 'p1' };
 const AGENT = { type: 'device' as const, id: 'd1', ownerId: 'u1' };
@@ -33,10 +38,14 @@ describe('a `needs` that mints nothing says so', () => {
   });
 
   it('names the status when the target mints no question at all', () => {
-    const said = asked(AGENT, 'waiting', 'the signed contract');
-    expect(said).toContain('`waiting`');
+    const said = asked(AGENT, 'in_progress', 'the signed contract');
+    expect(said).toContain('`in_progress`');
     expect(said).toContain('needs_info');
     expect(said).toContain('on no record');
+  });
+
+  it('says nothing for an agent parking at `waiting` with a need, which now mints (ISS-1310)', () => {
+    expect(asked(AGENT, 'waiting', 'a Search Console login')).toBeNull();
   });
 
   it('names the credential when a person parks with a need stated', () => {
@@ -48,5 +57,43 @@ describe('a `needs` that mints nothing says so', () => {
 
   it('is silent for the actor that actually mints, on the status that actually mints', () => {
     expect(asked(AGENT, 'needs_info', 'x')).toBeNull();
+  });
+});
+
+describe('which parks mint the question a person answers (ISS-1310)', () => {
+  const mint = (actor: typeof AGENT | typeof PERSON, toStatus: string, needs?: string) =>
+    mintParkQuestion(
+      { issue: ISSUE, toStatus: toStatus as never, actor, options: { needs, reason: 'why' } },
+      {} as never,
+    );
+
+  it('mints for an agent at `waiting` that names what it needs', async () => {
+    askParkQuestion.mockClear();
+    await mint(AGENT, 'waiting', 'a Search Console login');
+    expect(askParkQuestion).toHaveBeenCalledTimes(1);
+    expect(askParkQuestion.mock.calls[0]?.[1]).toMatchObject({
+      issueId: 'i1',
+      needed: 'a Search Console login',
+    });
+  });
+
+  it('mints nothing for an agent at `waiting` that names no need', async () => {
+    askParkQuestion.mockClear();
+    await mint(AGENT, 'waiting');
+    await mint(AGENT, 'waiting', '   ');
+    expect(askParkQuestion).not.toHaveBeenCalled();
+  });
+
+  it('still mints for an agent at `needs_info` with no need stated', async () => {
+    askParkQuestion.mockClear();
+    await mint(AGENT, 'needs_info');
+    expect(askParkQuestion).toHaveBeenCalledTimes(1);
+  });
+
+  it('mints nothing for a person, nor at a working rung', async () => {
+    askParkQuestion.mockClear();
+    await mint(PERSON, 'waiting', 'a login');
+    await mint(AGENT, 'in_progress', 'a login');
+    expect(askParkQuestion).not.toHaveBeenCalled();
   });
 });

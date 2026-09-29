@@ -13,6 +13,7 @@ import { ISSUE_TERMINAL_STATUSES } from '../issues/status-sets.js';
 type Executor = IssueDependencyExecutor;
 
 export const QUESTION_ENDED_WITH_ISSUE = 'issue_terminal';
+export const QUESTION_NOT_NEEDED = 'not_needed';
 
 /**
  * The marker that a person owes an issue an answer: an open `human` question on it.
@@ -40,6 +41,25 @@ export async function openQuestionIdsOn(executor: Executor, issueId: string): Pr
   return rows.map((r) => r.id);
 }
 
+/** The open questions a person owes an answer to — the rows the marker above is read from. */
+export async function openHumanQuestionIdsOn(
+  executor: Executor,
+  issueId: string,
+): Promise<string[]> {
+  const rows = await executor
+    .select({ id: agentQuestions.id })
+    .from(agentQuestions)
+    .where(
+      and(
+        eq(agentQuestions.issueId, issueId),
+        eq(agentQuestions.status, 'open'),
+        eq(agentQuestions.blockerKind, 'human'),
+      ),
+    )
+    .orderBy(agentQuestions.createdAt, agentQuestions.id);
+  return rows.map((r) => r.id);
+}
+
 export type TerminalQuestionFault = {
   code: 'OPEN_QUESTIONS' | 'VOID_REASON_REQUIRED';
   detail: string;
@@ -48,10 +68,10 @@ export type TerminalQuestionFault = {
 
 /**
  * Refuse a terminal move while the issue holds an open question, or void those
- * questions with the reason the caller gave for their dying with the work; and,
+ * questions with the reason the caller gave — on any move that sends one; and,
  * with `requireNoOpenQuestions`, refuse any move while one is open (the answer resume).
  *
- * The caller holds the issue row locked, so an ask racing this move either
+ * The issue row is locked first, so an ask racing this move either
  * committed before it — and is seen here — or waits and then finds the move made.
  */
 export async function settleOpenQuestions(
@@ -64,7 +84,11 @@ export async function settleOpenQuestions(
     by: string;
   },
 ): Promise<TerminalQuestionFault | null> {
-  if (!ISSUE_TERMINAL_STATUSES.includes(args.toStatus)) {
+  const terminal = ISSUE_TERMINAL_STATUSES.includes(args.toStatus);
+  const settles =
+    terminal || args.requireNoOpenQuestions === true || args.voidQuestions !== undefined;
+  if (settles) await tx.execute(sql`select 1 from issues where id = ${args.issueId} for update`);
+  if (!terminal && args.voidQuestions === undefined) {
     if (!args.requireNoOpenQuestions) return null;
     const open = await openQuestionIdsOn(tx, args.issueId);
     if (open.length === 0) return null;
@@ -99,7 +123,7 @@ export async function settleOpenQuestions(
       status: 'void',
       voidReason: `the issue went to ${args.toStatus} with this question open: ${reason}`,
       endedBy: args.by,
-      endedReason: QUESTION_ENDED_WITH_ISSUE,
+      endedReason: terminal ? QUESTION_ENDED_WITH_ISSUE : QUESTION_NOT_NEEDED,
       updatedAt: new Date(),
     })
     .where(and(inArray(agentQuestions.id, ids), eq(agentQuestions.status, 'open')));

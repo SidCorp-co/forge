@@ -72,6 +72,8 @@ const NOT_DISCOVERY: Record<string, string> = {
   'issues/landing-evidence.ts': 'by issue id, a guard',
   'issues/merge-record.ts': 'by issue id',
   'issues/merge-routes.ts': 'by issue id',
+  'issues/park-routes.ts': 'the one issue its path names, to check the reader may see it',
+  'issues/park-view.ts': 'the park of the one issue asked for by id',
   'issues/pipeline-health.ts': 'the ids passed in',
   'issues/read-service.ts': 'retrieval by id or key, which answers an archived issue by design',
   'issues/release-record-required.ts': 'the ids passed in',
@@ -134,6 +136,7 @@ const NOT_DISCOVERY: Record<string, string> = {
   'projects/service.ts': 'by issue id',
   'prompt/issue-snapshot.ts':
     'the one issue a job runs on, by id; an archived issue is terminal and runs no job',
+  'questions/issue-coupling.ts': 'locks the one issue a transition moves',
   'questions/read.ts': 'by issue id',
   'questions/write.ts': 'by issue id',
   'release-batch/abort-stamp.ts': 'the closed ids one release run recorded',

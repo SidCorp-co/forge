@@ -19,7 +19,7 @@ let durations: ReturnType<typeof ok> = ok([]);
 let attachments: ReturnType<typeof ok> = ok([]);
 let pipelineHealth: Record<string, unknown> | undefined;
 let status = "open";
-let questions: Array<Record<string, unknown>> = [];
+let park: Record<string, unknown> = { state: "ready", park: null };
 
 const ISSUE = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -51,7 +51,7 @@ vi.mock("@/lib/ws/use-room", () => ({ useRoom: () => undefined }));
 vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock("./awaiting-release-banner", () => ({ AwaitingReleaseBanner: () => null }));
 vi.mock("./use-guarded-transition", () => ({
-  useGuardedTransition: () => ({ requestTransition: vi.fn(), dialog: null, isPending: false }),
+  useGuardedTransition: () => ({ requestTransition: vi.fn(), requestParkLeave: vi.fn(), dialog: null, isPending: false }),
 }));
 vi.mock("./properties-rail", () => ({ PropertiesRail: () => <div>rail</div> }));
 vi.mock("./module-picker", () => ({ ModulePicker: () => null }));
@@ -70,10 +70,9 @@ vi.mock("../detail-hooks", () => ({
   useAttachments: () => attachments,
   useStepHandoffs: () => handoffs,
   useStepDurations: () => durations,
+  useCreateComment: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }));
-vi.mock("@/features/questions/hooks", () => ({
-  useIssueQuestions: () => ok({ questions }),
-}));
+vi.mock("../park", () => ({ useIssuePark: () => park }));
 vi.mock("../hooks", () => ({
   useIssueCost: () => ok(undefined),
   useIssueDeps: () => ok(undefined),
@@ -101,7 +100,7 @@ beforeEach(() => {
   attachments = ok([]);
   pipelineHealth = undefined;
   status = "open";
-  questions = [];
+  park = { state: "ready", park: null };
 });
 afterEach(cleanup);
 
@@ -208,19 +207,34 @@ describe("the issue header's run", () => {
   });
 });
 
-// ISS-1257 — a question marks its issue and leaves its rung alone, so the banner reads the marker.
+// ISS-1257 — a question marks its issue and leaves its rung alone; ISS-1310 — the banner reads it off the park view.
 describe("the issue page of work a person owes an answer", () => {
+  const WAITING_FOR_INFORMATION = /waiting for information/;
+
   it("says so above an issue at testing holding an open question blocked on a person", () => {
     status = "testing";
-    questions = [{ status: "open", blockerKind: "human", createdAt: "2026-09-27T10:00:00Z" }];
+    park = {
+      state: "ready",
+      park: {
+        shape: "question",
+        status: "testing",
+        owes: "information",
+        since: null,
+        reason: null,
+        resume: { at: null, why: "not stopped" },
+        record: null,
+        readings: [],
+        openQuestionIds: ["q1"],
+      },
+    };
     renderScreen();
-    expect(screen.getByText(/A person owes this issue an answer/)).toBeInTheDocument();
+    expect(screen.getByText(WAITING_FOR_INFORMATION)).toBeInTheDocument();
   });
 
   it("says nothing of the kind once that question is answered", () => {
     status = "testing";
-    questions = [{ status: "answered", blockerKind: "human", createdAt: "2026-09-27T10:00:00Z" }];
+    park = { state: "ready", park: null };
     renderScreen();
-    expect(screen.queryByText(/A person owes this issue an answer/)).toBeNull();
+    expect(screen.queryByText(WAITING_FOR_INFORMATION)).toBeNull();
   });
 });

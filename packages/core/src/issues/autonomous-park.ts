@@ -1,4 +1,4 @@
-import type { IssueStatus } from '../db/schema.js';
+import type { IssueStatus, WaitingKind } from '../db/schema.js';
 import { AUTONOMOUS_QUESTION_STATUS } from '../pipeline/autonomous-mode.js';
 import { isAutonomousProject } from '../pipeline/autonomous-project.js';
 import type { ActorAgency } from './actor-agency.js';
@@ -25,4 +25,15 @@ export async function resolveAutonomousParkTarget(
 function isRewritablePark(input: AutonomousParkInput): boolean {
   if (input.requested !== 'waiting') return false;
   return input.agency === 'agent';
+}
+
+/** The kind a park stores: a `waiting` park rewritten to the question status keeps its own (ISS-1310). */
+export function storedWaitingKind(
+  requested: IssueStatus,
+  landed: IssueStatus,
+  kind: WaitingKind | undefined,
+): WaitingKind | null {
+  if (landed === 'waiting') return kind ?? null;
+  if (requested === 'waiting' && landed === AUTONOMOUS_QUESTION_STATUS) return kind ?? null;
+  return null;
 }

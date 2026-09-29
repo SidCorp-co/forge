@@ -8,6 +8,9 @@ import type { IssueStatus } from '../db/schema.js';
 /** The issue is over. Nothing further will be done on it, whichever exit it took. */
 export const ISSUE_TERMINAL_STATUSES: readonly IssueStatus[] = ['closed', 'dropped'];
 
+/** The issue is stopped until a person acts: what Needs you and the park view both count (ISS-1310). */
+export const AWAITING_INPUT_STATUSES: readonly IssueStatus[] = ['waiting', 'needs_info'];
+
 /** A person parked the issue here, which outranks any automatic restore. */
 export const HUMAN_PARK_STATUSES: readonly IssueStatus[] = ['needs_info', 'waiting', 'on_hold'];
 

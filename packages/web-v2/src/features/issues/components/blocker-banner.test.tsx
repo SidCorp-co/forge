@@ -9,7 +9,7 @@ import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { deriveBlockerState } from "../derive";
-import type { PipelineHealth } from "../types";
+import type { IssuePark, PipelineHealth } from "../types";
 import { BlockerBanner } from "./blocker-banner";
 
 expect.extend(matchers);
@@ -46,7 +46,7 @@ function renderPaused(
       blocker={blocker}
       slug="forge-dev"
       pending={false}
-      onApprove={vi.fn()}
+      onResumePark={vi.fn()}
       onResume={vi.fn()}
       onResumeRun={onResumeRun}
       onProvideInfo={vi.fn()}
@@ -86,41 +86,91 @@ describe("BlockerBanner — a paused run on an issue that looks healthy", () => 
 
 describe("BlockerBanner — an issue parked for information", () => {
   it("points at the decision below rather than the comment thread", () => {
-    const blocker = deriveBlockerState({ status: "needs_info" }, undefined, undefined);
+    const blocker = deriveBlockerState({ status: "needs_info" }, undefined, undefined, askedInfo());
     if (!blocker) throw new Error("needs_info must produce a blocker state");
     render(
       <BlockerBanner
         blocker={blocker}
         slug="forge-dev"
         pending={false}
-        onApprove={vi.fn()}
+        onResumePark={vi.fn()}
         onResume={vi.fn()}
         onResumeRun={vi.fn()}
         onProvideInfo={vi.fn()}
       />,
     );
 
-    expect(screen.getByText(/what the run is waiting on is below/i)).toBeInTheDocument();
+    expect(screen.getByText(/the question is below/i)).toBeInTheDocument();
     expect(screen.queryByText(/comment/i)).toBeNull();
   });
 
   it("hands the Provide info CTA to its caller", () => {
     const onProvideInfo = vi.fn();
-    const blocker = deriveBlockerState({ status: "needs_info" }, undefined, undefined);
+    const blocker = deriveBlockerState({ status: "needs_info" }, undefined, undefined, askedInfo());
     if (!blocker) throw new Error("needs_info must produce a blocker state");
     render(
       <BlockerBanner
         blocker={blocker}
         slug="forge-dev"
         pending={false}
-        onApprove={vi.fn()}
+        onResumePark={vi.fn()}
         onResume={vi.fn()}
         onResumeRun={vi.fn()}
         onProvideInfo={onProvideInfo}
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /provide info/i }));
+    fireEvent.click(screen.getByRole("button", { name: /answer it/i }));
     expect(onProvideInfo).toHaveBeenCalled();
+  });
+});
+
+function parked(over: Partial<IssuePark>) {
+  return {
+    state: "ready" as const,
+    park: {
+      shape: "park" as const,
+      status: "needs_info" as const,
+      owes: "information" as const,
+      since: null,
+      reason: null,
+      resume: { at: null, why: "no record" },
+      record: null,
+      readings: [],
+      openQuestionIds: [],
+      ...over,
+    },
+  };
+}
+
+function askedInfo() {
+  return parked({ reason: "Which tenant is this for?" });
+}
+
+describe("BlockerBanner — a park resumes where its record says (ISS-1310)", () => {
+  it("resumes sid-desk ISS-529's shape at developed, and offers no Approve", () => {
+    const onResumePark = vi.fn();
+    const blocker = deriveBlockerState(
+      { status: "waiting" },
+      undefined,
+      undefined,
+      parked({ status: "waiting", owes: "decision", resume: { at: "developed", recordId: "c1" } }),
+    );
+    if (!blocker) throw new Error("a waiting park must produce a blocker state");
+    render(
+      <BlockerBanner
+        blocker={blocker}
+        slug="sid-desk"
+        pending={false}
+        onResume={vi.fn()}
+        onResumePark={onResumePark}
+        onResumeRun={vi.fn()}
+        onProvideInfo={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/waiting for a decision/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /approve/i })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Resume at Developed" }));
+    expect(onResumePark).toHaveBeenCalledWith("developed");
   });
 });

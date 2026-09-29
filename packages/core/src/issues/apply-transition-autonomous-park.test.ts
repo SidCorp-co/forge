@@ -233,7 +233,7 @@ describe('waiting on an autonomous project', () => {
     expect(setCurrentStepMock).toHaveBeenCalledWith(ISSUE_ID, 'needs_info');
   });
 
-  it('clears waitingKind on the rewritten row while still demanding it up front', async () => {
+  it('keeps waitingKind on the rewritten row, and still demands it up front (ISS-1310)', async () => {
     projectRow('yes');
     queueUpdate('needs_info');
 
@@ -244,7 +244,7 @@ describe('waiting on an autonomous project', () => {
       WAITING_OPTS,
     );
 
-    expect(updateSet.mock.calls[0]?.[0]).toMatchObject({ waitingKind: null });
+    expect(updateSet.mock.calls[0]?.[0]).toMatchObject({ waitingKind: 'needs_resource' });
     expect(postReasonMock).toHaveBeenCalledWith(
       expect.objectContaining({ toStatus: 'waiting', waitingKind: 'needs_resource' }),
       expect.anything(),
