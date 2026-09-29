@@ -174,9 +174,11 @@ if (verb === 'isolate') {
     die('isolate needs --member <ISS-n> and --because "<the refusal, in the checker\'s words>"');
   if (!manifest.members.some((m) => m.issue === values.member))
     die(`${values.member} is not a member of window ${manifest.window}`);
-  const recorded = existsSync(ledgerPath) ? loadLedger().chain.tree : null;
-  if (recorded && resolve(recorded) !== treeDir) {
-    die(`--tree ${treeDir} is not the tree window ${manifest.window} was built in (${recorded})`);
+  const recorded = loadLedger();
+  if (resolve(recorded.chain.tree) !== treeDir) {
+    die(
+      `--tree ${treeDir} is not the tree window ${manifest.window} was built in (${recorded.chain.tree})`,
+    );
   }
   const kept = (manifest.isolated ?? []).filter((i) => i.issue !== values.member);
   const next = {
@@ -191,7 +193,7 @@ if (verb === 'isolate') {
       },
     ],
   };
-  const before = existsSync(ledgerPath) ? loadLedger().attributions : [];
+  const before = recorded.attributions;
   removeTree(treeDir);
   writeFileSync(manifestPath, `${JSON.stringify(next, null, 2)}\n`);
   const ledger = build(treeDir, next);

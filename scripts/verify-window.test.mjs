@@ -703,6 +703,21 @@ describe('the tree isolate rebuilds in', () => {
     expect(readFileSync(join(w.tree, 'keep.txt'), 'utf8')).toBe('not a worktree any more\n');
     expect(JSON.parse(readFileSync(w.manifest, 'utf8')).isolated ?? []).toEqual([]);
   });
+
+  it('refuses a window with no ledger, since nothing then says which tree it built', () => {
+    const c = clone('unbuilt-window');
+    const w = windowFiles('w-unbuilt', [['ISS-4', 'ISS-4-after', heads.m4]], green(heads.m4));
+    const other = join(box, 'unbuilt-window-other');
+    git(c, 'worktree', 'add', '-q', '--detach', other, 'HEAD');
+    put(other, { 'work.txt': 'uncommitted\n' });
+    const manifest = readFileSync(w.manifest, 'utf8');
+    const flags = ['--window', w.manifest, '--checks', w.checksFile, '--tree', other];
+    const r = run(c, 'isolate', ...flags, '--member', 'ISS-4', '--because', 'red');
+    expect(r.status).toBe(2);
+    expect(r.stderr).toContain(`${w.ledger} does not exist: assemble the window first`);
+    expect(readFileSync(join(other, 'work.txt'), 'utf8')).toBe('uncommitted\n');
+    expect(readFileSync(w.manifest, 'utf8')).toBe(manifest);
+  });
 });
 
 describe('the push a rebuilt window prints', () => {
