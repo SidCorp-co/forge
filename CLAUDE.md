@@ -153,17 +153,6 @@ is stale the moment anything above it moves, and stale in silence.
 
 ## Invariants
 
-- **A `pipeline_run` and its child `jobs` reach terminal together, in BOTH directions**.
-  Defend one half only and the other leaks in silence.
-  - *Forward — no child `jobs` row stays non-terminal under a terminal `pipeline_run`*: one orphan
-    wedges a runner slot. Three defences in lockstep (close-cascade, loop monitor, pool exclusion),
-    plus `held` as a deliberate fourth shape that is NOT an orphan.
-    `packages/core/src/pipeline/runs-cascade.ts`, `packages/core/src/jobs/loop-monitor.ts`.
-  - *Inverse — no `pipeline_run` stays non-terminal once every child job is terminal*:
-    `packages/core/src/pipeline/runs-concluded.ts`, driven from the sweeper tick, closing on the
-    LAST job's outcome so a run whose last job failed never closes `completed`.
-  - New code that flips `pipeline_runs.status` terminal MUST route through a cascade-calling
-    helper — on either axis, there is exactly one writer.
 - **A migration's `when` in `packages/core/drizzle/migrations/meta/_journal.json` must exceed EVERY
   `created_at` already in the target DB.** Drizzle reads the single highest `created_at` once and
   skips lower entries **silently, forever**, so the container starts and serves new code against an
