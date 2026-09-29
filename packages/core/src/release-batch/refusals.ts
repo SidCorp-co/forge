@@ -166,10 +166,8 @@ export function holding(err: ReleaseRunHoldingError): HTTPException {
 }
 
 /**
- * Each refusal under the name the batch route already gives it.
- *
- * One vocabulary across both doors: a caller that learns `RELEASE_PROBES_UNREADABLE`
- * from a batch must not meet a second name for the same fact here.
+ * Each refusal under the name the batch route already gives it: a caller that learns
+ * `RELEASE_PROBES_UNREADABLE` from a batch must not meet a second name for the same fact here.
  */
 export function recordRefusal(err: unknown): HTTPException {
   const reported = reportedRefusal(err);
