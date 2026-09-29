@@ -8931,10 +8931,32 @@ mod servers_refusal_walk_tests {
         let _trust = ScopedVar::set("CLAUDE_CONFIG_DIR", claude_home.path());
         let stub_dir = crate::test_scratch::Scratch::new("sweepplace-stub");
         let stub = stub_dir.join("claude");
-        std::fs::write(&stub, "#!/bin/sh\nexec sleep 120\n").expect("the stub is written");
+        std::fs::write(
+            &stub,
+            "#!/bin/sh\n[ \"$1\" = --probe ] && exit 0\nexec sleep 120\n",
+        )
+        .expect("the stub is written");
         let mut perms = std::fs::metadata(&stub).expect("stub mode").permissions();
         std::os::unix::fs::PermissionsExt::set_mode(&mut perms, 0o755);
         std::fs::set_permissions(&stub, perms).expect("the stub is executable");
+        // A sibling thread that forked while the write above was open holds
+        // its descriptor until its own exec, and until then the kernel refuses
+        // to run the stub, so the pane would die and read as a sweep that
+        // started nothing. One run that gets through says no writer is left.
+        let runs = (0..50).any(|_| {
+            let ok = std::process::Command::new(&stub)
+                .arg("--probe")
+                .status()
+                .is_ok_and(|s| s.success());
+            if !ok {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            ok
+        });
+        assert!(
+            runs,
+            "the stub never ran, so no pane could be started with it"
+        );
         let _claude = crate::runner::process::testing::StubClaude::installed(&stub);
         let repo = crate::test_scratch::Scratch::new("sweepplace-repo");
         let map = crate::test_scratch::Scratch::new("sweepplace-map").at("control-tokens.json");
@@ -9009,7 +9031,10 @@ mod servers_refusal_walk_tests {
             |_| true,
             |_| vec!["ISS-1314".into()],
         );
-        assert!(drain.is_empty(), "criterion 16, through the sweep: {drain:?}");
+        assert!(
+            drain.is_empty(),
+            "criterion 16, through the sweep: {drain:?}"
+        );
     }
 
     /// Criterion 12, against a pane that is up and deaf. Its capability map

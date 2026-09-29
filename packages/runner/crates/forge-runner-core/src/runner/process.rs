@@ -101,7 +101,8 @@ pub(crate) mod testing {
 
     impl StubClaude {
         pub(crate) fn installed(bin: &std::path::Path) -> Self {
-            let leaked: &'static str = Box::leak(bin.to_string_lossy().into_owned().into_boxed_str());
+            let leaked: &'static str =
+                Box::leak(bin.to_string_lossy().into_owned().into_boxed_str());
             *STUB.lock().unwrap_or_else(|e| e.into_inner()) = Some(leaked);
             StubClaude
         }

@@ -2261,7 +2261,10 @@ mod tests {
 
             let again = run_choice(&ctl, &run_id, "restart", "on reflection", "sess-a");
 
-            assert!(!again.ok, "a run already answered for cannot be answered for again");
+            assert!(
+                !again.ok,
+                "a run already answered for cannot be answered for again"
+            );
             let reason = again.reason.unwrap_or_default();
             for said in [run_id.as_str(), "continue", "the branch stands"] {
                 assert!(
@@ -2272,7 +2275,10 @@ mod tests {
             let held = ctl.ledger.lock().unwrap();
             let row = held.as_ref().unwrap().run(&run_id).unwrap().unwrap();
             assert_eq!(
-                (row.resume_choice.as_deref(), row.resume_choice_why.as_deref()),
+                (
+                    row.resume_choice.as_deref(),
+                    row.resume_choice_why.as_deref()
+                ),
                 (Some("continue"), Some("the branch stands")),
                 "the first choice stands"
             );

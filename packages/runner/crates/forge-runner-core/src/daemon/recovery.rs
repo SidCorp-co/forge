@@ -2558,7 +2558,11 @@ mod tests {
     async fn a_sweep_tmux_could_not_answer_records_no_end_and_the_drain_still_holds_the_run() {
         let scratch = Scratch::new("tmux-unanswered");
         let (mut led, wt, _transcript) = a_subagent_run(&scratch);
-        assert_eq!(drain_names(&led).len(), 1, "the control: a first turn holds");
+        assert_eq!(
+            drain_names(&led).len(),
+            1,
+            "the control: a first turn holds"
+        );
         let beats = Beats::default();
 
         let r = sweep(&mut led, &TmuxUnanswered, &beats).await;

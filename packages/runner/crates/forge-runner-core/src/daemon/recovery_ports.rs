@@ -182,7 +182,9 @@ mod tests {
             .unwrap_or_else(|e| e.into_inner());
         let iso = terminal::testing::IsolatedServer::new("portgone");
         if !terminal::available() {
-            terminal::testing::cannot_run("tmux is not installed here — the read this rests on cannot run");
+            terminal::testing::cannot_run(
+                "tmux is not installed here — the read this rests on cannot run",
+            );
             return;
         }
         if !iso.took() {
@@ -191,9 +193,15 @@ mod tests {
         }
         let dir = crate::test_scratch::Scratch::new("portgone");
         let other = terminal::session_name(terminal::MASTER_PREFIX, "portgone-other");
-        terminal::ensure(&other, &dir, &["sleep".to_string(), "60".to_string()], &[], None)
-            .await
-            .expect("the session that makes tmux answer");
+        terminal::ensure(
+            &other,
+            &dir,
+            &["sleep".to_string(), "60".to_string()],
+            &[],
+            None,
+        )
+        .await
+        .expect("the session that makes tmux answer");
         let registry = Registry::new();
         registry.remember_for_test("proj-1", "sess-1", "forge-no-such-pane-iss1050");
         registry.remember_for_test("proj-2", "sess-2", &other);
@@ -224,7 +232,9 @@ mod tests {
             .unwrap_or_else(|e| e.into_inner());
         let iso = terminal::testing::IsolatedServer::new("portunasked");
         if !terminal::available() {
-            terminal::testing::cannot_run("tmux is not installed here — the read this rests on cannot run");
+            terminal::testing::cannot_run(
+                "tmux is not installed here — the read this rests on cannot run",
+            );
             return;
         }
         if !iso.took() {

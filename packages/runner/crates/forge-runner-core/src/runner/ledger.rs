@@ -2302,7 +2302,10 @@ mod tests {
             ..seed(&["ISS-1314"])
         };
 
-        let unmarked = led.create_run_group(successor("run-2")).unwrap_err().to_string();
+        let unmarked = led
+            .create_run_group(successor("run-2"))
+            .unwrap_err()
+            .to_string();
         assert!(
             unmarked.contains("already belongs to live run run-1"),
             "the control: a holder nothing has ended is still a live run: {unmarked}"
@@ -2317,7 +2320,10 @@ mod tests {
                 .unwrap();
             assert!(led.note_host_ended("run-1", 1_790_000_000_000, by).unwrap());
 
-            let said = led.create_run_group(successor("run-3")).unwrap_err().to_string();
+            let said = led
+                .create_run_group(successor("run-3"))
+                .unwrap_err()
+                .to_string();
 
             assert!(
                 !said.contains("live run"),

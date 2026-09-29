@@ -531,12 +531,7 @@ mod tests {
         let cmd = reporting_command(&exe);
 
         let marker = dir.join("it-ran");
-        let out = std::process::Command::new("sh")
-            .arg("-c")
-            .arg(&cmd)
-            .env("FORGE_HOOK_MARKER", &marker)
-            .output()
-            .expect("sh");
+        let out = invoked(&cmd, &marker);
 
         assert!(
             marker.exists(),
@@ -557,12 +552,7 @@ mod tests {
         let cmd = reporting_command(&exe);
 
         let marker = dir.join("it-ran");
-        let out = std::process::Command::new("sh")
-            .arg("-c")
-            .arg(&cmd)
-            .env("FORGE_HOOK_MARKER", &marker)
-            .output()
-            .expect("sh");
+        let out = invoked(&cmd, &marker);
 
         assert!(
             marker.exists(),
@@ -693,6 +683,33 @@ mod tests {
             std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).expect("chmod");
         }
         (home, exe)
+    }
+
+    /// `cmd` run the way Claude Code runs a hook command, through `sh -c`.
+    ///
+    /// The runner was written a moment ago, and a sibling test thread that
+    /// forked while its write was open holds that descriptor until its own
+    /// exec, so the kernel refuses to run the file and `sh` says `Text file
+    /// busy` about a command whose quoting is fine. Measured on this box under
+    /// four parallel suites (ISS-1312). That refusal is retried, for a bounded
+    /// time, and nothing else is: a quoting fault reads the same on every try.
+    #[cfg(unix)]
+    fn invoked(cmd: &str, marker: &Path) -> std::process::Output {
+        for _ in 0..50 {
+            let out = std::process::Command::new("sh")
+                .arg("-c")
+                .arg(cmd)
+                .env("FORGE_HOOK_MARKER", marker)
+                .output()
+                .expect("sh");
+            if !String::from_utf8_lossy(&out.stderr).contains("Text file busy") {
+                return out;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        panic!(
+            "the runner at {cmd:?} was busy for a whole second on every try: nothing was measured"
+        )
     }
 
     /// The command this daemon would install for a reporting event.
