@@ -76,7 +76,14 @@ fn projects(s: &Snapshot, out: &mut Vec<String>) {
     }
     let runs = runs_by_project(s);
     for p in &s.projects {
-        project(s, p, runs.get(p.project_id.as_deref().unwrap_or("")), out);
+        // A binding with no project id owns no run: the key "" is the stray
+        // bucket below, never a project's.
+        project(
+            s,
+            p,
+            p.project_id.as_deref().and_then(|id| runs.get(id)),
+            out,
+        );
     }
     if let Some(stray) = runs.get("") {
         out.push(format!("{I1}(runs naming no project this box knows)"));
@@ -732,6 +739,53 @@ mod tests {
             }),
             cli: None,
         }
+    }
+
+    /// Whole-set consult at 6fdc929, F1: a run naming no project this box
+    /// knows is listed once, as a stray, and never under a binding that names
+    /// no project id.
+    #[test]
+    fn a_stray_run_is_not_attributed_to_a_binding_with_no_project_id() {
+        let mut s = snap(vec![Project {
+            key: "loose".into(),
+            project_id: None,
+            core_slug: None,
+            repo: None,
+            skill: None,
+            cli: None,
+        }]);
+        s.ledger = Ok(ledger_ro::View {
+            path: "/l/ledger.sqlite".into(),
+            runs: vec![Run {
+                run_id: "run-stray1".into(),
+                project_id: Some("id-nobody-knows".into()),
+                master_session_id: "m".into(),
+                boot_id: "b".into(),
+                worktree_path: "/w/stray".into(),
+                worktree_gone_at: None,
+                released_as: None,
+                ended_by: None,
+                kept_notice: None,
+                incarnation: "live".into(),
+                work: "runnable".into(),
+                blocker_kind: None,
+                waiting_on: None,
+                created_at: 0,
+                issues: vec![("ISS-9".into(), true)],
+            }],
+            masters: Default::default(),
+        });
+        let text = frame(&s, None).join("\n");
+        let projects = text.split("WAITING ON A PERSON").next().unwrap();
+        assert_eq!(projects.matches("run-stra").count(), 1, "{projects}");
+        let stray = projects
+            .find("(runs naming no project this box knows)")
+            .expect("stray heading");
+        assert!(projects[stray..].contains("run-stra"), "{projects}");
+        assert!(
+            projects.contains("runs     none holding a lease"),
+            "the binding holds none: {projects}"
+        );
     }
 
     /// Whole-set consult at 4505806, F1: an answer kept from an earlier frame
