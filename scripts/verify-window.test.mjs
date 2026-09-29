@@ -363,7 +363,7 @@ describe('assemble, attribute, isolate and land', () => {
     ['false', /pre-existing/],
     ['test ! -f src/m2.txt', /member — ISS-2\./],
     ['! ( test -f src/m2.txt && test -f src/m4.txt )', /interaction/],
-    ['no-such-checker-anywhere', /undetermined\. it could not run on the base \(exit 127\)/],
+    ['exit 127', /undetermined\. it could not run on the base \(exit 127\)/],
     ['exit 2', /undetermined\. it could not run on the base \(exit 2\)/],
   ])('classifies a replay of `%s`', (cmd, want) => {
     const r = run(
