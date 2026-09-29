@@ -196,6 +196,15 @@ describe('stagedFiles', () => {
     expect(stagedFiles(root).files).toEqual(new Set(['a.ts']));
   });
 
+  it('names a staged non-ASCII path as the tree holds it, not as git quotes it', () => {
+    const root = repo({});
+    const git = (...a) => execFileSync('git', a, { cwd: root, stdio: 'ignore' });
+    git('init', '-q');
+    writeFileSync(join(root, 'café.ts'), '');
+    git('add', 'café.ts');
+    expect(stagedFiles(root).files).toEqual(new Set(['café.ts']));
+  });
+
   it('reports an error rather than an empty set when git cannot answer', () => {
     const result = stagedFiles(repo({}));
     expect(result.files).toBeUndefined();
@@ -228,9 +237,19 @@ describe('changedFiles', () => {
     writeFileSync(join(work, 'edited.mjs'), 'export const edited = 2;\n');
     rmSync(join(work, 'gone.mjs'));
     writeFileSync(join(work, 'new.mjs'), 'export const created = 1;\n');
+    writeFileSync(join(work, 'café.mjs'), 'export const cafe = 1;\n');
+    run(work, 'add', 'café.mjs');
+    run(work, 'commit', '-q', '-m', 'non-ascii');
+    writeFileSync(join(work, 'naïve.mjs'), 'export const naive = 1;\n');
     const got = changedFiles(work);
     expect(got.error).toBeUndefined();
-    expect([...got.files].sort()).toEqual(['committed.mjs', 'edited.mjs', 'new.mjs']);
+    expect([...got.files].sort()).toEqual([
+      'café.mjs',
+      'committed.mjs',
+      'edited.mjs',
+      'naïve.mjs',
+      'new.mjs',
+    ]);
     expect(got.base).toBe(run(work, 'rev-parse', 'origin/main'));
   });
 

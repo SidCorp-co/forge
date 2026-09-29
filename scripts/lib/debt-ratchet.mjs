@@ -116,17 +116,24 @@ export function parseMode(argv, allowed, script) {
 
 /** @returns `{files: Set<string>}` of repo-relative staged paths, or `{error}` */
 export function stagedFiles(root) {
-  let out;
+  const staged = gitPaths(root, ['diff', '--cached', '--name-only', '--diff-filter=ACM']);
+  if (staged === null) return { error: 'git diff --cached failed — cannot tell what is staged' };
+  return { files: new Set(staged) };
+}
+
+/** Paths git lists with `-z`: NUL-separated and unquoted, so a non-ASCII name reads as the tree holds it. */
+function gitPaths(root, args) {
   try {
-    out = execFileSync('git', ['diff', '--cached', '--name-only', '--diff-filter=ACM'], {
+    return execFileSync('git', [...args, '-z'], {
       cwd: root,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim();
+    })
+      .split('\0')
+      .filter(Boolean);
   } catch {
-    return { error: 'git diff --cached failed — cannot tell what is staged' };
+    return null;
   }
-  return { files: new Set(out.split('\n').filter(Boolean)) };
 }
 
 function gitLines(root, args) {
@@ -153,8 +160,8 @@ export function changedFiles(root) {
   if (target.refusal) return { error: target.refusal };
   const base = gitLines(root, ['merge-base', target.ref, 'HEAD'])?.[0];
   if (!base) return { error: `git merge-base ${target.ref} HEAD failed — no change to scope` };
-  const changed = gitLines(root, ['diff', '--name-only', '--diff-filter=ACMR', base]);
-  const untracked = gitLines(root, ['ls-files', '--others', '--exclude-standard']);
+  const changed = gitPaths(root, ['diff', '--name-only', '--diff-filter=ACMR', base]);
+  const untracked = gitPaths(root, ['ls-files', '--others', '--exclude-standard']);
   if (changed === null || untracked === null) {
     return { error: 'git could not list the changed files, so nothing can be scoped to them' };
   }

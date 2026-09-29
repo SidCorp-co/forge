@@ -284,11 +284,13 @@ const CHECKS = [
   },
 ];
 
-/** The parity proof every mode runs last; its layer is declared like any check's. */
+/** The parity proof every mode runs last; its layer and its scan proof are declared like any check's. */
 const CI_PARITY = {
   label: 'ci-parity',
   layer: 'entry',
   reads: 'ci.yml and the setup-workspace composite, two declared files',
+  scanned: /^ci-parity: (\d+) CI step\(s\) declared/m,
+  unit: 'CI steps',
 };
 
 const CI_COVERAGE = {
@@ -403,7 +405,7 @@ function assertEveryCheckIsLayered() {
 }
 
 function assertEveryCheckProvesScan() {
-  const unproven = CHECKS.filter((c) => !c.scanned).map((c) => c.label);
+  const unproven = [...CHECKS, CI_PARITY].filter((c) => !c.scanned).map((c) => c.label);
   if (unproven.length === 0) return;
   console.error(
     `verify: ${unproven.length} check(s) declare no \`scanned\` pattern: ${unproven.join(', ')}\n` +
@@ -594,7 +596,8 @@ function composedGuardParity() {
   return { code: 0 };
 }
 
-function ciParity(quiet) {
+/** `said` collects the success line, which the report reads the step count from. */
+function ciParity(quiet, said = []) {
   const steps = ciSteps();
   if (steps === null) {
     console.error('ci-parity: .github/workflows/ci.yml not found');
@@ -635,11 +638,8 @@ function ciParity(quiet) {
 
   const missing = steps.filter((s) => !(s in CI_COVERAGE));
   if (missing.length === 0) {
-    if (!quiet) {
-      console.log(
-        `ci-parity: ${steps.length} CI step(s) declared, ${gate.count} gate job(s) asserted`,
-      );
-    }
+    said.push(`ci-parity: ${steps.length} CI step(s) declared, ${gate.count} gate job(s) asserted`);
+    if (!quiet) console.log(said.at(-1));
     return 0;
   }
   console.error(`\nci-parity: ${missing.length} CI step(s) not declared in CI_COVERAGE:`);
@@ -690,7 +690,15 @@ function reportBlocked(results) {
   }
 }
 
-function report(results, parity) {
+function report(results, { code: parityCode, said }) {
+  const counted = parityCode === 0 ? said.join('\n').match(CI_PARITY.scanned) : null;
+  const parity = parityCode === 0 && !counted ? 2 : parityCode;
+  const parityAside =
+    parityCode === 0 && !counted
+      ? '  printed no step count, so what it read is unknown'
+      : counted
+        ? `  ${counted[1]} ${CI_PARITY.unit}`
+        : '';
   const width = Math.max(...results.map((r) => r.label.length), 18);
   console.log('');
   for (const r of results) {
@@ -702,7 +710,7 @@ function report(results, parity) {
     );
   }
   console.log(
-    `  ${parity === 0 ? 'ok  ' : 'FAIL'}  ${'meta'.padEnd(10)} ${CI_PARITY.layer.padEnd(6)} ${CI_PARITY.label}`,
+    `  ${parity === 0 ? 'ok  ' : 'FAIL'}  ${'meta'.padEnd(10)} ${CI_PARITY.layer.padEnd(6)} ${CI_PARITY.label.padEnd(width)}${parityAside}`,
   );
   console.log(`\n  ${tallyLine(tally([...results, { code: parity }]))}`);
   reportBlocked(results);
@@ -767,4 +775,5 @@ if (mode === 'entry') {
 const WIDTH = Number(process.env.VERIFY_CONCURRENCY) || 6;
 const results = await runAll(checks, base, WIDTH);
 
-process.exit(report(results, ciParity(true)));
+const said = [];
+process.exit(report(results, { code: ciParity(true, said), said }));
