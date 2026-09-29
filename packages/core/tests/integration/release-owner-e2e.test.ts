@@ -87,6 +87,20 @@ describe('the door refuses a release no box could own, naming every box once', (
     expect(await counts()).toMatchObject({ releases: 0, jobs: 0 });
   });
 
+  it('leaves a fleet whose only runner is offline to the held-fleet reason readiness gives', async () => {
+    await seedReleaseRunner({ name: 'offline-box', runnerStatus: 'offline' });
+    const a = await insertIssue();
+
+    const err = await refusalOf(claim([a]));
+    const { collectReleaseBlockers } = await import('../../src/release-batch/blockers.js');
+    const predicted = (await collectReleaseBlockers(projectId)).blockers;
+
+    expect(err.name).toBe('NoRunnerOnlineError');
+    expect(predicted.find((b) => b.code === 'NO_RUNNER_ONLINE')?.message).toContain('offline-box');
+    expect(predicted.map((b) => b.code)).not.toContain('RELEASE_NO_OWNER');
+    expect(await counts()).toMatchObject({ releases: 0 });
+  });
+
   it('is predicted by release readiness, in the words the door refuses in', async () => {
     await seedReleaseRunner({ name: 'masterless-box', master: false });
     const a = await insertIssue();

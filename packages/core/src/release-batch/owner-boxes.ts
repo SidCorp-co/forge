@@ -10,7 +10,7 @@
 // list rather than filtered before it, so a refusal can name every box once.
 
 import { sql } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import { type RunnerStatus, terminalAgentSessionStatuses } from '../db/schema.js';
 import { MASTER_SESSION_KIND } from '../jobs/session-kinds.js';
 import { logger } from '../logger.js';
@@ -210,8 +210,11 @@ const terminalList = sql.join(
 );
 
 /** Every runner row this project has, with what the owner rule reads off its box. */
-async function readOwnerBoxRows(projectId: string): Promise<OwnerBoxRow[]> {
-  const rows = await db.execute<OwnerBoxSqlRow>(sql`
+async function readOwnerBoxRows(
+  projectId: string,
+  executor: Tx | typeof db,
+): Promise<OwnerBoxRow[]> {
+  const rows = await executor.execute<OwnerBoxSqlRow>(sql`
     SELECT r.device_id, d.name AS device_name,
            r.status, r.last_seen_at, r.limit_reason, r.rate_limited_until,
            r.quarantined_until, r.provision_status,
@@ -263,9 +266,9 @@ function onePerBox(boxes: OwnerBox[]): OwnerBox[] {
 export async function readOwnerCandidates(
   projectId: string,
   label: string | null,
-  now: Date = new Date(),
+  { now = new Date(), executor = db }: { now?: Date; executor?: Tx | typeof db } = {},
 ): Promise<OwnerCandidates> {
-  const rows = await readOwnerBoxRows(projectId);
+  const rows = await readOwnerBoxRows(projectId, executor);
   const boxes = onePerBox(rows.map((row) => classifyOwnerBox(row, label, now)));
   return { label, boxes, ...eligibleOwners(boxes, label) };
 }

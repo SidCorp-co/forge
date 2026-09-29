@@ -18,7 +18,7 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 import { releaseBatchFixture } from '../helpers/release-batch-fixture.js';
-import { refusalOf, releaseOwnerProbes } from '../helpers/release-owner-probes.js';
+import { DRAINING, refusalOf, releaseOwnerProbes } from '../helpers/release-owner-probes.js';
 
 let harness: TestDatabase;
 let projectId: string;
@@ -156,6 +156,53 @@ describe('a release whose owner is gone', () => {
 
 // The window no pre-read can see: a take between another master's check and its commit.
 describe('the guards inside the writes', () => {
+  // The pre-check found the box able; by the time its open holds the release row it is not.
+  it.each([
+    [
+      'began draining',
+      'draining for update',
+      async (deviceId: string) => {
+        await harness.db.execute(sql`
+        UPDATE devices SET capabilities = ${JSON.stringify(DRAINING)}::jsonb WHERE id = ${deviceId}
+      `);
+      },
+    ],
+    [
+      'lost its master',
+      'no master pane of this project is running there',
+      async (deviceId: string) => {
+        await harness.db.execute(sql`
+        UPDATE agent_sessions SET status = 'completed' WHERE device_id = ${deviceId} AND kind = 'master'
+      `);
+      },
+    ],
+  ] as const)(
+    'refuses, inside the open, a box that %s since its pre-check',
+    async (_, clause, change) => {
+      const box = await seedReleaseRunner();
+      const a = await insertIssue();
+      const { runId } = await claim([a]);
+      await change(box.deviceId);
+      const { takeReleaseOwnership } = await import('../../src/release-batch/owner-take.js');
+
+      const err = await refusalOf(
+        harness.db.transaction(async (tx) =>
+          takeReleaseOwnership(tx as never, {
+            releaseRunId: runId,
+            deviceId: box.deviceId,
+            deviceName: box.deviceName,
+            sessionId: crypto.randomUUID(),
+            runId: crypto.randomUUID(),
+            preferenceMet: true,
+          }),
+        ),
+      );
+
+      expect(err.message).toContain(clause);
+      expect((await ownerOf(runId)).state).toBe('awaiting');
+    },
+  );
+
   it('refuses, inside the open, a take of a release another session already owns', async () => {
     const box = await seedReleaseRunner();
     const other = await seedReleaseRunner();

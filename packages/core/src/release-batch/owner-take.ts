@@ -195,8 +195,8 @@ export async function takeReleaseOwnership(
   },
 ): Promise<void> {
   const rows = (await tx.execute(sql`
-    SELECT metadata, status FROM pipeline_runs WHERE id = ${args.releaseRunId} FOR UPDATE
-  `)) as unknown as Array<{ metadata: unknown; status: string }>;
+    SELECT metadata, status, project_id FROM pipeline_runs WHERE id = ${args.releaseRunId} FOR UPDATE
+  `)) as unknown as Array<{ metadata: unknown; status: string; project_id: string }>;
   const row = rows[0];
   const owner = row ? readOwner(row.metadata, args.releaseRunId) : null;
   if (!row || !owner || (row.status !== 'running' && row.status !== 'paused')) {
@@ -209,6 +209,17 @@ export async function takeReleaseOwnership(
     throw new ReleaseOwnershipRefusedError(
       args.releaseRunId,
       `release ${args.releaseRunId} is ${describeOwner(owner)}`,
+    );
+  }
+  // Read again under the row lock: a master that ended or a box that began draining since the
+  // pre-check would otherwise own a release it can no longer carry.
+  const label = labelOf(row.metadata);
+  const current = await readOwnerCandidates(row.project_id, label, { executor: tx });
+  if (!current.eligible.some((b) => b.deviceId === args.deviceId)) {
+    const box = current.boxes.find((b) => b.deviceId === args.deviceId);
+    throw new ReleaseOwnershipRefusedError(
+      args.releaseRunId,
+      notEligible(box, current.eligible, label),
     );
   }
   const taken: ReleaseOwner = {

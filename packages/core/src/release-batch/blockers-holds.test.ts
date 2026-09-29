@@ -204,13 +204,16 @@ describe('what RELEASE_NO_OWNER says about the boxes', () => {
     expect(releaseBlockerError(report)?.name).toBe('ReleaseOwnerUnavailableError');
   });
 
-  it('asks nothing about owners while no runner is live, which is its own reason', async () => {
+  // A held box's reading stops at its hold, so the owner reason could only restate it without the
+  // act that clears it: an all-held fleet keeps NO_RUNNER_ONLINE, which names that act per box.
+  it('leaves a fleet whose every runner is held to NO_RUNNER_ONLINE, asking nothing about owners', async () => {
     ready();
     onlineIds.mockResolvedValue([]);
 
     const codes = (await collectReleaseBlockers(PROJECT_ID)).blockers.map((b) => b.code);
 
     expect(ownerCandidates).not.toHaveBeenCalled();
+    expect(codes).toContain('NO_RUNNER_ONLINE');
     expect(codes).not.toContain('RELEASE_NO_OWNER');
   });
 });
