@@ -398,11 +398,23 @@ describe('assemble, attribute, isolate and land', () => {
       w.checksFile,
       JSON.stringify(green(heads.m1, heads.m2, heads.m4, ledger.chain.head)),
     );
+    git(c, 'push', '-q', 'origin', `${ledger.chain.head}:refs/heads/chore/verify-window-w1`);
     const r = run(c, 'land', '--window', w.manifest, '--checks', w.checksFile, '--tree', w.tree);
+    git(c, 'push', '-q', 'origin', '--delete', 'chore/verify-window-w1');
     expect(r.status, r.stderr).toBe(0);
     expect(r.stdout).toContain(`1. ISS-1  landing ${row('ISS-1').landing}  reviewed ${heads.m1}`);
-    expect(r.stdout).toContain('gh pr merge chore/verify-window-w1 --merge');
+    expect(r.stdout).toContain(
+      `gh pr merge chore/verify-window-w1 --merge --match-head-commit ${ledger.chain.head}`,
+    );
     expect(r.stdout).not.toMatch(/--squash|--rebase/);
+  });
+
+  it('refuses to land while the window branch is absent, so the plan never names an unpushed chain', () => {
+    const r = run(c, 'land', '--window', w.manifest, '--checks', w.checksFile, '--tree', w.tree);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain(
+      `origin/chore/verify-window-w1 is at nothing and this ledger's chain head is ${ledger.chain.head}`,
+    );
   });
 
   it('leaves a two-parent push when the chain is merged with a merge commit', () => {
@@ -436,6 +448,19 @@ describe('assemble, attribute, isolate and land', () => {
     });
     expect(again.members.find((m) => m.issue === 'ISS-4').landing).toMatch(/^[0-9a-f]{40}$/);
     expect(again.attributions.length).toBeGreaterThan(0);
+  });
+
+  it('refuses to land a rebuilt chain whose window branch still carries the one validated before', () => {
+    const rebuilt = JSON.parse(readFileSync(w.ledger, 'utf8')).chain.head;
+    expect(rebuilt).not.toBe(ledger.chain.head);
+    writeFileSync(w.checksFile, JSON.stringify(green(heads.m1, heads.m4, rebuilt)));
+    git(c, 'push', '-q', 'origin', `${ledger.chain.head}:refs/heads/chore/verify-window-w1`);
+    const r = run(c, 'land', '--window', w.manifest, '--checks', w.checksFile, '--tree', w.tree);
+    git(c, 'push', '-q', 'origin', '--delete', 'chore/verify-window-w1');
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain(
+      `origin/chore/verify-window-w1 is at ${ledger.chain.head} and this ledger's chain head is ${rebuilt}`,
+    );
   });
 
   it('refuses to land once the base has moved, naming both commits', () => {

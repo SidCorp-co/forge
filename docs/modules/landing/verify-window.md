@@ -47,10 +47,13 @@ branch, head, arrival time and priority.
 6. **`isolate --member <ISS> --because "<the checker's words>"`** — rebuild without that member,
    recording why, then push the new chain head to the same pull request.
 7. **`land`** — refused where the base or a landed member's branch moved since assembly, where the
-   required check at the chain head is not a success, or where a member's reviewed head is not an
-   ancestor of its landing. Otherwise it prints each landing beside its reviewed head and the merge:
-   `gh pr merge chore/verify-window-<id> --merge`. Never squash and never rebase it: the point of the
-   chain is that a revert (`git revert -m 1 <landing>`) still names one change.
+   window's branch on the remote does not point at the chain head the ledger holds (a rebuild not
+   yet pushed), where the required check at that head is not a success, or where a member's reviewed
+   head is not an ancestor of its landing. Otherwise it prints each landing beside its reviewed head
+   and the merge, pinned to that head:
+   `gh pr merge chore/verify-window-<id> --merge --match-head-commit <chain head>`. Never squash and
+   never rebase it: the point of the chain is that a revert (`git revert -m 1 <landing>`) still names
+   one change.
 
 ## How it composes with `ci.yml`
 

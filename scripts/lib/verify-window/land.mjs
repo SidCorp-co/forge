@@ -9,8 +9,9 @@ export function windowBranch(window) {
 /**
  * Whether a validated window may land now, and how. Refused where the base or any landed member
  * moved since the combination was built — the validation then describes a tree nobody is landing —
- * where the required check at the chain head is not a success, or where a member's reviewed head
- * is not an ancestor of its landing. It prints the landing and performs none of it.
+ * where the window's branch does not point at the chain head this ledger validated, where the
+ * required check at that head is not a success, or where a member's reviewed head is not an
+ * ancestor of its landing. It prints the landing, pinned to that head, and performs none of it.
  * @returns {{ refusals: string[], lines: string[], validation: object|null }}
  */
 export function planLanding({ repoDir, ledger, readCheck }) {
@@ -31,6 +32,15 @@ export function planLanding({ repoDir, ledger, readCheck }) {
   if (baseNow !== ledger.base.sha) {
     refusals.push(
       `${baseRef} is at ${baseNow ?? 'nothing'} and the window was built on ${ledger.base.sha}: re-assemble on the new base`,
+    );
+  }
+  const branch = windowBranch(ledger.window);
+  const branchNow = g
+    .run(['rev-parse', '--verify', '--quiet', `refs/remotes/origin/${branch}`])
+    ?.trim();
+  if (branchNow !== ledger.chain.head) {
+    refusals.push(
+      `origin/${branch} is at ${branchNow ?? 'nothing'} and this ledger's chain head is ${ledger.chain.head}: push the chain head to the window's pull request and read its check there`,
     );
   }
   const read = parseConfig(
@@ -67,7 +77,7 @@ export function planLanding({ repoDir, ledger, readCheck }) {
   lines.push(
     '',
     "Merge the window's one pull request with a merge commit, so each member keeps its own landing:",
-    `  gh pr merge ${windowBranch(ledger.window)} --merge`,
+    `  gh pr merge ${branch} --merge --match-head-commit ${ledger.chain.head}`,
     `Its push to ${ledger.base.branch} has two parents, which ci.yml's proved step reads as already proved.`,
   );
   return { refusals, lines, validation };
