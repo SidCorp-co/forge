@@ -10,7 +10,8 @@ import process from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 import workerThreads from 'node:worker_threads';
-import { FS_LISTING_CALLS, fsListing, subprocessListing } from './whole-tree-gates.mjs';
+import { FS_LISTING_CALLS, fsListing } from './whole-tree-gates.mjs';
+import { subprocessListing } from './whole-tree-shell.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const ROOT = resolve(HERE, '..', '..');
@@ -22,9 +23,20 @@ const OWN = new Set(
     'whole-tree-guard.mjs',
     'whole-tree-child.mjs',
     'whole-tree-gates.mjs',
+    'whole-tree-shell.mjs',
   ].map((f) => resolve(HERE, f)),
 );
 const SPAWNERS = ['exec', 'execSync', 'execFile', 'execFileSync', 'spawn', 'spawnSync', 'fork'];
+
+/** Executables a dependency starts for itself, each read and found to list nothing it is not
+ * asked to: esbuild's service transforms the files vite hands it. */
+const TOOL_HELPERS = new Set(['esbuild']);
+
+/** Whether `program` is a reviewed helper that lives under node_modules. */
+export function isToolHelper(program) {
+  const path = String(program ?? '');
+  return path.includes('/node_modules/') && TOOL_HELPERS.has(path.slice(path.lastIndexOf('/') + 1));
+}
 
 /** The first stack frame outside node's internals, node_modules and the watch's own files. */
 export function callSite() {
@@ -63,14 +75,15 @@ function wrap(original, name, read, custom = original[promisify.custom]) {
 
 function spawnCall(name, args) {
   const [command, second] = args;
-  const list = Array.isArray(second) ? second.map(String) : [];
+  const list = Array.isArray(second) ? second : [];
   const at = args.findIndex((a, i) => i > 0 && a && typeof a === 'object' && !Array.isArray(a));
   const opts = at === -1 ? {} : args[at];
   const shell = name === 'exec' || name === 'execSync' || Boolean(opts.shell);
+  // `fork` runs `execPath`, which is Node unless the call names another program.
   const argv =
     name === 'fork'
-      ? { command: process.execPath, args: [String(command), ...list] }
-      : { command: String(command), args: list };
+      ? { command: String(opts.execPath ?? process.execPath), args: [String(command), ...list] }
+      : { command: String(command), args: list.map(String) };
   return { ...argv, shell, opts, at };
 }
 
@@ -79,10 +92,9 @@ function spawnCall(name, args) {
 const WATCH = Symbol.for('forge.whole-tree-watch');
 
 /**
- * Wraps the listing calls and the spawners once per process, and tells `onListing(entries)` of
- * every `{ dir, via, at }` a call lists. A later call only moves where listings go, so a vitest
- * worker started under a parent's preload reports to its own guard and not outward. A spawned
- * process and a file worker get the preload, a call handing its own `env` included.
+ * Wraps the listing calls and spawners once per process, telling `onListing` each `{ dir, via, at }`.
+ * A later call only moves where listings go, so a vitest worker under a parent's preload reports to
+ * its own guard. A spawned process and a file worker get the preload, even one handed its own env.
  */
 export function installWatch(onListing, logPath) {
   globalThis[WATCH] ??= { installed: false, onListing: null };
@@ -92,36 +104,48 @@ export function installWatch(onListing, logPath) {
   process.env.NODE_OPTIONS = withPreload(process.env.NODE_OPTIONS);
   if (state.installed) return;
   state.installed = true;
-  // An unseen program counts where this repository's code started it, not as a tool's own helper.
+  // An unseen program counts wherever it started, but a reviewed helper no repository frame started:
+  // a missing frame alone exempts nothing, since a dependency's callback can spawn for the test.
   const tell = (entries) => {
     const at = callSite();
-    const kept = entries.filter((e) => !e.unseen || at !== null);
-    if (kept.length > 0) state.onListing(kept.map(({ unseen, ...e }) => ({ ...e, at })));
+    const kept = entries.filter((e) => !e.unseen || at !== null || !isToolHelper(e.program));
+    if (kept.length > 0) state.onListing(kept.map(({ unseen, program, ...e }) => ({ ...e, at })));
   };
+  // A call the reader throws on is a listing nobody can place, so it counts as the root.
+  const unreadable = (name) => [
+    { dir: ROOT, via: `${name}() with arguments the guard could not read, so counted as the root` },
+  ];
   const fsRead = (name, args) => {
+    let entries;
     try {
-      tell(fsListing(name, args, process.cwd()).map((dir) => ({ dir, via: `${name}()` })));
+      entries = fsListing(name, args, process.cwd()).map((dir) =>
+        dir === null ? unreadable(name)[0] : { dir, via: `${name}()` },
+      );
     } catch {
-      // A listing the reader cannot parse is not a reason to break the test that made it.
+      entries = unreadable(name);
     }
+    tell(entries);
   };
   for (const name of FS_LISTING_CALLS) {
     if (typeof fs[name] === 'function') fs[name] = wrap(fs[name], name, fsRead);
   }
-  for (const name of ['readdir', 'opendir', 'glob']) {
+  for (const name of ['readdir', 'opendir', 'glob', 'cp']) {
     if (typeof fs.promises[name] === 'function') {
       fs.promises[name] = wrap(fs.promises[name], name, fsRead);
     }
   }
   const spawnRead = (name, args) => {
     const call = spawnCall(name, args);
+    let entries;
     try {
       const cwd = call.opts.cwd ? resolve(process.cwd(), String(call.opts.cwd)) : process.cwd();
-      const found = subprocessListing({ ...call, cwd, root: ROOT });
-      tell(found.map((e) => ({ ...e, via: `${name}() running ${e.via}` })));
+      const env = call.opts.env ?? process.env;
+      const found = subprocessListing({ ...call, cwd, root: ROOT, env });
+      entries = found.map((e) => ({ ...e, via: `${name}() running ${e.via}` }));
     } catch {
-      // As above.
+      entries = unreadable(name);
     }
+    tell(entries);
     if (call.at === -1 || !call.opts.env) return args;
     const env = {
       ...call.opts.env,

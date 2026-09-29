@@ -1,8 +1,9 @@
 import { execFile, execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 import { Worker } from 'node:worker_threads';
@@ -12,11 +13,12 @@ import {
   declarationExit,
   declarationsIn,
   fsListing,
+  globListings,
   guardVerdict,
   judgeConfigs,
   judgeDeclarations,
+  judgeGlobs,
   judgeRun,
-  subprocessListing,
   suiteMessage,
 } from './whole-tree-gates.mjs';
 
@@ -66,101 +68,21 @@ describe('what a node:fs call lists', () => {
     expect(fsListing('readdir', [new URL('https://example.com/')], CORE)).toEqual([]);
   });
 
+  it('gives a path it cannot read as null, which the watch counts as the root', () => {
+    expect(fsListing('readdirSync', [42], CORE)).toEqual([null]);
+    expect(fsListing('globSync', [[/x/]], CORE)).toEqual([null]);
+    expect(fsListing('globSync', ['*', { cwd: 7 }], CORE)).toEqual([null]);
+  });
+
+  it('reads cp and cpSync as listing the tree they copy', () => {
+    expect(fsListing('cpSync', ['../..', '/tmp/copy', { recursive: true }], CORE)).toEqual([ROOT]);
+  });
+
   it('lists a glob from its cwd and the pattern’s segments before the first magic one', () => {
     expect(fsListing('globSync', ['**/*.md', { cwd: ROOT }], CORE)).toEqual([ROOT]);
     expect(fsListing('glob', ['../../docs/**/*.md'], CORE)).toEqual([`${ROOT}/docs`]);
     expect(fsListing('globSync', [['src/*.ts', '../../*']], CORE)).toEqual([`${CORE}/src`, ROOT]);
     expect(fsListing('globSync', [`${ROOT}/**`], CORE)).toEqual([ROOT]);
-  });
-});
-
-describe('what a child process lists', () => {
-  const run = (command, args = [], opts = {}) =>
-    subprocessListing({ command, args, cwd: CORE, root: ROOT, ...opts }).map((e) => e.dir);
-
-  it('reads git’s listing commands where they run, and the top-level pathspecs', () => {
-    expect(run('git', ['ls-files'], { cwd: ROOT })).toEqual([ROOT]);
-    expect(run('git', ['-C', '../..', 'ls-files'])).toEqual([ROOT]);
-    expect(run('git', ['ls-files', ':/'])).toEqual([ROOT]);
-    expect(run('git', ['ls-tree', '-r', '--full-tree', 'HEAD'])).toEqual([ROOT]);
-    expect(run('git', ['grep', 'someKey'])).toEqual([CORE]);
-    expect(run('git', ['log', '-1'])).toEqual([]);
-  });
-
-  it('reads a shell string, a cd moving the rest', () => {
-    expect(run('git ls-files', [], { shell: true })).toEqual([CORE]);
-    expect(run('git ls-files', [])).toEqual([]);
-    expect(run('cd ../.. && find . -name "*.md"', [], { shell: true })).toEqual([ROOT]);
-    expect(run('sh', ['-c', 'cd ../.. && git ls-files'])).toEqual([ROOT]);
-    expect(run('echo hi | cat', [], { shell: true })).toEqual([]);
-  });
-
-  it('reads find, ls, rg and a recursive grep, each defaulting to where it runs', () => {
-    expect(run('find', ['../..', '-name', 'x'])).toEqual([ROOT]);
-    expect(run('find')).toEqual([CORE]);
-    expect(run('ls', ['-la', '../..'])).toEqual([ROOT]);
-    expect(run('rg', ['--files', '../..'])).toEqual([ROOT]);
-    expect(run('rg', ['pattern'])).toEqual([CORE]);
-    expect(run('grep', ['-rn', 'x', '../..'])).toEqual([ROOT]);
-    expect(run('grep', ['x', 'file.txt'])).toEqual([]);
-  });
-
-  it('reads past find’s leading options to its starting points', () => {
-    expect(run('find', ['-L', '../..', '-name', 'x'])).toEqual([ROOT]);
-    expect(run('find', ['--', '../..', '-name', 'x'])).toEqual([ROOT]);
-    expect(run('find', ['-D', 'stat', '-O2', '../..'])).toEqual([ROOT]);
-  });
-
-  it('reads the command a launcher runs, and not the launcher', () => {
-    expect(run('env', ['FOO=1', 'python3', 'walk.py'], { cwd: ROOT })).toEqual([ROOT]);
-    expect(run('env', ['FOO=1', 'python3', 'walk.py'])).toEqual([]);
-    expect(run('timeout', ['5', 'find', '../..'])).toEqual([ROOT]);
-    expect(run('cd ../.. && env -i ls', [], { shell: true })).toEqual([ROOT]);
-    expect(run('env', ['FOO=1', 'cat', 'x'], { cwd: ROOT })).toEqual([]);
-  });
-
-  it('counts a program it cannot see into as listing the root where it may reach it', () => {
-    const climbs = "import os; os.listdir('../..')";
-    const [entry] = subprocessListing({
-      command: 'python3',
-      args: ['-c', climbs],
-      cwd: CORE,
-      root: ROOT,
-    });
-    expect(entry).toEqual({
-      dir: ROOT,
-      via: '`python3` (a program the guard cannot see into, so counted as listing the root)',
-      unseen: true,
-    });
-    expect(run('python3', ['walk.py'], { cwd: ROOT })).toEqual([ROOT]);
-    expect(run('python3', ['-c', `os.listdir('${ROOT}')`])).toEqual([ROOT]);
-    expect(run('cd ../.. && ./walk.sh', [], { shell: true })).toEqual([ROOT]);
-    expect(run('python3', ['-c', climbs], { shell: true })).toEqual([ROOT]);
-  });
-
-  it('reads the script an unseen program runs for a climb', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'whole-tree-script-'));
-    writeFileSync(join(dir, 'up.sh'), 'ls ../../..\n');
-    writeFileSync(join(dir, 'flat.sh'), 'git rev-parse HEAD\n');
-    const at = (script) =>
-      subprocessListing({ command: 'bash', args: [script], cwd: dir, root: ROOT }).map(
-        (e) => e.dir,
-      );
-    expect(at('up.sh')).toEqual([ROOT]);
-    expect(at('flat.sh')).toEqual([]);
-    rmSync(dir, { recursive: true, force: true });
-  });
-
-  it('leaves an unseen program below the root that is handed nothing reaching it', () => {
-    expect(run('python3', ['-c', 'print(1)'])).toEqual([]);
-    expect(run('python3', [`${ROOT}/packages/core/walk.py`])).toEqual([]);
-    expect(run('sh', ['-c', 'ulimit -f "$1" && shift && exec git "$@"', 'sh', '9'])).toEqual([]);
-  });
-
-  it('leaves Node, which the preload watches from inside, and a program that reads only files', () => {
-    expect(run('node', ['scripts/x.mjs'], { cwd: ROOT })).toEqual([]);
-    expect(run('pnpm', ['exec', 'vitest'], { cwd: ROOT })).toEqual([]);
-    expect(run('cat package.json | wc -l', [], { shell: true, cwd: ROOT })).toEqual([]);
   });
 });
 
@@ -229,7 +151,7 @@ describe('the guard installed in this very run', () => {
 
   it('sees node:fs/promises and a git subprocess list it', async () => {
     await readdir(REPO);
-    execFileSync('git', ['ls-files', '--', 'package.json'], { cwd: REPO });
+    execFileSync('git', ['ls-files', '--', '[p]ackage.json'], { cwd: REPO });
     expect(covering().map((h) => h.via)).toEqual([
       'readdir()',
       'execFileSync() running git ls-files',
@@ -237,7 +159,9 @@ describe('the guard installed in this very run', () => {
   });
 
   it('keeps promisify(execFile) resolving to stdout and stderr, and watches it too', async () => {
-    const out = await promisify(execFile)('git', ['ls-files', '--', 'package.json'], { cwd: REPO });
+    const out = await promisify(execFile)('git', ['ls-files', '--', '[p]ackage.json'], {
+      cwd: REPO,
+    });
     expect(out.stdout.trim()).toBe('package.json');
     expect(out.stderr).toBe('');
     expect(covering().map((h) => h.via)).toEqual(['execFile() running git ls-files']);
@@ -283,6 +207,44 @@ describe('the guard installed in this very run', () => {
     expect(logged.map((l) => JSON.parse(l).dir)).toEqual([REPO]);
   });
 
+  it('counts a directory a shell moved to by a substitution as the root', () => {
+    execFileSync('sh', ['-c', 'cd "$(pwd)" && ls >/dev/null'], { cwd: import.meta.dirname });
+    expect(covering().map((h) => h.via)).toEqual([
+      'execFileSync() running ls (at a directory or word the guard cannot evaluate, so counted as the root)',
+    ]);
+  });
+
+  it('counts a program it cannot see into as the root, wherever it runs', () => {
+    spawnSync('sh', [join(import.meta.dirname, 'no-such-script.sh')], { stdio: 'ignore' });
+    expect(covering()).toEqual([
+      expect.objectContaining({
+        dir: REPO,
+        via: expect.stringMatching(/^spawnSync\(\) running `sh` running .*no-such-script\.sh/),
+      }),
+    ]);
+  });
+
+  it('counts an executable a dependency spawns from its own callback, but a reviewed helper', async () => {
+    const dep = mkdtempSync(join(tmpdir(), 'whole-tree-dep-'));
+    const lib = join(dep, 'node_modules', 'lister');
+    mkdirSync(join(lib, 'bin'), { recursive: true });
+    writeFileSync(
+      join(lib, 'index.mjs'),
+      "import { spawnSync } from 'node:child_process';\n" +
+        "export const later = (bin) => new Promise((done) => setTimeout(() => { spawnSync(bin, [], { stdio: 'ignore' }); done(); }, 0));",
+    );
+    const { later } = await import(pathToFileURL(join(lib, 'index.mjs')).href);
+    await later(join(lib, 'bin', 'walk'));
+    await later(join(lib, 'bin', 'esbuild'));
+    rmSync(dep, { recursive: true, force: true });
+    expect(covering()).toEqual([
+      expect.objectContaining({
+        at: null,
+        via: expect.stringContaining('/node_modules/lister/bin/walk'),
+      }),
+    ]);
+  });
+
   it('records nothing covering the root for a listing inside it', () => {
     readdirSync(import.meta.dirname);
     expect(covering()).toEqual([]);
@@ -300,12 +262,17 @@ describe('a run of a file that lists the root', () => {
     "it('lists the root', () => { expect(readdirSync(process.env.WT_ROOT)).toContain('pnpm-workspace.yaml'); });",
   ];
   // The vitest this suite runs under, started on a scratch root that holds nothing but the file.
-  const vitest = (file) =>
-    spawnSync(
+  // Its own main process expands the glob case's pattern over the root, which the preload reports
+  // to this file's guard: that listing is the subject here, so it is cleared once read.
+  const vitest = (file) => {
+    const r = spawnSync(
       process.execPath,
       [join(REPO, 'node_modules/vitest/vitest.mjs'), 'run', '--root', dir, file],
       { cwd: dir, encoding: 'utf8', env: { ...process.env, WT_ROOT: REPO, FORCE_COLOR: '0' } },
     );
+    writeFileSync(globalThis[Symbol.for('forge.whole-tree-guard')].log, '');
+    return r;
+  };
 
   it('fails an undeclared one in afterAll, naming the file, the listing and the line to add', () => {
     writeFileSync(join(dir, 'plain.test.mjs'), body.join('\n'));
@@ -316,12 +283,106 @@ describe('a run of a file that lists the root', () => {
     );
   }, 60_000);
 
+  it('fails an undeclared one whose own import.meta.glob covers the root', () => {
+    const pattern = `${relative(dir, REPO)}/*.json`;
+    writeFileSync(
+      join(dir, 'globs.test.mjs'),
+      `const found = import.meta.glob('${pattern}');\nit('globs', () => { expect(Object.keys(found).length).toBeGreaterThan(0); });`,
+    );
+    const r = vitest('globs.test.mjs');
+    expect(r.status).toBe(1);
+    expect(`${r.stdout}${r.stderr}`).toContain(
+      `globs.test.mjs import.meta.glob('${pattern}') listed the repository root`,
+    );
+  }, 60_000);
+
   it('passes the same file once it carries the declaration', () => {
     writeFileSync(join(dir, 'marked.test.mjs'), [`// ${MARK} whole-tree`, ...body].join('\n'));
     const r = vitest('marked.test.mjs');
     expect(`${r.stdout}${r.stderr}`).not.toContain('listed the repository root');
     expect(r.status).toBe(0);
   }, 60_000);
+});
+
+describe('what an import.meta.glob lists', () => {
+  const REPO = resolve(import.meta.dirname, '..', '..');
+  const ts = createRequire(join(REPO, 'packages/core/package.json'))('typescript');
+  const file = join(REPO, 'packages/core/src/pipeline/globs.test.ts');
+  const at = (source) => globListings({ source, file, root: REPO, ts });
+  const call = (args) => `const g = import.meta.glob(${args});`;
+
+  it('resolves a relative pattern from the file, and a rooted one from its package', () => {
+    expect(at(call("'../../../../**/*.md', { eager: true }"))).toEqual([
+      {
+        dir: REPO,
+        via: "import.meta.glob('../../../../**/*.md')",
+        at: 'packages/core/src/pipeline/globs.test.ts:1',
+        call: "import.meta.glob('../../../../**/*.md')",
+        line: 1,
+        resolved: true,
+      },
+    ]);
+    expect(at(call("'/src/**/*.ts'")).map((g) => g.dir)).toEqual([join(REPO, 'packages/core/src')]);
+    expect(at(call("'**/*.ts'")).map((g) => g.dir)).toEqual([join(REPO, 'packages/core')]);
+    expect(at(call('`./fixtures/*.json`')).map((g) => g.dir)).toEqual([
+      join(REPO, 'packages/core/src/pipeline/fixtures'),
+    ]);
+  });
+
+  it('reads each pattern of an array, and a negated one as listing nothing', () => {
+    expect(
+      at(call("['./a/*.ts', '!./a/b.ts', '../../../../docs/*.md']")).map((g) => g.dir),
+    ).toEqual([join(REPO, 'packages/core/src/pipeline/a'), join(REPO, 'docs')]);
+  });
+
+  it('counts an alias, a # import and a pattern that is not a literal as the root', () => {
+    const substituted = `\`$${'{dir}'}/*.md\``;
+    for (const args of ["'@/x/*.ts'", "'#fixtures/*'", 'PATTERN', substituted]) {
+      const [g] = at(call(args));
+      expect(g.dir).toBe(REPO);
+      expect(g.via).toContain('a pattern the guard cannot resolve, so counted as the root');
+      expect(g.resolved).toBe(false);
+    }
+    const [refused] = judgeGlobs({
+      files: [{ path: 'packages/core/src/pipeline/globs.test.ts', source: call("'@/x/*.ts'") }],
+      root: REPO,
+      ts,
+    });
+    expect(refused.why).toMatch(
+      /^line 1 expands import\.meta\.glob\('@\/x\/\*\.ts'\) with a pattern the guard cannot resolve \(an alias, a `#` import, or not a literal\), which counts as the root before the test runs/,
+    );
+  });
+
+  it('reads a call, never the same text in a string or a comment', () => {
+    const quoted = [
+      `const s = "import.meta.glob('../../../../**')";`,
+      `// import.meta.glob('../../../../**')`,
+    ].join('\n');
+    expect(at(quoted)).toEqual([]);
+  });
+
+  it('refuses a root glob in an undeclared test and in any module, and passes a declared test', () => {
+    const glob = call("'../../../../**/*.md'");
+    const files = [
+      { path: 'packages/core/src/pipeline/globs.test.ts', source: glob },
+      { path: 'packages/core/src/pipeline/docs-index.ts', source: glob },
+      {
+        path: 'packages/core/src/pipeline/marked.test.ts',
+        source: `// ${MARK} whole-tree\n${glob}`,
+      },
+      { path: 'packages/core/src/pipeline/local.test.ts', source: call("'./x/*.ts'") },
+    ];
+    const refused = judgeGlobs({ files, root: REPO, ts });
+    expect(refused.map((r) => r.path)).toEqual([
+      'packages/core/src/pipeline/globs.test.ts',
+      'packages/core/src/pipeline/docs-index.ts',
+    ]);
+    expect(refused[0].why).toContain(
+      `line 1 expands import.meta.glob('../../../../**/*.md') from the repository root`,
+    );
+    expect(refused[0].why).toContain(`add a line \`// ${MARK} whole-tree\``);
+    expect(refused[1].why).toContain('a declaration cannot travel with an import of a module');
+  });
 });
 
 describe('judging the declarations', () => {
