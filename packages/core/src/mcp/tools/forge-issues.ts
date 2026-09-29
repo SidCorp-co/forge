@@ -768,9 +768,6 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         const ref = input.data?.issueId;
         if (!ref) throw new Error(`BAD_REQUEST: data.issueId is required for ${input.action}`);
         const marking = input.action === 'mark_merged';
-        if (marking && !input.data?.target) {
-          throw new Error('BAD_REQUEST: data.target is required for mark_merged');
-        }
         const issue = await loadIssue(await refs.issue('data.issueId', ref));
         await assertPrincipalIsWriter(principal, issue.projectId);
 
@@ -798,7 +795,13 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
           });
           return { ...(await serializeWithAttachments(fresh)), action, mark, detail };
         } catch (err) {
-          if (err instanceof MergeMarkerError) throw new Error(`${err.code}: ${err.message}`);
+          if (err instanceof MergeMarkerError) {
+            // Owed on a git-shape project only (`landing-evidence.ts`), in this door's own words.
+            if (err.code === 'TARGET_REQUIRED') {
+              throw new Error('BAD_REQUEST: data.target is required for mark_merged');
+            }
+            throw new Error(`${err.code}: ${err.message}`);
+          }
           throw err;
         }
       }

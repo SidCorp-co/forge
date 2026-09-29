@@ -115,6 +115,7 @@ describe('refuseUnshippedClose — a close on a project whose work lands outside
     expect(refusal?.details).toEqual({
       requires: 'mergedLanding',
       shape: 'outside_git',
+      held: 'asserted',
       useInstead: 'dropped',
     });
   });
@@ -124,7 +125,7 @@ describe('refuseUnshippedClose — a close on a project whose work lands outside
     const refusal = await refuseUnshippedClose(executor, { issueId: 'iss-1', toStatus: 'closed' });
     expect(refusal?.detail).toContain('no merged mark');
     expect(refusal?.detail).toContain('`data.landing`');
-    expect(refusal?.details).toMatchObject({ requires: 'mergedLanding' });
+    expect(refusal?.details).toMatchObject({ requires: 'mergedLanding', held: 'unmarked' });
   });
 
   it('refuses by name a project kind nothing writes, rather than guessing its shape', async () => {

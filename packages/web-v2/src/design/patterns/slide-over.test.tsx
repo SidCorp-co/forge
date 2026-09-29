@@ -45,3 +45,20 @@ describe("SlideOver and Escape", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 });
+
+describe("SlideOver and the page's stacking contexts", () => {
+  // ISS-1327: rendered inside the sticky issue rail, the fixed drawer was painted in the rail's
+  // stacking context, under the sticky issue header. A drawer on `body` is above both.
+  it("renders on document.body, not inside the element that rendered it", () => {
+    render(
+      <div data-testid="sticky-rail" style={{ position: "sticky", top: 0 }}>
+        <SlideOver open onClose={() => {}} title="Mark this work merged">
+          <p>body</p>
+        </SlideOver>
+      </div>,
+    );
+    const dialog = screen.getByRole("dialog");
+    expect(screen.getByTestId("sticky-rail")).not.toContainElement(dialog);
+    expect(dialog.parentElement?.parentElement).toBe(document.body);
+  });
+});

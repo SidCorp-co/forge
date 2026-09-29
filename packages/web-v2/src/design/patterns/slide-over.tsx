@@ -1,6 +1,7 @@
 "use client";
 
 import { type CSSProperties, useEffect, useRef, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Icon } from "@/design/icons/icon";
 
 export interface SlideOverProps {
@@ -81,7 +82,9 @@ export function SlideOver({
   }, [open]);
 
   if (!open) return null;
-  return (
+  // On `body`: inside a sticky ancestor it paints under that ancestor's sticky siblings (ISS-1327).
+  if (typeof document === "undefined") return null;
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex justify-end"
       style={{ background: "var(--scrim)", backdropFilter: "blur(8px)" }}
@@ -114,6 +117,7 @@ export function SlideOver({
           <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
         )}
       </aside>
-    </div>
+    </div>,
+    document.body,
   );
 }

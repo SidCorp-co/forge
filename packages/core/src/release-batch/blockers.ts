@@ -165,13 +165,17 @@ async function rosterBlockers(
         .innerJoin(projects, eq(projects.id, issues.projectId))
         .where(inArray(issues.id, issueIds));
       return rows
-        .filter((r) => landingShortfall(r, landingShapeOf(r.kind)) !== null)
-        .map((r) => r.id);
+        .map((r) => ({ id: r.id, shape: landingShapeOf(r.kind), row: r }))
+        .filter((r) => landingShortfall(r.row, r.shape) !== null);
     },
     out,
   );
   if (!unmerged) return;
-  if (unmerged.length > 0) out.push(blocker('RELEASE_WORK_UNMERGED', { issueIds: unmerged }));
+  if (unmerged.length > 0) {
+    // One roster is one project, so one shape; it chooses which sentence the reader is owed.
+    const shape = unmerged[0]?.shape;
+    out.push(blocker('RELEASE_WORK_UNMERGED', { issueIds: unmerged.map((r) => r.id), shape }));
+  }
 }
 
 /** The label, and how many live bindings one reading would answer for. A channel declaring no

@@ -53,6 +53,14 @@ what the column holds" clause compares the claim against the column. Comparing i
 the row the call happened to select tells a caller its own commit was overruled by that
 same commit.
 
+A `landing` is the one input that repeat does not answer: where a mark stands and the landing sent
+is not the one it names — a corrected typo, or a landing sent over a mark naming none — the call is
+refused `MARK_ALREADY_STANDS` (`standingMarkRefusal`), naming what stands and `unmark` then mark as
+the correction, and neither the row nor the thread is written. The first stamp wins for the landing
+as for `merged_at`; a `200` that kept the old landing while the caller was told it had sent the
+evidence is what this replaced (ISS-1327). The exact landing re-sent is answered `already_merged`
+like any other repeat.
+
 ## What counts as landed depends on the project's shape
 
 `packages/core/src/issues/landing-evidence.ts` is the one answer, and every door that decides
@@ -67,8 +75,11 @@ deployed, and forge-dev is such a project and lands every change in git.
 
 | shape | `LANDINGS_ACCEPTED` | the mark writer refuses |
 |---|---|---|
-| `git` | `asserted`, `observed` | a `landing` (`LANDING_NOT_THIS_SHAPE`) |
+| `git` | `asserted`, `observed` | a `landing` (`LANDING_NOT_THIS_SHAPE`); no `target` |
 | `outside_git` | `landed`, `observed` | no `landing` where Forge observed no merged pull request (`LANDING_REQUIRED`) |
+
+`target` names the branch a mark merged through, so it is owed on `git` alone
+(`markTargetRequired`); each door answers a missing one in the words it always used.
 
 A close refusal names the route the shape has (`landingRoute`): `mark_merged` for `git`, and
 `mark_merged` with `data.landing` for `outside_git`, where no commit is asked for. The issue detail

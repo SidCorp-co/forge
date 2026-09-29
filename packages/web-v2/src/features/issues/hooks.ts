@@ -275,21 +275,38 @@ export function useTransitionIssue() {
  */
 export function useMergeMarker(issueId: string) {
   const qc = useQueryClient();
+  const { toast } = useToast();
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["issue", issueId] });
     qc.invalidateQueries({ queryKey: ["activities", issueId] });
+    qc.invalidateQueries({ queryKey: ["issues"] });
   };
-  const mark = useIssueMutation(
-    (args: MarkMergedBody) => issuesApi.markMerged(issueId, args),
-    { successMessage: "Marked merged" },
-  );
+  // ISS-1327 — the answer says whether this call moved the row; a toast that ignores it tells a
+  // person their landing was recorded when the mark that stood was kept.
+  const mark = useMutation({
+    mutationFn: (args: MarkMergedBody) => issuesApi.markMerged(issueId, args),
+    onSuccess: (answer) => {
+      refresh();
+      if (answer.action === "already_merged") {
+        toast({
+          title: "Already marked merged — nothing changed",
+          description: "The mark that stands was kept. To change it, press Unmark, then Mark merged again.",
+          tone: "info",
+        });
+      } else {
+        toast({ title: "Marked merged", tone: "success" });
+      }
+    },
+  });
   const unmark = useIssueMutation(
     (args: { note?: string } = {}) => issuesApi.unmarkMerged(issueId, args),
     { successMessage: "Merge mark removed" },
   );
   return {
     isPending: mark.isPending || unmark.isPending,
-    mark: (args: MarkMergedBody) => mark.mutate(args, { onSuccess: refresh }),
+    /** Refused marks go to `onError` so the form that sent them can keep what was typed. */
+    mark: (args: MarkMergedBody, options: { onSuccess?: () => void; onError?: (err: unknown) => void } = {}) =>
+      mark.mutate(args, { onSuccess: () => options.onSuccess?.(), onError: (err) => options.onError?.(err) }),
     unmark: () => unmark.mutate({}, { onSuccess: refresh }),
   };
 }

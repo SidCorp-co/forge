@@ -131,7 +131,7 @@ describe("ModulePicker · the write", () => {
 describe("ModulePicker · states", () => {
   it("renders a skeleton while the taxonomy loads", () => {
     modulesQuery = { modules: [], data: undefined, isLoading: true, isError: false, error: null, refetch: vi.fn() };
-    const { container } = mount([]);
+    const { baseElement: container } = mount([]);
     expect(container.querySelectorAll(".skeleton").length).toBeGreaterThan(0);
   });
 

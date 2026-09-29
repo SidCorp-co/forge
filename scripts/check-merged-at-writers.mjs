@@ -23,7 +23,7 @@ function stripComments(text) {
 
 const lineOf = (text, index) => text.slice(0, index).split('\n').length;
 
-function faultsIn(rel, source) {
+export function faultsIn(rel, source) {
   const text = stripComments(source);
   const faults = [];
 
@@ -69,32 +69,36 @@ function walk(rel, acc) {
   return acc;
 }
 
-const mode = process.argv[2];
-if (mode !== '--all')
-  die('the only mode is --all — a staged subset reports clean on a tree that is not');
-if (!existsSync(join(ROOT, OWNER))) {
-  die(`${OWNER} is not there, so nothing owns these columns and this rule cannot be checked`);
+function main() {
+  const mode = process.argv[2];
+  if (mode !== '--all')
+    die('the only mode is --all — a staged subset reports clean on a tree that is not');
+  if (!existsSync(join(ROOT, OWNER))) {
+    die(`${OWNER} is not there, so nothing owns these columns and this rule cannot be checked`);
+  }
+
+  const files = ROOTS.reduce((acc, rel) => walk(rel, acc), []);
+  if (files.length === 0) die('no source files found under ' + ROOTS.join(', '));
+
+  const faults = files.flatMap((rel) => faultsIn(rel, readFileSync(join(ROOT, rel), 'utf8')));
+
+  if (faults.length > 0) {
+    console.error(
+      `check-merged-at-writers: ${faults.length} write(s) of issues.merged_at, ` +
+        `issues.merged_commit_sha or issues.merged_landing outside ${OWNER}:\n`,
+    );
+    for (const f of faults) console.error(`  ${f.rel}:${f.line} — ${f.how}`);
+    console.error(
+      `\n${OWNER} is the one writer, and the reason is ISS-1073: a merge and a stamp that are two\n` +
+        'operations are two records that can disagree, and a disagreement here dispatches an issue\n' +
+        'against code that is not there. Route the write through `recordIssueMerge`, which takes\n' +
+        'evidence of a merge (a commit and its time), a named landing outside git, or an assertion\n' +
+        '(none of them), and decides which supersedes the other.',
+    );
+    process.exit(1);
+  }
+
+  console.log(`merged-at-writers: ${files.length} file(s) scanned, one writer`);
 }
 
-const files = ROOTS.reduce((acc, rel) => walk(rel, acc), []);
-if (files.length === 0) die('no source files found under ' + ROOTS.join(', '));
-
-const faults = files.flatMap((rel) => faultsIn(rel, readFileSync(join(ROOT, rel), 'utf8')));
-
-if (faults.length > 0) {
-  console.error(
-    `check-merged-at-writers: ${faults.length} write(s) of issues.merged_at, ` +
-      `issues.merged_commit_sha or issues.merged_landing outside ${OWNER}:\n`,
-  );
-  for (const f of faults) console.error(`  ${f.rel}:${f.line} — ${f.how}`);
-  console.error(
-    `\n${OWNER} is the one writer, and the reason is ISS-1073: a merge and a stamp that are two\n` +
-      'operations are two records that can disagree, and a disagreement here dispatches an issue\n' +
-      'against code that is not there. Route the write through `recordIssueMerge`, which takes\n' +
-      'evidence of a merge (a commit and its time), a named landing outside git, or an assertion\n' +
-      '(none of them), and decides which supersedes the other.',
-  );
-  process.exit(1);
-}
-
-console.log(`merged-at-writers: ${files.length} file(s) scanned, one writer`);
+if (import.meta.url === `file://${process.argv[1]}`) main();

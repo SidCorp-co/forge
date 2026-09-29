@@ -119,6 +119,36 @@ export function landingMarkRefusal(args: {
   return null;
 }
 
+/** `target` names the branch a mark merged through, so only a shape that moves branches owes one. */
+export function markTargetRequired(shape: LandingShape): boolean {
+  return shape === 'git';
+}
+
+/** A landing the stamp did not record because a mark already stands, or `null` where it did.
+ *  The first stamp wins for the landing as for `merged_at`, so a correction is refused by name
+ *  rather than answered as a success that dropped it: docs/modules/issues/merge-mark.md. */
+export function standingMarkRefusal(args: {
+  sent: string | null;
+  wrote: boolean;
+  held: MergeMarkColumns;
+}): { code: 'MARK_ALREADY_STANDS'; detail: string; details: Record<string, unknown> } | null {
+  if (!args.sent || args.wrote) return null;
+  const heldLanding = args.held.mergedLanding ?? null;
+  if (heldLanding === args.sent) return null;
+  const heldKind = mergeMarkKindOf(args.held);
+  const stands = heldLanding
+    ? `this issue's mark already names ${heldLanding} as where the work landed`
+    : `this issue already carries a mark (${heldKind}) that names no landing`;
+  return {
+    code: 'MARK_ALREADY_STANDS',
+    detail:
+      `${stands}, and the first mark stands, so ${args.sent} was not recorded and nothing ` +
+      'changed. To change it, `unmark` (Unmark on the rail), then mark again with the landing ' +
+      'that is right.',
+    details: { heldLanding, heldKind, sentLanding: args.sent, route: ['unmark', 'mark_merged'] },
+  };
+}
+
 type ShapeExecutor = Pick<Db, 'select'>;
 
 /** The shape of the project an issue belongs to, read in one statement with the mark. */
