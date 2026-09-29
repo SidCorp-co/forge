@@ -63,9 +63,10 @@ Two branches deriving `+86400000` from one `main` land on the same `when`, and d
 lower one silently and for ever (ISS-807). As each member enters, its new journal entries keep their
 numbers only where the first clears the base, the combination so far and every open branch outside
 the window — `checkSet`'s `next` in `scripts/lib/migration-order.mjs`, the number
-`check-migration-order.mjs` prints as `Next free:`, read through the same `readOpenSet`. Otherwise
-they take consecutive numbers from it, their `.sql` and snapshot files are renamed, and every other
-file naming the old tag is rewritten; the ledger lists each renumbering and each rewritten file.
+`scripts/check-migration-order.mjs` prints as `Next free:`, read through the same `readOpenSet`.
+Otherwise they take consecutive numbers from it, their `.sql` and snapshot files are renamed, and
+every other file naming the old tag is rewritten; the ledger lists each renumbering and each
+rewritten file.
 
 `packages/core/drizzle/migrations/README.md` tells a developer to regenerate a snapshot on the
 merged tree rather than renumber by hand. The window renumbers by tool, and rebases a member's
