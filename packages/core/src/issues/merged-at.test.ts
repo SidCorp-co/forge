@@ -110,7 +110,10 @@ describe('refuseUnshippedClose — a close on a project whose work lands outside
   it('refuses a bare timestamp, naming data.landing as the route', async () => {
     const { executor } = buildMockExecutor(mark('website', { mergedAt: AT }));
     const refusal = await refuseUnshippedClose(executor, { issueId: 'iss-1', toStatus: 'closed' });
-    expect(refusal?.detail).toContain('a CLAIM Forge did not observe');
+    expect(refusal?.detail).toContain('names no landing');
+    expect(refusal?.detail).not.toMatch(
+      /merged pull request|merged_commit_sha|CLAIM Forge did not observe/,
+    );
     expect(refusal?.detail).toContain('`data.landing`');
     expect(refusal?.details).toEqual({
       requires: 'mergedLanding',

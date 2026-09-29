@@ -8,8 +8,8 @@
  * point of running them all is that none of them decides it a second time.
  *
  * The field this was measured on: a storefront project (kind `website`) whose checkout is a
- * control folder of one commit, where three issues were refused `CLOSE_REQUIRES_SHIPPED` and a
- * fourth closed against that one commit, which holds none of its work.
+ * control folder of one commit, where three issues were refused `CLOSE_REQUIRES_SHIPPED` because
+ * the only mark there was a git one.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -75,13 +75,18 @@ describe('a project whose work lands outside git (kind website)', () => {
     expect((await stored(id)).status).toBe('closed');
   });
 
-  it('refuses the close of a bare timestamp, naming data.landing — the ISS-49 shape', async () => {
+  it('refuses the close of a mark naming no landing, naming data.landing and never a commit', async () => {
     const w = await world('website');
     const id = await seedIssue(w, { mergedAt: true });
     const refusal = await refusalOf(() => close(w, id));
     expect(refusal.code).toBe('CLOSE_REQUIRES_SHIPPED');
     expect(refusal.message).toContain('`mark_merged` carrying `data.landing`');
     expect(refusal.message).toContain('`unmark` it first');
+    // Outside git the mark is short of a landing, never of a commit Forge did not watch land.
+    expect(refusal.message).toContain('names no landing');
+    expect(refusal.message).not.toMatch(
+      /merged pull request|merged_commit_sha|CLAIM Forge did not observe/,
+    );
     expect((await stored(id)).status).toBe('awaiting_release');
 
     // The remedy the refusal names, taken whole, is what closes it.

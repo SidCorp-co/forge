@@ -90,8 +90,11 @@ close will need one, without re-deriving the rule from `kind`.
 cannot route around, and `merged_at` is necessary on every shape. The per-shape sufficiency is not
 copied into plpgsql, because a second copy is a second decider.
 
-Rows closed before this rule on an `outside_git` project with a bare `merged_at` are not rewritten;
-they read `mergeMark: asserted`, which is how they are found.
+Rows closed before this rule on an `outside_git` project are not rewritten and are not false marks:
+on a project whose work never lands in git, no commit and no `merged_at` is its normal record, and
+the owner has ruled those rows correctly closed (ISS-1327). The rule governs the next close, not
+the ones already made. Outside git a mark is short of a *landing*, never of a commit, and every
+sentence the shortfall prints says so.
 
 ## Why the git shape accepts a claim
 

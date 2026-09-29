@@ -62,7 +62,7 @@ describe('a landing sent over a mark that stands is refused by name, never dropp
     expect(await snapshot(id)).toEqual(before);
   });
 
-  it('refuses a landing sent over a mark naming none — the ISS-49 shape — naming unmark first', async () => {
+  it('refuses a landing sent over a mark naming none, naming unmark first', async () => {
     const w = await world('website');
     const id = await seedIssue(w, { mergedAt: true });
     const before = await snapshot(id);

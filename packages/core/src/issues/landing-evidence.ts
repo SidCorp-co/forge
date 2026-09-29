@@ -67,7 +67,7 @@ export function landingRoute(shape: LandingShape, held: MergeMarkKind = 'unmarke
   }
   const clear =
     held === 'asserted'
-      ? 'This issue already carries a mark naming nothing, and the first stamp wins, so `unmark` ' +
+      ? 'This issue already carries a mark naming no landing, and the first stamp wins, so `unmark` ' +
         'it first (`forge_issues` `unmark`, or Unmark on the rail). '
       : '';
   return (
@@ -86,10 +86,12 @@ export function landingShortfall(row: MergeMarkColumns, shape: LandingShape): st
   const accepted = LANDINGS_ACCEPTED[shape];
   if (accepted.includes(kind)) return null;
   const wanted = accepted.map((k) => `\`${k}\``).join(' or ');
-  return (
-    `${describeMergeMark({ kind, commitSha: row.mergedCommitSha, landing: row.mergedLanding })}, ` +
-    `and a project whose work lands ${shape === 'git' ? 'in git' : 'outside git'} accepts ${wanted}`
-  );
+  // Outside git a mark lacks a landing, never a commit: no commit is that shape's normal record.
+  const held =
+    shape === 'outside_git' && kind === 'asserted'
+      ? "this issue's mark names no landing: `merged_landing` is empty"
+      : describeMergeMark({ kind, commitSha: row.mergedCommitSha, landing: row.mergedLanding });
+  return `${held}, and a project whose work lands ${shape === 'git' ? 'in git' : 'outside git'} accepts ${wanted}`;
 }
 
 /** The mark writer's refusal for this shape, or `null` where the mark may be written. */
