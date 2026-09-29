@@ -156,7 +156,8 @@ describe('findUnmetEntryCriteria', () => {
       declared: ['merged_mark'],
     });
     const detail = shortfall?.unmet.find((u) => u.key === 'merged_mark')?.detail ?? '';
-    expect(detail).toContain('a CLAIM Forge did not observe');
+    expect(detail).toContain('names no landing');
+    expect(detail).not.toMatch(/merged pull request|merged_commit_sha|CLAIM Forge did not observe/);
     expect(detail).toContain('lands outside git accepts `landed` or `observed`');
   });
 

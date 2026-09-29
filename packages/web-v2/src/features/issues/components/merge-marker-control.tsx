@@ -10,8 +10,12 @@
 import { useEffect, useState } from "react";
 import { Button, Field, Input, Textarea } from "@/design";
 import { SlideOver } from "@/design/patterns/slide-over";
+import { formatApiError } from "@/lib/api/error";
 import { useMergeMarker } from "../hooks";
 import type { LandingShape } from "../types";
+
+/** Core's cap on a landing (`MERGED_LANDING_MAX`). Said and enforced here, never silently cut. */
+const LANDING_MAX = 2000;
 
 const BLURB =
   "For work finished outside the pipeline. This is a claim that the code shipped, not a date " +
@@ -48,12 +52,14 @@ export function MergeMarkerControl({
   const [open, setOpen] = useState(false);
   const [target, setTarget] = useState(outsideGit ? "" : suggestedTarget);
   const [note, setNote] = useState("");
+  const [refusal, setRefusal] = useState<string | null>(null);
   const marker = useMergeMarker(issueId);
 
   useEffect(() => {
     if (open) {
       setTarget(outsideGit ? "" : suggestedTarget);
       setNote("");
+      setRefusal(null);
     }
   }, [open, suggestedTarget, outsideGit]);
 
@@ -71,6 +77,7 @@ export function MergeMarkerControl({
   }
 
   const trimmedTarget = target.trim();
+  const overLimit = outsideGit && trimmedTarget.length > LANDING_MAX;
 
   return (
     <>
@@ -81,7 +88,15 @@ export function MergeMarkerControl({
         <SlideOver open onClose={() => setOpen(false)} title="Mark this work merged" width={480}>
           <div className="flex h-full flex-col gap-4">
             <p className="fg-body-sm text-muted">{outsideGit ? LANDING_BLURB : BLURB}</p>
-            <Field label="Where it landed" required>
+            <Field
+              label="Where it landed"
+              required
+              error={
+                overLimit
+                  ? `At most ${LANDING_MAX} characters — this is ${trimmedTarget.length}. Nothing was cut; shorten it to send it.`
+                  : undefined
+              }
+            >
               <Input
                 value={target}
                 placeholder={
@@ -89,8 +104,10 @@ export function MergeMarkerControl({
                     ? "e.g. https://shop.example.com/products/linen-tee, or the CMS entry it is"
                     : "e.g. ISS-791, or the branch or PR it merged through"
                 }
-                maxLength={outsideGit ? 2000 : 200}
-                onChange={(e) => setTarget(e.target.value)}
+                onChange={(e) => {
+                  setTarget(e.target.value);
+                  setRefusal(null);
+                }}
               />
             </Field>
             <Field label="Note">
@@ -101,6 +118,15 @@ export function MergeMarkerControl({
                 onChange={(e) => setNote(e.target.value)}
               />
             </Field>
+            {refusal && (
+              <p
+                role="alert"
+                className="fg-body-sm rounded-md border border-line bg-surface-subtle px-3 py-2"
+                style={{ color: "var(--red-600)" }}
+              >
+                {refusal}
+              </p>
+            )}
             <div className="mt-auto flex items-center justify-end gap-2.5 pt-2">
               <Button
                 type="button"
@@ -114,16 +140,18 @@ export function MergeMarkerControl({
                 type="button"
                 variant="primary"
                 loading={marker.isPending}
-                disabled={trimmedTarget.length === 0}
+                disabled={trimmedTarget.length === 0 || overLimit}
                 onClick={() => {
-                  marker.mark({
-                    // The landing IS where it landed; the audit label is then the issue's own key.
-                    ...(outsideGit
-                      ? { target: suggestedTarget, landing: trimmedTarget }
-                      : { target: trimmedTarget }),
-                    ...(note.trim() ? { note: note.trim() } : {}),
-                  });
-                  setOpen(false);
+                  setRefusal(null);
+                  marker.mark(
+                    {
+                      // A project that moves no branch names no target: the landing is where it landed.
+                      ...(outsideGit ? { landing: trimmedTarget } : { target: trimmedTarget }),
+                      ...(note.trim() ? { note: note.trim() } : {}),
+                    },
+                    // Closed on success only: a refused mark keeps what was typed, and says why.
+                    { onSuccess: () => setOpen(false), onError: (err) => setRefusal(formatApiError(err)) },
+                  );
                 }}
               >
                 Mark merged

@@ -7,6 +7,7 @@
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "@/lib/api/client";
 import { MergeMarkerControl } from "./merge-marker-control";
 
 expect.extend(matchers);
@@ -33,7 +34,7 @@ describe("MergeMarkerControl", () => {
     expect(buttons).toHaveLength(2);
     fireEvent.click(buttons[1] as HTMLElement);
 
-    expect(mark).toHaveBeenCalledWith({ target: "ISS-791" });
+    expect(mark).toHaveBeenCalledWith({ target: "ISS-791" }, expect.anything());
     expect(unmark).not.toHaveBeenCalled();
   });
 
@@ -46,7 +47,7 @@ describe("MergeMarkerControl", () => {
     const buttons = screen.getAllByRole("button", { name: "Mark merged" });
     fireEvent.click(buttons[buttons.length - 1] as HTMLElement);
 
-    expect(mark).toHaveBeenCalledWith({ target: "feature/by-hand" });
+    expect(mark).toHaveBeenCalledWith({ target: "feature/by-hand" }, expect.anything());
   });
 
   it("offers the retraction once a claim exists, and never the claim", () => {
@@ -83,16 +84,61 @@ describe("MergeMarkerControl on a project whose work lands outside git (ISS-1327
     expect(screen.getByPlaceholderText(/https:\/\/shop\.example\.com/)).toHaveValue("");
   });
 
-  it("sends the answer as the landing, with the issue key as the audit label", () => {
+  it("sends the answer as the landing, and no branch target", () => {
     open();
     fireEvent.change(screen.getByPlaceholderText(/https:\/\/shop\.example\.com/), {
       target: { value: "  https://mowmentbrand.com/products/linen-tee  " },
     });
     submit();
-    expect(mark).toHaveBeenCalledWith({
-      target: "ISS-38",
-      landing: "https://mowmentbrand.com/products/linen-tee",
+    expect(mark).toHaveBeenCalledWith(
+      { landing: "https://mowmentbrand.com/products/linen-tee" },
+      expect.anything(),
+    );
+  });
+
+  it("closes the form once the mark is answered", () => {
+    mark.mockImplementation((_body, options) => options?.onSuccess?.());
+    open();
+    fireEvent.change(screen.getByPlaceholderText(/https:\/\/shop\.example\.com/), {
+      target: { value: "https://mowmentbrand.com/products/linen-tee" },
     });
+    submit();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("keeps a refused mark's form open, with what was typed and the refusal in it", () => {
+    const typed = "https://mowmentbrand.com/products/linen-tee";
+    mark.mockImplementation((_body, options) =>
+      options?.onError?.(
+        new ApiError(422, "core sentence", "MARK_ALREADY_STANDS", {
+          heldLanding: "https://mowmentbrand.com/prodcts/linen-tee",
+        }),
+      ),
+    );
+    open();
+    fireEvent.change(screen.getByPlaceholderText(/https:\/\/shop\.example\.com/), {
+      target: { value: typed },
+    });
+    submit();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/https:\/\/shop\.example\.com/)).toHaveValue(typed);
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("https://mowmentbrand.com/prodcts/linen-tee");
+    expect(alert).toHaveTextContent("press Unmark");
+  });
+
+  it("keeps a landing past 2000 characters whole, says the limit, and will not send it", () => {
+    open();
+    const long = `https://shop.example.com/${"x".repeat(2000)}`;
+    fireEvent.change(screen.getByPlaceholderText(/https:\/\/shop\.example\.com/), {
+      target: { value: long },
+    });
+    expect(screen.getByPlaceholderText(/https:\/\/shop\.example\.com/)).toHaveValue(long);
+    expect(screen.getByRole("alert")).toHaveTextContent("At most 2000 characters");
+    const buttons = screen.getAllByRole("button", { name: "Mark merged" });
+    expect(buttons[buttons.length - 1]).toBeDisabled();
+    submit();
+    expect(mark).not.toHaveBeenCalled();
   });
 
   it("will not send a mark that names no landing", () => {
@@ -111,6 +157,28 @@ describe("MergeMarkerControl on a project that lands in git keeps its form", () 
     expect(screen.getByPlaceholderText(/branch or PR/)).toHaveValue("ISS-791");
     const buttons = screen.getAllByRole("button", { name: "Mark merged" });
     fireEvent.click(buttons[buttons.length - 1] as HTMLElement);
-    expect(mark).toHaveBeenCalledWith({ target: "ISS-791" });
+    expect(mark).toHaveBeenCalledWith({ target: "ISS-791" }, expect.anything());
+  });
+
+  it("explains the claim in the words it always had, never the landing's", () => {
+    render(
+      <MergeMarkerControl issueId="i1" mergedAt={null} suggestedTarget="ISS-791" landingShape="git" />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Mark merged" }));
+    expect(screen.getByText(/This is a claim that the code shipped, not a date field/)).toBeInTheDocument();
+    expect(screen.queryByText(/lands outside git/)).toBeNull();
+  });
+
+  it("takes a target past 200 characters whole, as it did before", () => {
+    render(
+      <MergeMarkerControl issueId="i1" mergedAt={null} suggestedTarget="ISS-791" landingShape="git" />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Mark merged" }));
+    const long = `feature/${"y".repeat(240)}`;
+    fireEvent.change(screen.getByPlaceholderText(/branch or PR/), { target: { value: long } });
+    expect(screen.getByPlaceholderText(/branch or PR/)).toHaveValue(long);
+    const buttons = screen.getAllByRole("button", { name: "Mark merged" });
+    fireEvent.click(buttons[buttons.length - 1] as HTMLElement);
+    expect(mark).toHaveBeenCalledWith({ target: long }, expect.anything());
   });
 });

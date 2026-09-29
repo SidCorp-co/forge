@@ -54,8 +54,10 @@ export function forgeIssuesDescription(refClause: string): string {
     '(CLOSE_REQUIRES_SHIPPED), and work that turned out not to be work leaves by dropped. On a ' +
     'project whose work lands outside git (kind website) the close also needs the mark to name ' +
     'where it landed, and a bare merged_at is refused the same way.\n' +
-    'MERGE MARK. mark_merged (data.issueId, data.target, optional data.commit / data.landing / ' +
-    'data.mergedAt ISO / data.note) stamps merged_at. data.landing is the live URL, CMS entry or ' +
+    'MERGE MARK. mark_merged (data.issueId, data.target - required except on a website project - ' +
+    'optional data.commit / data.landing / data.mergedAt ISO / data.note) stamps merged_at. The ' +
+    'first mark stands: a landing sent over a standing mark is refused MARK_ALREADY_STANDS naming ' +
+    'what stands, and unmark then mark is the correction. data.landing is the live URL, CMS entry or ' +
     'storefront resource the work now is, required on a website project unless Forge observed a ' +
     'merged pull request (LANDING_REQUIRED) and refused on any other (LANDING_NOT_THIS_SHAPE); ' +
     'it is stored in merged_landing and the mark reads landed. It writes merged_commit_sha ONLY where Forge already ' +
