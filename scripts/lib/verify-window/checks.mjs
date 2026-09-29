@@ -11,6 +11,19 @@ function listOf(text) {
   }
 }
 
+const isRecord = (v) => typeof v === 'object' && v !== null && !Array.isArray(v);
+
+/** Why a saved checks document is not `{ "<sha>": { "<check>": "<conclusion>" } }`, or `null`. */
+function shapeOfSaved(saved) {
+  if (!isRecord(saved)) return 'is not an object of commits';
+  for (const [sha, checks] of Object.entries(saved)) {
+    if (!isRecord(checks) || Object.values(checks).some((c) => typeof c !== 'string')) {
+      return `holds ${sha} as something other than an object of check conclusions`;
+    }
+  }
+  return null;
+}
+
 /**
  * The state one required check reported at one commit. From GitHub through `gh api`, or — for a
  * window run where the remote is not GitHub, or replayed later — from a file saved from it, shaped
@@ -28,7 +41,9 @@ export function checkReader({
     } catch (err) {
       return () => ({ refusal: `the checks file ${file} is not readable JSON: ${err.message}` });
     }
-    return (sha, name) => ({ state: saved?.[sha]?.[name] ?? 'absent' });
+    const bad = shapeOfSaved(saved);
+    if (bad) return () => ({ refusal: `the checks file ${file} ${bad}` });
+    return (sha, name) => ({ state: saved[sha]?.[name] ?? 'absent' });
   }
   return (sha, name) => {
     const path = `repos/${repoSlug}/commits/${sha}/check-runs?check_name=${encodeURIComponent(name)}`;

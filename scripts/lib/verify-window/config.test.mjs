@@ -35,6 +35,15 @@ describe('parseConfig', () => {
     );
   });
 
+  it.each([
+    [{ union: {} }, '`union` must be a list of entries'],
+    [{ ineligible: { paths: {} } }, '`ineligible.paths` must be a list of entries'],
+    [{ ineligible: { lines: 'x' } }, '`ineligible.lines` must be a list of entries'],
+    [{ ineligible: [] }, '`ineligible` must be an object of `paths`, `lines` and `linesIn`'],
+  ])('refuses %j by name rather than throwing', (patch, why) => {
+    expect(parseConfig(JSON.stringify({ ...good, ...patch }), 'x').refusal).toBe(`x: ${why}`);
+  });
+
   it('refuses a pattern that does not compile', () => {
     const bad = {
       ...good,

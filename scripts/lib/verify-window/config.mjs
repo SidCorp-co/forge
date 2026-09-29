@@ -55,10 +55,21 @@ export function parseConfig(text, where) {
   if (typeof check !== 'string' || check === '') {
     return refuse(where, '`check` must name the one required check a member is green on');
   }
+  const ineligible = raw.ineligible ?? {};
+  if (typeof ineligible !== 'object' || Array.isArray(ineligible)) {
+    return refuse(where, '`ineligible` must be an object of `paths`, `lines` and `linesIn`');
+  }
   const union = raw.union ?? [];
-  const paths = raw.ineligible?.paths ?? [];
-  const lines = raw.ineligible?.lines ?? [];
-  const linesIn = raw.ineligible?.linesIn ?? ['**'];
+  const paths = ineligible.paths ?? [];
+  const lines = ineligible.lines ?? [];
+  for (const [key, value] of [
+    ['union', union],
+    ['ineligible.paths', paths],
+    ['ineligible.lines', lines],
+  ]) {
+    if (!Array.isArray(value)) return refuse(where, `\`${key}\` must be a list of entries`);
+  }
+  const linesIn = ineligible.linesIn ?? ['**'];
   if (!Array.isArray(linesIn) || linesIn.some((g) => typeof g !== 'string')) {
     return refuse(
       where,

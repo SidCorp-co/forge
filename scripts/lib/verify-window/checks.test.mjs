@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { checkReader } from './checks.mjs';
 
@@ -39,5 +42,34 @@ describe('checkReader over gh api', () => {
     expect(read('', 1).refusal).toMatch(
       /did not answer \(no route\), so ci-passed at a+ is unknown$/,
     );
+  });
+});
+
+describe('checkReader over a saved checks file', () => {
+  const fromFile = (doc) => {
+    const dir = mkdtempSync(join(tmpdir(), 'checks-'));
+    const file = join(dir, 'checks.json');
+    writeFileSync(file, typeof doc === 'string' ? doc : JSON.stringify(doc));
+    const got = checkReader({ file })(SHA, 'ci-passed');
+    rmSync(dir, { recursive: true, force: true });
+    return { file, got };
+  };
+
+  it('reads a recorded conclusion, and a check it does not record as absent', () => {
+    expect(fromFile({ [SHA]: { 'ci-passed': 'success' } }).got).toEqual({ state: 'success' });
+    expect(fromFile({ [SHA]: { other: 'success' } }).got).toEqual({ state: 'absent' });
+  });
+
+  it('refuses a document of the wrong shape rather than reading it as absent', () => {
+    const odd = `holds ${SHA} as something other than an object of check conclusions`;
+    for (const [doc, why] of [
+      [[], 'is not an object of commits'],
+      [null, 'is not an object of commits'],
+      [{ [SHA]: 'success' }, odd],
+      [{ [SHA]: { 'ci-passed': true } }, odd],
+    ]) {
+      const { file, got } = fromFile(doc);
+      expect(got.refusal).toBe(`the checks file ${file} ${why}`);
+    }
   });
 });
