@@ -177,12 +177,7 @@ export function recordRefusal(err: unknown): HTTPException {
   const declined = declarationRefusal(err);
   if (declined) return declined;
 
-  if (err instanceof NoReleaseGateError) {
-    return conflict(
-      'NO_RELEASE_GATE',
-      'This project has no release gate configured, so there is no release to record — an agent `closed` here is already `closed`',
-    );
-  }
+  if (err instanceof NoReleaseGateError) return releaseBlockerHttp(err, 'NO_RELEASE_GATE');
   if (err instanceof ReleaseProbesUnreadableError) return unreadableProbes(err);
   if (err instanceof ReleaseNotVerifiedError) {
     return new HTTPException(409, {

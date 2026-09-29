@@ -103,7 +103,7 @@ export function alsoBlocking(err: unknown, thrown: ReleaseBlockerCode): ReleaseB
 
 const REMEDY: Record<ReleaseBlockerCode, string> = {
   NO_RELEASE_GATE:
-    'This project has no release gate configured, so there is no release to start — an agent `closed` here is already `closed`. Declare a release chain, or leave it empty.',
+    'This project has no release step, so Forge has no release to start or record: here, closing an issue is what ships it. Close these issues to ship them. To release through Forge instead, declare a release chain under Settings → Repository and give it a live deploy binding under Settings → Integrations.',
   RELEASE_TARGET_UNDECLARED:
     'This project declares a release chain and has no active deploy binding carrying the `live` stage, so there is nowhere for a release to land. Add one on the integrations screen, or declare an empty release chain.',
   CLAIM_CONFLICT:
