@@ -136,6 +136,7 @@ beforeAll(() => {
     'prepare.mjs': [
       "import { existsSync, writeFileSync } from 'node:fs';",
       "if (existsSync('.unpreparable')) process.exit(3);",
+      "if (process.env.VW_PREPARE_DIRTIES) writeFileSync('src/shared.txt', 'dirtied by prepare\\n');",
       "writeFileSync('.prepared', 'yes');",
       '',
     ].join('\n'),
@@ -1280,6 +1281,21 @@ describe('validate', () => {
     expect(r.status, r.stderr).toBe(0);
     const [pass] = JSON.parse(readFileSync(w.ledger, 'utf8')).passes;
     expect(readFileSync(pass.log, 'utf8')).toContain('gate-check: 0 red against main');
+  });
+
+  it('refuses a replay whose tree a prepare step changed, and attributes nothing', () => {
+    const c = clone('attribute-prepare-dirties');
+    const w = windowFiles('w-prep-dirty', [['ISS-4', 'ISS-4-after', heads.m4]], green(heads.m4));
+    const flags = ['--window', w.manifest, '--checks', w.checksFile, '--tree', w.tree];
+    expect(run(c, 'assemble', ...flags).status).toBe(0);
+    const r = spawnSync('node', [CLI, 'attribute', ...flags, '--unit', 'true'], {
+      cwd: c,
+      encoding: 'utf8',
+      env: { ...SEALED_ENV, VW_PREPARE_DIRTIES: '1' },
+    });
+    expect(r.status).toBe(2);
+    expect(r.stderr).toMatch(/-replay-base holds changes the base does not after preparing/);
+    expect(JSON.parse(readFileSync(w.ledger, 'utf8')).attributions ?? []).toEqual([]);
   });
 
   it('refuses to validate when a prepare step fails, and runs no gate', () => {

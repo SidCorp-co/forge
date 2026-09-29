@@ -45,18 +45,18 @@ export function prepareTree({ tree, prepare, base }) {
 }
 
 /** Why `tree` is not exactly `head` — HEAD elsewhere, or a change or untracked file — or `null`. */
-export function treeDrift(tree, head, when) {
+export function treeDrift(tree, head, when, what = 'the chain head') {
   const git = (args) => spawnSync('git', args, { cwd: tree, encoding: 'utf8' });
   const at = git(['rev-parse', 'HEAD']);
   if (at.status !== 0) return `${tree} is not a git worktree ${when}`;
   if (at.stdout.trim() !== head) {
-    return `${tree} is at ${at.stdout.trim()}, not the chain head ${head}, ${when}`;
+    return `${tree} is at ${at.stdout.trim()}, not ${what} ${head}, ${when}`;
   }
   const dirty = git(['status', '--porcelain', '--untracked-files=normal']);
   if (dirty.status !== 0) return `git status did not answer in ${tree} ${when}`;
   const lines = dirty.stdout.split('\n').filter(Boolean);
   if (lines.length > 0) {
-    return `${tree} holds changes the chain head does not ${when} (${lines.slice(0, 3).join('; ')})`;
+    return `${tree} holds changes ${what} does not ${when} (${lines.slice(0, 3).join('; ')})`;
   }
   return null;
 }

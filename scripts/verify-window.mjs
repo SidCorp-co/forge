@@ -242,19 +242,20 @@ if (verb === 'attribute') {
       if (drift) die(`${drift}, ${unattributed}`);
     };
     clean('before replaying');
-    const ready = (tree) => {
+    const ready = (tree, head, what) => {
       const r = prepareTree({
         tree,
         prepare: declared.config.gate.prepare,
         base: ledger.base.branch,
       });
-      if (!r.refusal) return;
+      const why = r.refusal ?? treeDrift(tree, head, 'after preparing', what);
+      if (!why) return;
       if (tree !== ledger.chain.tree) removeTree(tree);
-      die(`${r.refusal}, ${unattributed}`);
+      die(`${why}, ${unattributed}`);
     };
     const baseTree = `${treeDir}-replay-base`;
     gitIn(repoDir).must(['worktree', 'add', '-q', '--detach', baseTree, ledger.base.sha]);
-    ready(baseTree);
+    ready(baseTree, ledger.base.sha, 'the base');
     const base = replay(values.unit, baseTree, repeat, env);
     removeTree(baseTree);
     const members = landed.map((m) => {
@@ -264,10 +265,11 @@ if (verb === 'attribute') {
         members: [{ issue: m.issue, branch: m.branch, head: m.head, arrivedAt: m.arrivedAt }],
         isolated: [],
       };
-      const rebuilt = build(alone, one, {
+      const aloneLedger = build(alone, one, {
         base: ledger.base.sha,
         branches: ledger.members.map((x) => x.branch),
-      }).members[0];
+      });
+      const rebuilt = aloneLedger.members[0];
       if (!rebuilt.landing) {
         removeTree(alone);
         return {
@@ -276,13 +278,12 @@ if (verb === 'attribute') {
           unbuilt: rebuilt.isolated?.because ?? 'not rebuilt',
         };
       }
-      ready(alone);
+      ready(alone, aloneLedger.chain.head, `${m.issue} alone`);
       const r = replay(values.unit, alone, repeat, env);
       removeTree(alone);
       return { issue: m.issue, ...r };
     });
-    ready(ledger.chain.tree);
-    clean('after preparing');
+    ready(ledger.chain.tree, ledger.chain.head, 'the chain head');
     const window = replay(values.unit, ledger.chain.tree, repeat, env);
     found.push({
       subject: values.unit,
