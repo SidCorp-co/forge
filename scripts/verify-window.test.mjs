@@ -761,7 +761,9 @@ describe('a journal that is not one', () => {
     );
     git(seed, 'push', '-q', 'origin', '--delete', 'open-broken');
     expect(r.status).toBe(2);
-    expect(r.stderr).toContain(`origin/open-broken:${JOURNAL} is not readable JSON (`);
+    expect(r.stderr).toContain(
+      `the journal at origin/open-broken:${JOURNAL} is not readable JSON: `,
+    );
     expect(r.stderr).toContain(
       'so the open set is unknown and no migration number can be allocated',
     );
@@ -792,9 +794,52 @@ describe('a journal that is not one', () => {
     expect(r.status, r.stderr).toBe(1);
     const ledger = JSON.parse(readFileSync(w.ledger, 'utf8'));
     expect(ledger.members[0].isolated.because).toBe(
-      `ISS-21's migrations cannot be entered: ${bad}:${JOURNAL} carries no \`entries\` array`,
+      `ISS-21's migrations cannot be entered: the journal at ${bad}:${JOURNAL} carries no \`entries\` array`,
     );
     expect(ledger.members[1].landing).toMatch(/^[0-9a-f]{40}$/);
+  });
+
+  it('isolates a member whose journal holds a malformed entry, or whose snapshot is not JSON', () => {
+    const nullEntry = branch('ISS-22-null', {
+      [JOURNAL]: { version: '7', entries: [entry(1, W, '0001_init'), null] },
+    });
+    const badSnap = branch('ISS-23-snap', {
+      [JOURNAL]: journal(entry(1, W, '0001_init'), entry(2, W + DAY, '0002_snap')),
+      [`${DIR}/0002_snap.sql`]: '-- 0002_snap\n',
+      [`${DIR}/meta/0002_snapshot.json`]: '{ not json',
+    });
+    const c = clone('malformed-member');
+    const w = windowFiles(
+      'w-malformed',
+      [
+        ['ISS-22', 'ISS-22-null', nullEntry],
+        ['ISS-23', 'ISS-23-snap', badSnap],
+        ['ISS-4', 'ISS-4-after', heads.m4],
+      ],
+      green(nullEntry, badSnap, heads.m4),
+    );
+    const r = run(
+      c,
+      'assemble',
+      '--window',
+      w.manifest,
+      '--checks',
+      w.checksFile,
+      '--tree',
+      w.tree,
+    );
+    git(seed, 'push', '-q', 'origin', '--delete', 'ISS-22-null', 'ISS-23-snap');
+    expect(r.status, r.stderr).toBe(1);
+    const [a, b, d] = JSON.parse(readFileSync(w.ledger, 'utf8')).members;
+    expect(a.isolated.because).toBe(
+      `ISS-22's migrations cannot be entered: the journal at ${nullEntry}:${JOURNAL} holds an entry without idx, when and tag: null`,
+    );
+    expect(b.isolated.because).toMatch(
+      new RegExp(
+        `^ISS-23's migrations cannot be entered: the snapshot at ${badSnap}:${DIR}/meta/0002_snapshot\\.json is not readable JSON: `,
+      ),
+    );
+    expect(d.landing).toMatch(/^[0-9a-f]{40}$/);
   });
 });
 

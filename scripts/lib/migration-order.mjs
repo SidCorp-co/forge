@@ -13,6 +13,30 @@ export function floorOf(entries) {
   return entries.reduce((max, e) => (e.when > max ? e.when : max), Number.NEGATIVE_INFINITY);
 }
 
+/**
+ * A drizzle journal read from `text`: `{ doc }`, or `{ problem }` naming `where` and what is wrong.
+ * The one reading of the journal's shape, for the checker and the verify window alike.
+ */
+export function readJournal(text, where) {
+  let doc;
+  try {
+    doc = JSON.parse(text);
+  } catch (err) {
+    return { problem: `the journal at ${where} is not readable JSON: ${err.message}` };
+  }
+  if (!Array.isArray(doc?.entries)) {
+    return { problem: `the journal at ${where} carries no \`entries\` array` };
+  }
+  for (const e of doc.entries) {
+    if (typeof e?.idx !== 'number' || typeof e?.when !== 'number' || typeof e?.tag !== 'string') {
+      return {
+        problem: `the journal at ${where} holds an entry without idx, when and tag: ${JSON.stringify(e)}`,
+      };
+    }
+  }
+  return { doc };
+}
+
 /** The entries of `branch` that the base branch does not already carry, in index order. */
 export function newEntries(branch, base) {
   const landed = new Set(base.map((e) => e.tag));

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkSet, floorOf, newEntries } from './migration-order.mjs';
+import { checkSet, floorOf, newEntries, readJournal } from './migration-order.mjs';
 
 const DAY = 86_400_000;
 
@@ -242,5 +242,21 @@ describe('the interleave refusal names the entries, not only the ranges', () => 
     expect(said(result)).toContain('0289_a');
     expect(said(result)).toContain('0291_a');
     expect(said(result)).toContain('0290_b');
+  });
+});
+
+describe('readJournal', () => {
+  it('reads a journal whose every entry carries idx, when and tag', () => {
+    const doc = { version: '7', entries: [at(1, DAY)] };
+    expect(readJournal(JSON.stringify(doc), 'x')).toEqual({ doc });
+  });
+
+  it.each([
+    ['{ not', /^the journal at x is not readable JSON: /],
+    ['{}', /^the journal at x carries no `entries` array$/],
+    ['{"entries":[null]}', /^the journal at x holds an entry without idx, when and tag: null$/],
+    ['{"entries":[{"idx":1,"tag":"a"}]}', /holds an entry without idx, when and tag: \{"idx":1/],
+  ])('names what is wrong with %s', (text, why) => {
+    expect(readJournal(text, 'x').problem).toMatch(why);
   });
 });

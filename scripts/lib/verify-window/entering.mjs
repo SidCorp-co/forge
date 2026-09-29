@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { newEntries } from '../migration-order.mjs';
+import { newEntries, readJournal } from '../migration-order.mjs';
 import { showAt } from './git.mjs';
 import { allocate, rebaseSnapshot, snapshotFile } from './migrations.mjs';
 import { unionInsertions } from './union.mjs';
@@ -11,19 +11,30 @@ import { unionInsertions } from './union.mjs';
  * paths. Runs inside an uncommitted `git merge --no-commit`; `assemble.mjs` owns the merge itself.
  */
 
-/** The journal at `rev`, `null` where it has none; throws naming it where it is not a journal. */
+/** A journal or snapshot that is not one; the only error a caller here turns into a refusal. */
+export class Unreadable extends Error {}
+
+/** The journal at `rev`, `null` where it has none; throws `Unreadable` where it is not a journal. */
 function journalOf(t, rev, dir) {
-  const where = `${rev}:${dir}/meta/_journal.json`;
   const text = showAt(t, rev, `${dir}/meta/_journal.json`);
   if (text === null) return null;
-  let doc;
+  const read = readJournal(text, `${rev}:${dir}/meta/_journal.json`);
+  if (read.problem) throw new Unreadable(read.problem);
+  return read.doc;
+}
+
+/** A snapshot parsed from `text`, or `Unreadable` naming `where`. */
+function snapshotOf(text, where) {
+  let snap;
   try {
-    doc = JSON.parse(text);
+    snap = JSON.parse(text);
   } catch (err) {
-    throw new Error(`${where} is not readable JSON (${err.message})`);
+    throw new Unreadable(`the snapshot at ${where} is not readable JSON: ${err.message}`);
   }
-  if (!Array.isArray(doc?.entries)) throw new Error(`${where} carries no \`entries\` array`);
-  return doc;
+  if (typeof snap?.id !== 'string' || typeof snap?.prevId !== 'string') {
+    throw new Unreadable(`the snapshot at ${where} carries no string \`id\` and \`prevId\``);
+  }
+  return snap;
 }
 
 /** Put `path` back to what HEAD holds, or take it out of the index and the tree where HEAD has none. */
@@ -48,7 +59,7 @@ function snapshotById(t, rev, dir, id) {
     ?.split('\n')
     .find(Boolean)
     ?.slice(rev.length + 1);
-  return path ? JSON.parse(showAt(t, rev, path)) : null;
+  return path ? snapshotOf(showAt(t, rev, path), `${rev}:${path}`) : null;
 }
 
 function headSnapshot(t, dir) {
@@ -57,7 +68,7 @@ function headSnapshot(t, dir) {
     .filter((n) => /\/\d+_snapshot\.json$/.test(n))
     .sort((a, b) => Number(a.match(/(\d+)_snapshot/)[1]) - Number(b.match(/(\d+)_snapshot/)[1]));
   const last = names.at(-1);
-  return last ? JSON.parse(showAt(t, 'HEAD', last)) : null;
+  return last ? snapshotOf(showAt(t, 'HEAD', last), `HEAD:${last}`) : null;
 }
 
 /**
@@ -84,18 +95,20 @@ function editedEntries(member, combined, before, theirs) {
  * Re-derive `member`'s migrations against HEAD and stage the result.
  * @returns {{ moves: object[], rewrites: string[] } | { refusal: string }}
  */
-export function enterMigrations({ t, dir, member, open }) {
-  let combined;
-  let theirs;
-  let before;
+export function enterMigrations(input) {
   try {
-    combined = journalOf(t, 'HEAD', dir);
-    theirs = journalOf(t, member.head, dir);
-    const fork = t.run(['merge-base', 'HEAD', member.head])?.trim();
-    before = fork ? journalOf(t, fork, dir) : null;
+    return rederive(input);
   } catch (err) {
-    return { refusal: `${member.issue}'s migrations cannot be entered: ${err.message}` };
+    if (!(err instanceof Unreadable)) throw err;
+    return { refusal: `${input.member.issue}'s migrations cannot be entered: ${err.message}` };
   }
+}
+
+function rederive({ t, dir, member, open }) {
+  const combined = journalOf(t, 'HEAD', dir);
+  const theirs = journalOf(t, member.head, dir);
+  const fork = t.run(['merge-base', 'HEAD', member.head])?.trim();
+  const before = fork ? journalOf(t, fork, dir) : null;
   if (!combined || !theirs) return { moves: [], rewrites: [] };
   const edited = editedEntries(member, combined, before, theirs);
   if (edited) return { refusal: edited };
@@ -121,7 +134,7 @@ export function enterMigrations({ t, dir, member, open }) {
   let previous = null;
   const snaps = [];
   for (const s of sources.filter((x) => x.snap !== null)) {
-    const snap = JSON.parse(s.snap);
+    const snap = snapshotOf(s.snap, `${member.head}:${snapshotFile(dir, s.move.from.idx)}`);
     const oldParent = previous ?? snapshotById(t, member.head, dir, snap.prevId);
     if (!oldParent) {
       return {

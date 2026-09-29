@@ -1,8 +1,8 @@
 import { existsSync } from 'node:fs';
-import { readOpenSet } from '../migration-order.mjs';
+import { readJournal, readOpenSet } from '../migration-order.mjs';
 import { admitMembers } from './admit.mjs';
 import { CONFIG_PATH, parseConfig } from './config.mjs';
-import { enterMigrations, resolveUnions } from './entering.mjs';
+import { enterMigrations, resolveUnions, Unreadable } from './entering.mjs';
 import { gitIn, showAt } from './git.mjs';
 import { windowBranch } from './land.mjs';
 
@@ -13,16 +13,11 @@ import { windowBranch } from './land.mjs';
  * that same chain merged through one pull request (`land.mjs`).
  */
 
-/** A journal's entries; throws naming `where` when the text is not a journal. */
+/** A journal's entries; throws `Unreadable` naming `where` when the text is not a journal. */
 function entriesOf(text, where) {
-  let doc;
-  try {
-    doc = JSON.parse(text);
-  } catch (err) {
-    throw new Error(`${where} is not readable JSON (${err.message})`);
-  }
-  if (!Array.isArray(doc?.entries)) throw new Error(`${where} carries no \`entries\` array`);
-  return doc.entries;
+  const read = readJournal(text, where);
+  if (read.problem) throw new Unreadable(read.problem);
+  return read.doc.entries;
 }
 
 /** The earlier landed members whose own landing commit changed `path`, latest last. */
@@ -157,6 +152,7 @@ export function prepareWindow({ repoDir, manifest, replay }) {
       },
     });
   } catch (err) {
+    if (!(err instanceof Unreadable)) throw err;
     return {
       refusal: `${err.message}, so the open set is unknown and no migration number can be allocated`,
     };

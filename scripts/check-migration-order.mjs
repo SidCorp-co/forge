@@ -11,7 +11,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { baseRef as resolveBase } from './lib/base-branch.mjs';
-import { checkSet, floorOf, newEntries, readOpenSet } from './lib/migration-order.mjs';
+import { checkSet, floorOf, newEntries, readJournal, readOpenSet } from './lib/migration-order.mjs';
 
 const JOURNAL = 'packages/core/drizzle/migrations/meta/_journal.json';
 const LABEL = 'migration-order';
@@ -31,19 +31,9 @@ function git(args, cwd) {
 }
 
 function entriesOf(text, where) {
-  let parsed;
-  try {
-    parsed = JSON.parse(text);
-  } catch (err) {
-    die(`the journal at ${where} is not readable JSON: ${err.message}`);
-  }
-  if (!Array.isArray(parsed?.entries)) die(`the journal at ${where} carries no \`entries\` array`);
-  for (const e of parsed.entries) {
-    if (typeof e?.idx !== 'number' || typeof e?.when !== 'number' || typeof e?.tag !== 'string') {
-      die(`the journal at ${where} holds an entry without idx, when and tag: ${JSON.stringify(e)}`);
-    }
-  }
-  return parsed.entries;
+  const read = readJournal(text, where);
+  if (read.problem) die(read.problem);
+  return read.doc.entries;
 }
 
 const root = git(['rev-parse', '--show-toplevel'], process.cwd());
