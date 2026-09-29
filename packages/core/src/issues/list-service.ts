@@ -45,6 +45,7 @@ export type IssueListRow = {
   mergedAt: Date | null;
   /** ISS-1126 — carried so the browse row can say whether the mark was observed or asserted. */
   mergedCommitSha: string | null;
+  mergedLanding: string | null;
   archivedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
@@ -101,6 +102,7 @@ export async function listIssueRows(
     reopenCount: issues.reopenCount,
     mergedAt: issues.mergedAt,
     mergedCommitSha: issues.mergedCommitSha,
+    mergedLanding: issues.mergedLanding,
     archivedAt: issues.archivedAt,
     createdAt: issues.createdAt,
     updatedAt: issues.updatedAt,

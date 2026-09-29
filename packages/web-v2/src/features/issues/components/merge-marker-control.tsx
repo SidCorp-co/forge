@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import { Button, Field, Input, Textarea } from "@/design";
 import { SlideOver } from "@/design/patterns/slide-over";
 import { useMergeMarker } from "../hooks";
+import type { LandingShape } from "../types";
 
 const BLURB =
   "For work finished outside the pipeline. This is a claim that the code shipped, not a date " +
@@ -19,26 +20,42 @@ const BLURB =
   "that. Unmark withdraws a claim made wrongly, and is refused once the issue is closed: " +
   "reopen it first, because a closed issue with no claim is a state nothing here can hold.";
 
+// ISS-1327 — on a project whose work lands outside git there is no branch to name: what landed is
+// a live page, a CMS entry, a storefront resource, and the close accepts a mark only if it says so.
+const LANDING_BLURB =
+  "This project's work lands outside git, so say where it landed: the live URL, the CMS entry or " +
+  "the storefront resource the work now is. That is what lets the issue close — a mark naming no " +
+  "landing is not accepted here. It does not release the issues blocked on this one — a status " +
+  "does that. Unmark withdraws a claim made wrongly, and is refused once the issue is closed.";
+
 interface MergeMarkerControlProps {
   issueId: string;
   /** `null` when no claim has been made — the control offers to make one. */
   mergedAt: string | null;
   /** Default `target`, offered because the repo's branch convention is `ISS-<seq>`. */
   suggestedTarget: string;
+  /** Core's answer for this issue's project; an older server that sends none reads as `git`. */
+  landingShape?: LandingShape | undefined;
 }
 
-export function MergeMarkerControl({ issueId, mergedAt, suggestedTarget }: MergeMarkerControlProps) {
+export function MergeMarkerControl({
+  issueId,
+  mergedAt,
+  suggestedTarget,
+  landingShape,
+}: MergeMarkerControlProps) {
+  const outsideGit = landingShape === "outside_git";
   const [open, setOpen] = useState(false);
-  const [target, setTarget] = useState(suggestedTarget);
+  const [target, setTarget] = useState(outsideGit ? "" : suggestedTarget);
   const [note, setNote] = useState("");
   const marker = useMergeMarker(issueId);
 
   useEffect(() => {
     if (open) {
-      setTarget(suggestedTarget);
+      setTarget(outsideGit ? "" : suggestedTarget);
       setNote("");
     }
-  }, [open, suggestedTarget]);
+  }, [open, suggestedTarget, outsideGit]);
 
   if (mergedAt) {
     return (
@@ -63,11 +80,16 @@ export function MergeMarkerControl({ issueId, mergedAt, suggestedTarget }: Merge
       {open && (
         <SlideOver open onClose={() => setOpen(false)} title="Mark this work merged" width={480}>
           <div className="flex h-full flex-col gap-4">
-            <p className="fg-body-sm text-muted">{BLURB}</p>
+            <p className="fg-body-sm text-muted">{outsideGit ? LANDING_BLURB : BLURB}</p>
             <Field label="Where it landed" required>
               <Input
                 value={target}
-                placeholder="e.g. ISS-791, or the branch or PR it merged through"
+                placeholder={
+                  outsideGit
+                    ? "e.g. https://shop.example.com/products/linen-tee, or the CMS entry it is"
+                    : "e.g. ISS-791, or the branch or PR it merged through"
+                }
+                maxLength={outsideGit ? 2000 : 200}
                 onChange={(e) => setTarget(e.target.value)}
               />
             </Field>
@@ -95,7 +117,10 @@ export function MergeMarkerControl({ issueId, mergedAt, suggestedTarget }: Merge
                 disabled={trimmedTarget.length === 0}
                 onClick={() => {
                   marker.mark({
-                    target: trimmedTarget,
+                    // The landing IS where it landed; the audit label is then the issue's own key.
+                    ...(outsideGit
+                      ? { target: suggestedTarget, landing: trimmedTarget }
+                      : { target: trimmedTarget }),
                     ...(note.trim() ? { note: note.trim() } : {}),
                   });
                   setOpen(false);

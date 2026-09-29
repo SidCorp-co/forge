@@ -115,7 +115,7 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
     '{n} issue(s) named here have no release note, and closing them would claim a ship ' +
     `nobody wrote anything about. ${RELEASE_RECORD_REMEDY}`,
   RELEASE_WORK_UNMERGED:
-    '{n} issue(s) named here have no merge Forge watched land, so nothing says their work is on the branch this release deployed. Mark the merge on each of them first — a release records what shipped, and an issue nobody merged did not.',
+    '{n} issue(s) named here have no merge Forge watched land, so nothing says their work is on the branch this release deployed. Mark the merge on each of them first — a release records what shipped, and an issue nobody merged did not. On a project whose work lands outside git, the mark names where it landed (`landing`); one naming nothing does not count.',
   RELEASE_RUNNER_AMBIGUOUS:
     'Two live deploy bindings name different release runners, so there is no one box the release job may be offered to. Make the labels agree, or clear all but one.',
   RELEASE_PROBES_UNREADABLE:

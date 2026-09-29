@@ -55,6 +55,11 @@ vi.mock('../pipeline/work-evidence.js', () => ({
 vi.mock('./read-service.js', () => ({
   findIssueById: async () => issueAfter,
 }));
+// The project's shape is `landing-evidence.ts`'s own read; here it stands on a git project.
+vi.mock('./landing-evidence.js', async (original) => ({
+  ...(await original<typeof import('./landing-evidence.js')>()),
+  readLandingShape: async () => 'git',
+}));
 
 const { applyMergeMarker } = await import('./merge-marker.js');
 const { serialize, serializeListRow, serializeManifest } = await import(
@@ -171,6 +176,7 @@ describe('the projections an agent reads an issue through', () => {
     assigneeId: null,
     reopenCount: 0,
     mergedAt: AT,
+    mergedLanding: null,
     createdAt: AT,
     updatedAt: AT,
   };

@@ -84,7 +84,15 @@ function unlabelled() {
     },
   ]);
   selectRows.mockResolvedValue([
-    { id: ISSUE_A, status: 'awaiting_release', claimed: null, mergedAt: new Date() },
+    {
+      id: ISSUE_A,
+      status: 'awaiting_release',
+      claimed: null,
+      mergedAt: new Date(),
+      mergedCommitSha: null,
+      mergedLanding: null,
+      kind: 'standard',
+    },
   ]);
   execRows.mockResolvedValue([{ device_id: 'dev-1' }]);
   onlineIds.mockResolvedValue(['dev-1']);

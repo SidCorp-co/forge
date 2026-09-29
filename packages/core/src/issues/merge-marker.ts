@@ -5,6 +5,7 @@ import type { Actor } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 import { collectWorkEvidence, findMissingWorkEvidence } from '../pipeline/work-evidence.js';
 import type { ActorAgency } from './actor-agency.js';
+import { landingMarkRefusal, readLandingShape } from './landing-evidence.js';
 import {
   clearIssueMerge,
   describeMergeMark,
@@ -65,7 +66,12 @@ export async function writeAuditComment(
 
 export class MergeMarkerError extends Error {
   constructor(
-    readonly code: 'NO_WORK_EVIDENCE' | 'ISSUE_NOT_FOUND' | 'UNMARK_REQUIRES_NOT_CLOSED',
+    readonly code:
+      | 'NO_WORK_EVIDENCE'
+      | 'ISSUE_NOT_FOUND'
+      | 'UNMARK_REQUIRES_NOT_CLOSED'
+      | 'LANDING_REQUIRED'
+      | 'LANDING_NOT_THIS_SHAPE',
     message: string,
   ) {
     super(message);
@@ -89,6 +95,8 @@ export async function applyMergeMarker(args: {
   /** The commit the CALLER says this mark was made at. Recorded in the audit trail; the column
    *  takes only a commit Forge observed. Absent falls back to the recorded handoff sha. */
   commit?: string | undefined;
+  /** Where the work landed outside git; whether this project takes one is `landing-evidence.ts`'s. */
+  landing?: string | undefined;
   mergedAt?: Date | null;
   actor: MergeMarkerActor;
 }): Promise<{
@@ -107,7 +115,7 @@ export async function applyMergeMarker(args: {
 }> {
   const before = args.issue;
 
-  let stampResult: MergeRecord = { wrote: true, mergedAt: null, commitSha: null };
+  let stampResult: MergeRecord = { wrote: true, mergedAt: null, commitSha: null, landing: null };
   /** The commit the caller claimed, where Forge has no merge of its own to put in the column. */
   let claimedCommit: string | null = null;
   if (args.op === 'mark') {
@@ -116,6 +124,13 @@ export async function applyMergeMarker(args: {
       if (missing) throw new MergeMarkerError('NO_WORK_EVIDENCE', missing);
     }
     const observed = await observedMergeForIssue(db, before.id);
+    const landing = args.landing ?? null;
+    const refused = landingMarkRefusal({
+      shape: await readLandingShape(db, before.projectId),
+      landing,
+      observed: observed !== null,
+    });
+    if (refused) throw new MergeMarkerError(refused.code, refused.detail);
     if (observed) {
       stampResult = await recordIssueMerge(db, {
         issueId: before.id,
@@ -124,11 +139,18 @@ export async function applyMergeMarker(args: {
           commitSha: observed.commitSha,
           mergedAt: observed.mergedAt,
           via: 'event',
+          landing,
         },
       });
       const claimed = args.commit ?? null;
       claimedCommit =
         claimed && claimed.toLowerCase() !== observed.commitSha.toLowerCase() ? claimed : null;
+    } else if (landing) {
+      stampResult = await recordIssueMerge(db, {
+        issueId: before.id,
+        evidence: { kind: 'landed', landing, at: args.mergedAt ?? null, via: 'mark' },
+      });
+      claimedCommit = args.commit ?? null;
     } else {
       stampResult = await recordIssueMerge(db, {
         issueId: before.id,
@@ -169,12 +191,17 @@ export async function applyMergeMarker(args: {
   // Read off the ROW, not off the branch this call took: docs/modules/issues/merge-mark.md.
   const mark: MergeMarkKind =
     args.op === 'mark'
-      ? mergeMarkKindOf({ mergedAt: stampResult.mergedAt, mergedCommitSha: stampResult.commitSha })
+      ? mergeMarkKindOf({
+          mergedAt: stampResult.mergedAt,
+          mergedCommitSha: stampResult.commitSha,
+          mergedLanding: stampResult.landing,
+        })
       : 'unmarked';
   const markDetail = describeMergeMark({
     kind: mark,
     commitSha: stampResult.commitSha,
     claimedCommit,
+    landing: stampResult.landing,
   });
   const marked = args.op === 'mark' ? `\n${markDetail}` : '';
   const auditComment = await writeAuditComment(
@@ -200,9 +227,13 @@ export async function applyMergeMarker(args: {
     issueId: before.id,
     projectId: before.projectId,
     actor: args.actor.hookActor,
-    fields: ['mergedAt', 'mergedCommitSha'],
+    fields: ['mergedAt', 'mergedCommitSha', 'mergedLanding'],
     before: { mergedAt: before.mergedAt },
-    after: { mergedAt: issue.mergedAt, mergedCommitSha: issue.mergedCommitSha },
+    after: {
+      mergedAt: issue.mergedAt,
+      mergedCommitSha: issue.mergedCommitSha,
+      mergedLanding: issue.mergedLanding,
+    },
   });
   await hooks.emit('contractInputChanged', {
     projectId: before.projectId,

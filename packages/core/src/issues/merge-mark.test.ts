@@ -1,19 +1,19 @@
 /**
- * ISS-1126 — the classifier, the sentence and the accepted set, as pure functions. The runtimes
- * criterion 14 names are held at `merge-mark-route.test.ts` and
+ * ISS-1126 — the classifier and the sentence, as pure functions (the accepted set per shape is
+ * `landing-evidence.test.ts`'s). Criterion 14's runtimes are `merge-mark-route.test.ts` and
  * `mcp/tools/forge-issues-merge-mark.test.ts`; docs/modules/issues/merge-mark.md says why.
  */
 
 import { describe, expect, it } from 'vitest';
-import { MARKS_ACCEPTED_AS_LANDED, mergedMarkShortfall } from './entry-criteria-merge-mark.js';
 import { describeMergeMark, mergeMarkKindOf } from './merge-record.js';
 
 const AT = new Date('2026-09-20T14:59:37.646Z');
 const SHA = '9a78b0c93f1a2b3c4d5e6f708192a3b4c5d6e7f8';
 
-const ASSERTED = { mergedAt: AT, mergedCommitSha: null };
-const OBSERVED = { mergedAt: AT, mergedCommitSha: SHA };
-const UNMARKED = { mergedAt: null, mergedCommitSha: null };
+const ASSERTED = { mergedAt: AT, mergedCommitSha: null, mergedLanding: null };
+const OBSERVED = { mergedAt: AT, mergedCommitSha: SHA, mergedLanding: null };
+const UNMARKED = { mergedAt: null, mergedCommitSha: null, mergedLanding: null };
+const LANDED = { mergedAt: AT, mergedCommitSha: null, mergedLanding: 'https://shop.example/p/1' };
 
 describe('the mark kind, read off the pair of columns', () => {
   it('reads a mark with no commit as asserted and one with a commit as observed', () => {
@@ -22,15 +22,24 @@ describe('the mark kind, read off the pair of columns', () => {
     expect(mergeMarkKindOf(UNMARKED)).toBe('unmarked');
   });
 
+  it('reads a mark naming a landing and no commit as landed', () => {
+    expect(mergeMarkKindOf(LANDED)).toBe('landed');
+    expect(mergeMarkKindOf({ ...LANDED, mergedLanding: '   ' })).toBe('asserted');
+    // A commit Forge observed outranks the landing: the column says Forge saw the merge itself.
+    expect(mergeMarkKindOf({ ...LANDED, mergedCommitSha: SHA })).toBe('observed');
+    // A landing with no timestamp is no mark: `merged_at` decides first.
+    expect(mergeMarkKindOf({ ...LANDED, mergedAt: null })).toBe('unmarked');
+  });
+
   it('never calls an asserted mark observed, whatever else is on the row', () => {
     // The rule is `merged_commit_sha`, and nothing else may stand in for it. A reading that fell
     // back to "mergedAt is set, so it landed" is the conflation this whole issue is about.
-    expect(mergeMarkKindOf({ mergedAt: AT, mergedCommitSha: null })).not.toBe('observed');
-    expect(mergeMarkKindOf({ mergedAt: AT, mergedCommitSha: '' })).not.toBe('observed');
+    expect(mergeMarkKindOf({ ...ASSERTED, mergedCommitSha: null })).not.toBe('observed');
+    expect(mergeMarkKindOf({ ...ASSERTED, mergedCommitSha: '' })).not.toBe('observed');
   });
 
   it('reads an ISO string in the column the same way it reads a Date', () => {
-    expect(mergeMarkKindOf({ mergedAt: AT.toISOString(), mergedCommitSha: null })).toBe('asserted');
+    expect(mergeMarkKindOf({ ...ASSERTED, mergedAt: AT.toISOString() })).toBe('asserted');
   });
 });
 
@@ -54,29 +63,10 @@ describe('the sentence a caller is given', () => {
     expect(observed).not.toContain('CLAIM Forge did not observe');
     expect(observed).toContain(SHA);
   });
-});
 
-describe('the reader that means shipped says which kinds it accepts', () => {
-  it('names its accepted set rather than testing `mergedAt` for null', () => {
-    expect([...MARKS_ACCEPTED_AS_LANDED].sort()).toEqual(['asserted', 'observed']);
-  });
-
-  it('accepts both kinds of mark and refuses an issue with none', () => {
-    expect(mergedMarkShortfall(ASSERTED)).toBeNull();
-    expect(mergedMarkShortfall(OBSERVED)).toBeNull();
-    expect(mergedMarkShortfall(UNMARKED)).not.toBeNull();
-  });
-
-  it('names the kinds that would have satisfied it when it refuses', () => {
-    const detail = mergedMarkShortfall(UNMARKED) as string;
-    for (const kind of MARKS_ACCEPTED_AS_LANDED) expect(detail).toContain(kind);
-  });
-
-  it('is gated on membership of the set, so narrowing the set changes what it accepts', () => {
-    // The amnesty this constant prices is that an asserted mark counts as landed. The proof that it
-    // is priced ON THE CONSTANT rather than decorated by it is that removing a kind from the set
-    // has to refuse that kind. A predicate that ignored the set would stay green here.
-    expect(mergedMarkShortfall(ASSERTED, ['observed'])).not.toBeNull();
-    expect(mergedMarkShortfall(OBSERVED, ['observed'])).toBeNull();
+  it('names the landing on a landed mark, and never calls it a merge Forge observed', () => {
+    const landed = describeMergeMark({ kind: 'landed', landing: LANDED.mergedLanding });
+    expect(landed).toContain(LANDED.mergedLanding);
+    expect(landed).toContain('not a merge Forge observed');
   });
 });

@@ -6,7 +6,7 @@ import { useMemo } from "react";
 import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
-import { type CreateIssueInput, type PatchIssueInput, type CreateReleaseBatchResult, type LabelAttach, issuesApi, modulesApi, releaseBatchApi } from "./api";
+import { type CreateIssueInput, type PatchIssueInput, type CreateReleaseBatchResult, type LabelAttach, type MarkMergedBody, issuesApi, modulesApi, releaseBatchApi } from "./api";
 import { registryApi } from "./registry-api";
 import type {
   IssueLabel,
@@ -280,7 +280,7 @@ export function useMergeMarker(issueId: string) {
     qc.invalidateQueries({ queryKey: ["activities", issueId] });
   };
   const mark = useIssueMutation(
-    (args: { target: string; note?: string }) => issuesApi.markMerged(issueId, args),
+    (args: MarkMergedBody) => issuesApi.markMerged(issueId, args),
     { successMessage: "Marked merged" },
   );
   const unmark = useIssueMutation(
@@ -289,7 +289,7 @@ export function useMergeMarker(issueId: string) {
   );
   return {
     isPending: mark.isPending || unmark.isPending,
-    mark: (args: { target: string; note?: string }) => mark.mutate(args, { onSuccess: refresh }),
+    mark: (args: MarkMergedBody) => mark.mutate(args, { onSuccess: refresh }),
     unmark: () => unmark.mutate({}, { onSuccess: refresh }),
   };
 }

@@ -96,7 +96,12 @@ describe('recordIssueMerge — an assertion', () => {
       issueId: 'iss-1',
       evidence: { kind: 'asserted', via: 'mark' },
     });
-    expect(result).toEqual({ wrote: false, mergedAt: held.mergedAt, commitSha: 'abc1234' });
+    expect(result).toEqual({
+      wrote: false,
+      mergedAt: held.mergedAt,
+      commitSha: 'abc1234',
+      landing: null,
+    });
   });
 });
 
@@ -128,7 +133,12 @@ describe('recordIssueMerge — evidence', () => {
     const held = { mergedAt: new Date('2026-09-18T06:30:01Z'), mergedCommitSha: 'deadbee' };
     const { executor } = buildExecutor({ returningRows: [], heldRow: held });
     const result = await recordIssueMerge(executor, { issueId: 'iss-1', evidence: OBSERVED });
-    expect(result).toEqual({ wrote: false, mergedAt: held.mergedAt, commitSha: 'deadbee' });
+    expect(result).toEqual({
+      wrote: false,
+      mergedAt: held.mergedAt,
+      commitSha: 'deadbee',
+      landing: null,
+    });
   });
 });
 

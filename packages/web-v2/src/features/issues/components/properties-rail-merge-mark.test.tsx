@@ -33,7 +33,11 @@ afterEach(cleanup);
 const MERGED_AT = "2026-09-20T14:59:37.646Z";
 const SHA = "9a78b0c93f1a2b3c4d5e6f708192a3b4c5d6e7f8";
 
-function rail(mark?: IssueDetail["mergeMark"], mergedCommitSha?: string | null): ReactNode {
+function rail(
+  mark?: IssueDetail["mergeMark"],
+  mergedCommitSha?: string | null,
+  mergedLanding?: string | null,
+): ReactNode {
   const issue = {
     id: "i1",
     displayId: "ISS-1126",
@@ -45,6 +49,7 @@ function rail(mark?: IssueDetail["mergeMark"], mergedCommitSha?: string | null):
     mergedAt: MERGED_AT,
     mergeMark: mark,
     mergedCommitSha,
+    mergedLanding,
   } as unknown as IssueDetail;
   return (
     <PropertiesRail
@@ -86,6 +91,19 @@ describe("the merge mark on the issue rail", () => {
     // An older API answer carries `mergedAt` and no `mergeMark`. Rendering "observed" there would
     // be the browser inventing a reading core did not make.
     render(rail(undefined, null));
+    expect(screen.queryByText("claimed")).toBeNull();
+    expect(screen.queryByText("observed")).toBeNull();
+  });
+});
+
+describe("a mark naming where the work landed outside git (ISS-1327)", () => {
+  const LANDING = "https://mowmentbrand.com/products/linen-tee";
+
+  it("says landed, and shows the landing as text in the same row", () => {
+    render(rail("landed", null, LANDING));
+    expect(screen.getByText("landed")).toBeInTheDocument();
+    // Visible text, not a hover: keyboard, touch and screen-reader users read it too.
+    expect(screen.getByTestId("merged-landing")).toHaveTextContent(LANDING);
     expect(screen.queryByText("claimed")).toBeNull();
     expect(screen.queryByText("observed")).toBeNull();
   });

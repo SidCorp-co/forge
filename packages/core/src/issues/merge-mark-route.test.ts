@@ -73,6 +73,12 @@ vi.mock('../pipeline/work-evidence.js', () => ({
   collectWorkEvidence: async () => ({ handoffCommitSha: null }),
 }));
 vi.mock('../pipeline/hooks.js', () => ({ hooks: { emit: async () => undefined } }));
+/** The shape `landing-evidence.ts` reads off the project's kind, set per case. */
+let shape: 'git' | 'outside_git' = 'git';
+vi.mock('./landing-evidence.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./landing-evidence.js')>()),
+  readLandingShape: async () => shape,
+}));
 vi.mock('./read-service.js', () => ({ findIssueById: async () => issueAfter }));
 vi.mock('../integrations/github/contract-check.js', () => ({
   openPullRequestsForIssue: async () => [],
@@ -113,19 +119,26 @@ const mark = async (body: unknown = { target: 'main' }): Promise<Answer> => {
 
 function asAsserted(sha: string | null = null) {
   projectionRows = [];
-  stampedRows = [{ mergedAt: AT, mergedCommitSha: sha }];
-  issueAfter = { id: ISSUE_ID, mergedAt: AT, mergedCommitSha: sha };
+  stampedRows = [{ mergedAt: AT, mergedCommitSha: sha, mergedLanding: null }];
+  issueAfter = { id: ISSUE_ID, mergedAt: AT, mergedCommitSha: sha, mergedLanding: null };
 }
 
 function asObserved(sha = OBSERVED_SHA) {
   projectionRows = [{ sha, at: AT }];
-  stampedRows = [{ mergedAt: AT, mergedCommitSha: sha }];
-  issueAfter = { id: ISSUE_ID, mergedAt: AT, mergedCommitSha: sha };
+  stampedRows = [{ mergedAt: AT, mergedCommitSha: sha, mergedLanding: null }];
+  issueAfter = { id: ISSUE_ID, mergedAt: AT, mergedCommitSha: sha, mergedLanding: null };
+}
+
+function asLanded(landing: string) {
+  projectionRows = [];
+  stampedRows = [{ mergedAt: AT, mergedCommitSha: null, mergedLanding: landing }];
+  issueAfter = { id: ISSUE_ID, mergedAt: AT, mergedCommitSha: null, mergedLanding: landing };
 }
 
 beforeEach(() => {
+  shape = 'git';
   issueRow = { id: ISSUE_ID, projectId: PROJECT_ID, mergedAt: null };
-  heldRow = { mergedAt: null, mergedCommitSha: null };
+  heldRow = { mergedAt: null, mergedCommitSha: null, mergedLanding: null };
   asAsserted();
 });
 
@@ -180,7 +193,7 @@ describe('a second mark over a row that already holds a merge Forge witnessed', 
   function alreadyObserved() {
     projectionRows = [];
     stampedRows = [];
-    heldRow = { mergedAt: AT, mergedCommitSha: OBSERVED_SHA };
+    heldRow = { mergedAt: AT, mergedCommitSha: OBSERVED_SHA, mergedLanding: null };
     issueAfter = { id: ISSUE_ID, mergedAt: AT, mergedCommitSha: OBSERVED_SHA };
     issueRow = { id: ISSUE_ID, projectId: PROJECT_ID, mergedAt: AT };
   }
@@ -216,5 +229,48 @@ describe('DELETE /api/issues/:id/merge', () => {
     const cleared = (await res.json()) as Answer;
     expect(cleared.mark).toBe('unmarked');
     expect(cleared.detail).toContain('no merged mark');
+  });
+});
+
+describe('a landing outside git, at the REST door (ISS-1327)', () => {
+  const LANDING = 'https://mowmentbrand.com/products/linen-tee';
+
+  it('marks a website project landed when the mark names where the work landed', async () => {
+    shape = 'outside_git';
+    asLanded(LANDING);
+    const answer = await mark({ target: 'ISS-38', landing: LANDING });
+    expect(answer.mark).toBe('landed');
+    expect(answer.detail).toContain(LANDING);
+  });
+
+  it('refuses a website project a mark that names no landing, by name', async () => {
+    shape = 'outside_git';
+    const res = await call('POST', { target: 'ISS-38' });
+    expect(res.status).toBe(422);
+    const body = (await res.json()) as { code: string; message: string };
+    expect(body.code).toBe('LANDING_REQUIRED');
+    expect(body.message).toContain('Send `landing`');
+  });
+
+  it('lets a website project mark without a landing where Forge observed the merge', async () => {
+    shape = 'outside_git';
+    asObserved();
+    expect((await mark()).mark).toBe('observed');
+  });
+
+  it('refuses a landing on a project that lands in git, by name', async () => {
+    const res = await call('POST', { target: 'main', landing: LANDING });
+    expect(res.status).toBe(422);
+    expect(((await res.json()) as { code: string }).code).toBe('LANDING_NOT_THIS_SHAPE');
+  });
+
+  it.each([
+    ['blank', '   '],
+    ['past 2000 characters', 'x'.repeat(2001)],
+  ])('refuses a %s landing at the body schema, naming the field', async (_what, landing) => {
+    shape = 'outside_git';
+    const res = await call('POST', { target: 'ISS-38', landing });
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(await res.json())).toContain('landing');
   });
 });

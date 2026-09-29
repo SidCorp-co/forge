@@ -47,6 +47,7 @@ import {
   type ResolvedLabelAttach,
   resolveLabelIdsForWrite,
 } from './label-service.js';
+import { readLandingShape } from './landing-evidence.js';
 import { issueListPageQuery, serializeRestListRow } from './list-projection.js';
 import { liveReachForIssue } from './live-reach-read.js';
 import { isSelfReferentialBranch, issueMetadataSchema } from './metadata.js';
@@ -225,6 +226,7 @@ issueProjectRoutes.post(
     const response: Record<string, unknown> = serializeIssue(
       result.issue as IssueRow,
       await activeIssuePrefix(projectId),
+      await readLandingShape(db, projectId),
     );
     response.attachments = result.attachments;
     if (result.attachmentErrors.length > 0) response.attachmentErrors = result.attachmentErrors;
@@ -283,7 +285,11 @@ issueProjectRoutes.get(
 
     const labelRows = await listIssueLabels(issue.id);
 
-    const serialized = serializeIssue(issue, await activeIssuePrefix(projectId));
+    const serialized = serializeIssue(
+      issue,
+      await activeIssuePrefix(projectId),
+      await readLandingShape(db, projectId),
+    );
     const healthMap = await safeHydratePipelineHealthForIssues(projectId, [issue.id]);
     const creatorMap = await hydrateCreatorsForIssues([
       { id: issue.id, createdById: issue.createdById },
@@ -422,7 +428,11 @@ issueRoutes.get(
     const labelRows = await listIssueLabels(id);
 
     const healthMap = await safeHydratePipelineHealthForIssues(issue.projectId, [issue.id]);
-    const serialized = serializeIssue(issue, await activeIssuePrefix(issue.projectId));
+    const serialized = serializeIssue(
+      issue,
+      await activeIssuePrefix(issue.projectId),
+      await readLandingShape(db, issue.projectId),
+    );
     const agentMap = await hydrateAgentSessionsForIssues(issue.projectId, [issue.id]);
     const agentBucket = agentMap.get(issue.id);
     const creatorMap = await hydrateCreatorsForIssues([
@@ -558,7 +568,11 @@ issueRoutes.patch(
       });
     }
 
-    const patched = serializeIssue(updated, await activeIssuePrefix(issue.projectId));
+    const patched = serializeIssue(
+      updated,
+      await activeIssuePrefix(issue.projectId),
+      await readLandingShape(db, issue.projectId),
+    );
     return c.json(
       collected.warnings.length > 0 ? { ...patched, warnings: collected.warnings } : patched,
     );

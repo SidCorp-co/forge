@@ -22,7 +22,7 @@ const dependentsAwait = vi.fn(
       | { issueId: string; issSeq: number; projectId: string }
     >,
 );
-const dependentsWhere = vi.fn(() => dependentsAwait());
+const dependentsWhere = vi.fn(() => Object.assign(dependentsAwait(), { limit: selectLimit }));
 const dependentsInnerJoin = vi.fn(() => ({ where: dependentsWhere }));
 const selectFrom = vi.fn(() => ({
   where: selectWhere,

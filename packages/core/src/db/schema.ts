@@ -1036,6 +1036,7 @@ export const issues = pgTable(
       .references(() => users.id, { onDelete: 'restrict' }),
     mergedAt: timestamp('merged_at', { withTimezone: true }),
     mergedCommitSha: text('merged_commit_sha'),
+    mergedLanding: text('merged_landing'),
     // ISS-42 C2 — t-shirt sizing (xs/s/m/l/xl) for scoping. NULL = unsized.
     complexity: text('complexity', { enum: issueComplexities }),
     reopenCount: integer('reopen_count').notNull().default(0),
@@ -1076,6 +1077,10 @@ export const issues = pgTable(
     descriptionFormatChk: check(
       'issues_description_format_chk',
       sql`${t.descriptionFormat} IN ('markdown', 'html')`,
+    ),
+    mergedLandingChk: check(
+      'issues_merged_landing_chk',
+      sql`${t.mergedLanding} IS NULL OR (${t.mergedAt} IS NOT NULL AND ${t.mergedLanding} ~ '[^[:space:]]' AND char_length(${t.mergedLanding}) <= 2000)`,
     ),
     projectIssSeqUq: uniqueIndex('issues_project_iss_seq_uq').on(t.projectId, t.issSeq),
     projectStatusIdx: index('issues_project_status_idx').on(t.projectId, t.status),

@@ -7,7 +7,15 @@ import { repoPullRequests } from '../db/schema-repo-projection.js';
 export type MergeRecordExecutor = Pick<Db, 'update' | 'select'>;
 
 export type MergeEvidence =
-  | { kind: 'observed'; commitSha: string; mergedAt: Date; via: 'kernel' | 'event' }
+  | {
+      kind: 'observed';
+      commitSha: string;
+      mergedAt: Date;
+      via: 'kernel' | 'event';
+      /** Where the work also landed outside git, on a project whose landing is named. */
+      landing?: string | null;
+    }
+  | { kind: 'landed'; landing: string; at?: Date | null; via: 'mark' }
   | { kind: 'asserted'; at?: Date | null; via: 'mark' | 'close' };
 
 export interface MergeRecord {
@@ -15,31 +23,39 @@ export interface MergeRecord {
   wrote: boolean;
   mergedAt: Date | null;
   commitSha: string | null;
+  landing: string | null;
 }
 
 /** The one name for what the pair of columns means, and the ONLY reading of it:
  *  docs/modules/issues/merge-mark.md. */
-export type MergeMarkKind = 'unmarked' | 'asserted' | 'observed';
+export type MergeMarkKind = 'unmarked' | 'asserted' | 'landed' | 'observed';
 
 /** The two columns, as any row carrying them spells them. */
 export interface MergeMarkColumns {
   mergedAt: Date | string | null;
   mergedCommitSha: string | null;
+  mergedLanding: string | null;
 }
 
 export function mergeMarkKindOf(row: MergeMarkColumns): MergeMarkKind {
   if (row.mergedAt == null) return 'unmarked';
   // `''` is representable and is not a commit; the doc says why it reads as a claim.
-  return (row.mergedCommitSha ?? '').trim() === '' ? 'asserted' : 'observed';
+  if ((row.mergedCommitSha ?? '').trim() !== '') return 'observed';
+  return (row.mergedLanding ?? '').trim() === '' ? 'asserted' : 'landed';
 }
 
 /** The pair every projection reporting a mark carries, as one spread: the sha travels with
  *  the word, so no projection can carry one without the other. */
 export function mergeMarkFields(row: MergeMarkColumns): {
   mergedCommitSha: string | null;
+  mergedLanding: string | null;
   mergeMark: MergeMarkKind;
 } {
-  return { mergedCommitSha: row.mergedCommitSha, mergeMark: mergeMarkKindOf(row) };
+  return {
+    mergedCommitSha: row.mergedCommitSha,
+    mergedLanding: row.mergedLanding,
+    mergeMark: mergeMarkKindOf(row),
+  };
 }
 
 /** The sentence saying which kind this is, written once: the audit comment and the caller's
@@ -48,9 +64,13 @@ export function describeMergeMark(args: {
   kind: MergeMarkKind;
   commitSha?: string | null;
   claimedCommit?: string | null;
+  landing?: string | null;
 }): string {
   if (args.kind === 'unmarked') {
     return 'this issue carries no merged mark: `merged_at` is empty, so nothing here says the work landed';
+  }
+  if (args.kind === 'landed') {
+    return `this mark names where the work landed outside git: \`merged_landing\` holds ${args.landing ?? 'the landing it was given'}. It is the word of whoever marked it, not a merge Forge observed`;
   }
   if (args.kind === 'observed') {
     // Against the COLUMN, not the row this call selected: docs/modules/issues/merge-mark.md.
@@ -71,13 +91,21 @@ export function describeMergeMark(args: {
 async function readBack(
   executor: MergeRecordExecutor,
   issueId: string,
-): Promise<{ mergedAt: Date | null; commitSha: string | null }> {
+): Promise<{ mergedAt: Date | null; commitSha: string | null; landing: string | null }> {
   const [row] = await executor
-    .select({ mergedAt: issues.mergedAt, mergedCommitSha: issues.mergedCommitSha })
+    .select({
+      mergedAt: issues.mergedAt,
+      mergedCommitSha: issues.mergedCommitSha,
+      mergedLanding: issues.mergedLanding,
+    })
     .from(issues)
     .where(eq(issues.id, issueId))
     .limit(1);
-  return { mergedAt: row?.mergedAt ?? null, commitSha: row?.mergedCommitSha ?? null };
+  return {
+    mergedAt: row?.mergedAt ?? null,
+    commitSha: row?.mergedCommitSha ?? null,
+    landing: row?.mergedLanding ?? null,
+  };
 }
 
 /**
@@ -101,22 +129,33 @@ export async function recordIssueMerge(
 
   const gate =
     evidence.kind === 'observed' ? isNull(issues.mergedCommitSha) : isNull(issues.mergedAt);
+  const landing = evidence.kind === 'asserted' ? null : (evidence.landing ?? null);
 
   const [wrote] = await executor
     .update(issues)
     .set({
       mergedAt: stampExpr,
       ...(evidence.kind === 'observed' ? { mergedCommitSha: evidence.commitSha } : {}),
+      ...(landing ? { mergedLanding: landing } : {}),
       updatedAt: sql`now()`,
     })
     .where(and(eq(issues.id, issueId), gate))
-    .returning({ mergedAt: issues.mergedAt, mergedCommitSha: issues.mergedCommitSha });
+    .returning({
+      mergedAt: issues.mergedAt,
+      mergedCommitSha: issues.mergedCommitSha,
+      mergedLanding: issues.mergedLanding,
+    });
 
   if (wrote) {
-    return { wrote: true, mergedAt: wrote.mergedAt, commitSha: wrote.mergedCommitSha };
+    return {
+      wrote: true,
+      mergedAt: wrote.mergedAt,
+      commitSha: wrote.mergedCommitSha,
+      landing: wrote.mergedLanding,
+    };
   }
   const held = await readBack(executor, issueId);
-  return { wrote: false, mergedAt: held.mergedAt, commitSha: held.commitSha };
+  return { wrote: false, ...held };
 }
 
 /** Clear the claim, and report whether the row took it. It re-blocks nothing (ISS-1100). The
@@ -128,7 +167,7 @@ export async function clearIssueMerge(
 ): Promise<boolean> {
   const rows = await executor
     .update(issues)
-    .set({ mergedAt: null, mergedCommitSha: null, updatedAt: sql`now()` })
+    .set({ mergedAt: null, mergedCommitSha: null, mergedLanding: null, updatedAt: sql`now()` })
     .where(and(eq(issues.id, issueId), ne(issues.status, 'closed')))
     .returning({ id: issues.id });
   return rows.length > 0;

@@ -8,7 +8,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const OWNER = 'packages/core/src/issues/merge-record.ts';
 const ROOTS = ['packages/core/src', 'packages/web-v2/src'];
 const SKIP_DIRS = new Set(['node_modules', 'dist', 'coverage', '.next', '.turbo', 'drizzle']);
-const COLUMNS = ['mergedAt', 'mergedCommitSha'];
+const COLUMNS = ['mergedAt', 'mergedCommitSha', 'mergedLanding'];
 
 function die(message) {
   console.error(`check-merged-at-writers: ${message}`);
@@ -45,7 +45,7 @@ function faultsIn(rel, source) {
 
   // B — raw SQL updating the table.
   for (const hit of text.matchAll(
-    /update\s+(?:only\s+)?"?issues"?[\s\S]{0,400}?\bset\b[\s\S]{0,600}?\bmerged_(?:at|commit_sha)\b/gi,
+    /update\s+(?:only\s+)?"?issues"?[\s\S]{0,400}?\bset\b[\s\S]{0,600}?\bmerged_(?:at|commit_sha|landing)\b/gi,
   )) {
     faults.push({ rel, line: lineOf(text, hit.index), how: 'raw SQL updates issues.merged_*' });
   }
@@ -83,16 +83,16 @@ const faults = files.flatMap((rel) => faultsIn(rel, readFileSync(join(ROOT, rel)
 
 if (faults.length > 0) {
   console.error(
-    `check-merged-at-writers: ${faults.length} write(s) of issues.merged_at or ` +
-      `issues.merged_commit_sha outside ${OWNER}:\n`,
+    `check-merged-at-writers: ${faults.length} write(s) of issues.merged_at, ` +
+      `issues.merged_commit_sha or issues.merged_landing outside ${OWNER}:\n`,
   );
   for (const f of faults) console.error(`  ${f.rel}:${f.line} — ${f.how}`);
   console.error(
     `\n${OWNER} is the one writer, and the reason is ISS-1073: a merge and a stamp that are two\n` +
       'operations are two records that can disagree, and a disagreement here dispatches an issue\n' +
       'against code that is not there. Route the write through `recordIssueMerge`, which takes\n' +
-      'evidence of a merge (a commit and its time) or an assertion (neither), and decides which of\n' +
-      'the two supersedes the other.',
+      'evidence of a merge (a commit and its time), a named landing outside git, or an assertion\n' +
+      '(none of them), and decides which supersedes the other.',
   );
   process.exit(1);
 }

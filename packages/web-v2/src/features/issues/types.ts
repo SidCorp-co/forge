@@ -10,6 +10,11 @@ import type { StatusKey } from "@/design/status";
 
 /** Lifecycle status enum — derived from `@forge/contracts`, which is
  *  parity-tested against core `db/schema.ts` (`core/pipeline/registry.test.ts`). */
+/** The kinds of merged mark core reads off an issue (`merge-record.ts`). */
+export type MergeMarkKind = "unmarked" | "asserted" | "landed" | "observed";
+/** `git`: work lands as commits. `outside_git`: it lands as a live resource, and a mark names it. */
+export type LandingShape = "git" | "outside_git";
+
 export type IssueStatus = (typeof REGISTRY_ISSUE_STATUSES)[number];
 
 export type IssuePriority = (typeof REGISTRY_ISSUE_PRIORITIES)[number];
@@ -91,7 +96,11 @@ export interface IssueRow {
   /** ISS-959 — the commit, present only on a merge Forge observed. */
   mergedCommitSha?: string | null;
   /** ISS-1126 — which kind of record `mergedAt` is. Derived by core, never here. */
-  mergeMark?: "unmarked" | "asserted" | "observed";
+  mergeMark?: MergeMarkKind;
+  /** ISS-1327 — where the work landed outside git, on a mark that named one. */
+  mergedLanding?: string | null;
+  /** ISS-1327 — what this issue's project accepts as landed; core's answer, never re-derived. */
+  landingShape?: LandingShape;
   /** ISS-1217 — whether the merged work is on the live branch. Core's reading; null where none. */
   liveReach?: LiveReach | null;
   createdAt: string;

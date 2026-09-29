@@ -3132,6 +3132,10 @@
 
 ### Fixed
 
+- **A storefront project can close work that landed outside git.** Mark it merged naming where it
+  landed — a live page, CMS entry or store resource — and it closes. No commit is asked; a mark
+  naming nothing is refused.
+
 - **A refused batch release now says why, inside the release dialog, and keeps your selection.**
   A release with no verify probe says it will close unverified, and each issue it closes says what
   to check.

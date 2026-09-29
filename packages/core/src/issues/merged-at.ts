@@ -1,6 +1,11 @@
-import { eq } from 'drizzle-orm';
-import { type IssueStatus, issues } from '../db/schema.js';
-import type { MergeRecordExecutor } from './merge-record.js';
+import type { IssueStatus } from '../db/schema.js';
+import {
+  type LandingShape,
+  landingRoute,
+  landingShortfall,
+  readLandingEvidence,
+} from './landing-evidence.js';
+import { type MergeMarkKind, type MergeRecordExecutor, mergeMarkKindOf } from './merge-record.js';
 
 /** The status an issue stands at while its release is waiting to be pressed. */
 export const BASE_MERGE_STATE: IssueStatus = 'awaiting_release';
@@ -11,27 +16,33 @@ export interface ShippedRuleRefusal {
   details: Record<string, unknown>;
 }
 
-export const CLOSED_MEANS_SHIPPED =
-  '`closed` means the work shipped. Use `dropped` for work that turned out not to be work — ' +
-  'a note, a question, a duplicate, something already done — which is terminal without the claim ' +
-  'and releases every `blocks` dependent the same way. Where the work DID land outside the ' +
-  'pipeline, claim it first with `forge_issues` `mark_merged` naming where it landed, then close.';
+/** The sentence every close refusal carries, naming the route this project's shape has. */
+export function closedMeansShipped(shape: LandingShape, held?: MergeMarkKind): string {
+  return (
+    '`closed` means the work shipped. Use `dropped` for work that turned out not to be work — ' +
+    'a note, a question, a duplicate, something already done — which is terminal without the claim ' +
+    `and releases every \`blocks\` dependent the same way. ${landingRoute(shape, held)}`
+  );
+}
 
-// cm:flow release/close after:stamp — the close reads the stamp and refuses without it; it no longer writes one, so an issue that never shipped cannot wear the status that says it did
+// cm:flow release/close after:stamp — the close reads the stamp and the project's shape and refuses unless landing-evidence.ts accepts the mark; it no longer writes one, so an issue that never shipped cannot wear the status that says it did
 export async function refuseUnshippedClose(
   executor: MergeRecordExecutor,
   args: { issueId: string; toStatus: IssueStatus },
 ): Promise<ShippedRuleRefusal | null> {
   if (args.toStatus !== 'closed') return null;
-  const [row] = await executor
-    .select({ mergedAt: issues.mergedAt })
-    .from(issues)
-    .where(eq(issues.id, args.issueId))
-    .limit(1);
-  if (row?.mergedAt) return null;
+  const evidence = await readLandingEvidence(executor, args.issueId);
+  if (evidence && !landingShortfall(evidence.columns, evidence.shape)) return null;
+  if (!evidence || evidence.shape === 'git') {
+    return {
+      detail: `this issue carries no \`merged_at\`, so nothing on it shows the work shipped. ${closedMeansShipped('git')}`,
+      details: { requires: 'mergedAt', useInstead: 'dropped' },
+    };
+  }
+  const { columns, shape } = evidence;
   return {
-    detail: `this issue carries no \`merged_at\`, so nothing on it shows the work shipped. ${CLOSED_MEANS_SHIPPED}`,
-    details: { requires: 'mergedAt', useInstead: 'dropped' },
+    detail: `${landingShortfall(columns, shape)}, so nothing on it shows where the work landed. ${closedMeansShipped(shape, mergeMarkKindOf(columns))}`,
+    details: { requires: 'mergedLanding', shape, useInstead: 'dropped' },
   };
 }
 
