@@ -305,27 +305,32 @@ jobs:
             *) on_gated_branch=false ;;
           esac
           if [ "${GITHUB_EVENT_NAME}" = "push" ] && [ "$on_gated_branch" = true ]; then
-            # Header lines only: a message line reading `parent <sha>` is not a parent.
-            parents=$(git cat-file -p HEAD | sed -n '/^$/,$d; s/^parent //p')
-            tree=$(git cat-file -p HEAD | sed -n '/^$/,$d; s/^tree //p')
-            count=0
-            for _ in $parents; do count=$((count + 1)); done
-            pr_head=$(printf '%s\n' "$parents" | sed -n 2p)
-            if [ "$count" -ne 2 ]; then
-              why="HEAD has $count parent(s), and only a two-parent merge follows a pull_request run"
-            elif ! git fetch --quiet --no-tags --depth=1 origin "$pr_head"; then
-              why="could not fetch the second parent $pr_head to read its tree"
-            elif [ "$(git rev-parse "$pr_head^{tree}")" != "$tree" ]; then
-              why="HEAD's tree differs from its second parent $pr_head's, so no pull_request run built it"
-            elif ! verdict=$(gh api "repos/${GITHUB_REPOSITORY}/commits/$pr_head/check-runs?check_name=ci-passed" \
-                --jq '[.check_runs[] | select(.app.slug == "github-actions")] | sort_by(.id) | last
-                      | if . == null then "absent" elif .status != "completed" then .status else .conclusion end'); then
-              why="could not read ci-passed on $pr_head from the check-runs API"
-            elif [ "$verdict" != "success" ]; then
-              why="ci-passed on $pr_head reads ${verdict:-nothing}, not success"
+            if ! object=$(git cat-file -p HEAD); then
+              why="could not read HEAD's commit object"
             else
-              proved=true
-              why="two parents, the tree of $pr_head, and its ci-passed concluded success"
+              # Header lines only: a message line reading `parent <sha>` is not a parent.
+              parents=$(printf '%s\n' "$object" | sed -n '/^$/,$d; s/^parent //p')
+              tree=$(printf '%s\n' "$object" | sed -n '/^$/,$d; s/^tree //p')
+              count=0
+              for _ in $parents; do count=$((count + 1)); done
+              pr_head=$(printf '%s\n' "$parents" | sed -n 2p)
+              if [ "$count" -ne 2 ]; then
+                why="HEAD has $count parent(s), and only a two-parent merge follows a pull_request run"
+              elif ! git fetch --quiet --no-tags --depth=1 origin "$pr_head"; then
+                why="could not fetch the second parent $pr_head to read its tree"
+              elif [ "$(git rev-parse --verify --quiet "$pr_head^{tree}" || true)" != "$tree" ]; then
+                why="HEAD's tree differs from its second parent $pr_head's, so no pull_request run built it"
+              elif ! verdict=$(gh api --paginate --slurp \
+                  "repos/${GITHUB_REPOSITORY}/commits/$pr_head/check-runs?check_name=ci-passed&per_page=100" |
+                  jq -r '[.[].check_runs[] | select(.app.slug == "github-actions")] | sort_by(.id) | last
+                    | if . == null then "absent" elif .status != "completed" then .status else .conclusion end'); then
+                why="could not read ci-passed on $pr_head from the check-runs API"
+              elif [ "$verdict" != "success" ]; then
+                why="ci-passed on $pr_head reads ${verdict:-nothing}, not success"
+              else
+                proved=true
+                why="two parents, the tree of $pr_head, and its ci-passed concluded success"
+              fi
             fi
           fi
           echo "proved=$proved" >> "$GITHUB_OUTPUT"

@@ -155,7 +155,7 @@ const run = (id, status, conclusion) => ({
 /** The step's shell, run in a fresh depth-1 clone of the scenario, as GitHub runs `shell: bash`. */
 function prove(
   scenario,
-  { ref = 'refs/heads/main', event = 'push', checks = {}, ghFails = false },
+  { ref = 'refs/heads/main', event = 'push', checks = {}, ghFails = false, catFileFails = false },
 ) {
   const work = mkdtempSync(join(box, 'run-'));
   const clone = join(work, 'clone');
@@ -174,29 +174,35 @@ function prove(
   const served = join(work, 'served');
   mkdirSync(bin);
   mkdirSync(served);
+  // A value is one page of runs, or `{ pages }` for a list the API splits across several.
   for (const [rev, runs] of Object.entries(checks)) {
-    writeFileSync(
-      join(served, `${rev}.json`),
-      JSON.stringify({ total_count: runs.length, check_runs: runs }),
-    );
+    const pages = Array.isArray(runs) ? [runs] : runs.pages;
+    const body = pages.map((page) => ({ total_count: pages.flat().length, check_runs: page }));
+    writeFileSync(join(served, `${rev}.json`), JSON.stringify(body));
   }
   const gh = join(bin, 'gh');
   writeFileSync(
     gh,
     `#!/usr/bin/env bash
-printf '%s %s\\n' "$1" "$2" >> "${work}/gh-calls"
+printf '%s\\n' "$*" >> "${work}/gh-calls"
 ${ghFails ? 'echo "HTTP 403: Resource not accessible by integration" >&2; exit 1' : ''}
-[ "$1" = api ] || { echo "gh stand-in serves only \\\`gh api\\\`" >&2; exit 2; }
-path=$2; shift 2
-[ "$1" = --jq ] || { echo "gh stand-in needs --jq" >&2; exit 2; }
-rev=$(printf '%s' "$path" | sed -n 's#^repos/${REPO}/commits/\\([0-9a-f]*\\)/check-runs?check_name=ci-passed$#\\1#p')
-[ -n "$rev" ] || { echo "gh: HTTP 404 for $path" >&2; exit 1; }
-body='{"total_count":0,"check_runs":[]}'
-[ -f "${served}/$rev.json" ] && body=$(cat "${served}/$rev.json")
-printf '%s' "$body" | jq -r "$2"
+[ "$1 $2 $3" = "api --paginate --slurp" ] || { echo "gh stand-in serves only gh api --paginate --slurp" >&2; exit 2; }
+rev=$(printf '%s' "$4" | sed -n 's#^repos/${REPO}/commits/\\([0-9a-f]*\\)/check-runs?check_name=ci-passed&per_page=100$#\\1#p')
+[ -n "$rev" ] || { echo "gh: HTTP 404 for $4" >&2; exit 1; }
+if [ -f "${served}/$rev.json" ]; then cat "${served}/$rev.json"; else echo '[{"total_count":0,"check_runs":[]}]'; fi
 `,
   );
   chmodSync(gh, 0o755);
+  if (catFileFails) {
+    writeFileSync(
+      join(bin, 'git'),
+      `#!/usr/bin/env bash
+[ "$1" = cat-file ] && { echo "fatal: could not read object" >&2; exit 128; }
+PATH='${process.env.PATH ?? ''}' exec git "$@"
+`,
+    );
+    chmodSync(join(bin, 'git'), 0o755);
+  }
 
   const output = join(work, 'github-output');
   writeFileSync(output, '');
@@ -240,7 +246,7 @@ describe('the proved step, run as ci.yml writes it', () => {
     const r = prove('merge', { checks: green() });
     expectProved(r, true);
     expect(r.calls).toEqual([
-      `api repos/${REPO}/commits/${sha.prHead}/check-runs?check_name=ci-passed`,
+      `api --paginate --slurp repos/${REPO}/commits/${sha.prHead}/check-runs?check_name=ci-passed&per_page=100`,
     ]);
   });
 
@@ -321,5 +327,18 @@ describe('the proved step, run as ci.yml writes it', () => {
     const r = prove('lying', { checks: green() });
     expectProved(r, false);
     expect(r.log).toContain('why: HEAD has 1 parent(s)');
+  });
+
+  it('reads the latest ci-passed across every page the API returns', () => {
+    const pages = [[run(7, 'completed', 'success')], [run(9, 'completed', 'failure')]];
+    const r = prove('merge', { checks: { [sha.prHead]: { pages } } });
+    expectProved(r, false);
+    expect(r.log).toContain('reads failure, not success');
+  });
+
+  it('keeps the full gate, and says so, when HEAD cannot be read', () => {
+    const r = prove('merge', { checks: green(), catFileFails: true });
+    expectProved(r, false);
+    expect(r.log).toContain("why: could not read HEAD's commit object");
   });
 });
