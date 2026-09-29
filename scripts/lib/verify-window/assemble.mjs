@@ -13,8 +13,14 @@ import { windowBranch } from './land.mjs';
  * that same chain merged through one pull request (`land.mjs`).
  */
 
+/** A journal's entries; throws naming `where` when the text is not a journal. */
 function entriesOf(text, where) {
-  const doc = JSON.parse(text);
+  let doc;
+  try {
+    doc = JSON.parse(text);
+  } catch (err) {
+    throw new Error(`${where} is not readable JSON (${err.message})`);
+  }
   if (!Array.isArray(doc?.entries)) throw new Error(`${where} carries no \`entries\` array`);
   return doc.entries;
 }
@@ -136,18 +142,25 @@ export function prepareWindow({ repoDir, manifest, replay }) {
     ...(replay?.branches ?? []),
   ];
   const memberRefs = new Set(inWindow.map((b) => `origin/${b}`));
-  const openSet = readOpenSet({
-    git: trimmed,
-    journal,
-    baseRef,
-    fetch: false,
-    isOurs: memberRefs.has.bind(memberRefs),
-    parse: entriesOf,
-    afterFetch: () => {
-      const text = showAt(g, baseSha, journal);
-      return text === null ? [] : entriesOf(text, `${baseRef}:${journal}`);
-    },
-  });
+  let openSet;
+  try {
+    openSet = readOpenSet({
+      git: trimmed,
+      journal,
+      baseRef,
+      fetch: false,
+      isOurs: memberRefs.has.bind(memberRefs),
+      parse: entriesOf,
+      afterFetch: () => {
+        const text = showAt(g, baseSha, journal);
+        return text === null ? [] : entriesOf(text, `${baseRef}:${journal}`);
+      },
+    });
+  } catch (err) {
+    return {
+      refusal: `${err.message}, so the open set is unknown and no migration number can be allocated`,
+    };
+  }
   if (openSet === null)
     return {
       refusal: 'the open branches could not be enumerated, so no migration number can be allocated',

@@ -744,6 +744,60 @@ describe('an isolate whose rebuild fails', () => {
   });
 });
 
+describe('a journal that is not one', () => {
+  it('refuses the window when an open branch outside it carries one, naming the branch', () => {
+    branch('open-broken', { [JOURNAL]: '{ not json' });
+    const c = clone('broken-open');
+    const w = windowFiles('w-broken-open', [['ISS-4', 'ISS-4-after', heads.m4]], green(heads.m4));
+    const r = run(
+      c,
+      'assemble',
+      '--window',
+      w.manifest,
+      '--checks',
+      w.checksFile,
+      '--tree',
+      w.tree,
+    );
+    git(seed, 'push', '-q', 'origin', '--delete', 'open-broken');
+    expect(r.status).toBe(2);
+    expect(r.stderr).toContain(`origin/open-broken:${JOURNAL} is not readable JSON (`);
+    expect(r.stderr).toContain(
+      'so the open set is unknown and no migration number can be allocated',
+    );
+  });
+
+  it('isolates a member carrying one, naming it, and lets the next member in', () => {
+    const bad = branch('ISS-21-journal', { [JOURNAL]: { version: '7', entries: 5 } });
+    const c = clone('broken-member');
+    const w = windowFiles(
+      'w-broken-member',
+      [
+        ['ISS-21', 'ISS-21-journal', bad],
+        ['ISS-4', 'ISS-4-after', heads.m4],
+      ],
+      green(bad, heads.m4),
+    );
+    const r = run(
+      c,
+      'assemble',
+      '--window',
+      w.manifest,
+      '--checks',
+      w.checksFile,
+      '--tree',
+      w.tree,
+    );
+    git(seed, 'push', '-q', 'origin', '--delete', 'ISS-21-journal');
+    expect(r.status, r.stderr).toBe(1);
+    const ledger = JSON.parse(readFileSync(w.ledger, 'utf8'));
+    expect(ledger.members[0].isolated.because).toBe(
+      `ISS-21's migrations cannot be entered: ${bad}:${JOURNAL} carries no \`entries\` array`,
+    );
+    expect(ledger.members[1].landing).toMatch(/^[0-9a-f]{40}$/);
+  });
+});
+
 describe('the push a rebuilt window prints', () => {
   it('replaces the pushed chain under a lease that refuses once anyone moved the branch', () => {
     const d = branch('ISS-18-d', { 'src/d18.txt': 'd\n' });

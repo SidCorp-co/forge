@@ -11,9 +11,19 @@ import { unionInsertions } from './union.mjs';
  * paths. Runs inside an uncommitted `git merge --no-commit`; `assemble.mjs` owns the merge itself.
  */
 
+/** The journal at `rev`, `null` where it has none; throws naming it where it is not a journal. */
 function journalOf(t, rev, dir) {
+  const where = `${rev}:${dir}/meta/_journal.json`;
   const text = showAt(t, rev, `${dir}/meta/_journal.json`);
-  return text === null ? null : JSON.parse(text);
+  if (text === null) return null;
+  let doc;
+  try {
+    doc = JSON.parse(text);
+  } catch (err) {
+    throw new Error(`${where} is not readable JSON (${err.message})`);
+  }
+  if (!Array.isArray(doc?.entries)) throw new Error(`${where} carries no \`entries\` array`);
+  return doc;
 }
 
 /** Put `path` back to what HEAD holds, or take it out of the index and the tree where HEAD has none. */
@@ -75,11 +85,18 @@ function editedEntries(member, combined, before, theirs) {
  * @returns {{ moves: object[], rewrites: string[] } | { refusal: string }}
  */
 export function enterMigrations({ t, dir, member, open }) {
-  const combined = journalOf(t, 'HEAD', dir);
-  const theirs = journalOf(t, member.head, dir);
+  let combined;
+  let theirs;
+  let before;
+  try {
+    combined = journalOf(t, 'HEAD', dir);
+    theirs = journalOf(t, member.head, dir);
+    const fork = t.run(['merge-base', 'HEAD', member.head])?.trim();
+    before = fork ? journalOf(t, fork, dir) : null;
+  } catch (err) {
+    return { refusal: `${member.issue}'s migrations cannot be entered: ${err.message}` };
+  }
   if (!combined || !theirs) return { moves: [], rewrites: [] };
-  const fork = t.run(['merge-base', 'HEAD', member.head])?.trim();
-  const before = fork ? journalOf(t, fork, dir) : null;
   const edited = editedEntries(member, combined, before, theirs);
   if (edited) return { refusal: edited };
   // New against where the member forked, not against the combination: a member stacked on an
