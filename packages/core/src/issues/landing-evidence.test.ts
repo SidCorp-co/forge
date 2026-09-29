@@ -11,7 +11,9 @@ import {
   landingRoute,
   landingShapeOf,
   landingShortfall,
+  markTargetRequired,
   mergedLandingSchema,
+  standingMarkRefusal,
 } from './landing-evidence.js';
 
 const AT = new Date('2026-09-29T14:44:34Z');
@@ -48,7 +50,8 @@ describe('which marks count as landed, per shape', () => {
 
   it('refuses a bare timestamp on the outside-git shape: it names nothing that landed', () => {
     const short = landingShortfall(ASSERTED, 'outside_git') as string;
-    expect(short).toContain('a CLAIM Forge did not observe');
+    expect(short).toContain('names no landing');
+    expect(short).not.toMatch(/merged pull request|merged_commit_sha|CLAIM Forge did not observe/);
     expect(short).toContain('accepts `landed` or `observed`');
   });
 
@@ -110,5 +113,40 @@ describe('the landing field', () => {
     expect(mergedLandingSchema.safeParse('x'.repeat(2001)).success).toBe(false);
     expect(mergedLandingSchema.safeParse('x'.repeat(2000)).success).toBe(true);
     expect(mergedLandingSchema.parse('  https://shop.example/p  ')).toBe('https://shop.example/p');
+  });
+});
+
+describe('a landing sent over a mark that stands', () => {
+  const TYPO = 'https://mowmentbrand.com/prodcts/tee';
+
+  it('refuses a landing that differs from the one standing, naming both and the route', () => {
+    const refusal = standingMarkRefusal({ sent: TYPO, wrote: false, held: LANDED });
+    expect(refusal?.code).toBe('MARK_ALREADY_STANDS');
+    expect(refusal?.detail).toContain(LANDED.mergedLanding);
+    expect(refusal?.detail).toContain(`${TYPO} was not recorded`);
+    expect(refusal?.detail).toContain('`unmark`');
+    expect(refusal?.details).toMatchObject({
+      heldLanding: LANDED.mergedLanding,
+      heldKind: 'landed',
+    });
+  });
+
+  it('refuses a landing sent over a mark that names none', () => {
+    const refusal = standingMarkRefusal({ sent: TYPO, wrote: false, held: ASSERTED });
+    expect(refusal?.detail).toContain('a mark (asserted) that names no landing');
+    expect(refusal?.details).toMatchObject({ heldLanding: null, heldKind: 'asserted' });
+  });
+
+  it('lets the exact landing re-sent, a stamp that wrote, and a mark with no landing through', () => {
+    expect(
+      standingMarkRefusal({ sent: LANDED.mergedLanding, wrote: false, held: LANDED }),
+    ).toBeNull();
+    expect(standingMarkRefusal({ sent: TYPO, wrote: true, held: LANDED })).toBeNull();
+    expect(standingMarkRefusal({ sent: null, wrote: false, held: ASSERTED })).toBeNull();
+  });
+
+  it('owes a target only on the shape that moves branches', () => {
+    expect(markTargetRequired('git')).toBe(true);
+    expect(markTargetRequired('outside_git')).toBe(false);
   });
 });

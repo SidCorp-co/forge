@@ -159,6 +159,9 @@ pub struct Control {
     pub promises: std::sync::Mutex<GateMemory>,
     /// Whether this daemon is admitting new runs at all.
     pub drain: Arc<crate::daemon::drain::Drain>,
+    /// The box's process table, read for the Claude Code process above
+    /// whatever connects, which is the process a subagent runs in.
+    pub hosts: Arc<dyn crate::daemon::subagent_host::Hosts>,
 }
 
 #[derive(Default)]
@@ -221,6 +224,13 @@ pub async fn serve(
 
 #[cfg(unix)]
 async fn serve_one(ctl: Arc<Control>, stream: UnixStream) {
+    // The process on the far end, read off the socket rather than taken from
+    // the frame, so a report cannot name a process it is not running under.
+    let peer = stream
+        .peer_cred()
+        .ok()
+        .and_then(|c| c.pid())
+        .and_then(|p| u32::try_from(p).ok());
     let mut reader = BufReader::new(stream);
     let mut line = String::new();
     if reader.read_line(&mut line).await.is_err() {
@@ -228,7 +238,7 @@ async fn serve_one(ctl: Arc<Control>, stream: UnixStream) {
     }
     let reply = match serde_json::from_str::<Request>(&line) {
         Ok(req) => match ctl.tokens.session_for(req.token()) {
-            Some(session_id) => serve_request(&ctl, req, &session_id),
+            Some(session_id) => serve_request(&ctl, req, &session_id, peer),
             None => ClaimReply::refused("unknown_token"),
         },
         Err(e) => ClaimReply::refused(format!("undecodable request: {e}")),
@@ -245,6 +255,7 @@ fn agent_event(
     at_ms: Option<i64>,
     names: &HookNames,
     session_id: &str,
+    peer: Option<u32>,
 ) -> ClaimReply {
     let agent_id = names.agent_id.as_deref();
     let conversation_id = names.conversation_id.as_deref();
@@ -264,16 +275,20 @@ fn agent_event(
         },
     );
     match (parsed, agent_id) {
-        (crate::daemon::agent_activity::Event::SubagentStarted, _) => bind_declared(
-            ctl,
-            agent_id,
-            agent_type,
-            session_id,
-            at,
-            names.transcript_path.as_deref(),
-        ),
+        (crate::daemon::agent_activity::Event::SubagentStarted, _) => {
+            bind_declared(
+                ctl,
+                agent_id,
+                agent_type,
+                session_id,
+                at,
+                names.transcript_path.as_deref(),
+            );
+            note_host_of(ctl, agent_id, peer);
+        }
         (crate::daemon::agent_activity::Event::SubagentStopped, Some(child)) => {
-            note_subagent_stop(ctl, child, at, names.transcript_path.as_deref())
+            note_subagent_stop(ctl, child, at, names.transcript_path.as_deref());
+            note_host_of(ctl, Some(child), peer);
         }
         _ => {}
     }
@@ -355,6 +370,7 @@ fn run_declare(
     issue_keys: &[String],
     worktree_path: &str,
     session_id: &str,
+    peer: Option<u32>,
 ) -> ClaimReply {
     // First, before anything is read or written: a drain that admits a run is
     // waiting on a queue it keeps refilling (ISS-1223). The permit is held to
@@ -438,6 +454,7 @@ fn run_declare(
                 run.run_id,
                 issue_keys
             );
+            note_host(ctl, led, &run.run_id, peer);
             ClaimReply {
                 ok: true,
                 job_id: Some(run.run_id),
@@ -777,6 +794,48 @@ fn bind_declared(
     }
 }
 
+/// Record on `run_id`'s row the Claude Code process above `peer`, the process
+/// that just reported for it. A subagent runs in the process of the
+/// conversation that dispatched it, which is the one above its own hooks and
+/// above its master's `run declare`, and which may be running outside the
+/// master's pane (ISS-1312, run e67c08e0). A peer with no such process above it
+/// records nothing, and a row with nothing recorded is never ended by a pane.
+#[cfg(unix)]
+fn note_host(
+    ctl: &Arc<Control>,
+    led: &crate::runner::ledger::Ledger,
+    run_id: &str,
+    peer: Option<u32>,
+) {
+    let Some(host) = peer.and_then(|p| ctl.hosts.above(p)) else {
+        tracing::debug!(
+            "[control] run {run_id}: no Claude Code process was read above the process that reported for it, so none is recorded"
+        );
+        return;
+    };
+    if let Err(e) = led.note_host(run_id, host.pid, &host.start) {
+        tracing::warn!(
+            "[control] run {run_id}: cannot record the process {} its subagent runs in: {e}",
+            host.pid
+        );
+    }
+}
+
+/// [`note_host`] for the run `child` is bound to.
+#[cfg(unix)]
+fn note_host_of(ctl: &Arc<Control>, child: Option<&str>, peer: Option<u32>) {
+    let (Some(child), Some(_)) = (child, peer) else {
+        return;
+    };
+    let held = ctl.ledger.lock().expect("ledger poisoned");
+    let Some(led) = held.as_ref() else { return };
+    match led.run_for_agent(child) {
+        Ok(Some(run)) => note_host(ctl, led, &run.run_id, peer),
+        Ok(None) => {}
+        Err(e) => tracing::warn!("[control] cannot read the run for {child}: {e}"),
+    }
+}
+
 /// A subagent ended a turn, which is not the end of its run: it may be waiting
 /// on work of its own, and one that finished can still be resumed. The stop
 /// and where its transcript is are recorded; the run stays open until its
@@ -899,7 +958,12 @@ fn note_master_pane(ctl: &Arc<Control>, session_id: &str, conversation_id: Optio
 }
 
 #[cfg(unix)]
-fn serve_request(ctl: &Arc<Control>, req: Request, session_id: &str) -> ClaimReply {
+fn serve_request(
+    ctl: &Arc<Control>,
+    req: Request,
+    session_id: &str,
+    peer: Option<u32>,
+) -> ClaimReply {
     match req {
         Request::AgentEvent {
             event,
@@ -920,13 +984,21 @@ fn serve_request(ctl: &Arc<Control>, req: Request, session_id: &str) -> ClaimRep
                 transcript_path,
             },
             session_id,
+            peer,
         ),
         Request::RunDeclare {
             project_id,
             issue_keys,
             worktree_path,
             ..
-        } => run_declare(ctl, &project_id, &issue_keys, &worktree_path, session_id),
+        } => run_declare(
+            ctl,
+            &project_id,
+            &issue_keys,
+            &worktree_path,
+            session_id,
+            peer,
+        ),
         Request::RunChoice {
             run_id,
             choice,
@@ -1232,6 +1304,15 @@ mod tests {
         session_id: &str,
         project_id: &str,
     ) -> (Arc<Control>, String, crate::test_scratch::Scratch) {
+        declaring_control_over(session_id, project_id, Arc::default())
+    }
+
+    /// [`declaring_control`] over a process table the test sets.
+    fn declaring_control_over(
+        session_id: &str,
+        project_id: &str,
+        hosts: Arc<crate::daemon::subagent_host::testing::FakeHosts>,
+    ) -> (Arc<Control>, String, crate::test_scratch::Scratch) {
         let dir = crate::test_scratch::Scratch::new("ct-decl");
         let tokens = SessionTokens::at(dir.join("control-tokens.json"));
         let token = tokens.mint(session_id).unwrap();
@@ -1249,6 +1330,7 @@ mod tests {
                 config_dir: Some(dir.to_path_buf()),
                 promises: std::sync::Mutex::new(GateMemory::default()),
                 drain: Arc::new(crate::daemon::drain::Drain::unrecorded()),
+                hosts,
             }),
             token,
             dir,
@@ -1260,9 +1342,11 @@ mod tests {
     /// 3832432d, its subagent ad5b0350ec22adc17 bound and never stopped, and
     /// the forge-dev pane was placed again and resumed under a new session. The
     /// pane was told the run was its own and was refused at all three verbs.
+    /// Its subagent ran in the pane's own Claude Code process, which is gone.
     #[cfg(unix)]
     #[test]
     fn a_resumed_pane_answers_for_the_run_the_session_it_replaced_declared() {
+        const PANE_CLAUDE: u32 = 3_811_204;
         const OLD: &str = "3832432d-d554-4de3-a0d7-7531f1debd39";
         const NEW: &str = "1dc7d61c-0000-4000-8000-000000000000";
         const PROJECT: &str = "da368b0a-8e21-4763-9d90-8f7b9d0c7115";
@@ -1284,6 +1368,7 @@ mod tests {
             led.attach_session(RUN, "a44e068d-e3b3-4bb8-a247-84f5c10a5b05")
                 .unwrap();
             assert!(led.bind_agent(RUN, "ad5b0350ec22adc17").unwrap());
+            assert!(led.note_host(RUN, PANE_CLAUDE, "4400").unwrap());
             led.note_master(PROJECT, "forge-master-forge-dev", None, Some(OLD), "boot-a")
                 .unwrap();
             let boot = crate::daemon::master::inheritance_boot(None, led, PROJECT, "forge-dev")
@@ -1291,7 +1376,12 @@ mod tests {
             assert_eq!(boot, "boot-a");
             crate::daemon::master::inherited_runs(led, PROJECT, &boot)
         };
-        let brief = crate::daemon::master::resumed_brief("conv-forge-dev", &inherited, true);
+        let hosts = crate::daemon::subagent_host::testing::FakeHosts::with(
+            PANE_CLAUDE,
+            crate::daemon::subagent_host::HostRead::Gone,
+        );
+        let brief =
+            crate::daemon::master::resumed_brief("conv-forge-dev", &inherited, true, &hosts);
         assert!(brief.contains(RUN), "criterion 19: {brief}");
         assert!(
             brief.contains("ended with the pane") && !brief.contains("incarnation: live"),
@@ -1307,6 +1397,7 @@ mod tests {
                 true,
                 crate::daemon::agent_activity::now_ms(),
                 "forge-dev",
+                &hosts,
             );
             assert_eq!(
                 led.run(RUN).unwrap().unwrap().master_session_id,
@@ -1322,7 +1413,7 @@ mod tests {
             );
             assert!(drain.is_empty(), "criterion 16: {drain:?}");
         }
-        let refused = run_declare(&ctl, PROJECT, &["ISS-1400".into()], "/w/other", NEW);
+        let refused = run_declare(&ctl, PROJECT, &["ISS-1400".into()], "/w/other", NEW, None);
         assert!(
             !refused.ok && refused.reason.as_deref().unwrap_or("").contains(RUN),
             "an unanswered inheritance still holds new work: {refused:?}"
@@ -1343,6 +1434,7 @@ mod tests {
             &["ISS-1314".into()],
             "/home/dev/forge/projects/forge-core/.claude/worktrees/iss-1314-r4",
             NEW,
+            None,
         );
         assert!(again.ok, "criterion 23: {again:?}");
         let held = ctl.ledger.lock().unwrap();
@@ -1410,7 +1502,7 @@ mod tests {
             |n: usize| -> Vec<String> { (0..n).map(|i| format!("ISS-{}", 900 + i)).collect() };
 
         let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
-        let over = run_declare(&ctl, "proj-1", &keys(cap + 1), "/w/over", "sess-a");
+        let over = run_declare(&ctl, "proj-1", &keys(cap + 1), "/w/over", "sess-a", None);
         assert!(!over.ok, "seventeen keys is one more than core accepts");
         let said = over.reason.clone().unwrap_or_default();
         assert!(said.contains(&cap.to_string()), "the cap is named: {said}");
@@ -1436,7 +1528,7 @@ mod tests {
         );
 
         let (ctl, _t, _dir) = declaring_control("sess-b", "proj-1");
-        let at_cap = run_declare(&ctl, "proj-1", &keys(cap), "/w/at-cap", "sess-b");
+        let at_cap = run_declare(&ctl, "proj-1", &keys(cap), "/w/at-cap", "sess-b", None);
         assert!(
             at_cap.ok,
             "exactly the cap is what core accepts and must still be declarable: {:?}",
@@ -1458,9 +1550,16 @@ mod tests {
 
         // 4. Declared: the next dispatch goes through, and the row it reserved is
         // named — which is what a re-implementation of this path could not show.
-        let run_id = run_declare(&ctl, "proj-1", &["ISS-7".into()], "/w/seven", "sess-a")
-            .job_id
-            .expect("declared");
+        let run_id = run_declare(
+            &ctl,
+            "proj-1",
+            &["ISS-7".into()],
+            "/w/seven",
+            "sess-a",
+            None,
+        )
+        .job_id
+        .expect("declared");
         let covered = gate_on(&ctl, &asking("runner", "toolu_1"), "sess-a");
         assert!(allowed(&covered));
         assert_eq!(
@@ -1515,9 +1614,16 @@ mod tests {
     fn a_daemon_restart_leaves_the_declaration_standing_and_the_second_child_is_named() {
         let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
         let dir = ship_roles(&ctl, &["runner"]);
-        let run_id = run_declare(&ctl, "proj-1", &["ISS-7".into()], "/w/seven", "sess-a")
-            .job_id
-            .expect("declared");
+        let run_id = run_declare(
+            &ctl,
+            "proj-1",
+            &["ISS-7".into()],
+            "/w/seven",
+            "sess-a",
+            None,
+        )
+        .job_id
+        .expect("declared");
         assert!(allowed(&gate_on(
             &ctl,
             &asking("runner", "toolu_1"),
@@ -1541,6 +1647,7 @@ mod tests {
             config_dir: ctl.config_dir.clone(),
             promises: std::sync::Mutex::new(GateMemory::default()),
             drain: Arc::new(crate::daemon::drain::Drain::unrecorded()),
+            hosts: ctl.hosts.clone(),
         });
 
         // The declaration is still the master's, so the dispatch is allowed.
@@ -1582,9 +1689,16 @@ mod tests {
     fn a_replayed_hook_gets_its_answer_back_even_after_its_subagent_started() {
         let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
         ship_roles(&ctl, &["runner"]);
-        let _ = run_declare(&ctl, "proj-1", &["ISS-7".into()], "/w/seven", "sess-a")
-            .job_id
-            .expect("declared");
+        let _ = run_declare(
+            &ctl,
+            "proj-1",
+            &["ISS-7".into()],
+            "/w/seven",
+            "sess-a",
+            None,
+        )
+        .job_id
+        .expect("declared");
         let ask = crate::daemon::dispatch_gate::Dispatch {
             agent_id: None,
             subagent_type: Some("runner".into()),
@@ -1600,9 +1714,16 @@ mod tests {
         );
 
         // and it must not have eaten the next declaration.
-        let next = run_declare(&ctl, "proj-1", &["ISS-8".into()], "/w/eight", "sess-a")
-            .job_id
-            .expect("declared");
+        let next = run_declare(
+            &ctl,
+            "proj-1",
+            &["ISS-8".into()],
+            "/w/eight",
+            "sess-a",
+            None,
+        )
+        .job_id
+        .expect("declared");
         let mem = ctl.promises.lock().unwrap();
         assert!(
             !mem.promised.contains_key(&next),
@@ -1694,7 +1815,7 @@ mod tests {
     fn a_hand_off_declared_before_the_drain_fails_open_at_an_unknown_verdict() {
         // Roles unreadable (checked before the pending run is looked at).
         let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
-        let declared = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a");
+        let declared = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a", None);
         assert!(declared.ok, "{:?}", declared.reason);
         let _attempt = ctl.drain.begin("update 0.1.0 → 0.1.1").unwrap();
         let r = gate_on(&ctl, &asked(Some("toolu_1"), "runner"), "sess-a");
@@ -1706,7 +1827,7 @@ mod tests {
         // No tool call id (checked after the pending run was found).
         let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
         ship_roles(&ctl, &["runner"]);
-        let declared = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a");
+        let declared = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a", None);
         assert!(declared.ok, "{:?}", declared.reason);
         let _attempt = ctl.drain.begin("update 0.1.0 → 0.1.1").unwrap();
         let r = gate_on(&ctl, &asked(None, "runner"), "sess-a");
@@ -1724,7 +1845,7 @@ mod tests {
     #[test]
     fn a_pre_drain_run_the_gate_fails_open_for_is_handed_off_once() {
         let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
-        let declared = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a");
+        let declared = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a", None);
         assert!(declared.ok, "{:?}", declared.reason);
         let run = declared.job_id.unwrap();
         let _attempt = ctl.drain.begin("update 0.1.0 → 0.1.1").unwrap();
@@ -1761,7 +1882,7 @@ mod tests {
     fn a_hand_off_declared_before_the_drain_still_goes_through() {
         let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
         ship_roles(&ctl, &["runner"]);
-        let declared = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a");
+        let declared = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a", None);
         assert!(declared.ok, "{:?}", declared.reason);
         let _attempt = ctl.drain.begin("update 0.1.0 → 0.1.1").unwrap();
         let r = gate_on(&ctl, &asked(Some("toolu_1"), "runner"), "sess-a");
@@ -1858,9 +1979,16 @@ mod tests {
     fn a_replayed_start_for_an_already_bound_child_raises_no_alarm() {
         let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
         let dir = ship_roles(&ctl, &["runner"]);
-        let _ = run_declare(&ctl, "proj-1", &["ISS-7".into()], "/w/seven", "sess-a")
-            .job_id
-            .expect("declared");
+        let _ = run_declare(
+            &ctl,
+            "proj-1",
+            &["ISS-7".into()],
+            "/w/seven",
+            "sess-a",
+            None,
+        )
+        .job_id
+        .expect("declared");
 
         for _ in 0..3 {
             bind_declared(&ctl, Some("child-1"), Some("runner"), "sess-a", 0, None);
@@ -1879,9 +2007,16 @@ mod tests {
     fn a_declared_hand_off_is_bound_and_nothing_is_counted_against_it() {
         let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
         let dir = ship_roles(&ctl, &["runner"]);
-        let _ = run_declare(&ctl, "proj-1", &["ISS-7".into()], "/w/seven", "sess-a")
-            .job_id
-            .expect("declared");
+        let _ = run_declare(
+            &ctl,
+            "proj-1",
+            &["ISS-7".into()],
+            "/w/seven",
+            "sess-a",
+            None,
+        )
+        .job_id
+        .expect("declared");
 
         bind_declared(&ctl, Some("child-1"), Some("runner"), "sess-a", 0, None);
 
@@ -1896,6 +2031,144 @@ mod tests {
                 .is_some(),
             "the declared row must be bound to the child that started"
         );
+    }
+
+    /// ISS-1312 criteria 56 and 57: the row records the Claude Code process
+    /// above whatever reported for the run, read off the socket's peer: the
+    /// master's `run declare`, then its subagent's own start and stop hooks.
+    /// Run e67c08e0's ran in a background session outside the pane, which is
+    /// why the pane cannot stand in for it.
+    #[cfg(unix)]
+    #[test]
+    fn a_run_records_the_claude_code_process_above_what_reported_for_it() {
+        use crate::daemon::subagent_host::Host;
+        let hosts = Arc::new(crate::daemon::subagent_host::testing::FakeHosts::default());
+        let host = |pid: u32, start: &str| Host {
+            pid,
+            start: start.into(),
+        };
+        {
+            let mut peers = hosts.peers.lock().unwrap();
+            peers.insert(900_001, host(3_850_261, "901"));
+            peers.insert(900_002, host(3_850_261, "901"));
+            peers.insert(900_003, host(3_990_000, "977"));
+        }
+        let (ctl, _t, _dir) = declaring_control_over("sess-a", "proj-1", hosts);
+        let row = |ctl: &Arc<Control>| {
+            let held = ctl.ledger.lock().unwrap();
+            let led = held.as_ref().unwrap();
+            let id = led.runs_for_master("sess-a").unwrap()[0].run_id.clone();
+            let run = led.run(&id).unwrap().unwrap();
+            (run.host_pid, run.host_start)
+        };
+        run_declare(
+            &ctl,
+            "proj-1",
+            &["ISS-659".into()],
+            "/w/659",
+            "sess-a",
+            Some(900_001),
+        )
+        .job_id
+        .expect("declared");
+        assert_eq!(
+            row(&ctl),
+            (Some(3_850_261), Some("901".into())),
+            "criterion 56"
+        );
+
+        let child = HookNames {
+            agent_id: Some("afb821edfc48c7694".into()),
+            conversation_id: Some("19793a14".into()),
+            agent_type: Some("runner".into()),
+            transcript_path: None,
+        };
+        agent_event(
+            &ctl,
+            "SubagentStart",
+            Some(10),
+            &child,
+            "sess-a",
+            Some(900_002),
+        );
+        assert_eq!(
+            row(&ctl),
+            (Some(3_850_261), Some("901".into())),
+            "criterion 57: start"
+        );
+        agent_event(
+            &ctl,
+            "SubagentStop",
+            Some(20),
+            &child,
+            "sess-a",
+            Some(900_003),
+        );
+        assert_eq!(
+            row(&ctl),
+            (Some(3_990_000), Some("977".into())),
+            "criterion 57: the stop's hook ran under another process, and the latest stands"
+        );
+        agent_event(
+            &ctl,
+            "SubagentStop",
+            Some(30),
+            &child,
+            "sess-a",
+            Some(900_404),
+        );
+        agent_event(&ctl, "SubagentStop", Some(40), &child, "sess-a", None);
+        assert_eq!(
+            row(&ctl),
+            (Some(3_990_000), Some("977".into())),
+            "a report with no Claude Code process above it, or no peer at all, records nothing"
+        );
+    }
+
+    /// Criterion 56 through the socket itself: the process a declaration is
+    /// recorded under is the one on the far end of the connection, read off
+    /// the socket, and nothing the frame says can name another.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_declaration_over_the_socket_records_the_process_on_its_far_end() {
+        use crate::daemon::subagent_host::Host;
+        let hosts = Arc::new(crate::daemon::subagent_host::testing::FakeHosts::default());
+        hosts.peers.lock().unwrap().insert(
+            std::process::id(),
+            Host {
+                pid: 3_850_261,
+                start: "901".into(),
+            },
+        );
+        let (ctl, token, _dir) = declaring_control_over("sess-a", "proj-1", hosts);
+        let (near, far) = UnixStream::pair().unwrap();
+        let served = tokio::spawn(serve_one(Arc::clone(&ctl), far));
+        let mut near = BufReader::new(near);
+        let frame = serde_json::json!({
+            "op": "run_declare", "token": token, "projectId": "proj-1",
+            "issueKeys": ["ISS-659"], "worktreePath": "/w/659"
+        });
+        near.get_mut()
+            .write_all(format!("{frame}\n").as_bytes())
+            .await
+            .unwrap();
+        let mut reply = String::new();
+        near.read_line(&mut reply).await.unwrap();
+        served.await.unwrap();
+        assert!(reply.contains("\"ok\":true"), "declared: {reply}");
+        let held = ctl.ledger.lock().unwrap();
+        let led = held.as_ref().unwrap();
+        let id = led.runs_for_master("sess-a").unwrap()[0].run_id.clone();
+        let run = led.run(&id).unwrap().unwrap();
+        // Linux is the platform this peer read is measured on; elsewhere the
+        // declaration must still go through, whatever it can record.
+        if cfg!(target_os = "linux") {
+            assert_eq!(
+                (run.host_pid, run.host_start.as_deref()),
+                (Some(3_850_261), Some("901")),
+                "criterion 56: the row records the process above the socket's peer"
+            );
+        }
     }
 
     /// The frame under test is the one `request_dispatch_gate` actually sends,
@@ -2016,7 +2289,7 @@ mod tests {
         fn a_declaration_during_a_drain_is_refused_naming_it_and_writes_nothing() {
             let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
             let _attempt = ctl.drain.begin("update 0.1.0 → 0.1.1").unwrap();
-            let reply = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a");
+            let reply = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a", None);
             assert!(
                 !reply.ok,
                 "a drain that admits a run is waiting on a queue it refills"
@@ -2050,7 +2323,7 @@ mod tests {
             let declaring = {
                 let ctl = ctl.clone();
                 std::thread::spawn(move || {
-                    run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a")
+                    run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a", None)
                 })
             };
             let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
@@ -2124,6 +2397,7 @@ mod tests {
                             &[format!("ISS-{n}")],
                             &format!("/w/{n}"),
                             "sess-a",
+                            None,
                         );
                         if let (true, Some(id)) = (reply.ok, reply.job_id) {
                             let held = ctl.ledger.lock().unwrap();
@@ -2227,9 +2501,16 @@ mod tests {
         #[test]
         fn a_second_close_is_refused_quoting_the_first_and_changes_nothing() {
             let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
-            let run_id = run_declare(&ctl, "proj-1", &["ISS-7".into()], "/w/seven", "sess-a")
-                .job_id
-                .expect("declared");
+            let run_id = run_declare(
+                &ctl,
+                "proj-1",
+                &["ISS-7".into()],
+                "/w/seven",
+                "sess-a",
+                None,
+            )
+            .job_id
+            .expect("declared");
             assert!(run_close(&ctl, &run_id, Some("its report is in"), "sess-a").ok);
 
             let again = run_close(&ctl, &run_id, Some("second thoughts"), "sess-a");
@@ -2294,7 +2575,7 @@ mod tests {
         #[test]
         fn a_declaration_writes_a_row_and_answers_its_id() {
             let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
-            let reply = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a");
+            let reply = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a", None);
             assert!(reply.ok, "{:?}", reply.reason);
             let run_id = reply.job_id.expect("the declaration answers the row's id");
             let held = ctl.ledger.lock().unwrap();
@@ -2319,7 +2600,14 @@ mod tests {
         #[test]
         fn a_declaration_for_a_project_this_pane_is_not_master_of_is_refused_and_writes_nothing() {
             let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
-            let reply = run_declare(&ctl, "proj-OTHER", &["ISS-1".into()], "/w/one", "sess-a");
+            let reply = run_declare(
+                &ctl,
+                "proj-OTHER",
+                &["ISS-1".into()],
+                "/w/one",
+                "sess-a",
+                None,
+            );
             assert!(!reply.ok);
             let why = reply.reason.unwrap_or_default();
             assert!(
@@ -2341,7 +2629,14 @@ mod tests {
         #[test]
         fn a_pane_this_daemon_has_not_adopted_is_refused_with_what_the_sweep_recorded() {
             let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
-            let reply = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-UNKNOWN");
+            let reply = run_declare(
+                &ctl,
+                "proj-1",
+                &["ISS-1".into()],
+                "/w/one",
+                "sess-UNKNOWN",
+                None,
+            );
             assert!(!reply.ok);
             let why = reply.reason.unwrap_or_default();
             assert_eq!(
@@ -2361,7 +2656,14 @@ mod tests {
             ctl.masters
                 .note_served(crate::daemon::master::Served::Read(vec!["proj-9".into()]));
             for project in ["proj-1", "proj-9", "proj-ABSENT"] {
-                let reply = run_declare(&ctl, project, &["ISS-1".into()], "/w/one", "sess-UNKNOWN");
+                let reply = run_declare(
+                    &ctl,
+                    project,
+                    &["ISS-1".into()],
+                    "/w/one",
+                    "sess-UNKNOWN",
+                    None,
+                );
                 let why = reply.reason.unwrap_or_default();
                 assert!(
                     !why.contains("thirty seconds") && !why.contains("30 seconds"),
@@ -2372,9 +2674,9 @@ mod tests {
         #[test]
         fn a_second_declaration_while_one_is_unbound_is_refused_naming_the_pending_row() {
             let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
-            let first = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a");
+            let first = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a", None);
             let pending = first.job_id.unwrap();
-            let second = run_declare(&ctl, "proj-1", &["ISS-2".into()], "/w/two", "sess-a");
+            let second = run_declare(&ctl, "proj-1", &["ISS-2".into()], "/w/two", "sess-a", None);
             assert!(!second.ok);
             let why = second.reason.unwrap_or_default();
             assert!(
@@ -2385,16 +2687,16 @@ mod tests {
         #[test]
         fn a_master_closing_its_own_unbound_declaration_may_declare_again() {
             let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
-            let first = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a");
+            let first = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a", None);
             let run_id = first.job_id.unwrap();
             assert!(run_close(&ctl, &run_id, Some("it never started"), "sess-a").ok);
-            let again = run_declare(&ctl, "proj-1", &["ISS-2".into()], "/w/two", "sess-a");
+            let again = run_declare(&ctl, "proj-1", &["ISS-2".into()], "/w/two", "sess-a", None);
             assert!(again.ok, "{:?}", again.reason);
         }
         #[test]
         fn one_master_cannot_close_another_masters_run() {
             let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
-            let run_id = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a")
+            let run_id = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a", None)
                 .job_id
                 .unwrap();
             let reply = run_close(&ctl, &run_id, None, "sess-b");
@@ -2420,9 +2722,16 @@ mod tests {
             project_id: &str,
             session_id: &str,
         ) -> String {
-            let run_id = run_declare(ctl, project_id, &["ISS-7".into()], "/w/seven", session_id)
-                .job_id
-                .expect("declared");
+            let run_id = run_declare(
+                ctl,
+                project_id,
+                &["ISS-7".into()],
+                "/w/seven",
+                session_id,
+                None,
+            )
+            .job_id
+            .expect("declared");
             let mut held = ctl.ledger.lock().unwrap();
             let led = held.as_mut().unwrap();
             // bind and end nothing: this is a run left open, which is what a resume inherits
@@ -2439,6 +2748,7 @@ mod tests {
                 &["ISS-7".into(), "the whole backlog".into()],
                 "/w/seven",
                 "sess-a",
+                None,
             );
 
             assert!(
@@ -2489,7 +2799,14 @@ mod tests {
             let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
             declared_and_inherited(&ctl, "proj-1", "sess-a");
 
-            let reply = run_declare(&ctl, "proj-1", &["ISS-8".into()], "/w/eight", "sess-a");
+            let reply = run_declare(
+                &ctl,
+                "proj-1",
+                &["ISS-8".into()],
+                "/w/eight",
+                "sess-a",
+                None,
+            );
 
             assert!(!reply.ok, "the declaration must be refused");
             let reason = reply.reason.unwrap_or_default();
@@ -2504,7 +2821,14 @@ mod tests {
             let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
             declared_and_inherited(&ctl, "proj-1", "sess-a");
 
-            let reply = run_declare(&ctl, "proj-1", &["ISS-8".into()], "/w/eight", "sess-a");
+            let reply = run_declare(
+                &ctl,
+                "proj-1",
+                &["ISS-8".into()],
+                "/w/eight",
+                "sess-a",
+                None,
+            );
 
             let reason = reply.reason.unwrap_or_default();
             assert!(
@@ -2529,7 +2853,14 @@ mod tests {
             );
             assert!(closed.ok, "{:?}", closed.reason);
 
-            let reply = run_declare(&ctl, "proj-1", &["ISS-8".into()], "/w/eight", "sess-a");
+            let reply = run_declare(
+                &ctl,
+                "proj-1",
+                &["ISS-8".into()],
+                "/w/eight",
+                "sess-a",
+                None,
+            );
 
             assert!(
                 !reply.ok,
@@ -2562,7 +2893,14 @@ mod tests {
             );
             assert!(choice.ok, "{:?}", choice.reason);
 
-            let reply = run_declare(&ctl, "proj-1", &["ISS-8".into()], "/w/eight", "sess-a");
+            let reply = run_declare(
+                &ctl,
+                "proj-1",
+                &["ISS-8".into()],
+                "/w/eight",
+                "sess-a",
+                None,
+            );
             assert!(reply.ok, "{:?}", reply.reason);
         }
         #[test]
@@ -2599,17 +2937,38 @@ mod tests {
             // below is about the resume gate and not about that.
             bind_declared(&ctl, Some("child-1"), None, "sess-a", 0, None);
 
-            let reply = run_declare(&ctl, "proj-1", &["ISS-8".into()], "/w/eight", "sess-a");
+            let reply = run_declare(
+                &ctl,
+                "proj-1",
+                &["ISS-8".into()],
+                "/w/eight",
+                "sess-a",
+                None,
+            );
             assert!(reply.ok, "{:?}", reply.reason);
         }
         #[test]
         fn a_pane_that_was_never_resumed_declares_freely() {
             let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
-            let first = run_declare(&ctl, "proj-1", &["ISS-7".into()], "/w/seven", "sess-a");
+            let first = run_declare(
+                &ctl,
+                "proj-1",
+                &["ISS-7".into()],
+                "/w/seven",
+                "sess-a",
+                None,
+            );
             assert!(first.ok, "{:?}", first.reason);
             bind_declared(&ctl, Some("child-1"), None, "sess-a", 0, None);
 
-            let second = run_declare(&ctl, "proj-1", &["ISS-8".into()], "/w/eight", "sess-a");
+            let second = run_declare(
+                &ctl,
+                "proj-1",
+                &["ISS-8".into()],
+                "/w/eight",
+                "sess-a",
+                None,
+            );
 
             assert!(second.ok, "{:?}", second.reason);
         }
@@ -2617,7 +2976,7 @@ mod tests {
         fn a_master_pane_event_puts_that_pane_and_its_conversation_in_the_ledger() {
             let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
 
-            agent_event(&ctl, "Stop", None, &conv("conv-abc"), "sess-a");
+            agent_event(&ctl, "Stop", None, &conv("conv-abc"), "sess-a", None);
 
             let held = ctl.ledger.lock().unwrap();
             let row = held
@@ -2633,8 +2992,8 @@ mod tests {
         fn an_event_without_a_conversation_leaves_the_stored_one_alone() {
             let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
 
-            agent_event(&ctl, "Stop", None, &conv("conv-abc"), "sess-a");
-            agent_event(&ctl, "Stop", None, &HookNames::default(), "sess-a");
+            agent_event(&ctl, "Stop", None, &conv("conv-abc"), "sess-a", None);
+            agent_event(&ctl, "Stop", None, &HookNames::default(), "sess-a", None);
 
             let held = ctl.ledger.lock().unwrap();
             let row = held
@@ -2657,7 +3016,7 @@ mod tests {
                 ..conv("conv-abc")
             };
 
-            agent_event(&ctl, "UserPromptSubmit", None, &names, "sess-job");
+            agent_event(&ctl, "UserPromptSubmit", None, &names, "sess-job", None);
 
             assert_eq!(
                 ctl.activity
@@ -2671,7 +3030,14 @@ mod tests {
         fn a_session_that_is_not_a_registered_master_writes_no_row() {
             let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
 
-            agent_event(&ctl, "Stop", None, &conv("conv-zzz"), "some-other-session");
+            agent_event(
+                &ctl,
+                "Stop",
+                None,
+                &conv("conv-zzz"),
+                "some-other-session",
+                None,
+            );
 
             let held = ctl.ledger.lock().unwrap();
             let row = held.as_ref().unwrap().master_for_project("proj-1").unwrap();
@@ -2693,7 +3059,7 @@ mod tests {
         #[test]
         fn a_subagent_starting_binds_the_row_its_master_declared_and_stopping_leaves_it_open() {
             let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
-            let run_id = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a")
+            let run_id = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a", None)
                 .job_id
                 .unwrap();
             bind_declared(&ctl, Some("child-1"), None, "sess-a", 0, None);
@@ -2731,7 +3097,7 @@ mod tests {
         #[test]
         fn each_stop_moves_the_turn_end_forward_and_a_replayed_older_one_does_not_move_it_back() {
             let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
-            let run_id = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a")
+            let run_id = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a", None)
                 .job_id
                 .unwrap();
             bind_declared(&ctl, Some("child-1"), None, "sess-a", 0, None);
@@ -2750,7 +3116,7 @@ mod tests {
         #[test]
         fn a_stop_naming_a_relative_lead_records_no_transcript_it_would_misread() {
             let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
-            let run_id = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a")
+            let run_id = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a", None)
                 .job_id
                 .unwrap();
             bind_declared(&ctl, Some("child-1"), None, "sess-a", 0, None);
@@ -2762,7 +3128,7 @@ mod tests {
         #[test]
         fn a_stop_heard_through_the_socket_reaches_the_run_with_its_time_and_path() {
             let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
-            let run_id = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a")
+            let run_id = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a", None)
                 .job_id
                 .unwrap();
             let lead = crate::daemon::transcript_age::absolute_fixture("conv-live.jsonl");
@@ -2772,8 +3138,8 @@ mod tests {
                 agent_type: Some("runner".into()),
                 transcript_path: Some(lead.clone()),
             };
-            agent_event(&ctl, "SubagentStart", Some(1_000), &names, "sess-a");
-            agent_event(&ctl, "SubagentStop", Some(2_000), &names, "sess-a");
+            agent_event(&ctl, "SubagentStart", Some(1_000), &names, "sess-a", None);
+            agent_event(&ctl, "SubagentStop", Some(2_000), &names, "sess-a", None);
             let run = run_of(&ctl, &run_id);
             assert_eq!(run.agent_id.as_deref(), Some("child-9"));
             assert_eq!(run.ended_by, None);
@@ -2786,11 +3152,11 @@ mod tests {
         #[test]
         fn a_replayed_start_from_a_child_already_bound_never_takes_the_next_row() {
             let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
-            let run_a = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a")
+            let run_a = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a", None)
                 .job_id
                 .unwrap();
             bind_declared(&ctl, Some("child-a"), None, "sess-a", 0, None);
-            let run_b = run_declare(&ctl, "proj-1", &["ISS-2".into()], "/w/two", "sess-a")
+            let run_b = run_declare(&ctl, "proj-1", &["ISS-2".into()], "/w/two", "sess-a", None)
                 .job_id
                 .unwrap();
             bind_declared(&ctl, Some("child-a"), None, "sess-a", 0, None);
@@ -2809,12 +3175,12 @@ mod tests {
         #[test]
         fn a_start_replayed_after_its_own_run_ended_takes_no_other_row() {
             let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
-            let run_a = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a")
+            let run_a = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a", None)
                 .job_id
                 .unwrap();
             bind_declared(&ctl, Some("child-a"), None, "sess-a", 0, None);
             assert!(run_close(&ctl, &run_a, None, "sess-a").ok);
-            let run_b = run_declare(&ctl, "proj-1", &["ISS-2".into()], "/w/two", "sess-a")
+            let run_b = run_declare(&ctl, "proj-1", &["ISS-2".into()], "/w/two", "sess-a", None)
                 .job_id
                 .unwrap();
             bind_declared(&ctl, Some("child-a"), None, "sess-a", 0, None);

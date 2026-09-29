@@ -83,10 +83,6 @@ async function runMergeMarker(
   const access = await loadProjectAccess(issue.projectId, userId);
   assertProjectRole(access, 'member');
 
-  if (op === 'mark' && !body.target) {
-    throw badRequest({ formErrors: ['target is required'], fieldErrors: {} });
-  }
-
   const actor = restActor(c);
   try {
     const { action, mark, markDetail } = await applyMergeMarker({
@@ -111,9 +107,14 @@ async function runMergeMarker(
   } catch (err) {
     if (err instanceof MergeMarkerError) {
       if (err.code === 'ISSUE_NOT_FOUND') throw notFound('issue not found');
+      // Whether a target is owed is the project's shape (`landing-evidence.ts`); the body is
+      // the one this door has always answered a missing target with.
+      if (err.code === 'TARGET_REQUIRED') {
+        throw badRequest({ formErrors: ['target is required'], fieldErrors: {} });
+      }
       throw new HTTPException(422, {
         message: err.message,
-        cause: { code: err.code },
+        cause: { code: err.code, ...(err.details ? { details: err.details } : {}) },
       });
     }
     throw err;

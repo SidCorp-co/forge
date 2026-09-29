@@ -206,8 +206,17 @@ pub struct Run {
     /// so a turn it was in ended then. Anything heard from the subagent later
     /// supersedes it, and a start of its subagent clears it (ISS-1312).
     pub host_ended_at_ms: Option<i64>,
-    /// What that end was seen as: [`HOST_PANE_STARTED`] or [`HOST_PANE_GONE`].
+    /// What that end was seen as: [`HOST_PANE_STARTED`], [`HOST_PANE_GONE`] or
+    /// [`HOST_PROCESS_GONE`].
     pub host_ended_by: Option<String>,
+    /// The Claude Code process this run's subagent runs in, read above the
+    /// hook or the `run declare` that last reported for it, and its start time
+    /// in clock ticks since boot. A mark in the two columns above counts only
+    /// where these are set, because only that process's end is its
+    /// subagent's end: a pane can end or be started again while the
+    /// conversation runs elsewhere (ISS-1312, run e67c08e0).
+    pub host_pid: Option<u32>,
+    pub host_start: Option<String>,
 }
 
 /// A run's host ended because this box started a new master pane for its
@@ -215,6 +224,9 @@ pub struct Run {
 pub const HOST_PANE_STARTED: &str = "pane-started";
 /// A run's host ended because recovery read its master's pane as gone.
 pub const HOST_PANE_GONE: &str = "pane-gone";
+/// A run's host ended with its master's pane read neither gone nor started
+/// again: the process was read gone on its own.
+pub const HOST_PROCESS_GONE: &str = "process-gone";
 
 /// `close_loop::CloseState::is_closed` over a row aliased `r`: the session is
 /// over, the checkout is back and every lease is back. Such a run holds
@@ -415,6 +427,8 @@ const RUN_COLUMNS: &[&str] = &[
     "kept_notice",
     "host_ended_at_ms",
     "host_ended_by",
+    "host_pid",
+    "host_start",
 ];
 
 #[cfg(test)]
@@ -489,7 +503,9 @@ CREATE TABLE IF NOT EXISTS runs (
   agent_transcript    TEXT,
   kept_notice         TEXT,
   host_ended_at_ms    INTEGER,
-  host_ended_by       TEXT
+  host_ended_by       TEXT,
+  host_pid            INTEGER,
+  host_start          TEXT
 );
 CREATE TABLE IF NOT EXISTS run_issues (
   run_id            TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
@@ -570,6 +586,8 @@ const ADDED_COLUMNS: &[(&str, &str, &str)] = &[
     ("runs", "kept_notice", "TEXT"),
     ("runs", "host_ended_at_ms", "INTEGER"),
     ("runs", "host_ended_by", "TEXT"),
+    ("runs", "host_pid", "INTEGER"),
+    ("runs", "host_start", "TEXT"),
     ("masters", "session_id", "TEXT"),
 ];
 
@@ -600,7 +618,7 @@ const SELECT_RUN: &str = "SELECT run_id, project_id, master_session_id, session_
         ended_by, ended_reason, agent_id, resume_choice, resume_choice_why, resume_owed_at,
         release_refused_at, release_refusal, release_terminal_at, release_attempts,
         turn_ended_at_ms, agent_transcript, kept_notice, created_at, host_ended_at_ms,
-        host_ended_by
+        host_ended_by, host_pid, host_start
  FROM runs";
 
 /// Every read of an episode selects these columns in this order, so one mapper
@@ -704,6 +722,8 @@ fn map_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<Run> {
         created_at: row.get(33)?,
         host_ended_at_ms: row.get(34)?,
         host_ended_by: row.get(35)?,
+        host_pid: row.get::<_, Option<i64>>(36)?.map(|p| p as u32),
+        host_start: row.get(37)?,
     })
 }
 
@@ -860,13 +880,14 @@ impl Ledger {
         }
         let tx = self.conn.transaction().map_err(sql_err)?;
         for key in &new.issue_keys {
-            if let Some(holder) = Self::live_run_holding(&tx, key, &new.boot_id)? {
+            if let Some(holder) = Self::live_run_holding(&tx, &new.project_id, key, &new.boot_id)? {
                 return Err(Error::Other(match Self::host_ended_by(&tx, &holder)? {
                     Some(by) => format!(
-                        "ledger: issue {key} is held by run {holder}, which is not running: its subagent ran inside a master pane that {} and ended with it. {}",
+                        "ledger: issue {key} is held by run {holder}, which is not running: the Claude Code process its subagent ran in is gone{}. {}",
                         match by.as_str() {
-                            HOST_PANE_STARTED => "this box has since started again",
-                            _ => "this box read as gone",
+                            HOST_PANE_STARTED => ", and its master's pane has since been started again",
+                            HOST_PANE_GONE => ", with the master pane this box read as gone",
+                            _ => "",
                         },
                         // Only the session the row names may close it, so the
                         // refusal offers `run close` to that session alone: a
@@ -920,8 +941,13 @@ impl Ledger {
             .ok_or_else(|| Error::Other("ledger: run vanished after commit".into()))
     }
 
+    /// The live run holding `issue_key` of `project_id`. An issue key names an
+    /// issue only inside its project, so another project's ISS-533 is another
+    /// issue. A row that records no project cannot be told apart and still
+    /// holds.
     fn live_run_holding(
         tx: &rusqlite::Transaction<'_>,
+        project_id: &str,
         issue_key: &str,
         boot_id: &str,
     ) -> Result<Option<String>> {
@@ -929,10 +955,11 @@ impl Ledger {
             &format!(
                 "SELECT r.run_id FROM runs r JOIN run_issues i ON i.run_id = r.run_id
                   WHERE i.issue_key = ?1 AND r.incarnation = 'live' AND r.boot_id = ?2
+                    AND (r.project_id = ?3 OR r.project_id IS NULL)
                     AND NOT {CLOSED_BY_ITS_MARKS}
                   LIMIT 1"
             ),
-            params![issue_key, boot_id],
+            params![issue_key, boot_id, project_id],
             |row| row.get::<_, String>(0),
         )
         .optional()
@@ -953,7 +980,8 @@ impl Ledger {
     /// How this box saw the master pane of `run_id` end, where it has.
     fn host_ended_by(tx: &rusqlite::Transaction<'_>, run_id: &str) -> Result<Option<String>> {
         tx.query_row(
-            "SELECT host_ended_by FROM runs WHERE run_id = ?1 AND host_ended_at_ms IS NOT NULL",
+            "SELECT host_ended_by FROM runs
+              WHERE run_id = ?1 AND host_ended_at_ms IS NOT NULL AND host_pid IS NOT NULL",
             params![run_id],
             |row| row.get::<_, Option<String>>(0),
         )
@@ -1104,15 +1132,32 @@ impl Ledger {
     /// subagent's, so a run with a pid is left alone. A new pane started is a
     /// later end than any before it and moves a mark already standing; a pane
     /// read gone on every sweep is the same end read again, and writes only
-    /// where no mark stands.
+    /// where no mark stands. A row that records no process for its subagent is
+    /// left alone: without one, nothing this box saw is that subagent's end.
     pub fn note_host_ended(&self, run_id: &str, at_ms: i64, by: &str) -> Result<bool> {
         let n = self
             .conn
             .execute(
                 "UPDATE runs SET host_ended_at_ms = ?2, host_ended_by = ?3
                   WHERE run_id = ?1 AND pid IS NULL AND ended_by IS NULL
+                    AND host_pid IS NOT NULL
                     AND (?3 = ?4 OR host_ended_at_ms IS NULL)",
                 params![run_id, at_ms, by, HOST_PANE_STARTED],
+            )
+            .map_err(sql_err)?;
+        Ok(n == 1)
+    }
+
+    /// Record the Claude Code process `run_id`'s subagent runs in, as read above
+    /// the process that just reported for it. The latest report stands, since a
+    /// subagent resumed after its master was placed again runs in the new one.
+    pub fn note_host(&self, run_id: &str, pid: u32, start: &str) -> Result<bool> {
+        let n = self
+            .conn
+            .execute(
+                "UPDATE runs SET host_pid = ?2, host_start = ?3
+                  WHERE run_id = ?1 AND ended_by IS NULL",
+                params![run_id, pid, start],
             )
             .map_err(sql_err)?;
         Ok(n == 1)
@@ -1618,6 +1663,19 @@ impl Ledger {
             .execute(
                 "UPDATE runs SET pid = ?2 WHERE run_id = ?1",
                 params![run_id, pid as i64],
+            )
+            .map_err(sql_err)?;
+        Ok(())
+    }
+
+    /// Take the recorded process off `run_id`'s row, leaving any mark on it,
+    /// which is the shape of a row written before the process was recorded.
+    #[cfg(test)]
+    pub fn forget_host(&self, run_id: &str) -> Result<()> {
+        self.conn
+            .execute(
+                "UPDATE runs SET host_pid = NULL, host_start = NULL WHERE run_id = ?1",
+                params![run_id],
             )
             .map_err(sql_err)?;
         Ok(())
@@ -2325,6 +2383,7 @@ mod tests {
     fn an_issue_held_by_a_run_that_ended_with_its_pane_is_refused_as_not_running() {
         let mut led = Ledger::open_in_memory().unwrap();
         led.create_run_group(seed(&["ISS-1314"])).unwrap();
+        assert!(led.note_host("run-1", 7_700_001, "4400").unwrap());
         let successor = |run_id: &str| NewRun {
             run_id: run_id.into(),
             master_session_id: "master-2".into(),
@@ -2341,7 +2400,7 @@ mod tests {
             "the control: a holder nothing has ended is still a live run: {unmarked}"
         );
 
-        for by in [HOST_PANE_STARTED, HOST_PANE_GONE] {
+        for by in [HOST_PANE_STARTED, HOST_PANE_GONE, HOST_PROCESS_GONE] {
             led.conn
                 .execute(
                     "UPDATE runs SET host_ended_at_ms = NULL, host_ended_by = NULL WHERE run_id = 'run-1'",
@@ -2363,7 +2422,7 @@ mod tests {
                 "ISS-1314",
                 "run-1",
                 "not running",
-                "master pane",
+                "Claude Code process its subagent ran in is gone",
                 "first recovery sweep after core calls that run's session over",
             ] {
                 assert!(
@@ -4234,6 +4293,7 @@ mod tests {
     fn a_pane_started_moves_the_host_end_and_a_pane_read_gone_does_not() {
         let mut led = Ledger::open_in_memory().unwrap();
         led.create_run_group(seed(&["ISS-1"])).unwrap();
+        assert!(led.note_host("run-1", 7_700_001, "4400").unwrap());
         assert!(led.note_host_ended("run-1", 1_000, HOST_PANE_GONE).unwrap());
         assert!(
             !led.note_host_ended("run-1", 2_000, HOST_PANE_GONE).unwrap(),
@@ -4262,10 +4322,70 @@ mod tests {
     fn a_run_with_a_process_of_its_own_has_no_host_to_end() {
         let mut led = Ledger::open_in_memory().unwrap();
         led.create_run_group(seed(&["ISS-1"])).unwrap();
+        assert!(led.note_host("run-1", 7_700_001, "4400").unwrap());
         led.attach_pid("run-1", 4242).unwrap();
         assert!(!led
             .note_host_ended("run-1", 1_000, HOST_PANE_STARTED)
             .unwrap());
+    }
+
+    /// ISS-1312 criterion 53, at the row: a run that records no process for
+    /// its subagent takes no mark at all, so nothing a pane did reads as its
+    /// end. Recording one lets the mark be written, and the latest report of
+    /// the process is the one kept.
+    #[test]
+    fn a_row_that_records_no_process_for_its_subagent_takes_no_end() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(seed(&["ISS-1"])).unwrap();
+        for by in [HOST_PANE_STARTED, HOST_PANE_GONE, HOST_PROCESS_GONE] {
+            assert!(!led.note_host_ended("run-1", 1_000, by).unwrap(), "{by}");
+        }
+        assert!(led.note_host("run-1", 3_850_261, "901").unwrap());
+        assert!(led.note_host("run-1", 3_850_300, "977").unwrap());
+        let run = led.run("run-1").unwrap().unwrap();
+        assert_eq!(
+            (run.host_pid, run.host_start.as_deref()),
+            (Some(3_850_300), Some("977"))
+        );
+        assert!(led
+            .note_host_ended("run-1", 1_000, HOST_PROCESS_GONE)
+            .unwrap());
+    }
+
+    /// ISS-1312 criteria 65 and 66: an issue key names an issue inside its
+    /// project. On sid-xeon-1 (2026-09-29) anhome's live run 3199d36f held an
+    /// ISS-533 of its own and refused sid-desk's redeclaration of sid-desk's
+    /// ISS-533.
+    #[test]
+    fn an_issue_key_is_held_only_within_its_own_project() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(NewRun {
+            project_id: "anhome".into(),
+            ..seed(&["ISS-533"])
+        })
+        .unwrap();
+        led.create_run_group(NewRun {
+            run_id: "run-2".into(),
+            project_id: "sid-desk".into(),
+            master_session_id: "master-2".into(),
+            worktree_path: PathBuf::from("/w/two"),
+            ..seed(&["ISS-533"])
+        })
+        .expect("criterion 65: another project's ISS-533 is another issue");
+        let same = led
+            .create_run_group(NewRun {
+                run_id: "run-3".into(),
+                project_id: "sid-desk".into(),
+                master_session_id: "master-3".into(),
+                worktree_path: PathBuf::from("/w/three"),
+                ..seed(&["ISS-533"])
+            })
+            .unwrap_err()
+            .to_string();
+        assert!(
+            same.contains("already belongs to live run run-2"),
+            "criterion 66: {same}"
+        );
     }
 
     /// ISS-1312, criterion 19: what a pane started now inherits is its

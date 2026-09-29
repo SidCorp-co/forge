@@ -1,7 +1,7 @@
 //! What a subagent run's own evidence says about it, and what that decides.
 //!
-//! A subagent shares its master's process, so the box has no pid to refute and
-//! hears only its turn boundaries. `SubagentStop` is one of those: a subagent
+//! A subagent shares its master's Claude Code process, so the box has no pid of
+//! its own to refute and hears its turn boundaries and that process. `SubagentStop` is one of those: a subagent
 //! ends a turn to wait on a monitor or a suite it started, and a background
 //! notification resumes it. Measured sid-xeon-1 2026-09-24: ISS-1135's run
 //! stopped with "Waiting on the baseline integration monitor", was resumed 56 s
@@ -10,8 +10,11 @@
 //! also be resumed by its dispatcher (ISS-1217's judge, the same day).
 //!
 //! So nothing here ends a run. A subagent run ends by its master's
-//! `forge-runner run close` or by its master's pane being gone, because the
-//! master is the only party that can resume it. This reading decides two
+//! `forge-runner run close` or by the Claude Code process it runs in being
+//! gone, because the master is the only party that can resume it. That
+//! process is read by pid and start time (`subagent_host`), never inferred
+//! from the master's tmux pane: Claude Code can run the conversation as a
+//! background session outside it (ISS-1312, run e67c08e0). This reading decides two
 //! things only: what the box says about a run it keeps, and whether a daemon
 //! restart waits for it (ISS-1246).
 
@@ -30,10 +33,10 @@ pub enum Evidence {
     /// No turn-end is recorded, so the subagent is taken to be in its first
     /// turn. `since_ms` is since its run was declared.
     NoTurnEnd { since_ms: i64 },
-    /// The process the subagent lived in ended `silent_ms` ago, and nothing has
-    /// been heard from the subagent since: its master's pane was read gone, or
-    /// this box started a new one. A subagent cannot outlive the process it
-    /// runs in, so whatever turn it was in ended then (ISS-1312).
+    /// The Claude Code process the subagent lived in was read gone `silent_ms`
+    /// ago, and nothing has been heard from the subagent since. A subagent
+    /// cannot outlive the process it runs in, so whatever turn it was in ended
+    /// then (ISS-1312).
     HostEnded { silent_ms: i64 },
     /// The newest entry after the last stop is a turn's own: a turn resumed,
     /// and its end has not been heard. `silent_ms` is since that entry.
@@ -122,10 +125,12 @@ pub fn read(
 /// What `run`'s own evidence says, the one reading the drain and recovery both
 /// take. An end of the process its subagent lived in speaks first, unless the
 /// subagent has been heard from since: a turn-end or a transcript write later
-/// than it, or a start, which clears it on the row.
+/// than it, or a start, which clears it on the row. A mark on a row that
+/// records no such process, as rows written before the box recorded one carry,
+/// was a pane's end and is no evidence about the subagent.
 pub fn of_run(run: &Run, now: i64) -> Evidence {
     let transcript = run.agent_transcript.as_deref().map(Path::new);
-    if let Some(ended) = run.host_ended_at_ms {
+    if let Some(ended) = run.host_ended_at_ms.filter(|_| run.host_pid.is_some()) {
         let heard = run
             .turn_ended_at_ms
             .max(transcript.and_then(transcript_age::written_at));
@@ -196,8 +201,8 @@ pub fn held_because(evidence: Evidence, transcript: Option<&str>) -> String {
             since_ms / 60_000
         ),
         Evidence::HostEnded { silent_ms } => format!(
-            "the master pane its subagent ran in ended {}m ago, and nothing has been heard from \
-             its subagent since",
+            "the Claude Code process its subagent ran in was read gone {}m ago, and nothing has \
+             been heard from its subagent since",
             silent_ms / 60_000
         ),
         Evidence::Resumed { silent_ms } => format!(

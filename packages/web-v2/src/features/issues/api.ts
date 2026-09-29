@@ -155,7 +155,7 @@ export const issuesApi = {
    * text kept on the audit comment the server writes.
    */
   markMerged: (id: string, body: MarkMergedBody) =>
-    apiClient<{ id: string; action: "merged" | "unmarked" }>(`/issues/${id}/merge`, {
+    apiClient<MarkMergedAnswer>(`/issues/${id}/merge`, {
       method: "POST",
       body: JSON.stringify(body),
     }),
@@ -207,8 +207,16 @@ export const releaseBatchApi = {
     ),
 };
 
+/** `already_merged` moved nothing: the mark that stands was kept (ISS-1327). */
+export interface MarkMergedAnswer {
+  id: string;
+  action: "merged" | "already_merged";
+  mark?: string;
+  detail?: string;
+}
+
 export interface MarkMergedBody {
-  target: string;
+  target?: string;
   landing?: string;
   note?: string;
 }

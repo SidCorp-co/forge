@@ -42,7 +42,12 @@ export async function refuseUnshippedClose(
   const { columns, shape } = evidence;
   return {
     detail: `${landingShortfall(columns, shape)}, so nothing on it shows where the work landed. ${closedMeansShipped(shape, mergeMarkKindOf(columns))}`,
-    details: { requires: 'mergedLanding', shape, useInstead: 'dropped' },
+    details: {
+      requires: 'mergedLanding',
+      shape,
+      held: mergeMarkKindOf(columns),
+      useInstead: 'dropped',
+    },
   };
 }
 

@@ -9,10 +9,13 @@
 
 use crate::daemon::agent_activity::now_ms;
 use crate::daemon::run_exit::{self, Reported, Verdict};
+use crate::daemon::subagent_host::HostRead;
 use crate::daemon::{subagent_end, transcript_age};
 use crate::error::Result;
 use crate::runner::close_loop::{self, CloseState, LeaseKeeper, SessionReader};
-use crate::runner::ledger::{Ledger, Liveness, Run, HOST_PANE_GONE, HOST_PANE_STARTED};
+use crate::runner::ledger::{
+    Ledger, Liveness, Run, HOST_PANE_GONE, HOST_PANE_STARTED, HOST_PROCESS_GONE,
+};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,6 +41,12 @@ pub trait MasterLiveness: Send + Sync {
 #[async_trait::async_trait]
 pub trait ProcessLiveness: Send + Sync {
     async fn is_gone(&self, pid: u32) -> bool;
+    /// Whether the Claude Code process recorded for a subagent, `pid` started
+    /// at `start`, still runs. A port that cannot say answers `Unreadable`,
+    /// which ends nothing.
+    async fn host(&self, _pid: u32, _start: &str) -> HostRead {
+        HostRead::Unreadable
+    }
 }
 
 #[async_trait::async_trait]
@@ -110,20 +119,24 @@ pub struct Recovered {
     pub host: Option<HostEnd>,
 }
 
-/// How the master pane a subagent ran in was seen to end.
+/// How the master pane was seen when the Claude Code process a subagent ran
+/// in was read gone.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HostEnd {
     /// The registry names the pane and tmux has no such pane.
     PaneGone,
     /// This box started a new master pane for the project in its place.
     PaneStarted,
+    /// Neither: the process was read gone on its own.
+    ProcessGone,
 }
 
 impl HostEnd {
     fn from_wire(by: Option<&str>) -> Self {
         match by {
             Some(HOST_PANE_STARTED) => HostEnd::PaneStarted,
-            _ => HostEnd::PaneGone,
+            Some(HOST_PANE_GONE) => HostEnd::PaneGone,
+            _ => HostEnd::ProcessGone,
         }
     }
 }
@@ -136,11 +149,14 @@ impl Recovered {
             "every issue this run holds has reached a terminal status at core, so nothing \
              further will be done on any of them"
         } else if self.host == Some(HostEnd::PaneGone) {
-            "its master's pane is gone, and its subagent ran inside that pane's process, so it is \
-             gone too; core's session row is terminal"
+            "the Claude Code process its subagent ran in is gone, and so is its master's pane, and \
+             nothing has been heard from its subagent since; core's session row is terminal"
         } else if self.host == Some(HostEnd::PaneStarted) {
-            "its master's pane was started again, and its subagent, which ran inside the pane \
-             before it, has not been heard from since; core's session row is terminal"
+            "the Claude Code process its subagent ran in is gone and its master's pane was started \
+             again, and nothing has been heard from its subagent since; core's session row is terminal"
+        } else if self.host == Some(HostEnd::ProcessGone) {
+            "the Claude Code process its subagent ran in is gone, and nothing has been heard from \
+             its subagent since; core's session row is terminal"
         } else if self.unanswered && self.clock_alone {
             "no master on this box answers for it and core's session row has been terminal for \
              the whole bound; no readable transcript was recorded, so the clock alone decided"
@@ -190,21 +206,36 @@ pub async fn reconcile(
         let read = masters.state(&run.master_session_id).await;
         let dead_in_the_ledger =
             matches!(Ledger::liveness(&run, boot_id, pid_refuted), Liveness::Dead);
-        // A subagent shares its master's process, so a pane read gone is the
-        // end of the subagent too, and it goes on the row for the drain,
-        // which reads the ledger and not this registry (ISS-1312).
-        if run.pid.is_none() && read == MasterPresence::Gone && run.host_ended_at_ms.is_none() {
+        let host_read = match (run.pid, run.host_pid, run.host_start.as_deref()) {
+            (None, Some(pid), Some(start)) if run.boot_id == boot_id => {
+                Some(procs.host(pid, start).await)
+            }
+            _ => None,
+        };
+        // A subagent runs in the Claude Code process recorded for it, and that
+        // process read gone is its end, whatever the master's pane reads. It
+        // goes on the row for the drain, which reads the ledger and not this
+        // registry. A pane read gone is not by itself that end: the
+        // conversation can run as a background session outside the pane
+        // (ISS-1312, run e67c08e0).
+        if run.host_ended_at_ms.is_none() && host_read == Some(HostRead::Gone) {
             let at = now_ms();
-            if ledger.note_host_ended(&run.run_id, at, HOST_PANE_GONE)? {
+            let by = if read == MasterPresence::Gone {
+                HOST_PANE_GONE
+            } else {
+                HOST_PROCESS_GONE
+            };
+            if ledger.note_host_ended(&run.run_id, at, by)? {
                 run.host_ended_at_ms = Some(at);
-                run.host_ended_by = Some(HOST_PANE_GONE.to_string());
+                run.host_ended_by = Some(by.to_string());
             }
         }
         // The same pane read alive again says the read that marked it saw
         // nothing end, and a mark left standing lets the drain restart over a
-        // live pane's run (ISS-1312).
+        // live pane's run (ISS-1312). A mark its process's own end wrote stays.
         if read == MasterPresence::Alive
             && run.host_ended_by.as_deref() == Some(HOST_PANE_GONE)
+            && host_read != Some(HostRead::Gone)
             && ledger.withdraw_pane_gone(&run.run_id)?
         {
             tracing::info!(
@@ -221,9 +252,20 @@ pub async fn reconcile(
         if read == MasterPresence::Unanswered {
             unanswered_reads.push(run.run_id.clone());
         }
-        let master = match read {
-            MasterPresence::Unanswered => MasterPresence::Alive,
-            other => other,
+        // A subagent's master is the process it runs in. Read alive, it is a
+        // master hosted outside its pane, which is where Claude Code runs a
+        // background session, and it is kept as any live master's run is. With
+        // no such process read, a pane read gone licenses nothing a master this
+        // box has no entry for would not: the bound decides.
+        let open_subagent = run.pid.is_none() && run.ended_by.is_none();
+        let master = match (read, open_subagent, host_read) {
+            (MasterPresence::Unanswered, _, _) => MasterPresence::Alive,
+            (MasterPresence::Gone | MasterPresence::Unknown, true, Some(HostRead::Alive)) => {
+                MasterPresence::Alive
+            }
+            (MasterPresence::Gone, true, Some(HostRead::Gone)) => MasterPresence::Gone,
+            (MasterPresence::Gone, true, _) => MasterPresence::Unknown,
+            (other, _, _) => other,
         };
         let host = (run.pid.is_none()
             && matches!(
@@ -629,20 +671,25 @@ fn say_why_released_host(ledger: &Ledger, run: &Run, how: HostEnd) {
     tracing::warn!("{}", host_release_line(run, &issues, how, now_ms()));
 }
 
-/// The line [`say_why_released_host`] says, naming which way the pane ended.
+/// The line [`say_why_released_host`] says, naming the process and how the
+/// master pane was seen when it was read gone.
 fn host_release_line(run: &Run, issues: &str, how: HostEnd, now: i64) -> String {
     let ago = run
         .host_ended_at_ms
         .map_or(0, |at| now.saturating_sub(at) / 60_000);
-    let seen = match how {
-        HostEnd::PaneGone => format!("the master pane its subagent ran in is gone ({ago}m ago)"),
-        HostEnd::PaneStarted => format!(
-            "a new master pane was started {ago}m ago in place of the one its subagent ran in"
-        ),
+    let pane = match how {
+        HostEnd::PaneGone => "its master's pane is gone too",
+        HostEnd::PaneStarted => "a new master pane was started for its project in its place",
+        HostEnd::ProcessGone => "its master's pane was read neither gone nor started again",
     };
+    let host = run.host_pid.map_or_else(
+        || "its recorded process".to_string(),
+        |pid| format!("pid {pid}"),
+    );
     format!(
-        "[recovery] run {} ({issues}): {seen}, and nothing has been heard from its subagent since, \
-         so it ended with that pane (it answered to {}); core has called its session over — \
+        "[recovery] run {} ({issues}): the Claude Code process its subagent ran in ({host}) was \
+         read gone {ago}m ago and {pane}, and nothing has been heard from its subagent since, so it \
+         ended with that process (it answered to {}); core has called its session over — \
          releasing {} now. Its commits are kept before the checkout goes; a release that refuses \
          says why next, and is decided after {}s",
         run.run_id,
@@ -966,12 +1013,42 @@ mod tests {
         }
     }
 
+    /// The pids in the set are gone; every other process reads alive,
+    /// whatever start time it was recorded with.
     struct Gone(HashSet<u32>);
     #[async_trait::async_trait]
     impl ProcessLiveness for Gone {
         async fn is_gone(&self, pid: u32) -> bool {
             self.0.contains(&pid)
         }
+        async fn host(&self, pid: u32, _start: &str) -> HostRead {
+            if self.0.contains(&pid) {
+                HostRead::Gone
+            } else {
+                HostRead::Alive
+            }
+        }
+    }
+
+    /// A process table that can say nothing about any pid.
+    struct HostsUnreadable;
+    #[async_trait::async_trait]
+    impl ProcessLiveness for HostsUnreadable {
+        async fn is_gone(&self, _pid: u32) -> bool {
+            false
+        }
+    }
+
+    /// The Claude Code process `a_subagent_run`'s subagent is recorded as
+    /// running in, where a test records one.
+    const HOST: u32 = 7_700_001;
+
+    fn host_gone() -> Gone {
+        Gone(HashSet::from([HOST]))
+    }
+
+    fn record_host(led: &Ledger) {
+        assert!(led.note_host("run-1", HOST, "4400").unwrap());
     }
 
     fn nothing_refuted() -> Gone {
@@ -1287,11 +1364,12 @@ mod tests {
     #[tokio::test]
     async fn a_run_with_no_pid_at_all_whose_master_died_is_reported_dead_rather_than_waited_out() {
         let mut led = seeded("run-1", "master-dead", "boot-a", &["ISS-957"]);
+        record_host(&led);
         let done = reconcile(
             &mut led,
             "boot-a",
             &Masters(HashSet::new()),
-            &nothing_refuted(),
+            &host_gone(),
             Closing {
                 sessions: &SessionCoreStillHolds,
                 leases: &Leases(Mutex::new(HashSet::new())),
@@ -2141,11 +2219,20 @@ mod tests {
         masters: &dyn MasterLiveness,
         beats: &Beats,
     ) -> Option<Recovered> {
+        sweep_procs(led, masters, beats, &nothing_refuted()).await
+    }
+
+    async fn sweep_procs(
+        led: &mut Ledger,
+        masters: &dyn MasterLiveness,
+        beats: &Beats,
+        procs: &dyn ProcessLiveness,
+    ) -> Option<Recovered> {
         let done = reconcile(
             led,
             "boot-a",
             masters,
-            &nothing_refuted(),
+            procs,
             Closing {
                 sessions: &Sessions,
                 leases: &Leases(Mutex::new(HashSet::new())),
@@ -2576,22 +2663,30 @@ mod tests {
     async fn a_quiet_subagent_run_whose_master_pane_is_gone_is_still_owed_its_release() {
         let scratch = Scratch::new("master-gone");
         let (mut led, _wt, transcript) = a_subagent_run(&scratch);
+        record_host(&led);
         let stop = now_ms() - 61 * MIN_MS;
         transcript_written_at(&transcript, stop);
         stop_at(&led, stop, Some(&transcript));
-        let r = sweep(&mut led, &Masters(HashSet::new()), &Beats::default())
-            .await
-            .expect("owed");
+        let r = sweep_procs(
+            &mut led,
+            &Masters(HashSet::new()),
+            &Beats::default(),
+            &host_gone(),
+        )
+        .await
+        .expect("owed");
         assert!(
             r.owed_release,
-            "a subagent runs inside its master's process and cannot outlive the pane: {r:?}"
+            "a subagent runs inside the Claude Code process recorded for it and cannot outlive it: {r:?}"
         );
         assert!(
             !r.unanswered
-                && r.release_reason().contains("master's pane is gone")
-                && !r.release_reason().contains("process is gone"),
-            "criterion 28: a pane observed gone is an observation, and the ended row says it was \
-             the pane, not a process of the run's own: {r:?}"
+                && r.release_reason()
+                    .contains("Claude Code process its subagent ran in is gone")
+                && r.release_reason().contains("so is its master's pane")
+                && !r.release_reason().contains("the run's process is gone"),
+            "criterion 28: the ended row says the subagent's process ended, how the pane was \
+             seen, and not that a process of the run's own did: {r:?}"
         );
         assert_eq!(r.host, Some(HostEnd::PaneGone));
         let run = led.run("run-1").unwrap().unwrap();
@@ -2607,7 +2702,9 @@ mod tests {
         );
         let line = host_release_line(&run, "ISS-1135", HostEnd::PaneGone, now_ms());
         assert!(
-            line.contains("is gone") && line.contains("releasing"),
+            line.contains(&format!("(pid {HOST}) was read gone"))
+                && line.contains("pane is gone too")
+                && line.contains("releasing"),
             "{line}"
         );
         assert!(
@@ -2676,13 +2773,20 @@ mod tests {
     async fn a_pane_read_alive_again_withdraws_the_gone_mark_an_earlier_sweep_wrote() {
         let scratch = Scratch::new("pane-back");
         let (mut led, wt, _transcript) = a_subagent_run(&scratch);
-        let _ = sweep(&mut led, &Masters(HashSet::new()), &Beats::default()).await;
-        assert_eq!(
-            led.run("run-1").unwrap().unwrap().host_ended_by.as_deref(),
-            Some(HOST_PANE_GONE),
-            "the plant: a sweep that read the pane gone marks it"
+        record_host(&led);
+        assert!(led
+            .note_host_ended("run-1", now_ms() - MIN_MS, HOST_PANE_GONE)
+            .unwrap());
+        assert!(
+            drain_names(&led).is_empty(),
+            "the plant: a mark with its process recorded lets the drain go"
         );
-        assert!(drain_names(&led).is_empty(), "and the drain lets it go");
+        led.forget_host("run-1").unwrap();
+        assert_eq!(
+            drain_names(&led).len(),
+            1,
+            "criterion 55: the same mark on a row that records no process ends nothing"
+        );
 
         let r = sweep(&mut led, &master_alive(), &Beats::default()).await;
 
@@ -2702,6 +2806,7 @@ mod tests {
     async fn an_alive_read_leaves_a_placement_mark_standing() {
         let scratch = Scratch::new("pane-started-stays");
         let (mut led, _wt, _transcript) = a_subagent_run(&scratch);
+        record_host(&led);
         assert!(led
             .note_host_ended("run-1", now_ms() - MIN_MS, HOST_PANE_STARTED)
             .unwrap());
@@ -2718,10 +2823,16 @@ mod tests {
     async fn an_unreadable_subagent_run_whose_master_pane_is_gone_is_still_owed_its_release() {
         let scratch = Scratch::new("master-gone-unread");
         let (mut led, _wt, _transcript) = a_subagent_run(&scratch);
+        record_host(&led);
         stop_at(&led, now_ms() - 61 * MIN_MS, None);
-        let r = sweep(&mut led, &Masters(HashSet::new()), &Beats::default())
-            .await
-            .expect("owed");
+        let r = sweep_procs(
+            &mut led,
+            &Masters(HashSet::new()),
+            &Beats::default(),
+            &host_gone(),
+        )
+        .await
+        .expect("owed");
         assert!(r.owed_release, "{r:?}");
         assert_eq!(
             kept(&led).as_deref(),
@@ -2814,6 +2925,7 @@ mod tests {
     fn a_first_turn_subagent_whose_pane_was_started_again_is_released_once_core_calls_it_over() {
         let scratch = Scratch::new("pane-started");
         let (mut led, _wt, _transcript) = a_subagent_run(&scratch);
+        record_host(&led);
         led.backdate_session_terminal("run-1", now_ms() / 1000)
             .unwrap();
         assert!(led
@@ -2821,7 +2933,7 @@ mod tests {
             .unwrap());
         let first = logged_while(|| {
             block_on(async {
-                let r = sweep(&mut led, &NoRegistryEntry, &Beats::default())
+                let r = sweep_procs(&mut led, &NoRegistryEntry, &Beats::default(), &host_gone())
                     .await
                     .expect("answered");
                 assert!(r.owed_release, "criterion 24: {r:?}");
@@ -2837,14 +2949,14 @@ mod tests {
         });
         assert_eq!(
             first
-                .matches("a new master pane was started 5m ago")
+                .matches("was read gone 5m ago and a new master pane was started")
                 .count(),
             1,
             "criterion 27: {first}"
         );
         let second = logged_while(|| {
             block_on(async {
-                sweep(&mut led, &NoRegistryEntry, &Beats::default()).await;
+                sweep_procs(&mut led, &NoRegistryEntry, &Beats::default(), &host_gone()).await;
             })
         });
         assert!(
@@ -2893,12 +3005,13 @@ mod tests {
     async fn a_live_successor_keeps_a_run_whose_subagent_ended_with_the_pane_before_it() {
         let scratch = Scratch::new("pane-successor");
         let (mut led, wt, _transcript) = a_subagent_run(&scratch);
+        record_host(&led);
         led.note_host_ended("run-1", now_ms() - 5 * MIN_MS, HOST_PANE_STARTED)
             .unwrap();
-        let r = sweep(&mut led, &master_alive(), &Beats::default()).await;
+        let r = sweep_procs(&mut led, &master_alive(), &Beats::default(), &host_gone()).await;
         assert_still_held(&led, &r, &wt, "the pane that inherited it decides");
         assert_eq!(kept(&led).as_deref(), Some("host-ended"));
-        let r = sweep(&mut led, &master_alive(), &Beats::default()).await;
+        let r = sweep_procs(&mut led, &master_alive(), &Beats::default(), &host_gone()).await;
         assert_still_held(&led, &r, &wt, "a second sweep");
         assert!(!led.note_kept("run-1", "host-ended").unwrap(), "said once");
     }
@@ -4150,5 +4263,193 @@ mod tests {
             led.unclosed_runs().unwrap().is_empty(),
             "and the one extra pass is one, not one per sweep for ever"
         );
+    }
+
+    /// ISS-1312 criteria 50, 52 and 60, from run e67c08e0 (sid-desk
+    /// ISS-659/663/664, 2026-09-29): a first-turn subagent whose master
+    /// conversation ran as a Claude Code background session outside the pane
+    /// `forge-master-sid-desk`. The box started a new pane in place of the
+    /// absent one, core called the session over, and recovery released the run
+    /// 22 s later while its subagent worked on for ten minutes inside a long
+    /// tool call that wrote nothing to its transcript.
+    #[tokio::test]
+    async fn a_first_turn_subagent_running_outside_its_master_s_pane_outlives_a_placement() {
+        const OLD: &str = "c6c3a3be-e70b-4d1c-9850-2b4d8330cd99";
+        const NEW: &str = "c6c3a3be-0000-4000-8000-000000000001";
+        let scratch = Scratch::new("e67c08e0");
+        let wt = scratch.0.join("ISS-659-customer-merge");
+        std::fs::create_dir_all(&wt).unwrap();
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(NewRun {
+            run_id: "run-1".into(),
+            project_id: "proj-1".into(),
+            master_session_id: OLD.into(),
+            worktree_path: wt.clone(),
+            boot_id: "boot-a".into(),
+            issue_keys: vec!["ISS-659".into(), "ISS-663".into(), "ISS-664".into()],
+        })
+        .unwrap();
+        led.attach_session("run-1", "core-sess-1").unwrap();
+        assert!(led.bind_agent("run-1", "afb821edfc48c7694").unwrap());
+        record_host(&led);
+        let inherited = crate::daemon::master::inherited_runs(&led, "proj-1", "boot-a");
+        let alive = crate::daemon::subagent_host::testing::FakeHosts::with(HOST, HostRead::Alive);
+        crate::daemon::master::placed_again(
+            &mut led,
+            &inherited,
+            NEW,
+            true,
+            now_ms(),
+            "sid-desk",
+            &alive,
+        );
+        let run = led.run("run-1").unwrap().unwrap();
+        assert_eq!(
+            (run.host_ended_at_ms, run.master_session_id.as_str()),
+            (None, NEW),
+            "criterion 50: the placement records no end of a subagent whose process runs, and the resumed pane adopts it"
+        );
+        let held = drain_names(&led);
+        assert_eq!(held.len(), 1, "criterion 52: {held:?}");
+        assert!(held[0].contains("has not ended a turn"), "{held:?}");
+
+        // The pane that placement started exits at once, so the registry
+        // reads it gone, and core has called the run's session over.
+        let beats = Beats::default();
+        let r = sweep_procs(
+            &mut led,
+            &Masters(HashSet::new()),
+            &beats,
+            &Gone(HashSet::new()),
+        )
+        .await;
+        assert_still_held(&led, &r, &wt, "criterion 60: its subagent is still at work");
+        assert_eq!(
+            led.run("run-1").unwrap().unwrap().host_ended_at_ms,
+            None,
+            "criterion 51: no end is recorded on a pane read gone while its process runs"
+        );
+        assert_eq!(
+            beats.0.lock().unwrap().as_slice(),
+            ["core-sess-1".to_string()],
+            "criterion 59: a master hosted outside its pane is read as alive, so its run is kept and beaten"
+        );
+        assert_eq!(drain_names(&led).len(), 1, "criterion 52: still held");
+    }
+
+    /// Criteria 51 and 59: a pane this box reads gone, or a master it has no
+    /// entry for, is not the end of a subagent whose process reads alive,
+    /// however long core has called the session over and however long the
+    /// subagent has written nothing.
+    #[tokio::test]
+    async fn a_live_process_keeps_its_run_whatever_the_registry_reads() {
+        for (label, masters) in [
+            ("gone", &Masters(HashSet::new()) as &dyn MasterLiveness),
+            ("unknown", &NoRegistryEntry),
+        ] {
+            let scratch = Scratch::new("live-host");
+            let (mut led, wt, transcript) = a_subagent_run(&scratch);
+            record_host(&led);
+            over_for(&led, &transcript, 3 * HOUR_MS, 3 * HOUR_MS);
+            let beats = Beats::default();
+            let r = sweep_procs(&mut led, masters, &beats, &Gone(HashSet::new())).await;
+            assert_still_held(&led, &r, &wt, label);
+            assert_eq!(beats.0.lock().unwrap().len(), 1, "{label}: kept and beaten");
+            assert_eq!(
+                led.run("run-1").unwrap().unwrap().host_ended_at_ms,
+                None,
+                "{label}"
+            );
+        }
+    }
+
+    /// Criteria 53 and 54: with no process recorded for its subagent, or one
+    /// this box cannot read, a pane read gone records no end and licenses no
+    /// release or death at once; the bound for a master nobody answers for
+    /// decides, as it does for any such run.
+    #[tokio::test]
+    async fn a_pane_read_gone_is_no_end_of_a_subagent_whose_process_says_nothing() {
+        for (label, recorded, procs) in [
+            (
+                "unrecorded",
+                false,
+                &nothing_refuted() as &dyn ProcessLiveness,
+            ),
+            ("unreadable", true, &HostsUnreadable),
+        ] {
+            let scratch = Scratch::new("no-host");
+            let (mut led, wt, _transcript) = a_subagent_run(&scratch);
+            if recorded {
+                record_host(&led);
+            }
+            let r = sweep_procs(&mut led, &Masters(HashSet::new()), &Beats::default(), procs)
+                .await
+                .expect("an orphan is answered for");
+            let run = led.run("run-1").unwrap().unwrap();
+            assert_eq!(
+                (run.host_ended_at_ms, run.host_ended_by.as_deref()),
+                (None, None),
+                "{label}: no end recorded"
+            );
+            assert!(
+                !r.owed_release && !r.owed_death_report && r.host.is_none(),
+                "{label}: nothing is licensed on the pane alone: {r:?}"
+            );
+            assert!(wt.is_dir(), "{label}");
+            assert_eq!(
+                drain_names(&led).len(),
+                1,
+                "{label}: the drain still holds it"
+            );
+        }
+    }
+
+    /// Criterion 33's boundary: a `pane-gone` mark whose process still reads
+    /// gone is that subagent's end, and a pane read alive again does not take
+    /// it back.
+    #[tokio::test]
+    async fn a_pane_read_alive_leaves_a_mark_its_process_s_end_wrote() {
+        let scratch = Scratch::new("pane-back-dead");
+        let (mut led, _wt, _transcript) = a_subagent_run(&scratch);
+        record_host(&led);
+        let _ = sweep_procs(
+            &mut led,
+            &Masters(HashSet::new()),
+            &Beats::default(),
+            &host_gone(),
+        )
+        .await;
+        assert_eq!(
+            led.run("run-1").unwrap().unwrap().host_ended_by.as_deref(),
+            Some(HOST_PANE_GONE)
+        );
+        let _ = sweep_procs(&mut led, &master_alive(), &Beats::default(), &host_gone()).await;
+        assert_eq!(
+            led.run("run-1").unwrap().unwrap().host_ended_by.as_deref(),
+            Some(HOST_PANE_GONE)
+        );
+        assert!(drain_names(&led).is_empty());
+    }
+
+    /// Criterion 70: the process read gone on a sweep whose pane reads alive,
+    /// as under a resumed successor, is recorded as its own end, and the drain
+    /// stops holding the run.
+    #[tokio::test]
+    async fn a_process_read_gone_under_a_live_pane_is_its_subagent_s_end() {
+        let scratch = Scratch::new("process-gone");
+        let (mut led, wt, _transcript) = a_subagent_run(&scratch);
+        record_host(&led);
+        assert_eq!(
+            drain_names(&led).len(),
+            1,
+            "the control: a first turn holds"
+        );
+        let r = sweep_procs(&mut led, &master_alive(), &Beats::default(), &host_gone()).await;
+        assert_still_held(&led, &r, &wt, "a live master decides what becomes of it");
+        assert_eq!(
+            led.run("run-1").unwrap().unwrap().host_ended_by.as_deref(),
+            Some(HOST_PROCESS_GONE)
+        );
+        assert!(drain_names(&led).is_empty(), "criterion 70");
     }
 }

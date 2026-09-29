@@ -116,7 +116,7 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
     '{n} issue(s) named here have no release note, and closing them would claim a ship ' +
     `nobody wrote anything about. ${RELEASE_RECORD_REMEDY}`,
   RELEASE_WORK_UNMERGED:
-    '{n} issue(s) named here have no merge Forge watched land, so nothing says their work is on the branch this release deployed. Mark the merge on each of them first — a release records what shipped, and an issue nobody merged did not. On a project whose work lands outside git, the mark names where it landed (`landing`); one naming nothing does not count.',
+    '{n} issue(s) named here have no merge Forge watched land, so nothing says their work is on the branch this release deployed. Mark the merge on each of them first — a release records what shipped, and an issue nobody merged did not.',
   RELEASE_RUNNER_AMBIGUOUS:
     'Two live deploy bindings name different release runners, so there is no one box the release job may be offered to. Make the labels agree, or clear all but one.',
   RELEASE_PROBES_UNREADABLE:
@@ -287,9 +287,8 @@ function nearGateSentence(nearGate: number): string {
 /**
  * The sentence for this code, composed from what the check actually resolved.
  *
- * Three codes read their details rather than printing a literal, because their
- * literal could only describe one of the states that reach them. The rest are
- * unchanged.
+ * A code reads its details rather than printing its literal where the literal could only
+ * describe one of the states that reach it; every other code prints its literal.
  */
 export function releaseBlockerSentence(
   code: ReleaseBlockerCode,
@@ -314,6 +313,10 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
   if (code === 'RELEASE_RUNTIME_UNROUTED' && typeof details?.missing === 'string') {
     const held = (details.held as HeldIssueRef[] | undefined) ?? [];
     return `${remedy} What is missing: ${details.missing}. Held: ${held.length} issue(s).`;
+  }
+  if (code === 'RELEASE_WORK_UNMERGED' && details?.shape === 'outside_git') {
+    const n = Array.isArray(details.issueIds) ? details.issueIds.length : 0;
+    return `${n} issue(s) named here have no mark saying where their work landed. This project's work lands outside git, so mark each one merged with its \`landing\` — the live URL, CMS entry or storefront resource the work now is — first: a release records what shipped, and a mark naming nothing does not say that anything did.`;
   }
   if (code === 'RELEASE_TARGET_UNDECLARED' && Array.isArray(details?.releaseChain)) {
     const chain = details.releaseChain as { branch?: unknown }[];

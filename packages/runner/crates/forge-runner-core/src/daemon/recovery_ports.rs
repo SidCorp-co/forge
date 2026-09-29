@@ -80,6 +80,11 @@ impl ProcessLiveness for SignalProbe {
     async fn is_gone(&self, _pid: u32) -> bool {
         false
     }
+
+    async fn host(&self, pid: u32, start: &str) -> crate::daemon::subagent_host::HostRead {
+        use crate::daemon::subagent_host::{Hosts, ProcHosts};
+        ProcHosts::system().read(pid, start)
+    }
 }
 
 pub struct CoreRunState<'a> {
