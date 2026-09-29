@@ -155,17 +155,22 @@ async fn keep_before_release(
             salvage::Publication::Published
         ) {
             let pushed = salvage::publish(worktree, branch, cred).await;
-            if !matches!(pushed.publication, salvage::Publication::Published) {
-                let push = pushed
-                    .refused
-                    .as_deref()
-                    .unwrap_or("git took the push and a remote still does not hold the work");
-                tracing::info!(
-                    "[terminate] run {run_id}: `{branch}` in {} did not reach a remote: {push}; \
-                     afterwards {} — the release goes on the refs this repository keeps instead",
-                    worktree.display(),
-                    pushed.publication
-                );
+            match (&pushed.refused, &pushed.publication) {
+                (_, salvage::Publication::Published) => {}
+                (Some(refused), publication) => tracing::info!(
+                    "[terminate] run {run_id}: `{branch}` in {} did not reach a remote: {refused}; \
+                     afterwards {publication} — the release goes on the refs this repository \
+                     keeps instead",
+                    worktree.display()
+                ),
+                // git took the push, so nothing here may say it did not land:
+                // what is not known is what the reading after it found.
+                (None, publication) => tracing::info!(
+                    "[terminate] run {run_id}: git took the push of `{branch}` in {}, and \
+                     afterwards {publication} — the release goes on the refs this repository \
+                     keeps instead",
+                    worktree.display()
+                ),
             }
         }
     }
@@ -1739,6 +1744,47 @@ mod tests {
         assert!(
             removed.contains("already named by refs/heads/ISS-964"),
             "the removal names the ref that holds the commits: {removed}"
+        );
+    }
+
+    /// A push git took, and a reading after it that cannot answer, is not a
+    /// push that "did not reach a remote" (whole-set consult F1 at 249eaf2ca).
+    #[tokio::test]
+    async fn a_push_git_took_is_never_journalled_as_not_reaching_a_remote() {
+        let (root, wt) = repo("took-unknown").await;
+        git(&wt, &["add", "work.txt"]).await;
+        git(&wt, &["commit", "-qm", "work"]).await;
+        // `fetch --all` asks every remote, so one that cannot be reached makes
+        // the reading after a successful push to `origin` unknowable.
+        git(&wt, &["remote", "add", "mirror", "/nonexistent/mirror.git"]).await;
+
+        let mut led = ledger_for(&wt, Incarnation::Exited, "boot-a");
+        let (p, s, l) = (
+            Procs(Mutex::new(Vec::new())),
+            Sessions,
+            Leases(Mutex::new(HashSet::new())),
+        );
+        let (said, guard) = crate::log_capture::capturing();
+        let out = force_terminal(
+            &mut led,
+            "run-1",
+            forcing(&root, "boot-a"),
+            ports(&p, &s, &l),
+        )
+        .await;
+        drop(guard);
+        let said = said.said();
+        let _ = std::fs::remove_dir_all(&root);
+
+        assert!(out.is_ok(), "{out:?}");
+        assert!(
+            !said.contains("did not reach a remote"),
+            "git took this push, so no line may say it did not land: {said}"
+        );
+        assert!(
+            said.contains("git took the push of `ISS-964`")
+                && said.contains("whether the work here is on a remote is unknown"),
+            "what is unknown is the reading after the push, and the line says so: {said}"
         );
     }
 
