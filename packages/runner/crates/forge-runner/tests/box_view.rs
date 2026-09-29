@@ -83,14 +83,23 @@ fn answer(path: &str, runners_status: &str) -> (String, String) {
             r#"[{{"projectId":"{ALPHA}","runnerId":"r-a","slug":"alpha","status":"online"}},{{"projectId":"{BETA}","runnerId":"r-b","slug":"beta-core","status":"online"}}]"#
         ));
     }
+    // Alpha answers in two pages each, so a view that reads only the first
+    // page lists less than core holds.
+    if path.starts_with(&format!("/api/questions?projectId={ALPHA}")) && path.contains("&cursor=c2")
+    {
+        return ok(r#"{"questions":[{"id":"q2","blockerKind":"human","createdAt":"2026-09-30T01:10:00.000Z","prompt":"Rotate the key?"}],"total":1,"hasMore":false,"nextCursor":null}"#.into());
+    }
     if path.starts_with(&format!("/api/questions?projectId={ALPHA}")) {
-        return ok(r#"{"questions":[{"id":"q1","blockerKind":"human","createdAt":"2026-09-30T01:00:00.000Z","prompt":"Ship the migration?\nIt drops a column."}],"total":1,"hasMore":false,"nextCursor":null}"#.into());
+        return ok(r#"{"questions":[{"id":"q1","blockerKind":"human","createdAt":"2026-09-30T01:00:00.000Z","prompt":"Ship the migration?\nIt drops a column."}],"total":1,"hasMore":true,"nextCursor":"c2"}"#.into());
     }
     if path.starts_with("/api/questions?") {
         return ok(r#"{"questions":[],"total":0,"hasMore":false,"nextCursor":null}"#.into());
     }
-    if path.starts_with(&format!("/api/projects/{ALPHA}/issues")) {
-        return ok(r#"{"items":[{"displayId":"ISS-7","title":"t"}],"returned":1,"total":1,"limit":50,"offset":0,"hasMore":false}"#.into());
+    if path.starts_with(&format!("/api/projects/{ALPHA}/issues")) && path.ends_with("&offset=200") {
+        return ok(r#"{"items":[{"displayId":"ISS-8","title":"t"}],"returned":1,"total":2,"limit":200,"offset":200,"hasMore":false}"#.into());
+    }
+    if path.starts_with(&format!("/api/projects/{ALPHA}/issues")) && path.ends_with("&offset=0") {
+        return ok(r#"{"items":[{"displayId":"ISS-7","title":"t"}],"returned":1,"total":2,"limit":200,"offset":0,"hasMore":true}"#.into());
     }
     if path.starts_with(&format!("/api/projects/{BETA}/issues")) {
         return ok(r#"{"items":[{"displayId":"ISS-9","title":"t"}],"returned":1,"total":1,"limit":50,"offset":0,"hasMore":false}"#.into());
@@ -394,9 +403,10 @@ fn one_frame_of_a_planted_box_reads_every_source_and_writes_nothing() {
 
     let waiting = section(&text, "WAITING ON A PERSON");
     assert!(
-        waiting.contains("questions  alpha: 1 open")
+        waiting.contains("questions  alpha: 2 open")
             && waiting.contains("human blocker, asked")
-            && waiting.contains("Ship the migration?"),
+            && waiting.contains("Ship the migration?")
+            && waiting.contains("Rotate the key?"),
         "{waiting}"
     );
     assert!(
@@ -411,7 +421,7 @@ fn one_frame_of_a_planted_box_reads_every_source_and_writes_nothing() {
         waiting.contains("parked     ISS-4 run run-park waits on"),
         "{waiting}"
     );
-    assert!(waiting.contains("alpha: 1 at awaiting_release (ISS-7) with no release path: NO_RELEASE_GATE — This project has no release step"), "{waiting}");
+    assert!(waiting.contains("alpha: 2 at awaiting_release (ISS-7, ISS-8) with no release path: NO_RELEASE_GATE — This project has no release step"), "{waiting}");
     assert!(
         !waiting.contains("ISS-9"),
         "a releasable roster waits on nobody: {waiting}"

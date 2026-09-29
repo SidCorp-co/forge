@@ -25,7 +25,7 @@ pub enum TreeAge {
     /// Nothing stands at the path.
     Gone,
     /// The walk read `entries` entries and found no regular file.
-    NoFiles { entries: usize },
+    NoFiles { entries: usize, unread: usize },
     Newest {
         at_ms: i64,
         /// Relative to the tree's root.
@@ -33,8 +33,10 @@ pub enum TreeAge {
         entries: usize,
         /// The walk stopped at the cap, so a newer file may exist unread.
         capped: bool,
-        /// Directories inside the tree that could not be listed.
-        unlisted: usize,
+        /// Entries inside the tree that could not be read — a directory that
+        /// would not list, or an entry whose metadata would not come — so a
+        /// newer file may stand among them.
+        unread: usize,
     },
     /// The root itself could not be read.
     Unreadable(String),
@@ -54,32 +56,42 @@ pub fn newest(root: &Path, cap: usize) -> TreeAge {
     }
     let device = device_of(&meta);
     let mut stack = vec![root.to_path_buf()];
-    let (mut entries, mut unlisted) = (0usize, 0usize);
+    let (mut entries, mut unread) = (0usize, 0usize);
     let mut best: Option<(i64, PathBuf)> = None;
     let mut capped = false;
     'walk: while let Some(dir) = stack.pop() {
         let Ok(listing) = std::fs::read_dir(&dir) else {
-            unlisted += 1;
+            unread += 1;
             continue;
         };
-        for entry in listing.flatten() {
+        for entry in listing {
+            let Ok(entry) = entry else {
+                unread += 1;
+                continue;
+            };
             if entries >= cap {
                 capped = true;
                 break 'walk;
             }
             entries += 1;
             // `DirEntry::metadata` does not traverse a symlink on unix.
-            let Ok(m) = entry.metadata() else { continue };
+            let Ok(m) = entry.metadata() else {
+                unread += 1;
+                continue;
+            };
             let kind = m.file_type();
             if kind.is_dir() {
                 if device_of(&m) == device {
                     stack.push(entry.path());
                 }
             } else if kind.is_file() {
-                if let Some(at) = mtime_ms(&m) {
-                    if best.as_ref().is_none_or(|(b, _)| at > *b) {
-                        best = Some((at, entry.path()));
+                match mtime_ms(&m) {
+                    Some(at) => {
+                        if best.as_ref().is_none_or(|(b, _)| at > *b) {
+                            best = Some((at, entry.path()));
+                        }
                     }
+                    None => unread += 1,
                 }
             }
         }
@@ -93,9 +105,9 @@ pub fn newest(root: &Path, cap: usize) -> TreeAge {
                 .unwrap_or(path),
             entries,
             capped,
-            unlisted,
+            unread,
         },
-        None => TreeAge::NoFiles { entries },
+        None => TreeAge::NoFiles { entries, unread },
     }
 }
 
@@ -195,7 +207,50 @@ mod tests {
     fn a_tree_of_directories_alone_has_no_file_to_age() {
         let s = Scratch::new("tree-empty");
         std::fs::create_dir_all(s.path().join("a/b")).unwrap();
-        assert_eq!(newest(s.path(), ENTRY_CAP), TreeAge::NoFiles { entries: 2 });
+        assert_eq!(
+            newest(s.path(), ENTRY_CAP),
+            TreeAge::NoFiles {
+                entries: 2,
+                unread: 0
+            }
+        );
+    }
+
+    /// Consult 009e48 F4: a directory the walk cannot list may hold the
+    /// newest write, so it is counted aloud, never skipped in silence.
+    #[cfg(unix)]
+    #[test]
+    fn a_directory_that_will_not_list_is_counted_as_unread() {
+        use std::os::unix::fs::PermissionsExt;
+        let s = Scratch::new("tree-unread");
+        std::fs::write(s.path().join("old.txt"), "x").unwrap();
+        let shut = s.path().join("shut");
+        std::fs::create_dir_all(&shut).unwrap();
+        std::fs::write(shut.join("fresh.txt"), "x").unwrap();
+        std::fs::set_permissions(&shut, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let got = newest(s.path(), ENTRY_CAP);
+        std::fs::set_permissions(&shut, std::fs::Permissions::from_mode(0o755)).unwrap();
+        match got {
+            TreeAge::Newest { path, unread, .. } => {
+                assert_eq!(path, PathBuf::from("old.txt"));
+                assert_eq!(unread, 1, "the shut directory is one unread entry");
+            }
+            other => panic!("{other:?}"),
+        }
+        let only = Scratch::new("tree-unread-only");
+        let shut = only.path().join("shut");
+        std::fs::create_dir_all(&shut).unwrap();
+        std::fs::write(shut.join("fresh.txt"), "x").unwrap();
+        std::fs::set_permissions(&shut, std::fs::Permissions::from_mode(0o000)).unwrap();
+        let got = newest(only.path(), ENTRY_CAP);
+        std::fs::set_permissions(&shut, std::fs::Permissions::from_mode(0o755)).unwrap();
+        assert_eq!(
+            got,
+            TreeAge::NoFiles {
+                entries: 1,
+                unread: 1
+            }
+        );
     }
 
     #[test]

@@ -22,8 +22,6 @@ const I2: &str = "    ";
 const I3: &str = "      ";
 /// How long after a pane started a skill write counts as a rewrite.
 pub const REWRITE_AFTER_MS: i64 = 60_000;
-/// Questions shown per project before the rest are counted.
-const QUESTIONS_SHOWN: usize = 5;
 
 pub fn frame(s: &Snapshot, interval_secs: Option<u64>) -> Vec<String> {
     let mut out = vec![header(interval_secs), String::new(), "BINARY".into()];
@@ -279,16 +277,19 @@ pub fn tree_line(now: i64, measured: i64, age: &TreeAge) -> String {
     };
     match age {
         TreeAge::Gone => "no worktree on disk at this path".to_string(),
-        TreeAge::NoFiles { entries } => {
+        TreeAge::NoFiles { entries, unread: 0 } => {
             format!("no file under the worktree ({entries} entries read){when}")
         }
+        TreeAge::NoFiles { entries, unread } => format!(
+            "no file read under the worktree ({entries} entries) — PARTIAL: {unread} entr(ies) could not be read, so a file may be among them{when}"
+        ),
         TreeAge::Unreadable(e) => format!("worktree UNREADABLE — {e}"),
         TreeAge::Newest {
             at_ms,
             path,
             entries,
             capped,
-            unlisted,
+            unread,
         } => {
             let mut l = format!("newest write {}: {}", ago(now, *at_ms), path.display());
             if *capped {
@@ -298,8 +299,10 @@ pub fn tree_line(now: i64, measured: i64, age: &TreeAge) -> String {
             } else {
                 l.push_str(&format!(" ({entries} entries)"));
             }
-            if *unlisted > 0 {
-                l.push_str(&format!("; {unlisted} directorie(s) could not be listed"));
+            if *unread > 0 {
+                l.push_str(&format!(
+                    " — PARTIAL: {unread} entr(ies) could not be read, so a newer file may be among them"
+                ));
             }
             l.push_str(&when);
             l
@@ -344,20 +347,20 @@ fn questions(s: &Snapshot, out: &mut Vec<String>) {
                     core_age(s),
                     p.project_id.as_deref().unwrap_or("")
                 ));
-                for one in q.listed.iter().take(QUESTIONS_SHOWN) {
+                for one in &q.listed {
+                    let prompt = if one.prompt.is_empty() {
+                        "(core holds no prompt for it)".to_string()
+                    } else {
+                        clip(&one.prompt, 110)
+                    };
                     let age = one
                         .asked_ms
                         .map(|a| ago(s.now_ms, a))
                         .unwrap_or_else(|| "at an unreadable time".into());
                     out.push(format!(
                         "{I3}{} blocker, asked {age}: {}",
-                        one.blocker_kind,
-                        clip(&one.prompt, 110)
+                        one.blocker_kind, prompt
                     ));
-                }
-                let shown = q.listed.len().min(QUESTIONS_SHOWN);
-                if q.total as usize > shown {
-                    out.push(format!("{I3}and {} more", q.total as usize - shown));
                 }
             }
         }
@@ -502,6 +505,7 @@ fn health(s: &Snapshot, out: &mut Vec<String>) {
         ));
     } else {
         out.extend(s.gate.iter().map(|l| format!("{I1}{l}")));
+        out.push(format!("{I1}           ← {}", s.gate_source));
     }
     out.extend(s.pool.iter().map(|l| format!("{I1}{l}")));
     if !s.pool_source.is_empty() {
@@ -542,19 +546,9 @@ fn abandoned(s: &Snapshot, out: &mut Vec<String>) {
     }
 }
 
-/// Issue keys, the first few of them and a count of the rest.
+/// Every issue key: a row that waits is listed, never summarised.
 fn keys(all: &[String]) -> String {
-    const SHOWN: usize = 6;
-    let mut out = all
-        .iter()
-        .take(SHOWN)
-        .cloned()
-        .collect::<Vec<_>>()
-        .join(", ");
-    if all.len() > SHOWN {
-        out.push_str(&format!(", and {} more", all.len() - SHOWN));
-    }
-    out
+    all.join(", ")
 }
 
 fn clip(s: &str, n: usize) -> String {

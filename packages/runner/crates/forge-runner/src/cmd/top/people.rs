@@ -159,25 +159,25 @@ pub async fn get_json(client: &CoreClient, path: &str) -> Read<Value> {
     serde_json::from_str(&text).map_err(|e| Unreadable::new(&route, format!("does not parse: {e}")))
 }
 
+/// Pages a list is read in, and how many pages one read may take before it
+/// says it stopped: the view lists every row it claims to, or says it did not.
+const PAGE: usize = 200;
+const PAGES: usize = 20;
+
 pub async fn project_core(pat: &CoreClient, project_id: &str) -> ProjectCore {
-    let q = format!("/api/questions?projectId={project_id}&status=open&limit=20");
-    let questions = get_json(pat, &q).await.and_then(|v| questions(&q, &v));
-    let rows = format!("/api/projects/{project_id}/issues?status=awaiting_release&limit=50");
-    let awaiting = match get_json(pat, &rows)
-        .await
-        .and_then(|v| awaiting_rows(&rows, &v))
-    {
+    let questions = all_questions(pat, project_id).await;
+    let awaiting = match all_awaiting(pat, project_id).await {
         Err(e) => Err(e),
-        Ok((total, keys)) if total == 0 => Ok(AwaitingRelease {
-            total,
+        Ok(keys) if keys.is_empty() => Ok(AwaitingRelease {
+            total: 0,
             keys,
             blockers: Ok(Vec::new()),
         }),
-        Ok((total, keys)) => {
+        Ok(keys) => {
             let r = format!("/api/projects/{project_id}/release-readiness");
             let blockers = get_json(pat, &r).await.and_then(|v| blockers(&r, &v));
             Ok(AwaitingRelease {
-                total,
+                total: keys.len() as u64,
                 keys,
                 blockers,
             })
@@ -189,6 +189,58 @@ pub async fn project_core(pat: &CoreClient, project_id: &str) -> ProjectCore {
     }
 }
 
+/// Every open question, through `nextCursor` until core says there is no more.
+async fn all_questions(pat: &CoreClient, project_id: &str) -> Read<Questions> {
+    let base = format!("/api/questions?projectId={project_id}&status=open&limit={PAGE}");
+    let mut listed = Vec::new();
+    let mut cursor: Option<String> = None;
+    for _ in 0..PAGES {
+        let route = match &cursor {
+            Some(c) => format!("{base}&cursor={c}"),
+            None => base.clone(),
+        };
+        let v = get_json(pat, &route).await?;
+        listed.extend(questions(&route, &v)?);
+        match v["nextCursor"].as_str() {
+            Some(next) if v["hasMore"].as_bool() == Some(true) => cursor = Some(next.to_string()),
+            _ => {
+                return Ok(Questions {
+                    total: listed.len() as u64,
+                    listed,
+                })
+            }
+        }
+    }
+    Err(Unreadable::new(
+        format!("GET {base}"),
+        format!(
+            "more than {} open questions, so this view has not read them all",
+            PAGE * PAGES
+        ),
+    ))
+}
+
+/// Every issue at `awaiting_release`, by offset until `hasMore` is false.
+async fn all_awaiting(pat: &CoreClient, project_id: &str) -> Read<Vec<String>> {
+    let base = format!("/api/projects/{project_id}/issues?status=awaiting_release&limit={PAGE}");
+    let mut keys = Vec::new();
+    for page in 0..PAGES {
+        let route = format!("{base}&offset={}", page * PAGE);
+        let v = get_json(pat, &route).await?;
+        keys.extend(awaiting_rows(&route, &v)?);
+        if v["hasMore"].as_bool() != Some(true) {
+            return Ok(keys);
+        }
+    }
+    Err(Unreadable::new(
+        format!("GET {base}"),
+        format!(
+            "more than {} issues at awaiting_release, so this view has not read them all",
+            PAGE * PAGES
+        ),
+    ))
+}
+
 fn shape(route: &str, what: &str) -> Unreadable {
     Unreadable::new(
         format!("GET {route}"),
@@ -196,54 +248,67 @@ fn shape(route: &str, what: &str) -> Unreadable {
     )
 }
 
-pub fn questions(route: &str, v: &Value) -> Read<Questions> {
+/// A field a row must carry, or the row is not one this view can show.
+fn field<'a>(route: &str, row: &'a Value, key: &str, what: &str) -> Read<&'a str> {
+    row[key]
+        .as_str()
+        .ok_or_else(|| shape(route, &format!("`{key}` on a {what}")))
+}
+
+/// One page of `projectQuestionsFor`'s answer. A question with no step has an
+/// empty prompt, which core means; one with no blocker kind or creation time
+/// is not a question core writes, and is refused rather than shown half.
+pub fn questions(route: &str, v: &Value) -> Read<Vec<Question>> {
     let list = v["questions"]
         .as_array()
         .ok_or_else(|| shape(route, "`questions` list"))?;
-    let listed = list
-        .iter()
-        .map(|q| Question {
-            blocker_kind: q["blockerKind"].as_str().unwrap_or("unstated").to_string(),
-            asked_ms: q["askedAt"]
+    list.iter()
+        .map(|q| {
+            let created = field(route, q, "createdAt", "question")?;
+            let asked = q["askedAt"]
                 .as_str()
                 .filter(|s| !s.is_empty())
-                .or_else(|| q["createdAt"].as_str())
-                .and_then(parse_utc_ms),
-            prompt: q["prompt"]
-                .as_str()
-                .unwrap_or("")
-                .lines()
-                .next()
-                .unwrap_or("")
-                .to_string(),
+                .unwrap_or(created);
+            Ok(Question {
+                blocker_kind: field(route, q, "blockerKind", "question")?.to_string(),
+                asked_ms: Some(parse_utc_ms(asked).ok_or_else(|| {
+                    shape(route, &format!("readable time on a question (`{asked}`)"))
+                })?),
+                prompt: q["prompt"]
+                    .as_str()
+                    .unwrap_or("")
+                    .lines()
+                    .next()
+                    .unwrap_or("")
+                    .to_string(),
+            })
         })
-        .collect::<Vec<_>>();
-    let total = v["total"].as_u64().unwrap_or(listed.len() as u64);
-    Ok(Questions { total, listed })
+        .collect()
 }
 
-pub fn awaiting_rows(route: &str, v: &Value) -> Read<(u64, Vec<String>)> {
+/// One page of the project issue list: each row's display key.
+pub fn awaiting_rows(route: &str, v: &Value) -> Read<Vec<String>> {
     let items = v["items"]
         .as_array()
         .ok_or_else(|| shape(route, "`items` list"))?;
-    let keys = items
+    items
         .iter()
-        .map(|i| i["displayId"].as_str().unwrap_or("?").to_string())
-        .collect::<Vec<_>>();
-    Ok((v["total"].as_u64().unwrap_or(keys.len() as u64), keys))
+        .map(|i| field(route, i, "displayId", "listed issue").map(str::to_string))
+        .collect()
 }
 
 pub fn blockers(route: &str, v: &Value) -> Read<Vec<Blocker>> {
     let list = v["blockers"]
         .as_array()
         .ok_or_else(|| shape(route, "`blockers` list"))?;
-    Ok(list
-        .iter()
-        .map(|b| Blocker {
-            code: b["code"].as_str().unwrap_or("?").to_string(),
-            message: b["message"].as_str().unwrap_or("").to_string(),
+    list.iter()
+        .map(|b| {
+            Ok(Blocker {
+                code: field(route, b, "code", "blocker")?.to_string(),
+                message: field(route, b, "message", "blocker")?.to_string(),
+            })
         })
-        .collect())
+        .collect()
 }
 
 /// `YYYY-MM-DDTHH:MM:SS[.fff](Z|+00:00)` → wall-clock ms. Anything else is `None`.
@@ -327,10 +392,9 @@ mod tests {
         )
         .unwrap();
         let q = questions("/api/questions", &v).unwrap();
-        assert_eq!(q.total, 3);
-        assert_eq!(q.listed[0].prompt, "Ship the migration?");
-        assert_eq!(q.listed[0].blocker_kind, "human");
-        assert_eq!(q.listed[0].asked_ms, parse_utc_ms("2026-09-30T01:30:00Z"));
+        assert_eq!(q[0].prompt, "Ship the migration?");
+        assert_eq!(q[0].blocker_kind, "human");
+        assert_eq!(q[0].asked_ms, parse_utc_ms("2026-09-30T01:30:00Z"));
         assert!(questions("/r", &serde_json::json!({"items": []})).is_err());
     }
 
@@ -343,7 +407,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             awaiting_rows("/r", &rows).unwrap(),
-            (1, vec!["ISS-7".to_string()])
+            vec!["ISS-7".to_string()]
         );
         let ready: Value = serde_json::from_str(
             r#"{"hasReleaseGate":false,"blockers":[{"code":"NO_RELEASE_GATE","httpStatus":409,"message":"This project has no release step","evaluated":true}],"warnings":[]}"#,
@@ -352,6 +416,35 @@ mod tests {
         let b = blockers("/r", &ready).unwrap();
         assert_eq!(b[0].code, "NO_RELEASE_GATE");
         assert!(blockers("/r", &serde_json::json!({})).is_err());
+    }
+
+    /// Criterion 22, for a row: a field core always writes that is missing is
+    /// an answer this view cannot read, never a row with a placeholder in it.
+    #[test]
+    fn a_row_missing_what_core_always_writes_is_unreadable() {
+        let q = serde_json::json!({"questions": [{"prompt": "x"}]});
+        let e = questions("/q", &q).unwrap_err();
+        assert!(e.reason.contains("`createdAt`"), "{e}");
+        let q = serde_json::json!({"questions": [{"prompt": "x", "createdAt": "2026-09-30T01:00:00Z"}]});
+        assert!(questions("/q", &q)
+            .unwrap_err()
+            .reason
+            .contains("`blockerKind`"));
+        let q = serde_json::json!({"questions": [{"blockerKind": "human", "createdAt": "soon"}]});
+        assert!(questions("/q", &q).is_err());
+        let rows = serde_json::json!({"items": [{}]});
+        assert!(awaiting_rows("/r", &rows)
+            .unwrap_err()
+            .reason
+            .contains("`displayId`"));
+        let b = serde_json::json!({"blockers": [{"code": "X"}]});
+        assert!(blockers("/r", &b).unwrap_err().reason.contains("`message`"));
+        let empty = serde_json::json!({"questions": [{"blockerKind": "human", "createdAt": "2026-09-30T01:00:00Z"}]});
+        assert_eq!(
+            questions("/q", &empty).unwrap()[0].prompt,
+            "",
+            "a question with no step has no prompt"
+        );
     }
 
     #[test]

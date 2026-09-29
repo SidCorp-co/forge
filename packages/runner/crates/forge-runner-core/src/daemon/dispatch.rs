@@ -26,8 +26,8 @@ pub struct Resolved {
 }
 
 /// Merge server assignments with local config bindings for one project id.
-/// Returns `Ok(None)` when the project is assigned but has no usable path on
-/// either side (caller emits a `bind` hint), and `Err` only never (kept simple).
+/// `Err` carries the project's slug where neither side gives it a usable path,
+/// which is what a caller names in its `bind` hint.
 pub fn resolve_repo(
     server: &[MeRunner],
     cfg: &Config,

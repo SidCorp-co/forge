@@ -39,6 +39,7 @@ pub struct Run {
     pub ended_by: Option<String>,
     /// What the daemon last said about this run's standing, in its own word.
     pub kept_notice: Option<String>,
+    pub incarnation: String,
     pub work: String,
     pub blocker_kind: Option<String>,
     pub waiting_on: Option<String>,
@@ -56,8 +57,11 @@ impl Run {
             .collect()
     }
 
+    /// `ledger::Run::is_parked_on_human`, over the columns read here.
     pub fn parked_on_a_person(&self) -> bool {
-        self.work == "blocked" && self.blocker_kind.as_deref() == Some("human")
+        self.incarnation == "exited"
+            && self.work == "blocked"
+            && self.blocker_kind.as_deref() == Some("human")
     }
 }
 
@@ -93,6 +97,7 @@ pub const READS: &[(&str, &[&str])] = &[
             "released_as",
             "ended_by",
             "kept_notice",
+            "incarnation",
             "work",
             "blocker_kind",
             "waiting_on",
@@ -114,11 +119,12 @@ pub const READS: &[(&str, &[&str])] = &[
 ];
 
 const RUNS: &str = "SELECT r.run_id, r.project_id, r.master_session_id, r.boot_id, r.worktree_path,
-        r.worktree_gone_at, r.released_as, r.ended_by, r.kept_notice, r.work, r.blocker_kind,
-        r.waiting_on, r.created_at
+        r.worktree_gone_at, r.released_as, r.ended_by, r.kept_notice, r.incarnation, r.work,
+        r.blocker_kind, r.waiting_on, r.created_at
    FROM runs r
   WHERE EXISTS (SELECT 1 FROM run_issues m WHERE m.run_id = r.run_id AND m.lease_returned_at IS NULL)
-     OR (r.ended_by IS NULL AND r.work = 'blocked' AND r.blocker_kind = 'human')
+     OR (r.ended_by IS NULL AND r.incarnation = 'exited' AND r.work = 'blocked'
+         AND r.blocker_kind = 'human')
   ORDER BY r.created_at";
 
 /// Open `path` read-only and read what the view shows.
@@ -182,10 +188,11 @@ fn read_runs(conn: &Connection) -> rusqlite::Result<Vec<Run>> {
                 released_as: r.get(6)?,
                 ended_by: r.get(7)?,
                 kept_notice: r.get(8)?,
-                work: r.get(9)?,
-                blocker_kind: r.get(10)?,
-                waiting_on: r.get(11)?,
-                created_at: r.get(12)?,
+                incarnation: r.get(9)?,
+                work: r.get(10)?,
+                blocker_kind: r.get(11)?,
+                waiting_on: r.get(12)?,
+                created_at: r.get(13)?,
                 issues: Vec::new(),
             })
         })?
@@ -398,5 +405,35 @@ mod tests {
             .find(|r| r.run_id == "run-back")
             .expect("read");
         assert!(parked.parked_on_a_person());
+    }
+
+    /// Consult 009e48 F1: parked is the ledger's own predicate — blocked on a
+    /// human AND exited. A process still standing is not waiting on a person.
+    #[test]
+    fn a_blocked_run_whose_process_still_stands_is_not_parked() {
+        let s = Scratch::new("top-ledger-park-live");
+        let path = planted(s.path());
+        let led = Ledger::open(&path).unwrap();
+        led.declare_parked_human("run-back", None, None).unwrap();
+        led.declare_parked_human("run-held", None, None).unwrap();
+        drop(led);
+        let raw = Connection::open(&path).unwrap();
+        raw.execute(
+            "UPDATE runs SET incarnation = 'live' WHERE run_id IN ('run-back', 'run-held')",
+            [],
+        )
+        .unwrap();
+        drop(raw);
+        let v = read(&path).unwrap();
+        assert!(
+            v.runs.iter().all(|r| r.run_id != "run-back"),
+            "a live run with its leases back is not read as parked"
+        );
+        let held = v
+            .runs
+            .iter()
+            .find(|r| r.run_id == "run-held")
+            .expect("held");
+        assert!(!held.parked_on_a_person(), "{held:?}");
     }
 }
