@@ -128,7 +128,9 @@ export async function applyMergeMarker(args: {
   let claimedCommit: string | null = null;
   if (args.op === 'mark') {
     const shape = await readLandingShape(db, before.projectId);
-    if (markTargetRequired(shape) && !args.target) {
+    // A landing on a git project is refused below whatever the target, and that refusal names the
+    // real fault, so the missing target is not reported ahead of it.
+    if (markTargetRequired(shape) && !args.target && !args.landing) {
       throw new MergeMarkerError('TARGET_REQUIRED', 'target is required');
     }
     if (args.actor.agency === 'agent') {

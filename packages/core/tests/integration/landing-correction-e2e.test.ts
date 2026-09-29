@@ -139,4 +139,20 @@ describe('target is owed where the project moves branches, and only there', () =
     expect(viaTool.text).toContain('data.target is required for mark_merged');
     expect((await stored(id)).merged_at).toBeNull();
   });
+
+  it('names the landing, not the target, when a standard mark sends a landing and no target', async () => {
+    const w = await world('standard');
+    const id = await seedIssue(w);
+    const res = await rest('POST', `/api/issues/${id}/merge`, w.token, { landing: LANDING });
+    expect(res.status).toBe(422);
+    expect((await res.json()).code).toBe('LANDING_NOT_THIS_SHAPE');
+
+    const viaTool = await tool(w.pat, {
+      action: 'mark_merged',
+      data: { issueId: id, landing: LANDING },
+    });
+    expect(viaTool.isError).toBe(true);
+    expect(viaTool.text).toContain('LANDING_NOT_THIS_SHAPE');
+    expect((await stored(id)).merged_at).toBeNull();
+  });
 });
