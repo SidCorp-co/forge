@@ -6,6 +6,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import { jobTypes } from '../db/schema.js';
 import { groupOf, laneOf, noStepDetail, stepOf } from './runs-lane.js';
 
 type RunRow = Parameters<typeof laneOf>[0];
@@ -32,6 +33,25 @@ describe('laneOf', () => {
 
   it('reads the lane off the metadata the opener wrote, not off the null column', () => {
     expect(laneOf(run({ issueId: 'iss-1', metadata: { type: 'run_session' } }))).toBe('job');
+  });
+
+  // ISS-1335 — the shape `ensureMasterSession` writes. Read as `system`, a healthy master was
+  // described only by the writers it lacks and looked exactly like a wedged orphan.
+  it('a run a resident master opened is on the master lane', () => {
+    expect(laneOf(run({ metadata: { type: 'master', deviceId: 'dev-1' } }))).toBe('master');
+  });
+
+  // Every other `kind: 'system'` opener, in the metadata it writes. `jobs/routes.ts` puts a job
+  // type in the same `type` key, so a job type named like a lane would be misnamed here.
+  it('never names another system opener a master', () => {
+    const shapes: Array<Record<string, unknown>> = [
+      ...jobTypes.map((type) => ({ source: 'jobs.create', type })),
+      { source: 'release-batch', gateStatus: 'green', issueIds: [] },
+      { source: 'release-record', gateStatus: 'green', issueIds: [] },
+      { source: 'skills.smoke-verify', smoke: true, stage: 'code', skillName: 'x' },
+      {},
+    ];
+    for (const metadata of shapes) expect(laneOf(run({ metadata }))).toBe('system');
   });
 });
 
@@ -100,6 +120,12 @@ describe('groupOf', () => {
     });
   });
 
+  it('says a resident master was opened over no group, not that the run lacks one', () => {
+    const detail = groupOf(run({ metadata: { type: 'master' } }), 'master').detail;
+    expect(detail).toContain('a resident master');
+    expect(detail).not.toBe('this run was not opened over a group of issues');
+  });
+
   it('says a system-lane run was not opened over a group at all', () => {
     expect(groupOf(run(), 'system').detail).toBe('this run was not opened over a group of issues');
   });
@@ -158,9 +184,39 @@ describe('stepOf', () => {
 
   it('gives every lane its own sentence rather than one shared shrug', () => {
     const said = new Set(
-      (['job', 'run_session', 'system'] as const).map((lane) => noStepDetail(lane)),
+      (['job', 'run_session', 'master', 'system'] as const).map((lane) => noStepDetail(lane)),
     );
-    expect(said.size).toBe(3);
+    expect(said.size).toBe(4);
+  });
+
+  // ISS-1335 — what the master is, said by the row itself, from the live master session on it.
+  it('names the live resident master and why its run holds no step', () => {
+    const step = stepOf('master', null, undefined, undefined, {
+      sessionId: 'sess-1',
+      name: 'forge-master-forge-dev',
+      lastHeartbeatAt: '2026-09-29T17:31:00.000Z',
+    });
+    expect(step.source).toBe('none');
+    expect(step.detail).toContain('resident master `forge-master-forge-dev`');
+    expect(step.detail).toContain('dispatches issues rather than taking steps');
+  });
+
+  it('names the master session by id where it carries no terminal name', () => {
+    const detail = noStepDetail('master', undefined, {
+      sessionId: 'sess-1',
+      name: null,
+      lastHeartbeatAt: null,
+    });
+    expect(detail).toContain('resident master session sess-1');
+  });
+
+  // A master run outlives its session: `closeMasterSession` completes the session and leaves the
+  // run `running`. That row is an orphan, and saying "master" alone would call it healthy.
+  it('says a master run with no live master session is held by nothing', () => {
+    const detail = stepOf('master', null, undefined, undefined, null).detail;
+    expect(detail).toContain('no master session on it is live');
+    expect(detail).toContain('nothing holds it');
+    expect(detail).not.toContain('dispatches issues');
   });
 
   // The judge found this sentence asserting "over a group of issues" beside `runIssues: []`.
