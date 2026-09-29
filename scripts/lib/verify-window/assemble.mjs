@@ -84,10 +84,12 @@ function enter({ t, config, member, open, landed, window }) {
 
 /**
  * Fetch, then read what every step is judged against: the base commit, the declarations at it and
- * the open branches outside the window. `pinBase` is a replay's: the base the window was built on,
- * never wherever the remote has moved since. @returns {{ refusal: string } | object}
+ * the open branches outside the window. A `replay` — one member rebuilt for `attribute --unit` —
+ * names the window it came from: its base, never wherever the remote has moved since, and every
+ * branch of that window, none of which is an open branch outside it.
+ * @returns {{ refusal: string } | object}
  */
-export function prepareWindow({ repoDir, manifest, pinBase }) {
+export function prepareWindow({ repoDir, manifest, replay }) {
   const g = gitIn(repoDir);
   const trimmed = (args) => g.run(args)?.trim() ?? null;
   if (
@@ -99,8 +101,8 @@ export function prepareWindow({ repoDir, manifest, pinBase }) {
     };
   }
   const baseRef = `origin/${manifest.base}`;
-  const baseSha = pinBase
-    ? trimmed(['rev-parse', '--verify', '--quiet', `${pinBase}^{commit}`])
+  const baseSha = replay
+    ? trimmed(['rev-parse', '--verify', '--quiet', `${replay.base}^{commit}`])
     : trimmed(['rev-parse', '--verify', '--quiet', baseRef]);
   if (!baseSha)
     return { refusal: `${baseRef} does not exist, so there is no base to build the window on` };
@@ -108,7 +110,8 @@ export function prepareWindow({ repoDir, manifest, pinBase }) {
   if (read.refusal) return { refusal: read.refusal };
   const config = read.config;
   const journal = `${config.migrationsDir}/meta/_journal.json`;
-  const memberRefs = new Set(manifest.members.map((m) => `origin/${m.branch}`));
+  const inWindow = [...manifest.members.map((m) => m.branch), ...(replay?.branches ?? [])];
+  const memberRefs = new Set(inWindow.map((b) => `origin/${b}`));
   const openSet = readOpenSet({
     git: trimmed,
     journal,
@@ -133,19 +136,19 @@ export function prepareWindow({ repoDir, manifest, pinBase }) {
 }
 
 /**
- * `admit: false` and `pinBase` are for a replay tree, whose member the window it came from admitted
- * and built on that window's base.
- * @param {{ repoDir: string, manifest: object, treeDir: string, readCheck: Function, admit?: boolean, pinBase?: string }} input
+ * A `replay` (see `prepareWindow`) is not admitted again: the window it came from admitted it.
+ * @param {{ repoDir: string, manifest: object, treeDir: string, readCheck: Function,
+ *   replay?: { base: string, branches: string[] } }} input
  * @returns {{ refusal: string } | { ledger: object }}
  */
-export function assemble({ repoDir, manifest, treeDir, readCheck, admit = true, pinBase }) {
-  const ready = prepareWindow({ repoDir, manifest, pinBase });
+export function assemble({ repoDir, manifest, treeDir, readCheck, replay }) {
+  const ready = prepareWindow({ repoDir, manifest, replay });
   if (ready.refusal) return ready;
   const { g, baseSha, config, open } = ready;
   if (existsSync(treeDir))
     return { refusal: `${treeDir} already exists; a window is built in a tree of its own` };
 
-  const admissions = admit
+  const admissions = !replay
     ? admitMembers({ g, baseSha, members: manifest.members, config, readCheck })
     : manifest.members.map((m) => ({ issue: m.issue, refusals: [] }));
   g.must(['worktree', 'add', '-q', '--detach', treeDir, baseSha]);

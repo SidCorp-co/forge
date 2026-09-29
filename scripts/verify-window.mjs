@@ -92,8 +92,8 @@ function removeTree(dir) {
   g.run(['worktree', 'prune']);
 }
 
-function build(dir, m = manifest, admit = true, pinBase = undefined) {
-  const r = assemble({ repoDir, manifest: m, treeDir: dir, readCheck, admit, pinBase });
+function build(dir, m = manifest, replay = undefined) {
+  const r = assemble({ repoDir, manifest: m, treeDir: dir, readCheck, replay });
   if (r.refusal) die(r.refusal);
   return r.ledger;
 }
@@ -191,7 +191,7 @@ if (verb === 'attribute') {
         members: [{ issue: m.issue, branch: m.branch, head: m.head, arrivedAt: m.arrivedAt }],
         isolated: [],
       };
-      build(alone, one, false, ledger.base.sha);
+      build(alone, one, { base: ledger.base.sha, branches: ledger.members.map((x) => x.branch) });
       const r = replay(values.unit, alone, repeat);
       removeTree(alone);
       return { issue: m.issue, ...r };

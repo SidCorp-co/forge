@@ -466,6 +466,45 @@ describe('assemble, attribute, isolate and land', () => {
   });
 });
 
+describe('a replay of one member alone', () => {
+  it('numbers its migrations against the base and the open set, not against the window it left', () => {
+    const dataOnly = (idx, when, tag) => ({
+      [JOURNAL]: journal(entry(1, W, '0001_init'), entry(idx, when, tag)),
+      [`${DIR}/${tag}.sql`]: `-- ${tag}\n`,
+    });
+    heads.late = branch('ISS-12-late', dataOnly(2, W + 5 * DAY, '0002_late'));
+    heads.early = branch('ISS-13-early', dataOnly(2, W + DAY, '0002_early'));
+    const c = clone('replay-window');
+    const w = windowFiles(
+      'w-replay',
+      [
+        ['ISS-12', 'ISS-12-late', heads.late],
+        ['ISS-13', 'ISS-13-early', heads.early],
+      ],
+      green(heads.late, heads.early),
+    );
+    expect(
+      run(c, 'assemble', '--window', w.manifest, '--checks', w.checksFile, '--tree', w.tree).status,
+    ).toBe(0);
+    const inflated = `! grep -q '"when": ${W + 6 * DAY}' ${JOURNAL}`;
+    const r = run(
+      c,
+      'attribute',
+      '--window',
+      w.manifest,
+      '--checks',
+      w.checksFile,
+      '--tree',
+      w.tree,
+      '--unit',
+      inflated,
+    );
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toMatch(/did not fail on the replay at all/);
+    git(seed, 'push', '-q', 'origin', '--delete', 'ISS-12-late', 'ISS-13-early');
+  });
+});
+
 describe('a journal entry a member edits rather than adds', () => {
   it('isolates the member instead of dropping its edit', () => {
     const c = clone('edit-window');
