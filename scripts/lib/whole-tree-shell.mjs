@@ -455,7 +455,15 @@ const SEARCHERS = {
   grep: {
     values: 'efABCmdD',
     switches: 'abcEFGHhiLlnoPqRrsTUuVvwxyZzI',
-    long: ['--regexp', '--file', '--label', '--binary-files', '--max-count', '--context'],
+    long: [
+      '--regexp',
+      '--file',
+      '--label',
+      '--binary-files',
+      '--max-count',
+      '--context',
+      '--directories',
+    ],
   },
   rg: {
     values: 'efgtTABCmjMErd',
@@ -529,10 +537,15 @@ function searchListing(bin, rest, cwd, root) {
   return dirs.map((p) => place(at(cwd, isWord(p) ? globBase(p) : p), bin, root));
 }
 
+/** Told to recurse: `-r` and its like, or grep's `-d`/`--directories` in any mode but `read` or `skip`. */
 const recursive = (args) =>
-  args.some(
-    (a) => isWord(a) && (/^-[a-zA-Z]*[rRa]/.test(a) || ['--recursive', '--archive'].includes(a)),
-  );
+  args.some((a, k) => {
+    if (!isWord(a)) return false;
+    if (/^-[a-zA-Z]*[rRa]/.test(a)) return true;
+    if (['--recursive', '--archive', '--dereference-recursive'].includes(a)) return true;
+    const mode = a === '-d' ? args[k + 1] : /^(-d|--directories=)(.*)$/.exec(a)?.[2];
+    return mode !== undefined && !['read', 'skip'].includes(mode);
+  });
 
 /** Each launcher, and the options it takes a separate value after. */
 const LAUNCHERS = {
@@ -577,6 +590,21 @@ function executable(head, cwd, env) {
   return null;
 }
 
+/**
+ * Whether a Node program's executable is Node, which the preload watches: the binary beside the
+ * one running this, or a script whose first line runs node. A script named `node` that runs
+ * anything else is a program nobody has read.
+ */
+function runsNode(path) {
+  if (dirname(path) === dirname(physical(process.execPath))) return true;
+  try {
+    const first = readFileSync(path, 'utf8').slice(0, 200).split('\n')[0];
+    return /^#!.*\bnode\b/.test(first);
+  } catch {
+    return false;
+  }
+}
+
 function listingOf(argv, cwd, root, env, blind) {
   const [head, ...rest] = argv;
   if (head === undefined) return [];
@@ -584,8 +612,9 @@ function listingOf(argv, cwd, root, env, blind) {
   const bin = basename(head);
   // A program is read by its name only where the name is the system's: a `cat` the test put first
   // on PATH, or named by a path of its own, is a program nobody has read.
-  const runs = NODE_PROGRAMS.has(bin) || NODE_BINS.has(bin) ? null : executable(head, cwd, env);
-  if (runs !== null && !TRUSTED_PLACE.test(runs))
+  const runs = executable(head, cwd, env);
+  const node = NODE_PROGRAMS.has(bin) || NODE_BINS.has(bin);
+  if (runs !== null && !TRUSTED_PLACE.test(runs) && !(node && runsNode(runs)))
     return [unread(`\`${head}\` at ${runs}, which the test's own PATH or path chose`, root)];
   if (bin === 'git') return gitListing(rest, cwd, root, env);
   if (SHELLS.has(bin)) return shellProgram(bin, rest, cwd, root, env);
@@ -1155,12 +1184,15 @@ function gitReading({ sub, tail, dir, top, stores, gitDir, root, via }) {
   if (sub === 'verify-commit' || sub === 'verify-tag') return [];
   if (GIT_NO_LISTING.has(sub)) return templateListing(tail, dir, via, root);
   if (sub === 'config') return configListing(tail, dir, root);
-  if (sub === 'log' || sub === 'reflog') {
-    const { specs, understood } = commitWords(sub === 'reflog' ? reflogTail(tail) : tail);
-    if (sub === 'reflog' && ['expire', 'delete', 'exists'].includes(tail[0])) return [];
-    return understood ? [] : narrowed(specs, inStore());
+  if (sub === 'reflog' && ['expire', 'delete', 'exists'].includes(tail[0])) return [];
+  if (sub === 'log' || sub === 'reflog' || sub === 'rev-list') {
+    // A path limits the history walk only by reading that path in every tree it walks.
+    const { words, specs, understood } = commitWords(sub === 'reflog' ? reflogTail(tail) : tail);
+    const onDisk = words.filter((w) => isWord(w) && dir !== null && existsSync(`${dir}/${w}`));
+    const paths = [...specs, ...onDisk];
+    if (understood) return paths.flatMap((s) => pathspecDir(s, dir, top, via, root));
+    return sub === 'rev-list' ? inStore() : narrowed(paths, inStore());
   }
-  if (sub === 'rev-list') return commitWords(tail).understood ? [] : inStore();
   if (sub === 'show') return showListing(tail, dir, top, stores, root);
   if (sub === 'cat-file') return catFileListing(tail, dir, stores, root);
   if (sub === 'clone' || sub === 'fetch' || sub === 'pull' || sub === 'remote') {
@@ -1340,7 +1372,7 @@ function gitPathspecs(sub, tail, takesValue, dir) {
         !isWord(word) ||
         word.startsWith(':') ||
         dir === null ||
-        existsSync(resolve(dir, globBase(word))),
+        existsSync(`${dir}/${globBase(word)}`),
     )
     .map((w) => w.word);
 }
@@ -1359,6 +1391,6 @@ function pathspecDir(spec, base, top, via, root) {
   }
   if (from === null || climbsAfterMagic(s)) return [place(null, via, root)];
   return [
-    place(isAbsolute(s) ? resolve(globBase(s)) : resolve(from, globBase(s || '.')), via, root),
+    place(physical(isAbsolute(s) ? globBase(s) : `${from}/${globBase(s || '.')}`), via, root),
   ];
 }

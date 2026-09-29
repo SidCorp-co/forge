@@ -95,6 +95,11 @@ describe('git, read by its subcommand and every pathspec', () => {
     expect(dirs('git', ['show', '-s', '--stat'])).toEqual([ROOT]);
     expect(dirs('git', ['rev-list', '--objects', '-n', '1', 'HEAD'])).toEqual([ROOT]);
     expect(dirs('git', ['rev-list', '--objects-edge-aggressive', 'HEAD'])).toEqual([ROOT]);
+    expect(dirs('git', ['log', '-1'])).toEqual([]);
+    expect(dirs('git', ['log', '--oneline', '--', '../..'])).toEqual([ROOT]);
+    expect(dirs('git', ['log', '--oneline', '../..'])).toEqual([ROOT]);
+    expect(dirs('git', ['rev-list', 'HEAD', '--', '../..'])).toEqual([ROOT]);
+    expect(dirs('git', ['log', '--oneline', '--', 'src'])).toEqual([join(CORE, 'src')]);
   });
 
   it('places an object by the tree it names, and a peeled or whole one at the repository', () => {
@@ -348,6 +353,8 @@ describe('a path placed where the kernel resolves it', () => {
   it('follows a symlink before its `..`, and a `cd` the way the shell does', () => {
     expect(dirs('ls', [join(OUT, 'link')])).toEqual([join(ROOT, 'packages')]);
     expect(dirs('ls', [`${OUT}/link/..`])).toEqual([ROOT]);
+    expect(dirs('git', ['ls-files', `${OUT}/link/..`])).toEqual([ROOT]);
+    expect(dirs('git', ['ls-files', `${OUT}/link/core`])).toEqual([CORE]);
     expect(sh(`cd ${OUT}/link/.. && ls`)).toEqual([OUT]);
   });
 
@@ -379,6 +386,9 @@ describe('the programs around git', () => {
     expect(dirs('grep', ['-rK', 'x', 'src'])).toEqual([join(CORE, 'x'), join(CORE, 'src'), CORE]);
     expect(dirs('rg', ['--pre', 'walk', 'x'], { cwd: '/elsewhere' })).toEqual([ROOT]);
     expect(dirs('grep', ['x', 'file.txt'])).toEqual([]);
+    expect(dirs('grep', ['-d', 'recurse', 'x', '../..'])).toEqual([ROOT]);
+    expect(dirs('grep', ['--directories=recurse', 'x', '../..'])).toEqual([ROOT]);
+    expect(dirs('grep', ['-d', 'skip', 'x', '../..'])).toEqual([]);
     expect(dirs('cp', ['-r', '../..', '/elsewhere'])).toEqual([ROOT, '/elsewhere']);
     expect(dirs('cp', ['a', 'b'])).toEqual([]);
   });
@@ -425,6 +435,11 @@ describe('the programs around git', () => {
     expect(dirs('cat', ['f.txt'], { env })).toEqual([ROOT]);
     expect(dirs(join(bin, 'cat'), ['f.txt'])).toEqual([ROOT]);
     expect(dirs('cat', ['f.txt'])).toEqual([]);
+    writeFileSync(join(bin, 'node'), '#!/bin/sh\nls /\n', { mode: 0o755 });
+    writeFileSync(join(bin, 'tsx'), '#!/usr/bin/env node\nrequire("x")\n', { mode: 0o755 });
+    expect(dirs('node', ['x.mjs'], { env })).toEqual([ROOT]);
+    expect(dirs('tsx', ['x.ts'], { env })).toEqual([]);
+    expect(dirs(process.execPath, ['x.mjs'], { env })).toEqual([]);
     rmSync(bin, { recursive: true, force: true });
   });
 
