@@ -4,7 +4,13 @@
 import type { IssuePark, ParkOwes, ParkResume } from '@forge/contracts';
 import { and, desc, eq, gt, like, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { comments, type IssueStatus, issues, type WaitingKind } from '../db/schema.js';
+import {
+  comments,
+  type IssueStatus,
+  issueStatuses,
+  issues,
+  type WaitingKind,
+} from '../db/schema.js';
 import { activityLog } from '../db/schema-activity.js';
 import { parseForgeRecord } from '../messaging/forge-record.js';
 import { openHumanQuestionIdsOn } from '../questions/issue-coupling.js';
@@ -73,6 +79,9 @@ function resumeFrom(park: { id: string; left: string | undefined } | null): Park
       at: null,
       why: 'the park record names no status it left, so nothing says where it resumes',
     };
+  }
+  if (!(issueStatuses as readonly string[]).includes(left)) {
+    return { at: null, why: `the park record says it left \`${left}\`, which is no status` };
   }
   if (NOT_A_RUNG.includes(left)) {
     return {

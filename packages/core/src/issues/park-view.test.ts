@@ -122,7 +122,7 @@ describe('readPark — the resume rung is the park record’s own `left`', () =>
   });
 
   it('refuses a side status or a blank as the rung it left', () => {
-    for (const left of ['on_hold', 'needs_info', 'draft', '']) {
+    for (const left of ['on_hold', 'needs_info', 'draft', '', 'banana', 'unknown_status']) {
       const park = readPark({
         status: 'waiting',
         waitingKind: 'needs_resource',
@@ -131,6 +131,7 @@ describe('readPark — the resume rung is the park record’s own `left`', () =>
         openHumanQuestionIds: [],
       });
       expect(park?.resume.at).toBeNull();
+      expect(park?.record?.commentId).toBe('c1');
     }
   });
 

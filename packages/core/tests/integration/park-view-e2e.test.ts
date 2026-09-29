@@ -249,6 +249,20 @@ describe('the moves the park menu sends', () => {
     expect(posted[0]).toContain('answered on a call');
   });
 
+  it('names both statuses once, in the park announcement, where the move enters another park', async () => {
+    const issueId = await insertIssue('needs_info');
+    await transition.transitionIssueStatus(await load(issueId), 'waiting', person(), {
+      reason: 'needs a login, not an answer',
+      transitionReason: 'needs a login, not an answer',
+      waitingKind: 'needs_resource',
+    });
+    const posted = await bodies(issueId);
+    expect(posted).toHaveLength(1);
+    expect(posted[0]).toContain('moved from `needs_info`');
+    expect(posted[0]).toContain('supply something');
+    expect(posted[0]).toContain('needs a login, not an answer');
+  });
+
   it('posts nothing for a move out of a park that carries no reason, or an agent’s', async () => {
     const quiet = await insertIssue('waiting', 'needs_decision');
     await transition.transitionIssueStatus(await load(quiet), 'in_progress', person());
