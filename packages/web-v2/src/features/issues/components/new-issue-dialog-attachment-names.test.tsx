@@ -46,7 +46,7 @@ afterEach(() => {
 
 describe("NewIssueDialog attachment names (ISS-963)", () => {
   it("stages two pastes of one clipboard name under two names instead of one", () => {
-    const { container } = mount();
+    const { baseElement: container } = mount();
     const form = container.querySelector("form") as HTMLFormElement;
 
     const paste = (name: string) => {
@@ -75,7 +75,7 @@ describe("NewIssueDialog attachment names (ISS-963)", () => {
       ],
     });
 
-    const { container } = mount();
+    const { baseElement: container } = mount();
     fireEvent.change(screen.getByLabelText(/title/i), { target: { value: "has a dropped file" } });
     fireEvent.submit(container.querySelector("form") as HTMLFormElement);
 
@@ -101,7 +101,7 @@ describe("NewIssueDialog attachment names (ISS-963)", () => {
       ],
     });
 
-    const { container } = mount();
+    const { baseElement: container } = mount();
     fireEvent.change(screen.getByLabelText(/title/i), { target: { value: "two reasons" } });
     fireEvent.submit(container.querySelector("form") as HTMLFormElement);
 
@@ -113,7 +113,7 @@ describe("NewIssueDialog attachment names (ISS-963)", () => {
   });
 
   it("stages a name that only collides once sanitised under a name of its own", () => {
-    const { container } = mount();
+    const { baseElement: container } = mount();
     const input = container.querySelector('input[type="file"]') as HTMLInputElement;
     const pick = (name: string) =>
       fireEvent.change(input, {
@@ -130,7 +130,7 @@ describe("NewIssueDialog attachment names (ISS-963)", () => {
   it("still reports plain success when nothing was dropped", async () => {
     mutateAsync.mockResolvedValue({ id: "i2", displayId: "ISS-2" });
 
-    const { container } = mount();
+    const { baseElement: container } = mount();
     fireEvent.change(screen.getByLabelText(/title/i), { target: { value: "clean create" } });
     fireEvent.submit(container.querySelector("form") as HTMLFormElement);
 

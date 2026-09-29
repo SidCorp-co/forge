@@ -23,6 +23,7 @@ import type {
   IssueDetail,
   IssuePriority,
   IssueStatus,
+  LandingShape,
   MergeMarkKind,
 } from "../types";
 
@@ -76,10 +77,12 @@ function MergeMarkBadge({
   mark,
   commitSha,
   landing,
+  landingShape,
 }: {
   mark?: MergeMarkKind;
   commitSha?: string | null;
   landing?: string | null;
+  landingShape?: LandingShape;
 }) {
   if (mark === "landed") {
     // ISS-1327 — the landing is the evidence, so it is shown as text rather than kept on a hover
@@ -104,7 +107,14 @@ function MergeMarkBadge({
   }
   if (mark === "asserted") {
     return (
-      <span title="Forge holds no merged pull request for this issue — this mark is a claim it recorded, not a merge it witnessed">
+      <span
+        title={
+          // Outside git no pull request is the normal record; what the mark lacks is a landing.
+          landingShape === "outside_git"
+            ? "This mark names no landing — it says the work shipped, not where it landed"
+            : "Forge holds no merged pull request for this issue — this mark is a claim it recorded, not a merge it witnessed"
+        }
+      >
         <Badge tone="amber">claimed</Badge>
       </span>
     );
@@ -298,6 +308,7 @@ export function PropertiesRail({
               mark={issue.mergeMark}
               commitSha={issue.mergedCommitSha}
               landing={issue.mergedLanding}
+              landingShape={issue.landingShape}
             />
             {canMarkMerged && (
               <MergeMarkerControl

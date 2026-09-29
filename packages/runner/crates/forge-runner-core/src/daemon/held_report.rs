@@ -1,37 +1,32 @@
 //! Say on the issue when this box is holding a checkout nothing else has.
 //!
-//! `runner/terminate.rs` refuses to release a worktree when it cannot establish
-//! that the commits there are named by some ref that outlives the directory.
-//! That refusal is correct and it is silent: the tree stays, the run stays
-//! open, and the only record is a `tracing::warn` in this box's journal. A hold
-//! nobody can see is the same shape as the failure this whole issue is about —
-//! work that exists and no surface says so.
+//! A run that exits leaves a checkout, and the release decides what becomes of
+//! it. Where the commits there are on no remote, or this box cannot tell, that
+//! is work on one machine only, and the only record of it would otherwise be a
+//! line in this box's journal. A hold nobody can see is the same shape as the
+//! failure ISS-1250 is about — work that exists and no surface says so.
 //!
-//! Which question that is matters, and this module got it wrong for a while.
-//! It asked `salvage::publication_of` — is the work on a remote — and wrote
-//! "run X keeps <path>" off the answer. The release stopped turning on that at
-//! ISS-1188 and turns on `salvage::fate_of` instead, so this module was saying
-//! "keeps" about directories the release removed seconds later, and did, twice
-//! in one day (ISS-1250). The directory's fate is read from the predicate the
-//! release reads; publication is still reported, because work on no remote is
-//! exactly the thing this module exists to surface, but it is reported as what
-//! it is and never as a decision to keep anything.
+//! Which question decides the directory matters, and this module got it wrong
+//! twice. First it asked `salvage::publication_of` — is the work on a remote —
+//! and wrote "run X keeps <path>" off the answer, though the release turns on
+//! `salvage::fate_of` (ISS-1188) and removed those directories seconds later.
+//! Then it read `fate_of` correctly and did not SEND the reading, so the
+//! comment core wrote from it still said "has not been released" about every
+//! one of them, four times in one evening on mowment (ISS-1250, reopened).
+//! `Held::kept` is that reading, and it travels: core's schema requires it and
+//! the posted sentence turns on it. `assets/held-worktree-wire.jsonl` pins the
+//! payload both suites read.
 //!
-//! This pass carries that refusal to the issues the run holds. It reports and
-//! moves nothing: refusing to release is already the strongest act available to
-//! a box, and what happens to the work belongs to whoever reads the issue.
-//!
-//! It is deliberately not a retry mechanism and deliberately does not ask for
-//! one. The master sweep already retries the release every thirty seconds, so a
-//! remote that comes back releases the tree with nobody involved; this exists
-//! for the remote that does not come back.
+//! This pass reports and moves nothing. It says what one reading found — the
+//! directory's fate and the work's publication — and never what the release
+//! will then do: that is `worktree::remove_at`'s to log, once it has happened.
 
 use crate::runner::ledger::{Incarnation, Ledger, Run};
 use crate::transport::{run_sessions, CoreClient};
 use crate::workspace::repo_cred::RepoCred;
 use crate::workspace::salvage::{self, Fate, Publication};
 
-/// What the box says about a checkout it is keeping.
+/// What the box says about a checkout an exited run left behind.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Held {
     pub worktree: String,
@@ -40,7 +35,8 @@ pub struct Held {
     pub commits_unpushed: Option<u32>,
     pub reason: String,
     /// Whether the reading this report took REFUSES the checkout's removal.
-    /// Not part of what core declares, and not sent.
+    /// Sent as `kept`, and required by core, because the sentence a person
+    /// reads on the issue turns on it and nothing else carries it.
     ///
     /// It is one half of the release's decision and never the whole of it:
     /// `false` says retention does not hold the directory here, not that the
@@ -58,6 +54,7 @@ impl Held {
             "worktree": self.worktree,
             "head": self.head,
             "reason": self.reason,
+            "kept": self.kept,
         });
         let obj = v.as_object_mut().expect("json! object");
         if let Some(b) = &self.branch {
@@ -91,7 +88,12 @@ pub async fn at_risk(run: &Run, cred: &RepoCred) -> Option<Held> {
         return None;
     }
     let head = git_line(worktree, &["rev-parse", "HEAD"]).await?;
-    let branch = git_line(worktree, &["rev-parse", "--abbrev-ref", "HEAD"]).await;
+    // A detached checkout answers `HEAD`, which is no branch at all, and a
+    // report naming it as one sends a reader looking for a branch that is not
+    // there — the one shape `Fate::NeedsARef` exists for.
+    let branch = git_line(worktree, &["rev-parse", "--abbrev-ref", "HEAD"])
+        .await
+        .filter(|b| b != "HEAD");
     // Publication first, and the order is load-bearing rather than incidental.
     // `publication_of` runs `git fetch --prune --all`, which writes exactly the
     // `refs/remotes/*` that retention counts against, so a fate read before it
@@ -106,6 +108,14 @@ pub async fn at_risk(run: &Run, cred: &RepoCred) -> Option<Held> {
     if !kept && publication == Publication::Published {
         return None;
     }
+    let named_by = match fate {
+        Fate::Named => salvage::named_by(worktree).await,
+        _ => None,
+    };
+    let remote = match publication {
+        Publication::Unpublished { .. } => salvage::has_a_remote(worktree).await,
+        _ => None,
+    };
     Some(Held {
         worktree: worktree.display().to_string(),
         branch,
@@ -114,21 +124,31 @@ pub async fn at_risk(run: &Run, cred: &RepoCred) -> Option<Held> {
             Publication::Unpublished { commits } => Some(*commits),
             _ => None,
         },
-        reason: why(&fate, &publication),
+        reason: why(&fate, named_by.as_deref(), &publication, remote),
         kept,
     })
 }
 
-/// One sentence carrying both facts, in the order a reader needs them: what
-/// this box's reading says about the directory first, because that is what the
-/// last one of these got wrong, then what is true of the work.
+/// One sentence carrying both facts: what is true of the work, then what this
+/// box's reading says about the directory, which is the half the posted
+/// sentence turns on and the one the last two versions of this got wrong.
 ///
 /// Every clause here is an observation and none is an outcome. What becomes of
 /// the directory is the release's to say and `worktree::remove_at`'s to log:
 /// this pass runs before it, reads one half of what it decides on, and a
 /// sentence promising a removal would be the same defect wearing the other
 /// face (consult 754b50 F1, F2).
-fn why(fate: &Fate, publication: &Publication) -> String {
+///
+/// `named_by` and `remote` only NAME what the two readings found — the ref
+/// holding the commits, and whether any remote exists to publish them to. A
+/// push is never mentioned: this pass makes none, and whether the release has
+/// tried one is not something it read (ISS-1250 judge, finding 2).
+fn why(
+    fate: &Fate,
+    named_by: Option<&str>,
+    publication: &Publication,
+    remote: Option<bool>,
+) -> String {
     let directory = match fate {
         Fate::Kept { why } => format!(
             "this box keeps this checkout: it cannot tell whether the commits here are named by \
@@ -139,16 +159,26 @@ fn why(fate: &Fate, publication: &Publication) -> String {
             "{commits} commit(s) here are named by this checkout's HEAD and by nothing else, so a \
              release must give them a ref of their own before it may take this directory"
         ),
-        Fate::Named => "the commits here are named by a ref this repository keeps, so they do not \
-                        depend on this directory"
-            .to_string(),
+        Fate::Named => match named_by {
+            Some(name) => format!(
+                "the commits here are named by {name}, which this repository keeps, so they do \
+                 not depend on this directory"
+            ),
+            None => "the commits here are named by a ref this repository keeps, so they do not \
+                     depend on this directory"
+                .to_string(),
+        },
     };
-    let work = match publication {
-        Publication::Published => "the work here is on a remote".to_string(),
-        Publication::Unpublished { commits } => format!(
-            "{commits} commit(s) here are on no remote, and the push to publish them did not land"
+    let work = match (publication, remote) {
+        (Publication::Published, _) => "the work here is on a remote".to_string(),
+        (Publication::Unpublished { commits }, Some(false)) => format!(
+            "{commits} commit(s) here are on no remote, and this repository has no remote to \
+             publish them to"
         ),
-        Publication::Unknown { why } => {
+        (Publication::Unpublished { commits }, _) => {
+            format!("{commits} commit(s) here are on no remote")
+        }
+        (Publication::Unknown { why }, _) => {
             format!("this box cannot tell whether the work here is on a remote ({why})")
         }
     };
@@ -674,39 +704,278 @@ mod tests {
         led.run("run-1").expect("read").expect("the row")
     }
 
-    #[test]
-    fn the_payload_carries_only_what_core_declares() {
-        let held = Held {
-            worktree: "/w".into(),
-            branch: Some("ISS-9".into()),
-            head: "abc".into(),
-            commits_unpushed: Some(2),
-            reason: "because".into(),
-            kept: true,
+    /// The payload core validates, pinned as a file core's suite reads back.
+    ///
+    /// The runner and core do not import each other, and a test reading only
+    /// `reason` is what let criteria 6 and 8 pass here and fail on the issue:
+    /// the comment core posts turns on `kept`, which this payload did not
+    /// carry. Each line is produced by `at_risk` over a real repository, and
+    /// `kept` is compared with `fate_of` read over that same repository, so a
+    /// `kept` fixed to either value, or taken from anything but the release's
+    /// own predicate, fails one of the two.
+    const WIRE: &str = include_str!("../../assets/held-worktree-wire.jsonl");
+
+    fn wire_line(n: usize) -> serde_json::Value {
+        serde_json::from_str(WIRE.lines().nth(n).expect("the fixture carries this line"))
+            .expect("the fixture is json")
+    }
+
+    /// What varies between two machines — the scratch path, the sha, and the
+    /// words a given git release uses for its own failure — is replaced by the
+    /// fixture's values, and nothing else is touched. git's words sit after
+    /// `failed: ` and before the clause's closing parenthesis; the sentence
+    /// around them is this crate's and is compared whole.
+    fn as_pinned(held: &Held, worktree: &Path, pinned: &serde_json::Value) -> serde_json::Value {
+        let mut json = held.to_json();
+        let obj = json.as_object_mut().expect("object");
+        let at = worktree.display().to_string();
+        let pinned_at = pinned["worktree"].as_str().expect("worktree").to_string();
+        obj.insert("worktree".into(), pinned_at.clone().into());
+        obj.insert("head".into(), pinned["head"].clone());
+        let reason = obj["reason"]
+            .as_str()
+            .expect("reason")
+            .replace(&at, &pinned_at);
+        let pinned_reason = pinned["reason"].as_str().expect("reason");
+        obj.insert(
+            "reason".into(),
+            with_gits_words_of(&reason, pinned_reason).into(),
+        );
+        json
+    }
+
+    fn with_gits_words_of(reason: &str, pinned: &str) -> String {
+        let span = |s: &str| {
+            s.find("failed: ")
+                .map(|at| at + "failed: ".len())
+                .and_then(|from| s[from..].find(')').map(|to| (from, from + to)))
         };
-        let json = held.to_json();
-        let keys: Vec<&str> = json
-            .as_object()
-            .expect("object")
-            .keys()
-            .map(String::as_str)
-            .collect();
-        for k in &keys {
+        match (span(reason), span(pinned)) {
+            (Some((a, b)), Some((c, d))) => {
+                format!("{}{}{}", &reason[..a], &pinned[c..d], &reason[b..])
+            }
+            _ => reason.to_string(),
+        }
+    }
+
+    /// mowment's shape at 2d11341: a repository with no remote, a run's
+    /// commits on a branch of their own. The release takes this directory,
+    /// so what is sent must say the reading did not refuse it.
+    #[tokio::test]
+    async fn a_released_checkout_in_a_repository_with_no_remote_is_sent_as_not_kept() {
+        let root = temp_path("wire-noremote");
+        let _ = std::fs::remove_dir_all(&root);
+        let wt = root.join("ISS-17");
+        std::fs::create_dir_all(&wt).expect("mkdir");
+        sh(&wt, &["init", "-q", "-b", "main"]);
+        sh(&wt, &["config", "user.email", "t@t"]);
+        sh(&wt, &["config", "user.name", "t"]);
+        std::fs::write(wt.join("base.txt"), "base\n").expect("write");
+        sh(&wt, &["add", "-A"]);
+        sh(&wt, &["commit", "-qm", "control folder"]);
+        sh(&wt, &["checkout", "-qb", "ISS-17-work"]);
+        std::fs::write(wt.join("work.txt"), "work\n").expect("write");
+        sh(&wt, &["add", "-A"]);
+        sh(&wt, &["commit", "-qm", "work"]);
+
+        let run = a_run_at(&wt);
+        let cred = RepoCred::of(None, &wt).await;
+        let held = at_risk(&run, &cred)
+            .await
+            .expect("work on no remote is reported");
+        let fate = salvage::fate_of(&wt).await;
+        let pinned = wire_line(0);
+        let sent = as_pinned(&held, &wt, &pinned);
+        let _ = std::fs::remove_dir_all(&root);
+
+        assert_eq!(
+            held.kept,
+            matches!(fate, Fate::Kept { .. }),
+            "`kept` must be the release's own predicate over the same repository"
+        );
+        assert_eq!(
+            sent, pinned,
+            "the payload drifted from assets/held-worktree-wire.jsonl line 1, which core's suite \
+             posts; this is what is sent now:\n{sent}"
+        );
+    }
+
+    /// The other state: retention this box cannot read, which the release
+    /// refuses to remove.
+    #[tokio::test]
+    async fn a_checkout_whose_retention_cannot_be_read_is_sent_as_kept() {
+        let root = temp_path("wire-unreadable");
+        let _ = std::fs::remove_dir_all(&root);
+        let wt = root.join("ISS-9");
+        std::fs::create_dir_all(&wt).expect("mkdir");
+        sh(&wt, &["init", "-q", "-b", "main"]);
+        sh(&wt, &["config", "user.email", "t@t"]);
+        sh(&wt, &["config", "user.name", "t"]);
+        std::fs::write(wt.join("base.txt"), "base\n").expect("write");
+        sh(&wt, &["add", "-A"]);
+        sh(&wt, &["commit", "-qm", "base"]);
+        let forge_refs = wt.join(".git").join("refs").join("forge");
+        std::fs::create_dir_all(&forge_refs).expect("refs dir");
+        std::fs::write(forge_refs.join("broken"), "not-a-sha\n").expect("ref");
+
+        let run = a_run_at(&wt);
+        let cred = RepoCred::of(None, &wt).await;
+        let held = at_risk(&run, &cred)
+            .await
+            .expect("a kept checkout is reported");
+        let fate = salvage::fate_of(&wt).await;
+        let pinned = wire_line(1);
+        let sent = as_pinned(&held, &wt, &pinned);
+        let _ = std::fs::remove_dir_all(&root);
+
+        assert_eq!(
+            held.kept,
+            matches!(fate, Fate::Kept { .. }),
+            "`kept` must be the release's own predicate over the same repository"
+        );
+        assert_eq!(
+            sent, pinned,
+            "the payload drifted from assets/held-worktree-wire.jsonl line 2, which core's suite \
+             posts; this is what is sent now:\n{sent}"
+        );
+    }
+
+    /// The third state: a detached checkout that committed, whose commits
+    /// only its HEAD names. The release gives them a ref before it takes the
+    /// directory, so the reading does not refuse the removal — and nothing
+    /// sent may say the commits already survive it (whole-set consult F1, F3).
+    #[tokio::test]
+    async fn commits_only_head_names_are_sent_as_not_kept_and_as_needing_a_ref() {
+        let root = temp_path("wire-needsaref");
+        let _ = std::fs::remove_dir_all(&root);
+        let wt = root.join("ISS-45");
+        std::fs::create_dir_all(&wt).expect("mkdir");
+        sh(&wt, &["init", "-q", "-b", "main"]);
+        sh(&wt, &["config", "user.email", "t@t"]);
+        sh(&wt, &["config", "user.name", "t"]);
+        std::fs::write(wt.join("base.txt"), "base\n").expect("write");
+        sh(&wt, &["add", "-A"]);
+        sh(&wt, &["commit", "-qm", "base"]);
+        sh(&wt, &["switch", "--detach", "-q"]);
+        std::fs::write(wt.join("work.txt"), "work\n").expect("write");
+        sh(&wt, &["add", "-A"]);
+        sh(&wt, &["commit", "-qm", "on no branch at all"]);
+
+        let run = a_run_at(&wt);
+        let cred = RepoCred::of(None, &wt).await;
+        let held = at_risk(&run, &cred).await.expect("reported");
+        let fate = salvage::fate_of(&wt).await;
+        let pinned = wire_line(2);
+        let sent = as_pinned(&held, &wt, &pinned);
+        let _ = std::fs::remove_dir_all(&root);
+
+        assert_eq!(fate, Fate::NeedsARef { commits: 1 }, "the premise");
+        assert_eq!(held.kept, matches!(fate, Fate::Kept { .. }));
+        assert_eq!(
+            held.branch, None,
+            "a detached checkout is on no branch, and `HEAD` is not the name of one"
+        );
+        assert_eq!(
+            sent, pinned,
+            "the payload drifted from assets/held-worktree-wire.jsonl line 3, which core's suite \
+             posts; this is what is sent now:\n{sent}"
+        );
+    }
+
+    /// criteria 15, 16 — the judge's finding 2: "the push to publish them did
+    /// not land" was written about a repository no push could reach.
+    #[tokio::test]
+    async fn a_repository_with_no_remote_is_said_to_have_none_and_no_push_is_claimed() {
+        let root = temp_path("noremote");
+        let _ = std::fs::remove_dir_all(&root);
+        let wt = root.join("work");
+        std::fs::create_dir_all(&wt).expect("mkdir");
+        sh(&wt, &["init", "-q", "-b", "main"]);
+        sh(&wt, &["config", "user.email", "t@t"]);
+        sh(&wt, &["config", "user.name", "t"]);
+        std::fs::write(wt.join("base.txt"), "base\n").expect("write");
+        sh(&wt, &["add", "-A"]);
+        sh(&wt, &["commit", "-qm", "base"]);
+
+        let run = a_run_at(&wt);
+        let cred = RepoCred::of(None, &wt).await;
+        let held = at_risk(&run, &cred).await.expect("reported");
+        let _ = std::fs::remove_dir_all(&root);
+
+        assert!(
+            held.reason.contains("this repository has no remote"),
+            "a repository with no remote must be said to have none: {}",
+            held.reason
+        );
+        assert!(
+            !held.reason.contains("push"),
+            "this pass made no push, so the sentence may not mention one: {}",
+            held.reason
+        );
+        assert!(
+            held.reason.contains("named by refs/heads/main"),
+            "and the ref holding the commits is named rather than alluded to: {}",
+            held.reason
+        );
+    }
+
+    /// Where a remote exists and simply lacks the work, no push is claimed
+    /// either, and the no-remote clause is not borrowed.
+    #[tokio::test]
+    async fn work_a_remote_lacks_is_said_without_a_push_it_never_saw() {
+        let (root, wt) = a_box_with_a_worktree("lacks");
+        std::fs::write(wt.join("work.txt"), "work\n").expect("write");
+        sh(&wt, &["add", "-A"]);
+        sh(&wt, &["commit", "-qm", "work"]);
+
+        let run = a_run_at(&wt);
+        let cred = RepoCred::of(None, &wt).await;
+        let held = at_risk(&run, &cred).await.expect("reported");
+        let _ = std::fs::remove_dir_all(&root);
+
+        assert!(
+            held.reason.contains("1 commit(s) here are on no remote"),
+            "{}",
+            held.reason
+        );
+        assert!(!held.reason.contains("push"), "{}", held.reason);
+        assert!(
+            !held.reason.contains("has no remote"),
+            "this repository has one: {}",
+            held.reason
+        );
+    }
+
+    #[test]
+    fn the_payload_carries_what_core_declares_and_the_keep_reading() {
+        for kept in [true, false] {
+            let held = Held {
+                worktree: "/w".into(),
+                branch: Some("ISS-9".into()),
+                head: "abc".into(),
+                commits_unpushed: Some(2),
+                reason: "because".into(),
+                kept,
+            };
+            let json = held.to_json();
+            for k in json.as_object().expect("object").keys() {
+                assert!(
+                    matches!(
+                        k.as_str(),
+                        "worktree" | "branch" | "head" | "commitsUnpushed" | "reason" | "kept"
+                    ),
+                    "core's schema does not declare `{k}`"
+                );
+            }
+            assert_eq!(
+                json.get("kept"),
+                Some(&serde_json::Value::Bool(kept)),
+                "the reading the posted sentence turns on must travel: {json}"
+            );
             assert!(
-                matches!(
-                    *k,
-                    "worktree" | "branch" | "head" | "commitsUnpushed" | "reason"
-                ),
-                "core's schema does not declare `{k}`"
+                json.get("recommendation").is_none(),
+                "this report decides nothing: {json}"
             );
         }
-        assert!(
-            json.get("recommendation").is_none(),
-            "this report decides nothing: {json}"
-        );
-        assert!(
-            json.get("kept").is_none(),
-            "`kept` is this box's own reading and not a field core declares: {json}"
-        );
     }
 }

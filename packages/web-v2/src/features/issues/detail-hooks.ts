@@ -5,17 +5,28 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { issueDetailApi } from "./detail-api";
-import { issueQueryKey } from "./derive";
+import { canonicalIssueId, issueQueryKey } from "./derive";
 
 // ISS-1160 — `id` is the display key as often as the row uuid; `projectId` is
 // what lets it resolve. Optional here (some callers hold only a uuid already),
 // required by the screen that reaches these hooks off a followed link.
 export function useIssue(id: string | undefined, projectId?: string) {
-  return useQuery({
+  const byRef = useQuery({
     queryKey: issueQueryKey(id, projectId),
     queryFn: () => issueDetailApi.get(id as string, projectId),
     enabled: !!id,
   });
+  // ISS-1327 — every invalidation names the uuid, so once it is known the screen reads that entry.
+  const uuid = id ? canonicalIssueId(id, byRef.data?.id) : undefined;
+  const followsUuid = !!uuid && uuid !== id;
+  const byUuid = useQuery({
+    queryKey: issueQueryKey(uuid, projectId),
+    queryFn: () => issueDetailApi.get(uuid as string, projectId),
+    enabled: followsUuid,
+    initialData: followsUuid ? byRef.data : undefined,
+    initialDataUpdatedAt: byRef.dataUpdatedAt,
+  });
+  return followsUuid ? byUuid : byRef;
 }
 
 export function useComments(id: string | undefined, projectId?: string) {

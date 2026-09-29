@@ -132,6 +132,22 @@ pub enum Publication {
     Unknown { why: String },
 }
 
+/// In the words an operator's journal line carries, never the enum's own
+/// shape: `Unpublished { commits: 1 }` is a program talking to itself.
+impl std::fmt::Display for Publication {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Publication::Published => f.write_str("every commit here is on a remote"),
+            Publication::Unpublished { commits } => {
+                write!(f, "{commits} commit(s) here are on no remote")
+            }
+            Publication::Unknown { why } => {
+                write!(f, "whether the work here is on a remote is unknown ({why})")
+            }
+        }
+    }
+}
+
 pub async fn publication_of(worktree: &Path, cred: &RepoCred) -> Publication {
     let fetched = tokio::time::timeout(
         FETCH_BUDGET,
@@ -193,11 +209,77 @@ pub async fn publication_of(worktree: &Path, cred: &RepoCred) -> Publication {
     }
 }
 
-pub async fn publish(worktree: &Path, branch: &str, cred: &RepoCred) -> Publication {
+/// What a push to publish a branch came to: the publication read afterwards,
+/// and, where git did not take the push, why in its own words.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Pushed {
+    pub publication: Publication,
+    /// `None` where git took the push. Otherwise the refusal, carrying git's
+    /// first line and the credential the push offered — a key that reads and
+    /// cannot write passes the check and fails here, and a line that dropped
+    /// either half is the split this module's credential exists to diagnose.
+    pub refused: Option<String>,
+}
+
+pub async fn publish(worktree: &Path, branch: &str, cred: &RepoCred) -> Pushed {
     let refspec = format!("HEAD:refs/heads/{branch}");
     let argv = ["push", "origin", refspec.as_str()];
-    let _ = tokio::time::timeout(PUSH_BUDGET, git_over_network(worktree, &argv, cred)).await;
-    publication_of(worktree, cred).await
+    let push = tokio::time::timeout(PUSH_BUDGET, git_over_network(worktree, &argv, cred)).await;
+    let refused = match push {
+        Ok(Some(out)) if out.status.success() => None,
+        Ok(Some(out)) => Some(format!(
+            "`git push origin {refspec}`, offering {}, was refused: {}",
+            cred.source(),
+            stderr_brief(&out)
+        )),
+        Ok(None) => Some(format!(
+            "`git push origin {refspec}`, offering {}, could not be spawned",
+            cred.source()
+        )),
+        Err(_) => Some(format!(
+            "`git push origin {refspec}`, offering {}, did not answer within {}s",
+            cred.source(),
+            PUSH_BUDGET.as_secs()
+        )),
+    };
+    Pushed {
+        publication: publication_of(worktree, cred).await,
+        refused,
+    }
+}
+
+/// One ref, among those that outlive `git worktree remove`, that names HEAD —
+/// so a line saying the commits are safe can say where they are. `None` where
+/// none does or git could not say; the caller's own predicate is what decides,
+/// and this only names what it found.
+pub async fn named_by(worktree: &Path) -> Option<String> {
+    let out = git(
+        worktree,
+        &[
+            "for-each-ref",
+            "--contains",
+            "HEAD",
+            "--count=1",
+            "--format=%(refname)",
+            "refs/heads/",
+            "refs/tags/",
+            "refs/remotes/",
+            "refs/forge/",
+        ],
+    )
+    .await?;
+    if !out.status.success() {
+        return None;
+    }
+    let name = stdout_trim(&out);
+    (!name.is_empty()).then_some(name)
+}
+
+/// Whether this repository names any remote at all. `None` where git could not
+/// say, so a caller never reads "could not ask" as "has none".
+pub async fn has_a_remote(worktree: &Path) -> Option<bool> {
+    let out = git(worktree, &["remote"]).await?;
+    out.status.success().then(|| !stdout_trim(&out).is_empty())
 }
 
 /// The namespace [`keep_at`] writes into, so a commit nothing else names is

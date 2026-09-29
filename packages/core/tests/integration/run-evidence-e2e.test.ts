@@ -8,6 +8,7 @@
  * than what they select, which is the only thing being claimed here.
  */
 
+import { readFileSync } from 'node:fs';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -24,6 +25,7 @@ let harness: TestDatabase;
 let mods: {
   writeRunEvidence: typeof import('../../src/devices/run-evidence.js').writeRunEvidence;
   writeHeldWorktreeReport: typeof import('../../src/devices/run-evidence.js').writeHeldWorktreeReport;
+  heldWorktreeSchema: typeof import('../../src/devices/run-evidence.js').heldWorktreeSchema;
   openRunSession: typeof import('../../src/devices/run-session.js').openRunSession;
   runEvidenceMarker: typeof import('../../src/devices/run-evidence.js').runEvidenceMarker;
 };
@@ -39,6 +41,7 @@ beforeAll(async () => {
   mods = {
     writeRunEvidence: evidence.writeRunEvidence,
     writeHeldWorktreeReport: evidence.writeHeldWorktreeReport,
+    heldWorktreeSchema: evidence.heldWorktreeSchema,
     openRunSession: runSession.openRunSession,
     runEvidenceMarker: evidence.runEvidenceMarker,
   };
@@ -304,7 +307,8 @@ const A_HELD = {
   branch: 'ISS-9-feature',
   head: 'cccccccccccc',
   commitsUnpushed: 3,
-  reason: '3 commit(s) here are on no remote, and the push to publish them did not land',
+  reason: '3 commit(s) here are on no remote — this box keeps this checkout: it cannot tell (x)',
+  kept: true,
 };
 
 describe('a checkout this box is still holding, said on the issues it holds', () => {
@@ -364,7 +368,7 @@ describe('a checkout this box is still holding, said on the issues it holds', ()
     expect(bodies[1]).toContain('commits on no remote: 4');
   });
 
-  it('moves the issue nowhere and says plainly that the box keeps trying', async () => {
+  it('moves the issue nowhere and promises no release it cannot see', async () => {
     const { device, issueIds, session } = await aRunOver([9], 'x');
 
     await mods.writeHeldWorktreeReport({
@@ -381,7 +385,7 @@ describe('a checkout this box is still holding, said on the issues it holds', ()
     expect(rows[0]?.status).toBe('in_progress');
     const body = (await bodiesOn(first)).join('\n');
     expect(body).toContain('Nothing about this issue has been moved');
-    expect(body).toContain('releases the checkout with no action from anybody');
+    expect(body).not.toContain('releases the checkout');
   });
 
   it('prints not-counted rather than a zero the box never measured', async () => {
@@ -394,6 +398,7 @@ describe('a checkout this box is still holding, said on the issues it holds', ()
         worktree: A_HELD.worktree,
         head: A_HELD.head,
         reason: 'this box cannot tell whether the work here is on a remote (no route to host)',
+        kept: false,
       },
     });
 
@@ -403,6 +408,8 @@ describe('a checkout this box is still holding, said on the issues it holds', ()
     expect(body).toContain('commits on no remote: _not counted_');
     expect(body).not.toContain('commits on no remote: 0');
     expect(body).toContain('branch: _not read_');
+    expect(body).not.toContain('work no remote holds');
+    expect(body).not.toContain('## Work on this issue is on one machine only');
   });
 
   it('accepts a hold reported for a session core has already reaped', async () => {
@@ -435,5 +442,77 @@ describe('a checkout this box is still holding, said on the issues it holds', ()
         held: A_HELD,
       }),
     ).toBeNull();
+  });
+});
+
+/**
+ * ISS-1250 criteria 6, 7, 8, 15 — the comment a person reads, from the payload the box sends.
+ * The runner's suite pins what `Held::to_json` sends for three real repositories, one per state
+ * of the release's predicate; this suite posts those lines. Reading only the runner's reason
+ * string is how the posted sentence said "not released" about checkouts the box then removed.
+ */
+const HELD_WIRE = readFileSync(
+  new URL(
+    '../../../runner/crates/forge-runner-core/assets/held-worktree-wire.jsonl',
+    import.meta.url,
+  ),
+  'utf8',
+)
+  .split('\n')
+  .filter((l) => l.trim().length > 0)
+  .map((l) => JSON.parse(l) as Record<string, unknown>);
+
+describe('the held report a person reads says what the box read, from what the box sends', () => {
+  async function postedFor(payload: Record<string, unknown>): Promise<string> {
+    const { device, issueIds, session } = await aRunOver([9], 'x');
+    const held = mods.heldWorktreeSchema.parse(payload);
+    await mods.writeHeldWorktreeReport({ deviceId: device.id, sessionId: session.sessionId, held });
+    return (await bodiesOn(issueIds[0] as string)).join('\n');
+  }
+
+  it('says of a checkout the release may take that the reading did not refuse it, and nothing more', async () => {
+    const released = HELD_WIRE[0] as Record<string, unknown>;
+    expect(released.kept).toBe(false);
+
+    const body = await postedFor(released);
+
+    expect(body).toContain("The box's reading does not refuse the checkout's removal");
+    expect(body).not.toContain('has **not** been released');
+    expect(body).not.toContain('refuses to remove');
+    expect(body).not.toContain('releases the checkout');
+    expect(body).toContain('this repository has no remote to publish them to');
+    expect(body).not.toContain('push');
+    expect(body).toContain('commits on no remote: 2');
+  });
+
+  it('says of a checkout the release refuses that the box refuses to remove it', async () => {
+    const kept = HELD_WIRE[1] as Record<string, unknown>;
+    expect(kept.kept).toBe(true);
+
+    const body = await postedFor(kept);
+
+    expect(body).toContain('This box refuses to remove the checkout');
+    expect(body).not.toContain('does not refuse');
+  });
+
+  it('claims no ref already holds commits that only the checkout names', async () => {
+    const needsARef = HELD_WIRE[2] as Record<string, unknown>;
+    expect(needsARef.kept).toBe(false);
+
+    const body = await postedFor(needsARef);
+
+    expect(body).toContain("The box's reading does not refuse the checkout's removal");
+    expect(body).toContain('a release must give them a ref of their own');
+    expect(body).not.toContain('do not depend on');
+    expect(body).toContain('branch: _not read_');
+  });
+
+  it('refuses a report that does not say whether the box keeps the checkout, naming the field', () => {
+    const { kept: _dropped, ...unsaid } = HELD_WIRE[0] as Record<string, unknown>;
+
+    const parsed = mods.heldWorktreeSchema.safeParse(unsaid);
+
+    expect(parsed.success).toBe(false);
+    expect(parsed.error?.issues.map((i) => i.path.join('.'))).toContain('kept');
   });
 });

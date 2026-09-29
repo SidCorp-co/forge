@@ -5,7 +5,12 @@ import type { Actor } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 import { collectWorkEvidence, findMissingWorkEvidence } from '../pipeline/work-evidence.js';
 import type { ActorAgency } from './actor-agency.js';
-import { landingMarkRefusal, readLandingShape } from './landing-evidence.js';
+import {
+  landingMarkRefusal,
+  markTargetRequired,
+  readLandingShape,
+  standingMarkRefusal,
+} from './landing-evidence.js';
 import {
   clearIssueMerge,
   describeMergeMark,
@@ -71,8 +76,11 @@ export class MergeMarkerError extends Error {
       | 'ISSUE_NOT_FOUND'
       | 'UNMARK_REQUIRES_NOT_CLOSED'
       | 'LANDING_REQUIRED'
-      | 'LANDING_NOT_THIS_SHAPE',
+      | 'LANDING_NOT_THIS_SHAPE'
+      | 'MARK_ALREADY_STANDS'
+      | 'TARGET_REQUIRED',
     message: string,
+    readonly details?: Record<string, unknown>,
   ) {
     super(message);
     this.name = 'MergeMarkerError';
@@ -119,17 +127,19 @@ export async function applyMergeMarker(args: {
   /** The commit the caller claimed, where Forge has no merge of its own to put in the column. */
   let claimedCommit: string | null = null;
   if (args.op === 'mark') {
+    const shape = await readLandingShape(db, before.projectId);
+    // A landing on a git project is refused below whatever the target, and that refusal names the
+    // real fault, so the missing target is not reported ahead of it.
+    if (markTargetRequired(shape) && !args.target && !args.landing) {
+      throw new MergeMarkerError('TARGET_REQUIRED', 'target is required');
+    }
     if (args.actor.agency === 'agent') {
       const missing = await findMissingWorkEvidence(before.id);
       if (missing) throw new MergeMarkerError('NO_WORK_EVIDENCE', missing);
     }
     const observed = await observedMergeForIssue(db, before.id);
     const landing = args.landing ?? null;
-    const refused = landingMarkRefusal({
-      shape: await readLandingShape(db, before.projectId),
-      landing,
-      observed: observed !== null,
-    });
+    const refused = landingMarkRefusal({ shape, landing, observed: observed !== null });
     if (refused) throw new MergeMarkerError(refused.code, refused.detail);
     if (observed) {
       stampResult = await recordIssueMerge(db, {
@@ -158,6 +168,16 @@ export async function applyMergeMarker(args: {
       });
       claimedCommit = args.commit ?? (await resolveRecordedCommit(before.id));
     }
+    const standing = standingMarkRefusal({
+      sent: landing,
+      wrote: stampResult.wrote,
+      held: {
+        mergedAt: stampResult.mergedAt,
+        mergedCommitSha: stampResult.commitSha,
+        mergedLanding: stampResult.landing,
+      },
+    });
+    if (standing) throw new MergeMarkerError(standing.code, standing.detail, standing.details);
   } else {
     // The `closed` guard is the UPDATE's own WHERE, so nothing can close the row between the
     // decision and the write. A zero-row answer is read back rather than guessed at: the row is
@@ -183,7 +203,9 @@ export async function applyMergeMarker(args: {
       ? ` commit=${claimedCommit}`
       : '';
   const label =
-    args.op === 'mark' ? `mark_merged target=${args.target ?? '<unset>'}${commitLabel}` : 'unmark';
+    args.op === 'mark'
+      ? `mark_merged${args.target ? ` target=${args.target}` : ''}${commitLabel}`
+      : 'unmark';
   const unchanged =
     args.op === 'mark' && !stampResult.wrote
       ? `\nNOT stamped by this call: merged_at was already ${stampResult.mergedAt?.toISOString() ?? 'set'} and the first stamp wins; \`unmark\` then \`mark\` is the only correction. It does not re-block dependents: those are held by the issue's STATUS and not by this column (ISS-1100)`

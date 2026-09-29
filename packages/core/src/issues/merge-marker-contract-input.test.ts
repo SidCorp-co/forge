@@ -103,7 +103,7 @@ describe('a merged mark announces its own contract input', () => {
 
   it('announces a repeat mark that stamped nothing, because the reader cannot know it did not', async () => {
     stampedRows = [];
-    await applyMergeMarker({ issue, op: 'mark', actor: ACTOR });
+    await applyMergeMarker({ issue, op: 'mark', target: 'main', actor: ACTOR });
     expect(heard).toHaveLength(1);
   });
 });
