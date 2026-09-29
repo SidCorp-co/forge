@@ -188,7 +188,7 @@ if (verb === 'attribute') {
       const alone = `${treeDir}-replay-${m.issue.toLowerCase()}`;
       const one = {
         ...manifest,
-        members: manifest.members.filter((x) => x.issue === m.issue),
+        members: [{ issue: m.issue, branch: m.branch, head: m.head, arrivedAt: m.arrivedAt }],
         isolated: [],
       };
       build(alone, one, false, ledger.base.sha);

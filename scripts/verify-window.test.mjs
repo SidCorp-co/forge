@@ -361,6 +361,32 @@ describe('assemble, attribute, isolate and land', () => {
     expect(r.stdout).toMatch(want);
   });
 
+  it('replays the head the ledger validated, not one the manifest was later edited to', () => {
+    const original = readFileSync(w.manifest, 'utf8');
+    const edited = JSON.parse(original);
+    edited.members.find((m) => m.issue === 'ISS-4').head = heads.line;
+    writeFileSync(w.manifest, JSON.stringify(edited));
+    try {
+      const cmd = 'test ! -f src/env.mjs';
+      const r = run(
+        c,
+        'attribute',
+        '--window',
+        w.manifest,
+        '--checks',
+        w.checksFile,
+        '--tree',
+        w.tree,
+        '--unit',
+        cmd,
+      );
+      expect(r.status, r.stderr).toBe(0);
+      expect(r.stdout).toMatch(/did not fail on the replay at all/);
+    } finally {
+      writeFileSync(w.manifest, original);
+    }
+  });
+
   it('refuses to land while the chain head is not green, naming its state', () => {
     const r = run(c, 'land', '--window', w.manifest, '--checks', w.checksFile, '--tree', w.tree);
     expect(r.status).toBe(1);
