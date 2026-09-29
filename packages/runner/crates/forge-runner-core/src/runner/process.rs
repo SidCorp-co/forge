@@ -85,7 +85,7 @@ pub fn resolve_claude_bin() -> &'static str {
 /// The resolution above is cached for the life of the process, so a stub put
 /// on `PATH` reaches only a test that happens to run before anything else
 /// resolved `claude`, and a pane started otherwise runs the real one.
-#[cfg(test)]
+#[cfg(all(test, not(target_os = "windows")))]
 pub(crate) mod testing {
     use std::sync::Mutex;
 
@@ -97,21 +97,44 @@ pub(crate) mod testing {
 
     /// Every `claude` this process resolves is `bin` until this is dropped.
     /// Held under `ENV_TEST_LOCK`, as the other process-wide overrides are.
-    pub(crate) struct StubClaude;
+    /// Dropping it puts back whatever stub stood before it, so a guard taken
+    /// inside another does not leave the outer one's test resolving the real
+    /// `claude`.
+    pub(crate) struct StubClaude {
+        before: Option<&'static str>,
+    }
 
     impl StubClaude {
         pub(crate) fn installed(bin: &std::path::Path) -> Self {
             let leaked: &'static str =
                 Box::leak(bin.to_string_lossy().into_owned().into_boxed_str());
-            *STUB.lock().unwrap_or_else(|e| e.into_inner()) = Some(leaked);
-            StubClaude
+            let before = STUB
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .replace(leaked);
+            StubClaude { before }
         }
     }
 
     impl Drop for StubClaude {
         fn drop(&mut self) {
-            *STUB.lock().unwrap_or_else(|e| e.into_inner()) = None;
+            *STUB.lock().unwrap_or_else(|e| e.into_inner()) = self.before;
         }
+    }
+
+    #[test]
+    fn a_stub_taken_inside_another_gives_the_outer_one_back() {
+        let _serialised = crate::auth::cred_store::ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let outer = StubClaude::installed(std::path::Path::new("/stub/outer"));
+        {
+            let _inner = StubClaude::installed(std::path::Path::new("/stub/inner"));
+            assert_eq!(super::resolve_claude_bin(), "/stub/inner");
+        }
+        assert_eq!(super::resolve_claude_bin(), "/stub/outer");
+        drop(outer);
+        assert_ne!(super::resolve_claude_bin(), "/stub/outer");
     }
 }
 

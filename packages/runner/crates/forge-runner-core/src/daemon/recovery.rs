@@ -165,7 +165,12 @@ pub async fn reconcile(
     let mut unanswered_reads: Vec<String> = Vec::new();
     for mut run in ledger.unclosed_runs()? {
         if run.is_parked_on_human() {
-            if masters.state(&run.master_session_id).await != MasterPresence::Alive {
+            // A read tmux did not answer observed nothing, so the park stays
+            // with the master it answers to rather than moving on it (ISS-1312).
+            if !matches!(
+                masters.state(&run.master_session_id).await,
+                MasterPresence::Alive | MasterPresence::Unanswered
+            ) {
                 if let Some(project) = run.project_id.as_deref() {
                     if let Some(parent) = masters.live_master_for_project(project).await {
                         ledger.reparent_run(&run.run_id, &parent)?;
@@ -1697,6 +1702,50 @@ mod tests {
         assert_eq!(
             run.master_session_id, "master-new",
             "the new master must be able to find this run: `runs_for_master` is what `master_exit::children` reads, so a stale parent leaves the master free to exit over a live park"
+        );
+    }
+
+    /// The master a park answers to, on a sweep tmux could not be asked about
+    /// its pane, while the registry holds another live master for the project.
+    struct UnansweredBesideASuccessor;
+    #[async_trait::async_trait]
+    impl MasterLiveness for UnansweredBesideASuccessor {
+        async fn state(&self, _: &str) -> MasterPresence {
+            MasterPresence::Unanswered
+        }
+        async fn live_master_for_project(&self, _: &str) -> Option<String> {
+            Some("master-new".to_string())
+        }
+    }
+
+    /// ISS-1312: a read tmux did not answer observed nothing, so a park is not
+    /// moved off the master it answers to on the strength of it. Reparenting
+    /// on every state but `Alive` moved a human's park onto another pane over
+    /// one failed tmux read.
+    #[tokio::test]
+    async fn a_park_whose_master_tmux_could_not_be_asked_about_stays_with_it() {
+        let mut led = parked("run-1", "master-old", "boot-a");
+        reconcile(
+            &mut led,
+            "boot-a",
+            &UnansweredBesideASuccessor,
+            &nothing_refuted(),
+            Closing {
+                sessions: &Sessions,
+                leases: &Leases(Mutex::new(HashSet::new())),
+                roots: &Roots,
+            },
+            RunWatch {
+                beat: &Beats::default(),
+                idle: &NeverReports,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            led.run("run-1").unwrap().unwrap().master_session_id,
+            "master-old",
+            "a question nobody answered is not a master that went"
         );
     }
 
