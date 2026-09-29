@@ -176,9 +176,10 @@ fn skill_line(s: &Snapshot, p: &Project, k: &Skill) -> String {
             written_ms,
             matches,
         } => {
-            let written = written_ms
-                .map(|w| ago(s.now_ms, w))
-                .unwrap_or_else(|| "at an unreadable time".into());
+            let written = match written_ms {
+                Ok(w) => ago(s.now_ms, *w),
+                Err(e) => format!("at a time that is {e}"),
+            };
             let verdict = match matches {
                 Ok(true) => "is the forge-master asset of the binary the daemon runs ← its /proc/<pid>/exe".to_string(),
                 Ok(false) => "DRIFT — is NOT the forge-master asset of the binary the daemon runs, so this pane stands on another build's skill ← its /proc/<pid>/exe".to_string(),
@@ -191,7 +192,7 @@ fn skill_line(s: &Snapshot, p: &Project, k: &Skill) -> String {
             // The daemon writes the file and starts the pane within the same
             // second or two, so only a write well after the start is a rewrite
             // the running pane may not have loaded.
-            if let (Some(w), Some(started)) = (written_ms, pane_started_ms(s, p)) {
+            if let (Ok(w), Some(started)) = (written_ms, pane_started_ms(s, p)) {
                 if *w > started + REWRITE_AFTER_MS {
                     line.push_str(&format!(
                         "; written {} AFTER its pane started {}, so the pane may hold an earlier copy",
@@ -386,7 +387,14 @@ fn jobs(s: &Snapshot, out: &mut Vec<String>) {
         .iter()
         .filter_map(|j| j.waiting_since().map(|at| (j, at)))
         .collect();
-    if waiting.is_empty() {
+    if waiting.is_empty() && !jobs.unreadable.is_empty() {
+        out.push(format!(
+            "{I1}job panes  none of the {} readable record(s) reports waiting — PARTIAL: {} could not be read, so one may wait ← {}",
+            jobs.records.len(),
+            jobs.unreadable.len(),
+            jobs.dir.display()
+        ));
+    } else if waiting.is_empty() {
         out.push(format!(
             "{I1}job panes  none reports waiting on a permission answer ← {} job record(s) in {}{}",
             jobs.records.len(),

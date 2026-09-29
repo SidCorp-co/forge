@@ -25,7 +25,9 @@ pub enum Skill {
     Read {
         path: PathBuf,
         bytes: usize,
-        written_ms: Option<i64>,
+        /// When the file was written. `Err` names why that could not be
+        /// read, which leaves the rewrite-after-start check undecided.
+        written_ms: Read<i64>,
         /// Whether the bytes are the daemon binary's asset. `Err` where the
         /// daemon's executable could not be read, which says nothing either way.
         matches: Read<bool>,
@@ -40,7 +42,7 @@ pub fn read(repo: &Path, daemon_exe: &Read<Arc<Vec<u8>>>) -> Skill {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Skill::Absent { path },
         Err(e) => return Skill::Unreadable(Unreadable::new(path.display().to_string(), e)),
     };
-    let written_ms = std::fs::metadata(&path).ok().as_ref().and_then(mtime_ms);
+    let written_ms = written(&path, std::fs::metadata(&path));
     let matches = if installed.is_empty() {
         Ok(false)
     } else {
@@ -55,6 +57,14 @@ pub fn read(repo: &Path, daemon_exe: &Read<Arc<Vec<u8>>>) -> Skill {
         written_ms,
         matches,
     }
+}
+
+/// When the file was written, or why that cannot be read — which is never
+/// the same line as a write time the view could compare against the pane.
+fn written(path: &Path, meta: std::io::Result<std::fs::Metadata>) -> Read<i64> {
+    let at = |e: String| Unreadable::new(path.display().to_string(), e);
+    let meta = meta.map_err(|e| at(e.to_string()))?;
+    mtime_ms(&meta).ok_or_else(|| at("this platform gives no modification time".into()))
 }
 
 /// Whether `needle` occurs in `hay`, anchored on its first bytes so the common
@@ -85,6 +95,20 @@ pub fn contains(hay: &[u8], needle: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Consult whole-set F3: a file read whose write time will not come says
+    /// UNREADABLE with the path, and the pane comparison is left undecided.
+    #[test]
+    fn a_write_time_that_cannot_be_read_is_unreadable_naming_the_file() {
+        let p = Path::new("/r/.claude/skills/forge-master/SKILL.md");
+        let e = written(p, Err(std::io::Error::other("permission denied"))).unwrap_err();
+        assert_eq!(
+            e.to_string(),
+            "UNREADABLE — /r/.claude/skills/forge-master/SKILL.md: permission denied"
+        );
+        let here = std::fs::metadata(std::env::current_dir().unwrap());
+        assert!(written(p, here).is_ok());
+    }
     use forge_runner_core::test_scratch::Scratch;
 
     const ASSET: &str = include_str!("../../../../forge-runner-core/assets/forge-master-skill.md");

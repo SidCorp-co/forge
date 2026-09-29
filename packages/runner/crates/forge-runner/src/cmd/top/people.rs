@@ -63,16 +63,34 @@ pub fn jobs(dir: &Path) -> Read<Jobs> {
         }
         Err(e) => return Err(Unreadable::new(dir.display().to_string(), e)),
     };
+    Ok(jobs_from(dir, listing.map(|e| e.map(|e| e.path()))))
+}
+
+/// The records of a listing, each entry the listing could not yield named
+/// among the unreadable rather than dropped.
+fn jobs_from(dir: &Path, listing: impl Iterator<Item = std::io::Result<PathBuf>>) -> Jobs {
     let mut out = Jobs {
         dir: dir.to_path_buf(),
         ..Jobs::default()
     };
-    for entry in listing.flatten() {
-        let name = entry.file_name().to_string_lossy().into_owned();
+    for entry in listing {
+        let path = match entry {
+            Ok(p) => p,
+            Err(e) => {
+                out.unreadable.push(Unreadable::new(
+                    dir.display().to_string(),
+                    format!("an entry of the listing could not be read: {e}"),
+                ));
+                continue;
+            }
+        };
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
         let Some(job_id) = name.strip_suffix(".json") else {
             continue;
         };
-        let path = entry.path();
         let parsed = std::fs::read_to_string(&path)
             .map_err(|e| e.to_string())
             .and_then(|t| {
@@ -101,7 +119,7 @@ pub fn jobs(dir: &Path) -> Read<Jobs> {
         });
     }
     out.records.sort_by(|a, b| a.job_id.cmp(&b.job_id));
-    Ok(out)
+    out
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -201,9 +219,9 @@ async fn all_questions(pat: &CoreClient, project_id: &str) -> Read<Questions> {
         };
         let v = get_json(pat, &route).await?;
         listed.extend(questions(&route, &v)?);
-        match v["nextCursor"].as_str() {
-            Some(next) if v["hasMore"].as_bool() == Some(true) => cursor = Some(next.to_string()),
-            _ => {
+        match next_cursor(&route, &v)? {
+            Some(next) => cursor = Some(next),
+            None => {
                 return Ok(Questions {
                     total: listed.len() as u64,
                     listed,
@@ -228,7 +246,7 @@ async fn all_awaiting(pat: &CoreClient, project_id: &str) -> Read<Vec<String>> {
         let route = format!("{base}&offset={}", page * PAGE);
         let v = get_json(pat, &route).await?;
         keys.extend(awaiting_rows(&route, &v)?);
-        if v["hasMore"].as_bool() != Some(true) {
+        if !has_more(&route, &v)? {
             return Ok(keys);
         }
     }
@@ -239,6 +257,30 @@ async fn all_awaiting(pat: &CoreClient, project_id: &str) -> Read<Vec<String>> {
             PAGE * PAGES
         ),
     ))
+}
+
+/// Whether a page says more follows. Core writes `hasMore` on every page, so
+/// a page without it is not one this view can call the last.
+pub fn has_more(route: &str, v: &Value) -> Read<bool> {
+    v["hasMore"]
+        .as_bool()
+        .ok_or_else(|| shape(route, "`hasMore` flag"))
+}
+
+/// Where the next page of questions starts, or `None` on the last page. A
+/// page that says more follows and gives nowhere to read it from is refused:
+/// ending there would show what was read as all there is.
+pub fn next_cursor(route: &str, v: &Value) -> Read<Option<String>> {
+    if !has_more(route, v)? {
+        return Ok(None);
+    }
+    match v["nextCursor"].as_str() {
+        Some(c) if !c.is_empty() => Ok(Some(c.to_string())),
+        _ => Err(shape(
+            route,
+            "`nextCursor` though it says `hasMore`, so the rest cannot be read",
+        )),
+    }
 }
 
 fn shape(route: &str, what: &str) -> Unreadable {
@@ -415,6 +457,44 @@ mod tests {
         let b = blockers("/r", &ready).unwrap();
         assert_eq!(b[0].code, "NO_RELEASE_GATE");
         assert!(blockers("/r", &serde_json::json!({})).is_err());
+    }
+
+    /// Consult whole-set F1: an entry the listing could not yield may be the
+    /// job that waits, so it is named, and "none waits" is not all it says.
+    #[test]
+    fn an_entry_the_listing_cannot_yield_is_named_never_dropped() {
+        let dir = Path::new("/x/pool-jobs");
+        let listing = vec![Err(std::io::Error::other("stale file handle"))];
+        let got = jobs_from(dir, listing.into_iter());
+        assert!(got.records.is_empty());
+        assert_eq!(got.unreadable.len(), 1, "{got:?}");
+        assert!(
+            got.unreadable[0].to_string().starts_with("UNREADABLE — /x/pool-jobs: an entry of the listing could not be read: stale file handle"),
+            "{}",
+            got.unreadable[0]
+        );
+    }
+
+    /// Consult whole-set F2: the last page is the one that says so. A page
+    /// claiming more with nowhere to read it, or not saying, is refused.
+    #[test]
+    fn a_page_that_hides_where_the_rest_is_is_unreadable() {
+        let last = serde_json::json!({"hasMore": false, "nextCursor": null});
+        assert_eq!(next_cursor("/q", &last).unwrap(), None);
+        let more = serde_json::json!({"hasMore": true, "nextCursor": "YWJj"});
+        assert_eq!(next_cursor("/q", &more).unwrap(), Some("YWJj".to_string()));
+        for bad in [
+            serde_json::json!({"hasMore": true, "nextCursor": null}),
+            serde_json::json!({"hasMore": true, "nextCursor": ""}),
+            serde_json::json!({"hasMore": true}),
+        ] {
+            let e = next_cursor("/q", &bad).unwrap_err();
+            assert!(e.reason.contains("`nextCursor`"), "{bad}: {e}");
+        }
+        let e = next_cursor("/q", &serde_json::json!({"nextCursor": "x"})).unwrap_err();
+        assert!(e.reason.contains("`hasMore`"), "{e}");
+        assert!(!has_more("/r", &serde_json::json!({"hasMore": false})).unwrap());
+        assert!(has_more("/r", &serde_json::json!({"items": []})).is_err());
     }
 
     /// Criterion 22, for a row: a field core always writes that is missing is

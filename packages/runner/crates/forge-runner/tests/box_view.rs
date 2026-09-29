@@ -522,6 +522,28 @@ fn a_source_that_cannot_be_read_is_unreadable_and_never_empty() {
 }
 
 /// Criterion 3.
+/// Consult whole-set F1: a record the view could not read may be the job that
+/// waits, so "none waits" is never all the line says once one is unread.
+#[test]
+fn no_waiting_job_among_records_partly_unread_is_partial() {
+    let core = fake_core("200 OK");
+    let b = plant(&core.url);
+    let jobs = b.root.join("c/forge-runner/pool-jobs");
+    std::fs::remove_file(jobs.join("job-77.json")).unwrap();
+    std::fs::write(jobs.join("job-78.json"), "{ half a record").unwrap();
+    let text = String::from_utf8_lossy(&top(&b, &["--once"]).stdout).into_owned();
+    let waiting = section(&text, "WAITING ON A PERSON");
+    assert!(waiting.contains("job-78.json: does not parse"), "{waiting}");
+    assert!(
+        waiting.contains("job panes  none of the 0 readable record(s) reports waiting — PARTIAL: 1 could not be read"),
+        "{waiting}"
+    );
+    assert!(
+        !waiting.contains("none reports waiting on a permission answer"),
+        "{waiting}"
+    );
+}
+
 #[test]
 fn an_interval_of_nothing_is_refused_naming_the_range() {
     let core = fake_core("200 OK");
