@@ -153,7 +153,7 @@ describe('the release runner label', () => {
   it('still sends the operator to the box rather than round the loop', () => {
     const message = runnerPreferenceUnmetSentence('release');
 
-    expect(message).toContain('so this release goes to the pool this project has');
+    expect(message).toContain('so any box able to take this release may take it');
   });
 });
 
@@ -267,6 +267,10 @@ describe('NO_RELEASE_GATE — what it means for the issues named', () => {
 
   it('names the screens where releasing through Forge is set up, both halves of it', () => {
     expect(sentence).toMatch(/release chain under Settings → Repository/);
-    expect(sentence).toMatch(/live deploy binding under Settings → Integrations/);
+    // ISS-1322's judge: the Integrations tab says "Deploy target" and "Live", never "deploy binding".
+    expect(sentence).toMatch(
+      /under Settings → Integrations add a Deploy target with its Live stage/,
+    );
+    expect(sentence).not.toMatch(/deploy binding/);
   });
 });

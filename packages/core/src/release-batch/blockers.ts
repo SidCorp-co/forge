@@ -34,6 +34,7 @@ import {
 import { claimConflictDetails, readClaimConflicts } from './claim-conflicts.js';
 import { criteriaHold } from './criteria-hold.js';
 import { RELEASE_GATE_STATUS, resolveReleaseDeclaration } from './gate.js';
+import { readingOf, readOwnerCandidates } from './owner-boxes.js';
 import { getActiveReleaseBatch } from './queries.js';
 import { invalidProbeUrls } from './verify.js';
 
@@ -232,17 +233,28 @@ async function poolBlockers(
     if (pool.fleet.length === 0) out.push(blocker('RELEASE_POOL_EMPTY'));
     else await heldFleetBlocker(projectId, out);
   }
+  // A live runner is not yet an owner: the release is taken by the master on a box that ships the
+  // role and is not draining, read by the same reading the door refuses on (ISS-1281).
+  const owners =
+    pool.eligible.length > 0
+      ? await evaluate('release-owner', () => readOwnerCandidates(projectId, label), out)
+      : undefined;
+  if (owners && owners.eligible.length === 0) {
+    out.push(blocker('RELEASE_NO_OWNER', { boxes: owners.boxes.map(readingOf) }));
+  }
+  const preferenceMet =
+    owners && owners.eligible.length > 0 ? owners.preferenceMet : pool.preferenceMet;
   // ISS-1128 made the label rank the pool rather than filter it, so an unmet
   // preference is no longer a reason a release will not start. It is still a
   // fact the operator is owed in the same answer, which is what a warning is —
   // and owed WITH an empty pool, not instead of it: a box that is offline and a
   // box that is unlabelled are two things to fix, and this answer shows every
   // reason at once (ISS-1127).
-  if (label && !pool.preferenceMet) {
+  if (label && !preferenceMet) {
     warnings.push({
       code: 'RELEASE_RUNNER_PREFERENCE_UNMET',
       message: runnerPreferenceUnmetSentence(label),
-      details: { label, eligible: pool.eligible.length },
+      details: { label, eligible: owners?.eligible.length ?? pool.eligible.length },
     });
   }
 }

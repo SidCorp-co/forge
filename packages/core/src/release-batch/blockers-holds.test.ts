@@ -68,7 +68,10 @@ vi.mock('../issues/criteria-verdicts.js', async (importActual) => {
   return { ...actual, unearnedCriteriaReports: () => unearned() };
 });
 
-const { collectReleaseBlockers } = await import('./blockers.js');
+vi.mock('./owner-boxes.js', () => import('./owner-boxes.fixture.js'));
+const { ABLE_BOX, ownerCandidates } = await import('./owner-boxes.fixture.js');
+
+const { collectReleaseBlockers, releaseBlockerError } = await import('./blockers.js');
 const { registerAllIntegrations } = await import('../integrations/register-all.js');
 registerAllIntegrations();
 
@@ -175,6 +178,41 @@ const heldReport = (issueId: string, criteria: number[]) => ({
   broken: [],
   serving: SERVING,
   uncorroborated: [],
+});
+
+describe('what RELEASE_NO_OWNER says about the boxes', () => {
+  // ISS-1281: a live runner is not yet a box a master could take the release on, and readiness
+  // answers from the same reading the door refuses on.
+  it('names RELEASE_NO_OWNER, every box once, where live runners hold no box that could own it', async () => {
+    ready();
+    const held = { ...ABLE_BOX, reason: 'no-master' as const };
+    ownerCandidates.mockResolvedValueOnce({
+      label: null,
+      preferenceMet: false,
+      boxes: [held],
+      eligible: [],
+    });
+
+    const report = await collectReleaseBlockers(PROJECT_ID);
+    const owner = report.blockers.find((b) => b.code === 'RELEASE_NO_OWNER');
+
+    expect(owner?.httpStatus).toBe(503);
+    expect(owner?.message).toContain('`box-1`: no master pane of this project is running there');
+    expect(owner?.details).toEqual({
+      boxes: [{ deviceName: 'box-1', reason: 'no-master', detail: null, returnAt: null }],
+    });
+    expect(releaseBlockerError(report)?.name).toBe('ReleaseOwnerUnavailableError');
+  });
+
+  it('asks nothing about owners while no runner is live, which is its own reason', async () => {
+    ready();
+    onlineIds.mockResolvedValue([]);
+
+    const codes = (await collectReleaseBlockers(PROJECT_ID)).blockers.map((b) => b.code);
+
+    expect(ownerCandidates).not.toHaveBeenCalled();
+    expect(codes).not.toContain('RELEASE_NO_OWNER');
+  });
 });
 
 describe('what NO_RUNNER_ONLINE says about the fleet', () => {

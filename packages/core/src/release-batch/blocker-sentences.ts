@@ -3,16 +3,21 @@
  * explains it. Every door reads these, so none carries its own copy (ISS-1127).
  */
 
+import { RUN_SESSION_ISSUE_LIMIT } from '../devices/run-session-limit.js';
 import { RELEASE_RECORD_REMEDY } from '../issues/release-record-required.js';
 import { AGENT_NAMING_MIN_RUNNER } from '../runners/device-cap.js';
 import type { RunnerHold, RunnerHoldReason } from '../runners/ineligible.js';
 import { claimConflictSentence, readClaimConflictDetails } from './claim-conflicts.js';
 import type { ReleaseDeclaration } from './gate.js';
+import { noOwnerSentence, type OwnerBoxReading } from './owner-boxes.js';
 import type { ReleaseChannel } from './plan.js';
 import type { ServingReading } from './serving-reading.js';
 
-/** The most issues one release may carry; `resolveRoster` holds every door to it. */
-export const RELEASE_ROSTER_LIMIT = 50;
+/**
+ * The most issues one release may carry; `resolveRoster` holds every door to it. A release is owned
+ * by one run session over all of it (ISS-1281), so it is that session's cap.
+ */
+export const RELEASE_ROSTER_LIMIT = RUN_SESSION_ISSUE_LIMIT;
 
 export type ReleaseBlockerCode =
   | 'NO_RELEASE_GATE'
@@ -26,6 +31,7 @@ export type ReleaseBlockerCode =
   | 'RELEASE_PROBES_UNREADABLE'
   | 'RELEASE_POOL_EMPTY'
   | 'NO_RUNNER_ONLINE'
+  | 'RELEASE_NO_OWNER'
   | 'RELEASE_MULTI_CHANNEL_UNSUPPORTED'
   | 'BATCH_IN_FLIGHT'
   | 'RELEASE_CRITERIA_UNEARNED'
@@ -104,7 +110,7 @@ export function alsoBlocking(err: unknown, thrown: ReleaseBlockerCode): ReleaseB
 
 const REMEDY: Record<ReleaseBlockerCode, string> = {
   NO_RELEASE_GATE:
-    'This project has no release step, so Forge has no release to start or record: here, closing an issue is what ships it. Close these issues to ship them. To release through Forge instead, declare a release chain under Settings → Repository and give it a live deploy binding under Settings → Integrations.',
+    'This project has no release step, so Forge has no release to start or record: here, closing an issue is what ships it. Close these issues to ship them. To release through Forge instead, declare a release chain under Settings → Repository, then under Settings → Integrations add a Deploy target with its Live stage ticked.',
   RELEASE_TARGET_UNDECLARED:
     'This project declares a release chain and has no active deploy binding carrying the `live` stage, so there is nowhere for a release to land. Add one on the integrations screen, or declare an empty release chain.',
   CLAIM_CONFLICT:
@@ -125,6 +131,8 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
     'This project has no runner registered, so there is no box a release could run on. Pair a box to this project first.',
   NO_RUNNER_ONLINE:
     'This project has runners registered and none of them could be handed a release, and the reading of why could not be taken. Open Settings \u2192 Runners and check each box\'s "Takes jobs from the pool" switch and when it was last seen.',
+  RELEASE_NO_OWNER:
+    'No box serving this project could open the run session a release is owned by. A release is taken by this project’s master on a box whose runner is live, whose master pane is running, whose plugin ships the `release` role and which is not draining.',
   RELEASE_MULTI_CHANNEL_UNSUPPORTED:
     'This project declares more than one live deploy binding, and a release run records ONE reading used to close the whole roster. Leave exactly one binding carrying the `live` stage active, or release them as separate projects.',
   BATCH_IN_FLIGHT:
@@ -163,6 +171,7 @@ export const REMEDY_COST: Record<ReleaseReasonCode, readonly RemedyAct[]> = {
   RELEASE_PROBES_UNREADABLE: [],
   RELEASE_POOL_EMPTY: [],
   NO_RUNNER_ONLINE: [],
+  RELEASE_NO_OWNER: [],
   RELEASE_MULTI_CHANNEL_UNSUPPORTED: [],
   BATCH_IN_FLIGHT: [],
   RELEASE_CRITERIA_UNEARNED: [],
@@ -186,6 +195,7 @@ function withCosts(code: ReleaseReasonCode, sentence: string): string {
 export function blockerHttpStatus(code: ReleaseBlockerCode): 409 | 503 {
   return code === 'RELEASE_POOL_EMPTY' ||
     code === 'NO_RUNNER_ONLINE' ||
+    code === 'RELEASE_NO_OWNER' ||
     code === 'RELEASE_CHECK_UNEVALUATED'
     ? 503
     : 409;
@@ -303,6 +313,9 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
     const holds = (details?.runners as RunnerHold[] | undefined) ?? [];
     return runnersHeldSentence(holds) ?? remedy;
   }
+  if (code === 'RELEASE_NO_OWNER' && Array.isArray(details?.boxes)) {
+    return noOwnerSentence(details.boxes as OwnerBoxReading[]);
+  }
   if (code === 'RELEASE_ROSTER_EMPTY' && typeof details?.nearGate === 'number') {
     return nearGateSentence(details.nearGate);
   }
@@ -394,6 +407,6 @@ export function heldBackWarningSentence(held: HeldIssueRef[]): string {
 export function runnerPreferenceUnmetSentence(label: string): string {
   return withCosts(
     'RELEASE_RUNNER_PREFERENCE_UNMET',
-    `No box on this project carries the declared release label \`${label}\`, so this release goes to the pool this project has. Two ways out, either one complete. Label the box you want this project's releases to run on with \`${label}\` under ${RUNNERS_TAB}. Or clear \`releaseRunnerLabel\` from the live deploy binding under ${INTEGRATIONS_TAB} AND from the connection behind it under ${CONNECTIONS_DIRECTORY}, which asks for no box and stops nothing: a project declaring no release runner releases on the pool it has, and this warning goes with the label. Clearing it from the binding alone falls back to the connection's label rather than to none.`,
+    `No box on this project carries the declared release label \`${label}\`, so any box able to take this release may take it. Two ways out, either one complete. Label the box you want this project's releases to run on with \`${label}\` under ${RUNNERS_TAB}. Or clear \`releaseRunnerLabel\` from the live deploy binding under ${INTEGRATIONS_TAB} AND from the connection behind it under ${CONNECTIONS_DIRECTORY}, which asks for no box and stops nothing: a project declaring no release runner is released from any box able to take it, and this warning goes with the label. Clearing it from the binding alone falls back to the connection's label rather than to none.`,
   );
 }

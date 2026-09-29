@@ -196,21 +196,6 @@ export class ReleaseOwnerUnavailableError extends Error {
   }
 }
 
-/** A release is owned by one run session, and a run session carries at most `cap` issues. */
-export class ReleaseRosterOverRunError extends Error {
-  readonly code = 'RELEASE_ROSTER_OVER_RUN';
-  constructor(
-    public readonly named: number,
-    public readonly cap: number,
-  ) {
-    super(
-      `A release is owned by one run session, and a run session carries at most ${cap} issues; ` +
-        `this release names ${named}. Cut it in parts of ${cap} or fewer, oldest merge first.`,
-    );
-    this.name = 'ReleaseRosterOverRunError';
-  }
-}
-
 /** The recovery pass declared this batch's owner lost, so no finish is taken on it. */
 export class ReleaseOwnerLostError extends Error {
   readonly code = 'RELEASE_OWNER_LOST';

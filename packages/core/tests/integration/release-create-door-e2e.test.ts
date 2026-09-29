@@ -226,10 +226,10 @@ describe('the create door answers with the entry readiness listed first', () => 
     expect(refused.body.message).not.toContain('could not be taken');
   });
 
-  it('refuses 51 waiting issues by RELEASE_ROSTER_OVERSIZE, not by the body schema', async () => {
+  it('refuses 17 waiting issues by RELEASE_ROSTER_OVERSIZE, not by the body schema', async () => {
     const w = await seed();
     await seedRunner(w);
-    const ids = await seedIssues(w, 51);
+    const ids = await seedIssues(w, 17);
 
     const codes = await expectDoorsAgree(w, ids);
 

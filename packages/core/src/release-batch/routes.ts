@@ -43,7 +43,6 @@ import {
   ReleaseIssuesUnnamedError,
   ReleaseOwnerUnavailableError,
   ReleaseRecutRefusedError,
-  ReleaseRosterOverRunError,
   ReleaseVersionConflictError,
   ReleaseVersionExhaustedError,
 } from './service.js';
@@ -132,9 +131,6 @@ releaseBatchRoutes.post(
           message: err.message,
           cause: { code: err.code, details: { boxes: err.boxes } },
         });
-      }
-      if (err instanceof ReleaseRosterOverRunError) {
-        throw conflict(err.code, err.message, { named: err.named, cap: err.cap });
       }
       if (err instanceof ReleaseIssuesUnnamedError) throw issuesUnnamed(projectId);
       if (err instanceof ReleaseRecutRefusedError) {

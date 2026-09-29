@@ -10,13 +10,11 @@
 import { sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
-import { RUN_SESSION_ISSUE_LIMIT } from '../devices/run-session-limit.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { canonicalIssueKey, formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
 import { wakeMastersForRelease } from '../ws/master-wake.js';
-import { ReleaseRosterOverRunError } from './errors.js';
-import { type OwnerBox, ownerBoxClause, readOwnerCandidates } from './owner-boxes.js';
+import { type OwnerBox, ownerBoxClause, readingOf, readOwnerCandidates } from './owner-boxes.js';
 import {
   metadataWithOwner,
   type OwnerRefusal,
@@ -27,13 +25,6 @@ import {
   withRefusal,
 } from './owner-record.js';
 import { openReleaseRosters, type ReleaseRosterRow, releaseRosterIssueIds } from './queries.js';
-
-/** One run session owns a release, so a roster larger than one carries is never cut. */
-export function assertRosterFitsOneRun(named: number): void {
-  if (named > RUN_SESSION_ISSUE_LIMIT) {
-    throw new ReleaseRosterOverRunError(named, RUN_SESSION_ISSUE_LIMIT);
-  }
-}
 
 /**
  * Hand a cut release to its project's masters: the brief goes on the run before any master is
@@ -182,7 +173,8 @@ function notEligible(
   label: string | null,
 ): string {
   if (!box) return 'this box has no runner on the project, so it cannot own its release';
-  if (box.reason !== null) return `this box cannot own the release now — ${ownerBoxClause(box)}`;
+  if (box.reason !== null)
+    return `this box cannot own the release now — ${ownerBoxClause(readingOf(box))}`;
   const named = eligible.map((b) => `\`${b.deviceName}\``).join(', ');
   return `this release prefers a box labelled \`${label}\`, and ${named} carries it and may take it; \`${box.deviceName}\` does not`;
 }
@@ -283,7 +275,10 @@ export async function pendingReleases(projectId: string): Promise<PendingRelease
       since: owner.since,
       deadlineAt: owner.deadlineAt,
       mayTake: candidates.eligible.map((b) => ({ deviceId: b.deviceId, deviceName: b.deviceName })),
-      boxes: candidates.boxes.map((b) => ({ deviceName: b.deviceName, clause: ownerBoxClause(b) })),
+      boxes: candidates.boxes.map((b) => ({
+        deviceName: b.deviceName,
+        clause: ownerBoxClause(readingOf(b)),
+      })),
       preferredLabel: label,
       brief,
     });

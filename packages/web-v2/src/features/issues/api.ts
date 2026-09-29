@@ -181,9 +181,9 @@ export interface IssueBuckets {
  *  project-level endpoints (not per-issue). */
 export interface CreateReleaseBatchResult {
   runId: string;
-  jobId: string;
   issueIds: string[];
   gateStatus: string;
+  ownerDeadlineAt: string;
   verification: "probed" | "unverified";
 }
 

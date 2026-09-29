@@ -7,7 +7,7 @@ import { ReleaseProbesUnreadableError } from './errors.js';
 import { type ReleaseFinishRecord, readFinishRecord } from './finish-job.js';
 import { listAttempts, type ReleaseAttemptRow } from './ledger.js';
 import { type ReleaseMethod, readMethod } from './method.js';
-import { ownerBoxClause, readOwnerCandidates } from './owner-boxes.js';
+import { ownerBoxClause, readingOf, readOwnerCandidates } from './owner-boxes.js';
 import { type ReleaseOwner, readOwner } from './owner-record.js';
 import type { ReleaseVerification } from './plan.js';
 import { loadReleaseRoster, type ReleaseRoster } from './queries.js';
@@ -61,7 +61,7 @@ async function readOwnerNow(
     boxes: candidates.boxes.map((b) => ({
       deviceName: b.deviceName,
       able: able.has(b.deviceId),
-      clause: ownerBoxClause(b),
+      clause: ownerBoxClause(readingOf(b)),
       returnAt: b.returnAtMs === null ? null : new Date(b.returnAtMs).toISOString(),
     })),
   };

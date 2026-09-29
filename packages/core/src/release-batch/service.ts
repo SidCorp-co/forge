@@ -54,7 +54,7 @@ import {
 import { RELEASE_GATE_STATUS } from './gate.js';
 import { requireReleaseOwners } from './owner-boxes.js';
 import { awaitingOwner, RELEASE_OWNER_KEY } from './owner-record.js';
-import { assertRosterFitsOneRun, handToMasters } from './owner-take.js';
+import { handToMasters } from './owner-take.js';
 import { releaseBranches } from './plan.js';
 import { buildReleaseBrief } from './prompt.js';
 import {
@@ -84,7 +84,6 @@ export interface CreateReleaseBatchResult {
   gateStatus: IssueStatus;
   /** The version this release cut. Its identity from the instant its row existed. */
   version: string;
-  /** When a master must have taken this batch, or it is cancelled and its roster handed back. */
   ownerDeadlineAt: string;
   /**
    * Whether what was already serving when this batch opened carries a roster issue's merge — so
@@ -118,8 +117,6 @@ export async function createReleaseBatch(
   // already `RELEASE_ROSTER_EMPTY` above; reaching here, issues are waiting and
   // this call named none of them, which is the caller's list to fix.
   if (issueIds.length === 0) throw new ReleaseIssuesUnnamedError();
-
-  assertRosterFitsOneRun(issueIds.length);
 
   const gateStatus = RELEASE_GATE_STATUS;
   const plan = await resolveReleasePlan(projectId);

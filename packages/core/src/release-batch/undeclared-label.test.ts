@@ -42,6 +42,8 @@ vi.mock('./queries.js', async (importActual) => {
   return { ...actual, getActiveReleaseBatch: () => activeBatch() };
 });
 
+vi.mock('./owner-boxes.js', () => import('./owner-boxes.fixture.js'));
+
 const missingNotes = vi.fn(async () => [] as string[]);
 vi.mock('../issues/release-record-required.js', async (importActual) => {
   const actual = await importActual<typeof import('../issues/release-record-required.js')>();

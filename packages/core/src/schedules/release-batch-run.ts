@@ -8,7 +8,6 @@
 // normal state of a healthy project, and a nightly cron that reports failure on
 // a quiet night trains everyone to ignore it.
 
-import { RUN_SESSION_ISSUE_LIMIT } from '../devices/run-session-limit.js';
 import { logger } from '../logger.js';
 import { blockersOf, RELEASE_ROSTER_LIMIT } from '../release-batch/blocker-sentences.js';
 import { loadReleaseRoster } from '../release-batch/queries.js';
@@ -46,9 +45,6 @@ const CLASSIFIED_REFUSALS: ReadonlyArray<readonly [new (...args: never[]) => Err
   [ReleaseOwnerUnavailableError, 'RELEASE_NO_OWNER'],
 ];
 
-/** One release is one run session's worth of issues, and never more than the roster limit. */
-const CUT_SIZE = Math.min(RELEASE_ROSTER_LIMIT, RUN_SESSION_ISSUE_LIMIT);
-
 function reasonsOf(err: unknown): string[] {
   const carried = blockersOf(err).map((b) => b.message);
   if (carried.length > 0) return carried;
@@ -65,7 +61,7 @@ export async function cutWaitingRelease(args: {
     return { status: 'skipped', output: 'nothing is waiting at the release gate', named: [] };
   }
 
-  const named = args.issueIds.slice(0, CUT_SIZE);
+  const named = args.issueIds.slice(0, RELEASE_ROSTER_LIMIT);
   try {
     const result = await createReleaseBatch({
       projectId: args.projectId,

@@ -347,14 +347,17 @@ export function useBatchRelease(projectId: string, { showsRefusal }: { showsRefu
       qc.invalidateQueries({ queryKey: ["issues"] });
       qc.invalidateQueries({ queryKey: ["pipeline-runs"] });
       qc.invalidateQueries({ queryKey: ["release-roster"] });
+      const deadline = new Date(result.ownerDeadlineAt).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      const unverified =
+        result.verification === "unverified"
+          ? " This project declares no verify probe, so nothing will read the deployment: the release will close unverified, and each issue it closes will say so."
+          : "";
       toast({
-        title: `Batch release started — ${result.issueIds.length} issue${result.issueIds.length === 1 ? "" : "s"}`,
-        ...(result.verification === "unverified"
-          ? {
-              description:
-                "This project declares no verify probe, so nothing will read the deployment: the release will close unverified, and each issue it closes will say so.",
-            }
-          : {}),
+        title: `Release handed to this project's master — ${result.issueIds.length} issue${result.issueIds.length === 1 ? "" : "s"}`,
+        description: `If no master takes it by ${deadline}, it is cancelled and its issues go back to the release gate.${unverified}`,
         tone: "success",
       });
     },

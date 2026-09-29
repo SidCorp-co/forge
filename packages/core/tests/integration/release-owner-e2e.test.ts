@@ -87,6 +87,19 @@ describe('the door refuses a release no box could own, naming every box once', (
     expect(await counts()).toMatchObject({ releases: 0, jobs: 0 });
   });
 
+  it('is predicted by release readiness, in the words the door refuses in', async () => {
+    await seedReleaseRunner({ name: 'masterless-box', master: false });
+    const a = await insertIssue();
+    const { collectReleaseBlockers } = await import('../../src/release-batch/blockers.js');
+
+    const predicted = (await collectReleaseBlockers(projectId)).blockers.find(
+      (b) => b.code === 'RELEASE_NO_OWNER',
+    );
+    const err = await refusalOf(claim([a]));
+
+    expect(predicted?.message).toBe(err.message);
+  });
+
   it('refuses a roster larger than one run session carries, before anything is written', async () => {
     await seedReleaseRunner();
     const ids: string[] = [];
@@ -94,8 +107,10 @@ describe('the door refuses a release no box could own, naming every box once', (
 
     const err = await refusalOf(claim(ids));
 
-    expect(err.code).toBe('RELEASE_ROSTER_OVER_RUN');
-    expect(err.message).toContain('this release names 17');
+    expect(err.code).toBe('RELEASE_ROSTER_OVERSIZE');
+    expect(err.message).toContain('17 issue(s)');
+    const { blockersOf } = await import('../../src/release-batch/blocker-sentences.js');
+    expect(blockersOf(err)[0]?.message).toContain('at most 16 issues');
     expect(await counts()).toMatchObject({ releases: 0 });
     expect((await stored(ids[0] as string)).claim).toBeNull();
   });

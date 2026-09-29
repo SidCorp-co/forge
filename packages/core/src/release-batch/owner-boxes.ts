@@ -140,8 +140,25 @@ export function eligibleOwners(
     : { eligible: able, preferenceMet: false };
 }
 
+/** What a refusal, a readiness answer and the run screen say about one box. */
+export interface OwnerBoxReading {
+  deviceName: string;
+  reason: OwnerBoxReason | null;
+  detail: string | null;
+  returnAt: string | null;
+}
+
+export function readingOf(box: OwnerBox): OwnerBoxReading {
+  return {
+    deviceName: box.deviceName,
+    reason: box.reason,
+    detail: box.detail,
+    returnAt: box.returnAtMs === null ? null : new Date(box.returnAtMs).toISOString(),
+  };
+}
+
 /** One clause per box, naming the act that would make it able to take the release. */
-export function ownerBoxClause(box: OwnerBox): string {
+export function ownerBoxClause(box: OwnerBoxReading): string {
   const name = `\`${box.deviceName}\``;
   switch (box.reason) {
     case 'runner-held':
@@ -151,14 +168,14 @@ export function ownerBoxClause(box: OwnerBox): string {
     case 'no-release-role':
       return `${name}: its heartbeat reports no \`${RELEASE_ROLE}\` role, so its master has no role to hand a release to — update forge-runner and the forge plugin on it`;
     case 'draining':
-      return `${name}: draining for ${box.detail}, so it admits no run until ${new Date(box.returnAtMs ?? 0).toISOString()} at the latest`;
+      return `${name}: draining for ${box.detail}, so it admits no run until ${box.returnAt} at the latest`;
     case null:
       return `${name}: able to take it`;
   }
 }
 
 /** Why no box could own this release, for the person who pressed Release. */
-export function noOwnerSentence(boxes: OwnerBox[]): string {
+export function noOwnerSentence(boxes: OwnerBoxReading[]): string {
   const clauses = boxes.length === 0 ? ['no box serves this project'] : boxes.map(ownerBoxClause);
   return (
     'No box serving this project could open the run session a release is owned by, so the release ' +
@@ -263,15 +280,8 @@ export async function requireReleaseOwners(
 ): Promise<OwnerCandidates> {
   const owners = await readOwnerCandidates(projectId, label);
   if (owners.eligible.length === 0) {
-    throw new ReleaseOwnerUnavailableError(
-      noOwnerSentence(owners.boxes),
-      owners.boxes.map((b) => ({
-        deviceName: b.deviceName,
-        reason: b.reason,
-        detail: b.detail,
-        returnAt: b.returnAtMs === null ? null : new Date(b.returnAtMs).toISOString(),
-      })),
-    );
+    const boxes = owners.boxes.map(readingOf);
+    throw new ReleaseOwnerUnavailableError(noOwnerSentence(boxes), boxes);
   }
   if (!owners.preferenceMet) {
     logger.warn(

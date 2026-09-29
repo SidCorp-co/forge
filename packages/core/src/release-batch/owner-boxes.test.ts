@@ -16,6 +16,7 @@ import {
   ownerBoxClause,
   RELEASE_ROLE,
   readBoxCapabilities,
+  readingOf,
 } from './owner-boxes.js';
 
 const fixture = JSON.parse(
@@ -163,17 +164,19 @@ describe('eligibleOwners', () => {
 
 describe('the sentence a refused press reads', () => {
   it('gives every box its own clause naming the act that frees it', () => {
-    const text = noOwnerSentence([
-      box({ deviceName: 'held', reason: 'runner-held', detail: 'stale' }),
-      box({ deviceName: 'masterless', reason: 'no-master' }),
-      box({ deviceName: 'old', reason: 'no-release-role' }),
-      box({
-        deviceName: 'updating',
-        reason: 'draining',
-        detail: 'update',
-        returnAtMs: Date.parse('2026-09-30T12:00:00.000Z'),
-      }),
-    ]);
+    const text = noOwnerSentence(
+      [
+        box({ deviceName: 'held', reason: 'runner-held', detail: 'stale' }),
+        box({ deviceName: 'masterless', reason: 'no-master' }),
+        box({ deviceName: 'old', reason: 'no-release-role' }),
+        box({
+          deviceName: 'updating',
+          reason: 'draining',
+          detail: 'update',
+          returnAtMs: Date.parse('2026-09-30T12:00:00.000Z'),
+        }),
+      ].map(readingOf),
+    );
     expect(text).toContain('`held`: its runner cannot take work (stale)');
     expect(text).toContain('`masterless`: no master pane of this project is running there');
     expect(text).toContain(`\`old\`: its heartbeat reports no \`${RELEASE_ROLE}\` role`);
@@ -188,6 +191,6 @@ describe('the sentence a refused press reads', () => {
   });
 
   it('calls an able box able', () => {
-    expect(ownerBoxClause(box({ deviceName: 'ok' }))).toBe('`ok`: able to take it');
+    expect(ownerBoxClause(readingOf(box({ deviceName: 'ok' })))).toBe('`ok`: able to take it');
   });
 });

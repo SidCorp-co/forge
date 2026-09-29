@@ -40,7 +40,7 @@ function answer(status: number, body: unknown) {
 function accepted(verification: "probed" | "unverified") {
   answer(201, {
     runId: "run-1",
-    jobId: "job-1",
+    ownerDeadlineAt: "2026-09-30T10:30:00.000Z",
     issueIds: ISSUES.map((i) => i.id),
     gateStatus: "awaiting_release",
     verification,
@@ -156,7 +156,10 @@ describe("a batch release the server accepts", () => {
 
     await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
     expect(onClose).toHaveBeenCalledTimes(1);
-    expect(await screen.findByText("Batch release started — 2 issues")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Release handed to this project's master — 2 issues"),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/If no master takes it by .+, it is cancelled/)).toBeInTheDocument();
     expect(screen.queryByText(/unverified/i)).not.toBeInTheDocument();
   });
 
@@ -166,7 +169,9 @@ describe("a batch release the server accepts", () => {
     press();
 
     await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
-    expect(await screen.findByText("Batch release started — 2 issues")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Release handed to this project's master — 2 issues"),
+    ).toBeInTheDocument();
     expect(screen.getByText(/close unverified/i)).toBeInTheDocument();
   });
 });

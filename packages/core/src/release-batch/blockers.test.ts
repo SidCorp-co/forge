@@ -43,6 +43,8 @@ vi.mock('./queries.js', async (importActual) => {
   return { ...actual, getActiveReleaseBatch: () => activeBatch() };
 });
 
+vi.mock('./owner-boxes.js', () => import('./owner-boxes.fixture.js'));
+
 const missingNotes = vi.fn(async () => [] as string[]);
 vi.mock('../issues/release-record-required.js', async (importActual) => {
   const actual = await importActual<typeof import('../issues/release-record-required.js')>();
@@ -175,7 +177,7 @@ describe('collectReleaseBlockers', () => {
   it('reports a roster larger than one release may carry, naming the count', async () => {
     ready();
     selectRows.mockResolvedValue(
-      Array.from({ length: 51 }, (_, i) => ({
+      Array.from({ length: 17 }, (_, i) => ({
         id: `id-${i}`,
         status: 'awaiting_release',
         claimed: null,
@@ -186,25 +188,25 @@ describe('collectReleaseBlockers', () => {
       (b) => b.code === 'RELEASE_ROSTER_OVERSIZE',
     );
 
-    expect(over?.details).toMatchObject({ waiting: 51, limit: 50 });
-    expect(over?.message).toContain('50');
+    expect(over?.details).toMatchObject({ waiting: 17, limit: 16 });
+    expect(over?.message).toContain('16');
   });
 
   // The create door names its list; a named list answers to the same limit.
   it('sizes a named list by the same limit, and names the count it was handed', async () => {
     ready();
-    const named = Array.from({ length: 51 }, (_, i) => `named-${i}`);
+    const named = Array.from({ length: 17 }, (_, i) => `named-${i}`);
 
     const report = await collectReleaseBlockers(PROJECT_ID, { issueIds: named });
     const over = report.blockers.find((b) => b.code === 'RELEASE_ROSTER_OVERSIZE');
 
-    expect(over?.details).toEqual({ waiting: 51, limit: 50 });
+    expect(over?.details).toEqual({ waiting: 17, limit: 16 });
     expect(over?.scope).toBe('roster');
   });
 
-  it('holds fifty named issues to no size reason', async () => {
+  it("holds sixteen named issues, one run session's worth, to no size reason", async () => {
     ready();
-    const named = Array.from({ length: 50 }, (_, i) => `named-${i}`);
+    const named = Array.from({ length: 16 }, (_, i) => `named-${i}`);
 
     const codes = (await collectReleaseBlockers(PROJECT_ID, { issueIds: named })).blockers.map(
       (b) => b.code,
