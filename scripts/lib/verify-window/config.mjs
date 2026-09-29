@@ -58,6 +58,22 @@ export function parseConfig(text, where) {
   if (typeof check !== 'string' || check === '') {
     return refuse(where, '`check` must name the one required check a member is green on');
   }
+  const isArgv = (v) =>
+    Array.isArray(v) && v.length > 0 && v.every((a) => typeof a === 'string' && a !== '');
+  const gate = raw.gate;
+  if (!isArgv(gate?.run)) {
+    return refuse(
+      where,
+      '`gate.run` must name the command a window validates its combination with, as an argv list',
+    );
+  }
+  const prepare = gate.prepare ?? [];
+  if (!Array.isArray(prepare) || !prepare.every(isArgv)) {
+    return refuse(
+      where,
+      '`gate.prepare` must be a list of argv lists, run in order before `gate.run`',
+    );
+  }
   const ineligible = raw.ineligible ?? {};
   if (typeof ineligible !== 'object' || Array.isArray(ineligible)) {
     return refuse(where, '`ineligible` must be an object of `paths`, `lines` and `linesIn`');
@@ -111,6 +127,7 @@ export function parseConfig(text, where) {
     config: {
       migrationsDir: dir.replace(/\/+$/, ''),
       check,
+      gate: { prepare, run: gate.run },
       union: union.map((u) => u.path),
       pathRules,
       lineRules,

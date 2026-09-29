@@ -15,10 +15,12 @@ import { admitMembers } from './lib/verify-window/admit.mjs';
 import { assemble, prepareWindow } from './lib/verify-window/assemble.mjs';
 import { classifyReplay, ownerOfPath, replay } from './lib/verify-window/attribute.mjs';
 import { checkReader, repoSlugOf } from './lib/verify-window/checks.mjs';
+import { CONFIG_PATH, parseConfig } from './lib/verify-window/config.mjs';
 import { decideFire } from './lib/verify-window/fire.mjs';
-import { gitIn } from './lib/verify-window/git.mjs';
+import { gitIn, showAt } from './lib/verify-window/git.mjs';
 import { planLanding, windowBranch } from './lib/verify-window/land.mjs';
 import { readManifest, renderLedger } from './lib/verify-window/ledger.mjs';
+import { passLine, runGate } from './lib/verify-window/validate.mjs';
 
 const USAGE = `Usage: node scripts/verify-window.mjs <verb> --window <manifest.json> [flags]
   admit                       judge each member's admission and build nothing
@@ -27,6 +29,7 @@ const USAGE = `Usage: node scripts/verify-window.mjs <verb> --window <manifest.j
   isolate --member <ISS> --because <refusal>   rebuild without that member, recording why
   attribute --path <p>...     which landed member last changed each path
   attribute --unit <cmd> [--repeat n]          replay one command on the base and each member alone
+  validate                    run the declared gate once on the combination and record its cost
   land                        whether the validated window may land, and the one merge that lands it
   --checks <file>             read check states from a saved file instead of \`gh api\``;
 
@@ -198,6 +201,7 @@ if (verb === 'isolate') {
   const ledger = build(treeDir, next);
   writeFileSync(manifestPath, `${JSON.stringify(next, null, 2)}\n`);
   ledger.attributions = before;
+  ledger.passes = recorded.passes ?? [];
   reportBuilt(ledger);
 }
 
@@ -260,6 +264,44 @@ if (verb === 'attribute') {
   ledger.attributions = [...(ledger.attributions ?? []), ...found.map(({ runs, ...a }) => a)];
   saveLedger(ledger);
   process.exit(0);
+}
+
+if (verb === 'validate') {
+  const ledger = loadLedger();
+  if (!existsSync(ledger.chain.tree)) {
+    die(
+      `the window's tree ${ledger.chain.tree} is gone; rebuild it with isolate or assemble first`,
+    );
+  }
+  const g = gitIn(repoDir);
+  const declared = parseConfig(
+    showAt(g, ledger.base.sha, CONFIG_PATH),
+    `${CONFIG_PATH} at ${ledger.base.sha}`,
+  );
+  if (declared.refusal) die(declared.refusal);
+  const gate = declared.config.gate;
+  const r = runGate({ tree: ledger.chain.tree, gate });
+  const n = (ledger.passes ?? []).length + 1;
+  const log = `${manifestPath.replace(/\.json$/, '')}.pass-${n}.log`;
+  writeFileSync(log, r.output);
+  if (r.refusal) die(`${r.refusal}; its output: ${log}`);
+  const pass = {
+    n,
+    head: ledger.chain.head,
+    command: gate.run.join(' '),
+    status: r.status,
+    seconds: r.seconds,
+    prepareSeconds: r.prepareSeconds,
+    members: ledger.members.filter((m) => m.landing).length,
+    at: new Date().toISOString(),
+    log,
+    words: r.words,
+  };
+  ledger.passes = [...(ledger.passes ?? []), pass];
+  saveLedger(ledger);
+  console.log(passLine(pass));
+  if (r.words) console.log(`\nIn the gate's own words (the whole output: ${log}):\n${r.words}`);
+  process.exit(r.status);
 }
 
 if (verb === 'land') {

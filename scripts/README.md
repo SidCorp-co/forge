@@ -326,9 +326,31 @@ the five marks exist to prevent (ISS-955). The marks and the tally live in `lib/
 so both have a runner — `verify.mjs` executes its whole run at import and nothing inside it can be
 unit-tested.
 
+### Two layers, by what a check reads
+
+Every check declares a `layer` and, in `reads`, what it reads; `verify` exits `2` over one that
+does not (`lib/verify-layers.mjs:unlayered`). The partition is by what a check measures, never by
+its name or its cost:
+
+- **`entry`** — a verdict on each file from that file alone, or a read of one declared file. A
+  change cannot turn it red anywhere but in what it touched, so the developer's own run pays it.
+  Where the checker can scope, the entry layer runs it over the change only: `comment-budget`
+  lints the changed files with `--changed` instead of the tree with `--all`.
+- **`shared`** — a sweep whose verdict on one file depends on files the change never opened, or on
+  other branches: the import graph, the typed program, citations, status vocabularies, the open
+  migration set, the conformance levels. A change can turn it red elsewhere, so a verify window
+  pays it once for the set (`docs/modules/landing/verify-window.md`).
+
+A change touching a surface `.forge/verify-queue.json` declares ineligible (the gate itself among
+them) is not given the entry layer: `--entry` says which surface and runs the whole gate instead,
+judged by the declarations at the merge base, so a change cannot loosen its own rule.
+
 ### Modes
 
-- (none) — full run
+- (none) — the whole gate, both layers, each check over the whole tree, as it has always run
+- `--entry` — the entry layer, for a developer run of a queue-eligible change
+- `--window` — the shared layer's sweeps plus the entry layer over the diff, run once by a verify
+  window on its combination (the `gate` the declarations name)
 - `--ci-parity` — only the parity proof; cheap, zero-dep, no install needed
 
 Exit codes: `0` clean, `1` violations, `2` a check could not run.

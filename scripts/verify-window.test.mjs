@@ -59,6 +59,7 @@ const BASE_TABLES = { 'public.a': table('a', ['id', 'name']) };
 const CONFIG = {
   check: 'ci-passed',
   migrations: { dir: DIR },
+  gate: { prepare: [['node', 'prepare.mjs']], run: ['node', 'gate.mjs'] },
   union: [{ path: 'CHANGELOG.md', reason: 'both entries are meant to stand' }],
   ineligible: {
     paths: [{ glob: 'runner/**', reason: 'runs on three platforms' }],
@@ -131,6 +132,17 @@ beforeAll(() => {
     [`${DIR}/meta/0001_snapshot.json`]: snapshot('s1', '00000000', BASE_TABLES),
     'CHANGELOG.md': '# Changelog\n\n## [Unreleased]\n\n- base entry\n',
     'src/shared.txt': 'one\ntwo\n',
+    'prepare.mjs': "import { writeFileSync } from 'node:fs';\nwriteFileSync('.prepared', 'yes');\n",
+    'gate.mjs': [
+      "import { existsSync } from 'node:fs';",
+      "if (!existsSync('.prepared')) { console.error('gate-check: not prepared'); process.exit(2); }",
+      "if (existsSync('src/fail.txt')) {",
+      "  console.error('gate-check: src/fail.txt holds a sweep failure the entry layer cannot see');",
+      '  process.exit(1);',
+      '}',
+      "console.log('gate-check: 0 red');",
+      '',
+    ].join('\n'),
   });
   git(seed, 'add', '-A');
   git(seed, 'commit', '-q', '-m', 'base');
@@ -840,6 +852,59 @@ describe('a journal that is not one', () => {
       ),
     );
     expect(d.landing).toMatch(/^[0-9a-f]{40}$/);
+  });
+});
+
+describe('validate', () => {
+  it('runs the declared gate once, records its cost, and after isolating the member it names goes green', () => {
+    const bad = branch('ISS-24-fail', { 'src/fail.txt': 'red at the sweep\n' });
+    const c = clone('validate-window');
+    const w = windowFiles(
+      'w-validate',
+      [
+        ['ISS-4', 'ISS-4-after', heads.m4],
+        ['ISS-24', 'ISS-24-fail', bad],
+      ],
+      green(heads.m4, bad),
+    );
+    const flags = ['--window', w.manifest, '--checks', w.checksFile, '--tree', w.tree];
+    expect(run(c, 'assemble', ...flags).status).toBe(0);
+    const red = run(c, 'validate', ...flags);
+    expect(red.status).toBe(1);
+    expect(red.stdout).toContain(
+      'gate-check: src/fail.txt holds a sweep failure the entry layer cannot see',
+    );
+    const owner = run(c, 'attribute', ...flags, '--path', 'src/fail.txt');
+    expect(owner.stdout).toContain('ISS-24');
+    const words = 'gate-check: src/fail.txt holds a sweep failure the entry layer cannot see';
+    expect(run(c, 'isolate', ...flags, '--member', 'ISS-24', '--because', words).status).toBe(1);
+    const again = run(c, 'validate', ...flags);
+    git(seed, 'push', '-q', 'origin', '--delete', 'ISS-24-fail');
+    expect(again.status, again.stdout + again.stderr).toBe(0);
+    const ledger = JSON.parse(readFileSync(w.ledger, 'utf8'));
+    expect(ledger.passes.map((p) => [p.n, p.status, p.members])).toEqual([
+      [1, 1, 2],
+      [2, 0, 1],
+    ]);
+    expect(ledger.passes[1].head).toBe(ledger.chain.head);
+    expect(ledger.passes[0].words).toContain('src/fail.txt holds a sweep failure');
+    expect(ledger.members[1].isolated.because).toBe(words);
+    const md = readFileSync(w.ledger.replace(/\.json$/, '.md'), 'utf8');
+    expect(md).toMatch(
+      /Pass 2: `node gate\.mjs` at `[0-9a-f]{40}` took [\d.]+s \(prepare [\d.]+s\), shared by 1 member\(s\), [\d.]+s each: green/,
+    );
+  });
+
+  it('refuses to validate when a prepare step fails, and runs no gate', () => {
+    const c = clone('validate-unprepared');
+    const w = windowFiles('w-unprepared', [['ISS-4', 'ISS-4-after', heads.m4]], green(heads.m4));
+    const flags = ['--window', w.manifest, '--checks', w.checksFile, '--tree', w.tree];
+    expect(run(c, 'assemble', ...flags).status).toBe(0);
+    rmSync(join(w.tree, 'prepare.mjs'));
+    const r = run(c, 'validate', ...flags);
+    expect(r.status).toBe(2);
+    expect(r.stderr).toContain('`node prepare.mjs` did not prepare');
+    expect(JSON.parse(readFileSync(w.ledger, 'utf8')).passes).toBeUndefined();
   });
 });
 

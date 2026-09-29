@@ -1,3 +1,5 @@
+import { passLine } from './validate.mjs';
+
 /**
  * The window's ledger: what the next reader needs to reconstruct the order taken, the tree each
  * member was proved on and why any member left. JSON beside the manifest for the tool, markdown
@@ -77,6 +79,10 @@ export function renderLedger(ledger) {
   }
   for (const a of ledger.attributions ?? [])
     notes.push(`- Attribution (${a.kind}${a.owner ? `, ${a.owner}` : ''}): ${a.says}`);
+  for (const pass of ledger.passes ?? []) {
+    notes.push(`- ${passLine(pass)}`);
+    if (pass.words) notes.push(`  In the gate's own words: ${pass.words.split('\n').at(-1)}`);
+  }
   if (ledger.validation) {
     notes.push(
       `- Validation: ${ledger.validation.check} at \`${ledger.validation.at}\` is ${ledger.validation.state ?? ledger.validation.refusal}${ledger.validation.url ? ` (${ledger.validation.url})` : ''}`,

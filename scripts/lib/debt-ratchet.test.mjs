@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  changedFiles,
   fileTotal,
   freezeFaults,
   loadBaseline,
@@ -199,5 +200,43 @@ describe('stagedFiles', () => {
     const result = stagedFiles(repo({}));
     expect(result.files).toBeUndefined();
     expect(result.error).toMatch(/cannot tell what is staged/);
+  });
+});
+
+describe('changedFiles', () => {
+  const run = (cwd, ...args) =>
+    execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+
+  it('holds what the change committed, changed and created since its merge base, and nothing else', () => {
+    const root = repo();
+    const origin = join(root, 'origin.git');
+    run(root, 'init', '-q', '--bare', '--initial-branch=main', origin);
+    const work = join(root, 'work');
+    run(root, 'clone', '-q', origin, work);
+    run(work, 'config', 'user.email', 'd@example.invalid');
+    run(work, 'config', 'user.name', 'debt');
+    for (const f of ['kept.mjs', 'edited.mjs', 'gone.mjs', 'committed.mjs']) {
+      writeFileSync(join(work, f), `export const ${f.split('.')[0]} = 1;\n`);
+    }
+    run(work, 'add', '-A');
+    run(work, 'commit', '-q', '-m', 'base');
+    run(work, 'push', '-q', 'origin', 'HEAD:main');
+    run(work, 'remote', 'set-head', 'origin', 'main');
+    run(work, 'checkout', '-q', '-b', 'change');
+    writeFileSync(join(work, 'committed.mjs'), 'export const committed = 2;\n');
+    run(work, 'commit', '-q', '-am', 'change');
+    writeFileSync(join(work, 'edited.mjs'), 'export const edited = 2;\n');
+    rmSync(join(work, 'gone.mjs'));
+    writeFileSync(join(work, 'new.mjs'), 'export const created = 1;\n');
+    const got = changedFiles(work);
+    expect(got.error).toBeUndefined();
+    expect([...got.files].sort()).toEqual(['committed.mjs', 'edited.mjs', 'new.mjs']);
+    expect(got.base).toBe(run(work, 'rev-parse', 'origin/main'));
+  });
+
+  it('refuses by name where no branch to land on can be derived', () => {
+    const root = repo();
+    run(root, 'init', '-q', '--initial-branch=main');
+    expect(changedFiles(root).error).toMatch(/merge target|merge-base/);
   });
 });

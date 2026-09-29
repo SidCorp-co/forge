@@ -5,6 +5,7 @@ import { globToRegExp, parseConfig } from './config.mjs';
 const good = {
   check: 'ci-passed',
   migrations: { dir: 'db/migrations/' },
+  gate: { run: ['node', 'gate.mjs'] },
   union: [{ path: 'CHANGELOG.md', reason: 'both entries are meant to stand' }],
   ineligible: {
     paths: [{ glob: 'runner/**', reason: 'runs on three platforms' }],
@@ -46,6 +47,17 @@ describe('parseConfig', () => {
 
   it.each(['null', '[]', '"x"'])('refuses the document %s as not one object', (text) => {
     expect(parseConfig(text, 'x').refusal).toBe('x: the declarations must be one JSON object');
+  });
+
+  it.each([
+    [{ gate: undefined }, '`gate.run` must name the command'],
+    [{ gate: { run: [] } }, '`gate.run` must name the command'],
+    [
+      { gate: { run: ['node'], prepare: ['pnpm install'] } },
+      '`gate.prepare` must be a list of argv lists',
+    ],
+  ])('refuses the gate %j by name', (patch, why) => {
+    expect(parseConfig(JSON.stringify({ ...good, ...patch }), 'x').refusal).toContain(why);
   });
 
   it('refuses a pattern that does not compile', () => {

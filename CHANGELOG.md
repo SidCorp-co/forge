@@ -120,6 +120,10 @@
 
 ### Added
 
+- **Finished changes can share one validation and still land one by one.** `pnpm verify --entry`
+  runs only the checks a change can fail alone; a verify window runs the repository-wide sweeps
+  once, names which change failed, and lands each separately.
+
 - **How to contribute, and who decides, are now in the repository.** `CONTRIBUTING.md`,
   `GOVERNANCE.md` and `docs/adr/` state the rules and the decisions behind them, including that
   this file is the release note and there is no second changelog.

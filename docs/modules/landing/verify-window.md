@@ -36,8 +36,13 @@ branch, head, arrival time and priority.
    any other path is isolated with the path and the earlier member that changed it named; the
    members after it still enter. The ledger is written beside the manifest
    as JSON and as the markdown each member's issue carries.
-4. **One pull request** of the chain head into the base. Its `ci-passed`, with its full needs list,
-   is the one validation.
+4. **`validate`** — the `gate` the declarations name, `node scripts/verify.mjs --window`, prepared
+   and run once in the window's tree. It pays the shared layer's sweeps that no member's own run
+   paid, plus the entry layer over the combination's diff, where two members' edits meet in one
+   file. The ledger records each pass as the window's cost figure: what it took and how many
+   members shared it. Red, it prints the gate's own words, which step 5 attributes.
+   **One pull request** of the chain head into the base follows, and its `ci-passed`, with its full
+   needs list, stays the required check.
 5. **`attribute`** — a refusal naming a path belongs to the last landing that changed it. One naming
    no path is replayed with `--unit "<command>"` on the base alone and on each member alone: a
    failure on the base is pre-existing, on exactly one member alone is that member's, on no member
@@ -102,11 +107,12 @@ gate refuses over one anyway, the surface belongs in that file.
 
 ## What it does not do
 
-- It does not choose which checks a developer run may skip. That split — an entry layer each run
-  pays and a shared layer the window pays — lives in `scripts/verify.mjs` and in the issue-flow
-  method's baseline, and is not built here.
+- It does not decide which layer a check is in. `scripts/verify.mjs` declares that per check, by
+  what the check reads (`scripts/README.md`, *Two layers*): a developer run of a queue-eligible
+  change runs `pnpm verify --entry`, and the window runs the rest once. Which command a run's method
+  calls is the project's knowledge, not this tool's.
 - It does not use GitHub's `merge_group`. The native queue validates one entry at a time and does
   not batch.
-- It has not been exercised against a live window on this project. That GitHub marks each member's
-  pull request merged once its head is reachable from `main` is the platform's documented
-  behaviour and is not measured here.
+- It has been exercised on scratch branches against a scratch remote (ISS-1203), not yet on a live
+  window of this project's pull requests. That GitHub marks each member's pull request merged once
+  its head is reachable from `main` is the platform's documented behaviour and is not measured here.
