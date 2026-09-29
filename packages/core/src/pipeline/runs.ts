@@ -89,9 +89,7 @@ export interface OneShotRunSpec {
   metadata?: Record<string, unknown>;
 }
 
-/**
- * The row half of opening a one-shot run, on whatever executor is handed in.
- */
+/** The row half of opening a one-shot run, on whatever executor is handed in. */
 export async function insertOneShotRun(
   executor: Tx,
   args: OneShotRunSpec,
@@ -129,11 +127,7 @@ export async function openOneShotRun(args: OneShotRunSpec): Promise<{ id: string
   return row;
 }
 
-/**
- * Stamp the current pipeline step onto a run. Cheap UPDATE; safe to call
- * on terminal runs (the WHERE clause filters them out so we don't reopen
- * a closed run by accident).
- */
+/** Stamp the current step on a run; the WHERE clause skips terminal runs, so none reopens. */
 export async function setCurrentStep(runId: string, step: string): Promise<void> {
   await db
     .update(pipelineRuns)
@@ -470,11 +464,7 @@ export async function listPipelineRuns(q: PipelineRunQuery) {
       finishedAt: pipelineRuns.finishedAt,
       createdAt: pipelineRuns.createdAt,
       updatedAt: pipelineRuns.updatedAt,
-      liveJobs: sql<number>`(
-        SELECT count(*)::int FROM jobs lj
-        WHERE lj.pipeline_run_id = pipeline_runs.id
-          AND lj.status IN ('queued','dispatched','running')
-      )`.mapWith(Number),
+      metadata: pipelineRuns.metadata,
     })
     .from(pipelineRuns)
     .where(and(...conds))

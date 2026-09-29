@@ -19,6 +19,8 @@ import {
   pausePipelineRun,
   resumePipelineRun,
 } from '../../pipeline/runs-control.js';
+import { laneOf } from '../../pipeline/runs-lane.js';
+import { loadRunLivenessByRunIds, residentMasterOn } from '../../pipeline/runs-liveness.js';
 import { deprecationFor } from '../deprecation.js';
 import {
   assertPrincipalIsMember,
@@ -66,10 +68,23 @@ export async function pipelineRunsListHandler(
     status: input.status,
     limit: overfetch(runsLimit),
   });
+  // ISS-1335 — the lane and the live master come from the REST list's own derivation, so the
+  // two surfaces cannot disagree about what a run is; the metadata that decides it is not returned.
+  const liveness = await loadRunLivenessByRunIds(rows.map((r) => r.id));
+  const items = rows.map(({ metadata, ...row }) => {
+    const lane = laneOf({ issueId: row.issueId, metadata });
+    const live = liveness.get(row.id);
+    return {
+      ...row,
+      liveJobs: live?.liveJobs ?? 0,
+      lane,
+      residentMaster: residentMasterOn(lane, live),
+    };
+  });
 
   return buildListEnvelope({
     key: 'runs',
-    items: rows,
+    items,
     limit: runsLimit,
     hint: 'narrow with status/issueId filters',
   });
