@@ -175,6 +175,14 @@ interface CriteriaRow {
   acceptanceCriteria: string | null;
   sessionContext: unknown;
   mergedCommitSha: string | null;
+  mergedAt?: Date | null;
+}
+
+function byMerge(a: CriteriaRow, b: CriteriaRow): number {
+  const at = (row: CriteriaRow) => row.mergedAt?.getTime() ?? Number.POSITIVE_INFINITY;
+  const merged = at(a) - at(b);
+  if (merged !== 0 && !Number.isNaN(merged)) return merged;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
 async function reportFor(row: CriteriaRow, serving: ServingReading): Promise<IssueCriteriaReport> {
@@ -214,11 +222,13 @@ export async function unearnedCriteriaReports(
       acceptanceCriteria: issues.acceptanceCriteria,
       sessionContext: issues.sessionContext,
       mergedCommitSha: issues.mergedCommitSha,
+      mergedAt: issues.mergedAt,
     })
     .from(issues)
     .where(inArray(issues.id, issueIds))) as CriteriaRow[];
+  // Oldest merge first, then id, as the sweep reads the gate: every list of them agrees (ISS-1346).
   const out: IssueCriteriaReport[] = [];
-  for (const row of rows) out.push(await reportFor(row, serving));
+  for (const row of [...rows].sort(byMerge)) out.push(await reportFor(row, serving));
   return out;
 }
 

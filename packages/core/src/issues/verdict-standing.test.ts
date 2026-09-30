@@ -211,7 +211,18 @@ describe('verdictStanding — a source verdict under a reading of what is runnin
       serving(SERVING),
       has(SOURCE),
     );
-    expect(line).toContain(`what this project is serving is \`${SERVING}\` at ${HOST}`);
+    expect(line).toContain(`it is serving \`${SERVING}\` at ${HOST}`);
+  });
+
+  // ISS-1346 judge r2 finding 5: a 7-digit judged commit beside a 40-digit served one, compared by eye.
+  it('says in words that the commit it was judged at is not one this project is serving', () => {
+    const line = standingSentence(
+      'superseded',
+      at('source', 'dce6f35'),
+      serving(SERVING),
+      has(SOURCE),
+    );
+    expect(line).toContain('judged at dce6f35, which is not a commit this project is serving');
   });
 });
 

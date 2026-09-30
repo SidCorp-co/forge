@@ -9,6 +9,8 @@ import {
   refusalHold,
   releaseHoldComment,
   runtimeUnroutedHold,
+  saidKey,
+  saidOf,
   sameReleaseHold,
   withoutAges,
   withoutReadingTimes,
@@ -234,6 +236,56 @@ describe('the hold a row carries (ISS-1215)', () => {
     const body = releaseHoldComment(refusalHold('NO_RUNNER_ONLINE', ['none online']), true);
     expect(body).toContain('on every issue of this project it holds');
     expect(body).toContain('oldest of them alone');
+  });
+
+  // ISS-1346 judge r2 finding 2: a comment standing for several rows named none of them.
+  it('names each row a shared hold stands for, in the order it was given them', () => {
+    const hold = refusalHold('NO_RUNNER_ONLINE', ['none online']);
+    const body = releaseHoldComment(hold, true, ['ISS-5', 'ISS-3', 'ISS-4']);
+    expect(body).toContain(
+      'When this was written it held 3 issues of this project, oldest merge first: `ISS-5`, `ISS-3`, `ISS-4`.',
+    );
+    expect(releaseHoldComment(hold, false, ['ISS-5'])).not.toContain('When this was written');
+  });
+});
+
+describe('a reason said once per hold (ISS-1346 judge r2 finding 4)', () => {
+  const offline = refusalHold('NO_RUNNER_ONLINE', ['`sid-xeon-1` reported itself offline.']);
+  const cloning = refusalHold('NO_RUNNER_ONLINE', ['`sid-xeon-1` has not finished provisioning.']);
+
+  it('keys two holds alike where only a reading time moves, and apart where the words do', () => {
+    const at = (t: string) => ({ ...offline, reason: `${offline.reason} read at ${t}` });
+    expect(saidKey(at('2026-09-30T01:00:00.000Z'))).toBe(saidKey(at('2026-09-30T02:00:00.000Z')));
+    expect(saidKey(offline)).not.toBe(saidKey(cloning));
+  });
+
+  it('reads what a stored hold says it has said, and nothing from one stored before it said any', () => {
+    expect(saidOf({ ...offline, said: [saidKey(offline)] })).toEqual([saidKey(offline)]);
+    expect(saidOf({ ...offline })).toEqual([]);
+    expect(saidOf(null)).toEqual([]);
+  });
+});
+
+// ISS-1346 judge r2 finding 5: ISS-529's hold printed the whole served clause twice.
+describe('a criteria hold names what is served once', () => {
+  it('points back at the served commits a superseded criterion already named', () => {
+    const reading = live();
+    const clause = `\`${SERVING}\` at ${HOST}, read at ${READ_AT}`;
+    const superseded = {
+      criterion: 1,
+      verdict: 'pass',
+      standing: 'superseded' as const,
+      why: `judged at dce6f35, which is not a commit this project is serving; it is serving ${clause}`,
+    };
+    const { reason } = criteriaHold({ ...REPORT, serving: reading, unearned: [superseded] });
+    expect(reason.split(`\`${SERVING}\``)).toHaveLength(2);
+    expect(reason).toContain('judged at a commit this project is serving, named above');
+  });
+
+  it('still names the served commits where no criterion did', () => {
+    const { reason } = criteriaHold(REPORT);
+    expect(reason.split(`\`${SERVING}\``)).toHaveLength(2);
+    expect(reason).not.toContain('named above');
   });
 });
 

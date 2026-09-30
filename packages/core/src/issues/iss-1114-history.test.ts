@@ -123,7 +123,7 @@ describe("ISS-1114's history before the 2026-09-22 correction", () => {
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
     ]);
     expect(report?.unearned.every((c) => c.standing === 'superseded')).toBe(true);
-    expect(report?.unearned[12]?.why).toContain('what this project is serving');
+    expect(report?.unearned[12]?.why).toContain('which is not a commit this project is serving');
   });
 
   it('reads criterion 13 as the pass that superseded the skipped one by recency alone', async () => {

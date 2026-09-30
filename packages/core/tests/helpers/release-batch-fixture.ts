@@ -47,6 +47,8 @@ export interface ReleaseBatchFixture {
   runStatus(runId: string): Promise<string>;
   storedJob(jobId: string): Promise<StoredJob>;
   commentCount(issueId: string): Promise<number>;
+  /** `ISS-nn` for each id, in the order given. */
+  displayIds(ids: string[]): Promise<string[]>;
   /**
    * Whatever `createReleaseBatch` returns, named by its own type rather than copied. The copy
    * this replaced went stale the moment ISS-1120 put `version` on the result.
@@ -190,6 +192,13 @@ export function releaseBatchFixture(
     });
   }
 
+  /** `ISS-nn` for each, in the order given, as the tracker names them. */
+  async function displayIds(idList: string[]): Promise<string[]> {
+    const { issueDisplayIds } = await import('../../src/issues/display-ids.js');
+    const shown = await issueDisplayIds(idList);
+    return idList.map((id) => String(shown.get(id)));
+  }
+
   async function waitFor(cond: () => Promise<boolean>): Promise<void> {
     for (let i = 0; i < 100; i += 1) {
       if (await cond()) return;
@@ -211,6 +220,7 @@ export function releaseBatchFixture(
     runStatus,
     storedJob,
     commentCount,
+    displayIds,
     claim,
     waitFor,
   };

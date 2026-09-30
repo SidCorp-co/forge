@@ -171,11 +171,20 @@ describe('a project whose work lands outside git (kind website)', () => {
       issueIds: [bare, landed],
       door: 'record',
     });
+    const shown = await harness.db.execute<{ id: string; ref: string }>(sql`
+      SELECT i.id, COALESCE(p.issue_prefix, 'ISS') || '-' || i.iss_seq AS ref
+      FROM issues i JOIN projects p ON p.id = i.project_id WHERE i.id IN (${bare}, ${landed})
+    `);
+    const refOf = (id: string) => shown.find((r) => r.id === id)?.ref;
     const unmerged = report.blockers.find((b) => b.code === 'RELEASE_WORK_UNMERGED');
+    // The refusal names the row it refuses by the id a screen shows, and only that row (ISS-1346).
     expect(unmerged?.details, JSON.stringify(report.blockers)).toEqual({
       issueIds: [bare],
       shape: 'outside_git',
+      displayIds: [refOf(bare)],
     });
+    expect(unmerged?.message).toContain(`\`${refOf(bare)}\``);
+    expect(unmerged?.message).not.toContain(`\`${refOf(landed)}\``);
     expect(unmerged?.message).toContain('`landing`');
     expect(unmerged?.message).not.toMatch(/branch/);
   });
