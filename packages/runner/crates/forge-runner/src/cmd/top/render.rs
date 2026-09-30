@@ -1051,7 +1051,10 @@ mod tests {
         let line = skill_under_unread_pane(false, |s| {
             s.sessions = Err(Unreadable::new("tmux list-sessions", "exit status: 1"));
         });
-        assert!(line.contains("DRIFT — is NOT the forge-master asset"), "{line}");
+        assert!(
+            line.contains("DRIFT — is NOT the forge-master asset"),
+            "{line}"
+        );
         assert!(!line.contains("no running master pane is seen"), "{line}");
         assert!(!line.contains("this pane stands"), "{line}");
         assert!(
@@ -1119,7 +1122,10 @@ mod tests {
             "{line}"
         );
         let seen = skill_under_unread_pane(true, |_| {});
-        assert!(!seen.contains("cannot be read"), "a pane read not running: {seen}");
+        assert!(
+            !seen.contains("cannot be read"),
+            "a pane read not running: {seen}"
+        );
     }
 
     /// Judge w3's finding 57: the live header heads every page, so it fits

@@ -493,7 +493,9 @@ mod tests {
             );
             assert!(s.rows[1].contains("--once"), "{}", s.rows[1]);
             assert!(
-                s.rows[2..2 + s.carried].iter().all(|r| r.ends_with(CONTINUED)),
+                s.rows[2..2 + s.carried]
+                    .iter()
+                    .all(|r| r.ends_with(CONTINUED)),
                 "{:?}",
                 s.rows
             );
@@ -537,7 +539,10 @@ mod tests {
         f.push("WAITING ON A PERSON".to_string());
         f.push("  questions  mowment: 3 open".to_string());
         f.extend((1..=3).map(|i| {
-            format!("      human blocker, question q{i}: {}", "word ".repeat(45).trim_end())
+            format!(
+                "      human blocker, question q{i}: {}",
+                "word ".repeat(45).trim_end()
+            )
         }));
         let size = Some(Screen { cols: 120, rows: 8 });
         let body: Vec<String> = f[1..].iter().flat_map(|l| wrap(l, 120)).collect();
@@ -579,11 +584,15 @@ mod tests {
             }
         }
         assert!(
-            pages[1..].iter().any(|(_, own)| own[0].starts_with("        ")),
+            pages[1..]
+                .iter()
+                .any(|(_, own)| own[0].starts_with("        ")),
             "some page opens partway through a wrapped question: {pages:?}"
         );
         assert!(
-            pages[1..].iter().any(|(_, own)| own[0].starts_with("    run")),
+            pages[1..]
+                .iter()
+                .any(|(_, own)| own[0].starts_with("    run")),
             "some page opens among alpha's runs: {pages:?}"
         );
     }
@@ -593,7 +602,12 @@ mod tests {
     /// fits in, nothing is carried.
     #[test]
     fn carried_headings_never_crowd_out_a_page_of_its_rows() {
-        let mut f = vec!["h".to_string(), "S".to_string(), "  p".to_string(), "    q".to_string()];
+        let mut f = vec![
+            "h".to_string(),
+            "S".to_string(),
+            "  p".to_string(),
+            "    q".to_string(),
+        ];
         f.extend((1..=6).map(|i| format!("      r{i}")));
         let s = screen(&f, Some(Screen { cols: 40, rows: 4 }), 1);
         assert_eq!(s.rows.len(), 4, "{:?}", s.rows);

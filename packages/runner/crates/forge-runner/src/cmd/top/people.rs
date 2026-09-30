@@ -525,7 +525,10 @@ mod tests {
             prompt("\nWhich branch ships tonight, stg or main?"),
             "Which branch ships tonight, stg or main?"
         );
-        assert_eq!(prompt("  \r\n\t\n  Rotate the key?  \nsecond"), "Rotate the key?");
+        assert_eq!(
+            prompt("  \r\n\t\n  Rotate the key?  \nsecond"),
+            "Rotate the key?"
+        );
         assert_eq!(prompt(" \n\t\n"), "");
         assert_eq!(prompt(""), "");
     }

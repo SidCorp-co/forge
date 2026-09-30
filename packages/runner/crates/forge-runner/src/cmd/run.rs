@@ -123,7 +123,9 @@ fn retract(led: &mut Ledger, run_id: &str) -> anyhow::Result<String> {
         anyhow::bail!("run {run_id}'s refusal could not be retracted — nothing was written");
     }
     let Some(after) = led.run(run_id)? else {
-        anyhow::bail!("run {run_id}'s refusal was retracted, and then the run could not be read back");
+        anyhow::bail!(
+            "run {run_id}'s refusal was retracted, and then the run could not be read back"
+        );
     };
     // What happens next is what the sweep selects, read from the ledger the
     // sweep reads, never promised: a settled refusal's checkout is already
@@ -149,7 +151,10 @@ fn retract(led: &mut Ledger, run_id: &str) -> anyhow::Result<String> {
         }
         (Some(_), Some(by)) => format!(
             "Its ending was not that decision's and is kept: ended by {by}, {}.",
-            after.ended_reason.as_deref().unwrap_or("no reason recorded")
+            after
+                .ended_reason
+                .as_deref()
+                .unwrap_or("no reason recorded")
         ),
         (None, _) => "It carried no ending, and carries none now.".to_string(),
     };
@@ -300,7 +305,10 @@ mod tests {
         .unwrap();
 
         let said = retract(&mut led, "run-1").expect("a decided refusal is retractable");
-        assert!(said.contains("the next sweep will try the release again"), "{said}");
+        assert!(
+            said.contains("the next sweep will try the release again"),
+            "{said}"
+        );
         assert!(
             said.contains("The ending that decision wrote is taken back, so the run is open again"),
             "{said}"
@@ -327,7 +335,8 @@ mod tests {
     fn retracting_a_settled_refusal_promises_no_sweep_and_says_the_ending_is_kept() {
         use forge_runner_core::runner::ledger::CheckoutReturn;
         let mut led = led_with_a_run();
-        led.end_run("run-1", "master", "the master said so").unwrap();
+        led.end_run("run-1", "master", "the master said so")
+            .unwrap();
         led.note_release_refusal("run-1", "the diff was not preserved", 1_790_000_000)
             .unwrap();
         led.mark_checkout_returned_observed("run-1", CheckoutReturn::Gone)
@@ -346,7 +355,9 @@ mod tests {
         let said = retract(&mut led, "run-1").expect("a settled refusal is retractable");
         assert!(!said.contains("the next sweep"), "{said}");
         assert!(
-            said.contains("no sweep will take it up: its checkout is already recorded returned (gone)"),
+            said.contains(
+                "no sweep will take it up: its checkout is already recorded returned (gone)"
+            ),
             "{said}"
         );
         assert!(
@@ -369,7 +380,10 @@ mod tests {
             said.contains("there is no release left to try: its checkout is already recorded returned (gone); the next sweep still takes the run up to close what it holds open"),
             "{said}"
         );
-        assert!(said.contains("It carried no ending, and carries none now."), "{said}");
+        assert!(
+            said.contains("It carried no ending, and carries none now."),
+            "{said}"
+        );
     }
 
     #[test]

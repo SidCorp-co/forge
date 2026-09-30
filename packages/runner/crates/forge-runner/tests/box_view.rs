@@ -740,7 +740,10 @@ fn a_drifted_skill_is_not_called_paneless_when_tmux_cannot_be_asked() {
         "{projects}"
     );
     let line = alpha_skill_line(projects);
-    assert!(line.contains("DRIFT — is NOT the forge-master asset"), "{line}");
+    assert!(
+        line.contains("DRIFT — is NOT the forge-master asset"),
+        "{line}"
+    );
     assert!(!line.contains("no running master pane is seen"), "{line}");
     assert!(
         line.contains("whether a master pane runs on it cannot be read"),
@@ -1066,7 +1069,11 @@ fn the_live_view_says_it_is_reading_before_its_first_frame() {
         !pty.text().contains("WAITING ON A PERSON"),
         "the reading line came before the frame, not with it"
     );
-    assert!(pty.text().contains("forge-runner top — "), "{:?}", pty.text());
+    assert!(
+        pty.text().contains("forge-runner top — "),
+        "{:?}",
+        pty.text()
+    );
     assert!(
         pty.wait_for("WAITING ON A PERSON", std::time::Duration::from_secs(20)),
         "no frame followed: {:?}",
