@@ -40,6 +40,9 @@ pub fn size() -> Option<Screen> {
 pub struct Shown {
     pub rows: Vec<String>,
     pub next: usize,
+    /// How many rows open the screen before the body: the header, and the
+    /// page row where there is one.
+    pub top: usize,
     /// How many rows under the page row are headings carried from earlier
     /// pages rather than rows of this one.
     pub carried: usize,
@@ -57,9 +60,11 @@ pub fn screen(frame: &[String], size: Option<Screen>, page: usize) -> Shown {
             1.min(rows.len()),
             "the screen's size could not be read, so this frame is not fitted to it".into(),
         );
+        let top = 2.min(rows.len());
         return Shown {
             rows,
             next: 0,
+            top,
             carried: 0,
         };
     };
@@ -84,11 +89,13 @@ pub fn screen(frame: &[String], size: Option<Screen>, page: usize) -> Shown {
         .collect();
     let total = header.len() + body.len();
     if total <= size.rows {
+        let top = header.len();
         let mut rows = header;
         rows.extend(body.into_iter().map(|r| r.text));
         return Shown {
             rows,
             next: 0,
+            top,
             carried: 0,
         };
     }
@@ -123,17 +130,29 @@ pub fn screen(frame: &[String], size: Option<Screen>, page: usize) -> Shown {
         // page count on the room the page row leaves: settle it in two passes.
         let mut rows_for_status = 1;
         let mut fitted = None;
+        // The height reserved is the tallest page row of the plan, never the
+        // one this page's number takes: a plan that moved with the page number
+        // would cut two neighbouring pages from different plans, and rows
+        // between them would be skipped or shown twice (whole-set read at
+        // 0cf8087). A shorter page row leaves its page a row short, not wrong.
         for _ in 0..2 {
             let Some(pages) = paged(rows_for_status) else {
                 break;
             };
-            let at = page % pages.len();
-            let text = wrap(&status(at + 1, pages.len()), size.cols);
-            if text.len() == rows_for_status {
-                fitted = Some((pages, at, text));
+            let n = pages.len();
+            // Page numbers of one digit count differ only in their digits, so
+            // they break at the same spaces: one of each count is every height.
+            let tallest = std::iter::successors(Some(1usize), |at| at.checked_mul(10))
+                .take_while(|&at| at <= n)
+                .map(|at| wrap(&status(at, n), size.cols).len())
+                .max()
+                .unwrap_or(1);
+            if tallest == rows_for_status {
+                let at = page % n;
+                fitted = Some((pages, at, wrap(&status(at + 1, n), size.cols)));
                 break;
             }
-            rows_for_status = text.len();
+            rows_for_status = tallest;
         }
         let Some((pages, at, text)) = fitted else {
             continue;
@@ -161,12 +180,14 @@ struct Page {
 
 impl Page {
     fn shown(&self, top: Vec<String>, body: &[Row], next: usize) -> Shown {
+        let opened = top.len();
         let mut rows = top;
         rows.extend(self.carried.iter().cloned());
         rows.extend(body[self.from..self.to].iter().map(|r| r.text.clone()));
         Shown {
             rows,
             next,
+            top: opened,
             carried: self.carried.len(),
         }
     }
@@ -595,6 +616,34 @@ mod tests {
                 .any(|(_, own)| own[0].starts_with("    run")),
             "some page opens among alpha's runs: {pages:?}"
         );
+    }
+
+    /// Consult at 0cf8087 (whole-set read): the page row's height must not
+    /// depend on which page it names, or "page 9" and "page 10" are cut from
+    /// two different plans and a row between them is skipped or shown twice.
+    /// Every size in a sweep shows every row once, in order.
+    #[test]
+    fn every_row_is_shown_once_whatever_the_page_number_costs_the_page_row() {
+        let mut f = vec!["head".to_string()];
+        f.extend((1..=40).map(|i| format!("  r{i}")));
+        for cols in 40..=90 {
+            for rows in [5, 7] {
+                let size = Some(Screen { cols, rows });
+                let body: Vec<String> = f[1..].iter().flat_map(|l| wrap(l, cols)).collect();
+                let (mut page, mut seen, mut n) = (0, Vec::new(), 0);
+                loop {
+                    let s = screen(&f, size, page);
+                    assert!(s.rows.len() <= rows, "{cols}x{rows}: {:?}", s.rows);
+                    seen.extend(s.rows[s.top + s.carried..].iter().cloned());
+                    page = s.next;
+                    n += 1;
+                    if page == 0 || n > 400 {
+                        break;
+                    }
+                }
+                assert_eq!(seen, body, "{cols}x{rows}");
+            }
+        }
     }
 
     /// Boundary: where the carried headings would fill a page, the outermost
