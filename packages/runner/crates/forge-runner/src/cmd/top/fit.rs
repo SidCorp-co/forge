@@ -5,7 +5,8 @@
 //! nothing counted: at 120x40 the box's 137-line frame took 217 rows, and only
 //! its last 25 stayed in view (judge at d7da543). Here every line is wrapped to
 //! the screen's width, so nothing is cut, and a frame taller than the screen
-//! is shown one page per redraw, the page it is on said under the header.
+//! is shown one page per redraw, the page it is on said under the header,
+//! and a page after the first carries the headings its first row sits under.
 
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
@@ -39,6 +40,9 @@ pub fn size() -> Option<Screen> {
 pub struct Shown {
     pub rows: Vec<String>,
     pub next: usize,
+    /// How many rows under the page row are headings carried from earlier
+    /// pages rather than rows of this one.
+    pub carried: usize,
 }
 
 /// The page row's wording, from the page shown and the page count.
@@ -53,18 +57,40 @@ pub fn screen(frame: &[String], size: Option<Screen>, page: usize) -> Shown {
             1.min(rows.len()),
             "the screen's size could not be read, so this frame is not fitted to it".into(),
         );
-        return Shown { rows, next: 0 };
+        return Shown {
+            rows,
+            next: 0,
+            carried: 0,
+        };
     };
     let (header, body) = match frame.split_first() {
         Some((h, b)) => (wrap(h, size.cols), b),
         None => (Vec::new(), frame),
     };
-    let body: Vec<String> = body.iter().flat_map(|l| wrap(l, size.cols)).collect();
+    let lines = body;
+    let body: Vec<Row> = lines
+        .iter()
+        .enumerate()
+        .flat_map(|(src, l)| {
+            wrap(l, size.cols)
+                .into_iter()
+                .enumerate()
+                .map(move |(i, text)| Row {
+                    text,
+                    src,
+                    first: i == 0,
+                })
+        })
+        .collect();
     let total = header.len() + body.len();
     if total <= size.rows {
         let mut rows = header;
-        rows.extend(body);
-        return Shown { rows, next: 0 };
+        rows.extend(body.into_iter().map(|r| r.text));
+        return Shown {
+            rows,
+            next: 0,
+            carried: 0,
+        };
     }
     // Room for the body under the header and a page row, trying the full page
     // row, then a short one, then no header, then the body alone, so every
@@ -86,44 +112,136 @@ pub fn screen(frame: &[String], size: Option<Screen>, page: usize) -> Shown {
         let head: &[String] = if with_header { &header } else { &[] };
         let paged = |status_rows: usize| {
             let room = size.rows.checked_sub(head.len() + status_rows)?;
-            (room > 0).then(|| (room, body.len().div_ceil(room).max(1)))
+            (room > 0).then(|| paginate(lines, &body, room, size.cols))
         };
         let Some(status) = status else {
-            let (room, pages) = paged(0).expect("a screen of one row holds one row");
-            let at = page % pages;
-            return Shown {
-                rows: body.into_iter().skip(at * room).take(room).collect(),
-                next: (at + 1) % pages,
-            };
+            let pages = paged(0).expect("a screen of one row holds one row");
+            let at = page % pages.len();
+            return pages[at].shown(Vec::new(), &body, (at + 1) % pages.len());
         };
         // The page row's height depends on the page count it states, and the
         // page count on the room the page row leaves: settle it in two passes.
         let mut rows_for_status = 1;
         let mut fitted = None;
         for _ in 0..2 {
-            let Some((room, pages)) = paged(rows_for_status) else {
+            let Some(pages) = paged(rows_for_status) else {
                 break;
             };
-            let at = page % pages;
-            let text = wrap(&status(at + 1, pages), size.cols);
+            let at = page % pages.len();
+            let text = wrap(&status(at + 1, pages.len()), size.cols);
             if text.len() == rows_for_status {
-                fitted = Some((room, pages, at, text));
+                fitted = Some((pages, at, text));
                 break;
             }
             rows_for_status = text.len();
         }
-        let Some((room, pages, at, text)) = fitted else {
+        let Some((pages, at, text)) = fitted else {
             continue;
         };
-        let mut rows = head.to_vec();
-        rows.extend(text);
-        rows.extend(body.into_iter().skip(at * room).take(room));
-        return Shown {
-            rows,
-            next: (at + 1) % pages,
-        };
+        let mut top = head.to_vec();
+        top.extend(text);
+        return pages[at].shown(top, &body, (at + 1) % pages.len());
     }
     unreachable!("the last plan, the body alone, always fits")
+}
+
+/// One wrapped row of the frame's body, and the line it was wrapped from.
+struct Row {
+    text: String,
+    src: usize,
+    first: bool,
+}
+
+/// One page: the body rows `from..to`, under the headings carried onto it.
+struct Page {
+    carried: Vec<String>,
+    from: usize,
+    to: usize,
+}
+
+impl Page {
+    fn shown(&self, top: Vec<String>, body: &[Row], next: usize) -> Shown {
+        let mut rows = top;
+        rows.extend(self.carried.iter().cloned());
+        rows.extend(body[self.from..self.to].iter().map(|r| r.text.clone()));
+        Shown {
+            rows,
+            next,
+            carried: self.carried.len(),
+        }
+    }
+}
+
+/// What a heading carried onto a later page is marked with.
+pub const CONTINUED: &str = " (continued)";
+
+/// Below this width a carried heading would be mostly its mark, so none is.
+const CARRY_FROM_COLS: usize = 32;
+
+/// The body cut into pages of `room` rows. A page after the first opens with
+/// the headings its first row sits under, so a row is never on screen without
+/// the section and the project it belongs to (judge w3, finding 56). Every
+/// page holds at least one body row: where the headings would fill it, the
+/// outermost go first.
+fn paginate(lines: &[String], body: &[Row], room: usize, cols: usize) -> Vec<Page> {
+    let mut pages = Vec::new();
+    let mut from = 0;
+    while from < body.len() {
+        let mut carried = if from == 0 {
+            Vec::new()
+        } else {
+            headings(lines, &body[from], cols)
+        };
+        while carried.len() >= room {
+            carried.remove(0);
+        }
+        let to = (from + room - carried.len()).min(body.len());
+        pages.push(Page { carried, from, to });
+        from = to;
+    }
+    if pages.is_empty() {
+        pages.push(Page {
+            carried: Vec::new(),
+            from: 0,
+            to: 0,
+        });
+    }
+    pages
+}
+
+/// The headings `row` sits under, outermost first, each as its first row
+/// marked continued: the line itself where the page opens partway through
+/// it, then each line above it indented less than the one below it, up to
+/// the section's own unindented heading.
+fn headings(lines: &[String], row: &Row, cols: usize) -> Vec<String> {
+    if cols < CARRY_FROM_COLS {
+        return Vec::new();
+    }
+    let mark = |l: &str| {
+        let first = wrap(l, cols - CONTINUED.len()).swap_remove(0);
+        format!("{first}{CONTINUED}")
+    };
+    let indent = |l: &str| l.len() - l.trim_start_matches(' ').len();
+    let mut out = Vec::new();
+    let mut under = indent(&lines[row.src]);
+    if !row.first {
+        out.push(mark(&lines[row.src]));
+    }
+    for l in lines[..row.src].iter().rev() {
+        if under == 0 {
+            break;
+        }
+        if l.trim().is_empty() {
+            continue;
+        }
+        let i = indent(l);
+        if i < under {
+            out.push(mark(l));
+            under = i;
+        }
+    }
+    out.reverse();
+    out
 }
 
 /// The terminal cells `s` takes: a wide character two, a combining mark none.
@@ -135,7 +253,7 @@ pub fn cells(s: &str) -> usize {
 /// stop of eight, and every other control character written out as its
 /// escape, so text read from core can neither move the cursor nor measure
 /// shorter than it draws.
-fn printable(line: &str) -> String {
+pub fn printable(line: &str) -> String {
     let mut out = String::with_capacity(line.len());
     let mut col = 0;
     for c in line.chars() {
@@ -374,7 +492,12 @@ mod tests {
                 s.rows[1]
             );
             assert!(s.rows[1].contains("--once"), "{}", s.rows[1]);
-            seen.extend(s.rows.into_iter().skip(2));
+            assert!(
+                s.rows[2..2 + s.carried].iter().all(|r| r.ends_with(CONTINUED)),
+                "{:?}",
+                s.rows
+            );
+            seen.extend(s.rows.into_iter().skip(2 + s.carried));
             page = s.next;
             if page == 0 {
                 break;
@@ -399,6 +522,85 @@ mod tests {
             assert_eq!(&s.rows[2..], want, "page {page}");
             assert_eq!(s.next, (page + 1) % 3);
         }
+    }
+
+    /// Judge w3's finding 56: a page opening mid-section, and one opening
+    /// partway through a wrapped row, each open with the section and the
+    /// project line the rows belong to, marked as carried, and still show
+    /// every row of the frame once.
+    #[test]
+    fn a_later_page_carries_the_headings_its_rows_sit_under() {
+        let mut f = vec!["head".to_string(), "PROJECTS".to_string()];
+        f.push("  alpha".to_string());
+        f.extend((1..=5).map(|i| format!("    run {i}")));
+        f.push(String::new());
+        f.push("WAITING ON A PERSON".to_string());
+        f.push("  questions  mowment: 3 open".to_string());
+        f.extend((1..=3).map(|i| {
+            format!("      human blocker, question q{i}: {}", "word ".repeat(45).trim_end())
+        }));
+        let size = Some(Screen { cols: 120, rows: 8 });
+        let body: Vec<String> = f[1..].iter().flat_map(|l| wrap(l, 120)).collect();
+        let (mut page, mut seen, mut pages) = (0, Vec::new(), Vec::new());
+        loop {
+            let s = screen(&f, size, page);
+            assert!(s.rows.len() <= 8 && widest(&s.rows) <= 120, "{:?}", s.rows);
+            assert!(s.rows[1].starts_with("page "), "one page row: {:?}", s.rows);
+            let carried = s.rows[2..2 + s.carried].to_vec();
+            let own = s.rows[2 + s.carried..].to_vec();
+            seen.extend(own.clone());
+            pages.push((carried, own));
+            page = s.next;
+            if page == 0 {
+                break;
+            }
+        }
+        assert_eq!(seen, body, "every row once, in order");
+        assert!(pages[0].0.is_empty(), "the first page carries nothing");
+        for (carried, own) in &pages[1..] {
+            let first = &own[0];
+            if first.starts_with("    run") {
+                assert_eq!(
+                    carried,
+                    &["PROJECTS (continued)", "  alpha (continued)"],
+                    "{own:?}"
+                );
+            }
+            if first.starts_with("        ") {
+                // Partway through a question: its own first row, then the
+                // project's questions line, then the section.
+                assert_eq!(carried[0], "WAITING ON A PERSON (continued)", "{carried:?}");
+                assert_eq!(carried[1], "  questions  mowment: 3 open (continued)");
+                assert!(
+                    carried[2].starts_with("      human blocker, question q")
+                        && carried[2].ends_with(CONTINUED),
+                    "{carried:?}"
+                );
+            }
+        }
+        assert!(
+            pages[1..].iter().any(|(_, own)| own[0].starts_with("        ")),
+            "some page opens partway through a wrapped question: {pages:?}"
+        );
+        assert!(
+            pages[1..].iter().any(|(_, own)| own[0].starts_with("    run")),
+            "some page opens among alpha's runs: {pages:?}"
+        );
+    }
+
+    /// Boundary: where the carried headings would fill a page, the outermost
+    /// go and the page still holds a row of its own; below the width a mark
+    /// fits in, nothing is carried.
+    #[test]
+    fn carried_headings_never_crowd_out_a_page_of_its_rows() {
+        let mut f = vec!["h".to_string(), "S".to_string(), "  p".to_string(), "    q".to_string()];
+        f.extend((1..=6).map(|i| format!("      r{i}")));
+        let s = screen(&f, Some(Screen { cols: 40, rows: 4 }), 1);
+        assert_eq!(s.rows.len(), 4, "{:?}", s.rows);
+        assert!(s.carried < 2, "{:?}", s.rows);
+        assert!(s.rows[2 + s.carried].starts_with("  "), "{:?}", s.rows);
+        let narrow = screen(&f, Some(Screen { cols: 20, rows: 5 }), 1);
+        assert_eq!(narrow.carried, 0, "{:?}", narrow.rows);
     }
 
     /// Consult F1: a screen too small for the header and a page row still
