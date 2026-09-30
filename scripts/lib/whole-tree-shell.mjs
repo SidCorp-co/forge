@@ -9,8 +9,9 @@
 // - spawn options: only a known-safe set (no argv0, no shell, no uid/gid);
 // - a shell string: only `exec`/`execSync` through Node's /bin/sh where that is dash, plain words;
 // - the program resolves to a system path, and is one of git, grep, node;
-// - the environment equals the worker's base but for keys a program is allowed to move;
-// - the program's own grammar (git's subcommand table, grep's options, node's options) holds.
+// - the environment equals the worker's base but for keys a program may move; git's is an allow list;
+// - the program's own grammar holds: git's subcommand table, where in the root's own repository only
+//   a ref reader or a tree reader narrowed to plain relative pathspecs lists less than the root.
 
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
@@ -118,20 +119,23 @@ const STARTUP_KEYS = [
 ];
 /** Keys naming an editor or pager a program launches: allowed only when they run nothing. */
 const EDITOR_KEYS = ['EDITOR', 'VISUAL', 'PAGER', 'GIT_EDITOR', 'GIT_SEQUENCE_EDITOR'];
-/** git environment keys naming a program git runs, refused whenever set. */
-const GIT_PROGRAM_ENV = [
-  'GIT_EXTERNAL_DIFF',
-  'GIT_SSH_COMMAND',
-  'GIT_SSH',
-  'GIT_PROXY_COMMAND',
-  'GIT_DIR',
-  'GIT_WORK_TREE',
-  'GIT_OBJECT_DIRECTORY',
-  'GIT_ALTERNATE_OBJECT_DIRECTORIES',
-  'GIT_CONFIG_PARAMETERS',
-  'GIT_CONFIG_COUNT',
-  'GIT_EXEC_PATH',
-];
+/** The only `GIT_*` keys git's environment may hold, whoever set them: an allow list, since every
+ * other one (an index, a template, a config file, an object store, a program) moves what git reads.
+ * The two editor keys are allowed too, only as `true` or `:`. */
+const GIT_ENV_ALLOWED = new Set([
+  'GIT_AUTHOR_NAME',
+  'GIT_AUTHOR_EMAIL',
+  'GIT_AUTHOR_DATE',
+  'GIT_COMMITTER_NAME',
+  'GIT_COMMITTER_EMAIL',
+  'GIT_COMMITTER_DATE',
+  'GIT_TERMINAL_PROMPT',
+  'GIT_CONFIG_NOSYSTEM',
+  'GIT_NO_LAZY_FETCH',
+  'GIT_ALLOW_PROTOCOL',
+  'GIT_CONFIG_GLOBAL',
+]);
+const GIT_EDITOR_ENV = new Set(['GIT_EDITOR', 'GIT_SEQUENCE_EDITOR']);
 const runsProgram = (key) =>
   key.startsWith('LD_') || key.startsWith('DYLD_') || key.startsWith('BASH_FUNC_');
 
@@ -198,7 +202,7 @@ const GIT_SUBCOMMANDS = {
     flags: ['--cached', '--name-only', '--no-renames', '--no-color', '-z'],
     valued: { '--unified': 'eq', '--diff-filter': 'eq' },
     min: 0,
-    max: 2,
+    max: Infinity,
   },
   fetch: {
     flags: ['-q', '--quiet', '--no-tags', '--tags', '--prune', '-p', '--all', '--force', '-f'],
@@ -222,7 +226,7 @@ const GIT_SUBCOMMANDS = {
   },
   'ls-remote': { flags: ['--tags'], valued: {}, min: 1, max: 2, repos: 'remote' },
   'ls-tree': {
-    flags: ['--name-only', '-r', '--full-tree'],
+    flags: ['--name-only', '-r'],
     valued: {},
     min: 1,
     max: Infinity,
@@ -461,7 +465,14 @@ function envOutside(bin, env, baseEnv) {
   for (const key of EDITOR_KEYS)
     if (added(key) && !NO_EDITOR.test(cur[key])) return `the spawn sets \`${key}\` to a program`;
   if (bin === 'git')
-    for (const key of GIT_PROGRAM_ENV) if (added(key)) return `the spawn sets \`${key}\` for git`;
+    for (const key of Object.keys(cur)) {
+      if (!key.startsWith('GIT_') || GIT_ENV_ALLOWED.has(key)) continue;
+      if (GIT_EDITOR_ENV.has(key) && NO_EDITOR.test(cur[key] ?? '')) continue;
+      return `git's environment holds \`${key}\`, which its allow list does not name`;
+    }
+  if (bin === 'grep')
+    for (const key of Object.keys(cur))
+      if (key.startsWith('GREP_')) return `grep's environment holds \`${key}\``;
   return null;
 }
 
@@ -499,113 +510,162 @@ function gitListing(argv, cwd, repoRoot, env, base, refuse) {
 
   const parsed = parseGit(spec, tail);
   if (parsed.error) return refuse(`\`git ${sub}\`: ${parsed.error}`);
+  if (dir === null) return refuse(`\`git ${sub}\` from a directory the guard cannot resolve`);
 
-  // Where git runs, and the repository it belongs to.
-  const top = dir === null ? null : repoTop(dir);
+  // The configuration every git call reads, `clone` and `init` included: a template directory or
+  // a hooks path set there runs a program whichever repository the call touches.
+  const cfgBad = configTrust(env, base);
+  if (cfgBad) return refuse(`\`git ${sub}\` reading ${cfgBad}`);
+
   const via = `git ${sub}`;
-  const found = [];
+  const operands = repoOperands(sub, spec, parsed, dir, repoRoot);
+  if (operands.refusal) return refuse(`\`${via}\` ${operands.refusal}`);
+  if (spec.repos === 'clone' || spec.repos === 'init' || sub === 'check-ref-format')
+    return operands.entries;
 
-  // A subcommand that runs in a repository trusts it, or is refused where it cannot be trusted.
-  // Where git finds no repository (`top` is null) it errors and enumerates nothing, so the call is
-  // read as listing nothing but any repository it names as an operand.
-  const runsHere =
-    spec.repos !== 'clone' && spec.repos !== 'init' && sub !== 'check-ref-format' && top !== null;
-  if (runsHere) {
-    if (!withinRoot(repoRoot, top)) {
-      const bad = repoTrust(top, repoRoot);
-      if (bad) return refuse(`\`${via}\` in a repository ${bad}`);
-    }
-    const cfgBad = configTrust(env, base);
-    if (cfgBad) return refuse(`\`${via}\` reading ${cfgBad}`);
+  const top = repoTop(dir);
+  if (top !== null && isRootRepo(top, repoRoot)) {
+    // A work tree outside the root that reads the root's git directory reads the root's index and
+    // objects under paths of its own, so no pathspec of it narrows what is read.
+    if (!withinRoot(repoRoot, top))
+      return refuse(`\`${via}\` in ${short(top)}, whose git directory is the root's`);
+    const listed = inRootListing(sub, parsed, dir, top, via);
+    if (listed.refusal) return refuse(`\`${via}\` in the root's own repository ${listed.refusal}`);
+    return [...listed.entries, ...operands.entries];
   }
-
-  // `show` prints an object: `REV:path` reads that path in a tree, `REV:` or a bare commit the
-  // whole tree. Its `REV:path` is how the real tests read a named file out of a fixture.
-  if (sub === 'show' && runsHere) {
-    const obj = parsed.operands.find(isWord) ?? '';
-    if (!obj.includes(':')) return refuse(`\`git show ${short(obj)}\` prints a whole commit`);
-    const path = obj.slice(obj.indexOf(':') + 1);
-    // `REV:path` reads that path from the repository top; `REV:` or a climbing path reads the tree.
-    const fromCwd = /^\.\.?\//.test(path);
-    if (path === '' || path.includes('..') || (fromCwd && dir === null))
-      found.push(at(top, `git show ${obj}`));
-    else {
-      const p = physical(isAbsolute(path) ? path : `${fromCwd ? dir : top}/${path}`);
-      found.push(
-        p === null ? root(`git show at an unresolvable path`, repoRoot) : at(p, `git show ${obj}`),
-      );
-    }
+  // A repository outside the root: trusted only with no alternate, hook or off-list config key, and
+  // then it lists its own top and every operand naming an existing directory.
+  if (top !== null) {
+    const bad = repoTrust(top, repoRoot);
+    if (bad) return refuse(`\`${via}\` in a repository ${bad}`);
   }
+  const found = top === null ? [] : [at(top, via)];
+  for (const word of parsed.operands) {
+    if (!isWord(word)) continue;
+    const p = physical(isAbsolute(word) ? word : `${dir}/${word}`);
+    if (p === null)
+      return refuse(`\`${via}\` handed \`${short(word)}\`, which the guard cannot resolve`);
+    if (isDir(p)) found.push(at(p, `${via} ${short(word)}`));
+  }
+  return [...found, ...operands.entries];
+}
 
-  // A tree-reader lists its pathspecs, or the repo top when handed none.
-  if (GIT_TREE_READERS.has(sub) && runsHere) {
-    const specs = pathspecsOf(sub, parsed, tail);
-    if (specs.length === 0) {
-      found.push(at(top, via));
-    } else {
-      for (const spec2 of specs) {
-        const placed = pathspecDir(spec2, dir, top, via, repoRoot);
-        if (placed === null) return refuse(`\`${via}\` handed the climbing pathspec \`${spec2}\``);
-        found.push(placed);
+/** git subcommands that only read refs, objects or history in the root's repository, and list none
+ * of its tree. Every subcommand off this set and the tree readers writes it, or runs its hooks. */
+const GIT_ROOT_REFS = new Set(['log', 'rev-parse', 'rev-list', 'for-each-ref', 'merge-base']);
+/** git subcommands that enumerate the work tree, the index or a tree object. */
+const GIT_TREE_READERS = new Set(['ls-files', 'ls-tree', 'grep', 'diff', 'show']);
+/** A pathspec the guard places: plain relative words, no magic, no glob, no `..`. */
+const PLAIN_PATH = /^(?!\/)(?!:)[A-Za-z0-9._@%+,=-][A-Za-z0-9._/@%+,=-]*$/;
+const plainPath = (p) => isWord(p) && PLAIN_PATH.test(p) && !p.split('/').includes('..');
+
+/**
+ * What a git call in the root's own repository lists: nothing for a ref reader, the directories a
+ * tree reader's plain pathspecs name, and otherwise a refusal. A tree reader handed no pathspec, a
+ * word git may read as either a revision or a path, a tree-ish holding `:` or a pathspec that is not
+ * a plain relative path reads the whole tree, so the refusal is the root.
+ */
+function inRootListing(sub, parsed, dir, top, via) {
+  if (GIT_ROOT_REFS.has(sub)) return { entries: [] };
+  if (!GIT_TREE_READERS.has(sub)) return { refusal: 'changes it or runs its hooks' };
+  const { before, after } = parsed;
+  const words = [...before, ...after];
+  if (!words.every(isWord)) return { refusal: 'with an operand that is not a word' };
+  let revisions = [];
+  let paths = [];
+  if (sub === 'show') {
+    if (words.length !== 1) return { refusal: 'with other than one object' };
+    const obj = words[0];
+    const colon = obj.indexOf(':');
+    if (colon === -1) return { refusal: `prints the whole commit \`${short(obj)}\`` };
+    revisions = [obj.slice(0, colon)];
+    const path = obj.slice(colon + 1);
+    const fromCwd = path.startsWith('./');
+    const rest = fromCwd ? path.slice(2) : path;
+    if (!plainPath(rest)) return { refusal: `reads the tree at \`${short(obj)}\`` };
+    paths = [{ word: rest, from: fromCwd ? dir : top }];
+  } else if (sub === 'ls-files') {
+    paths = words.map((word) => ({ word, from: dir }));
+  } else if (sub === 'ls-tree') {
+    revisions = before.slice(0, 1);
+    paths = [...before.slice(1), ...after].map((word) => ({ word, from: dir }));
+  } else {
+    // grep takes its pattern as the first operand unless `-e` named it; diff takes none.
+    const rest = sub === 'grep' && !parsed.sawPattern ? before.slice(1) : before;
+    if (!parsed.dashdash && sub === 'grep' && rest.length > 0)
+      return {
+        refusal: `handed \`${short(rest[0])}\` with no \`--\`, which git reads as a path or a revision`,
+      };
+    revisions = rest;
+    paths = after.map((word) => ({ word, from: dir }));
+  }
+  const tree = revisions.find((r) => r.includes(':'));
+  if (tree !== undefined) return { refusal: `reads the tree object \`${short(tree)}\`` };
+  if (paths.length === 0) return { refusal: 'with no pathspec, so it reads the whole tree' };
+  const entries = [];
+  for (const { word, from } of paths) {
+    if (!plainPath(word))
+      return {
+        refusal: `handed the pathspec \`${short(word)}\`, which is not a plain relative path`,
+      };
+    // git normalizes a pathspec lexically, never through a symlink, so it is placed that way.
+    entries.push(at(resolve(from, word), `${via} ${short(word)}`));
+  }
+  return { entries };
+}
+
+/** The git directories a repository's top leads to: its `.git` (or the directory a `.git` file names),
+ * the common directory, and where its object store really is. */
+function gitDirsOf(top) {
+  const out = [];
+  const gitPath = join(top, '.git');
+  let gitDir = top;
+  try {
+    if (existsSync(gitPath)) {
+      if (lstatSync(gitPath).isDirectory()) gitDir = gitPath;
+      else {
+        const pointer = /^gitdir:\s*(.+)$/m.exec(readFileSync(gitPath, 'utf8'));
+        gitDir = pointer ? resolve(top, pointer[1].trim()) : gitPath;
       }
     }
+  } catch {
+    return null;
   }
-
-  // Repositories named as operands (clone source/dest, remotes).
-  found.push(...repoOperands(sub, spec, parsed, dir, repoRoot));
-  return found.filter(Boolean);
+  out.push(gitDir, gitDirOfTop(top));
+  const objects = physical(join(gitDirOfTop(top), 'objects'));
+  if (objects !== null) out.push(objects);
+  return out.map((d) => physical(d) ?? d);
 }
 
-/** git subcommands that enumerate the work tree or the index; every other reads refs or objects. */
-const GIT_TREE_READERS = new Set(['ls-files', 'ls-tree', 'grep', 'diff', 'add', 'rm']);
-
-/** The pathspecs a tree-reader narrows by: its operands, less a leading tree-ish or pattern that
- * comes before `--` for `ls-tree` and `grep`, which name a revision or a search term, not a path. */
-function pathspecsOf(sub, parsed, tail) {
-  const dash = tail.indexOf('--');
-  const before = parsed.operands.filter((o) => dash === -1 || tail.indexOf(o) < dash);
-  const after = dash === -1 ? [] : parsed.operands.filter((o) => tail.indexOf(o) > dash);
-  if (sub === 'ls-tree') return [...before.slice(1), ...after]; // first before-word is the tree-ish
-  if (sub === 'grep') return dash === -1 ? before.slice(1) : after; // a pattern precedes `--`
-  return parsed.operands.filter(isWord);
-}
-
-/** Where one pathspec starts listing: its `:/`·`:(top)` magic read, an exclusion dropped, a glob
- * placed at its base. `null` where it climbs past a wildcard, since its walk's end is unknown. */
-function pathspecDir(spec, base, top, via, repoRoot) {
-  if (!isWord(spec)) return at(base ?? repoRoot, via);
-  let s = spec;
-  let from = base;
-  if (s.startsWith(':')) {
-    const m = /^:(?:\(([^)]*)\)|([/!^]*))(.*)$/s.exec(s);
-    const magic = m[1] === undefined ? [...(m[2] ?? '')] : m[1].split(',');
-    if (magic.some((x) => ['!', '^', 'exclude'].includes(x)))
-      return at(base ?? top, `${via} (exclusion)`);
-    if (magic.some((x) => x === '/' || x === 'top')) from = top;
-    s = m[3];
-  }
-  if (climbsAfterMagic(s)) return null;
-  if (from === null) return at(repoRoot, via);
-  const g = globBase(s || '.');
-  // git normalizes a pathspec's `.`/`..` lexically — it never follows a symlink to resolve a `..`,
-  // unlike the kernel a `node:fs` listing goes through. So the spec is placed by lexical resolution
-  // against the (physical) cwd: `down/..` cancels textually rather than climbing out of the symlink
-  // `down`'s target, matching the set of tracked paths `git ls-files` would enumerate (ISS-1314).
-  const baseAbs = physical(from) ?? from;
-  const p = isAbsolute(g) ? resolve(g) : resolve(baseAbs, g);
-  return at(p, `${via} ${spec}`);
+/** Whether a repository is the root's own: its top inside the root, or any of its git directories
+ * inside the root or one of the root's own (a linked worktree, or a gitfile naming the root's). */
+function isRootRepo(top, repoRoot) {
+  if (withinRoot(repoRoot, top)) return true;
+  const mine = gitDirsOf(top);
+  const roots = gitDirsOf(repoRoot) ?? [];
+  if (mine === null) return true;
+  return mine.some(
+    (d) => withinRoot(repoRoot, d) || roots.some((r) => d === r || d.startsWith(`${r}${sep}`)),
+  );
 }
 
 function parseGit(spec, tail) {
   const operands = [];
+  const after = [];
   let understood = true;
   let error = null;
   let sawMessage = false;
   let sawNoEdit = false;
+  let sawPattern = false;
   let dashdash = false;
   for (let k = 0; k < tail.length; k++) {
     const a = tail[k];
-    if (dashdash || !isWord(a) || !a.startsWith('-') || a === '-') {
+    if (dashdash) {
+      operands.push(a);
+      after.push(a);
+      continue;
+    }
+    if (!isWord(a) || !a.startsWith('-') || a === '-') {
       operands.push(a);
       continue;
     }
@@ -620,6 +680,7 @@ function parseGit(spec, tail) {
     }
     if (Object.hasOwn(spec.valued, flag)) {
       if (['-m', '-am', '--message'].includes(flag)) sawMessage = true;
+      if (flag === '-e') sawPattern = true;
       const kind = spec.valued[flag];
       if ((kind === 'next' || kind === 'both') && !a.includes('=')) k++;
       continue;
@@ -632,39 +693,46 @@ function parseGit(spec, tail) {
   else if (spec.needsMessage && !sawMessage) error = 'no message, so an editor would open';
   else if (spec.needsMessageOrNoEdit && !sawMessage && !sawNoEdit)
     error = 'no message or --no-edit, so an editor would open';
-  return { operands, error };
+  const before = operands.slice(0, operands.length - after.length);
+  return { operands, before, after, dashdash, sawPattern, error };
 }
 
-/** Repositories a subcommand names as operands: clone's source/dest, a remote's URL. */
+/** Repositories a subcommand names as operands, each listed at its top: clone's source and init's
+ * target, a remote. A remote that is not a path on this machine is refused, since what it serves is
+ * not read here. */
 function repoOperands(sub, spec, parsed, dir, repoRoot) {
   const via = `git ${sub}`;
   const words = parsed.operands.filter(isWord);
   const entries = [];
+  let refusal = null;
   const local = (word) => {
-    if (word === undefined) return;
-    // A remote URL (undefined) reads over the network and lists nothing of a local tree; only a
-    // local repository (a path or a remote name resolving to one) is read here.
+    if (word === undefined || refusal) return;
     const t = localRepoTop(word, dir, repoRoot);
-    if (t === null || t === undefined) return;
-    entries.push(at(t, `${via} of a local repository`));
-  };
-  const targetDir = (word, label) => {
-    if (!isWord(word) || dir === null) return;
-    const p = physical(isAbsolute(word) ? word : `${dir}/${word}`);
-    if (p !== null && isDir(p)) entries.push(at(p, `${via} ${label}`));
+    if (t === undefined) refusal = `names the remote \`${short(word)}\`, which is not a path`;
+    else if (t !== null) entries.push(at(t, `${via} of a local repository`));
   };
   if (spec.repos === 'clone') {
     local(words[0]);
-    targetDir(words[1], 'destination');
+    const dest = words[1];
+    if (isWord(dest)) {
+      const p = physical(isAbsolute(dest) ? dest : `${dir}/${dest}`);
+      if (p === null) refusal = `clones into \`${short(dest)}\`, which the guard cannot resolve`;
+      else if (isDir(p)) entries.push(at(p, `${via} destination`));
+    }
   } else if (spec.repos === 'init') {
-    targetDir(words[0], 'target');
+    const target =
+      words[0] === undefined
+        ? dir
+        : physical(isAbsolute(words[0]) ? words[0] : `${dir}/${words[0]}`);
+    if (target === null) refusal = 'into a directory the guard cannot resolve';
+    else entries.push(at(target, `${via} target`));
   } else if (spec.repos === 'remote') {
     local(words[0]);
   } else if (spec.repos === 'remote-sub') {
     if (['add', 'set-url'].includes(words[0])) local(words.at(-1));
     else if (words[0] === 'set-head' && parsed.operands.includes('-a')) local(words[1]);
   }
-  return entries;
+  return { entries, refusal };
 }
 
 /** A repository argument on this machine as its top: a path or `file://` URL, or a remote name whose
@@ -681,7 +749,7 @@ function localRepoTop(word, dir, repoRoot) {
   if (/^file:\/\//i.test(word)) path = word.replace(/^file:\/\//i, '');
   else if (/^[a-z][a-z0-9+.-]*:\/\//i.test(word) || /^[^/]+:/.test(word)) return undefined;
   const abs = physical(isAbsolute(path) ? path : `${dir}/${path}`);
-  if (abs === null) return null;
+  if (abs === null) return undefined;
   return repoTop(abs) ?? abs;
 }
 
@@ -787,7 +855,8 @@ function configTrust(env, base) {
 /** The system and global config files git reads under `env`, in order, that exist. */
 export function gitConfigFiles(env) {
   const files = [];
-  if (!truthy(env.GIT_CONFIG_NOSYSTEM)) files.push('/etc/gitconfig');
+  if (!truthy(env.GIT_CONFIG_NOSYSTEM))
+    files.push(isWord(env.GIT_CONFIG_SYSTEM) ? env.GIT_CONFIG_SYSTEM : '/etc/gitconfig');
   if (isWord(env.GIT_CONFIG_GLOBAL)) {
     if (env.GIT_CONFIG_GLOBAL !== '/dev/null') files.push(env.GIT_CONFIG_GLOBAL);
   } else {
@@ -968,8 +1037,28 @@ export function printGrammar() {
   L.push('');
   L.push('PATH and NODE_OPTIONS must equal the worker base. The spawn may not SET a startup');
   L.push(`  variable (${STARTUP_KEYS.join(', ')}, LD_*, DYLD_*, BASH_FUNC_*), nor an editor`);
-  L.push(`  (${EDITOR_KEYS.join(', ')}) to anything but true or :, nor for git a program key`);
-  L.push(`  (${GIT_PROGRAM_ENV.join(', ')}). Dropping any key is safe.`);
+  L.push(`  (${EDITOR_KEYS.join(', ')}) to anything but true or :. Dropping any key is safe.`);
+  L.push(`git's environment may hold no GIT_* key but ${[...GIT_ENV_ALLOWED].join(', ')},`);
+  L.push(`  and ${[...GIT_EDITOR_ENV].join(', ')} as true or :. grep's may hold no GREP_* key.`);
+  L.push('');
+  L.push(`In the root's own repository (its top, git directory, common directory or object store`);
+  L.push(`  inside the root or the root's own): ${[...GIT_ROOT_REFS].join(', ')} list nothing;`);
+  L.push(
+    `  ${[...GIT_TREE_READERS].join(', ')} list the plain relative paths they are narrowed to`,
+  );
+  L.push(
+    '  (ls-files by every operand, ls-tree after its tree-ish, grep and diff only after --, show',
+  );
+  L.push(
+    '  by REV:path), and read the whole tree with none, with a tree-ish holding `:`, or with a',
+  );
+  L.push(
+    '  pathspec holding magic, a glob or `..`; every other subcommand is the root. Outside it, a',
+  );
+  L.push(
+    '  call lists its repository top and each operand naming a directory, in a repository with no',
+  );
+  L.push('  alternate, no hook and only listed config keys. A remote must be a path.');
   L.push('');
   L.push('git global options: -C <dir> (repeats), -c core.quotePath=false. Subcommands:');
   for (const [sub, s] of Object.entries(GIT_SUBCOMMANDS)) {

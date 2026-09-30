@@ -149,42 +149,66 @@ describe('the environment against the base', () => {
 
 describe('git, by its subcommand table', () => {
   const g = (...args) => run('git', { args });
-  it('lists the repository top for a tree-reader with no path, and a path operand narrows it', () => {
-    expect(dirsOf(g('ls-files'))).toEqual([ROOT]);
+  it('narrows a tree reader in the root’s repository to plain relative pathspecs, and lists the root with none', () => {
     expect(dirsOf(g('ls-files', 'src'))).toEqual([join(CORE, 'src')]);
-    expect(dirsOf(g('ls-files', '../..'))).toEqual([ROOT]);
-    expect(dirsOf(g('ls-files', ROOT))).toEqual([ROOT]);
-    expect(dirsOf(g('-C', ROOT, 'ls-files'))).toEqual([ROOT]);
-    expect(dirsOf(g('grep', '-l', 'x', 'src'))).toEqual([join(CORE, 'src')]);
-    expect(dirsOf(g('diff', '--name-only'))).toEqual([ROOT]);
-    expect(dirsOf(g('add', '-A'))).toEqual([ROOT]);
+    expect(dirsOf(g('ls-files', '--', 'src'))).toEqual([join(CORE, 'src')]);
+    expect(dirsOf(g('grep', '-l', 'x', '--', 'src'))).toEqual([join(CORE, 'src')]);
+    expect(dirsOf(g('grep', '-l', '-e', 'x', 'HEAD', '--', 'src'))).toEqual([join(CORE, 'src')]);
+    expect(dirsOf(g('grep', '-l', 'x', 'HEAD', '--', 'src'))).toEqual([join(CORE, 'src')]);
+    expect(dirsOf(g('diff', '--name-only', 'HEAD~1', 'HEAD', '--', 'src'))).toEqual([
+      join(CORE, 'src'),
+    ]);
+    expect(dirsOf(g('ls-tree', '-r', 'HEAD', 'src'))).toEqual([join(CORE, 'src')]);
+    for (const args of [['ls-files'], ['-C', ROOT, 'ls-files'], ['diff', '--name-only']])
+      expect(listsRoot(g(...args))).toBe(true);
   });
-  it('reads a pathspec: :/ and a climb reach the root, :(top) and a glob place at their base', () => {
-    expect(listsRoot(g('ls-files', ':/'))).toBe(true);
-    expect(dirsOf(g('ls-files', ':(top)docs'))).toEqual([join(ROOT, 'docs')]);
-    expect(listsRoot(g('ls-files', '../..'))).toBe(true);
-    expect(dirsOf(g('ls-files', '*.md'))).toEqual([CORE]);
-    expect(listsRoot(g('ls-files', 'src/**/../../..'))).toBe(true);
-    // A `..` climb through an in-tree symlink is lexical to git, so it reaches the root — the reader
-    // must not follow the symlink physically and land in the symlink's target instead.
-    expect(listsRoot(g('ls-files', 'src/down/../../../..'))).toBe(true);
+  it('reads a revision as a revision, never as a path (j12 p01, p02, p03)', () => {
+    expect(listsRoot(g('-C', '../..', 'grep', '-l', 'someKey', 'HEAD'))).toBe(true);
+    expect(
+      listsRoot(g('diff', '--name-only', '4b825dc642cb6eb9a060e54bf8d69288fbee4904', 'HEAD')),
+    ).toBe(true);
+    expect(listsRoot(g('grep', '-l', '-e', 'someKey', '../..', 'src'))).toBe(true);
+    expect(listsRoot(g('grep', '-l', 'x', 'src'))).toBe(true);
+    expect(listsRoot(g('ls-tree', '-r', 'HEAD:'))).toBe(true);
+    expect(listsRoot(g('grep', '-l', 'x', 'HEAD:packages', '--', 'core'))).toBe(true);
   });
-  it('reads git show by its object: a named file, and the whole tree for REV: or a bare commit', () => {
+  it('lists the root for a pathspec with magic, a glob, a climb or an absolute path', () => {
+    for (const spec of [
+      ':/',
+      ':(top)docs',
+      '*.md',
+      '../..',
+      '..',
+      'src/**',
+      'src/down/../../..',
+      ROOT,
+    ])
+      expect(listsRoot(g('ls-files', '--', spec))).toBe(true);
+    expect(listsRoot(g('ls-tree', '-r', '--full-tree', 'HEAD', '.'))).toBe(true);
+  });
+  it('reads git show by its object: a plain path, and the root for REV:, a climb or a bare commit', () => {
     expect(dirsOf(g('show', 'HEAD:CHANGELOG.md'))).toEqual([join(ROOT, 'CHANGELOG.md')]);
-    expect(dirsOf(g('show', 'HEAD:'))).toEqual([ROOT]);
-    expect(listsRoot(g('show', 'HEAD'))).toBe(true);
+    expect(dirsOf(g('show', 'HEAD:./src'))).toEqual([join(CORE, 'src')]);
+    for (const obj of ['HEAD:', 'HEAD', 'HEAD:../x', 'HEAD:./'])
+      expect(listsRoot(g('show', obj))).toBe(true);
   });
-  it('lists nothing of the tree for a ref, object or config subcommand', () => {
+  it('lists nothing for a ref reader in the root’s repository, and the root for any other subcommand', () => {
     for (const args of [
       ['rev-parse', 'HEAD'],
-      ['symbolic-ref', '--short', 'HEAD'],
+      ['log', '--oneline', '-n', '1'],
+      ['merge-base', 'a', 'b'],
+      ['for-each-ref'],
+    ])
+      expect(g(...args)).toEqual([]);
+    for (const args of [
       ['commit', '-m', 'x'],
       ['checkout', '-b', 'iss'],
       ['config', 'user.name', 'x'],
-      ['merge-base', 'a', 'b'],
       ['tag', '--list'],
+      ['symbolic-ref', '--short', 'HEAD'],
+      ['add', '-A'],
     ])
-      expect(listsRoot(g(...args))).toBe(false);
+      expect(listsRoot(g(...args))).toBe(true);
   });
   it('refuses a subcommand, option, count or -c setting off the table', () => {
     for (const args of [
@@ -198,21 +222,82 @@ describe('git, by its subcommand table', () => {
     ])
       expect(listsRoot(g(...args))).toBe(true);
   });
-  it('lists a local repository named as a clone source, and nothing for a remote URL fetch', () => {
+  it('lists a local repository named as a clone source, and refuses a remote that is not a path', () => {
     expect(
       dirsOf(run('git', { args: ['clone', FIXTURE, join(FIXTURE, '..', 'clone-dest')] })),
     ).toContain(FIXTURE);
-    expect(run('git', { args: ['fetch', 'https://github.com/o/r.git'], cwd: FIXTURE })).toEqual([]);
+    expect(listsRoot(run('git', { args: ['clone', ROOT, join(FIXTURE, '..', 'x')] }))).toBe(true);
+    expect(
+      listsRoot(run('git', { args: ['fetch', 'https://github.com/o/r.git'], cwd: FIXTURE })),
+    ).toBe(true);
   });
   it('refuses a clone that borrows the objects of a repository it names by option', () => {
     const dest = join(FIXTURE, '..', 'clone-ref-dest');
     for (const ref of [['--reference', ROOT], [`--reference=${ROOT}`]])
       expect(listsRoot(run('git', { args: ['clone', ...ref, FIXTURE, dest] }))).toBe(true);
   });
-  it('lists nothing for git in a trusted fixture, and refuses one whose config runs a program', () => {
-    expect(run('git', { args: ['ls-files'], cwd: FIXTURE }).length).toBe(1); // its own top, not this root
-    expect(listsRoot(run('git', { args: ['ls-files'], cwd: FIXTURE }))).toBe(false);
+  it('lists a trusted fixture’s own top, and refuses one whose config runs a program', () => {
+    expect(dirsOf(run('git', { args: ['ls-files'], cwd: FIXTURE }))).toEqual([FIXTURE]);
     expect(listsRoot(run('git', { args: ['ls-files'], cwd: RIGGED }))).toBe(true);
+  });
+  it('reads a repository outside the root whose .git names the root’s git directory as the root’s', () => {
+    const t = realpathSync(mkdtempSync(join(tmpdir(), 'whole-tree-gitfile-')));
+    writeFileSync(join(t, '.git'), `gitdir: ${join(ROOT, '.git')}\n`);
+    expect(listsRoot(run('git', { args: ['ls-files', '--', 'x'], cwd: t }))).toBe(true);
+    rmSync(t, { recursive: true, force: true });
+  });
+});
+
+describe('git’s environment and configuration', () => {
+  it('holds only the GIT_* keys its allow list names, whoever set them (j12 p05, p06, p07)', () => {
+    for (const key of [
+      'GIT_INDEX_FILE',
+      'GIT_TEMPLATE_DIR',
+      'GIT_CONFIG_SYSTEM',
+      'GIT_DIR',
+      'GIT_PAGER',
+    ])
+      expect(
+        listsRoot(
+          run('git', { args: ['-C', FIXTURE, 'ls-files'], env: { ...BASE_ENV, [key]: '/x' } }),
+        ),
+      ).toBe(true);
+    const inBase = { ...base, env: { ...base.env, GIT_INDEX_FILE: '/x' } };
+    expect(
+      listsRoot(
+        run('git', {
+          args: ['-C', FIXTURE, 'ls-files'],
+          env: { ...BASE_ENV, GIT_INDEX_FILE: '/x' },
+          base: inBase,
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      listsRoot(
+        run('git', {
+          args: ['-C', FIXTURE, 'ls-files'],
+          env: {
+            ...BASE_ENV,
+            GIT_AUTHOR_NAME: 'x',
+            GIT_EDITOR: 'true',
+            GIT_CONFIG_GLOBAL: '/dev/null',
+          },
+        }),
+      ),
+    ).toBe(false);
+  });
+  it('reads the system file GIT_CONFIG_SYSTEM names, and a global one, for clone and init too', () => {
+    const t = realpathSync(mkdtempSync(join(tmpdir(), 'whole-tree-cfg-')));
+    writeFileSync(join(t, 'sys'), '[core]\n\thooksPath = /x\n');
+    writeFileSync(join(t, 'global'), '[init]\n\ttemplateDir = /x\n');
+    const env = { HOME: t, PATH: '/usr/bin', GIT_CONFIG_GLOBAL: join(t, 'global') };
+    const baseHere = { ...base, env: { ...env, __WT_BASE_EXECARGV: '' } };
+    for (const args of [
+      ['clone', FIXTURE, join(t, 'c')],
+      ['init', join(t, 'i')],
+    ])
+      expect(listsRoot(run('git', { args, env, base: baseHere }))).toBe(true);
+    rmSync(t, { recursive: true, force: true });
   });
 });
 

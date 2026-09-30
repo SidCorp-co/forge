@@ -64,8 +64,10 @@ The guard watches the `node:fs` calls, the spawns and the workers of a test's pr
 Node process it starts. It reads each spawned program by its arguments, and counts a program it
 cannot see into as the root. Two routes pass through none of that.
 
-- **Native code.** An addon, WASI, or Node's own bindings lists a directory with a call to the
-  kernel that no JavaScript wrapper sees.
+- **Native code.** An addon or a WASI instance lists a directory with a call to the kernel that
+  no JavaScript wrapper sees. Node's own routes round the wrappers are counted as the root instead:
+  `process.binding` of the `fs`, `fs_dir`, `spawn_sync` and `process_wrap` bindings, and
+  `process.execve`.
 - **A listing delegated to a process the test did not start**, such as a server, a daemon or a
   container it talks to over a socket. That process runs outside the test, so nothing the test
   loads is inside it.
@@ -84,7 +86,9 @@ it cannot read.
 The guard reads what git is set to run in the repository it runs in, since a test writing a
 fixture decides that: a hook, `core.hooksPath`, `core.fsmonitor`, a filter, diff or merge driver,
 an editor, a signer and a transport command each count as the root for the subcommands that run
-them, and so does a config file `GIT_CONFIG_GLOBAL` or `GIT_CONFIG_SYSTEM` names.
+them, and so does a config file `GIT_CONFIG_GLOBAL` names. git's environment may hold only the
+`GIT_*` keys on its allow list, so `GIT_CONFIG_SYSTEM`, `GIT_TEMPLATE_DIR` and `GIT_INDEX_FILE`
+are each refused whoever set them.
 
 ISS-1314's ninth build (the closed grammar) also reads the global and system config
 (`~/.gitconfig`, `$XDG_CONFIG_HOME/git/config`, `/etc/gitconfig`) that a call's environment names,
@@ -97,11 +101,12 @@ in a fixture, is now **refused**, and the earlier cost of telling a chosen `HOME
 one is paid by that base.
 
 What the closed grammar leaves is the allowlist itself. `REPO_CONFIG_KEYS` is a hand-maintained
-list of the keys a fixture may set without running a program; a new git config key that reaches a
-program and is not yet matched by `badConfigKey` would be trusted silently. The allowlist is the
-declaration, and it answers to review, not to a checker that can enumerate every future git key.
+list of the keys a fixture may set, and `badConfigKey` refuses every key off it, so a git key added
+upstream is refused until someone reviews it onto the list. The cost is on the other side: a
+fixture setting a harmless key the list does not name is refused, and the test declares or the
+list grows.
 
 | Cost | What it takes |
 |---|---|
 | Reading the user's config | The base-comparison means a git call is judged against the config as it stood at install; a developer whose global config changes mid-run, or a machine whose `/etc/gitconfig` differs from CI's, reads as a changed base and is refused, so the base is re-captured per run rather than pinned. |
-| Maintaining the config-key allowlist | Every git config key that can run a program has to be on the deny path of `badConfigKey`, or a fixture setting it passes; a new such key added to git upstream is a silent gap until the allowlist is narrowed to exclude it. |
+| Maintaining the config-key allowlist | A fixture key off `REPO_CONFIG_KEYS` is refused even when it runs nothing, so each such key is one reviewed line on the list or one declaration on the test. |
