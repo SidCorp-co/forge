@@ -433,6 +433,11 @@ mod tests {
                 "a test of the production rule",
             ),
             (
+                "forge-runner-core/src/mcp/config.rs",
+                1,
+                "mcp_read_dir: where session_path, session_dir and session_matches read",
+            ),
+            (
                 "forge-runner-core/src/daemon/terminal.rs",
                 2,
                 "session_config_dir, the tmux socket's dir, and unoverridden_config_dir, a \
