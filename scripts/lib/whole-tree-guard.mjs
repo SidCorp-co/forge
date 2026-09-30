@@ -68,14 +68,24 @@ function running(pid) {
 /** The listings this file's processes and workers made, waiting out any still running; one still
  * running at the end counts as the root, since what it lists afterwards no file reads. */
 async function childHits() {
-  const lines = readLog();
-  const pids = new Set(lines.filter((l) => l.started).map((l) => l.started));
+  const hits = [];
+  const pids = new Set();
+  // Drained on every wait, so a process started while the file's end waits is waited on as well.
+  const drain = () => {
+    for (const line of readLog()) {
+      if (line.started) pids.add(line.started);
+      else hits.push(line);
+    }
+  };
+  drain();
   const workers = globalThis[Symbol.for('forge.whole-tree-watch')]?.workers ?? new Set();
   const live = () => [...pids].filter(running);
   const deadline = Date.now() + GRACE_MS;
-  while ((live().length > 0 || workers.size > 0) && Date.now() < deadline)
+  while ((live().length > 0 || workers.size > 0) && Date.now() < deadline) {
     await new Promise((done) => setTimeout(done, 50));
-  const hits = [...lines, ...readLog()].filter((l) => !l.started);
+    drain();
+  }
+  drain();
   for (const pid of live())
     hits.push({
       dir: ROOT,

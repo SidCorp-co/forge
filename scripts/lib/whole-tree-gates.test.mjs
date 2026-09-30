@@ -725,6 +725,24 @@ describe('a run of a file that lists the root', () => {
     );
   }, 60_000);
 
+  it('fails one whose child starts a lingering grandchild while the file’s end waits, then exits', () => {
+    const grandchild =
+      "require('node:child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, 9000)'], { detached: true, stdio: 'ignore' }).unref()";
+    writeFileSync(
+      join(dir, 'hands-off.test.mjs'),
+      [
+        "import { spawn } from 'node:child_process';",
+        `const code = ${JSON.stringify(`setTimeout(() => { ${grandchild}; }, 300)`)};`,
+        "it('hands off', () => { spawn(process.execPath, ['-e', code], { detached: true, stdio: 'ignore' }).unref(); });",
+      ].join('\n'),
+    );
+    const r = vitest('hands-off.test.mjs');
+    expect(r.status).toBe(1);
+    expect(`${r.stdout}${r.stderr}`).toMatch(
+      /hands-off\.test\.mjs child process \d+ was still running when the file ended/,
+    );
+  }, 60_000);
+
   it('passes the same file once it carries the declaration', () => {
     writeFileSync(join(dir, 'marked.test.mjs'), [`// ${MARK} whole-tree`, ...body].join('\n'));
     const r = vitest('marked.test.mjs');
