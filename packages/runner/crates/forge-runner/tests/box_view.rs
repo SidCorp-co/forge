@@ -182,7 +182,23 @@ fn now_secs() -> i64 {
         .as_secs() as i64
 }
 
+/// How the planted "daemon" comes to be the process the view reads.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Launch {
+    /// `sleep` spawned straight away, as a daemon is.
+    Direct,
+    /// A shell that waits, then execs `sleep`: the spawn has returned long
+    /// before the process becomes the binary the view will read, which is
+    /// the interleaving a spawn returning before its exec lands can take
+    /// (ubuntu CI runs 36694971625 and 36727168719).
+    ExecLate,
+}
+
 fn plant(core_url: &str) -> PlantedBox {
+    plant_launching(core_url, Launch::Direct)
+}
+
+fn plant_launching(core_url: &str, launch: Launch) -> PlantedBox {
     let scratch = Scratch::short("bv");
     let root = scratch.path().to_path_buf();
     let cfg = root.join("c/forge-runner");
@@ -205,7 +221,13 @@ fn plant(core_url: &str) -> PlantedBox {
     .unwrap();
 
     // The "daemon": a process of this test's, whose executable the view reads.
-    let daemon = Command::new("sleep").arg("120").spawn().unwrap();
+    let daemon = match launch {
+        Launch::Direct => Command::new("sleep").arg("120").spawn().unwrap(),
+        Launch::ExecLate => Command::new("sh")
+            .args(["-c", "sleep 0.5; exec sleep 120"])
+            .spawn()
+            .unwrap(),
+    };
     let pid = daemon.id();
     let record = serving::Record {
         pid,
@@ -217,6 +239,29 @@ fn plant(core_url: &str) -> PlantedBox {
         drain: None,
     };
     serving::write(&cfg, &record).unwrap();
+    // A spawn can return while the child is still the image it was forked
+    // from: the parent is let go as the exec releases the old memory, before
+    // `/proc/<pid>/exe` names the new binary. Read that early, beta's "asset"
+    // was the bytes of another program and both skills read DRIFT, on ubuntu,
+    // now and then (comment 046ff8a6). So the bytes are read once the process
+    // is the binary it will stay.
+    let sleep = which::which("sleep")
+        .expect("a sleep on PATH")
+        .canonicalize()
+        .expect("the sleep on PATH resolves");
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        let now = std::fs::read_link(format!("/proc/{pid}/exe"));
+        if now.as_ref().is_ok_and(|l| *l == sleep) {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < until,
+            "the planted daemon {pid} never became {}: /proc/{pid}/exe is {now:?}",
+            sleep.display()
+        );
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
     let exe = std::fs::read(format!("/proc/{pid}/exe")).unwrap();
 
     // alpha stands on a skill the daemon's file does not carry; beta on bytes it does.
@@ -1662,4 +1707,37 @@ fn a_view_ended_by_a_signal_gives_the_terminal_back() {
             "signal {signal}"
         );
     }
+}
+
+/// The box_view flake (ISS-1341 comments fba234f3 and 046ff8a6): the planted
+/// daemon's bytes were read the moment its spawn returned, which can be
+/// before the process has become `sleep`, so beta's "asset" was the bytes of
+/// another binary and both skills read DRIFT. Forced here: the daemon becomes
+/// `sleep` half a second after its spawn returns, and beta must still read
+/// as the asset of the binary the daemon runs.
+#[test]
+fn a_daemon_that_becomes_its_binary_late_is_planted_from_that_binary() {
+    let core = fake_core("200 OK");
+    let b = plant_launching(&core.url, Launch::ExecLate);
+    // The view reads the daemon once it is `sleep`, as in CI it read it
+    // seconds after the plant.
+    let exe = format!("/proc/{}/exe", b.daemon.id());
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while !std::fs::read_link(&exe).is_ok_and(|l| l.ends_with("sleep")) {
+        assert!(
+            std::time::Instant::now() < until,
+            "the daemon never became sleep"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let text = String::from_utf8_lossy(&top(&b, &["--once"]).stdout).into_owned();
+    let projects = section(&text, "PROJECTS");
+    let beta = projects
+        .lines()
+        .find(|l| l.contains("repos/beta/.claude/skills/forge-master/SKILL.md"))
+        .unwrap_or_else(|| panic!("no beta skill line: {projects}"));
+    assert!(
+        beta.contains("is the forge-master asset of the binary the daemon runs"),
+        "{beta}"
+    );
 }
