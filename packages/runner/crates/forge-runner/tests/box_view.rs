@@ -1293,3 +1293,36 @@ fn a_live_view_redraws_every_interval_seconds() {
         "redraws are not 3 s apart: {gaps:?}"
     );
 }
+
+/// Criterion 40 (judge r3b, finding 88): with core's port refusing
+/// connections, every questions and releases row that could not be read
+/// names the cause, as the PROJECTS row does, and none is left saying only
+/// that a request could not be sent.
+#[test]
+fn a_core_that_cannot_be_reached_is_named_by_its_cause_on_every_row() {
+    // A port that was just this test's, and now refuses.
+    let url = {
+        let l = TcpListener::bind("127.0.0.1:0").unwrap();
+        format!("http://{}", l.local_addr().unwrap())
+    };
+    let b = plant(&url);
+    let text = String::from_utf8_lossy(&top(&b, &["--once"]).stdout).into_owned();
+    let projects = section(&text, "PROJECTS");
+    assert!(projects.contains("could not connect"), "{projects}");
+    let waiting = section(&text, "WAITING ON A PERSON");
+    let rows: Vec<&str> = waiting
+        .lines()
+        .filter(|l| l.contains("UNREADABLE — GET /api/"))
+        .collect();
+    assert!(
+        rows.iter().filter(|l| l.contains("questions")).count() == 2
+            && rows.iter().filter(|l| l.contains("releases")).count() == 2,
+        "{waiting}"
+    );
+    for row in &rows {
+        assert!(
+            row.contains("could not connect: ") && !row.contains("error sending request"),
+            "{row}"
+        );
+    }
+}
