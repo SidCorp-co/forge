@@ -134,6 +134,29 @@ mod tests {
     use super::*;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+    /// An address whose connection is refused for as long as the first value
+    /// is held.
+    ///
+    /// Linux and Windows refuse a connection to a socket that is bound and not
+    /// listening, and keep the port from being handed to anything else while
+    /// it stays bound. A port released instead can be taken by a sibling
+    /// test's listener before the call reaches it, and that listener answers
+    /// with a reset, not a refusal (seen once on ISS-1316's run). macOS drops
+    /// a connection to a bound socket that is not listening, so the call
+    /// times out after 15s rather than being refused (seen on ISS-1316's CI).
+    /// There the port is released, as before, and the race stays open.
+    fn refusing_addr() -> (Option<tokio::net::TcpSocket>, std::net::SocketAddr) {
+        let socket = tokio::net::TcpSocket::new_v4().unwrap();
+        socket.bind("127.0.0.1:0".parse().unwrap()).unwrap();
+        let addr = socket.local_addr().unwrap();
+        if cfg!(not(target_os = "macos")) {
+            (Some(socket), addr)
+        } else {
+            drop(socket);
+            (None, addr)
+        }
+    }
+
     /// The request body core is actually handed by the call under test, plus a
     /// canned answer. One request, then the socket closes.
     async fn capture(status: &'static str) -> (String, tokio::sync::oneshot::Receiver<String>) {
@@ -215,12 +238,23 @@ mod tests {
 
     #[tokio::test]
     async fn a_core_that_cannot_be_reached_is_an_error_rather_than_a_hang() {
-        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = l.local_addr().unwrap();
-        drop(l);
+        let (_held, addr) = refusing_addr();
         let c = client(format!("http://{addr}"));
-        assert!(report_limit(&c, "usage_limit", Some(1), "x").await.is_err());
-        assert!(clear_limit(&c).await.is_err());
+        // A refusal, by name: an error any listener could also produce (a
+        // sibling test's, holding a port released on macOS) is not this one.
+        let reported = report_limit(&c, "usage_limit", Some(1), "x")
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(
+            reported.starts_with("me/limit request: could not connect"),
+            "{reported}"
+        );
+        let cleared = clear_limit(&c).await.unwrap_err().to_string();
+        assert!(
+            cleared.starts_with("me/limit request: could not connect"),
+            "{cleared}"
+        );
     }
 
     #[tokio::test]
@@ -361,9 +395,7 @@ mod tests {
     /// network alike.
     #[tokio::test]
     async fn a_core_that_cannot_be_reached_names_the_cause_and_not_the_address() {
-        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = l.local_addr().unwrap();
-        drop(l);
+        let (_held, addr) = refusing_addr();
         let said = register(&client(format!("http://{addr}")), "p1", "m")
             .await
             .unwrap_err()

@@ -704,6 +704,7 @@ mod tests {
         )
     }
 
+    #[cfg(unix)]
     /// The command this daemon would install for a reporting event.
     fn reporting_command(exe: &Path) -> String {
         let out = merged_for(None, exe.to_str().unwrap(), true).unwrap();

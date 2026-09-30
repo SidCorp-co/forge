@@ -93,7 +93,7 @@ jobs:
         run: |
           cargo metadata --locked --format-version=1 >/dev/null
           cargo fmt --check
-          cargo clippy --workspace --all-targets
+          cargo clippy --workspace --all-targets -- -D warnings
           cargo test --workspace
 
   build:

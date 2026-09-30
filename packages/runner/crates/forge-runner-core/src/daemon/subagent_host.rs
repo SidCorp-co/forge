@@ -53,6 +53,14 @@ pub trait Hosts: Send + Sync {
     fn above(&self, peer: u32) -> Option<Host>;
     /// A process whose arguments name `conversation`, other than this one.
     fn running(&self, conversation: &str) -> Running;
+    /// Whether the process recorded as `pid` started at `start` still runs,
+    /// beneath `ancestor`: `Alive` where it does and walking up from it
+    /// reaches `ancestor`, `Gone` where it has exited, `pid` now names a
+    /// process that started at another time, or the walk ends without
+    /// reaching `ancestor`, and `Unreadable` where a step could not be read.
+    /// Its identity and its parent come from one read, so a pid reused after
+    /// that process exited is never walked as though it were the one recorded.
+    fn beneath(&self, pid: u32, start: &str, ancestor: u32) -> HostRead;
 }
 
 /// The process table under `root`, or none at all off Linux.
@@ -101,6 +109,13 @@ impl Hosts for ProcHosts {
         match &self.root {
             Some(root) => running_at(root, conversation, std::process::id()),
             None => Running::Unreadable,
+        }
+    }
+
+    fn beneath(&self, pid: u32, start: &str, ancestor: u32) -> HostRead {
+        match &self.root {
+            Some(root) => beneath_at(root, pid, start, ancestor),
+            None => HostRead::Unreadable,
         }
     }
 }
@@ -220,6 +235,32 @@ pub fn above_at(root: &Path, peer: u32) -> Option<Host> {
     None
 }
 
+/// Whether `pid`, started at `start`, still runs and walking up from it
+/// reaches `ancestor`, within [`MAX_DEPTH`].
+pub fn beneath_at(root: &Path, pid: u32, start: &str, ancestor: u32) -> HostRead {
+    let mut at = match stat(root, pid) {
+        StatRead::Missing => return HostRead::Gone,
+        StatRead::Unreadable => return HostRead::Unreadable,
+        StatRead::Read(s) if s.start != start || matches!(s.state, 'Z' | 'X') => {
+            return HostRead::Gone;
+        }
+        StatRead::Read(_) if pid == ancestor => return HostRead::Alive,
+        StatRead::Read(s) if s.ppid > 1 => s.ppid,
+        StatRead::Read(_) => return HostRead::Gone,
+    };
+    for _ in 1..MAX_DEPTH {
+        if at == ancestor {
+            return HostRead::Alive;
+        }
+        match stat(root, at) {
+            StatRead::Read(s) if s.ppid > 1 => at = s.ppid,
+            StatRead::Read(_) | StatRead::Missing => return HostRead::Gone,
+            StatRead::Unreadable => return HostRead::Unreadable,
+        }
+    }
+    HostRead::Unreadable
+}
+
 /// A process that exits while the table is read was never going to be the
 /// answer and is passed over; any other read that fails leaves the answer
 /// unknown unless a process that could be read names the conversation.
@@ -264,6 +305,9 @@ pub(crate) mod testing {
         pub(crate) reads: Mutex<HashMap<u32, HostRead>>,
         pub(crate) peers: Mutex<HashMap<u32, Host>>,
         pub(crate) conversations: Mutex<HashMap<String, u32>>,
+        /// Which pid runs beneath which: `(pid, ancestor)` pairs, and every
+        /// pair not set reads `Gone`.
+        pub(crate) under: Mutex<std::collections::HashSet<(u32, u32)>>,
         /// Every conversation scan answers that the table could not be read.
         pub(crate) table_unreadable: std::sync::atomic::AtomicBool,
     }
@@ -292,6 +336,20 @@ pub(crate) mod testing {
 
         fn above(&self, peer: u32) -> Option<Host> {
             self.peers.lock().unwrap().get(&peer).cloned()
+        }
+
+        /// A pid's own read answers first, as the real table's identity
+        /// check does, and only a pid that reads alive is walked.
+        fn beneath(&self, pid: u32, start: &str, ancestor: u32) -> HostRead {
+            let own = self.read(pid, start);
+            if own != HostRead::Alive {
+                return own;
+            }
+            if self.under.lock().unwrap().contains(&(pid, ancestor)) {
+                HostRead::Alive
+            } else {
+                HostRead::Gone
+            }
         }
 
         fn running(&self, conversation: &str) -> Running {
@@ -401,6 +459,61 @@ mod tests {
                 start: "901".into()
             }),
             "the conversation's own process, not the bg-pty-host above it that is also named claude"
+        );
+    }
+
+    /// What ISS-1316's carry asks: does a run's recorded process run in this
+    /// pane, which is whether walking up from it reaches the pane's process.
+    #[test]
+    fn a_process_is_beneath_the_pane_it_runs_in_and_no_other() {
+        let root = Scratch::new("proc-beneath");
+        plant(&root, 60, 1, "1", 'S', &["sh", "-c", "claude"]);
+        plant(&root, 61, 60, "2", 'S', &["claude"]);
+        plant(&root, 70, 1, "3", 'S', &["sh", "-c", "claude"]);
+        plant(&root, 71, 70, "4", 'S', &["claude"]);
+        assert_eq!(beneath_at(&root, 61, "2", 60), HostRead::Alive);
+        assert_eq!(
+            beneath_at(&root, 60, "1", 60),
+            HostRead::Alive,
+            "a pane is its own"
+        );
+        assert_eq!(
+            beneath_at(&root, 71, "4", 60),
+            HostRead::Gone,
+            "a Claude Code process in another pane is not this pane's, alive or not"
+        );
+        assert_eq!(
+            beneath_at(&root, 99, "9", 60),
+            HostRead::Gone,
+            "a pid that is not there"
+        );
+        std::fs::create_dir_all(root.join("80")).unwrap();
+        assert_eq!(
+            beneath_at(&root, 80, "8", 60),
+            HostRead::Unreadable,
+            "an entry with no stat to read is no evidence either way"
+        );
+    }
+
+    /// Review fc87ff F1: the recorded process exits and its pid is reused by
+    /// a process that runs in the pane. The reuse starts at another time, so
+    /// it is not the process the run was declared from, and nothing carries.
+    #[test]
+    fn a_reused_pid_beneath_the_pane_is_not_the_process_recorded() {
+        let root = Scratch::new("proc-reused");
+        plant(&root, 60, 1, "1", 'S', &["sh", "-c", "claude"]);
+        plant(&root, 61, 60, "7", 'S', &["claude"]);
+        assert_eq!(
+            beneath_at(&root, 61, "2", 60),
+            HostRead::Gone,
+            "pid 61 runs in the pane, but it started at 7 and the run recorded 2"
+        );
+        assert_eq!(beneath_at(&root, 61, "7", 60), HostRead::Alive);
+        plant(&root, 62, 60, "3", 'Z', &[]);
+        assert_eq!(
+            beneath_at(&root, 62, "3", 60),
+            HostRead::Gone,
+            "a zombie beneath the pane has exited"
         );
     }
 

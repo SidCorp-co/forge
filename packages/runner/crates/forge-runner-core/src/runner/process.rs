@@ -8,7 +8,9 @@
 
 use std::ffi::OsStr;
 use std::process::ExitStatus;
+#[cfg(not(target_os = "windows"))]
 use std::sync::OnceLock;
+#[cfg(not(target_os = "windows"))]
 use std::time::Duration;
 
 use tokio::process::{Child, Command};

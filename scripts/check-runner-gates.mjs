@@ -16,7 +16,10 @@ const GATES = [
     discardStdout: true,
   },
   { label: 'fmt --check', argv: ['cargo', 'fmt', '--check'] },
-  { label: 'clippy', argv: ['cargo', 'clippy', '--workspace', '--all-targets'] },
+  {
+    label: 'clippy -D warnings',
+    argv: ['cargo', 'clippy', '--workspace', '--all-targets', '--', '-D', 'warnings'],
+  },
   { label: 'test', argv: ['cargo', 'test', '--workspace'] },
 ];
 

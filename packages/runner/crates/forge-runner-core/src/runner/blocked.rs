@@ -123,9 +123,11 @@ pub fn park_for_human(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use crate::runner::doorbell::{ring, Ring};
     use crate::runner::ledger::{NewRun, Work};
 
+    #[cfg(unix)]
     fn dir() -> crate::test_scratch::Scratch {
         crate::test_scratch::Scratch::new("blk")
     }
