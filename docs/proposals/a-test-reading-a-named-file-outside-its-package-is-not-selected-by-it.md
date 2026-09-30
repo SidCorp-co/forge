@@ -79,6 +79,12 @@ cannot see into as the root. Three routes pass through none of that.
   container it talks to over a socket. That process runs outside the test, so nothing the test
   loads is inside it.
 
+What the guard records lives inside the test's process too, so a test that edits it is not
+defended: its hits, and the log its children write to. A log found missing, shorter than a read of
+it, or holding a line that is no record counts as the root, but one the test empties before the
+guard first reads it cannot be told from one nothing wrote to, and a sentinel the test can read it
+can write back.
+
 So "every undeclared test that lists the root is refused" cannot be met by observation.
 ISS-1314's criterion 8 was corrected to the routes the guard observes, with criterion 19 for what
 it cannot read.
