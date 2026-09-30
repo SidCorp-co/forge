@@ -23,6 +23,8 @@ dirs-next = { workspace = true }
 webbrowser = { workspace = true }
 # ISS-1341 — `top` reads the ledger opened read-only, which `Ledger::open` cannot do.
 rusqlite = { workspace = true }
+# ISS-1341 — `top` wraps its live frame by the cells a character takes, not its count.
+unicode-width = "0.2"
 
 # ISS-1341 — `top` reads the terminal's size (TIOCGWINSZ) to fit its live frame.
 [target.'cfg(unix)'.dependencies]

@@ -7,6 +7,8 @@
 //! the screen's width, so nothing is cut, and a frame taller than the screen
 //! is shown one page per redraw, the page it is on said under the header.
 
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+
 /// A terminal's size in character cells.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Screen {
@@ -124,43 +126,63 @@ pub fn screen(frame: &[String], size: Option<Screen>, page: usize) -> Shown {
     unreachable!("the last plan, the body alone, always fits")
 }
 
-/// `line` as rows no wider than `width`, broken at a space where one falls in
-/// the row and mid-word where none does; a continued row is indented two past
-/// the line's own indent. Nothing of the line is dropped but the spaces a
-/// break falls on.
+/// The terminal cells `s` takes: a wide character two, a combining mark none.
+pub fn cells(s: &str) -> usize {
+    UnicodeWidthStr::width(s)
+}
+
+/// `line` as rows no wider than `width` cells, broken at a space where one
+/// falls in the row and mid-word where none does, never between a character
+/// and the mark combined onto it; a continued row is indented two past the
+/// line's own indent. Nothing of the line is dropped but the spaces a break
+/// falls on. A character wider than the whole row is set on a row of its own,
+/// the one case a row can be wider than `width`.
 pub fn wrap(line: &str, width: usize) -> Vec<String> {
     let width = width.max(1);
-    let chars: Vec<char> = line.chars().collect();
-    if chars.len() <= width {
+    if cells(line) <= width {
         return vec![line.to_string()];
     }
-    let indent = chars.iter().take_while(|c| **c == ' ').count();
+    let chars: Vec<(char, usize)> = line
+        .chars()
+        .map(|c| (c, UnicodeWidthChar::width(c).unwrap_or(0)))
+        .collect();
+    let indent = chars.iter().take_while(|(c, _)| *c == ' ').count();
     let hang = (indent + 2).min(width / 2);
+    let text = |from: usize, to: usize| chars[from..to].iter().map(|(c, _)| c).collect::<String>();
     let mut out = Vec::new();
     let (mut start, mut pad) = (0, 0);
     while start < chars.len() {
         let room = width - pad;
         let lead = " ".repeat(pad);
-        if chars.len() - start <= room {
-            out.push(format!(
-                "{lead}{}",
-                chars[start..].iter().collect::<String>()
-            ));
+        // `end` is the first character that does not fit in the room.
+        let (mut used, mut end) = (0, start);
+        while end < chars.len() && used + chars[end].1 <= room {
+            used += chars[end].1;
+            end += 1;
+        }
+        if end == chars.len() {
+            out.push(format!("{lead}{}", text(start, end)));
             break;
         }
-        // One past the room: a space there ends a row that fills it exactly.
-        let window = &chars[start..=start + room];
-        // The first row never breaks inside its own indent.
+        // A space at `end` itself ends a row that fills the room exactly. The
+        // first row never breaks inside its own indent.
         let least = if start == 0 { indent } else { 0 };
-        let cut = window
-            .iter()
-            .rposition(|c| *c == ' ')
-            .filter(|&i| i > least)
-            .unwrap_or(room);
-        let row: String = chars[start..start + cut].iter().collect();
-        out.push(format!("{lead}{}", row.trim_end()));
-        start += cut;
-        while start < chars.len() && chars[start] == ' ' {
+        let at_space = (start..=end)
+            .rev()
+            .find(|&i| chars[i].0 == ' ' && i - start > least);
+        let cut = match at_space {
+            Some(i) => i,
+            None => {
+                let mut i = end;
+                while i > start + 1 && chars[i].1 == 0 {
+                    i -= 1;
+                }
+                i.max(start + 1)
+            }
+        };
+        out.push(format!("{lead}{}", text(start, cut).trim_end()));
+        start = cut;
+        while start < chars.len() && chars[start].0 == ' ' {
             start += 1;
         }
         pad = hang;
@@ -173,7 +195,39 @@ mod tests {
     use super::*;
 
     fn widest(rows: &[String]) -> usize {
-        rows.iter().map(|r| r.chars().count()).max().unwrap_or(0)
+        rows.iter().map(|r| cells(r)).max().unwrap_or(0)
+    }
+
+    /// Consult at 38b26e9, F1: a wide character takes two cells, so ten of
+    /// them on a ten-column screen are two rows, never one row twenty wide.
+    #[test]
+    fn wide_characters_are_wrapped_by_the_cells_they_take() {
+        let rows = wrap(&"界".repeat(10), 10);
+        assert_eq!(
+            rows,
+            vec![
+                "界".repeat(5),
+                format!("  {}", "界".repeat(4)),
+                "  界".to_string()
+            ]
+        );
+        assert!(widest(&rows) <= 10, "{rows:?}");
+        assert_eq!(rows.concat().replace(' ', ""), "界".repeat(10));
+    }
+
+    /// A combining mark takes no cell and is never split from its letter: a
+    /// line of them fits by cells, and a break mid-word carries both over.
+    #[test]
+    fn a_combining_mark_stays_with_its_letter() {
+        let e = "e\u{301}";
+        assert_eq!(wrap(&e.repeat(8), 8), vec![e.repeat(8)], "eight cells");
+        let rows = wrap(&e.repeat(9), 8);
+        assert!(widest(&rows) <= 8, "{rows:?}");
+        assert!(
+            rows.iter().all(|r| !r.trim_start().starts_with('\u{301}')),
+            "{rows:?}"
+        );
+        assert_eq!(rows.concat().replace(' ', ""), e.repeat(9));
     }
 
     fn words(rows: &[String]) -> String {
@@ -303,7 +357,7 @@ mod tests {
                 let s = screen(&f, size, page);
                 assert!(s.rows.len() <= rows, "{cols}x{rows}: {:?}", s.rows);
                 assert!(
-                    s.rows.iter().all(|r| r.chars().count() <= cols),
+                    s.rows.iter().all(|r| cells(r) <= cols),
                     "{cols}x{rows}: {:?}",
                     s.rows
                 );
