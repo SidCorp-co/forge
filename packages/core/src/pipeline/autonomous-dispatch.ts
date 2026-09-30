@@ -26,11 +26,6 @@ export interface DispatchAutonomousArgs {
 }
 
 /**
- * The operator's gate on the entry stage — the one place a project says "hold
- * this issue for a human" without disabling the pipeline outright.
- */
-
-/**
  * Handle dispatch for an autonomous project. Returns `true` when this driver
  * owns the decision — including when the decision is to do nothing — so the
  * caller returns without walking the staged path.
@@ -46,9 +41,8 @@ export async function dispatchAutonomous(args: DispatchAutonomousArgs): Promise<
 }
 
 /**
- * The human pressing "Run" on an issue an autonomous project has gated. Throws
- * `ActiveJobConflictError` when a drive job is already live, so the route 409s
- * exactly as the staged manual path does.
+ * A person starting an entry issue on a manual-intake project. The first start's time is kept, so
+ * a second press reports when the issue was started rather than restarting its clock.
  */
 export async function dispatchDriveManual(args: {
   projectId: string;
@@ -56,27 +50,32 @@ export async function dispatchDriveManual(args: {
   status: IssueStatus;
   actor: Actor;
   projectCreatedBy: string | null;
-}): Promise<{ released: true }> {
+}): Promise<{ startedAt: string }> {
   if (!autonomousStepFor(args.status)) {
     throw new Error(
       `AUTONOMOUS_NOT_AT_ENTRY: the driver is handed an issue at \`${AUTONOMOUS_ENTRY_STATUS}\`, this one is at \`${args.status}\``,
     );
   }
-  await db.execute(sql`
+  const rows = (await db.execute(sql`
     UPDATE issues
-    SET session_context = jsonb_set(
-          COALESCE(session_context, '{}'::jsonb), ARRAY['runRelease'], to_jsonb(now()), true),
-        updated_at = now()
+    SET session_context = CASE
+          WHEN session_context ? 'runRelease' THEN session_context
+          ELSE jsonb_set(COALESCE(session_context, '{}'::jsonb), ARRAY['runRelease'], to_jsonb(now()), true)
+        END,
+        updated_at = CASE WHEN session_context ? 'runRelease' THEN updated_at ELSE now() END
     WHERE id = ${args.issueId}
-  `);
+    RETURNING session_context->>'runRelease' AS started_at
+  `)) as unknown as Array<{ started_at: string }>;
+  const startedAt = rows[0]?.started_at;
+  if (!startedAt) throw new Error(`issue ${args.issueId} vanished while it was being started`);
   await wakeMastersForProject({
     projectId: args.projectId,
     issueId: args.issueId,
     status: args.status,
   });
   logger.info(
-    { projectId: args.projectId, issueId: args.issueId },
-    'autonomous-dispatch: released by hand — offered to this project masters',
+    { projectId: args.projectId, issueId: args.issueId, startedAt },
+    'autonomous-dispatch: started by a person — offered to this project masters',
   );
-  return { released: true };
+  return { startedAt };
 }
