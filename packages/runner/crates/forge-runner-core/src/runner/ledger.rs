@@ -903,6 +903,13 @@ impl Ledger {
                             "Recovery releases it on the first recovery sweep after core calls that run's session over. It was declared under another master session, so nothing this master can do frees it sooner".to_string()
                         }
                     ),
+                    // A row an older binary wrote records no project, so the
+                    // key it holds is nobody's in particular: saying the issue
+                    // belongs to it asserts a holder this box cannot establish
+                    // (ISS-1352).
+                    None if Self::project_of(&tx, &holder)?.is_none() => format!(
+                        "ledger: issue {key} is held by live run {holder}, whose row records no project, so this box cannot tell whether that run's {key} is this project's issue or another's. It stays held until that run ends, and `forge-runner status` names it where no master answers for it"
+                    ),
                     None => format!("ledger: issue {key} already belongs to live run {holder}"),
                 }));
             }
@@ -978,6 +985,18 @@ impl Ledger {
             |row| row.get::<_, String>(0),
         )
         .optional()
+        .map_err(sql_err)
+    }
+
+    /// The project `run_id`'s row records, where it records one.
+    fn project_of(tx: &rusqlite::Transaction<'_>, run_id: &str) -> Result<Option<String>> {
+        tx.query_row(
+            "SELECT project_id FROM runs WHERE run_id = ?1",
+            params![run_id],
+            |row| row.get::<_, Option<String>>(0),
+        )
+        .optional()
+        .map(Option::flatten)
         .map_err(sql_err)
     }
 
@@ -4464,6 +4483,93 @@ mod tests {
             same.contains("already belongs to live run run-2"),
             "criterion 66: {same}"
         );
+    }
+
+    /// One run of `project`, declared under `master` at its own path, bound to
+    /// a subagent so the same master may declare another.
+    fn declared(led: &mut Ledger, run_id: &str, project: &str, master: &str, keys: &[&str]) {
+        led.create_run_group(NewRun {
+            run_id: run_id.into(),
+            project_id: project.into(),
+            master_session_id: master.into(),
+            worktree_path: PathBuf::from(format!("/w/{run_id}")),
+            ..seed(keys)
+        })
+        .unwrap();
+        led.bind_agent(run_id, &format!("agent-{run_id}")).unwrap();
+    }
+
+    /// The three marks the close loop writes, set on `run_id`: session over,
+    /// checkout gone, every lease but `except` back.
+    fn marks(led: &Ledger, run_id: &str, except: &[&str]) {
+        led.mark_session_terminal_observed(run_id).unwrap();
+        led.mark_checkout_returned_observed(run_id, CheckoutReturn::Gone)
+            .unwrap();
+        for m in led.issues(run_id).unwrap() {
+            if !except.contains(&m.issue_key.as_str()) {
+                led.mark_lease_returned_observed(run_id, &m.issue_key)
+                    .unwrap();
+            }
+        }
+    }
+
+    /// ISS-1352 criteria 1 and 2, in the shape the box held on 2026-09-27:
+    /// sid-desk's judge of its own ISS-496 (run d87c1f79), its worktree gone
+    /// and its session over, with its lease still out, while anhome declares
+    /// anhome's ISS-496.
+    #[test]
+    fn another_project_s_abandoned_judge_does_not_hold_this_project_s_key() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        declared(
+            &mut led,
+            "d87c1f79",
+            "sid-desk",
+            "655c2532-old",
+            &["ISS-496"],
+        );
+        marks(&led, "d87c1f79", &["ISS-496"]);
+        led.create_run_group(NewRun {
+            run_id: "anhome-run".into(),
+            project_id: "anhome".into(),
+            master_session_id: "487bce34-now".into(),
+            worktree_path: PathBuf::from("/w/anhome"),
+            ..seed(&["ISS-496"])
+        })
+        .expect("criterion 1: sid-desk's ISS-496 is another issue");
+        let same = led
+            .create_run_group(NewRun {
+                run_id: "sid-desk-again".into(),
+                project_id: "sid-desk".into(),
+                master_session_id: "d232d3d8-now".into(),
+                worktree_path: PathBuf::from("/w/sid-desk-again"),
+                ..seed(&["ISS-496"])
+            })
+            .unwrap_err()
+            .to_string();
+        assert!(same.contains("run d87c1f79"), "criterion 2: {same}");
+    }
+
+    /// ISS-1352 criteria 3 and 4: a holder whose row records no project is
+    /// named as that, never as the issue's owner.
+    #[test]
+    fn a_holder_recording_no_project_is_refused_as_that() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(seed(&["ISS-7"])).unwrap();
+        led.exec_for_test("UPDATE runs SET project_id = NULL WHERE run_id = 'run-1'");
+        let why = led
+            .create_run_group(NewRun {
+                run_id: "run-2".into(),
+                master_session_id: "master-2".into(),
+                worktree_path: PathBuf::from("/w/two"),
+                ..seed(&["ISS-7"])
+            })
+            .unwrap_err()
+            .to_string();
+        assert!(
+            why.contains("run-1, whose row records no project"),
+            "criterion 3: {why}"
+        );
+        assert!(!why.contains("belongs to"), "criterion 4: {why}");
     }
 
     /// ISS-1312, criterion 19: what a pane started now inherits is its
