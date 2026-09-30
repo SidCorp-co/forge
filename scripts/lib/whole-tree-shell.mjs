@@ -3,8 +3,10 @@
 // what the arguments can make the program list. It fails closed: a word it cannot evaluate, a git
 // subcommand or setting it does not know, and a program it does not know each count as listing the
 // repository root. A reading of spellings that passed whatever it had not listed failed three times.
+// A shell string is read by an allowlist: the forms whose effect has been read keep an exact state,
+// and every other form leaves it unevaluable, rather than one more form being modelled at a time.
 
-import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { accessSync, constants, existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
 
 /** A word the reader cannot evaluate: a substitution, or a variable the environment does not set. */
@@ -103,14 +105,24 @@ function substitutionsIn(text, into) {
     if (text[i] === '\\') i++;
     else if (text[i] === '$' && text[i + 1] === '(' && text[i + 2] !== '(') {
       const end = matching(text, i + 2, '(', ')');
-      into.push(...scan(text.slice(i + 2, end)));
+      into.push(...subshell(scan(text.slice(i + 2, end))));
       i = end;
     } else if (text[i] === '`') {
       const end = closing(text, '`', i + 1);
-      into.push(...scan(text.slice(i + 1, end)));
+      into.push(...subshell(scan(text.slice(i + 1, end))));
       i = end;
     }
   }
+}
+
+/**
+ * A substitution's commands, marked as one group: they run in a subshell, so nothing they change
+ * reaches the string's own state. A group inside a group keeps both.
+ */
+function subshell(cmds) {
+  const group = {};
+  for (const c of cmds) c.groups = [group, ...(c.groups ?? [])];
+  return cmds;
 }
 
 /**
@@ -120,14 +132,14 @@ function substitutionsIn(text, into) {
 function expansion(s, i, cmds) {
   if (s[i] === '`') {
     const end = closing(s, '`', i + 1);
-    cmds.push(...scan(s.slice(i + 1, end)));
+    cmds.push(...subshell(scan(s.slice(i + 1, end))));
     return [{ t: 'unknown' }, end + 1];
   }
   const next = s[i + 1];
   if (next === '(' && s[i + 2] === '(') return [{ t: 'unknown' }, matching(s, i + 3, '(', ')') + 2];
   if (next === '(') {
     const end = matching(s, i + 2, '(', ')');
-    cmds.push(...scan(s.slice(i + 2, end)));
+    cmds.push(...subshell(scan(s.slice(i + 2, end))));
     return [{ t: 'unknown' }, end + 1];
   }
   if (next === '{') {
@@ -148,7 +160,9 @@ function expansion(s, i, cmds) {
  * escapes, substitutions, redirections, comments and here-documents are read here; control words
  * are left to the reader of each command. A part the shell sees unquoted is `bare`, since only
  * those take part in pathname and brace expansion, and a command's redirection targets are kept
- * apart on `redirects`, since the shell expands them too.
+ * apart on `redirects`, since the shell expands them too. Each command carries `lead`, the operators
+ * between it and the command before it (a newline read as `;`), and the list `trail`, the operators
+ * after the last, which is what tells a top-level command from one in a subshell or a pipeline.
  */
 function scan(src) {
   const s = src.replace(/\\\r?\n/g, '');
@@ -158,6 +172,7 @@ function scan(src) {
   let redirects = [];
   let word = null;
   let redirectNext = false;
+  let ops = '';
   const part = (p) => {
     word ??= [];
     word.push(p);
@@ -172,7 +187,10 @@ function scan(src) {
   };
   const endCmd = () => {
     endWord();
-    if (words.length > 0 || redirects.length > 0) cmds.push(Object.assign(words, { redirects }));
+    if (words.length > 0 || redirects.length > 0) {
+      cmds.push(Object.assign(words, { redirects, lead: ops }));
+      ops = '';
+    }
     words = [];
     redirects = [];
   };
@@ -212,6 +230,7 @@ function scan(src) {
       i = closing(s, '\n', i);
     } else if (c === '\n') {
       endCmd();
+      ops += ';';
       i = hereDocuments(s, i + 1, heredocs.splice(0), cmds);
     } else if (c === '<' && s[i + 1] === '<' && s[i + 2] !== '<') {
       endWord();
@@ -233,6 +252,7 @@ function scan(src) {
       } else redirectNext = true;
     } else if (';&|()'.includes(c)) {
       endCmd();
+      ops += c;
       i++;
     } else if (c === ' ' || c === '\t' || c === '\r') {
       endWord();
@@ -246,6 +266,7 @@ function scan(src) {
     }
   }
   endCmd();
+  cmds.trail = ops;
   return cmds;
 }
 
@@ -281,13 +302,19 @@ const BRACE = /\{[^{}]*(?:,|\.\.)[^{}]*\}/;
  * the shell expands as a pathname pattern is a listing the shell makes itself, whatever program
  * the words go to, so each is recorded on `ctx.expansions`; `assigned` marks an assignment's value,
  * which the shell does not expand. A brace expansion, or a glob climbing after a wildcard, makes
- * words nothing here can name, so it is UNKNOWN.
+ * words nothing here can name, so it is UNKNOWN. So does an unquoted variable the shell would split
+ * into more than one word, since which word lands where is then the shell's reading and not this
+ * one; an unquoted variable standing alone with nothing in it is dropped, as the shell drops it.
  */
 function evaluate(word, ctx, assigned = false) {
   const parts = word.filter((p) => p.t !== 'lit' || p.v !== '');
   if (parts.length === 1 && parts[0].t === 'param' && parts[0].name === '@') {
+    if (ctx.params === null) return [UNKNOWN];
     if (!parts[0].bare || assigned) return ctx.params;
-    return ctx.params.map((v) => (isWord(v) && PATTERN.test(v) ? expanded(v, false, ctx) : v));
+    if (ctx.params.some((v) => splits(v, ctx))) return [UNKNOWN];
+    return ctx.params
+      .filter((v) => v !== '')
+      .map((v) => (isWord(v) && PATTERN.test(v) ? expanded(v, false, ctx) : v));
   }
   let out = '';
   // The text brace expansion reads, and the text pathname expansion reads: what the shell sees
@@ -300,24 +327,34 @@ function evaluate(word, ctx, assigned = false) {
       const held = p.bare ? p.v : '\0'.repeat(p.v.length);
       unquoted += held;
       globbed += p.extglob ? '*' : held;
-    } else if (p.t === 'tilde' && isWord(ctx.vars.HOME)) {
+    } else if (p.t === 'tilde' && isWord(ctx.vars.HOME) && !ctx.poisoned.has('HOME')) {
       out += ctx.vars.HOME;
       unquoted += '\0';
       globbed += '\0';
     } else if (p.t === 'param') {
       const v = param(p.name, ctx);
       if (v === UNKNOWN || v.some((x) => !isWord(x))) return [UNKNOWN];
-      out += v.join(' ');
+      // `"x$@"` is one word per parameter, and `"$*"` is joined by the first character of IFS.
+      if (p.name === '@' && v.length > 1) return [UNKNOWN];
+      if (p.name === '*' && !p.bare && ifsSet(ctx)) return [UNKNOWN];
+      const joined = v.join(' ');
+      if (p.bare && !assigned && splits(joined, ctx)) return [UNKNOWN];
+      out += joined;
       unquoted += '\0';
-      globbed += p.bare ? v.join(' ') : '\0';
+      globbed += p.bare ? joined : '\0';
     } else return [UNKNOWN];
   }
   if (assigned) return [out];
+  if (out === '' && word.length > 0 && word.every((p) => p.t === 'param' && p.bare)) return [];
   const glob = PATTERN.test(globbed);
   const brace = BRACE.test(unquoted);
   if (!glob && !brace) return [out];
   return [expanded(out, brace, ctx)];
 }
+
+const ifsSet = (ctx) => Object.hasOwn(ctx.vars, 'IFS') || ctx.poisoned.has('IFS');
+/** Whether the shell would cut an unquoted value into fields: IFS set at all, or a blank in it. */
+const splits = (value, ctx) => isWord(value) && (ifsSet(ctx) || /[ \t\n]/.test(value));
 
 /** The shell's expansion of a pattern word: recorded as a listing, and the word it leaves. */
 function expanded(pattern, brace, ctx) {
@@ -328,9 +365,13 @@ function expanded(pattern, brace, ctx) {
 
 function param(name, ctx) {
   if (name === '0') return [ctx.name ?? 'sh'];
-  if (/^\d+$/.test(name)) return [ctx.params[Number(name) - 1] ?? ''];
-  if (name === '@' || name === '*') return ctx.params;
-  if (name === '#') return [String(ctx.params.length)];
+  if (/^\d+$/.test(name) || ['@', '*', '#'].includes(name)) {
+    if (ctx.params === null) return UNKNOWN;
+    if (name === '@' || name === '*') return ctx.params;
+    if (name === '#') return [String(ctx.params.length)];
+    return [ctx.params[Number(name) - 1] ?? ''];
+  }
+  if (ctx.poisoned.has(name)) return UNKNOWN;
   if (/^[A-Za-z_]\w*$/.test(name) && Object.hasOwn(ctx.vars, name)) return [ctx.vars[name]];
   return UNKNOWN;
 }
@@ -346,69 +387,381 @@ function assignment(word, ctx) {
   return { name: m[1], value };
 }
 
+/** A word's text where every part of it is literal, and null where any is not. */
+const literal = (word) => (word.every((p) => p.t === 'lit') ? word.map((p) => p.v).join('') : null);
+
 /** Words that open or close a compound command and run no program themselves. */
 const OPENERS = new Set(['if', 'then', 'else', 'elif', 'do', 'while', 'until', '!', '{', 'time']);
 const CLOSERS = new Set(['fi', 'done', 'esac', '}', 'in']);
 /** Compound commands whose own words run nothing, their substitutions already read. */
-const NO_PROGRAM = new Set(['for', 'case', 'select', 'function', '[[', ']]']);
-/** Builtins that list nothing and run nothing. */
+const NO_PROGRAM = new Set(['for', 'case', 'function']);
+/**
+ * Builtins shown to list nothing, run nothing and rebind nothing. `printf -v`, `test -v` and
+ * `[ -v` are not among them: bash evaluates an array subscript there, which can run a command.
+ */
 const INERT = new Set([
-  ...['exit', 'return', 'true', 'false', ':', 'local', 'readonly', 'declare', 'typeset', 'unset'],
-  ...['read', 'wait', 'trap', 'ulimit', 'umask', 'break', 'continue', 'hash', 'alias', 'unalias'],
-  ...['echo', 'printf', 'test', '[', 'type', 'getopts', 'jobs', 'disown', 'let', 'shopt'],
+  ...['exit', 'return', 'true', 'false', ':', 'break', 'continue', 'wait', 'echo', 'printf'],
+  ...['test', '[', 'ulimit', 'umask', 'times', 'pwd', 'type'],
 ]);
+/** Builtins that set the variables they name, and change nothing else a later command reads. */
+const SETTERS = new Set(['read', 'getopts', 'unset', 'mapfile', 'readarray']);
+/** The special builtins, before which an assignment outlives the command in a POSIX shell. */
+const SPECIAL = new Set([':', '.', 'break', 'continue', 'eval', 'exec', 'exit', 'export']);
+for (const b of ['readonly', 'return', 'set', 'shift', 'times', 'trap', 'unset']) SPECIAL.add(b);
+
+// --- where a shell string is read from -----------------------------------------------------------
+
+/** The shells whose startup and `cd` this reader has read: POSIX sh, bash, and dash. */
+const READ_SHELLS = new Set(['sh', 'bash', 'dash']);
+/**
+ * What bash reads from its environment, for a non-interactive `-c` string, that runs code before
+ * the string or changes what a command in it runs: its startup file, its two option strings, the
+ * trace prompt it expands under `-x`, the list that hides an executable from lookup, and every
+ * exported function. A string that assigns one hands it to every shell the string starts.
+ */
+const STARTUP_ENV = ['BASH_ENV', 'SHELLOPTS', 'BASHOPTS', 'PS4', 'EXECIGNORE'];
+const startupName = (name) => STARTUP_ENV.includes(name) || name.startsWith('BASH_FUNC_');
+/** Invocation and `set` letters that change no startup, no `cd` and no command run; `c` is -c. */
+const INERT_LETTERS = /^[-+][euxvfn]*c?[euxvfn]*$/;
+const INERT_OPTIONS = new Set(['errexit', 'nounset', 'pipefail', 'xtrace', 'verbose', 'noglob']);
+INERT_OPTIONS.add('noexec');
+/** The `shopt` names that change only which paths a pattern matches, never where it starts. */
+const GLOB_SHOPTS = new Set(['extglob', 'globstar', 'nullglob', 'dotglob', 'failglob']);
+for (const o of ['nocaseglob', 'globasciiranges']) GLOB_SHOPTS.add(o);
 
 /**
- * Everything a shell string lists, run command by command in the order the shell runs them: a `cd`
- * moves the directory the rest run in, an assignment sets what a later `$NAME` reads, and `shift`
- * and `set --` move the positional parameters. A pattern the shell expands lists the directory it
- * starts from, in the directory the command runs in, before the program sees a word of it.
+ * Why a shell cannot be read from where it starts, or null where it can: an environment that runs
+ * code first, or, where Debian's bash is started with a socket on its standard input and no shell
+ * above it, one naming an ssh client, which makes it read `~/.bashrc`.
+ */
+function startHazard(env) {
+  const set = Object.keys(env).find(startupName);
+  if (set !== undefined) return `a shell whose environment sets \`${set}\``;
+  const ssh = ['SSH_CLIENT', 'SSH2_CLIENT'].find((k) => env[k] !== undefined);
+  if (ssh !== undefined && !(Number(env.SHLVL) >= 1))
+    return `a shell under \`${ssh}\` with no \`SHLVL\` above 0, which reads \`~/.bashrc\``;
+  return null;
+}
+
+/**
+ * Why a string's `${…}` forms or arithmetic cannot be read, or null, and the variables a `${NAME=…}`
+ * assigns. A plain, length, default, alternative, error or trim form reads a variable and runs
+ * nothing. A substring's offset, an index, an indirection, a transformation, `((`, `$((` and `[[`
+ * are each an arithmetic or prompt expansion, which bash evaluates on a variable's value, so a
+ * subscript held in that value runs a command no word of the string names.
+ */
+function expansionForms(text) {
+  const assigns = new Set();
+  if (/\(\(|\[\[/.test(text)) return { hazard: 'an arithmetic expression or `[[`', assigns };
+  for (let i = text.indexOf('${'); i !== -1; i = text.indexOf('${', i + 2)) {
+    const inner = text.slice(i + 2, matching(text, i + 2, '{', '}'));
+    const name = /^([A-Za-z_]\w*|\d+|[@*#?$!-])/.exec(inner)?.[1];
+    const rest = name === undefined ? inner : inner.slice(name.length);
+    if (name !== undefined && (rest === '' || /^(:?[-+?]|##?|%%?)/.test(rest))) continue;
+    if (/^#([A-Za-z_]\w*|\d+|[@*])$/.test(inner)) continue;
+    const assigned = /^([A-Za-z_]\w*):?=/.exec(inner);
+    if (assigned) {
+      assigns.add(assigned[1]);
+      continue;
+    }
+    return {
+      hazard: `the expansion \`\${${inner.length > 40 ? `${inner.slice(0, 39)}…` : inner}}\``,
+      assigns,
+    };
+  }
+  return { hazard: null, assigns };
+}
+
+// --- a shell string, by an allowlist -------------------------------------------------------------
+
+/** What a command changes in the shell that runs it: the directory, the parameters, variables. */
+function mutationsOf(words) {
+  const m = { dir: false, params: false, names: [] };
+  let k = 0;
+  for (; k < words.length; k++) {
+    const head = /^([A-Za-z_]\w*)=/.exec(literal(words[k].filter((p) => p.t === 'lit')) ?? '');
+    if (!head || words[k][0]?.t !== 'lit') break;
+    m.names.push(head[1]);
+  }
+  const rest = words.slice(k).map(literal);
+  while (rest.length > 0 && OPENERS.has(rest[0])) rest.shift();
+  const [head, ...args] = rest;
+  const named = (list) => {
+    for (const a of list) {
+      const n = /^([A-Za-z_]\w*)(=|$)/s.exec(a ?? '');
+      if (n) m.names.push(n[1]);
+    }
+  };
+  if (head === 'cd' || head === 'pushd' || head === 'popd') m.dir = true;
+  else if (head === 'shift' || head === 'set') m.params = true;
+  else if (head === 'for' || head === 'select') named(args.slice(0, 1));
+  else if (head === 'export' || SETTERS.has(head)) named(args);
+  if (head === 'getopts') m.names.push('OPTARG', 'OPTIND');
+  if (m.dir) m.names.push('PWD', 'OLDPWD');
+  return m;
+}
+
+/** Marks what `m` changes as unevaluable from here on. */
+function poison(ctx, m) {
+  if (m.dir) ctx.dir = null;
+  if (m.params) ctx.params = null;
+  for (const n of m.names) ctx.poisoned.add(n);
+}
+
+/** Whether an operator joining two commands keeps the string's top level a straight line. */
+function leadKind(lead) {
+  if (lead === '' || /^;+$/.test(lead) || lead === '&') return 'list';
+  if (lead === '&&') return 'and';
+  if (lead === '|') return 'pipe';
+  return 'other';
+}
+
+/**
+ * Where an exact `cd` lands, or null where it is any other `cd`. The exact form has one literal
+ * operand and no option, runs with `CDPATH` unset and with no `PWD` spelling its start another way,
+ * from a start that is its own realpath, through segments that are each a real directory and never
+ * a symlink. There, the logical, the physical and the lexical reading are one directory, so no
+ * shell's rule for `..`, `-P`, `set -P` or a link it came through can put it elsewhere.
+ */
+function cdTarget(words, own, ctx) {
+  if (words.length !== 2 || Object.keys(own).length > 0) return null;
+  const target = literal(words[1]);
+  if (target === null || target === '' || target.startsWith('-')) return null;
+  if (words[1].some((p) => p.extglob)) return null;
+  const unquoted = words[1].map((p) => (p.bare ? p.v : '')).join('');
+  if (GLOB_CHAR.test(unquoted) || BRACE.test(unquoted)) return null;
+  if (Object.hasOwn(ctx.vars, 'CDPATH') || ['CDPATH', 'PWD'].some((n) => ctx.poisoned.has(n)))
+    return null;
+  const from = ctx.dir;
+  if (from === null || physical(from) !== from) return null;
+  const pwd = ctx.vars.PWD;
+  if (isWord(pwd) && pwd !== from && isAbsolute(pwd) && [null, from].includes(physical(pwd)))
+    return null;
+  let dir = isAbsolute(target) ? '/' : from;
+  for (const seg of target.split('/')) {
+    if (seg === '' || seg === '.') continue;
+    if (seg === '..') {
+      dir = dirname(dir);
+      continue;
+    }
+    const next = join(dir, seg);
+    try {
+      const st = lstatSync(next);
+      if (st.isSymbolicLink() || !st.isDirectory()) return null;
+    } catch {
+      return null;
+    }
+    dir = next;
+  }
+  try {
+    accessSync(dir, constants.X_OK);
+  } catch {
+    return null;
+  }
+  return dir;
+}
+
+/**
+ * Whether `printf -v` or a `test -v` could be handed a name with a subscript, which bash evaluates as
+ * arithmetic: a `-v` written out, a word nothing here can evaluate where `printf` takes its option,
+ * or two such words in a test, or one beside a written `[` a subscript could come from.
+ */
+function evaluatesSubscript(head, args) {
+  if (head === 'printf') return args.length > 0 && (!isWord(args[0]) || args[0].startsWith('-v'));
+  if (head !== 'test' && head !== '[') return false;
+  const operands = head === '[' && args.at(-1) === ']' ? args.slice(0, -1) : args;
+  const unknown = operands.filter((a) => !isWord(a)).length;
+  const bracket = operands.some((a) => isWord(a) && a.includes('['));
+  return operands.includes('-v') || unknown > 1 || (unknown === 1 && bracket);
+}
+
+/** `set`'s options, each checked against the inert ones, and the parameters it sets, if any. */
+function setWords(args) {
+  let i = 0;
+  for (; i < args.length; i++) {
+    const a = args[i];
+    if (a === '--') return { params: args.slice(i + 1) };
+    if (!isWord(a) || !/^[-+]/.test(a)) break;
+    if (/^[-+][euxvfn]*o$/.test(a)) {
+      if (!INERT_OPTIONS.has(args[++i])) return { hazard: `\`set ${a} ${args[i] ?? ''}\`` };
+    } else if (!/^[-+][euxvfn]+$/.test(a)) return { hazard: `\`set ${a}\`` };
+  }
+  return { params: i < args.length ? args.slice(i) : null };
+}
+
+/**
+ * Everything a shell string lists, by an allowlist. The string's top level is followed as a straight
+ * line while its commands are joined by `;`, a newline, `&&`, `|` or a trailing `&`, and no command
+ * is compound, in a subshell, after an `||` or a function's name. There, and only there, a `cd`, an
+ * assignment, `export`, `shift` and `set` change the state the rest is read in: at once where the
+ * command surely runs, to the end of its and-or list where an `&&` before it may have stopped it, and
+ * not at all in a pipeline element or a background job, which run in a subshell. Past the straight
+ * line a loop can run a later command first, so everything a later command changes is unevaluable,
+ * and a substitution's own changes are unevaluable inside it.
  */
 export function shellListing(text, { cwd, root, env = {}, name, params = [] }) {
-  const ctx = { dir: cwd, vars: { ...env }, name, params: [...params], expansions: [] };
+  const hazard = startHazard(env);
+  if (hazard !== null) return [unread(hazard, root)];
+  const forms = expansionForms(text);
+  if (forms.hazard !== null) return [unread(forms.hazard, root)];
+  const cmds = scan(text);
+  const ctx = { dir: cwd, vars: { ...env }, name, params: [...params], poisoned: new Set() };
+  for (const n of forms.assigns) ctx.poisoned.add(n);
+  const tops = cmds.filter((c) => !c.groups);
+  const after = new Map(tops.map((c, k) => [c, tops[k + 1]?.lead ?? cmds.trail ?? '']));
+  const inGroup = new Map();
+  for (const c of cmds) {
+    for (const g of c.groups ?? []) {
+      const m = inGroup.get(g) ?? { dir: false, params: false, names: [] };
+      const own = mutationsOf(c);
+      inGroup.set(g, {
+        dir: m.dir || own.dir,
+        params: m.params || own.params,
+        names: [...m.names, ...own.names],
+      });
+    }
+  }
+  let straight = true;
+  let certain = true;
+  let succeeded = true;
+  let pending = [];
   const found = [];
-  for (const words of scan(text)) {
-    ctx.expansions = [];
+  for (let n = 0; n < cmds.length; n++) {
+    const words = cmds[n];
+    // How what this command changes is kept: 'now', 'list' (to the end of its and-or list), or not.
+    let keep = null;
+    let c = ctx;
+    if (words.groups) {
+      c = { ...ctx, poisoned: new Set(ctx.poisoned) };
+      for (const g of words.groups) poison(c, inGroup.get(g));
+    } else if (straight) {
+      const kind = leadKind(words.lead);
+      const next = after.get(words);
+      const first = literal(words[0] ?? []);
+      const compound = [OPENERS, CLOSERS, NO_PROGRAM].some((set) => set.has(first));
+      // An operator after this command it cannot read (`||`, a paren, `|&`) is where the line ends,
+      // and this command is on the far side of it: it may be a subshell's, or never run.
+      const ends = leadKind(next) === 'other' && !['|', '&'].includes(next);
+      if (kind === 'other' || ends || compound || first === 'select') {
+        straight = false;
+        for (const m of pending) poison(ctx, m);
+        for (const later of cmds.slice(n)) poison(ctx, mutationsOf(later));
+      } else {
+        if (kind === 'list') {
+          for (const m of pending) poison(ctx, m);
+          pending = [];
+          certain = true;
+        } else if (kind === 'and') certain = certain && succeeded;
+        const element = kind === 'pipe' || next === '|' || next === '&';
+        if (!element) keep = certain ? 'now' : 'list';
+      }
+    }
+    succeeded = false;
+    const change = (m, apply) => {
+      if (keep === null) return;
+      apply();
+      if (keep === 'list') pending.push(m);
+    };
+    c.expansions = [];
     const own = {};
     let k = 0;
     for (; k < words.length; k++) {
-      const a = assignment(words[k], ctx);
+      const a = assignment(words[k], c);
       if (!a) break;
       own[a.name] = a.value;
     }
-    const argv = words.slice(k).flatMap((w) => evaluate(w, ctx));
-    for (const w of words.redirects) evaluate(w, ctx);
-    for (const { pattern, unknown } of ctx.expansions) {
+    const names = Object.keys(own);
+    const argv = words.slice(k).flatMap((w) => evaluate(w, c));
+    for (const w of words.redirects) evaluate(w, c);
+    for (const { pattern, unknown } of c.expansions) {
       const via = `the shell's expansion of \`${pattern}\``;
-      found.push(place(unknown ? null : at(ctx.dir, globBase(pattern)), via, root));
+      found.push(place(unknown ? null : at(c.dir, globBase(pattern)), via, root));
     }
-    if (argv.length === 0) Object.assign(ctx.vars, own);
+    const rebinds = names.find(startupName);
+    if (rebinds !== undefined) {
+      found.push(unread(`an assignment to \`${rebinds}\``, root));
+      continue;
+    }
+    if (argv.length === 0) {
+      change({ dir: false, params: false, names }, () => Object.assign(c.vars, own));
+      succeeded = Object.values(own).every(isWord);
+      continue;
+    }
     while (argv.length > 0 && OPENERS.has(argv[0])) argv.shift();
     const head = argv[0];
-    if (head === undefined || CLOSERS.has(head) || NO_PROGRAM.has(head) || INERT.has(head))
+    if (SPECIAL.has(head)) for (const x of names) c.poisoned.add(x);
+    if (head === undefined || CLOSERS.has(head) || NO_PROGRAM.has(head)) continue;
+    const args = argv.slice(1);
+    if (INERT.has(head)) {
+      if (evaluatesSubscript(head, args)) found.push(unread(`\`${head} -v\``, root));
+      succeeded = head === 'true' || head === ':';
       continue;
-    if (head === 'cd' || head === 'pushd') {
-      // `cd` is logical: a `..` leaves the symlink it came through, and only then is it resolved.
-      const target = argv.slice(1).find((w) => !isOption(w)) ?? ctx.vars.HOME ?? UNKNOWN;
-      const glob = !isWord(target) || target === '-' || GLOB_CHAR.test(target);
-      ctx.dir = glob || ctx.dir === null ? null : physical(resolve(ctx.dir, target));
-    } else if (head === 'popd') ctx.dir = null;
-    else if (head === 'shift') ctx.params.splice(0, Number(argv[1] ?? 1) || 1);
-    else if (head === 'set') {
-      const dash = argv.indexOf('--');
-      if (dash !== -1) ctx.params = argv.slice(dash + 1);
-    } else if (head === 'export') {
-      for (const w of argv.slice(1)) {
-        const m = isWord(w) ? /^([A-Za-z_]\w*)=(.*)$/s.exec(w) : null;
-        if (m) ctx.vars[m[1]] = m[2];
-      }
-    } else if (head === 'eval' || head === 'source' || head === '.') {
-      found.push(unread(`\`${head}\``, root));
-    } else {
-      const blind =
-        Object.hasOwn(own, 'NODE_OPTIONS') && !`${own.NODE_OPTIONS}`.includes(PRELOAD_MARK);
-      found.push(...programListing(argv, ctx.dir, root, { ...ctx.vars, ...own }, blind));
     }
+    if (head === 'cd' || head === 'pushd' || head === 'popd') {
+      const from = c.dir;
+      const to = head === 'cd' ? cdTarget(words.slice(k), own, c) : null;
+      change({ dir: true, params: false, names: ['PWD', 'OLDPWD'] }, () => {
+        c.dir = to;
+        if (to !== null) Object.assign(c.vars, { PWD: to, OLDPWD: from ?? '' });
+      });
+      succeeded = to !== null;
+      continue;
+    }
+    if (head === 'shift') {
+      const count = args.length === 0 ? 1 : /^\d+$/.test(args[0] ?? '') ? Number(args[0]) : null;
+      change({ dir: false, params: true, names: [] }, () => {
+        if (count === null) c.params = null;
+        else c.params?.splice(0, count);
+      });
+      continue;
+    }
+    if (head === 'set') {
+      const read = setWords(args);
+      if (read.hazard) found.push(unread(read.hazard, root));
+      else if (read.params)
+        change({ dir: false, params: true, names: [] }, () => (c.params = read.params));
+      continue;
+    }
+    if (head === 'export') {
+      if (args.some((w) => !isWord(w) || w.startsWith('-'))) {
+        found.push(unread('`export` with an option or a word it cannot evaluate', root));
+        continue;
+      }
+      for (const w of args) {
+        const m = /^([A-Za-z_]\w*)=(.*)$/s.exec(w);
+        if (!m) continue;
+        if (startupName(m[1])) found.push(unread(`an assignment to \`${m[1]}\``, root));
+        change({ dir: false, params: false, names: [m[1]] }, () => (c.vars[m[1]] = m[2]));
+      }
+      continue;
+    }
+    if (SETTERS.has(head)) {
+      const operands = args.filter((a) => !(isWord(a) && a.startsWith('-')));
+      if (operands.some((a) => !isWord(a) || !/^[A-Za-z_]\w*$/.test(a))) {
+        found.push(unread(`\`${head}\` handed a word that is not a plain name`, root));
+        continue;
+      }
+      for (const x of mutationsOf(words.slice(k)).names) c.poisoned.add(x);
+      continue;
+    }
+    if (head === 'shopt') {
+      const [mode, ...opts] = args;
+      const onlyGlob = ['-s', '-u', '-q'].includes(mode) && opts.every((o) => GLOB_SHOPTS.has(o));
+      if (!onlyGlob && args.length > 0) found.push(unread(`\`shopt ${args.join(' ')}\``, root));
+      continue;
+    }
+    if (head === 'eval' || head === 'source' || head === '.') {
+      found.push(unread(`\`${head}\``, root));
+      continue;
+    }
+    const programEnv = { ...c.vars, ...own };
+    for (const x of c.poisoned) if (!Object.hasOwn(own, x)) programEnv[x] = UNKNOWN;
+    // The watch hands every spawn the preload; only the string itself can take it away again.
+    const options = programEnv.NODE_OPTIONS;
+    const stripped =
+      options !== env.NODE_OPTIONS && !(isWord(options) && options.includes(PRELOAD_MARK));
+    const blind = options === UNKNOWN || stripped;
+    found.push(...programListing(argv, c.dir, root, programEnv, blind));
   }
   return found;
 }
@@ -624,6 +977,8 @@ function listingOf(argv, cwd, root, env, blind) {
   const [head, ...rest] = argv;
   if (head === undefined) return [];
   if (!isWord(head)) return [unread('a program named by a substitution', root)];
+  if (env.PATH === UNKNOWN)
+    return [unread(`\`${head}\` looked up on a PATH the string changed`, root)];
   const bin = basename(head);
   // A program is read by its name only where the name is the system's: a `cat` the test put first
   // on PATH, or named by a path of its own, is a program nobody has read.
@@ -632,7 +987,7 @@ function listingOf(argv, cwd, root, env, blind) {
   if (runs !== null && !TRUSTED_PLACE.test(runs) && !(node && runsNode(runs)))
     return [unread(`\`${head}\` at ${runs}, which the test's own PATH or path chose`, root)];
   if (bin === 'git') return gitListing(rest, cwd, root, env);
-  if (SHELLS.has(bin)) return shellProgram(bin, rest, cwd, root, env);
+  if (SHELLS.has(bin)) return shellProgram(bin, rest, cwd, root, env, runs);
   if (Object.hasOwn(LAUNCHERS, bin)) return launched(bin, rest, cwd, root, env, blind);
   if (NODE_PROGRAMS.has(bin) || NODE_BINS.has(bin)) {
     if (blind) return [unread(`\`${bin}\` started without the preload`, root)];
@@ -658,7 +1013,11 @@ function listingOf(argv, cwd, root, env, blind) {
  * environment the program runs under, which is where a shell reads a `$NAME` nobody assigned.
  */
 export function subprocessListing({ command, args = [], shell = false, cwd, root, env = {} }) {
-  if (shell) return shellListing([command, ...args].join(' '), { cwd, root, env });
+  // Node runs a shell call as `<shell> -c <string>`: /bin/sh, or the program the option names.
+  if (shell) {
+    const program = typeof shell === 'string' ? shell : '/bin/sh';
+    return programListing([program, '-c', [command, ...args].join(' ')], cwd, root, env);
+  }
   return programListing([String(command), ...args.map(String)], cwd, root, env);
 }
 
@@ -716,8 +1075,16 @@ function launched(bin, rest, cwd, root, env, blind) {
   return programListing(bin === 'xargs' ? [...inner, UNKNOWN] : inner, dir, root, own, stripped);
 }
 
-/** A shell: a `-c` string is read command by command, and a script file cannot be seen into. */
-function shellProgram(bin, rest, cwd, root, env) {
+/**
+ * A shell: a `-c` string is read command by command, and a script file cannot be seen into. Only a
+ * shell whose startup has been read is read at all, by the program its name resolves to, and only
+ * under invocation options that change no startup, no `cd` and no command run: `-l`, `-i`, `-P`,
+ * `--rcfile` and every option off that list count as the root.
+ */
+function shellProgram(bin, rest, cwd, root, env, runs) {
+  const shell = basename(runs ?? bin);
+  if (!READ_SHELLS.has(shell))
+    return [unread(`\`${bin}\` (${shell}), whose startup files the guard does not read`, root)];
   let i = 0;
   let command = false;
   for (; i < rest.length && isWord(rest[i]) && /^[-+]./.test(rest[i]); i++) {
@@ -726,8 +1093,15 @@ function shellProgram(bin, rest, cwd, root, env) {
       i++;
       break;
     }
-    if (/^-[a-zA-Z]*c[a-zA-Z]*$/.test(a)) command = true;
-    if (['-o', '+o', '-O', '+O', '--rcfile', '--init-file'].includes(a)) i++;
+    if (a === '--noprofile' || a === '--norc') continue;
+    // `-euo pipefail`: a cluster ending in `o` or `O` takes the next word as its option's name.
+    const value = /^[-+][euxvfn]*[oO]$/.test(a) ? rest[++i] : undefined;
+    const inert =
+      value !== undefined
+        ? (a.endsWith('o') ? INERT_OPTIONS : GLOB_SHOPTS).has(value)
+        : INERT_LETTERS.test(a);
+    if (!inert) return [unread(`\`${bin} ${a}${value === undefined ? '' : ` ${value}`}\``, root)];
+    if (a.startsWith('-') && a.includes('c')) command = true;
   }
   const operands = rest.slice(i);
   if (!command) {
@@ -1144,6 +1518,11 @@ function sourceListing(word, all, dir, gitDir, root, via, byName = true) {
 
 /** What one git call lists, from the directory it runs in and every option that moves that. */
 function gitListing(rest, cwd, root, env) {
+  const changed = Object.keys(env).find(
+    (k) => /^(GIT_|HOME$|XDG_CONFIG_HOME$)/.test(k) && env[k] === UNKNOWN,
+  );
+  if (changed !== undefined)
+    return [unread(`\`git\` under a \`${changed}\` the string changed`, root)];
   let dir = cwd;
   let workTree = env.GIT_WORK_TREE === undefined ? undefined : at(cwd, env.GIT_WORK_TREE);
   let gitDir = env.GIT_DIR;
