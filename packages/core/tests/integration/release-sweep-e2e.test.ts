@@ -255,11 +255,13 @@ describe('release sweep E2E (ISS-1117)', () => {
     expect(result.issuesCut).toBe(0);
     expect(result.issuesExcluded).toBe(1);
     expect(await stored(id)).toEqual(before);
-    // The forge-dev and sid-desk shape: a `commit:`-only pass is held, and the row now says why.
+    // The forge-dev and sid-desk shape: a `commit:`-only pass at a commit the probe does not
+    // answer is held, and the row says what is served instead (ISS-1346).
     const hold = await holdOf(id);
     expect(hold?.code).toBe('RELEASE_CRITERIA_UNEARNED');
-    expect(String(hold?.reason)).toContain('criterion 1');
-    expect(String(hold?.reason)).toContain('no runtime witnessed it');
+    expect(String(hold?.reason)).toContain('criterion 1: judged at dce6f354c');
+    expect(String(hold?.reason)).toContain(`what this project is serving`);
+    expect(String(hold?.reason)).toContain(SERVING);
   }, 30_000);
 
   it('does nothing for a project that has not opted into autoProdDeploy', async () => {

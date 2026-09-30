@@ -132,3 +132,29 @@ describe('POST confirm-prod-deploy, when the environment is held', () => {
     });
   });
 });
+
+/** ISS-1346 — a Coolify refusal reaches the REST caller as what Coolify said, not INTERNAL_ERROR. */
+describe('GET rollback-images, when Coolify refuses the read', () => {
+  const images = () =>
+    app.request(`/${PROJECT_ID}/integrations/coolify/rollback-images?resourceUuid=app-uuid`);
+
+  it('answers 502 naming the status and the Coolify route', async () => {
+    const { listCoolifyRollbackImages } = await import('./controls.js');
+    const { CoolifyApiError } = await import('./client.js');
+    vi.mocked(listCoolifyRollbackImages).mockRejectedValueOnce(
+      new CoolifyApiError(
+        404,
+        '{}',
+        undefined,
+        'GET /api/v1/applications/app-uuid/rollback-images',
+      ),
+    );
+    const res = await images();
+    expect(res.status).toBe(502);
+    const body = JSON.stringify(await res.json());
+    expect(body).toContain('COOLIFY_API_ERROR');
+    expect(body).toContain(
+      'Coolify answered HTTP 404 to GET /api/v1/applications/app-uuid/rollback-images',
+    );
+  });
+});

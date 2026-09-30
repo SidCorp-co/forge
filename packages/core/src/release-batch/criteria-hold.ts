@@ -87,6 +87,11 @@ export async function criteriaHold(
     criteria: r.unearned.map((c) => c.criterion),
   }));
   if (owing.length === waiting.length) {
+    // One project-level reason, not one per row, where no run could clear any of them (ISS-1346).
+    if (serving.kind === 'undeclared') {
+      out.push(blocker('RELEASE_RUNTIME_UNROUTED', { missing: serving.missing, held }, 'roster'));
+      return;
+    }
     out.push(blocker('RELEASE_CRITERIA_UNEARNED', { held }, 'roster'));
     return;
   }

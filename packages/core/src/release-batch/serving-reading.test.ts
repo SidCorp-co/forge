@@ -17,6 +17,15 @@ vi.mock('./channel.js', async (importActual) => {
     resolveReleaseChannels: (projectId: string) => resolveReleaseChannelsMock(projectId),
   };
 });
+const readForgeDeploymentsMock = vi.fn(
+  async (_projectId: string): Promise<unknown> => ({
+    kind: 'unrouted',
+    missing: 'this project has no active deploy binding',
+  }),
+);
+vi.mock('./deployed-reading.js', () => ({
+  readForgeDeployments: (projectId: string) => readForgeDeploymentsMock(projectId),
+}));
 vi.mock('../db/client.js', () => ({
   db: { select: () => ({ from: () => ({ where: () => ({ limit: () => selectLimit() }) }) }) },
 }));
@@ -53,6 +62,7 @@ const answering = (bodies: Record<string, string>) =>
   });
 
 beforeEach(() => {
+  readForgeDeploymentsMock.mockClear();
   resolveReleaseChannelsMock.mockReset();
   resolveReleaseChannelsMock.mockResolvedValue([]);
   selectLimit.mockReset();
@@ -146,10 +156,67 @@ describe('readServingNow', () => {
     expect(reading.kind === 'serving' && reading.unread.join(' ')).toContain('down.test');
   });
 
-  it('says undeclared where no channel and no environment declares a probe', async () => {
+  it('says undeclared, and what is missing, where nothing declares a probe and nothing Forge deployed can answer', async () => {
     resolveReleaseChannelsMock.mockResolvedValue([]);
     selectLimit.mockResolvedValue([{ environments: { live: { url: 'https://app.test' } } }]);
-    expect(await readServingNow(PROJECT_ID, now)).toEqual({ kind: 'undeclared' });
+    expect(await readServingNow(PROJECT_ID, now)).toEqual({
+      kind: 'undeclared',
+      missing: 'this project has no active deploy binding',
+    });
+  });
+
+  // ISS-1346: with no probe declared, what Forge itself deployed is what is asked.
+  it('reads what Forge deployed where no probe is declared', async () => {
+    resolveReleaseChannelsMock.mockResolvedValue([channel({ verify: null, verifySource: 'none' })]);
+    const where =
+      "Forge's deployment d1 to Coolify target `App` (preview), finished 2026-09-29T19:21:18.158Z";
+    readForgeDeploymentsMock.mockResolvedValueOnce({
+      kind: 'answered',
+      commits: [SERVED],
+      readFrom: [where],
+      unread: ['Coolify target `Api` (live) has no deployment Forge made and saw finish on record'],
+    });
+    expect(await readServingNow(PROJECT_ID, now)).toEqual({
+      kind: 'serving',
+      commits: [SERVED],
+      unread: ['Coolify target `Api` (live) has no deployment Forge made and saw finish on record'],
+      hosts: [where],
+      readAt: FROZEN.toISOString(),
+    });
+    expect(readForgeDeploymentsMock).toHaveBeenCalledWith(PROJECT_ID);
+  });
+
+  it('says unreadable, naming every target, where a route exists and nothing answered', async () => {
+    resolveReleaseChannelsMock.mockResolvedValue([]);
+    readForgeDeploymentsMock.mockResolvedValueOnce({
+      kind: 'unanswered',
+      readFrom: ['one'],
+      unread: [
+        'one could not be read: 503',
+        'two has no deployment Forge made and saw finish on record',
+      ],
+    });
+    expect(await readServingNow(PROJECT_ID, now)).toEqual({
+      kind: 'unreadable',
+      why: 'one could not be read: 503; two has no deployment Forge made and saw finish on record',
+      hosts: ['one'],
+      readAt: FROZEN.toISOString(),
+    });
+  });
+
+  it('never reads a deployment where a live binding declares a probe', async () => {
+    resolveReleaseChannelsMock.mockResolvedValue([channel()]);
+    vi.stubGlobal('fetch', answering({ 'https://one.test/health': `{"commit":"${SERVED}"}` }));
+    expect((await readServingNow(PROJECT_ID, now)).kind).toBe('serving');
+    expect(readForgeDeploymentsMock).not.toHaveBeenCalled();
+  });
+
+  it('never reads a deployment where a declared probe was refused as a declaration', async () => {
+    resolveReleaseChannelsMock.mockResolvedValue([
+      channel({ verify: null, verifySource: 'declared-unusable' }),
+    ]);
+    expect((await readServingNow(PROJECT_ID, now)).kind).toBe('unreadable');
+    expect(readForgeDeploymentsMock).not.toHaveBeenCalled();
   });
 
   // `resolveReleaseChannels` reads no project row when there is no live binding, so this would

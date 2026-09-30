@@ -270,7 +270,12 @@ export async function runCoolifyRollback(input: {
   return performControl({
     row,
     eventName: 'deploy.rollback.requested',
-    payload: { targetId: target.id, targetLabel: target.label, commit: input.commit },
+    payload: {
+      targetId: target.id,
+      targetLabel: target.label,
+      resourceUuid: target.resourceUuid,
+      commit: input.commit,
+    },
     targetLabel: `${target.label} rollback`,
     call: async () => {
       const res = await buildClient(ctx).rollbackApplication({
