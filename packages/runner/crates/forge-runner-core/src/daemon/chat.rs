@@ -30,7 +30,7 @@ use uuid::Uuid;
 
 use crate::config::Config;
 use crate::error::{Error, Result};
-use crate::runner::claude_code::ClaudeCodeRunner;
+use crate::runner::claude_code::{ClaudeCodeRunner, Resident};
 use crate::runner::{JobSpec, Runner, RunnerEvent, TurnCredential};
 use crate::transport::agent_sessions::{self, SessionPatch};
 use crate::transport::CoreClient;
@@ -100,6 +100,10 @@ struct SendFrame {
     mcp_servers_override: Option<serde_json::Value>,
     #[serde(default)]
     attachments: Option<Vec<AttachmentRef>>,
+    /// See `StartFrame::forge_token`. A web session's every turn carries its own (ISS-27): the
+    /// previous turn's was revoked when that turn stopped.
+    #[serde(default)]
+    forge_token: Option<String>,
 }
 
 /// Resolved per-turn parameters fed into one `claude` invocation.
@@ -117,8 +121,8 @@ struct Turn {
     attachment_dir: Option<PathBuf>,
     /// The `seq` core's own row for this turn took; this turn's lines follow it.
     event_seq_base: Option<u64>,
-    /// See `StartFrame::forge_token`. Only a start carries one: a follow-up reuses the process
-    /// the start spawned, whose MCP config already holds it.
+    /// See `StartFrame::forge_token`. A turn that carries one never reuses a resident process:
+    /// that process's MCP config holds the token of the turn that spawned it, revoked since.
     credential: Option<TurnCredential>,
 }
 
@@ -263,10 +267,7 @@ pub async fn handle_start(
             mcp_servers_override: f.mcp_servers_override,
             attachment_dir,
             event_seq_base: f.event_seq_base,
-            credential: f
-                .forge_token
-                .filter(|t| !t.trim().is_empty())
-                .map(TurnCredential),
+            credential: handed_credential(f.forge_token),
         },
     )
     .await
@@ -293,9 +294,6 @@ pub async fn handle_send(
         Some((dir, paths)) => (augment_prompt(&f.message, &paths), Some(dir)),
         None => (f.message, None),
     };
-    // The session's token was delivered on `agent:start`; a follow-up never
-    // carries one, and re-minting per turn would revoke the credential the
-    // previous turn may still be spending.
     run_turn(
         client,
         runner,
@@ -311,10 +309,14 @@ pub async fn handle_send(
             mcp_servers_override: f.mcp_servers_override,
             attachment_dir,
             event_seq_base: f.event_seq_base,
-            credential: None,
+            credential: handed_credential(f.forge_token),
         },
     )
     .await
+}
+
+fn handed_credential(token: Option<String>) -> Option<TurnCredential> {
+    token.filter(|t| !t.trim().is_empty()).map(TurnCredential)
 }
 
 /// Handle `agent:abort`: kill the running claude process for this session, if
@@ -352,6 +354,26 @@ fn chat_spec(session_id: &str, prompt: &str, turn: &Turn) -> JobSpec {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum Disposition {
+    Reuse,
+    Spawn,
+    Close(&'static str),
+}
+
+/// Whether a turn may be written into the session's resident process. One that carries its own
+/// token may not: the resident's MCP config holds the token of the turn that spawned it.
+fn resident_disposition(resident: Option<&Resident>, turn: &Turn) -> Disposition {
+    match resident {
+        None => Disposition::Spawn,
+        Some(_) if turn.credential.is_some() => {
+            Disposition::Close("this turn carries its own token")
+        }
+        Some(r) if r.model == turn.model => Disposition::Reuse,
+        Some(_) => Disposition::Close("model changed"),
+    }
+}
+
 async fn run_turn(client: &CoreClient, runner: Arc<ClaudeCodeRunner>, turn: Turn) -> Result<()> {
     // ISS-584 (C): ack the turn the moment we own it, before claude starts. Lets
     // core tell apart "no runner ever got this" (never acked) from "runner got it
@@ -378,14 +400,14 @@ async fn run_turn(client: &CoreClient, runner: Arc<ClaudeCodeRunner>, turn: Turn
     tracing::info!("[chat {session_id}] {}", refresh::describe(&git_state));
 
     let resident = runner.resident(&session_id).await;
-    let reuse = match &resident {
-        Some(r) if r.model == turn.model => true,
-        Some(_) => {
-            tracing::info!("[chat {session_id}] model changed — closing the resident session");
+    let reuse = match resident_disposition(resident.as_ref(), &turn) {
+        Disposition::Reuse => true,
+        Disposition::Spawn => false,
+        Disposition::Close(why) => {
+            tracing::info!("[chat {session_id}] {why} — closing the resident session");
             runner.close(&session_id).await;
             false
         }
-        None => false,
     };
 
     let moved_under_us = reuse
@@ -631,6 +653,48 @@ mod tests {
             !format!("{spec:?}").contains("forge_pat_dev_turn"),
             "a spec printed to a log must not carry the token"
         );
+    }
+
+    /// ISS-27: a web session's follow-up carries the token minted for the person who sent it.
+    #[test]
+    fn a_send_frame_token_becomes_the_turns_credential() {
+        let f: SendFrame = serde_json::from_value(json!({
+            "sessionId": "s1", "message": "again", "claudeSessionId": "c1",
+            "forgeToken": "forge_pat_dev_second"
+        }))
+        .unwrap();
+        let turn = Turn {
+            credential: handed_credential(f.forge_token),
+            resume_id: f.claude_session_id,
+            ..turn_for_test()
+        };
+        let spec = chat_spec("s1", "again", &turn);
+        assert_eq!(
+            spec.credential,
+            Some(TurnCredential("forge_pat_dev_second".into()))
+        );
+        assert_eq!(spec.resume_id.as_deref(), Some("c1"));
+    }
+
+    #[test]
+    fn a_turn_with_its_own_token_never_reuses_the_resident_process() {
+        let resident = Resident {
+            model: None,
+            head_sha: None,
+        };
+        let handed = Turn {
+            credential: Some(TurnCredential("forge_pat_dev_second".into())),
+            ..turn_for_test()
+        };
+        assert_eq!(
+            resident_disposition(Some(&resident), &handed),
+            Disposition::Close("this turn carries its own token")
+        );
+        assert_eq!(
+            resident_disposition(Some(&resident), &turn_for_test()),
+            Disposition::Reuse
+        );
+        assert_eq!(resident_disposition(None, &handed), Disposition::Spawn);
     }
 
     #[test]
