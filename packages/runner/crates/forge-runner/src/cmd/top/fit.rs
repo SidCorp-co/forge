@@ -39,6 +39,9 @@ pub struct Shown {
     pub next: usize,
 }
 
+/// The page row's wording, from the page shown and the page count.
+type PageRow<'a> = dyn Fn(usize, usize) -> String + 'a;
+
 /// One screenful of `frame`, whose first line is its header. `page` counts
 /// redraws, so it is taken modulo however many pages this frame needs.
 pub fn screen(frame: &[String], size: Option<Screen>, page: usize) -> Shown {
@@ -61,35 +64,64 @@ pub fn screen(frame: &[String], size: Option<Screen>, page: usize) -> Shown {
         rows.extend(body);
         return Shown { rows, next: 0 };
     }
-    // The status row's height depends on the page count it states, and the
-    // page count on the room the status row leaves: settle it in two passes.
-    let (mut status, mut room, mut pages) = (Vec::new(), 1, 1);
-    let mut status_rows = 1;
-    for _ in 0..2 {
-        room = size.rows.saturating_sub(header.len() + status_rows).max(1);
-        pages = body.len().div_ceil(room).max(1);
-        status = wrap(
-            &format!(
-                "page {} of {pages} — {total} rows on this {}x{} screen, one page per redraw; `forge-runner top --once | less` reads it whole",
-                page % pages + 1,
-                size.cols,
-                size.rows
-            ),
-            size.cols,
-        );
-        if status.len() == status_rows {
-            break;
+    // Room for the body under the header and a page row, trying the full page
+    // row, then a short one, then no header, then the body alone, so every
+    // page fits however small the screen is and every row is still shown.
+    let full = |at: usize, pages: usize| {
+        format!(
+            "page {at} of {pages} — {total} rows on this {}x{} screen, one page per redraw; `forge-runner top --once | less` reads it whole",
+            size.cols, size.rows
+        )
+    };
+    let short = |at: usize, pages: usize| format!("page {at} of {pages}; --once reads it whole");
+    let plans: [(bool, Option<&PageRow>); 4] = [
+        (true, Some(&full)),
+        (true, Some(&short)),
+        (false, Some(&short)),
+        (false, None),
+    ];
+    for (with_header, status) in plans {
+        let head: &[String] = if with_header { &header } else { &[] };
+        let paged = |status_rows: usize| {
+            let room = size.rows.checked_sub(head.len() + status_rows)?;
+            (room > 0).then(|| (room, body.len().div_ceil(room).max(1)))
+        };
+        let Some(status) = status else {
+            let (room, pages) = paged(0).expect("a screen of one row holds one row");
+            let at = page % pages;
+            return Shown {
+                rows: body.into_iter().skip(at * room).take(room).collect(),
+                next: (at + 1) % pages,
+            };
+        };
+        // The page row's height depends on the page count it states, and the
+        // page count on the room the page row leaves: settle it in two passes.
+        let mut rows_for_status = 1;
+        let mut fitted = None;
+        for _ in 0..2 {
+            let Some((room, pages)) = paged(rows_for_status) else {
+                break;
+            };
+            let at = page % pages;
+            let text = wrap(&status(at + 1, pages), size.cols);
+            if text.len() == rows_for_status {
+                fitted = Some((room, pages, at, text));
+                break;
+            }
+            rows_for_status = text.len();
         }
-        status_rows = status.len();
+        let Some((room, pages, at, text)) = fitted else {
+            continue;
+        };
+        let mut rows = head.to_vec();
+        rows.extend(text);
+        rows.extend(body.into_iter().skip(at * room).take(room));
+        return Shown {
+            rows,
+            next: (at + 1) % pages,
+        };
     }
-    let at = page % pages;
-    let mut rows = header;
-    rows.extend(status);
-    rows.extend(body.into_iter().skip(at * room).take(room));
-    Shown {
-        rows,
-        next: (at + 1) % pages,
-    }
+    unreachable!("the last plan, the body alone, always fits")
 }
 
 /// `line` as rows no wider than `width`, broken at a space where one falls in
@@ -235,6 +267,57 @@ mod tests {
             }
         }
         assert_eq!(seen, body);
+    }
+
+    /// Paging checked against pages written out by hand, not derived from
+    /// `wrap`: nine short rows under a header on a screen of five rows are
+    /// three pages of three, in order, and then the first again.
+    #[test]
+    fn short_rows_page_in_order_against_pages_written_out() {
+        let mut f = vec!["head".to_string()];
+        f.extend((1..=9).map(|i| format!("r{i}")));
+        let size = Some(Screen { cols: 200, rows: 5 });
+        let expect = [["r1", "r2", "r3"], ["r4", "r5", "r6"], ["r7", "r8", "r9"]];
+        for (page, want) in expect.iter().enumerate() {
+            let s = screen(&f, size, page);
+            assert_eq!(s.rows[0], "head");
+            assert!(s.rows[1].starts_with(&format!("page {} of 3 — 10 rows", page + 1)));
+            assert_eq!(&s.rows[2..], want, "page {page}");
+            assert_eq!(s.next, (page + 1) % 3);
+        }
+    }
+
+    /// Consult F1: a screen too small for the header and a page row still
+    /// gets pages that fit it, and every body row is on one of them.
+    #[test]
+    fn a_tiny_screen_still_gets_pages_that_fit_it() {
+        let f = vec![
+            "the header of the frame".to_string(),
+            "body".to_string(),
+            "more".to_string(),
+        ];
+        for (cols, rows) in [(1, 1), (10, 4), (10, 2), (3, 3), (40, 3)] {
+            let size = Some(Screen { cols, rows });
+            let (mut page, mut seen) = (0, String::new());
+            loop {
+                let s = screen(&f, size, page);
+                assert!(s.rows.len() <= rows, "{cols}x{rows}: {:?}", s.rows);
+                assert!(
+                    s.rows.iter().all(|r| r.chars().count() <= cols),
+                    "{cols}x{rows}: {:?}",
+                    s.rows
+                );
+                seen.push_str(&s.rows.concat().replace(' ', ""));
+                page = s.next;
+                if page == 0 {
+                    break;
+                }
+            }
+            assert!(
+                seen.contains("body") && seen.contains("more"),
+                "{cols}x{rows}: {seen}"
+            );
+        }
     }
 
     /// A page number from a frame that had more pages is taken round, never
