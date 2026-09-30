@@ -102,10 +102,11 @@ export async function readCommitLanding(
       `/repos/${repository}/commits/${encodeURIComponent(commit)}`,
     );
   } catch (err) {
-    if (err instanceof GitHubReadError && (err.status === 404 || err.status === 422)) {
+    const lookup = err instanceof GitHubReadError && err.phase === 'request' ? err.status : null;
+    if (lookup === 404 || lookup === 422) {
       return refuse(
         'COMMIT_NOT_IN_REPOSITORY',
-        `commit ${commit} is not an object in ${repository}: GitHub resolves it to no single commit there (HTTP ${err.status}). Mark with the sha the work landed at`,
+        `commit ${commit} is not an object in ${repository}: GitHub resolves it to no single commit there (HTTP ${lookup}). Mark with the sha the work landed at`,
         { commit, repository },
       );
     }

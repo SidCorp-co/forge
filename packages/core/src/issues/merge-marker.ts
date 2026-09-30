@@ -129,6 +129,8 @@ export async function applyMergeMarker(args: {
   /** The commit the caller claimed, where Forge has no merge of its own to put in the column. */
   let claimedCommit: string | null = null;
   let fromRepository: Extract<CommitLanding, { ok: true }> | null = null;
+  /** Set only where the repository's commit is the one stamped, never beside a pull request's. */
+  let readFrom: Extract<CommitLanding, { ok: true }> | null = null;
   if (args.op === 'mark') {
     const shape = await readLandingShape(db, before.projectId);
     // A landing on a git project is refused below whatever the target, and that refusal names the
@@ -167,6 +169,7 @@ export async function applyMergeMarker(args: {
       claimedCommit =
         claimed && claimed.toLowerCase() !== observed.commitSha.toLowerCase() ? claimed : null;
     } else if (fromRepository) {
+      readFrom = fromRepository;
       stampResult = await recordIssueMerge(db, {
         issueId: before.id,
         evidence: {
@@ -245,7 +248,7 @@ export async function applyMergeMarker(args: {
     commitSha: stampResult.commitSha,
     claimedCommit,
     landing: stampResult.landing,
-    ...(fromRepository && stampResult.wrote ? { readFrom: fromRepository } : {}),
+    ...(readFrom && stampResult.wrote ? { readFrom } : {}),
   });
   const marked = args.op === 'mark' ? `\n${markDetail}` : '';
   const auditComment = await writeAuditComment(

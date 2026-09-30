@@ -38,7 +38,20 @@ const repo = {
   commits: new Map<string, FakeCommit>(),
   reads: [] as string[],
   down: null as string | null,
+  /** A merged pull request Forge projected for the issue, standing in for `repo_pull_requests`. */
+  pullRequest: null as { commitSha: string; mergedAt: Date } | null,
 };
+
+vi.mock('../../src/issues/merge-record.js', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../../src/issues/merge-record.js')>();
+  return {
+    ...real,
+    observedMergeForIssue: vi.fn(
+      async (...args: Parameters<typeof real.observedMergeForIssue>) =>
+        repo.pullRequest ?? real.observedMergeForIssue(...args),
+    ),
+  };
+});
 
 function httpError(status: number, path: string): Error {
   return Object.assign(new Error(`GET ${path} on ${repo.fullName} returned HTTP ${status}`), {
@@ -72,6 +85,9 @@ vi.mock('../../src/integrations/github/client.js', async (importOriginal) => {
           repo.reads.push(path);
           if (repo.down === 'read')
             throw new real.GitHubReadError(502, httpError(502, path).message);
+          if (repo.down === 'mint') {
+            throw new real.GitHubReadError(404, 'minting an installation token: HTTP 404', 'mint');
+          }
           const commit = /\/commits\/([^/]+)$/.exec(path);
           if (commit?.[1]) {
             const hit = find(decodeURIComponent(commit[1]));
@@ -274,6 +290,7 @@ describe('ISS-1318 — a base-branch landing marked by its commit (real Postgres
   it.each([
     ['no_binding', 'no active GitHub binding'],
     ['read', 'HTTP 502'],
+    ['mint', 'minting an installation token: HTTP 404'],
   ] as const)(
     'refuses COMMIT_UNVERIFIED when the repository cannot be read (%s) (criteria 7, 8)',
     async (down, says) => {
@@ -318,10 +335,21 @@ describe('ISS-1318 — a base-branch landing marked by its commit (real Postgres
   it("reads nothing for a human's mark, with or without evidence (criterion 14)", async () => {
     const bare = await seed({ sessionContext: {} });
     expect((await mark(bare, FABRICATED, 'human')).mark).toBe('asserted');
-    expect((await mark({ ...bare, mergedAt: new Date() }, undefined, 'human')).action).toBe(
-      'already_merged',
-    );
+    const branched = await seed({ sessionContext: { branch: 'ISS-1319-x' }, seq: SEQ + 1 });
+    const res = await mark(branched, FABRICATED, 'human');
+    expect(res.action).toBe('merged');
+    expect(res.mark).toBe('asserted');
     expect(repo.reads).toEqual([]);
+  });
+
+  it("names a pull request's merge as its own, not the repository commit this call checked", async () => {
+    const pr = '0123456789abcdef0123456789abcdef01234567';
+    repo.pullRequest = { commitSha: pr, mergedAt: new Date('2026-09-30T08:00:00Z') };
+    const issue = await seed();
+    const res = await mark(issue, OWN);
+    expect((await row(issue.id)).merged_commit_sha).toBe(pr);
+    expect(res.markDetail).not.toContain(`read from ${repo.fullName} itself`);
+    expect((await comments(issue.id)).at(-1)).not.toContain(`read from ${repo.fullName} itself`);
   });
 
   it('takes no commit route on an outside_git project (criterion 15)', async () => {
