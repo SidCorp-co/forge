@@ -42,8 +42,6 @@ const NOT_A_RUNG: readonly string[] = [...HUMAN_PARK_STATUSES, ...ISSUE_TERMINAL
 const HISTORY_SHORT =
   'the moves before this park were made before Forge recorded each move inside its own write, so nothing says which park record is this one — move it where it belongs with Move anyway';
 
-const ANSWER_CHARS = 2000;
-
 const NO_RECORD =
   'no park record was posted for this park, so nothing says where it resumes — move it where it belongs with Move anyway';
 
@@ -194,7 +192,7 @@ function answerAfter(replies: readonly ParkComment[], recordAt: string): IssuePa
   return {
     commentId: reply.id,
     postedAt: reply.createdAt.toISOString(),
-    text: reply.body.slice(0, ANSWER_CHARS),
+    text: reply.body,
   };
 }
 

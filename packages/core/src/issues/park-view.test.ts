@@ -275,6 +275,11 @@ describe('readPark — the answer a person gave in the thread', () => {
     );
   });
 
+  it('carries the whole answer, however long, so nothing after a cut is lost', () => {
+    const long = `${'a'.repeat(3000)} — but only on Tuesdays`;
+    expect(answerOf([{ id: 'a1', body: long, minute: 22 }])?.text).toBe(long);
+  });
+
   it('is null where no park record was posted', () => {
     const park = readPark({
       ...base,
