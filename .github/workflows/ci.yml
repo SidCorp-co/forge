@@ -23,9 +23,9 @@ name: CI
 # check a promotion owes is one a pull request into `dev` already ran (ISS-1304).
 on:
   push:
-    branches: [main, dev]
+    branches: [main, dev, iss-1370-plant-main]
   pull_request:
-    branches: [main, dev]
+    branches: [main, dev, iss-1370-plant-main]
   # The heavy jobs a pull request no longer waits on also run nightly, 19:00 UTC (ISS-1370), so a
   # red one is found on a day nothing landed as well.
   schedule:
@@ -310,7 +310,7 @@ jobs:
         run: |
           proved=false
           why="a ${GITHUB_EVENT_NAME} event to ${GITHUB_REF}, which no pull_request run precedes"
-          gated="refs/heads/main refs/heads/dev"
+          gated="refs/heads/main refs/heads/dev refs/heads/iss-1370-plant-main"
           case " $gated " in
             *" ${GITHUB_REF} "*) on_gated_branch=true ;;
             *) on_gated_branch=false ;;
@@ -480,7 +480,7 @@ jobs:
   # whichever run lands next, before anything else.
   core-integration:
     needs: changes
-    if: github.event_name != 'pull_request' && (github.event_name == 'schedule' || needs.changes.outputs.core == 'true')
+    if: github.event_name == 'schedule' || needs.changes.outputs.core == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

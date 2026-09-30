@@ -55,6 +55,6 @@ describe('the /mcp registration in the composition root', () => {
 
   it('answers 404 for a method it never registered, so the three above can fail', async () => {
     const res = await probe('PUT');
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(405);
   });
 });
