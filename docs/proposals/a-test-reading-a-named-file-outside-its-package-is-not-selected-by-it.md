@@ -35,7 +35,7 @@ someone to remember to add a line when a test starts reading a new file.
 | A second declaration shape | `@gate-input` would carry paths as well as `whole-tree`, and the checker has to parse `ci.yml`'s filters, which today only `dorny/paths-filter` reads. |
 | The Rust side | `orientation.rs` is not a vitest file, so its declaration needs a reader of its own, or the runner filter takes `.forge/orientation.md` by hand. |
 
-## Two more a declaration does not reach
+## Three more a declaration does not reach
 
 ISS-1314's guard refuses an undeclared test that lists a directory covering the root. Three kinds
 of reach it leaves unrefused: the first two measured on the tree its fourth build was cut from, the

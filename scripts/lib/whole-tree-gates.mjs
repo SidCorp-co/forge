@@ -1,6 +1,7 @@
 import { existsSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { types } from 'node:util';
 import { climbsAfterMagic, globBase, physical } from './whole-tree-shell.mjs';
 
 export const DECLARATION_VALUES = ['whole-tree'];
@@ -46,23 +47,39 @@ export function coversRoot(root, dir) {
   return root.startsWith(prefix);
 }
 
+/** Node takes a URL by its shape, so one built in another realm (a jsdom file's `URL`) is one. */
+const isUrl = (value) =>
+  value !== null &&
+  typeof value === 'object' &&
+  typeof value.href === 'string' &&
+  typeof value.protocol === 'string';
+
+/** The path Node reads off a path argument, or `null` where Node would take none. */
+export function pathOf(value) {
+  if (typeof value === 'string') return value;
+  if (isUrl(value)) return value.protocol === 'file:' ? fileURLToPath(value.href) : null;
+  if (types.isUint8Array(value)) return Buffer.from(value).toString();
+  return null;
+}
+
 /** Where the kernel takes a path argument: the directory a listing of it really lists. */
 function toPath(value, cwd) {
-  let path;
-  if (typeof value === 'string') path = value;
-  else if (value instanceof URL && value.protocol === 'file:') path = fileURLToPath(value);
-  else if (Buffer.isBuffer(value)) path = value.toString();
-  else return null;
+  const path = pathOf(value);
+  if (path === null) return null;
   return physical(isAbsolute(path) ? path : `${cwd}/${path}`);
 }
 
-/**
- * The absolute directories one `node:fs` listing call lists, read off the arguments it was really
- * called with and placed where the kernel resolves them: whatever spelling or symlink built the
- * path, this is where it landed. A path argument that is none of a string, a Buffer or a file URL,
- * and a glob climbing after a wildcard, is `null`: a listing the guard cannot place, which the
- * watch counts as the root. `cp` and `cpSync` list the tree they copy.
- */
+/** A spawn's directory, off its `cwd` as Node reads it: none is `from`, and one not a path throws. */
+export function spawnCwd(cwd, from) {
+  if (cwd === undefined || cwd === null || cwd === '') return from;
+  const path = pathOf(cwd);
+  if (path === null) throw new TypeError(`a spawn cwd the guard cannot place: ${String(cwd)}`);
+  return resolve(from, path);
+}
+
+/** The directories one `node:fs` listing call lists, placed where the kernel resolves them. An
+ * argument that is no path, and a glob climbing after a wildcard, is `null`, which the watch counts
+ * as the root. `cp` and `cpSync` list the tree they copy. */
 export function fsListing(name, args, cwd) {
   if (name === 'glob' || name === 'globSync') {
     const opts = args[1] && typeof args[1] === 'object' ? args[1] : {};
@@ -73,7 +90,7 @@ export function fsListing(name, args, cwd) {
       return isAbsolute(p) ? physical(globBase(p)) : physical(`${base}/${globBase(p)}`);
     });
   }
-  if (args[0] instanceof URL && args[0].protocol !== 'file:') return [];
+  if (isUrl(args[0]) && args[0].protocol !== 'file:') return [];
   return [toPath(args[0], cwd)];
 }
 
@@ -131,13 +148,24 @@ export function judgeDeclarations({ files }) {
 
 export const GUARD_PATH = 'scripts/lib/whole-tree-guard.mjs';
 
-/** Every vitest config has to install the guard: `setupFiles` is the absolute `test.setupFiles`
- * vitest itself resolved, and a config it could not load (`error`) is refused, not trusted. */
+/** The root and `test.setupFiles` vitest resolves for the config at `path`, run from its directory:
+ * a Vite `root`, which the config's own `test.root` replaces, where the CLI's `root` overrides it. */
+export async function vitestSetup(path, vitestNode) {
+  const { resolveConfig } = await import(pathToFileURL(vitestNode).href);
+  const config = await resolveConfig({ config: path, watch: false }, { root: dirname(path) });
+  return {
+    root: config.root,
+    setupFiles: [config.test?.setupFiles ?? []].flat().map((f) => resolve(config.root, f)),
+  };
+}
+
+/** Every vitest config has to install the guard, named from the `root` vitest resolved it at, and
+ * a config it could not load (`error`) is refused, not trusted. */
 export function judgeConfigs(configs, root) {
   const guard = resolve(root, GUARD_PATH);
   const refused = [];
-  for (const { path, setupFiles, error } of configs) {
-    const expected = relative(dirname(path), GUARD_PATH);
+  for (const { path, root: configRoot, setupFiles, error } of configs) {
+    const expected = error ? null : relative(configRoot, guard);
     if (error) {
       refused.push({
         path,

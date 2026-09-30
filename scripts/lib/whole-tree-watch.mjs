@@ -10,7 +10,7 @@ import process from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 import workerThreads from 'node:worker_threads';
-import { FS_LISTING_CALLS, fsListing } from './whole-tree-gates.mjs';
+import { FS_LISTING_CALLS, fsListing, spawnCwd } from './whole-tree-gates.mjs';
 import { subprocessListing } from './whole-tree-shell.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -153,7 +153,7 @@ export function installWatch(onListing, logPath) {
     const call = spawnCall(name, args);
     let entries;
     try {
-      const cwd = call.opts.cwd ? resolve(process.cwd(), String(call.opts.cwd)) : process.cwd();
+      const cwd = spawnCwd(call.opts.cwd, process.cwd());
       const env = call.opts.env ?? process.env;
       const found = subprocessListing({ ...call, cwd, root: ROOT, env });
       entries = found.map((e) => ({ ...e, via: `${name}() running ${e.via}` }));
@@ -185,7 +185,7 @@ export function installWatch(onListing, logPath) {
       : process.env;
     let entries;
     try {
-      const cwd = options.cwd ? resolve(process.cwd(), String(options.cwd)) : process.cwd();
+      const cwd = spawnCwd(options.cwd, process.cwd());
       const args = Array.isArray(options.args) ? options.args.slice(1).map(String) : [];
       const found = subprocessListing({
         command: String(options.file),
