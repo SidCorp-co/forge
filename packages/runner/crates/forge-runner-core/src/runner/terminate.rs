@@ -296,7 +296,7 @@ enum Held {
 
 /// Read git's answer about the path, or refuse the verb by name.
 ///
-/// Three of the five readings refuse, and each refuses for the same reason in
+/// Five of the nine readings refuse, and each refuses for the same reason in
 /// a different shape: this box has not established that the checkout is gone,
 /// and releasing on an unestablished fact is what writes a ledger row nobody
 /// can trust. A refusal costs an operator one `forge-runner run release`; the
@@ -309,6 +309,17 @@ fn held_checkout(residence: &Residence, verb: Verb, run_id: &str, path: &Path) -
         Residence::MainWorkingTree => Ok(Held::MainWorkingTree),
         Residence::Linked | Residence::NotAWorktree => Ok(Held::Ours),
         Residence::Gone => Ok(Held::Nothing),
+        // Everything past this point reads the checkout at its path — its
+        // branch, its dirt, what a salvage would push — and every one of those
+        // readings would be the enclosing checkout's (ISS-1250, judge j3).
+        Residence::Enclosed(top) => Err(Error::Other(format!(
+            "refusing to {verb:?} run {run_id}: {} stands, but it is no checkout of its own — \
+             git, asked at the path, answers for the enclosing checkout {}, so anything read, \
+             preserved or pushed from it would be that checkout's. Nothing was preserved, pushed \
+             or removed; the directory is partway through a removal, or its `.git` file is gone",
+            path.display(),
+            top.display()
+        ))),
         Residence::MovedTo(now_at) => Err(Error::Other(format!(
             "refusing to {verb:?} run {run_id}: git still registers this run's checkout, moved \
              to {} — the ledger names {}, which holds nothing. Nothing was preserved and \
@@ -2050,6 +2061,64 @@ mod tests {
             "the lease the loop was holding must come back"
         );
         assert!(root.join("f.txt").is_file(), "the checkout survives");
+    }
+
+    /// Every ref a repository holds, one per line, for a before-and-after read.
+    async fn refs_of(repo: &Path) -> String {
+        let out = tokio::process::Command::new("git")
+            .args(["for-each-ref", "--format=%(refname) %(objectname)"])
+            .current_dir(repo)
+            .stdin(std::process::Stdio::null())
+            .output()
+            .await
+            .unwrap();
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    }
+
+    /// ISS-1250 criterion 29 — judge j3: a nested worktree whose `.git` file a
+    /// delete had taken reads, at the path, as whatever git says about the
+    /// repository around it. A release that took that answer would preserve,
+    /// push or keep on another checkout's word, so it refuses before any of it.
+    #[tokio::test]
+    async fn a_release_over_a_path_git_answers_for_from_the_enclosing_checkout_refuses() {
+        let (root, wt) = repo("enclosed").await;
+        git(&wt, &["add", "work.txt"]).await;
+        git(&wt, &["commit", "-m", "work no remote has"]).await;
+        std::fs::remove_file(wt.join(".git")).unwrap();
+        let remote = root.with_extension("remote.git");
+        let (refs_before, remote_before) = (refs_of(&root).await, refs_of(&remote).await);
+        let mut led = ledger_for(&wt, Incarnation::Exited, "boot-a");
+        let (p, s, l) = (
+            Procs(Mutex::new(Vec::new())),
+            Sessions,
+            Leases(Mutex::new(HashSet::new())),
+        );
+
+        let err = force_terminal(
+            &mut led,
+            "run-1",
+            forcing(&root, "boot-a"),
+            ports(&p, &s, &l),
+        )
+        .await
+        .expect_err(
+            "git asked at this path answers for the repository around it, which says nothing \
+             about this checkout",
+        )
+        .to_string();
+
+        assert!(
+            err.contains(&wt.display().to_string()),
+            "names the path: {err}"
+        );
+        let top = root.canonicalize().unwrap();
+        assert!(
+            err.contains(&top.display().to_string()),
+            "names the checkout git answered for: {err}"
+        );
+        assert_eq!(refs_of(&root).await, refs_before, "no ref was written");
+        assert_eq!(refs_of(&remote).await, remote_before, "nothing was pushed");
+        assert!(wt.join("work.txt").is_file(), "nothing was removed");
     }
 
     #[tokio::test]

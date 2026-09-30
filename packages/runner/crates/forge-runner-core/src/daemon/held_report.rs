@@ -25,6 +25,7 @@ use crate::runner::ledger::{Incarnation, Ledger, Run};
 use crate::transport::{run_sessions, CoreClient};
 use crate::workspace::repo_cred::RepoCred;
 use crate::workspace::salvage::{self, Fate, Publication};
+use crate::workspace::worktree::Kind;
 
 /// What the box says about a checkout an exited run left behind.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -85,6 +86,21 @@ impl HeldReporter for CoreHeld<'_> {
 pub async fn at_risk(run: &Run, cred: &RepoCred) -> Option<Held> {
     let worktree = run.worktree_path.as_path();
     if !worktree.is_absolute() || !worktree.exists() {
+        return None;
+    }
+    // Every line below reads git at the path, and at a path that is no
+    // checkout's top level git answers for the checkout around it: sid-desk's
+    // ISS-684 report named the parent's `staging` at the parent's HEAD
+    // (ISS-1250, judge j3). What is at the path is asked first.
+    if let Kind::Enclosed(top) = crate::workspace::worktree::kind_at(worktree).await {
+        tracing::warn!(
+            "[held-report] run {}: {} stands, but git, asked at the path, answers for the \
+             enclosing checkout {}, so nothing this box would read from it is this checkout's — \
+             no report is taken from it",
+            run.run_id,
+            worktree.display(),
+            top.display()
+        );
         return None;
     }
     let head = git_line(worktree, &["rev-parse", "HEAD"]).await?;
@@ -445,6 +461,64 @@ mod tests {
             "the branch this commit sits on survives `git worktree remove`, so the release takes \
              the directory and nothing here may say it is kept: {}",
             held.reason
+        );
+    }
+
+    /// ISS-1250 criteria 30, 31 — judge j3: sid-desk ISS-684's kept report named
+    /// branch `staging` at the parent checkout's own HEAD. A nested worktree
+    /// whose `.git` file a delete had taken reads, at the path, as the
+    /// repository around it, so every word a report took there would be about
+    /// that other checkout.
+    #[test]
+    fn no_report_is_taken_from_a_path_git_answers_for_from_the_enclosing_checkout() {
+        let (root, work) = a_box_with_a_worktree("enclosed");
+        std::fs::write(work.join("parent.txt"), "the parent's own work\n").expect("write");
+        sh(&work, &["add", "-A"]);
+        sh(
+            &work,
+            &["commit", "-qm", "the parent's own unpushed commit"],
+        );
+        refuse_pushes(&root);
+        let nested = work.join(".claude/worktrees/ISS-689");
+        std::fs::create_dir_all(nested.parent().unwrap()).expect("mkdir");
+        sh(
+            &work,
+            &[
+                "worktree",
+                "add",
+                "-q",
+                nested.to_str().expect("utf8"),
+                "-b",
+                "ISS-689",
+            ],
+        );
+        std::fs::remove_file(nested.join(".git")).expect("the delete took the .git file");
+        let mut led = a_ledger_holding(&nested, Incarnation::Exited);
+        let spy = Spy::default();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+
+        let mut said = 0;
+        let logged = crate::workspace::worktree::tests::logged_while(|| {
+            said = rt.block_on(report_held_worktrees(&spy, &mut led, "boot-a"));
+        });
+
+        assert_eq!(
+            said,
+            0,
+            "a report read off the enclosing checkout is about that checkout: {:?}",
+            spy.seen.borrow()
+        );
+        assert!(
+            logged.contains(&nested.display().to_string()),
+            "the journal names the path no report was taken from: {logged}"
+        );
+        let top = work.canonicalize().expect("the parent is there");
+        assert!(
+            logged.contains(&top.display().to_string()),
+            "and the checkout git answered for: {logged}"
         );
     }
 
