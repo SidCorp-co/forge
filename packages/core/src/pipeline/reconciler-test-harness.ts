@@ -22,7 +22,8 @@ export interface AutonomousWedgeRow {
   project_id: string;
   status: string;
   reopen_count: number;
-  created_by: string | null;
+  created_by: string;
+  lease?: unknown;
 }
 
 export const stuckQueue: StuckRow[][] = [];
