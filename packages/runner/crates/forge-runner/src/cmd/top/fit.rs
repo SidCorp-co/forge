@@ -46,14 +46,30 @@ pub struct Shown {
     /// How many rows under the page row are headings carried from earlier
     /// pages rather than rows of this one.
     pub carried: usize,
+    /// The page drawn, from 0, and how many this frame took on this screen.
+    pub at: usize,
+    pub pages: usize,
 }
 
-/// The page row's wording, from the page shown and the page count.
-type PageRow<'a> = dyn Fn(usize, usize) -> String + 'a;
+/// What the page row says of the keys that turn pages.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PageKeys {
+    /// Keys are read, and pages turn one per redraw.
+    Turning,
+    /// Keys are read, and the page shown stays until space is pressed again.
+    Held,
+    /// Keys are not read, for the reason given.
+    Unread(String),
+}
 
-/// One screenful of `frame`, whose first line is its header. `page` counts
-/// redraws, so it is taken modulo however many pages this frame needs.
-pub fn screen(frame: &[String], size: Option<Screen>, page: usize) -> Shown {
+/// The page row's wording, from the page shown, the page count and the keys.
+type PageRow<'a> = dyn Fn(usize, usize, &PageKeys) -> String + 'a;
+
+/// One screenful of `frame`, whose first line is its header. `page` is taken
+/// modulo however many pages this frame needs on this screen, and `Shown`
+/// says which page that was: a page held on a frame that has since shrunk is
+/// the one it comes round to.
+pub fn screen(frame: &[String], size: Option<Screen>, page: usize, keys: &PageKeys) -> Shown {
     let Some(size) = size else {
         let mut rows: Vec<String> = frame.iter().map(|l| printable(l)).collect();
         rows.insert(
@@ -66,6 +82,8 @@ pub fn screen(frame: &[String], size: Option<Screen>, page: usize) -> Shown {
             next: 0,
             top,
             carried: 0,
+            at: 0,
+            pages: 1,
         };
     };
     let (header, body) = match frame.split_first() {
@@ -97,18 +115,41 @@ pub fn screen(frame: &[String], size: Option<Screen>, page: usize) -> Shown {
             next: 0,
             top,
             carried: 0,
+            at: 0,
+            pages: 1,
         };
     }
     // Room for the body under the header and a page row, trying the full page
     // row, then a short one, then no header, then the body alone, so every
     // page fits however small the screen is and every row is still shown.
-    let full = |at: usize, pages: usize| {
-        format!(
-            "page {at} of {pages} — {total} rows on this {}x{} screen, one page per redraw; `forge-runner top --once | less` reads it whole",
-            size.cols, size.rows
-        )
+    let (cols, rows) = (size.cols, size.rows);
+    let full = |at: usize, pages: usize, keys: &PageKeys| {
+        match keys {
+        PageKeys::Turning => format!(
+            "page {at} of {pages} — {total} rows at {cols}x{rows}; space holds, n and p turn; `forge-runner top --once | less` reads it whole"
+        ),
+        PageKeys::Held => format!(
+            "page {at} of {pages} HELD until space — n and p turn; {total} rows at {cols}x{rows}; `forge-runner top --once | less` reads it whole"
+        ),
+        PageKeys::Unread(why) => format!(
+            "page {at} of {pages} — {total} rows at {cols}x{rows}, one page per redraw; keys are not read ({why}); `forge-runner top --once | less` reads it whole"
+        ),
+    }
     };
-    let short = |at: usize, pages: usize| format!("page {at} of {pages}; --once reads it whole");
+    let short = |at: usize, pages: usize, keys: &PageKeys| match keys {
+        PageKeys::Turning => format!("page {at} of {pages}; space holds; --once reads it whole"),
+        PageKeys::Held => format!("page {at} of {pages} HELD until space; --once reads it whole"),
+        PageKeys::Unread(_) => {
+            format!("page {at} of {pages}; keys are not read; --once reads it whole")
+        }
+    };
+    // Holding a page changes the page row's words, and must not change the
+    // page's rows: the height reserved is the tallest either wording takes
+    // (whole-set read at 7a70ba3, F2).
+    let family: &[&PageKeys] = match keys {
+        PageKeys::Unread(_) => &[keys],
+        PageKeys::Turning | PageKeys::Held => &[&PageKeys::Turning, &PageKeys::Held],
+    };
     let plans: [(bool, Option<&PageRow>); 4] = [
         (true, Some(&full)),
         (true, Some(&short)),
@@ -124,7 +165,7 @@ pub fn screen(frame: &[String], size: Option<Screen>, page: usize) -> Shown {
         let Some(status) = status else {
             let pages = paged(0).expect("a screen of one row holds one row");
             let at = page % pages.len();
-            return pages[at].shown(Vec::new(), &body, (at + 1) % pages.len());
+            return pages[at].shown(Vec::new(), &body, at, pages.len());
         };
         // The page row's height depends on the page count it states, and the
         // page count on the room the page row leaves: settle it in two passes.
@@ -144,12 +185,13 @@ pub fn screen(frame: &[String], size: Option<Screen>, page: usize) -> Shown {
             // they break at the same spaces: one of each count is every height.
             let tallest = std::iter::successors(Some(1usize), |at| at.checked_mul(10))
                 .take_while(|&at| at <= n)
-                .map(|at| wrap(&status(at, n), size.cols).len())
+                .flat_map(|at| family.iter().map(move |k| (at, *k)))
+                .map(|(at, k)| wrap(&status(at, n, k), size.cols).len())
                 .max()
                 .unwrap_or(1);
             if tallest == rows_for_status {
                 let at = page % n;
-                fitted = Some((pages, at, wrap(&status(at + 1, n), size.cols)));
+                fitted = Some((pages, at, wrap(&status(at + 1, n, keys), size.cols)));
                 break;
             }
             rows_for_status = tallest;
@@ -159,7 +201,7 @@ pub fn screen(frame: &[String], size: Option<Screen>, page: usize) -> Shown {
         };
         let mut top = head.to_vec();
         top.extend(text);
-        return pages[at].shown(top, &body, (at + 1) % pages.len());
+        return pages[at].shown(top, &body, at, pages.len());
     }
     unreachable!("the last plan, the body alone, always fits")
 }
@@ -179,16 +221,18 @@ struct Page {
 }
 
 impl Page {
-    fn shown(&self, top: Vec<String>, body: &[Row], next: usize) -> Shown {
+    fn shown(&self, top: Vec<String>, body: &[Row], at: usize, pages: usize) -> Shown {
         let opened = top.len();
         let mut rows = top;
         rows.extend(self.carried.iter().cloned());
         rows.extend(body[self.from..self.to].iter().map(|r| r.text.clone()));
         Shown {
             rows,
-            next,
+            next: (at + 1) % pages,
             top: opened,
             carried: self.carried.len(),
+            at,
+            pages,
         }
     }
 }
@@ -238,10 +282,7 @@ fn headings(lines: &[String], row: &Row, cols: usize) -> Vec<String> {
     if cols < CARRY_FROM_COLS {
         return Vec::new();
     }
-    let mark = |l: &str| {
-        let first = wrap(l, cols - CONTINUED.len()).swap_remove(0);
-        format!("{first}{CONTINUED}")
-    };
+    let mark = |l: &str| format!("{}{CONTINUED}", fit_heading(l, cols - CONTINUED.len()));
     let indent = |l: &str| l.len() - l.trim_start_matches(' ').len();
     let mut out = Vec::new();
     let mut under = indent(&lines[row.src]);
@@ -263,6 +304,89 @@ fn headings(lines: &[String], row: &Row, cols: usize) -> Vec<String> {
     }
     out.reverse();
     out
+}
+
+/// A heading as one row of at most `room` cells, keeping what names it: its
+/// label, the text before its first `": "` (a question row's id is its last
+/// clause), and its source, from its last `" ← "`. What is between is elided
+/// with `…`, since a cut at the row's width kept the start alone and so lost
+/// a question's id and the PROJECTS heading's route at 80 columns (judge r3j,
+/// finding 77).
+fn fit_heading(line: &str, room: usize) -> String {
+    let line = printable(line);
+    if cells(&line) <= room {
+        return line;
+    }
+    let src_at = line.rfind(" ← ");
+    let head = line
+        .find(": ")
+        .filter(|&at| src_at.is_none_or(|s| at < s))
+        .map(|at| &line[..at]);
+    let head_cells = head.map_or(0, cells);
+    // The label whole, as much of the middle as fits, and the source whole.
+    if let Some(at) = src_at {
+        let src = &line[at..];
+        if let Some(budget) = room.checked_sub(cells(src) + 1) {
+            if budget >= head_cells {
+                return format!("{}…{src}", prefix(&line[..at], budget));
+            }
+        }
+    }
+    // No room for the source: the label whole and what follows it cut.
+    let Some(head) = head.filter(|_| head_cells > room - 1) else {
+        return format!("{}…", prefix(&line, room - 1));
+    };
+    // The label alone is wider than the row: its start, and the clause that
+    // names the row, which is its last.
+    let clause = head
+        .rfind(", ")
+        .map(|i| &head[i + 2..])
+        .or_else(|| head.rfind(' ').map(|i| &head[i + 1..]))
+        .unwrap_or(head);
+    let end = format!(" {clause}: …");
+    match room.checked_sub(cells(&end) + 1) {
+        Some(budget) => {
+            // Cut at a space where one stands past the indent, so no word of
+            // the start is left half.
+            let start = prefix(head, budget);
+            let whole = head[start.len()..].starts_with(' ');
+            let indent = start.len() - start.trim_start().len();
+            let start = match start.rfind(' ').filter(|&i| !whole && i > indent) {
+                Some(i) => start[..i].trim_end(),
+                None => start,
+            };
+            format!("{start}…{end}")
+        }
+        None => format!("…{}", suffix(&end, room - 1)),
+    }
+}
+
+/// The longest start of `s` taking at most `n` cells, trailing spaces off.
+fn prefix(s: &str, n: usize) -> &str {
+    let mut used = 0;
+    let end = s
+        .char_indices()
+        .find(|&(_, c)| {
+            used += UnicodeWidthChar::width(c).unwrap_or(0);
+            used > n
+        })
+        .map_or(s.len(), |(i, _)| i);
+    s[..end].trim_end()
+}
+
+/// The longest end of `s` taking at most `n` cells, never opening on a mark
+/// combined onto a character the cut left out.
+fn suffix(s: &str, n: usize) -> &str {
+    let mut used = 0;
+    let start = s
+        .char_indices()
+        .rev()
+        .find(|&(_, c)| {
+            used += UnicodeWidthChar::width(c).unwrap_or(0);
+            used > n
+        })
+        .map_or(0, |(i, c)| i + c.len_utf8());
+    s[start..].trim_start_matches(|c: char| start > 0 && UnicodeWidthChar::width(c) == Some(0))
 }
 
 /// The terminal cells `s` takes: a wide character two, a combining mark none.
@@ -361,6 +485,11 @@ pub fn wrap(line: &str, width: usize) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The screen as a view reading keys draws it while pages turn.
+    fn screen(frame: &[String], size: Option<Screen>, page: usize) -> Shown {
+        super::screen(frame, size, page, &PageKeys::Turning)
+    }
 
     fn widest(rows: &[String]) -> usize {
         rows.iter().map(|r| cells(r)).max().unwrap_or(0)
@@ -644,6 +773,161 @@ mod tests {
                 assert_eq!(seen, body, "{cols}x{rows}");
             }
         }
+    }
+
+    /// Every page `f` makes on `size`, as the headings carried onto it and the
+    /// rows of its own.
+    fn pages_of(f: &[String], size: Screen) -> Vec<(Vec<String>, Vec<String>)> {
+        let (mut page, mut out) = (0, Vec::new());
+        loop {
+            let s = screen(f, Some(size), page);
+            assert!(s.rows.len() <= size.rows, "{:?}", s.rows);
+            assert!(widest(&s.rows) <= size.cols, "{:?}", s.rows);
+            let at = s.top;
+            out.push((
+                s.rows[at..at + s.carried].to_vec(),
+                s.rows[at + s.carried..].to_vec(),
+            ));
+            page = s.next;
+            if page == 0 || out.len() > 500 {
+                return out;
+            }
+        }
+    }
+
+    /// Criterion 30 (judge r3j, finding 77): at 80 columns a question row
+    /// carried onto the page its text runs on keeps the id that answers it,
+    /// a UUID included, where the cut kept only the row's first 68 cells.
+    #[test]
+    fn a_carried_question_row_keeps_its_id_at_80_columns() {
+        let ids = [
+            "3f1c2d4e-5a6b-4c7d-8e9f-0a1b2c3d4e5f",
+            "q-short",
+            "9b9d6690-aaaa-4bbb-8ccc-dddddddddddd",
+        ];
+        let mut f = vec!["head".to_string(), "WAITING ON A PERSON".to_string()];
+        f.push("  questions  mowment: 3 open ← GET /api/questions?projectId=ae1e9833-b795-4c45-bdbb-6d6e09830bba&status=open".into());
+        for (i, id) in ids.iter().enumerate() {
+            let words = format!("w{i} ").repeat(90);
+            f.push(format!(
+                "      human blocker, asked 18h 44m ago, question {id}: {}",
+                words.trim_end()
+            ));
+        }
+        let pages = pages_of(&f, Screen { cols: 80, rows: 9 });
+        let mut opened_inside = 0;
+        for (carried, own) in &pages[1..] {
+            let Some(i) = (0..ids.len())
+                .find(|i| own[0].starts_with("        ") && own[0].contains(&format!("w{i} ")))
+            else {
+                continue;
+            };
+            opened_inside += 1;
+            let row = carried
+                .last()
+                .unwrap_or_else(|| panic!("nothing carried over {own:?}"));
+            assert!(
+                row.contains(&format!("question {}: ", ids[i]))
+                    && row.ends_with(&format!("…{CONTINUED}")),
+                "the row w{i} continues is carried without its id: {row:?}"
+            );
+            assert!(row.starts_with("      human"), "{row:?}");
+            assert!(!row.contains("blocke…"), "a word left half: {row:?}");
+        }
+        assert!(opened_inside >= 3, "{pages:#?}");
+    }
+
+    /// Criterion 31 (judge r3j, finding 77): a carried PROJECTS heading keeps
+    /// the route it names, where the cut left it ending `← GET`.
+    #[test]
+    fn a_carried_projects_heading_keeps_its_route_at_80_columns() {
+        let mut f = vec![
+            "head".to_string(),
+            "PROJECTS  8 bound ← /home/dev/.config/forge-runner/config.toml; 8 served to this box (read 7s ago) ← GET /api/devices/me/runners".to_string(),
+        ];
+        f.extend(
+            (1..=30).map(|i| format!("  project-{i}  [aaaaaaaa]  /home/dev/forge/projects/p{i}")),
+        );
+        let pages = pages_of(&f, Screen { cols: 80, rows: 8 });
+        assert!(pages.len() > 2, "{pages:#?}");
+        for (carried, _) in &pages[1..] {
+            assert_eq!(carried.len(), 1, "{carried:?}");
+            let row = &carried[0];
+            assert!(row.starts_with("PROJECTS  8 bound ← "), "{row:?}");
+            assert!(
+                row.ends_with(&format!("… ← GET /api/devices/me/runners{CONTINUED}")),
+                "{row:?}"
+            );
+        }
+    }
+
+    /// The carried form at its edges: a heading that fits is itself, a source
+    /// too long to keep leaves the label whole, and a label wider than the
+    /// row keeps its start and the clause that names it; each within the row.
+    #[test]
+    fn a_heading_is_elided_in_the_middle_and_never_past_its_row() {
+        assert_eq!(
+            fit_heading("  alpha  [aaaa]  /r", 40),
+            "  alpha  [aaaa]  /r"
+        );
+        let q = "  questions  mowment: 2 open ← GET /api/questions?projectId=ae1e9833-b795-4c45-bdbb-6d6e09830bba&status=open";
+        let got = fit_heading(q, 40);
+        assert!(
+            cells(&got) <= 40 && got.starts_with("  questions  mowment: 2 open"),
+            "{got:?}"
+        );
+        assert!(got.ends_with('…'), "{got:?}");
+        let long = format!(
+            "      human blocker, asked 3h ago, question {}: text",
+            "x".repeat(30)
+        );
+        let got = fit_heading(&long, 45);
+        assert!(cells(&got) <= 45, "{got:?}");
+        assert!(
+            got.ends_with(&format!(" question {}: …", "x".repeat(30))),
+            "{got:?}"
+        );
+        let tiny = fit_heading(&long, 20);
+        assert!(cells(&tiny) <= 20 && tiny.starts_with('…'), "{tiny:?}");
+        let wide = format!("  {}: 界界界界界界界界界界界界", "界".repeat(3));
+        let got = fit_heading(&wide, 16);
+        assert!(cells(&got) <= 16, "{got:?}");
+    }
+
+    /// Consult on the r4 head (whole-set read at 7a70ba3), F2: holding a page
+    /// changes the page row's words and never the page's rows, even where the
+    /// held wording would wrap and the turning one would not.
+    #[test]
+    fn holding_a_page_keeps_the_rows_it_shows() {
+        let mut f = vec!["head".to_string()];
+        f.extend((1..=40).map(|i| format!("r{i}")));
+        for cols in [80, 100, 110, 120, 140] {
+            for rows in [5, 7, 24] {
+                let size = Some(Screen { cols, rows });
+                for page in 0..14 {
+                    let body = |k: &PageKeys| {
+                        let s = super::screen(&f, size, page, k);
+                        (s.at, s.pages, s.rows[s.top + s.carried..].to_vec())
+                    };
+                    assert_eq!(
+                        body(&PageKeys::Turning),
+                        body(&PageKeys::Held),
+                        "{cols}x{rows}, page {page}"
+                    );
+                }
+            }
+        }
+    }
+
+    /// Consult on the r4 head, F1: an end cut between a letter and the mark
+    /// combined onto it takes neither, so the mark is never set on the `…`.
+    #[test]
+    fn an_end_cut_never_starts_on_a_combining_mark() {
+        assert_eq!(suffix("e\u{301}x", 1), "x");
+        assert_eq!(suffix("ae\u{301}", 1), "e\u{301}");
+        let head = format!("  questions  {}: 2 open", "caf\u{e9}e\u{301}".repeat(8));
+        let got = fit_heading(&head, 20);
+        assert!(!got.contains("…\u{301}"), "{got:?}");
     }
 
     /// Boundary: where the carried headings would fill a page, the outermost
