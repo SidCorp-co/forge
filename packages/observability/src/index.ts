@@ -213,3 +213,4 @@ export function parseSourceCommit(raw: string | undefined): string | null {
   const value = raw?.trim();
   return value && SOURCE_COMMIT_PATTERN.test(value) ? value : null;
 }
+// probe ISS-1364: a change confined to observability; not to be merged
