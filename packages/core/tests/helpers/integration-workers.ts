@@ -42,3 +42,24 @@ export function integrationWorkers(
     rule: 'a shared machine, a quarter of the cores and at most 3',
   };
 }
+
+/** The run's own account of its count, or a refusal where vitest would drop `--maxWorkers` unsaid. */
+export function workerLine(
+  chosen: WorkerCount,
+  resolved: number,
+  flag: string | number | undefined,
+  env: Env = process.env,
+): string {
+  const variable = env.VITEST_MAX_WORKERS;
+  if (flag !== undefined && variable !== undefined && variable !== '') {
+    throw new Error(
+      `--maxWorkers=${flag} and VITEST_MAX_WORKERS=${variable} both set a worker count, and ` +
+        'vitest takes the variable and drops the flag. Give one: unset VITEST_MAX_WORKERS for ' +
+        'the flag to decide, or leave --maxWorkers off.',
+    );
+  }
+  const by = flag === undefined ? 'something outside that rule' : `--maxWorkers=${flag}`;
+  const overruled =
+    resolved === chosen.count ? '' : `; ${by} overrode the ${chosen.count} that rule gives`;
+  return `[integration] ${resolved} worker(s) on ${chosen.cores} core(s) — ${chosen.rule}${overruled}`;
+}

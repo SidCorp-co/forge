@@ -75,9 +75,12 @@ pub fn exe_bytes(proc_root: &Path, pid: u32) -> Read<Arc<Vec<u8>>> {
         .map_err(|e| Unreadable::new(link.display().to_string(), e))
 }
 
-/// The BINARY section.
+/// The BINARY section. `record_path` is where `record` was read from, which
+/// the daemon line names: `serving::lines` is `status`'s wording, and names
+/// the file only where it could not be read.
 pub fn lines(
     record: &Result<Option<serving::Record>, serving::Unreadable>,
+    record_path: &Path,
     probe: &Probe,
     daemon: Option<&Daemon>,
     now_ms: i64,
@@ -90,13 +93,25 @@ pub fn lines(
         forge_runner_core::update::VERSION_LINE,
         forge_runner_core::update::BUILD_TARGET
     )];
-    out.extend(serving::lines(
+    let mut daemon_lines = serving::lines(
         record,
         probe,
         forge_runner_core::update::CURRENT_VERSION,
         forge_runner_core::update::BUILD_COMMIT,
         now_ms,
-    ));
+    );
+    let read = match record {
+        Ok(Some(_)) => Some(format!(" ← {}", record_path.display())),
+        Ok(None) => Some(format!(
+            " ← {}, which does not exist, and the processes on this box",
+            record_path.display()
+        )),
+        Err(_) => None,
+    };
+    if let (Some(read), Some(first)) = (read, daemon_lines.first_mut()) {
+        first.push_str(&read);
+    }
+    out.extend(daemon_lines);
     out.push(match daemon {
         None => "exe        no running daemon could be named, so no daemon file can be read".into(),
         Some(d) => exe_line(d),

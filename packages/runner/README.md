@@ -39,7 +39,7 @@ lines below. They were listed here as deferred long after they landed.)
 | `bind` | Bind a project slug to a local repo path |
 | `start` | Run the daemon — connect, register, accept jobs |
 | `status` | Connection + runner status; `--watch` is `top` |
-| `top` | A live, read-only view of the box: every project, its master pane, the skill that pane stands on and the CLI slug its checkout resolves; every run holding a lease, aged by the newest file under its worktree; what waits on a person; gate and pool health. Each row names what it read, and a source it cannot read says so. `--once` prints one frame, as it does when stdout is not a terminal |
+| `top` | A live, read-only view of the box: every project, its master pane, the skill that pane stands on and the CLI slug its checkout resolves; every run holding a lease, aged by the newest file under its worktree; what waits on a person; gate and pool health. Each row names what it read, and a source it cannot read says so. On a terminal each row is wrapped to the screen's width and a frame taller than the screen is shown a page per redraw; `--once` prints one frame whole, as it does when stdout is not a terminal |
 | `logs` | Say where this box's runner log is read |
 | `config` | Inspect or edit local config |
 | `doctor` | Diagnose the environment (claude CLI, git, cred store, core reachability) |
