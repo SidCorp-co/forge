@@ -5413,6 +5413,44 @@ mod give_back_tests {
         );
     }
 
+    /// Criterion 72's count: of two inherited runs, the one whose process
+    /// reads gone is counted and the one whose process reads alive is not.
+    #[test]
+    fn a_placement_counts_only_the_runs_whose_process_it_read_gone() {
+        let mut led = a_ledger_holding_one_run();
+        led.create_run_group(NewRun {
+            run_id: "run-2".into(),
+            project_id: "proj-1".into(),
+            master_session_id: "master-0".into(),
+            worktree_path: "/nonexistent/wt2".into(),
+            boot_id: BOOT.into(),
+            issue_keys: vec!["ISS-3".into()],
+        })
+        .unwrap();
+        assert!(led.note_host("run-2", 102, "start-2").unwrap());
+        let inherited = one_inherited_run_with_its_host(&led);
+        assert_eq!(inherited.len(), 2, "both runs are inherited");
+        let hosts = subagent_host::testing::FakeHosts::with(101, subagent_host::HostRead::Gone);
+        hosts.set(102, subagent_host::HostRead::Alive);
+
+        let line = logged_while(|| {
+            placed_again(
+                &mut led, &inherited, "master-2", true, 1_000, "slug", &hosts,
+            )
+        });
+
+        assert!(
+            line.contains("the subagents of 1 run(s) it inherits ran in is gone too")
+                && line.contains("2 run(s) it inherits declared under a master session"),
+            "criterion 72: one ended, two adopted: {line}"
+        );
+        assert_eq!(
+            led.run("run-2").unwrap().unwrap().host_ended_by,
+            None,
+            "the live one is not ended"
+        );
+    }
+
     #[test]
     fn a_placement_that_ended_a_run_says_how_many() {
         let mut led = a_ledger_holding_one_run();
