@@ -1,3 +1,4 @@
+// @gate-input whole-tree — it loads the core and web-v2 unit configs, and the job running it is core.
 import { execFile } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
