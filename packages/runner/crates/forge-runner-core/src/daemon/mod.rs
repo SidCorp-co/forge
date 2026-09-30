@@ -21,6 +21,7 @@ pub mod degraded;
 pub mod dispatch;
 pub mod dispatch_gate;
 pub mod drain;
+pub mod git_exclude;
 pub mod headroom;
 pub mod held_report;
 pub mod hook_install;

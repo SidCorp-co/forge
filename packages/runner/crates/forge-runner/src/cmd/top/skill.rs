@@ -2,9 +2,10 @@
 //!
 //! The daemon writes `assets/forge-master-skill.md` into a checkout's
 //! `.claude/skills/forge-master/SKILL.md` byte for byte at bind, at provision,
-//! at every start and at pane placement (`daemon/master_skill.rs`), and refuses
-//! a checkout whose git does not ignore that path; `forge-runner status` reads
-//! what each write did. Its asset is an `include_str!`, so it sits verbatim in
+//! at every start and at pane placement (`daemon/master_skill.rs`), first
+//! adding `.claude/` to a checkout's exclude file where its git does not
+//! ignore that path, and refusing one where that cannot be done;
+//! `forge-runner status` reads what each write did. Its asset is an `include_str!`, so it sits verbatim in
 //! the daemon's executable: the installed file is that build's skill exactly
 //! when its bytes occur there. A copy that differs is one the daemon refused
 //! or failed to write, or one a daemon older than ISS-1357 left behind.
@@ -13,8 +14,6 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use super::source::{mtime_ms, Read, Unreadable};
-
-pub const RELATIVE: &str = forge_runner_core::daemon::master_skill::RELATIVE;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Skill {
@@ -36,7 +35,7 @@ pub enum Skill {
 }
 
 pub fn read(repo: &Path, daemon_exe: &Read<Arc<Vec<u8>>>) -> Skill {
-    let path = repo.join(RELATIVE);
+    let path = forge_runner_core::daemon::master_skill::path_in(repo);
     let installed = match std::fs::read(&path) {
         Ok(b) => b,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Skill::Absent { path },
@@ -121,7 +120,7 @@ mod tests {
     }
 
     fn install(repo: &Path, text: &str) {
-        let p = repo.join(RELATIVE);
+        let p = forge_runner_core::daemon::master_skill::path_in(repo);
         std::fs::create_dir_all(p.parent().unwrap()).unwrap();
         std::fs::write(p, text).unwrap();
     }

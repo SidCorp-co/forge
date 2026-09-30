@@ -199,7 +199,7 @@ pub async fn provision_checkout(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use forge_runner_core::daemon::master_skill::{self, Outcome, Read, ASSET, RELATIVE};
+    use forge_runner_core::daemon::master_skill::{self, path_in, Outcome, Read, ASSET};
     use forge_runner_core::test_scratch::Scratch;
 
     fn git_checkout(dir: &std::path::Path, ignores: bool) {
@@ -229,7 +229,7 @@ mod tests {
 
         assert!(installed, "{line}");
         assert!(line.starts_with("skill acme: written by "), "{line}");
-        assert_eq!(std::fs::read_to_string(repo.join(RELATIVE)).unwrap(), ASSET);
+        assert_eq!(std::fs::read_to_string(path_in(&repo)).unwrap(), ASSET);
         let Read::Record(r) = master_skill::read(&cfg) else {
             panic!("bind recorded nothing")
         };
@@ -237,11 +237,32 @@ mod tests {
         assert_eq!(lines, [(&Outcome::Written, master_skill::Point::Bind)]);
     }
 
+    /// Owner, 2026-09-30: a checkout that merely does not ignore `.claude/`
+    /// gets it in its exclude file and the skill.
     #[test]
-    fn bind_into_a_checkout_that_does_not_ignore_it_writes_nothing_and_says_why() {
+    fn bind_into_a_checkout_that_does_not_ignore_it_excludes_and_writes() {
         let s = Scratch::new("bind-skill-open");
         let repo = s.path().join("repo");
         git_checkout(&repo, false);
+
+        let (line, installed) = install_skill("acme", &repo, Some(&s.path().join("cfg")));
+
+        assert!(installed, "{line}");
+        assert_eq!(std::fs::read_to_string(path_in(&repo)).unwrap(), ASSET);
+        assert!(
+            std::fs::read_to_string(repo.join(".git").join("info").join("exclude"))
+                .unwrap()
+                .lines()
+                .any(|l| l == ".claude/")
+        );
+    }
+
+    #[test]
+    fn bind_into_a_checkout_whose_own_rule_un_ignores_it_writes_nothing_and_says_why() {
+        let s = Scratch::new("bind-skill-negated");
+        let repo = s.path().join("repo");
+        git_checkout(&repo, false);
+        std::fs::write(repo.join(".gitignore"), "!.claude/\n!.claude/**\n").unwrap();
 
         let (line, installed) = install_skill("acme", &repo, Some(&s.path().join("cfg")));
 

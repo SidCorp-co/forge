@@ -245,7 +245,11 @@ async fn finish_workspace(client: &CoreClient, _cfg: &Config, p: &Provision, rep
     }
     trust::pre_trust_logged(repo_path, &p.slug);
     record_binding(p, repo_path);
-    let skill = install_master_skill(&p.slug, repo_path);
+    let skill = install_master_skill(
+        &p.slug,
+        repo_path,
+        crate::daemon::control::config_dir().as_deref(),
+    );
     if !skill.installed() {
         let said = format!(
             "the forge-master skill: {}",
@@ -266,11 +270,15 @@ async fn finish_workspace(client: &CoreClient, _cfg: &Config, p: &Provision, rep
 }
 
 /// The master skill follows the binding, not a pane (ISS-1357), so the
-/// workspace carries it from the moment it is bound.
-fn install_master_skill(slug: &str, repo_path: &Path) -> crate::daemon::master_skill::Outcome {
+/// workspace carries it from the moment it is bound. `dir` is where the
+/// outcome is recorded for `forge-runner status`.
+fn install_master_skill(
+    slug: &str,
+    repo_path: &Path,
+    dir: Option<&Path>,
+) -> crate::daemon::master_skill::Outcome {
     use crate::daemon::master_skill::{install_and_record, Point};
-    let dir = crate::daemon::control::config_dir();
-    install_and_record(slug, repo_path, Point::Provision, dir.as_deref())
+    install_and_record(slug, repo_path, Point::Provision, dir)
 }
 
 /// Write the local binding for a workspace this box just provisioned.
@@ -773,26 +781,23 @@ mod tests {
     }
 
     /// Criterion 5: the workspace carries the skill before it is reported
-    /// `ready`, recorded where `status` reads it.
+    /// `ready`, recorded where `status` reads it. The record directory is
+    /// handed in rather than steered through `XDG_CONFIG_HOME`, which
+    /// `dirs_next` reads on Linux only: on macOS this test wrote the record
+    /// under the user's `~/Library/Application Support` and read an empty
+    /// scratch (CI run 36746604361).
     #[test]
     fn a_provisioned_workspace_holds_the_skill_before_it_is_ready() {
-        use crate::daemon::master_skill::{self, Outcome, Point, Read, ASSET, RELATIVE};
-        let _env = crate::auth::cred_store::ENV_TEST_LOCK
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let home = crate::test_scratch::Scratch::new("provision-skill-home");
-        let _xdg = crate::auth::cred_store::ScopedVar::set("XDG_CONFIG_HOME", home.path());
+        use crate::daemon::master_skill::{self, path_in, Outcome, Point, Read, ASSET};
+        let record = crate::test_scratch::Scratch::new("provision-skill-record");
         let repo = crate::test_scratch::Scratch::new("provision-skill-repo");
 
         assert_eq!(
-            install_master_skill("butlocs", repo.path()),
+            install_master_skill("butlocs", repo.path(), Some(record.path())),
             Outcome::Written
         );
-        assert_eq!(
-            fs::read_to_string(repo.path().join(RELATIVE)).unwrap(),
-            ASSET
-        );
-        let Read::Record(r) = master_skill::read(&home.path().join("forge-runner")) else {
+        assert_eq!(fs::read_to_string(path_in(repo.path())).unwrap(), ASSET);
+        let Read::Record(r) = master_skill::read(record.path()) else {
             panic!("the provision recorded nothing where status reads")
         };
         assert_eq!(
@@ -806,7 +811,7 @@ mod tests {
             .nth(1)
             .expect("finish_workspace");
         let install = body
-            .find("install_master_skill(&p.slug, repo_path)")
+            .find("install_master_skill(\n        &p.slug,\n        repo_path,\n        crate::daemon::control::config_dir().as_deref(),")
             .expect("finish_workspace does not install the skill");
         let ready = body
             .find(r#"report(client, &p.runner_id, "ready""#)

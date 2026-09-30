@@ -9,22 +9,32 @@
 //! goes through the same rule.
 //!
 //! The file lands under `.claude/`, which is only harmless where the
-//! checkout's git ignores it. Where it does not, a write is untracked work in
-//! somebody's repository, and where the file is tracked it is a change to a
-//! committed one, so either is refused and recorded rather than made.
+//! checkout's git ignores it. Where it does not, `.claude/` is first added to
+//! the checkout's box-local exclude file ([`git_exclude`]); where that cannot
+//! be done, or the file is tracked, the write is refused and recorded rather
+//! than made.
 //!
 //! `forge-runner status` is another process, so every outcome goes into
 //! [`RECORD`] in the runner's config directory, which it reads back.
 
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 
 use serde::{Deserialize, Serialize};
 
+use crate::daemon::git_exclude::{self, Refused};
+
 pub const ASSET: &str = include_str!("../../assets/forge-master-skill.md");
 
-/// Where the skill lives inside a checkout.
+/// Where the skill lives inside a checkout, as git names it.
 pub const RELATIVE: &str = ".claude/skills/forge-master/SKILL.md";
+
+/// The skill's file in `repo`, joined component by component so the path
+/// printed carries one separator, the platform's own.
+pub fn path_in(repo: &Path) -> PathBuf {
+    RELATIVE
+        .split('/')
+        .fold(repo.to_path_buf(), |p, c| p.join(c))
+}
 
 pub const RECORD: &str = "master-skill.json";
 const LOCK: &str = "master-skill.json.lock";
@@ -41,8 +51,9 @@ pub enum Outcome {
     Written,
     /// The file already held the asset, and was left untouched.
     Current,
-    /// The checkout's git does not ignore the path.
-    NotIgnored,
+    /// The checkout's git still does not ignore the path with `.claude/` in
+    /// `exclude`, so a rule of its own un-ignores it.
+    NotIgnored { exclude: PathBuf },
     /// The checkout's git tracks the path, which no ignore rule undoes.
     Tracked,
     /// The checkout could not be written, or whether it may be could not be read.
@@ -60,18 +71,19 @@ impl Outcome {
     /// journal both print.
     pub fn says(&self, path: Option<&Path>, build: &str) -> String {
         let shown = path
-            .map(|p| p.join(RELATIVE).display().to_string())
+            .map(|p| path_in(p).display().to_string())
             .unwrap_or_else(|| "no checkout".into());
         match self {
             Outcome::Written => format!("written by {build} ← {shown}"),
             Outcome::Current => {
                 format!("already the asset of {build}, which checked it and left it untouched ← {shown}")
             }
-            Outcome::NotIgnored => format!(
-                "NOT WRITTEN — that checkout's git does not ignore {RELATIVE}, so writing it would leave untracked work there; add `.claude/` to its .gitignore or .git/info/exclude and the next daemon start writes it (checked by {build}) ← {shown}"
+            Outcome::NotIgnored { exclude } => format!(
+                "NOT WRITTEN — {} holds `.claude/` and that checkout's git still does not ignore {RELATIVE}, so a rule of its own (a `!` pattern in a .gitignore) un-ignores it and writing it would leave untracked work there; remove that rule and the next daemon start writes it (checked by {build}) ← {shown}",
+                exclude.display()
             ),
             Outcome::Tracked => format!(
-                "NOT WRITTEN — that checkout's git tracks {RELATIVE}, so writing it would change a committed file; an ignore rule does not undo that, so it is written only once somebody takes it out of the index on purpose (`git rm --cached`) and ignores it (checked by {build}) ← {shown}"
+                "NOT WRITTEN — that checkout's git tracks {RELATIVE}, so writing it would change a committed file; an ignore rule does not undo that, so it is written only once somebody takes it out of the index on purpose (`git rm --cached`), and the next daemon start then ignores and writes it (checked by {build}) ← {shown}"
             ),
             Outcome::Failed { detail } => {
                 format!("NOT WRITTEN — {detail} (checked by {build}) ← {shown}")
@@ -104,16 +116,9 @@ impl Point {
     }
 }
 
-enum Git {
-    Ignored,
-    NotIgnored,
-    Tracked,
-    /// Not a git work tree at all, so nothing can commit what is written.
-    None,
-}
-
 /// Write the asset into `repo`, or say why not. Never writes outside
-/// `<repo>/.claude/skills/forge-master/`.
+/// `<repo>/.claude/skills/forge-master/` but for the one exclude line
+/// [`git_exclude::ensure_ignored`] adds.
 pub fn install(repo: &Path) -> Outcome {
     match std::fs::metadata(repo) {
         Ok(m) if m.is_dir() => {}
@@ -122,13 +127,15 @@ pub fn install(repo: &Path) -> Outcome {
         }
         Err(e) => return failed(format!("the checkout {}: {e}", repo.display())),
     }
-    match ignored(repo) {
-        Ok(Git::Ignored | Git::None) => {}
-        Ok(Git::NotIgnored) => return Outcome::NotIgnored,
-        Ok(Git::Tracked) => return Outcome::Tracked,
-        Err(detail) => return failed(detail),
+    match git_exclude::ensure_ignored(repo, RELATIVE) {
+        Ok(_) => {}
+        Err(Refused::Tracked) => return Outcome::Tracked,
+        Err(Refused::StillNotIgnored { exclude }) => return Outcome::NotIgnored { exclude },
+        Err(refused @ (Refused::Exclude { .. } | Refused::Git(_))) => {
+            return failed(refused.to_string())
+        }
     }
-    let path = repo.join(RELATIVE);
+    let path = path_in(repo);
     match std::fs::read(&path) {
         Ok(bytes) if bytes == ASSET.as_bytes() => return Outcome::Current,
         Ok(_) => {}
@@ -158,58 +165,6 @@ fn write_replacing(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
         let _ = std::fs::remove_file(&tmp);
     }
     written
-}
-
-fn ignored(repo: &Path) -> Result<Git, String> {
-    let inside = git(repo, &["rev-parse", "--is-inside-work-tree"])?;
-    if !inside.status.success() {
-        let err = String::from_utf8_lossy(&inside.stderr);
-        if err.contains("not a git repository") {
-            return Ok(Git::None);
-        }
-        return Err(format!(
-            "whether {} ignores {RELATIVE} cannot be read: git rev-parse exited {}: {}",
-            repo.display(),
-            inside.status,
-            err.trim()
-        ));
-    }
-    if String::from_utf8_lossy(&inside.stdout).trim() != "true" {
-        return Err(format!(
-            "{} is inside a git directory rather than a work tree",
-            repo.display()
-        ));
-    }
-    let tracked = git(repo, &["ls-files", "--error-unmatch", "--", RELATIVE])?;
-    if tracked.status.success() {
-        return Ok(Git::Tracked);
-    }
-    let asked = git(repo, &["check-ignore", "-q", "--", RELATIVE])?;
-    match asked.status.code() {
-        Some(0) => Ok(Git::Ignored),
-        Some(1) => Ok(Git::NotIgnored),
-        _ => Err(format!(
-            "whether {} ignores {RELATIVE} cannot be read: git check-ignore exited {}: {}",
-            repo.display(),
-            asked.status,
-            String::from_utf8_lossy(&asked.stderr).trim()
-        )),
-    }
-}
-
-fn git(repo: &Path, args: &[&str]) -> Result<std::process::Output, String> {
-    Command::new("git")
-        .arg("-C")
-        .arg(repo)
-        .args(args)
-        .env("LC_ALL", "C")
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .env_remove("GIT_DIR")
-        .env_remove("GIT_WORK_TREE")
-        .env_remove("GIT_INDEX_FILE")
-        .stdin(Stdio::null())
-        .output()
-        .map_err(|e| format!("git could not be run to ask whether {RELATIVE} is ignored: {e}"))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -454,8 +409,10 @@ fn log(entry: &Entry) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::daemon::git_exclude::tests::{exclude_of, make_read_only, make_writable};
     use crate::test_scratch::Scratch;
     use std::collections::BTreeMap;
+    use std::process::Command;
 
     /// The one line recorded for `slug`.
     fn one<'a>(r: &'a Record, slug: &'a str) -> &'a Entry {
@@ -465,6 +422,13 @@ mod tests {
             .unwrap_or_else(|| panic!("no line for {slug}: {r:?}"));
         assert!(of.next().is_none(), "more than one line for {slug}: {r:?}");
         e
+    }
+
+    fn one_at<'a>(r: &'a Record, path: &Path) -> &'a Entry {
+        r.entries
+            .iter()
+            .find(|e| e.path.as_deref() == Some(path))
+            .unwrap_or_else(|| panic!("no line at {}: {r:?}", path.display()))
     }
 
     fn run_git(dir: &Path, args: &[&str]) {
@@ -482,7 +446,7 @@ mod tests {
     }
 
     /// A scratch git checkout, ignoring `.claude/` or not.
-    fn checkout(root: &Path, name: &str, ignores: bool) -> PathBuf {
+    pub(crate) fn checkout(root: &Path, name: &str, ignores: bool) -> PathBuf {
         let repo = root.join(name);
         std::fs::create_dir_all(&repo).unwrap();
         run_git(&repo, &["init", "-q"]);
@@ -492,14 +456,29 @@ mod tests {
         repo
     }
 
+    /// A scratch git checkout whose own rules un-ignore `.claude/`, which no
+    /// exclude line can overrule.
+    fn un_ignoring(root: &Path, name: &str) -> PathBuf {
+        let repo = checkout(root, name, false);
+        std::fs::write(repo.join(".gitignore"), "!.claude/\n!.claude/**\n").unwrap();
+        repo
+    }
+
+    fn excluded(repo: &Path) -> bool {
+        std::fs::read_to_string(exclude_of(repo))
+            .unwrap_or_default()
+            .lines()
+            .any(|l| l == ".claude/")
+    }
+
     fn put(repo: &Path, text: &str) {
-        let p = repo.join(RELATIVE);
+        let p = path_in(repo);
         std::fs::create_dir_all(p.parent().unwrap()).unwrap();
         std::fs::write(p, text).unwrap();
     }
 
     fn skill(repo: &Path) -> Option<String> {
-        std::fs::read_to_string(repo.join(RELATIVE)).ok()
+        std::fs::read_to_string(path_in(repo)).ok()
     }
 
     /// Every file under `dir` but `.git`, with its bytes.
@@ -549,7 +528,7 @@ mod tests {
         let s = Scratch::new("mskill-current");
         let repo = checkout(s.path(), "r", true);
         put(&repo, ASSET);
-        let file = repo.join(RELATIVE);
+        let file = path_in(&repo);
         let long_ago =
             std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_700_000_000);
         std::fs::File::options()
@@ -566,22 +545,70 @@ mod tests {
         );
     }
 
+    /// Owner, 2026-09-30: a checkout that does not ignore `.claude/` gets it
+    /// added to its exclude file, and then the skill.
     #[test]
-    fn a_checkout_that_does_not_ignore_the_path_is_not_written() {
+    fn a_checkout_that_does_not_ignore_the_path_gets_the_exclude_line_and_the_skill() {
         let s = Scratch::new("mskill-unignored");
         let bare = checkout(s.path(), "bare", false);
         let stale = checkout(s.path(), "stale", false);
         put(&stale, OLDER);
 
-        assert_eq!(install(&bare), Outcome::NotIgnored);
-        assert_eq!(skill(&bare), None, "nothing is written into it");
-        assert!(!bare.join(".claude").exists(), "not even the directory");
-        assert_eq!(install(&stale), Outcome::NotIgnored);
+        assert_eq!(install(&bare), Outcome::Written);
+        assert!(excluded(&bare), "the exclude line was not added");
+        assert_eq!(skill(&bare).as_deref(), Some(ASSET));
+        assert_eq!(install(&stale), Outcome::Written);
+        assert_eq!(skill(&stale).as_deref(), Some(ASSET));
+        let status = Command::new("git")
+            .arg("-C")
+            .arg(&bare)
+            .args(["status", "--porcelain", "--untracked-files=all"])
+            .env_remove("GIT_DIR")
+            .output()
+            .unwrap();
         assert_eq!(
-            skill(&stale).as_deref(),
-            Some(OLDER),
-            "a copy already there is left as it is"
+            String::from_utf8_lossy(&status.stdout),
+            "",
+            "the skill shows as untracked work"
         );
+    }
+
+    #[test]
+    fn a_checkout_whose_exclude_cannot_be_written_gets_no_skill_and_names_the_exclude() {
+        let s = Scratch::new("mskill-exclude-ro");
+        let repo = checkout(s.path(), "r", false);
+        let ex = exclude_of(&repo);
+        std::fs::create_dir_all(ex.parent().unwrap()).unwrap();
+        std::fs::write(&ex, "*.swp\n").unwrap();
+        if !make_read_only(&ex) {
+            return;
+        }
+        let got = install(&repo);
+        make_writable(&ex);
+
+        let Outcome::Failed { detail } = got else {
+            panic!("an unwritable exclude was not refused: {got:?}")
+        };
+        assert!(detail.contains(&ex.display().to_string()), "{detail}");
+        assert_eq!(skill(&repo), None, "the skill was written unignored");
+        assert!(!repo.join(".claude").exists(), "not even the directory");
+    }
+
+    #[test]
+    fn a_checkout_whose_own_rule_un_ignores_the_path_is_not_written() {
+        let s = Scratch::new("mskill-negated");
+        let repo = un_ignoring(s.path(), "r");
+        let got = install(&repo);
+        let Outcome::NotIgnored { exclude } = &got else {
+            panic!("{got:?}")
+        };
+        assert!(
+            exclude.ends_with(Path::new("info").join("exclude")),
+            "{got:?}"
+        );
+        assert_eq!(skill(&repo), None);
+        let said = got.says(Some(&repo), "0.1 (abc)");
+        assert!(said.contains("a rule of its own"), "{said}");
     }
 
     #[test]
@@ -644,7 +671,7 @@ mod tests {
             panic!("a refused write is a failure: {got:?}")
         };
         assert!(
-            detail.contains(&repo.join(RELATIVE).display().to_string()),
+            detail.contains(&path_in(&repo).display().to_string()),
             "{detail}"
         );
         assert!(
@@ -677,7 +704,7 @@ mod tests {
         let cfg = s.path().join("config");
         let ok = checkout(s.path(), "ok", true);
         put(&ok, OLDER);
-        let open = checkout(s.path(), "open", false);
+        let open = un_ignoring(s.path(), "open");
         let gone = s.path().join("gone");
         let checkouts = vec![
             ("alpha".to_string(), gone.clone()),
@@ -696,7 +723,10 @@ mod tests {
             panic!("the sweep recorded nothing")
         };
         assert!(matches!(one(&r, "alpha").outcome, Outcome::Failed { .. }));
-        assert_eq!(one(&r, "beta").outcome, Outcome::NotIgnored);
+        assert!(matches!(
+            one(&r, "beta").outcome,
+            Outcome::NotIgnored { .. }
+        ));
         assert_eq!(one(&r, "gamma").outcome, Outcome::Written);
         assert_eq!(one(&r, "gamma").path.as_deref(), Some(ok.as_path()));
         assert_eq!(one(&r, "delta").outcome, Outcome::NoCheckout);
@@ -797,7 +827,7 @@ mod tests {
             "web-bound",
             Some(Path::new("/w")),
             Point::Start,
-            Outcome::NotIgnored,
+            Outcome::Tracked,
         );
         server_only.at_ms -= 3_600_000;
         record(&cfg, vec![server_only], Merge::Upsert).unwrap();
@@ -808,7 +838,7 @@ mod tests {
         let Read::Record(r) = read(&cfg) else {
             panic!()
         };
-        assert_eq!(one(&r, "web-bound").outcome, Outcome::NotIgnored);
+        assert_eq!(one(&r, "web-bound").outcome, Outcome::Tracked);
         assert_eq!(one(&r, "local").outcome, Outcome::Written);
     }
 
@@ -819,7 +849,7 @@ mod tests {
     fn a_project_at_two_checkouts_keeps_a_line_for_each() {
         let s = Scratch::new("mskill-two-paths");
         let cfg = s.path().join("config");
-        let active = checkout(s.path(), "a-active", false);
+        let active = un_ignoring(s.path(), "a-active");
         let old = checkout(s.path(), "z-old", true);
 
         install_every(
@@ -835,25 +865,26 @@ mod tests {
         let Read::Record(r) = read(&cfg) else {
             panic!()
         };
-        let lines: Vec<(&Path, &Outcome)> = r
+        let lines: Vec<(&Path, bool)> = r
             .of("acme")
-            .map(|e| (e.path.as_deref().unwrap(), &e.outcome))
+            .map(|e| (e.path.as_deref().unwrap(), e.outcome.installed()))
             .collect();
-        assert_eq!(
-            lines,
-            [
-                (active.as_path(), &Outcome::NotIgnored),
-                (old.as_path(), &Outcome::Written)
-            ]
-        );
+        assert_eq!(lines, [(active.as_path(), false), (old.as_path(), true)]);
+        assert!(matches!(
+            one_at(&r, &active).outcome,
+            Outcome::NotIgnored { .. }
+        ));
 
         // A later write at one of the two leaves the other's line standing.
         install_and_record("acme", &old, Point::Bind, Some(&cfg));
         let Read::Record(r) = read(&cfg) else {
             panic!()
         };
-        let outcomes: Vec<&Outcome> = r.of("acme").map(|e| &e.outcome).collect();
-        assert_eq!(outcomes, [&Outcome::NotIgnored, &Outcome::Current], "{r:?}");
+        assert!(
+            matches!(one_at(&r, &active).outcome, Outcome::NotIgnored { .. }),
+            "{r:?}"
+        );
+        assert_eq!(one_at(&r, &old).outcome, Outcome::Current, "{r:?}");
     }
 
     /// Review F1 of the second whole-set read: two projects bound to one
@@ -1017,7 +1048,9 @@ mod tests {
         let current = Outcome::Current.says(Some(p), "0.1 (abc)");
         assert!(!current.contains("written by"), "{current}");
         for refused in [
-            Outcome::NotIgnored,
+            Outcome::NotIgnored {
+                exclude: "/r/.git/info/exclude".into(),
+            },
             Outcome::Tracked,
             Outcome::Failed {
                 detail: "denied".into(),
@@ -1029,11 +1062,26 @@ mod tests {
                 "{said}"
             );
         }
-        let refused = Outcome::NotIgnored.says(Some(p), "0.1 (abc)");
+        let refused = Outcome::NotIgnored {
+            exclude: "/r/.git/info/exclude".into(),
+        }
+        .says(Some(p), "0.1 (abc)");
         assert!(
-            refused.contains("/r/.claude/skills/forge-master/SKILL.md")
-                && refused.contains(".git/info/exclude"),
+            refused.contains(&path_in(p).display().to_string())
+                && refused.contains("/r/.git/info/exclude holds `.claude/`"),
             "{refused}"
+        );
+    }
+
+    /// CI run 36746604361, Windows: `Path::join` of a `/`-separated relative
+    /// printed `/p/a\\.claude/skills/...`. The path is one separator throughout.
+    #[test]
+    fn the_skill_path_is_joined_with_one_separator_throughout() {
+        let sep = std::path::MAIN_SEPARATOR;
+        let shown = path_in(Path::new("repo")).display().to_string();
+        assert_eq!(
+            shown,
+            format!("repo{sep}.claude{sep}skills{sep}forge-master{sep}SKILL.md")
         );
     }
 }

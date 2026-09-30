@@ -330,7 +330,7 @@ fn admitted(l: &Last) -> Option<String> {
 /// source that knows the server's assignments without asking core, so where it
 /// is absent the bindings `config.toml` names are all this can list.
 pub(crate) fn skill_lines(dir: Option<&std::path::Path>, cfg: &Config, now: i64) -> Vec<String> {
-    use forge_runner_core::daemon::master_skill::{self, Read, RELATIVE};
+    use forge_runner_core::daemon::master_skill::{self, path_in, Read};
     let Some(dir) = dir else {
         return vec![
             "skill      no config directory resolves on this box, so no install record can be read"
@@ -352,7 +352,7 @@ pub(crate) fn skill_lines(dir: Option<&std::path::Path>, cfg: &Config, now: i64)
             for (slug, b) in &cfg.bindings {
                 out.push(format!(
                     "  {slug}  no install recorded ← {}",
-                    b.repo_path.join(RELATIVE).display()
+                    path_in(&b.repo_path).display()
                 ));
             }
             return out;
@@ -376,7 +376,7 @@ pub(crate) fn skill_lines(dir: Option<&std::path::Path>, cfg: &Config, now: i64)
         if !entries.iter().any(|e| &e.slug == slug) {
             out.push(format!(
                 "  {slug}  no install recorded for this binding since the record was last written — the next daemon start writes it ← {}",
-                b.repo_path.join(RELATIVE).display()
+                path_in(&b.repo_path).display()
             ));
         }
     }
@@ -425,6 +425,13 @@ mod tests {
 
         const NOW: i64 = 1_790_236_800_000;
 
+        /// Where the skill of a checkout at `repo` is printed, one separator
+        /// throughout: the platform's own (CI run 36746604361, Windows).
+        fn at(repo: &str) -> String {
+            let s = std::path::MAIN_SEPARATOR;
+            format!("{repo}{s}.claude{s}skills{s}forge-master{s}SKILL.md")
+        }
+
         fn bound(slugs: &[(&str, &str)]) -> Config {
             let mut cfg = Config::default();
             for (slug, path) in slugs {
@@ -463,7 +470,9 @@ mod tests {
                         "forge-plugin",
                         Some("/p/plugin"),
                         Point::Start,
-                        Outcome::NotIgnored,
+                        Outcome::NotIgnored {
+                            exclude: "/p/plugin/.git/info/exclude".into(),
+                        },
                     ),
                     entry("ghost", None, Point::Start, Outcome::NoCheckout),
                     entry(
@@ -482,7 +491,13 @@ mod tests {
             let text =
                 skill_lines(Some(s.path()), &bound(&[("anhome", "/p/anhome")]), NOW).join("\n");
 
-            assert!(text.contains("anhome  at daemon start 3m ago: written by 0.17.66 (abc1234) ← /p/anhome/.claude/skills/forge-master/SKILL.md"), "{text}");
+            assert!(
+                text.contains(&format!(
+                    "anhome  at daemon start 3m ago: written by 0.17.66 (abc1234) ← {}",
+                    at("/p/anhome")
+                )),
+                "{text}"
+            );
             assert!(
                 text.contains(
                     "forge-dev  at daemon start 3m ago: already the asset of 0.17.66 (abc1234)"
@@ -497,11 +512,8 @@ mod tests {
                     .contains("written by"),
                 "{text}"
             );
-            assert!(text.contains("forge-plugin  at daemon start 3m ago: NOT WRITTEN — that checkout's git does not ignore"), "{text}");
-            assert!(
-                text.contains("/p/plugin/.claude/skills/forge-master/SKILL.md"),
-                "{text}"
-            );
+            assert!(text.contains("forge-plugin  at daemon start 3m ago: NOT WRITTEN — /p/plugin/.git/info/exclude holds `.claude/` and that checkout's git still does not ignore"), "{text}");
+            assert!(text.contains(&at("/p/plugin")), "{text}");
             assert!(text.contains("ghost  at daemon start 3m ago: NOT WRITTEN — assigned to this box and names a checkout on neither side"), "{text}");
             assert!(text.contains("ro  at bind 3m ago: NOT WRITTEN — /p/ro/.claude/skills/forge-master/SKILL.md: Permission denied"), "{text}");
         }
@@ -525,10 +537,7 @@ mod tests {
                 text.contains("late  no install recorded for this binding"),
                 "{text}"
             );
-            assert!(
-                text.contains("/p/late/.claude/skills/forge-master/SKILL.md"),
-                "{text}"
-            );
+            assert!(text.contains(&at("/p/late")), "{text}");
         }
 
         #[test]
@@ -543,9 +552,7 @@ mod tests {
                 "{text}"
             );
             assert!(
-                text.contains(
-                    "  a  no install recorded ← /p/a/.claude/skills/forge-master/SKILL.md"
-                ),
+                text.contains(&format!("  a  no install recorded ← {}", at("/p/a"))),
                 "{text}"
             );
         }
