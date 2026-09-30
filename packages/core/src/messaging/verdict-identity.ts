@@ -74,6 +74,22 @@ export function sameIdentity(
   return left.startsWith(right) || right.startsWith(left);
 }
 
+/** The longest spelling of `value`'s identity among `values`; one two identities extend is left
+ *  as written, since naming either would be a guess (ISS-1346). */
+export function longestSpelling(values: readonly string[]): (value: string) => string {
+  return (value) => {
+    const longer = values.filter(
+      (other) =>
+        other.trim().length > value.trim().length &&
+        sameIdentity(value, other, { abbreviating: true }),
+    );
+    const longest = longer.reduce((a, b) => (b.trim().length > a.trim().length ? b : a), value);
+    return longer.every((other) => sameIdentity(other, longest, { abbreviating: true }))
+      ? longest
+      : value;
+  };
+}
+
 export interface CriterionBlock {
   readonly criterion: number;
   readonly verdict: string | null;

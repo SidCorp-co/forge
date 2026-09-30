@@ -1,7 +1,7 @@
 import { and, asc, eq, ne, notExists, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { HTTPException } from 'hono/http-exception';
-import { isAgentHandle, synthesizeAgentEmail } from '../auth/agent-account.js';
+import { agentAccountRow, isAgentHandle } from '../auth/agent-account.js';
 import { organizationMembers, projectMembers, projects, users } from '../db/schema.js';
 import type { Executor } from './db-executor.js';
 
@@ -58,10 +58,14 @@ export async function existingProjectHandle(
  * Must run inside a transaction: the advisory lock it takes is transaction
  * scoped, and it is the only thing standing between two first-time venues of
  * one handle-less project and two handles for that project.
+ *
+ * `mintAs` is the id a minted account takes, for a caller that named its actor
+ * before the mint; where one already exists, that one is returned whatever id was asked.
  */
 export async function resolveProjectHandle(
   tx: Executor,
   projectId: string,
+  mintAs?: string,
 ): Promise<ProjectHandle> {
   await tx.execute(
     sql`select pg_advisory_xact_lock(hashtext(${LOCK_NAMESPACE}), hashtext(${projectId}))`,
@@ -93,12 +97,7 @@ export async function resolveProjectHandle(
   const handle = handleNameForProject(project.slug, project.id);
   const [created] = await tx
     .insert(users)
-    .values({
-      email: synthesizeAgentEmail(handle),
-      kind: 'agent',
-      passwordHash: null,
-      emailVerifiedAt: new Date(),
-    })
+    .values(agentAccountRow(handle, mintAs))
     .returning({ id: users.id });
   if (!created) throw new Error('conversations: agent-account insert returned no row');
 

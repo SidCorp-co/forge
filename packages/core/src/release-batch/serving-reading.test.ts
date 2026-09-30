@@ -334,6 +334,15 @@ describe('servedClause', () => {
     );
   });
 
+  // ISS-1346 criterion 25: one commit answered full by one source and short by another.
+  it('names one commit answered in two spellings once, under the longest', () => {
+    const served = [
+      { commit: SERVED.slice(0, 7), where: 'https://one.test/health' },
+      { commit: SERVED, where: 'Web (live)' },
+    ];
+    expect(servedClause(served)).toBe(`\`${SERVED}\` at https://one.test/health and Web (live)`);
+  });
+
   it('names each distinct commit once, however many places run it', () => {
     const reading = {
       kind: 'serving' as const,

@@ -14,7 +14,7 @@ import { comments, issues } from '../db/schema.js';
 import type { IssueCriteriaReport } from '../issues/criteria-verdicts.js';
 import { issueDisplayIds } from '../issues/display-ids.js';
 import { logger } from '../logger.js';
-import { type ServingReading, servedClause } from '../release-batch/serving-reading.js';
+import { type ServingReading, servingClause } from '../release-batch/serving-reading.js';
 
 /** The session_context key this module owns. */
 export const RELEASE_HOLD_KEY = 'releaseHold';
@@ -118,17 +118,12 @@ function reasonsByWhy(report: IssueCriteriaReport): string {
   return [...byWhy].map(([why, numbers]) => `${criteriaNamed(numbers)}: ${why}`).join('; ');
 }
 
-/** Where a verdict has to be judged to count: each served commit beside where it runs, said once —
- *  where a criterion's own reason already names them, this points back at it (ISS-1346). */
-function judgeClause(serving: ServingReading, reasons: string): string {
-  if (serving.kind === 'serving' && reasons.includes(servedClause(serving.served))) {
-    return 'record a verdict on each criterion named, judged at a commit this project is serving, named above';
-  }
+/** Where a verdict has to be judged to count — the one place the reading is said (ISS-1346). */
+function judgeClause(serving: ServingReading): string {
   if (serving.kind === 'serving') {
-    const unread = serving.unread.length === 0 ? '' : ` (unread: ${serving.unread.join('; ')})`;
     return (
       'record a verdict on each criterion named, judged at a commit this project is serving — ' +
-      `${servedClause(serving.served)}, read at ${serving.readAt}${unread}`
+      servingClause(serving)
     );
   }
   if (serving.kind === 'unreadable') {
@@ -151,7 +146,7 @@ function judgeClause(serving: ServingReading, reasons: string): string {
  */
 export function criteriaHold(report: IssueCriteriaReport): ReleaseHold {
   const reasons = reasonsByWhy(report);
-  const judge = judgeClause(report.serving, reasons);
+  const judge = judgeClause(report.serving);
   return {
     code: 'RELEASE_CRITERIA_UNEARNED',
     reason:

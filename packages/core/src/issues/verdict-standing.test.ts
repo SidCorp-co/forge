@@ -204,14 +204,15 @@ describe('verdictStanding — a source verdict under a reading of what is runnin
     );
   });
 
-  it('names what is served, not the issue source, when it does not stand', () => {
+  // ISS-1346 criterion 25: what is served is the reading's, said once by the hold, never per verdict.
+  it('names neither the issue source nor what is served when it does not stand', () => {
     const line = standingSentence(
       'superseded',
       at('source', SOURCE),
       serving(SERVING),
       has(SOURCE),
     );
-    expect(line).toContain(`it is serving \`${SERVING}\` at ${HOST}`);
+    expect(line).toBe(`judged at ${SOURCE}, which is not a commit this project is serving`);
   });
 
   // ISS-1346 judge r2 finding 5: a 7-digit judged commit beside a 40-digit served one, compared by eye.
@@ -227,7 +228,7 @@ describe('verdictStanding — a source verdict under a reading of what is runnin
 });
 
 describe('standingSentence', () => {
-  it('names the runtime judged, the commit answered, the host asked and the moment', () => {
+  it('names the runtime judged, and leaves the commit answered, the host and the moment to the hold', () => {
     const line = standingSentence(
       'superseded',
       at('runtime', OTHER),
@@ -235,28 +236,26 @@ describe('standingSentence', () => {
       has(SOURCE),
     );
     expect(line).toContain(OTHER);
-    expect(line).toContain(SERVING);
-    expect(line).toContain(HOST);
-    expect(line).toContain(READ_AT);
+    expect(line).not.toContain(SERVING);
+    expect(line).not.toContain(HOST);
+    expect(line).not.toContain(READ_AT);
   });
 
   // ISS-1346 judge finding 2 — two commits answered is where each runs, never a fault.
-  it('names both commits a disagreeing fleet answered, each beside where it runs, when it refuses a third', () => {
+  it('refuses a third commit beside a disagreeing fleet without calling the fleet a fault', () => {
     const line = standingSentence(
       'superseded',
       at('runtime', SOURCE),
       disagreeing([SERVING, OTHER]),
       has(null),
     );
-    expect(line).toContain(`\`${SERVING}\` at ${HOST}; \`${OTHER}\` at https://second.test/health`);
+    expect(line).toContain('which is not a commit this project is serving');
     expect(line).not.toContain('more than one commit is running');
   });
 
-  it('names the probe that answered nothing beside the commit that was answered', () => {
-    const line = standingSentence('superseded', at('runtime', OTHER), partial(SERVING), has(null));
-    expect(line).toContain(SERVING);
-    expect(line).toContain('ECONNREFUSED');
-    expect(line).not.toContain('more than one commit is running');
+  it('stands on the probe that answered where another answered nothing', () => {
+    expect(verdictStanding(at('runtime', SERVING), partial(SERVING), has(null))).toBe('stands');
+    expect(verdictStanding(at('runtime', OTHER), partial(SERVING), has(null))).toBe('superseded');
   });
 
   it('says an uncorroborated verdict is weaker evidence and not a refusal', () => {
@@ -279,10 +278,9 @@ describe('standingSentence', () => {
     expect(line).toContain('it is not a refusal');
   });
 
-  it('names the host and the moment when a verdict stands', () => {
+  it('says a verdict stands at what is served without restating the reading', () => {
     const line = standingSentence('stands', at('runtime', SERVING), serving(SERVING), has(null));
-    expect(line).toContain(HOST);
-    expect(line).toContain(READ_AT);
+    expect(line).toBe(`judged at ${SERVING}, which this project is serving`);
   });
 
   it('says a source identity cannot say the code was running', () => {
