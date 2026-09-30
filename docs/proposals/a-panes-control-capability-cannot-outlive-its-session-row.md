@@ -38,10 +38,11 @@ pane's capability, which carries a record too, declares nothing.
 
 `master.rs:capability_of` judges a resident pane current where a record names its project and pane,
 whatever session core serves it now. On that adoption `Masters::readopt` moves the registry to the
-session core serves, and the sweep's `carried_across` re-records the open runs the pane declared
-under its previous session, read off the ledger's `masters` row, so its `run close` and `run choice`
-answer for them. A placement records the session it placed under on that row
-(`note_placed_session`), so a pane placed cold never carries what its predecessor declared.
+session core serves, and the sweep's `carried_across` re-records the project's open runs whose
+recorded Claude Code process is still running under that session, so the pane's `run close` and
+`run choice` answer for them. The process, not the session, is what attributes a run to the pane:
+core hands the pane placed next under the same name the same non-terminal row, and a pane that went
+took its process with it. A run no process was read for is left where it is and counted.
 
 **Why not shape 2 — re-point the entry on adoption.** It makes a minted capability's meaning
 mutable. Under `VISION: kernel-hard-policy-soft` authority is kernel and its tolerance is zero — a
@@ -125,8 +126,8 @@ because the mark is written by a process that could not reach the daemon. The ho
 pane it runs in; making the mark name the declared run the pane holds is still unbuilt, and until it
 is, `gateAtOpen` says what it is, and says it is the box's.
 
-**Closing a run declared under a previous pane.** `carried_across` moves runs only for the pane that
-declared them. A run declared by a pane that has since been replaced by a different one stays under
+**Closing a run declared under a previous pane.** `carried_across` moves only runs whose recorded
+process is still running, which a replaced pane's are not. A run declared by a pane that has since been replaced by a different one stays under
 that pane's session and its successor cannot close it — ISS-1355's deliverable.
 
 ## Honest costs

@@ -1621,6 +1621,7 @@ mod tests {
     fn a_pane_closes_the_run_it_declared_before_core_re_minted_its_row_once_the_sweep_carries_it() {
         let (ctl, token, _dir) = a_pane_core_re_minted("record");
         const RUN: &str = "run-declared-before";
+        const PANE_CLAUDE: u32 = 51_001;
         {
             let mut held = ctl.ledger.lock().unwrap();
             let led = held.as_mut().unwrap();
@@ -1633,8 +1634,7 @@ mod tests {
                 issue_keys: vec!["ISS-5".into()],
             })
             .unwrap();
-            led.note_master("proj-1", PANE, None, Some(PLACED), "boot-a")
-                .unwrap();
+            assert!(led.note_host(RUN, PANE_CLAUDE, "4400").unwrap());
         }
         let close = || {
             served(
@@ -1652,13 +1652,26 @@ mod tests {
                     .contains("another master"),
             "the red: {before:?}"
         );
+        // The review's F1: the pane speaks between the registry moving and the
+        // sweep's carry, which rewrites the session its master row names. The
+        // carry must not depend on that row.
+        let spoke = served(
+            &ctl,
+            serde_json::json!({"op": "agent_event", "token": token, "event": "Stop", "conversationId": "conv-1"}),
+        );
+        assert!(spoke.ok, "{spoke:?}");
         {
             let mut held = ctl.ledger.lock().unwrap();
+            let hosts = crate::daemon::subagent_host::testing::FakeHosts::with(
+                PANE_CLAUDE,
+                crate::daemon::subagent_host::HostRead::Alive,
+            );
             let moved = crate::daemon::master::carried_across(
                 held.as_mut().unwrap(),
                 "proj-1",
                 PANE,
                 REMINT,
+                &hosts,
                 "forge-dev",
             );
             assert_eq!(moved, 1);

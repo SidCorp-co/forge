@@ -1304,16 +1304,22 @@ async fn sweep(
             if let (Some(led), Some((successor, name))) =
                 (ledger.as_mut(), masters.get(&runner.project_id))
             {
-                carried_across(led, &runner.project_id, &name, &successor, &resolved.slug);
+                carried_across(
+                    led,
+                    &runner.project_id,
+                    &name,
+                    &successor,
+                    &hosts,
+                    &resolved.slug,
+                );
             }
         }
         let placed = started.load(std::sync::atomic::Ordering::Relaxed)
             && matches!(pane, PaneState::ColdStarted | PaneState::Resumed);
         if placed {
-            if let (Some(led), Some((successor, name))) =
+            if let (Some(led), Some((successor, _))) =
                 (ledger.as_mut(), masters.get(&runner.project_id))
             {
-                note_placed_session(led, &runner.project_id, &name, &successor, &resolved.slug);
                 placed_again(
                     led,
                     &inherited,
@@ -2250,86 +2256,71 @@ pub(crate) fn placed_again(
 /// A pane this box adopted onto a session core re-minted keeps answering for
 /// the runs it declared before (ISS-1316).
 ///
-/// The ledger's master row names the session the pane last acted under: every
-/// frame it sends records it, and a placement records the one it was placed
-/// under. Where that differs from the session this box now serves the pane
-/// under, the pane's capability survived the re-mint, so the open runs it
-/// declared are its own still and are recorded under the session its `run
-/// close` and `run choice` now act as. A run another pane declared is never
-/// moved: a pane placed cold does not inherit its predecessor's runs, and the
-/// row names the placed pane's session from the moment it is placed.
+/// A run is this pane's where the Claude Code process recorded for it — read
+/// above the process that declared it, and again above the subagent that took
+/// it — is still running: a pane that went, and every pane before it, took its
+/// process with it. A session id cannot say this, because core reuses a
+/// non-terminal row for the pane placed next under the same name. So every
+/// open run of the project that this box does not serve under the pane's
+/// session now, and whose process reads alive, is recorded under that session,
+/// where its `run close` and `run choice` act. A run whose process is gone, or
+/// was never read, is left where it is and counted.
+///
+/// Nothing here reads the session the pane acted under before. The pane's own
+/// frames rewrite that record the moment the registry moves, so a carry keyed
+/// on it could lose to a frame and carry nothing.
 pub(crate) fn carried_across(
     led: &mut Ledger,
     project_id: &str,
     pane: &str,
     successor: &str,
+    hosts: &dyn subagent_host::Hosts,
     slug: &str,
 ) -> usize {
-    let row = match led.master_for_project(project_id) {
-        Ok(Some(row)) => row,
-        Ok(None) => return 0,
-        Err(e) => {
-            tracing::warn!(
-                "[master] {slug}: cannot read which session {pane} last acted under ({e}), so the runs it declared before core re-minted its session stay under that session this sweep"
-            );
-            return 0;
-        }
-    };
-    let Some(before) = row
-        .session_id
-        .filter(|s| row.pane_name == pane && s != successor)
-    else {
-        return 0;
-    };
-    let runs = match led.runs_for_master(&before) {
+    let runs = match led.unclosed_runs() {
         Ok(runs) => runs,
         Err(e) => {
             tracing::warn!(
-                "[master] {slug}: cannot read the runs {pane} declared under {before} ({e}); they stay under that session this sweep"
+                "[master] {slug}: cannot read the open runs to carry {pane}'s across to {successor} ({e}); they stay where they are this sweep"
             );
             return 0;
         }
     };
     let mut moved = 0;
-    for run in runs
-        .iter()
-        .filter(|r| r.ended_by.is_none() && r.project_id.as_deref() == Some(project_id))
-    {
-        match led.reparent_run(&run.run_id, successor) {
-            Ok(()) => moved += 1,
-            Err(e) => tracing::warn!(
-                "[master] {slug}: run {}: cannot record it under {successor}: {e} — it stays {before}'s, which no pane on this box answers for",
-                run.run_id
-            ),
+    let mut unattributed = 0;
+    for run in runs.iter().filter(|r| {
+        r.ended_by.is_none()
+            && r.project_id.as_deref() == Some(project_id)
+            && r.master_session_id != successor
+    }) {
+        let alive = match (run.host_pid, run.host_start.as_deref()) {
+            (Some(pid), Some(start)) => hosts.read(pid, start),
+            _ => subagent_host::HostRead::Unreadable,
+        };
+        match alive {
+            subagent_host::HostRead::Alive => match led.reparent_run(&run.run_id, successor) {
+                Ok(()) => moved += 1,
+                Err(e) => tracing::warn!(
+                    "[master] {slug}: run {}: cannot record it under {successor}: {e} — it stays {}'s, which no pane on this box answers for",
+                    run.run_id,
+                    run.master_session_id
+                ),
+            },
+            subagent_host::HostRead::Gone => {}
+            subagent_host::HostRead::Unreadable => unattributed += 1,
         }
-    }
-    if let Err(e) = led.note_master(project_id, pane, None, Some(successor), &row.boot_id) {
-        tracing::warn!("[master] {slug}: cannot record that {pane} now acts as {successor}: {e}");
     }
     if moved > 0 {
         tracing::info!(
-            "[master] {slug}: {moved} open run(s) {pane} declared under {before} are now recorded under {successor}, the session core serves it as, so its close and its choice answer for them"
+            "[master] {slug}: {moved} open run(s) declared from {pane}'s still-running process are now recorded under {successor}, the session core serves it as, so its close and its choice answer for them"
+        );
+    }
+    if unattributed > 0 {
+        tracing::warn!(
+            "[master] {slug}: {unattributed} open run(s) of this project are under another session and no process this box can read is recorded for them, so whether {pane} declared them cannot be said and they are left where they are"
         );
     }
     moved
-}
-
-/// Record the session a pane was just placed under as the one it acts as, so
-/// a later adoption compares against this pane and not the one before it.
-fn note_placed_session(led: &Ledger, project_id: &str, pane: &str, session: &str, slug: &str) {
-    let boot = crate::runner::inflight::boot_identity()
-        .or_else(|| {
-            led.master_for_project(project_id)
-                .ok()
-                .flatten()
-                .map(|row| row.boot_id)
-        })
-        .unwrap_or_default();
-    if let Err(e) = led.note_master(project_id, pane, None, Some(session), &boot) {
-        tracing::warn!(
-            "[master] {slug}: cannot record that {pane} was placed under {session}: {e}"
-        );
-    }
 }
 
 /// What [`placed_again`] says it did. A run is called ended with the pane only
@@ -4002,8 +3993,16 @@ mod tests {
 
     const THIS_SOURCE: &str = include_str!("master.rs");
 
-    /// A declared run whose subagent has started, so a master may hold several.
-    fn a_run_of(led: &mut Ledger, run_id: &str, key: &str, project: &str, master: &str) {
+    /// A declared run whose subagent has started, so a master may hold
+    /// several, declared from the Claude Code process `host` where one is read.
+    fn a_run_of(
+        led: &mut Ledger,
+        run_id: &str,
+        key: &str,
+        project: &str,
+        master: &str,
+        host: Option<u32>,
+    ) {
         led.create_run_group(crate::runner::ledger::NewRun {
             run_id: run_id.into(),
             project_id: project.into(),
@@ -4014,90 +4013,107 @@ mod tests {
         })
         .unwrap();
         assert!(led.bind_agent(run_id, &format!("agent-{run_id}")).unwrap());
+        if let Some(pid) = host {
+            assert!(led.note_host(run_id, pid, "4400").unwrap());
+        }
     }
 
-    /// ISS-1316 criterion 8: what the pane declared under the session core
-    /// re-minted is recorded under the one it acts as now, and nothing else is.
+    const THE_PANES_CLAUDE: u32 = 41_001;
+    const A_PREDECESSORS_CLAUDE: u32 = 41_002;
+
+    /// ISS-1316 criterion 8, and the review's F2: a run is carried by the
+    /// process it was declared from, never by the session it is under, because
+    /// core hands the pane placed next under the same name the same row.
     #[test]
-    fn an_adopted_pane_carries_its_own_open_runs_to_the_session_core_serves_now() {
+    fn an_adopted_pane_carries_the_runs_its_own_process_declared_and_no_other() {
         let mut led = Ledger::open_in_memory().unwrap();
-        a_run_of(&mut led, "open-mine", "ISS-1", "proj-1", "sess-before");
-        a_run_of(&mut led, "ended-mine", "ISS-2", "proj-1", "sess-before");
+        let hosts = subagent_host::testing::FakeHosts::with(
+            THE_PANES_CLAUDE,
+            subagent_host::HostRead::Alive,
+        );
+        hosts.set(A_PREDECESSORS_CLAUDE, subagent_host::HostRead::Gone);
+        let mine = Some(THE_PANES_CLAUDE);
+        a_run_of(
+            &mut led,
+            "open-mine",
+            "ISS-1",
+            "proj-1",
+            "sess-reused",
+            mine,
+        );
+        a_run_of(
+            &mut led,
+            "ended-mine",
+            "ISS-2",
+            "proj-1",
+            "sess-reused",
+            mine,
+        );
         led.end_run("ended-mine", "master", "done").unwrap();
         a_run_of(
             &mut led,
-            "someone-elses",
+            "the-predecessors",
             "ISS-3",
             "proj-1",
-            "sess-unrelated",
+            "sess-reused",
+            Some(A_PREDECESSORS_CLAUDE),
         );
-        led.note_master(
+        a_run_of(
+            &mut led,
+            "never-read",
+            "ISS-4",
+            "proj-1",
+            "sess-reused",
+            None,
+        );
+        a_run_of(
+            &mut led,
+            "other-project",
+            "ISS-5",
+            "proj-2",
+            "sess-reused",
+            mine,
+        );
+
+        let moved = carried_across(
+            &mut led,
             "proj-1",
             "forge-master-one",
-            None,
-            Some("sess-before"),
-            "boot-a",
-        )
-        .unwrap();
-
-        let moved = carried_across(&mut led, "proj-1", "forge-master-one", "sess-now", "one");
+            "sess-now",
+            &hosts,
+            "one",
+        );
 
         assert_eq!(moved, 1);
         let under = |id: &str| led.run(id).unwrap().unwrap().master_session_id;
         assert_eq!(under("open-mine"), "sess-now");
         assert_eq!(
             under("ended-mine"),
-            "sess-before",
+            "sess-reused",
             "an ended run is not re-recorded"
         );
-        assert_eq!(under("someone-elses"), "sess-unrelated");
         assert_eq!(
-            led.master_for_project("proj-1")
-                .unwrap()
-                .unwrap()
-                .session_id
-                .as_deref(),
-            Some("sess-now"),
-            "the row now names the session the pane acts as, so the next sweep carries nothing twice"
+            under("the-predecessors"),
+            "sess-reused",
+            "a pane placed cold under the session its predecessor held does not take the predecessor's runs"
         );
         assert_eq!(
-            carried_across(&mut led, "proj-1", "forge-master-one", "sess-now", "one"),
-            0
+            under("never-read"),
+            "sess-reused",
+            "a run no process was read for cannot be said to be this pane's"
         );
-    }
-
-    /// A pane placed cold does not inherit what the pane before it declared,
-    /// so once a placement records its session, an adoption finds nothing of
-    /// the predecessor's to carry.
-    #[test]
-    fn a_pane_placed_cold_carries_nothing_its_predecessor_declared() {
-        let mut led = Ledger::open_in_memory().unwrap();
-        a_run_of(
-            &mut led,
-            "the-predecessors",
-            "ISS-4",
-            "proj-1",
-            "sess-predecessor",
-        );
-        led.note_master(
-            "proj-1",
-            "forge-master-one",
-            None,
-            Some("sess-predecessor"),
-            "boot-a",
-        )
-        .unwrap();
-        note_placed_session(&led, "proj-1", "forge-master-one", "sess-placed", "one");
+        assert_eq!(under("other-project"), "sess-reused");
         assert_eq!(
-            carried_across(&mut led, "proj-1", "forge-master-one", "sess-placed", "one"),
-            0
-        );
-        assert_eq!(
-            led.run("the-predecessors")
-                .unwrap()
-                .unwrap()
-                .master_session_id,
-            "sess-predecessor"
+            carried_across(
+                &mut led,
+                "proj-1",
+                "forge-master-one",
+                "sess-now",
+                &hosts,
+                "one"
+            ),
+            0,
+            "a second sweep carries nothing twice"
         );
     }
 
