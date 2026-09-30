@@ -2,7 +2,8 @@
 
 A **release train** is a set of changes that share one payment of the expensive, whole-product half
 of proving. It forms at `developed`, it is cut by whichever of two triggers fires first, and its
-members land individually.
+members wait as branches and land through one integration pull request, each still its own merge
+commit inside it.
 
 This page exists because the logic was settled and then could not be found. On 2026-09-29 a
 dispatcher looked for prior work on exactly this idea, did not find it, designed it again from
@@ -80,16 +81,24 @@ not divide. The only honest way to learn the real number is to run a train and m
 ## The shape
 
 ```
-  developed ──┬── ISS-a ──┐
-              ├── ISS-b ──┤
-              ├── ISS-c ──┼──▶ [ system proof, paid once ] ──┬─ green → land each member on its own
-              ├── ISS-d ──┤                                  │
-              └── ISS-e ──┘                                  └─ red   → NAME the member, split it
-                                                                        out, revalidate the rest
+  developed ──┬── ISS-a ──┐   branches only,
+              ├── ISS-b ──┤   no pull request each
+              ├── ISS-c ──┼──▶ integration branch ──▶ ONE pull request ──┬─ green → land it once
+              ├── ISS-d ──┤    (--no-ff per member)   [ system proof,    │
+              └── ISS-e ──┘                            paid once ]       └─ red   → NAME the member, split it
+                                                                                    out, revalidate the rest
 ```
 
-Green does not buy one commit. It buys one validation window, and the members land individually so
-a revert still names one change.
+**Members wait locally, never as pull requests of their own.** A member's own pull request pays the
+whole CI, system suites included, once per member, and every landing puts the others behind: that is
+the system proof paid N times plus the `N^2/2` re-gates, the two costs the train exists to remove.
+The first window, pull requests #764 and #769 on 2026-09-30, ran the other way, with a pull request
+per member: `gh run list --workflow ci.yml --branch <member branch>` counts 4 CI runs on
+`ISS-1341-box-view` and 1 on `ISS-1346-r2`: five CI runs for a window of two, where this shape pays one.
+
+Green does not buy one commit. It buys one validation and one move of the base. The integration
+pull request lands as a merge commit, never a squash, and each member stays its own `--no-ff` merge
+inside it, so a revert still names one change.
 
 Red is never reported as "the train is red". The declared policy is `redBatch:
 attribute-then-split`, and the train inherits it.
