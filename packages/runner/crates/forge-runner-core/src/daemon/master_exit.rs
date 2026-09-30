@@ -136,7 +136,8 @@ mod tests {
     use crate::runner::ledger::NewRun;
     use std::path::PathBuf;
 
-    const SOURCE: &str = include_str!("master_exit.rs");
+    static SOURCE: std::sync::LazyLock<&str> =
+        std::sync::LazyLock::new(|| crate::test_scratch::lf(include_str!("master_exit.rs")));
 
     fn row(session: Option<&str>) -> MasterRow {
         MasterRow {

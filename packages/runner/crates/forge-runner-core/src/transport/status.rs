@@ -315,29 +315,85 @@ mod tests {
     /// `status` is the implementation of the rule and `fake_core` is a test
     /// double that writes wire responses, where `HTTP/1.1 {status}` is the
     /// protocol rather than a refusal a person reads.
-    const SOURCES: &[(&str, &str)] = &[
-        ("admissible.rs", include_str!("admissible.rs")),
-        ("agent_sessions.rs", include_str!("agent_sessions.rs")),
-        ("events.rs", include_str!("events.rs")),
-        ("frames.rs", include_str!("frames.rs")),
-        ("git_credential.rs", include_str!("git_credential.rs")),
-        ("heartbeat.rs", include_str!("heartbeat.rs")),
-        ("inbox.rs", include_str!("inbox.rs")),
-        ("lifecycle.rs", include_str!("lifecycle.rs")),
-        ("master.rs", include_str!("master.rs")),
-        ("mcp_servers.rs", include_str!("mcp_servers.rs")),
-        ("mod.rs", include_str!("mod.rs")),
-        ("plugins.rs", include_str!("plugins.rs")),
-        ("pool.rs", include_str!("pool.rs")),
-        ("protections.rs", include_str!("protections.rs")),
-        ("provision.rs", include_str!("provision.rs")),
-        ("questions.rs", include_str!("questions.rs")),
-        ("run_sessions.rs", include_str!("run_sessions.rs")),
-        ("runners.rs", include_str!("runners.rs")),
-        ("session_ledger.rs", include_str!("session_ledger.rs")),
-        ("skills.rs", include_str!("skills.rs")),
-        ("ws.rs", include_str!("ws.rs")),
-    ];
+    static SOURCES: std::sync::LazyLock<[(&str, &str); 21]> = std::sync::LazyLock::new(|| {
+        [
+            (
+                "admissible.rs",
+                crate::test_scratch::lf(include_str!("admissible.rs")),
+            ),
+            (
+                "agent_sessions.rs",
+                crate::test_scratch::lf(include_str!("agent_sessions.rs")),
+            ),
+            (
+                "events.rs",
+                crate::test_scratch::lf(include_str!("events.rs")),
+            ),
+            (
+                "frames.rs",
+                crate::test_scratch::lf(include_str!("frames.rs")),
+            ),
+            (
+                "git_credential.rs",
+                crate::test_scratch::lf(include_str!("git_credential.rs")),
+            ),
+            (
+                "heartbeat.rs",
+                crate::test_scratch::lf(include_str!("heartbeat.rs")),
+            ),
+            (
+                "inbox.rs",
+                crate::test_scratch::lf(include_str!("inbox.rs")),
+            ),
+            (
+                "lifecycle.rs",
+                crate::test_scratch::lf(include_str!("lifecycle.rs")),
+            ),
+            (
+                "master.rs",
+                crate::test_scratch::lf(include_str!("master.rs")),
+            ),
+            (
+                "mcp_servers.rs",
+                crate::test_scratch::lf(include_str!("mcp_servers.rs")),
+            ),
+            ("mod.rs", crate::test_scratch::lf(include_str!("mod.rs"))),
+            (
+                "plugins.rs",
+                crate::test_scratch::lf(include_str!("plugins.rs")),
+            ),
+            ("pool.rs", crate::test_scratch::lf(include_str!("pool.rs"))),
+            (
+                "protections.rs",
+                crate::test_scratch::lf(include_str!("protections.rs")),
+            ),
+            (
+                "provision.rs",
+                crate::test_scratch::lf(include_str!("provision.rs")),
+            ),
+            (
+                "questions.rs",
+                crate::test_scratch::lf(include_str!("questions.rs")),
+            ),
+            (
+                "run_sessions.rs",
+                crate::test_scratch::lf(include_str!("run_sessions.rs")),
+            ),
+            (
+                "runners.rs",
+                crate::test_scratch::lf(include_str!("runners.rs")),
+            ),
+            (
+                "session_ledger.rs",
+                crate::test_scratch::lf(include_str!("session_ledger.rs")),
+            ),
+            (
+                "skills.rs",
+                crate::test_scratch::lf(include_str!("skills.rs")),
+            ),
+            ("ws.rs", crate::test_scratch::lf(include_str!("ws.rs"))),
+        ]
+    });
 
     const EXEMPT: &[&str] = &["status", "fake_core"];
 
@@ -796,7 +852,7 @@ mod tests {
     /// these is that.
     #[test]
     fn every_module_that_reads_a_refusals_body_says_it_through_the_helper() {
-        for (name, source) in SOURCES {
+        for (name, source) in SOURCES.iter() {
             let shipped = shipped(source);
             let bodies = shipped.matches(".text().await").count();
             if bodies == 0 {
@@ -816,7 +872,7 @@ mod tests {
     /// cannot be added outside its reach without this failing first.
     #[test]
     fn the_guard_covers_every_module_this_directory_declares() {
-        let declared: Vec<String> = include_str!("mod.rs")
+        let declared: Vec<String> = crate::test_scratch::lf(include_str!("mod.rs"))
             .lines()
             .filter_map(|l| l.trim().strip_suffix(';'))
             .filter_map(|l| l.rsplit_once("mod "))
@@ -830,7 +886,7 @@ mod tests {
                 "{m} is declared in mod.rs and the guard does not read it"
             );
         }
-        for (name, _) in SOURCES {
+        for (name, _) in SOURCES.iter() {
             let stem = name.trim_end_matches(".rs");
             assert!(
                 stem == "mod" || declared.iter().any(|m| m == stem),
@@ -846,7 +902,7 @@ mod tests {
     /// to edit, and what binds the two is one expression in it.
     #[test]
     fn the_unplaced_reason_an_operator_reads_is_the_transport_error_itself() {
-        let sweep = include_str!("../daemon/master.rs");
+        let sweep = crate::test_scratch::lf(include_str!("../daemon/master.rs"));
         let at = sweep
             .find("Unplaced::RegisterFailed {")
             .expect("the sweep still reports a refused registration");

@@ -457,7 +457,8 @@ mod tests {
     /// is to say in this list what unix thing the new case needs.
     #[test]
     fn every_case_this_module_hides_from_a_platform_says_what_it_needs_unix_for() {
-        const SOURCE: &str = include_str!("hook_install.rs");
+        static SOURCE: std::sync::LazyLock<&str> =
+            std::sync::LazyLock::new(|| crate::test_scratch::lf(include_str!("hook_install.rs")));
 
         // name => the unix-only thing it cannot be written without.
         const EARNED: [(&str, &str); 4] = [
@@ -479,7 +480,7 @@ mod tests {
             ),
         ];
 
-        let hidden = crate::platform_scope::tests_hidden_off_unix(SOURCE);
+        let hidden = crate::platform_scope::tests_hidden_off_unix(&SOURCE);
 
         for name in &hidden {
             assert!(

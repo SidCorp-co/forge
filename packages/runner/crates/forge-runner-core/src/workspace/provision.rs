@@ -805,7 +805,8 @@ mod tests {
             [Point::Provision]
         );
 
-        const SRC: &str = include_str!("provision.rs");
+        static SRC: std::sync::LazyLock<&str> =
+            std::sync::LazyLock::new(|| crate::test_scratch::lf(include_str!("provision.rs")));
         let body = SRC
             .split("\nasync fn finish_workspace(")
             .nth(1)

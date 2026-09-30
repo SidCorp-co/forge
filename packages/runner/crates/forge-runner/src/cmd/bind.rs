@@ -279,7 +279,9 @@ mod tests {
     /// leaves a saved binding that already carries it.
     #[test]
     fn the_skill_is_installed_after_the_save_and_before_the_server_is_asked() {
-        const SRC: &str = include_str!("bind.rs");
+        static SRC: std::sync::LazyLock<&str> = std::sync::LazyLock::new(|| {
+            forge_runner_core::test_scratch::lf(include_str!("bind.rs"))
+        });
         let body = SRC
             .split("\npub async fn write_binding(")
             .nth(1)

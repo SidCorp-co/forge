@@ -4131,7 +4131,8 @@ mod tests {
     use super::*;
     use crate::daemon::master_skill::ASSET as MASTER_SKILL;
 
-    const THIS_SOURCE: &str = include_str!("master.rs");
+    static THIS_SOURCE: std::sync::LazyLock<&str> =
+        std::sync::LazyLock::new(|| crate::test_scratch::lf(include_str!("master.rs")));
 
     /// A declared run whose subagent has started, so a master may hold
     /// several, declared from the Claude Code process `host` where one is read.
@@ -5491,7 +5492,8 @@ mod give_back_tests {
     use crate::runner::ledger::{Ledger, NewRun};
     use std::sync::Mutex;
 
-    const THIS_SOURCE: &str = include_str!("master.rs");
+    static THIS_SOURCE: std::sync::LazyLock<&str> =
+        std::sync::LazyLock::new(|| crate::test_scratch::lf(include_str!("master.rs")));
 
     type R<T> = crate::error::Result<T>;
 
@@ -7456,10 +7458,7 @@ mod give_back_tests {
 
     #[test]
     fn the_sweep_asks_a_held_master_before_the_empty_set_can_skip_it() {
-        // LF, or the two-line needle below never matches a Windows checkout's CRLF
-        // and the refusal it asserts passes there without reading anything.
-        let source = THIS_SOURCE.replace("\r\n", "\n");
-        let body = source
+        let body = THIS_SOURCE
             .split("\n#[cfg(test)]")
             .next()
             .and_then(|p| p.split("\nasync fn sweep(").nth(1))
@@ -7834,7 +7833,8 @@ impl Masters {
 mod unplaced_tests {
     use super::*;
 
-    const SOURCE: &str = include_str!("master.rs");
+    static SOURCE: std::sync::LazyLock<&str> =
+        std::sync::LazyLock::new(|| crate::test_scratch::lf(include_str!("master.rs")));
 
     fn production() -> &'static str {
         SOURCE.split("\n#[cfg(test)]").next().unwrap()
@@ -9368,7 +9368,7 @@ mod unplaced_tests {
 
     #[test]
     fn a_cancel_that_could_not_end_its_pane_says_so_before_it_answers_gone() {
-        let body = include_str!("inbox.rs");
+        let body = crate::test_scratch::lf(include_str!("inbox.rs"));
         let start = body
             .find("\"cancel\" => {")
             .expect("the inbox still handles a cancel frame");
@@ -11272,7 +11272,8 @@ mod servers_refusal_walk_tests {
 mod stand_down_tests {
     use super::*;
 
-    const SOURCE: &str = include_str!("master.rs");
+    static SOURCE: std::sync::LazyLock<&str> =
+        std::sync::LazyLock::new(|| crate::test_scratch::lf(include_str!("master.rs")));
 
     fn production() -> &'static str {
         SOURCE.split("\n#[cfg(test)]").next().unwrap()
@@ -11690,10 +11691,7 @@ mod stand_down_tests {
             branch.contains("return None;"),
             "the verdict has to refuse rather than answer, and every caller places nothing on a refusal — carrying on to `ensure_master` would place the pane an owner may have withheld"
         );
-        // Read through a copy with one line ending: a checkout with CRLF holds
-        // `\r\n` where a multi-line literal here holds `\n`, and this assertion
-        // then reports a missing branch on source that carries it.
-        let sweep = sweep_body().replace("\r\n", "\n");
+        let sweep = sweep_body();
         for call in [
             "standing_verdict(",
             "else {\n            continue;\n        };",
