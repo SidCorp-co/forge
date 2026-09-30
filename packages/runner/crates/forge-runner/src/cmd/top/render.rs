@@ -143,8 +143,12 @@ fn project(s: &Snapshot, p: &Project, runs: Option<&Vec<&Run>>, out: &mut Vec<St
             "{I2}runs     none holding a lease ← {} runs",
             v.path.display()
         )),
-        (Some(runs), Ok(_)) => {
-            out.push(format!("{I2}runs     {} holding a lease", runs.len()));
+        (Some(runs), Ok(v)) => {
+            out.push(format!(
+                "{I2}runs     {} holding a lease ← {} runs",
+                runs.len(),
+                v.path.display()
+            ));
             for r in runs {
                 run_line(s, r, out);
             }
@@ -206,9 +210,13 @@ fn master_pane(s: &Snapshot, p: &Project) -> Result<String, Unnamed> {
     };
     match (recorded, &s.discovery) {
         (Ok(Some(pane)), _) => Ok(pane),
-        (Ok(None), Ok(_)) => Err(Unnamed::NoPane(
-            "no pane — core does not serve this project to this box, so the daemon places no master for it".into(),
-        )),
+        (Ok(None), Ok(_)) => Err(Unnamed::NoPane(format!(
+            "no pane — core does not serve this project to this box, so the daemon places no master for it ← GET /api/devices/me/runners, {} masters",
+            s.ledger
+                .as_ref()
+                .map(|v| v.path.display().to_string())
+                .unwrap_or_default()
+        ))),
         (Err(e), Ok(_)) => Err(Unnamed::Unread(format!(
             "core does not serve this project to this box, so the daemon places no master for it now; whether one placed earlier still runs cannot be said: the ledger, which records the pane the daemon placed, is {e}"
         ))),
@@ -246,7 +254,7 @@ fn ledger_master(s: &Snapshot, p: &Project, out: &mut Vec<String>) {
 fn skill_line(s: &Snapshot, p: &Project, k: &Skill) -> String {
     match k {
         Skill::Absent { path } => format!(
-            "no file at {} — no master was placed from this checkout",
+            "no forge-master skill installed, so no master was placed from this checkout ← {}",
             path.display()
         ),
         Skill::Unreadable(e) => e.to_string(),
@@ -1216,7 +1224,7 @@ mod tests {
             ["/repo/a", "/repo/b"]
                 .iter()
                 .all(|r| text.contains(&format!(
-                    "no file at {}",
+                    "no master was placed from this checkout ← {}",
                     std::path::PathBuf::from(r).join("SKILL.md").display()
                 ))),
             "{text}"
@@ -1274,5 +1282,275 @@ mod tests {
                 && l.contains("(first: UNREADABLE — node_modules/x: Permission denied)"),
             "{l}"
         );
+    }
+
+    // ---- Criterion 21, as a rule over every line (judge r3b, finding 86) ----
+
+    fn indent(l: &str) -> usize {
+        l.len() - l.trim_start_matches(' ').len()
+    }
+
+    fn names_a_source(l: &str) -> bool {
+        l.contains(" ← ") || l.trim_start().starts_with("← ")
+    }
+
+    /// A line that says nothing a read found: a section's heading, a block's
+    /// one-word heading (`gate`, `pool`), a project's heading, the stray-run
+    /// heading.
+    fn heads_only(l: &str) -> bool {
+        let t = l.trim();
+        !t.contains(' ')
+            || (indent(l) == 0 && t.chars().all(|c| c.is_ascii_uppercase() || c == ' '))
+            || (indent(l) == 2 && l.contains("  [") && l.contains("]  "))
+            || (t.starts_with('(') && t.ends_with(')'))
+    }
+
+    /// Every line of `frame` breaking criterion 21: it states what a read
+    /// found, and names no source on itself, on the line it is listed under,
+    /// or on a `← <source>` line closing the block it opens.
+    fn unsourced(frame: &[String]) -> Vec<String> {
+        let mut out = Vec::new();
+        for (i, l) in frame.iter().enumerate().skip(1) {
+            if l.trim().is_empty() || heads_only(l) || names_a_source(l) {
+                continue;
+            }
+            let own = indent(l);
+            let parent = frame[..i]
+                .iter()
+                .rev()
+                .find(|p| !p.trim().is_empty() && indent(p) < own);
+            if parent.is_some_and(|p| names_a_source(p) && !heads_only(p)) {
+                continue;
+            }
+            let closed = frame[i + 1..]
+                .iter()
+                .take_while(|n| !n.trim().is_empty() && indent(n) > own)
+                .any(|n| n.trim_start().starts_with("← "));
+            if !closed {
+                out.push(l.clone());
+            }
+        }
+        out
+    }
+
+    fn held_run(id: &str, project: &str, session: &str, tree: &str) -> Run {
+        Run {
+            run_id: id.into(),
+            project_id: Some(project.into()),
+            master_session_id: session.into(),
+            boot_id: "boot-now".into(),
+            worktree_path: tree.into(),
+            worktree_gone_at: None,
+            released_as: None,
+            ended_by: None,
+            kept_notice: None,
+            incarnation: "live".into(),
+            work: "runnable".into(),
+            blocker_kind: None,
+            waiting_on: None,
+            created_at: 0,
+            issues: vec![("ISS-1".into(), true)],
+        }
+    }
+
+    /// A box on which every source reads, and reads fine: `busy` has
+    /// something in every place something can be, and the other has nothing
+    /// anywhere, so between them every line the renderer writes for a source
+    /// that read fine is drawn.
+    fn a_fine_box(busy: bool) -> Snapshot {
+        let (a, b) = ("aaaaaaaa-1111", "bbbbbbbb-2222");
+        let mut alpha = row("alpha", a, "/repo/a");
+        alpha.skill = Some(Skill::Read {
+            path: "/repo/a/SKILL.md".into(),
+            bytes: 9134,
+            written_ms: Ok(NOW - 3_600_000),
+            matches: Ok(true),
+        });
+        alpha.cli = Some(Slug::Matches {
+            record: "/c/forge/projects/a/config.json".into(),
+            slug: "alpha".into(),
+        });
+        // Bound here and served nowhere: no pane is named for it.
+        let mut beta = row("beta", b, "/repo/b");
+        beta.core_slug = None;
+        let mut s = snap(vec![alpha, beta]);
+        s.sessions = Ok([("forge-master-alpha".to_string(), NOW / 1000 - 3_600)].into());
+        let mut runs = Vec::new();
+        if busy {
+            let mut live = held_run("run-live", a, "sess-now", "/w/live");
+            live.kept_notice = Some("quiet".into());
+            runs.push(live);
+            runs.push(held_run("run-unwalked", a, "sess-now", "/w/unwalked"));
+            let mut park = held_run("run-park", a, "sess-now", "/w/park");
+            park.incarnation = "exited".into();
+            park.work = "blocked".into();
+            park.blocker_kind = Some("human".into());
+            park.waiting_on = Some("the owner".into());
+            park.issues = vec![("ISS-4".into(), false)];
+            runs.push(park);
+            runs.push(held_run("run-orphan", a, "sess-before", "/w/orphan"));
+        }
+        s.boot = Some("boot-now".into());
+        s.ledger = Ok(ledger_ro::View {
+            path: "/l/ledger.sqlite".into(),
+            runs,
+            masters: [(
+                a.to_string(),
+                ledger_ro::Master {
+                    project_id: a.into(),
+                    pane_name: "forge-master-alpha".into(),
+                    session_id: Some("sess-now".into()),
+                    boot_id: "boot-now".into(),
+                    cold_started_at: NOW / 1000 - 7_200,
+                    last_seen_at: NOW / 1000 - 60,
+                },
+            )]
+            .into(),
+        });
+        s.trees.insert(
+            "/w/live".into(),
+            (
+                NOW,
+                TreeAge::Newest {
+                    at_ms: NOW - 60_000,
+                    path: "src/lib.rs".into(),
+                    entries: 4,
+                    capped: false,
+                    unread: 0,
+                    first_unread: None,
+                },
+            ),
+        );
+        s.jobs = Ok(crate::cmd::top::people::Jobs {
+            dir: "/c/pool-jobs".into(),
+            absent: false,
+            records: Vec::new(),
+            unreadable: Vec::new(),
+        });
+        let mut all = BTreeMap::new();
+        for (id, keys) in [(a, vec!["ISS-7"]), (b, vec!["ISS-9"])] {
+            let questions = if busy && id == a {
+                vec![Question {
+                    id: "q1".into(),
+                    blocker_kind: "human".into(),
+                    asked_ms: Some(NOW - 60_000),
+                    prompt: "Ship it?".into(),
+                }]
+            } else {
+                Vec::new()
+            };
+            let awaiting = match (busy, id == a) {
+                (false, _) => nothing_awaiting(),
+                (true, true) => AwaitingRelease {
+                    total: 1,
+                    keys: keys.iter().map(|k| k.to_string()).collect(),
+                    blockers: Ok(vec![
+                        Blocker {
+                            code: "NO_RELEASE_GATE".into(),
+                            message: "none declared".into(),
+                        },
+                        Blocker {
+                            code: "NO_RUNNER_ONLINE".into(),
+                            message: "m".into(),
+                        },
+                    ]),
+                },
+                (true, false) => AwaitingRelease {
+                    total: 1,
+                    keys: keys.iter().map(|k| k.to_string()).collect(),
+                    blockers: Ok(Vec::new()),
+                },
+            };
+            all.insert(
+                id.to_string(),
+                ProjectCore {
+                    questions: Ok(Questions {
+                        total: questions.len() as u64,
+                        listed: questions,
+                    }),
+                    awaiting: Ok(awaiting),
+                },
+            );
+        }
+        s.core = Ok((NOW, all));
+        s.pool = vec!["pool       no failed pool read recorded in the last 24h".into()];
+        s.pool_source = "/c/pool-reads.json".into();
+        s
+    }
+
+    /// Criterion 21, over the whole frame rather than two of its lines: on a
+    /// box whose every source reads fine, no line says what a read found
+    /// without naming where it read it.
+    #[test]
+    fn every_line_that_says_a_source_is_fine_names_what_it_read() {
+        for busy in [true, false] {
+            let lines = frame(&a_fine_box(busy), None);
+            let text = lines.join("\n");
+            assert!(!text.contains("UNREADABLE"), "a fine box: {text}");
+            assert_eq!(unsourced(&lines), Vec::<String>::new(), "{text}");
+        }
+        let busy = frame(&a_fine_box(true), None).join("\n");
+        let quiet = frame(&a_fine_box(false), None).join("\n");
+        for (text, drawn) in [
+            (&busy, "slug `alpha` is core's slug for this project"),
+            (
+                &busy,
+                "is the forge-master asset of the binary the daemon runs",
+            ),
+            (&busy, "run run-live"),
+            (&busy, "the daemon's last word on it: `quiet`"),
+            (&busy, "questions  alpha: 1 open"),
+            (&busy, "parked     ISS-4 run run-park"),
+            (&busy, "abandoned  ISS-1 run run-orph"),
+            (&busy, "releasable: release-readiness names no blocker"),
+            (&busy, "and 1 more blocker(s): NO_RUNNER_ONLINE"),
+            (&quiet, "questions  none open on any project listed"),
+            (&quiet, "releases   no issue rests at awaiting_release"),
+            (&quiet, "parked     no run is parked on a person"),
+            (&quiet, "abandoned  none — every run holding a lease"),
+            (&quiet, "runs     none holding a lease"),
+            (&quiet, "job panes  none reports waiting"),
+            (
+                &quiet,
+                "gate       no degraded or undeclared dispatch recorded",
+            ),
+            (&quiet, "pool       no failed pool read recorded"),
+            (&quiet, "master   forge-master-alpha running"),
+            (
+                &quiet,
+                "master   no pane — core does not serve this project",
+            ),
+            (&quiet, "skill    no forge-master skill installed"),
+        ] {
+            assert!(text.contains(drawn), "`{drawn}` is not drawn:\n{text}");
+        }
+    }
+
+    /// The rule itself goes red: a line stripped of its source, and a row
+    /// whose heading names none, are each found.
+    #[test]
+    fn the_rule_finds_a_line_that_names_no_source() {
+        let f = |ls: &[&str]| ls.iter().map(|l| l.to_string()).collect::<Vec<_>>();
+        let bare = f(&["head", "HEALTH", "  abandoned  none — every run answers"]);
+        assert_eq!(unsourced(&bare), vec![bare[2].clone()]);
+        let under = f(&[
+            "head",
+            "  alpha  [aaaaaaaa]  /r",
+            "    cli      slug `a` matches",
+        ]);
+        assert_eq!(unsourced(&under), vec![under[2].clone()]);
+        let listed = f(&[
+            "head",
+            "  questions  a: 1 open ← GET /q",
+            "      human, question q1: x",
+        ]);
+        assert!(unsourced(&listed).is_empty());
+        let closed = f(&[
+            "head",
+            "HEALTH",
+            "  pool       none",
+            "             ← /c/pool-reads.json",
+        ]);
+        assert!(unsourced(&closed).is_empty());
     }
 }

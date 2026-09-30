@@ -570,10 +570,22 @@ mod tests {
 
     #[test]
     fn the_detail_is_cut_to_what_cores_validator_takes() {
-        let long: String = "é".repeat(500);
-        let out = Refusal::new(Reason::RateLimit, None, long);
-        assert!(out.detail.chars().count() <= DETAIL_MAX_UTF16);
-        assert!(!out.detail.is_empty());
+        let astral = "\u{1d518}";
+        let out = Refusal::new(Reason::RateLimit, None, astral.repeat(DETAIL_MAX_UTF16));
+        assert_eq!(
+            out.detail.encode_utf16().count(),
+            DETAIL_MAX_UTF16,
+            "two units a character, so a clip counting characters keeps twice what core takes"
+        );
+        assert_eq!(out.detail, astral.repeat(DETAIL_MAX_UTF16 / 2));
+
+        let odd = format!("x{}", astral.repeat(DETAIL_MAX_UTF16));
+        let out = Refusal::new(Reason::RateLimit, None, odd);
+        assert_eq!(
+            out.detail,
+            format!("x{}", astral.repeat(DETAIL_MAX_UTF16 / 2 - 1)),
+            "one unit of room left is not half a character"
+        );
     }
 
     #[test]
