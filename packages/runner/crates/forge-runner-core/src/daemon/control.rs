@@ -21,7 +21,9 @@
 //! says what it was carrying. The old `run_open` took a job from a pool and
 //! then started it; these take nothing and start nothing.
 
-use std::path::{Path, PathBuf};
+#[cfg(unix)]
+use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};

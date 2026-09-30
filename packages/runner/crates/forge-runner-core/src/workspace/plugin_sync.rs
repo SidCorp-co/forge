@@ -527,9 +527,33 @@ mod tests {
             repo_key("https://github.com/SidCorp-co/Forge-Plugin.git"),
             "sidcorp-co/forge-plugin"
         );
-        assert!(marketplace_clone_dir("SidCorp-co/forge-plugin")
-            .unwrap()
-            .ends_with("forge-runner/marketplaces/sidcorp-co__forge-plugin"));
+    }
+
+    /// The clone dir is a write under the runner config dir, so a test build
+    /// answers it only inside a scratch. The lock is what makes that the
+    /// scratch this test set rather than whichever a sibling had set.
+    #[test]
+    fn clone_dir_sits_under_the_runner_config_dir_and_only_inside_a_scratch() {
+        use crate::auth::cred_store::{ScopedVar, ENV_TEST_LOCK};
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let home = crate::test_scratch::Scratch::new("clone-dir");
+        let xdg = ScopedVar::set("XDG_CONFIG_HOME", home.path());
+        assert_eq!(
+            marketplace_clone_dir("SidCorp-co/forge-plugin"),
+            Some(home.join("forge-runner/marketplaces/sidcorp-co__forge-plugin"))
+        );
+        // Beside the scratch, so merely under the temp dir; only resolved, never created.
+        let outside = home
+            .parent()
+            .expect("a scratch sits under the temp dir")
+            .join("not-a-forge-test-scratch");
+        xdg.move_to(&outside);
+        assert_eq!(
+            marketplace_clone_dir("SidCorp-co/forge-plugin"),
+            None,
+            "{} is not a scratch, so a test build resolves no clone dir there",
+            outside.display()
+        );
     }
 
     #[test]
