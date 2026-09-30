@@ -22,6 +22,7 @@ const fixture = JSON.parse(
 ) as {
   wire: { maxProjects: number; units: number };
   pool: { projects: Array<Record<string, unknown>> };
+  projectIds: { taken: string[]; refused: string[] };
 };
 
 const blind = () => structuredClone(fixture.pool.projects[0]) as Record<string, unknown>;
@@ -101,6 +102,18 @@ describe('what core refuses, by name', () => {
     expect(readHeartbeatPool({ projects: [wide] }).refused).toMatch(/lastFailure\.reason/);
     const many = Array.from({ length: WIRE_PROJECTS + 1 }, () => blind());
     expect(readHeartbeatPool({ projects: many }).refused).toMatch(/^pool\.projects: /);
+  });
+
+  // forge-runner's `pool_reads::is_project_id` asserts the same list: one id core
+  // refuses and the box keeps refuses every project's report (ISS-1344).
+  it.each(fixture.projectIds.taken)('takes %j as a project id, as the box does', (id) => {
+    expect(readHeartbeatPool({ projects: [{ ...blind(), projectId: id }] }).refused).toBeUndefined();
+  });
+
+  it.each(fixture.projectIds.refused)('refuses %j as a project id, as the box does', (id) => {
+    expect(readHeartbeatPool({ projects: [{ ...blind(), projectId: id }] }).refused).toMatch(
+      /^pool\.projects\.0\.projectId: /,
+    );
   });
 
   it('refuses a key it does not know rather than dropping it', () => {
