@@ -120,7 +120,8 @@ export interface LiveState {
   health: 'up' | 'down';
   /** `null` when the fleet does not agree on one commit, or none reports one. */
   identity: string | null;
-  answeredCommits: string[];
+  /** Each probe that answered a commit, and the commit it answered, in declaration order. */
+  answeredBy: Array<{ url: string; commit: string }>;
   /** One line per probe, in declaration order, whatever the outcome. */
   readings: string[];
   /** The probes whose reading is not a commit, by what went wrong. */
@@ -148,22 +149,24 @@ export async function readLiveState(
     .map((r, i) => (probeIsHealthy(r) && r.kind !== 'commit' ? (readings[i] ?? null) : null))
     .filter((s): s is string => s !== null);
 
-  const commits = reads.filter((r): r is { kind: 'commit'; commit: string } => r.kind === 'commit');
+  const answeredBy = reads.flatMap((r, i) =>
+    r.kind === 'commit' ? [{ url: (cfg.probes[i] as VerifyProbe).url, commit: r.commit }] : [],
+  );
   const agreed =
-    commits.length === reads.length && commits.length > 0
-      ? commits.every((r) => r.commit === commits[0]?.commit)
-        ? (commits[0]?.commit ?? null)
+    answeredBy.length === reads.length && answeredBy.length > 0
+      ? answeredBy.every((r) => r.commit === answeredBy[0]?.commit)
+        ? (answeredBy[0]?.commit ?? null)
         : null
       : null;
   const disagreement =
-    commits.length === reads.length && commits.length > 0 && agreed === null
-      ? [...new Set(commits.map((r) => r.commit))]
+    answeredBy.length === reads.length && answeredBy.length > 0 && agreed === null
+      ? [...new Set(answeredBy.map((r) => r.commit))]
       : null;
 
   return {
     health: unhealthy.length === 0 ? 'up' : 'down',
     identity: agreed,
-    answeredCommits: [...new Set(commits.map((r) => r.commit))],
+    answeredBy,
     readings,
     unhealthy,
     unidentified,
@@ -242,7 +245,7 @@ export async function verifyDeployed(args: VerifyArgs): Promise<VerifyOutcome> {
   let state: LiveState = {
     health: 'down',
     identity: null,
-    answeredCommits: [],
+    answeredBy: [],
     readings: [],
     unhealthy: [],
     unidentified: [],

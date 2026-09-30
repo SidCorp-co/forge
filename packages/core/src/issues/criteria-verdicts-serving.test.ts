@@ -39,6 +39,8 @@ const UNDECLARED: ServingReading = {
   kind: 'undeclared',
   missing:
     'this project has no active deploy binding, so Forge makes no deployment it could read a commit from',
+  route:
+    'bind a deploy binding Forge deploys through whose provider reports the commit a deployment built (Coolify does), or declare `verify.probes` on the live deploy binding',
 };
 
 function verdictBlock(criterion: number, verdict: string, runtime: string): string {
@@ -74,9 +76,8 @@ describe('a runtime verdict against what the host answers (ISS-1286)', () => {
   const SERVED_HEAD = '0d98a6be6d9680b967d3f16542eadd25d02602cb';
   const SERVED: ServingReading = {
     kind: 'serving',
-    commits: [SERVED_HEAD],
+    served: [{ commit: SERVED_HEAD, where: 'https://helpdesk-api.musetools.com/api/build-info' }],
     unread: [],
-    hosts: ['https://helpdesk-api.musetools.com/api/build-info'],
     readAt: READ_AT,
   };
 
@@ -140,9 +141,8 @@ describe('a runtime verdict against what the host answers (ISS-1286)', () => {
     judgedAt(SERVED_HEAD);
     const partly: ServingReading = {
       kind: 'serving',
-      commits: [STORED_ANCESTOR],
+      served: [{ commit: STORED_ANCESTOR, where: 'https://one.test/h' }],
       unread: ['https://two.test/h is unreachable (ECONNREFUSED)'],
-      hosts: ['https://one.test/h', 'https://two.test/h'],
       readAt: READ_AT,
     };
     const [report] = await unearnedCriteriaReports(['iss-543'], partly);
@@ -187,9 +187,11 @@ describe('a runtime verdict against what the host answers (ISS-1286)', () => {
     judgedAt(SERVED_HEAD);
     const rollout: ServingReading = {
       kind: 'serving',
-      commits: [STORED_ANCESTOR, '9999999999999999999999999999999999999999'],
+      served: [
+        { commit: STORED_ANCESTOR, where: 'https://one.test/h' },
+        { commit: '9999999999999999999999999999999999999999', where: 'https://two.test/h' },
+      ],
       unread: [],
-      hosts: ['https://one.test/h', 'https://two.test/h'],
       readAt: READ_AT,
     };
     const [report] = await unearnedCriteriaReports(['iss-543'], rollout);
@@ -202,9 +204,11 @@ describe('a runtime verdict against what the host answers (ISS-1286)', () => {
     judgedAt(SERVED_HEAD);
     const rollout: ServingReading = {
       kind: 'serving',
-      commits: [STORED_ANCESTOR, SERVED_HEAD],
+      served: [
+        { commit: STORED_ANCESTOR, where: 'https://one.test/h' },
+        { commit: SERVED_HEAD, where: 'https://two.test/h' },
+      ],
       unread: [],
-      hosts: ['https://one.test/h', 'https://two.test/h'],
       readAt: READ_AT,
     };
     const [report] = await unearnedCriteriaReports(['iss-543'], rollout);
