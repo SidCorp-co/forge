@@ -241,7 +241,7 @@ describe('changedFiles', () => {
     run(work, 'add', 'café.mjs');
     run(work, 'commit', '-q', '-m', 'non-ascii');
     writeFileSync(join(work, 'naïve.mjs'), 'export const naive = 1;\n');
-    const got = changedFiles(work);
+    const got = changedFiles(work, {});
     expect(got.error).toBeUndefined();
     expect([...got.files].sort()).toEqual([
       'café.mjs',
@@ -256,6 +256,6 @@ describe('changedFiles', () => {
   it('refuses by name where no branch to land on can be derived', () => {
     const root = repo();
     run(root, 'init', '-q', '--initial-branch=main');
-    expect(changedFiles(root).error).toMatch(/merge target|merge-base/);
+    expect(changedFiles(root, {}).error).toMatch(/merge target|merge-base/);
   });
 });

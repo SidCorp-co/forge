@@ -155,8 +155,8 @@ function gitLines(root, args) {
  * base, changed in the tree, or new and untracked. A developer run judges these and no others.
  * @returns `{files: Set<string>, base: string}`, or `{error}`
  */
-export function changedFiles(root) {
-  const target = baseRef(root);
+export function changedFiles(root, env = process.env) {
+  const target = baseRef(root, env);
   if (target.refusal) return { error: target.refusal };
   const base = gitLines(root, ['merge-base', target.ref, 'HEAD'])?.[0];
   if (!base) return { error: `git merge-base ${target.ref} HEAD failed — no change to scope` };
