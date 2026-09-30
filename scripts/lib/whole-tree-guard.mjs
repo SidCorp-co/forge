@@ -95,9 +95,14 @@ async function childHits() {
     await new Promise((done) => setTimeout(done, 50));
     drain();
   }
-  // Liveness is read before the last drain: a process found gone has written all it ever will.
-  const stillLive = live();
-  drain();
+  // Liveness is read before each last drain, and again while a drain finds a process it did not
+  // know: one found gone has written all it ever will, so nothing it started is missed.
+  let stillLive = live();
+  for (let known = pids.size; ; known = pids.size) {
+    drain();
+    if (pids.size === known) break;
+    stillLive = live();
+  }
   for (const pid of stillLive)
     hits.push({
       dir: ROOT,

@@ -12,7 +12,12 @@ import { promisify } from 'node:util';
 import vm from 'node:vm';
 import workerThreads from 'node:worker_threads';
 import { FS_LISTING_CALLS, fsListing, spawnCwd } from './whole-tree-gates.mjs';
-import { gitConfigFiles, physical, subprocessListing } from './whole-tree-shell.mjs';
+import {
+  gitConfigFiles,
+  physical,
+  startupModuleKey,
+  subprocessListing,
+} from './whole-tree-shell.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 /** The repository root by its realpath, the one spelling every placement is compared against. */
@@ -167,7 +172,7 @@ function captureBase() {
     } catch {}
   }
   env.__WT_BASE_EXECARGV = process.execArgv.join('\n');
-  return { env, configs, execArgv: process.execArgv };
+  return { env, configs, execArgv: [...process.execArgv] };
 }
 
 /** Reads what the guard wrote to `base.json`; where the file is absent it falls back to this
@@ -177,7 +182,7 @@ function readBase(logPath) {
     return JSON.parse(fs.readFileSync(basePath(logPath), 'utf8'));
   } catch {
     const env = { ...process.env, __WT_BASE_EXECARGV: process.execArgv.join('\n') };
-    return { env, configs: {}, execArgv: process.execArgv };
+    return { env, configs: {}, execArgv: [...process.execArgv] };
   }
 }
 
@@ -344,12 +349,9 @@ function install(state) {
   // script `eval` worker does not, so its source is handed the preload as its first line instead.
   workerThreads.Worker = class WatchedWorker extends Worker {
     constructor(code, options = {}) {
-      const startup = (options.execArgv ?? []).filter(
-        (a) =>
-          typeof a === 'string' && (WORKER_STARTUP.has(a) || WORKER_STARTUP.has(a.split('=')[0])),
-      );
-      if (startup.length > 0)
-        asRoot(`Worker() with the startup option \`${startup[0]}\`, which runs before the watch`);
+      const startup = foreignStartup(options.execArgv ?? process.execArgv, state.base);
+      if (startup !== null)
+        asRoot(`Worker() with the startup module \`${startup}\`, which runs before the watch`);
       const execArgv = ['--import', PRELOAD, ...(options.execArgv ?? process.execArgv)];
       if (options.eval && isScript(code))
         super(`require(${JSON.stringify(fileURLToPath(PRELOAD))});\n${code}`, options);
@@ -377,6 +379,20 @@ function isEsbuildService(options) {
     /^--service=[\d.]+$/.test(args[1]) &&
     args[2] === '--ping'
   );
+}
+
+/** The first startup module a worker's arguments name that the vitest worker was not itself
+ * started with, or null: one of its own runs before the watch as it did there, any other unseen. */
+function foreignStartup(execArgv, base) {
+  const own = new Set((base?.execArgv ?? []).map((t) => startupModuleKey(t, null)));
+  const args = execArgv.map(String);
+  for (let i = 0; i < args.length; i++) {
+    const [flag, inline] = args[i].includes('=') ? args[i].split(/=(.*)/s) : [args[i], undefined];
+    if (!WORKER_STARTUP.has(flag)) continue;
+    const mod = inline ?? args[++i];
+    if (mod === undefined || !own.has(startupModuleKey(mod, process.cwd()))) return mod ?? flag;
+  }
+  return null;
 }
 
 /** The raw bindings that list a directory or start a process without passing a watched call. */

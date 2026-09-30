@@ -322,7 +322,7 @@ describe('node', () => {
   const NODE = process.execPath;
   const withArgv = {
     ...base,
-    env: { ...BASE_ENV, __WT_BASE_EXECARGV: '--require\nsuppress-warnings.cjs' },
+    env: { ...BASE_ENV, __WT_BASE_EXECARGV: '--require\n/x/suppress-warnings.cjs' },
   };
   it('reads options before the script, and lists a script argument that is a directory', () => {
     expect(dirsOf(run(NODE, { args: ['-e', 'x', '../..'] }))).toEqual([ROOT]);
@@ -342,6 +342,19 @@ describe('node', () => {
         }),
       ),
     ).toBe(false);
+    // The base module is the file the worker was started with, not any file of the same name.
+    expect(
+      listsRoot(
+        subprocessListing({
+          command: NODE,
+          args: ['--require', '/tmp/elsewhere/suppress-warnings.cjs', 'app.js'],
+          cwd: CORE,
+          root: ROOT,
+          env: withArgv.env,
+          base: withArgv,
+        }),
+      ),
+    ).toBe(true);
   });
   it('refuses --run and any option off the list', () => {
     expect(listsRoot(run(NODE, { args: ['--run', 'test'] }))).toBe(true);

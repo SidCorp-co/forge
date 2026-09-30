@@ -459,8 +459,24 @@ describe('the guard installed in this very run', () => {
     const w = new Worker('', { eval: true, execArgv: ['--import', pathToFileURL(mod).href] });
     w.terminate();
     rmSync(dir, { recursive: true, force: true });
+    expect(vias()).toEqual([expect.stringMatching(/^Worker\(\) with the startup module `file:/)]);
+  });
+
+  it('refuses a worker inheriting a startup module the vitest worker was not started with', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'wt-inherit-'));
+    const mod = join(dir, 'pre.cjs');
+    writeFileSync(mod, '');
+    const saved = [...process.execArgv];
+    process.execArgv.push('--require', mod);
+    try {
+      new Worker('0', { eval: true }).terminate();
+      new Worker('0', { eval: true, execArgv: saved }).terminate();
+    } finally {
+      process.execArgv.splice(0, process.execArgv.length, ...saved);
+      rmSync(dir, { recursive: true, force: true });
+    }
     expect(vias()).toEqual([
-      expect.stringMatching(/^Worker\(\) with the startup option `--import`/),
+      expect.stringMatching(/^Worker\(\) with the startup module `\/.*pre\.cjs`/),
     ]);
   });
 
