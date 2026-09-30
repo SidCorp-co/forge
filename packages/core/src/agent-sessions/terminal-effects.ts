@@ -50,7 +50,7 @@ export function sessionCarriesBridgeMarker(metadata: unknown): boolean {
 
 /**
  * Fire every bridge this session's metadata selects. The token the session was handed is revoked
- * by the status write itself (migration 0323), not here.
+ * by the status write itself (migration 0324), not here.
  */
 export async function fireTerminalSessionBridges(row: SessionRow): Promise<void> {
   const metadata = (row.metadata as Record<string, unknown> | null) ?? {};

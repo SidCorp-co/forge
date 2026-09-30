@@ -1,15 +1,20 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import { ecosystemJsonSchemas } from '../ecosystem/json-schema.js';
 import { type ProjectConfigSchemaName, projectConfigJsonSchemas, schemaId } from './json-schema.js';
 
 export const projectConfigSchemaRoutes = new Hono();
 
-const SERVED = new Map(
-  (Object.keys(projectConfigJsonSchemas) as ProjectConfigSchemaName[]).map((name) => [
-    schemaId(name).slice(schemaId(name).lastIndexOf('/') + 1),
-    projectConfigJsonSchemas[name],
-  ]),
-);
+const SERVED = new Map<string, object>([
+  ...(Object.keys(projectConfigJsonSchemas) as ProjectConfigSchemaName[]).map(
+    (name) =>
+      [
+        schemaId(name).slice(schemaId(name).lastIndexOf('/') + 1),
+        projectConfigJsonSchemas[name],
+      ] as const,
+  ),
+  ...Object.entries(ecosystemJsonSchemas),
+]);
 
 projectConfigSchemaRoutes.get('/schemas/:file', (c) => {
   const file = c.req.param('file');

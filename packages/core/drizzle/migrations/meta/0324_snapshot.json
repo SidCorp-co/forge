@@ -1,6 +1,6 @@
 {
-  "id": "59890f26-de75-4c0e-b932-deacb645958c",
-  "prevId": "5a25dcc7-01e7-45e2-a4a9-ad74a777d040",
+  "id": "ea1eaa33-9e32-43f8-9082-1ed140e10f1c",
+  "prevId": "59890f26-de75-4c0e-b932-deacb645958c",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -7638,6 +7638,22 @@
             }
           ],
           "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "pat_live_name_idx": {
+          "name": "pat_live_name_idx",
+          "columns": [
+            {
+              "expression": "name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"personal_access_tokens\".\"revoked_at\" is null",
           "concurrently": false,
           "method": "btree",
           "with": {}

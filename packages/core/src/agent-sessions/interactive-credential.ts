@@ -2,7 +2,7 @@
  * A session a person starts or continues from the web runs each turn as that person (ISS-27): the
  * turn is handed only to a box that runs it under the token it carries, the token is minted for
  * the person whose message the turn carries — their role on the project, cut to what the box's
- * holder may do there — and it is revoked when the turn stops (migration 0323).
+ * holder may do there — and it is revoked when the turn stops (migration 0324).
  */
 
 import { HTTPException } from 'hono/http-exception';

@@ -36,6 +36,7 @@ const {
   assertMayMintFullCredential,
   mintEpochFor,
 } = await import('./pat-rest-surface.js');
+const { PAT_GRANT_EPOCH } = await import('../auth/pat-permissions.js');
 type Principal = Awaited<ReturnType<typeof beginPatRequest>>['principal'];
 
 function principal(permissions: readonly string[] | null | undefined, grantEpoch = 1): Principal {
@@ -321,11 +322,12 @@ describe('a credential minted during a request is no wider than what admitted it
 
   it('stamps the admitting token epoch, and the current one for a session', async () => {
     expect(mintEpochFor(await admitted(['*'], 2))).toBe(2);
-    expect(mintEpochFor(ctx('/api/orgs/o1/agents', 'POST').ctx)).toBe(2);
+    expect(mintEpochFor(ctx('/api/orgs/o1/agents', 'POST').ctx)).toBe(PAT_GRANT_EPOCH);
   });
 
   it('never stamps above the menu, whatever the admitting token claims', async () => {
-    expect(mintEpochFor(await admitted(['*'], 9))).toBe(2);
+    expect(PAT_GRANT_EPOCH).toBeLessThan(9);
+    expect(mintEpochFor(await admitted(['*'], 9))).toBe(PAT_GRANT_EPOCH);
   });
 
   it('refuses a named grant on a route minting a * credential, and lets * and a session through', async () => {

@@ -10,8 +10,8 @@ const SLUG = /^[a-z][a-z0-9-]{0,62}$/;
 const SHORT_NAME = /^[a-z][a-z0-9-]{0,31}$/;
 const GIT_REF = /^(?!\/)(?!.*\/\/)(?!.*\.\.)(?!.*@\{)[A-Za-z0-9._/-]+(?<!\/)(?<!\.lock)$/;
 
-const uuid = () => z.string().regex(UUID);
-const slug = () => z.string().regex(SLUG);
+export const uuid = () => z.string().regex(UUID);
+export const slug = () => z.string().regex(SLUG);
 const gitRef = () => z.string().min(1).max(200).regex(GIT_REF);
 const httpsUrl = () =>
   z
@@ -21,7 +21,7 @@ const httpsUrl = () =>
     .meta({ format: 'uri' });
 
 // cm:why zod has no uniqueItems: the refine enforces it and the meta makes the emitted schema say it.
-function unique<T extends z.ZodArray<z.ZodType>>(schema: T): T {
+export function unique<T extends z.ZodArray<z.ZodType>>(schema: T): T {
   return schema
     .refine((items) => new Set(items.map((i) => JSON.stringify(i))).size === items.length, {
       message: 'Items must be unique',
@@ -29,7 +29,7 @@ function unique<T extends z.ZodArray<z.ZodType>>(schema: T): T {
     .meta({ uniqueItems: true }) as unknown as T;
 }
 
-function sized<T extends z.ZodType<Record<string, unknown>>>(
+export function sized<T extends z.ZodType<Record<string, unknown>>>(
   schema: T,
   bounds: { min?: number; max?: number },
 ): T {
