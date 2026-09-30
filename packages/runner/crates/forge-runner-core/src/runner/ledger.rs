@@ -1286,37 +1286,43 @@ impl Ledger {
     /// pass over it — and no writer of `ended_by` ever reaches it: its master's
     /// close is refused to every pane, and recovery walks only `unclosed_runs`.
     /// On one box that left 51 rows open for up to six days (ISS-1355). The
-    /// update repeats the selection in its own `WHERE`, so a row that a pane
-    /// took over between the read and the write is left to that pane.
+    /// update repeats every guard of the selection in its own `WHERE`, so a
+    /// row a pane took over, or whose project's master row lost its session,
+    /// between the read and the write is left as the selection would leave it.
     pub fn end_closed_runs_no_master_answers_for(&self) -> Result<Vec<Unanswered>> {
         let mut ended = Vec::new();
         for u in self.runs_no_master_answers_for()? {
-            if !u.sweep_ends_it() {
-                continue;
-            }
-            let reason = format!(
-                "no master on this box can close it: it was declared under master session {}, which is no master session this box records, and its marks already close it — its session is over, its checkout was returned ({}) and every lease is back",
-                short_id(&u.run.master_session_id),
-                u.run.released_as.as_deref().unwrap_or("unrecorded")
-            );
-            let changed = self
-                .conn
-                .execute(
-                    &format!(
-                        "UPDATE runs SET work = 'done', incarnation = 'exited',
-                                ended_by = 'recovery', ended_reason = ?2
-                          WHERE run_id = ?1 AND ended_by IS NULL
-                            AND NOT EXISTS (SELECT 1 FROM masters m WHERE m.session_id = runs.master_session_id)
-                            AND run_id IN (SELECT r.run_id FROM runs r WHERE r.run_id = ?1 AND {CLOSED_BY_ITS_MARKS})"
-                    ),
-                    params![u.run.run_id, reason],
-                )
-                .map_err(sql_err)?;
-            if changed == 1 {
+            if u.sweep_ends_it() && self.end_unanswered(&u)? {
                 ended.push(u);
             }
         }
         Ok(ended)
+    }
+
+    /// End one run a read of [`Self::runs_no_master_answers_for`] found, if
+    /// every guard that read applied still holds; answers whether it did.
+    fn end_unanswered(&self, u: &Unanswered) -> Result<bool> {
+        let reason = format!(
+            "no master on this box can close it: it was declared under master session {}, which is no master session this box records, and its marks already close it — its session is over, its checkout was returned ({}) and every lease is back",
+            short_id(&u.run.master_session_id),
+            u.run.released_as.as_deref().unwrap_or("unrecorded")
+        );
+        let changed = self
+            .conn
+            .execute(
+                &format!(
+                    "UPDATE runs SET work = 'done', incarnation = 'exited',
+                            ended_by = 'recovery', ended_reason = ?2
+                      WHERE run_id = ?1 AND ended_by IS NULL AND project_id IS NOT NULL
+                        AND NOT EXISTS (SELECT 1 FROM masters m WHERE m.session_id = runs.master_session_id)
+                        AND NOT EXISTS (SELECT 1 FROM masters m
+                                         WHERE m.project_id = runs.project_id AND m.session_id IS NULL)
+                        AND run_id IN (SELECT r.run_id FROM runs r WHERE r.run_id = ?1 AND {CLOSED_BY_ITS_MARKS})"
+                ),
+                params![u.run.run_id, reason],
+            )
+            .map_err(sql_err)?;
+        Ok(changed == 1)
     }
 
     /// Record that the process the subagent of `run_id` lived in ended at
@@ -4854,6 +4860,36 @@ mod tests {
             .map(|u| u.run.run_id)
             .collect();
         assert_eq!(ended, ["lease-out"], "criterion 6");
+    }
+
+    /// Between the read and the ending, what the read decided can move: a
+    /// master row with no session can appear for the run's project, or a pane
+    /// can re-record the run under its own session. The ending then leaves the
+    /// run exactly as a fresh read would.
+    #[test]
+    fn the_ending_rechecks_what_moved_since_the_read() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        declared(&mut led, "unknown-now", "r", "before-r", &["ISS-1"]);
+        marks(&led, "unknown-now", &[]);
+        declared(&mut led, "taken-over", "p", "before-p", &["ISS-2"]);
+        marks(&led, "taken-over", &[]);
+        let read = led.runs_no_master_answers_for().unwrap();
+        assert!(read.iter().all(Unanswered::sweep_ends_it));
+
+        led.note_master("r", "forge-master-r", None, None, "boot-a")
+            .unwrap();
+        led.note_master("p", "forge-master-p", None, Some("now-p"), "boot-a")
+            .unwrap();
+        led.reparent_run("taken-over", "now-p").unwrap();
+        for u in &read {
+            assert!(
+                !led.end_unanswered(u).unwrap(),
+                "{} is ended over what moved",
+                u.run.run_id
+            );
+        }
+        assert_eq!(ended_by(&led, "unknown-now"), None);
+        assert_eq!(ended_by(&led, "taken-over"), None);
     }
 
     /// The box's own population, planted small: three projects, each master
