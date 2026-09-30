@@ -134,7 +134,6 @@ async function claimBlockers(
   out.push(blocker('CLAIM_CONFLICT', claimConflictDetails(projectId, gateStatus, conflicts)));
 }
 
-/** What the roster owes before it may be closed: a note, and a merge. */
 /** `ISS-nn` for each, in the order given, so a refusal names the rows it is about (ISS-1346). A
  *  failed read costs the names and not the reason: the refusal still counts them, and says so. */
 async function namedAs(ids: string[]): Promise<string[]> {
@@ -147,6 +146,7 @@ async function namedAs(ids: string[]): Promise<string[]> {
   }
 }
 
+/** What the roster owes before it may be closed: a note, and a merge. */
 async function rosterBlockers(
   door: ReleaseDoor,
   issueIds: string[],
