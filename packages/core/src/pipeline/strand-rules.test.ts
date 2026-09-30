@@ -21,6 +21,7 @@ function reading(over: Partial<LeaseReading> = {}): LeaseReading {
     fanout: 0,
     stopped: false,
     silentMs: null,
+    toleranceMs: null,
     detail: '',
     ...over,
   };

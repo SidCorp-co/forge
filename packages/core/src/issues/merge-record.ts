@@ -11,7 +11,7 @@ export type MergeEvidence =
       kind: 'observed';
       commitSha: string;
       mergedAt: Date;
-      via: 'kernel' | 'event';
+      via: 'kernel' | 'event' | 'repository';
       /** Where the work also landed outside git, on a project whose landing is named. */
       landing?: string | null;
     }
@@ -65,6 +65,8 @@ export function describeMergeMark(args: {
   commitSha?: string | null;
   claimedCommit?: string | null;
   landing?: string | null;
+  /** Where this call read an `observed` commit from the repository rather than a pull request. */
+  readFrom?: { repository: string; branch: string } | null;
 }): string {
   if (args.kind === 'unmarked') {
     return 'this issue carries no merged mark: `merged_at` is empty, so nothing here says the work landed';
@@ -80,7 +82,10 @@ export function describeMergeMark(args: {
     const overruled = differs
       ? `. Commit ${args.claimedCommit}, which this call named, is recorded as its claim and is not what the column holds`
       : '';
-    return `this mark is a merge Forge observed: \`merged_commit_sha\` holds ${args.commitSha ?? 'the commit it landed at'}, read from Forge's own record of the pull request rather than from anybody's word for it${overruled}`;
+    const source = args.readFrom
+      ? `read from ${args.readFrom.repository} itself, which resolves it, gives it to this issue by its subject and holds it on ${args.readFrom.branch}`
+      : "read by Forge itself, from its record of the pull request or from the project's repository";
+    return `this mark is a merge Forge observed: \`merged_commit_sha\` holds ${args.commitSha ?? 'the commit it landed at'}, ${source}, rather than from anybody's word for it${overruled}`;
   }
   const claim = args.claimedCommit
     ? `commit ${args.claimedCommit} is recorded here as this call's claim and is NOT in \`merged_commit_sha\``

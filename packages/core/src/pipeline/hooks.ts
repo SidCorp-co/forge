@@ -44,6 +44,8 @@ export interface HookPayloads {
     reason?: string;
     reopenCount: number;
     outboxId?: string;
+    /** When the status changed, which a drain seconds later is not. */
+    at?: Date;
   };
   jobFailed: {
     jobId: string;

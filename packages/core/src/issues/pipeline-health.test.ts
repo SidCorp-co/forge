@@ -104,6 +104,7 @@ describe('classifyPipelineHealthForIssue', () => {
           fanout: 1,
           stopped: false,
           silentMs: null,
+          toleranceMs: null,
           detail: 'held',
         },
       }),

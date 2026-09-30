@@ -3136,6 +3136,10 @@
 
 ### Fixed
 
+- **Work landed on the base branch can be marked merged by its commit.** Where the commit is the
+  only trace, Forge checks it in the repository: it must exist, name the issue and sit on the base
+  or live branch.
+
 - **A half-deleted run checkout is no longer taken for the project's own.** The box said it was
   left standing as it went. It now holds it, refuses to release it and names it in its log.
 - **The box's log names the run holding such a checkout,** and a checkout it records as gone no
@@ -3143,6 +3147,8 @@
   to clear it.
 - **An issue a run is still working is no longer sent back to `open`.** Forge's net for stuck work
   leaves an issue alone while its run holds a live claim, and says so on any issue it moves.
+- **Forge now moves stuck work back to `open` as itself.** The note and the status change appear
+  under the project's agent account instead of the project owner's, at the same time.
 - **Releases and other background jobs now get your project's tools.** A batch release started
   without the servers your project declares, so it could not publish to a storefront. A job that
   cannot be given them now waits instead.

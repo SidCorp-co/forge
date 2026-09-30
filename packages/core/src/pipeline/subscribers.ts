@@ -95,6 +95,7 @@ export function registerActivitySubscribers(bus: HooksBus): void {
         ...(p.reason ? { reason: p.reason } : {}),
       },
       ...(dedupeKey ? { dedupeKey } : {}),
+      ...(p.at ? { at: p.at } : {}),
     });
   });
 

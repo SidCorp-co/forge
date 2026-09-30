@@ -15,6 +15,8 @@ export interface RecordActivityInput {
   payload?: Record<string, unknown>;
   /** ISS-849 — redelivery-dedup key, e.g. `transition:<outboxId>`. */
   dedupeKey?: string;
+  /** When the recorded thing happened, where that is earlier than this write. */
+  at?: Date;
 }
 
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
@@ -36,6 +38,7 @@ function buildValues(input: RecordActivityInput) {
     action: input.action,
     payload: buildPayload(input),
     dedupeKey: input.dedupeKey ?? null,
+    ...(input.at ? { createdAt: input.at } : {}),
   };
 }
 

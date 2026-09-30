@@ -17,6 +17,7 @@ function claim(over: Partial<LeaseReading> = {}): LeaseReading {
     fanout: 1,
     stopped: false,
     silentMs: null,
+    toleranceMs: null,
     detail: 'held',
     ...over,
   };
