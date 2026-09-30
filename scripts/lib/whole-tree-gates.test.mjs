@@ -38,6 +38,7 @@ import {
   judgeDeclarations,
   judgeGlobs,
   judgeRun,
+  logLines,
   pathOf,
   runDirOf,
   spawnCwd,
@@ -277,6 +278,26 @@ describe('what a run owes after it listed the root', () => {
     expect(guardVerdict({ file: WALKER_PATH, source, hits: [hit(ROOT)], root: ROOT })).toContain(
       'listed the repository root',
     );
+  });
+});
+
+describe('reading a child log', () => {
+  const bytes = (text) => Buffer.from(text, 'utf8');
+  it('reads each whole line once, and a line appended after a read on the next', () => {
+    const first = logLines(bytes('{"started":1}\n{"dir":"/r"}\n'), 0);
+    expect(first.lines).toEqual([{ started: 1 }, { dir: '/r' }]);
+    const next = logLines(bytes('{"started":1}\n{"dir":"/r"}\n{"dir":"/late"}\n'), first.offset);
+    expect(next.lines).toEqual([{ dir: '/late' }]);
+  });
+  it('leaves a line its writer has not ended for the next read', () => {
+    const part = logLines(bytes('{"dir":"/a"}\n{"dir":"/b'), 0);
+    expect(part.lines).toEqual([{ dir: '/a' }]);
+    expect(logLines(bytes('{"dir":"/a"}\n{"dir":"/b"}\n'), part.offset).lines).toEqual([
+      { dir: '/b' },
+    ]);
+  });
+  it('reads a log emptied since the last read from its start', () => {
+    expect(logLines(bytes('{"dir":"/c"}\n'), 400).lines).toEqual([{ dir: '/c' }]);
   });
 });
 
@@ -741,6 +762,33 @@ describe('a run of a file that lists the root', () => {
     expect(`${r.stdout}${r.stderr}`).toMatch(
       /hands-off\.test\.mjs child process \d+ was still running when the file ended/,
     );
+  }, 60_000);
+
+  it('counts a worker against the file that started it, not a later one in the same worker process', () => {
+    const shared = mkdtempSync(join(tmpdir(), 'whole-tree-shared-'));
+    const guard = JSON.stringify(join(REPO, 'scripts/lib/whole-tree-guard.mjs'));
+    writeFileSync(
+      join(shared, 'vitest.config.mjs'),
+      `export default { test: { globals: true, isolate: false, maxWorkers: 1, include: ['*.test.mjs'], setupFiles: [${guard}] } };`,
+    );
+    writeFileSync(
+      join(shared, 'a.test.mjs'),
+      [
+        `// ${MARK} whole-tree`,
+        "import { Worker } from 'node:worker_threads';",
+        "it('leaves a worker', () => { new Worker('setTimeout(() => {}, 20000)', { eval: true }).unref(); });",
+      ].join('\n'),
+    );
+    writeFileSync(join(shared, 'b.test.mjs'), "it('starts nothing', () => {});");
+    const r = spawnSync(
+      process.execPath,
+      [join(REPO, 'node_modules/vitest/vitest.mjs'), 'run', '--root', shared],
+      { cwd: shared, encoding: 'utf8', env: { ...process.env, FORCE_COLOR: '0' } },
+    );
+    writeFileSync(globalThis[Symbol.for('forge.whole-tree-guard')].log, '');
+    rmSync(shared, { recursive: true, force: true });
+    expect(`${r.stdout}${r.stderr}`).not.toContain('were still running');
+    expect(r.status).toBe(0);
   }, 60_000);
 
   it('passes the same file once it carries the declaration', () => {
