@@ -1,6 +1,9 @@
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { sql } from 'drizzle-orm';
 import type { OrgMemberRole, ProjectMemberRole } from '../../src/db/schema.js';
+import { DEFAULT_POLICY } from '../../src/project-config/default-policy.js';
+import { projectDocumentSchema } from '../../src/project-config/schema.js';
 import { AGENT_NAMING_MIN_RUNNER } from '../../src/runners/device-cap.js';
 import type { TestDb } from './db.js';
 
@@ -138,13 +141,14 @@ export interface CreateTestProjectOverrides {
    * is seeded with `createdBy` as org `owner` (the common single-user case).
    */
   orgId?: string;
-  /**
-   * Seed `projects.agent_config`. A suite that exercises the STAGED pipeline
-   * must pass `{ pipelineConfig: { mode: 'staged' } }` — since 2026-09-02 an
-   * absent `mode` resolves autonomous, so omitting it puts the fixture on the
-   * other driver.
-   */
+  /** Seed `projects.agent_config`. */
   agentConfig?: Record<string, unknown>;
+  /**
+   * The project's policy-v1 at revision 1. Absent seeds `DEFAULT_POLICY`, the document
+   * `createProject` writes; `null` seeds none, for a suite about a project with no policy or one
+   * standing at a schema that has no `project_policies` table yet.
+   */
+  policy?: Record<string, unknown> | null;
   /** Seed `projects.environments` — both sides of the deployment, as one document. */
   environments?: Record<string, unknown>;
 }
@@ -179,6 +183,13 @@ export async function createTestProject(
     VALUES (${project.id}, ${project.slug}, ${project.name}, ${project.orgId}, ${project.createdBy},
             ${JSON.stringify(overrides.agentConfig ?? {})}::jsonb${environments.values})
   `);
+  const policy = overrides.policy === undefined ? DEFAULT_POLICY : overrides.policy;
+  if (policy !== null) {
+    await db.execute(sql`
+      INSERT INTO project_policies (project_id, revision, document, updated_by)
+      VALUES (${project.id}, 1, ${JSON.stringify(policy)}::jsonb, ${createdBy})
+    `);
+  }
 
   return project;
 }
@@ -266,5 +277,41 @@ export async function bindTestRunner(
     INSERT INTO runners (id, project_id, device_id, name, type, status)
     VALUES (gen_random_uuid(), ${args.projectId}, ${args.deviceId}, ${`runner-${randomUUID().slice(0, 8)}`},
             'claude-code', ${args.status ?? 'online'})
+  `);
+}
+
+/**
+ * A project document at revision 1 whose one environment is production and deploys by `trigger`,
+ * which is what `pipeline/auto-prod-deploy.ts:projectAutoProdDeploy` reads: `on-land` makes the
+ * release sweep the only thing that cuts a release there.
+ */
+export async function seedProductionDeployTrigger(
+  db: TestDb,
+  projectId: string,
+  updatedBy: string,
+  trigger: 'on-land' | 'on-request' | 'provider' = 'on-land',
+): Promise<void> {
+  const example = JSON.parse(
+    readFileSync(
+      new URL('../../src/project-config/fixtures/examples/forge-dev.project.json', import.meta.url),
+      'utf8',
+    ),
+  );
+  const document = projectDocumentSchema.parse({
+    ...example,
+    project: { id: projectId, slug: `test-${projectId.slice(0, 8)}`, name: 'Test Project' },
+    environments: {
+      live: {
+        tier: 'production',
+        deploysFrom: 'main',
+        deployment: { binding: randomUUID(), trigger },
+      },
+    },
+  });
+  await db.execute(sql`
+    INSERT INTO project_config_documents (project_id, revision, document, updated_by)
+    VALUES (${projectId}, 1, ${JSON.stringify(document)}::jsonb, ${updatedBy})
+    ON CONFLICT (project_id) DO UPDATE SET document = EXCLUDED.document,
+                                           revision = project_config_documents.revision + 1
   `);
 }

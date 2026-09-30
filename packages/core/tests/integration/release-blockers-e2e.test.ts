@@ -25,6 +25,7 @@ import {
   createTestProject,
   createTestProjectMember,
   createTestUser,
+  seedProductionDeployTrigger,
   setupTestDatabase,
   type TestDatabase,
   truncateAll,
@@ -143,11 +144,7 @@ async function seedRunner(w: World): Promise<void> {
 }
 
 async function seedAutoRelease(w: World): Promise<void> {
-  await harness.db.execute(sql`
-    UPDATE projects
-       SET agent_config = ${JSON.stringify({ pipelineConfig: { autoProdDeploy: true } })}::jsonb
-     WHERE id = ${w.projectId}
-  `);
+  await seedProductionDeployTrigger(harness.db, w.projectId, w.userId);
 }
 
 let seq = 0;

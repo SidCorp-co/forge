@@ -76,7 +76,6 @@ export async function prepareFastTurn(opts: {
   /** The thread this venue is, where it is one; a thread is its own conversation (ISS-1090). */
   tmid?: string | undefined;
   images: readonly RocketChatImageRef[];
-  externalToolsets: ChatToolset[];
 }): Promise<FastTurnInputs> {
   const images = await downloadTurnImages(opts.restAuth, opts.images);
   const ctx = buildChatToolContext({
@@ -95,7 +94,6 @@ export async function prepareFastTurn(opts: {
         buildRocketChatQuoteContextToolset(opts.restAuth, opts.rid),
         ...transcriptSearchToolsets(opts),
         buildEscalationToolset(),
-        ...opts.externalToolsets,
       ),
       images,
     ),

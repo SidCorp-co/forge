@@ -1,4 +1,4 @@
-import { inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type PullRequestState, repoPullRequests } from '../db/schema-repo-projection.js';
 import { type CheckRollup, rollupOf } from './github/projection-shape.js';
@@ -77,4 +77,14 @@ export async function readPullRequestsForIssues(
     out.set(row.issueId, list);
   }
   return out;
+}
+
+/** Every open pull request this issue has, oldest first. */
+export async function openPullRequestsForIssue(issueId: string): Promise<string[]> {
+  const rows = await db
+    .select({ id: repoPullRequests.id })
+    .from(repoPullRequests)
+    .where(and(eq(repoPullRequests.issueId, issueId), eq(repoPullRequests.state, 'open')))
+    .orderBy(repoPullRequests.number);
+  return rows.map((r) => r.id);
 }

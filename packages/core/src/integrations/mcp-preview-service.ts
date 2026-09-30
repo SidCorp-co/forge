@@ -1,6 +1,5 @@
 import type { BindingRole, DeployStage } from '../db/schema.js';
 import { resolveSessionMcpServers } from '../jobs/resolve-job-mcp-servers.js';
-import { stateDeclaredMcpNames } from '../jobs/stage-overrides.js';
 import { grantHolds } from './agent-access.js';
 import { listAgentGrantedBindings } from './agent-access-store.js';
 import { directMcpIntegrations, mcpServerNameFor } from './registry.js';
@@ -42,7 +41,6 @@ export interface McpServerPreviewEntry {
 export interface McpPreview {
   servers: McpServerPreviewEntry[];
   droppedNames: string[];
-  stateOnlyNames: string[];
 }
 
 function previewEntryFor(
@@ -74,8 +72,8 @@ function notConfiguredRow(decl: IntegrationDeclaration): McpServerPreviewEntry {
 }
 
 /**
- * A server the project's own `pipelineConfig.mcpServers` put in the set. Nothing is read off that
- * server's spec: it is operator-written and may carry `env` or `headers` (ISS-1191).
+ * A server in the set that no granted binding claims. Nothing is read off its spec: it may carry
+ * `env` or `headers` (ISS-1191).
  */
 function projectRow(serverName: string): McpServerPreviewEntry {
   return {
@@ -188,18 +186,17 @@ async function integrationRows(
  * Every MCP server a project-wide agent session for this project receives, and every reason one of
  * them does not.
  *
- * Two sources feed that set — the project's `pipelineConfig.mcpServers` and the granted integration
- * bindings — and `resolveSessionMcpServers` is the only code that composes them. This reads its
+ * The granted integration bindings feed that set, and `resolveSessionMcpServers` is the only code
+ * that composes it. This reads its
  * answer rather than re-deriving half of it, so the panel and `GET /api/devices/me/mcp-servers`
  * cannot disagree about which servers reach an agent (ISS-1191). Its credential-bearing
  * `mcpServers` map is never touched: only the names come from it. `Authorization` is redacted BY
  * CONSTRUCTION (the real key is never built into the preview entry).
  */
 export async function buildMcpPreview(projectId: string): Promise<McpPreview> {
-  const [pairs, resolved, stateDeclared] = await Promise.all([
+  const [pairs, resolved] = await Promise.all([
     listBindingsForProject(projectId),
     resolveSessionMcpServers(projectId),
-    stateDeclaredMcpNames(projectId),
   ]);
 
   const carried = new Set(resolved.resolvedNames);
@@ -218,9 +215,5 @@ export async function buildMcpPreview(projectId: string): Promise<McpPreview> {
     servers.push(projectRow(name));
   }
 
-  return {
-    servers,
-    droppedNames: resolved.droppedNames,
-    stateOnlyNames: stateDeclared.filter((name) => !carried.has(name)),
-  };
+  return { servers, droppedNames: resolved.droppedNames };
 }

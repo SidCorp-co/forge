@@ -20,6 +20,7 @@ import {
   createTestProject,
   createTestUser,
   registerIntegrationsForTest,
+  seedProductionDeployTrigger,
   setupTestDatabase,
   type TestDatabase,
   truncateAll,
@@ -132,11 +133,8 @@ describe('release sweep E2E (ISS-1117)', () => {
     await truncateAll(harness.db);
     const owner = await createTestUser(harness.db);
     ownerId = owner.id;
-    projectId = (
-      await createTestProject(harness.db, owner.id, {
-        agentConfig: { pipelineConfig: { enabled: true, autoProdDeploy: true } },
-      })
-    ).id;
+    projectId = (await createTestProject(harness.db, owner.id)).id;
+    await seedProductionDeployTrigger(harness.db, projectId, owner.id);
     await declareProduction();
     // ISS-1286: what the production host answers is what a runtime verdict is weighed against.
     fx.serve(SERVING);
@@ -268,10 +266,8 @@ describe('release sweep E2E (ISS-1117)', () => {
     );
   }, 30_000);
 
-  it('does nothing for a project that has not opted into autoProdDeploy', async () => {
-    await harness.db.execute(sql`
-      UPDATE projects SET agent_config = '{}'::jsonb WHERE id = ${projectId}
-    `);
+  it('does nothing for a project whose production deploys on request', async () => {
+    await seedProductionDeployTrigger(harness.db, projectId, ownerId, 'on-request');
     const id = await insertIssue();
     await setCriteria(id, '1. ok');
     await postVerdict(id, verdictComment([verdictBlock(1, 'a', 'pass')]));

@@ -86,9 +86,13 @@ beforeEach(async () => {
   await truncateAll(harness.db);
 });
 
-async function seed() {
+async function seed(opts: { policy?: Record<string, unknown> | null } = {}) {
   const owner = await createTestUser(harness.db);
-  const project = await createTestProject(harness.db, owner.id);
+  const project = await createTestProject(
+    harness.db,
+    owner.id,
+    opts.policy === undefined ? {} : { policy: opts.policy },
+  );
   const device = await createTestDevice(harness.db, owner.id);
   const runner = randomUUID();
   const blockerIssue = randomUUID();
@@ -479,6 +483,100 @@ describe('master pool — reaping, load and preparation', () => {
     const box = await mods.readDeviceLoad(device.id);
     expect(box?.jobsRunning).toBe(1);
     expect(box?.reposLocked).toContain('/tmp/pool-test');
+  });
+});
+
+const PLANTED = {
+  $schema: 'https://forge.sidcorp.co/schemas/policy-v1.json',
+  version: 1,
+  qa: 'independent',
+  intake: { mode: 'auto' },
+  permissions: {
+    driver: { deny: ['CronCreate'] },
+    builder: { deny: ['Bash(git push:*)', 'mcp__forge__forge_projects_update'] },
+  },
+  states: {
+    open: { model: 'sonnet', permissions: 'driver' },
+    needs_info: { model: 'opus', permissions: 'driver' },
+  },
+};
+
+describe('pool preparation — the policy state decides the model and the deny list', () => {
+  it('carries the deny list of the state its issue is at into the prepared job', async () => {
+    const { device, job, issue } = await seed({
+      policy: {
+        ...PLANTED,
+        states: { ...PLANTED.states, in_progress: { model: 'haiku', permissions: 'builder' } },
+      },
+    });
+    await harness.db.execute(sql`UPDATE issues SET status = 'in_progress' WHERE id = ${issue}`);
+
+    const result = await take(job, device.id, randomUUID());
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.prepared.deniedTools).toEqual([
+      'Bash(git push:*)',
+      'mcp__forge__forge_projects_update',
+    ]);
+    expect(result.prepared.model).toBe('haiku');
+    expect(result.prepared.policy).toMatchObject({
+      revision: 1,
+      status: 'in_progress',
+      from: 'issue',
+      profile: 'builder',
+      qa: 'independent',
+    });
+    expect(result.prepared.systemPrompt).toContain('`Bash(git push:*)`');
+  });
+
+  it('gives a new project the driver deny list, from the policy written for it', async () => {
+    const { device, job } = await seed();
+
+    const result = await take(job, device.id, randomUUID());
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.prepared.deniedTools).toEqual([
+      'CronCreate',
+      'CronDelete',
+      'CronList',
+      'Workflow',
+      'RemoteTrigger',
+      'ScheduleWakeup',
+    ]);
+    expect(result.prepared.model).toBe('opus');
+  });
+
+  it('refuses a job of a project with no policy by name, and leaves it queued and unheld', async () => {
+    const { device, job, project } = await seed({ policy: null });
+
+    const result = await take(job, device.id, randomUUID());
+
+    expect(result).toMatchObject({
+      ok: false,
+      reason: 'policy_refused',
+      code: 'POLICY_UNDECLARED',
+    });
+    if (result.ok) return;
+    expect('detail' in result && result.detail).toContain(project.id);
+    const [row] = (await harness.db.execute(sql`
+      SELECT status, device_id FROM jobs WHERE id = ${job}
+    `)) as unknown as Array<{ status: string; device_id: string | null }>;
+    expect(row).toEqual({ status: 'queued', device_id: null });
+  });
+
+  it('refuses a job at a state the policy leaves out, never lending it another state', async () => {
+    const { device, job, issue } = await seed({ policy: PLANTED });
+    await harness.db.execute(sql`UPDATE issues SET status = 'in_progress' WHERE id = ${issue}`);
+
+    const result = await take(job, device.id, randomUUID());
+
+    expect(result).toMatchObject({
+      ok: false,
+      reason: 'policy_refused',
+      code: 'POLICY_STATE_UNDECLARED',
+    });
   });
 });
 

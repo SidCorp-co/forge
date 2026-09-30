@@ -1,6 +1,5 @@
 import {
   pipelineRegistryResponseSchema,
-  REGISTRY_BACKLOG_ADMISSIBLE_STATUSES,
   REGISTRY_ISSUE_COMPLEXITIES,
   REGISTRY_ISSUE_PRIORITIES,
   REGISTRY_ISSUE_STATUSES,
@@ -21,7 +20,6 @@ import {
   pipelineRunStatuses,
   runnerTypes,
 } from '../db/schema.js';
-import { BACKLOG_ADMISSIBLE_STATUSES } from './autonomous-mode.js';
 import { getPipelineRegistry, PIPELINE_REGISTRY_VERSION, RUNNER_CAPABILITIES } from './registry.js';
 import { transitions } from './state-machine.js';
 
@@ -38,10 +36,6 @@ const STAGED_JOB_TYPES: readonly JobType[] = [
 ];
 
 describe('contracts ↔ core enum parity', () => {
-  it('REGISTRY_BACKLOG_ADMISSIBLE_STATUSES mirrors core BACKLOG_ADMISSIBLE_STATUSES', () => {
-    expect([...REGISTRY_BACKLOG_ADMISSIBLE_STATUSES]).toEqual([...BACKLOG_ADMISSIBLE_STATUSES]);
-  });
-
   it('REGISTRY_ISSUE_STATUSES mirrors core issueStatuses', () => {
     expect([...REGISTRY_ISSUE_STATUSES]).toEqual([...issueStatuses]);
   });

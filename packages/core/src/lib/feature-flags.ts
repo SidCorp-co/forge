@@ -1,6 +1,4 @@
 const flagDefs = {
-  pipelineControl: true,
-
   // v1 EPIC 4 — Comment mentions + notification fan-out (PR-B)
   commentMentions: true,
 

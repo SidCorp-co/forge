@@ -189,7 +189,7 @@ describe('an agent closing on a project that declared a release gate', () => {
 
     expect(result.status).toBe('dropped');
     expect(listBindings).not.toHaveBeenCalled();
-    expect(dbSelect).toHaveBeenCalledTimes(1);
+    expect(dbSelect).not.toHaveBeenCalled();
   });
 });
 
@@ -201,7 +201,7 @@ describe('who may still write `closed`', () => {
 
     expect(result.status).toBe('closed');
     expect(listBindings).not.toHaveBeenCalled();
-    expect(dbSelect).toHaveBeenCalledTimes(1);
+    expect(dbSelect).not.toHaveBeenCalled();
   });
 
   it('the release path itself', async () => {

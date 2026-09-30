@@ -8,7 +8,6 @@ export const githubConfigBase = z.object({
   owner: z.string().min(1).max(200).optional(),
   repo: z.string().min(1).max(200).optional(),
   apiBaseUrl: z.string().url().max(500).optional(),
-  contractCheck: z.boolean().optional(),
   ...releaseChannelFields,
 });
 
@@ -22,6 +21,5 @@ export const GITHUB_BINDING_CONFIG_KEYS = [
   'installationId',
   'owner',
   'repo',
-  'contractCheck',
   ...RELEASE_CHANNEL_KEYS,
 ] as const;

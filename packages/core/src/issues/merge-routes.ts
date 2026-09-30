@@ -28,7 +28,6 @@ import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { repoPullRequests } from '../db/schema-repo-projection.js';
 import { GitHubClientError } from '../integrations/github/client.js';
-import { openPullRequestsForIssue } from '../integrations/github/contract-check.js';
 import {
   MERGE_METHODS,
   MergeInputError,
@@ -38,6 +37,7 @@ import {
   describeEmptyProjection,
   projectionPipeReport,
 } from '../integrations/github/projection-health.js';
+import { openPullRequestsForIssue } from '../integrations/repo-projection.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { mergedLandingSchema } from './landing-evidence.js';

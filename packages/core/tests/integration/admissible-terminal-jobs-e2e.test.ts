@@ -29,8 +29,6 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
-const ENTRY_OPEN = { pipelineConfig: { enabled: true } };
-
 describe('a finished job does not hide the issue it ran on (real Postgres)', () => {
   let harness: TestDatabase;
   let userId: string;
@@ -52,10 +50,6 @@ describe('a finished job does not hide the issue it ran on (real Postgres)', () 
     seq = 0;
     userId = (await createTestUser(harness.db)).id;
     projectId = (await createTestProject(harness.db, userId)).id;
-    await harness.db.execute(sql`
-      UPDATE projects SET agent_config = ${JSON.stringify(ENTRY_OPEN)}::jsonb
-      WHERE id = ${projectId}
-    `);
     deviceId = (await createTestDevice(harness.db, userId, { name: 'entry-box' })).id;
     await harness.db.execute(sql`
       INSERT INTO runners (id, project_id, device_id, name, type, status)
@@ -91,7 +85,7 @@ describe('a finished job does not hide the issue it ran on (real Postgres)', () 
 
   async function offered(): Promise<string[]> {
     const { readAdmissibleIssues } = await import('../../src/devices/admissible.js');
-    const rows = await readAdmissibleIssues({ deviceId });
+    const rows = (await readAdmissibleIssues({ deviceId })).items;
     return rows.map((r) => r.issueKey ?? '');
   }
 

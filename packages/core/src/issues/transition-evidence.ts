@@ -1,10 +1,7 @@
 import { type Db, db } from '../db/client.js';
-import { logger } from '../logger.js';
 import { findMissingWorkEvidence } from '../pipeline/work-evidence.js';
 import type { ActorAgency } from './actor-agency.js';
 import type { TransitionErrorCode, TransitionIssueRow } from './apply-transition.js';
-import { findUnmetEntryCriteria } from './entry-criteria.js';
-import type { EntryCriterionKey } from './entry-criteria-keys.js';
 
 export interface TransitionEvidenceViolation {
   code: TransitionErrorCode;
@@ -19,11 +16,6 @@ export interface TransitionEvidenceContext {
   toStatus: string;
   agency: ActorAgency;
   skip: boolean;
-  /**
-   * What the project declared for `toStatus`, resolved by the caller BEFORE
-   * the transaction this runs inside (`entry-criteria.ts` says why).
-   */
-  declaredCriteria: readonly EntryCriterionKey[];
   executor?: EvidenceExecutor;
 }
 
@@ -57,53 +49,19 @@ const noWorkEvidenceRule: EvidenceRule = {
   },
 };
 
-/**
- * ISS-959 requirement 3 — the project's own declaration, held against every
- * client, so a status set from the tracker's screens is earned or refused like
- * one set from a CLI.
- */
-const entryCriteriaRule: EvidenceRule = {
-  agentOnly: false,
-  check: async (ctx) => {
-    const shortfall = await findUnmetEntryCriteria({
-      issueId: ctx.issue.id,
-      declared: ctx.declaredCriteria,
-      executor: ctx.executor ?? db,
-    });
-    if (!shortfall) return null;
-    return {
-      code: 'ENTRY_CRITERIA_UNMET',
-      detail:
-        `\`${ctx.toStatus}\` requires ${shortfall.unmet.length === 1 ? 'a record' : 'records'} this project declares, and ` +
-        `${shortfall.unmet.length === 1 ? 'it is' : 'they are'} missing: ` +
-        shortfall.unmet.map((u) => `${u.key} — ${u.detail}`).join('; '),
-      details: {
-        issueId: ctx.issue.id,
-        toStatus: ctx.toStatus,
-        unmet: shortfall.unmet.map((u) => u.key),
-      },
-    };
-  },
-};
-
-const RULES: readonly EvidenceRule[] = [noWorkEvidenceRule, entryCriteriaRule];
+const RULES: readonly EvidenceRule[] = [noWorkEvidenceRule];
 
 export async function checkTransitionEvidence(
   ctx: TransitionEvidenceContext,
 ): Promise<TransitionEvidenceViolation | null> {
   if (ctx.skip) return null;
-  try {
-    for (const rule of RULES) {
-      if (rule.agentOnly && ctx.agency !== 'agent') continue;
-      const violation = await rule.check(ctx);
-      if (violation) return violation;
-    }
-    return null;
-  } catch (err) {
-    logger.error(
-      { err, issueId: ctx.issue.id, toStatus: ctx.toStatus },
-      'transition-evidence: rule check failed, allowing transition',
-    );
-    return null;
+  // cm:guard a rule that cannot be read refuses the transition by throwing, never allows it: this
+  // runs inside the transition's transaction, which a failed read has already aborted, and a
+  // kernel transition that skips its evidence rule on an error is the silence it exists to stop.
+  for (const rule of RULES) {
+    if (rule.agentOnly && ctx.agency !== 'agent') continue;
+    const violation = await rule.check(ctx);
+    if (violation) return violation;
   }
+  return null;
 }

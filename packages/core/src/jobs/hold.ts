@@ -6,15 +6,12 @@ import { logger } from '../logger.js';
 import { resolvePipelineWedge } from '../pipeline/wedge.js';
 import { onlineCapableDeviceIds } from '../runners/select.js';
 import type { RequiredCapabilities } from '../runners/types.js';
-import { checkMonthlyBudget } from './budget-check.js';
 import { AUTO_RETRY_PAYLOAD_KEY } from './retry.js';
-import { resolveStageOverrides } from './stage-overrides.js';
 
 type JobRow = typeof jobs.$inferSelect;
 
 export const HOLD_REASONS: ReadonlySet<string> = new Set([
   'all_devices_exhausted',
-  'monthly_budget_exhausted',
   'retry_rounds_exhausted',
   'non_retryable_terminal',
   'verify_unavailable',
@@ -34,10 +31,7 @@ export interface HoldState {
  * Reasons whose clearance this module can VERIFY before re-queueing, by
  * re-running the check that failed.
  */
-const CONDITION_CHECKED_REASONS: ReadonlySet<string> = new Set([
-  'all_devices_exhausted',
-  'monthly_budget_exhausted',
-]);
+const CONDITION_CHECKED_REASONS: ReadonlySet<string> = new Set(['all_devices_exhausted']);
 
 /**
  * Reasons with nothing to re-check: waiting IS the whole remedy, so the hold
@@ -136,18 +130,16 @@ export async function holdJobForReason(job: JobRow, reason: string): Promise<str
   }
 }
 
+// cm:hack ISS-5 until:no held job carries this reason — the monthly budget gate that held a job on
+// it was deleted with the pipeline config, so nothing can say "pause" again; a row it held releases.
+const RETIRED_BUDGET_HOLD = 'monthly_budget_exhausted';
+
 async function conditionCleared(job: JobRow, reason: string): Promise<boolean> {
-  if (reason === 'monthly_budget_exhausted') {
-    const check = await checkMonthlyBudget(job);
-    return check.action !== 'pause';
-  }
+  if (reason === RETIRED_BUDGET_HOLD) return true;
   if (reason === 'all_devices_exhausted') {
     const required = (job.payload as { requiredCapabilities?: RequiredCapabilities } | null)
       ?.requiredCapabilities;
-    const pool = (await resolveStageOverrides(job.projectId, job.payload)).deviceIds;
-    const healthy = await onlineCapableDeviceIds(job.projectId, required, {
-      allowDeviceIds: pool,
-    });
+    const healthy = await onlineCapableDeviceIds(job.projectId, required);
     return healthy.length > 0;
   }
   return TIME_CHECKED_REASONS.has(reason);

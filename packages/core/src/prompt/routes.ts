@@ -5,17 +5,16 @@ import { z } from 'zod';
 import { type JobType, jobTypes } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-// Single source of truth for stage-override schemas. Reused here so the
-// preview endpoint inherits the F12 refinement (replace mode requires
-// non-empty extras) and any future invariants stay in lockstep.
-import {
-  systemPromptOverrideSchema,
-  userPromptPolicySchema,
-} from '../pipeline/pipeline-config-schema.js';
 import { RUNNER_CAPABILITIES } from '../pipeline/registry.js';
+import {
+  type DispatchState,
+  dispatchStateOf,
+  PolicyRefusedError,
+  requirePolicy,
+} from '../project-config/dispatch-policy.js';
 import { loadIssueSnapshot } from './issue-snapshot.js';
-import { buildPipelinePreambleStructured, type SystemPromptOverride } from './system.js';
-import { buildJobPromptString, type UserPromptPolicyOverride } from './user.js';
+import { buildPipelinePreambleStructured } from './system.js';
+import { buildJobPromptString } from './user.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -32,23 +31,15 @@ const previewBodySchema = z
     state: z.enum(jobTypes),
     issueId: z.uuid().optional(),
     skillName: z.string().min(1).max(128).optional(),
-    overrides: z
-      .object({
-        systemPrompt: systemPromptOverrideSchema.optional(),
-        userPromptPolicy: userPromptPolicySchema.optional(),
-      })
-      .strict()
-      .optional(),
   })
   .strict();
 
 export const promptRoutes = new Hono<{ Variables: AuthVars }>();
 
 /**
- * Build the system + user prompt the runner WOULD see for `state` on the
- * given issue, applying optional per-state overrides. Read-only — does not
- * mutate `projects.appConfig` or enqueue anything. Used by the State Editor
- * UI for live preview and by operators to debug prompt resolution.
+ * Build the system + user prompt the runner WOULD see for `state` on the given issue, under the
+ * project's policy. Read-only: it enqueues nothing. A project the dispatcher would refuse is
+ * refused here by the same name.
  */
 promptRoutes.post(
   '/preview',
@@ -78,15 +69,6 @@ promptRoutes.post(
       });
     }
 
-    const systemPromptOverride: SystemPromptOverride | null = body.overrides?.systemPrompt ?? null;
-    const userPromptPolicy: UserPromptPolicyOverride | null =
-      body.overrides?.userPromptPolicy ?? null;
-
-    const { content: systemPrompt, blocks } = await buildPipelinePreambleStructured(
-      body.projectId,
-      { step: body.state as JobType, override: systemPromptOverride },
-    );
-
     // Scope the issue lookup to body.projectId (the caller is gated as a member
     // above): an issueId belonging to a DIFFERENT project resolves to null and
     // 404s below instead of leaking that issue's content (ISS-492).
@@ -96,12 +78,30 @@ promptRoutes.post(
       throw notFound('issue not found');
     }
 
+    let policy: DispatchState;
+    try {
+      const held = await requirePolicy(body.projectId);
+      policy = dispatchStateOf(body.projectId, held, {
+        status: issueSnapshot?.status ?? null,
+        from: 'issue',
+      });
+    } catch (err) {
+      if (err instanceof PolicyRefusedError) {
+        throw new HTTPException(409, { message: err.message, cause: { code: err.code } });
+      }
+      throw err;
+    }
+
+    const { content: systemPrompt, blocks } = await buildPipelinePreambleStructured(
+      body.projectId,
+      { step: body.state as JobType, policy },
+    );
+
     const userPrompt = buildJobPromptString({
       skillName: body.skillName ?? null,
       jobType: body.state as JobType,
       issueId: body.issueId ?? 'preview-no-issue',
       issueSnapshot,
-      policy: userPromptPolicy,
     });
 
     // Hash combines system + user, so diff between previews is detectable
@@ -116,8 +116,11 @@ promptRoutes.post(
       resolvedFlags: {
         state: body.state,
         skillName: body.skillName ?? `forge-${body.state}`,
-        systemPromptMode: systemPromptOverride?.mode ?? 'append',
-        hasUserPromptPolicyOverride: userPromptPolicy !== null,
+        policyRevision: policy.revision,
+        policyState: policy.status,
+        policyStateFrom: policy.from,
+        model: policy.model,
+        deniedTools: policy.deniedTools,
       },
     });
   },

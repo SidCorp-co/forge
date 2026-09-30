@@ -167,9 +167,7 @@ export type NewComment = {
 export type WrittenComment = { row: CommentThreadRow; warnings: string[] };
 
 /**
- * The stage a body write happens at: `issues.status` IS the stage name
- * (`STAGE_NAMES` in `pipeline-config-schema.ts` — "a key here must be a status
- * this lane actually reaches").
+ * The stage a body write happens at: `issues.status` IS the stage name.
  */
 async function loadStageContext(
   issueId: string,

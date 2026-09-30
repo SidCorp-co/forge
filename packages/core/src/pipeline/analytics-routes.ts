@@ -4,7 +4,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { activityLog, issues, jobTypes } from '../db/schema.js';
+import { jobTypes } from '../db/schema.js';
 import { effectiveProjectRole, loadVisibleProjectIds } from '../lib/authz.js';
 import { utcDayText } from '../lib/time-buckets.js';
 import { buildInterventionsReport } from '../metrics/interventions-report.js';
@@ -328,9 +328,7 @@ projectCostAnalyticsRoutes.get(
 
 /**
  * Daily cost trend for the project. Optional `step` filter narrows the
- * series to a single job type. `annotations` surface pipeline-config edits
- * from `activity_log` (action = 'pipeline_config.updated'); the emitter is
- * tracked separately — until it lands, this array stays empty.
+ * series to a single job type.
  */
 projectCostAnalyticsRoutes.get(
   '/:id/analytics/cost-trend',
@@ -359,30 +357,11 @@ projectCostAnalyticsRoutes.get(
       ORDER BY 1 ASC
     `);
 
-    const annotationRows = await db.execute(sql`
-      SELECT ${activityLog.createdAt} AS ts,
-             COALESCE(${activityLog.payload} ->> 'message', 'pipeline config updated') AS message
-      FROM ${activityLog}
-      INNER JOIN ${issues} ON ${issues.id} = ${activityLog.issueId}
-      WHERE ${activityLog.action} = 'pipeline_config.updated'
-        AND ${issues.projectId} = ${id}
-        AND ${activityLog.createdAt} >= now() - (${days}::int * interval '1 day')
-      ORDER BY ${activityLog.createdAt} ASC
-    `);
-
     const daily = (dailyRows as unknown as Array<{ date: string; cost: number; runs: number }>).map(
       (r) => ({ date: r.date, cost: Number(r.cost), runs: Number(r.runs) }),
     );
 
-    const annotations = (
-      annotationRows as unknown as Array<{ ts: string | Date; message: string }>
-    ).map((r) => ({
-      ts: r.ts instanceof Date ? r.ts.toISOString() : String(r.ts),
-      message: r.message,
-      kind: 'pipeline_config.updated' as const,
-    }));
-
-    return c.json({ daily, annotations });
+    return c.json({ daily });
   },
 );
 

@@ -28,17 +28,14 @@ import {
   visibleProjectsWhere,
 } from '../lib/authz.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
-import { isEnabled } from '../lib/feature-flags.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import {
-  PIPELINE_CONFIG_DEFAULTS,
-  type PipelineConfig,
-  pipelineConfigSchema,
-} from '../pipeline/pipeline-config-schema.js';
 import { pluginDesignationsPatchSchema } from '../plugins/designation.js';
 import { type AgentConfigKeyPatch, patchAgentConfigKeys, readAgentConfig } from './agent-config.js';
-import { PERSONA_STYLE_MAX, SYSTEM_PROMPT_MAX } from './agent-config-schema.js';
-import { announceContractInput } from './contract-input-announce.js';
+import {
+  assistantWeeklySchema,
+  PERSONA_STYLE_MAX,
+  SYSTEM_PROMPT_MAX,
+} from './agent-config-schema.js';
 import { ENVIRONMENTS_MOVED_MESSAGE } from './environments.js';
 import { applyIssuePrefixPatch } from './issue-prefix-patch.js';
 import { projectOnboardRoutes } from './onboard-routes.js';
@@ -57,7 +54,6 @@ import {
   forbidden,
   idParamSchema,
   notFound,
-  pipelineFlagOff,
   refuseByName,
 } from './route-errors.js';
 import { projectRunnerRoutes } from './runners-routes.js';
@@ -91,6 +87,7 @@ export const updateProjectSchema = z
     ...releaseChainPatchFields,
     issuePrefix: z.string().trim().max(16).nullable().optional(),
     defaultDeviceId: z.uuid().nullable().optional(),
+    assistantWeekly: assistantWeeklySchema.nullable().optional(),
     personaStyle: z.string().trim().max(PERSONA_STYLE_MAX).nullable().optional(),
     rocketChatAnswerMode: z.enum(['fast', 'agent']).nullable().optional(),
     systemPrompt: z.string().trim().max(SYSTEM_PROMPT_MAX).nullable().optional(),
@@ -368,6 +365,8 @@ projectRoutes.patch(
     if (patch.defaultDeviceId !== undefined) updates.defaultDeviceId = patch.defaultDeviceId;
 
     const agentConfigPatch: AgentConfigKeyPatch = {};
+    if (patch.assistantWeekly !== undefined)
+      agentConfigPatch.assistantWeekly = patch.assistantWeekly;
     if (patch.personaStyle !== undefined) {
       agentConfigPatch.personaStyle =
         patch.personaStyle === null || patch.personaStyle.length === 0 ? null : patch.personaStyle;
@@ -393,7 +392,6 @@ projectRoutes.patch(
       return tx.update(projects).set(updates).where(eq(projects.id, id)).returning(PATCHED_PROJECT);
     });
     if (!updated) throw notFound();
-    await announceContractInput(id, patch);
 
     return c.json(withRetiredReleaseAxes(updated));
   },
@@ -483,50 +481,6 @@ projectRoutes.post(
       .returning(ARCHIVE_PROJECTION);
     if (!updated) throw notFound();
     return c.json(updated);
-  },
-);
-
-// ─── Pipeline configuration ──────────────────────────────────────────────────
-//
-// Dedicated read/patch routes for `agentConfig.pipelineConfig`. The main
-// PATCH /:id route still accepts a wide-open `agentConfig` jsonb (other
-// settings tabs need that escape hatch) — these routes give the pipeline
-// settings UI a typed, validated, atomic-merge surface so two tabs writing
-// to different `agentConfig` sub-keys never clobber each other.
-//
-// Gated on `pipelineControl` feature flag; off by default in production.
-
-projectRoutes.get(
-  '/:id/pipeline-config',
-  zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(flatten(result.error));
-  }),
-  async (c) => {
-    if (!isEnabled('pipelineControl')) throw pipelineFlagOff();
-
-    const { id } = c.req.valid('param');
-    const userId = c.get('userId');
-
-    const access = await loadProjectAccess(id, userId);
-    if (!access.role) throw forbidden('not a project member');
-
-    const ac = await readAgentConfig(id);
-    if (ac === null) throw notFound();
-
-    const stored = (ac.pipelineConfig ?? {}) as Record<string, unknown>;
-    // Parse through schema — drops legacy keys (clarified, pipelineSteps,
-    // etc.) so the response is the typed surface the FE expects. Defaults
-    // fill blanks.
-    const parsed = pipelineConfigSchema.parse(stored);
-    const pipelineConfig: PipelineConfig = {
-      ...PIPELINE_CONFIG_DEFAULTS,
-      ...parsed,
-    };
-
-    // ISS-232 Phase 3 — `runnerFallback` was removed. The v2 selector picks
-    // primary → standby deterministically with no type-chain fallback; per-
-    // stage `runner` overrides on step toggles continue to work.
-    return c.json({ pipelineConfig });
   },
 );
 

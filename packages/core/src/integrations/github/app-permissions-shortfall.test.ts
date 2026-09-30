@@ -35,7 +35,7 @@ describe('what an installation is short of (ISS-1153)', () => {
 
   it('treats a level it does not recognise as a shortfall rather than a pass', () => {
     expect(installationShortfall({ ...granted, checks: 'maybe' })).toEqual([
-      { permission: 'checks', required: 'write', held: 'maybe' },
+      { permission: 'checks', required: 'read', held: 'maybe' },
     ]);
   });
 

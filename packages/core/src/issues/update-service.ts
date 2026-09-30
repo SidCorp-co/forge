@@ -2,8 +2,6 @@ import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueLabels, issues } from '../db/schema.js';
 import { type Actor, recordActivityTx } from '../pipeline/activity.js';
-import { hooks } from '../pipeline/hooks.js';
-import { CONTRACT_INPUT_FIELDS } from './entry-criteria-keys.js';
 import type { ResolvedLabelAttach } from './label-service.js';
 import type { IssueRow } from './read-service.js';
 import type { SessionContextExpect } from './session-context.js';
@@ -28,7 +26,6 @@ export type IssueUpdateInput = {
 
 export async function updateIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
   const row = await writeIssueFields(input);
-  await announceContractInput(input.issueId, row.projectId, input.updates);
   return row;
 }
 
@@ -84,20 +81,6 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
     }
 
     return row;
-  });
-}
-
-async function announceContractInput(
-  issueId: string,
-  projectId: string,
-  updates: Record<string, unknown>,
-): Promise<void> {
-  const moved = CONTRACT_INPUT_FIELDS.filter((f) => f in updates);
-  if (moved.length === 0) return;
-  await hooks.emit('contractInputChanged', {
-    projectId,
-    issueId,
-    reason: `fields written: ${moved.join(', ')}`,
   });
 }
 

@@ -48,7 +48,8 @@ export interface DispatchOutcome {
  *
  * A prod binding with no run behind it never dispatches, because confirming a
  * prod deploy is run-keyed and a run-less action has no gate to release. The
- * project can opt out wholesale with `pipelineConfig.autoProdDeploy`.
+ * project opts out wholesale when its production environment deploys `on-land`
+ * (`auto-prod-deploy.ts:projectAutoProdDeploy`).
  * `tryDispatchCoolifyRelease` applies the same rule through `reachesLiveOf`,
  * which it needs anyway to answer for a whole binding set at once.
  */
@@ -145,7 +146,7 @@ async function warnIfRunAlreadyTerminal(runId: string, issueId: string | null): 
  * unless the project opted into `autoProdDeploy`; a project with no binding
  * at all returns `reason: 'no-integration'` and stamps the skipped substep.
  */
-// cm:flow release/deploy after:stamp — the landing is what dispatches the deploy: an issue arriving at `developed` calls this, which is why a change is judgeable before anything reaches the release gate; a prod binding parks for a human unless pipelineConfig.autoProdDeploy is on
+// cm:flow release/deploy after:stamp — the landing is what dispatches the deploy: an issue arriving at `developed` calls this, which is why a change is judgeable before anything reaches the release gate; a prod binding parks for a human unless the project document's production environment deploys on-land
 export async function tryDispatchCoolifyRelease(args: {
   projectId: string;
   issueId: string | null;

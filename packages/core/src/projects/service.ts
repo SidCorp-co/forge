@@ -20,8 +20,10 @@ import {
   projectMembers,
   projects,
 } from '../db/schema.js';
+import { projectPolicies } from '../db/schema-project-config.js';
 import { visibleProjectsWhere } from '../lib/authz.js';
 import { isUniqueViolation, uniqueViolationConstraint } from '../lib/db-errors.js';
+import { DEFAULT_POLICY } from '../project-config/default-policy.js';
 import type { ReleaseChain } from './release-chain.js';
 
 /** The project's id, or `null` when no project carries that slug. */
@@ -120,6 +122,12 @@ export async function createProject(input: NewProject) {
         userId: input.createdBy,
         projectId: project.id,
         role: 'admin',
+      });
+      await tx.insert(projectPolicies).values({
+        projectId: project.id,
+        revision: 1,
+        document: DEFAULT_POLICY,
+        updatedBy: input.createdBy,
       });
       return project;
     });

@@ -14,11 +14,6 @@ type Mods = {
   handleGitHubEvent: typeof import('../../src/webhooks/github-adapter.js').handleGitHubEvent;
 };
 
-const OPEN_DOOR = { pipelineConfig: { githubIntake: { enabled: true } } };
-const OPEN_DOOR_GATED = {
-  pipelineConfig: { githubIntake: { enabled: true }, intakeGate: { enabled: true, notify: false } },
-};
-
 let harness: TestDatabase;
 let mods: Mods;
 let ownerId: string;
@@ -60,7 +55,7 @@ beforeEach(async () => {
   ({ projectId, bindingId } = await seedProject());
 });
 
-/** A project plus its own binding, so the two door settings can differ per case. */
+/** A project plus its own binding; `agentConfig` is what a project stored before ISS-5. */
 async function seedProject(agentConfig: Record<string, unknown> = {}) {
   const project = await createTestProject(harness.db, ownerId, { agentConfig });
   const id = randomUUID();
@@ -99,248 +94,31 @@ async function rows(forProject = projectId) {
   }>;
 }
 
-const openedEvent = (id: number, title: string, body: string | null) => ({
-  action: 'opened',
-  issue: { id, title, body },
+const issueEvent = (action: string, id: number) => ({
+  action,
+  issue: { id, title: 'upstream bug', body: 'from GitHub' },
 });
 
-describe('the door decides whether anything enters', () => {
-  it('a project that never set githubIntake admits nothing', async () => {
-    const r = await mods.handleGitHubEvent(
-      evCtx(),
-      'issues',
-      openedEvent(7001, 'upstream bug', 'from GitHub'),
-    );
-    expect(r.actions).toBe(0);
-    expect(await rows()).toHaveLength(0);
-  });
-
-  it('an explicit false admits nothing', async () => {
-    const shut = await seedProject({ pipelineConfig: { githubIntake: { enabled: false } } });
-    await mods.handleGitHubEvent(
-      evCtx(shut),
-      'issues',
-      openedEvent(7002, 'upstream bug', 'from GitHub'),
-    );
-    expect(await rows(shut.projectId)).toHaveLength(0);
-  });
-
-  it('an open door with no intake gate admits the report at open', async () => {
-    const open = await seedProject(OPEN_DOOR);
-    const r = await mods.handleGitHubEvent(
-      evCtx(open),
-      'issues',
-      openedEvent(7003, 'upstream bug', 'from GitHub'),
-    );
-    expect(r.actions).toBe(1);
-
-    const all = await rows(open.projectId);
-    expect(all).toHaveLength(1);
-    expect(all[0]?.source).toBe('github');
-    expect(all[0]?.external_id).toBe('7003');
-    expect(all[0]?.status).toBe('open');
-    expect(all[0]?.title).toBe('upstream bug');
-  });
-
-  it('an open door with the intake gate on parks the report at draft', async () => {
-    const gated = await seedProject(OPEN_DOOR_GATED);
-    const r = await mods.handleGitHubEvent(
-      evCtx(gated),
-      'issues',
-      openedEvent(7004, 'a stranger reports a bug', 'from GitHub'),
-    );
-    expect(r.actions).toBe(1);
-
-    const all = await rows(gated.projectId);
-    expect(all).toHaveLength(1);
-    expect(all[0]?.status).toBe('draft');
-  });
-
-  it('a gated arrival carries the intake label', async () => {
-    const gated = await seedProject(OPEN_DOOR_GATED);
-    await mods.handleGitHubEvent(
-      evCtx(gated),
-      'issues',
-      openedEvent(7005, 'a stranger reports a bug', null),
-    );
-    const [row] = await rows(gated.projectId);
-
-    const labelled = (await harness.db.execute(sql`
-      SELECT l.name FROM issue_labels il
-      JOIN labels l ON l.id = il.label_id
-      WHERE il.issue_id = ${row?.id}
-    `)) as unknown as Array<{ name: string }>;
-    expect(labelled.map((l) => l.name)).toContain('intake');
-  });
-
-  it('an intake gate with no githubIntake admits nothing', async () => {
-    const gateOnly = await seedProject({
-      pipelineConfig: { intakeGate: { enabled: true, notify: false } },
+/**
+ * ISS-5 deleted `githubIntake` and the intake gate with it: a GitHub issue never becomes a Forge
+ * issue. A project that turned the door on before then still carries the flag in its stored
+ * config, which nothing reads, so that is the case each of these is also asked of.
+ */
+describe('a GitHub issue event writes no Forge issue', () => {
+  for (const action of ['opened', 'edited', 'closed', 'reopened']) {
+    it(`an issues.${action} delivery writes nothing`, async () => {
+      const r = await mods.handleGitHubEvent(evCtx(), 'issues', issueEvent(action, 7001));
+      expect(r.actions).toBe(0);
+      expect(await rows()).toHaveLength(0);
     });
-    await mods.handleGitHubEvent(
-      evCtx(gateOnly),
-      'issues',
-      openedEvent(7006, 'upstream bug', null),
-    );
-    expect(await rows(gateOnly.projectId)).toHaveLength(0);
-  });
-});
-
-describe('it enters once, and no later event touches it', () => {
-  let open: { projectId: string; bindingId: string };
-
-  beforeEach(async () => {
-    open = await seedProject(OPEN_DOOR);
-    await mods.handleGitHubEvent(
-      evCtx(open),
-      'issues',
-      openedEvent(8001, 'as GitHub first said it', 'as GitHub first wrote it'),
-    );
-  });
-
-  /** What Forge itself does to the row after admission, which is the thing at risk. */
-  async function rewriteLocally() {
-    await harness.db.execute(sql`
-      UPDATE issues SET title = 'as Forge rewrote it', description = 'as Forge rewrote it',
-                        status = 'in_progress'
-      WHERE project_id = ${open.projectId} AND external_id = '8001'
-    `);
   }
 
-  it('a replayed opened creates no second row', async () => {
-    const r = await mods.handleGitHubEvent(
-      evCtx(open),
-      'issues',
-      openedEvent(8001, 'as GitHub first said it', 'as GitHub first wrote it'),
-    );
+  it('writes nothing for a project whose stored config still turned the retired door on', async () => {
+    const legacy = await seedProject({
+      pipelineConfig: { githubIntake: { enabled: true }, intakeGate: { enabled: true } },
+    });
+    const r = await mods.handleGitHubEvent(evCtx(legacy), 'issues', issueEvent('opened', 7002));
     expect(r.actions).toBe(0);
-    expect(await rows(open.projectId)).toHaveLength(1);
-  });
-
-  it('a replayed opened leaves the title Forge last set', async () => {
-    await rewriteLocally();
-    await mods.handleGitHubEvent(
-      evCtx(open),
-      'issues',
-      openedEvent(8001, 'as GitHub NOW says it', 'as GitHub NOW writes it'),
-    );
-    const [row] = await rows(open.projectId);
-    expect(row?.title).toBe('as Forge rewrote it');
-  });
-
-  it('a replayed opened leaves the status Forge last set', async () => {
-    await rewriteLocally();
-    await mods.handleGitHubEvent(
-      evCtx(open),
-      'issues',
-      openedEvent(8001, 'as GitHub NOW says it', null),
-    );
-    const [row] = await rows(open.projectId);
-    expect(row?.status).toBe('in_progress');
-  });
-
-  it('an edited delivery leaves the title untouched', async () => {
-    await rewriteLocally();
-    const r = await mods.handleGitHubEvent(evCtx(open), 'issues', {
-      action: 'edited',
-      issue: { id: 8001, title: 'retitled on GitHub', body: 'rewritten on GitHub' },
-    });
-    expect(r.actions).toBe(0);
-    const [row] = await rows(open.projectId);
-    expect(row?.title).toBe('as Forge rewrote it');
-  });
-
-  it('an edited delivery leaves the description untouched', async () => {
-    await rewriteLocally();
-    await mods.handleGitHubEvent(evCtx(open), 'issues', {
-      action: 'edited',
-      issue: { id: 8001, title: 'retitled on GitHub', body: 'rewritten on GitHub' },
-    });
-    const [row] = await rows(open.projectId);
-    expect(row?.description).toBe('as Forge rewrote it');
-  });
-
-  it('a closed delivery leaves the status untouched', async () => {
-    await rewriteLocally();
-    const r = await mods.handleGitHubEvent(evCtx(open), 'issues', {
-      action: 'closed',
-      issue: { id: 8001 },
-    });
-    expect(r.actions).toBe(0);
-    const [row] = await rows(open.projectId);
-    expect(row?.status).toBe('in_progress');
-  });
-
-  it('a closed delivery leaves merged_at NULL where it was NULL', async () => {
-    await mods.handleGitHubEvent(evCtx(open), 'issues', {
-      action: 'closed',
-      issue: { id: 8001 },
-    });
-    const [row] = await rows(open.projectId);
-    expect(row?.merged_at).toBeNull();
-  });
-
-  it('a closed delivery leaves an already-stamped merged_at exactly as it stood', async () => {
-    const stamped = '2026-09-01T12:00:00.000Z';
-    await harness.db.execute(sql`
-      UPDATE issues SET merged_at = ${stamped}::timestamptz
-      WHERE project_id = ${open.projectId} AND external_id = '8001'
-    `);
-    await mods.handleGitHubEvent(evCtx(open), 'issues', {
-      action: 'closed',
-      issue: { id: 8001 },
-    });
-    const [row] = await rows(open.projectId);
-    expect(row?.merged_at).not.toBeNull();
-    expect(new Date(row?.merged_at as string | Date).toISOString()).toBe(stamped);
-  });
-
-  it('an edited delivery for an id no row holds creates no row', async () => {
-    await mods.handleGitHubEvent(evCtx(open), 'issues', {
-      action: 'edited',
-      issue: { id: 999_001, title: 'never admitted', body: 'never admitted' },
-    });
-    expect(await rows(open.projectId)).toHaveLength(1);
-  });
-
-  it('a closed delivery for an id no row holds creates no row', async () => {
-    await mods.handleGitHubEvent(evCtx(open), 'issues', {
-      action: 'closed',
-      issue: { id: 999_002 },
-    });
-    expect(await rows(open.projectId)).toHaveLength(1);
-  });
-});
-
-describe('a pull request is not a unit of work', () => {
-  it('an opened pull request creates no issue', async () => {
-    const open = await seedProject(OPEN_DOOR);
-    const r = await mods.handleGitHubEvent(evCtx(open), 'pull_request', { action: 'opened' });
-    expect(r.actions).toBe(0);
-    expect(await rows(open.projectId)).toHaveLength(0);
-  });
-
-  it('a full pull_request payload writes a projection row and still no issue', async () => {
-    const open = await seedProject(OPEN_DOOR);
-    const r = await mods.handleGitHubEvent(evCtx(open), 'pull_request', {
-      action: 'opened',
-      pull_request: {
-        number: 41,
-        title: 'a change under review',
-        state: 'open',
-        updated_at: '2026-09-17T01:00:00Z',
-        head: { ref: 'ISS-9999-nothing', sha: 'a'.repeat(40) },
-        base: { ref: 'main', sha: 'b'.repeat(40) },
-      },
-      repository: { full_name: 'SidCorp-co/forge' },
-    });
-    expect(r.actions).toBe(1);
-    expect(await rows(open.projectId)).toHaveLength(0);
-    const projected = (await harness.db.execute(sql`
-      SELECT number, head_ref, issue_id FROM repo_pull_requests WHERE binding_id = ${open.bindingId}
-    `)) as unknown as Array<{ number: number; head_ref: string; issue_id: string | null }>;
-    expect(projected).toHaveLength(1);
-    expect(projected[0]?.number).toBe(41);
-    expect(projected[0]?.issue_id).toBeNull();
+    expect(await rows(legacy.projectId)).toHaveLength(0);
   });
 });

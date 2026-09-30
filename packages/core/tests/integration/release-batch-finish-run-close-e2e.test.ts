@@ -143,13 +143,9 @@ describe('release batch finish takes its run terminal', () => {
     const { finishReleaseBatch } = await import('../../src/release-batch/service.js');
     const a = await insertIssue();
     const { runId } = await claim([a]);
-    await harness.db.execute(sql`
-      UPDATE projects
-      SET agent_config = ${JSON.stringify({
-        pipelineConfig: { statusEntryCriteria: { closed: ['plan'] } },
-      })}::jsonb
-      WHERE id = ${projectId}
-    `);
+    // The close refuses an issue carrying no ship claim (CLOSE_REQUIRES_SHIPPED); taking the claim
+    // off after the batch is cut is the one refusal a finish cannot talk its way past.
+    await harness.db.execute(sql`UPDATE issues SET merged_at = NULL WHERE id = ${a}`);
 
     const result = await finishReleaseBatch(runId, actor());
 

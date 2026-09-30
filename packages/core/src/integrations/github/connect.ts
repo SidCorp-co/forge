@@ -100,20 +100,13 @@ export function buildAppManifest(args: {
     default_permissions: {
       actions: 'read',
       administration: 'read',
-      checks: 'write',
+      checks: 'read',
       contents: 'write',
       issues: 'write',
       metadata: 'read',
       pull_requests: 'write',
     },
-    default_events: [
-      'issues',
-      'pull_request',
-      'pull_request_review',
-      'check_run',
-      'push',
-      'workflow_run',
-    ],
+    default_events: ['pull_request', 'pull_request_review', 'check_run', 'push', 'workflow_run'],
   };
 }
 

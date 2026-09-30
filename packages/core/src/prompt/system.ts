@@ -9,8 +9,8 @@ import {
 } from '../db/schema.js';
 import { estimateTokens } from '../lib/token-estimator.js';
 import { logger } from '../logger.js';
-import type { SystemPromptOverrideConfig } from '../pipeline/pipeline-config-schema.js';
-import { DEFAULT_NO_PROGRESS_ROUNDS } from '../pipeline/reopen-policy.js';
+import { NO_PROGRESS_ROUNDS } from '../pipeline/reopen-policy.js';
+import type { DispatchState } from '../project-config/dispatch-policy.js';
 import { chainLiveBranch, type ReleaseChain } from '../projects/release-chain.js';
 import { mandatoryPreambleBlocks } from './facts/mandatory-blocks.js';
 import { OPERATING_AFFORDANCES_TEXT } from './facts/registry.js';
@@ -26,11 +26,11 @@ export type PreambleBlockId =
   | 'pipeline-rules'
   | 'tool-reference'
   | 'project-config'
+  | 'policy'
   | 'project-context'
   | 'forge-facts'
   | 'state-block'
-  | 'mcp-servers'
-  | 'state-extras';
+  | 'mcp-servers';
 
 export interface PreambleBlock {
   id: PreambleBlockId;
@@ -43,14 +43,6 @@ export interface BuiltPreamble {
   content: string;
   blocks: PreambleBlock[];
 }
-
-/**
- * Per-state overrides resolved from `appConfig.pipeline.states[state].systemPrompt`.
- * Re-exported from the canonical Zod-inferred type so this module + the
- * preview endpoint + the dispatcher all agree on the shape (including
- * exactOptionalPropertyTypes `| undefined` on each field).
- */
-export type SystemPromptOverride = SystemPromptOverrideConfig;
 
 const BRANCH_SENTINEL = '<detect-from-git>';
 
@@ -153,7 +145,6 @@ ${fetch} Do NOT echo passwords in commits, PR descriptions, or tool output beyon
 export function formatProjectConfig(
   baseBranch: string | null,
   releaseChain: ReleaseChain,
-  noProgressRounds: number = DEFAULT_NO_PROGRESS_ROUNDS,
   step: JobType | null = null,
 ): string {
   const liveBranch = chainLiveBranch(releaseChain);
@@ -161,7 +152,7 @@ export function formatProjectConfig(
   const b = baseBranch ?? BRANCH_SENTINEL;
   const park = step === 'drive' ? 'needs_info' : 'waiting';
   const liveLine = promotes ? `\n- liveBranch: ${liveBranch}` : '';
-  let out = `## Project Config\n- baseBranch: ${b}${liveLine}\n- noProgressRounds: ${noProgressRounds} — a stop signal, NOT a cap. Nothing limits how many times an issue may be reopened. If you have fixed the same problem this many times and NOTHING changed (same failure, same symptom, no new information), stop and set \`${park}\` with what you tried and what you need. Rounds that each move something forward are normal work.`;
+  let out = `## Project Config\n- baseBranch: ${b}${liveLine}\n- noProgressRounds: ${NO_PROGRESS_ROUNDS} — a stop signal, NOT a cap. Nothing limits how many times an issue may be reopened. If you have fixed the same problem this many times and NOTHING changed (same failure, same symptom, no new information), stop and set \`${park}\` with what you tried and what you need. Rounds that each move something forward are normal work.`;
   if (!baseBranch) {
     const ask =
       step === 'drive'
@@ -170,6 +161,28 @@ export function formatProjectConfig(
     out += `\n\nBranch detection: any value shown as \`${BRANCH_SENTINEL}\` is not configured. Before any git operation, run \`git symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@'\` and use the result instead. If detection fails, ${ask}.`;
   }
   return out;
+}
+
+const QA_LINE: Record<DispatchState['qa'], string> = {
+  self: 'self — the run that builds a change may also be the one that says it works.',
+  independent:
+    'independent — the run that built a change may not be the run that says it works; another run judges it.',
+};
+
+/** The policy state this job runs under, as the project's policy-v1 declares it. */
+export function formatPolicy(policy: DispatchState): string {
+  const how =
+    policy.from === 'entry'
+      ? `the entry state \`${policy.status}\`, because this job is for no status the policy governs`
+      : `\`${policy.status}\``;
+  const denied =
+    policy.deniedTools.length === 0
+      ? 'none'
+      : `${policy.deniedTools.map((t) => `\`${t}\``).join(', ')} — this session was started without them; do not reach for them or for a way around them`;
+  return `## Policy
+- state: ${how} (policy revision ${policy.revision}, profile \`${policy.profile}\`), model ${policy.model}
+- qa: ${QA_LINE[policy.qa]}
+- denied tools: ${denied}`;
 }
 
 async function loadProjectBranches(projectId: string): Promise<{
@@ -238,8 +251,8 @@ export interface BuildPreambleOptions {
    * (chat / generic preview) — no state block is added.
    */
   step?: JobType | null;
-  /** Project per-state override (`states[state].systemPrompt`). */
-  override?: SystemPromptOverride | null;
+  /** The policy state the job runs under; absent for a preamble no job runs (chat, preview). */
+  policy?: DispatchState | null;
   mcpDiagnostics?: { resolved: string[]; dropped: string[] } | null;
 }
 
@@ -249,7 +262,7 @@ function formatMcpServersBlock(resolved: string[], dropped: string[]): string {
   return `## MCP servers — this session
 Resolved and available this session: ${resolvedList}
 
-WARNING — declared in \`pipelineConfig.mcpServers\` but did NOT resolve: ${dropped.map((n) => `\`${n}\``).join(', ')}
+WARNING — declared for this project but did NOT resolve: ${dropped.map((n) => `\`${n}\``).join(', ')}
 
 A declared name fails to resolve when it is neither a known catalog server nor a known integration name (a typo), OR it names a real integration (e.g. \`epodsystem\`) that has no active binding for this project. If your task depends on tools from one of the dropped names, STOP and report the unresolved name in your response instead of retrying or assuming a credential/auth problem — the integration status badge does not gate injection, so "connected" does not mean "declared for this dispatch".`;
 }
@@ -258,22 +271,6 @@ export async function buildPipelinePreambleStructured(
   projectId: string,
   opts?: BuildPreambleOptions,
 ): Promise<BuiltPreamble> {
-  const override = opts?.override ?? null;
-  const extras = override?.extras?.trim() ?? '';
-  const mode = override?.mode ?? 'append';
-
-  if (mode === 'replace' && extras.length > 0) {
-    const blocks: PreambleBlock[] = [
-      {
-        id: 'state-extras',
-        kind: 'system',
-        chars: extras.length,
-        estTokens: estimateTokens(extras),
-      },
-    ];
-    return { content: extras, blocks };
-  }
-
   // On a pipeline step the facts resolver reads the `projects` row anyway
   // (branches + agentConfig + environments + integrations), so reuse its
   // branches for the Project Config block instead of reading `projects` a
@@ -290,14 +287,10 @@ export async function buildPipelinePreambleStructured(
   if (project) {
     sections.push({
       id: 'project-config',
-      body: formatProjectConfig(
-        project.baseBranch,
-        project.releaseChain,
-        factInputs?.noProgressRounds ?? DEFAULT_NO_PROGRESS_ROUNDS,
-        step,
-      ),
+      body: formatProjectConfig(project.baseBranch, project.releaseChain, step),
     });
   }
+  if (opts?.policy) sections.push({ id: 'policy', body: formatPolicy(opts.policy) });
   // ISS-225 — inline the projectId so agents can call forge_projects.get
   // without having to re-discover it. Placed AFTER project-config so the
   // cache-friendly static prefix is unaffected; BEFORE the state block so the
@@ -310,9 +303,8 @@ export async function buildPipelinePreambleStructured(
     const factsBlock = renderStageFactsText(factInputs, projectId, step);
     if (factsBlock) sections.push({ id: 'forge-facts', body: factsBlock });
   }
-  // Built-in per-state depth. After the shared prefix (so cross-state cache on
-  // the prefix is preserved) and before any operator override (so the override
-  // remains the last word).
+  // Built-in per-state depth, after the shared prefix so cross-state cache on
+  // the prefix is preserved.
   const stateBlock = getStatePrompt(opts?.step);
   if (stateBlock) {
     sections.push({ id: 'state-block', body: stateBlock });
@@ -324,10 +316,6 @@ export async function buildPipelinePreambleStructured(
       body: formatMcpServersBlock(mcpDiagnostics.resolved, mcpDiagnostics.dropped),
     });
   }
-  if (extras.length > 0) {
-    sections.push({ id: 'state-extras', body: extras });
-  }
-
   const content = sections.map((s) => s.body).join('\n\n');
   const blocks: PreambleBlock[] = sections.map((s) => ({
     id: s.id,

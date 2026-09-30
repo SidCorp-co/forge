@@ -77,6 +77,11 @@ vi.mock('./pipeline-health.js', () => ({
   publishPipelineHealthChanged: vi.fn(async () => undefined),
 }));
 
+const readEffectivePolicy = vi.fn(async (_projectId: string) => null as unknown);
+vi.mock('../project-config/effective.js', () => ({
+  readEffectivePolicy: (projectId: string) => readEffectivePolicy(projectId),
+}));
+
 const { transitionIssueStatus } = await import('./apply-transition.js');
 
 const ISSUE_ID = '11111111-1111-4111-8111-111111111111';
@@ -84,8 +89,9 @@ const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
 const ACTOR_ID = '33333333-3333-4333-8333-333333333333';
 const DEVICE_ID = '44444444-4444-4444-8444-444444444444';
 
+/** Whether the project has a policy, which is what makes it autonomous. */
 function projectRow(present: 'yes' | null) {
-  projectSelectLimit.mockResolvedValueOnce(present ? [{ agentConfig: {} }] : []);
+  readEffectivePolicy.mockResolvedValueOnce(present ? { revision: 1, document: {} } : null);
 }
 
 function queueUpdate(status: string) {
@@ -100,6 +106,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   projectSelectLimit.mockReset();
   projectSelectLimit.mockResolvedValue([]);
+  readEffectivePolicy.mockReset();
+  readEffectivePolicy.mockResolvedValue(null);
   updateReturning.mockReset();
   updateReturning.mockResolvedValue([]);
 });
@@ -197,7 +205,7 @@ describe('every other transition is untouched', () => {
     expect(updateSet.mock.calls[0]?.[0]?.reopenCount).toBe(issues.reopenCount);
   });
 
-  it('reads the project exactly once for an actor-chosen target the park resolver ignores', async () => {
+  it('reads neither the project nor its policy for an actor-chosen target the park resolver ignores', async () => {
     projectRow(null);
     queueUpdate('in_progress');
 
@@ -207,7 +215,8 @@ describe('every other transition is untouched', () => {
       { type: 'user', id: ACTOR_ID },
     );
 
-    expect(dbSelect).toHaveBeenCalledTimes(1);
+    expect(readEffectivePolicy).not.toHaveBeenCalled();
+    expect(dbSelect).not.toHaveBeenCalled();
   });
 });
 

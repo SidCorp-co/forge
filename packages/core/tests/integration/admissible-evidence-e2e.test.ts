@@ -25,13 +25,6 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
-const BACKLOG_CONFIG = {
-  pipelineConfig: {
-    enabled: true,
-    poolBacklog: { statuses: ['draft', 'developed'], limit: 20 },
-  },
-};
-
 describe('ISS-940 backlog rows carry the evidence fields (real Postgres)', () => {
   let harness: TestDatabase;
   let userId: string;
@@ -51,10 +44,6 @@ describe('ISS-940 backlog rows carry the evidence fields (real Postgres)', () =>
     await truncateAll(harness.db);
     userId = (await createTestUser(harness.db)).id;
     projectId = (await createTestProject(harness.db, userId)).id;
-    await harness.db.execute(sql`
-      UPDATE projects SET agent_config = ${JSON.stringify(BACKLOG_CONFIG)}::jsonb
-      WHERE id = ${projectId}
-    `);
 
     deviceId = (await createTestDevice(harness.db, userId, { name: 'backlog-box' })).id;
     await harness.db.execute(sql`
@@ -65,7 +54,7 @@ describe('ISS-940 backlog rows carry the evidence fields (real Postgres)', () =>
 
   async function insertIssue(
     seq: number,
-    opts: { status?: string; merged?: boolean; branch?: string } = {},
+    opts: { merged?: boolean; branch?: string } = {},
   ): Promise<string> {
     const id = randomUUID();
     const merged = opts.merged ? sql`now() - interval '2 days'` : sql`NULL`;
@@ -73,7 +62,7 @@ describe('ISS-940 backlog rows carry the evidence fields (real Postgres)', () =>
     await harness.db.execute(sql`
       INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id,
                           merged_at, session_context)
-      VALUES (${id}, ${projectId}, ${seq}, ${`issue ${seq}`}, ${opts.status ?? 'draft'},
+      VALUES (${id}, ${projectId}, ${seq}, ${`issue ${seq}`}, 'open',
               ${userId}, ${merged}, ${ctx}::jsonb)
     `);
     return id;
@@ -81,10 +70,10 @@ describe('ISS-940 backlog rows carry the evidence fields (real Postgres)', () =>
 
   async function rows() {
     const { readAdmissibleIssues } = await import('../../src/devices/admissible.js');
-    return readAdmissibleIssues({ deviceId });
+    return (await readAdmissibleIssues({ deviceId })).items;
   }
 
-  it('separates a hand-built draft from an untouched one', async () => {
+  it('separates a hand-built open issue from an untouched one', async () => {
     await insertIssue(1);
     await insertIssue(2, { branch: 'ISS-2' });
 
@@ -96,10 +85,10 @@ describe('ISS-940 backlog rows carry the evidence fields (real Postgres)', () =>
   });
 
   it('shows the merge mark on work that already landed', async () => {
-    await insertIssue(3, { status: 'developed', merged: true, branch: 'ISS-3' });
+    await insertIssue(3, { merged: true, branch: 'ISS-3' });
 
     const [row] = await rows();
-    expect(row?.status).toBe('developed');
+    expect(row?.status).toBe('open');
     expect(row?.branch).toBe('ISS-3');
     expect(typeof row?.mergedAt).toBe('string');
   });

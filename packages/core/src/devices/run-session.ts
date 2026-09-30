@@ -32,6 +32,7 @@ import {
   insertOneShotRun,
   type OneShotRunSpec,
 } from '../pipeline/runs.js';
+import { requirePolicy } from '../project-config/dispatch-policy.js';
 import { type GateCondition, RUN_GATE_METADATA_KEY } from './gate-report.js';
 import { liveMasterSessionId } from './master-owner.js';
 import { projectAdmission, RunnerNotAdmittedError } from './pool-admission.js';
@@ -197,6 +198,9 @@ export async function openRunSession(args: {
       deviceId: args.deviceId,
     });
   }
+  // cm:guard a run works issues the policy says how to run; a project with none is refused here by
+  // the same name the job claim uses, before any run, session or lease is written.
+  await requirePolicy(args.projectId);
   // Core issues the owner edge. The box is authenticated as a device and says
   // which project it is running for; which master that is, core already knows.
   // No master registered yet leaves a root rather than a guess.

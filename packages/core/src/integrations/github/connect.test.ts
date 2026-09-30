@@ -84,8 +84,8 @@ describe('buildAppManifest', () => {
     );
   });
 
-  it('requests `checks: write`, which is what publishing a check run needs', () => {
-    expect((split().default_permissions as Record<string, string>).checks).toBe('write');
+  it('requests `checks: read` and no more: Forge reads check runs and publishes none', () => {
+    expect((split().default_permissions as Record<string, string>).checks).toBe('read');
   });
 
   it('requests `actions: read` for every event it subscribes to that needs it', () => {

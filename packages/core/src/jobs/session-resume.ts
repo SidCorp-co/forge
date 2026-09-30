@@ -1,41 +1,9 @@
-import { eq, type SQL, sql } from 'drizzle-orm';
+import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { projects } from '../db/schema.js';
 import { logger } from '../logger.js';
 
-const DEFAULT_MAX_RESUME_TOKENS = 150_000;
-
-export interface ResumeBounds {
-  maxResumeTokens: number;
-}
-
-export async function loadResumeBounds(
-  projectId: string,
-  cachedAgentConfig?: Record<string, unknown>,
-): Promise<ResumeBounds> {
-  try {
-    let ac: Record<string, unknown>;
-    if (cachedAgentConfig !== undefined) {
-      ac = cachedAgentConfig;
-    } else {
-      const [row] = await db
-        .select({ agentConfig: projects.agentConfig })
-        .from(projects)
-        .where(eq(projects.id, projectId))
-        .limit(1);
-      ac = (row?.agentConfig ?? {}) as Record<string, unknown>;
-    }
-    const pc = (ac.pipelineConfig ?? {}) as Record<string, unknown>;
-    const maxTokens =
-      typeof pc.maxResumeTokens === 'number' && Number.isFinite(pc.maxResumeTokens)
-        ? pc.maxResumeTokens
-        : DEFAULT_MAX_RESUME_TOKENS;
-    return { maxResumeTokens: maxTokens };
-  } catch (err) {
-    logger.warn({ err, projectId }, 'session-resume: failed to load resume bounds, using defaults');
-    return { maxResumeTokens: DEFAULT_MAX_RESUME_TOKENS };
-  }
-}
+/** The context an issue's sessions may have reached and still be resumed into, in tokens. */
+export const MAX_RESUME_TOKENS = 150_000;
 
 /**
  * ISS-580 — the peak single-request context any session of this issue has

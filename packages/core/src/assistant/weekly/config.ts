@@ -21,10 +21,10 @@ export interface OptedInProject {
 
 type Executor = Pick<typeof db, 'select'>;
 
-/** The config under `agentConfig.pipelineConfig.assistantWeekly`, null unless `enabled` is true. */
+/** The config under `agentConfig.assistantWeekly`, null unless `enabled` is true. */
 export function readAssistantWeekly(agentConfig: unknown): AssistantWeeklyConfig | null {
-  const ac = (agentConfig ?? {}) as { pipelineConfig?: { assistantWeekly?: unknown } };
-  const raw = ac.pipelineConfig?.assistantWeekly as
+  const ac = (agentConfig ?? {}) as { assistantWeekly?: unknown };
+  const raw = ac.assistantWeekly as
     | (Partial<AssistantWeeklyConfig> & { enabled?: unknown })
     | undefined;
   if (raw?.enabled !== true) return null;

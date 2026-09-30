@@ -2,6 +2,9 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
+import { PolicyRefusedError } from '../project-config/dispatch-policy.js';
+import { readEffectivePolicy } from '../project-config/effective.js';
+import type { PolicyDocument } from '../project-config/schema.js';
 import type { Actor } from './activity.js';
 import {
   AUTONOMOUS_ENTRY_STATUS,
@@ -9,30 +12,24 @@ import {
   dispatchDriveManual,
 } from './autonomous-dispatch.js';
 import type { HooksBus } from './hooks.js';
-import { type PipelineConfig, pipelineConfigSchema } from './pipeline-config-schema.js';
 
 export { ActiveJobConflictError } from './enqueue-helper.js';
 
-async function loadPipelineConfig(
-  projectId: string,
-): Promise<{ cfg: PipelineConfig | null; projectCreatedBy: string | null }> {
+async function loadProjectPolicy(projectId: string): Promise<{
+  policy: PolicyDocument | null;
+  archived: boolean;
+  projectCreatedBy: string | null;
+}> {
   const [row] = await db
-    .select({
-      agentConfig: projects.agentConfig,
-      createdBy: projects.createdBy,
-      archivedAt: projects.archivedAt,
-    })
+    .select({ createdBy: projects.createdBy, archivedAt: projects.archivedAt })
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1);
-  if (!row) return { cfg: null, projectCreatedBy: null };
-  if (row.archivedAt != null) return { cfg: null, projectCreatedBy: row.createdBy ?? null };
-  const ac = (row.agentConfig as { pipelineConfig?: unknown } | null) ?? {};
-  const parsed = pipelineConfigSchema.safeParse(ac.pipelineConfig ?? {});
-  return {
-    cfg: parsed.success ? parsed.data : null,
-    projectCreatedBy: row.createdBy ?? null,
-  };
+  if (!row) return { policy: null, archived: false, projectCreatedBy: null };
+  const projectCreatedBy = row.createdBy ?? null;
+  if (row.archivedAt != null) return { policy: null, archived: true, projectCreatedBy };
+  const held = await readEffectivePolicy(projectId);
+  return { policy: held?.document ?? null, archived: false, projectCreatedBy };
 }
 
 /**
@@ -48,7 +45,8 @@ export async function triggerPipelineStepManual(args: {
   actor: Actor;
   reason: Record<string, unknown>;
 }): Promise<{ released: true }> {
-  const { projectCreatedBy } = await loadPipelineConfig(args.projectId);
+  const { policy, projectCreatedBy } = await loadProjectPolicy(args.projectId);
+  if (!policy) throw new PolicyRefusedError('POLICY_UNDECLARED', args.projectId, null);
   return dispatchDriveManual({ ...args, projectCreatedBy });
 }
 
@@ -59,9 +57,16 @@ export async function reEnqueueForIssue(args: {
   actor: Actor;
   reason: Record<string, unknown>;
 }): Promise<void> {
-  const { cfg, projectCreatedBy } = await loadPipelineConfig(args.projectId);
-  if (!cfg?.enabled) return;
-  await dispatchAutonomous({ ...args, cfg, projectCreatedBy });
+  const { policy, archived, projectCreatedBy } = await loadProjectPolicy(args.projectId);
+  if (archived) return;
+  if (!policy) {
+    logger.warn(
+      { projectId: args.projectId, issueId: args.issueId, code: 'POLICY_UNDECLARED' },
+      new PolicyRefusedError('POLICY_UNDECLARED', args.projectId, null).message,
+    );
+    return;
+  }
+  await dispatchAutonomous({ ...args, policy, projectCreatedBy });
 }
 
 /**

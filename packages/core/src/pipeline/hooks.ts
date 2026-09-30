@@ -61,12 +61,6 @@ export interface HookPayloads {
     issueId: string | null;
     type: JobType;
   };
-  contractInputChanged: {
-    projectId: string;
-    issueId?: string;
-    /** What moved, for the log. Never branched on. */
-    reason: string;
-  };
   // ISS-20 (Epic 4) — dependency graph mutation. Fire-and-forget; carries
   // enough to trigger a graph re-read but not the full graph.
   dependencyChanged: {
@@ -249,29 +243,6 @@ export interface HookPayloads {
      * (already-terminal row) or when the run had no active children.
      */
     cascadedJobIds?: string[];
-  };
-  // W2.3.2 — monthly budget gate. Fired once per hour per (project, stage)
-  // when the dispatcher observes spent ≥ 80% of `perMonthUsd`. Dedup lives
-  // in-process; see `jobs/budget-check.ts#shouldEmitWarn`.
-  'pipeline.budgetWarning': {
-    projectId: string;
-    stageStatus: string;
-    jobType: JobType;
-    spent: number;
-    budget: number;
-    pct: number;
-  };
-  // W2.3.2 — fired once per dispatch attempt that the budget gate blocks
-  // (action='pause' AND spent ≥ budget). Subscribers (W2.3.4) render
-  // Slack/email; the dispatcher also posts an issue comment + fails the job.
-  'pipeline.budgetBreach': {
-    projectId: string;
-    stageStatus: string;
-    jobType: JobType;
-    spent: number;
-    budget: number;
-    jobId: string;
-    issueId: string | null;
   };
 }
 

@@ -28,12 +28,6 @@ type JobRow = typeof jobs.$inferSelect;
 const HOLD_WEDGE_CONTENT: Partial<
   Record<string, { title: string; summary: string; nextStep: string }>
 > = {
-  monthly_budget_exhausted: {
-    title: 'Step held: monthly budget exhausted',
-    summary:
-      'This project hit its monthly spend budget, so the step is held instead of dispatching. The issue itself is untouched.',
-    nextStep: 'Raise the budget or wait for the next billing cycle — the held step resumes itself.',
-  },
   all_devices_exhausted: {
     title: 'Step held: every runner is rate-limited',
     summary:

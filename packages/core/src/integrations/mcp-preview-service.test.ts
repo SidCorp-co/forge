@@ -2,14 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BindingWithConnection } from './store.js';
 
 const resolveSessionMcpServers = vi.fn();
-const stateDeclaredMcpNames = vi.fn(async () => [] as string[]);
 const listBindingsForProject = vi.fn(async () => [] as BindingWithConnection[]);
 const listAgentGrantedBindings = vi.fn(
   async (_projectId: string, _provider: string) => [] as BindingWithConnection[],
 );
 
 vi.mock('../jobs/resolve-job-mcp-servers.js', () => ({ resolveSessionMcpServers }));
-vi.mock('../jobs/stage-overrides.js', () => ({ stateDeclaredMcpNames }));
 vi.mock('./agent-access-store.js', () => ({ listAgentGrantedBindings }));
 vi.mock('./store.js', async (original) => ({
   ...(await original<typeof import('./store.js')>()),
@@ -97,7 +95,6 @@ function epodPair(over: { id: string; label: string; agentAccess?: string }) {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  stateDeclaredMcpNames.mockResolvedValue([]);
   listBindingsForProject.mockResolvedValue([]);
   listAgentGrantedBindings.mockResolvedValue([]);
   resolvedAs({ resolvedNames: [] });
@@ -129,15 +126,9 @@ describe('buildMcpPreview — every source, or none (ISS-1191)', () => {
     expect(servers.find((s) => s.serverName === 'playwright')?.headers).toBeNull();
   });
 
-  it('carries the pipeline-declared names resolution did not supply', async () => {
+  it('carries the declared names resolution did not supply', async () => {
     resolvedAs({ resolvedNames: [], droppedNames: ['nope'] });
     expect((await buildMcpPreview(PROJECT)).droppedNames).toEqual(['nope']);
-  });
-
-  it('names the per-state-only servers a project-wide session does not carry', async () => {
-    resolvedAs({ resolvedNames: ['playwright'] });
-    stateDeclaredMcpNames.mockResolvedValue(['playwright', 'chrome-devtools-mcp']);
-    expect((await buildMcpPreview(PROJECT)).stateOnlyNames).toEqual(['chrome-devtools-mcp']);
   });
 
   it('reports as reaching the agent exactly the names the session resolver resolved', async () => {

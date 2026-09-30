@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { pipelineConfigSchema } from '../pipeline/pipeline-config-schema.js';
 import { pluginDesignationSchema } from '../plugins/designation.js';
 
 export const PERSONA_STYLE_MAX = 4100;
@@ -7,10 +6,20 @@ export const PERSONA_STYLE_MAX = 4100;
 /** The assistant's per-project system-prompt addition, appended to the persona rather than replacing it. */
 export const SYSTEM_PROMPT_MAX = 20_000;
 
+export const assistantWeeklySchema = z
+  .object({
+    enabled: z.boolean(),
+    pinnedIssue: z.string().regex(/^[A-Z]{2,6}-\d+$/, 'an issue key such as ISS-1060'),
+    judgeProviderId: z.string().min(1),
+    judgeModel: z.string().min(1),
+    source: z.string().min(1).optional(),
+  })
+  .strict();
+
 export const agentConfigSchema = z
   .object({
-    /** Read by ~14 call sites; its inner shape and invariants are `pipelineConfigSchema`'s own. */
-    pipelineConfig: pipelineConfigSchema.optional(),
+    /** Read by `assistant/weekly/config.ts:readAssistantWeekly` — the weekly reading's opt-in. */
+    assistantWeekly: assistantWeeklySchema.optional(),
     /** Read by `plugins/designation.ts:readPluginDesignations`, unioned per device by `GET /api/devices/me/plugins`. */
     plugins: z.array(pluginDesignationSchema).optional(),
     /** Read by `assistant/system-prompt.ts:buildSystemPrompt` — additive tone on top of the persona. */
@@ -32,8 +41,7 @@ export type AgentConfigKey = keyof AgentConfigDocument;
 export const AGENT_CONFIG_KEYS = Object.keys(agentConfigSchema.shape) as AgentConfigKey[];
 
 export const AGENT_CONFIG_DOORS: Record<AgentConfigKey, string> = {
-  pipelineConfig:
-    '`PATCH /api/projects/:id/pipeline-config`, or MCP `forge_config` action=update with `pipelineConfig`',
+  assistantWeekly: 'the `assistantWeekly` field on `PATCH /api/projects/:id`',
   plugins: '`PATCH /api/projects/:id/plugins`, or MCP `forge_config` action=update with `plugins`',
   personaStyle: 'the `personaStyle` field on `PATCH /api/projects/:id`',
   systemPrompt: 'the `systemPrompt` field on `PATCH /api/projects/:id`',
@@ -58,7 +66,7 @@ export const RETIRED_AGENT_CONFIG_KEYS: Record<string, string> = {
   activeDeviceId:
     'agentConfig.activeDeviceId decides nothing — the device a project defaults to is the `projects.default_device_id` column, and no dispatcher has ever read this key. Set it with the `defaultDeviceId` field on `PATCH /api/projects/:id`, and remove activeDeviceId from agentConfig.',
   runnerFallback:
-    'agentConfig.runnerFallback decides nothing — ISS-232 Phase 3 replaced the type-chain fallback with a deterministic primary-then-standby pick, and no selector has read this key since. The live per-stage override is `pipelineConfig.states[*].runner`. Remove runnerFallback from agentConfig.',
+    'agentConfig.runnerFallback decides nothing — ISS-232 Phase 3 replaced the type-chain fallback with a deterministic primary-then-standby pick, and no selector has read this key since. Remove runnerFallback from agentConfig.',
 };
 
 /** The message a raw `agentConfig` record carrying a DECLARED key is refused with. */
@@ -67,7 +75,7 @@ export function agentConfigDoorMessage(key: AgentConfigKey): string {
 }
 
 export const AGENT_CONFIG_CLEAR_GUIDE =
-  'agentConfig is no longer a field on PATCH /api/projects/:id, and it cannot be cleared wholesale. Clear each value through its own door instead: send `personaStyle`, `systemPrompt`, `rocketChatAnswerMode` or `categories` as null on PATCH /api/projects/:id, or `plugins` as null on PATCH /api/projects/:id/plugins. `pipelineConfig` is the one value with no clear — its door merges a patch onto the stored document, so a key already stored there cannot be removed through it at all.';
+  'agentConfig is no longer a field on PATCH /api/projects/:id, and it cannot be cleared wholesale. Clear each value through its own door instead: send `assistantWeekly`, `personaStyle`, `systemPrompt`, `rocketChatAnswerMode` or `categories` as null on PATCH /api/projects/:id, or `plugins` as null on PATCH /api/projects/:id/plugins.';
 
 export function agentConfigUndeclaredMessage(key: string): string {
   return `agentConfig.${key} is not a key this project's configuration declares, so nothing would ever read it. The declared keys are ${AGENT_CONFIG_KEYS.join(', ')}, each written through its own door. Refused by name rather than stored, and rather than answered 200 and dropped.`;

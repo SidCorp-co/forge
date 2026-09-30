@@ -57,13 +57,6 @@ async function twoBoxesOnOneProject(seqs: number[] = [880, 881]) {
   const project = await createTestProject(harness.db, user.id);
   const boxA = await createTestDevice(harness.db, user.id);
   const boxB = await createTestDevice(harness.db, user.id);
-  await harness.db.execute(sql`
-    UPDATE projects
-       SET agent_config = ${JSON.stringify({
-         pipelineConfig: { poolBacklog: { statuses: ['draft'], limit: 20 } },
-       })}::jsonb
-     WHERE id = ${project.id}
-  `);
   for (const [name, device] of [
     ['ra', boxA],
     ['rb', boxB],
@@ -76,7 +69,7 @@ async function twoBoxesOnOneProject(seqs: number[] = [880, 881]) {
   for (const seq of seqs) {
     await harness.db.execute(sql`
       INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id)
-      VALUES (gen_random_uuid(), ${project.id}, ${seq}, ${`issue ${seq}`}, 'draft', ${user.id})
+      VALUES (gen_random_uuid(), ${project.id}, ${seq}, ${`issue ${seq}`}, 'open', ${user.id})
     `);
   }
   return { user, project, boxA, boxB };

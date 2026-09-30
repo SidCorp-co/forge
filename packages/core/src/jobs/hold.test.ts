@@ -40,11 +40,6 @@ vi.mock('../logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-const budgetMock = vi.fn(async () => ({ action: 'allow' }) as { action: string });
-vi.mock('./budget-check.js', () => ({
-  checkMonthlyBudget: () => budgetMock(),
-}));
-
 const capableMock = vi.fn(async () => [] as string[]);
 vi.mock('../runners/select.js', () => ({
   onlineCapableDeviceIds: () => capableMock(),
@@ -93,7 +88,6 @@ function makeJob(over: Record<string, unknown> = {}) {
 beforeEach(() => {
   vi.clearAllMocks();
   selectRows.mockReturnValue([]);
-  budgetMock.mockResolvedValue({ action: 'allow' });
   capableMock.mockResolvedValue([]);
 });
 
@@ -101,7 +95,6 @@ describe('HOLD_REASONS', () => {
   it('covers exactly the mechanical no-retry reasons, and nothing that concludes anything', () => {
     expect([...HOLD_REASONS].sort()).toEqual([
       'all_devices_exhausted',
-      'monthly_budget_exhausted',
       'non_retryable_terminal',
       'retry_rounds_exhausted',
       'verify_unavailable',
@@ -260,11 +253,10 @@ describe('releaseHeldJobs', () => {
       }),
     ]);
     capableMock.mockResolvedValue(['dev-1']);
-    budgetMock.mockResolvedValue({ action: 'allow' });
     expect(await releaseHeldJobs('p1')).toBe(0);
   });
 
-  it('keeps a budget hold held until the budget check stops saying pause', async () => {
+  it('releases a hold the retired budget gate left behind, since nothing can say pause again', async () => {
     selectRows.mockReturnValue([
       heldRow({
         payload: {
@@ -276,9 +268,6 @@ describe('releaseHeldJobs', () => {
         },
       }),
     ]);
-    budgetMock.mockResolvedValue({ action: 'pause' });
-    expect(await releaseHeldJobs('p1')).toBe(0);
-    budgetMock.mockResolvedValue({ action: 'allow' });
     expect(await releaseHeldJobs('p1')).toBe(1);
   });
 

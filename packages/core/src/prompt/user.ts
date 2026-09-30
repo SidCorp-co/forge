@@ -13,16 +13,12 @@
  *
  *   [optional] ## Issue
  *   Title: ...
- *   Description / Plan / Acceptance (per-state policy + per-state override)
+ *   Description / Plan / Acceptance (per job type)
  *
  *   [optional] ## Previous Session Context
  *   currentState / decisions / filesModified / errorsResolved / reviewFeedback
- *
- * The per-state defaults below are overridable via
- * `appConfig.pipeline.states[state].userPromptPolicy`.
  */
 
-import { bodyText } from '../body/prepare.js';
 import type { JobType } from '../db/schema.js';
 import {
   type HandoffScope,
@@ -32,9 +28,8 @@ import {
   renderTerminationBlock,
   type StepHandoffPayload,
 } from '../memory/step-handoff-schema.js';
-import { resolveHandoffsPolicy } from '../pipeline/handoff-policy.js';
-import type { UserPromptPolicyConfig } from '../pipeline/pipeline-config-schema.js';
-import { markUntrusted, sanitizeUntrusted } from './sanitize.js';
+import { handoffInjectSteps } from '../pipeline/handoff-policy.js';
+import { markUntrusted } from './sanitize.js';
 
 /** ISS-699 — steps that finished after `sessionContext.lastUpdated`, measured
  *  from the jobs ledger by `loadIssueSnapshot`. null when nothing is newer. */
@@ -66,143 +61,6 @@ export interface SessionContextSnapshot {
   errorsResolved?: string[];
   reviewFeedback?: unknown[];
   reproEvidence?: unknown[];
-}
-
-export type IssueField = 'description' | 'plan' | 'acceptanceCriteria';
-
-export type SessionContextField =
-  | 'decisions'
-  | 'filesModified'
-  | 'errorsResolved'
-  | 'reviewFeedback';
-
-/**
- * Per-state policy override resolved from `appConfig.pipeline.states[state].userPromptPolicy`.
- * Re-exported from the canonical Zod-inferred type so this module + the
- * preview endpoint + the orchestrator all agree on the shape (including
- * exactOptionalPropertyTypes `| undefined` on each field).
- */
-export type UserPromptPolicyOverride = UserPromptPolicyConfig;
-
-const DEFAULT_FIELD_CAPS: Record<IssueField, number> = {
-  description: 8000,
-  plan: 16000,
-  acceptanceCriteria: 4000,
-};
-
-const DEFAULT_SESSION_DEPTH = Number.POSITIVE_INFINITY;
-
-const SESSION_CAPS = {
-  decisions: 10,
-  filesModified: 15,
-  errorsResolved: 5,
-  reviewFeedback: 5,
-} as const;
-
-const ISSUE_FIELDS_PER_STATE: Record<JobType, IssueField[]> = {
-  triage: [],
-  clarify: [],
-  plan: [],
-  code: [],
-  review: [],
-  test: [],
-  staging: [],
-  release: [],
-  fix: [],
-  custom: [],
-  drive: [],
-  pm: [],
-  smoke: [],
-  release_batch: [],
-  reconcile: [],
-  verify_skill: [],
-};
-
-interface SessionFieldPolicy {
-  decisions: boolean;
-  filesModified: boolean;
-  errorsResolved: boolean;
-  reviewFeedback: boolean;
-}
-
-const SESSION_FIELDS_PER_STATE: Record<JobType, SessionFieldPolicy> = {
-  triage: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
-  clarify: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
-  plan: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
-  code: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
-  review: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
-  test: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
-  staging: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
-  release: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
-  fix: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
-  custom: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
-  drive: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
-  pm: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
-  smoke: { decisions: false, filesModified: false, errorsResolved: false, reviewFeedback: false },
-  release_batch: {
-    decisions: false,
-    filesModified: false,
-    errorsResolved: false,
-    reviewFeedback: false,
-  },
-  reconcile: {
-    decisions: false,
-    filesModified: false,
-    errorsResolved: false,
-    reviewFeedback: false,
-  },
-  verify_skill: {
-    decisions: false,
-    filesModified: false,
-    errorsResolved: false,
-    reviewFeedback: false,
-  },
-};
-
-function truncate(text: string, cap: number, strategy: 'paragraph-boundary' | 'byte-cut'): string {
-  if (text.length <= cap) return text;
-  if (strategy === 'byte-cut') {
-    return `${text.slice(0, cap)}\n\n… [truncated at ${cap}/${text.length} chars — call forge_issues.get for full body]`;
-  }
-  const minStart = Math.max(0, Math.floor(cap * 0.8));
-  const head = text.slice(0, cap);
-  const candidates = [head.lastIndexOf('\n\n'), head.lastIndexOf('\n'), head.lastIndexOf(' ')];
-  const cut = candidates.find((idx) => idx >= minStart) ?? cap;
-  const body = text.slice(0, cut).replace(/\s+$/, '');
-  return `${body}\n\n… [truncated at ${cut}/${text.length} chars — call forge_issues.get for full body]`;
-}
-
-function resolveIssueFields(
-  jobType: JobType,
-  override?: UserPromptPolicyOverride['includeFields'],
-): IssueField[] {
-  if (override && override.length > 0) return override;
-  return ISSUE_FIELDS_PER_STATE[jobType] ?? [];
-}
-
-function resolveSessionPolicy(
-  jobType: JobType,
-  override?: UserPromptPolicyOverride['sessionContext'],
-): { policy: SessionFieldPolicy; depth: number } {
-  const base = SESSION_FIELDS_PER_STATE[jobType] ?? {
-    decisions: false,
-    filesModified: false,
-    errorsResolved: false,
-    reviewFeedback: false,
-  };
-  if (override?.fields) {
-    const set = new Set(override.fields);
-    return {
-      policy: {
-        decisions: set.has('decisions'),
-        filesModified: set.has('filesModified'),
-        errorsResolved: set.has('errorsResolved'),
-        reviewFeedback: set.has('reviewFeedback'),
-      },
-      depth: override.depth ?? DEFAULT_SESSION_DEPTH,
-    };
-  }
-  return { policy: base, depth: override?.depth ?? DEFAULT_SESSION_DEPTH };
 }
 
 export interface PriorHandoff {
@@ -247,28 +105,9 @@ function formatPriorHandoffs(handoffs: PriorHandoff[]): string {
   return lines.join('\n');
 }
 
-function formatIssueSnapshot(
-  snapshot: IssueSnapshot,
-  jobType: JobType,
-  policy?: UserPromptPolicyOverride | null,
-  injectedSteps?: ReadonlySet<HandoffStep>,
-): string {
-  const fields = resolveIssueFields(jobType, policy?.includeFields);
-  // Layer policy overrides onto defaults, skipping undefined values so an
-  // unset cap doesn't clobber the default to `undefined` (Zod's optional
-  // properties carry `| undefined` in their value type).
-  const fieldCaps: Record<IssueField, number> = { ...DEFAULT_FIELD_CAPS };
-  if (policy?.fieldCaps) {
-    for (const [k, v] of Object.entries(policy.fieldCaps) as Array<
-      [IssueField, number | undefined]
-    >) {
-      if (typeof v === 'number') fieldCaps[k] = v;
-    }
-  }
-  const strategy = policy?.truncationStrategy ?? 'paragraph-boundary';
-  // ISS-532: the issue title is untrusted free-text (and under thin-init the
-  // ONLY untrusted text inlined by default) — frame it as DATA on its own
-  // lines (markUntrusted output is multi-line).
+function formatIssueSnapshot(snapshot: IssueSnapshot, jobType: JobType): string {
+  // ISS-532: the issue title is untrusted free-text and the only untrusted text inlined — frame it
+  // as DATA on its own lines (markUntrusted output is multi-line).
   const lines: string[] = [
     '## Issue',
     'Title:',
@@ -281,40 +120,6 @@ function formatIssueSnapshot(
   if (snapshot.complexity) meta.push(`Complexity: ${snapshot.complexity}`);
   if (meta.length > 0) lines.push(meta.join(' · '));
 
-  const skipDescription =
-    policy?.handoffs?.fallbackToRawIssueFieldIfMissing === false || injectedSteps?.has('triage');
-  const skipPlan =
-    policy?.handoffs?.fallbackToRawIssueFieldIfMissing === false || injectedSteps?.has('plan');
-
-  // ISS-532: sanitize/frame AFTER truncate so the existing caps still bound the
-  // input. description + acceptanceCriteria are human-authored → DATA-framed;
-  // plan is agent-authored → char-strip only (no noisy framing).
-  if (fields.includes('description') && snapshot.description && !skipDescription) {
-    lines.push(
-      '',
-      'Description:',
-      markUntrusted(
-        truncate(
-          bodyText(snapshot.description, snapshot.descriptionFormat),
-          fieldCaps.description,
-          strategy,
-        ),
-        { source: 'issue.description' },
-      ),
-    );
-  }
-  if (fields.includes('plan') && snapshot.plan && !skipPlan) {
-    lines.push('', 'Plan:', sanitizeUntrusted(truncate(snapshot.plan, fieldCaps.plan, strategy)));
-  }
-  if (fields.includes('acceptanceCriteria') && snapshot.acceptanceCriteria) {
-    lines.push(
-      '',
-      'Acceptance:',
-      markUntrusted(truncate(snapshot.acceptanceCriteria, fieldCaps.acceptanceCriteria, strategy), {
-        source: 'issue.acceptanceCriteria',
-      }),
-    );
-  }
   lines.push(
     '',
     jobType === 'drive'
@@ -326,11 +131,8 @@ function formatIssueSnapshot(
 
 function formatSessionContext(
   ctx: SessionContextSnapshot,
-  jobType: JobType,
-  policyOverride?: UserPromptPolicyOverride['sessionContext'],
   supersededBy?: SupersededBy | null,
 ): string {
-  const { policy, depth } = resolveSessionPolicy(jobType, policyOverride);
   const lines: string[] = ['## Previous Session Context'];
 
   if (supersededBy && supersededBy.count > 0) {
@@ -342,37 +144,6 @@ function formatSessionContext(
 
   if (ctx.currentState) {
     lines.push(`**Current state:** ${ctx.currentState}`);
-  }
-
-  // ISS-532: sessionContext is agent-authored → char-strip control/invisible
-  // chars (defense-in-depth) without DATA framing, which would be noise here.
-  if (policy.decisions && ctx.decisions && ctx.decisions.length > 0) {
-    lines.push('**Key decisions:**');
-    for (const d of ctx.decisions.slice(-Math.min(depth, SESSION_CAPS.decisions))) {
-      lines.push(`- ${sanitizeUntrusted(d)}`);
-    }
-  }
-
-  if (policy.filesModified && ctx.filesModified && ctx.filesModified.length > 0) {
-    const files = ctx.filesModified
-      .slice(-Math.min(depth, SESSION_CAPS.filesModified))
-      .map(sanitizeUntrusted)
-      .join(', ');
-    lines.push(`**Files touched:** ${files}`);
-  }
-
-  if (policy.errorsResolved && ctx.errorsResolved && ctx.errorsResolved.length > 0) {
-    lines.push('**Errors resolved:**');
-    for (const e of ctx.errorsResolved.slice(-Math.min(depth, SESSION_CAPS.errorsResolved))) {
-      lines.push(`- ${sanitizeUntrusted(e)}`);
-    }
-  }
-
-  if (policy.reviewFeedback && ctx.reviewFeedback && ctx.reviewFeedback.length > 0) {
-    lines.push('**Review feedback:**');
-    for (const f of ctx.reviewFeedback.slice(-Math.min(depth, SESSION_CAPS.reviewFeedback))) {
-      lines.push(`- ${sanitizeUntrusted(typeof f === 'string' ? f : JSON.stringify(f))}`);
-    }
   }
 
   const sessionCount = ctx.sessionCount ?? 0;
@@ -417,13 +188,12 @@ export function buildJobPromptString(args: {
   jobType: JobType;
   issueId: string;
   issueSnapshot?: IssueSnapshot | null;
-  policy?: UserPromptPolicyOverride | null;
   turnLevelSystemPrompt?: string | null;
   mergeRequiredText?: string | null;
   priorHandoffs?: PriorHandoff[] | null;
   /**
    * Step-handoff scope literals for the `## Termination protocol` block.
-   * Required when `policy.handoffs.enabled` AND `jobType` is a handoff step
+   * Required when `jobType` is a handoff step
    * (triage/plan/code/review/test/fix) — without it the agent can't form
    * the `forge_memory.write` call. Caller pre-fills these from the job +
    * pipeline_run row so the agent does NOT have to guess identifiers.
@@ -450,24 +220,18 @@ export function buildJobPromptString(args: {
     );
   }
 
-  // System-default-on (see pipeline/handoff-policy.ts). Explicit project
-  // config still wins per-field; absent config falls back to enabled=true
-  // with canonical inject lists per step.
-  const resolvedHandoffs = resolveHandoffsPolicy(args.policy ?? null, args.jobType);
-  const handoffsEnabled = resolvedHandoffs.enabled;
-  const injectFromSteps = new Set<HandoffStep>(resolvedHandoffs.injectFromSteps);
-  // Filter pre-fetched handoffs to the policy's allow-list so callers can
-  // fetch broadly (all handoffs for the run) without leaking ones the
-  // current state's policy didn't whitelist.
+  const injectFromSteps = new Set<HandoffStep>(handoffInjectSteps(args.jobType));
+  // Filter pre-fetched handoffs to the step's allow-list so callers can
+  // fetch broadly (all handoffs for the run) without leaking ones this
+  // step does not read.
   const handoffsToRender =
-    handoffsEnabled && args.priorHandoffs && args.priorHandoffs.length > 0
+    args.priorHandoffs && args.priorHandoffs.length > 0
       ? args.priorHandoffs.filter((h) => injectFromSteps.has(h.step))
       : [];
-  const injectedSteps = new Set<HandoffStep>(handoffsToRender.map((h) => h.step));
 
   const snapshot = args.issueSnapshot;
   if (snapshot) {
-    lines.push('', formatIssueSnapshot(snapshot, args.jobType, args.policy ?? null, injectedSteps));
+    lines.push('', formatIssueSnapshot(snapshot, args.jobType));
 
     if (handoffsToRender.length > 0) {
       lines.push('', formatPriorHandoffs(handoffsToRender));
@@ -475,16 +239,13 @@ export function buildJobPromptString(args: {
 
     const sc = snapshot.sessionContext;
     if (sc && (sc.sessionCount ?? 0) >= 1) {
-      lines.push(
-        '',
-        formatSessionContext(sc, args.jobType, args.policy?.sessionContext, snapshot.supersededBy),
-      );
+      lines.push('', formatSessionContext(sc, snapshot.supersededBy));
     }
   } else if (handoffsToRender.length > 0) {
     lines.push('', formatPriorHandoffs(handoffsToRender));
   }
 
-  if (handoffsEnabled && isHandoffStep(args.jobType) && args.handoffScope) {
+  if (isHandoffStep(args.jobType) && args.handoffScope) {
     lines.push(
       '',
       args.jobType === 'drive'

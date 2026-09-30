@@ -1,7 +1,7 @@
 /**
  * Turning a claimed job row into work a subagent can actually run.
  *
- * This is the half of the old dispatcher that survives: stage overrides, the
+ * This is the half of the old dispatcher that survives: the policy state, the
  * resume decision, the MCP resolve, the preamble, the prior-attempts splice
  * and the prompt snapshot. What died with it was the routing half — picking a
  * box and pushing a frame at it — because a master picks the box now.
@@ -19,19 +19,15 @@ import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { buildPipelinePreambleStructured } from '../lib/chat-preamble.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
+import type { DispatchState, PolicyStateSource } from '../project-config/dispatch-policy.js';
 import { injectAfterInvocation, injectTurnLevelRules } from '../prompt/user.js';
 import { AGENT_NAMING_MIN_RUNNER, atLeastVersion } from '../runners/device-cap.js';
 import { ensureAgentSessionForJob } from './agent-session-link.js';
+import { SKILL_MAINTENANCE_LABEL, withSkillMaintenanceCarveout } from './job-policy.js';
 import { loadPriorAttempts, renderPriorAttemptsBlock } from './prior-attempts.js';
 import { persistPromptSnapshot } from './prompt-snapshot.js';
 import { resolveJobMcpServers } from './resolve-job-mcp-servers.js';
 import { finalizeResumeForDevice, resolveResumePolicy } from './resume-policy.js';
-import {
-  applySkillMaintenanceCarveout,
-  resolveStageOverrides,
-  SKILL_MAINTENANCE_LABEL,
-  type StageOverrides,
-} from './stage-overrides.js';
 
 /**
  * The runner row that will actually host this job, refused by name when absent.
@@ -66,48 +62,16 @@ export interface PreparedJob {
   runnerId: string;
   runnerType: string;
   attempts: number;
-  sessionResidencySeconds?: number;
-}
-
-/**
- * How long a resident session may sit idle. The process model is no longer sent
- * with it: every job runs duplex, and ISS-941 dropped the constant that said so.
- */
-async function sessionSettingsOf(projectId: string): Promise<{
-  agentConfig: unknown;
-  settings: { sessionResidencySeconds?: number };
-}> {
-  const [row] = await db
-    .select({ agentConfig: projects.agentConfig })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  const cfg = (row?.agentConfig ?? {}) as {
-    pipelineConfig?: { sessionResidencySeconds?: unknown };
+  /** The tool patterns the job's pane is started without, from its policy state's profile. */
+  deniedTools: string[];
+  /** Which policy revision and state decided `model` and `deniedTools`, and how the state was chosen. */
+  policy: {
+    revision: number;
+    status: string;
+    from: PolicyStateSource;
+    profile: string;
+    qa: DispatchState['qa'];
   };
-  const secs = cfg.pipelineConfig?.sessionResidencySeconds;
-  return {
-    agentConfig: row?.agentConfig ?? null,
-    settings: {
-      ...(typeof secs === 'number' && secs > 0 ? { sessionResidencySeconds: secs } : {}),
-    },
-  };
-}
-
-/**
- * Flatten stage overrides into the payload shape a runner consumes. Null
- * fields are skipped so a job with no stage stamped emits an unchanged
- * payload.
- */
-function buildOverridesPayload(o: StageOverrides): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  if (o.model !== null) out.model = o.model;
-  if (o.allowedTools !== null) out.allowedTools = o.allowedTools.join(',');
-  if (o.disallowedTools !== null) out.disallowedTools = o.disallowedTools.join(',');
-  if (o.permissionMode !== null) out.permissionMode = o.permissionMode;
-  if (o.timeoutSeconds !== null) out.timeoutSeconds = o.timeoutSeconds;
-  if (o.mcpServers !== null) out.mcpServersOverride = o.mcpServers;
-  return out;
 }
 
 async function loadRepoPath(projectId: string): Promise<string | null> {
@@ -124,13 +88,13 @@ async function loadRepoPath(projectId: string): Promise<string | null> {
 
 /**
  * Give a `code`/`fix` job on a skill-maintenance issue its skill-write tools
- * back. Best-effort: an absent label leaves the overrides untouched.
+ * back. Best-effort: an absent label leaves the deny list untouched.
  */
 async function applyCarveout(
   job: typeof jobs.$inferSelect,
-  overrides: StageOverrides,
-): Promise<void> {
-  if (!job.issueId || (job.type !== 'code' && job.type !== 'fix')) return;
+  deniedTools: string[],
+): Promise<string[]> {
+  if (!job.issueId || (job.type !== 'code' && job.type !== 'fix')) return deniedTools;
   try {
     const [labelRow] = await db
       .select({ id: labels.id })
@@ -146,21 +110,28 @@ async function applyCarveout(
         .limit(1);
       hasSkillMaintenanceLabel = Boolean(issueLabelRow);
     }
-    const removed = applySkillMaintenanceCarveout(overrides, {
+    const carved = withSkillMaintenanceCarveout(deniedTools, {
       hasSkillMaintenanceLabel,
       jobType: job.type,
     });
-    if (removed > 0) {
+    if (carved.length < deniedTools.length) {
       logger.info(
-        { jobId: job.id, issueId: job.issueId, jobType: job.type, removed },
+        {
+          jobId: job.id,
+          issueId: job.issueId,
+          jobType: job.type,
+          removed: deniedTools.length - carved.length,
+        },
         'prepare: skill-maintenance carve-out unblocked skill-write tools',
       );
     }
+    return carved;
   } catch (err) {
     logger.warn(
       { err, jobId: job.id, issueId: job.issueId, type: job.type },
       'prepare: skill-maintenance label lookup failed, preparing without carve-out',
     );
+    return deniedTools;
   }
 }
 
@@ -185,29 +156,24 @@ export async function canNameItsAgent(deviceId: string): Promise<boolean> {
 export async function prepareClaimedJob(args: {
   jobId: string;
   deviceId: string;
+  /** The policy state the claim resolved before it held the job (`devices/claim.ts`). */
+  policy: DispatchState;
 }): Promise<PreparedJob> {
   const [job] = await db.select().from(jobs).where(eq(jobs.id, args.jobId)).limit(1);
   if (!job) throw new Error(`prepare: job ${args.jobId} not found`);
 
   const runner = await resolveRunnerForDevice(job.projectId, args.deviceId);
 
-  const overrides = await resolveStageOverrides(job.projectId, job.payload);
-  const proposedResume = await resolveResumePolicy({ job, overrides, agentConfig: undefined });
+  const proposedResume = await resolveResumePolicy({ job });
   const resume = finalizeResumeForDevice(proposedResume, args.deviceId);
 
-  const stageOverrides = { ...overrides };
-  await applyCarveout(job, stageOverrides);
+  const deniedTools = await applyCarveout(job, args.policy.deniedTools);
 
-  const resolvedMcp = await resolveJobMcpServers({
-    projectId: job.projectId,
-    stageMcpServers: stageOverrides.mcpServers,
-    stageDeclaredNames: stageOverrides.declaredNames,
-  });
-  stageOverrides.mcpServers = resolvedMcp.mcpServers;
+  const resolvedMcp = await resolveJobMcpServers({ projectId: job.projectId });
 
   const { content: systemPrompt, blocks } = await buildPipelinePreambleStructured(job.projectId, {
     step: job.type,
-    override: stageOverrides.systemPrompt,
+    policy: { ...args.policy, deniedTools },
     mcpDiagnostics: { resolved: resolvedMcp.resolvedNames, dropped: resolvedMcp.droppedNames },
   });
 
@@ -228,11 +194,10 @@ export async function prepareClaimedJob(args: {
         )
       : resumedPromptString;
 
-  const model = stageOverrides.model ?? job.modelTier ?? 'default';
+  const model = args.policy.model;
   const repoPath = await loadRepoPath(job.projectId);
 
-  const [project, issueRow, issuePrefix] = await Promise.all([
-    sessionSettingsOf(job.projectId),
+  const [issueRow, issuePrefix] = await Promise.all([
     job.issueId
       ? db.select({ issSeq: issues.issSeq }).from(issues).where(eq(issues.id, job.issueId)).limit(1)
       : Promise.resolve([]),
@@ -266,7 +231,6 @@ export async function prepareClaimedJob(args: {
     promptString,
     payload: {
       ...((job.payload ?? {}) as Record<string, unknown>),
-      ...buildOverridesPayload(stageOverrides),
       ...(issueKey ? { issueKey } : {}),
       ...(resume.priorClaudeSessionId ? { claudeSessionId: resume.priorClaudeSessionId } : {}),
     },
@@ -276,6 +240,13 @@ export async function prepareClaimedJob(args: {
     runnerId: runner.id,
     runnerType: runner.type,
     attempts: job.attempts,
-    ...project.settings,
+    deniedTools,
+    policy: {
+      revision: args.policy.revision,
+      status: args.policy.status,
+      from: args.policy.from,
+      profile: args.policy.profile,
+      qa: args.policy.qa,
+    },
   };
 }
