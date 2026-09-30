@@ -8,7 +8,7 @@ import { and, eq, inArray, type SQL, type SQLWrapper, sql } from 'drizzle-orm';
 import type { IssueStatus } from '../db/schema.js';
 import { agentQuestions } from '../db/schema-questions.js';
 import type { IssueDependencyExecutor } from '../issues/dependency-executor.js';
-import { ISSUE_TERMINAL_STATUSES } from '../issues/status-sets.js';
+import { ISSUE_STATUS_LABELS, ISSUE_TERMINAL_STATUSES } from '../issues/status-sets.js';
 
 type Executor = IssueDependencyExecutor;
 
@@ -121,7 +121,7 @@ export async function settleOpenQuestions(
     .update(agentQuestions)
     .set({
       status: 'void',
-      voidReason: `the issue went to ${args.toStatus} with this question open: ${reason}`,
+      voidReason: `the issue went to ${ISSUE_STATUS_LABELS[args.toStatus]} with this question open: ${reason}`,
       endedBy: args.by,
       endedReason: terminal ? QUESTION_ENDED_WITH_ISSUE : QUESTION_NOT_NEEDED,
       updatedAt: new Date(),

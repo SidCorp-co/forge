@@ -98,12 +98,21 @@ const rowOf = async (id: string) =>
     )
   )[0] as { status: string; waitingKind: string | null };
 
-/** A status move as the outbox records it, `minutesAgo` before now. */
+/** A status move as the transition records it inside its own write, `minutesAgo` before now. */
 async function moved(issueId: string, from: string, to: string, minutesAgo: number) {
+  await harness.db.execute(sql`
+    INSERT INTO kernel_transitions (entity, entity_id, from_status, to_status, actor_type, actor_id, source, created_at)
+    VALUES ('issue', ${issueId}, ${from}, ${to}, 'user', ${ownerId}, 'issues',
+            now() - ${`${minutesAgo} minutes`}::interval)
+  `);
+}
+
+/** A status move as the bus subscriber's history row records it, `secondsAgo` before now — negative is later. */
+async function historyRow(issueId: string, from: string, to: string, secondsAgo: number) {
   await harness.db.execute(sql`
     INSERT INTO activity_log (issue_id, actor_type, actor_id, action, payload, created_at)
     VALUES (${issueId}, 'user', ${ownerId}, 'issue.statusChanged',
-            ${JSON.stringify({ from, to })}::jsonb, now() - ${`${minutesAgo} minutes`}::interval)
+            ${JSON.stringify({ from, to })}::jsonb, now() - ${`${secondsAgo} seconds`}::interval)
   `);
 }
 
@@ -212,10 +221,90 @@ describe('GET /api/issues/:id/park reads the resume rung off the park record', (
     expect(body.park?.record).toBeNull();
   });
 
+  it('pairs the record whatever time the history row lands at (judge j1, scratch ISS-5)', async () => {
+    const issueId = await insertIssue('on_hold');
+    await transition.transitionIssueStatus(await load(issueId), 'in_progress', person());
+    const recordId = await commented(issueId, parkRecord('question', 'in_progress'), 0);
+    await transition.transitionIssueStatus(await load(issueId), 'needs_info', person(), {
+      reason: 'the export order is not stated',
+      transitionReason: 'the export order is not stated',
+    });
+    await historyRow(issueId, 'on_hold', 'in_progress', -10);
+    await historyRow(issueId, 'in_progress', 'needs_info', -10);
+    const { body } = await getPark(issueId);
+    expect(body.park?.resume).toEqual({ at: 'in_progress', recordId });
+  });
+
+  it('does not pair a record from an earlier park while the boundary’s history row is still unwritten', async () => {
+    const issueId = await insertIssue('on_hold');
+    await commented(issueId, parkRecord('screen-review', 'testing'), 1);
+    await transition.transitionIssueStatus(await load(issueId), 'in_progress', person());
+    await transition.transitionIssueStatus(await load(issueId), 'needs_info', person(), {
+      reason: 'stopped again',
+      transitionReason: 'stopped again',
+    });
+    const { body } = await getPark(issueId);
+    expect(body.park).toMatchObject({ resume: { at: null }, record: null });
+  });
+
+  it('offers no resume status, and says why, where the park began before moves were recorded in their own write', async () => {
+    const issueId = await insertIssue('needs_info');
+    await historyRow(issueId, 'open', 'in_progress', 3600);
+    await commented(issueId, parkRecord('question', 'in_progress'), 30);
+    await historyRow(issueId, 'in_progress', 'needs_info', 1200);
+    const { body } = await getPark(issueId);
+    expect(body.park).toMatchObject({ shape: 'park', resume: { at: null }, record: null });
+    expect(body.park?.resume).toHaveProperty(
+      'why',
+      expect.stringContaining('before Forge recorded'),
+    );
+  });
+
+  it('refuses the same where only the move before the park predates that record', async () => {
+    const issueId = await insertIssue('needs_info');
+    await historyRow(issueId, 'open', 'in_progress', 3600);
+    await commented(issueId, parkRecord('question', 'in_progress'), 30);
+    await moved(issueId, 'in_progress', 'needs_info', 20);
+    const { body } = await getPark(issueId);
+    expect(body.park).toMatchObject({ resume: { at: null }, record: null });
+  });
+
+  it('pairs any record where the issue went into its park without an earlier move', async () => {
+    const issueId = await insertIssue('needs_info');
+    const recordId = await commented(issueId, parkRecord('question', 'open'), 30);
+    await moved(issueId, 'open', 'needs_info', 20);
+    const { body } = await getPark(issueId);
+    expect(body.park?.resume).toEqual({ at: 'open', recordId });
+  });
+
   it('answers null for an issue nobody owes anything, and 404 for none at all', async () => {
     const issueId = await insertIssue('in_progress');
     expect((await getPark(issueId)).body.park).toBeNull();
     expect((await getPark(randomUUID())).status).toBe(404);
+  });
+});
+
+describe('the answer a question asked in the thread has', () => {
+  it('is a person’s comment later than the park record, and never the move’s announcement', async () => {
+    const issueId = await insertIssue('on_hold');
+    await transition.transitionIssueStatus(await load(issueId), 'in_progress', person());
+    await commented(issueId, parkRecord('question', 'in_progress'), 0);
+    await transition.transitionIssueStatus(await load(issueId), 'needs_info', person(), {
+      reason: 'should the export keep the legacy column order?',
+      transitionReason: 'should the export keep the legacy column order?',
+    });
+    expect((await getPark(issueId)).body.park?.answer).toBeNull();
+    const [reply] = (
+      await harness.db.execute(sql`
+        INSERT INTO comments (id, issue_id, author_id, body, created_at)
+        VALUES (${randomUUID()}, ${issueId}, ${ownerId}, 'keep the legacy order', now() + interval '1 second')
+        RETURNING id
+      `)
+    ).map((r) => String((r as { id: unknown }).id));
+    expect((await getPark(issueId)).body.park?.answer).toMatchObject({
+      commentId: reply,
+      text: 'keep the legacy order',
+    });
   });
 });
 

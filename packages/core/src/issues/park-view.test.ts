@@ -198,3 +198,86 @@ describe('readPark — who it exists for', () => {
     expect(park?.owes).toBe('resource');
   });
 });
+
+describe('readPark — a park whose history does not reach back', () => {
+  it('offers no resume status and pairs no record, saying why', () => {
+    const park = readPark({
+      status: 'needs_info',
+      waitingKind: null,
+      moves: [{ to: 'needs_info', at: at(20), reason: 'asked' }],
+      historyReaches: false,
+      comments: [{ id: 'c1', body: parkBody('question', 'in_progress'), createdAt: at(21) }],
+      openHumanQuestionIds: [],
+    });
+    expect(park).toMatchObject({ shape: 'park', record: null, readings: [], answer: null });
+    expect(park?.resume.at).toBeNull();
+    expect(park?.resume).toHaveProperty('why', expect.stringContaining('before Forge recorded'));
+    expect(park?.since).toBe(at(20).toISOString());
+  });
+});
+
+describe('readPark — the answer a person gave in the thread', () => {
+  const base = {
+    status: 'needs_info' as const,
+    waitingKind: null,
+    moves: [{ to: 'needs_info', at: at(20), reason: 'should the export keep the order?' }],
+    comments: [{ id: 'rec', body: parkBody('question', 'in_progress'), createdAt: at(19) }],
+    openHumanQuestionIds: [],
+  };
+  const answerOf = (
+    replies: Array<{ id: string; body: string; minute: number; byDevice?: boolean }>,
+  ) =>
+    readPark({
+      ...base,
+      replies: replies.map((r) => ({
+        id: r.id,
+        body: r.body,
+        createdAt: at(r.minute),
+        byDevice: r.byDevice ?? false,
+      })),
+    })?.answer;
+
+  it('is the newest comment a person posted after the park record', () => {
+    expect(
+      answerOf([
+        { id: 'a1', body: 'keep it', minute: 22 },
+        { id: 'a2', body: 'no, change it', minute: 25 },
+      ]),
+    ).toEqual({ commentId: 'a2', postedAt: at(25).toISOString(), text: 'no, change it' });
+  });
+
+  it('is not a comment from before the record, a device’s, the move’s announcement or a typed record', () => {
+    expect(
+      answerOf([
+        { id: 'before', body: 'early word', minute: 18 },
+        { id: 'device', body: 'a run said this', minute: 22, byDevice: true },
+        { id: 'ann', body: '❓ **Needs info** — moved from `in_progress`\n\nwhy', minute: 20 },
+        { id: 'rec2', body: questionBody('A -> x', 'B -> y'), minute: 23 },
+      ]),
+    ).toBeNull();
+  });
+
+  it('is an answer record relaying one, whoever posted it', () => {
+    const relayed = [
+      '## Answer',
+      '',
+      '```forge-record',
+      'said: keep it',
+      '```',
+      '',
+      '`forge-record: answer · contract 1`',
+    ].join('\n');
+    expect(answerOf([{ id: 'rel', body: relayed, minute: 24, byDevice: true }])?.commentId).toBe(
+      'rel',
+    );
+  });
+
+  it('is null where no park record was posted', () => {
+    const park = readPark({
+      ...base,
+      comments: [],
+      replies: [{ id: 'a1', body: 'keep it', createdAt: at(22) }],
+    });
+    expect(park?.answer).toBeNull();
+  });
+});
