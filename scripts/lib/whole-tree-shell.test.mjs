@@ -267,6 +267,23 @@ describe('node', () => {
 // --- fork ------------------------------------------------------------------------------------------
 
 describe('fork', () => {
+  it('admits the stdio a fork routes its descriptors through, as it does for a spawn of this Node', () => {
+    const call = (fork, opts) =>
+      subprocessListing({
+        command: process.execPath,
+        args: [join(CORE, 'worker.js')],
+        cwd: CORE,
+        root: ROOT,
+        env: BASE_ENV,
+        fork,
+        opts,
+        base,
+      });
+    const stdio = ['pipe', 'pipe', 'pipe', 'ipc'];
+    expect(listsRoot(call(false, { stdio }))).toBe(false);
+    expect(listsRoot(call(true, { stdio, execArgv: [], serialization: 'advanced' }))).toBe(false);
+    expect(listsRoot(call(true, { stdio, uid: 0 }))).toBe(true);
+  });
   it('reads this Node with execArgv and module, and refuses a fork of another program', () => {
     expect(
       listsRoot(

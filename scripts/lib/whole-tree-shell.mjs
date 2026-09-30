@@ -90,7 +90,7 @@ const ALLOWED_OPTIONS = new Set([
   ...['windowsHide', 'signal', 'detached'],
 ]);
 /** Options only a `fork` may add. */
-const FORK_OPTIONS = new Set(['execPath', 'execArgv', 'silent', 'serialization', 'cwd']);
+const FORK_OPTIONS = new Set(['execPath', 'execArgv', 'silent', 'serialization', 'cwd', 'stdio']);
 
 /** The shells Node's `shell: true`/`exec` may resolve to: only the dash Node starts as `/bin/sh`. */
 const DASH_PATHS = new Set(['/bin/dash', '/usr/bin/dash']);

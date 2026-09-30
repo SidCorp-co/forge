@@ -1,3 +1,6 @@
+// @gate-input whole-tree — the verify window drives git and `sh -c` gate commands in its fixture repositories
+// (status, reset --hard, clean, worktree list, grep -l -z, rm --cached), which the root-walk guard's closed grammar
+// does not admit, so it counts as reading the whole tree.
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
