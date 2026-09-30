@@ -1377,8 +1377,12 @@ mod tests {
     fn a_frame_naming_another_session_is_served_as_the_token_owner() {
         let dir = crate::test_scratch::Scratch::new("ct");
         let tokens = SessionTokens::at(dir.join("control-tokens.json"));
-        let a = tokens.mint("sess-a", "proj-a", "pane-a").unwrap();
-        tokens.mint("sess-b", "proj-b", "pane-b").unwrap();
+        let a = tokens
+            .mint("sess-a", "proj-a", "proj-a-slug", "pane-a")
+            .unwrap();
+        tokens
+            .mint("sess-b", "proj-b", "proj-b-slug", "pane-b")
+            .unwrap();
 
         let frame =
             format!(r#"{{"op":"agent_event","token":"{a}","sessionId":"sess-b","event":"Stop"}}"#);
@@ -1504,7 +1508,9 @@ mod tests {
     ) -> (Arc<Control>, String, crate::test_scratch::Scratch) {
         let dir = crate::test_scratch::Scratch::new("ct-decl");
         let tokens = SessionTokens::at(dir.join("control-tokens.json"));
-        let token = tokens.mint(session_id, project_id, "pane-1").unwrap();
+        let token = tokens
+            .mint(session_id, project_id, "slug", "pane-1")
+            .unwrap();
         let masters = Arc::new(crate::daemon::master::Masters::new());
         masters.remember_for_test(project_id, session_id, "pane-1");
         (
@@ -1597,7 +1603,7 @@ mod tests {
         let path = dir.join("control-tokens.json");
         let token = match shape {
             "record" => SessionTokens::at(path.clone())
-                .mint(PLACED, "proj-1", PANE)
+                .mint(PLACED, "proj-1", "proj-1-slug", PANE)
                 .unwrap(),
             _ => {
                 std::fs::write(&path, format!(r#"{{"tok-before-the-record":"{PLACED}"}}"#))
@@ -1710,7 +1716,7 @@ mod tests {
         let (ctl, _master, _dir) = a_pane_core_re_minted("record");
         let job = ctl
             .tokens
-            .mint("sess-job", "proj-1", "forge-job-42")
+            .mint("sess-job", "proj-1", "proj-1-slug", "forge-job-42")
             .unwrap();
         let reply = served(&ctl, declare_frame(&job, "proj-1", "ISS-9"));
         assert!(
@@ -3046,7 +3052,9 @@ mod tests {
         fn a_frame_carrying_no_known_token_names_nobody() {
             let dir = crate::test_scratch::Scratch::new("ct");
             let tokens = SessionTokens::at(dir.join("control-tokens.json"));
-            tokens.mint("sess-a", "proj-a", "pane-a").unwrap();
+            tokens
+                .mint("sess-a", "proj-a", "proj-a-slug", "pane-a")
+                .unwrap();
             assert_eq!(tokens.session_for("forged"), None);
         }
         #[test]

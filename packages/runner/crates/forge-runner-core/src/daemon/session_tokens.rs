@@ -50,6 +50,9 @@ pub struct SessionTokens {
     /// The sessions whose pre-record capability this process has already
     /// named, so a pane sending a frame per hook is named once.
     legacy_said: Mutex<HashSet<String>>,
+    /// The failure to read the map this process last logged, so a broken file
+    /// is said once per failure rather than once per frame.
+    unreadable_said: Mutex<Option<String>>,
 }
 
 /// What a capability was minted for, as the daemon wrote it at placement.
@@ -58,6 +61,10 @@ pub struct Minted {
     /// The core `agent_sessions` row the pane was placed under.
     pub session: String,
     pub project: String,
+    /// The project's slug at placement: what an operator types to act on the
+    /// pane. Absent from a record 0.17.72 wrote, which carried none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub slug: Option<String>,
     /// The tmux session the pane was started as.
     pub pane: String,
 }
@@ -67,7 +74,7 @@ pub struct Minted {
 #[serde(untagged)]
 enum Entry {
     Minted(Minted),
-    /// Written before ISS-1316: a session id and nothing else.
+    /// Written by forge-runner before 0.17.72: a session id and nothing else.
     Legacy(String),
 }
 
@@ -103,7 +110,7 @@ impl Holder {
     }
 }
 
-const SHAPES: &str = "each entry is `\"<token>\": {\"session\": \"<id>\", \"project\": \"<id>\", \"pane\": \"<tmux session>\"}`, or, written before ISS-1316, `\"<token>\": \"<session id>\"`";
+const SHAPES: &str = "each entry is `\"<token>\": {\"session\": \"<id>\", \"project\": \"<id>\", \"slug\": \"<slug>\", \"pane\": \"<tmux session>\"}`, `slug` absent from one 0.17.72 wrote, or, written by forge-runner before 0.17.72, `\"<token>\": \"<session id>\"`";
 
 pub fn default_path() -> Option<PathBuf> {
     crate::daemon::control::socket_path().map(|s| s.with_file_name("control-tokens.json"))
@@ -148,6 +155,7 @@ impl SessionTokens {
         Self {
             path,
             legacy_said: Mutex::new(HashSet::new()),
+            unreadable_said: Mutex::new(None),
         }
     }
 
@@ -174,9 +182,15 @@ impl SessionTokens {
         let blank = map
             .values()
             .filter(|e| match e {
-                Entry::Minted(m) => [&m.session, &m.project, &m.pane]
-                    .iter()
-                    .any(|v| v.trim().is_empty()),
+                Entry::Minted(m) => [
+                    Some(&m.session),
+                    Some(&m.project),
+                    m.slug.as_ref(),
+                    Some(&m.pane),
+                ]
+                .iter()
+                .flatten()
+                .any(|v| v.trim().is_empty()),
                 Entry::Legacy(s) => s.trim().is_empty(),
             })
             .count();
@@ -214,13 +228,13 @@ impl SessionTokens {
     }
 
     /// Mint a capability for a pane about to be placed as `pane`, serving
-    /// `project` under `session`.
+    /// `project` (known to an operator as `slug`) under `session`.
     ///
     /// Every earlier entry for the same session, and every earlier entry for
     /// the same project and pane, goes: a pane is placed under a name only
     /// where no pane of that name is running, so the entry it replaces was for
     /// a pane that is gone.
-    pub fn mint(&self, session: &str, project: &str, pane: &str) -> Result<String> {
+    pub fn mint(&self, session: &str, project: &str, slug: &str, pane: &str) -> Result<String> {
         let mut map = self.load()?;
         map.retain(|_, e| e.session() != session && !e.is_pane(project, pane));
         let token = format!(
@@ -233,6 +247,7 @@ impl SessionTokens {
             Entry::Minted(Minted {
                 session: session.to_string(),
                 project: project.to_string(),
+                slug: Some(slug.to_string()),
                 pane: pane.to_string(),
             }),
         );
@@ -244,12 +259,22 @@ impl SessionTokens {
     /// is that token or the map cannot be read.
     pub fn resolve(&self, token: &str) -> Option<Holder> {
         let map = match self.load() {
-            Ok(map) => map,
+            Ok(map) => {
+                if self.unreadable_said_now(None) {
+                    tracing::info!(
+                        "[control] the capability map at {} reads again — frames are resolved against it from here on",
+                        self.path.display()
+                    );
+                }
+                map
+            }
             Err(e) => {
-                tracing::error!(
-                    "[control] the capability map at {} could not be read ({e}) — every frame this box receives is refused as `unknown_token` until it can be, and no master running here can declare a run",
-                    self.path.display()
-                );
+                if self.unreadable_said_now(Some(e.to_string())) {
+                    tracing::error!(
+                        "[control] the capability map at {} could not be read ({e}) — every frame this box receives is refused as `unknown_token` until it can be, and no master running here can declare a run. Said once for this failure; a different one, or the map reading again, is said when it happens",
+                        self.path.display()
+                    );
+                }
                 return None;
             }
         };
@@ -263,7 +288,7 @@ impl SessionTokens {
                     .unwrap_or(true);
                 if first {
                     tracing::warn!(
-                        "[control] a frame for session {session} carries a capability minted before ISS-1316: its entry in {} names that session and no project or pane, so it is resolved as it always was and loses its authority when core replaces that session's row. The pane holding it keeps working until then; a pane placed from now on carries a record instead",
+                        "[control] a frame for session {session} carries a capability minted by forge-runner before 0.17.72: its entry in {} names that session and no project or pane, so it is resolved as it always was and loses its authority when core replaces that session's row. The pane holding it keeps working until then; a pane placed from now on carries a record instead",
                         self.path.display()
                     );
                 }
@@ -272,6 +297,21 @@ impl SessionTokens {
                 })
             }
         }
+    }
+
+    /// Record `now` as the map's reading, `None` for one that read, and say
+    /// whether it differs from the last one recorded: what `resolve` logs on.
+    /// A poisoned lock answers `true` for a failure and `false` for a read,
+    /// so a failure is over-said rather than lost.
+    fn unreadable_said_now(&self, now: Option<String>) -> bool {
+        let Ok(mut last) = self.unreadable_said.lock() else {
+            return now.is_some();
+        };
+        if *last == now {
+            return false;
+        }
+        *last = now;
+        true
     }
 
     /// The capability this map holds for `session`, as a test that knows a
@@ -410,8 +450,12 @@ mod tests {
     fn a_token_names_exactly_one_session() {
         let dir = crate::test_scratch::Scratch::new("ft");
         let store = SessionTokens::at(dir.join("control-tokens.json"));
-        let a = store.mint("sess-a", "proj-a", "sess-a-pane").unwrap();
-        let b = store.mint("sess-b", "proj-a", "sess-b-pane").unwrap();
+        let a = store
+            .mint("sess-a", "proj-a", "proj-a-slug", "sess-a-pane")
+            .unwrap();
+        let b = store
+            .mint("sess-b", "proj-a", "proj-a-slug", "sess-b-pane")
+            .unwrap();
         assert_ne!(a, b);
         assert_eq!(store.session_for(&a), Some("sess-a".to_string()));
         assert_eq!(store.session_for(&b), Some("sess-b".to_string()));
@@ -423,7 +467,7 @@ mod tests {
         let dir = crate::test_scratch::Scratch::new("ft");
         let path = dir.join("control-tokens.json");
         let token = SessionTokens::at(path.clone())
-            .mint("sess-a", "proj-a", "sess-a-pane")
+            .mint("sess-a", "proj-a", "proj-a-slug", "sess-a-pane")
             .unwrap();
         assert_eq!(
             SessionTokens::at(path).session_for(&token),
@@ -436,7 +480,9 @@ mod tests {
     fn retiring_a_session_retires_its_token() {
         let dir = crate::test_scratch::Scratch::new("ft");
         let store = SessionTokens::at(dir.join("control-tokens.json"));
-        let a = store.mint("sess-a", "proj-a", "sess-a-pane").unwrap();
+        let a = store
+            .mint("sess-a", "proj-a", "proj-a-slug", "sess-a-pane")
+            .unwrap();
         store.retire("sess-a");
         assert_eq!(store.session_for(&a), None);
     }
@@ -445,8 +491,12 @@ mod tests {
     fn re_minting_replaces_the_previous_token_for_that_session() {
         let dir = crate::test_scratch::Scratch::new("ft");
         let store = SessionTokens::at(dir.join("control-tokens.json"));
-        let first = store.mint("sess-a", "proj-a", "sess-a-pane").unwrap();
-        let second = store.mint("sess-a", "proj-a", "sess-a-pane").unwrap();
+        let first = store
+            .mint("sess-a", "proj-a", "proj-a-slug", "sess-a-pane")
+            .unwrap();
+        let second = store
+            .mint("sess-a", "proj-a", "proj-a-slug", "sess-a-pane")
+            .unwrap();
         assert_eq!(store.session_for(&second), Some("sess-a".to_string()));
         assert_eq!(
             store.session_for(&first),
@@ -487,9 +537,15 @@ mod tests {
     fn a_mint_against_a_torn_map_refuses_rather_than_writing_over_what_it_could_not_read() {
         let dir = TempDir::new();
         let store = SessionTokens::at(dir.map());
-        let a = store.mint("sess-a", "proj-a", "sess-a-pane").unwrap();
-        store.mint("sess-b", "proj-a", "sess-b-pane").unwrap();
-        store.mint("sess-c", "proj-a", "sess-c-pane").unwrap();
+        let a = store
+            .mint("sess-a", "proj-a", "proj-a-slug", "sess-a-pane")
+            .unwrap();
+        store
+            .mint("sess-b", "proj-a", "proj-a-slug", "sess-b-pane")
+            .unwrap();
+        store
+            .mint("sess-c", "proj-a", "proj-a-slug", "sess-c-pane")
+            .unwrap();
 
         // What a reader sees mid-`fs::write`: the leading half of a real map.
         let whole = std::fs::read_to_string(dir.map()).unwrap();
@@ -497,7 +553,9 @@ mod tests {
         std::fs::write(dir.map(), &torn).unwrap();
 
         assert!(
-            store.mint("sess-d", "proj-a", "sess-d-pane").is_err(),
+            store
+                .mint("sess-d", "proj-a", "proj-a-slug", "sess-d-pane")
+                .is_err(),
             "a mint that could not read the map must not write one"
         );
         assert_eq!(
@@ -520,8 +578,12 @@ mod tests {
     fn a_retire_that_cannot_read_the_map_says_so_and_writes_nothing() {
         let dir = TempDir::new();
         let store = SessionTokens::at(dir.map());
-        store.mint("sess-a", "proj-a", "sess-a-pane").unwrap();
-        store.mint("sess-b", "proj-a", "sess-b-pane").unwrap();
+        store
+            .mint("sess-a", "proj-a", "proj-a-slug", "sess-a-pane")
+            .unwrap();
+        store
+            .mint("sess-b", "proj-a", "proj-a-slug", "sess-b-pane")
+            .unwrap();
 
         let whole = std::fs::read_to_string(dir.map()).unwrap();
         let torn = whole[..whole.len() / 2].to_string();
@@ -548,8 +610,13 @@ mod tests {
         let path = dir.map();
         let seed = SessionTokens::at(path.clone());
         for i in 0..40 {
-            seed.mint(&format!("sess-{i}"), "proj-a", &format!("pane-{i}"))
-                .unwrap();
+            seed.mint(
+                &format!("sess-{i}"),
+                "proj-a",
+                "proj-a-slug",
+                &format!("pane-{i}"),
+            )
+            .unwrap();
         }
 
         let stop = Arc::new(AtomicBool::new(false));
@@ -565,6 +632,7 @@ mod tests {
                     .mint(
                         &format!("churn-{}", n % 8),
                         "proj-a",
+                        "proj-a-slug",
                         &format!("churn-pane-{}", n % 8),
                     )
                     .expect("a writer must be able to read back the map it is replacing");
@@ -597,13 +665,15 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
         let dir = TempDir::new();
         let store = SessionTokens::at(dir.map());
-        let a = store.mint("sess-a", "proj-a", "sess-a-pane").unwrap();
+        let a = store
+            .mint("sess-a", "proj-a", "proj-a-slug", "sess-a-pane")
+            .unwrap();
         let before = std::fs::read_to_string(dir.map()).unwrap();
 
         // The map stays readable; the directory stops accepting new files, so the
         // temp file cannot be created and the rename can never happen.
         std::fs::set_permissions(&dir.0, std::fs::Permissions::from_mode(0o500)).unwrap();
-        let refused = store.mint("sess-b", "proj-a", "sess-b-pane");
+        let refused = store.mint("sess-b", "proj-a", "proj-a-slug", "sess-b-pane");
         std::fs::set_permissions(&dir.0, std::fs::Permissions::from_mode(0o700)).unwrap();
 
         assert!(
@@ -628,8 +698,12 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
         let dir = TempDir::new();
         let store = SessionTokens::at(dir.map());
-        store.mint("sess-a", "proj-a", "sess-a-pane").unwrap();
-        store.mint("sess-b", "proj-a", "sess-b-pane").unwrap();
+        store
+            .mint("sess-a", "proj-a", "proj-a-slug", "sess-a-pane")
+            .unwrap();
+        store
+            .mint("sess-b", "proj-a", "proj-a-slug", "sess-b-pane")
+            .unwrap();
 
         let mode = std::fs::metadata(dir.map()).unwrap().permissions().mode();
         assert_eq!(
@@ -660,21 +734,51 @@ mod tests {
         let dir = TempDir::new();
         let store = SessionTokens::at(dir.map());
         let token = store
-            .mint("sess-a", "proj-a", "forge-master-a")
+            .mint("sess-a", "proj-a", "a", "forge-master-a")
             .expect("mint");
         let written = on_disk(&dir);
         assert_eq!(
             written[&token],
-            serde_json::json!({"session": "sess-a", "project": "proj-a", "pane": "forge-master-a"}),
-            "the record is what a pane was placed to be, written by the daemon at placement (ISS-1316 criterion 1): {written}"
+            serde_json::json!({"session": "sess-a", "project": "proj-a", "slug": "a", "pane": "forge-master-a"}),
+            "the record is what a pane was placed to be, written by the daemon at placement, slug and all (ISS-1316 criteria 1, 20): {written}"
         );
         assert_eq!(
             store.resolve(&token),
             Some(Holder::Minted(Minted {
                 session: "sess-a".into(),
                 project: "proj-a".into(),
+                slug: Some("a".into()),
                 pane: "forge-master-a".into(),
             }))
+        );
+    }
+
+    /// Criterion 24: a record 0.17.72 wrote carries no slug, and reads as the
+    /// record it always was.
+    #[test]
+    fn a_record_written_without_a_slug_still_resolves_to_what_it_was_minted_for() {
+        let dir = TempDir::new();
+        std::fs::write(
+            dir.map(),
+            r#"{"tok":{"session":"sess-a","project":"proj-a","pane":"forge-master-a"}}"#,
+        )
+        .unwrap();
+        let store = SessionTokens::at(dir.map());
+        assert_eq!(
+            store.resolve("tok"),
+            Some(Holder::Minted(Minted {
+                session: "sess-a".into(),
+                project: "proj-a".into(),
+                slug: None,
+                pane: "forge-master-a".into(),
+            }))
+        );
+        assert_eq!(
+            store
+                .minted_for_pane("forge-master-a")
+                .unwrap()
+                .map(|m| m.slug),
+            Some(None)
         );
     }
 
@@ -694,13 +798,93 @@ mod tests {
             assert_eq!(store.session_for("tok-old"), Some("sess-old".to_string()));
         });
         assert!(
-            said.contains("sess-old") && said.contains("before ISS-1316"),
-            "resolving a pre-record capability is said by name (criterion 11): {said}"
+            said.contains("sess-old") && said.contains("before 0.17.72"),
+            "resolving a pre-record capability is said by name, and by the release an operator can \
+             check a box against (criteria 11, 28): {said}"
+        );
+        assert!(
+            !said.contains("ISS-"),
+            "a tracker key means nothing to an operator on another box (criterion 28): {said}"
         );
         assert_eq!(
-            said.matches("before ISS-1316").count(),
+            said.matches("before 0.17.72").count(),
             1,
             "a pane sends a frame per hook, so the line is said once per session and not once per frame: {said}"
+        );
+    }
+
+    /// Criterion 28, on the refusal: the shape a pre-record entry takes is named
+    /// by the release that stopped writing it.
+    #[test]
+    fn the_refusal_of_an_unparseable_map_names_a_release_and_no_tracker_key() {
+        let dir = TempDir::new();
+        std::fs::write(dir.map(), "not a map").unwrap();
+        let why = SessionTokens::at(dir.map())
+            .load()
+            .expect_err("not a map")
+            .to_string();
+        assert!(
+            why.contains("before 0.17.72") && !why.contains("ISS-"),
+            "{why}"
+        );
+    }
+
+    /// Criteria 25-27. A pane sends a frame per hook, so an error per frame is
+    /// a journal flooded for as long as the file stays broken; the operator
+    /// needs the failure, each new one, and the moment it ends.
+    #[test]
+    fn an_unreadable_map_is_logged_once_per_failure_and_once_when_it_reads_again() {
+        let dir = TempDir::new();
+        let store = SessionTokens::at(dir.map());
+        std::fs::write(dir.map(), "not a map").unwrap();
+        let said = logged_while(|| {
+            for _ in 0..5 {
+                assert_eq!(
+                    store.resolve("tok"),
+                    None,
+                    "every frame is still refused (criterion 13)"
+                );
+            }
+        });
+        assert_eq!(
+            said.matches("could not be read").count(),
+            1,
+            "five frames against one failure are one line (criterion 25): {said}"
+        );
+
+        std::fs::write(dir.map(), r#"{"tok":42}"#).unwrap();
+        let said = logged_while(|| {
+            for _ in 0..3 {
+                assert_eq!(store.resolve("tok"), None);
+            }
+        });
+        assert_eq!(
+            said.matches("could not be read").count(),
+            1,
+            "a different failure is news, said once (criterion 26): {said}"
+        );
+
+        std::fs::write(dir.map(), r#"{"tok":"sess-a"}"#).unwrap();
+        let said = logged_while(|| {
+            for _ in 0..3 {
+                assert_eq!(store.session_for("tok"), Some("sess-a".into()));
+            }
+        });
+        assert_eq!(
+            said.matches("reads again").count(),
+            1,
+            "the end of the failure is said, once (criterion 27): {said}"
+        );
+        assert!(!said.contains("could not be read"), "{said}");
+
+        std::fs::write(dir.map(), "not a map").unwrap();
+        let said = logged_while(|| {
+            assert_eq!(store.resolve("tok"), None);
+        });
+        assert_eq!(
+            said.matches("could not be read").count(),
+            1,
+            "a failure that returns after a recovery is news again: {said}"
         );
     }
 
@@ -709,7 +893,9 @@ mod tests {
         let dir = TempDir::new();
         std::fs::write(dir.map(), r#"{"tok-old":"sess-old"}"#).unwrap();
         let store = SessionTokens::at(dir.map());
-        let fresh = store.mint("sess-new", "proj-a", "forge-master-a").unwrap();
+        let fresh = store
+            .mint("sess-new", "proj-a", "proj-a-slug", "forge-master-a")
+            .unwrap();
         assert_eq!(
             on_disk(&dir)["tok-old"],
             serde_json::json!("sess-old"),
@@ -725,6 +911,7 @@ mod tests {
             r#"{"tok":42}"#,
             r#"{"tok":{"session":"sess-a"}}"#,
             r#"{"tok":{"session":"sess-a","project":"proj-a","pane":""}}"#,
+            r#"{"tok":{"session":"sess-a","project":"proj-a","slug":" ","pane":"forge-master-a"}}"#,
             r#"["tok","sess-a"]"#,
         ] {
             let dir = TempDir::new();
@@ -746,7 +933,9 @@ mod tests {
                 "and nothing resolves against it, rather than an empty map answering for it (criterion 13)"
             );
             assert!(
-                store.mint("sess-b", "proj-b", "pane-b").is_err(),
+                store
+                    .mint("sess-b", "proj-b", "proj-b-slug", "pane-b")
+                    .is_err(),
                 "a mint against it refuses"
             );
             assert_eq!(
@@ -767,9 +956,15 @@ mod tests {
     fn minting_for_a_pane_removes_the_earlier_capability_for_that_project_and_pane() {
         let dir = TempDir::new();
         let store = SessionTokens::at(dir.map());
-        let first = store.mint("sess-1", "proj-a", "forge-master-a").unwrap();
-        let other = store.mint("sess-9", "proj-b", "forge-master-b").unwrap();
-        let second = store.mint("sess-2", "proj-a", "forge-master-a").unwrap();
+        let first = store
+            .mint("sess-1", "proj-a", "proj-a-slug", "forge-master-a")
+            .unwrap();
+        let other = store
+            .mint("sess-9", "proj-b", "proj-b-slug", "forge-master-b")
+            .unwrap();
+        let second = store
+            .mint("sess-2", "proj-a", "proj-a-slug", "forge-master-a")
+            .unwrap();
         assert_eq!(
             store.resolve(&first),
             None,
@@ -792,7 +987,9 @@ mod tests {
     fn a_record_answers_for_its_pane_whatever_session_core_has_moved_it_to() {
         let dir = TempDir::new();
         let store = SessionTokens::at(dir.map());
-        store.mint("sess-1", "proj-a", "forge-master-a").unwrap();
+        store
+            .mint("sess-1", "proj-a", "proj-a-slug", "forge-master-a")
+            .unwrap();
         std::fs::write(dir.map(), {
             let mut v = on_disk(&dir);
             v.as_object_mut()

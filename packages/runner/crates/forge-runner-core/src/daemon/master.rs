@@ -1768,7 +1768,10 @@ async fn take_pool_job(
             records: job_records,
         },
         job_panes,
-        &runner.project_id,
+        pool_jobs::ServedProject {
+            id: &runner.project_id,
+            slug: &runner.slug,
+        },
         job_panes.session_id(),
         fallback.as_deref(),
         bound,
@@ -3240,7 +3243,7 @@ async fn ensure_master(
     // The mint is the last refusal before the pane. Every refusal above it
     // leaves no capability behind; one below it has to withdraw what it minted.
     match tokens {
-        Some(store) => match store.mint(&session.session_id, project_id, &name) {
+        Some(store) => match store.mint(&session.session_id, project_id, &resolved.slug, &name) {
             Ok(token) => env.push((session_tokens::TOKEN_ENV.to_string(), token)),
             Err(e) => {
                 say_unplaced(
@@ -8019,7 +8022,9 @@ mod unplaced_tests {
     fn a_capability_minted_for_the_session_this_box_holds_reads_current() {
         let path = temp_map("current");
         let store = session_tokens::SessionTokens::at(path.to_path_buf());
-        store.mint("sess-A", CAP_PROJECT, CAP_PANE).expect("mint");
+        store
+            .mint("sess-A", CAP_PROJECT, "slug", CAP_PANE)
+            .expect("mint");
         assert_eq!(
             capability_of(Some(&store), "sess-A", CAP_PROJECT, CAP_PANE),
             Capability::Current
@@ -8032,7 +8037,7 @@ mod unplaced_tests {
         let path = temp_map("stale");
         let store = session_tokens::SessionTokens::at(path.to_path_buf());
         store
-            .mint("sess-OLD", CAP_PROJECT, "forge-master-another")
+            .mint("sess-OLD", CAP_PROJECT, "slug", "forge-master-another")
             .expect("mint");
         std::fs::write(&path, {
             let mut v: serde_json::Value =
@@ -8058,7 +8063,9 @@ mod unplaced_tests {
     fn a_record_for_this_pane_reads_current_when_core_serves_it_a_new_session() {
         let path = temp_map("moved");
         let store = session_tokens::SessionTokens::at(path.to_path_buf());
-        store.mint("sess-OLD", CAP_PROJECT, CAP_PANE).expect("mint");
+        store
+            .mint("sess-OLD", CAP_PROJECT, "slug", CAP_PANE)
+            .expect("mint");
         assert_eq!(
             capability_of(Some(&store), "sess-NEW", CAP_PROJECT, CAP_PANE),
             Capability::Current,
@@ -9128,7 +9135,7 @@ mod unplaced_tests {
         let path = temp_map("outlived");
         let store = session_tokens::SessionTokens::at(path.to_path_buf());
         store
-            .mint("sess-core-serves-now", CAP_PROJECT, CAP_PANE)
+            .mint("sess-core-serves-now", CAP_PROJECT, "slug", CAP_PANE)
             .expect("mint");
         assert!(
             matches!(
@@ -9196,7 +9203,7 @@ mod unplaced_tests {
         let path = temp_map("withdrawn");
         let store = session_tokens::SessionTokens::at(path.to_path_buf());
         store
-            .mint("sess-core-serves-now", CAP_PROJECT, CAP_PANE)
+            .mint("sess-core-serves-now", CAP_PROJECT, "slug", CAP_PANE)
             .expect("mint");
         assert_eq!(
             withdraw_unplaced_mint(Some(&store), "sess-core-serves-now"),
@@ -9207,7 +9214,7 @@ mod unplaced_tests {
         // The map made unwritable under the entry, which is what `retire`
         // meets when the disk fills between the mint and the rollback.
         store
-            .mint("sess-core-serves-now", CAP_PROJECT, CAP_PANE)
+            .mint("sess-core-serves-now", CAP_PROJECT, "slug", CAP_PANE)
             .expect("re-mint");
         let dir = path.parent().expect("temp dir");
         if !seal(dir) {
@@ -9317,7 +9324,7 @@ mod unplaced_tests {
         let dir = path.parent().expect("temp dir").to_path_buf();
 
         store
-            .mint("sess-core-serves-now", CAP_PROJECT, CAP_PANE)
+            .mint("sess-core-serves-now", CAP_PROJECT, "slug", CAP_PANE)
             .expect("mint");
         if !seal(&dir) {
             eprintln!("this box writes into a directory it has no write bit on — root, most likely — so the map cannot be made unwritable here and the plant is not the plant");
@@ -9388,7 +9395,7 @@ mod unplaced_tests {
         let map2 = temp_map("released");
         let store2 = session_tokens::SessionTokens::at(map2.to_path_buf());
         store2
-            .mint("sess-B", "proj-2", "forge-master-sidpeak")
+            .mint("sess-B", "proj-2", "proj-2-slug", "forge-master-sidpeak")
             .expect("mint");
         deaf_pane_outlived_its_kill(
             &took,
@@ -9564,7 +9571,7 @@ async fn deaf_pane_outlived_its_kill(",
             "a second mint in this function is a second session a pane could be placed against, and this assertion could no longer say which one it read"
         );
         assert!(
-            body.contains("store.mint(&session.session_id, project_id, &name)"),
+            body.contains("store.mint(&session.session_id, project_id, &resolved.slug, &name)"),
             "the capability the replacement carries has to name the session core serves now, which is the one `master_api::register` answered with in this same call"
         );
         assert!(
@@ -10613,7 +10620,7 @@ mod servers_refusal_walk_tests {
         let store = session_tokens::SessionTokens::at(map.to_path_buf());
         let name = terminal::session_name(terminal::MASTER_PREFIX, "walkmoved");
         store
-            .mint("sess-placed-under", "proj-walk", &name)
+            .mint("sess-placed-under", "proj-walk", "proj-walk-slug", &name)
             .expect("the capability the pane was placed with");
         terminal::ensure(
             &name,

@@ -430,9 +430,17 @@ fn gate_in_a_runner_pane(config_home: &Path, pane: &str, payload: &str) -> Optio
 }
 
 fn record_for(config_home: &Path, pane: &str, project: &str) {
-    let map = serde_json::json!({
-        "tok-that-never-arrived": { "session": "sess-e2e", "project": project, "pane": pane }
-    });
+    record_with_slug(config_home, pane, project, None);
+}
+
+/// A capability record as the daemon writes it at placement; `slug: None` is
+/// the shape 0.17.72 wrote, before records carried one.
+fn record_with_slug(config_home: &Path, pane: &str, project: &str, slug: Option<&str>) {
+    let mut record = serde_json::json!({ "session": "sess-e2e", "project": project, "pane": pane });
+    if let Some(slug) = slug {
+        record["slug"] = serde_json::json!(slug);
+    }
+    let map = serde_json::json!({ "tok-that-never-arrived": record });
     std::fs::write(
         config_dir_at(config_home).join("control-tokens.json"),
         map.to_string(),
@@ -445,7 +453,7 @@ fn record_for(config_home: &Path, pane: &str, project: &str) {
 #[test]
 fn a_runner_pane_whose_capability_never_arrived_is_refused_by_name() {
     let scratch = Scratch::new("lostmint");
-    record_for(scratch.path(), "forge-master-e2e", "proj-e2e");
+    record_with_slug(scratch.path(), "forge-master-e2e", "proj-e2e", Some("e2e"));
     let Some(printed) = gate_in_a_runner_pane(scratch.path(), "forge-master-e2e", DISPATCH_PAYLOAD)
     else {
         return;
@@ -455,8 +463,66 @@ fn a_runner_pane_whose_capability_never_arrived_is_refused_by_name() {
     assert_eq!(out["permissionDecision"], "deny", "{printed}");
     let why = out["permissionDecisionReason"].as_str().unwrap_or("");
     assert!(
-        why.contains("forge-master-e2e") && why.contains("proj-e2e"),
-        "the refusal names the pane and its project: {why}"
+        why.contains("forge-master-e2e") && why.contains("project e2e"),
+        "the refusal names the pane, and its project by the slug an operator types (criterion 16): {why}"
+    );
+    assert!(
+        why.contains("`forge-runner master kill e2e`") && !why.contains("<slug>"),
+        "and the command that ends it, with the slug filled in (criterion 21): {why}"
+    );
+}
+
+/// ISS-1316 criterion 22, through the door: a job pane is told the command
+/// that ends it on the runner's own tmux server, every value filled in.
+#[test]
+fn a_job_pane_whose_capability_never_arrived_is_told_the_command_that_ends_it() {
+    let scratch = Scratch::new("lostjob");
+    record_with_slug(scratch.path(), "forge-job-j42", "proj-e2e", Some("e2e"));
+    let Some(printed) = gate_in_a_runner_pane(scratch.path(), "forge-job-j42", DISPATCH_PAYLOAD)
+    else {
+        return;
+    };
+    let v: serde_json::Value = serde_json::from_str(&printed).expect("the gate printed json");
+    let out = &v["hookSpecificOutput"];
+    assert_eq!(out["permissionDecision"], "deny", "{printed}");
+    let why = out["permissionDecisionReason"].as_str().unwrap_or("");
+    let sock = config_dir_at(scratch.path()).join("tmux.sock");
+    assert!(
+        why.contains(&format!(
+            "`tmux -S '{}' kill-session -t '=forge-job-j42'`",
+            sock.display()
+        )),
+        "a job pane has no `master kill`, so it is told the command that reaches the runner's own server: {why}"
+    );
+    assert!(
+        !why.contains('<') && why.contains("project e2e"),
+        "with nothing left for the operator to fill in: {why}"
+    );
+}
+
+/// ISS-1316 criterion 23, through the door: a record 0.17.72 wrote carries no
+/// slug, so the project is named by its id and the command ends the pane itself.
+#[test]
+fn a_pane_whose_record_carries_no_slug_is_still_told_a_command_it_can_run() {
+    let scratch = Scratch::new("lostnoslug");
+    record_for(scratch.path(), "forge-master-e2e", "proj-e2e");
+    let Some(printed) = gate_in_a_runner_pane(scratch.path(), "forge-master-e2e", DISPATCH_PAYLOAD)
+    else {
+        return;
+    };
+    let v: serde_json::Value = serde_json::from_str(&printed).expect("the gate printed json");
+    let out = &v["hookSpecificOutput"];
+    assert_eq!(out["permissionDecision"], "deny", "{printed}");
+    let why = out["permissionDecisionReason"].as_str().unwrap_or("");
+    let sock = config_dir_at(scratch.path()).join("tmux.sock");
+    assert!(
+        why.contains("proj-e2e")
+            && why.contains(&format!(
+                "`tmux -S '{}' kill-session -t '=forge-master-e2e'`",
+                sock.display()
+            ))
+            && !why.contains('<'),
+        "no slug to name, so the project by its id and a command needing none: {why}"
     );
 }
 
