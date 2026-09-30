@@ -230,8 +230,8 @@ mod tests {
         let Read::Record(r) = master_skill::read(&cfg) else {
             panic!("bind recorded nothing")
         };
-        assert_eq!(r.entries["acme"].outcome, Outcome::Written);
-        assert_eq!(r.entries["acme"].point, master_skill::Point::Bind);
+        let lines: Vec<_> = r.of("acme").map(|e| (&e.outcome, e.point)).collect();
+        assert_eq!(lines, [(&Outcome::Written, master_skill::Point::Bind)]);
     }
 
     #[test]

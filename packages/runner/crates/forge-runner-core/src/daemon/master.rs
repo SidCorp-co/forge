@@ -7921,8 +7921,8 @@ mod unplaced_tests {
             panic!("placement recorded nothing")
         };
         assert_eq!(
-            r.entries["acme"].outcome,
-            crate::daemon::master_skill::Outcome::NotIgnored
+            r.of("acme").map(|e| &e.outcome).collect::<Vec<_>>(),
+            [&crate::daemon::master_skill::Outcome::NotIgnored]
         );
 
         let body = ensure_master_body();

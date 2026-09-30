@@ -401,7 +401,12 @@ fn install_master_skills(
             bound.checkouts.len()
         );
     }
-    crate::daemon::master_skill::install_every(&bound.checkouts, &bound.pathless, record_dir);
+    crate::daemon::master_skill::install_every(
+        &bound.checkouts,
+        &bound.pathless,
+        server.is_some(),
+        record_dir,
+    );
 }
 
 /// Every checkout this box is bound to, and every assignment that names none.
@@ -2664,7 +2669,10 @@ mod master_skill_sweep_tests {
         let Read::Record(r) = master_skill::read(&record_dir) else {
             panic!("the start sweep recorded nothing")
         };
-        assert_eq!(r.entries["nowhere"].outcome, Outcome::NoCheckout);
+        assert_eq!(
+            r.of("nowhere").map(|e| &e.outcome).collect::<Vec<_>>(),
+            [&Outcome::NoCheckout]
+        );
 
         let src = production();
         let hooks = src

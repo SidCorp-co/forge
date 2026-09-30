@@ -16,7 +16,6 @@
 //! `forge-runner status` is another process, so every outcome goes into
 //! [`RECORD`] in the runner's config directory, which it reads back.
 
-use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
@@ -201,6 +200,7 @@ fn git(repo: &Path, args: &[&str]) -> Result<std::process::Output, String> {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Entry {
+    pub slug: String,
     pub path: Option<PathBuf>,
     pub at_ms: i64,
     pub point: Point,
@@ -210,8 +210,9 @@ pub struct Entry {
 }
 
 impl Entry {
-    pub fn now(path: Option<&Path>, point: Point, outcome: Outcome) -> Self {
+    pub fn now(slug: &str, path: Option<&Path>, point: Point, outcome: Outcome) -> Self {
         Self {
+            slug: slug.to_string(),
             path: path.map(Path::to_path_buf),
             at_ms: crate::daemon::agent_activity::now_ms(),
             point,
@@ -229,9 +230,17 @@ impl Entry {
 #[serde(rename_all = "camelCase")]
 pub struct Record {
     pub version: u32,
-    /// Keyed by the project's slug, so an assignment that names no checkout
-    /// still has a line of its own.
-    pub entries: BTreeMap<String, Entry>,
+    /// One per project and checkout: a project whose server and local
+    /// bindings name two checkouts has a line for each, and one naming none
+    /// has a line of its own.
+    pub entries: Vec<Entry>,
+}
+
+impl Record {
+    /// Every line recorded for `slug`.
+    pub fn of<'a>(&'a self, slug: &'a str) -> impl Iterator<Item = &'a Entry> + 'a {
+        self.entries.iter().filter(move |e| e.slug == slug)
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -281,16 +290,42 @@ fn parse(path: &Path, raw: &str) -> Read {
 /// How a write merges into what the record already holds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Merge {
-    /// The start sweep is the whole census: a slug it no longer covers is no
-    /// longer bound, and keeping its line would report a checkout nobody writes.
-    Replace,
-    /// One write point, one project: every other line stands.
+    /// The start sweep's whole census, begun at `since_ms`: a line it does not
+    /// cover is a project no longer bound and goes, unless it was recorded
+    /// after the census began — a `bind` the census could not have seen.
+    Census { since_ms: i64 },
+    /// One write point, one checkout: every other line stands.
     Upsert,
+}
+
+fn same_checkout(a: &Entry, b: &Entry) -> bool {
+    a.slug == b.slug && a.path == b.path
+}
+
+fn merged(held: Vec<Entry>, new: Vec<Entry>, merge: Merge) -> Vec<Entry> {
+    let covered = |e: &Entry| {
+        new.iter().any(|n| {
+            same_checkout(n, e)
+                // A project now recorded with a checkout no longer has none.
+                || (e.slug == n.slug && e.path.is_none() && n.path.is_some())
+        })
+    };
+    let mut out: Vec<Entry> = held
+        .into_iter()
+        .filter(|e| !covered(e))
+        .filter(|e| match merge {
+            Merge::Census { since_ms } => e.at_ms >= since_ms,
+            Merge::Upsert => true,
+        })
+        .collect();
+    out.extend(new);
+    out.sort_by(|a, b| (&a.slug, &a.path).cmp(&(&b.slug, &b.path)));
+    out
 }
 
 /// Merge `entries` into the record under an exclusive lock, so a `bind` and
 /// the daemon writing at once cannot drop each other's line.
-pub fn record(dir: &Path, entries: Vec<(String, Entry)>, merge: Merge) -> Result<(), String> {
+pub fn record(dir: &Path, entries: Vec<Entry>, merge: Merge) -> Result<(), String> {
     std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     let lock_path = dir.join(LOCK);
     let lock = std::fs::OpenOptions::new()
@@ -301,21 +336,19 @@ pub fn record(dir: &Path, entries: Vec<(String, Entry)>, merge: Merge) -> Result
         .map_err(|e| format!("{}: {e}", lock_path.display()))?;
     lock.lock()
         .map_err(|e| format!("{}: {e}", lock_path.display()))?;
-    let held = match (merge, read(dir)) {
-        (Merge::Replace, _) | (Merge::Upsert, Read::Absent) => BTreeMap::new(),
-        (Merge::Upsert, Read::Record(r)) => r.entries,
-        (Merge::Upsert, Read::Unreadable(why))
-            if why.contains("which this build does not read") =>
-        {
+    let held = match read(dir) {
+        Read::Absent => Vec::new(),
+        Read::Record(r) => r.entries,
+        Read::Unreadable(why) if why.contains("which this build does not read") => {
             return Err(format!("not overwriting a newer build's record — {why}"));
         }
-        (Merge::Upsert, Read::Unreadable(_)) => BTreeMap::new(),
+        // A torn or foreign file holds no line anyone can read back.
+        Read::Unreadable(_) => Vec::new(),
     };
-    let mut doc = Record {
+    let doc = Record {
         version: RECORD_VERSION,
-        entries: held,
+        entries: merged(held, entries, merge),
     };
-    doc.entries.extend(entries);
     let body = serde_json::to_string_pretty(&doc).map_err(|e| e.to_string())?;
     let path = record_path(dir);
     let tmp = dir.join(format!("{RECORD}.{}.tmp", std::process::id()));
@@ -330,40 +363,49 @@ pub fn record(dir: &Path, entries: Vec<(String, Entry)>, merge: Merge) -> Result
 /// and log it. What bind, provision and placement each call.
 pub fn install_and_record(slug: &str, repo: &Path, point: Point, dir: Option<&Path>) -> Outcome {
     let outcome = install(repo);
-    let entry = Entry::now(Some(repo), point, outcome.clone());
-    log(slug, &entry);
-    save(dir, vec![(slug.to_string(), entry)], Merge::Upsert);
+    let entry = Entry::now(slug, Some(repo), point, outcome.clone());
+    log(&entry);
+    save(dir, vec![entry], Merge::Upsert);
     outcome
 }
 
 /// Install into every checkout this box is bound to, and record each, and each
-/// assignment naming no checkout, as the whole census.
+/// assignment naming no checkout. `complete` is whether the set is the whole
+/// census: one read without the server's assignments prunes nothing, since the
+/// lines it would drop are the server-bound projects it could not see.
 pub fn install_every(
     checkouts: &[(String, PathBuf)],
     pathless: &[String],
+    complete: bool,
     dir: Option<&Path>,
-) -> Vec<(String, Entry)> {
-    let mut entries: Vec<(String, Entry)> = checkouts
+) -> Vec<Entry> {
+    let since_ms = crate::daemon::agent_activity::now_ms();
+    let mut entries: Vec<Entry> = checkouts
         .iter()
         .map(|(slug, repo)| {
-            let entry = Entry::now(Some(repo), Point::Start, install(repo));
-            log(slug, &entry);
-            (slug.clone(), entry)
+            let entry = Entry::now(slug, Some(repo), Point::Start, install(repo));
+            log(&entry);
+            entry
         })
         .collect();
     for slug in pathless {
-        if entries.iter().any(|(s, _)| s == slug) {
+        if entries.iter().any(|e| &e.slug == slug) {
             continue;
         }
-        let entry = Entry::now(None, Point::Start, Outcome::NoCheckout);
-        log(slug, &entry);
-        entries.push((slug.clone(), entry));
+        let entry = Entry::now(slug, None, Point::Start, Outcome::NoCheckout);
+        log(&entry);
+        entries.push(entry);
     }
-    save(dir, entries.clone(), Merge::Replace);
+    let merge = if complete {
+        Merge::Census { since_ms }
+    } else {
+        Merge::Upsert
+    };
+    save(dir, entries.clone(), merge);
     entries
 }
 
-fn save(dir: Option<&Path>, entries: Vec<(String, Entry)>, merge: Merge) {
+fn save(dir: Option<&Path>, entries: Vec<Entry>, merge: Merge) {
     let Some(dir) = dir else {
         tracing::warn!(
             "[skill] no config directory resolves on this box, so `forge-runner status` cannot be told what the forge-master install did"
@@ -377,7 +419,8 @@ fn save(dir: Option<&Path>, entries: Vec<(String, Entry)>, merge: Merge) {
     }
 }
 
-fn log(slug: &str, entry: &Entry) {
+fn log(entry: &Entry) {
+    let slug = &entry.slug;
     let said = entry.outcome.says(entry.path.as_deref(), &entry.build);
     let when = entry.point.word();
     match &entry.outcome {
@@ -391,6 +434,17 @@ fn log(slug: &str, entry: &Entry) {
 mod tests {
     use super::*;
     use crate::test_scratch::Scratch;
+    use std::collections::BTreeMap;
+
+    /// The one line recorded for `slug`.
+    fn one<'a>(r: &'a Record, slug: &'a str) -> &'a Entry {
+        let mut of = r.of(slug);
+        let e = of
+            .next()
+            .unwrap_or_else(|| panic!("no line for {slug}: {r:?}"));
+        assert!(of.next().is_none(), "more than one line for {slug}: {r:?}");
+        e
+    }
 
     fn run_git(dir: &Path, args: &[&str]) {
         let out = Command::new("git")
@@ -605,7 +659,7 @@ mod tests {
             ("gamma".to_string(), ok.clone()),
         ];
 
-        install_every(&checkouts, &["delta".to_string()], Some(&cfg));
+        install_every(&checkouts, &["delta".to_string()], true, Some(&cfg));
 
         assert_eq!(
             skill(&ok).as_deref(),
@@ -615,13 +669,13 @@ mod tests {
         let Read::Record(r) = read(&cfg) else {
             panic!("the sweep recorded nothing")
         };
-        assert!(matches!(r.entries["alpha"].outcome, Outcome::Failed { .. }));
-        assert_eq!(r.entries["beta"].outcome, Outcome::NotIgnored);
-        assert_eq!(r.entries["gamma"].outcome, Outcome::Written);
-        assert_eq!(r.entries["gamma"].path.as_deref(), Some(ok.as_path()));
-        assert_eq!(r.entries["delta"].outcome, Outcome::NoCheckout);
-        assert_eq!(r.entries["delta"].path, None);
-        assert!(r.entries.values().all(|e| e.point == Point::Start));
+        assert!(matches!(one(&r, "alpha").outcome, Outcome::Failed { .. }));
+        assert_eq!(one(&r, "beta").outcome, Outcome::NotIgnored);
+        assert_eq!(one(&r, "gamma").outcome, Outcome::Written);
+        assert_eq!(one(&r, "gamma").path.as_deref(), Some(ok.as_path()));
+        assert_eq!(one(&r, "delta").outcome, Outcome::NoCheckout);
+        assert_eq!(one(&r, "delta").path, None);
+        assert!(r.entries.iter().all(|e| e.point == Point::Start));
     }
 
     /// The sweep's only write outside the checkouts is its own record: no
@@ -635,7 +689,7 @@ mod tests {
         let before = tree(&cfg);
         let ok = checkout(s.path(), "ok", true);
 
-        install_every(&[("ok".to_string(), ok)], &[], Some(&cfg));
+        install_every(&[("ok".to_string(), ok)], &[], true, Some(&cfg));
 
         let mut after = tree(&cfg);
         assert!(after.remove(Path::new(RECORD)).is_some());
@@ -644,31 +698,156 @@ mod tests {
     }
 
     #[test]
-    fn the_sweep_replaces_the_census_and_a_single_write_keeps_every_other_line() {
+    fn the_census_drops_what_is_no_longer_bound_and_a_single_write_keeps_every_other_line() {
         let s = Scratch::new("mskill-merge");
         let cfg = s.path().join("config");
         let a = checkout(s.path(), "a", true);
         let b = checkout(s.path(), "b", true);
+        let gone = checkout(s.path(), "gone", true);
         install_every(
-            &[
-                ("gone".to_string(), a.clone()),
-                ("a".to_string(), a.clone()),
-            ],
+            &[("gone".to_string(), gone), ("a".to_string(), a.clone())],
             &[],
+            true,
             Some(&cfg),
         );
-        install_every(&[("a".to_string(), a)], &[], Some(&cfg));
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        install_every(&[("a".to_string(), a)], &[], true, Some(&cfg));
         install_and_record("b", &b, Point::Bind, Some(&cfg));
 
         let Read::Record(r) = read(&cfg) else {
             panic!()
         };
+        let slugs: Vec<&str> = r.entries.iter().map(|e| e.slug.as_str()).collect();
         assert_eq!(
-            r.entries.keys().collect::<Vec<_>>(),
+            slugs,
             ["a", "b"],
             "an unbound slug outlived the census, or bind dropped a line"
         );
-        assert_eq!(r.entries["b"].point, Point::Bind);
+        assert_eq!(one(&r, "b").point, Point::Bind);
+    }
+
+    /// Consult review F1: a `bind` recorded after the census began is one the
+    /// census could not have seen, so its line stands.
+    #[test]
+    fn a_bind_recorded_while_the_census_ran_is_kept() {
+        let s = Scratch::new("mskill-census-race");
+        let dir = s.path();
+        let since_ms = crate::daemon::agent_activity::now_ms() - 1_000;
+        let mut stale = Entry::now(
+            "unbound",
+            Some(Path::new("/old")),
+            Point::Start,
+            Outcome::Written,
+        );
+        stale.at_ms = since_ms - 60_000;
+        let late = Entry::now(
+            "late",
+            Some(Path::new("/late")),
+            Point::Bind,
+            Outcome::Written,
+        );
+        record(dir, vec![stale, late], Merge::Upsert).unwrap();
+
+        let census = Entry::now("a", Some(Path::new("/a")), Point::Start, Outcome::Written);
+        record(dir, vec![census], Merge::Census { since_ms }).unwrap();
+
+        let Read::Record(r) = read(dir) else { panic!() };
+        let slugs: Vec<&str> = r.entries.iter().map(|e| e.slug.as_str()).collect();
+        assert_eq!(slugs, ["a", "late"], "{r:?}");
+    }
+
+    /// Consult review F1: a start that could not read the server's assignments
+    /// sees only config.toml, so it prunes nothing.
+    #[test]
+    fn a_census_without_the_servers_assignments_prunes_nothing() {
+        let s = Scratch::new("mskill-partial");
+        let cfg = s.path().join("config");
+        let mut server_only = Entry::now(
+            "web-bound",
+            Some(Path::new("/w")),
+            Point::Start,
+            Outcome::NotIgnored,
+        );
+        server_only.at_ms -= 3_600_000;
+        record(&cfg, vec![server_only], Merge::Upsert).unwrap();
+        let local = checkout(s.path(), "local", true);
+
+        install_every(&[("local".to_string(), local)], &[], false, Some(&cfg));
+
+        let Read::Record(r) = read(&cfg) else {
+            panic!()
+        };
+        assert_eq!(one(&r, "web-bound").outcome, Outcome::NotIgnored);
+        assert_eq!(one(&r, "local").outcome, Outcome::Written);
+    }
+
+    /// Consult review F2: one slug bound at two checkouts — the server's path
+    /// and an older local one — keeps a line for each, so a refused one is
+    /// never hidden behind a written one.
+    #[test]
+    fn a_project_at_two_checkouts_keeps_a_line_for_each() {
+        let s = Scratch::new("mskill-two-paths");
+        let cfg = s.path().join("config");
+        let active = checkout(s.path(), "a-active", false);
+        let old = checkout(s.path(), "z-old", true);
+
+        install_every(
+            &[
+                ("acme".to_string(), active.clone()),
+                ("acme".to_string(), old.clone()),
+            ],
+            &[],
+            true,
+            Some(&cfg),
+        );
+
+        let Read::Record(r) = read(&cfg) else {
+            panic!()
+        };
+        let lines: Vec<(&Path, &Outcome)> = r
+            .of("acme")
+            .map(|e| (e.path.as_deref().unwrap(), &e.outcome))
+            .collect();
+        assert_eq!(
+            lines,
+            [
+                (active.as_path(), &Outcome::NotIgnored),
+                (old.as_path(), &Outcome::Written)
+            ]
+        );
+
+        // A later write at one of the two leaves the other's line standing.
+        install_and_record("acme", &old, Point::Bind, Some(&cfg));
+        let Read::Record(r) = read(&cfg) else {
+            panic!()
+        };
+        let outcomes: Vec<&Outcome> = r.of("acme").map(|e| &e.outcome).collect();
+        assert_eq!(outcomes, [&Outcome::NotIgnored, &Outcome::Current], "{r:?}");
+    }
+
+    #[test]
+    fn a_checkout_recorded_for_a_project_that_had_none_replaces_that_line() {
+        let s = Scratch::new("mskill-pathless-then-bound");
+        let dir = s.path();
+        record(
+            dir,
+            vec![Entry::now("p", None, Point::Start, Outcome::NoCheckout)],
+            Merge::Upsert,
+        )
+        .unwrap();
+        record(
+            dir,
+            vec![Entry::now(
+                "p",
+                Some(Path::new("/p")),
+                Point::Bind,
+                Outcome::Written,
+            )],
+            Merge::Upsert,
+        )
+        .unwrap();
+        let Read::Record(r) = read(dir) else { panic!() };
+        assert_eq!(one(&r, "p").outcome, Outcome::Written);
     }
 
     #[test]
@@ -686,7 +865,7 @@ mod tests {
             "{why}"
         );
 
-        std::fs::write(record_path(dir), r#"{"version":2,"entries":{}}"#).unwrap();
+        std::fs::write(record_path(dir), r#"{"version":2,"entries":[]}"#).unwrap();
         let Read::Unreadable(why) = read(dir) else {
             panic!()
         };
@@ -710,10 +889,7 @@ mod tests {
         let dir = s.path().to_path_buf();
         record(
             &dir,
-            vec![(
-                "first".into(),
-                Entry::now(None, Point::Start, Outcome::NoCheckout),
-            )],
+            vec![Entry::now("first", None, Point::Start, Outcome::NoCheckout)],
             Merge::Upsert,
         )
         .unwrap();
@@ -727,10 +903,7 @@ mod tests {
         let second = std::thread::spawn(move || {
             record(
                 &there,
-                vec![(
-                    "second".into(),
-                    Entry::now(None, Point::Bind, Outcome::NoCheckout),
-                )],
+                vec![Entry::now("second", None, Point::Bind, Outcome::NoCheckout)],
                 Merge::Upsert,
             )
         });
@@ -739,7 +912,7 @@ mod tests {
             panic!()
         };
         assert!(
-            !r.entries.contains_key("second"),
+            r.of("second").next().is_none(),
             "the second writer did not wait for the lock"
         );
         held.unlock().unwrap();
@@ -749,7 +922,7 @@ mod tests {
             panic!()
         };
         assert!(
-            r.entries.contains_key("first") && r.entries.contains_key("second"),
+            r.of("first").next().is_some() && r.of("second").next().is_some(),
             "{r:?}"
         );
     }

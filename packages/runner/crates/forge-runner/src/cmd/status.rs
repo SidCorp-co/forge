@@ -363,16 +363,17 @@ pub(crate) fn skill_lines(dir: Option<&std::path::Path>, cfg: &Config, now: i64)
         "skill      the forge-master skill in each bound checkout, as last installed ← {}",
         path.display()
     )];
-    for (slug, e) in &entries {
+    for e in &entries {
         out.push(format!(
-            "  {slug}  {} {} ago: {}",
+            "  {}  {} {} ago: {}",
+            e.slug,
             e.point.word(),
             span(now.saturating_sub(e.at_ms).max(0)),
             e.outcome.says(e.path.as_deref(), &e.build)
         ));
     }
     for (slug, b) in &cfg.bindings {
-        if !entries.contains_key(slug) {
+        if !entries.iter().any(|e| &e.slug == slug) {
             out.push(format!(
                 "  {slug}  no install recorded for this binding since the record was last written — the next daemon start writes it ← {}",
                 b.repo_path.join(RELATIVE).display()
@@ -439,8 +440,9 @@ mod tests {
             cfg
         }
 
-        fn entry(path: Option<&str>, point: Point, outcome: Outcome) -> Entry {
+        fn entry(slug: &str, path: Option<&str>, point: Point, outcome: Outcome) -> Entry {
             Entry {
+                slug: slug.into(),
                 path: path.map(Into::into),
                 at_ms: NOW - 180_000,
                 point,
@@ -455,36 +457,26 @@ mod tests {
             record(
                 s.path(),
                 vec![
-                    (
-                        "anhome".into(),
-                        entry(Some("/p/anhome"), Point::Start, Outcome::Written),
+                    entry("anhome", Some("/p/anhome"), Point::Start, Outcome::Written),
+                    entry("forge-dev", Some("/p/core"), Point::Start, Outcome::Current),
+                    entry(
+                        "forge-plugin",
+                        Some("/p/plugin"),
+                        Point::Start,
+                        Outcome::NotIgnored,
                     ),
-                    (
-                        "forge-dev".into(),
-                        entry(Some("/p/core"), Point::Start, Outcome::Current),
-                    ),
-                    (
-                        "forge-plugin".into(),
-                        entry(Some("/p/plugin"), Point::Start, Outcome::NotIgnored),
-                    ),
-                    (
-                        "ghost".into(),
-                        entry(None, Point::Start, Outcome::NoCheckout),
-                    ),
-                    (
-                        "ro".into(),
-                        entry(
-                            Some("/p/ro"),
-                            Point::Bind,
-                            Outcome::Failed {
-                                detail:
-                                    "/p/ro/.claude/skills/forge-master/SKILL.md: Permission denied"
-                                        .into(),
-                            },
-                        ),
+                    entry("ghost", None, Point::Start, Outcome::NoCheckout),
+                    entry(
+                        "ro",
+                        Some("/p/ro"),
+                        Point::Bind,
+                        Outcome::Failed {
+                            detail: "/p/ro/.claude/skills/forge-master/SKILL.md: Permission denied"
+                                .into(),
+                        },
                     ),
                 ],
-                Merge::Replace,
+                Merge::Upsert,
             )
             .unwrap();
             let text =
@@ -519,11 +511,8 @@ mod tests {
             let s = Scratch::new("status-skill-unnamed");
             record(
                 s.path(),
-                vec![(
-                    "a".into(),
-                    entry(Some("/p/a"), Point::Start, Outcome::Written),
-                )],
-                Merge::Replace,
+                vec![entry("a", Some("/p/a"), Point::Start, Outcome::Written)],
+                Merge::Upsert,
             )
             .unwrap();
             let text = skill_lines(
@@ -573,7 +562,7 @@ mod tests {
                 "{text}"
             );
 
-            std::fs::write(&p, r#"{"version":9,"entries":{}}"#).unwrap();
+            std::fs::write(&p, r#"{"version":9,"entries":[]}"#).unwrap();
             let text = skill_lines(Some(s.path()), &bound(&[]), NOW).join("\n");
             assert!(
                 text.contains("UNREADABLE")

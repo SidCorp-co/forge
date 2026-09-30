@@ -795,7 +795,10 @@ mod tests {
         let Read::Record(r) = master_skill::read(&home.path().join("forge-runner")) else {
             panic!("the provision recorded nothing where status reads")
         };
-        assert_eq!(r.entries["butlocs"].point, Point::Provision);
+        assert_eq!(
+            r.of("butlocs").map(|e| e.point).collect::<Vec<_>>(),
+            [Point::Provision]
+        );
 
         const SRC: &str = include_str!("provision.rs");
         let body = SRC
