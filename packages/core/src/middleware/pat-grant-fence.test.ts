@@ -233,7 +233,6 @@ describe('a path kept out of the grammar is refused with its reason', () => {
     '/api/agent-sessions/s1/events',
     '/api/agent-sessions/s1/inbox/3/ack',
     '/api/agent-sessions/s1/inbox/3/applied',
-    '/api/agent-sessions/prompt-built',
   ])('refuses the runner callback POST %s as the device plane', async (path) => {
     const refusal = await refusalFor(path, ['*'], 'POST', 2);
     expect(refusal?.code).toBe('PAT_NOT_PERMITTED');

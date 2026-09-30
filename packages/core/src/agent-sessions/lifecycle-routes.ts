@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import { and, eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -6,7 +5,7 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { withKernelMarker } from '../db/kernel-marker.js';
 import { agentSessions, devices, projects, runners, schedules } from '../db/schema.js';
-import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
+import { loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import {
   findAvailableDeviceForProject,
   findChatCapableDeviceForProject,
@@ -15,7 +14,7 @@ import {
 import { LIVE_SESSION_STATUSES } from '../lifecycle/status-sets.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
-import { type AuthVars } from '../middleware/auth.js';
+import type { AuthVars } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { closeRunIfOneShot } from '../pipeline/runs.js';
 import { extractReportFromMessages } from '../schedules/messages/skill-improve-prompt.js';
@@ -25,13 +24,7 @@ import { deviceRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { broadcastSession } from './broadcast.js';
 import { noClaudeClient } from './chat-turn.js';
-import {
-  abortBodySchema,
-  buildPromptBodySchema,
-  desktopStatusSchema,
-  promptBuiltBodySchema,
-  setRunnerBodySchema,
-} from './lifecycle-schemas.js';
+import { abortBodySchema, desktopStatusSchema, setRunnerBodySchema } from './lifecycle-schemas.js';
 import {
   badRequest,
   ensureSessionOwnerOrAdmin,
@@ -236,73 +229,6 @@ agentSessionLifecycleRoutes.post(
 
     broadcastSession(updated, 'agent-session.updated');
     return c.json(updated);
-  },
-);
-
-agentSessionLifecycleRoutes.post(
-  '/build-prompt',
-  zValidator('json', buildPromptBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
-  }),
-  async (c) => {
-    const input = c.req.valid('json');
-    const userId = c.get('userId');
-
-    const project = await loadProjectBySlug(input.projectSlug);
-    if (!project) throw notFound('project not found');
-
-    const access = await loadProjectAccess(project.id, userId);
-    assertProjectRole(access, 'member');
-
-    let deviceId = await findAvailableDeviceForProject(project.id);
-    if (!deviceId && project.defaultDeviceId) {
-      // Last-resort fallback to the (possibly offline) default device — but honor
-      // the "turn off" switch: never target a device the owner disabled.
-      const [def] = await db
-        .select({ disabledAt: devices.disabledAt })
-        .from(devices)
-        .where(eq(devices.id, project.defaultDeviceId))
-        .limit(1);
-      if (def && !def.disabledAt) deviceId = project.defaultDeviceId;
-    }
-    if (!deviceId) {
-      throw new HTTPException(503, {
-        message: 'no online device for this project',
-        cause: { code: 'NO_DEVICE' },
-      });
-    }
-
-    const requestId = randomUUID();
-    roomManager.publish(deviceRoom(deviceId), {
-      event: 'agent:build-prompt',
-      data: { requestId, projectSlug: input.projectSlug, issueIds: input.issueIds },
-    });
-
-    return c.json({ requestId });
-  },
-);
-
-// Device → core relay for the build-prompt callback. Devices POST here once
-// they've assembled the prompt; core fans the result out to whichever web
-// client is waiting on `requestId`.
-agentSessionLifecycleRoutes.post(
-  '/prompt-built',
-  zValidator('json', promptBuiltBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
-  }),
-  async (c) => {
-    const input = c.req.valid('json');
-    // Broadcast org-wide on a stable room name. Web clients keyed on
-    // requestId filter the relevant message.
-    roomManager.publish('agent:prompt-built', {
-      event: 'agent:prompt-built',
-      data: {
-        requestId: input.requestId,
-        prompt: input.prompt ?? null,
-        error: input.error ?? null,
-      },
-    });
-    return c.json({ ok: true });
   },
 );
 

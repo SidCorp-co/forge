@@ -596,73 +596,6 @@ describe('POST /api/agent-sessions/:id/runner', () => {
   });
 });
 
-describe('POST /api/agent-sessions/build-prompt', () => {
-  it('503 when no device is available for the project', async () => {
-    const token = await signUserToken(USER_ID);
-    mockAuthVerified();
-    selectLimit.mockResolvedValueOnce([
-      {
-        id: PROJECT_ID,
-        slug: 'apiflow',
-        ownerId: USER_ID,
-        repoPath: '/repo',
-        defaultDeviceId: null,
-      },
-    ]);
-    grantAccess('admin');
-    findAvailableDeviceForProject.mockResolvedValueOnce(null);
-
-    const app = buildApp();
-    const res = await app.fetch(
-      req('/api/agent-sessions/build-prompt', {
-        method: 'POST',
-        token,
-        body: JSON.stringify({
-          projectSlug: 'apiflow',
-          issueIds: ['66666666-6666-4666-8666-666666666666'],
-        }),
-      }),
-    );
-    expect(res.status).toBe(503);
-  });
-
-  it('200 returns requestId + publishes agent:build-prompt to device', async () => {
-    const token = await signUserToken(USER_ID);
-    mockAuthVerified();
-    selectLimit.mockResolvedValueOnce([
-      {
-        id: PROJECT_ID,
-        slug: 'apiflow',
-        ownerId: USER_ID,
-        repoPath: '/repo',
-        defaultDeviceId: null,
-      },
-    ]);
-    grantAccess('admin');
-    findAvailableDeviceForProject.mockResolvedValueOnce(DEVICE_ID);
-
-    const app = buildApp();
-    const res = await app.fetch(
-      req('/api/agent-sessions/build-prompt', {
-        method: 'POST',
-        token,
-        body: JSON.stringify({
-          projectSlug: 'apiflow',
-          issueIds: ['66666666-6666-4666-8666-666666666666'],
-        }),
-      }),
-    );
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { requestId: string };
-    expect(typeof body.requestId).toBe('string');
-    const buildCall = publishSpy.mock.calls.find(
-      ([room, env]) =>
-        room === `device:${DEVICE_ID}` && (env as any).event === 'agent:build-prompt',
-    );
-    expect(buildCall).toBeDefined();
-  });
-});
-
 describe('GET /api/agent-sessions/desktop/status', () => {
   it('400 when neither deviceId nor projectSlug provided', async () => {
     const token = await signUserToken(USER_ID);
@@ -805,42 +738,5 @@ describe('GET /api/agent-sessions/desktop/status', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { data: { connected: boolean } };
     expect(body.data.connected).toBe(false);
-  });
-});
-
-describe('POST /api/agent-sessions/prompt-built', () => {
-  it('400 when neither prompt nor error is provided', async () => {
-    const token = await signUserToken(USER_ID);
-    mockAuthVerified();
-
-    const app = buildApp();
-    const res = await app.fetch(
-      req('/api/agent-sessions/prompt-built', {
-        method: 'POST',
-        token,
-        body: JSON.stringify({ requestId: 'abc' }),
-      }),
-    );
-    expect(res.status).toBe(400);
-  });
-
-  it('200 broadcasts the result to the agent:prompt-built room', async () => {
-    const token = await signUserToken(USER_ID);
-    mockAuthVerified();
-
-    const app = buildApp();
-    const res = await app.fetch(
-      req('/api/agent-sessions/prompt-built', {
-        method: 'POST',
-        token,
-        body: JSON.stringify({ requestId: 'abc', prompt: 'composed' }),
-      }),
-    );
-    expect(res.status).toBe(200);
-    const call = publishSpy.mock.calls.find(
-      ([room, env]) => room === 'agent:prompt-built' && (env as any).event === 'agent:prompt-built',
-    );
-    expect(call).toBeDefined();
-    expect((call![1] as { data: any }).data.prompt).toBe('composed');
   });
 });
