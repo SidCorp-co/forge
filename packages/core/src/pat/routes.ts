@@ -5,6 +5,8 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { countActivePatsForUser, mintPat, revokePat, rotatePat } from '../auth/pat.js';
 import {
+  PAT_ACCOUNT_ONLY_PERMISSIONS,
+  PAT_GRANT_EPOCH,
   PAT_PERMISSION_ALL,
   PAT_PERMISSION_NAMES,
   patGrantIsLegacy,
@@ -94,7 +96,11 @@ patRoutes.get('/pat', async (c) => {
     .orderBy(desc(personalAccessTokens.createdAt));
   return c.json({
     tokens: rows.map(publicShape),
-    menu: { permissions: PAT_PERMISSION_NAMES, full: PAT_PERMISSION_ALL },
+    menu: {
+      permissions: PAT_PERMISSION_NAMES,
+      accountOnly: PAT_ACCOUNT_ONLY_PERMISSIONS,
+      full: PAT_PERMISSION_ALL,
+    },
   });
 });
 
@@ -131,6 +137,23 @@ patRoutes.post(
         cause: {
           code: 'PAT_PERMISSIONS_FULL_NOT_COMBINABLE',
           details: { sent: body.permissions },
+        },
+      });
+    }
+
+    const fenced = (body.projectIds ?? null) !== null || Boolean(body.boundProjectId);
+    const accountOnly = body.permissions.filter((p) =>
+      (PAT_ACCOUNT_ONLY_PERMISSIONS as readonly string[]).includes(p),
+    );
+    if (fenced && accountOnly.length > 0) {
+      throw new HTTPException(400, {
+        message:
+          `${accountOnly.join(', ')} ${accountOnly.length === 1 ? 'is' : 'are'} account ` +
+          'permissions, whose routes resolve no project, and this token is fenced to projects. ' +
+          'Drop them, or mint the token with no project list.',
+        cause: {
+          code: 'PAT_ACCOUNT_PERMISSION_ON_SCOPED_TOKEN',
+          details: { accountOnly, sent: body.permissions },
         },
       });
     }
@@ -192,6 +215,7 @@ patRoutes.post(
       projectIds: body.projectIds ?? null,
       boundProjectId: body.boundProjectId ?? null,
       permissions: body.permissions,
+      grantEpoch: PAT_GRANT_EPOCH,
       expiresAt: body.expiresAt ? new Date(body.expiresAt) : null,
     });
 

@@ -73,19 +73,25 @@ export function restAuthored(c: Context<{ Variables: RestActorVars }>): 'human' 
  * project-scoped token into an account-scoped one. {@link beginPatRequest} is
  * what stops that, and `requireAnyAuth` calls the same function.
  */
+async function admitPat(
+  c: Context<{ Variables: AuthVars }>,
+  token: string,
+  next: () => Promise<void>,
+): Promise<void> {
+  const { principal, scope } = await beginPatRequest(c, token);
+  c.set('userId', principal.userId);
+  c.set('principal', 'pat');
+  c.set('agency', principal.agency);
+  if (principal.agentUserId) c.set('agentUserId', principal.agentUserId);
+  c.set('patTokenId', principal.tokenId);
+  return runWithPatScope(scope, () => next());
+}
+
 export function requireAuth(): MiddlewareHandler<{ Variables: AuthVars }> {
   return async (c, next) => {
     const token = readBearerToken(c);
 
-    if (isPatLike(token)) {
-      const { principal, scope } = await beginPatRequest(c, token);
-      c.set('userId', principal.userId);
-      c.set('principal', 'pat');
-      c.set('agency', principal.agency);
-      if (principal.agentUserId) c.set('agentUserId', principal.agentUserId);
-      c.set('patTokenId', principal.tokenId);
-      return runWithPatScope(scope, () => next());
-    }
+    if (isPatLike(token)) return admitPat(c, token, next);
 
     try {
       const claims = await verifyUserToken(token);
@@ -124,12 +130,7 @@ export function requireUserOrDevice(): MiddlewareHandler<{ Variables: AuthVars }
     }
 
     const device = await verifyDeviceCredential(token);
-    if (!device) {
-      throw new HTTPException(401, {
-        message: 'invalid token',
-        cause: { code: 'INVALID_TOKEN' },
-      });
-    }
+    if (!device) return admitPat(c, token, next);
     c.set('deviceId', device.id);
     c.set('principal', 'device');
     c.set('agency', 'agent');

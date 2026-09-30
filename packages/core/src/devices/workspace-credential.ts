@@ -58,6 +58,17 @@ export async function issueWorkspaceCredential(args: {
   const name = workspaceTokenNameFor(args.deviceId, args.projectId);
   return db.transaction(async (tx) => {
     await lockPatName(tx, name);
+    const [parent] = await tx
+      .select({ grantEpoch: personalAccessTokens.grantEpoch })
+      .from(personalAccessTokens)
+      .where(
+        and(
+          eq(personalAccessTokens.deviceId, args.deviceId),
+          eq(personalAccessTokens.name, deviceTokenNameFor(args.deviceId)),
+          isNull(personalAccessTokens.revokedAt),
+        ),
+      )
+      .limit(1);
     await tx
       .update(personalAccessTokens)
       .set({ revokedAt: sql`now()` })
@@ -80,6 +91,7 @@ export async function issueWorkspaceCredential(args: {
         permissions: PAT_GRANT_ALL,
         projectIds: [args.projectId],
         deviceId: args.deviceId,
+        grantEpoch: parent?.grantEpoch ?? 1,
       },
       tx,
     );
