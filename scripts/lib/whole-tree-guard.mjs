@@ -9,7 +9,13 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { afterAll, expect } from 'vitest';
-import { GLOB_CALL_RE, globListings, guardVerdict } from './whole-tree-gates.mjs';
+import {
+  declaresWholeTree,
+  GLOB_CALL_RE,
+  globListings,
+  guardVerdict,
+  logLines,
+} from './whole-tree-gates.mjs';
 import { installWatch, ROOT } from './whole-tree-watch.mjs';
 
 const KEY = Symbol.for('forge.whole-tree-guard');
@@ -19,9 +25,11 @@ const GRACE_MS = 5000;
 globalThis[KEY] ??= { installed: false, hits: [], late: [], log: null, dir: null, files: 0 };
 const state = globalThis[KEY];
 state.late ??= [];
-// What reached the watch between the last file's end and this one's start was made by the last file
-// after it ended: it is judged here, naming where it was called, rather than dropped.
-state.hits = state.late.map((h) => ({ ...h, via: `${h.via} after ${state.ended} ended` }));
+// What reached the watch after the last file ended was that file's: judged here, naming where it
+// was called, unless that file declared itself.
+state.hits = state.endedDeclared
+  ? []
+  : state.late.map((h) => ({ ...h, via: `${h.via} after ${state.ended} ended` }));
 state.late = [];
 state.ended = null;
 state.dir ??= mkdtempSync(join(tmpdir(), 'whole-tree-guard-'));
@@ -29,6 +37,9 @@ state.dir ??= mkdtempSync(join(tmpdir(), 'whole-tree-guard-'));
 state.files = (state.files ?? 0) + 1;
 state.log = join(state.dir, `children-${state.files}.jsonl`);
 writeFileSync(state.log, '');
+state.offset = 0;
+// A worker a file before this one started and left running is that file's, not this one's.
+state.workersBefore = new Set(globalThis[Symbol.for('forge.whole-tree-watch')]?.workers ?? []);
 installWatch(
   (entries) => (state.ended ? state.late : state.hits).push(...entries),
   state.log,
@@ -36,19 +47,17 @@ installWatch(
 );
 state.installed = true;
 
-/** The lines this file's processes wrote, read and emptied. */
+/** The whole lines this file's processes wrote since the last read; the log is never emptied. */
 function readLog() {
-  let text = '';
+  let bytes;
   try {
-    text = readFileSync(state.log, 'utf8');
-    writeFileSync(state.log, '');
+    bytes = readFileSync(state.log);
   } catch {
     return [];
   }
-  return text
-    .split('\n')
-    .filter(Boolean)
-    .map((line) => JSON.parse(line));
+  const { lines, offset } = logLines(bytes, state.offset);
+  state.offset = offset;
+  return lines;
 }
 
 /** Whether a process is still running: signalable and not a zombie waiting to be reaped. */
@@ -78,24 +87,27 @@ async function childHits() {
     }
   };
   drain();
-  const workers = globalThis[Symbol.for('forge.whole-tree-watch')]?.workers ?? new Set();
+  const all = globalThis[Symbol.for('forge.whole-tree-watch')]?.workers ?? new Set();
+  const mine = () => [...all].filter((w) => !state.workersBefore.has(w));
   const live = () => [...pids].filter(running);
   const deadline = Date.now() + GRACE_MS;
-  while ((live().length > 0 || workers.size > 0) && Date.now() < deadline) {
+  while ((live().length > 0 || mine().length > 0) && Date.now() < deadline) {
     await new Promise((done) => setTimeout(done, 50));
     drain();
   }
+  // Liveness is read before the last drain: a process found gone has written all it ever will.
+  const stillLive = live();
   drain();
-  for (const pid of live())
+  for (const pid of stillLive)
     hits.push({
       dir: ROOT,
       via: `child process ${pid} was still running when the file ended, so what it lists afterwards is read by nobody and counted as the root`,
       at: null,
     });
-  if (workers.size > 0)
+  if (mine().length > 0)
     hits.push({
       dir: ROOT,
-      via: `${workers.size} worker thread(s) were still running when the file ended, so what they list afterwards is read by nobody and counted as the root`,
+      via: `${mine().length} worker thread(s) were still running when the file ended, so what they list afterwards is read by nobody and counted as the root`,
       at: null,
     });
   return hits;
@@ -114,6 +126,7 @@ afterAll(async () => {
   const hits = [...state.hits, ...children];
   state.hits = [];
   state.ended = filepath ? relative(ROOT, filepath) : 'a file';
+  state.endedDeclared = false;
   if (!filepath) return;
   let source = '';
   try {
@@ -121,6 +134,7 @@ afterAll(async () => {
   } catch {
     return;
   }
+  state.endedDeclared = declaresWholeTree(source);
   hits.push(...globHits(source, filepath));
   if (hits.length === 0) return;
   const refusal = guardVerdict({ file: relative(ROOT, filepath), source, hits, root: ROOT });
