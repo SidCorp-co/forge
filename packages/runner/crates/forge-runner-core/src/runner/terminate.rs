@@ -296,7 +296,7 @@ enum Held {
 
 /// Read git's answer about the path, or refuse the verb by name.
 ///
-/// Three of the five readings refuse, and each refuses for the same reason in
+/// Five of the nine readings refuse, and each refuses for the same reason in
 /// a different shape: this box has not established that the checkout is gone,
 /// and releasing on an unestablished fact is what writes a ledger row nobody
 /// can trust. A refusal costs an operator one `forge-runner run release`; the
@@ -309,6 +309,18 @@ fn held_checkout(residence: &Residence, verb: Verb, run_id: &str, path: &Path) -
         Residence::MainWorkingTree => Ok(Held::MainWorkingTree),
         Residence::Linked | Residence::NotAWorktree => Ok(Held::Ours),
         Residence::Gone => Ok(Held::Nothing),
+        // Everything past this point reads the checkout at its path — its
+        // branch, its dirt, what a salvage would push — and every one of those
+        // readings would be the enclosing checkout's (ISS-1250, judge j3).
+        Residence::Enclosed(top) => Err(Error::Other(format!(
+            "refusing to {verb:?} run {run_id}: {} stands, but it is no checkout of its own — \
+             git, asked at the path, answers for the enclosing checkout {}, so anything read, \
+             preserved or pushed from it would be that checkout's. Nothing was preserved, pushed \
+             or removed; a directory reads this way partway through a removal, where a \
+             checkout's `.git` file is missing, or where it was never a checkout",
+            path.display(),
+            top.display()
+        ))),
         Residence::MovedTo(now_at) => Err(Error::Other(format!(
             "refusing to {verb:?} run {run_id}: git still registers this run's checkout, moved \
              to {} — the ledger names {}, which holds nothing. Nothing was preserved and \
@@ -362,9 +374,6 @@ pub async fn force_terminal(
     }
 
     let worktree = Path::new(&run.worktree_path);
-    // One credential for this release, resolved from what this box provisioned
-    // rather than from what a git child happens to read (ISS-1250).
-    let cred = RepoCred::of(run.project_id.as_deref(), worktree).await;
 
     // What is at the path is git's answer and never the filesystem's, asked
     // before anything here is touched. A run declared against the repository's
@@ -380,6 +389,13 @@ pub async fn force_terminal(
         run_id,
         worktree,
     )?;
+
+    // One credential for this release, resolved from what this box provisioned
+    // rather than from what a git child happens to read (ISS-1250). It is read
+    // at the path, so only once git has answered that the path is a checkout
+    // of its own: at an enclosed one it would be the enclosing checkout's
+    // configuration (consult on 9ecec0c09 F1).
+    let cred = RepoCred::of(run.project_id.as_deref(), worktree).await;
 
     // A checkout whose branch this box cannot name is a DETACHED one, not an
     // unreadable one, and it is no longer fatal here. The branch name is what
@@ -2052,6 +2068,64 @@ mod tests {
         assert!(root.join("f.txt").is_file(), "the checkout survives");
     }
 
+    /// Every ref a repository holds, one per line, for a before-and-after read.
+    async fn refs_of(repo: &Path) -> String {
+        let out = tokio::process::Command::new("git")
+            .args(["for-each-ref", "--format=%(refname) %(objectname)"])
+            .current_dir(repo)
+            .stdin(std::process::Stdio::null())
+            .output()
+            .await
+            .unwrap();
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    }
+
+    /// ISS-1250 criterion 29 — judge j3: a nested worktree whose `.git` file a
+    /// delete had taken reads, at the path, as whatever git says about the
+    /// repository around it. A release that took that answer would preserve,
+    /// push or keep on another checkout's word, so it refuses before any of it.
+    #[tokio::test]
+    async fn a_release_over_a_path_git_answers_for_from_the_enclosing_checkout_refuses() {
+        let (root, wt) = repo("enclosed").await;
+        git(&wt, &["add", "work.txt"]).await;
+        git(&wt, &["commit", "-m", "work no remote has"]).await;
+        std::fs::remove_file(wt.join(".git")).unwrap();
+        let remote = root.with_extension("remote.git");
+        let (refs_before, remote_before) = (refs_of(&root).await, refs_of(&remote).await);
+        let mut led = ledger_for(&wt, Incarnation::Exited, "boot-a");
+        let (p, s, l) = (
+            Procs(Mutex::new(Vec::new())),
+            Sessions,
+            Leases(Mutex::new(HashSet::new())),
+        );
+
+        let err = force_terminal(
+            &mut led,
+            "run-1",
+            forcing(&root, "boot-a"),
+            ports(&p, &s, &l),
+        )
+        .await
+        .expect_err(
+            "git asked at this path answers for the repository around it, which says nothing \
+             about this checkout",
+        )
+        .to_string();
+
+        assert!(
+            err.contains(&wt.display().to_string()),
+            "names the path: {err}"
+        );
+        let top = root.canonicalize().unwrap();
+        assert!(
+            err.contains(&top.display().to_string()),
+            "names the checkout git answered for: {err}"
+        );
+        assert_eq!(refs_of(&root).await, refs_before, "no ref was written");
+        assert_eq!(refs_of(&remote).await, remote_before, "nothing was pushed");
+        assert!(wt.join("work.txt").is_file(), "nothing was removed");
+    }
+
     #[tokio::test]
     async fn a_run_declared_against_the_main_working_tree_is_released_and_the_checkout_stays() {
         let (_fx, root, mut led) = main_tree_run("maintree").await;
@@ -2291,6 +2365,30 @@ mod tests {
         }
     }
 
+    /// Consult on 0473857b9 F1: an ordinary subdirectory that never held a
+    /// `.git` file reads `Enclosed` too, so the refusal names both paths and
+    /// asserts no deletion it never measured.
+    #[test]
+    fn an_enclosed_refusal_names_both_paths_and_claims_no_history() {
+        let p = Path::new("/repo/.claude/worktrees/stray");
+        let err = held_checkout(
+            &Residence::Enclosed(PathBuf::from("/repo")),
+            Verb::Abandon,
+            "run-1",
+            p,
+        )
+        .expect_err("an answer about another checkout is no answer about this one")
+        .to_string();
+        assert!(err.contains("/repo/.claude/worktrees/stray"), "{err}");
+        assert!(err.contains("enclosing checkout /repo,"), "{err}");
+        for claimed in ["is partway", "is gone", "was removed"] {
+            assert!(
+                !err.contains(claimed),
+                "no unmeasured history ({claimed}): {err}"
+            );
+        }
+    }
+
     #[test]
     fn what_the_path_is_is_asked_before_anything_is_removed() {
         let body = SOURCE
@@ -2305,6 +2403,17 @@ mod tests {
             "what the path is must be settled BEFORE the preserve step and before \
              `git worktree remove` — reading it out of the removal's failure is one defect \
              (ISS-1183) and reading it off `exists()` is the other (ISS-1193)"
+        );
+        // The refusal is `held_checkout(..)?`, so the credential is read only
+        // after it has returned: after the question alone would still let a
+        // read slip in between the two (consult on 5a187bed3 F1).
+        let refused = body.find("held_checkout(").expect("the refusal");
+        let cred = body.find("RepoCred::of").expect("the credential read");
+        assert!(
+            asked < cred && refused < cred,
+            "and the credential is read at the path only once the refusal has had its say: at a \
+             path git answers for from the enclosing checkout, that read is the enclosing \
+             checkout's configuration (ISS-1250, consult on 9ecec0c09 F1)"
         );
         assert!(
             !body.contains("worktree::remove_at"),
