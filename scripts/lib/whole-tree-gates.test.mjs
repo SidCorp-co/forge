@@ -355,11 +355,13 @@ describe('the guard installed in this very run', () => {
     startingWith(`${spawner} running \`git ${sub}\` in the root's own repository with no pathspec`);
 
   it('reads a spawner name as text, whatever characters it holds', () => {
+    const said = (name) =>
+      `${name} running \`git ls-files\` in the root's own repository with no pathspec, so`;
     const name = String.raw`a\.b()`;
-    const said = `${name} running \`git ls-files\` in the root's own repository with no pathspec, so`;
-    expect(said).toEqual(readsWholeTree(name));
-    expect(said.replace('\\', '')).not.toEqual(readsWholeTree(name));
-    expect(said.replace('.', 'x')).not.toEqual(readsWholeTree(name));
+    expect(said(name)).toEqual(readsWholeTree(name));
+    // What each name would match were it read as a pattern: `\.` a bare dot, and `.` any character.
+    expect(said('a.b()')).not.toEqual(readsWholeTree(name));
+    expect(said('axb()')).not.toEqual(readsWholeTree('a.b()'));
   });
   // Every case here lists the root on purpose, so each clears what it recorded before `afterAll`
   // would refuse this undeclared file for it.
