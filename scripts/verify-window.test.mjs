@@ -93,19 +93,20 @@ function clone(name) {
   return dir;
 }
 
-function windowFiles(name, members, checks) {
+function windowFiles(name, members, checks, base = 'main') {
   const manifest = join(box, `${name}.json`);
   writeFileSync(
     manifest,
     JSON.stringify({
       window: name,
-      base: 'main',
+      base,
       thresholds: { size: 10, minutes: 360, source: 'fixture' },
-      members: members.map(([issue, br, head]) => ({
+      members: members.map(([issue, br, head, entry = { at: head, record: `${issue}'s run` }]) => ({
         issue,
         branch: br,
         head,
         arrivedAt: '2026-09-29T00:00:00Z',
+        ...(entry === null ? {} : { entry }),
       })),
     }),
   );
@@ -205,7 +206,7 @@ afterAll(() => rmSync(box, { recursive: true, force: true }));
 const green = (...shas) => Object.fromEntries(shas.map((s) => [s, { 'ci-passed': 'success' }]));
 
 describe('admit', () => {
-  it('refuses a path, a line, a moved head and a red check, and admits the rest', () => {
+  it('refuses a path, a line, a moved head and an entry gate at another commit, and admits the rest', () => {
     const c = clone('admit');
     const w = windowFiles(
       'admit-w',
@@ -213,12 +214,13 @@ describe('admit', () => {
         ['ISS-4', 'ISS-4-after', heads.m4],
         ['ISS-5', 'ISS-5-runner', heads.path],
         ['ISS-6', 'ISS-6-env', heads.line],
-        ['ISS-7', 'ISS-7-red', heads.red],
+        ['ISS-7', 'ISS-7-red', heads.red, { at: heads.m4, record: "ISS-7's run" }],
         ['ISS-3', 'ISS-3-shared', heads.m4],
+        ['ISS-12', 'ISS-2-c', heads.m2, null],
       ],
-      { ...green(heads.m4, heads.path, heads.line), [heads.red]: { 'ci-passed': 'failure' } },
+      {},
     );
-    const r = run(c, 'admit', '--window', w.manifest, '--checks', w.checksFile);
+    const r = run(c, 'admit', '--window', w.manifest);
     expect(r.status).toBe(1);
     expect(r.stdout).toMatch(/^admitted {2}ISS-4$/m);
     expect(r.stdout).toContain(
@@ -227,7 +229,12 @@ describe('admit', () => {
     expect(r.stdout).toMatch(
       /ISS-6 adds src\/env\.mjs:1 `process\.env\.PATH = '\/x';`.*PATH is read by every child process/,
     );
-    expect(r.stdout).toContain(`ISS-7's ci-passed at ${heads.red} is failure`);
+    expect(r.stdout).toContain(
+      `ISS-7's entry gate passed at ${heads.m4} and the window recorded ${heads.red}`,
+    );
+    expect(r.stdout).toContain(
+      'ISS-12 carries no `entry`: a member enters only with the entry gate',
+    );
     expect(r.stdout).toContain(
       `ISS-3's branch ISS-3-shared is at ${heads.m3} and the window recorded ${heads.m4}`,
     );
@@ -240,7 +247,7 @@ describe('admit', () => {
     });
     const c = clone('admit-loosen');
     const w = windowFiles('loosen-w', [['ISS-10', 'ISS-10-loosen', loosened]], green(loosened));
-    const r = run(c, 'admit', '--window', w.manifest, '--checks', w.checksFile);
+    const r = run(c, 'admit', '--window', w.manifest);
     expect(r.status).toBe(1);
     expect(r.stdout).toContain('ISS-10 touches runner/x.rs');
   });
@@ -357,6 +364,17 @@ describe('assemble, attribute, isolate and land', () => {
       'src/m4.txt',
     );
     expect(r.stdout).toMatch(/^src\/m4\.txt: member — ISS-4\./m);
+    expect(readFileSync(w.ledger.replace(/\.json$/, '.md'), 'utf8')).toContain(
+      '- Attribution of `src/m4.txt` (member, ISS-4): ISS-4 is the last landing to change that path',
+    );
+  });
+
+  it('names the landed path a path relative to a subdirectory ends, and attributes no owner', () => {
+    const r = run(c, 'attribute', '--window', w.manifest, '--tree', w.tree, '--path', 'm4.txt');
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toContain(
+      'm4.txt: unresolved. no landing changed `m4.txt` as given, and it ends a path landings did change (ISS-4 changed src/m4.txt)',
+    );
   });
 
   it.each([
@@ -411,7 +429,27 @@ describe('assemble, attribute, isolate and land', () => {
   it('refuses to land while the chain head is not green, naming its state', () => {
     const r = run(c, 'land', '--window', w.manifest, '--checks', w.checksFile, '--tree', w.tree);
     expect(r.status).toBe(1);
-    expect(r.stderr).toContain(`ci-passed at the chain head ${ledger.chain.head} is absent`);
+    expect(r.stderr).toContain(
+      `ci-passed at the chain head ${ledger.chain.head} is absent: nothing has reported there yet, so nothing has refused`,
+    );
+    expect(r.stderr).not.toContain('attribute the refusal');
+  });
+
+  it('refuses to land while the check at the chain head is still running, and says to wait for it', () => {
+    const checks = readFileSync(w.checksFile, 'utf8');
+    writeFileSync(
+      w.checksFile,
+      JSON.stringify({ [ledger.chain.head]: { 'ci-passed': 'in_progress' } }),
+    );
+    try {
+      const r = run(c, 'land', '--window', w.manifest, '--checks', w.checksFile, '--tree', w.tree);
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain(
+        `ci-passed at the chain head ${ledger.chain.head} is in_progress: its run has not concluded: read it again once it has`,
+      );
+    } finally {
+      writeFileSync(w.checksFile, checks);
+    }
   });
 
   it('prints each landing beside its reviewed head and the one merge-commit merge once green', () => {
@@ -1104,7 +1142,7 @@ describe('an isolate whose rebuild fails', () => {
     expect(gone.stderr).toContain(`the window's tree ${w.tree} is gone`);
     git(c, 'remote', 'set-url', 'origin', url);
     const again = run(c, 'isolate', ...flags, '--member', 'ISS-4', '--because', 'red');
-    expect(again.status, again.stderr).toBe(1);
+    expect(again.status, again.stderr).toBe(0);
     expect(JSON.parse(readFileSync(w.ledger, 'utf8')).members[0].isolated.because).toBe('red');
     expect(existsSync(join(w.tree, '.git'))).toBe(true);
   });
@@ -1235,7 +1273,7 @@ describe('validate', () => {
     expect(replayed.stdout).toMatch(/^node gate\.mjs: .*ISS-24/m);
     expect(replayed.stdout).not.toMatch(/did not fail on the replay|fails on the base/);
     const words = 'gate-check: src/fail.txt holds a sweep failure the entry layer cannot see';
-    expect(run(c, 'isolate', ...flags, '--member', 'ISS-24', '--because', words).status).toBe(1);
+    expect(run(c, 'isolate', ...flags, '--member', 'ISS-24', '--because', words).status).toBe(0);
     const again = run(c, 'validate', ...flags);
     git(seed, 'push', '-q', 'origin', '--delete', 'ISS-24-fail');
     expect(again.status, again.stdout + again.stderr).toBe(0);
@@ -1455,8 +1493,78 @@ describe('a snapshot the combination cannot express', () => {
     const ledger = JSON.parse(readFileSync(w.ledger, 'utf8'));
     expect(ledger.members[0].landing).toMatch(/^[0-9a-f]{40}$/);
     expect(ledger.members[1].isolated.because).toMatch(
-      /tables:public\.a is touched by this member and by an earlier member, and this member changes what was in it$/,
+      /tables:public\.a is touched by this member and by ISS-8, and this member changes what was in it$/,
     );
     expect(existsSync(join(w.tree, DIR, '0002_drop_name.sql'))).toBe(false);
+  });
+});
+
+describe('isolating the only member a rebuild leaves out', () => {
+  it('exits 0 once the rebuild worked, and 1 where the build itself isolated one', () => {
+    const c = clone('isolate-exit');
+    const w = windowFiles(
+      'w-exit',
+      [
+        ['ISS-1', 'ISS-1-b', heads.m1],
+        ['ISS-4', 'ISS-4-after', heads.m4],
+      ],
+      {},
+    );
+    const built = run(c, 'assemble', '--window', w.manifest, '--tree', w.tree);
+    expect(built.status, built.stderr).toBe(0);
+    const r = run(
+      c,
+      'isolate',
+      '--window',
+      w.manifest,
+      '--tree',
+      w.tree,
+      '--member',
+      'ISS-4',
+      '--because',
+      'core: expected 1, got 2',
+    );
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).not.toContain('Left out by this build');
+    const ledger = JSON.parse(readFileSync(w.ledger, 'utf8'));
+    expect(ledger.members.find((m) => m.issue === 'ISS-4').isolated.kind).toBe('refusal');
+
+    const c2 = clone('isolate-exit-2');
+    const w2 = windowFiles(
+      'w-exit-2',
+      [
+        ['ISS-1', 'ISS-1-b', heads.m1],
+        ['ISS-3', 'ISS-3-shared', heads.m3],
+      ],
+      {},
+    );
+    const conflicted = run(c2, 'assemble', '--window', w2.manifest, '--tree', w2.tree);
+    expect(conflicted.status).toBe(1);
+    expect(conflicted.stdout).toContain('Left out by this build: ISS-3');
+  });
+});
+
+describe("a changelog the size of this repository's", () => {
+  it('lets every member that adds an entry at the head of [Unreleased] enter, with every entry kept', () => {
+    const older = Array.from({ length: 7300 }, (_, i) => `- entry ${i}, from an older release`);
+    const big = `# Changelog\n\n## [Unreleased]\n\n${older.join('\n')}\n`;
+    branch('big-base', { 'CHANGELOG.md': big });
+    const adds = (line) => ({
+      'CHANGELOG.md': big.replace('## [Unreleased]\n\n', `## [Unreleased]\n\n- ${line}\n`),
+    });
+    const members = [30, 31, 32].map((n) => [
+      `ISS-${n}`,
+      `ISS-${n}-big`,
+      branch(`ISS-${n}-big`, adds(`entry of ISS-${n}`), 'big-base'),
+    ]);
+    const c = clone('big-window');
+    const w = windowFiles('w-big', members, {}, 'big-base');
+    const r = run(c, 'assemble', '--window', w.manifest, '--tree', w.tree);
+    expect(r.status, r.stdout + r.stderr).toBe(0);
+    const ledger = JSON.parse(readFileSync(w.ledger, 'utf8'));
+    expect(ledger.members.map((m) => m.unions)).toEqual([[], ['CHANGELOG.md'], ['CHANGELOG.md']]);
+    const log = readFileSync(join(w.tree, 'CHANGELOG.md'), 'utf8');
+    for (const n of [30, 31, 32]) expect(log).toContain(`- entry of ISS-${n}\n`);
+    expect(log.split('\n')).toHaveLength(big.split('\n').length + 3);
   });
 });

@@ -5,7 +5,8 @@
  * once and landed one merge commit each. The tool builds, attributes and plans; it pushes, opens
  * and merges nothing, because landing stays the dispatcher's act. How it composes with ci.yml and
  * what it does not do: `docs/modules/landing/verify-window.md`.
- * Exit 0 as asked · 1 a member refused or isolated, not fired, or not landable · 2 could not run.
+ * Exit 0 as asked · 1 a member refused or isolated by this build, not fired, or not landable ·
+ * 2 could not run.
  */
 
 import { existsSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
@@ -37,7 +38,14 @@ const USAGE = `Usage: node scripts/verify-window.mjs <verb> --window <manifest.j
   attribute --unit <cmd> [--repeat n]          replay one command on the base and each member alone
   validate                    run the declared gate once on the combination and record its cost
   land                        whether the validated window may land, and the one merge that lands it
-  --checks <file>             read check states from a saved file instead of \`gh api\``;
+  --checks <file>             land: read check states from a saved file instead of \`gh api\`
+
+Each member row carries entry: { at, record }, the commit its own run's entry gate passed at and
+where that run recorded it. A member opens no pull request, so admit reads no check at its head.
+
+Exit: 0 as asked. 1 where admit refuses a member, where assemble or isolate refused or isolated
+one in this build (a member left out by a recorded isolate is what was asked, so isolate exits 0
+once its rebuild worked), where fire did not fire, or where land may not land. 2 could not run.`;
 
 function die(msg) {
   console.error(`verify-window: ${msg}`);
@@ -117,12 +125,12 @@ function removeTree(dir) {
 }
 
 function build(dir, m = manifest, replay = undefined, rebuild = false) {
-  const r = assemble({ repoDir, manifest: m, treeDir: dir, readCheck, replay, rebuild });
+  const r = assemble({ repoDir, manifest: m, treeDir: dir, replay, rebuild });
   if (r.refusal) die(r.refusal);
-  return r.ledger;
+  return r;
 }
 
-function reportBuilt(ledger) {
+function reportBuilt({ ledger, leftOut }) {
   saveLedger(ledger);
   process.stdout.write(renderLedger(ledger));
   const branch = windowBranch(ledger.window);
@@ -146,7 +154,8 @@ function reportBuilt(ledger) {
     );
   }
   console.log(`Ledger: ${ledgerPath}`);
-  process.exit(ledger.members.every((m) => m.landing) ? 0 : 1);
+  if (leftOut.length > 0) console.log(`Left out by this build: ${leftOut.join(', ')}`);
+  process.exit(leftOut.length > 0 ? 1 : 0);
 }
 
 if (verb === 'fire') {
@@ -165,7 +174,7 @@ if (verb === 'fire') {
 if (verb === 'admit') {
   const ready = prepareWindow({ repoDir, manifest, withOpenSet: false });
   if (ready.refusal) die(ready.refusal);
-  const judged = admitMembers({ ...ready, members: manifest.members, readCheck });
+  const judged = admitMembers({ ...ready, members: manifest.members });
   for (const m of judged) {
     console.log(
       m.refusals.length === 0
@@ -202,13 +211,13 @@ if (verb === 'isolate') {
       },
     ],
   };
-  const before = recorded.attributions;
+  const before = recorded.attributions ?? [];
   removeTree(treeDir);
-  const ledger = build(treeDir, next, undefined, true);
+  const built = build(treeDir, next, undefined, true);
   writeFileSync(manifestPath, `${JSON.stringify(next, null, 2)}\n`);
-  ledger.attributions = before;
-  ledger.passes = recorded.passes ?? [];
-  reportBuilt(ledger);
+  built.ledger.attributions = before.map((a) => ({ chain: recorded.chain.head, ...a }));
+  built.ledger.passes = recorded.passes ?? [];
+  reportBuilt(built);
 }
 
 if (verb === 'attribute') {
@@ -221,10 +230,16 @@ if (verb === 'attribute') {
   const landed = ledger.members.filter((m) => m.landing);
   const t = gitIn(ledger.chain.tree);
   const found = [];
+  const filesOf = (landing) =>
+    (t.run(['-c', 'core.quotePath=false', 'diff', '--name-only', `${landing}^1`, landing]) ?? '')
+      .split('\n')
+      .filter(Boolean);
   for (const p of values.path ?? []) {
-    const changed = (landing) =>
-      (t.run(['diff', '--name-only', `${landing}^1`, landing, '--', p]) ?? '').trim() !== '';
-    found.push({ subject: p, ...ownerOfPath({ landed, changed }) });
+    found.push({
+      subject: p,
+      chain: ledger.chain.head,
+      ...ownerOfPath({ landed, path: p, filesOf }),
+    });
   }
   if (values.unit) {
     const repeat = Number(values.repeat ?? 1);
@@ -262,13 +277,21 @@ if (verb === 'attribute') {
       const alone = `${treeDir}-replay-${m.issue.toLowerCase()}`;
       const one = {
         ...manifest,
-        members: [{ issue: m.issue, branch: m.branch, head: m.head, arrivedAt: m.arrivedAt }],
+        members: [
+          {
+            issue: m.issue,
+            branch: m.branch,
+            head: m.head,
+            arrivedAt: m.arrivedAt,
+            entry: m.entry,
+          },
+        ],
         isolated: [],
       };
       const aloneLedger = build(alone, one, {
         base: ledger.base.sha,
         branches: ledger.members.map((x) => x.branch),
-      });
+      }).ledger;
       const rebuilt = aloneLedger.members[0];
       if (!rebuilt.landing) {
         removeTree(alone);
@@ -287,6 +310,7 @@ if (verb === 'attribute') {
     const window = replay(values.unit, ledger.chain.tree, repeat, env);
     found.push({
       subject: values.unit,
+      chain: ledger.chain.head,
       ...classifyReplay({ base, members, window }),
       runs: { base, members, window },
     });

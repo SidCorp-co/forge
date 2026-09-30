@@ -7,10 +7,31 @@ import { spawnSync } from 'node:child_process';
  * then an interaction: `docs/modules/landing/verify-window.md` has the order the kinds are settled in.
  */
 
-/** @param {{ landed: { issue: string, landing: string }[], changed: (landing: string) => boolean }} input */
-export function ownerOfPath({ landed, changed }) {
-  const touching = landed.filter((m) => changed(m.landing));
+/**
+ * A path given as a checker prints it — relative to a package, say — matches no landing exactly.
+ * Where it ends a path a landing changed, those paths are named and no owner is guessed.
+ * @param {{ landed: { issue: string, landing: string }[], path: string,
+ *   filesOf: (landing: string) => string[] }} input
+ */
+export function ownerOfPath({ landed, path, filesOf }) {
+  const dir = `${path.replace(/\/+$/, '')}/`;
+  const touching = landed.filter((m) =>
+    filesOf(m.landing).some((f) => f === path || f.startsWith(dir)),
+  );
   if (touching.length === 0) {
+    const tail = `/${path.replace(/^\.?\//, '')}`;
+    const near = landed.flatMap((m) =>
+      filesOf(m.landing)
+        .filter((f) => f.endsWith(tail))
+        .map((f) => `${m.issue} changed ${f}`),
+    );
+    if (near.length > 0) {
+      return {
+        kind: 'unresolved',
+        owner: null,
+        says: `no landing changed \`${path}\` as given, and it ends a path landings did change (${near.join('; ')}): attribute again with the path from the repository root`,
+      };
+    }
     return {
       kind: 'unowned',
       owner: null,

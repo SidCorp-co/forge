@@ -3,7 +3,13 @@ import { join } from 'node:path';
 import { newEntries, readJournal } from '../migration-order.mjs';
 import { parseDiff } from './eligibility.mjs';
 import { showAt } from './git.mjs';
-import { allocate, rebaseSnapshot, rewriteReferences, snapshotFile } from './migrations.mjs';
+import {
+  allocate,
+  objectDelta,
+  rebaseSnapshot,
+  rewriteReferences,
+  snapshotFile,
+} from './migrations.mjs';
 import { unionInsertions } from './union.mjs';
 
 /**
@@ -66,13 +72,35 @@ function snapshotById(t, rev, dir, id) {
   return null;
 }
 
-function headSnapshot(t, dir) {
-  const names = (t.run(['ls-tree', '--name-only', 'HEAD', `${dir}/meta/`]) ?? '')
+/** The highest-numbered snapshot in `rev`'s tree, parsed, or `null` where it has none. */
+function lastSnapshot(t, rev, dir) {
+  const names = (t.run(['ls-tree', '--name-only', rev, `${dir}/meta/`]) ?? '')
     .split('\n')
     .filter((n) => /\/\d+_snapshot\.json$/.test(n))
     .sort((a, b) => Number(a.match(/(\d+)_snapshot/)[1]) - Number(b.match(/(\d+)_snapshot/)[1]));
   const last = names.at(-1);
-  return last ? snapshotOf(showAt(t, 'HEAD', last), `HEAD:${last}`) : null;
+  return last ? snapshotOf(showAt(t, rev, last), `${rev}:${last}`) : null;
+}
+
+/**
+ * Who among the earlier landed members touched a schema object: the last one whose own landing
+ * moved it between the snapshot before that landing and the one after.
+ */
+function earlierToucher(t, dir, landed) {
+  const deltas = new Map();
+  const deltaOf = (m) => {
+    if (!deltas.has(m.issue)) {
+      deltas.set(
+        m.issue,
+        objectDelta(lastSnapshot(t, `${m.landing}^1`, dir), lastSnapshot(t, m.landing, dir)),
+      );
+    }
+    return deltas.get(m.issue);
+  };
+  return (key) => {
+    const who = [...landed].reverse().find((m) => m.addedTags?.length && deltaOf(m).has(key));
+    return who ? who.issue : 'an earlier member';
+  };
 }
 
 /**
@@ -141,7 +169,8 @@ function rederive({ t, dir, member, open, earlier = [], landed = [] }) {
       };
   }
 
-  let newParent = headSnapshot(t, dir);
+  let newParent = lastSnapshot(t, 'HEAD', dir);
+  const earlierName = earlierToucher(t, dir, landed);
   let previous = null;
   const snaps = [];
   for (const s of sources.filter((x) => x.snap !== null)) {
@@ -154,7 +183,7 @@ function rederive({ t, dir, member, open, earlier = [], landed = [] }) {
     }
     let next = snap;
     if (newParent && JSON.stringify(oldParent) !== JSON.stringify(newParent)) {
-      const r = rebaseSnapshot({ oldParent, newParent, snap });
+      const r = rebaseSnapshot({ oldParent, newParent, snap, earlier: earlierName });
       if (r.refusal)
         return {
           refusal: `${member.issue}'s snapshot ${snapshotFile(dir, s.move.from.idx)}: ${r.refusal}`,

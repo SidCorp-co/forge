@@ -133,6 +133,31 @@ describe('rebaseSnapshot', () => {
     );
   });
 
+  it('names the earlier member that touched the object, for each kind of conflict', () => {
+    const earlier = (key) => `ISS-8 (for ${key})`;
+    const indexed = table('a', ['id', 'name'], {
+      indexes: { a_name_idx: { name: 'a_name_idx', columns: [{ expression: 'name' }] } },
+    });
+    const dropped = rebaseSnapshot({
+      oldParent: base,
+      newParent: snap('s1', 's0', { 'public.a': indexed }),
+      snap: snap('s2', 's0', { 'public.a': table('a', ['id']) }),
+      earlier,
+    });
+    expect(dropped.refusal).toBe(
+      'tables:public.a is touched by this member and by ISS-8 (for tables:public.a), and this member changes what was in it',
+    );
+    const twice = rebaseSnapshot({
+      oldParent: base,
+      newParent: snap('s1', 's0', { ...base.tables, 'public.b': table('b', ['id']) }),
+      snap: snap('s2', 's0', { ...base.tables, 'public.b': table('b', ['id']) }),
+      earlier,
+    });
+    expect(twice.refusal).toBe(
+      'tables:public.b is added by this member and by ISS-8 (for tables:public.b) alike, and two migrations cannot both create it',
+    );
+  });
+
   it('isolates a member whose new foreign key points at a table an earlier member dropped', () => {
     const withB = snap('s0', 'z', { ...base.tables, 'public.b': table('b', ['id']) });
     const newParent = snap('s1', 's0', { ...base.tables });

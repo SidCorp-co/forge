@@ -7,8 +7,17 @@
 
 const MINUTE = 60_000;
 
-function positive(n) {
-  return typeof n === 'number' && Number.isFinite(n) && n > 0;
+/** Why `value`, declared as `thresholds.<key>`, is not a threshold, or `null`; `undefined` is absent. */
+function invalid(key, value, whole) {
+  if (value === undefined) return null;
+  const ok =
+    typeof value === 'number' &&
+    Number.isFinite(value) &&
+    value > 0 &&
+    (!whole || Number.isInteger(value));
+  return ok
+    ? null
+    : `\`thresholds.${key}\` is declared as ${JSON.stringify(value)}; it must be a positive ${whole ? 'whole number' : 'number'}`;
 }
 
 /**
@@ -18,8 +27,8 @@ function positive(n) {
  */
 export function decideFire({ members, thresholds, now }) {
   const missing = [];
-  if (!positive(thresholds?.size)) missing.push('`thresholds.size`');
-  if (!positive(thresholds?.minutes)) missing.push('`thresholds.minutes`');
+  if (thresholds?.size === undefined) missing.push('`thresholds.size`');
+  if (thresholds?.minutes === undefined) missing.push('`thresholds.minutes`');
   if (typeof thresholds?.source !== 'string' || thresholds.source.trim() === '') {
     missing.push('`thresholds.source`, where the two were read');
   }
@@ -30,8 +39,13 @@ export function decideFire({ members, thresholds, now }) {
         'thresholds is one this window refuses to act for; nothing here carries a default.',
     };
   }
+  const bad =
+    invalid('size', thresholds.size, true) ??
+    invalid('minutes', thresholds.minutes, false) ??
+    invalid('maxSize', thresholds.maxSize, true);
+  if (bad) return { refusal: bad };
   const { size, minutes, maxSize } = thresholds;
-  if (maxSize !== undefined && (!positive(maxSize) || maxSize < size)) {
+  if (maxSize !== undefined && maxSize < size) {
     return {
       refusal: `\`thresholds.maxSize\` is ${maxSize}; it must be a ceiling at or above \`size\` (${size})`,
     };
@@ -47,6 +61,11 @@ export function decideFire({ members, thresholds, now }) {
     if (Number.isNaN(at)) {
       return {
         refusal: `${m.issue} carries no readable \`arrivedAt\` (${m.arrivedAt}), so its wait cannot be measured`,
+      };
+    }
+    if (at > now.getTime()) {
+      return {
+        refusal: `${m.issue} arrived at ${m.arrivedAt}, after the time the window is judged at (${now.toISOString()}), so its wait cannot be measured`,
       };
     }
     if (!oldest || at < oldest.at) oldest = { issue: m.issue, at };
