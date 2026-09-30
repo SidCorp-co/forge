@@ -58,8 +58,9 @@ function readLog() {
     const why = `this file's child log could not be read (${e?.code ?? 'unknown'}), so what its processes listed is unknown and counted as the root`;
     return [{ dir: ROOT, via: why, at: null }];
   }
-  // What was read already must still be there: a log rewritten under the guard is not evidence.
-  if (!bytes.subarray(0, state.offset).equals(state.read)) {
+  // Every byte seen already, a line not yet ended included, must still be there: a log rewritten
+  // under the guard is not evidence.
+  if (!bytes.subarray(0, state.read.length).equals(state.read)) {
     state.offset = bytes.length;
     state.read = Buffer.from(bytes);
     const why =
@@ -68,7 +69,7 @@ function readLog() {
   }
   const { lines, offset, pending } = logLines(bytes, state.offset);
   state.offset = offset;
-  state.read = Buffer.from(bytes.subarray(0, offset));
+  state.read = Buffer.from(bytes);
   state.pending = pending;
   return lines;
 }
@@ -88,6 +89,12 @@ async function childHits() {
   const drain = () => {
     for (const line of readLog()) {
       if (line.started) pids.add(line.started);
+      else if ('malformed' in line)
+        hits.push({
+          dir: ROOT,
+          via: `the child log holds a line that is not a record (${JSON.stringify(line.malformed.slice(0, 80))}), so what it held is unknown and counted as the root`,
+          at: null,
+        });
       else hits.push(line);
     }
   };

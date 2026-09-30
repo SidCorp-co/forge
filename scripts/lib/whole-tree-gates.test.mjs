@@ -301,6 +301,12 @@ describe('reading a child log', () => {
     expect(logLines(bytes('{"dir":"/a"}\n{"dir"'), 0).pending).toBe(true);
     expect(logLines(bytes('{"dir":"/a"}\n'), 0).pending).toBe(false);
   });
+  it('hands back a line that is not a record as such, rather than throwing on it', () => {
+    expect(logLines(bytes('{"dir":"/a"}\nnot a record\n'), 0).lines).toEqual([
+      { dir: '/a' },
+      { malformed: 'not a record' },
+    ]);
+  });
   it('reads a log emptied since the last read from its start', () => {
     expect(logLines(bytes('{"dir":"/c"}\n'), 400).lines).toEqual([{ dir: '/c' }]);
   });
@@ -875,6 +881,21 @@ describe('a run of a file that lists the root', () => {
     );
   }, 60_000);
 
+  it('fails one whose child log holds a line that is not a record', () => {
+    writeFileSync(
+      join(dir, 'garbles.test.mjs'),
+      [
+        "import { appendFileSync } from 'node:fs';",
+        "it('garbles the log', () => { appendFileSync(process.env.FORGE_WHOLE_TREE_LOG, 'not a record\\n'); });",
+      ].join('\n'),
+    );
+    const r = vitest('garbles.test.mjs');
+    expect(r.status).toBe(1);
+    expect(`${r.stdout}${r.stderr}`).toMatch(
+      /garbles\.test\.mjs the child log holds a line that is not a record/,
+    );
+  }, 60_000);
+
   it('fails one whose child log is rewritten after the guard first read it', () => {
     writeFileSync(
       join(dir, 'rewrites.test.mjs'),
@@ -892,6 +913,27 @@ describe('a run of a file that lists the root', () => {
     expect(r.status).toBe(1);
     expect(`${r.stdout}${r.stderr}`).toMatch(
       /rewrites\.test\.mjs this file's child log was rewritten/,
+    );
+  }, 60_000);
+
+  it('fails one whose child log loses a line the guard saw but had not yet read to its end', () => {
+    writeFileSync(
+      join(dir, 'unwrites.test.mjs'),
+      [
+        "import { appendFileSync, writeFileSync } from 'node:fs';",
+        "import { Worker } from 'node:worker_threads';",
+        'const log = process.env.FORGE_WHOLE_TREE_LOG;',
+        "it('unwrites a pending line while the end waits', () => {",
+        "  new Worker('setTimeout(() => {}, 600)', { eval: true });",
+        '  appendFileSync(log, \'{"dir":\');',
+        "  setTimeout(() => writeFileSync(log, ''), 300);",
+        '});',
+      ].join('\n'),
+    );
+    const r = vitest('unwrites.test.mjs');
+    expect(r.status).toBe(1);
+    expect(`${r.stdout}${r.stderr}`).toMatch(
+      /unwrites\.test\.mjs this file's child log was rewritten/,
     );
   }, 60_000);
 
