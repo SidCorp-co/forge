@@ -24,8 +24,9 @@ flowchart LR
 | forge CLI (repo forge-plugin) | a thin wrapper over the API for agents that run a shell, the runner's master included | commands that call the API | logic the API does not have. That goes into core first |
 | MCP (in core) | a wrapper over the API, the same way the CLI is | tools that agents need natively, or that outside agents need without a CLI | a tool for work a CLI already does on a box with a shell |
 
-`packages/web-v2` is not one of the four. While this holds, it takes fixes that block the parts
-above, and nothing more.
+**The backend comes first, and the UI is not a focus** (owner, 2026-09-30: "hiện tại flow mục tiêu
+hoàn thiện core và các phần BE này trước, chưa cần focus UI"). `packages/web-v2` is not one of the
+four. While this holds, it takes fixes that block the parts above, and nothing more.
 
 ## Measured against main on 2026-09-30
 
@@ -42,8 +43,9 @@ The mounts in `packages/core/src/index.ts` that no grant covers are:
 - `/api/pipeline`, `/api/runners`, `/api/skill-activity`, `/api/update-packets`, `/api/uploads`
 - `/api/usage-records`, `/api/webhooks`
 
-Some of these are cookie-only by design (`/api/auth`). Each one kept outside the grant grammar is
-named with its reason. None is left out silently.
+Some of these are cookie-only by design (`/api/auth`). The rule this direction sets is that each
+mount kept outside the grant grammar is named with its reason, and none is left out silently. No
+list of those reasons exists yet.
 
 **No API reference exists.** No OpenAPI or other machine-readable description of any route is in
 `packages/core/src` or `docs/`. A route's input and output are read today from its handler.
