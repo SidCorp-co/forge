@@ -7,9 +7,11 @@ import { describe, expect, it, vi } from 'vitest';
 const dbMock = vi.hoisted(() => ({}) as { select?: unknown });
 vi.mock('../db/client.js', () => ({ db: dbMock }));
 
+import { runWithPatScope } from '../auth/pat-scope.js';
 import {
   assertOrgRoleOnProject,
   assertProjectRole,
+  assertUnfenced,
   effectiveProjectRole,
   loadOrgRole,
   loadPersonalOrgId,
@@ -150,5 +152,36 @@ describe('assertOrgRoleOnProject', () => {
     } catch (err) {
       expect((err as HTTPException).status).toBe(403);
     }
+  });
+});
+
+describe('assertUnfenced', () => {
+  const scope = (projectIds: readonly string[] | null) => ({ projectIds, tokenId: 't-1' });
+
+  it('lets a request no token fences through, and a token carrying its whole reach', () => {
+    expect(() => assertUnfenced('creating a project')).not.toThrow();
+    expect(() =>
+      runWithPatScope(scope(null), () => assertUnfenced('creating a project')),
+    ).not.toThrow();
+  });
+
+  it.each([
+    ['a token fenced to one project', ['p-1']],
+    ['a token fenced to no project at all', []],
+  ])('refuses %s by name', (_label, projectIds) => {
+    let caught: unknown;
+    try {
+      runWithPatScope(scope(projectIds), () => assertUnfenced('creating a project'));
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(HTTPException);
+    const http = caught as HTTPException;
+    expect(http.status).toBe(403);
+    expect(http.message).toMatch(/^creating a project reaches beyond the projects this token/);
+    expect(http.cause).toEqual({
+      code: 'PAT_ACCOUNT_ROUTE',
+      details: { action: 'creating a project' },
+    });
   });
 });

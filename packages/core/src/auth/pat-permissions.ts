@@ -153,6 +153,11 @@ export const PAT_UNGRANTABLE: Readonly<Record<string, string>> = Object.freeze({
   'POST /api/jobs/:id/complete': DEVICE,
   'POST /api/jobs/:id/fail': DEVICE,
   'POST /api/jobs/:id/kill-ack': DEVICE,
+  'POST /api/agent-sessions/:id/ack': DEVICE,
+  'POST /api/agent-sessions/:id/events': DEVICE,
+  'POST /api/agent-sessions/:id/inbox/:seq/ack': DEVICE,
+  'POST /api/agent-sessions/:id/inbox/:seq/applied': DEVICE,
+  'POST /api/agent-sessions/prompt-built': DEVICE,
 });
 
 export type PatPermissionResource = keyof typeof PAT_PERMISSION_RESOURCES;
