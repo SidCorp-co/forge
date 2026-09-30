@@ -1345,8 +1345,11 @@ fn a_live_view_redraws_every_interval_seconds() {
         .windows(2)
         .map(|w| (w[1] - w[0]).as_secs_f64())
         .collect();
+    // Three seconds and the gather's own time, which on a planted box is a
+    // fraction of one: neither the one-second sleep the judge planted nor the
+    // five-second default fits (consult on the r4 head, F3).
     assert!(
-        gaps.iter().all(|g| (2.9..3.0 + 5.0).contains(g)),
+        gaps.iter().all(|g| (2.9..4.5).contains(g)),
         "redraws are not 3 s apart: {gaps:?}"
     );
 }
@@ -1542,5 +1545,112 @@ fn a_view_that_cannot_read_keys_says_so_on_its_page_row() {
     assert!(
         words.contains("keys are not read (stdin is not a terminal)"),
         "{row}"
+    );
+}
+
+/// A tmux that answers at once for the first frame and takes three seconds
+/// for every one after it, so a gather can be caught under way.
+fn slow_after_the_first_gather(b: &PlantedBox) -> PathBuf {
+    let count = b.root.join("tmux.count");
+    std::fs::write(
+        b.root.join("bin/tmux"),
+        format!(
+            "#!/bin/sh\nn=$(cat '{c}' 2>/dev/null || echo 0)\necho $((n+1)) > '{c}'\n[ \"$n\" -ge 1 ] && sleep 3\nprintf 'forge-master-alpha\\t{}\\n'\n",
+            now_secs() - 3600,
+            c = count.display()
+        ),
+    )
+    .unwrap();
+    count
+}
+
+fn first_page_count(pty: &Pty) -> usize {
+    assert!(
+        pty.draws_page(0, "page 1 of ", std::time::Duration::from_secs(20)),
+        "no first page: {}",
+        pty.text()
+    );
+    let first = pty.page_rows_after(0).remove(0);
+    first["page 1 of ".len()..]
+        .split(' ')
+        .next()
+        .and_then(|n| n.parse().ok())
+        .unwrap_or_else(|| panic!("{first}"))
+}
+
+/// Consult on the r4 head, F2: a key typed while the next frame is being
+/// gathered redraws the frame on screen at once, and a page held then is the
+/// one the gathered frame is drawn on.
+#[test]
+fn a_key_typed_while_a_frame_is_gathered_is_answered_at_once() {
+    let core = fake_core("200 OK");
+    let b = plant(&core.url);
+    let count = slow_after_the_first_gather(&b);
+    let mut pty = on_a_terminal_reading(&b, 100, 20, &["--interval", "2"], true);
+    let pages = first_page_count(&pty);
+    assert!(pages > 2);
+    // The first frame, two seconds, then the second gather sits three
+    // seconds in tmux.
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while std::fs::read_to_string(&count).unwrap_or_default().trim() != "2" {
+        assert!(std::time::Instant::now() < until, "no second gather");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let second = std::time::Duration::from_secs(1);
+    let at = pty.screens_drawn();
+    pty.type_keys("n");
+    assert!(
+        pty.draws_page(at, &format!("page 2 of {pages} — "), second),
+        "n inside a gather: {:?}",
+        pty.page_rows_after(at)
+    );
+    let at = pty.screens_drawn();
+    pty.type_keys(" ");
+    let held = format!("page 2 of {pages} HELD until space");
+    assert!(
+        pty.draws_page(at, &held, second),
+        "space inside a gather: {:?}",
+        pty.page_rows_after(at)
+    );
+    assert_eq!(
+        std::fs::read_to_string(&count).unwrap().trim(),
+        "2",
+        "both answered inside the one gather"
+    );
+    // The gathered frame comes on the held page, not the one after it.
+    let at = pty.screens_drawn();
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(8);
+    while pty.screens_drawn() == at && std::time::Instant::now() < until {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    let since = pty.page_rows_after(at);
+    assert!(!since.is_empty(), "no frame after the gather");
+    assert!(since.iter().all(|r| r.starts_with(&held)), "{since:?}");
+}
+
+/// Consult on the r4 head, F1: SIGTERM ends a view reading keys through its
+/// loop, so the terminal is given back the modes it had.
+#[test]
+fn a_view_ended_by_sigterm_gives_the_terminal_back() {
+    let core = fake_core("200 OK");
+    let b = plant(&core.url);
+    let mut pty = on_a_terminal_reading(&b, 100, 20, &["--interval", "1"], true);
+    first_page_count(&pty);
+    assert_eq!(
+        modes(&pty.secondary).c_lflag & libc::ICANON,
+        0,
+        "the view took the terminal's input"
+    );
+    // SAFETY: a signal to the child this test spawned and still holds.
+    assert_eq!(
+        unsafe { libc::kill(pty.child.id() as libc::pid_t, libc::SIGTERM) },
+        0
+    );
+    let st = pty.exited_within(std::time::Duration::from_secs(8));
+    assert!(st.is_some_and(|s| s.success()), "{st:?}");
+    assert_eq!(
+        modes_differ(&pty.modes_before, &modes(&pty.secondary)),
+        Vec::<&str>::new()
     );
 }

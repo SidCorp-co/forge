@@ -24,6 +24,7 @@ mod source;
 mod tree_age;
 
 use std::io::{IsTerminal, Write};
+use std::sync::Arc;
 use std::time::Duration;
 
 use clap::Args as ClapArgs;
@@ -95,6 +96,7 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     // It is made before the terminal's mode is changed, so an interrupt comes
     // back through this loop and the mode is given back on the way out.
     let mut interrupt = Interrupt::listen()?;
+    let ctx = Arc::new(ctx);
     let mut keys = keys::open();
     // The first gather takes seconds (core's reads, every worktree's walk), and
     // a blank screen for that long reads as a view that hung (judge w3,
@@ -109,31 +111,58 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         out.flush()?;
     }
     let mut paging = Paging::default();
+    // The frame last drawn, which a key typed while the next is gathered
+    // redraws: a key waits on no gather, and none is cancelled for it.
+    let mut last: Option<(Vec<String>, fit::Shown)> = None;
     loop {
-        let snapshot = tokio::select! {
-            s = gather::frame(&ctx, &mut carry) => s,
-            _ = interrupt.heard() => return ended(),
+        let snapshot = {
+            // The gather runs as a task of its own, since some of its reads
+            // block (tmux, the ledger, the daemon's executable): polled in
+            // this task, they would hold every key and signal behind them.
+            let (task_ctx, mut held) = (Arc::clone(&ctx), std::mem::take(&mut carry));
+            let gathering = tokio::spawn(async move {
+                let s = gather::frame(&task_ctx, &mut held).await;
+                (s, held)
+            });
+            tokio::pin!(gathering);
+            loop {
+                tokio::select! {
+                    done = &mut gathering => {
+                        let (s, back) = done?;
+                        carry = back;
+                        break s;
+                    }
+                    _ = interrupt.heard() => return ended(),
+                    key = next_key(&mut keys) => {
+                        let Some((lines, shown)) = last.as_mut() else {
+                            if key.is_none() {
+                                keys = Err("stdin ended".into());
+                            }
+                            continue;
+                        };
+                        match key {
+                            Some(k) => paging.pressed(k, shown),
+                            None => keys = Err("stdin ended".into()),
+                        }
+                        *shown = draw(lines, &mut paging, &keys)?;
+                    }
+                }
+            }
         };
+        // The page turns as the new frame is drawn, not as the interval ends:
+        // until then the page on screen is the last frame's, and a key typed
+        // while the gather runs acts on that page.
+        if let Some((_, shown)) = &last {
+            paging.turned(shown);
+        }
         let lines = render::frame(&snapshot, Some(args.interval));
         let due = tokio::time::Instant::now() + Duration::from_secs(args.interval);
         // A key redraws this frame at once on the page it asks for; the next
         // gather still comes at `due`.
+        let mut shown = draw(&lines, &mut paging, &keys)?;
         loop {
-            let said = paging.said(&keys);
-            let shown = fit::screen(&lines, fit::size(), paging.page, &said);
-            paging.page = shown.at;
-            let mut out = std::io::stdout().lock();
-            // Home, clear: the frame replaces the last one rather than
-            // scrolling, and no newline follows its last row, which would
-            // scroll the screen.
-            write!(out, "\x1b[H\x1b[2J{}", shown.rows.join("\n"))?;
-            out.flush()?;
-            drop(out);
             let key = tokio::select! {
-                _ = tokio::time::sleep_until(due) => {
-                    paging.turned(&shown);
-                    break;
-                }
+                _ = tokio::time::sleep_until(due) => break,
                 _ = interrupt.heard() => return ended(),
                 key = next_key(&mut keys) => key,
             };
@@ -143,8 +172,27 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
                 // not read rather than wait on them.
                 None => keys = Err("stdin ended".into()),
             }
+            shown = draw(&lines, &mut paging, &keys)?;
         }
+        last = Some((lines, shown));
     }
+}
+
+/// `lines` drawn on the page `paging` asks for, which it then holds as the
+/// page actually drawn.
+fn draw(
+    lines: &[String],
+    paging: &mut Paging,
+    keys: &Result<keys::Keys, String>,
+) -> anyhow::Result<fit::Shown> {
+    let shown = fit::screen(lines, fit::size(), paging.page, &paging.said(keys));
+    paging.page = shown.at;
+    let mut out = std::io::stdout().lock();
+    // Home, clear: the frame replaces the last one rather than scrolling, and
+    // no newline follows its last row, which would scroll the screen.
+    write!(out, "\x1b[H\x1b[2J{}", shown.rows.join("\n"))?;
+    out.flush()?;
+    Ok(shown)
 }
 
 /// The next key, where keys are read; where they are not, never.
@@ -192,10 +240,15 @@ fn ended() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Ctrl-C, heard from the moment the listener is made until the view ends.
+/// Ctrl-C, and on unix SIGTERM, heard from the moment the listener is made
+/// until the view ends: each ends the view through its loop, so the
+/// terminal's modes are given back on the way out rather than left as the
+/// view set them.
 struct Interrupt {
     #[cfg(unix)]
     inner: tokio::signal::unix::Signal,
+    #[cfg(unix)]
+    term: tokio::signal::unix::Signal,
     #[cfg(windows)]
     inner: tokio::signal::windows::CtrlC,
 }
@@ -203,13 +256,26 @@ struct Interrupt {
 impl Interrupt {
     fn listen() -> std::io::Result<Self> {
         #[cfg(unix)]
-        let inner = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?;
+        {
+            use tokio::signal::unix::{signal, SignalKind};
+            Ok(Self {
+                inner: signal(SignalKind::interrupt())?,
+                term: signal(SignalKind::terminate())?,
+            })
+        }
         #[cfg(windows)]
-        let inner = tokio::signal::windows::ctrl_c()?;
-        Ok(Self { inner })
+        Ok(Self {
+            inner: tokio::signal::windows::ctrl_c()?,
+        })
     }
 
     async fn heard(&mut self) {
+        #[cfg(unix)]
+        tokio::select! {
+            _ = self.inner.recv() => {}
+            _ = self.term.recv() => {}
+        }
+        #[cfg(windows)]
         self.inner.recv().await;
     }
 }
