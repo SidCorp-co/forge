@@ -17,6 +17,8 @@ export interface WorkEvidence {
   handoffCommitSha: string | null;
   handoffFilesModified: number;
   branch: string | null;
+  /** `issues.merged_commit_sha`: a merge Forge read for itself, from a pull request or the repository. */
+  mergedCommitSha: string | null;
 }
 
 export async function collectWorkEvidence(
@@ -43,6 +45,8 @@ export async function collectWorkEvidence(
     executor
       .select({
         sessionContext: issues.sessionContext,
+        mergedAt: issues.mergedAt,
+        mergedCommitSha: issues.mergedCommitSha,
         baseBranch: projects.baseBranch,
         releaseChain: projects.releaseChain,
       })
@@ -84,6 +88,8 @@ export async function collectWorkEvidence(
     handoffCommitSha,
     handoffFilesModified,
     branch,
+    mergedCommitSha:
+      projectRow?.mergedAt != null ? projectRow.mergedCommitSha?.trim() || null : null,
   };
 }
 
@@ -91,7 +97,8 @@ export function hasCodeEvidence(evidence: WorkEvidence): boolean {
   return (
     Boolean(evidence.handoffCommitSha) ||
     evidence.handoffFilesModified > 0 ||
-    Boolean(evidence.branch)
+    Boolean(evidence.branch) ||
+    Boolean(evidence.mergedCommitSha)
   );
 }
 
@@ -115,8 +122,11 @@ export async function hasChildIssues(
 
 export const NO_WORK_EVIDENCE_DETAIL =
   'no branch, commit or code handoff is recorded for this issue — record the branch in ' +
-  'sessionContext.branch or sessionContext.worklog.branch, or write the implementation step ' +
-  'handoff with commitSha/filesModified, before advancing. A branch equal to the project base ' +
+  'sessionContext.branch or sessionContext.worklog.branch, write the implementation step ' +
+  'handoff with commitSha/filesModified, or, where the work landed on the base branch itself, ' +
+  'mark it merged with `mark_merged` carrying `data.commit`, the commit it landed at, which ' +
+  "Forge checks against the project's repository, before advancing. A branch equal to the " +
+  'project base ' +
   'branch is not evidence, and neither is the last branch of a project whose release chain has ' +
   'two or more entries: both name where work lands, not that any happened. Where the chain is ' +
   'empty or names one branch there is no live branch to exclude, so a branch of that name ' +

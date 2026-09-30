@@ -59,13 +59,18 @@ export class GitHubClientError extends Error {
   }
 }
 
-/** A failed GitHub read, carrying the status so a caller can tell 404 from 403. */
+/**
+ * A failed GitHub read, carrying the status so a caller can tell 404 from 403, and the phase so a
+ * 404 minting the installation token is not read as a 404 on the path asked for.
+ */
 export class GitHubReadError extends Error {
   readonly status: number;
-  constructor(status: number, message: string) {
+  readonly phase: 'mint' | 'request';
+  constructor(status: number, message: string, phase: 'mint' | 'request' = 'request') {
     super(message);
     this.name = 'GitHubReadError';
     this.status = status;
+    this.phase = phase;
   }
 }
 
@@ -190,7 +195,9 @@ export function buildRepoClient(args: {
       try {
         token = await mint();
       } catch (err) {
-        if (err instanceof GitHubAuthError) throw new GitHubReadError(err.status, err.message);
+        if (err instanceof GitHubAuthError) {
+          throw new GitHubReadError(err.status, err.message, 'mint');
+        }
         throw err;
       }
       const res = await fetch(`${base}${path}`, {

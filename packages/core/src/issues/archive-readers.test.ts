@@ -53,6 +53,7 @@ const NOT_DISCOVERY: Record<string, string> = {
   'issues/attachment-routes.ts': 'by issue or attachment id',
   'issues/attributes/read.ts': 'the ids attribute values reference',
   'issues/attributes/routes.ts': 'by issue id',
+  'issues/commit-landing.ts': 'by issue id, the issue a mark names',
   'issues/create-service.ts': 'the existing row a dedup names',
   'issues/issue-lease.ts':
     'the one issue a lease key names; a run holding an archived issue is still holding it, and its status is what says whether it is over',
