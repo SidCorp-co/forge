@@ -155,6 +155,7 @@ import {
 import { registerPmQueuePressureSweeper } from './pm/queue-pressure.js';
 import { pmReadRoutes } from './pm/read-routes.js';
 import { pmRoutes } from './pm/routes.js';
+import { mountProjectConfig } from './project-config/mount.js';
 import { collaboratorsMeRoutes } from './projects/collaborators-routes.js';
 import { gitCredentialRoutes } from './projects/git-credential-routes.js';
 import { projectHealthRoutes } from './projects/health-routes.js';
@@ -273,11 +274,8 @@ registerEagerSubscribers(hooks);
 app.use('/mcp', mcpRequestClass(), requirePat());
 app.on(['POST', 'GET', 'DELETE'], '/mcp', mcpHandler);
 
-app.route('/', installRoutes);
-app.route('/api', installRoutes);
-
-app.route('/', guideRoutes);
-app.route('/api', guideRoutes);
+for (const at of ['/', '/api']) app.route(at, installRoutes);
+for (const at of ['/', '/api']) app.route(at, guideRoutes);
 
 app.get('/pair', (c) => {
   const code = c.req.query('code');
@@ -304,6 +302,7 @@ app.route('/api/projects', projectMetricsRoutes);
 app.route('/api/projects', gitCredentialRoutes);
 app.route('/api/projects', runLedgerRoutes);
 app.route('/api/projects', masterCharterRoutes);
+mountProjectConfig(app);
 app.route('/api/projects', projectRoutes);
 app.route('/api/projects', assistantWeeklyRoutes);
 app.route('/api/orgs', orgRoutes);

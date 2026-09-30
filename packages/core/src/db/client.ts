@@ -15,6 +15,7 @@ import * as journalSchema from './schema-journal.js';
 import * as masterCharterSchema from './schema-master-charter.js';
 import * as memoryChunksSchema from './schema-memory-chunks.js';
 import * as memoryRevisionsSchema from './schema-memory-revisions.js';
+import * as projectConfigSchema from './schema-project-config.js';
 import * as questionsSchema from './schema-questions.js';
 import * as repoProjectionSchema from './schema-repo-projection.js';
 import * as rocketchatSchema from './schema-rocketchat.js';
@@ -34,6 +35,7 @@ const schema = {
   ...transcriptIndexSchema,
   ...journalSchema,
   ...masterCharterSchema,
+  ...projectConfigSchema,
   ...questionsSchema,
   ...rocketchatSchema,
   ...agentSessionEventsSchema,
