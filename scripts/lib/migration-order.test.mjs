@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkSet, floorOf, newEntries } from './migration-order.mjs';
+import { checkSet, floorOf, newEntries, readJournal, readOpenSet } from './migration-order.mjs';
 
 const DAY = 86_400_000;
 
@@ -242,5 +242,61 @@ describe('the interleave refusal names the entries, not only the ranges', () => 
     expect(said(result)).toContain('0289_a');
     expect(said(result)).toContain('0291_a');
     expect(said(result)).toContain('0290_b');
+  });
+});
+
+describe('readJournal', () => {
+  it('reads a journal whose every entry carries idx, when and tag', () => {
+    const doc = { version: '7', entries: [at(1, DAY)] };
+    expect(readJournal(JSON.stringify(doc), 'x')).toEqual({ doc });
+  });
+
+  it.each([
+    ['{ not', /^the journal at x is not readable JSON: /],
+    ['{}', /^the journal at x carries no `entries` array$/],
+    ['{"entries":[null]}', /^the journal at x holds an entry without idx, when and tag: null$/],
+    ['{"entries":[{"idx":1,"tag":"a"}]}', /holds an entry without idx, when and tag: \{"idx":1/],
+  ])('names what is wrong with %s', (text, why) => {
+    expect(readJournal(text, 'x').problem).toMatch(why);
+  });
+});
+
+describe('readOpenSet', () => {
+  const journal = 'db/meta/_journal.json';
+  const held = JSON.stringify({ entries: [at(5, 5 * DAY, '0005_outside')] });
+  const git = (args) => {
+    if (args[0] === 'for-each-ref') return 'origin/main\norigin/outside';
+    if (args[0] === 'ls-tree') return journal;
+    if (args[0] === 'show') return held;
+    return null;
+  };
+  // origin/outside was merged into origin/main after the window's base B, so it is an ancestor of
+  // the moved ref and not of B.
+  const landedAfterB = (ref, commit) => commit === 'origin/main';
+  const read = (baseCommit, isAncestor = landedAfterB) =>
+    readOpenSet({
+      git,
+      isAncestor,
+      journal,
+      baseRef: 'origin/main',
+      baseCommit,
+      fetch: false,
+      isOurs: () => false,
+      parse: (text) => JSON.parse(text).entries,
+      afterFetch: () => [],
+    });
+
+  it('judges a branch open against the commit it is given, not wherever the base ref has moved', () => {
+    expect(read('B').open).toEqual([
+      { branch: 'origin/outside', entries: [at(5, 5 * DAY, '0005_outside')] },
+    ]);
+  });
+
+  it('skips a branch already on the base commit', () => {
+    expect(read('origin/main').open).toEqual([]);
+  });
+
+  it('reads an ancestry git could not answer as a hole, never as an open or a landed branch', () => {
+    expect(read('B', () => null)).toEqual({ hole: { ref: 'origin/outside', kind: 'ancestry' } });
   });
 });

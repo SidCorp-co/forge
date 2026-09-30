@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { baseRef } from './lib/base-branch.mjs';
 import { notRunHereLines } from './lib/not-run-here.mjs';
 import { absentPrerequisites, blockedAside, remedyLines } from './lib/prerequisite.mjs';
+import { checksFor, entryEligibility, MODES, unlayered } from './lib/verify-layers.mjs';
 import { markFor, tally, tallyLine } from './lib/verify-report.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -17,12 +18,16 @@ const CHECKS = [
   {
     axis: 'language',
     label: 'source-language',
+    layer: 'entry',
+    reads: "each source file's own strings, judged file by file",
     cmd: ['node', 'scripts/check-source-language.mjs', '--all'],
     scanned: /across (\d+) files/,
   },
   {
     axis: 'record',
     label: 'release-record',
+    layer: 'entry',
+    reads: 'CHANGELOG.md against its base revision, one fixed file',
     cmd: ['node', 'scripts/check-release-record.mjs'],
     scanned: /^release-record: (\d+) entr/m,
     unit: 'release entries',
@@ -30,12 +35,16 @@ const CHECKS = [
   {
     axis: 'behaviour',
     label: 'test-signal',
+    layer: 'entry',
+    reads: "each test file's own assertions, judged file by file",
     cmd: ['node', 'scripts/check-test-signal.mjs', '--all'],
     scanned: /^test-signal: (\d+) test file/m,
   },
   {
     axis: 'behaviour',
     label: 'test-reachability',
+    layer: 'shared',
+    reads: "every tracked test file against every runner's include globs",
     cmd: ['node', 'scripts/check-test-reachability.mjs'],
     scanned: /^test-reachability: (\d+) tracked test file/m,
     needs: ['deps'],
@@ -44,6 +53,8 @@ const CHECKS = [
   {
     axis: 'behaviour',
     label: 'whole-tree-gates',
+    layer: 'shared',
+    reads: 'every test file for whole-tree declarations, across packages',
     cmd: ['node', 'scripts/check-whole-tree-gates.mjs'],
     scanned: /^whole-tree-gates: (\d+) test file\(s\) read/m,
     unit: 'test files',
@@ -51,6 +62,8 @@ const CHECKS = [
   {
     axis: 'behaviour',
     label: 'flow-coverage',
+    layer: 'shared',
+    reads: "every cm:flow step against the integration suite's coverage report",
     cmd: ['node', 'scripts/check-flow-coverage.mjs', '--all'],
     scanned: /: (\d+) step\(s\) across/,
     unit: 'flow steps',
@@ -60,6 +73,8 @@ const CHECKS = [
   {
     axis: 'knowledge',
     label: 'pat-surface',
+    layer: 'shared',
+    reads: 'every router file against the PAT permission groups',
     cmd: ['node', 'scripts/check-pat-surface.mjs'],
     scanned:
       /^pat-surface: \d+ resource\(s\) · \d+ permission group\(s\) · \d+ covered prefix\(es\) · \d+ router file\(s\) · (\d+) route/m,
@@ -68,6 +83,8 @@ const CHECKS = [
   {
     axis: 'knowledge',
     label: 'injected-doc-modes',
+    layer: 'shared',
+    reads: "injected documents' mode claims against the code they describe",
     cmd: ['node', 'scripts/check-injected-doc-modes.mjs'],
     scanned: /^injected-doc-modes: (\d+) mode-specific claim/m,
     unit: 'mode-specific claims',
@@ -75,6 +92,8 @@ const CHECKS = [
   {
     axis: 'knowledge',
     label: 'retired-model',
+    layer: 'entry',
+    reads: "each file's own model literals, judged file by file",
     cmd: ['node', 'scripts/check-retired-model.mjs'],
     scanned: /^check-retired-model: (\d+) files scanned/m,
     unit: 'files',
@@ -82,6 +101,9 @@ const CHECKS = [
   {
     axis: 'knowledge',
     label: 'status-tuples',
+    layer: 'shared',
+    reads:
+      'status vocabularies across three packages; a subset reports clean on a tree that is not',
     cmd: ['node', 'scripts/check-status-tuples.mjs', '--all'],
     scanned: /^status-tuples: (\d+) file\(s\) scanned/m,
     unit: 'files',
@@ -89,6 +111,8 @@ const CHECKS = [
   {
     axis: 'knowledge',
     label: 'doc-citations',
+    layer: 'shared',
+    reads: "every document's citations against the files and symbols they name",
     cmd: ['node', 'scripts/check-doc-citations.mjs', '--all'],
     scanned: /^doc-citations: (\d+) document\(s\) scanned/m,
     carries: /^doc-citations worklist: (.+)$/m,
@@ -97,6 +121,8 @@ const CHECKS = [
   {
     axis: 'knowledge',
     label: 'honest-costs',
+    layer: 'entry',
+    reads: "each proposal document's own costs table, judged document by document",
     cmd: ['node', 'scripts/check-honest-costs.mjs'],
     scanned: /^honest-costs: (\d+) document/m,
     unit: 'documents',
@@ -104,6 +130,8 @@ const CHECKS = [
   {
     axis: 'relations',
     label: 'archmap',
+    layer: 'shared',
+    reads: 'the whole import graph against the declared architecture',
     cmd: ['./.forge/archmap/archmap', 'check'],
     exclusive: 'archmap',
     scanned: /archmap · (\d+) files/,
@@ -112,6 +140,8 @@ const CHECKS = [
   {
     axis: 'form',
     label: 'core lint',
+    layer: 'entry',
+    reads: "each file in packages/core by biome's per-file rules",
     cmd: ['pnpm', '--filter', '@forge/core', 'lint'],
     scanned: /Checked (\d+)/,
     needs: ['deps'],
@@ -119,6 +149,8 @@ const CHECKS = [
   {
     axis: 'form',
     label: 'lint-budget',
+    layer: 'entry',
+    reads: "each file's lint findings against its own frozen baseline entry",
     cmd: ['node', 'scripts/check-lint-budget.mjs', '--all'],
     scanned: /^lint-budget: (\d+) file/m,
     needs: ['deps'],
@@ -126,6 +158,8 @@ const CHECKS = [
   {
     axis: 'form',
     label: 'size-budget',
+    layer: 'entry',
+    reads: "each file's and function's length against its own frozen baseline entry",
     cmd: ['node', 'scripts/check-size-budget.mjs', '--all'],
     scanned: /^size-budget: (\d+) file/m,
     needs: ['deps'],
@@ -133,6 +167,8 @@ const CHECKS = [
   {
     axis: 'form',
     label: 'provider-literals',
+    layer: 'entry',
+    reads: "each file's own provider literals, judged file by file",
     cmd: ['node', 'scripts/check-provider-literals.mjs', '--all'],
     scanned: /^provider-literals: (\d+) file\(s\) scanned/m,
     unit: 'files',
@@ -140,6 +176,8 @@ const CHECKS = [
   {
     axis: 'form',
     label: 'integration-declarations',
+    layer: 'shared',
+    reads: 'every provider declaration against every module that implements one',
     cmd: ['node', 'scripts/check-integration-declarations.mjs', '--all'],
     scanned: /^integration-declarations: (\d+) provider\(s\) declared/m,
     needs: ['deps'],
@@ -148,12 +186,17 @@ const CHECKS = [
   {
     axis: 'relations',
     label: 'merged-at-writers',
+    layer: 'shared',
+    reads:
+      'every writer of merged_at across the tree; a subset reports clean on a tree that is not',
     cmd: ['node', 'scripts/check-merged-at-writers.mjs', '--all'],
     scanned: /^merged-at-writers: (\d+) file\(s\) scanned/m,
   },
   {
     axis: 'form',
     label: 'lazy-module-init',
+    layer: 'shared',
+    reads: 'module initialisation across the import graph; the property is repo-wide',
     cmd: ['node', 'scripts/check-lazy-module-init.mjs', '--all'],
     scanned: /^lazy-module-init: (\d+) file\(s\) scanned/m,
     needs: ['deps'],
@@ -161,6 +204,8 @@ const CHECKS = [
   {
     axis: 'form',
     label: 'scripts lint',
+    layer: 'entry',
+    reads: "each file in scripts/ by biome's per-file rules",
     cmd: ['pnpm', 'exec', 'biome', 'check', 'scripts'],
     scanned: /^Checked (\d+) files/m,
     needs: ['deps'],
@@ -168,6 +213,8 @@ const CHECKS = [
   {
     axis: 'form',
     label: 'core typecheck',
+    layer: 'shared',
+    reads: 'the whole packages/core program, every file typed against every other',
     cmd: ['pnpm', '--filter', '@forge/core', 'exec', 'tsc', '--noEmit', '--extendedDiagnostics'],
     scanned: /^Files:\s+(\d+)/m,
     needs: ['deps', 'observability-build', 'contracts-build'],
@@ -175,6 +222,8 @@ const CHECKS = [
   {
     axis: 'runner',
     label: 'cargo gates',
+    layer: 'entry',
+    reads: 'the runner crates, and only when this change touched packages/runner',
     cmd: ['node', 'scripts/check-runner-gates.mjs'],
     scanned: /^runner-gates: (\d+) crate file\(s\) in scope/m,
     unit: 'crate files',
@@ -183,13 +232,21 @@ const CHECKS = [
   {
     axis: 'comment',
     label: 'comment-budget',
+    layer: 'entry',
+    reads: "each file's comment findings against its own frozen baseline entry",
     cmd: ['node', 'scripts/check-comment-budget.mjs', '--all'],
     scanned: /^comment-budget: (\d+) file\(s\) scanned/m,
+    scoped: {
+      cmd: ['node', 'scripts/check-comment-budget.mjs', '--changed'],
+      scopeMayBeEmpty: true,
+    },
     needs: ['deps'],
   },
   {
     axis: 'meta',
     label: 'lockfile-transport',
+    layer: 'entry',
+    reads: 'pnpm-lock.yaml, one fixed file',
     cmd: ['node', 'scripts/check-lockfile-transport.mjs'],
     scanned: /^lockfile-transport: (\d+) resolution\(s\), none over SSH/m,
     unit: 'resolutions',
@@ -197,6 +254,8 @@ const CHECKS = [
   {
     axis: 'meta',
     label: 'migration-order',
+    layer: 'shared',
+    reads: "every open branch's migration journal; the subject is the set, not this branch",
     cmd: ['node', 'scripts/check-migration-order.mjs'],
     scanned: /^migration-order: (\d+) migration\(s\) landing/m,
     unit: 'migrations landing',
@@ -207,6 +266,8 @@ const CHECKS = [
   {
     axis: 'meta',
     label: 'conformance levels',
+    layer: 'shared',
+    reads: "every axis's gates and baselines against origin/main",
     cmd: ['node', 'scripts/conformance-status.mjs'],
     scanned: /^conformance-status: (\d+) axes measured/m,
     unit: 'axes',
@@ -214,12 +275,23 @@ const CHECKS = [
   {
     axis: 'meta',
     label: 'conformance audit',
+    layer: 'shared',
+    reads: 'every conformance rule across the whole tree',
     cmd: ['node', 'scripts/conformance-audit.mjs'],
     exclusive: 'archmap',
     scanned: /^conformance-audit: (\d+) rules evaluated/m,
     unit: 'rules',
   },
 ];
+
+/** The parity proof every mode runs last; its layer and its scan proof are declared like any check's. */
+const CI_PARITY = {
+  label: 'ci-parity',
+  layer: 'entry',
+  reads: 'ci.yml and the setup-workspace composite, two fixed files',
+  scanned: /^ci-parity: (\d+) CI step\(s\) declared/m,
+  unit: 'CI steps',
+};
 
 const CI_COVERAGE = {
   'node scripts/check-honest-costs.mjs': 'verify',
@@ -319,8 +391,22 @@ function assertEverySkipIsCovered() {
   process.exit(2);
 }
 
+function assertEveryCheckIsLayered() {
+  const missing = unlayered([...CHECKS, CI_PARITY]);
+  if (missing.length === 0) return;
+  console.error(
+    `verify: ${missing.length} check(s) declare no layer, or no reason for it:\n` +
+      missing.map((m) => `  ${m}`).join('\n') +
+      '\nA check belongs to `entry` when it judges each file from that file alone, or fixed files\n' +
+      'it names by path, and to\n' +
+      '`shared` when its verdict on one file depends on others or on other branches — by what it\n' +
+      'reads, never by its name or its cost (scripts/lib/verify-layers.mjs). Exit 2.\n',
+  );
+  process.exit(2);
+}
+
 function assertEveryCheckProvesScan() {
-  const unproven = CHECKS.filter((c) => !c.scanned).map((c) => c.label);
+  const unproven = [...CHECKS, CI_PARITY].filter((c) => !c.scanned).map((c) => c.label);
   if (unproven.length === 0) return;
   console.error(
     `verify: ${unproven.length} check(s) declare no \`scanned\` pattern: ${unproven.join(', ')}\n` +
@@ -511,7 +597,8 @@ function composedGuardParity() {
   return { code: 0 };
 }
 
-function ciParity(quiet) {
+/** `said` collects the success line, which the report reads the step count from. */
+function ciParity(quiet, said = []) {
   const steps = ciSteps();
   if (steps === null) {
     console.error('ci-parity: .github/workflows/ci.yml not found');
@@ -552,11 +639,8 @@ function ciParity(quiet) {
 
   const missing = steps.filter((s) => !(s in CI_COVERAGE));
   if (missing.length === 0) {
-    if (!quiet) {
-      console.log(
-        `ci-parity: ${steps.length} CI step(s) declared, ${gate.count} gate job(s) asserted`,
-      );
-    }
+    said.push(`ci-parity: ${steps.length} CI step(s) declared, ${gate.count} gate job(s) asserted`);
+    if (!quiet) console.log(said.at(-1));
     return 0;
   }
   console.error(`\nci-parity: ${missing.length} CI step(s) not declared in CI_COVERAGE:`);
@@ -607,7 +691,15 @@ function reportBlocked(results) {
   }
 }
 
-function report(results, parity) {
+function report(results, { code: parityCode, said }) {
+  const counted = parityCode === 0 ? said.join('\n').match(CI_PARITY.scanned) : null;
+  const parity = parityCode === 0 && !counted ? 2 : parityCode;
+  const parityAside =
+    parityCode === 0 && !counted
+      ? '  printed no step count, so what it read is unknown'
+      : counted
+        ? `  ${counted[1]} ${CI_PARITY.unit}`
+        : '';
   const width = Math.max(...results.map((r) => r.label.length), 18);
   console.log('');
   for (const r of results) {
@@ -615,10 +707,12 @@ function report(results, parity) {
     const files = r.files === undefined ? '' : `${r.files} ${r.unit ?? 'files'}`;
     const aside = r.why ?? r.note;
     console.log(
-      `  ${mark}  ${r.axis.padEnd(10)} ${r.label.padEnd(width)}  ${files}${aside ? `  ${aside}` : ''}`,
+      `  ${mark}  ${r.axis.padEnd(10)} ${r.layer.padEnd(6)} ${r.label.padEnd(width)}  ${files}${aside ? `  ${aside}` : ''}`,
     );
   }
-  console.log(`  ${parity === 0 ? 'ok  ' : 'FAIL'}  ${'meta'.padEnd(10)} ci-parity`);
+  console.log(
+    `  ${parity === 0 ? 'ok  ' : 'FAIL'}  ${'meta'.padEnd(10)} ${CI_PARITY.layer.padEnd(6)} ${CI_PARITY.label.padEnd(width)}${parityAside}`,
+  );
   console.log(`\n  ${tallyLine(tally([...results, { code: parity }]))}`);
   reportBlocked(results);
   reportNotRunHere();
@@ -635,12 +729,15 @@ function report(results, parity) {
 }
 
 const args = process.argv.slice(2);
-const bad = args.filter((a) => !['--ci-parity'].includes(a));
-if (bad.length) {
-  console.error(`usage: verify.mjs [--ci-parity]\nunknown: ${bad.join(' ')}`);
+const bad = args.filter((a) => !['--ci-parity', '--entry', '--window'].includes(a));
+if (bad.length || (args.includes('--entry') && args.includes('--window'))) {
+  console.error(
+    `usage: verify.mjs [--ci-parity | --entry | --window]\nunknown: ${bad.join(' ') || 'both --entry and --window'}`,
+  );
   process.exit(2);
 }
 
+assertEveryCheckIsLayered();
 assertEveryCheckProvesScan();
 assertEverySkipIsCovered();
 
@@ -653,8 +750,31 @@ if (scope.refusal) {
 }
 const base = scope.base;
 
-console.log(`verify: ${CHECKS.length} checks against ${base.slice(0, 8)} on ${BASE_REF}`);
+let mode = args.includes('--entry') ? 'entry' : args.includes('--window') ? 'window' : 'whole';
+if (mode === 'entry') {
+  const judged = entryEligibility(ROOT, base);
+  if (judged.refusal) {
+    console.error(`verify --entry: ${judged.refusal}`);
+    process.exit(2);
+  }
+  if (!judged.eligible) {
+    console.log(
+      'verify --entry: this change is not queue-eligible, so it takes the whole gate here:\n' +
+        judged.surfaces.map((s) => `  ${s}`).join('\n'),
+    );
+    mode = 'whole';
+  }
+}
+const checks = checksFor(mode, CHECKS);
+console.log(
+  `verify: ${checks.length} checks against ${base.slice(0, 8)} on ${BASE_REF} — ${MODES[mode]}`,
+);
+if (mode === 'entry') {
+  const left = CHECKS.filter((c) => c.layer === 'shared').map((c) => c.label);
+  console.log(`  a verify window pays the ${left.length} shared check(s) once: ${left.join(', ')}`);
+}
 const WIDTH = Number(process.env.VERIFY_CONCURRENCY) || 6;
-const results = await runAll(CHECKS, base, WIDTH);
+const results = await runAll(checks, base, WIDTH);
 
-process.exit(report(results, ciParity(true)));
+const said = [];
+process.exit(report(results, { code: ciParity(true, said), said }));
