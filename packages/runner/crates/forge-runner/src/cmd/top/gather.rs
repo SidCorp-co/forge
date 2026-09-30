@@ -64,6 +64,11 @@ pub struct Snapshot {
     pub jobs: Read<Jobs>,
     /// Keyed by project id, and the moment they were asked.
     pub core: CoreAnswer,
+    /// The answer `core` replaced when it was last asked afresh, which the
+    /// table's CHANGE compares against; `None` until a second ask.
+    pub core_before: Option<CoreAnswer>,
+    /// The daemon this configuration is served by, where one could be named.
+    pub daemon_pid: Option<u32>,
     pub gate: Vec<String>,
     pub gate_source: String,
     pub pool: Vec<String>,
@@ -77,6 +82,7 @@ type HeldExe = ((u32, String), Read<Arc<Vec<u8>>>);
 pub struct Carry {
     discovery: Option<(i64, Read<Vec<MeRunner>>)>,
     core: Option<CoreAnswer>,
+    core_before: Option<CoreAnswer>,
     core_at: i64,
     /// The project ids `core` was asked about: an answer is kept for these
     /// alone, so a project listed since is asked, never shown as unanswered.
@@ -187,6 +193,8 @@ pub async fn frame(ctx: &Ctx, carry: &mut Carry) -> Snapshot {
         trees: carry.trees.clone(),
         jobs,
         core,
+        core_before: carry.core_before.clone(),
+        daemon_pid: daemon.as_ref().map(|d| d.pid),
         gate,
         gate_source,
         pool,
@@ -350,7 +358,9 @@ async fn core_reads(
         return held;
     }
     let got = ask_core(ctx, cfg, projects, now_ms).await;
-    carry.core = Some(got.clone());
+    if let Some(replaced) = carry.core.replace(got.clone()) {
+        carry.core_before = Some(replaced);
+    }
     carry.core_at = now_ms;
     carry.core_ids = ids;
     got
@@ -379,7 +389,7 @@ async fn ask_core(
     projects: &[Project],
     now_ms: i64,
 ) -> CoreAnswer {
-    let source = "open questions and awaiting_release rows (core)";
+    let source = "open questions, awaiting_release rows and issue counts by status (core)";
     let url = cfg
         .and_then(|c| ctx.resolve_core_url(c))
         .ok_or_else(|| Unreadable::new(source, "no core URL is configured on this box"))?;

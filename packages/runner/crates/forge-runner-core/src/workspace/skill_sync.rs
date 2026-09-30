@@ -912,7 +912,8 @@ mod tests {
     /// The step runs before the first skill is seeded.
     #[test]
     fn sync_skills_takes_the_exclude_step_before_it_writes() {
-        const SRC: &str = include_str!("skill_sync.rs");
+        static SRC: std::sync::LazyLock<&str> =
+            std::sync::LazyLock::new(|| crate::test_scratch::lf(include_str!("skill_sync.rs")));
         let body = SRC
             .split("\npub async fn sync_skills(")
             .nth(1)

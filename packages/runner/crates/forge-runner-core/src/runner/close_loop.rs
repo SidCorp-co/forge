@@ -274,7 +274,8 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::Mutex;
 
-    const SOURCE: &str = include_str!("close_loop.rs");
+    static SOURCE: std::sync::LazyLock<&str> =
+        std::sync::LazyLock::new(|| crate::test_scratch::lf(include_str!("close_loop.rs")));
 
     struct Sessions(bool);
 

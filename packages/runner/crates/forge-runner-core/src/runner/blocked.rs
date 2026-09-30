@@ -202,13 +202,13 @@ mod tests {
 
     #[test]
     fn the_box_side_sweeps_this_permit_claims_are_in_this_build() {
-        let reap = include_str!("../workspace/worktree_reap.rs");
+        let reap = crate::test_scratch::lf(include_str!("../workspace/worktree_reap.rs"));
         assert!(
             reap.contains("held_by.holder(&p)"),
             "the worktree reaper no longer consults the ledger, so `{}` is a false claim",
             PROTECTIONS_FROM_THIS_BUILD[0]
         );
-        let recovery = include_str!("../daemon/recovery.rs");
+        let recovery = crate::test_scratch::lf(include_str!("../daemon/recovery.rs"));
         assert!(
             recovery.contains("if run.is_parked_on_human() {"),
             "reconcile no longer exempts a park, so a dead master or a reboot closes it and `{}` is a false claim",
@@ -374,7 +374,7 @@ mod tests {
 
     #[test]
     fn the_live_declaration_cannot_be_written_without_an_ear() {
-        let src = include_str!("ledger.rs");
+        let src = crate::test_scratch::lf(include_str!("ledger.rs"));
         let sig = src
             .split("pub fn declare_blocked_live(")
             .nth(1)
@@ -388,7 +388,7 @@ mod tests {
 
     #[test]
     fn the_human_park_cannot_be_written_without_a_permit() {
-        let src = include_str!("blocked.rs");
+        let src = crate::test_scratch::lf(include_str!("blocked.rs"));
         let sig = src
             .split("pub fn park_for_human(")
             .nth(1)

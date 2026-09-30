@@ -2719,7 +2719,7 @@ mod tests {
     }
 
     fn request_enum_body() -> String {
-        let src = include_str!("control.rs").replace("\r\n", "\n");
+        let src = crate::test_scratch::lf(include_str!("control.rs"));
         let after = src
             .split_once("enum Request {")
             .expect("the Request enum must be findable")

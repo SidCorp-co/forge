@@ -2570,7 +2570,8 @@ mod tests {
     use super::*;
     use crate::runner::blocked::Wait;
 
-    const SOURCE: &str = include_str!("ledger.rs");
+    static SOURCE: std::sync::LazyLock<&str> =
+        std::sync::LazyLock::new(|| crate::test_scratch::lf(include_str!("ledger.rs")));
 
     /// The human park in one call, as the old `park` was, so the cases below
     /// keep asserting the branch rather than the new call shape.
@@ -4080,7 +4081,7 @@ mod tests {
     /// reason cannot reach the table, whatever the column allows.
     #[test]
     fn the_stand_down_entry_point_does_not_admit_an_absent_reason() {
-        let source = include_str!("ledger.rs");
+        let source = crate::test_scratch::lf(include_str!("ledger.rs"));
         let signature = source
             .split("pub fn stand_down_master(")
             .nth(1)

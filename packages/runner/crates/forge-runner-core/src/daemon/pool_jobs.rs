@@ -1159,7 +1159,8 @@ impl Panes for TmuxPanes {
 mod tests {
     use super::*;
 
-    const THIS_SOURCE: &str = include_str!("pool_jobs.rs");
+    static THIS_SOURCE: std::sync::LazyLock<&str> =
+        std::sync::LazyLock::new(|| crate::test_scratch::lf(include_str!("pool_jobs.rs")));
     use crate::transport::pool::Refusal;
     use std::sync::atomic::Ordering;
     use std::sync::Arc;
@@ -3358,7 +3359,7 @@ mod tests {
 
     #[test]
     fn adoption_reads_what_this_box_recorded_before_what_it_is_running() {
-        let body = include_str!("pool_jobs.rs")
+        let body = crate::test_scratch::lf(include_str!("pool_jobs.rs"))
             .split("pub async fn adopt(")
             .nth(1)
             .and_then(|r| r.split("\npub ").next())

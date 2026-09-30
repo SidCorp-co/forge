@@ -476,7 +476,9 @@ mod tests {
     use super::*;
     use crate::transport::fake_core;
 
-    const RECOVERY_PORTS: &str = include_str!("../daemon/recovery_ports.rs");
+    static RECOVERY_PORTS: std::sync::LazyLock<&str> = std::sync::LazyLock::new(|| {
+        crate::test_scratch::lf(include_str!("../daemon/recovery_ports.rs"))
+    });
 
     fn client(url: String) -> CoreClient {
         CoreClient::new(url, String::from("tok"))
