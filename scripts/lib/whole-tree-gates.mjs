@@ -101,6 +101,21 @@ export function fsListing(name, args, cwd) {
   return [toPath(args[0], cwd)];
 }
 
+/** Whether a process may still be running: only its absence (`ESRCH`, or no `/proc` entry for it)
+ * or a zombie's state says it has ended; a state that cannot be read is running. */
+export function processRunning(pid, { signal, stat }) {
+  try {
+    signal(pid);
+  } catch (e) {
+    return e?.code !== 'ESRCH';
+  }
+  try {
+    return !/^\d+ \(.*\) Z /s.test(stat(pid));
+  } catch (e) {
+    return e?.code !== 'ENOENT' || !existsSync('/proc/self');
+  }
+}
+
 /**
  * The whole JSON lines a log holds past `offset`, and the offset to read from next. A log only ever
  * grows, so a line appended during a read is read next time; an unended line stays, and `pending`

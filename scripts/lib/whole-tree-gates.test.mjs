@@ -40,6 +40,7 @@ import {
   judgeRun,
   logLines,
   pathOf,
+  processRunning,
   runDirOf,
   spawnCwd,
   suiteMessage,
@@ -302,6 +303,23 @@ describe('reading a child log', () => {
   });
   it('reads a log emptied since the last read from its start', () => {
     expect(logLines(bytes('{"dir":"/c"}\n'), 400).lines).toEqual([{ dir: '/c' }]);
+  });
+});
+
+describe('whether a process a file started is still running', () => {
+  const fail = (code) => () => {
+    throw Object.assign(new Error(code), { code });
+  };
+  const ok = () => {};
+  it('ends only on its absence or a zombie state', () => {
+    expect(processRunning(1, { signal: fail('ESRCH'), stat: ok })).toBe(false);
+    expect(processRunning(1, { signal: ok, stat: () => '1 (node) Z 0' })).toBe(false);
+    expect(processRunning(1, { signal: ok, stat: fail('ENOENT') })).toBe(false);
+    expect(processRunning(1, { signal: ok, stat: () => '1 (node) S 0' })).toBe(true);
+  });
+  it('is running wherever its state cannot be read', () => {
+    expect(processRunning(1, { signal: fail('EPERM'), stat: ok })).toBe(true);
+    expect(processRunning(1, { signal: ok, stat: fail('EACCES') })).toBe(true);
   });
 });
 
