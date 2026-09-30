@@ -90,7 +90,7 @@ fn marker_is_current(marker_boot: &str, current: Option<&str>) -> bool {
 }
 
 fn default_dir() -> Option<PathBuf> {
-    dirs_next::config_dir().map(|d| d.join("forge-runner").join("inflight"))
+    crate::config::base_dir().ok().map(|d| d.join("inflight"))
 }
 
 fn marker_path(dir: &Path, job_id: &str) -> Option<PathBuf> {

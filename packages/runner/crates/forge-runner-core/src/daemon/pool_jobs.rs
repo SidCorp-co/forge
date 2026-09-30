@@ -965,7 +965,7 @@ pub struct FileRecords {
 impl FileRecords {
     /// Where a daemon keeps them, beside `inflight/`.
     pub fn default_dir() -> Option<PathBuf> {
-        dirs_next::config_dir().map(|d| d.join("forge-runner").join("pool-jobs"))
+        crate::config::base_dir().ok().map(|d| d.join("pool-jobs"))
     }
 
     fn path(&self, job_id: &str) -> Option<PathBuf> {

@@ -204,9 +204,7 @@ pub fn credential_file_path() -> Result<PathBuf> {
 }
 
 fn file_path() -> Result<PathBuf> {
-    let dir = dirs_next::config_dir()
-        .ok_or_else(|| Error::Config("cannot resolve OS config dir".into()))?;
-    Ok(dir.join("forge-runner").join("credentials.json"))
+    Ok(crate::config::base_dir()?.join("credentials.json"))
 }
 
 fn read_cred_file() -> Result<CredFile> {
