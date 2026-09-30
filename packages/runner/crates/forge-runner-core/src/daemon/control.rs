@@ -31,7 +31,9 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
 
 use crate::config::Config;
-use crate::daemon::session_tokens::{Holder, SessionTokens};
+#[cfg(unix)]
+use crate::daemon::session_tokens::Holder;
+use crate::daemon::session_tokens::SessionTokens;
 
 pub fn socket_path() -> Option<PathBuf> {
     let cfg = Config::path().ok()?;
@@ -51,6 +53,7 @@ pub struct HookNames {
     pub transcript_path: Option<String>,
 }
 
+#[cfg(any(unix, test))]
 #[derive(Debug, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 enum Request {
@@ -107,6 +110,7 @@ enum Request {
     },
 }
 
+#[cfg(any(unix, test))]
 impl Request {
     fn token(&self) -> &str {
         match self {
@@ -133,6 +137,7 @@ pub struct ClaimReply {
     pub reason: Option<String>,
 }
 
+#[cfg(any(unix, test))]
 impl ClaimReply {
     fn refused(reason: impl Into<String>) -> Self {
         Self {
@@ -166,8 +171,11 @@ pub struct Control {
 
 #[derive(Default)]
 pub struct GateMemory {
-    /// Which tool call each pending declaration has been promised to.
+    /// Which tool call each pending declaration has been promised to. The
+    /// gate reads it only over the control socket, which is unix's.
+    #[cfg(unix)]
     promised: std::collections::HashMap<String, String>,
+    #[cfg(unix)]
     allowed: std::collections::HashSet<String>,
 }
 
@@ -376,6 +384,7 @@ fn agent_event(
 
 pub const RESUME_CHOICES: &[&str] = &["continue", "restart", "leave"];
 
+#[cfg(unix)]
 fn run_choice(
     ctl: &Arc<Control>,
     run_id: &str,
@@ -589,6 +598,7 @@ fn run_declare_as(
     }
 }
 
+#[cfg(unix)]
 fn is_issue_key(s: &str) -> bool {
     let body = match s.split_once('-') {
         Some((prefix, rest)) => {
@@ -804,6 +814,7 @@ fn dispatch_gate_reply(
     }
 }
 
+#[cfg(unix)]
 /// Where the gate cannot decide it fails open, and a draining box does not
 /// where the hand-off may be new work: an undeclared subagent let through there
 /// is work the drain never counted (ISS-1223).
@@ -837,6 +848,7 @@ fn refused_while_draining(
     )))
 }
 
+#[cfg(unix)]
 /// The gate's "go ahead", with an optional reason it could not do better.
 fn gate_allows(why: Option<&str>) -> ClaimReply {
     ClaimReply {
@@ -984,6 +996,7 @@ fn note_subagent_stop(ctl: &Arc<Control>, child: &str, at_ms: i64, lead: Option<
     }
 }
 
+#[cfg(any(unix, test))]
 /// What a `SubagentStart` with no pending declaration turned out to be.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum StartKind {
@@ -995,6 +1008,7 @@ pub(crate) enum StartKind {
     Unreadable(String),
 }
 
+#[cfg(any(unix, test))]
 pub(crate) fn classify_start(read: Result<Option<String>, String>) -> StartKind {
     match read {
         Ok(Some(run_id)) => StartKind::Replay(run_id),
@@ -1379,6 +1393,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     /// What a lead event of one conversation names, and nothing else.
     fn conv(id: &str) -> HookNames {
         HookNames {
@@ -1423,6 +1438,55 @@ mod tests {
         assert!(transcript_path.is_none());
     }
 
+    /// Every name a hook's frame carries decodes under its wire spelling, on
+    /// every platform the frame is built on — including the ones whose daemon
+    /// hosts no control socket to read it.
+    #[test]
+    fn a_hook_frame_names_its_agent_its_conversation_and_its_agent_type_by_wire_name() {
+        let frame = r#"{"op":"agent_event","token":"t1","event":"SubagentStart","agentId":"a-1","conversationId":"conv-1","agentType":"forge:runner"}"#;
+        let req: Request = serde_json::from_str(frame).expect("must decode");
+        let Request::AgentEvent {
+            agent_id,
+            conversation_id,
+            agent_type,
+            ..
+        } = &req
+        else {
+            panic!("a frame whose op is `agent_event` must decode as one");
+        };
+        assert_eq!(
+            (
+                agent_id.as_deref(),
+                conversation_id.as_deref(),
+                agent_type.as_deref()
+            ),
+            (Some("a-1"), Some("conv-1"), Some("forge:runner"))
+        );
+    }
+
+    #[test]
+    fn a_close_frame_names_its_run_and_its_reason_and_the_reason_may_be_left_out() {
+        let req: Request = serde_json::from_str(
+            r#"{"op":"run_close","token":"t1","runId":"run-1","reason":"never started"}"#,
+        )
+        .expect("must decode");
+        let Request::RunClose { run_id, reason, .. } = &req else {
+            panic!("a frame whose op is `run_close` must decode as one");
+        };
+        assert_eq!(
+            (run_id.as_str(), reason.as_deref()),
+            ("run-1", Some("never started"))
+        );
+        let bare: Request =
+            serde_json::from_str(r#"{"op":"run_close","token":"t1","runId":"run-2"}"#)
+                .expect("a close with no reason must decode");
+        let Request::RunClose { reason, .. } = &bare else {
+            panic!("a frame whose op is `run_close` must decode as one");
+        };
+        assert!(reason.is_none());
+    }
+
+    #[cfg(unix)]
     /// The third value is the control's config dir, which the caller holds for the test's life.
     fn declaring_control(
         session_id: &str,
@@ -1431,6 +1495,7 @@ mod tests {
         declaring_control_over(session_id, project_id, Arc::default())
     }
 
+    #[cfg(unix)]
     /// [`declaring_control`] over a process table the test sets.
     fn declaring_control_over(
         session_id: &str,
@@ -1461,6 +1526,7 @@ mod tests {
         )
     }
 
+    #[cfg(unix)]
     /// A control over the map and registry a test built, with an empty ledger.
     fn control_over(
         tokens: SessionTokens,
@@ -1504,6 +1570,7 @@ mod tests {
         })
     }
 
+    #[cfg(unix)]
     fn run_count(ctl: &Arc<Control>) -> usize {
         ctl.ledger
             .lock()
@@ -1515,10 +1582,13 @@ mod tests {
             .len()
     }
 
+    #[cfg(unix)]
     /// The pane was placed as forge-dev's master under `PLACED`; core has
     /// since reaped that row and this box now holds `REMINT` for the pane.
     const PLACED: &str = "sess-placed-under";
+    #[cfg(unix)]
     const REMINT: &str = "sess-core-reminted";
+    #[cfg(unix)]
     const PANE: &str = "forge-master-forge-dev";
 
     #[cfg(unix)]
@@ -1850,6 +1920,7 @@ mod tests {
         assert_eq!(fresh.master_session_id, NEW);
     }
 
+    #[cfg(unix)]
     fn asking(role: &str, tool_use: &str) -> crate::daemon::dispatch_gate::Dispatch {
         crate::daemon::dispatch_gate::Dispatch {
             agent_id: None,

@@ -11660,7 +11660,7 @@ mod own_exe_reporting_tests {
 
 /// ISS-1223 criterion 3, run rather than read off the source: a sweep taken
 /// while a drain holds admission asks core for no work.
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod drain_sweep_tests {
     use super::*;
     use std::sync::Mutex as StdMutex;

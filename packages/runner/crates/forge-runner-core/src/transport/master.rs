@@ -215,9 +215,10 @@ mod tests {
 
     #[tokio::test]
     async fn a_core_that_cannot_be_reached_is_an_error_rather_than_a_hang() {
-        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = l.local_addr().unwrap();
-        drop(l);
+        // Bound and never listening, for the reason the next test gives.
+        let held = tokio::net::TcpSocket::new_v4().unwrap();
+        held.bind("127.0.0.1:0".parse().unwrap()).unwrap();
+        let addr = held.local_addr().unwrap();
         let c = client(format!("http://{addr}"));
         assert!(report_limit(&c, "usage_limit", Some(1), "x").await.is_err());
         assert!(clear_limit(&c).await.is_err());
@@ -361,9 +362,12 @@ mod tests {
     /// network alike.
     #[tokio::test]
     async fn a_core_that_cannot_be_reached_names_the_cause_and_not_the_address() {
-        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = l.local_addr().unwrap();
-        drop(l);
+        // Bound and never listening, and held for the whole test: a port
+        // released instead can be taken by a sibling test's listener before
+        // the call reaches it, which answers with a reset, not a refusal.
+        let held = tokio::net::TcpSocket::new_v4().unwrap();
+        held.bind("127.0.0.1:0".parse().unwrap()).unwrap();
+        let addr = held.local_addr().unwrap();
         let said = register(&client(format!("http://{addr}")), "p1", "m")
             .await
             .unwrap_err()

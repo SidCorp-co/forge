@@ -275,8 +275,8 @@ impl SessionTokens {
     }
 
     /// The capability this map holds for `session`, as a test that knows a
-    /// session and not a token reaches it.
-    #[cfg(test)]
+    /// session and not a token reaches it, over the control socket unix has.
+    #[cfg(all(unix, test))]
     pub(crate) fn holder_for_session(&self, session: &str) -> Option<Holder> {
         self.load().ok()?.into_values().find_map(|e| match e {
             Entry::Minted(m) if m.session == session => Some(Holder::Minted(m)),
