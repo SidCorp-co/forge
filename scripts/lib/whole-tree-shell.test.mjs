@@ -350,12 +350,37 @@ describe('a path placed where the kernel resolves it', () => {
   symlinkSync(join(ROOT, 'packages'), join(OUT, 'link'));
   afterAll(() => rmSync(OUT, { recursive: true, force: true }));
 
+  symlinkSync(ROOT, join(OUT, 'repo'));
+  symlinkSync(join(OUT, 'loop'), join(OUT, 'loop'));
+  const FAR = realpathSync(mkdtempSync(join(tmpdir(), 'whole-tree-far-')));
+  mkdirSync(join(FAR, 'a', 'b', 'c', 'd'), { recursive: true });
+  symlinkSync(join(FAR, 'a', 'b', 'c', 'd'), join(CORE, 'deep'));
+  afterAll(() => rmSync(FAR, { recursive: true, force: true }));
+
   it('follows a symlink before its `..`, and a `cd` the way the shell does', () => {
     expect(dirs('ls', [join(OUT, 'link')])).toEqual([join(ROOT, 'packages')]);
     expect(dirs('ls', [`${OUT}/link/..`])).toEqual([ROOT]);
-    expect(dirs('git', ['ls-files', `${OUT}/link/..`])).toEqual([ROOT]);
-    expect(dirs('git', ['ls-files', `${OUT}/link/core`])).toEqual([CORE]);
     expect(sh(`cd ${OUT}/link/.. && ls`)).toEqual([OUT]);
+  });
+
+  it('places a git pathspec both where git normalises it and where the kernel reads it', () => {
+    expect(dirs('git', ['ls-files', `${OUT}/link/..`])).toEqual([ROOT, OUT]);
+    expect(dirs('git', ['ls-files', `${OUT}/link/core`])).toEqual([CORE, `${OUT}/link/core`]);
+    // git takes `deep/../../..` from packages/core as the root before it reads the link; the
+    // kernel would take it to where the link points.
+    expect(dirs('git', ['ls-files', 'deep/../../..'])).toEqual([join(FAR, 'a'), ROOT]);
+  });
+
+  it('reads git run from a spelling of a directory inside the root as running in the root', () => {
+    const spelled = join(OUT, 'repo', 'packages', 'core');
+    expect(dirs('git', ['ls-files', ':/'], { cwd: spelled })).toEqual([ROOT]);
+    expect(dirs('git', ['status'], { cwd: spelled })).toEqual([ROOT]);
+    expect(dirs('git', ['status'], { cwd: FAR })).toEqual([FAR]);
+  });
+
+  it('counts a path the kernel cannot resolve, a symlink loop, as the root', () => {
+    expect(dirs('ls', [join(OUT, 'loop')])).toEqual([ROOT]);
+    expect(dirs('git', ['ls-files', join(OUT, 'loop')])).toEqual([ROOT, join(OUT, 'loop')]);
   });
 
   it('counts a link a shell makes as the root, since a later listing can go through it', () => {

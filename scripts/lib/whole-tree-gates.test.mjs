@@ -38,6 +38,7 @@ import {
   judgeGlobs,
   judgeRun,
   pathOf,
+  runDirOf,
   spawnCwd,
   suiteMessage,
   vitestSetup,
@@ -76,6 +77,28 @@ describe('which listed directory covers the root', () => {
     expect(coversRoot(ROOT, `${ROOT}/docs`)).toBe(false);
     expect(coversRoot(ROOT, '/repo-other')).toBe(false);
     expect(coversRoot(ROOT, '/rep')).toBe(false);
+  });
+
+  describe('decided on canonical paths, whatever the spelling', () => {
+    const real = realpathSync(mkdtempSync(join(tmpdir(), 'whole-tree-canon-')));
+    mkdirSync(join(real, 'repo', 'docs'), { recursive: true });
+    symlinkSync(join(real, 'repo'), join(real, 'link'));
+    symlinkSync(join(real, 'loop'), join(real, 'loop'));
+    afterAll(() => rmSync(real, { recursive: true, force: true }));
+    const repo = join(real, 'repo');
+
+    it('covers a symlink to the root, and the root reached through a /proc link', () => {
+      expect(coversRoot(repo, join(real, 'link'))).toBe(true);
+      expect(coversRoot(join(real, 'link'), repo)).toBe(true);
+      const here = realpathSync(process.cwd());
+      expect(coversRoot(here, `/proc/${process.pid}/cwd`)).toBe(true);
+      expect(coversRoot(here, '/proc/self/cwd/..')).toBe(true);
+    });
+
+    it('covers a directory the kernel cannot resolve, and not a spelling of one inside', () => {
+      expect(coversRoot(repo, join(real, 'loop'))).toBe(true);
+      expect(coversRoot(repo, join(real, 'link', 'docs'))).toBe(false);
+    });
   });
 });
 
@@ -165,6 +188,31 @@ describe('the directory a spawn runs in', () => {
     expect(spawnCwd(Buffer.from('src'), CORE)).toBe(`${CORE}/src`);
     expect(spawnCwd(pathToFileURL(`${ROOT}/`), CORE)).toBe(ROOT);
     expect(spawnCwd(new URL('../../..', pathToFileURL(`${CORE}/src/a.test.ts`)), CORE)).toBe(ROOT);
+  });
+
+  describe('placed where the kernel’s chdir lands', () => {
+    const real = realpathSync(mkdtempSync(join(tmpdir(), 'whole-tree-cwd-')));
+    mkdirSync(join(real, 'repo', 'packages', 'core'), { recursive: true });
+    symlinkSync(join(real, 'repo'), join(real, 'link'));
+    symlinkSync(join(real, 'repo', 'packages', 'core'), join(real, 'core'));
+    symlinkSync(join(real, 'loop'), join(real, 'loop'));
+    afterAll(() => rmSync(real, { recursive: true, force: true }));
+
+    it('follows a symlink, and its `..` from where the link points', () => {
+      expect(spawnCwd(join(real, 'link'), '/')).toBe(join(real, 'repo'));
+      expect(spawnCwd('core/../..', real)).toBe(join(real, 'repo'));
+      expect(spawnCwd(pathToFileURL(join(real, 'link')), '/')).toBe(join(real, 'repo'));
+    });
+
+    it.runIf(existsSync('/proc/self/cwd'))('follows a /proc cwd link before its `..`', () => {
+      const up = dirname(dirname(realpathSync(process.cwd())));
+      expect(spawnCwd(`/proc/${process.pid}/cwd/../..`, '/')).toBe(up);
+      expect(spawnCwd('/proc/self/cwd/../..', '/')).toBe(up);
+    });
+
+    it('throws on a cwd the kernel cannot resolve, which the watch counts as the root', () => {
+      expect(() => spawnCwd(join(real, 'loop'), '/')).toThrow(/a spawn cwd the guard cannot place/);
+    });
   });
 
   it('throws on a cwd Node would not take as a path, which the watch counts as the root', () => {
@@ -396,6 +444,27 @@ describe('the guard installed in this very run', () => {
     readdirSync(`${dir}/scripts/..`);
     rmSync(dir, { recursive: true, force: true });
     expect(covering().map((h) => h.dir)).toEqual([REPO, REPO]);
+  });
+
+  it('sees git list it from a cwd that is a symlink to it, or a /proc cwd link climbed to it', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'whole-tree-cwd-link-'));
+    symlinkSync(REPO, join(dir, 'repo'));
+    const up = relative(process.cwd(), REPO);
+    const args = ['ls-files', '--', '[p]ackage.json'];
+    execFileSync('git', args, { cwd: join(dir, 'repo') });
+    spawnSync('git', ['grep', '-l', 'no-such-text-anywhere'], {
+      cwd: join(dir, 'repo'),
+      stdio: 'ignore',
+    });
+    execFileSync('git', args, { cwd: `/proc/${process.pid}/cwd/${up}` });
+    execSync('git ls-files -- "[p]ackage.json" >/dev/null', { cwd: `/proc/self/cwd/${up}` });
+    rmSync(dir, { recursive: true, force: true });
+    expect(covering().map((h) => [h.via, h.dir])).toEqual([
+      ['execFileSync() running git ls-files', REPO],
+      ['spawnSync() running git grep', REPO],
+      ['execFileSync() running git ls-files', REPO],
+      ['execSync() running git ls-files', REPO],
+    ]);
   });
 
   it('records nothing covering the root for a listing inside it', () => {
@@ -655,27 +724,64 @@ describe('judging the vitest configurations', () => {
         (h) => !/\/node_modules\/@esbuild\/[^/]+\/bin\/esbuild`/.test(h.via),
       );
     });
-    const write = (name, test) => {
+    const write = (name, test, vite = {}) => {
       const path = join(dir, 'sub', name);
-      writeFileSync(path, `export default { test: ${JSON.stringify(test)} };`);
+      writeFileSync(path, `export default ${JSON.stringify({ ...vite, test })};`);
       return path;
     };
 
-    it('reads setupFiles from the configuration’s own test.root, as vitest runs it', async () => {
+    it('reads setupFiles from the configuration’s own test.root, wherever it is run from', () => {
       const path = write('vitest.rooted.config.mjs', { root: dir, setupFiles: ['./setup.mjs'] });
-      expect(await vitestSetup(path, VITEST_NODE)).toEqual({
+      for (const cwd of [dir, join(dir, 'sub')]) {
+        expect(vitestSetup(path, VITEST_NODE, cwd)).toEqual({
+          root: dir,
+          setupFiles: [join(dir, 'setup.mjs')],
+        });
+      }
+    });
+
+    it('reads them from the directory it is run from where it names no root', () => {
+      const path = write('vitest.config.mjs', { setupFiles: ['./setup.mjs'] });
+      expect(vitestSetup(path, VITEST_NODE, dir)).toEqual({
         root: dir,
         setupFiles: [join(dir, 'setup.mjs')],
       });
     });
 
-    it('reads them from its own directory where it names no root', async () => {
-      const path = write('vitest.config.mjs', { setupFiles: ['./setup.mjs'] });
-      expect(await vitestSetup(path, VITEST_NODE)).toEqual({
+    it('reads Vite’s top-level root from there too, and lets test.root beat it', () => {
+      const vite = write(
+        'vitest.vite-root.config.mjs',
+        { setupFiles: ['./s.mjs'] },
+        { root: 'sub' },
+      );
+      expect(vitestSetup(vite, VITEST_NODE, dir)).toEqual({
         root: join(dir, 'sub'),
-        setupFiles: [join(dir, 'sub', 'setup.mjs')],
+        setupFiles: [join(dir, 'sub', 's.mjs')],
       });
+      const both = write(
+        'vitest.both.config.mjs',
+        { root: dir, setupFiles: ['./s.mjs'] },
+        { root: 'sub' },
+      );
+      expect(vitestSetup(both, VITEST_NODE, dir).root).toBe(dir);
     });
+
+    it('throws what vitest said for a configuration it cannot load', () => {
+      const path = join(dir, 'sub', 'vitest.broken.config.mjs');
+      writeFileSync(path, 'export default {');
+      expect(() => vitestSetup(path, VITEST_NODE, dir)).toThrow(
+        /vitest\.broken\.config\.mjs|Unexpected/,
+      );
+    });
+  });
+
+  it('runs a configuration from its package’s directory, wherever inside it the file sits', () => {
+    const REPO = resolve(import.meta.dirname, '..', '..');
+    const isolation = join(REPO, 'packages/core/tests/helpers/file-isolation/vitest.config.ts');
+    expect(runDirOf(isolation, REPO)).toBe(join(REPO, 'packages', 'core'));
+    expect(runDirOf(join(REPO, 'packages/web-v2/vitest.config.ts'), REPO)).toBe(
+      join(REPO, 'packages', 'web-v2'),
+    );
   });
 
   it('refuses one vitest could not load, rather than trusting it', () => {
