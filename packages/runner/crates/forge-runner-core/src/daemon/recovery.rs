@@ -999,7 +999,8 @@ mod tests {
     use std::path::PathBuf;
     use std::sync::Mutex;
 
-    const SOURCE: &str = include_str!("recovery.rs");
+    static SOURCE: std::sync::LazyLock<&str> =
+        std::sync::LazyLock::new(|| crate::test_scratch::lf(include_str!("recovery.rs")));
 
     /// Masters this box has a registry entry for: in the set is up, out of it is positively gone.
     struct Masters(HashSet<String>);

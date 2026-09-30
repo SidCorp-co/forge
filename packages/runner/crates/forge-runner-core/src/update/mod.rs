@@ -234,7 +234,8 @@ mod tests {
     /// and leave the real binary at the build it was (ISS-1200).
     #[test]
     fn the_install_target_is_resolved_rather_than_read_off_proc_self_exe() {
-        const SOURCE: &str = include_str!("mod.rs");
+        static SOURCE: std::sync::LazyLock<&str> =
+            std::sync::LazyLock::new(|| crate::test_scratch::lf(include_str!("mod.rs")));
         let body = SOURCE
             .split("pub async fn apply(")
             .nth(1)
