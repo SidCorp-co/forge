@@ -112,25 +112,19 @@ pub async fn kind_at(worktree: &Path) -> Kind {
 /// caller refuses on that, and refusing costs an operator a sweep where
 /// guessing could cost them a checkout.
 ///
-/// Git's answers are resolved against the directory the child ran in, which
-/// is `worktree`; `worktree` itself is spelled on its own through
-/// [`resolved_for_compare`], so a symlinked or `..` spelling of a real
-/// checkout compares equal to the canonical top level git prints.
+/// Git's answers are joined to the directory the child ran in, which is
+/// `worktree`, and every path in the comparison — the three answers and
+/// `worktree` itself — is spelled by [`resolved_for_compare`] and by nothing
+/// else. Two spellings of one path then compare equal: a symlinked or `..`
+/// one, one whose leaf a removal has already taken, and on Windows a rootless
+/// `/repo`, which only a spelling that walks to an ancestor gives a drive.
 fn kind_of(worktree: &Path, answer: &str) -> Kind {
     let mut lines = answer.lines();
     let (Some(top), Some(git_dir), Some(common_dir)) = (lines.next(), lines.next(), lines.next())
     else {
         return Kind::Unknown;
     };
-    let resolve = |p: &str| {
-        let p = Path::new(p);
-        let abs = if p.is_absolute() {
-            p.to_path_buf()
-        } else {
-            worktree.join(p)
-        };
-        abs.canonicalize().unwrap_or(abs)
-    };
+    let resolve = |p: &str| resolved_for_compare(&worktree.join(p));
     let top = resolve(top);
     if top != resolved_for_compare(worktree) {
         return Kind::Enclosed(top);
@@ -675,15 +669,39 @@ pub(crate) mod tests {
     #[test]
     fn a_top_level_that_is_not_the_path_is_an_answer_about_another_checkout() {
         let wt = Path::new("/repo/.claude/worktrees/ISS-689");
+        let top = resolved_for_compare(Path::new("/repo"));
         assert_eq!(
             kind_of(wt, "/repo\n/repo/.git\n/repo/.git\n"),
-            Kind::Enclosed(PathBuf::from("/repo")),
+            Kind::Enclosed(top.clone()),
             "two alike directories make a main working tree only at its own top level"
         );
         assert_eq!(
             kind_of(wt, "/repo\n/repo/.git/worktrees/b\n/repo/.git\n"),
-            Kind::Enclosed(PathBuf::from("/repo")),
+            Kind::Enclosed(top.clone()),
             "and a linked answer from a checkout around the path is that checkout's"
+        );
+    }
+
+    /// Runner (windows-latest), run 36686332110: git's `/repo` and the path's
+    /// `/repo` were spelled by two functions, and on Windows only the path's
+    /// took a drive. A path that has begun to go does the same on any
+    /// platform, so the plant is a half-gone directory reached through a link.
+    #[test]
+    fn one_path_spelled_once_by_git_and_once_by_the_caller_is_one_path() {
+        let base = crate::test_scratch::Scratch::new("worktree-kind-one-spelling");
+        let real = base.join("real");
+        std::fs::create_dir_all(&real).unwrap();
+        let link = base.join("by-another-name");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        #[cfg(not(unix))]
+        std::os::windows::fs::symlink_dir(&real, &link).unwrap();
+        let gone = link.join("going");
+        let g = gone.to_string_lossy();
+        assert_eq!(
+            kind_of(&gone, &format!("{g}\n{g}/.git\n{g}/.git\n")),
+            Kind::MainWorkingTree,
+            "the top level git names IS the path asked about, whatever of it is left"
         );
     }
 
