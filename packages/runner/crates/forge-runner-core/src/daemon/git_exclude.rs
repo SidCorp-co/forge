@@ -61,6 +61,14 @@ impl std::fmt::Display for Refused {
 /// Make `repo`'s git ignore `target` (a `/`-separated path under `.claude/`),
 /// appending [`LINE`] to its exclude file where that is what it takes.
 pub fn ensure_ignored(repo: &Path, target: &str) -> Result<Ignored, Refused> {
+    ensure_ignored_as(repo, target, target)
+}
+
+/// The same, where what is asked about tracking and what is asked about
+/// ignoring differ: a whole directory about to be written is ignored only
+/// where its directory form (`dir/`) is, while it is the one file in it that
+/// counts as the checkout's own when tracked.
+pub fn ensure_ignored_as(repo: &Path, tracked: &str, target: &str) -> Result<Ignored, Refused> {
     let inside = git(repo, &["rev-parse", "--is-inside-work-tree"])?;
     if !inside.status.success() {
         let err = String::from_utf8_lossy(&inside.stderr);
@@ -80,7 +88,7 @@ pub fn ensure_ignored(repo: &Path, target: &str) -> Result<Ignored, Refused> {
             repo.display()
         )));
     }
-    if git(repo, &["ls-files", "--error-unmatch", "--", target])?
+    if git(repo, &["ls-files", "--error-unmatch", "--", tracked])?
         .status
         .success()
     {
@@ -99,8 +107,11 @@ pub fn ensure_ignored(repo: &Path, target: &str) -> Result<Ignored, Refused> {
     Err(Refused::StillNotIgnored { exclude })
 }
 
+/// By the rules alone (`--no-index`): tracking is asked separately and first,
+/// and a directory holding a tracked file is otherwise never called ignored,
+/// which would read a checkout's own README as a rule that un-ignores the rest.
 fn check_ignore(repo: &Path, target: &str) -> Result<bool, Refused> {
-    let asked = git(repo, &["check-ignore", "-q", "--", target])?;
+    let asked = git(repo, &["check-ignore", "--no-index", "-q", "--", target])?;
     match asked.status.code() {
         Some(0) => Ok(true),
         Some(1) => Ok(false),

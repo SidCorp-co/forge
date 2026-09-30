@@ -311,12 +311,14 @@ fn find_prunable(skills_root: &Path, keep: &std::collections::HashSet<&str>) -> 
 /// change, and is synced into as it always was, while a new skill beside it
 /// still needs the exclude line. The question is put about the skill's
 /// directory, trailing slash and all, since a sync writes a whole tree there:
-/// a rule ignoring only its `SKILL.md` leaves the rest of it untracked.
+/// a rule ignoring only its `SKILL.md` leaves the rest of it untracked. Whether
+/// it is the checkout's own is asked of its `SKILL.md` alone, so another
+/// tracked file in that directory does not waive the step.
 fn ignore_skills<'a>(worktree: &Path, names: impl IntoIterator<Item = &'a str>) -> Result<()> {
-    use crate::daemon::git_exclude::{ensure_ignored, Refused};
+    use crate::daemon::git_exclude::{ensure_ignored_as, Refused};
     for name in names {
         let target = format!(".claude/skills/{name}/");
-        match ensure_ignored(worktree, &target) {
+        match ensure_ignored_as(worktree, &format!("{target}SKILL.md"), &target) {
             Ok(_) | Err(Refused::Tracked) => {}
             Err(refused) => {
                 return Err(Error::Other(format!(
@@ -853,6 +855,32 @@ mod tests {
             .output()
             .unwrap();
         assert_eq!(String::from_utf8_lossy(&status.stdout), "");
+    }
+
+    /// Consult on the revised plan, F1: another file the checkout tracks in a
+    /// skill's directory does not make the skill the checkout's own.
+    #[test]
+    fn a_tracked_readme_in_a_skills_directory_does_not_waive_the_step() {
+        use crate::daemon::git_exclude::tests::{
+            exclude_of, make_read_only, make_writable, run_git,
+        };
+        let s = crate::test_scratch::Scratch::new("sync-tracked-readme");
+        run_git(s.path(), &["init", "-q"]);
+        let dir = s.path().join(".claude").join("skills").join("example");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("README.md"), "x").unwrap();
+        run_git(s.path(), &["add", "-f", ".claude/skills/example/README.md"]);
+        let ex = exclude_of(s.path());
+        std::fs::create_dir_all(ex.parent().unwrap()).unwrap();
+        std::fs::write(&ex, "*.swp\n").unwrap();
+        if make_read_only(&ex) {
+            let got = ignore_skills(s.path(), ["example"]);
+            make_writable(&ex);
+            let msg = got.expect_err("refused before seeding").to_string();
+            assert!(msg.contains(&ex.display().to_string()), "{msg}");
+        }
+        ignore_skills(s.path(), ["example"]).expect("ignored");
+        assert_eq!(std::fs::read_to_string(&ex).unwrap(), "*.swp\n.claude/\n");
     }
 
     /// The step runs before the first skill is seeded.
