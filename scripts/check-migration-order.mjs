@@ -89,7 +89,10 @@ let isBase = git(['rev-parse', 'HEAD'], root) === git(['rev-parse', baseRef], ro
 // nothing to a stale base adds nothing to the current one either.
 if (landing.length === 0 && !isBase) {
   say(`${LABEL}: 0 migration(s) landing, 0 open branch(es) read`);
-  say(`  ${branch} adds no migration to ${baseRef}, so the open set was not read.`);
+  say(
+    `  ${branch} adds no migration to ${baseRef} (merge target ${base.branch}, from ${base.source}),`,
+  );
+  say('  so the open set was not read.');
   say('  No merge order and no next-free number are claimed here.');
   process.exit(0);
 }

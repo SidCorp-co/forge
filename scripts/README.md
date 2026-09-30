@@ -23,6 +23,14 @@ unused import behind `cfg(windows)`. Only runtime differences — CRLF, path sep
 symlinks, the class of #811 and #813 — wait for `runner-platforms` after the merge. The ending
 condition is the same.
 
+**The four run on a branch before it lands when somebody asks**:
+`gh workflow run CI --ref <branch> -f base=<the branch it lands on>`. A dispatched run takes all four
+— `core-integration`, `whole-tree`, `images` and both `runner-platforms` legs — with no path filter
+deciding, as the nightly one does, and `ci-passed` needs what it needs on a pull
+request. `base` is required and has no default, because every delta-scoped gate measures against it
+and GitHub cannot know where a dispatched branch lands — the dispatch row of the merge-target table
+below.
+
 Every gate that drifted did so while documented and non-blocking — biome to 366 errors, `typecheck`
 to 84, the two length rules to 143 — and each stopped drifting the day it was baselined and gated.
 
@@ -240,8 +248,10 @@ Four contracts:
    default setup, so there is no workflow file for the parser to read and nothing here can run it.
    Measured on PR #586 (ISS-1153): every job in `ci.yml` passed, `ci-passed` was green, and the PR
    was still held — by a high-severity CodeQL alert on a test helper that `pnpm verify` had no way
-   to mention. The commands only a post-merge job runs print under their own heading, which says
-   they run after the merge (ISS-1370), read off which jobs `ci-passed` needs. `pnpm verify` names
+   to mention. Each post-merge job prints under its own heading, which says they run after the
+   merge (ISS-1370), read off which jobs `ci-passed` needs: one line per job, naming its platforms
+   and what each step is locally, so a job that runs a gated step on another platform is listed
+   too. `pnpm verify` names
    CodeQL under a heading of its own, `Nor these, which ci-passed does not gate either`, kept apart from the commands CI does run because `ci-passed` gates those and
    does not gate this — and as a line rather than a command, since it is not runnable locally. What
    would stop the merge is requiring CodeQL at the merge gate in its own right — a branch-protection
@@ -624,21 +634,28 @@ Every delta-scoped gate here needs a base revision, and until ISS-1304 each of t
 
 `mergeTarget(root, env)` derives it, reading no configuration anywhere — the per-project config a
 plugin keeps is one machine's file and GitHub Actions never sees it, so a gate sourcing its baseline
-there would be right on a laptop and silently wrong in CI. Three sources, each **establishing** the
+there would be right on a laptop and silently wrong in CI. Four sources, each **establishing** the
 target rather than inferring it, and each named in the refusal:
 
 | | source | when it answers |
 |---|---|---|
 | 1 | `$GITHUB_BASE_REF` | a `pull_request` run: the base of the pull request being built |
-| 2 | `$GITHUB_REF` naming a branch on a `push` event | a push: the branch that took the commit |
-| 3 | `refs/remotes/origin/HEAD` | everywhere else: the remote's recorded default |
+| 2 | `$GITHUB_REF` naming a branch on a `push` or `schedule` event | a push: the branch that took the commit; a schedule: the branch whose head it checked out |
+| 3 | `inputs.base` in the `$GITHUB_EVENT_PATH` payload | a `workflow_dispatch` run: the branch its dispatcher said the work lands on |
+| 4 | `refs/remotes/origin/HEAD` | everywhere else: the remote's recorded default |
+
+Row 3 exists because `$GITHUB_REF` on a dispatch is the branch being run, not where it lands, and
+`actions/checkout` records no `origin/HEAD`: run 36764719955 dispatched a branch and
+`check-migration-order` exited 2 there, and the nightly `schedule` run would have too without row 2.
+A dispatch naming no `base` is refused by name and reads no row after it — `origin/HEAD` is the
+default branch, which is not where every dispatched branch lands.
 
 The ref and not `$GITHUB_REF_NAME` in row 2, because a tag push is a push event and carries a ref
 name too — `runner-release.yml` fires on one.
 <!-- doc-citation: unchecked `refs/heads/` — a git ref namespace, not a path in this tree. -->
 What says a branch took the commit is the `refs/heads/` prefix, and row 2 requires it.
 
-**There is no fourth rung reading the sole remote-tracking branch.** A plain `git clone --depth 1`
+**There is no rung reading the sole remote-tracking branch.** A plain `git clone --depth 1`
 records `origin/HEAD`, so such a rung would only ever have answered for `--depth 1 --branch <b>` —
 the one shape where the branch fetched need not be the branch the work lands on. It could not tell
 "the only branch here is the target" from "the only branch here is the one somebody asked for", and
@@ -649,7 +666,7 @@ a wrong floor from it is the silently skipped migration. That checkout is refuse
 `refs/remotes/origin/<b>` or `<b>`, and refuses naming all three rather than measuring against a
 branch this change does not derive from.
 
-Row 3 is the repository's own statement of what a pull request from this checkout targets, which is
+Row 4 is the repository's own statement of what a pull request from this checkout targets, which is
 the merge target for any change taking the default base. For a local run aimed at some other base,
 `GITHUB_BASE_REF=<branch>` in front of the command scopes it; CI needs nothing, having row 1.
 
