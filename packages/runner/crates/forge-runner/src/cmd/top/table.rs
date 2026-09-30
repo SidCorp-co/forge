@@ -930,4 +930,79 @@ mod tests {
             "{foot}"
         );
     }
+
+    /// Criterion 9 at the (box): its CHANGE sums what moved over the projects
+    /// read, and says `?` where any project's lanes were not read, never the
+    /// `—` of no earlier reading nor the blank of nothing moved.
+    #[test]
+    fn the_box_change_says_question_mark_where_any_lanes_were_unread() {
+        let change = |t: &Table, i: usize| {
+            let at = cells(&t.head[1].text[..t.head[1].text.find("CHANGE").unwrap()]);
+            let row = &t.body.iter().filter(|l| l.row).nth(i).unwrap().text;
+            row.chars().skip(at).collect::<String>().trim().to_string()
+        };
+        let unread = |s: &mut Snapshot, all: bool| {
+            if let Ok((_, m)) = &mut s.core {
+                for (i, c) in m.values_mut().enumerate() {
+                    if all || i == 0 {
+                        c.lanes = Err(Unreadable::new("lanes", "500"));
+                    }
+                }
+            }
+        };
+        let mut s = a_crowded_box();
+        unread(&mut s, true);
+        assert_eq!(change(&build(&s, &opts(170)), 0), "?", "none read");
+        let mut s = a_crowded_box();
+        let same = s.core.clone().unwrap();
+        s.core_before = Some(Ok(same));
+        unread(&mut s, false);
+        assert_eq!(
+            change(&build(&s, &opts(170)), 0),
+            "?",
+            "nothing moved among those read, one unread"
+        );
+        let mut s = a_crowded_box();
+        unread(&mut s, false);
+        let c = change(&build(&s, &opts(300)), 0);
+        assert!(
+            c.starts_with("prog+") && c.ends_with(" ?"),
+            "moves among those read, one unread: {c}"
+        );
+    }
+
+    /// Criterion 28: the legend says what every column the heading names
+    /// means, VERDICT and NOW among them, and names every verdict word.
+    #[test]
+    fn the_legend_names_every_column_and_every_verdict_word() {
+        let s = a_fine_box(false);
+        let t = build(&s, &opts(170));
+        let foot = t
+            .foot
+            .iter()
+            .map(|l| l.text.as_str())
+            .collect::<Vec<_>>()
+            .join(" ");
+        let foot = foot.split_whitespace().collect::<Vec<_>>().join(" ");
+        // Every heading but the project's own name.
+        for col in t.head[1]
+            .text
+            .split_whitespace()
+            .filter(|c| *c != "PROJECT")
+        {
+            assert!(
+                foot.contains(&format!("{col} ")),
+                "column {col} unexplained: {foot}"
+            );
+        }
+        for word in [
+            "STALL", "ASKS", "DRIFT", "ORPHAN", "NOPATH", "AGEING", "DOWN", "WAITS", "GATE",
+            "DAEMON", "idle", "ok",
+        ] {
+            assert!(
+                foot.contains(&format!("{word} ")),
+                "verdict {word} unexplained: {foot}"
+            );
+        }
+    }
 }
