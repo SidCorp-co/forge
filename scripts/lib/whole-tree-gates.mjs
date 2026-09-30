@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -40,11 +41,15 @@ export function declaresWholeTree(source) {
   return declarationsIn(source).some((d) => DECLARATION_VALUES.includes(d.value));
 }
 
-/** True when listing `dir` covers `root`: the root itself or any directory above it. */
+/** True when listing `dir` covers `root` (the root or above), each side read as written and by its
+ * realpath, either covering counting; a `dir` that cannot be canonicalized counts as the root. */
 export function coversRoot(root, dir) {
-  if (dir === root) return true;
-  const prefix = dir.endsWith(sep) ? dir : `${dir}${sep}`;
-  return root.startsWith(prefix);
+  const dirs = [dir, physical(dir)];
+  if (dirs.includes(null)) return true;
+  const roots = [root, physical(root) ?? root];
+  return dirs.some((d) =>
+    roots.some((r) => d === r || r.startsWith(d.endsWith(sep) ? d : `${d}${sep}`)),
+  );
 }
 
 /** Node takes a URL by its shape, so one built in another realm (a jsdom file's `URL`) is one. */
@@ -69,12 +74,14 @@ function toPath(value, cwd) {
   return physical(isAbsolute(path) ? path : `${cwd}/${path}`);
 }
 
-/** A spawn's directory, off its `cwd` as Node reads it: none is `from`, and one not a path throws. */
+/** A spawn's directory, off its `cwd` as Node reads it, placed where the kernel's `chdir` lands:
+ * none is `from`, and one not a path, or one the kernel cannot resolve, throws. */
 export function spawnCwd(cwd, from) {
   if (cwd === undefined || cwd === null || cwd === '') return from;
   const path = pathOf(cwd);
-  if (path === null) throw new TypeError(`a spawn cwd the guard cannot place: ${String(cwd)}`);
-  return resolve(from, path);
+  const dir = path === null ? null : physical(isAbsolute(path) ? path : `${from}/${path}`);
+  if (dir === null) throw new TypeError(`a spawn cwd the guard cannot place: ${String(cwd)}`);
+  return dir;
 }
 
 /** The directories one `node:fs` listing call lists, placed where the kernel resolves them. An
@@ -103,7 +110,13 @@ export function guardVerdict({ file, source, hits, root }) {
   const covering = hits.filter((h) => coversRoot(root, h.dir));
   if (covering.length === 0 || declaresWholeTree(source)) return null;
   const shown = covering.slice(0, 3).map((h) => {
-    const where = h.dir === root ? 'the repository root' : `${h.dir}, above the repository root`;
+    const canonical = physical(h.dir);
+    const where =
+      h.dir === root
+        ? 'the repository root'
+        : canonical === null || canonical === (physical(root) ?? root)
+          ? `the repository root, as ${h.dir}`
+          : `${h.dir}, above the repository root`;
     return `${h.via} listed ${where}${h.at ? ` (called at ${h.at})` : ''}`;
   });
   const more = covering.length > 3 ? `, and ${covering.length - 3} more` : '';
@@ -148,15 +161,33 @@ export function judgeDeclarations({ files }) {
 
 export const GUARD_PATH = 'scripts/lib/whole-tree-guard.mjs';
 
-/** The root and `test.setupFiles` vitest resolves for the config at `path`, run from its directory:
- * a Vite `root`, which the config's own `test.root` replaces, where the CLI's `root` overrides it. */
-export async function vitestSetup(path, vitestNode) {
-  const { resolveConfig } = await import(pathToFileURL(vitestNode).href);
-  const config = await resolveConfig({ config: path, watch: false }, { root: dirname(path) });
-  return {
-    root: config.root,
-    setupFiles: [config.test?.setupFiles ?? []].flat().map((f) => resolve(config.root, f)),
-  };
+const RESOLVE_SCRIPT = `
+const [url, config] = process.argv.slice(1);
+const { resolveConfig } = await import(url);
+const c = await resolveConfig({ config, watch: false });
+const { resolve } = await import('node:path');
+const setupFiles = [c.test?.setupFiles ?? []].flat().map((f) => resolve(c.root, f));
+process.stdout.write('\\n@whole-tree-config ' + JSON.stringify({ root: c.root, setupFiles }) + '\\n');
+`;
+
+/** The root and `test.setupFiles` vitest resolves for the config at `path` started from `cwd`, in
+ * a Node started there: a root handed in would beat the config's own `test.root` and `root`. */
+export function vitestSetup(path, vitestNode, cwd) {
+  const r = spawnSync(
+    process.execPath,
+    ['--input-type=module', '-e', RESOLVE_SCRIPT, pathToFileURL(vitestNode).href, path],
+    { cwd, encoding: 'utf8', env: { ...process.env, FORCE_COLOR: '0' }, timeout: 120_000 },
+  );
+  const line = (r.stdout ?? '').split('\n').findLast((l) => l.startsWith('@whole-tree-config '));
+  if (r.status !== 0 || line === undefined) {
+    throw new Error((r.stderr || r.error?.message || `exited ${r.status}`).trim());
+  }
+  return JSON.parse(line.slice('@whole-tree-config '.length));
+}
+
+/** Where a configuration is run from: its package, where `pnpm exec` and package scripts start. */
+export function runDirOf(path, root) {
+  return packageOf(dirname(path), root);
 }
 
 /** Every vitest config has to install the guard, named from the `root` vitest resolved it at, and
