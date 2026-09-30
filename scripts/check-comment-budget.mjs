@@ -10,7 +10,8 @@
 // It reads the project's own eslint.config.mjs, so what is measured is what the project
 // enabled. A rule it switched off is named rather than counted as clean.
 //
-// Modes: --all (CI) · --staged (freeze-only) · --update-baseline
+// Modes: --all (CI) · --changed (a developer run: lints only what this change holds) ·
+// --staged (freeze-only) · --update-baseline
 // Exit: 0 clean · 1 a file gained a finding · 2 could not run.
 
 import { existsSync } from 'node:fs';
@@ -18,6 +19,7 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { COMMENT_RULES, silentRules, tally } from './lib/comment-budget.mjs';
 import {
+  changedFiles,
   freezeFaults,
   loadBaseline,
   parseMode,
@@ -39,7 +41,7 @@ function die(reason) {
 
 const parsed = parseMode(
   process.argv,
-  ['--all', '--staged', '--update-baseline'],
+  ['--all', '--changed', '--staged', '--update-baseline'],
   'check-comment-budget.mjs',
 );
 if (parsed.error) die(parsed.error);
@@ -58,9 +60,21 @@ try {
 
 const eslint = new ESLint({ cwd: ROOT });
 
-let results;
+let targets = ['.'];
+if (mode === '--changed') {
+  const changed = changedFiles(ROOT);
+  if (changed.error) die(changed.error);
+  targets = [];
+  for (const file of changed.files) {
+    if (existsSync(join(ROOT, file)) && !(await eslint.isPathIgnored(join(ROOT, file)))) {
+      targets.push(file);
+    }
+  }
+}
+
+let results = [];
 try {
-  results = await eslint.lintFiles(['.']);
+  if (targets.length > 0) results = await eslint.lintFiles(targets);
 } catch (err) {
   die(`eslint could not read the tree: ${err.message}`);
 }
@@ -70,7 +84,9 @@ if (fatal.length > 0) die(`eslint reported a parse error: ${fatal[0].message}`);
 
 // A scope that matched nothing and a tree with no findings look identical by count, and the
 // second is what this gate exists to distinguish. Refused rather than reported clean.
-if (results.length === 0) die('eslint scanned 0 files — the config matched nothing');
+if (results.length === 0 && mode !== '--changed') {
+  die('eslint scanned 0 files — the config matched nothing');
+}
 
 let effective;
 try {
@@ -109,7 +125,7 @@ if (baselineDoc === null) die(`${BASELINE_PATH} is unreadable — refusing to re
 const baseline = baselineDoc.files ?? {};
 
 const frozen = total(baseline);
-if (frozen > 0 && total(measured) === 0) {
+if (frozen > 0 && total(measured) === 0 && mode !== '--changed') {
   die(
     `the baseline freezes ${frozen} finding(s) and this run measured ZERO.\n` +
       'A tree that drained and a tree the rules stopped reaching look identical from here.\n' +
@@ -130,7 +146,7 @@ console.log(
     `frozen against the baseline across ${COMMENT_RULES.length} rule(s)`,
 );
 const original = baselineDoc.original;
-if (typeof original === 'number' && original > 0) {
+if (typeof original === 'number' && original > 0 && mode !== '--changed') {
   const pct = Math.round(((original - total(measured)) / original) * 100);
   console.log(`  ${total(measured)} / ${original} original (${pct}% drained)`);
 }

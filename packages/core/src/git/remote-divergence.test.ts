@@ -1,3 +1,4 @@
+// @gate-input whole-tree — it runs a fake ssh through GIT_SSH_COMMAND, which the root-walk guard cannot see into.
 import { execFileSync, spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
