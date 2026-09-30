@@ -1,4 +1,3 @@
-import { zValidator } from '@hono/zod-validator';
 import { and, count, desc, eq, gte, lte, type SQL, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -9,6 +8,7 @@ import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { listResponse } from '../lib/pagination.js';
 import { utcDayText } from '../lib/time-buckets.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import { estimateCost } from './pricing.js';
 
 const idParamSchema = z.object({ id: z.uuid() });

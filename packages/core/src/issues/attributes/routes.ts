@@ -8,7 +8,6 @@
  * What a door still owns is its own shape — the body schema, the issue, the caller's role.
  */
 
-import { zValidator } from '@hono/zod-validator';
 import { eq } from 'drizzle-orm';
 import type { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -17,6 +16,7 @@ import { db } from '../../db/client.js';
 import { issues } from '../../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../../lib/authz.js';
 import type { AuthVars } from '../../middleware/auth.js';
+import { zValidator } from '../../middleware/zod-validator.js';
 import { loadIssueAttributes } from './read.js';
 import { setIssueAttributes } from './service.js';
 import { AttributeRefusal, type AttributeRefusalCode } from './write.js';

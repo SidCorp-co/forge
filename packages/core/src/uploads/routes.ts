@@ -1,28 +1,13 @@
-import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import {
-  persistSessionAttachment,
-  SessionAttachmentError,
-} from '../agent-sessions/attachment-service.js';
-import {
-  AttachmentError as CommentAttachmentError,
-  persistCommentAttachment,
-} from '../comments/attachment-service.js';
-import {
-  ConversationAttachmentError,
-  persistConversationAttachment,
-} from '../conversations/attachment-service.js';
-import {
-  AttachmentError as IssueAttachmentError,
-  persistIssueAttachment,
-} from '../issues/attachment-service.js';
 import { contentDisposition } from '../lib/attachment-headers.js';
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import { getStorage } from '../storage/index.js';
 import { loadAttachmentBytesTarget } from './attachment-bytes.js';
 import { resolveDownloadTicket } from './download-ticket-service.js';
+import { attachmentRefusal, persistUpload } from './persist-upload.js';
 import { claimUploadTicket, releaseUploadTicket } from './ticket-service.js';
 
 const badRequest = (message: string, code = 'BAD_REQUEST', details?: unknown) =>
@@ -67,55 +52,12 @@ uploadRoutes.put(
       const bytes = Buffer.from(await c.req.arrayBuffer());
       if (bytes.length === 0) throw badRequest('empty file', 'EMPTY_FILE');
 
-      let persisted: unknown;
-      if (ticket.targetType === 'issue') {
-        persisted = await persistIssueAttachment({
-          issueId: ticket.targetId,
-          name: ticket.name,
-          mime: ticket.mime,
-          bytes,
-          uploaderId: ticket.uploaderId,
-          uploaderAgency: 'human',
-        });
-      } else if (ticket.targetType === 'conversation') {
-        persisted = await persistConversationAttachment({
-          conversationId: ticket.targetId,
-          name: ticket.name,
-          mime: ticket.mime,
-          bytes,
-          uploaderId: ticket.uploaderId,
-        });
-      } else if (ticket.targetType === 'session') {
-        persisted = await persistSessionAttachment({
-          sessionId: ticket.targetId,
-          name: ticket.name,
-          mime: ticket.mime,
-          bytes,
-          uploaderId: ticket.uploaderId,
-          uploaderDeviceId: ticket.uploaderDeviceId,
-        });
-      } else {
-        persisted = await persistCommentAttachment({
-          commentId: ticket.targetId,
-          name: ticket.name,
-          mime: ticket.mime,
-          bytes,
-          uploaderId: ticket.uploaderId,
-          uploaderDeviceId: ticket.uploaderDeviceId,
-        });
-      }
-
+      const persisted = await persistUpload(ticket, bytes);
       return c.json(persisted, 201);
     } catch (err) {
       await releaseUploadTicket(uploadId);
-      if (
-        err instanceof IssueAttachmentError ||
-        err instanceof CommentAttachmentError ||
-        err instanceof SessionAttachmentError ||
-        err instanceof ConversationAttachmentError
-      ) {
-        throw badRequest(err.message, err.code, err.details);
-      }
+      const refusal = attachmentRefusal(err);
+      if (refusal) throw badRequest(refusal.message, refusal.code, refusal.details);
       throw err;
     }
   },

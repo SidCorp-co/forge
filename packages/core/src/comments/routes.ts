@@ -1,4 +1,3 @@
-import { zValidator } from '@hono/zod-validator';
 import { asc, count, eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -28,6 +27,7 @@ import {
   declares,
   RECORD_ROUTE_CAPABILITY,
 } from '../middleware/client-capabilities.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import { hooks } from '../pipeline/hooks.js';
 import { commentAttachmentRoutes } from './attachment-routes.js';
 import {

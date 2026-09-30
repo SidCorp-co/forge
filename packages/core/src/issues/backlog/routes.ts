@@ -8,7 +8,6 @@
  * once per iteration, which is the collision this issue exists to end.
  */
 
-import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { z } from 'zod';
@@ -18,6 +17,7 @@ import { assertProjectAccess } from '../../lib/authz.js';
 import { queryBadRequest } from '../../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
 import { rateLimit } from '../../middleware/rate-limit.js';
+import { zValidator } from '../../middleware/zod-validator.js';
 import { alikeSource } from './alike-source.js';
 import { Cancellation } from './cancellation.js';
 import { emitBacklogStream } from './emitter.js';
@@ -106,7 +106,7 @@ backlogStreamRoutes.use(
   '/:id/backlog/*',
   requireAuth(),
   assertEmailVerified(),
-  rateLimit(RULES.backlogStream, { name: 'backlog-stream' }),
+  rateLimit(() => RULES.backlogStream, { name: 'backlog-stream' }),
 );
 
 /** Cloudflare sits in front of production and nothing in this repo owns its buffering settings. */

@@ -6,7 +6,6 @@
  * only because the parent had reached its size budget.
  */
 
-import { zValidator } from '@hono/zod-validator';
 import { and, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -18,6 +17,7 @@ import { answerStyles, organizationMembers, projectMemberRoles } from '../db/sch
 import { assertOrgAccess } from '../lib/authz.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { assertMayMintFullCredential, mintEpochFor } from '../middleware/pat-rest-surface.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import {
   createAgentAccount,
   listAgentAccounts,

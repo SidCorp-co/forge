@@ -13,12 +13,12 @@
  * the deliverable — which step stopped and what is now true on the repository.
  */
 
-import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { assertProjectRole, loadProjectAccess } from '../../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
+import { zValidator } from '../../middleware/zod-validator.js';
 import { startRunnerRelease } from './runner-release.js';
 import { findById, listForProject } from './runner-release-store.js';
 

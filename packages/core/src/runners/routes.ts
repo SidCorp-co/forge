@@ -1,4 +1,3 @@
-import { zValidator } from '@hono/zod-validator';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -16,6 +15,7 @@ import {
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import { resolvedWindowDaysFor } from '../pipeline/retention/policy.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';

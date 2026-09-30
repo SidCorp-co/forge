@@ -39,6 +39,7 @@
     "lint:fix": "biome check --write src tests",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist",
+    "contracts:generate": "tsx src/api-contract/generate.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:revert-canonical": "tsx src/db/revert-canonical.ts",

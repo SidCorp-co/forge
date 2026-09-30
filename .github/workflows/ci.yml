@@ -205,6 +205,14 @@ jobs:
       # three skipped cases and no test name. No type can hold it, so the rule is an AST walk.
       # Needs node_modules for the TypeScript parser, hence this job rather than lang-check.
       - run: node scripts/check-lazy-module-init.mjs --all
+      # API contracts (ISS-18): packages/core/contracts/ publishes forge-api (OpenAPI 3.1, every
+      # route index.ts mounts, inputs read off the zod validators) and forge-mcp (the tools
+      # tools/list serves), and a differ reads those files, not the code. This regenerates both
+      # from the running app and fails naming each route or tool whose committed entry differs,
+      # or that the generator cannot describe. It imports the whole core app under tsx, so it
+      # needs node_modules and the prebuilt workspace deps, and lives in this always-on job
+      # because a contract can move from packages/core, packages/contracts or the lockfile.
+      - run: node scripts/check-api-contracts.mjs
       # Conformance levels: runs each axis's checker and fails when what it
       # actually does disagrees with the level .forge/conformance.json claims
       # for it. Every gate this repo lost was lost by staying documented while

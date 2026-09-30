@@ -2,13 +2,13 @@
 // Single POST — creates a packet, enforces the story gate, emits packet.published.
 // The Master agent's consumption of packets (step 5) is out of scope here.
 
-import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { skillActivityTriggers } from '../db/schema.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import { createUpdatePacket } from '../skills/update-packets.js';
 
 const badRequest = (details: unknown) =>
@@ -37,7 +37,7 @@ updatePacketRoutes.use('*', requireAuth(), assertEmailVerified());
 
 updatePacketRoutes.post(
   '/',
-  zValidator('json', bodySchema, (result, c) => {
+  zValidator('json', bodySchema, (result) => {
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
   async (c) => {

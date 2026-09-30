@@ -1,4 +1,3 @@
-import { zValidator } from '@hono/zod-validator';
 import { and, eq, lte, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -7,6 +6,7 @@ import { db } from '../db/client.js';
 import { scheduleKinds, schedules } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import { nextRunFor } from './cron.js';
 import { dispatchScheduleRun } from './dispatch.js';
 import {

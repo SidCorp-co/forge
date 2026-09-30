@@ -1,4 +1,3 @@
-import { zValidator } from '@hono/zod-validator';
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -6,6 +5,7 @@ import { verifyDeviceCredential } from '../auth/device-credential.js';
 import { assertProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { readBearerToken } from '../middleware/bearer.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import { badRequest } from '../projects/route-errors.js';
 import { listBindings, readBinding, writeBinding } from './bindings.js';
 import { type ApiRefusal, parseWriteEnvelope } from './documents.js';

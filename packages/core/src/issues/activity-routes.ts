@@ -1,4 +1,3 @@
-import { zValidator } from '@hono/zod-validator';
 import { and, desc, eq, like, lt } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -7,6 +6,7 @@ import { db } from '../db/client.js';
 import { activityLog, issues } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import type { ActorAgency } from './actor-agency.js';
 import { type ActorRef, type ActorType, actorKey, type ResolvedActor } from './actor-identity.js';
 import { resolveActors } from './actor-resolution.js';

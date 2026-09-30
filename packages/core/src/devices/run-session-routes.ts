@@ -8,12 +8,12 @@
  * against a session another box opened.
  */
 
-import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { IssueLeaseHeldError } from '../issues/issue-lease.js';
 import { utf16String } from '../lib/utf16-string.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import { gateConditionSchema } from './gate-report.js';
 import { RunnerNotAdmittedError } from './pool-admission.js';
 import { badRequest, conflict, forbidden, notFound, sessionParamsSchema } from './route-errors.js';

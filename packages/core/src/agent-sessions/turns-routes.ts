@@ -1,4 +1,3 @@
-import { zValidator } from '@hono/zod-validator';
 import { and, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -8,6 +7,7 @@ import { withKernelMarker } from '../db/kernel-marker.js';
 import { agentSessions, agentSessionTurns, projects } from '../db/schema.js';
 import { assertProjectRole } from '../lib/authz.js';
 import { type AuthVars, restActor } from '../middleware/auth.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import { openOneShotRun } from '../pipeline/runs.js';
 import {
   broadcastSession,

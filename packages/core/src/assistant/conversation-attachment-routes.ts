@@ -5,7 +5,6 @@
 // same path — so `/api/conversations/:id/...` is one router to a caller and
 // three files to a reader.
 
-import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -15,6 +14,7 @@ import { listWindowsForConversation } from '../conversations/windows.js';
 import { contentDisposition } from '../lib/attachment-headers.js';
 import { allowedSetForTarget } from '../lib/attachment-mime.js';
 import type { AuthVars } from '../middleware/auth.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import { getStorage } from '../storage/index.js';
 import {
   createUploadTicket,

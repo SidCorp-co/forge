@@ -39,6 +39,14 @@
           "options": {
             "maxLines": 500
           }
+        },
+        "noRestrictedImports": {
+          "level": "error",
+          "options": {
+            "paths": {
+              "@hono/zod-validator": "Import zValidator from src/middleware/zod-validator.ts: it is the same middleware, and the published API contract reads a route's inputs only from validators built there."
+            }
+          }
         }
       },
       "suspicious": {
@@ -80,6 +88,18 @@
           },
           "correctness": {
             "noUnsafeOptionalChaining": "warn"
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "src/middleware/zod-validator.ts"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": "off"
           }
         }
       }

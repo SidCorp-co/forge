@@ -1,10 +1,10 @@
-import { zValidator } from '@hono/zod-validator';
 import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import { type AuthVars, restActor } from '../middleware/auth.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import { safeRecordActivity } from '../pipeline/activity.js';
 import { broadcastSession } from './broadcast.js';
 import {

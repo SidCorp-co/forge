@@ -7,13 +7,13 @@
  * fan-out is the real caller and dropping it would have broken them silently.
  */
 
-import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import pkg from '../../package.json' with { type: 'json' };
 import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import { sourceCommit } from '../observability/source-commit.js';
 import { readLiveness, readOpsHealth } from './service.js';
 

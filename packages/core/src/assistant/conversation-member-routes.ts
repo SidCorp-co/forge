@@ -11,7 +11,6 @@
 // room as it was for as long as the second request took, which is the moment a
 // person is looking hardest at what they just changed.
 
-import { zValidator } from '@hono/zod-validator';
 import { and, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -36,6 +35,7 @@ import { getConversation } from '../conversations/store.js';
 import { conversationParticipants } from '../db/schema-conversations.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import {
   mayChangeMembership,
   readableConversation,

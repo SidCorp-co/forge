@@ -1,4 +1,3 @@
-import { zValidator } from '@hono/zod-validator';
 import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -8,6 +7,7 @@ import { db } from '../db/client.js';
 import { users } from '../db/schema.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { rateLimit } from '../middleware/rate-limit.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import { getDummyPasswordHash, verifyPassword } from './password.js';
 
 export const reauthRoutes = new Hono<{ Variables: AuthVars }>();
@@ -18,7 +18,10 @@ const reauthSchema = z.object({
 
 // Reuse the authLocal rate-limit bucket: same risk profile (password brute-
 // force against a known user), keyed by IP. Five attempts per 15 minutes.
-reauthRoutes.use('/reauth', rateLimit(RULES.authLocal, { name: 'authReauth' }));
+reauthRoutes.use(
+  '/reauth',
+  rateLimit(() => RULES.authLocal, { name: 'authReauth' }),
+);
 reauthRoutes.use('/reauth', requireAuth());
 
 reauthRoutes.post(

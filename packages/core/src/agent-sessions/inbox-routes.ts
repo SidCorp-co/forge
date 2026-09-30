@@ -1,4 +1,3 @@
-import { zValidator } from '@hono/zod-validator';
 import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -6,6 +5,7 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import type { AuthVars } from '../middleware/auth.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import { confirmSessionSend, markSessionSendApplied } from './session-send.js';
 
 const badRequest = (details: unknown) =>

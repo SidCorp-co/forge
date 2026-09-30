@@ -1,9 +1,9 @@
-import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { resolveSessionMcpServers } from '../jobs/resolve-job-mcp-servers.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import { assertDeviceBoundToProject } from './device-project.js';
 
 const badRequest = (details: unknown) =>

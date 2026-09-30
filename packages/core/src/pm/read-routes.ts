@@ -6,12 +6,12 @@
  * (config, policies, decisions, escalations, run). These are the reads.
  */
 
-import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import { PM_GRAPH_DEFAULT_DEPTH, PM_GRAPH_MAX_DEPTH, readPmGraph } from './graph-service.js';
 import { readRunnerLoad } from './runner-load-service.js';
 import { readPmSnapshot } from './snapshot-service.js';

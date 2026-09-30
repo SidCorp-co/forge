@@ -5,7 +5,6 @@
  * and the same already-posted check — so pressing it twice posts once.
  */
 
-import { zValidator } from '@hono/zod-validator';
 import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { z } from 'zod';
@@ -13,6 +12,7 @@ import { db } from '../../db/client.js';
 import { projects } from '../../db/schema.js';
 import { assertOrgRoleOnProject, loadProjectAccess } from '../../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
+import { zValidator } from '../../middleware/zod-validator.js';
 import { readAssistantWeekly } from './config.js';
 import { realDeps, runAssistantWeeklyForProject } from './run.js';
 

@@ -120,6 +120,9 @@
 
 ### Added
 
+- **Forge's API and MCP tools are published as machine-readable contracts.** An OpenAPI 3.1 file
+  and a tool list, generated from the running server and checked on every change, so neither can
+  drift from what Forge serves.
 - **Finished changes wait as branches and land together on one validation, each its own merge
   commit.** `pnpm verify --entry` runs the checks one change can fail; a window runs the rest once
   and names whose failure it is.

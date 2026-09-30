@@ -1,4 +1,3 @@
-import { zValidator } from '@hono/zod-validator';
 import { and, count, desc, eq, type SQL } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -8,6 +7,7 @@ import { pipelineRunStatuses, pipelineRuns } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { listResponse, paginationSchema } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import { listItemsFromRows, loadPipelineRunSummary } from './runs-rollup.js';
 
 const badRequest = (details: unknown) =>

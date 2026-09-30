@@ -1,4 +1,4 @@
-import type { BindingRole, PolicyDocument, ProjectDocument } from './schema.js';
+import type { BindingRole, DeploymentTrigger, PolicyDocument, ProjectDocument } from './schema.js';
 
 // cm:why enumerating is the point: this list IS the refusal vocabulary callers switch on.
 export const PURE_REFUSAL_CODES = [
@@ -15,6 +15,7 @@ export const PURE_REFUSAL_CODES = [
   'BINDING_NOT_FOUND',
   'BINDING_ROLE_MISMATCH',
   'BINDING_IN_USE',
+  'TRIGGER_UNSUPPORTED',
   'TESTING_PROFILE_NOT_FOUND',
   'PERMISSION_PROFILE_UNDEFINED',
 ] as const;
@@ -27,7 +28,6 @@ export const STORED_REFUSAL_CODES = [
   'STALE_BASE',
   'PROJECT_ID_IMMUTABLE',
   'SLUG_TAKEN',
-  'TRIGGER_UNSUPPORTED',
   'CONNECTION_NOT_FOUND',
   'CONNECTION_PROVIDER_MISMATCH',
   'CAPABILITY_UNKNOWN',
@@ -44,8 +44,15 @@ export interface ConfigRefusal {
   detail: string;
 }
 
+export interface BindingFacts {
+  role: BindingRole;
+  provider: string;
+  canDeploy: boolean;
+  readsHistory: boolean;
+}
+
 export interface ProjectConfigContext {
-  bindings: ReadonlyMap<string, { role: BindingRole }>;
+  bindings: ReadonlyMap<string, BindingFacts>;
   testingProfileIds: ReadonlySet<string>;
   policy?: PolicyDocument;
 }
@@ -177,6 +184,33 @@ function checkBinding(
   return [];
 }
 
+function checkTrigger(
+  environment: string,
+  trigger: DeploymentTrigger,
+  bindingId: string,
+  facts: BindingFacts,
+): ConfigRefusal[] {
+  const path = pointer('environments', environment, 'deployment', 'trigger');
+  if (trigger === 'provider') {
+    if (facts.readsHistory) return [];
+    return [
+      {
+        code: 'TRIGGER_UNSUPPORTED',
+        path,
+        detail: `trigger "provider" leaves deploying to ${facts.provider}, and Forge cannot read ${facts.provider}'s deployment history through binding ${bindingId}, so it could never say what this environment runs; use deployment {"mode": "external"}.`,
+      },
+    ];
+  }
+  if (facts.canDeploy) return [];
+  return [
+    {
+      code: 'TRIGGER_UNSUPPORTED',
+      path,
+      detail: `trigger "${trigger}" has Forge deploy through binding ${bindingId}, and Forge has no deploy adapter for ${facts.provider}; use trigger "provider" if ${facts.provider} deploys itself and Forge can read its history, or deployment {"mode": "external"}.`,
+    },
+  ];
+}
+
 function checkEnvironments(doc: ProjectDocument, ctx: ProjectConfigContext): ConfigRefusal[] {
   const out: ConfigRefusal[] = [];
   const envs = Object.entries(doc.environments);
@@ -215,7 +249,12 @@ function checkEnvironments(doc: ProjectDocument, ctx: ProjectConfigContext): Con
     if ('binding' in env.deployment) {
       const id = env.deployment.binding;
       const path = pointer('environments', name, 'deployment', 'binding');
-      out.push(...checkBinding(id, 'deploy', path, ctx));
+      const bound = checkBinding(id, 'deploy', path, ctx);
+      out.push(...bound);
+      const facts = ctx.bindings.get(id);
+      if (bound.length === 0 && facts) {
+        out.push(...checkTrigger(name, env.deployment.trigger, id, facts));
+      }
       const first = holder.get(id);
       if (first !== undefined) {
         out.push({
