@@ -3,6 +3,9 @@
  * on `staging` and not on `master` at `52c66950`. A GitHub-bound project is stubbed at the
  * repository client; a GitLab-hosted one is read by real git from a local repository, with only
  * the ssh hop replaced. The projects, keys, issues, prefixes and membership are Postgres.
+ *
+ * @gate-input whole-tree — the real git read reaches remote-divergence's `ulimit` shell string,
+ * which the root-walk guard's closed grammar cannot admit, so it counts as reading the whole tree.
  */
 
 import { execFileSync } from 'node:child_process';

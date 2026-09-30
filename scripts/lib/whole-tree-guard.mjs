@@ -21,7 +21,7 @@ if (!state.installed) {
   state.installed = true;
   state.log = join(mkdtempSync(join(tmpdir(), 'whole-tree-guard-')), 'children.jsonl');
   writeFileSync(state.log, '');
-  installWatch((entries) => state.hits.push(...entries), state.log);
+  installWatch((entries) => state.hits.push(...entries), state.log, true);
 }
 
 /** What the processes this file started listed, read and emptied. */
