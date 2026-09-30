@@ -30,6 +30,7 @@ pub mod job_unheard;
 pub mod master;
 pub mod master_exit;
 pub mod master_limit;
+pub mod pane_exit;
 pub mod pool_jobs;
 pub mod pool_reads;
 pub mod recovery;

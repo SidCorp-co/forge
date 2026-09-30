@@ -24,6 +24,13 @@
 //! still be one every declaration of which is refused — and on 2026-09-18 one
 //! was, for four hours, with a daemon log line as the only account of it
 //! (ISS-1099).
+//!
+//! Where the pane is gone, a line between the first and the second says why
+//! the pane this box last placed exited, off the record the daemon keeps
+//! beside its transcript, and for a conversation a Claude Code background
+//! session holds, which process holds it now. `gone` alone left sid-desk
+//! without a master for four and a half hours with nothing on the box saying
+//! why (ISS-1343).
 
 use std::time::Duration;
 
@@ -32,6 +39,10 @@ use forge_runner_core::auth::cred_store;
 use forge_runner_core::config::Config;
 use forge_runner_core::daemon::master::accepts_new_work;
 use forge_runner_core::daemon::master_exit::{self, Holding};
+use forge_runner_core::daemon::pane_exit;
+use forge_runner_core::daemon::recovery::MasterPresence;
+use forge_runner_core::daemon::recovery_ports;
+use forge_runner_core::daemon::subagent_host::ProcHosts;
 use forge_runner_core::daemon::terminal;
 use forge_runner_core::runner::ledger::{Ledger, MasterAuthority};
 use forge_runner_core::transport::{runners, CoreClient};
@@ -456,15 +467,29 @@ async fn status(ctx: &Ctx, slug: Option<&str>) -> anyhow::Result<()> {
     }
     for s in slugs {
         let name = terminal::session_name(terminal::MASTER_PREFIX, &s);
-        let alive = terminal::alive(&name).await;
+        // The daemon's own three-valued reading: `terminal::alive` folds a tmux
+        // nobody could ask into `false`, which printed `gone` for a pane that
+        // may be running, and a `last exit` line under it (ISS-1343).
+        let presence = recovery_ports::pane_presence(&name).await;
+        let alive = presence == MasterPresence::Alive;
         let path = transcript(&s)?;
         let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
         println!(
             "{s:<20} pane      {:<8} {name}  transcript {}KB  ({})",
-            if alive { "alive" } else { "gone" },
+            pane_word(presence),
             size / 1024,
             path.display()
         );
+        match presence {
+            MasterPresence::Gone => {
+                println!("{:<20} last exit {}", "", last_exit_line(&s));
+            }
+            MasterPresence::Unanswered | MasterPresence::Unknown => println!(
+                "{:<20} pane: tmux could not be asked about {name}, so whether it runs is not known here and no exit is reported for it",
+                ""
+            ),
+            MasterPresence::Alive => {}
+        }
         println!("{:<20} standing  {}", "", standing_line(led.as_ref(), &s));
         if slug.is_some() {
             for line in standing_history_lines(led.as_ref(), &s, now_unix()) {
@@ -491,6 +516,28 @@ async fn status(ctx: &Ctx, slug: Option<&str>) -> anyhow::Result<()> {
         }
     }
     Ok(())
+}
+
+/// The pane column: `unknown` where tmux could not be asked, never `gone`.
+fn pane_word(presence: MasterPresence) -> &'static str {
+    match presence {
+        MasterPresence::Alive => "alive",
+        MasterPresence::Gone => "gone",
+        MasterPresence::Unanswered | MasterPresence::Unknown => "unknown",
+    }
+}
+
+/// Why the pane this box last placed for `slug` exited, off the record the
+/// daemon keeps beside its transcript, with who holds a held conversation read
+/// from this box's process table now (ISS-1343).
+fn last_exit_line(slug: &str) -> String {
+    let found = match pane_exit::master_dir(slug) {
+        Ok(dir) => pane_exit::read(&dir),
+        Err(e) => pane_exit::Found::Unavailable(format!(
+            "this box's config directory cannot be resolved: {e}"
+        )),
+    };
+    pane_exit::status_line(&found, now_unix(), &ProcHosts::system())
 }
 
 /// Which projects a bare `status` answers for.
@@ -829,6 +876,35 @@ mod tests {
     use forge_runner_core::runner::ledger::MasterStanding;
 
     const SOURCE: &str = include_str!("master.rs");
+
+    /// ISS-1343: a pane tmux could not be asked about is not `gone`, and no
+    /// `last exit` is printed under a pane that may be running.
+    #[test]
+    fn a_pane_tmux_could_not_be_asked_about_is_not_reported_gone() {
+        assert_eq!(pane_word(MasterPresence::Unanswered), "unknown");
+        assert_eq!(pane_word(MasterPresence::Unknown), "unknown");
+        assert_eq!(pane_word(MasterPresence::Gone), "gone");
+        assert_eq!(pane_word(MasterPresence::Alive), "alive");
+        let body = SOURCE
+            .split("async fn status(")
+            .nth(1)
+            .and_then(|r| r.split("\nfn ").next())
+            .unwrap_or_default();
+        assert!(
+            !body.contains("terminal::alive("),
+            "status reads the pane through the three-valued reading, never the fold of an unasked tmux into gone"
+        );
+        let gone_arm = body
+            .split("MasterPresence::Gone =>")
+            .nth(1)
+            .unwrap_or_default();
+        assert!(
+            gone_arm
+                .trim_start()
+                .starts_with("{\n                println!(\"{:<20} last exit"),
+            "the last exit is printed under a pane read gone: {gone_arm}"
+        );
+    }
 
     /// The sentence this replaces — "End a master. The next sweep starts a
     /// fresh one" — was false in the one word that mattered. An owner who read
