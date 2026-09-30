@@ -12,6 +12,10 @@
 //! loop, and the guard's `Drop` restores the mode. The release profile aborts
 //! on a panic, where no `Drop` runs, so a panic hook restores it first.
 
+// Keys are read on unix alone; elsewhere the view says so, and the parser and
+// the keys it makes are the unix reader's only.
+#![cfg_attr(not(unix), allow(dead_code))]
+
 /// What a key asks of the view.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Key {
