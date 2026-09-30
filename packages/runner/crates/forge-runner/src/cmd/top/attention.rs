@@ -162,20 +162,71 @@ pub fn parked_of<'a>(s: &'a Snapshot, p: &Project) -> Vec<&'a Run> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Quiet {
     For(i64),
+    /// A walk that stopped at its cap or met entries it could not read: a
+    /// newer file than the newest seen, if one was, may be among them.
+    Partial {
+        seen_ms: Option<i64>,
+        why: String,
+    },
     Gone,
-    /// Walked and holding no file, or not walked yet: no age to judge.
+    /// Walked whole and holding no file, or not walked yet: no age to judge.
     NoAge,
     Unread(String),
+}
+
+/// Why a walk is partial, where it is.
+fn partial(entries: usize, capped: bool, unread: usize) -> Option<String> {
+    match (capped, unread) {
+        (false, 0) => None,
+        (true, 0) => Some(format!("the walk stopped at {entries} entries")),
+        (false, n) => Some(format!("{n} entr(ies) could not be read")),
+        (true, n) => Some(format!(
+            "the walk stopped at {entries} entries and {n} could not be read"
+        )),
+    }
 }
 
 pub fn quiet(s: &Snapshot, r: &Run) -> Quiet {
     match s.trees.get(&r.worktree_path) {
         None => Quiet::NoAge,
-        Some((_, TreeAge::Newest { at_ms, .. })) => Quiet::For(s.now_ms - at_ms),
+        Some((
+            _,
+            TreeAge::Newest {
+                at_ms,
+                entries,
+                capped,
+                unread,
+                ..
+            },
+        )) => match partial(*entries, *capped, *unread) {
+            None => Quiet::For(s.now_ms - at_ms),
+            Some(why) => Quiet::Partial {
+                seen_ms: Some(s.now_ms - at_ms),
+                why,
+            },
+        },
         Some((_, TreeAge::Gone)) => Quiet::Gone,
-        Some((_, TreeAge::NoFiles { .. })) => Quiet::NoAge,
+        Some((
+            _,
+            TreeAge::NoFiles {
+                entries,
+                capped,
+                unread,
+                ..
+            },
+        )) => match partial(*entries, *capped, *unread) {
+            None => Quiet::NoAge,
+            Some(why) => Quiet::Partial { seen_ms: None, why },
+        },
         Some((_, TreeAge::Unreadable(e))) => Quiet::Unread(e.clone()),
     }
+}
+
+/// Whether a partial walk still says the run is quiet: a write seen within
+/// the ageing window proves it is not, whatever the walk missed; otherwise
+/// the walk cannot say how long it has been.
+fn partial_says_nothing(seen_ms: Option<i64>) -> bool {
+    seen_ms.is_some_and(|ms| ms < AGEING_MS)
 }
 
 /// The tone a run's own line takes.
@@ -187,6 +238,7 @@ pub fn run_tone(s: &Snapshot, r: &Run) -> Tone {
         Quiet::Gone => Tone::Red,
         Quiet::For(ms) if ms >= STALL_MS => Tone::Red,
         Quiet::For(ms) if ms >= AGEING_MS => Tone::Yellow,
+        Quiet::Partial { seen_ms, .. } if !partial_says_nothing(seen_ms) => Tone::Unread,
         Quiet::Unread(_) => Tone::Unread,
         _ => Tone::Plain,
     }
@@ -238,6 +290,16 @@ pub fn project(s: &Snapshot, p: &Project) -> Assessment {
                     span(ms)
                 ),
                 format!("{ledger} × the newest file under {tree}"),
+            ),
+            Quiet::Partial { seen_ms, why } if !partial_says_nothing(seen_ms) => unread.unread(
+                format!(
+                    "{keys} run {}: how long its worktree has been quiet cannot be said — {why}, so a newer file may be unread{}",
+                    short(&r.run_id),
+                    seen_ms
+                        .map(|ms| format!("; the newest write seen is {} old", span(ms)))
+                        .unwrap_or_default()
+                ),
+                tree,
             ),
             Quiet::Unread(e) => unread.unread(
                 format!(
@@ -496,13 +558,42 @@ pub fn boxwide(s: &Snapshot) -> Assessment {
 
 /// What a run's line says of its worktree.
 pub fn wrote(s: &Snapshot, r: &Run) -> String {
+    let partial_of = |entries: &usize, capped: &bool, unread: &usize| {
+        partial(*entries, *capped, *unread)
+            .map(|why| format!(" (PARTIAL: {why})"))
+            .unwrap_or_default()
+    };
     match s.trees.get(&r.worktree_path) {
         None => "not walked yet".into(),
-        Some((_, TreeAge::Newest { at_ms, path, .. })) => {
-            format!("wrote {} {}", ago(s.now_ms, *at_ms), path.display())
-        }
+        Some((
+            _,
+            TreeAge::Newest {
+                at_ms,
+                path,
+                entries,
+                capped,
+                unread,
+                ..
+            },
+        )) => format!(
+            "wrote {} {}{}",
+            ago(s.now_ms, *at_ms),
+            path.display(),
+            partial_of(entries, capped, unread)
+        ),
         Some((_, TreeAge::Gone)) => "worktree gone".into(),
-        Some((_, TreeAge::NoFiles { .. })) => "no file written".into(),
+        Some((
+            _,
+            TreeAge::NoFiles {
+                entries,
+                capped,
+                unread,
+                ..
+            },
+        )) => match partial(*entries, *capped, *unread) {
+            None => "no file written".into(),
+            Some(why) => format!("no file read (PARTIAL: {why})"),
+        },
         Some((_, TreeAge::Unreadable(_))) => "worktree ?".into(),
     }
 }
@@ -580,6 +671,53 @@ mod tests {
         assert_eq!(alpha(&s).tone(false), Tone::Red);
         let s = with_run(Some(10 * MIN), "runnable");
         assert_eq!(alpha(&s).tone(false), Tone::Yellow);
+    }
+
+    /// Whole-set read at 9f6f4d5, F1: a walk that stopped at its cap or met
+    /// entries it could not read cannot say a run is quiet, so an old newest
+    /// write seen by it is `?` and never STALL or AGEING; a recent one still
+    /// proves the run is writing; and the run's line says the walk was partial.
+    #[test]
+    fn a_partial_walk_never_earns_a_stall() {
+        const MIN: i64 = 60_000;
+        for (capped, unread) in [(true, 0), (false, 2), (true, 1)] {
+            for (seen, want) in [
+                (Some(45 * MIN), vec!["?"]),
+                (Some(MIN), vec![]),
+                (None, vec!["?"]),
+            ] {
+                let mut s = with_run(Some(0), "runnable");
+                let age = match seen {
+                    Some(ms) => TreeAge::Newest {
+                        at_ms: NOW - ms,
+                        path: "src/lib.rs".into(),
+                        entries: 400_000,
+                        capped,
+                        unread,
+                        first_unread: None,
+                    },
+                    None => TreeAge::NoFiles {
+                        entries: 400_000,
+                        unread,
+                        first_unread: None,
+                        capped,
+                    },
+                };
+                s.trees.insert("/w/x".into(), (NOW, age));
+                let a = alpha(&s);
+                assert_eq!(
+                    words(&a),
+                    want,
+                    "{capped} {unread} {seen:?}: {:?}",
+                    a.findings
+                );
+                let r = s.ledger.as_ref().unwrap().runs.last().unwrap();
+                let line = wrote(&s, r);
+                assert!(line.contains("(PARTIAL: "), "{line}");
+                assert!(!line.contains("no file written"), "{line}");
+                assert_ne!(run_tone(&s, r), Tone::Red, "{line}");
+            }
+        }
     }
 
     /// Criterion 12: each red condition on its own earns red and its word,

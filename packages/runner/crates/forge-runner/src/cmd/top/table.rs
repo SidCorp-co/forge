@@ -317,6 +317,10 @@ fn project_cells(s: &Snapshot, p: &Project) -> (Cells, Assessment) {
 fn short_wrote(s: &Snapshot, r: &Run) -> String {
     match attention::quiet(s, r) {
         attention::Quiet::For(ms) => format!("wrote {} ago", span(ms)),
+        attention::Quiet::Partial {
+            seen_ms: Some(ms), ..
+        } => format!("wrote {} ago (partial walk)", span(ms)),
+        attention::Quiet::Partial { seen_ms: None, .. } => "no file read (partial walk)".into(),
         attention::Quiet::Gone => "worktree gone".into(),
         attention::Quiet::NoAge => "no write seen".into(),
         attention::Quiet::Unread(_) => "worktree ?".into(),
