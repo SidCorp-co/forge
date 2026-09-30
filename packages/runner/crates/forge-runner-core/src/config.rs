@@ -420,12 +420,14 @@ mod tests {
     #[test]
     fn every_other_resolution_of_the_config_dir_is_a_counted_reader() {
         let path_call = concat!("Config::", "path()");
+        let own_path_call = concat!("Self::", "path()");
         let os_call = concat!("dirs_next::", "config_dir");
+        let os_import = concat!("dirs_next::", "{");
         const ALLOWED: &[(&str, usize, &str)] = &[
             (
                 "forge-runner-core/src/config.rs",
-                2,
-                "os_config_dir itself, and the reader the isolation test checks",
+                3,
+                "os_config_dir itself, Config::load's read, and the reader the isolation test checks",
             ),
             (
                 "forge-runner-core/src/daemon/serving.rs",
@@ -485,10 +487,16 @@ mod tests {
                     continue;
                 }
                 let text = std::fs::read_to_string(&p).unwrap();
+                let in_config = p.ends_with("forge-runner-core/src/config.rs");
                 let hits = text
                     .lines()
                     .filter(|l| !l.trim_start().starts_with("//"))
-                    .filter(|l| l.contains(path_call) || l.contains(os_call))
+                    .filter(|l| {
+                        l.contains(path_call)
+                            || l.contains(os_call)
+                            || l.contains(os_import)
+                            || (in_config && l.contains(own_path_call))
+                    })
                     .count();
                 if hits > 0 {
                     let rel = p
