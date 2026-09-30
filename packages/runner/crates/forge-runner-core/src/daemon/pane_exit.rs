@@ -702,11 +702,17 @@ mod tests {
     #[test]
     fn nothing_here_passes_stop_or_attach_to_a_process() {
         for (file, source) in [
-            ("pane_exit.rs", include_str!("pane_exit.rs")),
-            ("master.rs", include_str!("master.rs")),
+            (
+                "pane_exit.rs",
+                crate::test_scratch::lf(include_str!("pane_exit.rs")),
+            ),
+            (
+                "master.rs",
+                crate::test_scratch::lf(include_str!("master.rs")),
+            ),
             (
                 "cmd/master.rs",
-                include_str!("../../../forge-runner/src/cmd/master.rs"),
+                crate::test_scratch::lf(include_str!("../../../forge-runner/src/cmd/master.rs")),
             ),
         ] {
             let production = source.split("#[cfg(test)]").next().unwrap();

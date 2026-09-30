@@ -430,7 +430,8 @@ mod tests {
         }
     }
 
-    const SOURCE: &str = include_str!("gate.rs");
+    static SOURCE: std::sync::LazyLock<&str> =
+        std::sync::LazyLock::new(|| forge_runner_core::test_scratch::lf(include_str!("gate.rs")));
 
     /// Criteria 11-16, at the source, because a behavioural test would have to
     /// reproduce four different outages separately and still would not catch
