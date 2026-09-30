@@ -182,7 +182,23 @@ fn now_secs() -> i64 {
         .as_secs() as i64
 }
 
+/// How the planted "daemon" comes to be the process the view reads.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Launch {
+    /// `sleep` spawned straight away, as a daemon is.
+    Direct,
+    /// A shell that waits, then execs `sleep`: the spawn has returned long
+    /// before the process becomes the binary the view will read, which is
+    /// the interleaving a spawn returning before its exec lands can take
+    /// (ubuntu CI runs 36694971625 and 36727168719).
+    ExecLate,
+}
+
 fn plant(core_url: &str) -> PlantedBox {
+    plant_launching(core_url, Launch::Direct)
+}
+
+fn plant_launching(core_url: &str, launch: Launch) -> PlantedBox {
     let scratch = Scratch::short("bv");
     let root = scratch.path().to_path_buf();
     let cfg = root.join("c/forge-runner");
@@ -205,7 +221,13 @@ fn plant(core_url: &str) -> PlantedBox {
     .unwrap();
 
     // The "daemon": a process of this test's, whose executable the view reads.
-    let daemon = Command::new("sleep").arg("120").spawn().unwrap();
+    let daemon = match launch {
+        Launch::Direct => Command::new("sleep").arg("120").spawn().unwrap(),
+        Launch::ExecLate => Command::new("sh")
+            .args(["-c", "sleep 0.5; exec sleep 120"])
+            .spawn()
+            .unwrap(),
+    };
     let pid = daemon.id();
     let record = serving::Record {
         pid,
@@ -217,6 +239,29 @@ fn plant(core_url: &str) -> PlantedBox {
         drain: None,
     };
     serving::write(&cfg, &record).unwrap();
+    // A spawn can return while the child is still the image it was forked
+    // from: the parent is let go as the exec releases the old memory, before
+    // `/proc/<pid>/exe` names the new binary. Read that early, beta's "asset"
+    // was the bytes of another program and both skills read DRIFT, on ubuntu,
+    // now and then (comment 046ff8a6). So the bytes are read once the process
+    // is the binary it will stay.
+    let sleep = which::which("sleep")
+        .expect("a sleep on PATH")
+        .canonicalize()
+        .expect("the sleep on PATH resolves");
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        let now = std::fs::read_link(format!("/proc/{pid}/exe"));
+        if now.as_ref().is_ok_and(|l| *l == sleep) {
+            break;
+        }
+        assert!(
+            std::time::Instant::now() < until,
+            "the planted daemon {pid} never became {}: /proc/{pid}/exe is {now:?}",
+            sleep.display()
+        );
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
     let exe = std::fs::read(format!("/proc/{pid}/exe")).unwrap();
 
     // alpha stands on a skill the daemon's file does not carry; beta on bytes it does.
@@ -779,7 +824,48 @@ fn a_drifted_skill_is_not_called_paneless_when_its_pane_cannot_be_named() {
 struct Pty {
     child: Child,
     drawn: Arc<Mutex<Vec<u8>>>,
+    /// When each home-and-clear arrived, in order: one per screen drawn.
+    cleared: Arc<Mutex<Vec<std::time::Instant>>>,
+    /// The primary end, for typing into the view where its stdin is the pty.
+    keyboard: std::fs::File,
+    /// The secondary end, kept open to read the terminal's modes from.
+    secondary: std::fs::File,
+    /// The terminal's modes before the view started.
+    modes_before: libc::termios,
 }
+
+/// The terminal's modes on `tty`.
+fn modes(tty: &std::fs::File) -> libc::termios {
+    use std::os::fd::AsRawFd;
+    // SAFETY: tcgetattr on a descriptor this test holds, into a termios it owns.
+    let mut t: libc::termios = unsafe { std::mem::zeroed() };
+    assert_eq!(unsafe { libc::tcgetattr(tty.as_raw_fd(), &mut t) }, 0);
+    t
+}
+
+/// The fields of two terminal modes that differ, by name.
+fn modes_differ(a: &libc::termios, b: &libc::termios) -> Vec<&'static str> {
+    let mut out = Vec::new();
+    if a.c_iflag != b.c_iflag {
+        out.push("c_iflag");
+    }
+    if a.c_oflag != b.c_oflag {
+        out.push("c_oflag");
+    }
+    if a.c_cflag != b.c_cflag {
+        out.push("c_cflag");
+    }
+    if a.c_lflag != b.c_lflag {
+        out.push("c_lflag");
+    }
+    if a.c_cc != b.c_cc {
+        out.push("c_cc");
+    }
+    out
+}
+
+/// What a home-and-clear is: the start of every screen the view draws.
+const CLEAR: &[u8] = b"\x1b[H\x1b[2J";
 
 impl Drop for Pty {
     fn drop(&mut self) {
@@ -789,6 +875,12 @@ impl Drop for Pty {
 }
 
 fn on_a_terminal(b: &PlantedBox, cols: u16, rows: u16, args: &[&str]) -> Pty {
+    on_a_terminal_reading(b, cols, rows, args, false)
+}
+
+/// As `on_a_terminal`, and with `keys` the child's stdin is the pty too, so
+/// what the test types on `Pty::keyboard` reaches the view as keys.
+fn on_a_terminal_reading(b: &PlantedBox, cols: u16, rows: u16, args: &[&str], keys: bool) -> Pty {
     use std::os::fd::FromRawFd;
     // SAFETY: plain libc calls on descriptors this test opens and owns; the
     // secondary's name is copied out of the buffer ptsname_r fills.
@@ -814,6 +906,7 @@ fn on_a_terminal(b: &PlantedBox, cols: u16, rows: u16, args: &[&str]) -> Pty {
             std::fs::File::from_raw_fd(sec),
         )
     };
+    let modes_before = modes(&secondary);
     let path = format!("{}:/usr/bin:/bin", b.root.join("bin").display());
     let child = Command::new(env!("CARGO_BIN_EXE_forge-runner"))
         .arg("top")
@@ -824,13 +917,19 @@ fn on_a_terminal(b: &PlantedBox, cols: u16, rows: u16, args: &[&str]) -> Pty {
         .env("XDG_CONFIG_HOME", b.root.join("c"))
         .env("XDG_DATA_HOME", b.root.join("d"))
         .env("FORGE_RUNNER_CRED_STORE", "file")
-        .stdin(Stdio::null())
-        .stdout(Stdio::from(secondary))
+        .stdin(if keys {
+            Stdio::from(secondary.try_clone().unwrap())
+        } else {
+            Stdio::null()
+        })
+        .stdout(Stdio::from(secondary.try_clone().unwrap()))
         .stderr(Stdio::null())
         .spawn()
         .unwrap();
     let drawn = Arc::new(Mutex::new(Vec::new()));
-    let sink = Arc::clone(&drawn);
+    let cleared = Arc::new(Mutex::new(Vec::new()));
+    let (sink, stamps) = (Arc::clone(&drawn), Arc::clone(&cleared));
+    let keyboard = primary.try_clone().unwrap();
     std::thread::spawn(move || {
         let mut primary = primary;
         let mut buf = [0u8; 8192];
@@ -838,10 +937,22 @@ fn on_a_terminal(b: &PlantedBox, cols: u16, rows: u16, args: &[&str]) -> Pty {
             if n == 0 {
                 break;
             }
-            sink.lock().unwrap().extend_from_slice(&buf[..n]);
+            let mut all = sink.lock().unwrap();
+            let before = all.windows(CLEAR.len()).filter(|w| *w == CLEAR).count();
+            all.extend_from_slice(&buf[..n]);
+            let after = all.windows(CLEAR.len()).filter(|w| *w == CLEAR).count();
+            let now = std::time::Instant::now();
+            stamps.lock().unwrap().extend((before..after).map(|_| now));
         }
     });
-    Pty { child, drawn }
+    Pty {
+        child,
+        drawn,
+        cleared,
+        keyboard,
+        secondary,
+        modes_before,
+    }
 }
 
 impl Pty {
@@ -950,11 +1061,7 @@ fn a_live_frame_fits_the_screen_it_is_drawn_on_and_pages_the_rest() {
     // counted: it is the first row that opens with `page `, and the body
     // starts under the row its sentence ends on.
     let page_row = |f: &[String]| f.iter().position(|l| l.starts_with("page "));
-    let body_from = |f: &[String]| {
-        f.iter()
-            .position(|l| l.ends_with("reads it whole"))
-            .map(|i| i + 1)
-    };
+    let body_from = |f: &[String]| f.iter().position(|l| l.ends_with(" whole")).map(|i| i + 1);
     let pages_of = |f: &[String]| {
         let l = &f[page_row(f)?];
         l.split(" of ")
@@ -1081,14 +1188,41 @@ fn the_live_view_says_it_is_reading_before_its_first_frame() {
     );
 }
 
+/// Criteria 3 and 38 (judge r3b, finding 87): every interval outside the
+/// range is refused in words an operator reads, never Rust's `1..=3600`,
+/// and a negative one is a bad value rather than an unknown flag.
 #[test]
-fn an_interval_of_nothing_is_refused_naming_the_range() {
+fn an_interval_out_of_range_is_refused_naming_the_range_in_words() {
     let core = fake_core("200 OK");
     let b = plant(&core.url);
-    let out = top(&b, &["--interval", "0"]);
-    assert!(!out.status.success());
-    let err = String::from_utf8_lossy(&out.stderr);
-    assert!(err.contains("1..=3600"), "{err}");
+    for bad in ["0", "3601", "-1", "abc", "2.5", "99999999999999999999999"] {
+        let out = top(&b, &["--interval", bad]);
+        assert!(!out.status.success(), "--interval {bad} was taken");
+        let err = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            err.contains(&format!("invalid value '{bad}' for '--interval <SECONDS>'"))
+                && err.contains("a whole number of seconds from 1 to 3600"),
+            "--interval {bad}: {err}"
+        );
+        assert!(!err.contains("1..=3600"), "--interval {bad}: {err}");
+    }
+}
+
+/// Criterion 39: `--help` says the range in the same words.
+#[test]
+fn help_says_the_interval_range_in_words() {
+    let core = fake_core("200 OK");
+    let b = plant(&core.url);
+    let out = top(&b, &["--help"]);
+    let help = String::from_utf8_lossy(&out.stdout);
+    assert!(out.status.success(), "{help}");
+    let words = help.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        words.contains("--interval <SECONDS>")
+            && words.contains("a whole number of seconds from 1 to 3600")
+            && words.contains("[default: 5]"),
+        "{help}"
+    );
 }
 
 /// Criterion 4: `status --watch` is the view, not the stub.
@@ -1115,4 +1249,495 @@ fn status_watch_is_the_same_view() {
         "{text}"
     );
     assert!(!text.contains("not implemented"), "{text}");
+}
+
+/// `forge-runner <args>` in the planted box, as `top` runs there.
+fn runner(b: &PlantedBox, args: &[&str]) -> Output {
+    let path = format!("{}:/usr/bin:/bin", b.root.join("bin").display());
+    Command::new(env!("CARGO_BIN_EXE_forge-runner"))
+        .args(args)
+        .env_clear()
+        .env("PATH", path)
+        .env("HOME", b.root.join("h"))
+        .env("XDG_CONFIG_HOME", b.root.join("c"))
+        .env("XDG_DATA_HOME", b.root.join("d"))
+        .env("FORGE_RUNNER_CRED_STORE", "file")
+        .stdin(Stdio::null())
+        .output()
+        .unwrap()
+}
+
+/// Criterion 18 (judge r3b, finding 86: the planted box had no marks, so
+/// dropping a gate line stayed green). With degraded and undeclared marks of
+/// two reasons each, HEALTH holds every line of `forge-runner status`'s gate
+/// block, in its order, and no other gate line.
+#[test]
+fn the_gate_block_is_the_one_status_prints() {
+    let core = fake_core("200 OK");
+    let b = plant(&core.url);
+    // Half a minute off the minute, so both reads say the same ages.
+    let at = |mins: i64| (now_secs() - mins * 60 - 30) * 1000;
+    let marks: Vec<String> = [
+        (
+            "degraded",
+            "this pane carries no control capability, so nothing could be asked",
+            300,
+        ),
+        (
+            "degraded",
+            "this pane carries no control capability, so nothing could be asked",
+            200,
+        ),
+        ("degraded", "the control socket did not answer", 100),
+        (
+            "undeclared",
+            "the run declared no role, so its gate could not be read",
+            90,
+        ),
+        ("undeclared", "the hand-off named no run", 50),
+    ]
+    .iter()
+    .map(|(kind, detail, mins)| {
+        format!(
+            r#"{{"kind":"{kind}","detail":"{detail}","at":{}}}"#,
+            at(*mins)
+        )
+    })
+    .collect();
+    std::fs::write(
+        b.root.join("c/forge-runner/gate-marks.jsonl"),
+        marks.join("\n") + "\n",
+    )
+    .unwrap();
+
+    let status = String::from_utf8_lossy(&runner(&b, &["status"]).stdout).into_owned();
+    let block: Vec<&str> = status
+        .lines()
+        .skip_while(|l| !l.starts_with("gate"))
+        .take_while(|l| !l.starts_with("pool"))
+        .collect();
+    assert!(
+        block.len() > 4
+            && block.iter().any(|l| l.contains("degraded   3"))
+            && block.iter().any(|l| l.contains("undeclared 2"))
+            && block
+                .iter()
+                .any(|l| l.contains("the control socket did not answer")),
+        "status's own gate block: {status}"
+    );
+
+    let text = String::from_utf8_lossy(&top(&b, &["--once"]).stdout).into_owned();
+    let health = section(&text, "HEALTH");
+    let shown: Vec<&str> = health
+        .lines()
+        .skip_while(|l| !l.starts_with("  gate"))
+        .take_while(|l| !l.trim_start().starts_with("← "))
+        .collect();
+    let wanted: Vec<String> = block.iter().map(|l| format!("  {l}")).collect();
+    assert_eq!(shown, wanted, "HEALTH:\n{health}\nstatus:\n{status}");
+    assert!(
+        health.contains(&format!(
+            "← {}",
+            b.root.join("c/forge-runner/gate-marks.jsonl").display()
+        )),
+        "{health}"
+    );
+}
+
+/// Criterion 2 on a terminal (judge r3b, finding 86: no test ran `--once` on
+/// a pty, so a view ignoring it stayed green): one frame, no redraw, exit 0.
+#[test]
+fn once_on_a_terminal_is_one_frame_and_an_exit() {
+    let core = fake_core("200 OK");
+    let b = plant(&core.url);
+    let mut pty = on_a_terminal(&b, 200, 60, &["--once", "--interval", "1"]);
+    let st = pty.exited_within(std::time::Duration::from_secs(30));
+    assert!(
+        st.is_some_and(|s| s.success()),
+        "--once on a terminal did not end ({st:?}): {}",
+        pty.text()
+    );
+    // Whatever was still in flight on the pty when the child ended.
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    let text = pty.text();
+    assert_eq!(text.matches("forge-runner top —").count(), 1, "{text}");
+    assert!(text.contains("one frame"), "{text}");
+    assert!(pty.cleared.lock().unwrap().is_empty(), "a redraw: {text:?}");
+    assert!(text.contains("WAITING ON A PERSON"), "{text}");
+}
+
+/// Criterion 1 (judge r3b, finding 86: no test timed a redraw, so a sleep
+/// that ignored `--interval` stayed green): on a terminal, frames follow one
+/// another `--interval` seconds apart.
+#[test]
+fn a_live_view_redraws_every_interval_seconds() {
+    let core = fake_core("200 OK");
+    let b = plant(&core.url);
+    let pty = on_a_terminal(&b, 200, 60, &["--interval", "3"]);
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    // The first clear draws the reading line; each after it draws a frame.
+    while pty.cleared.lock().unwrap().len() < 5 && std::time::Instant::now() < until {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    let at = pty.cleared.lock().unwrap().clone();
+    assert!(
+        at.len() >= 5,
+        "{} screen(s) drawn in 30 s: {}",
+        at.len(),
+        pty.text()
+    );
+    let gaps: Vec<f64> = at[1..]
+        .windows(2)
+        .map(|w| (w[1] - w[0]).as_secs_f64())
+        .collect();
+    // Three seconds and the gather's own time, which on a planted box is a
+    // fraction of one: neither the one-second sleep the judge planted nor the
+    // five-second default fits (consult on the r4 head, F3).
+    assert!(
+        gaps.iter().all(|g| (2.9..4.5).contains(g)),
+        "redraws are not 3 s apart: {gaps:?}"
+    );
+}
+
+/// Criterion 40 (judge r3b, finding 88): with core's port refusing
+/// connections, every questions and releases row that could not be read
+/// names the cause, as the PROJECTS row does, and none is left saying only
+/// that a request could not be sent.
+#[test]
+fn a_core_that_cannot_be_reached_is_named_by_its_cause_on_every_row() {
+    // A port that was just this test's, and now refuses.
+    let url = {
+        let l = TcpListener::bind("127.0.0.1:0").unwrap();
+        format!("http://{}", l.local_addr().unwrap())
+    };
+    let b = plant(&url);
+    let text = String::from_utf8_lossy(&top(&b, &["--once"]).stdout).into_owned();
+    let projects = section(&text, "PROJECTS");
+    assert!(projects.contains("could not connect"), "{projects}");
+    let waiting = section(&text, "WAITING ON A PERSON");
+    let rows: Vec<&str> = waiting
+        .lines()
+        .filter(|l| l.contains("UNREADABLE — GET /api/"))
+        .collect();
+    assert!(
+        rows.iter().filter(|l| l.contains("questions")).count() == 2
+            && rows.iter().filter(|l| l.contains("releases")).count() == 2,
+        "{waiting}"
+    );
+    for row in &rows {
+        assert!(
+            row.contains("could not connect: ") && !row.contains("error sending request"),
+            "{row}"
+        );
+    }
+}
+
+impl Pty {
+    fn screens_drawn(&self) -> usize {
+        self.cleared.lock().unwrap().len()
+    }
+
+    /// The page row of each whole screen drawn after the first `after`, the
+    /// wrapped row joined back into one line.
+    fn page_rows_after(&self, after: usize) -> Vec<String> {
+        let text = self.text();
+        let parts: Vec<&str> = text.split("\x1b[H\x1b[2J").collect();
+        parts
+            .iter()
+            .skip(after + 1)
+            .filter_map(|screen| {
+                let rows: Vec<&str> = screen.split("\r\n").collect();
+                let from = rows.iter().position(|r| r.starts_with("page "))?;
+                let to = rows[from..].iter().position(|r| r.ends_with(" whole"))?;
+                Some(
+                    rows[from..=from + to]
+                        .iter()
+                        .map(|r| r.trim())
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                )
+            })
+            .collect()
+    }
+
+    /// Whether a screen drawn after the first `after` has a page row opening
+    /// with `what`, waiting up to `within` for one.
+    fn draws_page(&self, after: usize, what: &str, within: std::time::Duration) -> bool {
+        let until = std::time::Instant::now() + within;
+        loop {
+            if self
+                .page_rows_after(after)
+                .iter()
+                .any(|r| r.starts_with(what))
+            {
+                return true;
+            }
+            if std::time::Instant::now() > until {
+                return false;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        }
+    }
+
+    fn type_keys(&mut self, keys: &str) {
+        self.keyboard.write_all(keys.as_bytes()).unwrap();
+        self.keyboard.flush().unwrap();
+    }
+}
+
+/// Criteria 32, 33, 34, 35 and 37 (judge r3j, finding 78): on a terminal
+/// whose stdin is the terminal, space holds the page across redraws and the
+/// page row says so, `n` and `p` turn it at once, space lets pages turn
+/// again, and Ctrl-C gives the terminal back the modes it had.
+#[test]
+fn keys_hold_and_turn_pages_and_the_terminal_is_given_back() {
+    let core = fake_core("200 OK");
+    let b = plant(&core.url);
+    let mut pty = on_a_terminal_reading(&b, 100, 20, &["--interval", "5"], true);
+    let second = std::time::Duration::from_secs(1);
+    assert!(
+        pty.draws_page(0, "page 1 of ", std::time::Duration::from_secs(20)),
+        "no first page: {}",
+        pty.text()
+    );
+    let first = pty.page_rows_after(0).remove(0);
+    let pages: usize = first["page 1 of ".len()..]
+        .split(' ')
+        .next()
+        .and_then(|n| n.parse().ok())
+        .unwrap_or_else(|| panic!("{first}"));
+    assert!(pages > 3, "{first}");
+    assert!(first.contains("space holds, n and p turn"), "{first}");
+    let taken = modes(&pty.secondary);
+    assert_eq!(
+        taken.c_lflag & (libc::ICANON | libc::ECHO),
+        0,
+        "the view reads keys a byte at a time, unechoed"
+    );
+    assert_ne!(taken.c_lflag & libc::ISIG, 0, "Ctrl-C still interrupts");
+
+    let at = pty.screens_drawn();
+    pty.type_keys(" ");
+    let held = format!("page 1 of {pages} HELD until space");
+    assert!(
+        pty.draws_page(at, &held, second),
+        "space: {:?}",
+        pty.page_rows_after(at)
+    );
+    // Two intervals: pages would have turned twice.
+    let at = pty.screens_drawn();
+    std::thread::sleep(std::time::Duration::from_secs(11));
+    let since = pty.page_rows_after(at);
+    assert!(since.len() >= 2, "the view kept redrawing: {since:?}");
+    assert!(since.iter().all(|r| r.starts_with(&held)), "{since:?}");
+
+    for (key, page) in [("n", 2), ("p", 1), ("p", pages)] {
+        let at = pty.screens_drawn();
+        pty.type_keys(key);
+        let want = format!("page {page} of {pages} HELD until space");
+        assert!(
+            pty.draws_page(at, &want, second),
+            "{key}: {:?}",
+            pty.page_rows_after(at)
+        );
+    }
+    let at = pty.screens_drawn();
+    pty.type_keys(" ");
+    assert!(
+        pty.draws_page(at, &format!("page {pages} of {pages} — "), second),
+        "space again: {:?}",
+        pty.page_rows_after(at)
+    );
+    assert!(
+        pty.draws_page(
+            at,
+            &format!("page 1 of {pages} — "),
+            std::time::Duration::from_secs(8)
+        ),
+        "pages turn again: {:?}",
+        pty.page_rows_after(at)
+    );
+
+    // SAFETY: a signal to the child this test spawned and still holds.
+    assert_eq!(
+        unsafe { libc::kill(pty.child.id() as libc::pid_t, libc::SIGINT) },
+        0
+    );
+    let st = pty.exited_within(std::time::Duration::from_secs(8));
+    assert!(st.is_some_and(|s| s.success()), "{st:?}");
+    let after = modes(&pty.secondary);
+    assert_eq!(
+        modes_differ(&pty.modes_before, &after),
+        Vec::<&str>::new(),
+        "the terminal was not given back its modes"
+    );
+}
+
+/// Criterion 36: with stdin not a terminal, the page row says keys are not
+/// read, and why.
+#[test]
+fn a_view_that_cannot_read_keys_says_so_on_its_page_row() {
+    let core = fake_core("200 OK");
+    let b = plant(&core.url);
+    let pty = on_a_terminal(&b, 100, 20, &["--interval", "1"]);
+    assert!(
+        pty.draws_page(0, "page 1 of ", std::time::Duration::from_secs(20)),
+        "{}",
+        pty.text()
+    );
+    let row = pty.page_rows_after(0).remove(0);
+    let words = row.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        words.contains("keys are not read (stdin is not a terminal)"),
+        "{row}"
+    );
+}
+
+/// A tmux that answers at once for the first frame and takes three seconds
+/// for every one after it, so a gather can be caught under way.
+fn slow_after_the_first_gather(b: &PlantedBox) -> PathBuf {
+    let count = b.root.join("tmux.count");
+    std::fs::write(
+        b.root.join("bin/tmux"),
+        format!(
+            "#!/bin/sh\nn=$(cat '{c}' 2>/dev/null || echo 0)\necho $((n+1)) > '{c}'\n[ \"$n\" -ge 1 ] && sleep 3\nprintf 'forge-master-alpha\\t{}\\n'\n",
+            now_secs() - 3600,
+            c = count.display()
+        ),
+    )
+    .unwrap();
+    count
+}
+
+fn first_page_count(pty: &Pty) -> usize {
+    assert!(
+        pty.draws_page(0, "page 1 of ", std::time::Duration::from_secs(20)),
+        "no first page: {}",
+        pty.text()
+    );
+    let first = pty.page_rows_after(0).remove(0);
+    first["page 1 of ".len()..]
+        .split(' ')
+        .next()
+        .and_then(|n| n.parse().ok())
+        .unwrap_or_else(|| panic!("{first}"))
+}
+
+/// Consult on the r4 head, F2: a key typed while the next frame is being
+/// gathered redraws the frame on screen at once, and a page held then is the
+/// one the gathered frame is drawn on.
+#[test]
+fn a_key_typed_while_a_frame_is_gathered_is_answered_at_once() {
+    let core = fake_core("200 OK");
+    let b = plant(&core.url);
+    let count = slow_after_the_first_gather(&b);
+    let mut pty = on_a_terminal_reading(&b, 100, 20, &["--interval", "2"], true);
+    let pages = first_page_count(&pty);
+    assert!(pages > 2);
+    // The first frame, two seconds, then the second gather sits three
+    // seconds in tmux.
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while std::fs::read_to_string(&count).unwrap_or_default().trim() != "2" {
+        assert!(std::time::Instant::now() < until, "no second gather");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let second = std::time::Duration::from_secs(1);
+    let at = pty.screens_drawn();
+    pty.type_keys("n");
+    assert!(
+        pty.draws_page(at, &format!("page 2 of {pages} — "), second),
+        "n inside a gather: {:?}",
+        pty.page_rows_after(at)
+    );
+    let at = pty.screens_drawn();
+    pty.type_keys(" ");
+    let held = format!("page 2 of {pages} HELD until space");
+    assert!(
+        pty.draws_page(at, &held, second),
+        "space inside a gather: {:?}",
+        pty.page_rows_after(at)
+    );
+    assert_eq!(
+        std::fs::read_to_string(&count).unwrap().trim(),
+        "2",
+        "both answered inside the one gather"
+    );
+    // The gathered frame comes on the held page, not the one after it.
+    let at = pty.screens_drawn();
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(8);
+    while pty.screens_drawn() == at && std::time::Instant::now() < until {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    let since = pty.page_rows_after(at);
+    assert!(!since.is_empty(), "no frame after the gather");
+    assert!(since.iter().all(|r| r.starts_with(&held)), "{since:?}");
+}
+
+/// Consult on the r4 head, F1, and the whole-set read at 2b6a996, F1:
+/// SIGTERM and SIGQUIT each end a view reading keys through its loop, so the
+/// terminal is given back the modes it had; and while it runs, Ctrl-\\ and
+/// Ctrl-Z send nothing, and Ctrl-C is still the interrupt.
+#[test]
+fn a_view_ended_by_a_signal_gives_the_terminal_back() {
+    let core = fake_core("200 OK");
+    let b = plant(&core.url);
+    for signal in [libc::SIGTERM, libc::SIGQUIT] {
+        let mut pty = on_a_terminal_reading(&b, 100, 20, &["--interval", "1"], true);
+        first_page_count(&pty);
+        let taken = modes(&pty.secondary);
+        assert_eq!(taken.c_lflag & libc::ICANON, 0, "the view took the input");
+        assert_eq!(taken.c_cc[libc::VQUIT], 0, "Ctrl-\\ still quits");
+        assert_eq!(taken.c_cc[libc::VSUSP], 0, "Ctrl-Z still stops");
+        assert_eq!(
+            taken.c_cc[libc::VINTR],
+            pty.modes_before.c_cc[libc::VINTR],
+            "Ctrl-C is no longer the interrupt"
+        );
+        // SAFETY: a signal to the child this test spawned and still holds.
+        assert_eq!(
+            unsafe { libc::kill(pty.child.id() as libc::pid_t, signal) },
+            0
+        );
+        let st = pty.exited_within(std::time::Duration::from_secs(8));
+        assert!(st.is_some_and(|s| s.success()), "signal {signal}: {st:?}");
+        assert_eq!(
+            modes_differ(&pty.modes_before, &modes(&pty.secondary)),
+            Vec::<&str>::new(),
+            "signal {signal}"
+        );
+    }
+}
+
+/// The box_view flake (ISS-1341 comments fba234f3 and 046ff8a6): the planted
+/// daemon's bytes were read the moment its spawn returned, which can be
+/// before the process has become `sleep`, so beta's "asset" was the bytes of
+/// another binary and both skills read DRIFT. Forced here: the daemon becomes
+/// `sleep` half a second after its spawn returns, and beta must still read
+/// as the asset of the binary the daemon runs.
+#[test]
+fn a_daemon_that_becomes_its_binary_late_is_planted_from_that_binary() {
+    let core = fake_core("200 OK");
+    let b = plant_launching(&core.url, Launch::ExecLate);
+    // The view reads the daemon once it is `sleep`, as in CI it read it
+    // seconds after the plant.
+    let exe = format!("/proc/{}/exe", b.daemon.id());
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while !std::fs::read_link(&exe).is_ok_and(|l| l.ends_with("sleep")) {
+        assert!(
+            std::time::Instant::now() < until,
+            "the daemon never became sleep"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let text = String::from_utf8_lossy(&top(&b, &["--once"]).stdout).into_owned();
+    let projects = section(&text, "PROJECTS");
+    let beta = projects
+        .lines()
+        .find(|l| l.contains("repos/beta/.claude/skills/forge-master/SKILL.md"))
+        .unwrap_or_else(|| panic!("no beta skill line: {projects}"));
+    assert!(
+        beta.contains("is the forge-master asset of the binary the daemon runs"),
+        "{beta}"
+    );
 }
