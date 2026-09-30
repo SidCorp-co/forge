@@ -40,9 +40,8 @@ const READ_AT = '2026-09-26T23:55:00.000Z';
 /** The reading every call below is weighed against, unless a test names another. */
 const LIVE: ServingReading = {
   kind: 'serving',
-  commits: [SERVING],
+  served: [{ commit: SERVING, where: 'https://app.test/build-info' }],
   unread: [],
-  hosts: ['https://app.test/build-info'],
   readAt: READ_AT,
 };
 
@@ -286,7 +285,7 @@ describe('unearnedCriteriaReports', () => {
         criterion: 1,
         verdict: 'pass',
         standing: 'superseded',
-        why: `judged at ${stale}, and what this project is serving at https://app.test/build-info, read at ${READ_AT} is ${SERVING}`,
+        why: `judged at ${stale}, and what this project is serving is \`${SERVING}\` at https://app.test/build-info, read at ${READ_AT}`,
       },
     ]);
   });

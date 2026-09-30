@@ -21,30 +21,32 @@ const has = (source: string | null): IssueIdentities => ({ source });
 /** The three shapes a reading comes back in, as `readServingNow` builds them. */
 const serving = (commit: string): ServingReading => ({
   kind: 'serving',
-  commits: [commit],
+  served: [{ commit: commit, where: HOST }],
   unread: [],
-  hosts: [HOST],
   readAt: READ_AT,
 });
 const disagreeing = (commits: string[]): ServingReading => ({
   kind: 'serving',
-  commits,
+  served: commits.map((commit, i) => ({
+    commit,
+    where: i === 0 ? HOST : 'https://second.test/health',
+  })),
   unread: [],
-  hosts: [HOST, 'https://second.test/health'],
   readAt: READ_AT,
 });
 /** One probe answered, another gave nothing: an answer, not an absence. */
 const partial = (commit: string): ServingReading => ({
   kind: 'serving',
-  commits: [commit],
+  served: [{ commit: commit, where: HOST }],
   unread: ['https://second.test/health is unreachable (ECONNREFUSED)'],
-  hosts: [HOST, 'https://second.test/health'],
   readAt: READ_AT,
 });
 const undeclared: ServingReading = {
   kind: 'undeclared',
   missing:
     'this project has no active deploy binding, so Forge makes no deployment it could read a commit from',
+  route:
+    'bind a deploy binding Forge deploys through whose provider reports the commit a deployment built (Coolify does), or declare `verify.probes` on the live deploy binding',
 };
 const unreadable = (why: string): ServingReading => ({
   kind: 'unreadable',
@@ -209,8 +211,7 @@ describe('verdictStanding — a source verdict under a reading of what is runnin
       serving(SERVING),
       has(SOURCE),
     );
-    expect(line).toContain(`what this project is serving at ${HOST}`);
-    expect(line).toContain(SERVING);
+    expect(line).toContain(`what this project is serving is \`${SERVING}\` at ${HOST}`);
   });
 });
 
@@ -228,16 +229,16 @@ describe('standingSentence', () => {
     expect(line).toContain(READ_AT);
   });
 
-  it('names both commits a disagreeing fleet answered when it refuses a third', () => {
+  // ISS-1346 judge finding 2 — two commits answered is where each runs, never a fault.
+  it('names both commits a disagreeing fleet answered, each beside where it runs, when it refuses a third', () => {
     const line = standingSentence(
       'superseded',
       at('runtime', SOURCE),
       disagreeing([SERVING, OTHER]),
       has(null),
     );
-    expect(line).toContain(SERVING);
-    expect(line).toContain(OTHER);
-    expect(line).toContain('more than one commit is running');
+    expect(line).toContain(`\`${SERVING}\` at ${HOST}; \`${OTHER}\` at https://second.test/health`);
+    expect(line).not.toContain('more than one commit is running');
   });
 
   it('names the probe that answered nothing beside the commit that was answered', () => {
