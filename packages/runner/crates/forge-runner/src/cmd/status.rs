@@ -3,6 +3,7 @@ use forge_runner_core::auth::cred_store;
 use forge_runner_core::config::Config;
 use forge_runner_core::daemon::degraded::{Condition, Last, Verdict, RECENT_WITHIN_MS};
 use forge_runner_core::daemon::pool_reads;
+use forge_runner_core::runner::ledger::{short_id, Ledger, Unanswered, WhatEndsIt};
 
 use super::Ctx;
 
@@ -54,6 +55,14 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         now,
     ) {
         println!("{line}");
+    }
+    match Ledger::default_path() {
+        Ok(path) => {
+            for line in unanswered_runs(&path, &cfg) {
+                println!("{line}");
+            }
+        }
+        Err(e) => println!("runs       no ledger path resolves on this box: {e}"),
     }
     if cfg.bindings.is_empty() {
         println!("bindings   —");
@@ -160,6 +169,85 @@ fn project_label(cfg: &Config, project_id: &str) -> String {
         .find(|(_, b)| b.project_id.as_deref() == Some(project_id))
         .map(|(slug, _)| slug.clone())
         .unwrap_or_else(|| project_id.to_string())
+}
+
+/// The runs no master on this box answers for, read without writing the
+/// ledger. Every pane's `run close` refuses such a run as another master's, so
+/// this is where an operator is told of it, and of what will end it
+/// (ISS-1355). A ledger that cannot be read says so rather than reading as
+/// none.
+fn unanswered_runs(path: &std::path::Path, cfg: &Config) -> Vec<String> {
+    if !path.exists() {
+        return vec![format!(
+            "runs       no ledger at {} — a daemon creates it at its first start, so no run can be read",
+            path.display()
+        )];
+    }
+    let read = Ledger::open_read_only(path).and_then(|led| led.runs_no_master_answers_for());
+    match read {
+        Ok(runs) => unanswered_lines(&runs, cfg),
+        Err(e) => vec![format!(
+            "runs       UNREADABLE — {}: {e}. Which runs no master answers for cannot be said",
+            path.display()
+        )],
+    }
+}
+
+fn unanswered_lines(runs: &[Unanswered], cfg: &Config) -> Vec<String> {
+    if runs.is_empty() {
+        return vec!["runs       none that no master on this box answers for".to_string()];
+    }
+    let mut out = vec![format!(
+        "runs       {} no master on this box answers for — `run close` refuses each as another master's",
+        runs.len()
+    )];
+    for u in runs {
+        let project = u
+            .run
+            .project_id
+            .as_deref()
+            .map(|p| project_label(cfg, p))
+            .unwrap_or_else(|| "no project".to_string());
+        let keys = u
+            .issues
+            .iter()
+            .map(|m| m.issue_key.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        out.push(format!(
+            "  {}  {project}  {keys}  declared under {} — {}",
+            u.run.run_id,
+            short_id(&u.run.master_session_id),
+            what_ends(u)
+        ));
+    }
+    out
+}
+
+fn what_ends(u: &Unanswered) -> String {
+    match u.what_ends_it() {
+        WhatEndsIt::NextSweep => "its marks close it, so the next recovery sweep ends it".into(),
+        WhatEndsIt::SessionOver => {
+            "core has not called its session over; recovery releases it once it does".into()
+        }
+        WhatEndsIt::OperatorRelease => format!(
+            "its release was given up on; `forge-runner run release {}` has the next sweep try again",
+            u.run.run_id
+        ),
+        WhatEndsIt::CheckoutRelease => "recovery still owes its checkout back".into(),
+        WhatEndsIt::LeasesBack(keys) => format!(
+            "its checkout is back and its session over; recovery is still reading its lease on {} back",
+            keys.join(", ")
+        ),
+        WhatEndsIt::NothingNoProject => {
+            "nothing on this box: its row records no project, so no sweep can tie it to a master"
+                .into()
+        }
+        WhatEndsIt::NothingMasterUnknown => format!(
+            "only its project's master pane, whose session this ledger does not record: `forge-runner run close {}` from that pane, if it declared it",
+            u.run.run_id
+        ),
+    }
 }
 
 /// What `status` and `doctor` both print about this box's pool reads. An empty
@@ -577,6 +665,147 @@ mod tests {
                 "{text}"
             );
         }
+    }
+
+    // ---- ISS-1355, ISS-1352: the runs no master answers for ----
+
+    use forge_runner_core::runner::ledger::{CheckoutReturn, NewRun};
+    use forge_runner_core::test_scratch::Scratch;
+
+    /// A ledger on disk holding sid-desk's abandoned judge of its ISS-496 (its
+    /// checkout gone, its session over, its lease still out), a closed run of
+    /// forge-dev's replaced master, and forge-dev's current master's own run.
+    fn planted(dir: &std::path::Path) -> std::path::PathBuf {
+        let path = dir.join("ledger.sqlite");
+        let mut led = Ledger::open(&path).unwrap();
+        for (run, project, master, key) in [
+            (
+                "d87c1f79-judge",
+                "sid-desk-id",
+                "655c2532-before",
+                "ISS-496",
+            ),
+            (
+                "forge-orphan",
+                "forge-dev-id",
+                "1a2b3c4d-before",
+                "ISS-1246",
+            ),
+            ("forge-own", "forge-dev-id", "b0ce4b6c-now", "ISS-1355"),
+        ] {
+            led.create_run_group(NewRun {
+                run_id: run.into(),
+                project_id: project.into(),
+                master_session_id: master.into(),
+                worktree_path: dir.join(run),
+                boot_id: "boot-a".into(),
+                issue_keys: vec![key.into()],
+            })
+            .unwrap();
+            led.bind_agent(run, &format!("agent-{run}")).unwrap();
+            led.mark_session_terminal_observed(run).unwrap();
+            led.mark_checkout_returned_observed(run, CheckoutReturn::Gone)
+                .unwrap();
+            if run != "d87c1f79-judge" {
+                led.mark_lease_returned_observed(run, key).unwrap();
+            }
+        }
+        led.note_master(
+            "forge-dev-id",
+            "forge-master-forge-dev",
+            None,
+            Some("b0ce4b6c-now"),
+            "boot-a",
+        )
+        .unwrap();
+        path
+    }
+
+    /// ISS-1355 criterion 12 and ISS-1352 criterion 5.
+    #[test]
+    fn status_names_every_run_no_master_answers_for_and_what_ends_it() {
+        let s = Scratch::new("status-runs");
+        let path = planted(s.path());
+        let mut cfg = cfg_binding("sid-desk", "sid-desk-id");
+        cfg.bindings.insert(
+            "forge-dev".into(),
+            forge_runner_core::config::Binding {
+                repo_path: "/tmp/y".into(),
+                branch: None,
+                project_id: Some("forge-dev-id".into()),
+            },
+        );
+        let out = unanswered_runs(&path, &cfg);
+        assert_eq!(
+            out[0],
+            "runs       2 no master on this box answers for — `run close` refuses each as another master's"
+        );
+        assert_eq!(
+            out[1],
+            "  d87c1f79-judge  sid-desk  ISS-496  declared under 655c2532 — its checkout is back and its session over; recovery is still reading its lease on ISS-496 back"
+        );
+        assert_eq!(
+            out[2],
+            "  forge-orphan  forge-dev  ISS-1246  declared under 1a2b3c4d — its marks close it, so the next recovery sweep ends it"
+        );
+        assert_eq!(
+            out.len(),
+            3,
+            "the current master's own run is not named: {out:?}"
+        );
+    }
+
+    /// ISS-1355 criterion 12: a project this box does not bind is named by its id.
+    #[test]
+    fn status_names_an_unbound_project_by_its_id() {
+        let s = Scratch::new("status-runs-id");
+        let path = planted(s.path());
+        let out = unanswered_runs(&path, &Config::default());
+        assert!(out[1].contains("  sid-desk-id  ISS-496  "), "{out:?}");
+    }
+
+    /// ISS-1355 criterion 13.
+    #[test]
+    fn status_says_when_no_run_is_unanswered_for() {
+        let s = Scratch::new("status-runs-none");
+        let path = s.path().join("ledger.sqlite");
+        drop(Ledger::open(&path).unwrap());
+        assert_eq!(
+            unanswered_runs(&path, &Config::default()),
+            ["runs       none that no master on this box answers for"]
+        );
+    }
+
+    /// ISS-1355 criterion 16: a ledger that cannot be read is named with its
+    /// error, and a missing one is named as missing — neither reads as none.
+    #[test]
+    fn status_names_a_ledger_it_cannot_read() {
+        let s = Scratch::new("status-runs-bad");
+        let path = s.path().join("ledger.sqlite");
+        std::fs::write(
+            &path,
+            b"this is not a database, and it is long enough to say so",
+        )
+        .unwrap();
+        let out = unanswered_runs(&path, &Config::default());
+        assert_eq!(out.len(), 1);
+        assert!(
+            out[0].starts_with(&format!("runs       UNREADABLE — {}: ", path.display())),
+            "{out:?}"
+        );
+        assert!(
+            out[0].contains("not a database"),
+            "the error is SQLite's own: {out:?}"
+        );
+        let missing = s.path().join("absent.sqlite");
+        assert_eq!(
+            unanswered_runs(&missing, &Config::default()),
+            [format!(
+                "runs       no ledger at {} — a daemon creates it at its first start, so no run can be read",
+                missing.display()
+            )]
+        );
+        assert!(!missing.exists(), "reading never creates the file");
     }
 
     // ---- ISS-1234: the pool lines ----
