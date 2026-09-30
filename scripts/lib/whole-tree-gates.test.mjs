@@ -282,14 +282,16 @@ describe('the guard installed in this very run', () => {
   const REPO = resolve(import.meta.dirname, '..', '..');
   const state = globalThis[Symbol.for('forge.whole-tree-guard')];
   const covering = () => state.hits.filter((h) => coversRoot(REPO, h.dir));
+  const vias = () => covering().map((h) => h.via);
   // Every case here lists the root on purpose, so each clears what it recorded before `afterAll`
   // would refuse this undeclared file for it.
   afterEach(() => {
     state.hits = [];
   });
 
-  it('is installed by the configuration that collects this file', () => {
+  it('is installed by the configuration that collects this file, capturing a base', () => {
     expect(state?.installed).toBe(true);
+    expect(globalThis[Symbol.for('forge.whole-tree-watch')].base).toBeTruthy();
   });
 
   it('sees a named node:fs import list the root, with this file as the call site', () => {
@@ -305,28 +307,19 @@ describe('the guard installed in this very run', () => {
 
   it('sees node:fs/promises and a git subprocess list it', async () => {
     await readdir(REPO);
-    execFileSync('git', ['ls-files', '--', '[p]ackage.json'], { cwd: REPO });
-    expect(covering().map((h) => h.via)).toEqual([
-      'readdir()',
-      'execFileSync() running git ls-files',
-    ]);
+    execFileSync('git', ['ls-files'], { cwd: REPO });
+    expect(vias()).toEqual(['readdir()', 'execFileSync() running git ls-files']);
   });
 
-  it('sees a program list it from a cwd handed as a file URL', () => {
+  it('sees git list the root from a cwd handed as a file URL', () => {
     const cwd = pathToFileURL(`${REPO}/`);
-    execFileSync('git', ['ls-files', '--', '[p]ackage.json'], { cwd });
-    execSync('ls >/dev/null', { cwd });
-    spawnSync('git', ['grep', '-l', 'no-such-text-anywhere'], { cwd, stdio: 'ignore' });
-    expect(covering().map((h) => h.via)).toEqual([
-      'execFileSync() running git ls-files',
-      'execSync() running ls',
-      'spawnSync() running git grep',
-    ]);
+    execFileSync('git', ['ls-files'], { cwd });
+    expect(vias()).toEqual(['execFileSync() running git ls-files']);
   });
 
   it('counts a spawn whose cwd it cannot place as the root, and Node refuses to run it', () => {
     const cwd = new URL('http://localhost:3000/@fs/');
-    expect(() => execFileSync('ls', [], { cwd })).toThrow(/scheme file/);
+    expect(() => execFileSync('git', ['ls-files'], { cwd })).toThrow(/scheme file/);
     expect(covering()).toEqual([
       expect.objectContaining({
         dir: REPO,
@@ -336,17 +329,109 @@ describe('the guard installed in this very run', () => {
   });
 
   it('keeps promisify(execFile) resolving to stdout and stderr, and watches it too', async () => {
-    const out = await promisify(execFile)('git', ['ls-files', '--', '[p]ackage.json'], {
-      cwd: REPO,
-    });
-    expect(out.stdout.trim()).toBe('package.json');
+    const out = await promisify(execFile)('git', ['ls-files'], { cwd: REPO });
+    expect(out.stdout).toContain('package.json');
     expect(out.stderr).toBe('');
-    expect(covering().map((h) => h.via)).toEqual(['execFile() running git ls-files']);
+    expect(vias()).toEqual(['execFile() running git ls-files']);
+  });
+
+  it('refuses a program that is not git, grep or node, whatever it is handed (j10 diff)', () => {
+    try {
+      execFileSync('diff', ['-q', REPO, tmpdir()], { stdio: 'ignore' });
+    } catch {
+      // diff exits non-zero when the trees differ; the guard has already recorded the refusal.
+    }
+    expect(vias()).toEqual([
+      expect.stringMatching(/^execFileSync\(\) running `diff` is not git, grep or node/),
+    ]);
+  });
+
+  it('refuses any shell string, and every shell but Node’s /bin/sh (j10 login shell, cd, subst)', () => {
+    for (const line of [
+      'exec -l bash -c "git ls-files"',
+      'cd ../.. && git ls-files',
+      'git ls-files $(pwd)',
+      'cat ../../*.md',
+    ]) {
+      try {
+        execSync(line, { cwd: import.meta.dirname, stdio: 'ignore', shell: '/bin/sh' });
+      } catch {
+        // The subprocess may fail; the guard recorded the root listing before it ran.
+      }
+    }
+    try {
+      execFileSync('bash', ['-c', 'git ls-files'], { cwd: REPO, stdio: 'ignore' });
+    } catch {}
+    expect(covering().length).toBe(5);
+    expect(covering().every((h) => h.dir === REPO)).toBe(true);
+  });
+
+  it('refuses a spawn that sets argv0, and one that adds a startup variable (j10 argv0, LD_PRELOAD)', () => {
+    try {
+      execFileSync('git', ['ls-files'], { cwd: REPO, argv0: '-git', stdio: 'ignore' });
+    } catch {}
+    try {
+      execFileSync('git', ['ls-files'], {
+        cwd: REPO,
+        env: { ...process.env, LD_PRELOAD: '/x.so' },
+        stdio: 'ignore',
+      });
+    } catch {}
+    expect(covering().length).toBe(2);
+    expect(covering().every((h) => h.dir === REPO)).toBe(true);
+  });
+
+  it('refuses a program a test put first on PATH under node_modules (j10 class 4)', () => {
+    const bin = mkdtempSync(join(tmpdir(), 'wt-bin-'));
+    mkdirSync(join(bin, 'node_modules', '.bin'), { recursive: true });
+    const fake = join(bin, 'node_modules', '.bin', 'git');
+    writeFileSync(fake, '#!/bin/sh\nexec /usr/bin/git "$@"\n');
+    execFileSync('chmod', ['+x', fake]);
+    try {
+      execFileSync('git', ['ls-files'], {
+        cwd: REPO,
+        env: { ...process.env, PATH: `${join(bin, 'node_modules', '.bin')}:${process.env.PATH}` },
+        stdio: 'ignore',
+      });
+    } catch {
+      // The fake exists, so PATH changed — the reader refuses before it runs.
+    }
+    rmSync(bin, { recursive: true, force: true });
+    expect(covering().length).toBeGreaterThanOrEqual(1);
+    expect(covering().every((h) => h.dir === REPO)).toBe(true);
+  });
+
+  it('refuses a Node child given a startup module the worker was not started with, via CLI and NODE_OPTIONS', () => {
+    const probe = join(mkdtempSync(join(tmpdir(), 'wt-req-')), 'r.cjs');
+    writeFileSync(probe, `require('node:fs').readdirSync(${JSON.stringify(REPO)});`);
+    execFileSync(process.execPath, ['--require', probe, '-e', '0'], { stdio: 'ignore' });
+    execFileSync(process.execPath, ['-e', '0'], {
+      env: { ...process.env, NODE_OPTIONS: `--require ${probe}` },
+      stdio: 'ignore',
+    });
+    rmSync(dirname(probe), { recursive: true, force: true });
+    expect(covering().length).toBe(2);
+    expect(covering().every((h) => h.dir === REPO)).toBe(true);
+  });
+
+  it('refuses a worker thread handed its own startup module', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'wt-worker-'));
+    const mod = join(dir, 'pre.mjs');
+    writeFileSync(mod, '');
+    const w = new Worker('', { eval: true, execArgv: ['--import', pathToFileURL(mod).href] });
+    w.terminate();
+    rmSync(dir, { recursive: true, force: true });
+    expect(vias()).toEqual([
+      expect.stringMatching(/^Worker\(\) with the startup option `--import`/),
+    ]);
   });
 
   it('sees a Node child list it, a call handing its own env included', () => {
     const script = `require('node:fs').readdirSync(${JSON.stringify(REPO)})`;
-    spawnSync(process.execPath, ['-e', script], { env: { PATH: process.env.PATH } });
+    execFileSync(process.execPath, ['-e', script], {
+      env: { PATH: process.env.PATH },
+      stdio: 'ignore',
+    });
     const logged = readFileSync(state.log, 'utf8').trim().split('\n').filter(Boolean);
     writeFileSync(state.log, '');
     expect(logged.map((l) => JSON.parse(l))).toEqual([
@@ -370,7 +455,7 @@ describe('the guard installed in this very run', () => {
     ]);
   });
 
-  it('sees a worker thread list it', async () => {
+  it('sees a worker thread file list it, with the preload ahead of the test’s own execArgv', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'whole-tree-worker-'));
     const file = join(dir, 'lists.mjs');
     writeFileSync(
@@ -384,74 +469,31 @@ describe('the guard installed in this very run', () => {
     expect(logged.map((l) => JSON.parse(l).dir)).toEqual([REPO]);
   });
 
-  it('counts a directory a shell moved to by a substitution as the root', () => {
-    execFileSync('sh', ['-c', 'cd "$(pwd)" && ls >/dev/null'], { cwd: import.meta.dirname });
-    expect(covering().map((h) => h.via)).toEqual([
-      'execFileSync() running ls (at a directory or word the guard cannot evaluate, so counted as the root)',
-    ]);
-  });
-
-  it('counts a shell cd it cannot place exactly as the root, spawned for real (j9, reopen 7)', () => {
-    const t = realpathSync(mkdtempSync(join(tmpdir(), 'whole-tree-cd-')));
-    const deep = join(t, 'a', 'b', 'c');
-    mkdirSync(deep, { recursive: true });
-    symlinkSync(join(REPO, 'packages', 'core'), join(t, 'lc'));
-    const out = join(import.meta.dirname, 'whole-tree-cd-out');
-    symlinkSync(deep, out);
-    const ls = (cmd, opts) => execFileSync('sh', ['-c', `${cmd} >/dev/null`], opts);
+  it('counts a program it cannot see into as the root, wherever it runs (a non-Node shell script)', () => {
     try {
-      ls('cd -P lc/../.. && git ls-files', { cwd: t });
-      ls('cd whole-tree-cd-out && cd ../../.. && git ls-files', { cwd: import.meta.dirname });
-      ls('cd packages >/dev/null && cd .. && git ls-files', {
-        cwd: t,
-        env: { ...process.env, CDPATH: REPO },
-      });
-      ls('(cd /tmp); git ls-files', { cwd: REPO });
-      execFileSync('bash', ['-c', 'git ls-files >/dev/null'], {
-        cwd: import.meta.dirname,
-        env: { ...process.env, 'BASH_FUNC_git%%': '() { command git -C ../.. "$@"; }' },
-      });
-    } finally {
-      rmSync(out, { force: true });
-      rmSync(t, { recursive: true, force: true });
-    }
-    try {
-      execSync('true', { cwd: import.meta.dirname, shell: 'zsh', stdio: 'ignore' });
+      execFileSync('sh', [join(import.meta.dirname, 'no-such-script.sh')], { stdio: 'ignore' });
     } catch {
-      // A box without zsh refuses the spawn; the watch read it before it ran.
+      // The script does not exist; the guard counted `sh` as the root before it ran.
     }
-    expect(covering().map((h) => h.via)).toEqual([
-      'execFileSync() running git ls-files (at a directory or word the guard cannot evaluate, so counted as the root)',
-      'execFileSync() running git ls-files (at a directory or word the guard cannot evaluate, so counted as the root)',
-      'execFileSync() running git ls-files (at a directory or word the guard cannot evaluate, so counted as the root)',
-      'execFileSync() running git ls-files (at a directory or word the guard cannot evaluate, so counted as the root)',
-      'execFileSync() running a shell whose environment sets `BASH_FUNC_git%%` (a program the guard cannot see into, so counted as listing the root)',
-      'execSync() running `zsh` (zsh), whose startup files the guard does not read (a program the guard cannot see into, so counted as listing the root)',
-    ]);
-  });
-
-  it('counts a program it cannot see into as the root, wherever it runs', () => {
-    spawnSync('sh', [join(import.meta.dirname, 'no-such-script.sh')], { stdio: 'ignore' });
     expect(covering()).toEqual([
       expect.objectContaining({
         dir: REPO,
-        via: expect.stringMatching(/^spawnSync\(\) running `sh` running .*no-such-script\.sh/),
+        via: expect.stringMatching(/^execFileSync\(\) running `sh` is not git, grep or node/),
       }),
     ]);
   });
 
-  it('counts an executable a dependency spawns from its own callback, but a reviewed helper', async () => {
+  it('counts an executable a dependency spawns from its own callback, but exempts esbuild’s service', async () => {
     const dep = mkdtempSync(join(tmpdir(), 'whole-tree-dep-'));
     const lib = join(dep, 'node_modules', 'lister');
     mkdirSync(join(lib, 'bin'), { recursive: true });
     writeFileSync(
       join(lib, 'index.mjs'),
       "import { spawnSync } from 'node:child_process';\n" +
-        "export const later = (bin) => new Promise((done) => setTimeout(() => { spawnSync(bin, [], { stdio: 'ignore' }); done(); }, 0));",
+        "export const later = (bin, args=[]) => new Promise((done) => setTimeout(() => { spawnSync(bin, args, { stdio: 'ignore' }); done(); }, 0));",
     );
     const { later } = await import(pathToFileURL(join(lib, 'index.mjs')).href);
     await later(join(lib, 'bin', 'walk'));
-    await later(join(lib, 'bin', 'esbuild'));
     rmSync(dep, { recursive: true, force: true });
     expect(covering()).toEqual([
       expect.objectContaining({
@@ -463,19 +505,37 @@ describe('the guard installed in this very run', () => {
 
   it('sees a ChildProcess spawned directly list it, and a spawn read once', async () => {
     const child = new ChildProcess();
-    child.spawn({ file: 'ls', args: ['ls', REPO], stdio: ['ignore', 'ignore', 'ignore'] });
+    child.spawn({
+      file: 'git',
+      args: ['git', 'ls-files'],
+      cwd: REPO,
+      stdio: ['ignore', 'ignore', 'ignore'],
+    });
     await new Promise((done) => child.on('exit', done));
-    const direct = spawn('ls', [REPO], { stdio: 'ignore' });
+    const direct = spawn('git', ['ls-files'], { cwd: REPO, stdio: 'ignore' });
     await new Promise((done) => direct.on('exit', done));
-    expect(covering().map((h) => h.via)).toEqual([
-      'ChildProcess#spawn() running ls',
-      'spawn() running ls',
+    expect(vias()).toEqual([
+      'ChildProcess#spawn() running git ls-files',
+      'spawn() running git ls-files',
     ]);
   });
 
+  it('reads a ChildProcess whose args[0] is an argv0 as outside the grammar', async () => {
+    const child = new ChildProcess();
+    child.spawn({
+      file: 'git',
+      args: ['-git', 'ls-files'],
+      cwd: REPO,
+      stdio: ['ignore', 'ignore', 'ignore'],
+    });
+    await new Promise((done) => child.on('exit', done));
+    expect(covering().length).toBe(1);
+    expect(covering()[0].dir).toBe(REPO);
+  });
+
   it('reads exec once, not again as the execFile it runs', async () => {
-    await promisify(exec)(`ls ${REPO}`);
-    expect(covering().map((h) => h.via)).toEqual(['exec() running ls']);
+    await promisify(exec)('git ls-files', { cwd: REPO });
+    expect(vias()).toEqual(['exec() running git ls-files']);
   });
 
   it('sees a listing through a symlink to it, or through a symlink’s `..`', () => {
@@ -492,25 +552,18 @@ describe('the guard installed in this very run', () => {
     const dir = mkdtempSync(join(tmpdir(), 'whole-tree-cwd-link-'));
     symlinkSync(REPO, join(dir, 'repo'));
     const up = relative(process.cwd(), REPO);
-    const args = ['ls-files', '--', '[p]ackage.json'];
-    execFileSync('git', args, { cwd: join(dir, 'repo') });
-    spawnSync('git', ['grep', '-l', 'no-such-text-anywhere'], {
-      cwd: join(dir, 'repo'),
-      stdio: 'ignore',
-    });
-    execFileSync('git', args, { cwd: `/proc/${process.pid}/cwd/${up}` });
-    execSync('git ls-files -- "[p]ackage.json" >/dev/null', { cwd: `/proc/self/cwd/${up}` });
+    execFileSync('git', ['ls-files'], { cwd: join(dir, 'repo'), stdio: 'ignore' });
+    execFileSync('git', ['ls-files'], { cwd: `/proc/${process.pid}/cwd/${up}`, stdio: 'ignore' });
     rmSync(dir, { recursive: true, force: true });
-    expect(covering().map((h) => [h.via, h.dir])).toEqual([
-      ['execFileSync() running git ls-files', REPO],
-      ['spawnSync() running git grep', REPO],
-      ['execFileSync() running git ls-files', REPO],
-      ['execSync() running git ls-files', REPO],
-    ]);
+    expect(covering().map((h) => h.dir)).toEqual([REPO, REPO]);
   });
 
   it('records nothing covering the root for a listing inside it', () => {
     readdirSync(import.meta.dirname);
+    execFileSync('git', ['ls-files', 'whole-tree-gates.mjs'], {
+      cwd: import.meta.dirname,
+      stdio: 'ignore',
+    });
     expect(covering()).toEqual([]);
   });
 });

@@ -199,6 +199,7 @@ function holdAttempt(runId: string, start: ReleaseFinishRecord, hooks: FinishWor
    */
   async function fence(tx: Tx): Promise<void> {
     if (lost) throw new ReleaseFinishFenceLostError();
+    await hooks.beforeFence?.();
     const rows = await tx.execute<{ owner: string | null; status: string; metadata: unknown }>(sql`
       SELECT ${pipelineRuns.metadata} -> 'finish' ->> 'owner' AS owner, ${pipelineRuns.status} AS status,
         ${pipelineRuns.metadata} AS metadata
@@ -258,6 +259,8 @@ function refusalOf(err: unknown): FinishRefusal {
 export interface FinishWorkerHooks {
   /** Test seam: runs after the green verdict is committed and before the first close. */
   afterVerified?: () => Promise<void>;
+  /** Test seam: runs as a fence starts, before it locks and reads the run row. */
+  beforeFence?: () => Promise<void>;
   /** Test seam: runs inside a closing write's transaction, after the fence passed. */
   afterFence?: () => Promise<void>;
   /** Test seam: runs after the claims are released and before `finished` is written. */

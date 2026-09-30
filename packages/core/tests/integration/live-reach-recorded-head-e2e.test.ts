@@ -4,6 +4,9 @@
  * repository is real git read through the project's deploy key, with only the ssh hop replaced;
  * the project has no GitHub binding, so the real client refuses it. The projects, key, issues and
  * their `session_context` are Postgres.
+ *
+ * @gate-input whole-tree — the real git read reaches remote-divergence's `ulimit` shell string,
+ * which the root-walk guard's closed grammar cannot admit, so it counts as reading the whole tree.
  */
 
 import { execFileSync } from 'node:child_process';

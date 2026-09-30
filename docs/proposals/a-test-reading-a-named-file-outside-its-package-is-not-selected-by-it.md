@@ -84,12 +84,24 @@ it cannot read.
 The guard reads what git is set to run in the repository it runs in, since a test writing a
 fixture decides that: a hook, `core.hooksPath`, `core.fsmonitor`, a filter, diff or merge driver,
 an editor, a signer and a transport command each count as the root for the subcommands that run
-them, and so does a config file `GIT_CONFIG_GLOBAL` or `GIT_CONFIG_SYSTEM` names. It does not read
-the user's global or system config (`~/.gitconfig`, `$XDG_CONFIG_HOME/git/config`,
-`/etc/gitconfig`). A test that points `HOME` at a directory whose `.gitconfig` sets
-`core.fsmonitor`, then runs `git status` in a fixture, passes.
+them, and so does a config file `GIT_CONFIG_GLOBAL` or `GIT_CONFIG_SYSTEM` names.
+
+ISS-1314's ninth build (the closed grammar) also reads the global and system config
+(`~/.gitconfig`, `$XDG_CONFIG_HOME/git/config`, `/etc/gitconfig`) that a call's environment names,
+against a base captured before any test ran and written beside the guard's log so every child
+process compares against the same base. A base file must be **unchanged** for the call to pass; a
+config file the base did not hold — the `.gitconfig` under a `HOME` a test redirected — is trusted
+only when every key it sets is on the repository-config allowlist (`REPO_CONFIG_KEYS`). So a test
+that points `HOME` at a directory whose `.gitconfig` sets `core.fsmonitor`, then runs `git status`
+in a fixture, is now **refused**, and the earlier cost of telling a chosen `HOME` from an inherited
+one is paid by that base.
+
+What the closed grammar leaves is the allowlist itself. `REPO_CONFIG_KEYS` is a hand-maintained
+list of the keys a fixture may set without running a program; a new git config key that reaches a
+program and is not yet matched by `badConfigKey` would be trusted silently. The allowlist is the
+declaration, and it answers to review, not to a checker that can enumerate every future git key.
 
 | Cost | What it takes |
 |---|---|
-| Reading the user's config | Every git call would be judged by settings no reviewer of the test can see, and that config differs from one machine to the next, so one test could pass in CI and be refused on a developer's box. |
-| Reading only a `HOME` the test sets | The reader would need the parent's environment beside the child's, to tell a `HOME` the test chose from the one it inherited. |
+| Reading the user's config | The base-comparison means a git call is judged against the config as it stood at install; a developer whose global config changes mid-run, or a machine whose `/etc/gitconfig` differs from CI's, reads as a changed base and is refused, so the base is re-captured per run rather than pinned. |
+| Maintaining the config-key allowlist | Every git config key that can run a program has to be on the deny path of `badConfigKey`, or a fixture setting it passes; a new such key added to git upstream is a silent gap until the allowlist is narrowed to exclude it. |

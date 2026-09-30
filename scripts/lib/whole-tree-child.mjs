@@ -12,10 +12,14 @@ const where = isMainThread
   ? `child process ${process.pid}`
   : `worker ${threadId} of process ${process.pid}`;
 if (log) {
-  installWatch((entries) => {
-    for (const e of entries) {
-      if (!coversRoot(ROOT, e.dir)) continue;
-      appendFileSync(log, `${JSON.stringify({ ...e, via: `${e.via} in ${where}` })}\n`);
-    }
-  }, log);
+  installWatch(
+    (entries) => {
+      for (const e of entries) {
+        if (!coversRoot(ROOT, e.dir)) continue;
+        appendFileSync(log, `${JSON.stringify({ ...e, via: `${e.via} in ${where}` })}\n`);
+      }
+    },
+    log,
+    false,
+  );
 }
