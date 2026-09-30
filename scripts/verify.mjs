@@ -331,11 +331,13 @@ const CI_COVERAGE = {
     'pnpm --filter @forge/core test:integration',
   'node scripts/check-flow-coverage.mjs --all --require-sources': 'verify, minus --require-sources',
   'Lockfile sync + fmt + clippy + test':
-    'verify, via scripts/check-runner-gates.mjs when packages/runner changed — on THIS box only, while CI runs the same step on all three platforms',
+    'verify, via scripts/check-runner-gates.mjs when packages/runner changed — on THIS box only, while CI runs the same step on ubuntu before the merge and on macOS and Windows after it',
   'node scripts/check-whole-tree-gates.mjs --run':
     'verify, the declarations half; pnpm test runs the declared files themselves',
   'node scripts/build-images.mjs':
     'pnpm images, which verify does NOT run — it needs a docker daemon',
+  'Cross-target clippy for Windows and macOS':
+    "the ubuntu runner job only — scripts/check-runner-gates.mjs clippies this box's own target",
   'Check Markdown links': 'docs job, gaurav-nelson/github-action-markdown-link-check',
   'Whether a pull_request run already proved this exact tree':
     "nothing local — it reads the event and the commit's parent count, which exist only on CI",
@@ -552,6 +554,30 @@ function ciSteps() {
   return steps;
 }
 
+/**
+ * The ci.yml steps only a job `ci-passed` does not need runs — the ones CI measures after the
+ * merge. A step a gating job also runs is gated, whichever other job shares it.
+ */
+function stepsAfterTheMerge() {
+  if (!existsSync(CI_PATH)) return new Set();
+  const text = readFileSync(CI_PATH, 'utf8');
+  const needs = /ci-passed:[\s\S]*?needs:\s*\[([^\]]*)\]/.exec(text);
+  if (!needs) return new Set();
+  const gating = new Set(needs[1].split(',').map((s) => s.trim()));
+  const lines = text.split('\n');
+  const gated = new Set();
+  const after = new Set();
+  let job = null;
+  for (const line of lines.slice(lines.findIndex((l) => /^jobs:\s*$/.test(l)) + 1)) {
+    const head = line.match(/^ {2}([\w-]+):\s*$/);
+    if (head) job = head[1];
+    const step = line.match(/^\s+- (?:run|name):\s+(\S.*?)\s*$/);
+    if (!job || job === 'ci-passed' || !step || step[1] === '|') continue;
+    (gating.has(job) ? gated : after).add(step[1]);
+  }
+  return new Set([...after].filter((step) => !gated.has(step)));
+}
+
 function ciGateParity() {
   const text = readFileSync(CI_PATH, 'utf8');
   const needs = /ci-passed:[\s\S]*?needs:\s*\[([^\]]*)\]/.exec(text);
@@ -652,11 +678,13 @@ function ciParity(quiet, said = []) {
 }
 
 function reportNotRunHere() {
+  const after = stepsAfterTheMerge();
   const elsewhere = Object.entries(CI_COVERAGE)
     .filter(([, where]) => !where.startsWith('verify'))
     .filter(([step]) => RUN_ELSEWHERE_HINT.some((h) => step.includes(h)));
   const lines = notRunHereLines(
-    elsewhere.map(([, where]) => where),
+    elsewhere.filter(([step]) => !after.has(step)).map(([, where]) => where),
+    elsewhere.filter(([step]) => after.has(step)).map(([, where]) => where),
     OFF_TREE_CHECKS,
   );
   for (const line of lines) console.log(line);
@@ -674,7 +702,13 @@ const OFF_TREE_CHECKS = [
   'CodeQL — no workflow file here and not runnable locally; read its alerts on the PR',
 ];
 
-const RUN_ELSEWHERE_HINT = ['test:integration', 'web-v2', '@forge/core test', '@forge/core build'];
+const RUN_ELSEWHERE_HINT = [
+  'test:integration',
+  'web-v2',
+  '@forge/core test',
+  '@forge/core build',
+  'build-images',
+];
 
 function reportBlocked(results) {
   const blocked = results.filter((r) => r.condition === 'blocked');

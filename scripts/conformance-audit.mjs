@@ -135,6 +135,44 @@ const target = mergeTarget(ROOT).branch ?? null;
 const branchFaults = ciYml === null ? null : branchSetFaults(ciYml, target);
 const gatedBranches = ciYml === null ? null : (ciBranches(ciYml).push ?? []).join(', ');
 
+/** Every top-level job key under `jobs:` in one workflow's text. */
+function workflowJobs(text) {
+  const lines = text.split('\n');
+  const start = lines.findIndex((l) => /^jobs:\s*$/.test(l));
+  if (start === -1) return [];
+  const jobs = [];
+  for (const line of lines.slice(start + 1)) {
+    if (/^\S/.test(line)) break;
+    const head = /^ {2}([\w-]+):\s*$/.exec(line);
+    if (head) jobs.push(head[1]);
+  }
+  return jobs;
+}
+
+// R12: every ci.yml job either gates the merge or is declared as running after it, never both.
+const postMerge = manifest.$postMerge?.jobs ?? [];
+const ciJobs = ciYml === null ? null : workflowJobs(ciYml);
+const gateNeeds =
+  /ci-passed:[\s\S]*?needs:\s*\[([^\]]*)\]/
+    .exec(ciYml ?? '')?.[1]
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean) ?? [];
+const partitionFaults =
+  ciJobs === null
+    ? null
+    : [
+        ...ciJobs
+          .filter((j) => j !== 'ci-passed' && !gateNeeds.includes(j) && !postMerge.includes(j))
+          .map((j) => `${j}: neither in ci-passed.needs nor in $postMerge.jobs`),
+        ...postMerge
+          .filter((j) => gateNeeds.includes(j))
+          .map((j) => `${j}: in $postMerge.jobs and in ci-passed.needs`),
+        ...postMerge
+          .filter((j) => !ciJobs.includes(j))
+          .map((j) => `${j}: in $postMerge.jobs and no such job in ci.yml`),
+      ];
+
 const NON_BLOCKING = new Set(['warn', 'info', 'on']);
 
 /** Every rule a biome config sets to a severity biome exits 0 on, as biome category ids. */
@@ -344,6 +382,18 @@ const RULES = [
           ? branchFaults.join(' · ')
           : `${gatedBranches || '(none)'}, in all three${target ? `, merge target ${target} among them` : ' (no merge target here to check them against)'}`,
     why: 'a workflow trigger cannot read a variable, so the branches CI gates are written three times over — the push trigger, the pull-request trigger, and the step that decides a tree a pull request already proved. A branch in one list and not the others is a pull request that runs no CI at all, or a whole gate re-run on every merge into it, and the first of those reports nothing: a pull request with no CI shows no failure, only an absence nobody is looking at. Three lists that agree on a set the merge target is not in are consistent and gate nothing, which is the same absence reached from the other side (ISS-1304)',
+  },
+  {
+    id: 'R12',
+    text: 'every CI job gates the merge or is declared as running after it, and none is both',
+    pass: partitionFaults === null ? null : partitionFaults.length === 0,
+    detail:
+      partitionFaults === null
+        ? 'no .github/workflows/ci.yml'
+        : partitionFaults.length > 0
+          ? partitionFaults.join(' · ')
+          : `${gateNeeds.length} gate the merge, ${postMerge.length} run after it${postMerge.length ? ` (${postMerge.join(', ')}, ${manifest.$postMerge.issue ?? 'no issue named'})` : ''}`,
+    why: 'a job left out of ci-passed.needs blocks nothing and says so nowhere: its red shows on a run nobody is required to read. ISS-1370 moved four jobs after the merge on purpose, and .forge/conformance.json $postMerge is where that is priced; a job outside both lists was moved by nobody, and one in both is a declaration that no longer describes the gate',
   },
 ];
 
