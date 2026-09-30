@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  applyStatusTransitionMock,
   autonomousWedgeQueue,
   capMock,
   recordRescueMock,
@@ -9,6 +8,7 @@ import {
   sentryAddBreadcrumb,
   staleCountQueue,
   stuckQueue,
+  transitionMock,
 } from './reconciler-test-harness.js';
 
 const wakeMastersForProject = vi.fn(async () => ({ boxes: 1, delivered: 1 }));
@@ -34,7 +34,11 @@ vi.mock('./autonomous-rescue-cap.js', async () => {
 });
 vi.mock('../issues/apply-transition.js', async () => {
   const h = await import('./reconciler-test-harness.js');
-  return { applyStatusTransition: (...a: unknown[]) => h.applyStatusTransitionMock(...(a as [])) };
+  return { transitionIssueStatus: (...a: unknown[]) => h.transitionMock(...(a as [])) };
+});
+vi.mock('./reconciler-actor.js', async () => {
+  const h = await import('./reconciler-test-harness.js');
+  return { reconcilerActorFor: (projectId: string) => h.reconcilerActorMock(projectId) };
 });
 vi.mock('../observability/sentry.js', async () => {
   const h = await import('./reconciler-test-harness.js');
@@ -62,17 +66,16 @@ describe('autonomous driver wedge reset (ISS-890)', () => {
         project_id: 'proj-a',
         status: 'in_progress',
         reopen_count: 2,
-        created_by: 'owner-a',
       },
     ]);
 
     const result = await runReconcilerOnce();
 
     expect(result.autonomousReset).toBe(1);
-    expect(applyStatusTransitionMock).toHaveBeenCalledWith(
+    expect(transitionMock).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'iss-a1', status: 'in_progress', reopenCount: 2 }),
       'open',
-      expect.objectContaining({ id: 'owner-a', ownerId: 'owner-a' }),
+      { type: 'user', id: 'agent-of-proj-a', agency: 'agent' },
       expect.objectContaining({ reason: 'reconciler_autonomous_wedge_reset', skip: true }),
     );
     expect(sentryAddBreadcrumb).toHaveBeenCalledWith(
@@ -91,7 +94,6 @@ describe('autonomous driver wedge reset (ISS-890)', () => {
         project_id: 'proj-a',
         status: 'in_progress',
         reopen_count: 2,
-        created_by: 'owner-a',
       },
     ]);
     capMock.mockResolvedValue({ capped: true, runId: 'run-a1' });
@@ -99,7 +101,7 @@ describe('autonomous driver wedge reset (ISS-890)', () => {
     const result = await runReconcilerOnce();
 
     expect(result.autonomousReset).toBe(0);
-    expect(applyStatusTransitionMock).not.toHaveBeenCalled();
+    expect(transitionMock).not.toHaveBeenCalled();
     expect(recordRescueMock).not.toHaveBeenCalled();
   });
 
@@ -111,10 +113,9 @@ describe('autonomous driver wedge reset (ISS-890)', () => {
         project_id: 'proj-a',
         status: 'in_progress',
         reopen_count: 2,
-        created_by: 'owner-a',
       },
     ]);
-    applyStatusTransitionMock.mockRejectedValueOnce(new Error('STALE_TRANSITION'));
+    transitionMock.mockRejectedValueOnce(new Error('STALE_TRANSITION'));
 
     const result = await runReconcilerOnce();
 
@@ -130,7 +131,6 @@ describe('autonomous driver wedge reset (ISS-890)', () => {
         project_id: 'proj-a',
         status: 'in_progress',
         reopen_count: 2,
-        created_by: 'owner-a',
       },
     ]);
 
@@ -153,7 +153,6 @@ describe('the wedge read of a lease at its expiry (ISS-1317)', () => {
         project_id: 'proj-l',
         status: 'in_progress',
         reopen_count: 0,
-        created_by: 'owner-l',
         lease: { holder: 'run-l', renewedAt, minutes: 1 },
       },
     ]);
@@ -170,14 +169,14 @@ describe('the wedge read of a lease at its expiry (ISS-1317)', () => {
     seedWithLease('2026-09-30T11:59:00.000Z');
     const result = await runReconcilerOnce();
     expect(result.autonomousReset).toBe(1);
-    expect(applyStatusTransitionMock).toHaveBeenCalledTimes(1);
+    expect(transitionMock).toHaveBeenCalledTimes(1);
   });
 
   it('reads a lease one millisecond short of now as held, and leaves the issue', async () => {
     seedWithLease('2026-09-30T11:59:00.001Z');
     const result = await runReconcilerOnce();
     expect(result.autonomousReset).toBe(0);
-    expect(applyStatusTransitionMock).not.toHaveBeenCalled();
+    expect(transitionMock).not.toHaveBeenCalled();
   });
 });
 

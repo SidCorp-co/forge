@@ -3143,6 +3143,8 @@
   to clear it.
 - **An issue a run is still working is no longer sent back to `open`.** Forge's net for stuck work
   leaves an issue alone while its run holds a live claim, and says so on any issue it moves.
+- **Forge now moves stuck work back to `open` as itself.** The note and the status change appear
+  under the project's agent account instead of the project owner's, at the same time.
 - **Releases and other background jobs now get your project's tools.** A batch release started
   without the servers your project declares, so it could not publish to a storefront. A job that
   cannot be given them now waits instead.

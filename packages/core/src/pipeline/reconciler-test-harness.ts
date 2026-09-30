@@ -22,7 +22,6 @@ export interface AutonomousWedgeRow {
   project_id: string;
   status: string;
   reopen_count: number;
-  created_by: string;
   lease?: unknown;
 }
 
@@ -70,7 +69,12 @@ export const capMock = vi.fn(async () => ({
   runId: 'run-a1' as string | null,
 }));
 export const recordRescueMock = vi.fn(async () => undefined);
-export const applyStatusTransitionMock = vi.fn(async () => undefined);
+export const transitionMock = vi.fn(async () => undefined);
+export const reconcilerActorMock = vi.fn(async (projectId: string) => ({
+  type: 'user' as const,
+  id: `agent-of-${projectId}`,
+  agency: 'agent' as const,
+}));
 export const sentryAddBreadcrumb: Mock = vi.fn();
 
 export function resetHarness(): void {
@@ -85,8 +89,9 @@ export function resetHarness(): void {
   capMock.mockResolvedValue({ capped: false, runId: 'run-a1' });
   recordRescueMock.mockReset();
   recordRescueMock.mockResolvedValue(undefined);
-  applyStatusTransitionMock.mockReset();
-  applyStatusTransitionMock.mockResolvedValue(undefined);
+  transitionMock.mockReset();
+  transitionMock.mockResolvedValue(undefined);
+  reconcilerActorMock.mockClear();
   sentryAddBreadcrumb.mockClear();
 }
 
