@@ -6,10 +6,13 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { createServer, type Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import {
+  fakeCoolify,
+  recordForgeDeployment,
+  type CoolifyTarget as Target,
+} from '../helpers/coolify-deployments.js';
 import {
   createTestProject,
   createTestUser,
@@ -26,10 +29,8 @@ const OLDER = '0d98a6be6d9680b967d3f16542eadd25d02602cb';
 let harness: TestDatabase;
 let projectId: string;
 let ownerId: string;
-let coolify: Server;
-let coolifyUrl: string;
-/** What the fake Coolify answers per deployment uuid: a commit, or an HTTP status to fail with. */
-const deployments = new Map<string, string | number>();
+const coolify = fakeCoolify();
+const deployments = coolify.deployments;
 
 beforeAll(async () => {
   harness = await setupTestDatabase();
@@ -38,23 +39,9 @@ beforeAll(async () => {
   process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
   process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
   await registerIntegrationsForTest();
-  coolify = createServer((req, res) => {
-    const uuid = decodeURIComponent(String(req.url).replace('/api/v1/deployments/', ''));
-    const answer = deployments.get(uuid);
-    if (answer === undefined || typeof answer === 'number') {
-      res.statusCode = typeof answer === 'number' ? answer : 404;
-      res.end('{"message":"no"}');
-      return;
-    }
-    res.setHeader('content-type', 'application/json');
-    res.end(JSON.stringify({ deployment_uuid: uuid, status: 'finished', commit: answer }));
-  });
-  await new Promise<void>((done) => coolify.listen(0, '127.0.0.1', done));
-  coolifyUrl = `http://127.0.0.1:${(coolify.address() as AddressInfo).port}`;
 }, 60_000);
 
 afterAll(async () => {
-  await new Promise<void>((done) => coolify?.close(() => done()));
   if (harness) await harness.cleanup();
 });
 
@@ -76,100 +63,24 @@ beforeEach(async () => {
   await fx.seedReleaseRunner();
 });
 
-interface Target {
-  id: string;
-  label: string;
-  resourceUuid: string;
-}
 const APP: Target = { id: 't-app', label: 'App', resourceUuid: 'app-uuid' };
 const API: Target = { id: 't-api', label: 'Api', resourceUuid: 'api-uuid' };
 const WEB: Target = { id: 't-web', label: 'Web', resourceUuid: 'web-uuid' };
 
 /** A live Coolify binding declaring no probe, as anhome's and portal-lighthuman's are. */
 async function bindCoolify(targets: Target[] = [APP]): Promise<string> {
-  await fx.declareProduction({ verify: null, baseUrl: coolifyUrl, targets });
+  await fx.declareProduction({ verify: null, baseUrl: coolify.url(), targets });
   const rows = (await harness.db.execute(sql`
     SELECT id FROM integration_bindings WHERE project_id = ${projectId}
   `)) as unknown as Array<{ id: string }>;
   return String(rows[0]?.id);
 }
 
-/** What `confirm.ts` writes once Coolify says a deployment Forge made has finished. */
-async function deployed(
-  bindingId: string,
-  target: Target,
-  uuid: string,
-  at: string,
-  sent = 'release.requested',
-) {
-  // A rollback's confirmation carries the label the control gives it, as `controls.ts` writes it.
-  const finishedAs =
-    sent === 'deploy.rollback.requested' ? `${target.label} rollback` : target.label;
-  const request = {
-    targetId: target.id,
-    targetLabel: target.label,
-    resourceUuid: target.resourceUuid,
-  };
-  await harness.db.execute(sql`
-    INSERT INTO integration_deliveries (binding_id, direction, event_name, request_id, status,
-                                        payload, response, created_at)
-    VALUES (${bindingId}, 'outbound', ${sent}, ${`out:${uuid}`}, 'ok', ${JSON.stringify(request)}::jsonb,
-            ${JSON.stringify({ deployment_uuid: uuid, targetId: target.id })}::jsonb, ${at}::timestamptz)
-  `);
-  await harness.db.execute(sql`
-    INSERT INTO integration_deliveries (binding_id, direction, event_name, request_id, status,
-                                        payload, created_at)
-    VALUES (${bindingId}, 'inbound', 'deploy.succeeded', ${uuid}, 'ok',
-            ${JSON.stringify({ source: 'poll', deployment_uuid: uuid, status: 'succeeded', targetLabel: finishedAs })}::jsonb,
-            ${at}::timestamptz + interval '2 minutes')
-  `);
+function deployed(bindingId: string, target: Target, uuid: string, at: string, sent?: string) {
+  return recordForgeDeployment(harness, bindingId, target, uuid, at, sent);
 }
 
-/** A waiting row whose two criteria passed at `commit`, written the way the forge-plugin writes it. */
-async function waitingRow(commit: string, mergedAt: string): Promise<string> {
-  const id = await fx.insertIssue();
-  await harness.db.execute(sql`
-    UPDATE issues SET acceptance_criteria = ${'1. ok\n2. ok'}, merged_at = ${mergedAt}::timestamptz,
-                      merged_commit_sha = ${commit}
-     WHERE id = ${id}
-  `);
-  const block = (n: number) =>
-    [`criterion: ${n} — ok`, 'verdict: pass', `commit: ${commit}`, 'evidence: judge.txt'].join(
-      '\n',
-    );
-  const body = [
-    '## Verdict',
-    '',
-    '```forge-record',
-    block(1),
-    block(2),
-    '```',
-    '',
-    '`forge-record: verdict · contract 1`',
-  ].join('\n');
-  await harness.db.execute(sql`
-    INSERT INTO comments (id, issue_id, author_id, body) VALUES (${randomUUID()}, ${id}, ${ownerId}, ${body})
-  `);
-  await harness.db.execute(sql`
-    INSERT INTO issue_attachments (id, issue_id, uploader_id, name, path, mime, size)
-    VALUES (${randomUUID()}, ${id}, ${ownerId}, 'judge.txt', ${`uploads/${id}`}, 'text/plain', 8)
-  `);
-  return id;
-}
-
-async function holdOf(issueId: string): Promise<Record<string, unknown> | null> {
-  const rows = (await harness.db.execute(sql`
-    SELECT session_context -> 'releaseHold' AS hold FROM issues WHERE id = ${issueId}
-  `)) as unknown as Array<{ hold: Record<string, unknown> | null }>;
-  return rows[0]?.hold ?? null;
-}
-
-async function holdComments(issueId: string): Promise<number> {
-  const rows = (await harness.db.execute(sql`
-    SELECT count(*)::int AS n FROM comments WHERE issue_id = ${issueId} AND body LIKE '%release-hold: %'
-  `)) as unknown as Array<{ n: number }>;
-  return Number(rows[0]?.n ?? 0);
-}
+const { judgedRow: waitingRow, holdOf, holdComments } = fx;
 
 async function sweep() {
   const { sweepAutomaticReleases } = await import('../../src/pipeline/release-sweep.js');

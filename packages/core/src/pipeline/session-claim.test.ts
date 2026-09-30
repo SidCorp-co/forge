@@ -103,6 +103,7 @@ describe('classifyLease (ISS-1122)', () => {
       fanout: 1,
       stopped,
       silentMs: null,
+      toleranceMs: null,
       detail: '',
     });
     expect(leaseIsReleasable(at('expired'))).toBe(true);
@@ -163,6 +164,7 @@ describe('a holder that declared a heartbeat (ISS-1195)', () => {
     const it = read(beat({ at: '2026-09-20T15:40:00.000Z' }));
     expect(it.verdict).toBe('abandoned');
     expect(it.silentMs).toBe(20 * 60_000);
+    expect(it.toleranceMs).toBe(3 * 60_000);
     expect(leaseIsWorkInProgress(it.verdict)).toBe(false);
     expect(leaseIsReleasable(it)).toBe(true);
     expect(leaseShowsHolderGone(it.verdict)).toBe(true);
@@ -173,6 +175,7 @@ describe('a holder that declared a heartbeat (ISS-1195)', () => {
     (absent) => {
       expect(read(absent).verdict).toBe('live');
       expect(read(absent).silentMs).toBeNull();
+      expect(read(absent).toleranceMs).toBeNull();
       expect(read(absent, {}, 3).verdict).toBe('shared');
       expect(read(absent, { renewedAt: '2026-09-20T13:23:00.000Z' }).verdict).toBe('expired');
       expect(read(absent, { stopped: '2026-09-20T15:50:00.000Z' }).verdict).toBe('expired');

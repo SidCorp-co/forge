@@ -34,6 +34,8 @@ export interface LeaseReading {
   stopped: boolean;
   /** How long the holder has been quiet, `null` where no heartbeat was read to be quiet against. */
   silentMs: number | null;
+  /** The silence a read heartbeat is allowed, `null` where no heartbeat was read. */
+  toleranceMs: number | null;
   detail: string;
 }
 
@@ -63,6 +65,7 @@ export function classifyLease(args: { lease: unknown; now: Date; fanout: number 
       fanout: 0,
       stopped: false,
       silentMs: null,
+      toleranceMs: null,
       detail: '',
     };
   }
@@ -70,7 +73,14 @@ export function classifyLease(args: { lease: unknown; now: Date; fanout: number 
   const read = readLeaseFields(lease);
   if (!read.ok) return malformed({ holder, fanout, detail: read.detail });
 
-  const rest = { holder, expiresAt: read.expiresAt, fanout, silentMs: null, detail: '' };
+  const rest = {
+    holder,
+    expiresAt: read.expiresAt,
+    fanout,
+    silentMs: null,
+    toleranceMs: null,
+    detail: '',
+  };
   if (read.stopped !== null) return { ...rest, verdict: 'expired', stopped: true };
   if (read.expiresAt.getTime() <= now.getTime()) {
     return { ...rest, verdict: 'expired', stopped: false };
@@ -80,8 +90,9 @@ export function classifyLease(args: { lease: unknown; now: Date; fanout: number 
   // every lapsed claim unreleasable, which is this module's own defect back under a new cause.
   const beat = readHeartbeat(lease, now);
   if (!beat.ok) return malformed({ holder, fanout, detail: beat.detail });
-  const beating = { ...rest, silentMs: beat.silentMs };
-  if (beat.silentMs !== null && beat.silentMs > leaseSilenceToleranceMs(beat.everySeconds)) {
+  const toleranceMs = beat.silentMs === null ? null : leaseSilenceToleranceMs(beat.everySeconds);
+  const beating = { ...rest, silentMs: beat.silentMs, toleranceMs };
+  if (beat.silentMs !== null && toleranceMs !== null && beat.silentMs > toleranceMs) {
     return { ...beating, verdict: 'abandoned', stopped: false };
   }
 
@@ -97,6 +108,7 @@ function malformed(args: { holder: string | null; fanout: number; detail: string
     fanout: args.fanout,
     stopped: false,
     silentMs: null,
+    toleranceMs: null,
     detail: args.detail,
   };
 }
