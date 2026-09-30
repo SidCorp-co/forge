@@ -21,18 +21,54 @@ pub enum Key {
     Previous,
 }
 
-/// The keys in bytes read off the terminal. Every other byte, an arrow's
-/// escape sequence included, asks nothing.
-pub fn parse(bytes: &[u8]) -> Vec<Key> {
-    bytes
-        .iter()
-        .filter_map(|b| match b {
-            b' ' => Some(Key::Hold),
-            b'n' | b'N' => Some(Key::Next),
-            b'p' | b'P' => Some(Key::Previous),
-            _ => None,
-        })
-        .collect()
+/// Keys out of the bytes a terminal sends, read by read. Space, `n` and `p`
+/// are keys; every other byte asks nothing, and so does every byte of an
+/// escape sequence, since a function key's ends in a letter (F1 is `ESC O P`)
+/// and a sequence can be split across two reads (whole-set read at 2afe197,
+/// F1). Alt and a letter comes as `ESC` and the letter, and is not that key.
+#[derive(Debug, Default)]
+pub struct Parser {
+    within: Within,
+}
+
+/// Where a parser stands inside an escape sequence.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+enum Within {
+    #[default]
+    Nothing,
+    /// After `ESC`: the next byte says what the sequence is.
+    Escape,
+    /// After `ESC [`: parameters, up to the final byte `@` to `~`.
+    Csi,
+    /// After `ESC O`: one byte more ends it.
+    Ss3,
+}
+
+impl Parser {
+    pub fn feed(&mut self, bytes: &[u8]) -> Vec<Key> {
+        let mut keys = Vec::new();
+        for &b in bytes {
+            self.within = match (self.within, b) {
+                (Within::Nothing, 0x1b) => Within::Escape,
+                (Within::Nothing, b) => {
+                    keys.extend(match b {
+                        b' ' => Some(Key::Hold),
+                        b'n' | b'N' => Some(Key::Next),
+                        b'p' | b'P' => Some(Key::Previous),
+                        _ => None,
+                    });
+                    Within::Nothing
+                }
+                (Within::Escape, b'[') => Within::Csi,
+                (Within::Escape, b'O') => Within::Ss3,
+                (Within::Escape, 0x1b) => Within::Escape,
+                (Within::Escape, _) | (Within::Ss3, _) => Within::Nothing,
+                (Within::Csi, 0x40..=0x7e) => Within::Nothing,
+                (Within::Csi, _) => Within::Csi,
+            };
+        }
+        keys
+    }
 }
 
 /// Keys as they are typed, for as long as the view runs.
@@ -68,11 +104,12 @@ fn open_on_stdin() -> Result<Keys, String> {
     std::thread::spawn(move || {
         let mut buf = [0u8; 64];
         let mut stdin = std::io::stdin();
+        let mut parser = Parser::default();
         while let Ok(n) = stdin.read(&mut buf) {
             if n == 0 {
                 return;
             }
-            for key in parse(&buf[..n]) {
+            for key in parser.feed(&buf[..n]) {
                 if tx.send(key).is_err() {
                     return;
                 }
@@ -156,7 +193,7 @@ mod tests {
     #[test]
     fn space_n_and_p_are_keys_and_nothing_else_is() {
         assert_eq!(
-            parse(b" nNpP"),
+            Parser::default().feed(b" nNpP"),
             vec![
                 Key::Hold,
                 Key::Next,
@@ -165,6 +202,23 @@ mod tests {
                 Key::Previous
             ]
         );
-        assert!(parse(b"\x1b[C\x1b[Dq\r\x03x").is_empty());
+        assert!(Parser::default().feed(b"\x1b[C\x1b[Dq\r\x03x").is_empty());
+    }
+
+    /// Whole-set read at 2afe197, F1: a function key's sequence ends in a
+    /// letter (F1 is `ESC O P`, a modified arrow `ESC [ 1 ; 5 P`), and none of
+    /// its bytes is a key, whole or split across two reads; a key after it is.
+    #[test]
+    fn no_byte_of_an_escape_sequence_is_a_key() {
+        let mut keys = Parser::default();
+        assert!(keys.feed(b"\x1bOP\x1bOQ\x1bOR\x1bOS").is_empty());
+        assert!(keys.feed(b"\x1b[1;5P\x1b[15~\x1b[2;3N").is_empty());
+        assert!(keys.feed(b"\x1bO").is_empty());
+        assert_eq!(keys.feed(b"Pp"), vec![Key::Previous]);
+        assert!(keys.feed(b"\x1b[1;").is_empty());
+        assert_eq!(keys.feed(b"2Pn "), vec![Key::Next, Key::Hold]);
+        // Alt and a letter is ESC and the letter, and is not that key.
+        assert!(keys.feed(b"\x1bn\x1bp").is_empty());
+        assert_eq!(keys.feed(b"n"), vec![Key::Next]);
     }
 }
