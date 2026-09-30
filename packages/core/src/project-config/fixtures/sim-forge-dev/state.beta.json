@@ -1,0 +1,14 @@
+{
+  "environment": "beta",
+  "state": "deployed",
+  "evidence": "runtime-confirmed",
+  "deployment": {
+    "id": "coolify-deploy-<id>",
+    "provider": "coolify",
+    "status": "succeeded",
+    "at": "2026-09-30T16:40:00Z"
+  },
+  "release": null,
+  "artifact": null,
+  "source": { "revision": "c59b3f450a8ca14b6c9317490089a4eb98cafc44" }
+}

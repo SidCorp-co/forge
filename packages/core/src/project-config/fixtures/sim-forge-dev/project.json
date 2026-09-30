@@ -1,0 +1,65 @@
+{
+  "$schema": "https://forge.sidcorp.co/schemas/project-v1.json",
+  "version": 1,
+  "project": {
+    "id": "da368b0a-8e21-4763-9d90-8f7b9d0c7115",
+    "slug": "forge-dev",
+    "name": "Forge Dev"
+  },
+  "source": {
+    "type": "git",
+    "git": {
+      "repository": "github.com/SidCorp-co/forge",
+      "defaultBranch": "main",
+      "branches": ["main", "dev"]
+    }
+  },
+  "workspace": { "isolation": "worktree", "setup": "pnpm install" },
+  "validation": { "gate": { "type": "github-check", "name": "ci-passed" } },
+  "environments": {
+    "beta": {
+      "tier": "production",
+      "deploysFrom": "main",
+      "deployment": { "binding": "3f1c2a9e-7b4d-4e21-9c1a-5d6e7f8a9b0c", "trigger": "on-land" },
+      "url": "https://forge-beta.sidcorp.co",
+      "services": { "api": "https://forge-beta-api.sidcorp.co" },
+      "verification": {
+        "runtime": [
+          {
+            "type": "http",
+            "url": "https://forge-beta-api.sidcorp.co/version",
+            "path": "sourceCommit",
+            "identifies": "source"
+          }
+        ]
+      },
+      "testing": "beta"
+    },
+    "dev": {
+      "tier": "dev",
+      "deploysFrom": "dev",
+      "deployment": { "binding": "9d4e5f6a-7b8c-4d9e-8f0a-1b2c3d4e5f60", "trigger": "on-land" },
+      "url": "https://forge-dev.sidcorp.co",
+      "services": { "api": "https://forge-dev-api.sidcorp.co" },
+      "verification": {
+        "runtime": [
+          {
+            "type": "http",
+            "url": "https://forge-dev-api.sidcorp.co/version",
+            "path": "sourceCommit",
+            "identifies": "source"
+          }
+        ]
+      },
+      "testing": "dev"
+    }
+  },
+  "promotions": [{ "from": "dev", "to": "main", "via": "merge" }],
+  "rollback": { "strategy": "revert-and-redeploy" },
+  "execution": {
+    "plugin": {
+      "source": "SidCorp-co/forge-plugin",
+      "ref": "73225dedb41b5da26b4ce73518086e26e81f91b8"
+    }
+  }
+}

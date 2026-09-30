@@ -76,6 +76,8 @@
     "@types/pg": "^8.23.1",
     "@types/ws": "^8.18.1",
     "@vitest/coverage-v8": "^5.0.2",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
     "dependency-cruiser": "18.2.0",
     "drizzle-kit": "^0.31.11",
     "pino-pretty": "^13.1.3",

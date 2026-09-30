@@ -1,0 +1,48 @@
+{
+  "$schema": "https://forge.sidcorp.co/schemas/testing-profile-v1.json",
+  "version": 1,
+  "id": "beta",
+  "actors": {
+    "admin": {
+      "role": "deployment-admin",
+      "credential": "secret://forge-dev/beta-admin",
+      "scope": ["forge-dev"]
+    },
+    "orgOwner": {
+      "role": "org-owner",
+      "credential": "secret://forge-dev/beta-org-owner",
+      "scope": ["qa-project-available-for-testing"]
+    },
+    "orgMember": {
+      "role": "org-member",
+      "credential": "secret://forge-dev/beta-org-member",
+      "scope": ["qa-project-available-for-testing"]
+    }
+  },
+  "services": {
+    "postgres": {
+      "access": "readonly",
+      "credential": "secret://forge-dev/beta-postgres-readonly",
+      "endpoint": "173.231.60.2:5532"
+    },
+    "coolify": {
+      "access": "readonly",
+      "credential": "secret://forge-dev/coolify-readonly",
+      "endpoint": "https://manage.musetools.com"
+    }
+  },
+  "limits": [
+    {
+      "id": "no-rocketchat-inbound",
+      "note": "No inbound Rocket.Chat message can be produced; a channel round-trip needs a human to send one message."
+    },
+    {
+      "id": "runner-states-unfakeable",
+      "note": "Rate-limited or auth-expired runner states cannot be produced live; cover them with automated tests."
+    },
+    {
+      "id": "shared-with-the-fleet",
+      "note": "Beta is the tracker every master runs on. Never create, mutate or delete outside the issue under test."
+    }
+  ]
+}

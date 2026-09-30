@@ -1,0 +1,19 @@
+{
+  "environment": "live",
+  "state": "deployed",
+  "evidence": "runtime-confirmed",
+  "deployment": {
+    "id": "dep-1842",
+    "provider": "coolify",
+    "status": "succeeded",
+    "at": "2026-09-30T18:12:00Z"
+  },
+  "release": null,
+  "artifact": {
+    "kind": "container-image",
+    "id": "sha256:8ab3f0c1d2e4"
+  },
+  "source": {
+    "revision": "fb5b9b6f5"
+  }
+}

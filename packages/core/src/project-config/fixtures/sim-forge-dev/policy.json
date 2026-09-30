@@ -1,0 +1,30 @@
+{
+  "$schema": "https://forge.sidcorp.co/schemas/policy-v1.json",
+  "version": 1,
+  "qa": "independent",
+  "intake": { "mode": "auto" },
+  "permissions": {
+    "development": {
+      "deny": [
+        "projects.create",
+        "projects.update",
+        "projects.archive",
+        "orgs.list",
+        "orgs.members",
+        "collaborators",
+        "runners",
+        "jobs.cancel",
+        "skills.create",
+        "skills.update",
+        "skills.delete",
+        "memory.write",
+        "memory.delete"
+      ]
+    }
+  },
+  "states": {
+    "open": { "model": "opus", "permissions": "development" },
+    "in_progress": { "model": "opus", "permissions": "development" },
+    "needs_info": { "model": "sonnet", "permissions": "development" }
+  }
+}
