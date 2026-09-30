@@ -2,26 +2,18 @@
 
 // The proof behind the PAT permission menu.
 //
-// `PAT_PERMISSION_RESOURCES` (packages/core/src/auth/pat-permissions.ts) declares
-// which REST paths a personal access token may reach, one named resource to the
-// prefixes it covers. A project-reach prefix is admissible only when a project-scoped
-// token is FENCED on every route under it, and the fence is one function:
-// `fencedProjectIds`, the read of the token's projects out of AsyncLocalStorage.
+// `PAT_PERMISSION_RESOURCES` (packages/core/src/auth/pat-permissions.ts) declares which REST
+// prefixes a personal access token may reach. A project-reach prefix is admissible only when a
+// project-scoped token is FENCED on every route under it, and the fence is one function:
+// `fencedProjectIds`, the read of the token's projects out of AsyncLocalStorage. The declaration
+// is per-PREFIX while the property is per-ROUTE, so one unfenced route under a covered prefix is
+// a token reaching another project's data with every handler around it looking correct.
 //
-// The declaration is per-PREFIX while the property is per-ROUTE, so one unfenced
-// route under a covered prefix is a token reaching another project's data with every
-// handler around it looking correct.
-//
-// So this gate takes the routes from the RUNNING app — `app.routes` under the same
-// hermetic environment the API contract is generated in, so what is checked is what
-// is served — and holds each one under a project-reach prefix to a registration the
-// type checker can find from `index.ts`, whose own handlers or preceding middleware
-// call, through functions it can resolve, the fence. The menu and the exclusions are
-// read from the same running module. An account-reach resource is refused to every
-// project-scoped token at the door, and a path in `PAT_UNGRANTABLE` is not a token's
-// to reach, so neither is walked. It also holds the declaration to being a menu: a
-// resource covering no route is a permission nobody can use, and a prefix two
-// resources claim makes "which permission did this route want" unanswerable.
+// So the routes, the menu and `PAT_UNGRANTABLE` come from the RUNNING app under the contract
+// generator's hermetic environment — what is checked is what is served — and each route under
+// a project-reach prefix must match a registration the type checker finds from `index.ts` whose
+// handlers, or preceding middleware, reach the fence (scripts/lib/route-fences.mjs). The
+// declaration is also held to being a menu: no resource without a prefix, no prefix two claim.
 //
 // Exit codes: 0 clean, 1 an unfenced route or a malformed declaration, 2 could not run.
 
