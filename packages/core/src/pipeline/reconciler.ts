@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import type { IssueStatus } from '../db/schema.js';
+import { comments, type IssueStatus } from '../db/schema.js';
 import { applyStatusTransition } from '../issues/apply-transition.js';
 import { logger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
@@ -12,6 +12,12 @@ import {
   AUTONOMOUS_JOB_TYPE,
 } from './autonomous-mode.js';
 import { checkAutonomousRescueCap, recordAutonomousRescue } from './autonomous-rescue-cap.js';
+import {
+  buildWedgeResetBody,
+  readWedgeLease,
+  wedgeLeaseHoldsTheIssue,
+  wedgeLeaseUnderLock,
+} from './wedge-lease.js';
 
 const RECONCILER_QUEUE = 'pipeline-reconciler';
 const STALE_OUTBOX_INTERVAL = '5 minutes';
@@ -20,6 +26,7 @@ const STUCK_ISSUE_LIMIT = 100;
 
 const WEDGE_GRACE = '10 minutes';
 const WEDGE_RESET_LIMIT = 50;
+const WEDGE_SCAN_PAGE = 200;
 
 let registered = false;
 
@@ -120,26 +127,30 @@ export async function runReconcilerOnce(): Promise<{
   return { rescued, stale, autonomousReset };
 }
 
-/** A question for a person committed between the wedge read and the reset's row lock. */
+/** Committed between the wedge read and the reset's row lock: a question for a person, a lease. */
 class AskedSinceSelected extends Error {}
+class LeaseRenewedSinceSelected extends Error {}
 
-export async function resetAutonomousWedgesOnce(): Promise<number> {
-  if (AUTONOMOUS_INFLIGHT_STATUSES.length === 0) return 0;
-  let reset = 0;
+type WedgeCandidate = {
+  id: string;
+  project_id: string;
+  status: string;
+  reopen_count: number;
+  created_by: string;
+  lease: unknown;
+};
 
+/** Candidates are read in id order a page at a time, so rows a live lease holds cannot fill every
+ *  slot of {@link WEDGE_RESET_LIMIT} and keep a wedge that really is one from being reached. */
+async function selectWedgeCandidates(after: string | null): Promise<WedgeCandidate[]> {
   const inflightList = sql.join(
     AUTONOMOUS_INFLIGHT_STATUSES.map((s) => sql`${s}`),
     sql`, `,
   );
-
-  const wedged = await db.execute<{
-    id: string;
-    project_id: string;
-    status: string;
-    reopen_count: number;
-    created_by: string | null;
-  }>(sql`
-    SELECT i.id, i.project_id, i.status, i.reopen_count, p.created_by
+  const past = after === null ? sql`` : sql`AND i.id > ${after}::uuid`;
+  return (await db.execute<WedgeCandidate>(sql`
+    SELECT i.id, i.project_id, i.status, i.reopen_count, p.created_by,
+           i.session_context -> 'lease' AS lease
     FROM issues i
     INNER JOIN projects p ON p.id = i.project_id
     CROSS JOIN LATERAL (
@@ -176,68 +187,113 @@ export async function resetAutonomousWedgesOnce(): Promise<number> {
           )
         )
       )
-    LIMIT ${WEDGE_RESET_LIMIT}
-  `);
+      ${past}
+    ORDER BY i.id
+    LIMIT ${WEDGE_SCAN_PAGE}
+  `)) as unknown as WedgeCandidate[];
+}
 
-  for (const row of wedged) {
-    const actorId = row.created_by ?? '<reconciler>';
-    try {
-      const { capped, runId } = await checkAutonomousRescueCap({
-        projectId: row.project_id,
-        issueId: row.id,
-        status: row.status as IssueStatus,
-        reopenCount: row.reopen_count,
-      });
-      if (capped) continue;
+export async function resetAutonomousWedgesOnce(): Promise<number> {
+  if (AUTONOMOUS_INFLIGHT_STATUSES.length === 0) return 0;
+  let reset = 0;
+  let after: string | null = null;
 
-      await applyStatusTransition(
-        {
-          id: row.id,
-          projectId: row.project_id,
-          status: row.status as IssueStatus,
-          reopenCount: row.reopen_count,
-        },
-        AUTONOMOUS_ENTRY_STATUS,
-        { id: actorId, ownerId: actorId },
-        {
-          reason: 'reconciler_autonomous_wedge_reset',
-          skip: true,
-          beforeStatusWrite: async (tx) => {
-            if (await personOwesAnAnswer(tx, row.id)) throw new AskedSinceSelected();
-          },
-        },
-      );
-
-      if (runId) await recordAutonomousRescue(runId);
-
-      reset++;
-      logger.warn(
-        { issueId: row.id, from: row.status, to: AUTONOMOUS_ENTRY_STATUS },
-        'reconciler: reset autonomous driver wedge to the entry status',
-      );
-      if (isSentryEnabled()) {
-        Sentry.addBreadcrumb({
-          category: 'pipeline.reconciler.autonomous_wedge_reset',
-          level: 'warning',
-          data: { issueId: row.id, from: row.status },
-        });
-      }
-    } catch (err) {
-      if (err instanceof AskedSinceSelected) {
-        logger.info(
-          { issueId: row.id },
-          'reconciler: a person was asked since the wedge read, so it stays',
-        );
-        continue;
-      }
-      logger.error(
-        { err, issueId: row.id, status: row.status },
-        'reconciler: autonomous wedge reset failed',
-      );
+  while (reset < WEDGE_RESET_LIMIT) {
+    const page = await selectWedgeCandidates(after);
+    for (const row of page) {
+      if (reset >= WEDGE_RESET_LIMIT) break;
+      if (await resetOneWedge(row)) reset++;
     }
+    const last = page.at(-1);
+    if (page.length < WEDGE_SCAN_PAGE || !last) break;
+    after = last.id;
   }
 
   return reset;
+}
+
+async function resetOneWedge(row: WedgeCandidate): Promise<boolean> {
+  if (wedgeLeaseHoldsTheIssue(readWedgeLease(row.lease, new Date()))) {
+    logger.info(
+      { issueId: row.id, status: row.status },
+      'reconciler: a run holds a live lease on this issue, so the wedge net leaves it',
+    );
+    return false;
+  }
+  try {
+    const { capped, runId } = await checkAutonomousRescueCap({
+      projectId: row.project_id,
+      issueId: row.id,
+      status: row.status as IssueStatus,
+      reopenCount: row.reopen_count,
+    });
+    if (capped) return false;
+
+    await applyStatusTransition(
+      {
+        id: row.id,
+        projectId: row.project_id,
+        status: row.status as IssueStatus,
+        reopenCount: row.reopen_count,
+      },
+      AUTONOMOUS_ENTRY_STATUS,
+      { id: row.created_by, ownerId: row.created_by },
+      {
+        reason: 'reconciler_autonomous_wedge_reset',
+        skip: true,
+        beforeStatusWrite: async (tx) => {
+          if (await personOwesAnAnswer(tx, row.id)) throw new AskedSinceSelected();
+          const reading = readWedgeLease(await wedgeLeaseUnderLock(tx, row.id), new Date());
+          if (wedgeLeaseHoldsTheIssue(reading)) throw new LeaseRenewedSinceSelected();
+          await tx.insert(comments).values({
+            issueId: row.id,
+            authorId: row.created_by,
+            body: buildWedgeResetBody({
+              from: row.status,
+              to: AUTONOMOUS_ENTRY_STATUS,
+              grace: WEDGE_GRACE,
+              reading,
+            }),
+          });
+        },
+      },
+    );
+
+    if (runId) await recordAutonomousRescue(runId);
+
+    logger.warn(
+      { issueId: row.id, from: row.status, to: AUTONOMOUS_ENTRY_STATUS },
+      'reconciler: reset autonomous driver wedge to the entry status',
+    );
+    if (isSentryEnabled()) {
+      Sentry.addBreadcrumb({
+        category: 'pipeline.reconciler.autonomous_wedge_reset',
+        level: 'warning',
+        data: { issueId: row.id, from: row.status },
+      });
+    }
+    return true;
+  } catch (err) {
+    if (err instanceof AskedSinceSelected) {
+      logger.info(
+        { issueId: row.id },
+        'reconciler: a person was asked since the wedge read, so it stays',
+      );
+      return false;
+    }
+    if (err instanceof LeaseRenewedSinceSelected) {
+      logger.info(
+        { issueId: row.id },
+        'reconciler: a lease was renewed since the wedge read, so it stays',
+      );
+      return false;
+    }
+    logger.error(
+      { err, issueId: row.id, status: row.status },
+      'reconciler: autonomous wedge reset failed',
+    );
+    return false;
+  }
 }
 
 /**

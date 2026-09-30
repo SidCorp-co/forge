@@ -285,7 +285,7 @@ describe('unearnedCriteriaReports', () => {
         criterion: 1,
         verdict: 'pass',
         standing: 'superseded',
-        why: `judged at ${stale}, and what this project is serving is \`${SERVING}\` at https://app.test/build-info, read at ${READ_AT}`,
+        why: `judged at ${stale}, which is not a commit this project is serving; it is serving \`${SERVING}\` at https://app.test/build-info, read at ${READ_AT}`,
       },
     ]);
   });

@@ -68,7 +68,7 @@ describe('RELEASE_WORK_UNMERGED on a project whose work lands outside git', () =
       mergedLanding: null,
       kind: 'website',
     });
-    expect(unmerged?.details).toEqual({ issueIds: [ISSUE], shape: 'outside_git' });
+    expect(unmerged?.details).toMatchObject({ issueIds: [ISSUE], shape: 'outside_git' });
     expect(unmerged?.message).toContain('`landing`');
     expect(unmerged?.message).not.toMatch(/branch/);
   });
@@ -88,7 +88,7 @@ describe('RELEASE_WORK_UNMERGED on a project whose work lands outside git', () =
       mergedLanding: null,
       kind: 'standard',
     });
-    expect(unmerged?.details).toEqual({ issueIds: [ISSUE], shape: 'git' });
+    expect(unmerged?.details).toMatchObject({ issueIds: [ISSUE], shape: 'git' });
     expect(unmerged?.message).toContain('the branch this release deployed');
   });
 });

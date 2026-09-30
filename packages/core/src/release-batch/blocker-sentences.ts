@@ -314,8 +314,7 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
     return unroutedSentence(remedy, details.missing, details);
   }
   if (code === 'RELEASE_WORK_UNMERGED' && details?.shape === 'outside_git') {
-    const n = Array.isArray(details.issueIds) ? details.issueIds.length : 0;
-    return `${n} issue(s) named here have no mark saying where their work landed. This project's work lands outside git, so mark each one merged with its \`landing\` — the live URL, CMS entry or storefront resource the work now is — first: a release records what shipped, and a mark naming nothing does not say that anything did.`;
+    return `${namedHere(details)} have no mark saying where their work landed. This project's work lands outside git, so mark each one merged with its \`landing\` — the live URL, CMS entry or storefront resource the work now is — first: a release records what shipped, and a mark naming nothing does not say that anything did.`;
   }
   if (code === 'RELEASE_TARGET_UNDECLARED' && Array.isArray(details?.releaseChain)) {
     const chain = details.releaseChain as { branch?: unknown }[];
@@ -333,8 +332,8 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
   if (standings) {
     return claimConflictSentence(standings.projectId, standings.gateStatus, standings.conflicts);
   }
-  const issueIds = details?.issueIds;
-  if (Array.isArray(issueIds)) return remedy.replace('{n}', String(issueIds.length));
+  if (Array.isArray(details?.issueIds))
+    return remedy.replace('{n} issue(s) named here', namedHere(details));
   if (code === 'RELEASE_PROBES_UNREADABLE') return unreadableSentence(remedy, details);
   const urls = details?.urls;
   if (Array.isArray(urls) && urls.length > 0) return `${urls.join(', ')} — ${remedy}`;
@@ -343,6 +342,14 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
   const waiting = details?.waiting;
   if (typeof waiting === 'number') return `${waiting} waiting. ${remedy}`;
   return remedy;
+}
+
+/** How many issues a refusal is about, and which, by the id a screen shows (ISS-1346). */
+function namedHere(details: Record<string, unknown>): string {
+  const ids = Array.isArray(details.issueIds) ? details.issueIds : [];
+  const shown = Array.isArray(details.displayIds) ? (details.displayIds as string[]) : [];
+  const which = shown.length === 0 ? '' : ` (${shown.map((id) => `\`${id}\``).join(', ')})`;
+  return `${ids.length} issue(s) named here${which}`;
 }
 
 /** The route is read off the bindings the project has, so a provider that cannot report a commit is
@@ -389,15 +396,16 @@ export function uncorroboratedWarningSentence(held: HeldIssueRef[], why: string)
   );
 }
 
-export function heldBackWarningSentence(held: HeldIssueRef[]): string {
+/** Where nothing can read what the project serves, no judging run earns a criterion, so the remedy
+ *  is the project's route and not a verdict (ISS-1346, judge r2 finding 1). */
+export function heldBackWarningSentence(held: HeldIssueRef[], serving: ServingReading): string {
   const issues = `${held.length} issue${held.length === 1 ? '' : 's'}`;
-  return withCosts(
-    'RELEASE_CRITERIA_HELD_BACK',
-    heldIssuesSentence(
-      `A release will still be cut, without ${issues} the sweep is holding back: each still owes a judging run on an acceptance criterion, and stays at the gate until it is earned.`,
-      held,
-    ),
-  );
+  const lead = `A release will still be cut, without ${issues} the sweep is holding back`;
+  const why =
+    serving.kind === 'undeclared'
+      ? `${lead}: each owes an acceptance criterion, and nothing here can read what this project is serving, so no judging run can earn one until the project can be read. What is missing: ${serving.missing}. The way to give it one: ${serving.route}.`
+      : `${lead}: each still owes a judging run on an acceptance criterion, and stays at the gate until it is earned.`;
+  return withCosts('RELEASE_CRITERIA_HELD_BACK', heldIssuesSentence(why, held));
 }
 
 /** The declared release label no box carries. Here, not at the call site: this module owns every
