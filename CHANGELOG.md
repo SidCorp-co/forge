@@ -3136,6 +3136,10 @@
 
 ### Fixed
 
+- **Work landed on the base branch can be marked merged by its commit.** Where the commit is the
+  only trace, Forge checks it in the repository: it must exist, name the issue and sit on the base
+  or live branch.
+
 - **A half-deleted run checkout is no longer taken for the project's own.** The box said it was
   left standing as it went. It now holds it, refuses to release it and names it in its log.
 - **The box's log names the run holding such a checkout,** and a checkout it records as gone no
