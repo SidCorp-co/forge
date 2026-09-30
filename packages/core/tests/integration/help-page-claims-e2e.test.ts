@@ -2,8 +2,8 @@
  * ISS-1176 — the two behaviours the end-user help pages state, observed through the doors a person
  * uses rather than restated from the code.
  *
- * "Ask for a change" says a new issue starts at Open, or at Draft with an `intake` label where the
- * project reviews new issues first. "Tell when an issue is done" says the issue page shows the
+ * "Ask for a change" says a new issue starts at Open, and waits there on a project that starts
+ * work by hand (policy `intake.mode: manual`). "Tell when an issue is done" says the issue page shows the
  * release note, which only holds while the issue read serves `releaseNotes`. Each is a claim the
  * product could stop keeping without any help page noticing, so each is asserted here, through
  * `app.request` with a real credential against real Postgres.
@@ -12,6 +12,7 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { DEFAULT_POLICY } from '../../src/project-config/default-policy.js';
 import {
   createTestProject,
   createTestProjectMember,
@@ -57,9 +58,9 @@ beforeEach(async () => {
   ({ plaintext: token } = await mintPat({ userId: personId, name: `help-${randomUUID()}` }));
 });
 
-async function projectWith(pipelineConfig: Record<string, unknown>): Promise<string> {
+async function projectWith(intake: 'auto' | 'manual' = 'auto'): Promise<string> {
   const project = await createTestProject(harness.db, personId, {
-    agentConfig: { pipelineConfig },
+    policy: { ...DEFAULT_POLICY, intake: { mode: intake } },
   });
   await createTestProjectMember(harness.db, {
     userId: personId,
@@ -91,24 +92,20 @@ async function labelNames(issueId: string): Promise<string[]> {
 }
 
 describe('"Ask for a change": the status a new issue starts at', () => {
-  it('starts at open on a project that does not review new issues first', async () => {
-    const projectId = await projectWith({});
-    const created = await fileFromTheForm(projectId);
-    expect(created.status).toBe('open');
-    expect(await labelNames(created.id)).not.toContain('intake');
-  });
-
-  it('starts at draft carrying the intake label on a project whose intake gate is on', async () => {
-    const projectId = await projectWith({ intakeGate: { enabled: true, notify: false } });
-    const created = await fileFromTheForm(projectId);
-    expect(created.status).toBe('draft');
-    expect(await labelNames(created.id)).toContain('intake');
-  });
+  it.each(['auto', 'manual'] as const)(
+    'starts at open with no intake label on a project whose intake is %s',
+    async (intake) => {
+      const projectId = await projectWith(intake);
+      const created = await fileFromTheForm(projectId);
+      expect(created.status).toBe('open');
+      expect(await labelNames(created.id)).not.toContain('intake');
+    },
+  );
 });
 
 describe('"Tell when an issue is done": the issue read serves the release note the page shows', () => {
   it('returns releaseNotes.userFacing on GET /api/issues/:id', async () => {
-    const projectId = await projectWith({});
+    const projectId = await projectWith();
     const created = await fileFromTheForm(projectId);
     const note = { section: 'Fixed', userFacing: 'The invoice PDF now shows the billing address.' };
     await harness.db.execute(

@@ -4,7 +4,7 @@
  * refusal naming the route, the status and the body's first line; nothing here returns a guess.
  */
 
-import { effectivePipelineStates } from '../../prompt/facts/effective-ladder.js';
+import { CANONICAL_LADDER } from '../../prompt/facts/registry.js';
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -40,12 +40,8 @@ export interface ProjectDetail {
   issuePrefix: string | null;
 }
 
-/** What `GET /api/projects/:id/pipeline-config` says about this project's stages. */
-export interface StoredPipelineConfig {
-  states: Record<string, { enabled?: boolean } | undefined>;
-  /** ISS-606: on, every filing lands at `draft` for a human to admit. */
-  intakeGate: boolean;
-}
+/** How a new filing enters the project's work, as its policy says; `none` where it has no policy. */
+export type ProjectIntake = 'auto' | 'manual' | 'none';
 
 /** One row of `GET /api/projects/:id/knowledge`, which serves no body — `knowledgeEntry` fetches those. */
 export interface KnowledgeRow {
@@ -210,18 +206,9 @@ function projectReaders(json: JsonFn) {
         );
       return { id: row.id, key: row.displayId, title: row.title };
     },
-    /**
-     * The project's effective pipeline states, in order.
-     *
-     * NOT the keys of the stored `states` map, which is per-stage configuration over four optional
-     * keys: `forge-plugin` stores only `open`, and reading that as its whole pipeline asked the
-     * assistant for a one-state answer and would have graded the right one wrong (ISS-1066). The
-     * empty-config refusal this replaced was a wrong refusal rather than a loud one — an empty map
-     * means every canonical rung, never none.
-     */
-    async pipelineStates(projectId: string): Promise<string[]> {
-      const { states } = await readPipelineConfig(json, projectId);
-      return effectivePipelineStates(states);
+    /** The pipeline states, in order: the product's canonical ladder, which no project overrides. */
+    async pipelineStates(_projectId: string): Promise<string[]> {
+      return [...CANONICAL_LADDER];
     },
     /** Every memory note of the project, every page, archived included (codex F1 on ISS-1061). */
     async listNotes(projectId: string): Promise<MemoryNote[]> {
@@ -238,18 +225,14 @@ function projectReaders(json: JsonFn) {
   };
 }
 
-/** The stored pipeline config, read once by whichever of the two readers below wants it. */
-async function readPipelineConfig(json: JsonFn, projectId: string): Promise<StoredPipelineConfig> {
-  const res = await json<{
-    pipelineConfig?: {
-      states?: Record<string, { enabled?: boolean }>;
-      intakeGate?: { enabled?: boolean };
-    };
-  }>('GET', `/api/projects/${projectId}/pipeline-config`);
-  return {
-    states: res.pipelineConfig?.states ?? {},
-    intakeGate: res.pipelineConfig?.intakeGate?.enabled === true,
-  };
+/** The project's intake, from the policy route the product serves it on. */
+async function readIntake(json: JsonFn, projectId: string): Promise<ProjectIntake> {
+  const res = await json<{ declared?: boolean; document?: { intake?: { mode?: string } } }>(
+    'GET',
+    `/api/projects/${projectId}/policy`,
+  );
+  if (res.declared !== true) return 'none';
+  return res.document?.intake?.mode === 'manual' ? 'manual' : 'auto';
 }
 
 /** ISS-1066 — what the per-run project brief reads, over the routes the product serves them on. */
@@ -268,7 +251,7 @@ function briefReaders(json: JsonFn) {
         issuePrefix: row.issuePrefix ?? null,
       };
     },
-    pipelineConfig: (projectId: string) => readPipelineConfig(json, projectId),
+    intake: (projectId: string) => readIntake(json, projectId),
     /** The author's kebab-key → body map. ISS-1048 is moving this prose into knowledge entries; an empty map is a fact about the project, not a failure. */
     async projectFacts(projectId: string): Promise<Record<string, string>> {
       const res = await json<{ projectFacts?: Record<string, string> }>(

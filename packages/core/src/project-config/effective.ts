@@ -1,6 +1,7 @@
 import { pointer } from './documents.js';
-import type { ProjectDocument } from './schema.js';
+import type { PolicyDocument, ProjectDocument } from './schema.js';
 import {
+  type Held,
   listActiveBindings,
   listTestingProfiles,
   readDeviceCheckout,
@@ -53,6 +54,14 @@ function bindingIdsOf(doc: ProjectDocument): Set<string> {
   return ids;
 }
 
+/**
+ * The policy layer of the effective config, on its own: dispatch needs it where a project has no
+ * project document yet, and reading it here keeps one read behind both answers.
+ */
+export async function readEffectivePolicy(projectId: string): Promise<Held<PolicyDocument> | null> {
+  return readPolicy(projectId);
+}
+
 export async function buildEffectiveConfig(input: {
   projectId: string;
   deviceId: string | null;
@@ -61,7 +70,7 @@ export async function buildEffectiveConfig(input: {
   if (!project) return { declared: false, revision: null };
 
   const [policy, profiles, bindings, checkout] = await Promise.all([
-    readPolicy(input.projectId),
+    readEffectivePolicy(input.projectId),
     listTestingProfiles(input.projectId),
     listActiveBindings(input.projectId),
     input.deviceId ? readDeviceCheckout(input.projectId, input.deviceId) : Promise.resolve(null),

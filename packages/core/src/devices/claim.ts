@@ -20,8 +20,7 @@ import { db } from '../db/client.js';
 import { withKernelMarker } from '../db/kernel-marker.js';
 import { jobs } from '../db/schema.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
-import { endJobForBudgetBreach } from '../jobs/budget-breach.js';
-import { checkMonthlyBudget, shouldEmitWarn } from '../jobs/budget-check.js';
+import { resolveJobPolicy } from '../jobs/job-policy.js';
 import { poolPrompt, settleNoPromptJob } from '../jobs/pool-served.js';
 import {
   canNameItsAgent,
@@ -31,7 +30,11 @@ import {
 } from '../jobs/prepare-claimed-job.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
-import { hooks } from '../pipeline/hooks.js';
+import {
+  type DispatchState,
+  type PolicyRefusalCode,
+  PolicyRefusedError,
+} from '../project-config/dispatch-policy.js';
 import { runnerAdmission } from './pool-admission.js';
 import { releaseLabelVerdict } from './release-label.js';
 
@@ -48,7 +51,6 @@ export type PrepareResult =
         | 'not_found'
         | 'already_held'
         | 'issue_busy'
-        | 'budget_exhausted'
         | 'hold_lost'
         | 'runner_too_old'
         | 'runner_withdrawn'
@@ -56,7 +58,8 @@ export type PrepareResult =
         | 'runner_unbound'
         | 'release_label_missing'
         | 'no_prompt';
-    };
+    }
+  | { ok: false; reason: 'policy_refused'; code: PolicyRefusalCode; detail: string };
 
 export type StartResult = { ok: true } | { ok: false; reason: 'hold_lost' | 'runner_too_old' };
 
@@ -98,6 +101,9 @@ export async function prepareJobForMaster(args: {
   }
 
   if (await refusedForNoPrompt(args.jobId)) return { ok: false, reason: 'no_prompt' };
+
+  const policy = await policyStateFor(args.jobId);
+  if (!policy.ok) return policy.refusal;
 
   const claimed = await db.transaction(async (tx) => {
     const held = await tx
@@ -147,30 +153,13 @@ export async function prepareJobForMaster(args: {
 
   if (claimed.kind !== 'held') return { ok: false, reason: claimed.kind };
 
-  const budget = await checkMonthlyBudget(claimed.job);
-  if (budget.action === 'pause') {
-    await releaseJobFromMaster({ jobId: claimed.job.id, sessionId: args.sessionId });
-    await endJobForBudgetBreach(claimed.job, budget);
-    return { ok: false, reason: 'budget_exhausted' };
-  }
-  if (
-    budget.action === 'warn-80' &&
-    budget.stageStatus !== null &&
-    shouldEmitWarn(claimed.job.projectId, budget.stageStatus)
-  ) {
-    await hooks.emit('pipeline.budgetWarning', {
-      projectId: claimed.job.projectId,
-      stageStatus: budget.stageStatus,
-      jobType: claimed.job.type,
-      spent: budget.spent,
-      budget: budget.budget ?? 0,
-      pct: budget.budget && budget.budget > 0 ? budget.spent / budget.budget : 0,
-    });
-  }
-
   let prepared: PreparedJob;
   try {
-    prepared = await prepareClaimedJob({ jobId: claimed.job.id, deviceId: args.deviceId });
+    prepared = await prepareClaimedJob({
+      jobId: claimed.job.id,
+      deviceId: args.deviceId,
+      policy: policy.state,
+    });
   } catch (err) {
     await releaseJobFromMaster({ jobId: claimed.job.id, sessionId: args.sessionId });
     throw err;
@@ -185,6 +174,33 @@ export async function prepareJobForMaster(args: {
         : formatIssueRef(await activeIssuePrefix(claimed.job.projectId), claimed.issSeq),
     prepared,
   };
+}
+
+/**
+ * The policy state a job runs under, read before it is held: a job its project's policy cannot
+ * place is refused by name and stays queued, so the refusal repeats until the policy says how.
+ */
+async function policyStateFor(
+  jobId: string,
+): Promise<
+  { ok: true; state: DispatchState } | { ok: false; refusal: Extract<PrepareResult, { ok: false }> }
+> {
+  const [job] = await db
+    .select({ projectId: jobs.projectId, issueId: jobs.issueId, payload: jobs.payload })
+    .from(jobs)
+    .where(eq(jobs.id, jobId))
+    .limit(1);
+  if (!job) return { ok: false, refusal: { ok: false, reason: 'not_found' } };
+  try {
+    return { ok: true, state: await resolveJobPolicy(job) };
+  } catch (err) {
+    if (!(err instanceof PolicyRefusedError)) throw err;
+    logger.warn({ jobId, projectId: job.projectId, code: err.code }, err.message);
+    return {
+      ok: false,
+      refusal: { ok: false, reason: 'policy_refused', code: err.code, detail: err.message },
+    };
+  }
 }
 
 /**

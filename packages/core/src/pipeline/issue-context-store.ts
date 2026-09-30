@@ -10,7 +10,6 @@ import {
 import { actorAgencies, actorTypes } from '../db/schema-activity.js';
 import { refreshModuleKnowledgeForIssue } from '../labels/module-knowledge-refresh.js';
 import { type StepHandoffPayload, stepHandoffSchema } from '../memory/step-handoff-schema.js';
-import { hooks } from './hooks.js';
 
 /**
  * ISS-381 (2.1) — derive the unified verdict column value from a handoff
@@ -133,7 +132,6 @@ export async function writeIssueContext(
         actor: validated.actor,
       });
     }
-    await announceContractInput(validated.projectId, validated.issueId, 'step handoff written');
     return row;
   }
 
@@ -231,17 +229,5 @@ export async function deleteIssueContext(input: DeleteIssueContextInput): Promis
       ),
     )
     .returning({ id: issueStepContexts.id });
-  if (result.length > 0) {
-    await announceContractInput(validated.projectId, validated.issueId, 'step handoff deleted');
-  }
   return result.length;
-}
-
-/** ISS-1072 — a handoff moved, so the contract's answer for this issue may have. */
-async function announceContractInput(
-  projectId: string,
-  issueId: string,
-  reason: string,
-): Promise<void> {
-  await hooks.emit('contractInputChanged', { projectId, issueId, reason });
 }

@@ -118,7 +118,7 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
     'When issueId is given WITHOUT integrationId, bindings carrying the `live` stage are dispatched ONLY when ' +
     'the issue has reached the release stage (status awaiting_release/closed) — every pre-release call ' +
     '(code/fix/testing) is preview-only and NEVER touches a live binding, regardless of ' +
-    'pipelineConfig.autoProdDeploy (that flag only bypasses the gate for the release-triggered ' +
+    'a production environment that deploys `on-land` (that trigger only bypasses the gate for the release-triggered ' +
     'auto-subscriber, not for this tool pre-release). With pipelineRunId (no issueId) — ISS-764 ' +
     'batch release path: the run is already open (kind=system); dispatches ALL targets live-allowed ' +
     '(allowLive=true) via the shared release path. The live human-confirm gate still applies — ' +
@@ -129,7 +129,7 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
     'attached (webhooks record deliveries but advance no pipeline). Each call is its own dispatch ' +
     '(per-attempt requestId, suffixed per target) and Coolify force-rebuilds, so re-deploying after a ' +
     'branch fix fires fresh builds. At the release stage, prod integrations still honor the ' +
-    'human-confirm gate (unless the project sets pipelineConfig.autoProdDeploy): returns ' +
+    "human-confirm gate (unless the project document's production environment deploys `on-land`): returns " +
     'pendingHumanConfirm:true and does NOT dispatch until confirmed via the confirm-prod-deploy ' +
     'endpoint. ' +
     'status: latest outbound delivery PER TARGET for the integration(s) (or a specific integrationId): ' +
@@ -169,8 +169,8 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
     'nearest image. Returns { performed, deploymentUuid }; the rollback build is polled and audited ' +
     'exactly like a deploy. ' +
     'cancel and rollback answer to the SAME production gate a deploy does: against a prod binding ' +
-    'both return pendingHumanConfirm:true and do nothing unless the project set ' +
-    'pipelineConfig.autoProdDeploy. ' +
+    "both return pendingHumanConfirm:true and do nothing unless the project document's production " +
+    'environment deploys `on-land`. ' +
     'applications: every Coolify application this credential can see — { uuid, name, fqdn, ' +
     'gitRepository, gitBranch, gitCommitSha, status }. The pick-list that replaces transcribing a ' +
     'resourceUuid. ' +

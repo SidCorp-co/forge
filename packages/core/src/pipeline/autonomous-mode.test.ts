@@ -5,7 +5,6 @@ import {
   AUTONOMOUS_ENTRY_STATUS,
   AUTONOMOUS_INFLIGHT_STATUSES,
   AUTONOMOUS_QUESTION_STATUS,
-  BACKLOG_ADMISSIBLE_STATUSES,
 } from './autonomous-mode.js';
 
 describe('AUTONOMOUS_INFLIGHT_STATUSES (ISS-890)', () => {
@@ -41,14 +40,5 @@ describe('AUTONOMOUS_INFLIGHT_STATUSES (ISS-890)', () => {
       ...AUTONOMOUS_INFLIGHT_STATUSES,
     ]);
     expect([...AUTONOMOUS_DRIVER_STATUSES].sort()).toEqual([...classified].sort());
-  });
-});
-
-describe('BACKLOG_ADMISSIBLE_STATUSES and the two revived rungs (ISS-976)', () => {
-  it('admits both revived rungs, and neither is a driver status', () => {
-    for (const rung of ['confirmed', 'approved'] as const) {
-      expect(BACKLOG_ADMISSIBLE_STATUSES, `${rung} admissible`).toContain(rung);
-      expect(AUTONOMOUS_DRIVER_STATUSES, `${rung} driver status`).not.toContain(rung);
-    }
   });
 });

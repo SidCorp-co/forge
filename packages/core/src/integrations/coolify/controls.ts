@@ -344,7 +344,7 @@ function pendingProd(integrationId: string, action: string): CoolifyControlOutco
     performed: false,
     pendingHumanConfirm: true,
     deploymentUuid: null,
-    detail: `${action} against a binding that serves the \`live\` stage is not dispatched without a human — confirm it, or set pipelineConfig.autoProdDeploy`,
+    detail: `${action} against a binding that serves the \`live\` stage is not dispatched without a human — confirm it, or give the project document's production environment \`deployment.trigger: "on-land"\``,
   };
 }
 

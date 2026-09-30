@@ -37,14 +37,14 @@ export const FORGE_GUIDES: readonly ForgeGuide[] = [
 Two tools, two different jobs — mixing them up is the single most common Forge discoverability miss.
 
 - **\`forge_projects.get\`** — deployment-shaped facts: repo path, base/production branch, \`workspaceSetup\` (how to bring this repo's workspace to a buildable state), and \`environments\` — both sides of the deployment: \`preview\` (\`{url, apiUrl, urls[]}\`, or null where the project has no preview side), \`live\` (\`{url, apiUrl, commitUrl, commitPath}\` — the address a release ships to), \`testCredentials\` for logging in as a test user, and \`limits\`, which says what this environment does NOT have. This is the ONLY place test credentials live.
-- **\`forge_config\`** — process-shaped facts: \`pipelineConfig\` (stage gates, status ladder overrides, and the per-stage model, budget and tool policy), \`plugins\`, categories. It carries no project PROSE — \`projectFacts\` and \`projectFactsConfig\` were retired in ISS-1048 and a call naming either is refused by name; the prose is \`forge_knowledge\`. It deliberately does **not** return credentials or preview URLs — don't go looking for them there, and don't add them there either.
+- **\`forge_config\`** — process-shaped facts: \`config.policy\` (the project's policy-v1 document: \`qa\`, intake, and each status's model and permission profile), \`plugins\`, categories. It carries no project PROSE — \`projectFacts\` and \`projectFactsConfig\` were retired in ISS-1048 and a call naming either is refused by name; the prose is \`forge_knowledge\`. It deliberately does **not** return credentials or preview URLs — don't go looking for them there, and don't add them there either.
 
   ${ALWAYS_INJECT_GUARANTEE_NOTE} ${ALWAYS_INJECT_ENFORCEMENT_NOTE}
 
 ### Rules
 1. Never hardcode a repo path, branch name, or test credential in a skill body, prompt, or comment — always fetch it live. A hardcoded value silently drifts the moment the project's settings change.
 2. Never echo a fetched credential past the immediate authentication step (into a commit message, a PR description, or tool output) — treat it as a secret even though it's a test account.
-3. When you need to change \`forge_config\` (e.g. \`pipelineConfig.states\`), **GET the current config first, then send a complete entry.** These are nested maps — a blind partial write clobbers sibling keys you never read. A knowledge entry is not one of them: \`forge_knowledge\` writes one slug whole, so there are no siblings to clobber.
+3. When you need to change the policy, **GET it first, then send the whole document with the revision you read** — \`PUT /api/projects/:id/policy\` with \`{ baseRevision, document }\`. A write against a revision that moved is refused by name, never merged. A knowledge entry is not one of them: \`forge_knowledge\` writes one slug whole, so there are no siblings to clobber.
 4. \`environments.preview: null\` means this project HAS no preview side — a one-box project saying so, not a setting somebody forgot. Test against \`environments.live\` and don't invent a staging host. Equally, an empty \`environments.live.url\` is not permission to guess one: nothing in Forge derives a hostname from another.
 5. \`workspaceSetup\` is the project's own setup procedure — install commands, hook setup, toolchain quirks — and it is prose, not a script anything executes. It is what a stage follows instead of guessing when it lands in a broken checkout. **If it is empty and you worked the procedure out, write it back** with \`forge_projects.update\` (\`workspaceSetup\`), recording only steps you ran and saw succeed. Set it while onboarding a project, next to the repo URL — Settings → Runners → Git access in the UI.
 
@@ -367,7 +367,7 @@ draft ─▶ open ─▶ confirmed ─▶ approved ─▶ in_progress ─▶ dev
 
 \`needs_info\` and \`on_hold\` are enterable from **every** rung and from each other. \`draft\` cannot park (it already is a resting place) and \`closed\`/\`dropped\` cannot: a park after an end is a reopen, and \`closed → reopen\` already is that hop — on a staged project and on an autonomous one alike, where a person is its only writer.
 
-**Leaving a park returns to the rung it left** — any of \`open\`, \`confirmed\`, \`approved\`, \`in_progress\`, \`developed\`, \`testing\` or \`awaiting_release\`, not always \`open\`. A park taken at \`awaiting_release\` is work already merged and waiting for production; sending it to \`open\` dispatches a fresh agent onto shipped work and loses its place at the gate. Today \`pipeline/answer-resume.ts\` sends an answered \`needs_info\` to \`confirmed\` once its last open question is answered — the rung that says its requirements are settled — or to \`open\` on a project whose \`poolBacklog.statuses\` admit nothing at \`confirmed\`, saying why on the thread; whatever rung it left, because nothing records where the park came from. So park at \`needs_info\` only for want of a requirement, and to ask a person about finished work, ask with \`forge_questions\` and leave the rung alone: a question marks its issue as waiting on a person and moves nothing, and an answer at any rung but \`needs_info\` moves nothing either.
+**Leaving a park returns to the rung it left** — any of \`open\`, \`confirmed\`, \`approved\`, \`in_progress\`, \`developed\`, \`testing\` or \`awaiting_release\`, not always \`open\`. A park taken at \`awaiting_release\` is work already merged and waiting for production; sending it to \`open\` dispatches a fresh agent onto shipped work and loses its place at the gate. Today \`pipeline/answer-resume.ts\` sends an answered \`needs_info\` to \`open\`, the driver's entry, once its last open question is answered, whatever rung it left, because nothing records where the park came from. So park at \`needs_info\` only for want of a requirement, and to ask a person about finished work, ask with \`forge_questions\` and leave the rung alone: a question marks its issue as waiting on a person and moves nothing, and an answer at any rung but \`needs_info\` moves nothing either.
 
 **A failed check goes to \`reopen\`, not backwards down the ladder.** On the **staged** lane, \`developed → reopen\` and \`testing → reopen\` are the two rejection exits, and \`reopen\` routes to \`in_progress\` (rework) or back to \`developed\` (the proof was wrong, the code was not). On the **autonomous** lane neither rung is a driver status, so the agent never writes them; a person does, from the board. \`isReopenEntry\` counts both as real rejections in the quality metric on either lane; only \`in_progress → reopen\` is excluded, because that one is the system recovering a dead run — which is why it is the one shape both modes produce.
 
@@ -382,9 +382,9 @@ draft ─▶ open ─▶ confirmed ─▶ approved ─▶ in_progress ─▶ dev
 | \`released\` | renamed to \`awaiting_release\` (migration 0228). The old name is refused. It was the past tense of an action that had not happened, and it doubled as the release *trigger* because there was no button; the button and \`releasing\` took that job |
 | \`waiting\` | still written, still being retired. An agent's \`waiting\` is rewritten to \`needs_info\` on an autonomous project |
 
-\`tested\` is the one to watch: forge-plugin still writes it where this chain says \`testing\`, and one project names it in \`poolBacklog.statuses\`. Until both move, treat a row at \`tested\` as a row at \`testing\` that owes a status fix (ISS-1022).
+\`tested\` is the one to watch: forge-plugin still writes it where this chain says \`testing\`, Until it moves, treat a row at \`tested\` as a row at \`testing\` that owes a status fix (ISS-1022).
 
-**\`confirmed\` and \`approved\` are NOT retired, and were for one day.** They were cut on 2026-09-10 with \`clarified\` and \`tested\`, on the rule that a rung earns its place only where a **different party** owes the next move at it — and under the single-driver pipeline one agent walked all four, so none of them did. The wave model splits triage from execution, which is exactly that party boundary, and forge-plugin's own ladder never stopped naming the two: a kernel calling them retired was the half that was wrong (ISS-976). Nothing dispatches at either, so a row resting on one reaches a master only where its project declares the status in \`poolBacklog.statuses\`.
+**\`confirmed\` and \`approved\` are NOT retired, and were for one day.** They were cut on 2026-09-10 with \`clarified\` and \`tested\`, on the rule that a rung earns its place only where a **different party** owes the next move at it — and under the single-driver pipeline one agent walked all four, so none of them did. The wave model splits triage from execution, which is exactly that party boundary, and forge-plugin's own ladder never stopped naming the two: a kernel calling them retired was the half that was wrong (ISS-976). Nothing dispatches at either, so a row resting on one waits for a person to move it.
 
 Measured 2026-09-10, and it is why the other two stayed cut: while the default chain in the prompt named all six of the old middle rungs, agents walked them — **153 hops across 4 projects in 3 hours**, leaving **45 issues** standing on a status no job dispatches at. \`clarified\` and \`tested\` only ever recorded that a phase inside one session had finished, which the handoff already says.
 
@@ -440,7 +440,7 @@ It takes **two** fields, and they are not the same sentence:
 
 Write it as the ask, not as the reason again. *"Choose: (a) accept the landed part and close with criterion 35 recorded as failing, or (b) keep this open and the turn runner is its remaining work"* is answerable. *"blocked on a decision"* is the reason wearing the ask's clothes.
 
-**Who answers, and how.** A person, on the issue page, in the project's chat room, or at \`POST /api/questions/:id/answer { text | optionId, round }\` — session only, a PAT is refused, and \`round\` is required because an answer binds to the round the person was shown. Then, in order: a live session is sent the answer on stdin; a box that registered a waiter reads it back itself and nothing is dispatched; otherwise the issue moves to \`confirmed\` (or \`open\`, where the project admits nothing at \`confirmed\`) with the answer on the record.
+**Who answers, and how.** A person, on the issue page, in the project's chat room, or at \`POST /api/questions/:id/answer { text | optionId, round }\` — session only, a PAT is refused, and \`round\` is required because an answer binds to the round the person was shown. Then, in order: a live session is sent the answer on stdin; a box that registered a waiter reads it back itself and nothing is dispatched; otherwise the issue moves back to \`open\`, the driver's entry, with the answer on the record.
 
 **The mint is gated on agency, not on the field.** A park by a person mints nothing — they stopped their own work and own their own resume. Only an agent-held credential (an agent account or a paired device) mints, so a \`needs\` sent by a human-owned token reaches no reader.
 
@@ -537,8 +537,8 @@ dispatches. So:
 - **plan-by-hand** — pre-filling \`plan\` or \`acceptanceCriteria\` on create. On a staged project
   those are written by the clarify and plan steps, on an autonomous one by the driver's own
   clarifying and planning phases; filling them deletes that work's reason to exist.
-- **wholesale-config-clobber** — patching a nested map (\`pipelineConfig.states\`)
-  without reading it first. These are replace-not-merge; send a complete entry.
+- **wholesale-config-clobber** — writing the policy without reading it first. It is written
+  whole against the revision you read; a stale revision is refused, so read, change, send.
 - **skip-recall** — see above.
 - **fix-by-hand-and-forget** — fixing something outside the pipeline and leaving no status move and
   no recorded learning.
@@ -587,7 +587,7 @@ meaning of a field, not to decide a verdict.
 | \`runningHash\` | hash of that observed body | observed |
 | \`charter\` | the project's Divergence Charter: differences the owner declared intentional. \`null\` when none exists | human |
 | \`knowledge_entries\` | the project's own prose; an \`always\` entry is injected into every agent on this project | knowledge store |
-| \`pipelineConfig\` | the project's pipeline configuration | project config |
+| \`projectPolicy\` | the project's policy-v1 document | human |
 | \`recentRunEvidence\` | recent runs of the stage this skill serves | observed |
 | \`priorReconcileHistory\` | earlier reconcile runs for this same skill | observed |
 | \`invariantSet\` | the platform invariants in force right now (stage ① output) | hard constraint |

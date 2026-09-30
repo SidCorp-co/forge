@@ -441,10 +441,7 @@ export interface ConnectionBindingsResponse {
   items: BindingSummary[];
 }
 
-/**
- * Which of the two sources put a server in an agent's set: a granted integration binding, or the
- * project's own `pipelineConfig.mcpServers`.
- */
+/** Which source put a server in an agent's set: a granted integration binding, or a name no binding claims. */
 export type McpServerSource = 'integration' | 'project';
 
 export type McpServerPreviewReason =
@@ -478,13 +475,8 @@ export interface McpServerPreviewEntry {
 /** Envelope for `GET /:projectId/integrations/mcp-preview`. */
 export interface McpPreviewResponse {
   servers: McpServerPreviewEntry[];
-  /** Names `pipelineConfig.mcpServers` declares that resolution did not supply. */
+  /** Names the project declares that resolution did not supply. */
   droppedNames: string[];
-  /**
-   * Names declared only under a `pipelineConfig.states.*.mcpServers` override, deduplicated across
-   * every state. A project-wide session does not carry them, so they are named rather than omitted.
-   */
-  stateOnlyNames: string[];
 }
 
 /**

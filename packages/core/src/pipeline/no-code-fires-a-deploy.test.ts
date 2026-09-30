@@ -1,21 +1,15 @@
 /**
  * ISS-1186 — no code path in this repository fires a deployment on its own.
  *
- * Until this landed, `pipeline/landing-deploy.ts` subscribed to `transition` and dispatched a
- * Coolify deployment the moment an issue reached `developed`: code firing a deploy, and firing it
- * before any verdict on the change existed.
- *
  * The subject is the REFERENCE and not the import statement, because `integrations/coolify/
- * routes.ts` reaches `confirmPendingProdDeploy` through a dynamic `await import()`. The wrapper
- * `runCoolifyDeploy` is forbidden beside the three dispatchers, reaching it being
- * indistinguishable from reaching past it. Non-test files only: a test dispatches nothing.
+ * routes.ts` reaches `confirmPendingProdDeploy` through a dynamic `await import()`; the wrapper
+ * `runCoolifyDeploy` is forbidden too. Non-test files only: a test dispatches nothing.
  *
  * @gate-input whole-tree
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { PIPELINE_CONFIG_KEYS, pipelineConfigPatchSchema } from './pipeline-config-schema.js';
 
 const SRC_ROOT = join(import.meta.dirname, '..');
 const REPO_ROOT = join(import.meta.dirname, '..', '..', '..', '..');
@@ -132,13 +126,11 @@ describe('the key that armed the landing deploy survives nowhere but its own ret
   const RETIRED_KEY = 'deployOnLanding';
 
   /**
-   * Where the retirement itself speaks. Whole files, which is what the exemption can be: of the
-   * five, only the schema is code the product runs with, and its own occurrences are held to the
-   * retired-key literal by the case below. A mention in a test, in the migration that deletes the
-   * key or in the changelog reads nothing at runtime.
+   * Where the retirement itself speaks. Whole files, which is what the exemption can be: none is
+   * code the product runs with. A mention in a test, in the migration that deletes the key or in
+   * the changelog reads nothing at runtime.
    */
   const RETIREMENT_SITES = new Set([
-    'packages/core/src/pipeline/pipeline-config-schema.ts',
     'packages/core/src/pipeline/no-code-fires-a-deploy.test.ts',
     'packages/core/tests/integration/landing-deploy-key-removed-e2e.test.ts',
     'packages/core/drizzle/migrations/0305_no_code_fires_a_deploy.sql',
@@ -164,18 +156,6 @@ describe('the key that armed the landing deploy survives nowhere but its own ret
 
     expect(offenders).toEqual([]);
   });
-
-  /** The schema's exemption is the retired-key literal, never the whole file. */
-  it('the schema names the key only inside its retired-key map', () => {
-    const src = readFileSync(join(SRC_ROOT, 'pipeline/pipeline-config-schema.ts'), 'utf8');
-    const open = src.indexOf('RETIRED_PIPELINE_CONFIG_KEYS: Record<string, string> = {');
-    expect(open).toBeGreaterThan(-1);
-    const close = src.indexOf('\n};', open);
-    expect(close).toBeGreaterThan(open);
-
-    const outside = src.slice(0, open) + src.slice(close);
-    expect(outside).not.toContain(RETIRED_KEY);
-  });
 });
 
 /**
@@ -196,43 +176,4 @@ describe('no subscriber gates jobCompleted on a job type nothing produces (ISS-1
 
     expect(offenders).toEqual([]);
   });
-});
-
-describe('a caller who names the retired key is told what replaced it (ISS-1186)', () => {
-  const refusal = (body: Record<string, unknown>): string => {
-    const out = pipelineConfigPatchSchema.safeParse(body);
-    expect(out.success).toBe(false);
-    return out.error?.issues.map((i) => i.message).join(' ') ?? '';
-  };
-
-  it('is not a key this config declares', () => {
-    expect(PIPELINE_CONFIG_KEYS).not.toContain('deployOnLanding');
-  });
-
-  it('is refused by its own name, not by the generic unknown-key sentence', () => {
-    const message = refusal({ deployOnLanding: true });
-    expect(message).toContain('pipelineConfig.deployOnLanding no longer exists');
-    expect(message).not.toContain('is not a pipeline config key');
-  });
-
-  it('says what replaced it: an agent, a tool call, and a rung that is not `developed`', () => {
-    const message = refusal({ deployOnLanding: false });
-    expect(message).toContain('a tool call an agent makes');
-    expect(message).toContain('ISS-1186');
-  });
-
-  it('refuses it beside a key that IS declared, so one good key cannot carry it in', () => {
-    const out = pipelineConfigPatchSchema.safeParse({ enabled: true, deployOnLanding: true });
-    expect(out.success).toBe(false);
-    expect(out.error?.issues.map((i) => i.path.join('.'))).toEqual(['deployOnLanding']);
-  });
-
-  it.each(['toString', 'constructor', 'hasOwnProperty', '__proto__'])(
-    'answers `%s` with the unknown-key sentence, never a value off the prototype',
-    (key) => {
-      const message = refusal({ [key]: true });
-      expect(message).toContain('is not a pipeline config key');
-      expect(message).not.toContain('function');
-    },
-  );
 });

@@ -20,7 +20,6 @@ import {
 import { onlineCapableDeviceIds } from '../runners/select.js';
 import type { RequiredCapabilities } from '../runners/types.js';
 import { buildVerifierPrompt } from '../skills/reconcile-service.js';
-import { resolveStageOverrides } from './stage-overrides.js';
 
 type JobRow = typeof jobs.$inferSelect;
 
@@ -169,11 +168,9 @@ async function notifyCapacityOutage(
   job: JobRow,
   entityId: string,
   required: RequiredCapabilities | undefined,
-  stagePool: string[] | null,
 ): Promise<void> {
   const present = await onlineCapableDeviceIds(job.projectId, required, {
     includeLimited: true,
-    allowDeviceIds: stagePool,
   });
   const allLimited = present.length > 0;
   const tooOld = allLimited
@@ -181,10 +178,9 @@ async function notifyCapacityOutage(
     : await onlineCapableDeviceIds(job.projectId, required, {
         includeLimited: true,
         includeBelowFloor: true,
-        allowDeviceIds: stagePool,
       });
   const copy = wedgeCopy(allLimited, present.length, tooOld.length, {
-    scope: stagePool ? `the ${job.type} runner pool` : 'this project',
+    scope: 'this project',
   });
 
   await emitPipelineWedge({
@@ -383,12 +379,9 @@ export async function scheduleAutoRetryWithVerify(
   }
 
   const isFailoverAction = effectiveAction === 'failover' || effectiveAction === 'quarantine';
-  const stagePool = (await resolveStageOverrides(job.projectId, job.payload)).deviceIds;
   const required = (job.payload as { requiredCapabilities?: RequiredCapabilities } | null)
     ?.requiredCapabilities;
-  const healthyDevices = await onlineCapableDeviceIds(job.projectId, required, {
-    allowDeviceIds: stagePool,
-  });
+  const healthyDevices = await onlineCapableDeviceIds(job.projectId, required);
 
   const state = readAutoRetryPayload(job.payload);
   const outcome = nextRotation(
@@ -400,8 +393,7 @@ export async function scheduleAutoRetryWithVerify(
     new Date(),
   );
 
-  const stageKey = stagePool ? job.type : 'all';
-  const capacityEntityId = capacityWedgeEntityId(job.projectId, stageKey);
+  const capacityEntityId = capacityWedgeEntityId(job.projectId, 'all');
 
   if (outcome.kind === 'give_up') {
     logger.info(
@@ -412,7 +404,7 @@ export async function scheduleAutoRetryWithVerify(
   }
 
   if (outcome.kind === 'defer') {
-    await notifyCapacityOutage(job, capacityEntityId, required, stagePool);
+    await notifyCapacityOutage(job, capacityEntityId, required);
   } else {
     await resolvePipelineWedge(capacityEntityId);
   }

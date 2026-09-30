@@ -7,7 +7,7 @@
 // `src/config/env.ts`). Importing it at runtime in a browser or test
 // without `DATABASE_URL`/`JWT_SECRET` set would throw. A parity test in
 // `packages/core/src/pipeline/registry.test.ts` keeps these tuples in sync
-// with `core/db/schema.ts` and `core/pipeline/pipeline-config-schema.ts`.
+// with `core/db/schema.ts`.
 
 import { z } from 'zod';
 
@@ -33,20 +33,6 @@ export const REGISTRY_ISSUE_STATUSES = [
   'needs_info',
   'draft',
   'dropped',
-] as const;
-
-export const REGISTRY_BACKLOG_ADMISSIBLE_STATUSES = [
-  'confirmed',
-  'clarified',
-  'waiting',
-  'approved',
-  'developed',
-  'testing',
-  'tested',
-  'awaiting_release',
-  'reopen',
-  'on_hold',
-  'draft',
 ] as const;
 
 export const REGISTRY_JOB_TYPES = [

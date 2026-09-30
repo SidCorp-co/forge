@@ -112,7 +112,6 @@ vi.mock('../lib/authz.js', async (importOriginal) => ({
   loadPersonalOrgId: (...args: unknown[]) => personalOrg(...args),
 }));
 
-const { hooks } = await import('../pipeline/hooks.js');
 const { projectRoutes } = await import('./routes.js');
 const { environmentsPatchSchema } = await import('./environments.js');
 const { signUserToken } = await import('../auth/jwt.js');
@@ -738,14 +737,9 @@ describe('PATCH /api/projects/:id · retired keys and the agentConfig doors', ()
       'agentConfig.stateContext decides nothing',
     ],
     [
-      'a stage skillName inside a wholesale agentConfig',
+      'the retired pipeline config inside a wholesale agentConfig',
       { agentConfig: { pipelineConfig: { states: { open: { skillName: 'forge-review' } } } } },
-      'skillName selects nothing',
-    ],
-    [
-      'a non-entry stage mode inside a wholesale agentConfig',
-      { agentConfig: { pipelineConfig: { states: { in_progress: { mode: 'manual' } } } } },
-      'mode does not gate anything',
+      'is not a key this project',
     ],
     // ISS-1069 — the retired column name. The object below would strip it silently, which answers
     // an operator's save with a 200 and no write.
@@ -807,7 +801,7 @@ describe('PATCH /api/projects/:id · retired keys and the agentConfig doors', ()
     });
   }
 
-  it('names the per-stage path that does decide when it refuses stateContext', async () => {
+  it('names the policy, which does decide, when it refuses stateContext', async () => {
     const token = await signUserToken('uuid-owner');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
 
@@ -817,8 +811,8 @@ describe('PATCH /api/projects/:id · retired keys and the agentConfig doors', ()
       token,
     });
     const text = await res.text();
-    expect(text).toContain('pipelineConfig.states[*].model');
-    expect(text).toContain('pipelineConfig.states[*].budget');
+    expect(text).toContain("its state's `model` in the project's policy");
+    expect(text).toContain('PUT /api/projects/:id/policy');
   });
 
   it.each([
@@ -1465,64 +1459,17 @@ describe('the REST doors answer the retired axes from the chain, and refuse them
   });
 });
 
-/**
- * ISS-1072 — this route is the OTHER door onto the contract's inputs.
- *
- * `pipeline-config-service.ts` announces a declaration change made through the
- * dedicated pipeline-config route. This one takes a wide-open `agentConfig`
- * jsonb, so `statusEntryCriteria` can be replaced without that service running
- * at all — and `baseBranch` and `releaseChain` are read by
- * `work-evidence.ts:collectWorkEvidence`, so moving either of them moves the
- * `work_evidence` criterion for every issue on the project.
- */
-describe('PATCH /api/projects/:id — contractInputChanged', () => {
-  const heard: { projectId: string; issueId?: string; reason: string }[] = [];
-  hooks.on(
-    'contractInputChanged',
-    async (payload) => {
-      heard.push(payload);
-    },
-    { name: 'projects-routes-test-listener' },
-  );
-
-  async function patchAs(body: Record<string, unknown>, row: Record<string, unknown> = {}) {
-    heard.length = 0;
+describe('PATCH /api/projects/:id — the retired agentConfig door', () => {
+  it('refuses an agentConfig write naming the old pipeline config, and writes nothing', async () => {
     const token = await signUserToken('uuid-owner');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
     projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
-    selectLimit.mockResolvedValue([{ baseBranch: 'release/next', releaseChain: [] }]);
-    updateReturning.mockResolvedValueOnce([
-      patchedRow({ agentConfig: null, webhookSecret: null, ...row }),
-    ]);
-    return req('/11111111-1111-4111-8111-111111111111', {
+    const res = await req('/11111111-1111-4111-8111-111111111111', {
       method: 'PATCH',
-      body: JSON.stringify(body),
+      body: JSON.stringify({ agentConfig: { pipelineConfig: { statusEntryCriteria: {} } } }),
       token,
     });
-  }
-
-  it('refuses the agentConfig door that used to carry a statusEntryCriteria write', async () => {
-    const res = await patchAs({
-      agentConfig: { pipelineConfig: { statusEntryCriteria: { developed: ['plan'] } } },
-    });
     expect(res.status).toBe(400);
-    expect(await res.text()).toContain('/pipeline-config');
-    expect(heard).toEqual([]);
-  });
-
-  it.each([
-    ['baseBranch', 'release/next' as unknown],
-    ['releaseChain', [{ branch: 'release/next' }] as unknown],
-  ])('announces a write of `%s`, which work evidence reads', async (field, value) => {
-    const res = await patchAs({ [field]: value });
-    expect(res.status).toBe(200);
-    expect(heard).toHaveLength(1);
-    expect(heard[0]?.reason).toContain(field);
-  });
-
-  it('stays silent for a patch that names none of them', async () => {
-    const res = await patchAs({ name: 'New name' });
-    expect(res.status).toBe(200);
-    expect(heard).toEqual([]);
+    expect(updateReturning).not.toHaveBeenCalled();
   });
 });

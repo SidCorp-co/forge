@@ -637,7 +637,6 @@ export function TestingTab({ projectId, canEdit }: { projectId: string; canEdit:
             projectId={projectId}
             error={update.isError ? update.error : null}
             onDismiss={() => update.reset()}
-            document="environments"
             draft={held}
           />
           <Button

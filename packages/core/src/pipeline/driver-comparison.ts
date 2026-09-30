@@ -22,7 +22,7 @@ import { db } from '../db/client.js';
 
 export interface DriverComparisonRow {
   projectId: string;
-  /** Derived from the jobs that ran, not from `pipelineConfig.mode`. */
+  /** Derived from the jobs that ran, not from any setting. */
   driver: 'autonomous' | 'staged';
   issuesClosed: number;
   /** `dropped` issues, reported apart: they closed without work happening. */

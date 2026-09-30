@@ -410,15 +410,13 @@ describe('GET /api/projects/:id/analytics/cost-trend', () => {
     expect(res.status).toBe(403);
   });
 
-  it('200 daily series with empty annotations when activity_log returns none', async () => {
+  it('200 daily series, and nothing else', async () => {
     const token = await signUserToken('u-1');
     mockMembership({ ownerId: 'u-1' });
-    dbExecute
-      .mockResolvedValueOnce([
-        { date: '2026-05-22', cost: '1.5', runs: 3 },
-        { date: '2026-05-23', cost: '0.25', runs: 1 },
-      ])
-      .mockResolvedValueOnce([]);
+    dbExecute.mockResolvedValueOnce([
+      { date: '2026-05-22', cost: '1.5', runs: 3 },
+      { date: '2026-05-23', cost: '0.25', runs: 1 },
+    ]);
 
     const app = buildApp();
     const res = await app.fetch(
@@ -427,44 +425,19 @@ describe('GET /api/projects/:id/analytics/cost-trend', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       daily: Array<{ date: string; cost: number; runs: number }>;
-      annotations: Array<{ ts: string; message: string; kind: string }>;
     };
     expect(body.daily).toEqual([
       { date: '2026-05-22', cost: 1.5, runs: 3 },
       { date: '2026-05-23', cost: 0.25, runs: 1 },
     ]);
-    expect(body.annotations).toEqual([]);
+    expect(Object.keys(body)).toEqual(['daily']);
+    expect(dbExecute).toHaveBeenCalledTimes(1);
 
     // Step filter binds the literal into the SQL parameters.
     const dailyQuery = dbExecute.mock.calls[0]?.[0] as {
       queryChunks?: Array<{ value?: unknown }>;
     };
     expect(JSON.stringify(dailyQuery?.queryChunks ?? dailyQuery)).toContain('plan');
-  });
-
-  it('200 surfaces activity_log annotations with pipeline_config.updated kind', async () => {
-    const token = await signUserToken('u-1');
-    mockMembership({ ownerId: 'u-1' });
-    dbExecute.mockResolvedValueOnce([]).mockResolvedValueOnce([
-      { ts: '2026-05-20T12:34:56Z', message: 'autoCode toggled' },
-      { ts: '2026-05-21T08:00:00Z', message: 'pipeline config updated' },
-    ]);
-
-    const app = buildApp();
-    const res = await app.fetch(
-      req(`/api/projects/${PROJECT_UUID}/analytics/cost-trend`, { token }),
-    );
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as {
-      annotations: Array<{ ts: string; message: string; kind: string }>;
-    };
-    expect(body.annotations).toHaveLength(2);
-    expect(body.annotations[0]).toEqual({
-      ts: '2026-05-20T12:34:56Z',
-      message: 'autoCode toggled',
-      kind: 'pipeline_config.updated',
-    });
-    expect(body.annotations[1]?.kind).toBe('pipeline_config.updated');
   });
 });
 

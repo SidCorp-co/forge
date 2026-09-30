@@ -50,7 +50,7 @@ assistantWeeklyRoutes.post(
         {
           code: 'ASSISTANT_WEEKLY_OFF',
           message:
-            'pipelineConfig.assistantWeekly is not enabled on this project; save it with enabled, pinnedIssue, judgeProviderId and judgeModel first',
+            'assistantWeekly is not enabled on this project; save it on PATCH /api/projects/:id with enabled, pinnedIssue, judgeProviderId and judgeModel first',
         },
         409,
       );

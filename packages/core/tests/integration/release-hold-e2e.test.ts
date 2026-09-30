@@ -11,6 +11,7 @@ import {
   createTestProject,
   createTestUser,
   registerIntegrationsForTest,
+  seedProductionDeployTrigger,
   setupTestDatabase,
   type TestDatabase,
   truncateAll,
@@ -46,11 +47,8 @@ beforeEach(async () => {
   await truncateAll(harness.db);
   const owner = await createTestUser(harness.db);
   ownerId = owner.id;
-  projectId = (
-    await createTestProject(harness.db, owner.id, {
-      agentConfig: { pipelineConfig: { enabled: true, autoProdDeploy: true } },
-    })
-  ).id;
+  projectId = (await createTestProject(harness.db, owner.id)).id;
+  await seedProductionDeployTrigger(harness.db, projectId, owner.id);
   await declareProduction();
   // ISS-1286: a runtime verdict is weighed against what the production probe ANSWERS, so the
   // fixture's host has to serve the commit these verdicts were judged at or every row is held.
@@ -393,7 +391,7 @@ describe('a hold does not outlive the wait it describes', () => {
     await sweep();
     expect(await holdOf(id)).not.toBeNull();
     await harness.db.execute(sql`
-      UPDATE projects SET agent_config = '{}'::jsonb WHERE id = ${projectId}
+      DELETE FROM project_config_documents WHERE project_id = ${projectId}
     `);
     const other = await heldRow();
 

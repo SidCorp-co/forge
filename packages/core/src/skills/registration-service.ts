@@ -9,6 +9,7 @@ import { db } from '../db/client.js';
 import { type IssueStatus, projects, skillRegistrations, skills } from '../db/schema.js';
 import { AUTONOMOUS_ENTRY_STATUS } from '../pipeline/autonomous-mode.js';
 import { hooks } from '../pipeline/hooks.js';
+import { readEffectivePolicy } from '../project-config/effective.js';
 import { recordSkillActivityEvent } from './activity.js';
 
 export interface RegisterSkillInput {
@@ -127,28 +128,21 @@ export interface SkillRegistrationView {
 }
 
 /**
- * List a project's stage→skill bindings overlaid with the per-stage
- * `mode`/`enabled` from `agentConfig.pipelineConfig.states`.
+ * List a project's stage→skill bindings overlaid with `mode`/`enabled` from its policy.
  *
- * `enabled` is meaningful at every stage. `mode` is meaningful at the entry
- * status alone and comes back `null` everywhere else.
+ * `enabled` is whether the policy declares that state. `mode` is the policy's intake, meaningful
+ * at the entry status alone and `null` everywhere else. A project with no policy enables nothing.
  *
- * Stages with no skill registered are NOT returned — clients diff against
- * the canonical stage list (`STAGE_NAMES`) to surface gaps.
+ * Stages with no skill registered are NOT returned.
  */
 export async function listSkillRegistrations(projectId: string): Promise<SkillRegistrationView[]> {
   const [project] = await db
-    .select({ agentConfig: projects.agentConfig })
+    .select({ id: projects.id })
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1);
   if (!project) return [];
-  const ac = (project.agentConfig ?? {}) as Record<string, unknown>;
-  const pipeline = (ac.pipelineConfig ?? {}) as Record<string, unknown>;
-  const states = (pipeline.states ?? {}) as Record<
-    string,
-    { enabled?: boolean; mode?: 'auto' | 'manual' } | undefined
-  >;
+  const policy = (await readEffectivePolicy(projectId))?.document ?? null;
 
   const rows = await db
     .select({
@@ -165,14 +159,13 @@ export async function listSkillRegistrations(projectId: string): Promise<SkillRe
     .orderBy(skillRegistrations.stage);
 
   return rows.map((r) => {
-    const stageCfg = states[r.stage];
     return {
       stage: r.stage as IssueStatus,
       skillId: r.skillId,
       skillName: r.skillName,
       scope: r.scope as 'global' | 'project',
-      mode: r.stage === AUTONOMOUS_ENTRY_STATUS ? (stageCfg?.mode ?? 'auto') : null,
-      enabled: stageCfg?.enabled !== false,
+      mode: r.stage === AUTONOMOUS_ENTRY_STATUS ? (policy?.intake.mode ?? null) : null,
+      enabled: policy !== null && Object.hasOwn(policy.states, r.stage),
       registeredBy: r.registeredBy,
       registeredAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : String(r.createdAt),
     };

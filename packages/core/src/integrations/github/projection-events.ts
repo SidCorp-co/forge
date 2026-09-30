@@ -1,10 +1,8 @@
 import { db } from '../../db/client.js';
 import { recordIssueMerge } from '../../issues/merge-record.js';
 import { logger } from '../../logger.js';
-import { hooks } from '../../pipeline/hooks.js';
 import { forgetLiveReading } from '../../projects/live-reading.js';
 import { buildRepoClient, GitHubClientError, type GitHubRepoClient } from './client.js';
-import { publishForStoredPullRequest } from './contract-check.js';
 import { resolveIssueForHeadRef } from './issue-link.js';
 import {
   applyCheckRunEvent,
@@ -102,20 +100,10 @@ async function stampMergedIssue(ctx: DeliveryContext, payload: PullRequestPayloa
   if (!headRef) return;
   const issueId = await resolveIssueForHeadRef({ projectId: ctx.projectId, headRef });
   if (!issueId) return;
-  const record = await recordIssueMerge(db, {
+  await recordIssueMerge(db, {
     issueId,
     evidence: { kind: 'observed', commitSha, mergedAt, via: 'event' },
   });
-  if (!record.wrote) return;
-  try {
-    await hooks.emit('contractInputChanged', {
-      projectId: ctx.projectId,
-      issueId,
-      reason: 'merged on GitHub',
-    });
-  } catch (err) {
-    logger.warn({ err, issueId }, 'repo projection: announcing the merge failed');
-  }
 }
 
 async function onPullRequest(ctx: DeliveryContext, payload: PullRequestPayload): Promise<number> {
@@ -130,7 +118,6 @@ async function onPullRequest(ctx: DeliveryContext, payload: PullRequestPayload):
   const got = clientFor(ctx);
   if (got.client) await refreshStoredPullRequest(got.client, row.id);
   else await storeRefreshRefusal([row], got.reason);
-  await publishForStoredPullRequest(row.id);
   return written;
 }
 

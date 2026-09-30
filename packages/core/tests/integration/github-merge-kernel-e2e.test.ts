@@ -24,7 +24,6 @@ type Mods = {
   createConnection: typeof import('../../src/integrations/store.js').createConnection;
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
   createBinding: typeof import('../../src/integrations/store.js').createBinding;
-  hooks: typeof import('../../src/pipeline/hooks.js').hooks;
 };
 
 const OWNER = 'SidCorp-co';
@@ -147,10 +146,9 @@ beforeAll(async () => {
   process.env.CORS_ORIGINS ??= 'http://localhost:3000';
   process.env.NODE_ENV ??= 'test';
 
-  const [mergeMod, store, hooksMod, agentClient, agentOps, openedMod] = await Promise.all([
+  const [mergeMod, store, agentClient, agentOps, openedMod] = await Promise.all([
     import('../../src/integrations/github/merge.js'),
     import('../../src/integrations/store.js'),
-    import('../../src/pipeline/hooks.js'),
     import('../../src/integrations/github/agent-client.js'),
     import('../../src/integrations/github/agent-ops.js'),
     import('../../src/integrations/github/opened-pull-request.js'),
@@ -165,7 +163,6 @@ beforeAll(async () => {
     projectOpenedPullRequest: openedMod.projectOpenedPullRequest,
     createConnection: store.createConnection,
     createBinding: store.createBinding,
-    hooks: hooksMod.hooks,
   };
 }, 60_000);
 
@@ -382,48 +379,6 @@ describe('a merge that cannot be made is refused by name', () => {
     expect(outcome?.kind === 'refused' && outcome.reason).toBe('protection-unreadable');
     expect(merges()).toHaveLength(0);
     expect(await stamp()).toEqual({ mergedAt: null, commitSha: null });
-  });
-});
-
-describe('the stamp announces the contract input it moved', () => {
-  /** Every `contractInputChanged` the merge emits, on the one bus `merge.ts:announce` uses. */
-  function listen(name: string) {
-    const heard: Array<{ projectId: string; issueId?: string; reason?: string }> = [];
-    mods.hooks.on('contractInputChanged', async (p) => void heard.push(p), { name });
-    return heard;
-  }
-
-  it('emits contractInputChanged naming the issue and the kernel as the reason', async () => {
-    const heard = listen('merge-announce-test');
-    const outcome = await mods.mergeStoredPullRequest({
-      pullRequestId,
-      requestedBy: `user:${ownerId}`,
-    });
-
-    expect(outcome?.kind).toBe('merged');
-    expect(heard).toEqual([{ projectId, issueId, reason: 'merged by the kernel' }]);
-  });
-
-  it('says nothing on a second reading of the same merge, which wrote no stamp', async () => {
-    await mods.mergeStoredPullRequest({ pullRequestId, requestedBy: `user:${ownerId}` });
-    const heard = listen('merge-announce-again-test');
-    const second = await mods.mergeStoredPullRequest({
-      pullRequestId,
-      requestedBy: `user:${ownerId}`,
-    });
-
-    expect(second?.kind).toBe('already-merged');
-    expect(second?.kind === 'already-merged' && second.stamped).toBe(false);
-    expect(heard).toHaveLength(0);
-  });
-
-  it('says nothing when the merge was refused', async () => {
-    dbl.checks = [{ name: 'ci-passed', status: 'completed', conclusion: 'failure' }];
-    const heard = listen('merge-announce-refused-test');
-    expect(
-      (await mods.mergeStoredPullRequest({ pullRequestId, requestedBy: `user:${ownerId}` }))?.kind,
-    ).toBe('refused');
-    expect(heard).toHaveLength(0);
   });
 });
 

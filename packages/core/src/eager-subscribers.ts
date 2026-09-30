@@ -1,4 +1,3 @@
-import { registerContractCheckSubscribers } from './integrations/github/contract-check-subscribers.js';
 import { registerMemoryReconcileTrigger } from './memory/consolidation.js';
 import { registerMemoryExtraction } from './memory/extraction.js';
 import { registerMemoryIndexer } from './memory/indexer.js';
@@ -26,5 +25,4 @@ export function registerEagerSubscribers(bus: HooksBus): void {
   registerPmSubscribers(bus);
   registerReleaseBatchClaimSubscriber(bus);
   registerMasterWakeSubscribers(bus);
-  registerContractCheckSubscribers(bus);
 }

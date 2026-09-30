@@ -17,7 +17,6 @@ import {
   MAX_EMBED_CHARS,
   NEAR_DUPLICATE_THRESHOLD,
 } from './indexer.js';
-import { proposeKnowledgePromotions } from './knowledge-promotion.js';
 import { callFastModel, fastModelConfigured } from './llm.js';
 import { foreignScriptChars } from './script-guard.js';
 import { type MemoryHit, searchMemories } from './search.js';
@@ -386,15 +385,6 @@ async function consolidate(projectId: string): Promise<ConsolidationResult> {
       text: `Memory consolidation: ${counts}${summary === counts ? '' : ` — ${summary}`}${archivedRefs.length > 0 ? `\narchived: ${archivedRefs.join(', ')}` : ''}${skippedAsRecorded.length > 0 ? `\nskipped, already recorded by: ${skippedAsRecorded.join(', ')}` : ''}`,
       metadata: { cause: 'memory-consolidation', archivedRefs, skippedAsRecorded },
     });
-  }
-
-  try {
-    await proposeKnowledgePromotions(projectId);
-  } catch (err) {
-    logger.warn(
-      { err: (err as Error).message, projectId },
-      'memory.consolidation: proposeKnowledgePromotions failed',
-    );
   }
 
   return { created, updated, archived, refused: guard.count, summary };

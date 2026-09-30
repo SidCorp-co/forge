@@ -2,8 +2,6 @@ import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueLabels, issues } from '../db/schema.js';
 import { type Actor, recordActivityTx } from '../pipeline/activity.js';
-import { hooks } from '../pipeline/hooks.js';
-import { CONTRACT_INPUT_FIELDS } from './entry-criteria-keys.js';
 import type { ResolvedLabelAttach } from './label-service.js';
 import type { IssueRow } from './read-service.js';
 import type { SessionContextExpect } from './session-context.js';
@@ -28,7 +26,6 @@ export type IssueUpdateInput = {
 
 export async function updateIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
   const row = await writeIssueFields(input);
-  await announceContractInput(input.issueId, row.projectId, input.updates);
   return row;
 }
 
@@ -87,28 +84,11 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
   });
 }
 
-async function announceContractInput(
-  issueId: string,
-  projectId: string,
-  updates: Record<string, unknown>,
-): Promise<void> {
-  const moved = CONTRACT_INPUT_FIELDS.filter((f) => f in updates);
-  if (moved.length === 0) return;
-  await hooks.emit('contractInputChanged', {
-    projectId,
-    issueId,
-    reason: `fields written: ${moved.join(', ')}`,
-  });
-}
-
 /**
  * A `sessionContext` write replaces the field whole, so one that omits a key the
  * field already holds destroys it — there is no history to read it back from.
  * A caller that sent `expect` read the current value and means the removal, so
- * it passes. One that did not is refused by name, naming the keys it would have
- * dropped, because the alternative is the write landing silently: a probe body
- * of `{ probe: 1 }` took `landing`, `lease` and `worklog` off ISS-1127 in one
- * call on 2026-09-21, and the landing checkpoint underneath was unrecoverable.
+ * it passes. One that did not is refused by name, naming the keys it would drop.
  */
 async function refuseUnreadSessionContextDrop(
   tx: Parameters<Parameters<typeof db.transaction>[0]>[0],

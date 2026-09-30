@@ -249,11 +249,6 @@ async function alertRunnerStarved(starvedGraceSeconds: number): Promise<AdminAle
       FROM jobs j
       LEFT JOIN issues i ON i.id = j.issue_id
       JOIN pipeline_runs r ON r.id = j.pipeline_run_id
-      LEFT JOIN LATERAL (
-        SELECT p.agent_config -> 'pipelineConfig' -> 'states' -> (j.payload->>'stageStatus') -> 'deviceIds'
-                 AS device_ids
-        FROM projects p WHERE p.id = j.project_id
-      ) pool ON true
       WHERE j.project_id = ${c.project_id}
         AND j.status = 'queued'
         AND j.type <> 'pm'
@@ -269,14 +264,6 @@ async function alertRunnerStarved(starvedGraceSeconds: number): Promise<AdminAle
           WHERE fcr.claim_capable
             AND ${runnerMayTakeJob(sql`rr.labels`)}
             AND rr.capabilities @> coalesce(nullif(j.payload -> 'requiredCapabilities', 'null'::jsonb), '{}'::jsonb)
-            AND (
-              pool.device_ids IS NULL
-              OR jsonb_typeof(pool.device_ids) <> 'array'
-              OR jsonb_array_length(pool.device_ids) = 0
-              OR lower(rr.device_id::text) IN (
-                SELECT lower(e) FROM jsonb_array_elements_text(pool.device_ids) AS e
-              )
-            )
         )
     `);
     const row = rows[0];

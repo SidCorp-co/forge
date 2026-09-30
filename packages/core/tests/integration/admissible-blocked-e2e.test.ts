@@ -29,22 +29,6 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
-/**
- * `open` is deliberately NOT in `poolBacklog.statuses`: it is an
- * `AUTONOMOUS_DRIVER_STATUS`, so `BACKLOG_ADMISSIBLE_STATUSES` excludes it and
- * naming it here makes the WHOLE `pipelineConfig` unparseable — `admissionOf`
- * then returns null and every row vanishes for a reason that has nothing to do
- * with blockers. Written that way first while building this file, it turned
- * every "is held out" assertion below green on an empty set. `open` reaches the
- * admissible set through the autonomous entry status instead.
- */
-const BACKLOG_CONFIG = {
-  pipelineConfig: {
-    enabled: true,
-    poolBacklog: { statuses: ['confirmed', 'approved', 'reopen'], limit: 20 },
-  },
-};
-
 let harness: TestDatabase;
 let userId: string;
 let projectId: string;
@@ -65,10 +49,6 @@ beforeEach(async () => {
   await truncateAll(harness.db);
   userId = (await createTestUser(harness.db)).id;
   projectId = (await createTestProject(harness.db, userId)).id;
-  await harness.db.execute(sql`
-    UPDATE projects SET agent_config = ${JSON.stringify(BACKLOG_CONFIG)}::jsonb
-    WHERE id = ${projectId}
-  `);
 
   const { pairDevice } = await import('../helpers/pair-device.js');
   const issued = await pairDevice({ ownerId: userId, name: 'nudge-box', platform: 'linux' });
@@ -123,9 +103,8 @@ async function setStatus(id: string, status: string): Promise<void> {
 /**
  * An unblocked row planted in the same fixture as every "is held out" case, so
  * that assertion cannot pass on a set that is empty for some other reason.
- * It is not decoration: with `open` wrongly listed under `poolBacklog.statuses`
- * the config stopped parsing, the route answered `[]` for everything, and each
- * negative below was green while proving nothing.
+ * It is not decoration: a fixture whose project admitted nothing once answered
+ * `[]` for everything, and each negative below was green while proving nothing.
  */
 async function control(): Promise<void> {
   await issue(99);
@@ -283,6 +262,6 @@ describe('ISS-1100 the measurement, and the shape the box reads', () => {
       headers: { authorization: `Bearer ${deviceToken}` },
     });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ items: [], count: 0 });
+    expect(await res.json()).toEqual({ items: [], count: 0, refused: [] });
   });
 });

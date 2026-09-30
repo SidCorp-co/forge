@@ -282,11 +282,6 @@ export async function applyMergeMarker(args: {
       mergedLanding: issue.mergedLanding,
     },
   });
-  await hooks.emit('contractInputChanged', {
-    projectId: before.projectId,
-    issueId: before.id,
-    reason: args.op === 'mark' ? 'merged mark written' : 'merged mark cleared',
-  });
 
   if (args.op !== 'mark') return { issue, action: 'unmarked', mark, markDetail };
   return {

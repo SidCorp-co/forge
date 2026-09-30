@@ -70,7 +70,7 @@ dispatched by a status.
 
 | Skill | Delivered as | Owns |
 |---|---|---|
-| issue-flow | plugin (`pipelineConfig.plugins`) | the whole walk from `open` to `closed` |
+| issue-flow | plugin (`forge_config` `plugins`) | the whole walk from `open` to `closed` |
 | forge-onboard · forge-product-map | project copy, `installOnly` | survey the repo, seed knowledge / the product map |
 | forge-reconcile · forge-verify-skill | Forge-owned, name-reserved | police skill updates; verify a skill installed |
 | forge-skills | this one | author and ship project skills |

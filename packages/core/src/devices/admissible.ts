@@ -5,12 +5,9 @@
  * says "what job may I claim"; this says "what is sitting here that no run and
  * no job has been opened for". A master reads both and decides.
  *
- * It was called the *backlog* while a row here became work only by being
- * promoted into a `drive` job. ISS-933 deleted that act — a master opens the
- * run session itself — so the name is the fact now rather than the pool key.
- *
- * Opt-in per project via `pipelineConfig.poolBacklog`. A project that has not
- * declared one contributes nothing.
+ * A project admits its entry status when its policy's intake is `auto`, and only
+ * the issues a human released at the entry when it is `manual`. A project with no
+ * policy admits nothing and is named in `refused`, never left out in silence.
  */
 
 import { sql } from 'drizzle-orm';
@@ -22,12 +19,10 @@ import {
 import { BLOCKER_SETTLED_STATUSES, DISPATCH_GATING_KIND } from '../issues/dependency-effects.js';
 import { issueWorkInFlightSql } from '../issues/issue-lease.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import {
-  AUTONOMOUS_ENTRY_STATUS,
-  isAutonomous,
-  isEntryGateClosed,
-} from '../pipeline/autonomous-mode.js';
-import { pipelineConfigSchema } from '../pipeline/pipeline-config-schema.js';
+import { AUTONOMOUS_ENTRY_STATUS, isEntryGateClosed } from '../pipeline/autonomous-mode.js';
+import { type PolicyRefusalCode, PolicyRefusedError } from '../project-config/dispatch-policy.js';
+import { readEffectivePolicy } from '../project-config/effective.js';
+import type { PolicyDocument } from '../project-config/schema.js';
 import type { PoolRelation } from './pool.js';
 
 const DEFAULT_ADMISSIBLE_LIMIT = 20;
@@ -55,44 +50,35 @@ export type AdmissibleIssue = {
   pullRequests: IssuePullRequest[];
 };
 
-/** Statuses this project admits, and how many rows it lets a master read. */
 export type Admission = {
   projectId: string;
-  statuses: string[];
   limit: number;
   entryOnRelease: boolean;
 };
 
-function admissionOf(projectId: string, agentConfig: unknown): Admission | null {
-  const ac = (agentConfig as { pipelineConfig?: unknown } | null) ?? {};
-  const parsed = pipelineConfigSchema.safeParse(ac.pipelineConfig ?? {});
-  if (!parsed.success) return null;
-  const cfg = parsed.data;
-  const statuses = new Set<string>(cfg.poolBacklog?.statuses ?? []);
-  const entryOpen = isAutonomous(cfg) && !isEntryGateClosed(cfg);
-  if (entryOpen) statuses.add(AUTONOMOUS_ENTRY_STATUS);
-  if (statuses.size === 0) return null;
+/** A project this device serves that admits nothing, and the refusal that says why. */
+export type AdmissionRefusal = { projectId: string; code: PolicyRefusalCode; message: string };
+
+function admissionOf(projectId: string, policy: PolicyDocument): Admission {
   return {
     projectId,
-    statuses: [...statuses],
-    limit: cfg.poolBacklog?.limit ?? DEFAULT_ADMISSIBLE_LIMIT,
-    entryOnRelease: isAutonomous(cfg) && !entryOpen,
+    limit: DEFAULT_ADMISSIBLE_LIMIT,
+    entryOnRelease: isEntryGateClosed(policy),
   };
 }
 
 /**
- * Every project this device is bound to that has declared an admissible set.
- *
- * Scoped through `runners` exactly as `readPool` is: the device principal sees
+ * Every project this device is bound to, scoped through `runners` exactly as `readPool` is: the
+ * device principal sees
  * its own bindings and nothing its owner's account could otherwise reach.
  */
 export async function readAdmissions(args: {
   deviceId: string;
   projectId?: string | undefined;
-}): Promise<Admission[]> {
+}): Promise<{ admissions: Admission[]; refused: AdmissionRefusal[] }> {
   const projectFilter = args.projectId ? sql`AND p.id = ${args.projectId}` : sql``;
   const rows = (await db.execute(sql`
-    SELECT DISTINCT p.id, p.agent_config
+    SELECT DISTINCT p.id
     FROM runners r
     JOIN projects p ON p.id = r.project_id
     WHERE r.device_id = ${args.deviceId}
@@ -100,9 +86,19 @@ export async function readAdmissions(args: {
       ${projectFilter}
   `)) as unknown as Array<Record<string, unknown>>;
 
-  return rows
-    .map((row) => admissionOf(String(row.id), row.agent_config))
-    .filter((a): a is Admission => a !== null);
+  const admissions: Admission[] = [];
+  const refused: AdmissionRefusal[] = [];
+  for (const row of rows) {
+    const projectId = String(row.id);
+    const held = await readEffectivePolicy(projectId);
+    if (held) {
+      admissions.push(admissionOf(projectId, held.document));
+      continue;
+    }
+    const refusal = new PolicyRefusedError('POLICY_UNDECLARED', projectId, null);
+    refused.push({ projectId, code: refusal.code, message: refusal.message });
+  }
+  return { admissions, refused };
 }
 
 const RELATIONS = sql`
@@ -124,24 +120,17 @@ const RELATIONS = sql`
 /**
  * The admissible issues for one device, across every project it serves.
  *
- * `limit` is per project (each declares its own), so this is one query per
- * admitting project rather than one windowed query — a device serves a handful
- * of projects, and a per-project cap expressed in SQL windows is unreadable for
- * no gain.
+ * `limit` is per project, so this is one query per admitting project rather
+ * than one windowed query — a device serves a handful of projects, and a
+ * per-project cap expressed in SQL windows is unreadable for no gain.
  */
 export async function readAdmissibleIssues(args: {
   deviceId: string;
   projectId?: string | undefined;
-}): Promise<AdmissibleIssue[]> {
-  const admissions = await readAdmissions(args);
-  if (admissions.length === 0) return [];
-
+}): Promise<{ items: AdmissibleIssue[]; refused: AdmissionRefusal[] }> {
+  const { admissions, refused } = await readAdmissions(args);
   const out: AdmissibleIssue[] = [];
   for (const a of admissions) {
-    const statusList = sql.join(
-      a.statuses.map((s) => sql`${s}`),
-      sql`, `,
-    );
     const settledList = sql.join(
       BLOCKER_SETTLED_STATUSES.map((s) => sql`${s}`),
       sql`, `,
@@ -156,10 +145,8 @@ export async function readAdmissibleIssues(args: {
       FROM issues i
       JOIN projects ip ON ip.id = i.project_id
       WHERE i.project_id = ${a.projectId}
-        AND (
-          i.status IN (${statusList})
-          ${a.entryOnRelease ? sql`OR (i.status = ${AUTONOMOUS_ENTRY_STATUS} AND i.session_context ? 'runRelease')` : sql``}
-        )
+        AND i.status = ${AUTONOMOUS_ENTRY_STATUS}
+        ${a.entryOnRelease ? sql`AND i.session_context ? 'runRelease'` : sql``}
         -- a live blocks edge whose blocker has not reached one of BLOCKER_SETTLED_STATUSES holds
         -- this row out of the set. It is correlated on the ADMITTING project and not on
         -- d.to_issue_id alone, because issue_dependencies carries only the composite indexes
@@ -211,5 +198,5 @@ export async function readAdmissibleIssues(args: {
       });
     }
   }
-  return out;
+  return { items: out, refused };
 }

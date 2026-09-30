@@ -3,8 +3,6 @@ export interface GitHubConfig extends Record<string, unknown> {
   owner?: string;
   repo?: string;
   apiBaseUrl?: string;
-  /** ISS-1072 — `false` turns off the `forge/issue-contract` check run. Absent is on. */
-  contractCheck?: boolean;
 }
 
 export interface GitHubSecrets extends Record<string, unknown> {

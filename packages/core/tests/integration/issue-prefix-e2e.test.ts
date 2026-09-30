@@ -442,22 +442,17 @@ describe('a run session under a prefixed project', () => {
     for (const seq of [977, 978]) {
       await harness.db.execute(sql`
         INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id)
-        VALUES (${randomUUID()}, ${p.id}, ${seq}, ${`issue ${seq}`}, 'draft', ${userId})
+        VALUES (${randomUUID()}, ${p.id}, ${seq}, ${`issue ${seq}`}, 'open', ${userId})
       `);
     }
     const deviceId = (await createTestDevice(harness.db, userId)).id;
-    await harness.db.execute(sql`
-      UPDATE projects
-         SET agent_config = ${JSON.stringify({ pipelineConfig: { poolBacklog: { statuses: ['draft'], limit: 20 } } })}::jsonb
-       WHERE id = ${p.id}
-    `);
     await harness.db.execute(sql`
       INSERT INTO runners (id, project_id, device_id, name, type, status)
       VALUES (${randomUUID()}, ${p.id}, ${deviceId}, 'r', 'claude-code', 'online')
     `);
     await openRunSession({ deviceId, projectId: p.id, issueKeys: ['FD-977'], name: 'prefixed' });
 
-    const admitted = (await readAdmissibleIssues({ deviceId, projectId: p.id })).map(
+    const admitted = (await readAdmissibleIssues({ deviceId, projectId: p.id })).items.map(
       (a) => a.issueKey,
     );
     expect(admitted).not.toContain('FD-977');

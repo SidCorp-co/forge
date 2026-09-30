@@ -37,8 +37,7 @@ control. This page is the shortest path from zero to a running pipeline.
 
 - The project appears in your console under the right organization.
 - Your device shows **online** under **Runners**.
-- Your new issue is on the project's Issues list at **Open** — or at **Draft**,
-  if your project reviews new issues before work starts.
+- Your new issue is on the project's Issues list at **Open**.
 
 ## Next
 

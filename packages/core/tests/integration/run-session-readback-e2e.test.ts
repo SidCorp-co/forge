@@ -348,27 +348,20 @@ describe('an issue whose run died', () => {
     const project = await createTestProject(harness.db, user.id);
     const device = await createTestDevice(harness.db, user.id);
     await harness.db.execute(sql`
-      UPDATE projects
-         SET agent_config = ${JSON.stringify({
-           pipelineConfig: { poolBacklog: { statuses: ['draft'], limit: 20 } },
-         })}::jsonb
-       WHERE id = ${project.id}
-    `);
-    await harness.db.execute(sql`
       INSERT INTO runners (id, project_id, device_id, name, type, status)
       VALUES (gen_random_uuid(), ${project.id}, ${device.id}, 'r', 'claude-code', 'online')
     `);
     for (const seq of [880, 881]) {
       await harness.db.execute(sql`
         INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id)
-        VALUES (gen_random_uuid(), ${project.id}, ${seq}, ${`issue ${seq}`}, 'draft', ${user.id})
+        VALUES (gen_random_uuid(), ${project.id}, ${seq}, ${`issue ${seq}`}, 'open', ${user.id})
       `);
     }
     return { user, project, device };
   }
 
   const keysFor = async (deviceId: string, projectId: string) =>
-    (await mods.readAdmissibleIssues({ deviceId, projectId })).map((a) => a.issueKey);
+    (await mods.readAdmissibleIssues({ deviceId, projectId })).items.map((a) => a.issueKey);
 
   it('is offered again once the box reports the run died', async () => {
     const { project, device } = await aBacklogProject();

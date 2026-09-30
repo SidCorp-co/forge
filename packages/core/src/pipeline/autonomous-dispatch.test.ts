@@ -48,24 +48,29 @@ describe('autonomousStepFor', () => {
   });
 });
 
+const POLICY = {
+  version: 1,
+  qa: 'self',
+  intake: { mode: 'auto' },
+  permissions: { driver: { deny: [] } },
+  states: { open: { model: 'opus', permissions: 'driver' } },
+} as never;
+
 describe('isAutonomous', () => {
-  it('answers false only for an unreadable config', () => {
+  it('answers true exactly when the project has a policy', () => {
     expect(isAutonomous(null)).toBe(false);
-    expect(isAutonomous({ enabled: true } as never)).toBe(true);
-    expect(isAutonomous({ enabled: false } as never)).toBe(true);
+    expect(isAutonomous(POLICY)).toBe(true);
   });
 });
 
 describe('dispatchAutonomous', () => {
-  it('declines the decision when the config could not be read', async () => {
-    expect(await dispatchAutonomous({ ...BASE, status: 'open', cfg: null })).toBe(false);
+  it('declines the decision for a project with no policy', async () => {
+    expect(await dispatchAutonomous({ ...BASE, status: 'open', policy: null })).toBe(false);
     expect(insertAndEnqueueJob).not.toHaveBeenCalled();
   });
 
   it('mints neither a run nor a job at the entry status', async () => {
-    expect(await dispatchAutonomous({ ...BASE, status: 'open', cfg: { enabled: true } })).toBe(
-      true,
-    );
+    expect(await dispatchAutonomous({ ...BASE, status: 'open', policy: POLICY })).toBe(true);
 
     expect(insertAndEnqueueJob).not.toHaveBeenCalled();
     expect(openIssueRun).not.toHaveBeenCalled();
@@ -73,7 +78,7 @@ describe('dispatchAutonomous', () => {
 
   it('owns the decision at every other status, and enqueues nothing there', async () => {
     for (const status of ['confirmed', 'developed', 'testing', 'closed'] as const) {
-      expect(await dispatchAutonomous({ ...BASE, status, cfg: { enabled: true } })).toBe(true);
+      expect(await dispatchAutonomous({ ...BASE, status, policy: POLICY })).toBe(true);
     }
     expect(insertAndEnqueueJob).not.toHaveBeenCalled();
     expect(openIssueRun).not.toHaveBeenCalled();

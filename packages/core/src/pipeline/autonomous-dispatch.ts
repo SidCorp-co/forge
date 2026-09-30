@@ -2,10 +2,10 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
 import { logger } from '../logger.js';
+import type { PolicyDocument } from '../project-config/schema.js';
 import { wakeMastersForProject } from '../ws/master-wake.js';
 import type { Actor } from './activity.js';
 import { AUTONOMOUS_ENTRY_STATUS, autonomousStepFor, isAutonomous } from './autonomous-mode.js';
-import type { PipelineConfig } from './pipeline-config-schema.js';
 
 export {
   AUTONOMOUS_ENTRY_STATUS,
@@ -21,7 +21,7 @@ export interface DispatchAutonomousArgs {
   issueId: string;
   status: IssueStatus;
   actor: Actor;
-  cfg: PipelineConfig | null;
+  policy: PolicyDocument | null;
   projectCreatedBy: string | null;
 }
 
@@ -36,7 +36,7 @@ export interface DispatchAutonomousArgs {
  * caller returns without walking the staged path.
  */
 export async function dispatchAutonomous(args: DispatchAutonomousArgs): Promise<boolean> {
-  if (!isAutonomous(args.cfg)) return false;
+  if (!isAutonomous(args.policy)) return false;
   if (!autonomousStepFor(args.status)) return true;
   logger.debug(
     { projectId: args.projectId, issueId: args.issueId, status: args.status },

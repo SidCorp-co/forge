@@ -62,6 +62,14 @@ vi.mock('../pipeline/runs.js', () => ({
   setCurrentStepForOpenIssueRun: vi.fn(async () => undefined),
 }));
 
+const readEffectivePolicy = vi.fn(async (_projectId: string) => ({
+  revision: 1,
+  document: { intake: { mode: 'auto' } },
+}));
+vi.mock('../project-config/effective.js', () => ({
+  readEffectivePolicy: (projectId: string) => readEffectivePolicy(projectId),
+}));
+
 const { issueExtrasRoutes } = await import('./extras-routes.js');
 const { signUserToken } = await import('../auth/jwt.js');
 const { errorHandler } = await import('../middleware/error.js');
@@ -159,7 +167,7 @@ describe('POST /api/issues/:id/enrich', () => {
 });
 
 describe('POST /api/issues/:id/run-pipeline-step', () => {
-  function setupHappyPath(opts: { status?: string; agentConfig?: unknown } = {}) {
+  function setupHappyPath(opts: { status?: string } = {}) {
     authVerified();
     selectLimit.mockResolvedValueOnce([
       { id: ISSUE_ID, projectId: PROJECT_ID, status: opts.status ?? 'open' },
@@ -170,7 +178,7 @@ describe('POST /api/issues/:id/run-pipeline-step', () => {
       role: 'member',
       orgRole: null,
     });
-    selectLimit.mockResolvedValueOnce([{ agentConfig: opts.agentConfig ?? {}, ownerId: USER_ID }]);
+    selectLimit.mockResolvedValueOnce([{ createdBy: USER_ID, archivedAt: null }]);
     selectLimit.mockResolvedValueOnce([]);
     insertReturning.mockResolvedValueOnce([{ id: JOB_ID }]);
   }
@@ -193,15 +201,27 @@ describe('POST /api/issues/:id/run-pipeline-step', () => {
     expect(wakeMastersForProject).toHaveBeenCalledTimes(1);
   });
 
-  it('202 even when the entry stage is gated to a human', async () => {
-    setupHappyPath({
-      status: 'open',
-      agentConfig: { pipelineConfig: { states: { open: { mode: 'manual' } } } },
+  it('202 even when the policy intake is manual: the release is the human act it waits for', async () => {
+    readEffectivePolicy.mockResolvedValueOnce({
+      revision: 1,
+      document: { intake: { mode: 'manual' } },
     });
+    setupHappyPath({ status: 'open' });
 
     const res = await post();
 
     expect(res.status).toBe(202);
+  });
+
+  it('409 POLICY_UNDECLARED for a project with no policy, releasing nothing', async () => {
+    readEffectivePolicy.mockResolvedValueOnce(null as never);
+    setupHappyPath({ status: 'open' });
+
+    const res = await post();
+
+    expect(res.status).toBe(409);
+    expect(JSON.stringify(await res.json())).toContain('POLICY_UNDECLARED');
+    expect(wakeMastersForProject).not.toHaveBeenCalled();
   });
 
   it('400 on a body that still names a staged stage', async () => {
@@ -223,7 +243,7 @@ describe('POST /api/issues/:id/run-pipeline-step', () => {
       role: 'member',
       orgRole: null,
     });
-    selectLimit.mockResolvedValueOnce([{ agentConfig: {}, ownerId: USER_ID }]);
+    selectLimit.mockResolvedValueOnce([{ createdBy: USER_ID, archivedAt: null }]);
 
     const res = await post();
 

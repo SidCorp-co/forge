@@ -23,8 +23,6 @@ import { resolveAutonomousParkTarget, storedWaitingKind } from './autonomous-par
 import { noOpSentence } from './close-substitution.js';
 import { expireBlocksEdgesOnDrop, type UnblockedDependent } from './drop-cascade.js';
 import { recordDropUnblock } from './drop-unblock.js';
-import { resolveDeclaredEntryCriteria } from './entry-criteria.js';
-import type { EntryCriterionKey } from './entry-criteria-keys.js';
 import { refuseUnshippedClose } from './merged-at.js';
 import { mintParkQuestion } from './park-question.js';
 import { publishPipelineHealthChanged } from './pipeline-health.js';
@@ -57,7 +55,6 @@ export type TransitionErrorCode =
   | 'STALE_TRANSITION'
   | 'NO_WORK_EVIDENCE'
   | 'RELEASE_RECORD_REQUIRED'
-  | 'ENTRY_CRITERIA_UNMET'
   | 'CLOSE_REQUIRES_SHIPPED'
   | 'WAITING_KIND_NOT_APPLICABLE'
   | 'ISSUE_ARCHIVED'
@@ -341,11 +338,6 @@ export async function transitionIssueStatus(
     throw new TransitionError('RELEASE_RECORD_REQUIRED', unrecorded.detail, unrecorded.details);
   }
 
-  const declaredCriteria =
-    options.skip === true
-      ? []
-      : await resolveDeclaredEntryCriteria(issue.projectId, requestedStatus);
-
   const txResult = await executeTransitionWrite({
     issue,
     fromStatus,
@@ -354,7 +346,6 @@ export async function transitionIssueStatus(
     actor,
     options,
     reopening,
-    declaredCriteria,
   });
   const updated = txResult.row;
 
@@ -414,7 +405,6 @@ type TransitionWriteInput = {
   actor: TransitionActor;
   options: ApplyStatusTransitionOptions;
   reopening: boolean;
-  declaredCriteria: readonly EntryCriterionKey[];
 };
 
 type TransitionWriteResult = {
@@ -439,7 +429,6 @@ function kernelActorFor(actor: TransitionActor): KernelActor {
 
 async function executeTransitionWrite(input: TransitionWriteInput): Promise<TransitionWriteResult> {
   const { issue, fromStatus, requestedStatus, toStatus, actor, options, reopening } = input;
-  const { declaredCriteria } = input;
   const draftGate =
     toStatus === 'draft' && !options.skip
       ? [
@@ -476,7 +465,6 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
         toStatus: requestedStatus,
         agency: actorAgency(actor),
         skip: options.skip === true,
-        declaredCriteria,
         executor: tx,
       });
       if (violation) throw new TransitionError(violation.code, violation.detail, violation.details);

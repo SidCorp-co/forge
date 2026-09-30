@@ -57,4 +57,4 @@ export async function patchAgentConfigKeys(
 }
 
 export const RETIRED_STATE_CONTEXT_MESSAGE =
-  'agentConfig.stateContext decides nothing and has been removed — a model override and a spend cap per jobType were stored there and consulted by no dispatch. The per-stage keys that DO decide are pipelineConfig.states[*].model and pipelineConfig.states[*].budget, resolved by resolveStageOverrides and enforced by jobs/budget-check.ts. Set those instead, and remove stateContext from this request.';
+  "agentConfig.stateContext decides nothing and has been removed — a model override and a spend cap per jobType were stored there and consulted by no dispatch. The model a job runs on is its state's `model` in the project's policy (PUT /api/projects/:id/policy); there is no spend cap. Remove stateContext from this request.";

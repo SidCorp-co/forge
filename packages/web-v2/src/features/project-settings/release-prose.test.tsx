@@ -4,16 +4,13 @@
 // release blockers are authored as markdown so an API caller gets code spans,
 // and this screen rendered them as plain text — so "at `testing`" and "sending
 // it as `null`" arrived with their backticks, and the first thing a reader's
-// eye caught was the authoring (ISS-1127). The same tab also labelled a
-// draining box `offline` while a blocker on it called the same box up and
-// reporting, which is two accounts of one box on one screen.
+// eye caught was the authoring (ISS-1127).
 
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ProjectRunner } from "@/features/runners/types";
 import type { ReleaseReadiness } from "./types";
 
 expect.extend(matchers);
@@ -27,14 +24,8 @@ vi.mock("./hooks", async (importActual) => {
 const toast = vi.fn();
 vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast }) }));
 
-const projectRunners = vi.fn();
-vi.mock("@/features/runners/hooks", async (importActual) => {
-	const actual = await importActual<typeof import("@/features/runners/hooks")>();
-	return { ...actual, useProjectRunners: () => projectRunners() };
-});
 
 const { ReleaseSection } = await import("./components/release-section");
-const { RunnerPoolsSection } = await import("./components/runner-pools-section");
 
 function draw(node: ReactElement) {
 	const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -66,30 +57,6 @@ function ready(over: Partial<ReleaseReadiness>): ReleaseReadiness {
 	} as ReleaseReadiness;
 }
 
-function runner(over: Partial<ProjectRunner>): ProjectRunner {
-	return {
-		runnerId: "r-1",
-		deviceId: "d-1",
-		deviceName: "dev1",
-		platform: "linux",
-		deviceStatus: "online",
-		agentVersion: "0.17.1",
-		deviceDisabledAt: null,
-		runnerStatus: "online",
-		lastError: null,
-		limitReason: null,
-		rateLimitedUntil: null,
-		limitDetail: null,
-		repoPath: null,
-		branch: null,
-		labels: [],
-		lastSeenAt: new Date().toISOString(),
-		provisionStatus: "ready",
-		provisionDetail: null,
-		provisionedAt: null,
-		...over,
-	} as ProjectRunner;
-}
 
 afterEach(cleanup);
 
@@ -206,42 +173,5 @@ describe("the Release section's prose", () => {
 
 		expect(container.textContent).toMatch(/closes unverified/i);
 		expect(container.textContent).not.toMatch(/refused/i);
-	});
-});
-
-describe("the Runner pools matrix", () => {
-	it("calls a draining box out of the pool, not offline, because it is up", () => {
-		projectRunners.mockReturnValue({
-			data: [runner({ runnerStatus: "draining" })],
-			isLoading: false,
-		});
-
-		draw(<RunnerPoolsSection projectId={PROJECT_ID} config={{}} canEdit={false} />);
-
-		expect(screen.getByText("out of the pool")).toBeInTheDocument();
-		expect(screen.queryByText("offline")).toBeNull();
-	});
-
-	it("says the same of a disabled box", () => {
-		projectRunners.mockReturnValue({
-			data: [runner({ runnerStatus: "disabled" })],
-			isLoading: false,
-		});
-
-		draw(<RunnerPoolsSection projectId={PROJECT_ID} config={{}} canEdit={false} />);
-
-		expect(screen.getByText("out of the pool")).toBeInTheDocument();
-	});
-
-	it("still says offline of a box whose device is not online", () => {
-		projectRunners.mockReturnValue({
-			data: [runner({ deviceStatus: "offline", runnerStatus: "offline" })],
-			isLoading: false,
-		});
-
-		draw(<RunnerPoolsSection projectId={PROJECT_ID} config={{}} canEdit={false} />);
-
-		expect(screen.getByText("offline")).toBeInTheDocument();
-		expect(screen.queryByText("out of the pool")).toBeNull();
 	});
 });

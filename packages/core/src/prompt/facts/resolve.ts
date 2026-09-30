@@ -20,10 +20,6 @@ import {
 } from '../../knowledge/service.js';
 import { logger } from '../../logger.js';
 import {
-  DEFAULT_NO_PROGRESS_ROUNDS,
-  resolveNoProgressRounds,
-} from '../../pipeline/reopen-policy.js';
-import {
   type KnowledgeObligation,
   missingProjectKnowledge,
 } from '../../projects/autonomous-contract.js';
@@ -34,9 +30,9 @@ import {
   unreservedProjectKeyRefusal,
 } from '../../projects/project-facts.js';
 import { chainLiveBranch, type ReleaseChain } from '../../projects/release-chain.js';
-import { effectivePipelineStates } from './effective-ladder.js';
 import { renderTestUrls, TEST_CREDS_POINTER } from './environment-keys.js';
 import {
+  CANONICAL_LADDER,
   type FactRenderContext,
   FORGE_FACTS,
   type ForgeFact,
@@ -61,15 +57,12 @@ export interface ResolvedFact {
 export type ProjectVarResolver = (key: string) => string | undefined;
 
 export interface ProjectFactInputs {
-  /** Project happy-path ladder (enabled stages). */
+  /** The happy-path status ladder (`registry.ts:CANONICAL_LADDER`). */
   ladder: IssueStatus[];
   /** Raw project branch columns — lets a caller that already needs this read
    *  (e.g. the system-prompt builder) reuse it instead of reading `projects`
    *  a second time for the `## Project Config` block. */
   branches: { baseBranch: string | null; releaseChain: ReleaseChain };
-  /** `pipelineConfig.reopenPolicy.noProgressRounds`, defaulted. Advisory —
-   *  rendered into `## Project Config` for the agent to judge against. */
-  noProgressRounds: number;
   /** Resolver for `{{project:<key>}}`. */
   project: ProjectVarResolver;
   /** Slugs of this project's `injection: 'on_demand'` knowledge entries — the
@@ -214,13 +207,11 @@ export async function loadProjectModules(projectId: string): Promise<ProjectModu
  *  `{{project:}}` resolver (project columns + environments + connected
  *  integrations) and this project's knowledge entries. */
 export async function loadProjectFactInputs(projectId: string): Promise<ProjectFactInputs> {
-  let states: Record<string, { enabled?: boolean } | undefined> = {};
   let baseBranch: string | null = null;
   let releaseChain: ReleaseChain = [];
   let repoPath: string | null = null;
   let environments: NormalizedEnvironments = normalizeEnvironments(null);
   let integrations: IntegrationRow[] = [];
-  let noProgressRounds = DEFAULT_NO_PROGRESS_ROUNDS;
   let modules: ProjectModuleFact[] = [];
   let alwaysInjectFacts: Array<{ key: string; text: string }> = [];
   let projectFactKeys: string[] = [];
@@ -230,7 +221,6 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
   try {
     const [row] = await db
       .select({
-        agentConfig: projects.agentConfig,
         environments: projects.environments,
         repoPath: projects.repoPath,
         repoUrl: projects.repoUrl,
@@ -241,12 +231,6 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
       .from(projects)
       .where(eq(projects.id, projectId))
       .limit(1);
-    const ac =
-      (row?.agentConfig as {
-        pipelineConfig?: { states?: typeof states };
-      } | null) ?? null;
-    states = ac?.pipelineConfig?.states ?? {};
-    noProgressRounds = resolveNoProgressRounds(row?.agentConfig);
     environments = normalizeEnvironments(row?.environments);
     baseBranch = row?.baseBranch ?? null;
     releaseChain = row?.releaseChain ?? [];
@@ -256,7 +240,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
     integrations = await loadActiveIntegrationRows(projectId, row?.orgId ?? null);
     modules = await loadProjectModules(projectId);
   } catch {
-    // defaults → full ladder, empty {{project:}} resolver
+    // defaults → empty {{project:}} resolver
   }
 
   try {
@@ -279,9 +263,8 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
   }
 
   return {
-    ladder: effectivePipelineStates(states),
+    ladder: [...CANONICAL_LADDER],
     branches: { baseBranch, releaseChain },
-    noProgressRounds,
     project: makeProjectResolver({
       baseBranch,
       releaseChain,

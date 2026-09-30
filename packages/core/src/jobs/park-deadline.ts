@@ -7,16 +7,16 @@ import { logger } from '../logger.js';
 import type { LoopScope } from './loop-monitor.js';
 import { kindTuple, NEVER_PARKED_SESSION_KINDS } from './session-kinds.js';
 
-const DEFAULT_RESIDENCY_SECONDS = 10 * 60;
+// cm:edge value -> packages/runner/crates/forge-runner-core/src/runner/claude_code.rs:SESSION_IDLE_TIMEOUT
+// — the runner closes a parked session after this long, so a row parked past it plus the grace has
+// no process behind it.
+const RESIDENCY_SECONDS = 10 * 60;
 
 const PARK_GRACE_SECONDS = 5 * 60;
 
 const RESIDENCY_DEADLINE = sql`
   COALESCE(${agentSessions.lastHeartbeatAt}, ${agentSessions.createdAt})
-    < now() - make_interval(secs => ${PARK_GRACE_SECONDS} + COALESCE((
-        SELECT (p.agent_config -> 'pipelineConfig' ->> 'sessionResidencySeconds')::int
-        FROM projects p WHERE p.id = agent_sessions.project_id
-      ), ${DEFAULT_RESIDENCY_SECONDS}))`;
+    < now() - make_interval(secs => ${PARK_GRACE_SECONDS + RESIDENCY_SECONDS})`;
 
 /**
  * Whether the session at `sessionId` is parked on a person right now.

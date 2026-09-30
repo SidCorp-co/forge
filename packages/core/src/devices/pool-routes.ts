@@ -90,8 +90,11 @@ devicePoolRoutes.get(
   }),
   async (c) => {
     const { projectId } = c.req.valid('query');
-    const items = await readAdmissibleIssues({ deviceId: c.get('device').id, projectId });
-    return c.json({ items, count: items.length });
+    const { items, refused } = await readAdmissibleIssues({
+      deviceId: c.get('device').id,
+      projectId,
+    });
+    return c.json({ items, count: items.length, refused });
   },
 );
 

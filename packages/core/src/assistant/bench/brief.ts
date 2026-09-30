@@ -24,6 +24,7 @@ import {
   type KnowledgeRow,
   type Project,
   type ProjectDetail,
+  type ProjectIntake,
 } from './client.js';
 import type { FixtureName, Task } from './task.js';
 
@@ -44,9 +45,9 @@ export interface ProjectBriefSource {
   slug: string;
   detail: ProjectDetail;
   counts: IssueCounts;
-  /** The effective sequence, already resolved by `effectivePipelineStates`. */
+  /** The canonical status ladder, in order. */
   pipelineStates: string[];
-  intakeGate: boolean;
+  intake: ProjectIntake;
   facts: Record<string, string>;
   knowledge: BriefKnowledgeEntry[];
   /** Entries the deployment's response cap left out of the index; disclosed rather than dropped. */
@@ -74,6 +75,13 @@ const clamp = (text: string, max: number): string =>
 const NAME_MAX = 120;
 const TITLE_MAX = 200;
 
+const INTAKE_LINE: Record<ProjectIntake, string> = {
+  auto: '- Intake is automatic: a new filing lands at `open`, where a master picks it up.',
+  manual:
+    '- Intake is manual: a new filing lands at `open` and waits there until a person releases it.',
+  none: '- The project has no policy, so a new filing lands at `open` and nothing dispatches it.',
+};
+
 const groundingLines = (src: ProjectBriefSource): string[] => {
   const counts = Object.entries(src.counts.byStatus).sort((a, b) => b[1] - a[1]);
   const total = counts.reduce((sum, [, n]) => sum + n, 0);
@@ -87,13 +95,11 @@ const groundingLines = (src: ProjectBriefSource): string[] => {
     '',
     '## Effective pipeline, in order',
     src.pipelineStates.join(' → '),
-    "This is the product's canonical ladder with this project's stage overrides applied. The stored `pipelineConfig.states` map is per-stage configuration over four optional keys and is NOT this sequence.",
+    "This is the product's canonical ladder; no project overrides it.",
     '',
     '## Filing rules',
     `- Issue keys on this project read \`${src.detail.issuePrefix ?? 'ISS'}-<number>\`.`,
-    src.intakeGate
-      ? '- The intake gate is ON: a new filing is parked at `draft` and a person admits it before any work starts.'
-      : '- The intake gate is off: a new filing lands at `open`, where the pipeline picks it up.',
+    INTAKE_LINE[src.intake],
     '- The deployment serves no other per-project filing rule; anything else is the product-wide method.',
     '',
     '## Issue waiting on information',
@@ -274,10 +280,10 @@ export async function readProjectBrief(
   const bodies = new Map<string, string>();
   for (const entry of wanted)
     bodies.set(entry.slug, await client.knowledgeEntry(project.id, entry.slug));
-  const [detail, config, counts, facts, newestIssues, newestOpenIssues, waitingIssue] =
+  const [detail, intake, counts, facts, newestIssues, newestOpenIssues, waitingIssue] =
     await Promise.all([
       client.projectDetail(project.id),
-      client.pipelineConfig(project.id),
+      client.intake(project.id),
       client.issueCounts(project.id),
       client.projectFacts(project.id),
       client.newestIssues(project.id, BRIEF_NEWEST_ISSUES),
@@ -289,7 +295,7 @@ export async function readProjectBrief(
     detail,
     counts,
     pipelineStates: await client.pipelineStates(project.id),
-    intakeGate: config.intakeGate,
+    intake,
     facts,
     knowledge: mergeKnowledge(index.rows, wanted, bodies),
     knowledgeOmitted: Math.max(

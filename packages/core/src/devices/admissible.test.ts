@@ -1,7 +1,7 @@
 // `db.execute` is mocked (no Postgres), so ranking and the JOINs themselves are
-// the database's business. What these tests own is `backlog.ts`'s own logic:
-// which projects contribute an admission at all, what the SQL is asked to
-// exclude, and the shape a master is handed.
+// the database's business. What these tests own is `admissible.ts`'s own logic:
+// which projects contribute an admission at all, which are refused, what the SQL
+// is asked to exclude, and the shape a master is handed.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -19,6 +19,14 @@ const select = vi.fn(() => {
 
 vi.mock('../db/client.js', () => ({ db: { execute, select } }));
 
+const policies = new Map<string, unknown>();
+vi.mock('../project-config/effective.js', () => ({
+  readEffectivePolicy: vi.fn(async (projectId: string) => {
+    const document = policies.get(projectId);
+    return document ? { revision: 1, document } : null;
+  }),
+}));
+
 const { readAdmissibleIssues, readAdmissions } = await import('./admissible.js');
 const { BLOCKER_SETTLED_STATUSES, DISPATCH_GATING_KIND } = await import(
   '../issues/dependency-effects.js'
@@ -26,21 +34,27 @@ const { BLOCKER_SETTLED_STATUSES, DISPATCH_GATING_KIND } = await import(
 
 const DEVICE = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
 const PROJECT = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const OTHER = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 
-const projectRow = (pipelineConfig: unknown) => ({
-  id: PROJECT,
-  agent_config: { pipelineConfig },
+const projectRow = (id = PROJECT) => ({ id });
+
+const policy = (mode: 'auto' | 'manual') => ({
+  version: 1,
+  qa: 'self',
+  intake: { mode },
+  permissions: { driver: { deny: [] } },
+  states: { open: { model: 'opus', permissions: 'driver' } },
 });
 
 const issueRow = (over: Record<string, unknown> = {}) => ({
   id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
   iss_seq: 917,
   project_id: PROJECT,
-  title: 'a draft nobody has decided about',
+  title: 'an issue nobody has started',
   description: null,
   priority: 'high',
   category: 'kernel-hardening',
-  status: 'draft',
+  status: 'open',
   age_minutes: 12,
   relations: [],
   ...over,
@@ -48,57 +62,40 @@ const issueRow = (over: Record<string, unknown> = {}) => ({
 
 beforeEach(() => {
   execute.mockReset();
+  policies.clear();
+  policies.set(PROJECT, policy('auto'));
 });
 
 describe('readAdmissions', () => {
-  it('admits the entry status even when no poolBacklog is declared', async () => {
-    execute.mockResolvedValueOnce([projectRow({ enabled: true })]);
-    await expect(readAdmissions({ deviceId: DEVICE })).resolves.toEqual([
-      { projectId: PROJECT, statuses: ['open'], limit: 20, entryOnRelease: false },
-    ]);
+  it('admits the entry status of a project whose policy intake is auto', async () => {
+    execute.mockResolvedValueOnce([projectRow()]);
+    await expect(readAdmissions({ deviceId: DEVICE })).resolves.toEqual({
+      admissions: [{ projectId: PROJECT, limit: 20, entryOnRelease: false }],
+      refused: [],
+    });
   });
 
-  it('admits the entry status beside a declared backlog, never instead of it', async () => {
-    execute.mockResolvedValueOnce([projectRow({ poolBacklog: { statuses: ['draft'] } })]);
-    const [a] = await readAdmissions({ deviceId: DEVICE });
-    expect(a?.statuses).toEqual(['draft', 'open']);
-  });
-
-  it('withholds the entry status while a human holds the gate', async () => {
-    execute.mockResolvedValueOnce([
-      projectRow({ states: { open: { mode: 'manual' } }, poolBacklog: { statuses: ['draft'] } }),
-    ]);
-    const [a] = await readAdmissions({ deviceId: DEVICE });
-    expect(a?.statuses).toEqual(['draft']);
+  it('admits only released entry issues while the policy intake is manual', async () => {
+    policies.set(PROJECT, policy('manual'));
+    execute.mockResolvedValueOnce([projectRow()]);
+    const { admissions } = await readAdmissions({ deviceId: DEVICE });
     expect(
-      a?.entryOnRelease,
-      'a gate is per project and a Run is per issue, so a gated project must still be able to offer the ONE issue a human released — without this the only way to release one is to open the gate for all of them',
+      admissions[0]?.entryOnRelease,
+      'a gate is per project and a Run is per issue, so a gated project must still be able to offer the ONE issue a human released',
     ).toBe(true);
   });
 
-  it('reads the declared statuses and the declared limit', async () => {
-    execute.mockResolvedValueOnce([
-      projectRow({ poolBacklog: { statuses: ['draft', 'on_hold'], limit: 7 } }),
-    ]);
-    await expect(readAdmissions({ deviceId: DEVICE })).resolves.toEqual([
+  it('refuses a project with no policy by name, never leaving it out in silence', async () => {
+    execute.mockResolvedValueOnce([projectRow(), projectRow(OTHER)]);
+    const { admissions, refused } = await readAdmissions({ deviceId: DEVICE });
+    expect(admissions.map((a) => a.projectId)).toEqual([PROJECT]);
+    expect(refused).toEqual([
       {
-        projectId: PROJECT,
-        statuses: ['draft', 'on_hold', 'open'],
-        limit: 7,
-        entryOnRelease: false,
+        projectId: OTHER,
+        code: 'POLICY_UNDECLARED',
+        message: expect.stringContaining(`project ${OTHER} has no policy`),
       },
     ]);
-  });
-
-  it('defaults the limit when the project declared none', async () => {
-    execute.mockResolvedValueOnce([projectRow({ poolBacklog: { statuses: ['draft'] } })]);
-    const [a] = await readAdmissions({ deviceId: DEVICE });
-    expect(a?.limit).toBe(20);
-  });
-
-  it('reads a config the canonical schema rejects as no backlog at all', async () => {
-    execute.mockResolvedValueOnce([projectRow({ poolBacklog: { statuses: ['open'] } })]);
-    await expect(readAdmissions({ deviceId: DEVICE })).resolves.toEqual([]);
   });
 
   it('scopes the project read through this device runners binding', async () => {
@@ -118,24 +115,46 @@ describe('readAdmissions', () => {
 });
 
 describe('readAdmissibleIssues', () => {
-  it('asks the database nothing when a gated project declares no backlog either', async () => {
-    execute.mockResolvedValueOnce([projectRow({ states: { open: { mode: 'manual' } } })]);
-    await expect(readAdmissibleIssues({ deviceId: DEVICE })).resolves.toEqual([]);
+  it('asks the database nothing for a project with no policy, and says so', async () => {
+    policies.clear();
+    execute.mockResolvedValueOnce([projectRow()]);
+    const out = await readAdmissibleIssues({ deviceId: DEVICE });
+    expect(out.items).toEqual([]);
+    expect(out.refused.map((r) => r.code)).toEqual(['POLICY_UNDECLARED']);
     expect(execute).toHaveBeenCalledTimes(1);
   });
 
+  it('reads only the released entry issues of a manual-intake project', async () => {
+    policies.set(PROJECT, policy('manual'));
+    execute.mockResolvedValueOnce([projectRow()]);
+    execute.mockResolvedValueOnce([]);
+    await readAdmissibleIssues({ deviceId: DEVICE });
+    const q = JSON.stringify(execute.mock.calls[1]?.[0]);
+    expect(q).toContain("session_context ? 'runRelease'");
+  });
+
+  it('reads every entry issue of an auto-intake project', async () => {
+    execute.mockResolvedValueOnce([projectRow()]);
+    execute.mockResolvedValueOnce([]);
+    await readAdmissibleIssues({ deviceId: DEVICE });
+    const q = JSON.stringify(execute.mock.calls[1]?.[0]);
+    expect(q).not.toContain('runRelease');
+  });
+
   it('returns rows carrying no job id', async () => {
-    execute.mockResolvedValueOnce([projectRow({ poolBacklog: { statuses: ['draft'] } })]);
+    execute.mockResolvedValueOnce([projectRow()]);
     execute.mockResolvedValueOnce([issueRow()]);
-    const [row] = await readAdmissibleIssues({ deviceId: DEVICE });
+    const {
+      items: [row],
+    } = await readAdmissibleIssues({ deviceId: DEVICE });
     expect(row).toBeDefined();
     expect(row).not.toHaveProperty('jobId');
     expect(row?.issueKey).toBe('ISS-917');
-    expect(row?.status).toBe('draft');
+    expect(row?.status).toBe('open');
   });
 
   it('carries the raw blocker facts and never a computed verdict', async () => {
-    execute.mockResolvedValueOnce([projectRow({ poolBacklog: { statuses: ['draft'] } })]);
+    execute.mockResolvedValueOnce([projectRow()]);
     execute.mockResolvedValueOnce([
       issueRow({
         relations: [
@@ -149,7 +168,9 @@ describe('readAdmissibleIssues', () => {
         ],
       }),
     ]);
-    const [row] = await readAdmissibleIssues({ deviceId: DEVICE });
+    const {
+      items: [row],
+    } = await readAdmissibleIssues({ deviceId: DEVICE });
     expect(row?.relations).toEqual([
       {
         kind: 'blocks',
@@ -163,7 +184,7 @@ describe('readAdmissibleIssues', () => {
   });
 
   it('excludes issues that already carry a job or an open run, and nothing more', async () => {
-    execute.mockResolvedValueOnce([projectRow({ poolBacklog: { statuses: ['draft'], limit: 3 } })]);
+    execute.mockResolvedValueOnce([projectRow()]);
     execute.mockResolvedValueOnce([]);
     await readAdmissibleIssues({ deviceId: DEVICE });
     const q = JSON.stringify(execute.mock.calls[1]?.[0]);
@@ -171,7 +192,7 @@ describe('readAdmissibleIssues', () => {
     expect(q).toContain('pipeline_runs');
     expect(q).toContain('running');
     expect(q).toContain('paused');
-    expect(q).toContain('draft');
+    expect(q).toContain('open');
     expect(q).toContain('created_at');
     expect(q).not.toContain('repo_pull_requests');
     expect(q).not.toContain('merged_at IS');
@@ -179,9 +200,7 @@ describe('readAdmissibleIssues', () => {
 
   describe('the blocks clause ISS-1100 added', () => {
     async function blockedQuery(): Promise<string> {
-      execute.mockResolvedValueOnce([
-        projectRow({ poolBacklog: { statuses: ['draft'], limit: 3 } }),
-      ]);
+      execute.mockResolvedValueOnce([projectRow()]);
       execute.mockResolvedValueOnce([]);
       await readAdmissibleIssues({ deviceId: DEVICE });
       return JSON.stringify(execute.mock.calls[1]?.[0]);
@@ -219,9 +238,11 @@ describe('readAdmissibleIssues', () => {
   });
 
   it('tolerates an issue with no iss_seq', async () => {
-    execute.mockResolvedValueOnce([projectRow({ poolBacklog: { statuses: ['draft'] } })]);
+    execute.mockResolvedValueOnce([projectRow()]);
     execute.mockResolvedValueOnce([issueRow({ iss_seq: null })]);
-    const [row] = await readAdmissibleIssues({ deviceId: DEVICE });
+    const {
+      items: [row],
+    } = await readAdmissibleIssues({ deviceId: DEVICE });
     expect(row?.issueKey).toBeNull();
   });
 });

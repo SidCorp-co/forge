@@ -1,6 +1,5 @@
-// The mock supports the two call shapes session-resume.ts uses: a
-// select-from-where-limit for the bounds, and a db.execute for the context
-// estimate.
+// The mock supports the call shape session-resume.ts uses: a db.execute for
+// the context estimate.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -24,7 +23,7 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
-const { loadResumeBounds, estimateIssueContextTokens } = await import('./session-resume.js');
+const { estimateIssueContextTokens } = await import('./session-resume.js');
 
 beforeEach(() => {
   selectLimitResults.length = 0;
@@ -33,50 +32,6 @@ beforeEach(() => {
   limitSpy.mockClear();
   where.mockClear();
   executeSpy.mockClear();
-});
-
-describe('loadResumeBounds (ISS-580)', () => {
-  it('returns defaults when project has no pipelineConfig', async () => {
-    selectLimitResults.push([{ agentConfig: null }]);
-    const bounds = await loadResumeBounds('p-1');
-    expect(bounds).toEqual({ maxResumeTokens: 150_000 });
-  });
-
-  it('returns defaults when pipelineConfig is missing the new fields', async () => {
-    selectLimitResults.push([{ agentConfig: { pipelineConfig: { enabled: true } } }]);
-    const bounds = await loadResumeBounds('p-1');
-    expect(bounds).toEqual({ maxResumeTokens: 150_000 });
-  });
-
-  it('returns configured values when both fields are present', async () => {
-    selectLimitResults.push([
-      {
-        agentConfig: {
-          pipelineConfig: { maxResumeTokens: 200_000 },
-        },
-      },
-    ]);
-    const bounds = await loadResumeBounds('p-1');
-    expect(bounds).toEqual({ maxResumeTokens: 200_000 });
-  });
-
-  it('treats 0 as a valid (gate-disabled) value', async () => {
-    selectLimitResults.push([
-      {
-        agentConfig: {
-          pipelineConfig: { maxResumeTokens: 0 },
-        },
-      },
-    ]);
-    const bounds = await loadResumeBounds('p-1');
-    expect(bounds).toEqual({ maxResumeTokens: 0 });
-  });
-
-  it('falls back to defaults on DB error', async () => {
-    limitSpy.mockRejectedValueOnce(new Error('db down'));
-    const bounds = await loadResumeBounds('p-1');
-    expect(bounds).toEqual({ maxResumeTokens: 150_000 });
-  });
 });
 
 describe('estimateIssueContextTokens', () => {
