@@ -271,3 +271,20 @@ describe('registerActivitySubscribers', () => {
     });
   });
 });
+
+describe('the time a transition is recorded at (ISS-1317)', () => {
+  it('transition → stamps the activity row with the time the status changed (ISS-1317)', async () => {
+    const bus = newBus();
+    const at = new Date('2026-09-30T10:44:34.123Z');
+    await bus.emit('transition', {
+      issueId: ISSUE_ID,
+      projectId: PROJECT_ID,
+      actor: ACTOR,
+      from: 'open',
+      to: 'confirmed',
+      reopenCount: 0,
+      at,
+    });
+    expect(safeRecordActivity.mock.calls[0]?.[0]).toMatchObject({ at });
+  });
+});

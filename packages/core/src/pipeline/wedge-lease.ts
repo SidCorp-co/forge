@@ -28,6 +28,10 @@ export async function wedgeLeaseUnderLock(
   return (rows[0] as { lease?: unknown } | undefined)?.lease ?? null;
 }
 
+function seconds(ms: number | null): string {
+  return `${Math.round((ms ?? 0) / 1000)}s`;
+}
+
 function leaseSentence(reading: LeaseReading): string {
   const held = reading.holder === null ? 'the lease' : `the lease held by \`${reading.holder}\``;
   switch (reading.verdict) {
@@ -38,7 +42,7 @@ function leaseSentence(reading: LeaseReading): string {
         ? `${held} had been given back`
         : `${held} lapsed at ${reading.expiresAt?.toISOString() ?? 'an unreadable time'}`;
     case 'abandoned':
-      return `${held} runs until ${reading.expiresAt?.toISOString() ?? 'an unreadable time'}, but its holder's heartbeat has been silent for ${Math.round((reading.silentMs ?? 0) / 1000)}s, past its tolerance`;
+      return `${held} runs until ${reading.expiresAt?.toISOString() ?? 'an unreadable time'}, but its holder's heartbeat has been silent for ${seconds(reading.silentMs)}, past the ${seconds(reading.toleranceMs)} it tolerates`;
     case 'malformed':
       return `the lease could not be read (${reading.detail}), so it holds nothing`;
     default:

@@ -1,6 +1,6 @@
-import { sql } from 'drizzle-orm';
+import { inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import type { IssueStatus } from '../db/schema.js';
+import { type IssueStatus, users } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import type { Actor } from './activity.js';
@@ -72,18 +72,43 @@ async function claimBatch(): Promise<OutboxRow[]> {
   `);
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** A user actor's agency is its account's `users.kind`, the one place that answers it; the
+ *  outbox row carries only the id, so an agent account acting reads `human` without this. */
+async function agentUserIds(rows: readonly OutboxRow[]): Promise<Set<string>> {
+  const ids = [
+    ...new Set(
+      rows
+        .filter((r) => r.actor_type === 'user' && r.actor_id !== null && UUID.test(r.actor_id))
+        .map((r) => r.actor_id as string),
+    ),
+  ];
+  if (ids.length === 0) return new Set();
+  const found = await db
+    .select({ id: users.id, kind: users.kind })
+    .from(users)
+    .where(inArray(users.id, ids));
+  return new Set(found.filter((u) => u.kind === 'agent').map((u) => u.id));
+}
+
 // cm:flow dispatch/outbox after:transition — claims the row the trigger wrote and re-emits it on the hooks bus, out of band from the transaction that produced it
 export async function drainOutboxOnce(): Promise<{ processed: number; failed: number }> {
   let processed = 0;
   let failed = 0;
   const rows = await claimBatch();
   const delivered: string[] = [];
+  const agents = await agentUserIds(rows);
 
   for (const row of rows) {
     const actor: Actor =
       row.actor_type === 'device' || row.actor_type === 'system'
         ? { type: 'device', id: row.actor_id ?? '<system>', agency: 'agent' }
-        : { type: 'user', id: row.actor_id ?? '<system>', agency: 'human' };
+        : {
+            type: 'user',
+            id: row.actor_id ?? '<system>',
+            agency: row.actor_id !== null && agents.has(row.actor_id) ? 'agent' : 'human',
+          };
     try {
       const result = await hooks.emit('transition', {
         issueId: row.issue_id,
@@ -93,6 +118,7 @@ export async function drainOutboxOnce(): Promise<{ processed: number; failed: nu
         to: row.to_status as IssueStatus,
         reopenCount: 0,
         outboxId: row.id,
+        at: new Date(row.created_at),
         ...(row.reason ? { reason: row.reason } : {}),
       });
       assertHookDelivered(result, { owned: ['pipeline-orchestrator'] });

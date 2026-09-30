@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { comments, type IssueStatus } from '../db/schema.js';
-import { applyStatusTransition } from '../issues/apply-transition.js';
+import { transitionIssueStatus } from '../issues/apply-transition.js';
 import { logger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { holdsOpenHumanQuestion, personOwesAnAnswer } from '../questions/issue-coupling.js';
@@ -12,6 +12,7 @@ import {
   AUTONOMOUS_JOB_TYPE,
 } from './autonomous-mode.js';
 import { checkAutonomousRescueCap, recordAutonomousRescue } from './autonomous-rescue-cap.js';
+import { reconcilerActorFor } from './reconciler-actor.js';
 import {
   buildWedgeResetBody,
   readWedgeLease,
@@ -136,7 +137,6 @@ type WedgeCandidate = {
   project_id: string;
   status: string;
   reopen_count: number;
-  created_by: string;
   lease: unknown;
 };
 
@@ -149,10 +149,9 @@ async function selectWedgeCandidates(after: string | null): Promise<WedgeCandida
   );
   const past = after === null ? sql`` : sql`AND i.id > ${after}::uuid`;
   return (await db.execute<WedgeCandidate>(sql`
-    SELECT i.id, i.project_id, i.status, i.reopen_count, p.created_by,
+    SELECT i.id, i.project_id, i.status, i.reopen_count,
            i.session_context -> 'lease' AS lease
     FROM issues i
-    INNER JOIN projects p ON p.id = i.project_id
     CROSS JOIN LATERAL (
       SELECT j.type, j.status
       FROM jobs j
@@ -229,7 +228,8 @@ async function resetOneWedge(row: WedgeCandidate): Promise<boolean> {
     });
     if (capped) return false;
 
-    await applyStatusTransition(
+    const actor = await reconcilerActorFor(row.project_id);
+    await transitionIssueStatus(
       {
         id: row.id,
         projectId: row.project_id,
@@ -237,7 +237,7 @@ async function resetOneWedge(row: WedgeCandidate): Promise<boolean> {
         reopenCount: row.reopen_count,
       },
       AUTONOMOUS_ENTRY_STATUS,
-      { id: row.created_by, ownerId: row.created_by },
+      actor,
       {
         reason: 'reconciler_autonomous_wedge_reset',
         skip: true,
@@ -247,7 +247,7 @@ async function resetOneWedge(row: WedgeCandidate): Promise<boolean> {
           if (wedgeLeaseHoldsTheIssue(reading)) throw new LeaseRenewedSinceSelected();
           await tx.insert(comments).values({
             issueId: row.id,
-            authorId: row.created_by,
+            authorId: actor.id,
             body: buildWedgeResetBody({
               from: row.status,
               to: AUTONOMOUS_ENTRY_STATUS,

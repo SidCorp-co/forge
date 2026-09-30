@@ -31,7 +31,11 @@ vi.mock('./autonomous-rescue-cap.js', async () => {
 });
 vi.mock('../issues/apply-transition.js', async () => {
   const h = await import('./reconciler-test-harness.js');
-  return { applyStatusTransition: (...a: unknown[]) => h.applyStatusTransitionMock(...(a as [])) };
+  return { transitionIssueStatus: (...a: unknown[]) => h.transitionMock(...(a as [])) };
+});
+vi.mock('./reconciler-actor.js', async () => {
+  const h = await import('./reconciler-test-harness.js');
+  return { reconcilerActorFor: (projectId: string) => h.reconcilerActorMock(projectId) };
 });
 vi.mock('../observability/sentry.js', async () => {
   const h = await import('./reconciler-test-harness.js');

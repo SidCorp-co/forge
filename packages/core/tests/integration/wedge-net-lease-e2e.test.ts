@@ -28,6 +28,7 @@ let ownerId: string;
 let seq = 0;
 
 let reconciler: typeof import('../../src/pipeline/reconciler.js');
+let outbox: typeof import('../../src/pipeline/outbox-worker.js');
 
 beforeAll(async () => {
   harness = await setupTestDatabase();
@@ -36,6 +37,10 @@ beforeAll(async () => {
   process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
   process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
   reconciler = await import('../../src/pipeline/reconciler.js');
+  outbox = await import('../../src/pipeline/outbox-worker.js');
+  const { hooks } = await import('../../src/pipeline/hooks.js');
+  const { registerActivitySubscribers } = await import('../../src/pipeline/subscribers.js');
+  registerActivitySubscribers(hooks);
 }, 60_000);
 
 afterAll(async () => {
@@ -175,6 +180,7 @@ describe('the wedge net reads the lease (ISS-1317)', () => {
     expect(await statusOf(id)).toBe('open');
     const [body] = await commentsOn(id);
     expect(body).toContain("its holder's heartbeat has been silent for");
+    expect(body).toContain('past the 90s it tolerates');
   });
 
   it('keeps an issue whose lease was renewed after the pass chose it, and says nothing', async () => {
@@ -227,6 +233,84 @@ describe('a reset the wedge net makes is on the issue (ISS-1317)', () => {
     expect(reset).toBe(0);
     expect(await statusOf(id)).toBe('needs_info');
     expect(await commentsOn(id)).toEqual([]);
+  });
+});
+
+/** Who the reset's comment, kernel transition and activity row name, and when each says it was. */
+async function resetTrail(id: string) {
+  await outbox.drainOutboxOnce();
+  const [comment] = (await harness.db.execute(sql`
+    SELECT c.author_id, c.created_at, u.kind,
+           EXISTS (SELECT 1 FROM project_members m
+                   WHERE m.user_id = c.author_id AND m.project_id = ${projectId}) AS member
+    FROM comments c JOIN users u ON u.id = c.author_id WHERE c.issue_id = ${id}
+  `)) as unknown as Array<{ author_id: string; created_at: string; kind: string; member: boolean }>;
+  const kernel = (await harness.db.execute(sql`
+    SELECT actor_type, actor_id, actor_agency FROM kernel_transitions
+    WHERE entity = 'issue' AND entity_id = ${id} AND to_status = 'open'
+  `)) as unknown as Array<{ actor_type: string; actor_id: string; actor_agency: string }>;
+  const activity = (await harness.db.execute(sql`
+    SELECT actor_type, actor_id, actor_agency, created_at FROM activity_log
+    WHERE issue_id = ${id} AND action = 'issue.statusChanged'
+  `)) as unknown as Array<{
+    actor_type: string;
+    actor_id: string;
+    actor_agency: string;
+    created_at: string;
+  }>;
+  return { comment, kernel, activity };
+}
+
+describe('the reconciler is the one named on a reset (ISS-1317 r4)', () => {
+  it('authors the reset comment as an agent account of the project, never the creator', async () => {
+    const id = await wedged(lapsedLease());
+    await reconciler.resetAutonomousWedgesOnce();
+    const { comment } = await resetTrail(id);
+    expect(comment?.kind).toBe('agent');
+    expect(comment?.author_id).not.toBe(ownerId);
+    expect(comment?.member).toBe(true);
+  });
+
+  it('records the move in kernel_transitions and activity under that agent, as an agent', async () => {
+    const id = await wedged(lapsedLease());
+    await reconciler.resetAutonomousWedgesOnce();
+    const { comment, kernel, activity } = await resetTrail(id);
+    expect(kernel).toEqual([
+      { actor_type: 'user', actor_id: comment?.author_id, actor_agency: 'agent' },
+    ]);
+    expect(activity).toHaveLength(1);
+    expect(activity[0]).toMatchObject({
+      actor_type: 'user',
+      actor_id: comment?.author_id,
+      actor_agency: 'agent',
+    });
+  });
+
+  it('stamps the status change with the time of the comment, not of the drain', async () => {
+    const id = await wedged(lapsedLease());
+    await reconciler.resetAutonomousWedgesOnce();
+    await new Promise((r) => setTimeout(r, 50));
+    const { comment, activity } = await resetTrail(id);
+    const at = (t: unknown) => new Date(String(t)).getTime();
+    expect(at(activity[0]?.created_at)).toBe(at(comment?.created_at));
+  });
+
+  it("authors as the project's existing handle where it already has one", async () => {
+    const { resolveProjectHandle } = await import('../../src/conversations/handles.js');
+    const { db } = await import('../../src/db/client.js');
+    const handle = await db.transaction((tx) => resolveProjectHandle(tx, projectId));
+    const id = await wedged(lapsedLease());
+    await reconciler.resetAutonomousWedgesOnce();
+    expect((await resetTrail(id)).comment?.author_id).toBe(handle.userId);
+  });
+
+  it('reuses one agent account across resets of the same project', async () => {
+    const first = await wedged(lapsedLease());
+    const second = await wedged(undefined);
+    expect(await reconciler.resetAutonomousWedgesOnce()).toBe(2);
+    const a = (await resetTrail(first)).comment;
+    const b = (await resetTrail(second)).comment;
+    expect(a?.author_id).toBe(b?.author_id);
   });
 });
 
