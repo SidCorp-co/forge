@@ -10,6 +10,14 @@ completes, is ignored, and cannot fail the gate. `archmap` was in exactly that s
 2026-08-13, documented as the relations gate the whole time it could not block anything.
 `verify --ci-parity` now fails on the mismatch.
 
+**Four jobs gate nothing, on purpose, since ISS-1370**: `core-integration`, `whole-tree`, `images`
+and `runner-platforms` (the runner's macOS and Windows legs) run on every push to a gated branch and
+nightly, never on a pull request, and sit outside `ci-passed`'s `needs`. A red there is fixed forward
+by whichever run lands next. The owner ruled it for forge-dev while it is a beta with no production;
+`.forge/conformance.json` `$postMerge` names the four, what the move costs and what ends it, and
+conformance-audit R12 fails on a job that is in neither list or in both. So the `flows` and
+`selection` rows below measure after the merge, not before it.
+
 Every gate that drifted did so while documented and non-blocking — biome to 366 errors, `typecheck`
 to 84, the two length rules to 143 — and each stopped drifting the day it was baselined and gated.
 
@@ -45,9 +53,9 @@ passed, because the external record of what shipped belonged to none of them.
 | costs | `check-honest-costs` — `lang-check` | whether `docs/VISION.md` and every `docs/proposals/*.md` price what adopting them costs | whether the price stated is honest — that is review's |
 | relations | `archmap check` — `archmap` | which module may depend on which | how a file is written |
 | reachability | `check-test-reachability` — `conformance` | whether every tracked test file is collected, and whether a skipped suite says why | what a test asserts once it runs |
-| selection | `check-whole-tree-gates` — `whole-tree` | whether a test whose input is the whole repository runs on every change: it runs every test carrying `@gate-input whole-tree` under the vitest config that collects it, refuses a declared file that ran no case or failed to load, and refuses an undeclared test that builds a path to the root and lists a directory | which jobs `changes` selects for everything else, and what a declared test asserts |
+| selection | `check-whole-tree-gates` — `whole-tree`, after the merge | whether a test whose input is the whole repository runs on every change: it runs every test carrying `@gate-input whole-tree` under the vitest config that collects it, refuses a declared file that ran no case or failed to load, and refuses an undeclared test that builds a path to the root and lists a directory | which jobs `changes` selects for everything else, and what a declared test asserts |
 | behaviour | `check-test-signal` — `lang-check` | whether a test asserts behaviour or restates a declaration | how many tests exist, coverage % |
-| flows | `check-flow-coverage` — `core-integration` | whether the integration suite ENTERS the function every declared `cm:flow` step sits on | whether the flow ran through it — a function-hit cannot tell; which flows exist, `checkers.flow-coverage.flows` declares |
+| flows | `check-flow-coverage` — `core-integration`, after the merge | whether the integration suite ENTERS the function every declared `cm:flow` step sits on | whether the flow ran through it — a function-hit cannot tell; which flows exist, `checkers.flow-coverage.flows` declares |
 | language | `check-source-language` — `lang-check` | English-only source policy | everything else |
 | record | `check-release-record` — `lang-check` | whether `CHANGELOG.md` keeps the heading its five readers parse for, whether a published entry can leave without a declared reason, and what an added or corrected entry may spend | whether an entry is TRUE, or whether a change deserved one — that is review's |
 | comment | `check-comment-budget` — `conformance` | what a comment SAYS: density against the code around it, the length of one run, historical narration, and one comment restating another — the four rules `eslint.config.mjs` enables out of `.forge/code-quality`, frozen per (file, rule) | file or function LENGTH, which biome owns at 500/150; and the other halves of `pnpm lint:code-quality` — raw elements, pass-through wrappers, crowded directories, the design-token sweep — which belong to axes nobody has declared |
@@ -227,8 +235,9 @@ Four contracts:
    default setup, so there is no workflow file for the parser to read and nothing here can run it.
    Measured on PR #586 (ISS-1153): every job in `ci.yml` passed, `ci-passed` was green, and the PR
    was still held — by a high-severity CodeQL alert on a test helper that `pnpm verify` had no way
-   to mention. `pnpm verify` names it now under its own heading, `Nor these, which ci-passed does
-   not gate either`, kept apart from the commands CI does run because `ci-passed` gates those and
+   to mention. The commands only a post-merge job runs print under their own heading, which says
+   they run after the merge (ISS-1370), read off which jobs `ci-passed` needs. `pnpm verify` names
+   CodeQL under a heading of its own, `Nor these, which ci-passed does not gate either`, kept apart from the commands CI does run because `ci-passed` gates those and
    does not gate this — and as a line rather than a command, since it is not runnable locally. What
    would stop the merge is requiring CodeQL at the merge gate in its own right — a branch-protection
    setting adding that check to the repository's required status checks, which no diff in this
@@ -723,10 +732,10 @@ Two, and they are the same shape: the check runs before the merge, and the merge
   names who was stranded.
 - **A stale green carried through by a branch that never re-ran.** The refusal above only reaches
   the stranded branch when that branch runs the check again before merging.
-  `.github/workflows/ci.yml` states that branch protection here has `strict: true`, which forces
-  exactly that run; the live ruleset is not readable from a checkout or from the Forge GitHub App's
-  verbs, so that is this repo's own claim and not a verified one. If `strict` is off, that one path
-  reaches the loss again, and `main`'s advisory is what still speaks.
+  Branch protection's `strict: true` forced exactly that run, and ISS-1370 has the owner turn it
+  off; the live ruleset is not readable from a checkout or from the Forge GitHub App's verbs, so
+  which one holds is not verified here. With `strict` off that one path reaches the loss again, and
+  `main`'s advisory is what still speaks.
 
 Neither is reachable by a branch-time check, which is why they are written here rather than left to
 be discovered. The rule it replaces was a CLAUDE.md instruction to a person — *read every unmerged
@@ -1022,7 +1031,8 @@ node scripts/check-flow-coverage.mjs --all
 
 `--require-sources` (CI) turns a missing report from a skip into a failure. `pnpm verify` skips this
 check locally when no report is on disk; that skip is honest only because `core-integration` runs it
-with `--require-sources`. It is the repo's only remaining `skipIf`, and it declares that step as its
+with `--require-sources` — after the merge since ISS-1370, so a flow a change stops entering is
+found on `main` rather than on its pull request. It is the repo's only remaining `skipIf`, and it declares that step as its
 `coveredBy`, so the claim is read off `ci.yml` at startup rather than trusted.
 
 Uncovered steps freeze into `.forge/flow-coverage-baseline.json` via `--update-baseline`, so
@@ -1054,6 +1064,7 @@ printing `0 violations`.
 | R9 | every **declared** severity biome exits 0 on (`warn`, `info`, `on`) is counted by a baselined checker — it reads the configs, so a rule left non-blocking by preset default is out of its reach | `packages/core`'s 280 `warn` diagnostics, invisible to R1–R7 because all seven judge a *declared* axis |
 | R10 | every declared axis declares a numeric level of at least 2 | R1–R9 all skip an axis that is not level 2, and `hardened` needs only 4 of 5 — so an axis could declare 1, omit the key, or quote the digit, and pass the audit |
 | R11 | one branch set across the merge gate, and the merge target is in it | `ci.yml` triggered on `[main]` alone, so a pull request into any other base would have run no CI at all and reported no failure (ISS-1304) |
+| R12 | every `ci.yml` job but `ci-passed` is in its `needs` or in `$postMerge.jobs`, never both, and every declared job exists | nothing yet — written with ISS-1370, which took four jobs out of `needs`: without it the next job left out would block nothing and be declared nowhere |
 
 Profiles bound **shape**, never tool choice — `baseline` (one axis measures) · `standard` (two axes
 block, both meta-checks) · `hardened` (every declared axis blocks, every needs-job asserted). "Two
