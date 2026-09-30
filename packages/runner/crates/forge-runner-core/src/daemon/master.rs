@@ -2218,17 +2218,32 @@ pub(crate) fn placed_again(
             ),
         }
     }
-    if ended == 0 && adopted == 0 {
-        return;
+    if let Some(line) = placement_line(ended, adopted, resumed, successor) {
+        tracing::info!("[master] {slug}: {line}");
     }
+}
+
+/// What [`placed_again`] says it did. A run is called ended with the pane only
+/// where its end was recorded: a line that says so of runs whose process
+/// still reads alive tells the operator the opposite of what the box did
+/// (ISS-1312 criterion 72, the eighth judge's J3).
+fn placement_line(ended: usize, adopted: usize, resumed: bool, successor: &str) -> Option<String> {
+    if ended == 0 && adopted == 0 {
+        return None;
+    }
+    let what_ended = if ended == 0 {
+        "no run it inherits ended with it, since no Claude Code process recorded for their subagents was read gone".to_string()
+    } else {
+        format!("the Claude Code process the subagents of {ended} run(s) it inherits ran in is gone too, so they ended with it")
+    };
     let whose = if resumed {
-        format!("{adopted} of them declared under a master session this placement replaced are now recorded under this pane's session {successor}, so its choice, its close and its next declaration answer for them")
+        format!("{adopted} run(s) it inherits declared under a master session this placement replaced are now recorded under this pane's session {successor}, so its choice, its close and its next declaration answer for them")
     } else {
         "a cold-started pane cannot resume any of them, so each stays with the session that declared it and is released once core calls its session over".to_string()
     };
-    tracing::info!(
-        "[master] {slug}: this pane was started in place of one that is gone, and the Claude Code process the subagents of {ended} run(s) it inherits ran in is gone too, so they ended with it; {whose}"
-    );
+    Some(format!(
+        "this pane was started in place of one that is gone, and {what_ended}; {whose}"
+    ))
 }
 
 pub(crate) struct InheritedRun {
@@ -5327,6 +5342,104 @@ mod give_back_tests {
             assert!(!block.contains("ended with"), "{block}");
         }
         assert_eq!(brief.matches("incarnation: live").count(), 3, "{brief}");
+    }
+
+    /// The eighth judge's J5 (plant j8:P25r): a run with a process of its own
+    /// is not a subagent's, so the Claude Code process recorded beside it
+    /// read gone does not end it, and the brief does not say it did. The
+    /// run beside it with no process of its own is the control.
+    #[test]
+    fn a_run_with_its_own_process_is_not_called_ended_in_the_brief() {
+        let mut runs = three_inherited();
+        for r in runs.iter_mut() {
+            r.incarnation = "live";
+            r.agent_id = Some(format!("child-{}", r.run_id));
+        }
+        runs[0].pid = Some(4_242);
+        let hosts = subagent_host::testing::FakeHosts::with(101, subagent_host::HostRead::Gone);
+        hosts.set(102, subagent_host::HostRead::Gone);
+        let brief = resumed_brief("conv-abc", &runs, true, &hosts);
+        let block = |id: &str| {
+            brief
+                .split("\n- run `")
+                .find(|b| b.starts_with(id))
+                .unwrap_or_else(|| panic!("{id} is listed: {brief}"))
+                .to_string()
+        };
+        assert!(
+            block("run-2").contains("ended with"),
+            "the control: a subagent run whose process reads gone ended with the pane: {brief}"
+        );
+        let own = block("run-1");
+        assert!(
+            own.contains("incarnation: live") && !own.contains("ended with"),
+            "a run with its own process did not end with its master's pane: {own}"
+        );
+    }
+
+    fn one_inherited_run_with_its_host(led: &Ledger) -> Vec<InheritedRun> {
+        assert!(led.note_host("run-1", 101, "start-1").unwrap());
+        inherited_runs(led, "proj-1", BOOT)
+    }
+
+    /// ISS-1312 criterion 72, the eighth judge's J3: the line said the
+    /// inherited runs "ended with it" whenever one was adopted, so a resumed
+    /// pane that ended none told the journal it had ended them.
+    #[test]
+    fn a_placement_that_ended_no_run_does_not_say_it_ended_them() {
+        let mut led = a_ledger_holding_one_run();
+        let inherited = one_inherited_run_with_its_host(&led);
+        let hosts = subagent_host::testing::FakeHosts::with(101, subagent_host::HostRead::Alive);
+
+        let line = logged_while(|| {
+            placed_again(
+                &mut led, &inherited, "master-2", true, 1_000, "slug", &hosts,
+            )
+        });
+
+        assert!(
+            line.contains("no run it inherits ended with it")
+                && !line.contains("so they ended with it")
+                && line.contains(
+                    "1 run(s) it inherits declared under a master session this placement replaced"
+                ),
+            "criterion 72: {line}"
+        );
+        let run = led.run("run-1").unwrap().unwrap();
+        assert_eq!(run.host_ended_by, None, "and the row agrees: nothing ended");
+        assert_eq!(
+            run.master_session_id, "master-2",
+            "the adoption the line reports"
+        );
+    }
+
+    #[test]
+    fn a_placement_that_ended_a_run_says_how_many() {
+        let mut led = a_ledger_holding_one_run();
+        let inherited = one_inherited_run_with_its_host(&led);
+        let hosts = subagent_host::testing::FakeHosts::with(101, subagent_host::HostRead::Gone);
+
+        let line = logged_while(|| {
+            placed_again(
+                &mut led, &inherited, "master-1", false, 1_000, "slug", &hosts,
+            )
+        });
+
+        assert!(
+            line.contains(
+                "the subagents of 1 run(s) it inherits ran in is gone too, so they ended with it"
+            ) && line.contains("a cold-started pane cannot resume any of them"),
+            "criterion 72: {line}"
+        );
+        assert_eq!(
+            led.run("run-1").unwrap().unwrap().host_ended_by.as_deref(),
+            Some(crate::runner::ledger::HOST_PANE_STARTED)
+        );
+        assert_eq!(
+            placement_line(0, 0, true, "m"),
+            None,
+            "nothing done, nothing said"
+        );
     }
 
     #[test]
@@ -9818,10 +9931,46 @@ mod servers_refusal_walk_tests {
             .unwrap();
         // The background session, as this box's process table shows it: a
         // process naming the conversation among its arguments.
-        let mut session = std::process::Command::new("sh")
+        use std::os::unix::process::CommandExt;
+        // Its own group, reaped whole: `sh` alone killed left `sleep 300`
+        // holding this binary's output for five minutes (the eighth judge's
+        // J4). The guard reaps it on a failed assertion too.
+        let session = std::process::Command::new("sh")
             .args(["-c", "sleep 300; :", &conv])
+            .process_group(0)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
             .spawn()
             .expect("a process standing in for the background session");
+        struct ReapedGroup(std::process::Child);
+        impl ReapedGroup {
+            fn id(&self) -> u32 {
+                self.0.id()
+            }
+            fn group(&self) -> nix::unistd::Pid {
+                nix::unistd::Pid::from_raw(self.0.id() as i32)
+            }
+            /// Kill the whole group and answer whether none of it is left.
+            fn reap(&mut self) -> bool {
+                let _ = nix::sys::signal::killpg(self.group(), nix::sys::signal::Signal::SIGKILL);
+                let _ = self.0.wait();
+                (0..100).any(|_| {
+                    let gone = nix::sys::signal::killpg(self.group(), None)
+                        == Err(nix::errno::Errno::ESRCH);
+                    if !gone {
+                        std::thread::sleep(std::time::Duration::from_millis(20));
+                    }
+                    gone
+                })
+            }
+        }
+        impl Drop for ReapedGroup {
+            fn drop(&mut self) {
+                let _ = self.reap();
+            }
+        }
+        let mut session = ReapedGroup(session);
 
         let buf = std::sync::Arc::new(std::sync::Mutex::new(Vec::<u8>::new()));
         let made = buf.clone();
@@ -9932,8 +10081,10 @@ mod servers_refusal_walk_tests {
             logged()
         );
 
-        let _ = session.kill();
-        let _ = session.wait();
+        assert!(
+            session.reap(),
+            "the stand-in's whole group is gone, `sleep` with it, before the sweep reads the table"
+        );
         a_sweep!();
         let _ = terminal::kill(&pane).await;
         assert_eq!(

@@ -179,6 +179,7 @@ pub async fn reconcile(
 ) -> Result<Vec<Recovered>> {
     let mut out = Vec::new();
     let mut unanswered_reads: Vec<String> = Vec::new();
+    let mut ended_by_process: Vec<String> = Vec::new();
     for mut run in ledger.unclosed_runs()? {
         if run.is_parked_on_human() {
             // A read tmux did not answer observed nothing, so the park stays
@@ -228,6 +229,9 @@ pub async fn reconcile(
             if ledger.note_host_ended(&run.run_id, at, by)? {
                 run.host_ended_at_ms = Some(at);
                 run.host_ended_by = Some(by.to_string());
+                if read == MasterPresence::Unanswered {
+                    ended_by_process.push(run.run_id.clone());
+                }
             }
         }
         // The same pane read alive again says the read that marked it saw
@@ -446,14 +450,34 @@ pub async fn reconcile(
             host: host.filter(|_| !issues_over),
         });
     }
-    if !unanswered_reads.is_empty() {
-        tracing::warn!(
-            "[recovery] tmux could not be asked whether the master pane of {} run(s) is there ({}), so this sweep recorded no end for any of them and decided each as under a pane still standing. Until tmux answers, this box cannot tell a live master from a dead one",
-            unanswered_reads.len(),
-            unanswered_reads.join(", ")
-        );
+    if let Some(line) = unanswered_line(&unanswered_reads, &ended_by_process) {
+        tracing::warn!("{line}");
     }
     Ok(out)
+}
+
+/// What a sweep tmux could not answer says it did. The pane read gives no
+/// end, but the Claude Code process recorded for a subagent is read from
+/// `/proc` whatever tmux answers, and that process read gone is the one end
+/// this sweep may still have recorded (ISS-1312 criterion 31).
+fn unanswered_line(reads: &[String], ended_by_process: &[String]) -> Option<String> {
+    if reads.is_empty() {
+        return None;
+    }
+    let ended = if ended_by_process.is_empty() {
+        "no end for any of them".to_string()
+    } else {
+        format!(
+            "no end for any of them from their pane, and ended {} ({}) because the Claude Code process its subagent ran in reads gone",
+            ended_by_process.len(),
+            ended_by_process.join(", ")
+        )
+    };
+    Some(format!(
+        "[recovery] tmux could not be asked whether the master pane of {} run(s) is there ({}), so this sweep recorded {ended} and decided each as under a pane still standing. Until tmux answers, this box cannot tell a live master from a dead one",
+        reads.len(),
+        reads.join(", ")
+    ))
 }
 
 /// Whether EVERY issue this run holds has reached a terminal status.
@@ -2764,6 +2788,86 @@ mod tests {
             held[0].contains("has not ended a turn"),
             "held as criteria 1-18 read it: {held:?}"
         );
+    }
+
+    /// ISS-1312 criterion 31, the eighth judge's J2: the test above seeds a row
+    /// that records no process, which takes no mark at all since the end became
+    /// the process's, so a `pane-gone` mark written on every unanswered read
+    /// passed it. A row recording a live process is the one that mark ends.
+    #[tokio::test]
+    async fn a_sweep_tmux_could_not_answer_leaves_a_run_whose_process_is_alive_unended_and_held() {
+        let scratch = Scratch::new("tmux-unanswered-alive");
+        let (mut led, wt, _transcript) = a_subagent_run(&scratch);
+        record_host(&led);
+        let beats = Beats::default();
+
+        let r = sweep_procs(&mut led, &TmuxUnanswered, &beats, &nothing_refuted()).await;
+
+        let run = led.run("run-1").unwrap().unwrap();
+        assert_eq!(
+            (run.host_ended_at_ms, run.host_ended_by.as_deref()),
+            (None, None),
+            "criterion 31: its process reads alive and tmux said nothing, so nothing ended"
+        );
+        assert_still_held(
+            &led,
+            &r,
+            &wt,
+            "a live process under a pane nobody could ask about",
+        );
+        let held = drain_names(&led);
+        assert_eq!(held.len(), 1, "criterion 32: {held:?}");
+        assert!(
+            held[0].contains("has not ended a turn"),
+            "held as criteria 1-18 read it: {held:?}"
+        );
+    }
+
+    /// ISS-1312 criteria 31 and 32 as corrected: the process is read from
+    /// `/proc` whatever tmux answers, so its end is recorded as the process's
+    /// and never as the pane's, and the drain lets that run go as criterion 70
+    /// does under a pane read alive.
+    #[tokio::test]
+    async fn a_sweep_tmux_could_not_answer_records_a_gone_process_as_that_process_end() {
+        let scratch = Scratch::new("tmux-unanswered-gone");
+        let (mut led, _wt, _transcript) = a_subagent_run(&scratch);
+        record_host(&led);
+
+        let r = sweep_procs(&mut led, &TmuxUnanswered, &Beats::default(), &host_gone()).await;
+
+        assert!(
+            r.is_none(),
+            "decided as under a pane still standing, whose master's close ends it: {r:?}"
+        );
+        let run = led.run("run-1").unwrap().unwrap();
+        assert!(run.host_ended_at_ms.is_some(), "criterion 31: {run:?}");
+        assert_eq!(
+            run.host_ended_by.as_deref(),
+            Some(HOST_PROCESS_GONE),
+            "criterion 31: the end is the process's, not the pane nobody could ask about"
+        );
+        assert!(
+            drain_names(&led).is_empty(),
+            "criterion 32: not heard from since its process read gone, so not outstanding"
+        );
+    }
+
+    #[test]
+    fn the_unanswered_line_names_the_ends_its_sweep_took_from_a_process() {
+        let reads = vec!["run-1".to_string(), "run-2".to_string()];
+        let none = unanswered_line(&reads, &[]).expect("two reads");
+        assert!(
+            none.contains("recorded no end for any of them and"),
+            "{none}"
+        );
+        let one = unanswered_line(&reads, &["run-2".to_string()]).expect("two reads");
+        assert!(
+            one.contains("no end for any of them from their pane, and ended 1 (run-2)")
+                && one.contains("reads gone")
+                && !one.contains("recorded no end for any of them and"),
+            "a sweep that ended a run does not say it ended none: {one}"
+        );
+        assert_eq!(unanswered_line(&[], &[]), None);
     }
 
     /// ISS-1312 criterion 33: a `pane-gone` mark is withdrawn once the same
