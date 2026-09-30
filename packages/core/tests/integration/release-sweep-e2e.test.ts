@@ -261,10 +261,10 @@ describe('release sweep E2E (ISS-1117)', () => {
     expect(hold?.code).toBe('RELEASE_CRITERIA_UNEARNED');
     expect(String(hold?.reason)).toContain('criterion 1: judged at dce6f354c');
     expect(String(hold?.reason)).toContain('which is not a commit this project is serving');
-    // Named once, where the criterion names it, and pointed back at by the remedy (ISS-1346 r3).
+    // Named once, by the remedy, and by no criterion's reason (ISS-1346, criterion 25).
     expect(String(hold?.reason).split(SERVING)).toHaveLength(2);
     expect(String(hold?.reason)).toContain(
-      'judged at a commit this project is serving, named above',
+      `judged at a commit this project is serving — \`${SERVING}\``,
     );
   }, 30_000);
 

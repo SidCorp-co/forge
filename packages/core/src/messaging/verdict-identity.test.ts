@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseForgeRecord } from './forge-record.js';
 import { RECORD_RULE_IDS } from './record-screen.js';
-import { criterionBlocksIn, verdictIdentityRefusals } from './verdict-identity.js';
+import { criterionBlocksIn, longestSpelling, verdictIdentityRefusals } from './verdict-identity.js';
 
 const FENCE = '```';
 const WHOLE = '33637c612ef15be6f924520c0d201a0889d8ed7e';
@@ -146,5 +146,26 @@ describe('criterionBlocksIn', () => {
         parseForgeRecord(record('verdict', ['criterion: all of them', 'verdict: pass'])),
       ),
     ).toEqual([]);
+  });
+});
+
+// ISS-1346 criterion 25: one commit written whole and abbreviated is named one way.
+describe('longestSpelling', () => {
+  const OTHER = '33637c61aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+
+  it('names an abbreviation by the whole identity it abbreviates', () => {
+    const spelled = longestSpelling([WHOLE.slice(0, 8), WHOLE]);
+    expect(spelled(WHOLE.slice(0, 8))).toBe(WHOLE);
+    expect(spelled(WHOLE)).toBe(WHOLE);
+  });
+
+  it('leaves an abbreviation two different whole identities extend as written', () => {
+    const spelled = longestSpelling([WHOLE.slice(0, 8), WHOLE, OTHER]);
+    expect(spelled(WHOLE.slice(0, 8))).toBe(WHOLE.slice(0, 8));
+    expect(spelled(OTHER)).toBe(OTHER);
+  });
+
+  it('respells nothing shorter than seven characters, which is no identity', () => {
+    expect(longestSpelling([WHOLE])(WHOLE.slice(0, 6))).toBe(WHOLE.slice(0, 6));
   });
 });

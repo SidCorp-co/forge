@@ -211,6 +211,72 @@ describe('what the host answers decides a runtime verdict, not what the issue st
   }, 30_000);
 });
 
+/**
+ * ISS-1346 criterion 25 (judge w8 finding 1): what is served is the reading's, said once on the
+ * hold, however many commits the row's criteria were judged at and however each was spelled.
+ */
+describe('a criteria hold names each served commit once', () => {
+  const JUDGED_A = '72b94aff846279e6bfb4f6d347586ee67a3cd5f1';
+  const JUDGED_B = '83c9199320ccf88d12402a0cd77c3d3ebc53baa7';
+  const times = (text: string, what: string) => text.split(what).length - 1;
+
+  function judgedAt(criterion: number, commit: string): string {
+    return [
+      `criterion: ${criterion} — c${criterion}`,
+      'verdict: pass',
+      `commit: ${commit}`,
+      'evidence: judge-evidence.txt',
+      'why: exercised directly',
+      'judge: judge-1',
+      'judge-from: inherited',
+    ].join('\n');
+  }
+
+  async function rowJudgedAt(first: string, second: string): Promise<string> {
+    const id = await insertIssue();
+    const landing = JSON.stringify({ landing: { head: 'dce6f354c' } });
+    await harness.db.execute(sql`
+      UPDATE issues SET acceptance_criteria = ${'1. a\n2. b'}, session_context = ${landing}::jsonb
+       WHERE id = ${id}
+    `);
+    await postVerdict(id, verdictComment([judgedAt(1, first), judgedAt(2, second)]));
+    return id;
+  }
+
+  it('names the served commit once where two criteria were judged at two commits it is not serving', async () => {
+    const id = await rowJudgedAt(JUDGED_A, JUDGED_B);
+
+    await sweep();
+
+    const reason = String((await holdOf(id))?.reason);
+    expect(reason).toContain(
+      `criterion 1: judged at ${JUDGED_A}, which is not a commit this project is serving`,
+    );
+    expect(reason).toContain(
+      `criterion 2: judged at ${JUDGED_B}, which is not a commit this project is serving`,
+    );
+    expect(times(reason, SERVING)).toBe(1);
+    const comments = await holdComments(id);
+    expect(comments).toHaveLength(1);
+    expect(times(String(comments[0]), SERVING)).toBe(1);
+  }, 30_000);
+
+  it('reads one judged commit spelled full and short as one commit', async () => {
+    const id = await rowJudgedAt(JUDGED_A, JUDGED_A.slice(0, 8));
+
+    await sweep();
+
+    const reason = String((await holdOf(id))?.reason);
+    expect(reason).toContain(
+      `each of criteria 1 and 2: judged at ${JUDGED_A}, which is not a commit this project is serving`,
+    );
+    expect(reason).not.toContain(`judged at ${JUDGED_A.slice(0, 8)},`);
+    expect(times(reason, SERVING)).toBe(1);
+    const comments = await holdComments(id);
+    expect(times(String(comments[0]), SERVING)).toBe(1);
+  }, 30_000);
+});
+
 describe('every exit before the cut is written on the row', () => {
   it('writes RELEASE_TARGET_UNDECLARED when the project has nowhere to release onto', async () => {
     const id = await heldRow('pass');
