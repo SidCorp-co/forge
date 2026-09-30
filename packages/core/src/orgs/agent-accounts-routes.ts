@@ -17,6 +17,7 @@ import { db } from '../db/client.js';
 import { answerStyles, organizationMembers, projectMemberRoles } from '../db/schema.js';
 import { assertOrgAccess } from '../lib/authz.js';
 import type { AuthVars } from '../middleware/auth.js';
+import { assertMayMintFullCredential, mintEpochFor } from '../middleware/pat-rest-surface.js';
 import {
   createAgentAccount,
   listAgentAccounts,
@@ -80,9 +81,11 @@ agentAccountRoutes.post(
     const { orgId } = c.req.valid('param');
     const body = c.req.valid('json');
     await assertOrgAccess(orgId, c.get('userId'), 'admin');
+    assertMayMintFullCredential(c);
 
     const { agent, plaintext } = await createAgentAccount({
       orgId,
+      grantEpoch: mintEpochFor(c),
       projectIds: body.projectIds,
       handle: body.handle,
       ...(body.projectRole ? { projectRole: body.projectRole } : {}),
@@ -129,7 +132,8 @@ agentAccountRoutes.post(
   async (c) => {
     const { orgId, agentUserId } = c.req.valid('param');
     await assertOrgAccess(orgId, c.get('userId'), 'admin');
-    const minted = await mintAgentCredential(orgId, agentUserId);
+    assertMayMintFullCredential(c);
+    const minted = await mintAgentCredential(orgId, agentUserId, mintEpochFor(c));
     if (!minted) throw notFound('agent not found');
     return c.json(minted, 201);
   },

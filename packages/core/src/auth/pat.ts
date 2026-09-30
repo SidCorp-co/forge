@@ -34,6 +34,8 @@ export interface MintPatInput {
    * menu. Omitting it writes the legacy shape, which reaches everything.
    */
   permissions?: readonly string[] | null | undefined;
+  /** The menu epoch this token's reach is fixed at; omitted, it is 1, the narrowest. */
+  grantEpoch?: number | undefined;
   /** The paired box this token is issued to — see `devices/credential.ts`. */
   deviceId?: string | null | undefined;
   expiresAt?: Date | null | undefined;
@@ -79,6 +81,7 @@ export async function mintPat(input: MintPatInput, tx: Tx = db): Promise<MintedP
       projectIds: input.projectIds ?? null,
       boundProjectId: input.boundProjectId ?? null,
       permissions: input.permissions ? [...input.permissions] : null,
+      grantEpoch: input.grantEpoch ?? 1,
       deviceId: input.deviceId ?? null,
       expiresAt: input.expiresAt ?? null,
       rateLimitMax: input.rateLimitMax ?? null,
@@ -278,6 +281,7 @@ export async function rotatePat(input: RotatePatInput): Promise<MintedPat | null
         scopes: existing.scopes,
         projectIds: existing.projectIds,
         permissions: existing.permissions,
+        grantEpoch: existing.grantEpoch,
         boundProjectId: existing.boundProjectId,
         deviceId: existing.deviceId,
         expiresAt: input.expiresAt ?? existing.expiresAt,

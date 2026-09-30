@@ -16,6 +16,7 @@ import {
 } from '../db/schema.js';
 import { assertOrgAccess, assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { mintEpochFor } from '../middleware/pat-rest-surface.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { hooks } from '../pipeline/hooks.js';
@@ -352,6 +353,7 @@ deviceUserRoutes.post(
           code,
           userId,
           projectId,
+          grantEpoch: mintEpochFor(c),
           expiresAt,
         });
         return c.json({ code, expiresAt: expiresAt.toISOString() }, 201);

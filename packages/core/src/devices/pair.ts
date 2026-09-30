@@ -26,7 +26,8 @@ export async function redeemPairingCode(input: PairInput): Promise<PairResult> {
       project_id: string | null;
       expires_at: Date;
       used_at: Date | null;
-    }>(sql`SELECT code, user_id, project_id, expires_at, used_at
+      grant_epoch: number;
+    }>(sql`SELECT code, user_id, project_id, expires_at, used_at, grant_epoch
            FROM pairing_codes
            WHERE code = ${input.code}
            FOR UPDATE`);
@@ -56,6 +57,7 @@ export async function redeemPairingCode(input: PairInput): Promise<PairResult> {
     const plaintext = await issueDeviceCredential({
       deviceId: device.id,
       holderUserId: row.user_id,
+      grantEpoch: row.grant_epoch,
     });
 
     return { device, plaintext, projectId: row.project_id };
