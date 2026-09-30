@@ -1671,6 +1671,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "grant_epoch": {
+          "name": "grant_epoch",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
         }
       },
       "indexes": {
@@ -7360,6 +7367,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "grant_epoch": {
+          "name": "grant_epoch",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
         }
       },
       "indexes": {
@@ -7545,6 +7559,13 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": false
+        },
+        "grant_epoch": {
+          "name": "grant_epoch",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
         }
       },
       "indexes": {

@@ -1,6 +1,9 @@
 //! `forge-runner top` — a live, read-only view of this box (ISS-1341).
 //!
-//! Every project bound here or served to this box; each project's master pane,
+//! On a terminal it opens on a table, one row per project and one for the box
+//! (ISS-1369), each row's detail a keypress away; `--once` prints the whole
+//! frame as text. Every project bound here or served to this box; each
+//! project's master pane,
 //! the skill that pane stands on and the CLI slug its checkout resolves; every
 //! run holding a lease, aged by the newest file under its worktree; what waits
 //! on a person; and the gate and pool health `status` prints — each row
@@ -10,18 +13,22 @@
 //! or type into one, write the ledger, or send core anything but a GET. The
 //! verbs that act stay the verbs they are.
 
+mod attention;
 mod binary;
 mod cli_slug;
 mod fit;
 mod gather;
 mod keys;
+mod lanes;
 mod ledger_ro;
 mod panes;
 mod people;
 mod render;
 mod skill;
 mod source;
+mod table;
 mod tree_age;
+mod view;
 
 use std::io::{IsTerminal, Write};
 use std::sync::Arc;
@@ -110,10 +117,13 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         )?;
         out.flush()?;
     }
-    let mut paging = Paging::default();
+    let mut view = view::View::new(
+        args.interval,
+        view::colour_wanted(std::env::var_os("NO_COLOR")),
+    );
     // The frame last drawn, which a key typed while the next is gathered
     // redraws: a key waits on no gather, and none is cancelled for it.
-    let mut last: Option<(Vec<String>, fit::Shown)> = None;
+    let mut last: Option<gather::Snapshot> = None;
     loop {
         let snapshot = {
             // The gather runs as a task of its own, since some of its reads
@@ -134,65 +144,75 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
                     }
                     _ = interrupt.heard() => return ended(),
                     key = next_key(&mut keys) => {
-                        let Some((lines, shown)) = last.as_mut() else {
+                        let Some(s) = last.as_ref() else {
                             if key.is_none() {
                                 keys = Err("stdin ended".into());
                             }
                             continue;
                         };
-                        match key {
-                            Some(k) => paging.pressed(k, shown),
-                            None => keys = Err("stdin ended".into()),
+                        if answered(key, s, &mut view, &mut keys) == view::Act::Quit {
+                            return ended();
                         }
-                        *shown = draw(lines, &mut paging, &keys)?;
+                        draw(s, &mut view, &keys)?;
                     }
                 }
             }
         };
-        // The page turns as the new frame is drawn, not as the interval ends:
-        // until then the page on screen is the last frame's, and a key typed
-        // while the gather runs acts on that page.
-        if let Some((_, shown)) = &last {
-            paging.turned(shown);
+        // A detail's page turns as the new frame is drawn, not as the
+        // interval ends: until then the page on screen is the last frame's,
+        // and a key typed while the gather runs acts on that page.
+        if last.is_some() {
+            view.turned();
         }
-        let lines = render::frame(&snapshot, Some(args.interval));
         let due = tokio::time::Instant::now() + Duration::from_secs(args.interval);
-        // A key redraws this frame at once on the page it asks for; the next
-        // gather still comes at `due`.
-        let mut shown = draw(&lines, &mut paging, &keys)?;
+        // A key redraws this frame at once; the next gather still comes at `due`.
+        draw(&snapshot, &mut view, &keys)?;
         loop {
             let key = tokio::select! {
                 _ = tokio::time::sleep_until(due) => break,
                 _ = interrupt.heard() => return ended(),
                 key = next_key(&mut keys) => key,
             };
-            match key {
-                Some(k) => paging.pressed(k, &shown),
-                // Stdin ended: nothing more will be typed, so say keys are
-                // not read rather than wait on them.
-                None => keys = Err("stdin ended".into()),
+            if answered(key, &snapshot, &mut view, &mut keys) == view::Act::Quit {
+                return ended();
             }
-            shown = draw(&lines, &mut paging, &keys)?;
+            draw(&snapshot, &mut view, &keys)?;
         }
-        last = Some((lines, shown));
+        last = Some(snapshot);
     }
 }
 
-/// `lines` drawn on the page `paging` asks for, which it then holds as the
-/// page actually drawn.
+/// A key, or stdin's end, answered on the view.
+fn answered(
+    key: Option<keys::Key>,
+    s: &gather::Snapshot,
+    view: &mut view::View,
+    keys: &mut Result<keys::Keys, String>,
+) -> view::Act {
+    match key {
+        Some(k) => view.pressed(k, s),
+        // Stdin ended: nothing more will be typed, so say keys are not read
+        // rather than wait on them.
+        None => {
+            *keys = Err("stdin ended".into());
+            view::Act::Redraw
+        }
+    }
+}
+
+/// The view of `s` drawn on the terminal's screen.
 fn draw(
-    lines: &[String],
-    paging: &mut Paging,
+    s: &gather::Snapshot,
+    view: &mut view::View,
     keys: &Result<keys::Keys, String>,
-) -> anyhow::Result<fit::Shown> {
-    let shown = fit::screen(lines, fit::size(), paging.page, &paging.said(keys));
-    paging.page = shown.at;
+) -> anyhow::Result<()> {
+    let rows = view.draw(s, fit::size(), keys);
     let mut out = std::io::stdout().lock();
-    // Home, clear: the frame replaces the last one rather than scrolling, and
+    // Home, clear: the screen replaces the last one rather than scrolling, and
     // no newline follows its last row, which would scroll the screen.
-    write!(out, "\x1b[H\x1b[2J{}", shown.rows.join("\n"))?;
+    write!(out, "\x1b[H\x1b[2J{}", rows.join("\n"))?;
     out.flush()?;
-    Ok(shown)
+    Ok(())
 }
 
 /// The next key, where keys are read; where they are not, never.
@@ -231,6 +251,13 @@ impl Paging {
             keys::Key::Hold => self.held = !self.held,
             keys::Key::Next => self.page = (shown.at + 1) % n,
             keys::Key::Previous => self.page = (shown.at + n - 1) % n,
+            // The table's keys, which a page never answers.
+            keys::Key::Up
+            | keys::Key::Down
+            | keys::Key::Open
+            | keys::Key::Back
+            | keys::Key::Sources
+            | keys::Key::Quit => {}
         }
     }
 }

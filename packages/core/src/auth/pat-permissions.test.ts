@@ -7,16 +7,36 @@ vi.mock('../db/client.js', () => ({ db: {} }));
 
 import { scopeForMethod } from '../middleware/pat-rest-surface.js';
 import {
+  PAT_ACCOUNT_ONLY_PERMISSIONS,
+  PAT_GRANT_EPOCH,
   PAT_PERMISSION_GROUPS,
   PAT_PERMISSION_LEVELS,
   PAT_PERMISSION_NAMES,
   PAT_PERMISSION_RESOURCES,
+  PAT_UNGRANTABLE,
   type PatPermissionLevel,
+  type PatPermissionResource,
   patGrantCovers,
   patPermissionPrefixes,
   patPermissionWanted,
+  patPrefixForPath,
   patResourceForPath,
+  patUngrantableFor,
 } from './pat-permissions.js';
+
+function prefixesOf(resource: string): string[] {
+  return Object.keys(PAT_PERMISSION_RESOURCES[resource as PatPermissionResource].prefixes);
+}
+
+function prefixesAt(epoch: number): string[] {
+  return Object.values(PAT_PERMISSION_RESOURCES)
+    .flatMap((r) => Object.entries(r.prefixes as Record<string, number>))
+    .filter(([, e]) => e === epoch)
+    .map(([p]) => p)
+    .sort();
+}
+
+const OFF_MENU = ['/api/pat', '/api/uploads', '/api/webhooks', '/api/nothing-mounted-here'];
 
 function covers(
   granted: readonly string[] | null | undefined,
@@ -46,22 +66,111 @@ const REACHABLE_ON_2026_09_10 = [
   '/api/tasks',
 ];
 
-describe('the menu changes no reachability', () => {
-  it('covers exactly the prefixes a PAT could reach before it existed', () => {
-    expect(patPermissionPrefixes()).toEqual([...REACHABLE_ON_2026_09_10].sort());
+/** ISS-1373 — what the menu grew by, written out so a prefix cannot join it quietly. */
+const ADDED_AT_EPOCH_2 = [
+  '/api/admin',
+  '/api/agent-sessions',
+  '/api/agents',
+  '/api/app-config',
+  '/api/auth/me',
+  '/api/auth/preferences',
+  '/api/body',
+  '/api/chat-logs',
+  '/api/conversations',
+  '/api/devices',
+  '/api/domain-templates',
+  '/api/feedback-reports',
+  '/api/improvement-messages',
+  '/api/integration-connections',
+  '/api/invitations',
+  '/api/me',
+  '/api/notifications',
+  '/api/org-invitations',
+  '/api/orgs',
+  '/api/pipeline',
+  '/api/runners',
+  '/api/skill-activity',
+  '/api/update-packets',
+  '/api/usage-records',
+];
+
+describe('a token keeps the reach it was minted with', () => {
+  it('holds epoch 1 to exactly the prefixes a PAT could reach before the menu grew', () => {
+    expect(prefixesAt(1)).toEqual([...REACHABLE_ON_2026_09_10].sort());
   });
 
-  it('reaches every one of those prefixes through some named permission', () => {
-    const viaGroups = new Set(Object.values(PAT_PERMISSION_GROUPS).flatMap((g) => g.prefixes));
-    expect([...viaGroups].sort()).toEqual([...REACHABLE_ON_2026_09_10].sort());
+  it('puts every prefix added since at epoch 2', () => {
+    expect(prefixesAt(2)).toEqual([...ADDED_AT_EPOCH_2].sort());
+  });
+
+  it('declares no epoch but those two, and mints at the highest', () => {
+    expect(patPermissionPrefixes()).toEqual(
+      [...REACHABLE_ON_2026_09_10, ...ADDED_AT_EPOCH_2].sort(),
+    );
+    expect(PAT_GRANT_EPOCH).toBe(2);
+  });
+
+  it('reports each prefix with the epoch it joined at', () => {
+    expect(patPrefixForPath('/api/issues/abc')).toMatchObject({ prefix: '/api/issues', epoch: 1 });
+    expect(patPrefixForPath('/api/body/abc')).toMatchObject({ prefix: '/api/body', epoch: 2 });
+  });
+});
+
+describe('a resource says where it can be fenced', () => {
+  it('declares every resource project or account', () => {
+    for (const [resource, { reach }] of Object.entries(PAT_PERMISSION_RESOURCES)) {
+      expect(['project', 'account'], resource).toContain(reach);
+    }
+  });
+
+  it('names as account-only exactly the permissions of account resources', () => {
+    const account = Object.entries(PAT_PERMISSION_RESOURCES)
+      .filter(([, r]) => r.reach === 'account')
+      .flatMap(([resource]) => PAT_PERMISSION_LEVELS.map((l) => `${resource}:${l}`))
+      .sort();
+    expect([...PAT_ACCOUNT_ONLY_PERMISSIONS]).toEqual(account);
+    expect(account).toContain('orgs:write');
+    expect(account).not.toContain('runners:read');
+  });
+});
+
+describe('what is kept out of the grant grammar', () => {
+  it('matches a :name segment against any one segment and a prefix beneath it', () => {
+    expect(patUngrantableFor('/api/devices/me/pool', 'GET')?.pattern).toBe('/api/devices/me');
+    expect(patUngrantableFor('/api/jobs/j1/ack', 'POST')?.pattern).toBe('POST /api/jobs/:id/ack');
+  });
+
+  it('keeps a method-led entry to that method', () => {
+    expect(patUngrantableFor('/api/jobs/j1/ack', 'GET')).toBeNull();
+    expect(patUngrantableFor('/api/jobs/j1/events', 'GET')).toBeNull();
+  });
+
+  it('wins over the menu prefix it sits inside, and leaves its siblings alone', () => {
+    expect(patPrefixForPath('/api/devices/me/pool')?.resource).toBe('devices');
+    expect(patUngrantableFor('/api/devices/d1/runners', 'GET')).toBeNull();
+    expect(patUngrantableFor('/api/devices/login/approve', 'POST')).toBeNull();
+  });
+
+  it('never cancels a menu prefix whole', () => {
+    for (const prefix of patPermissionPrefixes()) {
+      for (const method of ['GET', 'POST']) {
+        expect(patUngrantableFor(prefix, method), prefix).toBeNull();
+      }
+    }
+  });
+
+  it('carries a reason on every entry', () => {
+    for (const [pattern, why] of Object.entries(PAT_UNGRANTABLE)) {
+      expect(why.trim(), pattern).not.toBe('');
+    }
   });
 });
 
 describe('the resource declaration is a partition', () => {
   it('gives every resource at least one prefix', () => {
-    for (const [resource, prefixes] of Object.entries(PAT_PERMISSION_RESOURCES)) {
+    for (const resource of Object.keys(PAT_PERMISSION_RESOURCES)) {
       expect(
-        prefixes,
+        prefixesOf(resource),
         `${resource} covers no route — a permission nobody can use`,
       ).not.toHaveLength(0);
     }
@@ -69,8 +178,10 @@ describe('the resource declaration is a partition', () => {
 
   it('claims no prefix from two resources', () => {
     const owners = new Map<string, string[]>();
-    for (const [resource, prefixes] of Object.entries(PAT_PERMISSION_RESOURCES)) {
-      for (const prefix of prefixes) owners.set(prefix, [...(owners.get(prefix) ?? []), resource]);
+    for (const resource of Object.keys(PAT_PERMISSION_RESOURCES)) {
+      for (const prefix of prefixesOf(resource)) {
+        owners.set(prefix, [...(owners.get(prefix) ?? []), resource]);
+      }
     }
     const shared = [...owners].filter(([, r]) => r.length > 1);
     expect(
@@ -117,26 +228,27 @@ describe('the menu is the cross of resources and levels', () => {
 
   it('gives a group the prefixes of its own resource', () => {
     for (const [name, group] of Object.entries(PAT_PERMISSION_GROUPS)) {
-      expect(group.prefixes, name).toEqual(PAT_PERMISSION_RESOURCES[group.resource]);
+      expect(group.prefixes, name).toEqual(prefixesOf(group.resource));
+      expect(group.reach, name).toBe(PAT_PERMISSION_RESOURCES[group.resource].reach);
       expect(name).toBe(`${group.resource}:${group.level}`);
     }
   });
 });
 
 /**
- * The inverse rule. `middleware/pat-allowlist-reachable.test.ts` asserts these
- * four against the derived union; this asserts them against the declaration,
- * which is where someone would now add one.
+ * The inverse rule, for the prefixes whose absence is a decision rather than
+ * an oversight: each belongs to no resource and is named out with its reason.
  */
 describe('the prefixes that must belong to no permission', () => {
-  it.each(['/api/agent-sessions', '/api/uploads', '/api/admin', '/api/pat'])(
-    '%s belongs to no resource',
+  it.each(['/api/uploads', '/api/pat', '/api/webhooks'])(
+    '%s belongs to no resource and is kept out by name',
     (prefix) => {
       expect(patPermissionPrefixes()).not.toContain(prefix);
-      const claiming = Object.entries(PAT_PERMISSION_RESOURCES)
-        .filter(([, prefixes]) => (prefixes as readonly string[]).includes(prefix))
-        .map(([resource]) => resource);
+      const claiming = Object.keys(PAT_PERMISSION_RESOURCES).filter((r) =>
+        prefixesOf(r).includes(prefix),
+      );
       expect(claiming, `${prefix} is claimed by ${claiming.join(', ')}`).toHaveLength(0);
+      expect(patUngrantableFor(prefix, 'GET')?.pattern).toBe(prefix);
     },
   );
 });
@@ -189,7 +301,7 @@ describe('an absent grant is every group, in each of its three shapes', () => {
     ['undefined', undefined],
     ['an empty array', []],
   ] as const)('%s still covers nothing off the menu', (_label, granted) => {
-    for (const prefix of ['/api/pat', '/api/admin', '/api/uploads', '/api/agent-sessions']) {
+    for (const prefix of OFF_MENU) {
       expect(covers(granted, prefix, 'read'), prefix).toBe(false);
     }
   });
@@ -219,7 +331,7 @@ describe('full access is a value, not an absence', () => {
   });
 
   it('covers nothing off the menu, which stays the surface refusal', () => {
-    for (const prefix of ['/api/pat', '/api/admin', '/api/uploads', '/api/agent-sessions']) {
+    for (const prefix of OFF_MENU) {
       expect(covers(['*'], prefix, 'read'), prefix).toBe(false);
     }
   });
@@ -240,8 +352,8 @@ describe('a non-empty grant naming nothing the menu declares reaches nothing', (
 
 describe('the path a refusal names', () => {
   it('names one permission per covered prefix, at the level asked for', () => {
-    for (const [resource, prefixes] of Object.entries(PAT_PERMISSION_RESOURCES)) {
-      for (const prefix of prefixes) {
+    for (const resource of Object.keys(PAT_PERMISSION_RESOURCES)) {
+      for (const prefix of prefixesOf(resource)) {
         expect(patPermissionWanted(prefix, 'read')).toBe(`${resource}:read`);
         expect(patPermissionWanted(`${prefix}/deep/path`, 'write')).toBe(`${resource}:write`);
       }
@@ -249,7 +361,7 @@ describe('the path a refusal names', () => {
   });
 
   it('names nothing for a path off the menu, which is the surface refusal instead', () => {
-    for (const prefix of ['/api/pat', '/api/admin', '/api/uploads', '/api/agent-sessions']) {
+    for (const prefix of OFF_MENU) {
       expect(patPermissionWanted(prefix, 'read'), prefix).toBeNull();
       expect(patResourceForPath(prefix), prefix).toBeNull();
     }
@@ -283,7 +395,7 @@ describe('a permission is as coarse as its mount', () => {
   });
 
   it('and issues:read still reaches the flat mounts it names', () => {
-    for (const prefix of PAT_PERMISSION_RESOURCES.issues) {
+    for (const prefix of prefixesOf('issues')) {
       expect(covers(['issues:read'], prefix, 'read'), prefix).toBe(true);
     }
   });

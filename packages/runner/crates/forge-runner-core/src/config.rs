@@ -371,17 +371,31 @@ mod tests {
         use crate::auth::cred_store::{ScopedVar, ENV_TEST_LOCK};
         let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let own = crate::test_scratch::Scratch::new("config-own");
-        let not_a_scratch = own.path().parent().expect("the temp dir").to_path_buf();
+        let temp_dir = own.path().parent().expect("the temp dir").to_path_buf();
+        // Strictly under the temp dir and named like no scratch: a guard that
+        // took the whole temp dir would take these, where the temp dir itself
+        // is refused for having nothing after the prefix.
+        let under_temp = temp_dir.join("iss-1344-not-a-scratch");
+        let under_tmp = PathBuf::from("/tmp").join("iss-1344-not-a-scratch");
         let users_own = PathBuf::from(if cfg!(windows) {
             r"C:\iss-1344-nobody\AppData\Roaming"
         } else {
             "/iss-1344-nobody/.config"
         });
         let xdg = ScopedVar::set("XDG_CONFIG_HOME", &users_own);
-        for refused_dir in [&users_own, &not_a_scratch] {
+        for refused_dir in [&users_own, &temp_dir, &under_temp, &under_tmp] {
             xdg.move_to(refused_dir);
             let refused = base_dir().expect_err("not a test's own scratch");
             assert!(refused.to_string().contains("is not one"), "{refused}");
+            // Elsewhere `dirs_next` ignores the variable, so the refusal names
+            // the OS's own dir rather than this one.
+            #[cfg(target_os = "linux")]
+            assert!(
+                refused
+                    .to_string()
+                    .contains(&refused_dir.display().to_string()),
+                "the refusal names the directory: {refused}"
+            );
             assert_eq!(crate::daemon::control::config_dir(), None);
             assert!(crate::daemon::control::socket_path().is_none());
             assert!(crate::daemon::pool_jobs::FileRecords::default_dir().is_none());
@@ -414,25 +428,77 @@ mod tests {
     }
 
     /// ISS-1344. A writer under the config dir resolves it through
-    /// [`base_dir`], so the test build's refusal reaches it. Every other
-    /// resolution in either crate is counted here with what it does, and a new
-    /// one goes red until it is either moved or argued in.
+    /// [`base_dir`], so the test build's refusal reaches it. Every other route
+    /// to a directory the OS names for the user, in either crate's `src` and
+    /// `tests`, is counted here by file with what it does, and a new one goes
+    /// red until it is either moved or argued in. A route is any name the
+    /// config dir is derived from on some platform rather than the spelling of
+    /// one call, so a `~/.config` built by hand is counted like `dirs_next`.
     #[test]
     fn every_other_resolution_of_the_config_dir_is_a_counted_reader() {
-        let path_call = concat!("Config::", "path()");
+        // Each token is split so that this test's own lines are not routes.
+        let routes = [
+            concat!("Config::", "path()"),
+            concat!("dirs_", "next::"),
+            concat!("use dirs_", "next"),
+            concat!("home_", "dir("),
+            concat!("\".", "config\""),
+            concat!("APP", "DATA"),
+            concat!("Roaming", "AppData"),
+            concat!("Application ", "Support"),
+        ];
         let own_path_call = concat!("Self::", "path()");
-        let os_call = concat!("dirs_next::", "config_dir");
-        let os_import = concat!("dirs_next::", "{");
+        let env_names = [
+            concat!("\"XDG_CONFIG_", "HOME\""),
+            concat!("\"HO", "ME\""),
+            concat!("\"USER", "PROFILE\""),
+        ];
+        // The name a setter is handed scopes a variable rather than reading
+        // it; any other occurrence on the same line still counts. Each setter
+        // is anchored on the `::` or `.` before it, so an identifier that only
+        // ends like one (`reset(`, `my_env_remove(`) is no setter.
+        let setters = [
+            "::set(",
+            "::unset(",
+            "::set_var(",
+            "::remove_var(",
+            ".env(",
+            ".env_remove(",
+        ];
+        let reads_env = |line: &str| {
+            env_names.iter().any(|name| {
+                line.match_indices(name).any(|(at, _)| {
+                    let before = line[..at].trim_end();
+                    !setters.iter().any(|s| before.ends_with(s))
+                })
+            })
+        };
         const ALLOWED: &[(&str, usize, &str)] = &[
             (
                 "forge-runner-core/src/config.rs",
-                3,
-                "os_config_dir itself, Config::load's read, and the reader the isolation test checks",
+                4,
+                "os_config_dir itself (the scratch XDG_CONFIG_HOME a test build honours, then \
+                 dirs_next), Config::load's read, and the reader the isolation test checks",
+            ),
+            (
+                "forge-runner-core/src/daemon/master.rs",
+                2,
+                "conversation_transcript, Claude Code's transcript under ~/.claude, a read; and \
+                 its test",
             ),
             (
                 "forge-runner-core/src/daemon/serving.rs",
-                1,
-                "a test of the production rule",
+                7,
+                "config_dir_in, which rebuilds the XDG rule from another process's environment to \
+                 compare it and only reads; its tests, which answer a planted environment; and a \
+                 test of the production rule",
+            ),
+            (
+                "forge-runner-core/src/daemon/terminal.rs",
+                3,
+                "session_config_dir, the tmux socket's dir, a writer held by ISS-1265, which owes \
+                 its move to base_dir; and unoverridden_config_dir's two platform arms, a \
+                 comparison",
             ),
             (
                 "forge-runner-core/src/mcp/config.rs",
@@ -440,10 +506,31 @@ mod tests {
                 "mcp_read_dir: where session_path, session_dir and session_matches read",
             ),
             (
-                "forge-runner-core/src/daemon/terminal.rs",
-                2,
-                "session_config_dir, the tmux socket's dir, and unoverridden_config_dir, a \
-                 comparison; held by ISS-1265, the first owed base_dir",
+                "forge-runner-core/src/runner/ledger.rs",
+                1,
+                "Ledger::default_path, the OS data dir, which is the config dir itself on macOS \
+                 and Windows: a writer no test resolves but the binary tests/box_view.rs spawns on \
+                 Linux with XDG_DATA_HOME in its scratch",
+            ),
+            (
+                "forge-runner-core/src/runner/process.rs",
+                1,
+                "resolve_claude_bin: $HOME for where the claude binary is installed, a read",
+            ),
+            (
+                "forge-runner-core/src/workspace/plugin_sync.rs",
+                1,
+                "~/.claude, Claude Code's own home, which is not the config dir",
+            ),
+            (
+                "forge-runner-core/src/workspace/skill_sync.rs",
+                1,
+                "detect_user_shadow, which reads ~/.claude/skills",
+            ),
+            (
+                "forge-runner-core/src/workspace/trust.rs",
+                1,
+                "~/.claude.json, Claude Code's trust file, which is not the config dir",
             ),
             ("forge-runner/src/cmd/config.rs", 2, "prints the path"),
             ("forge-runner/src/cmd/doctor.rs", 1, "reads the config"),
@@ -458,19 +545,47 @@ mod tests {
                 "connects to the daemon's socket",
             ),
             ("forge-runner/src/cmd/master.rs", 2, "reads transcripts"),
-            ("forge-runner/src/cmd/top/gather.rs", 1, "prints the path"),
+            (
+                "forge-runner/src/cmd/setup.rs",
+                3,
+                "the projects_root it proposes under home, saved through Config::save; and \
+                 shellexpand's `~` and its test",
+            ),
             (
                 "forge-runner/src/cmd/service.rs",
-                1,
-                "the systemd unit, written by `service install`, which no test runs",
+                3,
+                "the systemd unit, and the launchd plist and log, written by `service install`, \
+                 which no test runs",
+            ),
+            (
+                "forge-runner/src/cmd/top/cli_slug.rs",
+                3,
+                "cli_config_dir, the forge CLI's own dir by its own rule, a read; and its test",
+            ),
+            (
+                "forge-runner/src/cmd/top/gather.rs",
+                2,
+                "prints the path, and hands home to cli_config_dir",
+            ),
+            (
+                "forge-runner/tests/dispatch_gate_door.rs",
+                3,
+                "config_home_at, the config home it hands a child it spawns, inside the test's \
+                 scratch",
             ),
         ];
         let crates = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
         let mut seen = std::collections::BTreeMap::<String, usize>::new();
-        let mut stack = vec![
-            crates.join("forge-runner-core/src"),
-            crates.join("forge-runner/src"),
-        ];
+        let mut stack = Vec::new();
+        for krate in ["forge-runner-core", "forge-runner"] {
+            let src = crates.join(krate).join("src");
+            assert!(src.is_dir(), "{} is where the scan starts", src.display());
+            stack.push(src);
+            let tests = crates.join(krate).join("tests");
+            if tests.is_dir() {
+                stack.push(tests);
+            }
+        }
         while let Some(dir) = stack.pop() {
             for entry in std::fs::read_dir(&dir).unwrap().flatten() {
                 let p = entry.path();
@@ -483,14 +598,14 @@ mod tests {
                 }
                 let text = std::fs::read_to_string(&p).unwrap();
                 let in_config = p.ends_with("forge-runner-core/src/config.rs");
+                // `lines` drops a trailing `\r`, so a CRLF checkout counts alike.
                 let hits = text
                     .lines()
                     .filter(|l| !l.trim_start().starts_with("//"))
                     .filter(|l| {
-                        l.contains(path_call)
-                            || l.contains(os_call)
-                            || l.contains(os_import)
+                        routes.iter().any(|r| l.contains(r))
                             || (in_config && l.contains(own_path_call))
+                            || reads_env(l)
                     })
                     .count();
                 if hits > 0 {
@@ -509,9 +624,29 @@ mod tests {
             .collect();
         assert_eq!(
             seen, want,
-            "a resolution of the config dir that is not `config::base_dir`: a writer moves to it, \
+            "a route to the config dir that is not `config::base_dir`: a writer moves to it, \
              a reader is counted here with what it does"
         );
+        let read_beside_a_setter = concat!(
+            r#"cmd.env("CACHE_ROOT", std::env::var("HO"#,
+            r#"ME").unwrap());"#
+        );
+        let a_setters_name = concat!(r#"cmd.env("HO"#, r#"ME", root);"#);
+        let a_scoped_name = concat!(r#"let _h = ScopedVar::set("HO"#, r#"ME", home);"#);
+        let only_ends_like_a_setter = [
+            concat!(r#"env_remove(std::env::var("HO"#, r#"ME").unwrap());"#),
+            concat!(r#"my_env_remove("HO"#, r#"ME");"#),
+            concat!(r#"reset("HO"#, r#"ME");"#),
+        ];
+        assert!(
+            reads_env(read_beside_a_setter)
+                && !reads_env(a_setters_name)
+                && !reads_env(a_scoped_name),
+            "a read beside a setter counts and the name a setter is handed does not"
+        );
+        for line in only_ends_like_a_setter {
+            assert!(reads_env(line), "no setter hands this name: {line}");
+        }
         let master =
             std::fs::read_to_string(crates.join("forge-runner-core/src/daemon/master.rs")).unwrap();
         let take = master

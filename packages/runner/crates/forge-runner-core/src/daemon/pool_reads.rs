@@ -49,13 +49,13 @@ pub fn path(config_dir: &Path) -> PathBuf {
 }
 
 /// Whether core's heartbeat schema takes `id` as a project id: the hyphenated
-/// form with an RFC 9562 version and variant, or the nil or max id, which is
-/// what its `z.uuid()` reads. One key it refuses refuses the whole report, so
-/// no other project's condition reaches core either (ISS-1344).
+/// form with an RFC 9562 version and variant in either case, or the nil id, or
+/// the max id in lowercase only, which is what its `z.uuid()` reads. One key it
+/// refuses refuses the whole report, so no other project's condition reaches
+/// core either (ISS-1344).
 pub fn is_project_id(id: &str) -> bool {
     let b = id.as_bytes();
-    if id == "00000000-0000-0000-0000-000000000000"
-        || id.eq_ignore_ascii_case("ffffffff-ffff-ffff-ffff-ffffffffffff")
+    if id == "00000000-0000-0000-0000-000000000000" || id == "ffffffff-ffff-ffff-ffff-ffffffffffff"
     {
         return true;
     }
@@ -675,33 +675,44 @@ mod tests {
         assert_eq!(r[0].project_id, P1);
     }
 
-    /// The shapes core's `z.uuid()` takes and refuses, which is what the box
-    /// has to match rather than what `uuid::Uuid::parse_str` would take.
+    /// The case list core's `pool-read-report.test.ts` runs its `z.uuid()`
+    /// over, so the box answers every id the way core does rather than the way
+    /// `uuid::Uuid::parse_str` would, and a list that moves on one side fails
+    /// the other.
     #[test]
     fn a_project_id_is_the_shape_cores_schema_takes() {
-        for ok in [
-            P1,
-            "da368b0a-8e21-4763-9d90-8f7b9d0c7115",
-            "DA368B0A-8E21-4763-9D90-8F7B9D0C7115",
-            "00000000-0000-0000-0000-000000000000",
-            "ffffffff-ffff-ffff-ffff-ffffffffffff",
-        ] {
-            assert!(is_project_id(ok), "{ok}");
+        let fixture: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../../core/src/devices/pool-read-report.fixture.json"
+            ))
+            .expect("the pool fixture both languages read"),
+        )
+        .expect("the pool fixture is json");
+        let ids = |side: &str| -> Vec<String> {
+            fixture["projectIds"][side]
+                .as_array()
+                .unwrap_or_else(|| panic!("projectIds.{side} is a list"))
+                .iter()
+                .map(|v| v.as_str().expect("an id is a string").to_string())
+                .collect()
+        };
+        let (taken, refused) = (ids("taken"), ids("refused"));
+        assert!(
+            taken.len() >= 5 && refused.len() >= 10,
+            "{taken:?} {refused:?}"
+        );
+        for ok in &taken {
+            assert!(
+                is_project_id(ok),
+                "core takes {ok:?} and the box refuses it"
+            );
         }
-        for bad in [
-            "",
-            "proj-u",
-            "p1",
-            "da368b0a8e2147639d908f7b9d0c7115",
-            "{da368b0a-8e21-4763-9d90-8f7b9d0c7115}",
-            "urn:uuid:da368b0a-8e21-4763-9d90-8f7b9d0c7115",
-            "da368b0a-8e21-0763-9d90-8f7b9d0c7115",
-            "da368b0a-8e21-9763-9d90-8f7b9d0c7115",
-            "da368b0a-8e21-4763-cd90-8f7b9d0c7115",
-            "da368b0a-8e21-4763-9d90-8f7b9d0c711g",
-            "da368b0a-8e21-4763-9d90-8f7b9d0c71150",
-        ] {
-            assert!(!is_project_id(bad), "{bad}");
+        for bad in &refused {
+            assert!(
+                !is_project_id(bad),
+                "core refuses {bad:?} and the box takes it"
+            );
         }
     }
 }

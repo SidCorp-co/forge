@@ -886,7 +886,8 @@ mod tests {
     use super::*;
     use forge_runner_core::runner::ledger::MasterStanding;
 
-    const SOURCE: &str = include_str!("master.rs");
+    static SOURCE: std::sync::LazyLock<&str> =
+        std::sync::LazyLock::new(|| forge_runner_core::test_scratch::lf(include_str!("master.rs")));
 
     /// ISS-1343: a pane tmux could not be asked about is not `gone`, and no
     /// `last exit` is printed under a pane that may be running.

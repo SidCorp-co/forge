@@ -63,7 +63,8 @@ pub async fn run(args: Args) {
 
 #[cfg(test)]
 mod tests {
-    const SOURCE: &str = include_str!("hook.rs");
+    static SOURCE: std::sync::LazyLock<&str> =
+        std::sync::LazyLock::new(|| forge_runner_core::test_scratch::lf(include_str!("hook.rs")));
 
     #[test]
     fn no_path_through_this_verb_can_fail_the_agent_that_ran_it() {

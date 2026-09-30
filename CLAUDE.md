@@ -29,7 +29,8 @@ required check.
 **Four jobs run after the merge, not before it** — `core-integration`, `whole-tree`, `images` and
 the runner's macOS and Windows legs run on every push to a gated branch (`main`, `dev`) and nightly,
 and `ci-passed` does not need them (ISS-1370, priced in `.forge/conformance.json` `$postMerge`). A red there is fixed forward
-by the next run to land: read `main`'s latest run before you push.
+by the next run to land: read `main`'s latest run before you push. To run them on a branch before it lands:
+`gh workflow run CI --ref <branch> -f base=<the branch it lands on>`.
 
 **Green covers the jobs that RAN.** A skipped job passes `ci-passed`, and `changes` decides which
 run: read which ran, not the aggregate alone. A suite the filter should have selected and did not

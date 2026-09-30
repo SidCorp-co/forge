@@ -860,7 +860,8 @@ mod tests {
              moves the line with it: {}",
             sweep_wont(Duration::from_secs(2 * 24 * 3600))
         );
-        const SRC: &str = include_str!("headroom.rs");
+        static SRC: std::sync::LazyLock<&str> =
+            std::sync::LazyLock::new(|| crate::test_scratch::lf(include_str!("headroom.rs")));
         let from = SRC
             .find("pub fn said(")
             .expect("the line builder is in this file");
@@ -1517,7 +1518,8 @@ mod tests {
     /// journal as one more `info!` among thousands.
     #[test]
     fn the_tick_reads_off_the_blocking_pool_and_leaves_the_level_to_this_module() {
-        const DAEMON: &str = include_str!("mod.rs");
+        static DAEMON: std::sync::LazyLock<&str> =
+            std::sync::LazyLock::new(|| crate::test_scratch::lf(include_str!("mod.rs")));
 
         assert!(
             DAEMON.contains("spawn_blocking(move || headroom::survey(&here))"),

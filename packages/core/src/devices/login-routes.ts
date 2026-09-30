@@ -29,6 +29,7 @@ import { provisionGitCredential } from '../git/provision-credential.js';
 import { assertOrgAccess } from '../lib/authz.js';
 import { logger } from '../logger.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
+import { assertMayMintFullCredential, mintEpochFor } from '../middleware/pat-rest-surface.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { Sentry } from '../observability/sentry.js';
 import { issueDeviceCredential } from './credential.js';
@@ -269,13 +270,19 @@ deviceLoginRoutes.post(
         cause: { code: 'INVALID_BODY' },
       });
     }
+    assertMayMintFullCredential(c);
     const canonical = normalizeCode(body.pairing_code);
     const codeHash = sha256Hex(canonical);
     const agentUserId = await resolveApprovableAgent(body.agent_id, userId);
 
     const updated = await db
       .update(deviceLoginCodes)
-      .set({ approvedUserId: userId, agentUserId, approvedAt: sql`now()` })
+      .set({
+        approvedUserId: userId,
+        agentUserId,
+        approvedAt: sql`now()`,
+        grantEpoch: mintEpochFor(c),
+      })
       .where(
         and(
           eq(deviceLoginCodes.codeHash, codeHash),
@@ -350,6 +357,7 @@ deviceLoginRoutes.get('/login/poll', async (c) => {
       deviceLabel: deviceLoginCodes.deviceLabel,
       devicePlatform: deviceLoginCodes.devicePlatform,
       machineId: deviceLoginCodes.machineId,
+      grantEpoch: deviceLoginCodes.grantEpoch,
     });
 
   const [row] = consumed;
@@ -383,6 +391,7 @@ deviceLoginRoutes.get('/login/poll', async (c) => {
       deviceId: device.id,
       holderUserId: holderId,
       holderIsAgent: row.agentUserId != null,
+      grantEpoch: row.grantEpoch,
     });
 
     // Optional, flag-gated, best-effort git push-credential provisioning.

@@ -555,27 +555,39 @@ function ciSteps() {
 }
 
 /**
- * The ci.yml steps only a job `ci-passed` does not need runs — the ones CI measures after the
- * merge. A step a gating job also runs is gated, whichever other job shares it.
+ * Every ci.yml job `ci-passed` does not need, with the steps it runs and the platforms its matrix
+ * names, and the steps only such a job runs. A step a gating job also runs is gated, whichever
+ * other job shares it — but the job running it after the merge is still listed, because it runs
+ * that step somewhere the gating job does not.
  */
-function stepsAfterTheMerge() {
-  if (!existsSync(CI_PATH)) return new Set();
+function jobsAfterTheMerge() {
+  const none = { jobs: [], onlyAfter: new Set() };
+  if (!existsSync(CI_PATH)) return none;
   const text = readFileSync(CI_PATH, 'utf8');
   const needs = /ci-passed:[\s\S]*?needs:\s*\[([^\]]*)\]/.exec(text);
-  if (!needs) return new Set();
+  if (!needs) return none;
   const gating = new Set(needs[1].split(',').map((s) => s.trim()));
   const lines = text.split('\n');
-  const gated = new Set();
-  const after = new Set();
+  const byJob = new Map();
   let job = null;
   for (const line of lines.slice(lines.findIndex((l) => /^jobs:\s*$/.test(l)) + 1)) {
     const head = line.match(/^ {2}([\w-]+):\s*$/);
-    if (head) job = head[1];
+    if (head) {
+      job = head[1];
+      byJob.set(job, { job, steps: [], os: [] });
+    }
+    if (!job || job === 'ci-passed') continue;
+    const os = line.match(/^\s+os:\s*\[([^\]]*)\]\s*$/);
+    if (os) byJob.get(job).os = os[1].split(',').map((s) => s.trim());
     const step = line.match(/^\s+- (?:run|name):\s+(\S.*?)\s*$/);
-    if (!job || job === 'ci-passed' || !step || step[1] === '|') continue;
-    (gating.has(job) ? gated : after).add(step[1]);
+    if (step && step[1] !== '|') byJob.get(job).steps.push(step[1]);
   }
-  return new Set([...after].filter((step) => !gated.has(step)));
+  byJob.delete('ci-passed');
+  const all = [...byJob.values()];
+  const gated = new Set(all.filter((j) => gating.has(j.job)).flatMap((j) => j.steps));
+  const jobs = all.filter((j) => !gating.has(j.job));
+  const onlyAfter = new Set(jobs.flatMap((j) => j.steps).filter((step) => !gated.has(step)));
+  return { jobs, onlyAfter };
 }
 
 function ciGateParity() {
@@ -677,14 +689,23 @@ function ciParity(quiet, said = []) {
   return 1;
 }
 
+/** One post-merge job as a line: its name, its platforms, and what each step is locally or in CI. */
+function afterMergeLine({ job, steps, os }) {
+  const what = steps.map((step) => {
+    const local = CI_COVERAGE[step];
+    return local && !local.startsWith('verify') ? local : step;
+  });
+  return `${job}${os.length > 0 ? ` (${os.join(', ')})` : ''}: ${what.join('; ')}`;
+}
+
 function reportNotRunHere() {
-  const after = stepsAfterTheMerge();
+  const { jobs, onlyAfter } = jobsAfterTheMerge();
   const elsewhere = Object.entries(CI_COVERAGE)
     .filter(([, where]) => !where.startsWith('verify'))
     .filter(([step]) => RUN_ELSEWHERE_HINT.some((h) => step.includes(h)));
   const lines = notRunHereLines(
-    elsewhere.filter(([step]) => !after.has(step)).map(([, where]) => where),
-    elsewhere.filter(([step]) => after.has(step)).map(([, where]) => where),
+    elsewhere.filter(([step]) => !onlyAfter.has(step)).map(([, where]) => where),
+    jobs.map(afterMergeLine),
     OFF_TREE_CHECKS,
   );
   for (const line of lines) console.log(line);

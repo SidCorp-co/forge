@@ -1,4 +1,5 @@
-//! The one way a runner test gets a directory of its own under the system temp dir.
+//! The one way a runner test gets a directory of its own under the system temp dir, and the one
+//! way it reads a source file to scan ([`lf`]).
 //!
 //! A [`Scratch`] removes its whole tree when it is dropped: when the test passes, when it returns
 //! early, and when an assertion panics, because the test harness unwinds and drop runs on the way
@@ -14,6 +15,7 @@ use std::ffi::OsStr;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Mutex;
 
 /// Whether `dir` is, or is inside, a directory a [`Scratch`] made: the only
 /// place a test build lets a writer resolve its config dir (ISS-1344). A `..`
@@ -49,6 +51,28 @@ fn resolved(dir: &Path) -> Option<PathBuf> {
     let existing = dir.ancestors().find(|a| a.exists())?;
     let rest = dir.strip_prefix(existing).ok()?;
     Some(existing.canonicalize().ok()?.join(rest))
+}
+
+/// `src`, an `include_str!` of a source file, with the line endings the repository holds.
+///
+/// `include_str!` embeds what the checkout wrote, and a Windows checkout under
+/// `core.autocrlf=true` writes `\r\n`. A needle with a newline inside it — a call split across
+/// lines — is then absent from a file that plainly holds it, and the scan goes red on Windows
+/// alone (#336, ISS-1343, ISS-1357). Every source a test reads comes through here, which
+/// `every_source_a_test_scans_is_read_through_lf` holds.
+pub fn lf(src: &'static str) -> &'static str {
+    if !src.contains('\r') {
+        return src;
+    }
+    static READ: Mutex<Vec<(usize, &'static str)>> = Mutex::new(Vec::new());
+    let mut read = READ.lock().unwrap_or_else(|e| e.into_inner());
+    let key = src.as_ptr() as usize;
+    if let Some((_, lf)) = read.iter().find(|(k, _)| *k == key) {
+        return lf;
+    }
+    let lf: &'static str = Box::leak(src.replace("\r\n", "\n").into_boxed_str());
+    read.push((key, lf));
+    lf
 }
 
 /// A directory under the system temp dir, removed with everything in it on drop.
@@ -219,6 +243,127 @@ impl AsRef<OsStr> for InScratch {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// ISS-1357. A needle split across lines is found in a CRLF read, a read with no `\r` is
+    /// handed back as it came, and one source is copied once however often it is read.
+    #[test]
+    fn lf_finds_a_needle_split_across_crlf_lines() {
+        let crlf = "install_skill(\r\n        &resolved.repo_path,\r\n)";
+        assert!(!crlf.contains("install_skill(\n        &resolved.repo_path,"));
+        assert!(lf(crlf).contains("install_skill(\n        &resolved.repo_path,"));
+        assert!(!lf(crlf).contains('\r'));
+        assert!(std::ptr::eq(lf(crlf), lf(crlf)), "one copy per source");
+        let plain = "a(\n    b)";
+        assert!(std::ptr::eq(lf(plain), plain), "an LF read is not copied");
+    }
+
+    /// ISS-1357. What a scan reads holds no `\r` in this checkout, whatever its line endings —
+    /// on Windows the one assertion here that reads a file the checkout itself wrote.
+    #[test]
+    fn a_source_read_through_lf_holds_no_carriage_return() {
+        let read = lf(include_str!("test_scratch.rs"));
+        assert!(
+            !read.contains('\r'),
+            "a source read through `lf` still holds {} CR byte(s)",
+            read.matches('\r').count()
+        );
+    }
+
+    /// The files whose reads stay raw because another open branch holds them, each with the
+    /// issue that does. A raw read there still fails its scan on Windows once a needle spans a
+    /// line; the entry goes when that file's reads go through [`lf`], and one left behind by
+    /// such a change is refused below as stale.
+    const RAW_WHILE_HELD: [(&str, &str); 4] = [
+        (
+            "forge-runner-core/src/daemon/terminal.rs",
+            "integration/batch-2",
+        ),
+        (
+            "forge-runner-core/src/workspace/worktree_reap.rs",
+            "ISS-1250",
+        ),
+        ("forge-runner-core/src/daemon/held_report.rs", "ISS-1250"),
+        ("forge-runner-core/src/runner/terminate.rs", "ISS-1250"),
+    ];
+
+    /// ISS-1357. Every `include_str!` of a `.rs` file under both runner crates is the argument
+    /// of [`lf`], but for the files `RAW_WHILE_HELD` names.
+    #[test]
+    fn every_source_a_test_scans_is_read_through_lf() {
+        let crates = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let mut files = Vec::new();
+        for root in [
+            "forge-runner-core/src",
+            "forge-runner/src",
+            "forge-runner/tests",
+        ] {
+            rust_files(&crates.join(root), &mut files);
+        }
+        assert!(
+            files.len() > 50,
+            "read {} file(s) under {}",
+            files.len(),
+            crates.display()
+        );
+
+        let open = concat!("include_str", "!(\"");
+        let mut raw = Vec::new();
+        let mut held_raw = std::collections::BTreeSet::new();
+        for path in &files {
+            let rel = path
+                .strip_prefix(&crates)
+                .unwrap()
+                .components()
+                .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+                .join("/");
+            let text = std::fs::read_to_string(path).unwrap();
+            for (at, _) in text.match_indices(open) {
+                let rest = &text[at + open.len()..];
+                let Some(end) = rest.find('"') else { continue };
+                if !rest[..end].ends_with(".rs") || text[..at].ends_with("lf(") {
+                    continue;
+                }
+                if RAW_WHILE_HELD.iter().any(|(f, _)| *f == rel) {
+                    held_raw.insert(rel.clone());
+                    continue;
+                }
+                let line = text[..at].matches('\n').count() + 1;
+                raw.push(format!("{rel}:{line}"));
+            }
+        }
+        assert!(
+            raw.is_empty(),
+            "these read a source file raw, and on a CRLF checkout a needle with a newline inside \
+             it is absent from what they read: wrap each as `lf(include_str!(..))` from \
+             `test_scratch`:\n  {}",
+            raw.join("\n  ")
+        );
+        let stale: Vec<_> = RAW_WHILE_HELD
+            .iter()
+            .filter(|(f, _)| !held_raw.contains(*f))
+            .map(|(f, by)| format!("{f} (held by {by})"))
+            .collect();
+        assert!(
+            stale.is_empty(),
+            "RAW_WHILE_HELD names file(s) that no longer read raw; drop them:\n  {}",
+            stale.join("\n  ")
+        );
+    }
+
+    fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                rust_files(&path, out);
+            } else if path.extension().is_some_and(|e| e == "rs") {
+                out.push(path);
+            }
+        }
+    }
 
     /// ISS-1344. Only a scratch or a path inside one is a test's own, and
     /// neither a `..` nor a symlink walks a path out of the scratch it names.

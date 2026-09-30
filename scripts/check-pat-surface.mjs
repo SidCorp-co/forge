@@ -13,8 +13,10 @@
 // per-ROUTE, so one unfenced route under a covered prefix is a token reaching
 // another project's data with every handler around it looking correct.
 //
-// So this gate asks, for each route under each covered prefix, whether its handler
-// reaches the fence. It also holds the declaration to being a menu: a resource
+// So this gate asks, for each route under each project-reach prefix, whether its
+// handler reaches the fence, following nested routers down from `index.ts`. An
+// account-reach resource is refused to every project-scoped token at the door, and
+// a path in `PAT_UNGRANTABLE` is not a token's to reach, so neither is walked. It also holds the declaration to being a menu: a resource
 // covering no route is a permission nobody can use, and a prefix two resources
 // claim makes "which permission did this route want" unanswerable.
 //
@@ -42,7 +44,28 @@ const FUNNELS = [
   'resolveProjectIdFromSlug',
 ];
 
-const EXEMPT = [];
+const EXEMPT = [
+  {
+    file: 'projects/project-facts-routes.ts',
+    path: '/:id/project-facts',
+    why: 'answers 410 Gone and reads nothing (ISS-1048 retired the field)',
+  },
+  {
+    file: 'runners/routes.ts',
+    path: '/types',
+    why: 'the static list of runner adapters this build registers; no project data',
+  },
+  {
+    file: 'domain-templates/routes.ts',
+    path: '/',
+    why: 'the global domain-template catalogue, one table no project owns',
+  },
+  {
+    file: 'domain-templates/routes.ts',
+    path: '/:key',
+    why: 'one entry of the same global catalogue',
+  },
+];
 
 /**
  * The permission menu, read from its declaration rather than restated here.
@@ -68,26 +91,29 @@ function permissionLevels() {
   return out;
 }
 
-function permissionResources() {
-  const src = readFileSync(PERMISSIONS, 'utf8');
-  const start = src.indexOf('PAT_PERMISSION_RESOURCES');
-  if (start === -1) die(`could not find PAT_PERMISSION_RESOURCES in ${PERMISSIONS}`);
+function objectBody(src, name) {
+  const start = src.indexOf(`${name}`);
+  if (start === -1) die(`could not find ${name} in ${PERMISSIONS}`);
   const open = src.indexOf('{', start);
   const close = src.indexOf('\n}', open);
-  if (open === -1 || close === -1) die('could not read the PAT_PERMISSION_RESOURCES object body');
-  const body = src.slice(open + 1, close);
+  if (open === -1 || close === -1) die(`could not read the ${name} object body`);
+  return src.slice(open + 1, close);
+}
+
+function permissionResources() {
+  const body = objectBody(readFileSync(PERMISSIONS, 'utf8'), 'PAT_PERMISSION_RESOURCES = {');
   const out = new Map();
-  for (const m of body.matchAll(/([A-Za-z0-9_]+)\s*:\s*\[([^\]]*)\]/g)) {
-    out.set(
-      m[1],
-      [...m[2].matchAll(/'([^']+)'/g)].map((p) => p[1]),
-    );
+  const entry =
+    /(?:'([^']+)'|([A-Za-z0-9_]+))\s*:\s*\{\s*reach:\s*'([a-z]+)'\s*,\s*prefixes:\s*\{([^}]*)\}\s*,?\s*\}/g;
+  for (const m of body.matchAll(entry)) {
+    const prefixes = [...m[4].matchAll(/'(\/[^']*)'\s*:\s*(\d+)/g)].map((p) => p[1]);
+    out.set(m[1] ?? m[2], { reach: m[3], prefixes });
   }
   if (out.size === 0) {
     die('PAT_PERMISSION_RESOURCES parsed as empty — refusing to pass vacuously');
   }
   const declared = [...body.matchAll(/'(\/api\/[^']*)'/g)].map((m) => m[1]);
-  const attributed = [...out.values()].flat();
+  const attributed = [...out.values()].flatMap((r) => r.prefixes);
   if (declared.length !== attributed.length) {
     die(
       `parsed ${attributed.length} of ${declared.length} prefix(es) in PAT_PERMISSION_RESOURCES — ` +
@@ -97,9 +123,39 @@ function permissionResources() {
   return out;
 }
 
-function declarationFindings(resources) {
+/** The declared exclusions, read from their declaration rather than restated. */
+function ungrantable() {
+  const body = objectBody(readFileSync(PERMISSIONS, 'utf8'), 'PAT_UNGRANTABLE');
+  const out = [...body.matchAll(/^\s*'((?:[A-Z]+ )?\/[^']*)'\s*:/gm)].map((m) => m[1]);
+  if (out.length === 0) die('PAT_UNGRANTABLE parsed as empty — refusing to pass vacuously');
+  return out;
+}
+
+/** Whether an exclusion entry, method-led or not, covers this route. */
+function excludes(entry, path, method) {
+  const space = entry.indexOf(' ');
+  if (space !== -1 && entry.slice(0, space) !== method) return false;
+  return patternMatches(entry.slice(space + 1), path);
+}
+
+function patternMatches(pattern, path) {
+  const want = pattern.split('/');
+  const have = path.split('/');
+  if (have.length < want.length) return false;
+  return want.every((seg, i) => (seg.startsWith(':') ? (have[i] ?? '') !== '' : seg === have[i]));
+}
+
+function declarationFindings(resources, excluded) {
   const found = [];
-  for (const [resource, prefixes] of resources) {
+  for (const [resource, { reach, prefixes }] of resources) {
+    if (reach !== 'project' && reach !== 'account') {
+      found.push({
+        file: 'auth/pat-permissions.ts',
+        path: resource,
+        method: '-',
+        why: `reach '${reach}' is neither project nor account, so no door knows how to fence it`,
+      });
+    }
     if (prefixes.length === 0) {
       found.push({
         file: 'auth/pat-permissions.ts',
@@ -110,8 +166,31 @@ function declarationFindings(resources) {
     }
   }
   const owners = new Map();
-  for (const [resource, prefixes] of resources) {
+  for (const [resource, { prefixes }] of resources) {
     for (const prefix of prefixes) owners.set(prefix, [...(owners.get(prefix) ?? []), resource]);
+  }
+  const all = [...owners.keys()];
+  for (const inner of all) {
+    const outer = all.find((p) => p !== inner && inner.startsWith(`${p}/`));
+    if (outer) {
+      found.push({
+        file: 'auth/pat-permissions.ts',
+        path: inner,
+        method: '-',
+        why: `sits inside ${outer} — which prefix a path under both belongs to would rest on declaration order`,
+      });
+    }
+  }
+  for (const entry of excluded) {
+    const cancelled = all.find((p) => excludes(entry, p, entry.split(' ')[0] ?? ''));
+    if (cancelled) {
+      found.push({
+        file: 'auth/pat-permissions.ts',
+        path: entry,
+        method: '-',
+        why: `excludes the whole of menu prefix ${cancelled}, so a permission would grant nothing`,
+      });
+    }
   }
   for (const [prefix, claiming] of owners) {
     if (claiming.length > 1) {
@@ -271,70 +350,110 @@ function routesOf(file, varName) {
   });
 }
 
+/**
+ * The routers one router nests with `var.route('<sub>', other)`, each resolved
+ * to the file defining it: this file where it is declared here, else the file
+ * it is imported from.
+ */
+function nestedOf(file, varName) {
+  const src = read(file);
+  if (!src) return [];
+  const imports = importsOf(file);
+  const out = [];
+  const re = new RegExp(
+    `^\\s*${varName}\\.route\\(\\s*'([^']*)'\\s*,\\s*([A-Za-z0-9_]+)\\s*\\)`,
+    'gm',
+  );
+  for (const m of src.matchAll(re)) {
+    const local = new RegExp(`(?:export\\s+)?const\\s+${m[2]}\\s*=`).test(src);
+    out.push({ sub: m[1], varName: m[2], file: local ? file : (imports.get(m[2]) ?? null) });
+  }
+  return out;
+}
+
+function joinPath(mount, sub) {
+  if (sub === '' || sub === '/') return mount;
+  return mount === '/' ? sub : `${mount}${sub}`;
+}
+
 const resources = permissionResources();
-const prefixes = [...new Set([...resources.values()].flat())].sort();
+const excluded = ungrantable();
+const prefixes = [...new Set([...resources.values()].flatMap((r) => r.prefixes))].sort();
+const projectPrefixes = [...resources.values()]
+  .filter((r) => r.reach === 'project')
+  .flatMap((r) => r.prefixes);
 const groups = resources.size * permissionLevels().length;
 const mounts = routerFiles();
-const findings = declarationFindings(resources);
+const findings = declarationFindings(resources, excluded);
 const exemptHit = new Set();
 let routesChecked = 0;
-let filesChecked = 0;
+const filesChecked = new Set();
 
-const covered = (path) => prefixes.some((p) => path === p || path.startsWith(`${p}/`));
+const under = (path, list) => list.some((p) => path === p || path.startsWith(`${p}/`));
+const walked = (path, method) =>
+  under(path, projectPrefixes) && !excluded.some((entry) => excludes(entry, path, method));
+const leadsTo = (mount) =>
+  under(mount, projectPrefixes) ||
+  mount === '/' ||
+  projectPrefixes.some((p) => p.startsWith(`${mount}/`));
 
-const relevant = mounts.filter(
-  (m) => covered(m.mount) || prefixes.some((p) => p.startsWith(`${m.mount}/`) || m.mount === '/'),
-);
-
-for (const mount of relevant) {
-  if (!mount.file) {
+function walk(mount, file, varName, trail) {
+  if (!file) {
     findings.push({
       file: '(unresolved)',
-      path: mount.mount,
+      path: mount,
       method: '-',
-      why: `mounted at an allowlisted prefix as \`${mount.varName}\` but its import could not be resolved`,
+      why: `\`${varName}\` is mounted at ${mount} (via ${trail}) but the file defining it could not be resolved`,
     });
-    continue;
+    return;
   }
-  const routes = routesOf(mount.file, mount.varName);
-  const imports = importsOf(mount.file);
-  const fenceNames = [...FUNNELS, ...localFunnels(mount.file)];
-  for (const [sym, target] of imports) if (moduleReachesFence(target)) fenceNames.push(sym);
+  const routes = routesOf(file, varName);
   if (routes === null) {
     findings.push({
-      file: mount.file,
-      path: mount.mount,
+      file,
+      path: mount,
       method: '-',
-      why: 'router file named by index.ts could not be read',
+      why: `router file reached via ${trail} could not be read`,
     });
-    continue;
+    return;
   }
-  filesChecked += 1;
+  const imports = importsOf(file);
+  const fenceNames = [...FUNNELS, ...localFunnels(file)];
+  for (const [sym, target] of imports) if (moduleReachesFence(target)) fenceNames.push(sym);
+  filesChecked.add(file);
   for (const r of routes) {
-    if (r.path !== null && !covered(`${mount.mount}${r.path}`)) continue;
+    if (r.path !== null && !walked(joinPath(mount, r.path), r.method)) continue;
     routesChecked += 1;
     if (r.path === null) {
       findings.push({
-        file: mount.file,
-        path: `${mount.mount}(line ${r.line + 1})`,
+        file,
+        path: `${mount}(line ${r.line + 1})`,
         method: r.method,
         why: 'the path argument could not be parsed — fix the parser rather than skipping the route',
       });
       continue;
     }
-    const ex = EXEMPT.find((e) => e.file === mount.file && e.path === r.path);
+    const ex = EXEMPT.find((e) => e.file === file && e.path === r.path);
     if (ex) {
       exemptHit.add(`${ex.file} ${ex.path}`);
       continue;
     }
     if (fenceNames.some((f) => r.body.includes(`${f}(`))) continue;
     findings.push({
-      file: mount.file,
-      path: `${mount.mount}${r.path}`,
+      file,
+      path: joinPath(mount, r.path),
       method: r.method,
       why: 'reaches no fence funnel — a project-scoped token is not fenced on it',
     });
   }
+  for (const n of nestedOf(file, varName)) {
+    const at = joinPath(mount, n.sub);
+    if (leadsTo(at)) walk(at, n.file, n.varName, `${trail} > ${n.varName}`);
+  }
+}
+
+for (const mount of mounts.filter((m) => leadsTo(m.mount))) {
+  walk(mount.mount, mount.file, mount.varName, mount.varName);
 }
 
 for (const e of EXEMPT) {
@@ -357,7 +476,7 @@ for (const f of findings) {
 
 console.log(
   `pat-surface: ${resources.size} resource(s) · ${groups} permission group(s) · ` +
-    `${prefixes.length} covered prefix(es) · ${filesChecked} router file(s) · ` +
+    `${prefixes.length} covered prefix(es) · ${filesChecked.size} router file(s) · ` +
     `${routesChecked} route(s) · ${findings.length} finding(s)`,
 );
 
@@ -368,7 +487,8 @@ if (findings.length) {
       '\n`loadProjectAccess`/`effectiveProjectRole`, drop the prefix from its resource in' +
       '\n`packages/core/src/auth/pat-permissions.ts`, or — only if it reads no project-scoped' +
       '\ndata — add it to EXEMPT here with the reason.' +
-      '\nFor a declaration finding: fix PAT_PERMISSION_RESOURCES, which is the menu itself.',
+      '\nFor a declaration finding: fix PAT_PERMISSION_RESOURCES or PAT_UNGRANTABLE, which are' +
+      '\nthe menu and what is kept off it.',
   );
 }
 

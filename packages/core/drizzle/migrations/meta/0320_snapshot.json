@@ -1,6 +1,6 @@
 {
   "id": "0335a567-0485-4936-97b5-f13515c449ae",
-  "prevId": "95c52a1b-feef-40e3-96f8-cc7a65595843",
+  "prevId": "a9bb64cb-af2a-46d1-9f45-1fb23cea463c",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1671,6 +1671,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "grant_epoch": {
+          "name": "grant_epoch",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
         }
       },
       "indexes": {
@@ -7353,6 +7360,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "grant_epoch": {
+          "name": "grant_epoch",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
         }
       },
       "indexes": {
@@ -7538,6 +7552,13 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": false
+        },
+        "grant_epoch": {
+          "name": "grant_epoch",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
         }
       },
       "indexes": {

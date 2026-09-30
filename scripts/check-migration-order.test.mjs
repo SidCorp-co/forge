@@ -289,6 +289,38 @@ describe('check-migration-order, when the merge target is not `main`', () => {
 });
 
 describe('check-migration-order, on the checkouts CI actually produces', () => {
+  /**
+   * A dispatched run's checkout: the work branch, the whole remote fetched, and no `origin/HEAD`,
+   * which `actions/checkout` does not record — the shape run 36764719955 refused.
+   */
+  function dispatched(payload) {
+    const w = world(journal([288, 1000, '0288_main']));
+    const work = pushBranch(w, 'iss-dispatched', journal([288, 1000, '0288_main']));
+    spawnSync('git', ['symbolic-ref', '-d', 'refs/remotes/origin/HEAD'], {
+      cwd: work,
+      env: SEALED_ENV,
+    });
+    const event = join(w.box, 'event.json');
+    writeFileSync(event, JSON.stringify(payload));
+    return run(work, {
+      GITHUB_EVENT_NAME: 'workflow_dispatch',
+      GITHUB_REF: 'refs/heads/iss-dispatched',
+      GITHUB_EVENT_PATH: event,
+    });
+  }
+
+  it('measures a dispatched run against the base its dispatcher named, and says so', () => {
+    const { code, out } = dispatched({ inputs: { base: 'main' } });
+    expect(out).toContain('merge target main, from inputs.base');
+    expect(code).toBe(0);
+  });
+
+  it('exits 2 on a dispatched run that named no base, naming the input', () => {
+    const { code, out } = dispatched({ inputs: {} });
+    expect(code).toBe(2);
+    expect(out).toContain('names its merge target in inputs.base');
+  });
+
   it('does not read its own PR branch as a sibling from a detached merge ref', () => {
     // `actions/checkout` leaves HEAD detached on refs/pull/N/merge, where `--abbrev-ref HEAD`
     // answers `HEAD`. Without the three readings of "this is us", the PR's own branch is read as

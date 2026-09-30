@@ -137,6 +137,7 @@ export const deviceLoginCodes = pgTable(
     approvedAt: timestamp('approved_at', { withTimezone: true }),
     agentUserId: uuid('agent_user_id').references(() => users.id, { onDelete: 'cascade' }),
     consumedAt: timestamp('consumed_at', { withTimezone: true }),
+    grantEpoch: integer('grant_epoch').notNull().default(1),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -517,6 +518,7 @@ export const personalAccessTokens = pgTable(
     lastUsedIp: text('last_used_ip'),
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
     permissions: text('permissions').array(),
+    grantEpoch: integer('grant_epoch').notNull().default(1),
     rateLimitMax: integer('rate_limit_max'),
   },
   (t) => ({
@@ -561,6 +563,7 @@ export const pairingCodes = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+    grantEpoch: integer('grant_epoch').notNull().default(1),
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     usedAt: timestamp('used_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

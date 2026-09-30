@@ -77,7 +77,7 @@ function principal(permissions: readonly string[] | null, scopes = ['read', 'wri
  */
 function makeApp() {
   const app = new Hono();
-  for (const mount of ['/api/issues', '/api/schedules', '/api/pat', '/api/me']) {
+  for (const mount of ['/api/issues', '/api/schedules', '/api/pat', '/api/uploads']) {
     const r = new Hono();
     r.use('*', requireAuth());
     r.all('/*', (c) => c.json({ ok: true }));
@@ -194,7 +194,7 @@ describe('every refusal that knows the answer says it', () => {
 });
 
 describe('a path no permission covers carries no header at all', () => {
-  it.each(['/api/pat', '/api/me/ops-health'])('%s is refused with no header', async (path) => {
+  it.each(['/api/pat', '/api/uploads'])('%s is refused with no header', async (path) => {
     verifiesAs(principal(null));
     const res = await send(path);
     expect(res.status).toBe(403);

@@ -41,6 +41,17 @@ function world(...branches) {
   return { box, origin, work };
 }
 
+/** The environment of a workflow_dispatch run of the work branch, its payload written to disk. */
+function dispatch(w, payload) {
+  const path = join(w.box, 'event.json');
+  writeFileSync(path, JSON.stringify(payload));
+  return {
+    GITHUB_EVENT_NAME: 'workflow_dispatch',
+    GITHUB_REF: 'refs/heads/ISS-1-a-branch',
+    GITHUB_EVENT_PATH: path,
+  };
+}
+
 function forgetDefault(repo) {
   spawnSync('git', ['symbolic-ref', '-d', 'refs/remotes/origin/HEAD'], {
     cwd: repo,
@@ -70,10 +81,55 @@ describe('mergeTarget', () => {
     expect(mergeTarget(w.work, env)).toEqual({ branch: 'dev', source: 'GITHUB_REF' });
   });
 
-  it('ignores the pushed ref when the event is not a push', () => {
+  it('takes the branch a schedule run checked out, as a push does', () => {
     const w = world('main');
+    forgetDefault(w.work);
     const env = { GITHUB_EVENT_NAME: 'schedule', GITHUB_REF: 'refs/heads/dev' };
+    expect(mergeTarget(w.work, env)).toEqual({ branch: 'dev', source: 'GITHUB_REF' });
+  });
+
+  it('ignores the ref of an event that is neither a push nor a schedule', () => {
+    const w = world('main');
+    const env = { GITHUB_EVENT_NAME: 'release', GITHUB_REF: 'refs/heads/dev' };
     expect(mergeTarget(w.work, env)).toEqual({ branch: 'main', source: 'origin/HEAD' });
+  });
+
+  it("takes a dispatched run's base input, never the branch being run", () => {
+    const w = world('main');
+    const env = dispatch(w, { inputs: { base: 'dev' } });
+    expect(mergeTarget(w.work, env)).toEqual({ branch: 'dev', source: 'inputs.base' });
+  });
+
+  it('reads a dispatched base written in full', () => {
+    const w = world('main');
+    const env = dispatch(w, { inputs: { base: 'refs/heads/release/9' } });
+    expect(mergeTarget(w.work, env).branch).toBe('release/9');
+  });
+
+  it('refuses a dispatch naming no base rather than answering from origin/HEAD', () => {
+    const w = world('main');
+    expect(git(w.work, 'symbolic-ref', '--short', 'refs/remotes/origin/HEAD')).toBe('origin/main');
+    for (const payload of [{}, { inputs: {} }, { inputs: { base: '  ' } }]) {
+      const got = mergeTarget(w.work, dispatch(w, payload));
+      expect(got.branch).toBeUndefined();
+      expect(got.refusal).toContain('names its merge target in inputs.base');
+      expect(got.refusal).toContain('-f base=');
+    }
+  });
+
+  it('refuses a dispatch whose payload cannot be read, naming the path', () => {
+    const w = world('main');
+    const missing = join(w.box, 'no-such-event.json');
+    const env = { ...dispatch(w, {}), GITHUB_EVENT_PATH: missing };
+    expect(mergeTarget(w.work, env).refusal).toContain(missing);
+    const unset = { GITHUB_EVENT_NAME: 'workflow_dispatch', GITHUB_REF: 'refs/heads/ISS-1-a' };
+    expect(mergeTarget(w.work, unset).refusal).toContain('$GITHUB_EVENT_PATH is unset');
+  });
+
+  it('lets a pull request base outrank a dispatch payload', () => {
+    const w = world('main');
+    const env = { ...dispatch(w, { inputs: { base: 'dev' } }), GITHUB_BASE_REF: 'main' };
+    expect(mergeTarget(w.work, env).source).toBe('GITHUB_BASE_REF');
   });
 
   it('ignores a tag push, which carries a ref that names no branch', () => {
@@ -123,7 +179,8 @@ describe('mergeTarget', () => {
     const got = mergeTarget(w.work, {});
     expect(got.branch).toBeUndefined();
     expect(got.refusal).toContain('GITHUB_BASE_REF');
-    expect(got.refusal).toContain('$GITHUB_REF on a push event');
+    expect(got.refusal).toContain('$GITHUB_REF on a push or schedule event');
+    expect(got.refusal).toContain('inputs.base');
     expect(got.refusal).toContain('refs/remotes/origin/HEAD');
     expect(got.refusal).toContain('git remote set-head origin -a');
   });

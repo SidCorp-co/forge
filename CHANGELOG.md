@@ -3136,6 +3136,10 @@
 
 ### Fixed
 
+- **The CI jobs that run after the merge can run on a branch before it lands**:
+  `gh workflow run CI --ref <branch> -f base=<target>`. The nightly run no longer fails its checks
+  for want of a base branch (ISS-1370).
+
 - **One stray project id no longer hides every project's pool health.** A non-UUID id in a box's
   record had its whole pool report refused; that entry is now dropped alone (ISS-1344).
 
@@ -6150,6 +6154,9 @@
   deploy. Shipped 2026-09-02; this line was owed then and is written now. (ISS-870)
 
 ### Changed
+- **`forge-runner top` opens on one table row per project.** Each row shows pane, runs, issue
+  lanes, a coloured verdict and what changed; arrow keys select, Enter opens the full detail, `s`
+  shows sources. `--once` still prints everything.
 - **Pull requests wait on the fast checks only.** The integration suite, image build, whole-repository
   tests and macOS/Windows runner builds now run after merging, on `main` and nightly; a red there no
   longer blocks anyone.

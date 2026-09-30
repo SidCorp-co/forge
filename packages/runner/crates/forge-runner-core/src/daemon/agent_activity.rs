@@ -285,7 +285,8 @@ mod tests {
     use super::*;
     use crate::daemon::transcript_age::absolute_fixture;
 
-    const SOURCE: &str = include_str!("agent_activity.rs");
+    static SOURCE: std::sync::LazyLock<&str> =
+        std::sync::LazyLock::new(|| crate::test_scratch::lf(include_str!("agent_activity.rs")));
 
     fn acts() -> Activities {
         Activities::new()

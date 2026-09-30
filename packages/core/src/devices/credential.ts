@@ -28,6 +28,8 @@ export async function issueDeviceCredential(args: {
   holderUserId: string;
   /** An agent holder fences the box to that agent's projects, not to none (ISS-1093). */
   holderIsAgent?: boolean;
+  /** The epoch of whoever authorised the pairing: see `mintPat`. */
+  grantEpoch?: number;
 }): Promise<string> {
   const name = deviceTokenNameFor(args.deviceId);
   const common = {
@@ -36,6 +38,7 @@ export async function issueDeviceCredential(args: {
     scopes: ['read', 'write'],
     deviceId: args.deviceId,
     rateLimitMax: DEVICE_TOKEN_RATE_LIMIT_PER_MINUTE,
+    grantEpoch: args.grantEpoch,
   };
 
   const supersede = async (tx: Tx) => {
