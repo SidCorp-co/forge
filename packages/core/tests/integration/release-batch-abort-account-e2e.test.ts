@@ -153,9 +153,56 @@ async function untilARunWriteWaits(): Promise<void> {
 }
 
 /**
+ * Wait until the abort's stamp is committed on the run row. PostgreSQL does not hand a row a
+ * lock-only holder released to the write queued behind it first: the finish's next fence can take
+ * it before that write runs, so a fence that must see the stamp waits for it here.
+ */
+async function untilTheRunIsStamped(runId: string): Promise<void> {
+  for (let i = 0; i < 200; i += 1) {
+    const rows = await harness.db.execute(sql`
+      SELECT metadata -> 'abort' IS NOT NULL AS stamped FROM pipeline_runs WHERE id = ${runId}
+    `);
+    if (rows[0]?.stamped === true) return;
+    await new Promise((d) => setTimeout(d, 20));
+  }
+  throw new Error('the abort queued behind the held run row never committed its stamp');
+}
+
+/**
+ * Run the finish, start an abort inside its fence number `at`, and hold the next fence until the
+ * abort has stamped.
+ */
+async function finishAbortedAtFence(
+  runId: string,
+  at: number,
+  start: () => ReturnType<typeof service.abortReleaseBatch>,
+) {
+  let fences = 0;
+  let aborting: ReturnType<typeof service.abortReleaseBatch> | null = null;
+  let stampNeverLanded: unknown = null;
+  await job.runReleaseBatchFinish(runId, {
+    beforeFence: async () => {
+      fences += 1;
+      if (fences !== at + 1) return;
+      await untilTheRunIsStamped(runId).catch((err) => {
+        stampNeverLanded = err;
+      });
+    },
+    afterFence: async () => {
+      if (fences !== at) return;
+      aborting = start();
+      await untilARunWriteWaits();
+    },
+  });
+  if (stampNeverLanded) throw stampNeverLanded;
+  if (!aborting) throw new Error('the abort never started');
+  return aborting as ReturnType<typeof service.abortReleaseBatch>;
+}
+
+/**
  * Run the attempt green and abort inside the second close's fence: the abort's stamp waits on the
- * run row that fence holds, so the second close commits, and the third close's fence sees the
- * stamp and refuses. Two issues end closed and one does not.
+ * run row that fence holds, so the second close commits, and the third close's fence, held until
+ * the stamp commits, sees it and refuses. Two issues end closed and one does not.
  */
 async function abortInsideSecondClose(
   runId: string,
@@ -163,18 +210,7 @@ async function abortInsideSecondClose(
 ) {
   serving = PUSHED;
   await accept(runId);
-  let fences = 0;
-  let aborting: ReturnType<typeof service.abortReleaseBatch> | null = null;
-  await job.runReleaseBatchFinish(runId, {
-    afterFence: async () => {
-      fences += 1;
-      if (fences !== 2) return;
-      aborting = abort(runId, options);
-      await untilARunWriteWaits();
-    },
-  });
-  if (!aborting) throw new Error('the abort never started');
-  return aborting as ReturnType<typeof service.abortReleaseBatch>;
+  return finishAbortedAtFence(runId, 2, () => abort(runId, options));
 }
 
 async function split(ids: string[]): Promise<{ closed: string[]; open: string[] }> {
@@ -267,18 +303,7 @@ describe('a batch aborted after its finish closed part of the roster', () => {
     await accept(runId);
     // Two closes, then the finish's own claim release: the abort waits on that write's run row,
     // and the release stamp that follows it refuses the stamped run.
-    let fences = 0;
-    let aborting: ReturnType<typeof service.abortReleaseBatch> | null = null;
-    await job.runReleaseBatchFinish(runId, {
-      afterFence: async () => {
-        fences += 1;
-        if (fences !== 3) return;
-        aborting = abort(runId);
-        await untilARunWriteWaits();
-      },
-    });
-    if (!aborting) throw new Error('the abort never started');
-    const aborted = await (aborting as ReturnType<typeof service.abortReleaseBatch>);
+    const aborted = await finishAbortedAtFence(runId, 3, () => abort(runId));
     expect(aborted.alreadyClosed).toEqual([...ids].sort());
     for (const id of ids)
       expect(await fx.stored(id)).toMatchObject({ status: 'closed', claim: null });

@@ -292,6 +292,11 @@ describe('a worker that loses its hold mid-close, and a run close that fails', (
     let waitedBehindTheLock = false;
 
     await job.runReleaseBatchFinish(runId, {
+      // PostgreSQL does not hand the row the first close released to the takeover queued behind
+      // it first, so the next fence waits for the takeover to commit before it reads the row.
+      beforeFence: async () => {
+        if (takeover) await takeover;
+      },
       afterFence: async () => {
         if (takeover) return;
         const taken = (
