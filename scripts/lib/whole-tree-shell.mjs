@@ -15,6 +15,7 @@
 
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /** The file every watched Node process preloads; a NODE_OPTIONS still naming it keeps the watch. */
 export const PRELOAD_MARK = 'whole-tree-child.mjs';
@@ -978,7 +979,7 @@ function nodeListing(argv, cwd, repoRoot, baseEnv, refuse = null) {
     }
     if (NODE_PRELOAD.has(a)) {
       const mod = argv[k + 1];
-      if (!isWord(mod) || !baseArgv.has(startupModuleKey(mod)))
+      if (!isWord(mod) || !baseArgv.has(startupModuleKey(mod, cwd)))
         return deny('node given a startup module the worker was not started with');
       k++;
       continue;
@@ -1000,10 +1001,26 @@ function nodeListing(argv, cwd, repoRoot, baseEnv, refuse = null) {
 function base_execArgvTokens(baseEnv) {
   const set = new Set();
   const tokens = isWord(baseEnv.__WT_BASE_EXECARGV) ? baseEnv.__WT_BASE_EXECARGV.split('\n') : [];
-  for (const t of tokens) set.add(startupModuleKey(t));
+  for (const t of tokens) set.add(startupModuleKey(t, null));
   return set;
 }
-const startupModuleKey = (mod) => basename(String(mod));
+
+/** A startup module by the file it names: a path by its realpath, a file URL by its path, and a bare
+ * specifier as itself, so a module of the same name elsewhere is a different module. */
+export function startupModuleKey(mod, cwd) {
+  const text = String(mod);
+  let path = null;
+  if (text.startsWith('file:')) {
+    try {
+      path = fileURLToPath(text);
+    } catch {
+      return `unreadable:${text}`;
+    }
+  } else if (isAbsolute(text)) path = text;
+  else if (/^\.\.?\//.test(text)) path = cwd === null ? null : resolve(cwd, text);
+  if (path === null) return `specifier:${text}`;
+  return `path:${physical(path) ?? path}`;
+}
 
 /** Whether a path is a directory, following a symlink. `p` is already a realpath from `physical`. */
 function isDir(p) {
