@@ -14,9 +14,9 @@ import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { basename, dirname, join, relative, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import process from 'node:process';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { CONFIG_RE } from './lib/test-reachability.mjs';
 import {
   declarationExit,
@@ -27,6 +27,7 @@ import {
   judgeRun,
   SOURCE_FILE_RE,
   suiteMessage,
+  vitestSetup,
 } from './lib/whole-tree-gates.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -62,14 +63,13 @@ const globs = files.some((f) => GLOB_CALL_RE.test(f.source))
       ts: createRequire(join(ROOT, 'packages/core/package.json'))('typescript'),
     })
   : [];
-/** The `test.setupFiles` vitest resolves for a config, loaded by the vitest its package declares. */
+/** The root and `test.setupFiles` vitest resolves for a config, loaded by the vitest its package
+ * declares. */
 async function setupFilesOf(path) {
   const dir = resolve(ROOT, dirname(path));
   try {
     const vitestNode = createRequire(join(dir, 'package.json')).resolve('vitest/node');
-    const { resolveConfig } = await import(pathToFileURL(vitestNode).href);
-    const config = await resolveConfig({ config: basename(path), root: dir, watch: false });
-    return { path, setupFiles: [config.test?.setupFiles ?? []].flat().map((f) => resolve(dir, f)) };
+    return { path, ...(await vitestSetup(resolve(ROOT, path), vitestNode)) };
   } catch (e) {
     return { path, error: suiteMessage(e?.message ?? e) ?? 'vitest gave no message' };
   }

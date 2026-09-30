@@ -1,4 +1,12 @@
-import { ChildProcess, exec, execFile, execFileSync, spawn, spawnSync } from 'node:child_process';
+import {
+  ChildProcess,
+  exec,
+  execFile,
+  execFileSync,
+  execSync,
+  spawn,
+  spawnSync,
+} from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
@@ -29,7 +37,10 @@ import {
   judgeDeclarations,
   judgeGlobs,
   judgeRun,
+  pathOf,
+  spawnCwd,
   suiteMessage,
+  vitestSetup,
 } from './whole-tree-gates.mjs';
 import { subprocessListing } from './whole-tree-shell.mjs';
 import { spawnCall } from './whole-tree-watch.mjs';
@@ -80,6 +91,13 @@ describe('what a node:fs call lists', () => {
     expect(fsListing('readdir', [new URL('https://example.com/')], CORE)).toEqual([]);
   });
 
+  it('reads a URL by its shape, as Node does, so one from another realm is placed', () => {
+    const foreign = { href: pathToFileURL(`${ROOT}/`).href, protocol: 'file:' };
+    expect(fsListing('readdirSync', [foreign], CORE)).toEqual([ROOT]);
+    expect(fsListing('readdirSync', [new TextEncoder().encode('../..')], CORE)).toEqual([ROOT]);
+    expect(fsListing('readdirSync', [{ href: 'http://x/', protocol: 'http:' }], CORE)).toEqual([]);
+  });
+
   it('gives a path it cannot read as null, which the watch counts as the root', () => {
     expect(fsListing('readdirSync', [42], CORE)).toEqual([null]);
     expect(fsListing('globSync', [[/x/]], CORE)).toEqual([null]);
@@ -118,6 +136,41 @@ describe('what a node:fs call lists', () => {
         dirname(realpathSync(process.cwd())),
       ]);
     });
+  });
+});
+
+describe('the path Node reads off an argument', () => {
+  it('is a string, the bytes of a Buffer or byte array, or the path a file URL names', () => {
+    expect(pathOf('../..')).toBe('../..');
+    expect(pathOf(Buffer.from('/a/b'))).toBe('/a/b');
+    expect(pathOf(new TextEncoder().encode('/a/b'))).toBe('/a/b');
+    expect(pathOf(pathToFileURL('/a/b/'))).toBe('/a/b/');
+    expect(pathOf({ href: 'file:///a/b', protocol: 'file:' })).toBe('/a/b');
+  });
+
+  it('is null for a URL of another scheme, and for anything that is not a path', () => {
+    for (const value of [new URL('http://localhost:3000/@fs/a'), 42, {}, [], null, () => '/a']) {
+      expect(pathOf(value)).toBeNull();
+    }
+  });
+});
+
+describe('the directory a spawn runs in', () => {
+  it('is where the test runs when no cwd is handed', () => {
+    for (const cwd of [undefined, null, '']) expect(spawnCwd(cwd, CORE)).toBe(CORE);
+  });
+
+  it('is a relative cwd resolved from there, and the directory a file URL names', () => {
+    expect(spawnCwd('../..', CORE)).toBe(ROOT);
+    expect(spawnCwd(Buffer.from('src'), CORE)).toBe(`${CORE}/src`);
+    expect(spawnCwd(pathToFileURL(`${ROOT}/`), CORE)).toBe(ROOT);
+    expect(spawnCwd(new URL('../../..', pathToFileURL(`${CORE}/src/a.test.ts`)), CORE)).toBe(ROOT);
+  });
+
+  it('throws on a cwd Node would not take as a path, which the watch counts as the root', () => {
+    for (const cwd of [new URL('http://localhost:3000/@fs/repo'), 7, {}]) {
+      expect(() => spawnCwd(cwd, CORE)).toThrow(/a spawn cwd the guard cannot place/);
+    }
   });
 });
 
@@ -205,6 +258,29 @@ describe('the guard installed in this very run', () => {
     expect(covering().map((h) => h.via)).toEqual([
       'readdir()',
       'execFileSync() running git ls-files',
+    ]);
+  });
+
+  it('sees a program list it from a cwd handed as a file URL', () => {
+    const cwd = pathToFileURL(`${REPO}/`);
+    execFileSync('git', ['ls-files', '--', '[p]ackage.json'], { cwd });
+    execSync('ls >/dev/null', { cwd });
+    spawnSync('git', ['grep', '-l', 'no-such-text-anywhere'], { cwd, stdio: 'ignore' });
+    expect(covering().map((h) => h.via)).toEqual([
+      'execFileSync() running git ls-files',
+      'execSync() running ls',
+      'spawnSync() running git grep',
+    ]);
+  });
+
+  it('counts a spawn whose cwd it cannot place as the root, and Node refuses to run it', () => {
+    const cwd = new URL('http://localhost:3000/@fs/');
+    expect(() => execFileSync('ls', [], { cwd })).toThrow(/scheme file/);
+    expect(covering()).toEqual([
+      expect.objectContaining({
+        dir: REPO,
+        via: expect.stringMatching(/^execFileSync\(\) with an argument the guard cannot place/),
+      }),
     ]);
   });
 
@@ -534,15 +610,20 @@ describe('judging the vitest configurations', () => {
 
   it('passes one whose resolved test.setupFiles holds the guard', () => {
     const configs = [
-      { path: 'packages/core/vitest.config.ts', setupFiles: [`${CORE}/s.ts`, guard] },
+      { path: 'packages/core/vitest.config.ts', root: CORE, setupFiles: [`${CORE}/s.ts`, guard] },
     ];
     expect(judgeConfigs(configs, ROOT)).toEqual([]);
   });
 
-  it('refuses one that does not, naming the path to add from where it stands', () => {
+  it('refuses one that does not, naming the path to add from the root vitest resolves it at', () => {
     const configs = [
-      { path: 'packages/extra/vitest.config.ts', setupFiles: [`${ROOT}/packages/extra/setup.ts`] },
-      { path: 'vitest.config.ts', setupFiles: [] },
+      {
+        path: 'packages/extra/vitest.config.ts',
+        root: `${ROOT}/packages/extra`,
+        setupFiles: [`${ROOT}/packages/extra/setup.ts`],
+      },
+      { path: 'vitest.config.ts', root: ROOT, setupFiles: [] },
+      { path: 'packages/core/tests/nested/vitest.config.ts', root: CORE, setupFiles: [] },
     ];
     expect(judgeConfigs(configs, ROOT)).toEqual([
       {
@@ -553,7 +634,48 @@ describe('judging the vitest configurations', () => {
         path: 'vitest.config.ts',
         why: "does not install the guard that refuses an undeclared root walk — add 'scripts/lib/whole-tree-guard.mjs' to its `test.setupFiles`",
       },
+      {
+        path: 'packages/core/tests/nested/vitest.config.ts',
+        why: "does not install the guard that refuses an undeclared root walk — add '../../scripts/lib/whole-tree-guard.mjs' to its `test.setupFiles`",
+      },
     ]);
+  });
+
+  describe('resolved by the vitest this suite runs under', () => {
+    const REPO = resolve(import.meta.dirname, '..', '..');
+    const VITEST_NODE = createRequire(join(REPO, 'package.json')).resolve('vitest/node');
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'whole-tree-config-')));
+    mkdirSync(join(dir, 'sub'));
+    afterAll(() => rmSync(dir, { recursive: true, force: true }));
+    // Loading a configuration starts vite's esbuild service from this file's frame, which the
+    // guard counts as a program it cannot see into; that spawn is dropped, and nothing else is.
+    const guard = globalThis[Symbol.for('forge.whole-tree-guard')];
+    afterEach(() => {
+      guard.hits = guard.hits.filter(
+        (h) => !/\/node_modules\/@esbuild\/[^/]+\/bin\/esbuild`/.test(h.via),
+      );
+    });
+    const write = (name, test) => {
+      const path = join(dir, 'sub', name);
+      writeFileSync(path, `export default { test: ${JSON.stringify(test)} };`);
+      return path;
+    };
+
+    it('reads setupFiles from the configuration’s own test.root, as vitest runs it', async () => {
+      const path = write('vitest.rooted.config.mjs', { root: dir, setupFiles: ['./setup.mjs'] });
+      expect(await vitestSetup(path, VITEST_NODE)).toEqual({
+        root: dir,
+        setupFiles: [join(dir, 'setup.mjs')],
+      });
+    });
+
+    it('reads them from its own directory where it names no root', async () => {
+      const path = write('vitest.config.mjs', { setupFiles: ['./setup.mjs'] });
+      expect(await vitestSetup(path, VITEST_NODE)).toEqual({
+        root: join(dir, 'sub'),
+        setupFiles: [join(dir, 'sub', 'setup.mjs')],
+      });
+    });
   });
 
   it('refuses one vitest could not load, rather than trusting it', () => {

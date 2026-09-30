@@ -21,10 +21,8 @@ export default defineConfig({
     fileParallelism: true,
     maxWorkers: Number(process.env.ISOLATION_WORKERS),
     sequence: { sequencer: WriterFirst },
-    // Absolute, because vitest resolves this against `root` and the gate against this file's dir.
-    setupFiles: [
-      fileURLToPath(new URL('../../../../../scripts/lib/whole-tree-guard.mjs', import.meta.url)),
-    ],
+    // Relative to `root` above, which is what vitest and the whole-tree gate both resolve it from.
+    setupFiles: ['../../scripts/lib/whole-tree-guard.mjs'],
     hookTimeout: 60_000,
     testTimeout: 30_000,
   },
