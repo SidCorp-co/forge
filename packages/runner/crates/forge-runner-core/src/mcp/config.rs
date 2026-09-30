@@ -248,13 +248,73 @@ fn write_session_in(
         clear_session_in(dir, slug)?;
         return Ok(None);
     }
+    write_servers_at(&path, servers)?;
+    Ok(Some(path))
+}
+
+/// The document a session config holds, put at `path` owner-only and whole or not at all. The
+/// one writer behind a master pane's config and a job pane's, so the two cannot differ in what a
+/// pane is handed or in who can read the credentials inside it.
+fn write_servers_at(path: &Path, servers: &serde_json::Map<String, Value>) -> Result<()> {
     let doc = serde_json::json!({ "mcpServers": Value::Object(servers.clone()) });
     let body = serde_json::to_string_pretty(&doc).map_err(|e| Error::Other(e.to_string()))?;
     let tmp = path.with_extension(format!("tmp.{}", std::process::id()));
     write_owner_only(&tmp, &body)?;
-    std::fs::rename(&tmp, &path)?;
+    std::fs::rename(&tmp, path)?;
+    Ok(())
+}
+
+/// A pool job pane's own copy of its project's declared servers, beside the master's.
+///
+/// Its own file because a master pane's is the record [`session_matches`] reads to say whether
+/// that LIVE pane still carries what core resolves: a job rewriting it with a newer declaration
+/// would make a master started on an older one read as current (ISS-1347). An empty declaration
+/// writes nothing, so the pane is started with no `--mcp-config` at all.
+pub fn write_job_session(
+    pane: &str,
+    servers: &serde_json::Map<String, Value>,
+) -> Result<Option<PathBuf>> {
+    write_job_session_in(&mcp_config_dir(), pane, servers)
+}
+
+pub(crate) fn write_job_session_in(
+    dir: &Path,
+    pane: &str,
+    servers: &serde_json::Map<String, Value>,
+) -> Result<Option<PathBuf>> {
+    if servers.is_empty() {
+        return Ok(None);
+    }
+    sweep_stale(dir);
+    let path = job_session_path_in(dir, pane);
+    write_servers_at(&path, servers)?;
     Ok(Some(path))
 }
+
+/// Remove what [`write_job_session`] wrote for this pane; a pane it wrote nothing for is not an
+/// error.
+pub fn clear_job_session(pane: &str) -> Result<()> {
+    clear_job_session_in(&mcp_config_dir(), pane)
+}
+
+pub(crate) fn clear_job_session_in(dir: &Path, pane: &str) -> Result<()> {
+    let path = job_session_path_in(dir, pane);
+    match std::fs::remove_file(&path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(Error::Other(format!("{}: {e}", path.display()))),
+    }
+}
+
+/// Where a job pane's config lives, off the pane name alone, which the job's record carries
+/// across a restart.
+pub(crate) fn job_session_path_in(dir: &Path, pane: &str) -> PathBuf {
+    dir.join(format!("{JOB_SESSION_PREFIX}{}.json", sanitize_slug(pane)))
+}
+
+/// A job pane's config, which the 24-hour age sweep removes where a crashed daemon left one: it
+/// is read once, when the pane's agent starts.
+const JOB_SESSION_PREFIX: &str = "forge-job-mcp-";
 
 pub fn sweep_orphaned_sessions(active_slugs: &[String]) -> Result<Vec<(PathBuf, String)>> {
     sweep_orphaned_sessions_in(&mcp_config_dir(), active_slugs)
@@ -1350,6 +1410,78 @@ mod tests {
         let doc: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(doc["mcpServers"]["playwright"]["command"], "npx");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// ISS-1347: a job pane's config is its own file, written the way a master's is, and the
+    /// master's record of what its live pane carries is never touched by it.
+    #[test]
+    fn a_job_config_is_owner_only_and_leaves_the_masters_config_byte_for_byte() {
+        let dir = tmp_mcp_dir("job-session");
+        let master = write_session_in(&dir, "mowment", &servers(&[("playwright", "npx")]))
+            .unwrap()
+            .unwrap();
+        let before = std::fs::read(&master).unwrap();
+
+        let job = write_job_session_in(
+            &dir,
+            "forge-job-7b32720c",
+            &servers(&[("playwright", "npx"), ("epodsystem", "epod")]),
+        )
+        .unwrap()
+        .expect("servers were declared, so a path is owed");
+
+        assert_eq!(
+            job.file_name().unwrap().to_str().unwrap(),
+            "forge-job-mcp-forge-job-7b32720c.json"
+        );
+        assert_eq!(std::fs::read(&master).unwrap(), before);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&job).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600, "the file carries credentials: {mode:o}");
+        }
+        let held = session_servers(&std::fs::read_to_string(&job).unwrap()).unwrap();
+        assert_eq!(
+            held.keys().collect::<Vec<_>>(),
+            vec!["epodsystem", "playwright"]
+        );
+        let mut left: Vec<String> = std::fs::read_dir(&dir)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        left.sort();
+        assert_eq!(
+            left,
+            vec![
+                "forge-job-mcp-forge-job-7b32720c.json".to_string(),
+                "forge-master-mcp-mowment.json".to_string()
+            ],
+            "no `.tmp.<pid>` is left behind"
+        );
+    }
+
+    #[test]
+    fn clearing_a_job_config_removes_it_and_a_missing_one_is_not_an_error() {
+        let dir = tmp_mcp_dir("job-session-clear");
+        let job = write_job_session_in(&dir, "forge-job-j1", &servers(&[("playwright", "npx")]))
+            .unwrap()
+            .unwrap();
+
+        clear_job_session_in(&dir, "forge-job-j1").unwrap();
+        assert!(!job.exists());
+        clear_job_session_in(&dir, "forge-job-j1").expect("nothing there is nothing to remove");
+    }
+
+    #[test]
+    fn a_job_declaring_nothing_writes_nothing() {
+        let dir = tmp_mcp_dir("job-session-none");
+        assert_eq!(
+            write_job_session_in(&dir, "forge-job-j1", &serde_json::Map::new()).unwrap(),
+            None
+        );
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 0);
     }
 
     #[test]

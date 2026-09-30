@@ -25,6 +25,7 @@ use crate::daemon::turn_evidence::{self, Evidence, Watch};
 use crate::daemon::{control, hook_install, session_tokens, terminal};
 use crate::error::{Error, Result};
 use crate::transport::events::{self, JobEventInput};
+use crate::transport::mcp_servers::{self, ProjectMcpServers};
 use crate::transport::pool::{self, PoolEntry, Prepared, ReadFailure, Started};
 use crate::transport::{lifecycle, CoreClient};
 
@@ -37,6 +38,10 @@ pub trait Pool: Send + Sync {
     async fn prepare(&self, job_id: &str, session_id: &str) -> Result<Prepared>;
     async fn start(&self, job_id: &str, session_id: &str) -> Result<Started>;
     async fn release(&self, job_id: &str, session_id: &str) -> Result<()>;
+    /// The MCP servers this project declares, resolved, which a job pane is started with exactly
+    /// as a master pane is. A read that failed is an error and never an empty declaration: a pane
+    /// started on that reading carries none of what the project declared (ISS-1235, ISS-1347).
+    async fn mcp_servers(&self, project_id: &str) -> Result<ProjectMcpServers>;
 }
 
 #[async_trait::async_trait]
@@ -61,13 +66,17 @@ pub trait Records: Send + Sync {
 /// The pane a job runs in.
 #[async_trait::async_trait]
 pub trait Panes: Send + Sync {
+    /// Start the pane with the project's declared `servers`, refusing where it cannot be.
     async fn open(
         &self,
         name: &str,
         cwd: &Path,
         prompt: &str,
         env: &[(String, String)],
+        servers: &serde_json::Map<String, serde_json::Value>,
     ) -> Result<()>;
+    /// This box has let go of the job this pane ran: whatever `open` wrote for it goes.
+    async fn released(&self, name: &str);
     /// Whether tmux answered that it holds no pane by this name. A question it
     /// could not answer is not an ending, so it is not `gone` (ISS-1312).
     async fn gone(&self, name: &str) -> bool;
@@ -368,6 +377,7 @@ pub async fn adopt(
         );
         match report.fail(&rec.job_id, &reason).await {
             Ok(_) => {
+                panes.released(&rec.pane).await;
                 records.forget(&rec.job_id).await;
                 out.buried += 1;
                 tracing::warn!(
@@ -532,6 +542,25 @@ pub async fn take_one(
         return Took::GaveBack(prepared.job_id);
     };
 
+    let declared = match pool_ports.mcp_servers(project_id).await {
+        Ok(declared) => declared,
+        Err(e) => {
+            give_back(pool_ports, &prepared.job_id, session_id).await;
+            tracing::error!(
+                "[pool] {project_id}: job {} given back — this box could not read the project's declared MCP servers ({e}), and a pane started now would carry none of them",
+                prepared.job_id
+            );
+            return Took::GaveBack(prepared.job_id);
+        }
+    };
+    if !declared.dropped_names.is_empty() {
+        tracing::warn!(
+            "[pool] {project_id}: job {} starts without {}, which the project declares and core could not supply",
+            prepared.job_id,
+            declared.dropped_names.join(", ")
+        );
+    }
+
     let (env, channel) = open_channel(
         &cwd,
         &prepared.agent_session_id,
@@ -542,7 +571,11 @@ pub async fn take_one(
     );
 
     let opened_at = now_ms();
-    if let Err(e) = panes.open(&pane, &cwd, &prompt, &env).await {
+    if let Err(e) = panes
+        .open(&pane, &cwd, &prompt, &env, &declared.mcp_servers)
+        .await
+    {
+        panes.released(&pane).await;
         give_back(pool_ports, &prepared.job_id, session_id).await;
         tracing::error!("[pool] {project_id}: could not open {pane}: {e} — hold given back");
         return Took::GaveBack(prepared.job_id);
@@ -569,6 +602,7 @@ pub async fn take_one(
         Ok(Started::Ok) => {}
         Ok(Started::Refused(r)) => {
             let _ = panes.kill(&pane).await;
+            panes.released(&pane).await;
             records.forget(&prepared.job_id).await;
             tracing::warn!(
                 "[pool] {project_id}: start refused for job {} ({}) — pane {pane} killed",
@@ -592,9 +626,14 @@ pub async fn take_one(
         tracing::warn!("[pool] ack for job {} failed: {e}", prepared.job_id);
     }
     tracing::info!(
-        "[pool] {project_id}: job {} ({}) running in {pane}",
+        "[pool] {project_id}: job {} ({}) running in {pane}, carrying {}",
         prepared.job_id,
-        prepared.job_type
+        prepared.job_type,
+        if declared.resolved_names.is_empty() {
+            "no declared MCP servers".to_string()
+        } else {
+            declared.resolved_names.join(", ")
+        }
     );
     Took::Started(prepared.job_id)
 }
@@ -706,6 +745,7 @@ pub async fn supervise(
                 );
                 continue;
             }
+            panes.released(&live.pane).await;
             registry.forget(&live.job_id);
             records.forget(&live.job_id).await;
             tracing::warn!("[pool] job {} lost its pane {}", live.job_id, live.pane);
@@ -773,6 +813,7 @@ pub async fn supervise(
             Ok(true) => {}
             Ok(false) => {
                 let _ = panes.kill(&live.pane).await;
+                panes.released(&live.pane).await;
                 registry.forget(&live.job_id);
                 records.forget(&live.job_id).await;
                 tracing::info!(
@@ -815,6 +856,7 @@ async fn conclude(
         );
         return false;
     }
+    panes.released(&live.pane).await;
     registry.forget(&live.job_id);
     records.forget(&live.job_id).await;
     tracing::error!("[pool] job {}: {reason}", live.job_id);
@@ -849,6 +891,10 @@ impl Pool for CorePool<'_> {
 
     async fn release(&self, job_id: &str, session_id: &str) -> Result<()> {
         pool::release(self.client, Some(job_id), session_id).await
+    }
+
+    async fn mcp_servers(&self, project_id: &str) -> Result<ProjectMcpServers> {
+        mcp_servers::fetch_within(self.client, project_id, self.deadline).await
     }
 }
 
@@ -1023,6 +1069,23 @@ impl Records for NoRecords {
 
 pub struct TmuxPanes;
 
+/// The command a job pane is started with: the same `pane_argv` a master pane takes, handed the
+/// project's declared servers through a config of the job's own. A declaration that cannot be
+/// written is a refusal, because the pane it would start carries none of it.
+fn job_pane_argv(
+    dir: &Path,
+    name: &str,
+    servers: &serde_json::Map<String, serde_json::Value>,
+) -> Result<Vec<String>> {
+    let config = crate::mcp::config::write_job_session_in(dir, name, servers).map_err(|e| {
+        Error::Other(format!(
+            "the project's declared MCP servers ({}) could not be written for {name}: {e}",
+            servers.keys().cloned().collect::<Vec<_>>().join(", ")
+        ))
+    })?;
+    Ok(terminal::pane_argv(config.as_deref(), None))
+}
+
 #[async_trait::async_trait]
 impl Panes for TmuxPanes {
     async fn open(
@@ -1031,15 +1094,24 @@ impl Panes for TmuxPanes {
         cwd: &Path,
         prompt: &str,
         env: &[(String, String)],
+        servers: &serde_json::Map<String, serde_json::Value>,
     ) -> Result<()> {
         if !terminal::available() {
             return Err(Error::Other(
                 "tmux is not installed on this box, and a job pane needs it".into(),
             ));
         }
-        let argv = terminal::pane_argv(None, None);
+        let argv = job_pane_argv(&crate::mcp::config::session_dir(), name, servers)?;
         terminal::ensure(name, cwd, &argv, env, None).await?;
         terminal::brief_new_pane(name, prompt).await
+    }
+
+    async fn released(&self, name: &str) {
+        if let Err(e) = crate::mcp::config::clear_job_session(name) {
+            tracing::warn!(
+                "[pool] {name} is over, but its MCP config could not be removed ({e}) — it holds the project's server credentials until the 24-hour sweep takes it"
+            );
+        }
     }
 
     async fn gone(&self, name: &str) -> bool {
@@ -1078,6 +1150,10 @@ mod tests {
         recorded: Mutex<Vec<String>>,
         cwds: Mutex<Vec<PathBuf>>,
         envs: Mutex<Vec<Vec<(String, String)>>>,
+        /// The declared servers each pane was opened with, as `pane|name,name`.
+        servers: Mutex<Vec<String>>,
+        /// Every pane whose job this box let go of, through `Panes::released`.
+        unconfigured: Mutex<Vec<String>>,
     }
 
     struct FakePool {
@@ -1087,6 +1163,8 @@ mod tests {
         prepare: Mutex<Option<Prepared>>,
         start: Mutex<Option<Started>>,
         start_errs: std::sync::atomic::AtomicBool,
+        /// What the declared-servers read answers; `Err` is a read that failed.
+        declared: Mutex<std::result::Result<ProjectMcpServers, String>>,
         rec: Arc<Recorder>,
     }
 
@@ -1159,6 +1237,9 @@ mod tests {
             self.rec.released.lock().unwrap().push(job_id.into());
             Ok(())
         }
+        async fn mcp_servers(&self, _project_id: &str) -> Result<ProjectMcpServers> {
+            self.declared.lock().unwrap().clone().map_err(Error::Other)
+        }
     }
 
     thread_local! {
@@ -1204,10 +1285,15 @@ mod tests {
             cwd: &Path,
             prompt: &str,
             env: &[(String, String)],
+            servers: &serde_json::Map<String, serde_json::Value>,
         ) -> Result<()> {
             if self.open_fails {
                 return Err(Error::Other("no tmux".into()));
             }
+            self.rec.servers.lock().unwrap().push(format!(
+                "{name}|{}",
+                servers.keys().cloned().collect::<Vec<_>>().join(",")
+            ));
             self.rec.envs.lock().unwrap().push(env.to_vec());
             self.rec.cwds.lock().unwrap().push(cwd.to_path_buf());
             self.rec
@@ -1233,6 +1319,9 @@ mod tests {
         }
         async fn names(&self) -> Vec<String> {
             self.names.clone()
+        }
+        async fn released(&self, name: &str) {
+            self.rec.unconfigured.lock().unwrap().push(name.into());
         }
     }
 
@@ -1336,6 +1425,7 @@ mod tests {
                 prepare: Mutex::new(prep),
                 start: Mutex::new(start),
                 start_errs: std::sync::atomic::AtomicBool::new(false),
+                declared: Mutex::new(Ok(ProjectMcpServers::default())),
                 rec: rec.clone(),
             },
             panes: FakePanes {
@@ -1467,6 +1557,167 @@ mod tests {
         assert_eq!(w.registry.count(), 1);
     }
 
+    fn declaring(names: &[&str]) -> ProjectMcpServers {
+        let mut servers = serde_json::Map::new();
+        for n in names {
+            servers.insert(
+                (*n).to_string(),
+                serde_json::json!({ "type": "http", "url": format!("https://{n}.example/mcp") }),
+            );
+        }
+        ProjectMcpServers {
+            mcp_servers: servers,
+            resolved_names: names.iter().map(|n| (*n).to_string()).collect(),
+            dropped_names: Vec::new(),
+        }
+    }
+
+    /// ISS-1347: every kind core puts in the pool goes through the one launch, and each of them
+    /// is handed what the project declares.
+    #[tokio::test]
+    async fn every_pool_kind_opens_its_pane_with_the_servers_the_project_declares() {
+        for kind in ["smoke", "release_batch", "reconcile", "verify_skill"] {
+            let mut prep = prepared("j1", Some("go"));
+            if let Prepared::Took(p) = &mut prep {
+                p.job_type = kind.into();
+            }
+            let w = world(vec![entry("j1", None)], Some(prep), None);
+            *w.pool.declared.lock().unwrap() = Ok(declaring(&["epodsystem", "playwright"]));
+
+            assert_eq!(take(&w, 2).await, Took::Started("j1".into()), "{kind}");
+            assert_eq!(
+                w.rec.servers.lock().unwrap().clone(),
+                vec!["forge-job-j1|epodsystem,playwright".to_string()],
+                "a {kind} pane carries the project's declared servers"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn a_project_declaring_nothing_opens_its_pane_with_nothing() {
+        let w = world(
+            vec![entry("j1", None)],
+            Some(prepared("j1", Some("go"))),
+            None,
+        );
+
+        assert_eq!(take(&w, 2).await, Took::Started("j1".into()));
+        assert_eq!(
+            w.rec.servers.lock().unwrap().clone(),
+            vec!["forge-job-j1|".to_string()]
+        );
+    }
+
+    /// A read that failed is not a project declaring nothing (ISS-1235's lesson, for job panes).
+    #[tokio::test]
+    async fn a_declaration_core_would_not_answer_gives_the_job_back_with_no_pane() {
+        let w = world(
+            vec![entry("j1", None)],
+            Some(prepared("j1", Some("go"))),
+            None,
+        );
+        *w.pool.declared.lock().unwrap() =
+            Err("me/mcp-servers 520 (gateway: the origin returned an unknown error)".into());
+
+        assert_eq!(take(&w, 2).await, Took::GaveBack("j1".into()));
+
+        assert!(w.rec.opened.lock().unwrap().is_empty(), "no pane opened");
+        assert_eq!(
+            w.rec.released.lock().unwrap().clone(),
+            vec!["j1".to_string()],
+            "the hold goes back to the pool"
+        );
+        assert!(w.rec.acked.lock().unwrap().is_empty());
+        assert_eq!(w.registry.count(), 0);
+    }
+
+    #[tokio::test]
+    async fn a_job_whose_pane_ended_on_its_own_lets_its_config_go() {
+        let w = world(vec![], None, None);
+        w.registry.note("j1", "forge-job-j1", Watch::Unhooked);
+
+        sup(&w).await;
+
+        assert_eq!(w.registry.count(), 0);
+        assert!(w.rec.failed.lock().unwrap()[0]
+            .1
+            .contains("ended without reporting"));
+        assert_eq!(
+            w.rec.unconfigured.lock().unwrap().clone(),
+            vec!["forge-job-j1".to_string()]
+        );
+    }
+
+    #[test]
+    fn a_job_pane_is_launched_with_a_config_holding_the_declared_servers() {
+        let dir = crate::test_scratch::Scratch::new("job-argv");
+        let declared = declaring(&["epodsystem"]).mcp_servers;
+
+        let argv = job_pane_argv(dir.path(), "forge-job-j1", &declared).expect("written");
+
+        let path = crate::mcp::config::job_session_path_in(dir.path(), "forge-job-j1");
+        assert!(
+            argv[2].contains(&format!("--mcp-config '{}'", path.display())),
+            "the pane is told where its servers are: {}",
+            argv[2]
+        );
+        let text = std::fs::read_to_string(&path).expect("the job's config is on disk");
+        assert_eq!(
+            crate::mcp::config::session_servers(&text),
+            Some(declared),
+            "the file holds exactly what core resolved"
+        );
+    }
+
+    #[test]
+    fn a_job_pane_for_a_project_declaring_nothing_carries_no_mcp_config() {
+        let dir = crate::test_scratch::Scratch::new("job-argv-none");
+
+        let argv = job_pane_argv(dir.path(), "forge-job-j1", &serde_json::Map::new())
+            .expect("nothing to write is not a failure");
+
+        assert_eq!(argv, terminal::pane_argv(None, None));
+        assert_eq!(std::fs::read_dir(dir.path()).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn a_declaration_that_cannot_be_written_refuses_the_pane_by_name() {
+        let dir = crate::test_scratch::Scratch::new("job-argv-unwritable");
+        let not_a_dir = dir.path().join("occupied");
+        std::fs::write(&not_a_dir, "a file where the config directory should be").unwrap();
+
+        let err = job_pane_argv(
+            &not_a_dir,
+            "forge-job-j1",
+            &declaring(&["epodsystem"]).mcp_servers,
+        )
+        .expect_err("a pane that would lack its servers is not started")
+        .to_string();
+
+        assert!(
+            err.contains("epodsystem"),
+            "names what the pane would lack: {err}"
+        );
+        assert!(err.contains("forge-job-j1"), "names the pane: {err}");
+    }
+
+    #[test]
+    fn the_tmux_port_launches_a_job_pane_through_its_declared_servers() {
+        let body = THIS_SOURCE
+            .split("impl Panes for TmuxPanes {")
+            .nth(1)
+            .and_then(|r| r.split("async fn gone(").next())
+            .unwrap_or_default();
+        assert!(
+            body.contains("job_pane_argv("),
+            "TmuxPanes::open builds its launch from the declared servers"
+        );
+        assert!(
+            !body.contains(concat!("pane_argv(", "None, None)")),
+            "a job pane launched with no --mcp-config lacks every server its project declares (ISS-1347)"
+        );
+    }
+
     #[tokio::test]
     async fn a_pane_that_cannot_open_gives_the_hold_back_and_never_stamps() {
         let mut w = world(
@@ -1484,6 +1735,11 @@ mod tests {
         );
         assert!(w.rec.acked.lock().unwrap().is_empty());
         assert_eq!(w.registry.count(), 0);
+        assert_eq!(
+            w.rec.unconfigured.lock().unwrap().clone(),
+            vec!["forge-job-j1".to_string()],
+            "a pane that failed to open may still have had its config written"
+        );
     }
 
     #[tokio::test]
@@ -1514,6 +1770,10 @@ mod tests {
             vec!["forge-job-j1".to_string()]
         );
         assert_eq!(w.registry.count(), 0);
+        assert_eq!(
+            w.rec.unconfigured.lock().unwrap().clone(),
+            vec!["forge-job-j1".to_string()]
+        );
     }
 
     #[tokio::test]
@@ -1862,6 +2122,10 @@ mod tests {
         );
         assert_eq!(w.registry.count(), 0);
         assert!(w.rec.failed.lock().unwrap().is_empty());
+        assert_eq!(
+            w.rec.unconfigured.lock().unwrap().clone(),
+            vec!["forge-job-j1".to_string()]
+        );
     }
 
     #[tokio::test]
@@ -2166,6 +2430,11 @@ mod tests {
         assert!(
             w.rec.beats.lock().unwrap().is_empty(),
             "a job this box has just ended must not also be beaten as progress"
+        );
+        assert_eq!(
+            w.rec.unconfigured.lock().unwrap().clone(),
+            vec!["forge-job-j1".to_string()],
+            "a concluded job's config goes with it"
         );
     }
 
@@ -2935,6 +3204,11 @@ mod tests {
         assert!(failed[0].1.contains("did not survive"));
         assert!(w.records.all().await.is_empty());
         assert_eq!(w.registry.count(), 0);
+        assert_eq!(
+            w.rec.unconfigured.lock().unwrap().clone(),
+            vec!["forge-job-j1".to_string()],
+            "the record names the pane, and the pane names its config"
+        );
     }
 
     #[tokio::test]
