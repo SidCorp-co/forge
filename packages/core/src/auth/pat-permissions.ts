@@ -86,6 +86,7 @@ export const PAT_PERMISSION_RESOURCES = {
     },
   },
   orgs: { reach: 'account', prefixes: { '/api/orgs': 2, '/api/integration-connections': 2 } },
+  ecosystems: { reach: 'account', prefixes: { '/api/ecosystems': 3, '/api/memberships': 3 } },
   devices: { reach: 'account', prefixes: { '/api/devices': 2 } },
   'update-packets': { reach: 'account', prefixes: { '/api/update-packets': 2 } },
   admin: { reach: 'account', prefixes: { '/api/admin': 2 } },

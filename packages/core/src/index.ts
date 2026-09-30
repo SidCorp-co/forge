@@ -59,6 +59,7 @@ import { registerDeviceStaleDetector } from './devices/stale-detector.js';
 import { domainTemplateRoutes } from './domain-templates/routes.js';
 import { seedDomainTemplates } from './domain-templates/seed.js';
 import { registerEagerSubscribers } from './eager-subscribers.js';
+import { ecosystemApiRoutes } from './ecosystem/mount.js';
 import { feedbackReportRoutes } from './feedback/routes.js';
 import { guideRoutes } from './guides/routes.js';
 import { opsHealthMeRoutes, opsHealthProjectRoutes, publicHealthRoutes } from './health/routes.js';
@@ -303,6 +304,7 @@ app.route('/api/projects', gitCredentialRoutes);
 app.route('/api/projects', runLedgerRoutes);
 app.route('/api/projects', masterCharterRoutes);
 mountProjectConfig(app);
+app.route('/api', ecosystemApiRoutes);
 app.route('/api/projects', projectRoutes);
 app.route('/api/projects', assistantWeeklyRoutes);
 app.route('/api/orgs', orgRoutes);
@@ -410,9 +412,7 @@ app.route('/api/app-config', appConfigRoutes);
 app.route('/api/domain-templates', domainTemplateRoutes);
 app.route('/api/runners', runnerRoutes);
 
-if (isEnabled('pmAgent')) {
-  app.route('/api/projects', pmRoutes);
-}
+if (isEnabled('pmAgent')) app.route('/api/projects', pmRoutes);
 app.route('/api/projects', pmReadRoutes);
 app.route('/api/projects', agentSessionProjectReadRoutes);
 

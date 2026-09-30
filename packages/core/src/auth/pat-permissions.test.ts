@@ -94,6 +94,9 @@ const ADDED_AT_EPOCH_2 = [
   '/api/usage-records',
 ];
 
+/** ISS-19 — the ecosystem and membership routes, which reach no single project. */
+const ADDED_AT_EPOCH_3 = ['/api/ecosystems', '/api/memberships'];
+
 describe('a token keeps the reach it was minted with', () => {
   it('holds epoch 1 to exactly the prefixes a PAT could reach before the menu grew', () => {
     expect(prefixesAt(1)).toEqual([...REACHABLE_ON_2026_09_10].sort());
@@ -103,11 +106,15 @@ describe('a token keeps the reach it was minted with', () => {
     expect(prefixesAt(2)).toEqual([...ADDED_AT_EPOCH_2].sort());
   });
 
-  it('declares no epoch but those two, and mints at the highest', () => {
+  it('puts the ecosystem prefixes at epoch 3', () => {
+    expect(prefixesAt(3)).toEqual([...ADDED_AT_EPOCH_3].sort());
+  });
+
+  it('declares no epoch but those three, and mints at the highest', () => {
     expect(patPermissionPrefixes()).toEqual(
-      [...REACHABLE_ON_2026_09_10, ...ADDED_AT_EPOCH_2].sort(),
+      [...REACHABLE_ON_2026_09_10, ...ADDED_AT_EPOCH_2, ...ADDED_AT_EPOCH_3].sort(),
     );
-    expect(PAT_GRANT_EPOCH).toBe(2);
+    expect(PAT_GRANT_EPOCH).toBe(3);
   });
 
   it('reports each prefix with the epoch it joined at', () => {
