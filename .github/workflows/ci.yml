@@ -26,10 +26,17 @@ on:
     branches: [main, dev]
   pull_request:
     branches: [main, dev]
+  # The heavy jobs a pull request no longer waits on also run nightly, 19:00 UTC (ISS-1370), so a
+  # red one is found on a day nothing landed as well.
+  schedule:
+    - cron: '0 19 * * *'
 
+# A pull request's newer run cancels its older one. A push run is never cancelled: since ISS-1370
+# the heavy jobs run only there, and a landing cancelled by the next one would be measured by
+# nothing — so each push is its own group, keyed on its commit.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}-${{ github.event_name != 'pull_request' && github.sha || '' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Dependabot PRs run with a read-only GITHUB_TOKEN by default (since
 # Sept 2021), which makes dorny/paths-filter's pulls.listFiles API call
@@ -266,11 +273,15 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       # A merge commit on `main` carries a tree a `pull_request` run has ALREADY
-      # built and tested: GitHub runs those on `refs/pull/N/merge`, and branch
-      # protection has `strict: true`, so a branch cannot merge while it is
-      # behind — the merge ref and the merge result are the same tree. Re-running
-      # `core`, `core-integration`, `web` and `runner` over it buys nothing, and
+      # built and tested when the branch was up to date: GitHub runs those on
+      # `refs/pull/N/merge`. ISS-1370 turns branch protection's `strict` off, so a
+      # branch may now merge while behind, and that merge carries a tree no
+      # pull_request run built — the tree check below reads it `proved=false`. Re-running
+      # `core`, `web` and `runner` over it buys nothing, and
       # measured over 400 runs (2026-09-09..16) it was 88 of them, 22% of all CI.
+      # `core-integration`, `images`, `whole-tree` and `runner-platforms` do NOT
+      # read it: since ISS-1370 a pull request never runs them, so the push is the
+      # only run that does and nothing has proved that tree for them.
       # The two merge-commit reds in that window were both infrastructure, not
       # drift: a Docker Hub manifest timeout pulling pgvector, and a pg-boss
       # enqueue failure — neither reachable by this filter.
@@ -279,8 +290,8 @@ jobs:
       # is depth 1, where the shallow graft leaves every commit parentless to
       # `git rev-list` and `git log`, so either would count 1 on every merge
       # (ISS-1340). A tree equal to the second parent's, so a merge
-      # carrying content its pull request never held — resolved by hand, or taken
-      # past `strict` — is not waved through. And that parent's latest `ci-passed`
+      # carrying content its pull request never held — resolved by hand, or merged
+      # while behind — is not waved through. And that parent's latest `ci-passed`
       # concluded `success`, because `enforce_admins` is false and a merge taken
       # past red carries two parents too. Anything else, or a read that fails, is
       # `proved=false` with its reason logged, so a DIRECT push — the owner lane,
@@ -336,8 +347,10 @@ jobs:
           echo "proved=$proved" >> "$GITHUB_OUTPUT"
           echo "why: $why"
           echo "pull_request run already proved this tree: $proved"
+      # A scheduled run has no pushed range to diff, and its jobs select on the event instead.
       - uses: dorny/paths-filter@v4
         id: filter
+        if: github.event_name != 'schedule'
         with:
           # NB: dorny/paths-filter treats `!pattern` entries as separate
           # positive matchers ("match files NOT matching pattern"), not as
@@ -454,20 +467,20 @@ jobs:
       # there. A new failure here is a real type error, not legacy noise.
       - run: pnpm --filter @forge/core typecheck
       - run: pnpm --filter @forge/core build
-      # Integration tests run in the separate, NON-BLOCKING `core-integration`
-      # job below (not this gated one) — see its comment.
+      # Integration tests run in `core-integration` below, after the merge.
 
-  # Integration tests (Testcontainers) for core. BLOCKING (in the `ci-passed`
-  # needs list) since 2026-07-10: the "visibility-only" experiment failed — the
-  # job sat permanently red for a week (8 rotted tests) and everyone learned to
-  # ignore it, which is worse than no job at all. This suite asserts
-  # real-Postgres behavior + applies every migration on a fresh DB; it is the
-  # only thing standing between a schema change and a broken deploy. If a
-  # genuine Testcontainers flake blocks a merge, re-run the job — if flakes
-  # become chronic, quarantine the flaky TEST, don't soften the gate.
+  # Integration tests (Testcontainers) for core. POST-MERGE since ISS-1370: it
+  # runs on the push to a gated branch and nightly, never on a pull request,
+  # and `ci-passed` does not need it. It gated from 2026-07-10 because the
+  # first "visibility-only" run sat red for a week (8 rotted tests) while
+  # everyone learned to ignore it — the price `.forge/conformance.json`
+  # `$postMerge` names, taken on the owner's ruling that forge-dev, a beta with
+  # no production, ships fast. This suite asserts real-Postgres behavior and
+  # applies every migration on a fresh DB, so a red here is fixed forward by
+  # whichever run lands next, before anything else.
   core-integration:
     needs: changes
-    if: needs.changes.outputs.proved != 'true' && (needs.changes.outputs.core == 'true')
+    if: github.event_name != 'pull_request' && (github.event_name == 'schedule' || needs.changes.outputs.core == 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -486,23 +499,20 @@ jobs:
   # on it via paths-filter: a path-triggered workflow of its own CANNOT be a
   # required check — a PR not touching the runner would never run it and the
   # required check would pend forever.
-  # The runner ships a binary for three platforms, so the gate runs on three.
-  # This job used to be ubuntu-only while a 3-OS matrix lived in its own
-  # `runner-ci.yml` — and GitHub `needs:` cannot cross workflow files, so that
-  # matrix was in NO gate: on 2026-09-09 `build (windows-latest)` went red on
-  # PR #336 while `ci-passed` went green and the merge went through. Two
-  # windows-only classes reached `main` that way, neither able to fail on linux
-  # (a `cfg(unix)`-only dep used unconditionally, and a source scan splitting on
-  # `"\n}\n"` that under CRLF silently measured the whole file instead).
-  # Keep every leg in ONE job so `needs: runner` covers all three.
+  # The runner ships a binary for three platforms. Since ISS-1370 a pull
+  # request runs the tests on ubuntu alone and clippies Windows and macOS from
+  # it; the macOS and Windows builds and tests run in `runner-platforms` after
+  # the merge. That is the shape which let two windows-only classes reach
+  # `main` once already — on 2026-09-09 `build (windows-latest)` went red on PR
+  # #336 while `ci-passed` went green (a `cfg(unix)`-only dep used
+  # unconditionally, and a source scan splitting on `"\n}\n"` that under CRLF
+  # measured the whole file) — and it is priced in `.forge/conformance.json`
+  # `$postMerge`. The release builds both binaries itself in
+  # runner-release.yml, so a red leg here is found before or at the release.
   runner:
     needs: changes
     if: needs.changes.outputs.proved != 'true' && (needs.changes.outputs.runner == 'true')
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -511,6 +521,30 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: packages/runner
+      # Compile and lint errors for the two platforms a pull request no longer builds on still gate
+      # it (ISS-1370): clippy type-checks every `cfg(windows)` and `cfg(target_os = "macos")` path
+      # without linking, which is the class of #816, an unused import behind `cfg(windows)`. Runtime
+      # differences — CRLF, path separators, temp-dir symlinks — are NOT caught here; they are
+      # `runner-platforms`', after the merge. `ring` and `libsqlite3-sys` compile C in their build
+      # scripts and this image has no Windows or macOS C toolchain, so CC and AR for both targets
+      # are `true`: clippy links nothing, and that vendored C is built for real by
+      # `runner-platforms` and runner-release.yml.
+      - name: Cross-target clippy for Windows and macOS
+        working-directory: packages/runner
+        shell: bash
+        env:
+          CC_x86_64_pc_windows_gnu: 'true'
+          AR_x86_64_pc_windows_gnu: 'true'
+          CC_x86_64_apple_darwin: 'true'
+          AR_x86_64_apple_darwin: 'true'
+        run: |
+          rustup target add x86_64-pc-windows-gnu x86_64-apple-darwin
+          # Both targets run whatever the first says, so one push names every target it breaks.
+          failed=""
+          for target in x86_64-pc-windows-gnu x86_64-apple-darwin; do
+            cargo clippy --workspace --all-targets --target "$target" -- -D warnings || failed="$failed $target"
+          done
+          if [ -n "$failed" ]; then echo "::error::cross-target clippy failed for:$failed"; exit 1; fi
       # The tests that drive a master pane through a real tmux server return early where tmux is
       # absent, and a return passes green having asserted nothing — so whether this gate caught
       # the ensure_master mutants they exist for rested on what the image happened to carry
@@ -526,7 +560,8 @@ jobs:
         shell: bash
         env:
           FORGE_TEST_REQUIRE_TMUX: ${{ runner.os == 'Linux' && '1' || '' }}
-        run: |
+        # Anchored: `runner-platforms` runs this same script by alias, so the two cannot drift.
+        run: &runner-gate |
           if [ "$RUNNER_OS" = Linux ]; then
             sudo apt-get update -q && sudo apt-get install -y -q tmux
             tmux -V
@@ -535,6 +570,29 @@ jobs:
           cargo fmt --check
           cargo clippy --workspace --all-targets -- -D warnings
           cargo test --workspace
+
+  # The `runner` gate, by the `*runner-gate` alias, on the two platforms a pull request no longer
+  # waits on (ISS-1370). Post-merge and nightly; `ci-passed` does not need it, `$postMerge` names it.
+  runner-platforms:
+    needs: changes
+    if: github.event_name != 'pull_request' && (github.event_name == 'schedule' || needs.changes.outputs.runner == 'true')
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/runner
+      - name: Lockfile sync + fmt + clippy + test
+        working-directory: packages/runner
+        shell: bash
+        run: *runner-gate
 
   docs:
     needs: changes
@@ -563,13 +621,12 @@ jobs:
   # is precisely the defect class this job exists for.
   #
   # NOT path-filtered on purpose. A filter would have to enumerate "files outside
-  # the COPY set", which is the reasoning that fails here by construction — and a
-  # skipped job passes `ci-passed`, a trap this workflow has already been caught
-  # by twice (see the `web` and `scripts` filters). It rides `proved` alone, so a
-  # merge commit whose tree a pull_request run already built does not pay twice.
+  # the COPY set", which is the reasoning that fails here by construction.
+  # POST-MERGE since ISS-1370: every push to a gated branch and nightly, never a
+  # pull request, and `ci-passed` does not need it — so the defect class above
+  # now reaches `main` and is found there (`.forge/conformance.json` `$postMerge`).
   images:
-    needs: changes
-    if: needs.changes.outputs.proved != 'true'
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -580,11 +637,12 @@ jobs:
   # test of one module and wrong for a guard that walks every file: #710 changed only documents,
   # `core` was skipped, and the guard that document broke merged green and left `main` red for the
   # next branch to find (ISS-1314). A test carrying `@gate-input whole-tree` runs here on every
-  # change; the checker refuses one that walks from the root without it. NOT path-filtered on
-  # purpose, and it rides `proved` alone for the reason `images` does.
+  # push to a gated branch and nightly; the checker refuses one that walks from the root without
+  # it. NOT path-filtered on purpose. POST-MERGE since ISS-1370, like `images`: a pull request
+  # never runs it and `ci-passed` does not need it, which is #710's shape again, priced in
+  # `.forge/conformance.json` `$postMerge`.
   whole-tree:
-    needs: changes
-    if: needs.changes.outputs.proved != 'true'
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -601,9 +659,13 @@ jobs:
   # `failure`d or was `cancelled` (a `skipped` path-filtered job passes). It
   # makes CI — not the local pre-push hook, which contributors may not have
   # installed and can bypass — the authoritative merge gate. The blocking
-  # signals it enforces today: install-check, lang-check, the affected
-  # package build(s)+test(s) — including core's real-Postgres integration
-  # suite and the Rust runner gate — and markdown-link integrity.
+  # signals it enforces today: install-check, lang-check, conformance,
+  # archmap, injected-docs, the affected package build(s)+test(s) — the Rust
+  # runner gate on ubuntu among them — and markdown-link integrity. It does
+  # NOT need `core-integration`, `images`, `whole-tree` or `runner-platforms`:
+  # those run after the merge (ISS-1370), a red there is fixed forward, and
+  # `.forge/conformance.json` `$postMerge` holds the list conformance-audit R12
+  # compares this one against.
   # (`core build` runs `tsc -p tsconfig.build.json`; the test-inclusive
   # `typecheck` and `lint` became blocking inside the `core` job on
   # 2026-08-10/11 once their debt reached 0. Both had drifted for months
@@ -617,14 +679,11 @@ jobs:
         changes,
         web,
         core,
-        core-integration,
         runner,
         docs,
         injected-docs,
         archmap,
         conformance,
-        images,
-        whole-tree,
       ]
     runs-on: ubuntu-latest
     steps:
@@ -636,14 +695,11 @@ jobs:
             "changes:${{ needs.changes.result }}" \
             "web:${{ needs.web.result }}" \
             "core:${{ needs.core.result }}" \
-            "core-integration:${{ needs.core-integration.result }}" \
             "runner:${{ needs.runner.result }}" \
             "docs:${{ needs.docs.result }}" \
             "injected-docs:${{ needs.injected-docs.result }}" \
             "archmap:${{ needs.archmap.result }}" \
-            "conformance:${{ needs.conformance.result }}" \
-            "images:${{ needs.images.result }}" \
-            "whole-tree:${{ needs.whole-tree.result }}"; do
+            "conformance:${{ needs.conformance.result }}"; do
             echo "$r"
             result="${r##*:}"
             if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then

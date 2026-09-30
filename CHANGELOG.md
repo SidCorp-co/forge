@@ -6147,6 +6147,9 @@
   deploy. Shipped 2026-09-02; this line was owed then and is written now. (ISS-870)
 
 ### Changed
+- **Pull requests wait on the fast checks only.** The integration suite, image build, whole-repository
+  tests and macOS/Windows runner builds now run after merging, on `main` and nightly; a red there no
+  longer blocks anyone.
 - **A project's route to live is now one ordered list of branches.** Release model, live branch
   and strategy could disagree; a list cannot. Every project keeps the shape it released by, and
   longer paths can now be described.

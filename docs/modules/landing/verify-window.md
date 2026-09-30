@@ -8,11 +8,11 @@ nothing, because landing stays the dispatcher's act.
 
 ## Why it exists
 
-Branch protection on `main` is `strict: true` with `ci-passed` required. Landing one pull request
-puts every other open one behind, and each of those then pays an update, a fresh review read at the
-new head and a whole CI run: about N²/2 cycles for N changes (ISS-1203 measured five PRs on
-2026-09-22, every one after the first brought up to date at least once). The window pays the gate
-once for the set.
+Branch protection on `main` requires `ci-passed`, and while it was `strict: true` — until ISS-1370
+had the owner turn it off — landing one pull request put every other open one behind, and each of
+those then paid an update, a fresh review read at the new head and a whole CI run: about N²/2
+cycles for N changes (ISS-1203 measured five PRs on 2026-09-22, every one after the first brought
+up to date at least once). The window pays the gate once for the set.
 
 ## The flow
 
