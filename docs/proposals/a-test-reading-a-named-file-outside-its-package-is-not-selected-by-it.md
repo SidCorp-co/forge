@@ -59,12 +59,19 @@ filter of the job running the test does not match.
 
 The guard watches the `node:fs` calls, the spawns and the workers of a test's process and of every
 Node process it starts. It reads each spawned program by its arguments, and counts a program it
-cannot see into as the root. Two routes pass through none of that.
+cannot see into as the root. Three routes pass through none of that.
 
 - **Native code.** An addon or a WASI instance lists a directory with a call to the kernel that
   no JavaScript wrapper sees. Node's own routes round the wrappers are counted as the root instead:
   `process.binding` of the `fs`, `fs_dir`, `spawn_sync` and `process_wrap` bindings, and
   `process.execve`.
+- **A function taken before the guard installed.** The guard is a setup file, so what a test
+  process loads before it, vitest's own runtime and a module a `NODE_OPTIONS` preload names, can
+  hold a `node:fs` function from before it was wrapped, and a listing through that is not seen. No
+  setup file of this repository runs ahead of it: `whole-tree-gates` refuses a config whose
+  `test.setupFiles` does not name the guard first. With one ahead of it that took `readdirSync`, a
+  test listing the root through what it took passed (ISS-1314's tenth build, measured outside any
+  watch, since a run under the guard starts every process it spawns already watched).
 - **A listing delegated to a process the test did not start**, such as a server, a daemon or a
   container it talks to over a socket. That process runs outside the test, so nothing the test
   loads is inside it.

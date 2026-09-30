@@ -232,8 +232,9 @@ export function runDirOf(path, root) {
   return packageOf(dirname(path), root);
 }
 
-/** Every vitest config has to install the guard, named from the `root` vitest resolved it at, and
- * a config it could not load (`error`) is refused, not trusted. */
+/** Every vitest config has to install the guard as its first setup file, named from the `root`
+ * vitest resolved it at: one before it can take a listing function while it is still unwatched. A
+ * config it could not load (`error`) is refused, not trusted. */
 export function judgeConfigs(configs, root) {
   const guard = resolve(root, GUARD_PATH);
   const refused = [];
@@ -248,6 +249,11 @@ export function judgeConfigs(configs, root) {
       refused.push({
         path,
         why: `does not install the guard that refuses an undeclared root walk — add '${expected}' to its \`test.setupFiles\``,
+      });
+    } else if (setupFiles[0] !== guard) {
+      refused.push({
+        path,
+        why: `runs '${relative(configRoot, setupFiles[0])}' before the guard, so a listing function it takes is never watched — put '${expected}' first in its \`test.setupFiles\``,
       });
     }
   }
