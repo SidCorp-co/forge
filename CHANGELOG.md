@@ -3145,8 +3145,9 @@
 - **The box's log names the run holding such a checkout,** and a checkout it records as gone no
   longer reads as one this box removed. A leftover folder it cannot read is named once, with how
   to clear it.
-- **How to clear a leftover folder now matches what is in it.** An empty one asks you to stop
-  nothing, and a program still running from a deleted folder of that name is named apart.
+- **How to clear a leftover folder now matches what is in it.** One nothing is running in asks
+  you to stop nothing, and a program still running from a deleted folder of that name is named
+  apart.
 - **An issue a run is still working is no longer sent back to `open`.** Forge's net for stuck work
   leaves an issue alone while its run holds a live claim, and says so on any issue it moves.
 - **Forge now moves stuck work back to `open` as itself.** The note and the status change appear
