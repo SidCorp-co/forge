@@ -60,6 +60,8 @@ export interface IssueFailureInfo {
 /** A label's taxonomy role. Modules ARE labels; `kind` is the only thing that separates them. */
 export type LabelKind = "label" | "module";
 
+export type { IssuePark, IssueParkResponse, ParkOwes, ParkResume } from "@forge/contracts";
+
 export type {
   ModuleAttributionCounts,
   ModuleCounts,

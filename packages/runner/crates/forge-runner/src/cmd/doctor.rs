@@ -909,26 +909,80 @@ mod tests {
         }
     }
 
+    /// How many of a core's requests it was holding at once, and the most it ever held.
+    #[derive(Default)]
+    struct InFlight {
+        now: std::sync::atomic::AtomicUsize,
+        peak: std::sync::atomic::AtomicUsize,
+    }
+
+    /// A core that holds every MCP answer until all `n` requests have arrived, and counts how
+    /// many it held at once. A concurrency claim is about that count; how long the answers took
+    /// is a fact about the machine the test ran on (ISS-1353). The hold ends at half the row's own
+    /// timeout, so a fetch made in series is answered before its client gives up, and is released
+    /// from the count before the next request can arrive.
+    async fn core_counting_in_flight(n: usize) -> (String, std::sync::Arc<InFlight>) {
+        use std::sync::atomic::Ordering::SeqCst;
+        let hold = ONLINE_TIMEOUT / 2;
+        let body = r#"{"mcpServers":{},"resolvedNames":[],"droppedNames":[]}"#;
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let seen = std::sync::Arc::new(InFlight::default());
+        let counted = seen.clone();
+        let (arrived, all_in) = tokio::sync::watch::channel(0usize);
+        tokio::spawn(async move {
+            for _ in 0..n {
+                let Ok((mut sock, _)) = listener.accept().await else {
+                    return;
+                };
+                let seen = counted.clone();
+                let arrived = arrived.clone();
+                let mut all_in = all_in.clone();
+                tokio::spawn(async move {
+                    let mut buf = [0u8; 2048];
+                    let _ = sock.read(&mut buf).await;
+                    let held = seen.now.fetch_add(1, SeqCst) + 1;
+                    seen.peak.fetch_max(held, SeqCst);
+                    arrived.send_modify(|count| *count += 1);
+                    let _ = tokio::time::timeout(hold, all_in.wait_for(|count| *count >= n)).await;
+                    seen.now.fetch_sub(1, SeqCst);
+                    let resp = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    );
+                    let _ = sock.write_all(resp.as_bytes()).await;
+                    let _ = sock.shutdown().await;
+                });
+            }
+        });
+        (format!("http://{addr}"), seen)
+    }
+
     #[tokio::test]
     async fn every_project_mcp_row_shares_one_wait_and_none_is_dropped() {
-        let delay = std::time::Duration::from_millis(300);
         let rows: Vec<runners::MeRunner> = (0..3u32).map(row).collect();
-        let url = slow_core(rows.len(), delay).await;
+        let (url, seen) = core_counting_in_flight(rows.len()).await;
         let client = CoreClient::new(url, String::from("tok"));
 
-        let started = std::time::Instant::now();
         let mut handles = spawn_mcp_rows(&client, &rows);
         assert_eq!(handles.len(), rows.len(), "one handle per project");
         for r in &rows {
             let handle = handles
                 .remove(&r.project_id)
                 .unwrap_or_else(|| panic!("{} has no row", r.project_id));
-            handle.await.unwrap();
+            let (_, line) = handle
+                .await
+                .unwrap()
+                .unwrap_or_else(|| panic!("{} handed back no row", r.slug));
+            assert!(line.starts_with(&format!("{}:", r.slug)), "{line}");
+            assert!(line.contains("no MCP servers declared"), "{line}");
         }
-        let elapsed = started.elapsed();
-        assert!(
-            elapsed < delay * 2,
-            "three {delay:?} answers took {elapsed:?} — they were fetched in series"
+        let peak = seen.peak.load(std::sync::atomic::Ordering::SeqCst);
+        assert_eq!(
+            peak,
+            rows.len(),
+            "at most {peak} of {} MCP requests were in flight at once — the rows were fetched in series",
+            rows.len()
         );
     }
 

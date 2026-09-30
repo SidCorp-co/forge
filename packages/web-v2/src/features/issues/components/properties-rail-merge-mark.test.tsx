@@ -37,6 +37,7 @@ function rail(
   mark?: IssueDetail["mergeMark"],
   mergedCommitSha?: string | null,
   mergedLanding?: string | null,
+  landingShape?: IssueDetail["landingShape"],
 ): ReactNode {
   const issue = {
     id: "i1",
@@ -50,6 +51,7 @@ function rail(
     mergeMark: mark,
     mergedCommitSha,
     mergedLanding,
+    landingShape,
   } as unknown as IssueDetail;
   return (
     <PropertiesRail
@@ -106,5 +108,12 @@ describe("a mark naming where the work landed outside git (ISS-1327)", () => {
     expect(screen.getByTestId("merged-landing")).toHaveTextContent(LANDING);
     expect(screen.queryByText("claimed")).toBeNull();
     expect(screen.queryByText("observed")).toBeNull();
+  });
+
+  it("explains a website mark naming no landing by the landing, never by a pull request", () => {
+    // Owner ruling on ISS-1327: outside git no commit is the normal record, not a sign of a false mark.
+    render(rail("asserted", null, null, "outside_git"));
+    expect(screen.getByTitle(/names no landing/)).toBeInTheDocument();
+    expect(screen.queryByTitle(/pull request/)).toBeNull();
   });
 });

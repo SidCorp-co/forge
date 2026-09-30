@@ -270,3 +270,29 @@ describe('NO_RELEASE_GATE — what it means for the issues named', () => {
     expect(sentence).toMatch(/live deploy binding under Settings → Integrations/);
   });
 });
+
+// ISS-1346 judge finding 4 — mowment, bound through epodsystem, was told to deploy through Coolify.
+describe('what RELEASE_RUNTIME_UNROUTED tells a project nothing can read', () => {
+  const route =
+    'declare `verify.probes` on the live deploy binding, naming an address of this project that ' +
+    'answers with the commit it is serving';
+  const held = [
+    { issueId: 'u-51', displayId: 'ISS-51', criteria: [1, 2] },
+    { issueId: 'u-52', displayId: 'ISS-52', criteria: [3] },
+  ];
+  const sentence = releaseBlockerSentence('RELEASE_RUNTIME_UNROUTED', {
+    missing: 'its deploy bindings go through epodsystem, and none of them reports the commit',
+    route,
+    held,
+  });
+
+  it('names the route the reading gave it, and no provider it cannot become', () => {
+    expect(sentence).toContain(`The way to give it one: ${route}.`);
+    expect(sentence).not.toMatch(/Coolify/);
+  });
+
+  it('names each held issue by its display id and what it owes, not a count', () => {
+    expect(sentence).toContain('`ISS-51` owes criterion 1, 2; `ISS-52` owes criterion 3.');
+    expect(sentence).not.toContain('Held:');
+  });
+});

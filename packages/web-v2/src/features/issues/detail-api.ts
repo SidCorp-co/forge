@@ -6,6 +6,7 @@ import type {
   CommentAttachment,
   CommentNode,
   IssueDetail,
+  IssueParkResponse,
   StepDurationRow,
   StepHandoffRow,
   TaskRow,
@@ -26,6 +27,9 @@ export const issueDetailApi = {
   /** `GET /api/issues/:id` — full row incl. pipelineHealth, labels, metadata. */
   get: (id: string, projectId?: string) =>
     apiClient<IssueDetail>(withProject(`/issues/${id}`, projectId)),
+
+  /** `GET /api/issues/:id/park` — what a person owes this issue, or `{ park: null }` (ISS-1310). */
+  getPark: (id: string) => apiClient<IssueParkResponse>(`/issues/${id}/park`),
 
   listComments: (id: string, projectId?: string) =>
     apiClientCursorAll<CommentNode>(withProject(`/issues/${id}/comments`, projectId)),

@@ -21,27 +21,33 @@ const has = (source: string | null): IssueIdentities => ({ source });
 /** The three shapes a reading comes back in, as `readServingNow` builds them. */
 const serving = (commit: string): ServingReading => ({
   kind: 'serving',
-  commits: [commit],
+  served: [{ commit: commit, where: HOST }],
   unread: [],
-  hosts: [HOST],
   readAt: READ_AT,
 });
 const disagreeing = (commits: string[]): ServingReading => ({
   kind: 'serving',
-  commits,
+  served: commits.map((commit, i) => ({
+    commit,
+    where: i === 0 ? HOST : 'https://second.test/health',
+  })),
   unread: [],
-  hosts: [HOST, 'https://second.test/health'],
   readAt: READ_AT,
 });
 /** One probe answered, another gave nothing: an answer, not an absence. */
 const partial = (commit: string): ServingReading => ({
   kind: 'serving',
-  commits: [commit],
+  served: [{ commit: commit, where: HOST }],
   unread: ['https://second.test/health is unreachable (ECONNREFUSED)'],
-  hosts: [HOST, 'https://second.test/health'],
   readAt: READ_AT,
 });
-const undeclared: ServingReading = { kind: 'undeclared' };
+const undeclared: ServingReading = {
+  kind: 'undeclared',
+  missing:
+    'this project has no active deploy binding, so Forge makes no deployment it could read a commit from',
+  route:
+    'bind a deploy binding Forge deploys through whose provider reports the commit a deployment built (Coolify does), or declare `verify.probes` on the live deploy binding',
+};
 const unreadable = (why: string): ServingReading => ({
   kind: 'unreadable',
   why,
@@ -132,15 +138,16 @@ describe('verdictStanding — a runtime verdict against a reading (ISS-1286)', (
   });
 });
 
-describe('verdictStanding — a source verdict, unchanged', () => {
-  it('is unwitnessed where the source still matches and no runtime was named', () => {
-    expect(verdictStanding(at('source', SOURCE), serving(SERVING), has(SOURCE))).toBe(
+describe('verdictStanding — a source verdict with no reading of what is running', () => {
+  it('is unwitnessed where the source still matches', () => {
+    expect(verdictStanding(at('source', SOURCE), undeclared, has(SOURCE))).toBe('unwitnessed');
+    expect(verdictStanding(at('source', SOURCE), unreadable('down'), has(SOURCE))).toBe(
       'unwitnessed',
     );
   });
 
   it('is superseded where the source is not the one the issue stands at', () => {
-    expect(verdictStanding(at('source', OTHER), serving(SERVING), has(SOURCE))).toBe('superseded');
+    expect(verdictStanding(at('source', OTHER), undeclared, has(SOURCE))).toBe('superseded');
   });
 
   it('is unanchored where the verdict names nothing', () => {
@@ -148,7 +155,6 @@ describe('verdictStanding — a source verdict, unchanged', () => {
   });
 
   it('is unanchored where the issue stands at no source of its own', () => {
-    expect(verdictStanding(at('source', SOURCE), serving(SERVING), has(null))).toBe('unanchored');
     expect(verdictStanding(at('source', SOURCE), undeclared, has(null))).toBe('unanchored');
   });
 
@@ -169,9 +175,43 @@ describe('verdictStanding — a source verdict, unchanged', () => {
       verdictStanding(at('source', SOURCE.slice(0, 6)), undeclared, has(SOURCE.slice(0, 6))),
     ).toBe('unwitnessed');
   });
+});
 
-  it('is decided by the issue source whatever the reading says', () => {
-    expect(verdictStanding(at('source', SOURCE), serving(SOURCE), has(OTHER))).toBe('superseded');
+/** ISS-1346: a reading of what is running is Forge's observation, so it weighs either field. */
+describe('verdictStanding — a source verdict under a reading of what is running', () => {
+  it('stands where the reading names its commit, whatever source the issue stands at', () => {
+    expect(verdictStanding(at('source', SERVING), serving(SERVING), has(SOURCE))).toBe('stands');
+    expect(verdictStanding(at('source', SERVING), serving(SERVING), has(null))).toBe('stands');
+  });
+
+  it('is superseded where the reading names another commit, the issue source included', () => {
+    expect(verdictStanding(at('source', SOURCE), serving(SERVING), has(SOURCE))).toBe('superseded');
+    expect(verdictStanding(at('source', SOURCE), serving(SERVING), has(null))).toBe('superseded');
+  });
+
+  it('stands on a seven-character abbreviation of a commit the reading names, and not on six', () => {
+    expect(verdictStanding(at('source', SERVING.slice(0, 7)), serving(SERVING), has(null))).toBe(
+      'stands',
+    );
+    expect(verdictStanding(at('source', SERVING.slice(0, 6)), serving(SERVING), has(null))).toBe(
+      'superseded',
+    );
+  });
+
+  it('stands where any commit of a reading of two names it', () => {
+    expect(verdictStanding(at('source', OTHER), disagreeing([SERVING, OTHER]), has(SOURCE))).toBe(
+      'stands',
+    );
+  });
+
+  it('names what is served, not the issue source, when it does not stand', () => {
+    const line = standingSentence(
+      'superseded',
+      at('source', SOURCE),
+      serving(SERVING),
+      has(SOURCE),
+    );
+    expect(line).toContain(`what this project is serving is \`${SERVING}\` at ${HOST}`);
   });
 });
 
@@ -189,28 +229,29 @@ describe('standingSentence', () => {
     expect(line).toContain(READ_AT);
   });
 
-  it('names both commits a disagreeing fleet answered when it refuses a third', () => {
+  // ISS-1346 judge finding 2 — two commits answered is where each runs, never a fault.
+  it('names both commits a disagreeing fleet answered, each beside where it runs, when it refuses a third', () => {
     const line = standingSentence(
       'superseded',
       at('runtime', SOURCE),
       disagreeing([SERVING, OTHER]),
       has(null),
     );
-    expect(line).toContain(SERVING);
-    expect(line).toContain(OTHER);
-    expect(line).toContain('a rollout that has not finished');
+    expect(line).toContain(`\`${SERVING}\` at ${HOST}; \`${OTHER}\` at https://second.test/health`);
+    expect(line).not.toContain('more than one commit is running');
   });
 
   it('names the probe that answered nothing beside the commit that was answered', () => {
     const line = standingSentence('superseded', at('runtime', OTHER), partial(SERVING), has(null));
     expect(line).toContain(SERVING);
     expect(line).toContain('ECONNREFUSED');
-    expect(line).not.toContain('a rollout that has not finished');
+    expect(line).not.toContain('more than one commit is running');
   });
 
   it('says an uncorroborated verdict is weaker evidence and not a refusal', () => {
     const line = standingSentence('uncorroborated', at('runtime', SERVING), undeclared, has(null));
-    expect(line).toContain('declares no way to ask');
+    expect(line).toContain('nothing here can read what this project is serving');
+    expect(line).toContain(undeclared.kind === 'undeclared' ? undeclared.missing : '');
     expect(line).toContain('it is not a refusal');
     expect(line).not.toContain(READ_AT);
   });

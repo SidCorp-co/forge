@@ -8,20 +8,27 @@ import {
   readReleaseHold,
   refusalHold,
   releaseHoldComment,
+  runtimeUnroutedHold,
   sameReleaseHold,
   withoutAges,
   withoutReadingTimes,
+  withoutResetDrift,
 } from './release-hold.js';
 
 const SERVING = '33637c612ef15be6f924520c0d201a0889d8ed7e';
 const HOST = 'https://app.test/build-info';
 const READ_AT = '2026-09-26T23:55:00.000Z';
+const NO_BINDING_ROUTE =
+  'bind a deploy binding Forge deploys through whose provider reports the commit a deployment ' +
+  'built (Coolify does), or declare `verify.probes` on the live deploy binding';
+const PROBE_ROUTE =
+  'declare `verify.probes` on the live deploy binding, naming an address of this project that ' +
+  'answers with the commit it is serving';
 
 const live = (readAt = READ_AT): ServingReading => ({
   kind: 'serving',
-  commits: [SERVING],
+  served: [{ commit: SERVING, where: HOST }],
   unread: [],
-  hosts: [HOST],
   readAt,
 });
 
@@ -82,12 +89,24 @@ describe('the hold a row carries (ISS-1215)', () => {
     expect(reason).not.toContain('records as serving it');
   });
 
-  it('says a project declaring no way to ask so, and names what to declare', () => {
-    const reason = criteriaHold({ ...REPORT, serving: { kind: 'undeclared' } }).reason;
-    expect(reason).toContain('declares no way to ask a host what it is serving');
-    expect(reason).toContain('verify.probes');
-    expect(reason).toContain('environments.live.commitUrl');
+  it('says what is missing where nothing can be read, and the route the reading names, and no commitUrl', () => {
+    const missing = 'this project has no active deploy binding';
+    const serving = { kind: 'undeclared', missing, route: NO_BINDING_ROUTE } as const;
+    const reason = criteriaHold({ ...REPORT, serving }).reason;
+    expect(reason).toContain(`nothing here can read what this project is serving: ${missing}`);
+    expect(reason).toContain(NO_BINDING_ROUTE);
+    expect(reason).not.toContain('commitUrl');
     expect(reason).not.toContain(SERVING);
+  });
+
+  // ISS-1346 judge finding 4 — an epodsystem project was told to deploy through Coolify.
+  it('offers a project bound through a provider that reports nothing no Coolify binding', () => {
+    const missing =
+      'its deploy bindings go through epodsystem, and none of them reports the commit';
+    const serving = { kind: 'undeclared', missing, route: PROBE_ROUTE } as const;
+    const reason = criteriaHold({ ...REPORT, serving }).reason;
+    expect(reason).toContain(PROBE_ROUTE);
+    expect(reason).not.toMatch(/Coolify/);
   });
 
   it('says why nothing could be read, and that the verdict still earns the criterion', () => {
@@ -104,21 +123,30 @@ describe('the hold a row carries (ISS-1215)', () => {
     expect(reason).toContain('still earns the criterion');
   });
 
-  it('says a fleet mid-rollout is serving both, and names both', () => {
-    const other = 'da74b598bcae5a53a1c0f2b9e3d7a41f6c8b2d90';
+  // ISS-1346 judge finding 2 — staging and production on two commits is between releases, not a fault.
+  it('pairs each served commit with where it runs, and calls two commits no fault', () => {
+    const staging = 'da74b598bcae5a53a1c0f2b9e3d7a41f6c8b2d90';
+    const app =
+      "Coolify target `App` (preview), Forge's deployment k8kw finished 2026-09-29T18:00:00.000Z";
+    const web =
+      "Coolify target `Web` (live), Forge's deployment w80k finished 2026-09-29T17:00:00.000Z";
+    const home =
+      "Coolify target `Home` (live), Forge's deployment k0co finished 2026-09-29T17:01:00.000Z";
     const reason = criteriaHold({
       ...REPORT,
       serving: {
         kind: 'serving',
-        commits: [SERVING, other],
+        served: [
+          { commit: staging, where: app },
+          { commit: SERVING, where: web },
+          { commit: SERVING, where: home },
+        ],
         unread: [],
-        hosts: [HOST, 'https://two.test/h'],
         readAt: READ_AT,
       },
     }).reason;
-    expect(reason).toContain(SERVING);
-    expect(reason).toContain(other);
-    expect(reason).toContain('a rollout that has not finished');
+    expect(reason).toContain(`\`${staging}\` at ${app}; \`${SERVING}\` at ${web} and ${home}`);
+    expect(reason).not.toContain('more than one commit is running');
   });
 
   it('reads back what was stored, and refuses a shape it cannot read', () => {
@@ -156,9 +184,8 @@ describe('the hold a row carries (ISS-1215)', () => {
       ...REPORT,
       serving: {
         kind: 'serving',
-        commits: ['da74b598bcae5a53a1c0f2b9e3d7a41f6c8b2d90'],
+        served: [{ commit: 'da74b598bcae5a53a1c0f2b9e3d7a41f6c8b2d90', where: HOST }],
         unread: [],
-        hosts: [HOST],
         readAt: READ_AT,
       },
     });
@@ -170,9 +197,8 @@ describe('the hold a row carries (ISS-1215)', () => {
       ...REPORT,
       serving: {
         kind: 'serving',
-        commits: [SERVING],
+        served: [{ commit: SERVING, where: 'https://other.test/h' }],
         unread: [],
-        hosts: ['https://other.test/h'],
         readAt: READ_AT,
       },
     });
@@ -201,6 +227,13 @@ describe('the hold a row carries (ISS-1215)', () => {
     expect(body).toContain('criterion 3: no verdict was recorded for it');
     expect(body).toContain('which a person owes');
     expect(body).toContain('`release-hold: RELEASE_CRITERIA_UNEARNED`');
+    expect(body).not.toContain('oldest of them alone');
+  });
+
+  it('says a shared hold is commented on the oldest of the rows it holds alone', () => {
+    const body = releaseHoldComment(refusalHold('NO_RUNNER_ONLINE', ['none online']), true);
+    expect(body).toContain('on every issue of this project it holds');
+    expect(body).toContain('oldest of them alone');
   });
 });
 
@@ -232,9 +265,94 @@ describe('a standing refusal is one reason however long it stands (ISS-1215)', (
     expect(sameReleaseHold(first, refusal(box({ reason: 'disconnected' })))).toBe(false);
   });
 
+  // ISS-1346 judge finding 5 — ISS-596 took nine comments in 80 minutes from one standing limit.
+  it('reads a rate limit whose reset moved by milliseconds as the same reason', () => {
+    const at = (until: string) => refusal(box({ reason: 'rate-limited', detail: until }));
+    const first = at('2026-09-30T00:00:09.790Z');
+    const drifted = at('2026-09-30T00:00:09.375Z');
+    expect(first.reason).not.toBe(drifted.reason);
+    expect(sameReleaseHold(first, drifted)).toBe(true);
+  });
+
+  it('reads a quarantine whose reset moved inside the minute as the same reason', () => {
+    const at = (until: string) => refusal(box({ reason: 'quarantined', detail: until }));
+    expect(sameReleaseHold(at('2026-09-30T01:05:02.000Z'), at('2026-09-30T01:05:41.912Z'))).toBe(
+      true,
+    );
+  });
+
+  it('reads a reset that moved by a minute or more as a new reason', () => {
+    const at = (until: string) => refusal(box({ reason: 'rate-limited', detail: until }));
+    expect(sameReleaseHold(at('2026-09-30T00:00:09.790Z'), at('2026-09-30T05:00:09.790Z'))).toBe(
+      false,
+    );
+    expect(sameReleaseHold(at('2026-09-30T00:00:59.000Z'), at('2026-09-30T00:01:00.000Z'))).toBe(
+      false,
+    );
+  });
+
+  it('reads the reset to the minute and leaves every other time alone', () => {
+    expect(withoutResetDrift('is rate limited until 2026-09-30T00:00:09.790Z. Wait.')).toBe(
+      'is rate limited until 2026-09-30T00:00Z. Wait.',
+    );
+    expect(withoutResetDrift('finished 2026-09-30T00:00:09.790Z')).toBe(
+      'finished 2026-09-30T00:00:09.790Z',
+    );
+    expect(withoutResetDrift('held until 2026-09-30T00:00:09.790Z')).toBe(
+      'held until 2026-09-30T00:00:09.790Z',
+    );
+  });
+
+  it('reads any other time that moved inside the minute as a new reason', () => {
+    const at = (until: string) => refusalHold('RELEASE_CUT_REFUSED', [`held until ${until}.`]);
+    expect(sameReleaseHold(at('2026-09-30T00:00:09.790Z'), at('2026-09-30T00:00:09.375Z'))).toBe(
+      false,
+    );
+  });
+
   it('keeps text that carries no age exactly as it was', () => {
     expect(withoutAges('No runner is online. Pair a box.')).toBe(
       'No runner is online. Pair a box.',
+    );
+  });
+});
+
+/** ISS-1346 — where nothing can read what a project serves, the hold is the project's. */
+describe('the hold a project with no runtime route carries', () => {
+  const missing = 'its deploy bindings go through epodsystem, and none of them reports the commit';
+
+  it('names the missing piece and the route it was given, and owes a person', () => {
+    const hold = runtimeUnroutedHold(missing, PROBE_ROUTE);
+    expect(hold.code).toBe('RELEASE_RUNTIME_UNROUTED');
+    expect(hold.owes).toBe('human');
+    expect(hold.reason).toContain(missing);
+    expect(hold.reason).toContain(PROBE_ROUTE);
+    expect(hold.reason).not.toMatch(/Coolify/);
+  });
+
+  it("says it is the project's to answer", () => {
+    const reason = runtimeUnroutedHold(missing, PROBE_ROUTE).reason;
+    expect(reason).toContain("the project's to answer and not this issue's");
+  });
+});
+
+describe('no hold sentence names the retired commit endpoint (ISS-1346)', () => {
+  const readings: ServingReading[] = [
+    live(),
+    { kind: 'undeclared', missing: 'no active deploy binding', route: NO_BINDING_ROUTE },
+    { kind: 'unreadable', why: 'down', hosts: [HOST], readAt: READ_AT },
+    { kind: 'unreadable', why: 'refused', hosts: [], readAt: READ_AT },
+  ];
+
+  it('the criteria hold carries no commitUrl, whichever reading it was written from', () => {
+    for (const serving of readings) {
+      expect(criteriaHold({ ...REPORT, serving }).reason).not.toMatch(/commitUrl|commit endpoint/);
+    }
+  });
+
+  it('the unrouted hold carries no commitUrl', () => {
+    expect(runtimeUnroutedHold('x', NO_BINDING_ROUTE).reason).not.toMatch(
+      /commitUrl|commit endpoint/,
     );
   });
 });

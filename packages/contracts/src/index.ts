@@ -12,6 +12,7 @@ export * from "./integrations.js";
 export * from "./issue-vocabulary.js";
 export * from "./issues.js";
 export * from "./notifications.js";
+export * from "./park.js";
 export * from "./pipeline-registry.js";
 export * from "./reconcile.js";
 export * from "./requests.js";

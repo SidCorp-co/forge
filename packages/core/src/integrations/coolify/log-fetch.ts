@@ -12,14 +12,16 @@ import { CoolifyClient } from './client.js';
 import { flattenLogs, logDigest, redactCoolifyEnvDump, tailLog } from './logs.js';
 import type { CoolifyConfig, CoolifySecrets } from './types.js';
 
-/** Shared by the adapter's own dispatch and health paths, and both reads here. */
-export function buildClient(ctx: {
-  config: CoolifyConfig;
-  secrets: CoolifySecrets;
-}): CoolifyClient {
+/** Shared by the adapter's own dispatch and health paths, both reads here, and the release gate's
+ *  reading of what Forge deployed, which passes a shorter `timeoutMs` because it runs every tick. */
+export function buildClient(
+  ctx: { config: CoolifyConfig; secrets: CoolifySecrets },
+  timeoutMs?: number,
+): CoolifyClient {
   const opts: ConstructorParameters<typeof CoolifyClient>[0] = {
     baseUrl: ctx.config.baseUrl,
     apiToken: ctx.secrets.apiToken,
+    ...(timeoutMs === undefined ? {} : { timeoutMs }),
   };
   if (ctx.secrets.previousApiToken && isPreviousCredentialValid(ctx.secrets)) {
     opts.previousApiToken = ctx.secrets.previousApiToken;

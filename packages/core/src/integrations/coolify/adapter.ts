@@ -422,6 +422,11 @@ const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySec
     };
   },
 
+  async deployedCommit(ctx, deploymentId, timeoutMs) {
+    const commit = (await buildClient(ctx, timeoutMs).getDeployment(deploymentId)).commit;
+    return typeof commit === 'string' && commit.trim() !== '' ? commit.trim() : null;
+  },
+
   async handleInbound() {
     throw new Error(
       'coolify: inbound webhooks are not supported — Coolify sends no signed callback, so a deploy is confirmed by polling `GET /api/v1/deployments/{uuid}` (see integrations/coolify/confirm.ts)',

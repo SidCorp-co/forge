@@ -120,7 +120,13 @@ export function buildRunEvidenceBody(args: {
 }
 
 /**
- * A worktree this box is still holding because its work is on no remote.
+ * A checkout an exited run left, whose work is on no remote or may not be.
+ *
+ * `kept` is the box's own reading of whether it refuses the checkout's removal,
+ * and it is required: the posted sentence turns on it, and a report that cannot
+ * say it is the one that told four issues "not released" about checkouts the
+ * box removed seconds later (ISS-1250). The runner's suite pins what it sends in
+ * `assets/held-worktree-wire.jsonl`, which this module's integration suite posts.
  */
 export const heldWorktreeSchema = z
   .object({
@@ -129,6 +135,7 @@ export const heldWorktreeSchema = z
     head: z.string().min(1).max(64),
     commitsUnpushed: z.number().int().nonnegative().nullish(),
     reason: z.string().min(1).max(600),
+    kept: z.boolean(),
   })
   .strict();
 
@@ -185,24 +192,40 @@ export function heldWorktreeMarker(sessionId: string, head: string): string {
 export function buildHeldWorktreeBody(args: { sessionId: string; held: HeldWorktree }): string {
   const { held } = args;
   const count = held.commitsUnpushed ?? null;
+  const directory = held.kept
+    ? [
+        '**This box refuses to remove the checkout.** It stays where it is, and the box reads it',
+        'again on every sweep.',
+      ]
+    : [
+        "**The box's reading does not refuse the checkout's removal.** Whether it is then removed is",
+        "the release's to decide and the box's journal to record; this report is taken before that and",
+        'says nothing about it.',
+      ];
   return [
-    '## Work on this issue is on one machine only',
+    count === null
+      ? '## A stopped run left a checkout on this issue'
+      : '## Work on this issue is on one machine only',
     '',
     `\`${heldWorktreeMarker(args.sessionId, held.head)}\``,
     '',
-    `A run that was working this issue has stopped, and its checkout has **not** been released,`,
-    'because the box could not establish that its commits are on a remote.',
+    count === null
+      ? 'A run that was working this issue has stopped. What the box read about its checkout is below.'
+      : 'A run that was working this issue has stopped, and commits in its checkout are on no remote.',
+    '',
+    ...directory,
     '',
     `- branch: ${held.branch ? `\`${held.branch}\`` : '_not read_'}`,
     `- commit: \`${held.head}\``,
     count === null ? '- commits on no remote: _not counted_' : `- commits on no remote: ${count}`,
     `- checkout: \`${held.worktree}\``,
     '',
-    `Why it is held: ${held.reason}`,
+    `What the box read: ${held.reason}`,
     '',
-    'Nothing about this issue has been moved. The box retries on every sweep, so a remote that',
-    'becomes reachable releases the checkout with no action from anybody. This is here so that a',
-    "remote which does *not* become reachable is somebody's to see rather than nobody's.",
+    'Nothing about this issue has been moved.',
+    count === null
+      ? "This records what the box read, so that work which may be on one machine only is somebody's to see rather than nobody's."
+      : "This records what the box read, so that work no remote holds is somebody's to see rather than nobody's.",
   ].join('\n');
 }
 
@@ -368,10 +391,11 @@ export async function writeHeldWorktreeReport(args: {
       branch: args.held.branch,
       head: args.held.head,
       commitsUnpushed: args.held.commitsUnpushed,
+      kept: args.held.kept,
       issues: rows.length,
       written,
     },
-    'run-evidence: a checkout is held because its work is on no remote',
+    "run-evidence: a stopped run's checkout was reported, its work on no remote or not established",
   );
   return { issues: rows.length, written };
 }

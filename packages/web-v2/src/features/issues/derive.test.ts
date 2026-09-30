@@ -22,7 +22,6 @@ import {
 	deriveBlockerState,
 	deriveCommentKind,
 	filterCount,
-	waitingOnPersonSinceOf,
 	deriveStepOutcomes,
 	runningStepOf,
 	filterToQueryParams,
@@ -45,8 +44,10 @@ import {
 	statusesFromParam,
 	transitionLabels,
 } from "./derive";
+import type { ParkReading } from "./derive";
 import type {
 	IssueDependencies,
+	IssuePark,
 	IssueStatus,
 	IssueDependencyEdge,
 	IssueDetail,
@@ -796,6 +797,24 @@ describe("deriveCommentKind", () => {
 });
 
 
+function readPark(over: Partial<IssuePark> = {}): ParkReading {
+	return {
+		state: "ready",
+		park: {
+			shape: "park",
+			status: "needs_info",
+			owes: "information",
+			since: null,
+			reason: null,
+			resume: { at: null, why: "no park record" },
+			record: null,
+			readings: [],
+			openQuestionIds: [],
+			...over,
+		},
+	};
+}
+
 function blockerIssue(
 	over: Partial<Pick<IssueDetail, "status">> = {},
 ): Pick<IssueDetail, "status"> {
@@ -924,47 +943,81 @@ describe("deriveBlockerState", () => {
 		expect(b?.tone).toBe("attention");
 	});
 
-	it("needs_info sends the reader to the decision below, with a provide-info action", () => {
+	it("needs_info with its park read sends the reader to the question below", () => {
 		const b = deriveBlockerState(
 			blockerIssue({ status: "needs_info" }),
 			undefined,
 			undefined,
+			readPark({ status: "needs_info", reason: "Which tenant?" }),
 		);
 		expect(b?.cta.kind).toBe("provide-info");
+		expect(b?.reason).toMatch(/information/);
 		expect(b?.whoMustAct).toMatch(/is below/);
 		expect(b?.whoMustAct).not.toMatch(/comment/i);
 	});
 
-	describe("waiting → the authored kind (RFC 0002 INV-5)", () => {
-		it("names the decision when the kind is needs_decision", () => {
+	describe("a park names what the person owes, and never requests approved (ISS-1310)", () => {
+		it("names a decision and resumes at the recorded rung — sid-desk ISS-529's shape", () => {
 			const b = deriveBlockerState(
 				blockerIssue({ status: "waiting" }),
 				{ stage: "waiting", waitingCause: { kind: "needs_decision" } },
 				undefined,
+				readPark({ status: "waiting", owes: "decision", resume: { at: "developed", recordId: "c1" } }),
 			);
-			expect(b?.cta.kind).toBe("approve");
-			expect(b?.reason).toContain("decision");
+			expect(b?.reason).toContain("a decision");
+			expect(b?.cta).toEqual({ label: "Resume at Developed", kind: "resume-park" });
+			expect(b?.resumeAt).toBe("developed");
 		});
 
-		it("names the missing resource when the kind is needs_resource", () => {
+		it("names a resource in words a person reads", () => {
 			const b = deriveBlockerState(
-				blockerIssue({ status: "waiting" }),
-				{ stage: "waiting", waitingCause: { kind: "needs_resource" } },
+				blockerIssue({ status: "needs_info" }),
 				undefined,
+				undefined,
+				readPark({ status: "needs_info", owes: "resource", resume: { at: "in_progress", recordId: "c1" }, openQuestionIds: ["q1"] }),
 			);
-			expect(b?.cta.kind).toBe("approve");
 			expect(b?.reason).toContain("only a person can supply");
+			expect(b?.reason).not.toMatch(/needs_resource|needs_info/);
+			expect(b?.cta.kind).toBe("provide-info");
 		});
 
-		it("falls back to generic human-needed copy when no kind was authored", () => {
+		it("says the park did not say what it waits for, and offers no move it cannot back", () => {
 			const b = deriveBlockerState(
 				blockerIssue({ status: "waiting" }),
 				undefined,
 				undefined,
+				readPark({ status: "waiting", owes: null }),
 			);
-			expect(b?.cta.kind).toBe("approve");
-			expect(b?.reason).toContain("A human is needed");
-			expect(b?.reason).not.toContain("decision");
+			expect(b?.reason).toContain("did not say for what");
+			expect(b?.cta.kind).toBe("none");
+			expect(b?.detail).toMatch(/Move anyway/);
+		});
+
+		it("never requests approved from any park shape", () => {
+			for (const owes of ["information", "decision", "resource", null] as const) {
+				for (const status of ["needs_info", "waiting"] as const) {
+					const b = deriveBlockerState(
+						blockerIssue({ status }),
+						undefined,
+						undefined,
+						readPark({ status, owes, resume: { at: "developed", recordId: "c" } }),
+					);
+					expect(b?.cta.kind).not.toBe("approve");
+					expect(b?.cta.label).not.toMatch(/approve/i);
+				}
+			}
+		});
+
+		it("says so while the park is being read, or could not be read, and offers nothing", () => {
+			for (const state of ["loading", "error"] as const) {
+				const b = deriveBlockerState(blockerIssue({ status: "waiting" }), undefined, undefined, { state });
+				expect(b?.tone).toBe("attention");
+				expect(b?.cta.kind).toBe("none");
+			}
+			const failed = deriveBlockerState(blockerIssue({ status: "needs_info" }), undefined, undefined, {
+				state: "error",
+			});
+			expect(failed?.whoMustAct).toMatch(/could not be read/);
 		});
 	});
 
@@ -980,18 +1033,10 @@ describe("deriveBlockerState", () => {
 	});
 
 	it("keeps the attention tone for the two parks that DO ask a person", () => {
-		const needsInfo = deriveBlockerState(
-			blockerIssue({ status: "needs_info" }),
-			undefined,
-			undefined,
-		);
-		const waiting = deriveBlockerState(
-			blockerIssue({ status: "waiting" }),
-			{ waitingCause: { kind: "needs_decision" } } as never,
-			undefined,
-		);
-		expect(needsInfo?.tone).toBe("attention");
-		expect(waiting?.tone).toBe("attention");
+		for (const status of ["needs_info", "waiting"] as const) {
+			const b = deriveBlockerState(blockerIssue({ status }), undefined, undefined, readPark({ status }));
+			expect(b?.tone).toBe("attention");
+		}
 	});
 
 	it("maps each pipelineHealth.waitingOn reason", () => {
@@ -1439,49 +1484,24 @@ describe("issueQueryKey (ISS-1160 — codex 1a508e/F1, recheck-confirmed)", () =
 // ISS-1257 — a question marks its issue and moves nothing, so the surfaces a person reads take
 // the marker as well as the status.
 describe("the marker that a person owes an issue an answer", () => {
-	const q = (status: string, blockerKind: string, createdAt: string) => ({
-		status,
-		blockerKind,
-		createdAt,
-	});
-
-	it("dates the marker from the oldest open question blocked on a person", () => {
-		expect(
-			waitingOnPersonSinceOf([
-				q("open", "human", "2026-09-25T10:00:00Z"),
-				q("open", "human", "2026-09-20T10:00:00Z"),
-				q("open", "master_or_peer", "2026-09-01T10:00:00Z"),
-				q("answered", "human", "2026-09-02T10:00:00Z"),
-			]),
-		).toBe("2026-09-20T10:00:00Z");
-	});
-
-	it("reads no marker once every question for a person is answered or void", () => {
-		expect(
-			waitingOnPersonSinceOf([
-				q("answered", "human", "2026-09-20T10:00:00Z"),
-				q("void", "human", "2026-09-21T10:00:00Z"),
-				q("open", "machine", "2026-09-22T10:00:00Z"),
-			]),
-		).toBeNull();
-		expect(waitingOnPersonSinceOf(undefined)).toBeNull();
-	});
-
 	it("shows a banner on an issue at testing that a person owes an answer", () => {
 		const banner = deriveBlockerState(
 			blockerIssue({ status: "testing" }),
 			undefined,
 			undefined,
-			"2026-09-20T10:00:00Z",
+			readPark({ shape: "question", status: "testing", openQuestionIds: ["q1"], resume: { at: null, why: "not stopped" } }),
 		);
 		expect(banner?.tone).toBe("attention");
-		expect(banner?.reason).toMatch(/owes this issue an answer/);
+		expect(banner?.reason).toMatch(/information/);
 		expect(banner?.cta.kind).toBe("provide-info");
 	});
 
-	it("shows no banner at testing without the marker", () => {
+	it("shows no banner at testing when the park view reads nobody owes it anything", () => {
 		expect(
-			deriveBlockerState(blockerIssue({ status: "testing" }), undefined, undefined, null),
+			deriveBlockerState(blockerIssue({ status: "testing" }), undefined, undefined, {
+				state: "ready",
+				park: null,
+			}),
 		).toBeNull();
 	});
 

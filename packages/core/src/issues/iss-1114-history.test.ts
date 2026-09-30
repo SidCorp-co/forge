@@ -43,9 +43,10 @@ const LANDING_HEAD = 'dce6f354c727baa81c681f144cbadf30050eabfc';
 /** ISS-1114 names no runtime anywhere, so what a host answers decides none of it. */
 const LIVE: ServingReading = {
   kind: 'serving',
-  commits: ['33637c612ef15be6f924520c0d201a0889d8ed7e'],
+  served: [
+    { commit: '33637c612ef15be6f924520c0d201a0889d8ed7e', where: 'https://app.test/build-info' },
+  ],
   unread: [],
-  hosts: ['https://app.test/build-info'],
   readAt: '2026-09-26T23:55:00.000Z',
 };
 
@@ -116,13 +117,13 @@ describe("ISS-1114's history before the 2026-09-22 correction", () => {
     expect(await issuesWithUnearnedCriteria(['iss-1114'], LIVE)).toEqual(['iss-1114']);
   });
 
-  it('names all thirteen, each judged against a source no runtime witnessed', async () => {
+  it('names all thirteen, each judged at a commit the reading says is not what is running', async () => {
     const [report] = await unearnedCriteriaReports(['iss-1114'], LIVE);
     expect(report?.unearned.map((c) => c.criterion)).toEqual([
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
     ]);
-    expect(report?.unearned.every((c) => c.standing === 'unwitnessed')).toBe(true);
-    expect(report?.unearned[12]?.why).toContain('no runtime witnessed it');
+    expect(report?.unearned.every((c) => c.standing === 'superseded')).toBe(true);
+    expect(report?.unearned[12]?.why).toContain('what this project is serving');
   });
 
   it('reads criterion 13 as the pass that superseded the skipped one by recency alone', async () => {

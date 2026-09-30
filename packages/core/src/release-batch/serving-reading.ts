@@ -1,32 +1,53 @@
-/** What a project's declared probes answer about the commit it is serving, read when asked and
- *  never stored — a commit on a row is wrong the moment the next deploy lands (ISS-1286). This
- *  shares `readLiveState` with `serving.ts` and neither calls the other, nor is either called from
+/** What a project is serving, read when asked and never stored — a commit on a row is wrong the
+ *  moment the next deploy lands (ISS-1286). Declared probes answer first; where none is declared,
+ *  what Forge itself deployed through the project's bindings does (ISS-1346). This shares
+ *  `readLiveState` with `serving.ts` and neither calls the other, nor is either called from
  *  `collectReleaseBlockers`, which promises no outbound request. */
 
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import { liveProbeFrom, resolveReleaseChannels } from './channel.js';
+import { readForgeDeployments } from './deployed-reading.js';
 import type { ReleaseChannel } from './plan.js';
 import { invalidProbeUrls, readLiveState, type VerifyConfig, type VerifyProbe } from './verify.js';
 
-/** One reading. `commits` is every distinct commit a probe answered (one settled fleet, more a
- *  rollout), `unread` a line per probe answering none, and only no answer at all is an absence. */
+export interface ServedAt {
+  readonly commit: string;
+  readonly where: string;
+}
+
+/** One reading. `served` pairs each commit a probe or a Forge deployment answered with where it
+ *  runs — a probe's url, a target's deployment — `unread` is a line per source answering none, and
+ *  only a project with nothing to ask is an absence: `missing` says why, `route` what opens one. */
 export type ServingReading =
   | {
       readonly kind: 'serving';
-      readonly commits: readonly string[];
+      readonly served: readonly ServedAt[];
       readonly unread: readonly string[];
-      readonly hosts: readonly string[];
       readonly readAt: string;
     }
-  | { readonly kind: 'undeclared' }
+  | { readonly kind: 'undeclared'; readonly missing: string; readonly route: string }
   | {
       readonly kind: 'unreadable';
       readonly why: string;
       readonly hosts: readonly string[];
       readonly readAt: string;
     };
+
+export function servedCommits(serving: ServingReading): string[] {
+  if (serving.kind !== 'serving') return [];
+  return [...new Set(serving.served.map((s) => s.commit))];
+}
+
+/** Each served commit beside everywhere it runs — `3c38c68` at A; `ea69715` at B and C. */
+export function servedClause(served: readonly ServedAt[]): string {
+  const byCommit = new Map<string, string[]>();
+  for (const s of served) byCommit.set(s.commit, [...(byCommit.get(s.commit) ?? []), s.where]);
+  return [...byCommit]
+    .map(([commit, where]) => `\`${commit}\` at ${where.join(' and ')}`)
+    .join('; ');
+}
 
 /** The probes the live channels declare, and how many declared a block `parseVerifyConfig` refused
  *  — which decides anything only where `cfg` is null. */
@@ -76,12 +97,30 @@ function invalidUrlLines(invalid: readonly string[]): string[] {
 
 export function whyUncorroborated(serving: ServingReading): string {
   if (serving.kind === 'undeclared') {
-    return 'this project declares no way to ask a host what it is serving.';
+    return `nothing here can read what this project is serving: ${serving.missing}, and no live binding declares \`verify.probes\`.`;
   }
   if (serving.kind === 'unreadable') {
-    return `nothing could be read from the probes it declares — ${serving.why}`;
+    return `nothing could be read from what this project answers through — ${serving.why}`;
   }
   return 'a reading answered, so nothing was uncorroborated.';
+}
+
+/** Where no probe is declared, the latest deployment Forge saw finish through each bound target. */
+async function fromDeployments(projectId: string, now: () => Date): Promise<ServingReading> {
+  const deployed = await readForgeDeployments(projectId);
+  if (deployed.kind === 'unrouted') {
+    return { kind: 'undeclared', missing: deployed.missing, route: deployed.route };
+  }
+  const readAt = now().toISOString();
+  if (deployed.kind === 'unanswered') {
+    return {
+      kind: 'unreadable',
+      why: deployed.unread.join('; '),
+      hosts: deployed.readFrom,
+      readAt,
+    };
+  }
+  return { kind: 'serving', served: deployed.served, unread: deployed.unread, readAt };
 }
 
 /** What this project is serving, now. The read is the server's: a caller's claim about what is
@@ -97,7 +136,7 @@ export async function readServingNow(
       : { cfg: await liveEnvironmentProbe(projectId), refused: 0 };
 
   if (declared.cfg === null) {
-    if (declared.refused === 0) return { kind: 'undeclared' };
+    if (declared.refused === 0) return fromDeployments(projectId, now);
     return { kind: 'unreadable', why: REFUSED_DECLARATION, hosts: [], readAt: now().toISOString() };
   }
 
@@ -112,8 +151,9 @@ export async function readServingNow(
   const state = await readLiveState({ ...declared.cfg, probes: usable });
   const readAt = now().toISOString();
   const unread = [...defects, ...state.unhealthy, ...state.unidentified];
-  if (state.answeredCommits.length === 0) {
+  if (state.answeredBy.length === 0) {
     return { kind: 'unreadable', why: [...defects, ...state.readings].join('; '), hosts, readAt };
   }
-  return { kind: 'serving', commits: state.answeredCommits, unread, hosts, readAt };
+  const served = state.answeredBy.map((a) => ({ commit: a.commit, where: a.url }));
+  return { kind: 'serving', served, unread, readAt };
 }

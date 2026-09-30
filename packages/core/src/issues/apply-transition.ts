@@ -19,7 +19,7 @@ import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { actorAgency, type DeviceLite, type TransitionActor } from './actor-agency.js';
 import { archivedAmong, archiveRefusalForTransition } from './archive.js';
-import { resolveAutonomousParkTarget } from './autonomous-park.js';
+import { resolveAutonomousParkTarget, storedWaitingKind } from './autonomous-park.js';
 import { noOpSentence } from './close-substitution.js';
 import { expireBlocksEdgesOnDrop, type UnblockedDependent } from './drop-cascade.js';
 import { recordDropUnblock } from './drop-unblock.js';
@@ -34,6 +34,7 @@ import { ISSUE_TERMINAL_STATUSES } from './status-sets.js';
 import { checkTransitionEvidence } from './transition-evidence.js';
 import {
   parkReasonFault,
+  postLeaveComment,
   postTransitionReasonComment,
   requiresAuthoredReason,
 } from './transition-reason.js';
@@ -467,6 +468,8 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
           tx,
         );
       }
+      if (options.skip !== true)
+        await postLeaveComment({ issue, fromStatus, toStatus, actor, options }, tx);
       if (fromStatus !== toStatus) await mintParkQuestion({ issue, toStatus, actor, options }, tx);
       const violation = await checkTransitionEvidence({
         issue: { id: issue.id, projectId: issue.projectId },
@@ -483,9 +486,6 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
       const unshipped = await refuseUnshippedClose(tx, { issueId: issue.id, toStatus });
       if (unshipped)
         throw new TransitionError('CLOSE_REQUIRES_SHIPPED', unshipped.detail, unshipped.details);
-      if (ISSUE_TERMINAL_STATUSES.includes(toStatus) || options.requireNoOpenQuestions) {
-        await tx.execute(sql`select 1 from issues where id = ${issue.id} for update`);
-      }
       const by = actor.type === 'user' ? actor.id : actor.ownerId;
       const asked = await settleOpenQuestions(tx, { ...options, issueId: issue.id, toStatus, by });
       if (asked) throw new TransitionError(asked.code, asked.detail, asked.details);
@@ -500,7 +500,7 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
             .set({
               status: toStatus,
               reopenCount: reopening ? sql`${issues.reopenCount} + 1` : issues.reopenCount,
-              waitingKind: toStatus === 'waiting' ? (options.waitingKind ?? null) : null,
+              waitingKind: storedWaitingKind(requestedStatus, toStatus, options.waitingKind),
               updatedAt: sql`now()`,
             })
             .where(and(eq(issues.id, issue.id), eq(issues.status, fromStatus), ...draftGate))

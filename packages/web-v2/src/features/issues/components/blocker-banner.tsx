@@ -2,14 +2,16 @@
 
 import { Banner, Button } from "@/design";
 import type { BlockerState } from "../derive";
+import type { IssueStatus } from "../types";
 import { IssueRefBadge } from "./issue-ref-badge";
 
 interface BlockerBannerProps {
   blocker: BlockerState;
   slug: string;
   pending: boolean;
-  onApprove: () => void;
   onResume: () => void;
+  /** Move the issue to the rung its park recorded (ISS-1310). */
+  onResumePark: (to: IssueStatus) => void;
   onResumeRun: (runId: string) => void;
   onProvideInfo: () => void;
 }
@@ -18,17 +20,23 @@ export function BlockerBanner({
   blocker,
   slug,
   pending,
-  onApprove,
   onResume,
+  onResumePark,
   onResumeRun,
   onProvideInfo,
 }: BlockerBannerProps) {
-  const { cta, runId } = blocker;
+  const { cta, runId, resumeAt } = blocker;
 
   let action: React.ReactNode = null;
-  if (cta.kind === "approve") {
+  if (cta.kind === "resume-park" && resumeAt) {
     action = (
-      <Button variant="primary" size="sm" icon="check" loading={pending} onClick={onApprove}>
+      <Button
+        variant="primary"
+        size="sm"
+        icon="rerun"
+        loading={pending}
+        onClick={() => onResumePark(resumeAt)}
+      >
         {cta.label}
       </Button>
     );

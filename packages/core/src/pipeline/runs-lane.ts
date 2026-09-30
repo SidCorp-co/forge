@@ -1,5 +1,6 @@
 import type { pipelineRuns } from '../db/schema.js';
 import {
+  MASTER_SESSION_METADATA_TYPE,
   RUN_GROUP_METADATA_KEY,
   RUN_ISSUE_STATUSES_METADATA_KEY,
   RUN_SESSION_METADATA_TYPE,
@@ -8,8 +9,16 @@ import {
 type RunRow = typeof pipelineRuns.$inferSelect;
 
 /** ISS-1273 — which lane opened this run, so a null `issueRef` or `currentStep` is a declared
- *  absence. `run_session` is a box driving a GROUP, `issue_id` null by construction. */
-export type PipelineRunLane = 'job' | 'run_session' | 'system';
+ *  absence. `run_session` is a box driving a GROUP, `issue_id` null by construction. `master` is
+ *  a resident master's own run (ISS-1335): no issue, no job and no step, for as long as it lives. */
+export type PipelineRunLane = 'job' | 'run_session' | 'master' | 'system';
+
+/** ISS-1335 — the live master session on a master-lane run, as `residentMasterSql` shapes it. */
+export interface ResidentMaster {
+  sessionId: string;
+  name: string | null;
+  lastHeartbeatAt: string | null;
+}
 
 /** ISS-1273 — where a run's step came from, and where there is none, why. */
 export type PipelineRunStep =
@@ -36,19 +45,19 @@ function stringsAt(metadata: Record<string, unknown> | null, key: string): strin
   return keys.length === 0 ? null : keys;
 }
 
+const NO_GROUP_DETAIL: Record<Exclude<PipelineRunLane, 'run_session'>, string> = {
+  job: 'a job-lane run carries its one issue in its own column, not a group',
+  master:
+    'a resident master opens its run over no group of issues; each issue it dispatches is carried by a run of its own',
+  system: 'this run was not opened over a group of issues',
+};
+
 /** `runGroup`, which nothing rewrites. A run older than that key falls back to
  *  `runIssueStatuses`, stamped at the same open — members, not order, a jsonb map having none.
  *  The shrunken `runIssues` is never read: on a finished run it is no group, not a smaller one. */
-export function groupOf(row: RunRow, lane: PipelineRunLane): PipelineRunGroup {
+export function groupOf(row: Pick<RunRow, 'metadata'>, lane: PipelineRunLane): PipelineRunGroup {
   if (lane !== 'run_session') {
-    return {
-      source: 'none',
-      issues: [],
-      detail:
-        lane === 'job'
-          ? 'a job-lane run carries its one issue in its own column, not a group'
-          : 'this run was not opened over a group of issues',
-    };
+    return { source: 'none', issues: [], detail: NO_GROUP_DETAIL[lane] };
   }
   const metadata = metadataObject(row.metadata);
   const stamped = stringsAt(metadata, RUN_GROUP_METADATA_KEY);
@@ -66,15 +75,32 @@ export function groupOf(row: RunRow, lane: PipelineRunLane): PipelineRunGroup {
   };
 }
 
-export function laneOf(row: RunRow): PipelineRunLane {
+export function laneOf(row: Pick<RunRow, 'issueId' | 'metadata'>): PipelineRunLane {
   if (row.issueId !== null) return 'job';
   const type = metadataObject(row.metadata)?.type;
-  return type === RUN_SESSION_METADATA_TYPE ? 'run_session' : 'system';
+  if (type === RUN_SESSION_METADATA_TYPE) return 'run_session';
+  return type === MASTER_SESSION_METADATA_TYPE ? 'master' : 'system';
+}
+
+/** ISS-1335 — never from the lane alone: `closeMasterSession` leaves the run `running`. */
+function masterDetail(master: ResidentMaster | null | undefined): string {
+  if (!master) {
+    return 'this run was opened for a resident master and no master session on it is live, so nothing holds it';
+  }
+  const who = master.name
+    ? `resident master \`${master.name}\``
+    : `resident master session ${master.sessionId}`;
+  return `this is the ${who}'s own run: a master dispatches issues rather than taking steps, so it holds no step, and residentMaster.lastHeartbeatAt is its heartbeat`;
 }
 
 /** ISS-1273 — what to say when no step is held. Each sentence is about THIS ROW: naming a group
  *  the row does not carry, or a lane that keeps no step, is prose the fields beside it falsify. */
-export function noStepDetail(lane: PipelineRunLane, group?: PipelineRunGroup): string {
+export function noStepDetail(
+  lane: PipelineRunLane,
+  group?: PipelineRunGroup,
+  master?: ResidentMaster | null,
+): string {
+  if (lane === 'master') return masterDetail(master);
   if (lane === 'run_session') {
     const named =
       group && group.issues.length > 0
@@ -95,6 +121,7 @@ export function stepOf(
   currentStep: string | null,
   openPhase?: string,
   group?: PipelineRunGroup,
+  master?: ResidentMaster | null,
 ): PipelineRunStep {
   if (lane === 'run_session') {
     return openPhase === undefined
@@ -102,5 +129,5 @@ export function stepOf(
       : { source: 'phase_journal', step: openPhase, detail: null };
   }
   if (currentStep !== null) return { source: 'run_column', step: currentStep, detail: null };
-  return { source: 'none', step: null, detail: noStepDetail(lane, group) };
+  return { source: 'none', step: null, detail: noStepDetail(lane, group, master) };
 }

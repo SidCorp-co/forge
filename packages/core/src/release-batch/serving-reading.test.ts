@@ -17,11 +17,23 @@ vi.mock('./channel.js', async (importActual) => {
     resolveReleaseChannels: (projectId: string) => resolveReleaseChannelsMock(projectId),
   };
 });
+const readForgeDeploymentsMock = vi.fn(
+  async (_projectId: string): Promise<unknown> => ({
+    kind: 'unrouted',
+    missing: 'this project has no active deploy binding',
+    route: 'bind a deploy binding Forge deploys through',
+  }),
+);
+vi.mock('./deployed-reading.js', () => ({
+  readForgeDeployments: (projectId: string) => readForgeDeploymentsMock(projectId),
+}));
 vi.mock('../db/client.js', () => ({
   db: { select: () => ({ from: () => ({ where: () => ({ limit: () => selectLimit() }) }) }) },
 }));
 
-const { declaredProbesOf, readServingNow } = await import('./serving-reading.js');
+const { declaredProbesOf, readServingNow, servedClause, servedCommits } = await import(
+  './serving-reading.js'
+);
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const SERVED = '0d98a6be6d9680b967d3f16542eadd25d02602cb';
@@ -53,6 +65,7 @@ const answering = (bodies: Record<string, string>) =>
   });
 
 beforeEach(() => {
+  readForgeDeploymentsMock.mockClear();
   resolveReleaseChannelsMock.mockReset();
   resolveReleaseChannelsMock.mockResolvedValue([]);
   selectLimit.mockReset();
@@ -106,9 +119,8 @@ describe('readServingNow', () => {
 
     expect(await readServingNow(PROJECT_ID, now)).toEqual({
       kind: 'serving',
-      commits: [SERVED],
+      served: [{ commit: SERVED, where: 'https://one.test/health' }],
       unread: [],
-      hosts: ['https://one.test/health'],
       readAt: FROZEN.toISOString(),
     });
   });
@@ -127,7 +139,14 @@ describe('readServingNow', () => {
     );
 
     const reading = await readServingNow(PROJECT_ID, now);
-    expect(reading).toMatchObject({ kind: 'serving', commits: [SERVED, OTHER], unread: [] });
+    expect(reading).toMatchObject({
+      kind: 'serving',
+      served: [
+        { commit: SERVED, where: 'https://one.test/health' },
+        { commit: OTHER, where: 'https://two.test/health' },
+      ],
+      unread: [],
+    });
   });
 
   /**
@@ -142,14 +161,73 @@ describe('readServingNow', () => {
     vi.stubGlobal('fetch', answering({ 'https://one.test/health': `{"commit":"${SERVED}"}` }));
 
     const reading = await readServingNow(PROJECT_ID, now);
-    expect(reading).toMatchObject({ kind: 'serving', commits: [SERVED] });
+    expect(reading).toMatchObject({
+      kind: 'serving',
+      served: [{ commit: SERVED, where: 'https://one.test/health' }],
+    });
     expect(reading.kind === 'serving' && reading.unread.join(' ')).toContain('down.test');
   });
 
-  it('says undeclared where no channel and no environment declares a probe', async () => {
+  it('says undeclared, and what is missing, where nothing declares a probe and nothing Forge deployed can answer', async () => {
     resolveReleaseChannelsMock.mockResolvedValue([]);
     selectLimit.mockResolvedValue([{ environments: { live: { url: 'https://app.test' } } }]);
-    expect(await readServingNow(PROJECT_ID, now)).toEqual({ kind: 'undeclared' });
+    expect(await readServingNow(PROJECT_ID, now)).toEqual({
+      kind: 'undeclared',
+      missing: 'this project has no active deploy binding',
+      route: 'bind a deploy binding Forge deploys through',
+    });
+  });
+
+  // ISS-1346: with no probe declared, what Forge itself deployed is what is asked.
+  it('reads what Forge deployed where no probe is declared', async () => {
+    resolveReleaseChannelsMock.mockResolvedValue([channel({ verify: null, verifySource: 'none' })]);
+    const where =
+      "Coolify target `App` (preview), Forge's deployment d1 finished 2026-09-29T19:21:18.158Z";
+    readForgeDeploymentsMock.mockResolvedValueOnce({
+      kind: 'answered',
+      served: [{ commit: SERVED, where }],
+      unread: ['Coolify target `Api` (live) has no deployment Forge made and saw finish on record'],
+    });
+    expect(await readServingNow(PROJECT_ID, now)).toEqual({
+      kind: 'serving',
+      served: [{ commit: SERVED, where }],
+      unread: ['Coolify target `Api` (live) has no deployment Forge made and saw finish on record'],
+      readAt: FROZEN.toISOString(),
+    });
+    expect(readForgeDeploymentsMock).toHaveBeenCalledWith(PROJECT_ID);
+  });
+
+  it('says unreadable, naming every target, where a route exists and nothing answered', async () => {
+    resolveReleaseChannelsMock.mockResolvedValue([]);
+    readForgeDeploymentsMock.mockResolvedValueOnce({
+      kind: 'unanswered',
+      readFrom: ['one'],
+      unread: [
+        'one could not be read: 503',
+        'two has no deployment Forge made and saw finish on record',
+      ],
+    });
+    expect(await readServingNow(PROJECT_ID, now)).toEqual({
+      kind: 'unreadable',
+      why: 'one could not be read: 503; two has no deployment Forge made and saw finish on record',
+      hosts: ['one'],
+      readAt: FROZEN.toISOString(),
+    });
+  });
+
+  it('never reads a deployment where a live binding declares a probe', async () => {
+    resolveReleaseChannelsMock.mockResolvedValue([channel()]);
+    vi.stubGlobal('fetch', answering({ 'https://one.test/health': `{"commit":"${SERVED}"}` }));
+    expect((await readServingNow(PROJECT_ID, now)).kind).toBe('serving');
+    expect(readForgeDeploymentsMock).not.toHaveBeenCalled();
+  });
+
+  it('never reads a deployment where a declared probe was refused as a declaration', async () => {
+    resolveReleaseChannelsMock.mockResolvedValue([
+      channel({ verify: null, verifySource: 'declared-unusable' }),
+    ]);
+    expect((await readServingNow(PROJECT_ID, now)).kind).toBe('unreadable');
+    expect(readForgeDeploymentsMock).not.toHaveBeenCalled();
   });
 
   // `resolveReleaseChannels` reads no project row when there is no live binding, so this would
@@ -163,8 +241,7 @@ describe('readServingNow', () => {
 
     expect(await readServingNow(PROJECT_ID, now)).toMatchObject({
       kind: 'serving',
-      commits: [SERVED],
-      hosts: ['https://env.test/health'],
+      served: [{ commit: SERVED, where: 'https://env.test/health' }],
     });
   });
 
@@ -202,7 +279,10 @@ describe('readServingNow', () => {
     vi.stubGlobal('fetch', answering({ 'https://one.test/health': `{"commit":"${SERVED}"}` }));
 
     const reading = await readServingNow(PROJECT_ID, now);
-    expect(reading).toMatchObject({ kind: 'serving', commits: [SERVED] });
+    expect(reading).toMatchObject({
+      kind: 'serving',
+      served: [{ commit: SERVED, where: 'https://one.test/health' }],
+    });
     expect(reading.kind === 'serving' && reading.unread.join(' ')).toContain('not-a-url');
   });
 
@@ -238,5 +318,34 @@ describe('readServingNow', () => {
     const reading = await readServingNow(PROJECT_ID, now);
     expect(reading.kind).toBe('unreadable');
     expect(reading.kind === 'unreadable' && reading.why).toContain('refused as a declaration');
+  });
+});
+
+// ISS-1346 judge finding 2 — a commit is said beside where it runs, never as a bare list.
+describe('servedClause', () => {
+  it('groups every place a commit runs under that commit, in the order first answered', () => {
+    const served = [
+      { commit: SERVED, where: 'App (preview)' },
+      { commit: OTHER, where: 'Web (live)' },
+      { commit: OTHER, where: 'Home (live)' },
+    ];
+    expect(servedClause(served)).toBe(
+      `\`${SERVED}\` at App (preview); \`${OTHER}\` at Web (live) and Home (live)`,
+    );
+  });
+
+  it('names each distinct commit once, however many places run it', () => {
+    const reading = {
+      kind: 'serving' as const,
+      served: [
+        { commit: OTHER, where: 'a' },
+        { commit: SERVED, where: 'b' },
+        { commit: OTHER, where: 'c' },
+      ],
+      unread: [],
+      readAt: FROZEN.toISOString(),
+    };
+    expect(servedCommits(reading)).toEqual([OTHER, SERVED]);
+    expect(servedCommits({ kind: 'undeclared', missing: 'm', route: 'r' })).toEqual([]);
   });
 });

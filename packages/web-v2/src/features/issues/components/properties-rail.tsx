@@ -6,6 +6,7 @@
 // convention, and dependency edges (rendered as clickable `ISS-X` badges linking
 // to the related issue — ISS-331).
 
+import type { ComponentProps } from "react";
 import { Avatar, Badge, Button, MonoTag, Stat, StatusChip } from "@/design";
 import { COMPLEXITY_OPTIONS, PRIORITY_OPTIONS } from "./issue-table-row";
 import { IssueRefBadge } from "./issue-ref-badge";
@@ -22,6 +23,7 @@ import type {
   IssueDetail,
   IssuePriority,
   IssueStatus,
+  LandingShape,
   MergeMarkKind,
 } from "../types";
 
@@ -75,10 +77,12 @@ function MergeMarkBadge({
   mark,
   commitSha,
   landing,
+  landingShape,
 }: {
   mark?: MergeMarkKind;
   commitSha?: string | null;
   landing?: string | null;
+  landingShape?: LandingShape;
 }) {
   if (mark === "landed") {
     // ISS-1327 — the landing is the evidence, so it is shown as text rather than kept on a hover
@@ -103,7 +107,14 @@ function MergeMarkBadge({
   }
   if (mark === "asserted") {
     return (
-      <span title="Forge holds no merged pull request for this issue — this mark is a claim it recorded, not a merge it witnessed">
+      <span
+        title={
+          // Outside git no pull request is the normal record; what the mark lacks is a landing.
+          landingShape === "outside_git"
+            ? "This mark names no landing — it says the work shipped, not where it landed"
+            : "Forge holds no merged pull request for this issue — this mark is a claim it recorded, not a merge it witnessed"
+        }
+      >
         <Badge tone="amber">claimed</Badge>
       </span>
     );
@@ -172,6 +183,8 @@ interface PropertiesRailProps {
   onEditModules?: (() => void) | undefined;
   /** ISS-791 — offer the shipped-work claim. False for a reader who cannot write. */
   canMarkMerged?: boolean | undefined;
+  /** What a person owes this issue, so the status control at a park offers that decision first. */
+  park?: ComponentProps<typeof StatusEdit>["park"];
 }
 
 export function PropertiesRail({
@@ -184,6 +197,7 @@ export function PropertiesRail({
   onTransition,
   onEditModules,
   canMarkMerged,
+  park,
 }: PropertiesRailProps) {
   const modules = (issue.labels ?? []).filter((l) => l.kind === "module");
   const plainLabels = (issue.labels ?? []).filter((l) => l.kind !== "module");
@@ -218,6 +232,7 @@ export function PropertiesRail({
           agentStatus={issue.agentStatus}
           disabled={pending}
           onTransition={onTransition}
+          park={park}
         />
       </Row>
       {runChip && (
@@ -293,6 +308,7 @@ export function PropertiesRail({
               mark={issue.mergeMark}
               commitSha={issue.mergedCommitSha}
               landing={issue.mergedLanding}
+              landingShape={issue.landingShape}
             />
             {canMarkMerged && (
               <MergeMarkerControl

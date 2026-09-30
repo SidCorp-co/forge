@@ -248,6 +248,13 @@ describe('coolifyAdapter — the deploy is held until Coolify confirms it (ISS-9
     });
 
     expect(enqueueConfirmMock).toHaveBeenCalledTimes(2);
+    // The release gate joins a finished deployment to this row by target id and resource (ISS-1346).
+    expect(recordDeliveryMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        direction: 'outbound',
+        payload: expect.objectContaining({ targetId: 't-fe', resourceUuid: 'res-fe' }),
+      }),
+    );
     expect(replaceHoldsMock).toHaveBeenCalledWith(
       expect.objectContaining({
         runId: RUN_ID,

@@ -10,7 +10,7 @@
 // must never say again.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DecisionPanel } from "./decision-panel";
 
@@ -83,5 +83,41 @@ describe("DecisionPanel, when the query itself could not be made", () => {
     const { container } = render(<DecisionPanel issueId="i-1" parkedForInfo />);
     expect(screen.getByText(/Couldn't load this issue's decisions/i)).toBeInTheDocument();
     expect(container.textContent ?? "").not.toMatch(/No decision round/i);
+  });
+});
+
+// ISS-1310, finding bed1c82b — a park that asked only in the thread is shown, and answered, here.
+describe("DecisionPanel, on a park whose question is only in the thread", () => {
+  const asked = {
+    prompt: "Who holds a release's lease: the door, or the issue's own run?",
+    readings: ["the door -> one lease per release", "the run -> the release waits on it"],
+  };
+
+  it("shows the question and its readings instead of saying there is none", () => {
+    render(
+      <DecisionPanel issueId="i-1" parkedForInfo threadQuestion={asked} onAnswerInThread={vi.fn()} />,
+    );
+    expect(screen.getByText(asked.prompt)).toBeInTheDocument();
+    for (const reading of asked.readings) expect(screen.getByText(reading)).toBeInTheDocument();
+    expect(screen.queryByText(/No decision round on this issue/i)).toBeNull();
+  });
+
+  it("posts the typed answer and says where it went", async () => {
+    const onAnswerInThread = vi.fn(async () => ({}));
+    render(
+      <DecisionPanel issueId="i-1" parkedForInfo threadQuestion={asked} onAnswerInThread={onAnswerInThread} />,
+    );
+    const post = () => screen.getByRole("button", { name: "Post answer" });
+    expect(post()).toBeDisabled();
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "the door" } });
+    fireEvent.click(post());
+    expect(onAnswerInThread).toHaveBeenCalledWith("the door");
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(/on the thread/));
+  });
+
+  it("shows the question with no answer box to a reader who may not write", () => {
+    render(<DecisionPanel issueId="i-1" parkedForInfo threadQuestion={asked} />);
+    expect(screen.getByText(asked.prompt)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Post answer" })).toBeNull();
   });
 });
