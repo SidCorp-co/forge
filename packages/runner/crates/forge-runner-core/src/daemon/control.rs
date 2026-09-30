@@ -31,7 +31,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
 
 use crate::config::Config;
-use crate::daemon::session_tokens::SessionTokens;
+use crate::daemon::session_tokens::{Holder, SessionTokens};
 
 pub fn socket_path() -> Option<PathBuf> {
     let cfg = Config::path().ok()?;
@@ -237,8 +237,8 @@ async fn serve_one(ctl: Arc<Control>, stream: UnixStream) {
         return;
     }
     let reply = match serde_json::from_str::<Request>(&line) {
-        Ok(req) => match ctl.tokens.session_for(req.token()) {
-            Some(session_id) => serve_request(&ctl, req, &session_id, peer),
+        Ok(req) => match caller_of(&ctl, req.token()) {
+            Some((holder, session_id)) => serve_request(&ctl, req, &holder, &session_id, peer),
             None => ClaimReply::refused("unknown_token"),
         },
         Err(e) => ClaimReply::refused(format!("undecodable request: {e}")),
@@ -246,6 +246,72 @@ async fn serve_one(ctl: Arc<Control>, stream: UnixStream) {
     let mut out = serde_json::to_string(&reply).unwrap_or_else(|_| "{\"ok\":false}".into());
     out.push('\n');
     let _ = reader.get_mut().write_all(out.as_bytes()).await;
+}
+
+/// Who a frame's token was minted for, and the session the frame acts under.
+///
+/// A capability carrying its record acts under the session this daemon holds
+/// for the record's project where this daemon's master pane for that project
+/// is the record's pane: core can replace the row a pane was placed under, and
+/// the daemon then holds the new one, which is the session every run, close and
+/// choice on this box is keyed by (ISS-1316). The record itself is never
+/// rewritten — what moves is which session this daemon serves the pane under.
+/// Anywhere else, and for a capability minted before the record, the frame acts
+/// under the session the capability names.
+#[cfg(unix)]
+fn caller_of(ctl: &Control, token: &str) -> Option<(Holder, String)> {
+    let holder = ctl.tokens.resolve(token)?;
+    let session = acting_session(&ctl.masters, &holder);
+    Some((holder, session))
+}
+
+#[cfg(unix)]
+pub(crate) fn acting_session(masters: &crate::daemon::master::Masters, holder: &Holder) -> String {
+    match holder {
+        Holder::Minted(m) => match masters.live_for_project(&m.project) {
+            Some((session, pane)) if pane == m.pane => session,
+            _ => m.session.clone(),
+        },
+        Holder::Legacy { session } => session.clone(),
+    }
+}
+
+/// Which project a declaring caller is the master for, or why it is none.
+///
+/// A record bounds it by itself: the project it was minted for, and only while
+/// this daemon's master pane for that project is the pane it was minted for, so
+/// a capability handed to a job pane of the same project declares nothing. The
+/// declared project is compared against the record and never read off the
+/// frame (ISS-1050 criterion 7, re-established here by ISS-1316). A capability
+/// minted before the record keeps the bound it always had.
+#[cfg(unix)]
+fn declaring_project(
+    masters: &crate::daemon::master::Masters,
+    holder: &Holder,
+    project_id: &str,
+    session_id: &str,
+) -> Result<String, String> {
+    match holder {
+        Holder::Minted(m) => {
+            if m.project != project_id {
+                return Err(format!(
+                    "this pane's capability was minted for pane {} as the master for {}, and cannot declare a run for {project_id}. Nothing was recorded",
+                    m.pane, m.project
+                ));
+            }
+            match masters.live_for_project(&m.project) {
+                Some((_, pane)) if pane == m.pane => Ok(m.project.clone()),
+                Some((_, pane)) => Err(format!(
+                    "this box's master for {} is pane {pane}, and your capability was minted for pane {} — only the project's master pane declares its runs. Nothing was recorded",
+                    m.project, m.pane
+                )),
+                None => Err(masters.why_unplaced(&m.project)),
+            }
+        }
+        Holder::Legacy { .. } => masters
+            .project_for_session(session_id)
+            .ok_or_else(|| masters.why_unplaced(project_id)),
+    }
 }
 
 #[cfg(unix)]
@@ -363,9 +429,39 @@ fn run_choice(
     }
 }
 
-#[cfg(unix)]
+/// A declaration as the tests make it: under the capability minted for
+/// `session_id` where the map holds one, and as a pre-record capability
+/// naming that session where it does not.
+#[cfg(all(unix, test))]
 fn run_declare(
     ctl: &Arc<Control>,
+    project_id: &str,
+    issue_keys: &[String],
+    worktree_path: &str,
+    session_id: &str,
+    peer: Option<u32>,
+) -> ClaimReply {
+    let holder = ctl
+        .tokens
+        .holder_for_session(session_id)
+        .unwrap_or_else(|| Holder::Legacy {
+            session: session_id.to_string(),
+        });
+    run_declare_as(
+        ctl,
+        &holder,
+        project_id,
+        issue_keys,
+        worktree_path,
+        session_id,
+        peer,
+    )
+}
+
+#[cfg(unix)]
+fn run_declare_as(
+    ctl: &Arc<Control>,
+    holder: &Holder,
     project_id: &str,
     issue_keys: &[String],
     worktree_path: &str,
@@ -380,8 +476,9 @@ fn run_declare(
         Ok(permit) => permit,
         Err(closed) => return ClaimReply::refused(closed.refusal),
     };
-    let Some(serves) = ctl.masters.project_for_session(session_id) else {
-        return ClaimReply::refused(ctl.masters.why_unplaced(project_id));
+    let serves = match declaring_project(&ctl.masters, holder, project_id, session_id) {
+        Ok(serves) => serves,
+        Err(why) => return ClaimReply::refused(why),
     };
     if serves != project_id {
         return ClaimReply::refused(format!(
@@ -961,6 +1058,7 @@ fn note_master_pane(ctl: &Arc<Control>, session_id: &str, conversation_id: Optio
 fn serve_request(
     ctl: &Arc<Control>,
     req: Request,
+    holder: &Holder,
     session_id: &str,
     peer: Option<u32>,
 ) -> ClaimReply {
@@ -991,8 +1089,9 @@ fn serve_request(
             issue_keys,
             worktree_path,
             ..
-        } => run_declare(
+        } => run_declare_as(
             ctl,
+            holder,
             &project_id,
             &issue_keys,
             &worktree_path,
@@ -1239,8 +1338,8 @@ mod tests {
     fn a_frame_naming_another_session_is_served_as_the_token_owner() {
         let dir = crate::test_scratch::Scratch::new("ct");
         let tokens = SessionTokens::at(dir.join("control-tokens.json"));
-        let a = tokens.mint("sess-a").unwrap();
-        tokens.mint("sess-b").unwrap();
+        let a = tokens.mint("sess-a", "proj-a", "pane-a").unwrap();
+        tokens.mint("sess-b", "proj-b", "pane-b").unwrap();
 
         let frame =
             format!(r#"{{"op":"agent_event","token":"{a}","sessionId":"sess-b","event":"Stop"}}"#);
@@ -1315,7 +1414,7 @@ mod tests {
     ) -> (Arc<Control>, String, crate::test_scratch::Scratch) {
         let dir = crate::test_scratch::Scratch::new("ct-decl");
         let tokens = SessionTokens::at(dir.join("control-tokens.json"));
-        let token = tokens.mint(session_id).unwrap();
+        let token = tokens.mint(session_id, project_id, "pane-1").unwrap();
         let masters = Arc::new(crate::daemon::master::Masters::new());
         masters.remember_for_test(project_id, session_id, "pane-1");
         (
@@ -1335,6 +1434,237 @@ mod tests {
             token,
             dir,
         )
+    }
+
+    /// A control over the map and registry a test built, with an empty ledger.
+    fn control_over(
+        tokens: SessionTokens,
+        masters: Arc<crate::daemon::master::Masters>,
+        dir: &crate::test_scratch::Scratch,
+    ) -> Arc<Control> {
+        Arc::new(Control {
+            tokens,
+            activity: Arc::new(crate::daemon::agent_activity::Activities::new()),
+            masters,
+            ledger: Arc::new(std::sync::Mutex::new(Some(
+                crate::runner::ledger::Ledger::open_in_memory().unwrap(),
+            ))),
+            boot_id: "boot-a".into(),
+            config_dir: Some(dir.to_path_buf()),
+            promises: std::sync::Mutex::new(GateMemory::default()),
+            drain: Arc::new(crate::daemon::drain::Drain::unrecorded()),
+            hosts: Arc::new(crate::daemon::subagent_host::testing::FakeHosts::default()),
+        })
+    }
+
+    /// A frame as the pane's CLI sends it, served the way `serve_one` serves
+    /// one: resolved from its token, then answered under the session it acts as.
+    #[cfg(unix)]
+    fn served(ctl: &Arc<Control>, frame: serde_json::Value) -> ClaimReply {
+        let req: Request = serde_json::from_value(frame).expect("the frame must decode");
+        match caller_of(ctl, req.token()) {
+            Some((holder, session)) => serve_request(ctl, req, &holder, &session, None),
+            None => ClaimReply::refused("unknown_token"),
+        }
+    }
+
+    #[cfg(unix)]
+    fn declare_frame(token: &str, project: &str, key: &str) -> serde_json::Value {
+        serde_json::json!({
+            "op": "run_declare",
+            "token": token,
+            "projectId": project,
+            "issueKeys": [key],
+            "worktreePath": format!("/w/{key}"),
+        })
+    }
+
+    fn run_count(ctl: &Arc<Control>) -> usize {
+        ctl.ledger
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .unclosed_runs()
+            .unwrap()
+            .len()
+    }
+
+    /// The pane was placed as forge-dev's master under `PLACED`; core has
+    /// since reaped that row and this box now holds `REMINT` for the pane.
+    const PLACED: &str = "sess-placed-under";
+    const REMINT: &str = "sess-core-reminted";
+    const PANE: &str = "forge-master-forge-dev";
+
+    #[cfg(unix)]
+    fn a_pane_core_re_minted(shape: &str) -> (Arc<Control>, String, crate::test_scratch::Scratch) {
+        let dir = crate::test_scratch::Scratch::new("ct-remint");
+        let path = dir.join("control-tokens.json");
+        let token = match shape {
+            "record" => SessionTokens::at(path.clone())
+                .mint(PLACED, "proj-1", PANE)
+                .unwrap(),
+            _ => {
+                std::fs::write(&path, format!(r#"{{"tok-before-the-record":"{PLACED}"}}"#))
+                    .unwrap();
+                "tok-before-the-record".to_string()
+            }
+        };
+        let masters = Arc::new(crate::daemon::master::Masters::new());
+        masters.remember_for_test("proj-1", REMINT, PANE);
+        let ctl = control_over(SessionTokens::at(path), masters, &dir);
+        (ctl, token, dir)
+    }
+
+    /// ISS-1316 criteria 2 and 3.
+    #[cfg(unix)]
+    #[test]
+    fn a_pane_whose_row_core_re_minted_declares_under_the_session_this_box_now_holds() {
+        let (ctl, token, _dir) = a_pane_core_re_minted("record");
+        let reply = served(&ctl, declare_frame(&token, "proj-1", "ISS-7"));
+        assert!(
+            reply.ok,
+            "the record says this pane is proj-1's master, and core re-minting the row it was placed under changes neither: {reply:?}"
+        );
+        assert_eq!(reply.agent_session_id.as_deref(), Some(REMINT));
+        let held = ctl.ledger.lock().unwrap();
+        let run = held
+            .as_ref()
+            .unwrap()
+            .run(reply.job_id.as_deref().unwrap())
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            run.master_session_id, REMINT,
+            "recorded under the session every other key on this box reads, not the reaped one"
+        );
+    }
+
+    /// The same pane holding a capability minted before the record: this is
+    /// the ISS-1099 defect, which such a pane still has, and which is what
+    /// makes the test above able to fail.
+    #[cfg(unix)]
+    #[test]
+    fn the_same_pane_on_a_capability_minted_before_the_record_is_still_refused() {
+        let (ctl, token, _dir) = a_pane_core_re_minted("legacy");
+        let reply = served(&ctl, declare_frame(&token, "proj-1", "ISS-7"));
+        assert!(
+            !reply.ok && reply.reason.as_deref().unwrap_or("").contains(REMINT),
+            "a pre-record capability names only its session, which core replaced: {reply:?}"
+        );
+        assert_eq!(run_count(&ctl), 0);
+    }
+
+    /// ISS-1316 criterion 4, which is ISS-1050 criterion 7 at the record.
+    #[cfg(unix)]
+    #[test]
+    fn a_record_declares_nothing_for_a_project_it_was_not_minted_for() {
+        let (ctl, token, _dir) = a_pane_core_re_minted("record");
+        ctl.masters
+            .remember_for_test("proj-2", "sess-other", "forge-master-other");
+        let reply = served(&ctl, declare_frame(&token, "proj-2", "ISS-9"));
+        assert!(
+            !reply.ok
+                && reply
+                    .reason
+                    .as_deref()
+                    .unwrap_or("")
+                    .contains("cannot declare a run for proj-2"),
+            "{reply:?}"
+        );
+        assert_eq!(run_count(&ctl), 0, "and nothing was written");
+    }
+
+    /// ISS-1316 criterion 5: a job pane of the same project carries a record
+    /// too, and a record is not a master's unless its pane is the master's.
+    #[cfg(unix)]
+    #[test]
+    fn a_record_minted_for_a_job_pane_declares_nothing() {
+        let (ctl, _master, _dir) = a_pane_core_re_minted("record");
+        let job = ctl
+            .tokens
+            .mint("sess-job", "proj-1", "forge-job-42")
+            .unwrap();
+        let reply = served(&ctl, declare_frame(&job, "proj-1", "ISS-9"));
+        assert!(
+            !reply.ok
+                && reply
+                    .reason
+                    .as_deref()
+                    .unwrap_or("")
+                    .contains("only the project's master pane declares its runs"),
+            "{reply:?}"
+        );
+        assert_eq!(run_count(&ctl), 0, "and nothing was written");
+    }
+
+    /// ISS-1316 criterion 13.
+    #[cfg(unix)]
+    #[test]
+    fn every_frame_against_a_map_in_neither_shape_is_refused_as_an_unknown_token() {
+        let (ctl, token, dir) = a_pane_core_re_minted("record");
+        std::fs::write(dir.join("control-tokens.json"), r#"{"x":{"session":1}}"#).unwrap();
+        let reply = served(&ctl, declare_frame(&token, "proj-1", "ISS-7"));
+        assert_eq!(
+            reply.reason.as_deref(),
+            Some("unknown_token"),
+            "a map this box cannot parse answers for no pane, rather than an empty map answering for none: {reply:?}"
+        );
+        assert_eq!(run_count(&ctl), 0);
+    }
+
+    /// ISS-1316 criterion 9, and the red it answers: before the sweep carries
+    /// the pane's runs across, the pane's own close is refused as another
+    /// master's.
+    #[cfg(unix)]
+    #[test]
+    fn a_pane_closes_the_run_it_declared_before_core_re_minted_its_row_once_the_sweep_carries_it() {
+        let (ctl, token, _dir) = a_pane_core_re_minted("record");
+        const RUN: &str = "run-declared-before";
+        {
+            let mut held = ctl.ledger.lock().unwrap();
+            let led = held.as_mut().unwrap();
+            led.create_run_group(crate::runner::ledger::NewRun {
+                run_id: RUN.into(),
+                project_id: "proj-1".into(),
+                master_session_id: PLACED.into(),
+                worktree_path: "/w/before".into(),
+                boot_id: "boot-a".into(),
+                issue_keys: vec!["ISS-5".into()],
+            })
+            .unwrap();
+            led.note_master("proj-1", PANE, None, Some(PLACED), "boot-a")
+                .unwrap();
+        }
+        let close = || {
+            served(
+                &ctl,
+                serde_json::json!({"op": "run_close", "token": token, "runId": RUN, "reason": "done"}),
+            )
+        };
+        let before = close();
+        assert!(
+            !before.ok
+                && before
+                    .reason
+                    .as_deref()
+                    .unwrap_or("")
+                    .contains("another master"),
+            "the red: {before:?}"
+        );
+        {
+            let mut held = ctl.ledger.lock().unwrap();
+            let moved = crate::daemon::master::carried_across(
+                held.as_mut().unwrap(),
+                "proj-1",
+                PANE,
+                REMINT,
+                "forge-dev",
+            );
+            assert_eq!(moved, 1);
+        }
+        let after = close();
+        assert!(after.ok, "{after:?}");
     }
 
     /// ISS-1312, criteria 16, 19-23 and 29, over this incident's own rows: run
@@ -2572,7 +2902,7 @@ mod tests {
         fn a_frame_carrying_no_known_token_names_nobody() {
             let dir = crate::test_scratch::Scratch::new("ct");
             let tokens = SessionTokens::at(dir.join("control-tokens.json"));
-            tokens.mint("sess-a").unwrap();
+            tokens.mint("sess-a", "proj-a", "pane-a").unwrap();
             assert_eq!(tokens.session_for("forged"), None);
         }
         #[test]

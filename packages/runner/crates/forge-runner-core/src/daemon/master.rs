@@ -712,6 +712,18 @@ impl Masters {
         reg.live.insert(project_id.to_string(), state);
     }
 
+    /// Serve the live pane for this project under `session_id`, keeping
+    /// everything else this box knows about it, and answer the session it
+    /// was served under before where that differs.
+    fn readopt(&self, project_id: &str, session_id: &str) -> Option<String> {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        let m = reg.live.get_mut(project_id)?;
+        if m.session_id == session_id {
+            return None;
+        }
+        Some(std::mem::replace(&mut m.session_id, session_id.to_string()))
+    }
+
     /// This project's pool held something; the idle clock restarts.
     fn note_work(&self, project_id: &str) {
         let mut reg = self.0.lock().expect("masters poisoned");
@@ -1275,21 +1287,33 @@ async fn sweep(
         // Written before the `Absent` gate below, because a verdict reached and
         // dropped is the defect this issue was reopened for: the sweep that
         // learns a pane is refused is the only one that knows it.
-        if let Some(said) = authority.take() {
-            write_authority(ledger.as_ref(), &runner.project_id, &resolved.slug, &said);
-        }
+        let heard = match authority.take() {
+            Some(said) => {
+                write_authority(ledger.as_ref(), &runner.project_id, &resolved.slug, &said);
+                said.verdict == MasterAuthority::CURRENT
+            }
+            None => false,
+        };
         // Gathered here rather than reported here: one project's deaf pane is a
         // line, and a box whose whole fleet went deaf at once is a condition
         // nobody reads four quarters of (ISS-1208).
         if let Some(found) = deaf.take() {
             deaf_found.push(found);
         }
+        if pane == PaneState::Adopted && heard {
+            if let (Some(led), Some((successor, name))) =
+                (ledger.as_mut(), masters.get(&runner.project_id))
+            {
+                carried_across(led, &runner.project_id, &name, &successor, &resolved.slug);
+            }
+        }
         let placed = started.load(std::sync::atomic::Ordering::Relaxed)
             && matches!(pane, PaneState::ColdStarted | PaneState::Resumed);
         if placed {
-            if let (Some(led), Some((successor, _))) =
+            if let (Some(led), Some((successor, name))) =
                 (ledger.as_mut(), masters.get(&runner.project_id))
             {
+                note_placed_session(led, &runner.project_id, &name, &successor, &resolved.slug);
                 placed_again(
                     led,
                     &inherited,
@@ -2223,6 +2247,91 @@ pub(crate) fn placed_again(
     }
 }
 
+/// A pane this box adopted onto a session core re-minted keeps answering for
+/// the runs it declared before (ISS-1316).
+///
+/// The ledger's master row names the session the pane last acted under: every
+/// frame it sends records it, and a placement records the one it was placed
+/// under. Where that differs from the session this box now serves the pane
+/// under, the pane's capability survived the re-mint, so the open runs it
+/// declared are its own still and are recorded under the session its `run
+/// close` and `run choice` now act as. A run another pane declared is never
+/// moved: a pane placed cold does not inherit its predecessor's runs, and the
+/// row names the placed pane's session from the moment it is placed.
+pub(crate) fn carried_across(
+    led: &mut Ledger,
+    project_id: &str,
+    pane: &str,
+    successor: &str,
+    slug: &str,
+) -> usize {
+    let row = match led.master_for_project(project_id) {
+        Ok(Some(row)) => row,
+        Ok(None) => return 0,
+        Err(e) => {
+            tracing::warn!(
+                "[master] {slug}: cannot read which session {pane} last acted under ({e}), so the runs it declared before core re-minted its session stay under that session this sweep"
+            );
+            return 0;
+        }
+    };
+    let Some(before) = row
+        .session_id
+        .filter(|s| row.pane_name == pane && s != successor)
+    else {
+        return 0;
+    };
+    let runs = match led.runs_for_master(&before) {
+        Ok(runs) => runs,
+        Err(e) => {
+            tracing::warn!(
+                "[master] {slug}: cannot read the runs {pane} declared under {before} ({e}); they stay under that session this sweep"
+            );
+            return 0;
+        }
+    };
+    let mut moved = 0;
+    for run in runs
+        .iter()
+        .filter(|r| r.ended_by.is_none() && r.project_id.as_deref() == Some(project_id))
+    {
+        match led.reparent_run(&run.run_id, successor) {
+            Ok(()) => moved += 1,
+            Err(e) => tracing::warn!(
+                "[master] {slug}: run {}: cannot record it under {successor}: {e} — it stays {before}'s, which no pane on this box answers for",
+                run.run_id
+            ),
+        }
+    }
+    if let Err(e) = led.note_master(project_id, pane, None, Some(successor), &row.boot_id) {
+        tracing::warn!("[master] {slug}: cannot record that {pane} now acts as {successor}: {e}");
+    }
+    if moved > 0 {
+        tracing::info!(
+            "[master] {slug}: {moved} open run(s) {pane} declared under {before} are now recorded under {successor}, the session core serves it as, so its close and its choice answer for them"
+        );
+    }
+    moved
+}
+
+/// Record the session a pane was just placed under as the one it acts as, so
+/// a later adoption compares against this pane and not the one before it.
+fn note_placed_session(led: &Ledger, project_id: &str, pane: &str, session: &str, slug: &str) {
+    let boot = crate::runner::inflight::boot_identity()
+        .or_else(|| {
+            led.master_for_project(project_id)
+                .ok()
+                .flatten()
+                .map(|row| row.boot_id)
+        })
+        .unwrap_or_default();
+    if let Err(e) = led.note_master(project_id, pane, None, Some(session), &boot) {
+        tracing::warn!(
+            "[master] {slug}: cannot record that {pane} was placed under {session}: {e}"
+        );
+    }
+}
+
 /// What [`placed_again`] says it did. A run is called ended with the pane only
 /// where its end was recorded: a line that says so of runs whose process
 /// still reads alive tells the operator the opposite of what the box did
@@ -2862,7 +2971,7 @@ async fn ensure_master(
         }
         let pane_now = terminal::incarnation(&name).await;
         let verdict = verdict_over_unwithdrawn(
-            capability_of(tokens, &session.session_id),
+            capability_of(tokens, &session.session_id, project_id, &name),
             masters.unwithdrawn_for(project_id).as_deref(),
             &session.session_id,
         );
@@ -2891,6 +3000,13 @@ async fn ensure_master(
         if !ended_a_deaf_pane {
             return match verdict {
                 Capability::Current => {
+                    if let Some(held) = masters.readopt(project_id, &session.session_id) {
+                        tracing::info!(
+                            "[master] {}: core now serves {name} as session {} in place of {held}. The pane keeps the capability it was placed with, which names this project and this pane rather than a session, so it is not ended; this box serves it under the new session from now on",
+                            resolved.slug,
+                            session.session_id
+                        );
+                    }
                     masters.clear_unplaced(project_id);
                     masters.note_capability(project_id, MasterAuthority::CURRENT);
                     ports
@@ -3088,7 +3204,7 @@ async fn ensure_master(
     // The mint is the last refusal before the pane. Every refusal above it
     // leaves no capability behind; one below it has to withdraw what it minted.
     match tokens {
-        Some(store) => match store.mint(&session.session_id) {
+        Some(store) => match store.mint(&session.session_id, project_id, &name) {
             Ok(token) => env.push((session_tokens::TOKEN_ENV.to_string(), token)),
             Err(e) => {
                 say_unplaced(
@@ -3255,10 +3371,12 @@ surface it reads",
 /// What this box can say about the capability the resident master pane holds.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Capability {
-    /// Some capability this box minted names the session it now holds.
+    /// A capability this box minted answers for the pane: a record naming its
+    /// project and pane, or any entry naming the session core serves it now.
     Current,
-    /// None does, so the pane is running on a token for a session that is gone
-    /// and every frame it sends will be refused.
+    /// None does, so the pane is running on a capability minted before the
+    /// record for a session that is gone, and every declaration it makes will
+    /// be refused.
     Stale,
     /// This box cannot read its own map, so it says nothing about any pane.
     Unknown(String),
@@ -3268,22 +3386,28 @@ pub(crate) enum Capability {
 /// minted.
 ///
 /// The pane's token lives in its environment and is out of reach here, but the
-/// map is not: `mint` leaves exactly one entry naming the session it was called
-/// for, and `retire` removes by session. So a map holding nothing for the
-/// session core now gives us is a map that was never minted for it — which is
-/// precisely a pane adopted onto a session row core replaced, whether it was
-/// replaced at this call or at one three restarts ago.
+/// map is not: `mint` leaves exactly one entry per pane, naming the project and
+/// pane it was placed as (ISS-1316). A record for this project and pane answers
+/// whatever session core has since moved the pane to. A map holding neither
+/// that nor anything for the session core now gives us is a pane holding a
+/// capability minted before the record, adopted onto a row core replaced —
+/// whether at this call or at one three restarts ago.
 ///
 /// `session.created` answers only the first of those, which is why one project
 /// of seven was reported on 2026-09-18 and the one that was actually stuck was
 /// not (ISS-1099).
-fn capability_of(tokens: Option<&session_tokens::SessionTokens>, session_id: &str) -> Capability {
+fn capability_of(
+    tokens: Option<&session_tokens::SessionTokens>,
+    session_id: &str,
+    project_id: &str,
+    pane: &str,
+) -> Capability {
     let Some(store) = tokens else {
         return Capability::Unknown(
             "this box could not resolve where its capability map lives".to_string(),
         );
     };
-    match store.holds_session(session_id) {
+    match store.answers_for(session_id, project_id, pane) {
         Ok(true) => Capability::Current,
         Ok(false) => Capability::Stale,
         Err(e) => Capability::Unknown(e.to_string()),
@@ -3863,6 +3987,11 @@ async fn end_master(
     }
     if let Some(store) = tokens {
         store.retire(session_id);
+        // The pane's own entry names the session it was placed under, which
+        // is not this one where core moved the pane since (ISS-1316).
+        if let Some((_, pane)) = masters.get(project_id) {
+            store.retire_pane(project_id, &pane);
+        }
     }
     masters.forget(project_id);
 }
@@ -3872,6 +4001,105 @@ mod tests {
     use super::*;
 
     const THIS_SOURCE: &str = include_str!("master.rs");
+
+    /// A declared run whose subagent has started, so a master may hold several.
+    fn a_run_of(led: &mut Ledger, run_id: &str, key: &str, project: &str, master: &str) {
+        led.create_run_group(crate::runner::ledger::NewRun {
+            run_id: run_id.into(),
+            project_id: project.into(),
+            master_session_id: master.into(),
+            worktree_path: format!("/w/{run_id}").into(),
+            boot_id: "boot-a".into(),
+            issue_keys: vec![key.into()],
+        })
+        .unwrap();
+        assert!(led.bind_agent(run_id, &format!("agent-{run_id}")).unwrap());
+    }
+
+    /// ISS-1316 criterion 8: what the pane declared under the session core
+    /// re-minted is recorded under the one it acts as now, and nothing else is.
+    #[test]
+    fn an_adopted_pane_carries_its_own_open_runs_to_the_session_core_serves_now() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        a_run_of(&mut led, "open-mine", "ISS-1", "proj-1", "sess-before");
+        a_run_of(&mut led, "ended-mine", "ISS-2", "proj-1", "sess-before");
+        led.end_run("ended-mine", "master", "done").unwrap();
+        a_run_of(
+            &mut led,
+            "someone-elses",
+            "ISS-3",
+            "proj-1",
+            "sess-unrelated",
+        );
+        led.note_master(
+            "proj-1",
+            "forge-master-one",
+            None,
+            Some("sess-before"),
+            "boot-a",
+        )
+        .unwrap();
+
+        let moved = carried_across(&mut led, "proj-1", "forge-master-one", "sess-now", "one");
+
+        assert_eq!(moved, 1);
+        let under = |id: &str| led.run(id).unwrap().unwrap().master_session_id;
+        assert_eq!(under("open-mine"), "sess-now");
+        assert_eq!(
+            under("ended-mine"),
+            "sess-before",
+            "an ended run is not re-recorded"
+        );
+        assert_eq!(under("someone-elses"), "sess-unrelated");
+        assert_eq!(
+            led.master_for_project("proj-1")
+                .unwrap()
+                .unwrap()
+                .session_id
+                .as_deref(),
+            Some("sess-now"),
+            "the row now names the session the pane acts as, so the next sweep carries nothing twice"
+        );
+        assert_eq!(
+            carried_across(&mut led, "proj-1", "forge-master-one", "sess-now", "one"),
+            0
+        );
+    }
+
+    /// A pane placed cold does not inherit what the pane before it declared,
+    /// so once a placement records its session, an adoption finds nothing of
+    /// the predecessor's to carry.
+    #[test]
+    fn a_pane_placed_cold_carries_nothing_its_predecessor_declared() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        a_run_of(
+            &mut led,
+            "the-predecessors",
+            "ISS-4",
+            "proj-1",
+            "sess-predecessor",
+        );
+        led.note_master(
+            "proj-1",
+            "forge-master-one",
+            None,
+            Some("sess-predecessor"),
+            "boot-a",
+        )
+        .unwrap();
+        note_placed_session(&led, "proj-1", "forge-master-one", "sess-placed", "one");
+        assert_eq!(
+            carried_across(&mut led, "proj-1", "forge-master-one", "sess-placed", "one"),
+            0
+        );
+        assert_eq!(
+            led.run("the-predecessors")
+                .unwrap()
+                .unwrap()
+                .master_session_id,
+            "sess-predecessor"
+        );
+    }
 
     #[test]
     fn nothing_here_infers_liveness_from_a_pane() {
@@ -7693,6 +7921,10 @@ mod unplaced_tests {
         let _ = dir;
     }
 
+    /// The project and pane the capability tests mint for and ask about.
+    const CAP_PROJECT: &str = "proj-cap";
+    const CAP_PANE: &str = "forge-master-cap";
+
     /// A capability map of this run's own, never this box's.
     fn temp_map(tag: &str) -> crate::test_scratch::InScratch {
         crate::test_scratch::Scratch::new(&format!("cap-{tag}")).at("control-tokens.json")
@@ -7702,20 +7934,50 @@ mod unplaced_tests {
     fn a_capability_minted_for_the_session_this_box_holds_reads_current() {
         let path = temp_map("current");
         let store = session_tokens::SessionTokens::at(path.to_path_buf());
-        store.mint("sess-A").expect("mint");
-        assert_eq!(capability_of(Some(&store), "sess-A"), Capability::Current);
+        store.mint("sess-A", CAP_PROJECT, CAP_PANE).expect("mint");
+        assert_eq!(
+            capability_of(Some(&store), "sess-A", CAP_PROJECT, CAP_PANE),
+            Capability::Current
+        );
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
 
     #[test]
-    fn a_map_that_names_only_other_sessions_reads_stale() {
+    fn a_map_that_names_only_other_sessions_and_other_panes_reads_stale() {
         let path = temp_map("stale");
         let store = session_tokens::SessionTokens::at(path.to_path_buf());
-        store.mint("sess-OLD").expect("mint");
+        store
+            .mint("sess-OLD", CAP_PROJECT, "forge-master-another")
+            .expect("mint");
+        std::fs::write(&path, {
+            let mut v: serde_json::Value =
+                serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+            v.as_object_mut()
+                .unwrap()
+                .insert("tok-before-the-record".into(), "sess-LEGACY".into());
+            v.to_string()
+        })
+        .unwrap();
         assert_eq!(
-            capability_of(Some(&store), "sess-NEW"),
+            capability_of(Some(&store), "sess-NEW", CAP_PROJECT, CAP_PANE),
             Capability::Stale,
-            "this is the whole defect: the pane is up on a token for sess-OLD while core has replaced it with sess-NEW, and `session.created` is false because the replacement happened in an earlier sweep"
+            "nothing on this box answers for this pane: a record for another pane is not this pane's, and a capability minted before the record names only its own session, which core has replaced — the ISS-1099 defect, which ISS-1208's replacement still repairs"
+        );
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    /// ISS-1316 criterion 6: the pane was placed under sess-OLD, core has since
+    /// re-minted the row as sess-NEW, and the pane's record still says what it
+    /// was placed to be.
+    #[test]
+    fn a_record_for_this_pane_reads_current_when_core_serves_it_a_new_session() {
+        let path = temp_map("moved");
+        let store = session_tokens::SessionTokens::at(path.to_path_buf());
+        store.mint("sess-OLD", CAP_PROJECT, CAP_PANE).expect("mint");
+        assert_eq!(
+            capability_of(Some(&store), "sess-NEW", CAP_PROJECT, CAP_PANE),
+            Capability::Current,
+            "a pane keeps the authority it was minted with for as long as it runs, so a re-minted row is no reason to end it"
         );
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
@@ -7725,7 +7987,7 @@ mod unplaced_tests {
         let path = temp_map("absent");
         let store = session_tokens::SessionTokens::at(path.to_path_buf());
         assert_eq!(
-            capability_of(Some(&store), "sess-A"),
+            capability_of(Some(&store), "sess-A", CAP_PROJECT, CAP_PANE),
             Capability::Stale,
             "a box that has minted nothing can resolve nothing, so a pane running on it is refused; an absent map is an answer, unlike an unreadable one"
         );
@@ -7737,7 +7999,7 @@ mod unplaced_tests {
         let path = temp_map("torn");
         std::fs::write(&path, b"{\"07ccaad6\": ").expect("plant a half-written map");
         let store = session_tokens::SessionTokens::at(path.to_path_buf());
-        match capability_of(Some(&store), "sess-A") {
+        match capability_of(Some(&store), "sess-A", CAP_PROJECT, CAP_PANE) {
             Capability::Unknown(why) => assert!(
                 !why.is_empty(),
                 "the verdict has to carry why this box could not tell"
@@ -7751,7 +8013,7 @@ mod unplaced_tests {
 
     #[test]
     fn a_box_that_cannot_resolve_its_map_at_all_says_unknown() {
-        match capability_of(None, "sess-A") {
+        match capability_of(None, "sess-A", CAP_PROJECT, CAP_PANE) {
             Capability::Unknown(_) => {}
             other => panic!("no map to ask is not an answer about the pane: {other:?}"),
         }
@@ -8245,7 +8507,7 @@ mod unplaced_tests {
             .expect("the adopt branch must be findable");
         let after = &body[adopt..];
         assert!(
-            after.contains("capability_of(tokens, &session.session_id)"),
+            after.contains("capability_of(tokens, &session.session_id, project_id, &name)"),
             "every adopt asks the map what this box actually minted; that is the only question whose answer is the same for all seven panes on a box"
         );
         assert!(
@@ -8780,10 +9042,12 @@ mod unplaced_tests {
     async fn a_pane_that_outlived_its_kill_takes_the_minted_capability_back_down_with_it() {
         let path = temp_map("outlived");
         let store = session_tokens::SessionTokens::at(path.to_path_buf());
-        store.mint("sess-core-serves-now").expect("mint");
+        store
+            .mint("sess-core-serves-now", CAP_PROJECT, CAP_PANE)
+            .expect("mint");
         assert!(
             matches!(
-                capability_of(Some(&store), "sess-core-serves-now"),
+                capability_of(Some(&store), "sess-core-serves-now", CAP_PROJECT, CAP_PANE),
                 Capability::Current
             ),
             "the mint is what the placement path takes before it starts anything, and it is what makes the verdict read current"
@@ -8813,7 +9077,7 @@ mod unplaced_tests {
         );
         assert!(
             matches!(
-                capability_of(Some(&store), "sess-core-serves-now"),
+                capability_of(Some(&store), "sess-core-serves-now", CAP_PROJECT, CAP_PANE),
                 Capability::Stale
             ),
             "leaving the mint standing is what silences the stale arm on every later sweep — the operator is never told again, and the box nudges a master that refuses every declaration it makes"
@@ -8846,7 +9110,9 @@ mod unplaced_tests {
     fn a_withdrawal_that_did_not_take_is_never_reported_as_one_that_did() {
         let path = temp_map("withdrawn");
         let store = session_tokens::SessionTokens::at(path.to_path_buf());
-        store.mint("sess-core-serves-now").expect("mint");
+        store
+            .mint("sess-core-serves-now", CAP_PROJECT, CAP_PANE)
+            .expect("mint");
         assert_eq!(
             withdraw_unplaced_mint(Some(&store), "sess-core-serves-now"),
             Ok(()),
@@ -8855,7 +9121,9 @@ mod unplaced_tests {
 
         // The map made unwritable under the entry, which is what `retire`
         // meets when the disk fills between the mint and the rollback.
-        store.mint("sess-core-serves-now").expect("re-mint");
+        store
+            .mint("sess-core-serves-now", CAP_PROJECT, CAP_PANE)
+            .expect("re-mint");
         let dir = path.parent().expect("temp dir");
         if !seal(dir) {
             eprintln!("this box writes into a directory it has no write bit on — root, most likely — so the map cannot be made unwritable here and the plant is not the plant");
@@ -8871,7 +9139,7 @@ mod unplaced_tests {
         );
         assert!(
             matches!(
-                capability_of(Some(&store), "sess-core-serves-now"),
+                capability_of(Some(&store), "sess-core-serves-now", CAP_PROJECT, CAP_PANE),
                 Capability::Current
             ),
             "this is the state the message has to be about: the verdict really does read current from here on, and only an operator breaks it"
@@ -8963,7 +9231,9 @@ mod unplaced_tests {
         let masters = Arc::new(Masters::new());
         let dir = path.parent().expect("temp dir").to_path_buf();
 
-        store.mint("sess-core-serves-now").expect("mint");
+        store
+            .mint("sess-core-serves-now", CAP_PROJECT, CAP_PANE)
+            .expect("mint");
         if !seal(&dir) {
             eprintln!("this box writes into a directory it has no write bit on — root, most likely — so the map cannot be made unwritable here and the plant is not the plant");
             let _ = std::fs::remove_dir_all(&dir);
@@ -8989,7 +9259,7 @@ mod unplaced_tests {
         // The sweep after it, reading the same map.
         assert!(
             matches!(
-                capability_of(Some(&store), "sess-core-serves-now"),
+                capability_of(Some(&store), "sess-core-serves-now", CAP_PROJECT, CAP_PANE),
                 Capability::Current
             ),
             "the map really does say current — the withdrawal could not be written, and nothing that could correct the map is available to a box that could not write it"
@@ -8997,7 +9267,7 @@ mod unplaced_tests {
         assert!(
             matches!(
                 verdict_over_unwithdrawn(
-                    capability_of(Some(&store), "sess-core-serves-now"),
+                    capability_of(Some(&store), "sess-core-serves-now", CAP_PROJECT, CAP_PANE),
                     masters.unwithdrawn_for("proj-1").as_deref(),
                     "sess-core-serves-now",
                 ),
@@ -9032,7 +9302,9 @@ mod unplaced_tests {
         let took = Arc::new(Masters::new());
         let map2 = temp_map("released");
         let store2 = session_tokens::SessionTokens::at(map2.to_path_buf());
-        store2.mint("sess-B").expect("mint");
+        store2
+            .mint("sess-B", "proj-2", "forge-master-sidpeak")
+            .expect("mint");
         deaf_pane_outlived_its_kill(
             &took,
             "proj-2",
@@ -9207,11 +9479,11 @@ async fn deaf_pane_outlived_its_kill(",
             "a second mint in this function is a second session a pane could be placed against, and this assertion could no longer say which one it read"
         );
         assert!(
-            body.contains("store.mint(&session.session_id)"),
+            body.contains("store.mint(&session.session_id, project_id, &name)"),
             "the capability the replacement carries has to name the session core serves now, which is the one `master_api::register` answered with in this same call"
         );
         assert!(
-            body.contains("capability_of(tokens, &session.session_id)"),
+            body.contains("capability_of(tokens, &session.session_id, project_id, &name)"),
             "the judgement and the mint have to be about one session, or a pane can be judged stale against one and placed against another"
         );
         let minted = body.find("store.mint(").expect("the mint must be findable");
@@ -10224,6 +10496,78 @@ mod servers_refusal_walk_tests {
         );
     }
 
+    /// ISS-1316 criteria 6 and 7, through the adopt branch itself: the pane was
+    /// placed under one session, core now answers another, and the pane's
+    /// record still names this project and this pane.
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_pane_whose_row_core_re_minted_is_adopted_under_the_new_session_and_left_running() {
+        let _serialised = terminal::testing::ONE_AT_A_TIME.lock().await;
+        let _env = crate::auth::cred_store::ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let iso = terminal::testing::IsolatedServer::new("walkmoved");
+        if !terminal::available() {
+            terminal::testing::cannot_run(
+                "tmux is not installed here — the transport this rests on cannot run",
+            );
+            return;
+        }
+        if !iso.took() {
+            terminal::testing::cannot_run("this box does not resolve its tmux socket from the config dir, so the only server here is its own — not starting a pane on it");
+            return;
+        }
+        let repo = crate::test_scratch::Scratch::new("walkmoved-repo");
+        let map = crate::test_scratch::Scratch::new("walkmoved-map").at("control-tokens.json");
+        let store = session_tokens::SessionTokens::at(map.to_path_buf());
+        let name = terminal::session_name(terminal::MASTER_PREFIX, "walkmoved");
+        store
+            .mint("sess-placed-under", "proj-walk", &name)
+            .expect("the capability the pane was placed with");
+        terminal::ensure(
+            &name,
+            &repo,
+            &["sleep".to_string(), "60".to_string()],
+            &[],
+            None,
+        )
+        .await
+        .expect("the pane standing in for the master must start");
+        let core = fake_core::serve_routes(&[
+            (REGISTER, "200 OK", SESSION),
+            (
+                SERVERS,
+                "200 OK",
+                r#"{"mcpServers":{},"resolvedNames":[],"droppedNames":[]}"#,
+            ),
+        ])
+        .await;
+        let masters = Arc::new(Masters::new());
+        masters.remember_for_test("proj-walk", "sess-placed-under", &name);
+        let deaf = DeafSink::default();
+        let state = walk(
+            core,
+            &masters,
+            &resolved("walkmoved", &repo),
+            Some(&store),
+            &deaf,
+        )
+        .await;
+        let alive = terminal::alive(&name).await;
+        let _ = terminal::kill(&name).await;
+        assert_eq!(state, PaneState::Adopted, "criterion 6");
+        assert!(
+            alive,
+            "criterion 7: a pane whose capability answers for it is not ended for its row having been re-minted"
+        );
+        assert!(deaf.take().is_none(), "and nothing records it deaf");
+        assert_eq!(
+            masters.get("proj-walk").map(|(session, _)| session).as_deref(),
+            Some("sess-core-serves-now"),
+            "the box serves the pane under the session core answers now, which is what its frames act as from here on"
+        );
+    }
+
     /// Criterion 12, against a pane that is up and deaf. Its capability map
     /// holds nothing for the session core serves, so the rule on its own says
     /// `Replace`; the read failing is the only thing that says otherwise.
@@ -10260,7 +10604,7 @@ mod servers_refusal_walk_tests {
         .expect("the pane standing in for the deaf master must start");
         assert_eq!(
             capability_act(
-                &capability_of(Some(&store), "sess-core-serves-now"),
+                &capability_of(Some(&store), "sess-core-serves-now", "proj-walkdeaf", &name),
                 Placement::AdoptOrStart
             ),
             CapabilityAct::Replace,

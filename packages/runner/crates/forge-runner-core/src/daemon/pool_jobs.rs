@@ -703,7 +703,7 @@ fn open_channel(
         );
         return (env, None);
     };
-    match store.mint(agent_session_id) {
+    match store.mint(agent_session_id, project_id, pane) {
         Ok(token) => {
             let mut env = env;
             env.push((session_tokens::TOKEN_ENV.to_string(), token));

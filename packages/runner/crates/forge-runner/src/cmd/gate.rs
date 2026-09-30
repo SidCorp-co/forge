@@ -103,7 +103,144 @@ fn config_dir() -> Option<PathBuf> {
 /// was not reached or did not decide.
 const NO_RUN_HERE: &str = "the hook holds no registry of declared runs, so none was resolved here";
 
-async fn answer(dir: Option<&Path>, token: Option<&str>, d: &Dispatch) -> String {
+/// Who is asking, as far as the process this hook ran in can say.
+pub enum Caller<'a> {
+    /// A capability to ask the daemon with.
+    Token(&'a str),
+    /// None, and what the hook could establish about the process instead.
+    Tokenless(Tokenless),
+}
+
+/// What a process holding no capability is (ISS-1316).
+///
+/// The hook is installed per checkout, so it runs in every Claude Code session
+/// standing in one, and only panes the daemon placed carry a capability. The
+/// two used to reach one branch that could tell nothing apart. The daemon's
+/// record of each capability names the tmux session it placed the pane as, and
+/// every pane it places is on its own tmux server, so the process's own `$TMUX`
+/// and its session name separate them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Tokenless {
+    /// Not on the runner's tmux server, so not a pane the daemon placed and
+    /// never the gate's subject.
+    NotOurs,
+    /// A pane the daemon placed for `project`, whose capability never reached
+    /// its environment.
+    LostMint { pane: String, project: String },
+    /// On the runner's tmux server, in a session no capability names: a pane
+    /// placed before capabilities carried their pane, or one this box did not
+    /// place. Which, nothing here can say.
+    Unrecorded { pane: String },
+    /// Whether it is a pane the daemon placed could not be read, and why.
+    Unknown(String),
+}
+
+/// Classify a process from its `$TMUX`, the runner's tmux socket, and — only
+/// where the two match — its tmux session name and the record naming it.
+pub fn tokenless(
+    tmux: Option<&str>,
+    runner_socket: Option<&Path>,
+    session_name: impl FnOnce(&Path) -> Result<String, String>,
+    recorded_for: impl FnOnce(&str) -> Result<Option<String>, String>,
+) -> Tokenless {
+    let Some(tmux) = tmux.filter(|t| !t.is_empty()) else {
+        return Tokenless::NotOurs;
+    };
+    let mut parts = tmux.rsplitn(3, ',');
+    let (Some(_session), Some(_pid), Some(socket)) = (parts.next(), parts.next(), parts.next())
+    else {
+        return Tokenless::Unknown(format!(
+            "$TMUX is `{tmux}`, which is not the `<socket>,<pid>,<session>` tmux sets"
+        ));
+    };
+    let Some(runner) = runner_socket else {
+        return Tokenless::Unknown(
+            "the runner's tmux socket could not be resolved, so whether this process runs on it is unknown"
+                .to_string(),
+        );
+    };
+    if !same_file(Path::new(socket), runner) {
+        return Tokenless::NotOurs;
+    }
+    let pane = match session_name(runner) {
+        Ok(pane) => pane,
+        Err(why) => return Tokenless::Unknown(why),
+    };
+    match recorded_for(&pane) {
+        Ok(Some(project)) => Tokenless::LostMint { pane, project },
+        Ok(None) => Tokenless::Unrecorded { pane },
+        Err(why) => Tokenless::Unknown(why),
+    }
+}
+
+fn same_file(a: &Path, b: &Path) -> bool {
+    let whole = |p: &Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
+    whole(a) == whole(b)
+}
+
+/// The tmux session the pane `$TMUX_PANE` names belongs to, asked of the
+/// runner's own server.
+async fn session_of_this_pane(socket: &Path) -> Result<String, String> {
+    let pane = std::env::var("TMUX_PANE")
+        .ok()
+        .filter(|p| !p.trim().is_empty())
+        .ok_or_else(|| {
+            "$TMUX names the runner's tmux server and $TMUX_PANE is unset".to_string()
+        })?;
+    let asked = tokio::process::Command::new("tmux")
+        .arg("-S")
+        .arg(socket)
+        .args(["display-message", "-p", "-t", &pane, "#{session_name}"])
+        .stdin(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .output();
+    let out = match tokio::time::timeout(ANSWER_WITHIN, asked).await {
+        Err(_) => {
+            return Err("tmux did not say which session this pane is within the bound".into())
+        }
+        Ok(Err(e)) => {
+            return Err(format!(
+                "tmux could not be asked which session this pane is: {e}"
+            ))
+        }
+        Ok(Ok(out)) => out,
+    };
+    let name = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if !out.status.success() || name.is_empty() {
+        return Err(format!(
+            "tmux did not say which session pane {pane} is ({})",
+            out.status
+        ));
+    }
+    Ok(name)
+}
+
+/// What the hook can establish about the process it ran in, holding no token.
+async fn tokenless_here(dir: Option<&Path>) -> Tokenless {
+    let tmux = std::env::var("TMUX").ok();
+    let socket = forge_runner_core::daemon::terminal::socket_path();
+    let named = match (tmux.as_deref(), socket.as_deref()) {
+        (Some(t), Some(sock)) if !t.is_empty() => Some(session_of_this_pane(sock).await),
+        _ => None,
+    };
+    let tokens = dir.map(|d| session_tokens::SessionTokens::at(d.join("control-tokens.json")));
+    tokenless(
+        tmux.as_deref(),
+        socket.as_deref(),
+        |_| named.unwrap_or_else(|| Err("this process's tmux session was not asked".into())),
+        |pane| {
+            match tokens.as_ref() {
+            None => Err("this box's config directory could not be resolved, so its capability records could not be read".into()),
+            Some(store) => store
+                .minted_for_pane(pane)
+                .map(|m| m.map(|m| m.project))
+                .map_err(|e| e.to_string()),
+        }
+        },
+    )
+}
+
+async fn answer(dir: Option<&Path>, caller: Caller<'_>, d: &Dispatch) -> String {
     let open_because = |why: &str| -> String {
         if let Some(dir) = dir {
             mark(
@@ -113,14 +250,36 @@ async fn answer(dir: Option<&Path>, token: Option<&str>, d: &Dispatch) -> String
         }
         ALLOW.to_string()
     };
-    let Some(token) = token else {
-        // Said of the process this hook ran in, which is the only thing it can
-        // see. Worded as a claim about "this pane" it was read on ISS-1192 as a
-        // statement about the master, from a master whose own token was set.
-        return open_because(
-            "the process this hook ran in carries no control capability (FORGE_CONTROL_TOKEN is \
-             unset), so nothing could be asked",
-        );
+    // Said of the process this hook ran in, which is the only thing it can
+    // see. Worded as a claim about "this pane" it was read on ISS-1192 as a
+    // statement about the master, from a master whose own token was set.
+    let token = match caller {
+        Caller::Token(token) => token,
+        Caller::Tokenless(Tokenless::NotOurs) => return ALLOW.to_string(),
+        Caller::Tokenless(Tokenless::LostMint { pane, project }) => {
+            return deny(&format!(
+                "this process runs in {pane}, which the runner daemon placed as a pane for project \
+                 {project}, and the control capability it minted for it never reached this \
+                 process (FORGE_CONTROL_TOKEN is unset). Without it no run can be declared, so \
+                 this hand-off would be undeclared work. End the pane (`forge-runner master kill \
+                 <slug>` for a master) and the next sweep places one carrying its capability"
+            ));
+        }
+        Caller::Tokenless(Tokenless::Unrecorded { pane }) => {
+            return open_because(&format!(
+                "the process this hook ran in carries no control capability (FORGE_CONTROL_TOKEN \
+                 is unset) and runs in {pane} on the runner's tmux server, which no capability \
+                 record on this box names — a pane placed before capabilities named their pane, \
+                 or one this box did not place — so nothing could be asked"
+            ));
+        }
+        Caller::Tokenless(Tokenless::Unknown(why)) => {
+            return open_because(&format!(
+                "the process this hook ran in carries no control capability (FORGE_CONTROL_TOKEN \
+                 is unset), and whether it runs in a pane this box placed could not be read \
+                 ({why}), so nothing could be asked"
+            ));
+        }
     };
     let Some(sock) = dir.map(|d| d.join("control.sock")) else {
         return open_because("the control socket path could not be resolved");
@@ -179,10 +338,12 @@ pub async fn run(args: Args) {
         }
     };
     let token = session_tokens::token_from_env().ok();
-    println!(
-        "{}",
-        answer(config_dir().as_deref(), token.as_deref(), &d).await
-    );
+    let dir = config_dir();
+    let caller = match token.as_deref() {
+        Some(token) => Caller::Token(token),
+        None => Caller::Tokenless(tokenless_here(dir.as_deref()).await),
+    };
+    println!("{}", answer(dir.as_deref(), caller, &d).await);
 }
 
 #[cfg(test)]
@@ -365,7 +526,10 @@ mod tests {
     async fn no_control_socket_opens_the_gate_and_leaves_a_mark() {
         let dir = Scratch::new("gateverb-1");
         let d = as_dispatch(DISPATCH);
-        assert_eq!(answer(Some(dir.path()), Some(TOKEN), &d).await, ALLOW);
+        assert_eq!(
+            answer(Some(dir.path()), Caller::Token(TOKEN), &d).await,
+            ALLOW
+        );
         let (degraded, _) = forge_runner_core::daemon::degraded::tally(dir.path());
         assert_eq!(
             degraded.count, 1,
@@ -387,7 +551,10 @@ mod tests {
         });
         let d = as_dispatch(DISPATCH);
         let began = std::time::Instant::now();
-        assert_eq!(answer(Some(dir.path()), Some(TOKEN), &d).await, ALLOW);
+        assert_eq!(
+            answer(Some(dir.path()), Caller::Token(TOKEN), &d).await,
+            ALLOW
+        );
         assert!(
             began.elapsed() < ANSWER_WITHIN * 3,
             "a silent daemon must not hold the master longer than the bound: {:?}",
@@ -407,14 +574,22 @@ mod tests {
     #[tokio::test]
     async fn a_pane_with_no_config_directory_still_opens_the_gate() {
         let d = as_dispatch(DISPATCH);
-        assert_eq!(answer(None, Some(TOKEN), &d).await, ALLOW);
+        assert_eq!(answer(None, Caller::Token(TOKEN), &d).await, ALLOW);
     }
+    /// ISS-1316 criterion 18.
     #[tokio::test]
-    async fn a_pane_with_no_control_token_opens_the_gate_and_leaves_a_mark() {
+    async fn a_process_with_no_token_that_cannot_be_placed_opens_the_gate_and_leaves_a_mark() {
         let dir = Scratch::new("gateverb-3");
         let d = as_dispatch(DISPATCH);
         assert_eq!(
-            answer(Some(dir.path()), None, &d).await,
+            answer(
+                Some(dir.path()),
+                Caller::Tokenless(Tokenless::Unknown(
+                    "tmux could not be asked which session this pane is".into()
+                )),
+                &d
+            )
+            .await,
             ALLOW,
             "a pane that cannot authenticate to its own daemon still hands out work"
         );
@@ -422,9 +597,12 @@ mod tests {
         assert_eq!(degraded.count, 1, "the box says the gate was not operating");
         let said = degraded.last.clone().unwrap_or_default();
         assert!(
-            said.detail.contains("no control capability"),
+            said.detail.contains("no control capability")
+                && said
+                    .detail
+                    .contains("tmux could not be asked which session this pane is"),
             "the mark must name the CAPABILITY as what was missing, or it cannot be told from \
-             the socket simply not being there: {said:?}"
+             the socket simply not being there, and what could not be read: {said:?}"
         );
         assert_eq!(
             said.source.as_deref(),
@@ -459,7 +637,7 @@ mod tests {
         });
         let d = as_dispatch(DISPATCH);
         assert_eq!(
-            answer(Some(dir.path()), Some(TOKEN), &d).await,
+            answer(Some(dir.path()), Caller::Token(TOKEN), &d).await,
             ALLOW,
             "only the declaration's own refusal denies; every other ok:false is uncertainty"
         );
@@ -479,5 +657,183 @@ mod tests {
             "and the daemon's own words are carried through, so an operator learns WHY it \
              refused rather than only that it did: {why:?}"
         );
+    }
+
+    /// ISS-1316 criterion 17: a session the daemon never placed is not the
+    /// gate's subject, so it is let through and nothing is recorded against it.
+    #[tokio::test]
+    async fn a_process_off_the_runners_tmux_server_is_let_through_unmarked() {
+        let dir = Scratch::new("gateverb-notours");
+        let d = as_dispatch(DISPATCH);
+        assert_eq!(
+            answer(Some(dir.path()), Caller::Tokenless(Tokenless::NotOurs), &d).await,
+            ALLOW
+        );
+        let (degraded, undeclared) = forge_runner_core::daemon::degraded::tally(dir.path());
+        assert_eq!(
+            (degraded.count, undeclared.count),
+            (0, 0),
+            "not a pane that lost anything, so not a mark saying the gate stopped gating"
+        );
+    }
+
+    /// ISS-1316 criterion 16.
+    #[tokio::test]
+    async fn a_placed_pane_whose_capability_never_arrived_is_refused_by_name() {
+        let dir = Scratch::new("gateverb-lost");
+        let d = as_dispatch(DISPATCH);
+        let said = answer(
+            Some(dir.path()),
+            Caller::Tokenless(Tokenless::LostMint {
+                pane: "forge-master-forge-dev".into(),
+                project: "da368b0a".into(),
+            }),
+            &d,
+        )
+        .await;
+        let v: serde_json::Value = serde_json::from_str(&said).expect("the deny shape");
+        let out = &v["hookSpecificOutput"];
+        assert_eq!(out["permissionDecision"], "deny", "{said}");
+        let why = out["permissionDecisionReason"].as_str().unwrap_or("");
+        assert!(
+            why.contains("forge-master-forge-dev") && why.contains("da368b0a"),
+            "the refusal names the pane and its project: {why}"
+        );
+        let (degraded, _) = forge_runner_core::daemon::degraded::tally(dir.path());
+        assert_eq!(
+            degraded.count, 0,
+            "a refusal lets nothing through, so it is no admission"
+        );
+    }
+
+    /// ISS-1316 criterion 19.
+    #[tokio::test]
+    async fn a_runner_pane_no_record_names_opens_the_gate_and_names_the_session() {
+        let dir = Scratch::new("gateverb-unrec");
+        let d = as_dispatch(DISPATCH);
+        assert_eq!(
+            answer(
+                Some(dir.path()),
+                Caller::Tokenless(Tokenless::Unrecorded {
+                    pane: "forge-master-sidpeak".into()
+                }),
+                &d
+            )
+            .await,
+            ALLOW
+        );
+        let (degraded, _) = forge_runner_core::daemon::degraded::tally(dir.path());
+        assert_eq!(degraded.count, 1);
+        let said = degraded.last.clone().unwrap_or_default();
+        assert!(said.detail.contains("forge-master-sidpeak"), "{said:?}");
+    }
+
+    const RUNNER_SOCK: &str = "/home/u/.config/forge-runner/tmux.sock";
+
+    /// `None` for a read the classification must not reach, which panics if it does.
+    fn classify(
+        tmux: Option<&str>,
+        runner: Option<&str>,
+        name: Option<Result<&str, &str>>,
+        record: Option<Result<Option<&str>, &str>>,
+    ) -> Tokenless {
+        tokenless(
+            tmux,
+            runner.map(Path::new),
+            |_| {
+                name.expect("the session name is asked only of a process on the runner's server")
+                    .map(str::to_string)
+                    .map_err(str::to_string)
+            },
+            |_| {
+                record
+                    .expect("the record is read only for a session name tmux gave")
+                    .map(|r| r.map(str::to_string))
+                    .map_err(str::to_string)
+            },
+        )
+    }
+
+    #[test]
+    fn a_process_outside_any_tmux_or_on_another_server_is_not_ours() {
+        assert_eq!(
+            classify(None, Some(RUNNER_SOCK), None, None),
+            Tokenless::NotOurs
+        );
+        assert_eq!(
+            classify(Some(""), Some(RUNNER_SOCK), None, None),
+            Tokenless::NotOurs
+        );
+        assert_eq!(
+            classify(
+                Some("/tmp/tmux-1000/default,4242,0"),
+                Some(RUNNER_SOCK),
+                None,
+                None
+            ),
+            Tokenless::NotOurs,
+            "the operator's own tmux is not the runner's"
+        );
+    }
+
+    #[test]
+    fn a_process_on_the_runners_server_is_placed_by_its_session_name() {
+        let on = Some("/home/u/.config/forge-runner/tmux.sock,4242,3");
+        assert_eq!(
+            classify(
+                on,
+                Some(RUNNER_SOCK),
+                Some(Ok("forge-master-a")),
+                Some(Ok(Some("proj-a")))
+            ),
+            Tokenless::LostMint {
+                pane: "forge-master-a".into(),
+                project: "proj-a".into()
+            }
+        );
+        assert_eq!(
+            classify(
+                on,
+                Some(RUNNER_SOCK),
+                Some(Ok("forge-master-a")),
+                Some(Ok(None))
+            ),
+            Tokenless::Unrecorded {
+                pane: "forge-master-a".into()
+            }
+        );
+    }
+
+    #[test]
+    fn a_process_that_cannot_be_placed_says_what_could_not_be_read() {
+        let on = Some("/home/u/.config/forge-runner/tmux.sock,4242,3");
+        for (got, want) in [
+            (
+                classify(on, None, None, None),
+                "socket could not be resolved",
+            ),
+            (
+                classify(on, Some(RUNNER_SOCK), Some(Err("tmux did not say")), None),
+                "tmux did not say",
+            ),
+            (
+                classify(
+                    on,
+                    Some(RUNNER_SOCK),
+                    Some(Ok("forge-master-a")),
+                    Some(Err("map torn")),
+                ),
+                "map torn",
+            ),
+            (
+                classify(Some("garbage"), Some(RUNNER_SOCK), None, None),
+                "garbage",
+            ),
+        ] {
+            match got {
+                Tokenless::Unknown(why) => assert!(why.contains(want), "{why}"),
+                other => panic!("expected an unknown naming {want}, got {other:?}"),
+            }
+        }
     }
 }
