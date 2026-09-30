@@ -104,12 +104,13 @@ export function fsListing(name, args, cwd) {
 /**
  * The whole JSON lines a log holds past `offset`, and the offset to read from next. A log only ever
  * grows, so a line a child appends while it is read is read next time; a line not yet ended by its
- * newline stays for then too. A log shorter than `offset` was emptied and is read from its start.
+ * newline stays for then too, and `pending` says one is there. A log shorter than `offset` was
+ * emptied and is read from its start.
  */
 export function logLines(bytes, offset) {
   const from = bytes.length < offset ? 0 : offset;
-  const end = bytes.lastIndexOf(0x0a) + 1;
-  if (end <= from) return { lines: [], offset: from };
+  const end = Math.max(bytes.lastIndexOf(0x0a) + 1, from);
+  const pending = bytes.length > end;
   const text = bytes.subarray(from, end).toString('utf8');
   return {
     lines: text
@@ -117,6 +118,7 @@ export function logLines(bytes, offset) {
       .filter(Boolean)
       .map((line) => JSON.parse(line)),
     offset: end,
+    pending,
   };
 }
 
