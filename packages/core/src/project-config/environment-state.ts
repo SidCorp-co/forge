@@ -7,19 +7,22 @@ import {
   type EnvironmentDeclaration,
   type EnvironmentState,
   environmentStateSchema,
+  type ProbeOutcomeState,
+  type ProjectDocument,
+  type RecordedEnvironmentState,
 } from './schema.js';
 
 type RuntimeProbe = NonNullable<EnvironmentDeclaration['verification']>['runtime'][number];
-
-export type ProbeOutcome =
-  | { readonly ok: true; readonly probe: RuntimeProbe; readonly read: string }
-  | { readonly ok: false; readonly probe: RuntimeProbe; readonly reason: string };
+type UnknownCause = Extract<EnvironmentState, { state: 'unknown' }>['reason']['cause'];
 
 export interface EnvironmentStateDeps {
   readonly deployAdapterFor: (bindingId: string) => Promise<TargetedDeployAdapter | null>;
   readonly fetch: typeof fetch;
   readonly probeTimeoutMs: number;
-  readonly onProbe?: (environment: string, outcome: ProbeOutcome) => void;
+}
+
+export interface EnvironmentStateContext {
+  readonly sourceType: ProjectDocument['source']['type'];
 }
 
 export type EnvironmentStateRefusal =
@@ -36,13 +39,18 @@ export class EnvironmentStateError extends Error {
   }
 }
 
-const STATE_OF: Readonly<Record<DeploymentStatus, EnvironmentState['state']>> = {
+const STATE_OF: Readonly<Record<DeploymentStatus, RecordedEnvironmentState['state']>> = {
   queued: 'deploying',
   running: 'deploying',
   succeeded: 'deployed',
   failed: 'failed',
-  cancelled: 'failed',
+  cancelled: 'cancelled',
 };
+
+const clip = (text: string, max: number) =>
+  text.length <= max ? text : `${text.slice(0, max - 1)}…`;
+
+type Observation = { ok: true; value: string } | { ok: false; error: string };
 
 function readPath(body: unknown, path: string): unknown {
   let at: unknown = body;
@@ -53,7 +61,7 @@ function readPath(body: unknown, path: string): unknown {
   return at;
 }
 
-async function runProbe(probe: RuntimeProbe, deps: EnvironmentStateDeps): Promise<ProbeOutcome> {
+async function observe(probe: RuntimeProbe, deps: EnvironmentStateDeps): Promise<Observation> {
   let res: Response;
   try {
     res = await deps.fetch(probe.url, {
@@ -62,84 +70,144 @@ async function runProbe(probe: RuntimeProbe, deps: EnvironmentStateDeps): Promis
     });
   } catch (err) {
     const why = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
-    return { ok: false, probe, reason: `GET ${probe.url} did not answer (${why})` };
+    return { ok: false, error: `GET ${probe.url} did not answer (${why})` };
   }
   if (res.status !== 200) {
-    return { ok: false, probe, reason: `GET ${probe.url} answered HTTP ${res.status}` };
+    return { ok: false, error: `GET ${probe.url} answered HTTP ${res.status}` };
   }
   let body: unknown;
   try {
     body = await res.json();
   } catch {
-    return { ok: false, probe, reason: `GET ${probe.url} answered a body that is not JSON` };
+    return { ok: false, error: `GET ${probe.url} answered a body that is not JSON` };
   }
   const value = readPath(body, probe.path);
   if (typeof value !== 'string' || value.trim() === '') {
-    return { ok: false, probe, reason: `GET ${probe.url} carries no string at \`${probe.path}\`` };
+    return { ok: false, error: `GET ${probe.url} carries no string at \`${probe.path}\`` };
   }
-  return { ok: true, probe, read: value.trim() };
+  const read = value.trim();
+  if (read.length > 200) {
+    return {
+      ok: false,
+      error: `GET ${probe.url} carries ${read.length} characters at \`${probe.path}\`, over the 200 an identity may hold`,
+    };
+  }
+  return { ok: true, value: read };
 }
 
-function recordIdentity(record: DeploymentRecord, identifies: RuntimeProbe['identifies']) {
-  return identifies === 'source' ? record.sourceRevision : (record.artifact?.id ?? null);
-}
-
-function sameIdentity(
-  identifies: RuntimeProbe['identifies'],
-  recorded: string,
-  read: string,
-): boolean {
+function sameIdentity(identifies: RuntimeProbe['identifies'], recorded: string, read: string) {
   if (identifies === 'artifact') return recorded === read;
   const a = recorded.toLowerCase();
   const b = read.toLowerCase();
   return a.length >= b.length ? a.startsWith(b) && b.length >= 7 : b.startsWith(a);
 }
 
-async function runtimeEvidence(
-  environment: string,
-  decl: EnvironmentDeclaration,
+async function runProbe(
+  probe: RuntimeProbe,
   record: DeploymentRecord,
   deps: EnvironmentStateDeps,
-): Promise<EnvironmentState['evidence']> {
-  const probes = decl.verification?.runtime ?? [];
-  if (record.status !== 'succeeded' || probes.length === 0) return 'deployment-record';
-  const outcomes = await Promise.all(probes.map((p) => runProbe(p, deps)));
-  let confirmed = false;
-  for (const outcome of outcomes) {
-    deps.onProbe?.(environment, outcome);
-    if (!outcome.ok) continue;
-    const recorded = recordIdentity(record, outcome.probe.identifies);
-    if (recorded === null) continue;
-    if (!sameIdentity(outcome.probe.identifies, recorded, outcome.read)) return 'runtime-mismatch';
-    confirmed = true;
+): Promise<ProbeOutcomeState> {
+  const where = { url: probe.url, identifies: probe.identifies };
+  const seen = await observe(probe, deps);
+  if (!seen.ok) return { ...where, status: 'unreachable', error: clip(seen.error, 500) };
+  const recorded = probe.identifies === 'source' ? record.sourceRevision : record.artifact?.id;
+  if (!recorded) {
+    const what = probe.identifies === 'source' ? 'source revision' : 'artifact';
+    return {
+      ...where,
+      status: 'uncompared',
+      observed: seen.value,
+      error: clip(`deployment ${record.id} records no ${what} to compare with`, 500),
+    };
   }
-  return confirmed ? 'runtime-confirmed' : 'deployment-record';
+  return sameIdentity(probe.identifies, recorded, seen.value)
+    ? { ...where, status: 'confirmed', observed: seen.value }
+    : { ...where, status: 'mismatch', observed: seen.value, expected: recorded };
+}
+
+function evidenceOf(probes: readonly ProbeOutcomeState[]): RecordedEnvironmentState['evidence'] {
+  const has = (status: ProbeOutcomeState['status']) => probes.some((p) => p.status === status);
+  if (has('mismatch')) return 'runtime-mismatch';
+  if (has('unreachable')) return 'runtime-unreachable';
+  if (has('confirmed')) return 'runtime-confirmed';
+  return 'deployment-record';
+}
+
+function sourceOf(
+  record: DeploymentRecord,
+  ctx: EnvironmentStateContext,
+): RecordedEnvironmentState['source'] {
+  if (record.sourceRevision !== null) return { kind: 'revision', revision: record.sourceRevision };
+  return ctx.sourceType === 'git' ? { kind: 'unrecorded' } : { kind: 'non-git' };
+}
+
+const unknown = (environment: string, cause: UnknownCause, message: string) =>
+  environmentStateSchema.parse({
+    environment,
+    state: 'unknown',
+    evidence: 'none',
+    reason: { cause, message: clip(message, 1000) },
+  });
+
+const why = (err: unknown) => (err instanceof Error ? err.message : String(err));
+
+async function latestRecord(
+  environment: string,
+  bindingId: string,
+  deps: EnvironmentStateDeps,
+): Promise<
+  | { ok: true; record: DeploymentRecord; bound: TargetedDeployAdapter }
+  | { ok: false; state: EnvironmentState }
+> {
+  let bound: TargetedDeployAdapter | null;
+  try {
+    bound = await deps.deployAdapterFor(bindingId);
+  } catch (err) {
+    if (!(err instanceof EnvironmentStateError)) {
+      return { ok: false, state: unknown(environment, 'adapter-error', why(err)) };
+    }
+    return {
+      ok: false,
+      state: unknown(environment, 'binding-refused', `${err.code}: ${err.message}`),
+    };
+  }
+  if (!bound) {
+    const message = `BINDING_NOT_FOUND: environment \`${environment}\` deploys through binding ${bindingId}, which this project does not hold`;
+    return { ok: false, state: unknown(environment, 'binding-refused', message) };
+  }
+  try {
+    const record = await bound.adapter.latestDeployment(bound.target);
+    if (record) return { ok: true, record, bound };
+    const message = `binding ${bindingId} reports no deployment of this environment's target`;
+    return { ok: false, state: unknown(environment, 'no-record', message) };
+  } catch (err) {
+    return { ok: false, state: unknown(environment, 'adapter-error', why(err)) };
+  }
 }
 
 export async function resolveEnvironmentState(
   environment: string,
   decl: EnvironmentDeclaration,
+  ctx: EnvironmentStateContext,
   deps: EnvironmentStateDeps,
 ): Promise<EnvironmentState> {
   if ('mode' in decl.deployment) {
-    return environmentStateSchema.parse({ environment, state: 'unknown', evidence: 'none' });
-  }
-  const bindingId = decl.deployment.binding;
-  const bound = await deps.deployAdapterFor(bindingId);
-  if (!bound) {
-    throw new EnvironmentStateError(
-      'BINDING_NOT_FOUND',
-      `environment \`${environment}\` deploys through binding ${bindingId}, which this project does not hold`,
+    return unknown(
+      environment,
+      'external',
+      `environment \`${environment}\` is deployed outside Forge, with no binding to read`,
     );
   }
-  const record = await bound.adapter.latestDeployment(bound.target);
-  if (!record) {
-    return environmentStateSchema.parse({ environment, state: 'unknown', evidence: 'none' });
-  }
+  const latest = await latestRecord(environment, decl.deployment.binding, deps);
+  if (!latest.ok) return latest.state;
+  const { record, bound } = latest;
+  const probes = await Promise.all(
+    (decl.verification?.runtime ?? []).map((p) => runProbe(p, record, deps)),
+  );
   return environmentStateSchema.parse({
     environment,
     state: STATE_OF[record.status],
-    evidence: await runtimeEvidence(environment, decl, record, deps),
+    evidence: evidenceOf(probes),
     deployment: {
       id: record.id,
       provider: bound.adapter.provider,
@@ -147,6 +215,7 @@ export async function resolveEnvironmentState(
       at: record.at,
     },
     artifact: record.artifact,
-    source: record.sourceRevision === null ? null : { revision: record.sourceRevision },
+    source: sourceOf(record, ctx),
+    ...(probes.length > 0 ? { probes } : {}),
   });
 }

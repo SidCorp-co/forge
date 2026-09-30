@@ -1,9 +1,9 @@
-import type { EnvironmentState } from '../schema.js';
+import type { RecordedEnvironmentState } from '../schema.js';
 
-type RecordedDeployment = NonNullable<EnvironmentState['deployment']>;
+type RecordedDeployment = RecordedEnvironmentState['deployment'];
 export type DeploymentStatus = RecordedDeployment['status'];
 export type DeployProvider = RecordedDeployment['provider'];
-export type ArtifactKind = NonNullable<EnvironmentState['artifact']>['kind'];
+export type ArtifactKind = NonNullable<RecordedEnvironmentState['artifact']>['kind'];
 
 export interface DeploymentRecord {
   readonly id: string;
@@ -16,7 +16,7 @@ export interface DeploymentRecord {
 export interface DeployAdapter<TTarget = unknown> {
   readonly provider: DeployProvider;
   latestDeployment(target: TTarget): Promise<DeploymentRecord | null>;
-  deployment(target: TTarget, id: string): Promise<DeploymentRecord | null>;
+  deployment(target: TTarget, id: string): Promise<DeploymentRecord>;
 }
 
 export interface TargetedDeployAdapter<TTarget = unknown> {

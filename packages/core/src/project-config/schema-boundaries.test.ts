@@ -357,22 +357,20 @@ describe('boundaries: policy, testing profile and state', () => {
     );
   });
   it('source.revision is 7..40 hex', () => {
-    expectAccepted('environment-state', { ...clone(st), source: { revision: 'a'.repeat(7) } });
+    const rev = (revision: string) => ({ ...clone(st), source: { kind: 'revision', revision } });
+    expectAccepted('environment-state', rev('a'.repeat(7)));
+    expectRefused('environment-state', rev('a'.repeat(6)), { path: '/source/revision' });
+    expectRefused('environment-state', rev('a'.repeat(41)), { path: '/source/revision' });
+    expectAccepted('environment-state', { ...clone(st), artifact: null, release: null });
+  });
+  it('source is a revision, unrecorded, or non-git, and never null', () => {
+    expectAccepted('environment-state', { ...clone(st), source: { kind: 'unrecorded' } });
+    expectAccepted('environment-state', { ...clone(st), source: { kind: 'non-git' } });
+    expectRefused('environment-state', { ...clone(st), source: null }, { path: '/source' });
     expectRefused(
       'environment-state',
-      { ...clone(st), source: { revision: 'a'.repeat(6) } },
-      { path: '/source/revision' },
+      { ...clone(st), source: { kind: 'unrecorded', revision: 'a'.repeat(7) } },
+      { path: '/source', key: 'revision' },
     );
-    expectRefused(
-      'environment-state',
-      { ...clone(st), source: { revision: 'a'.repeat(41) } },
-      { path: '/source/revision' },
-    );
-    expectAccepted('environment-state', {
-      ...clone(st),
-      source: null,
-      artifact: null,
-      release: null,
-    });
   });
 });

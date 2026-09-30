@@ -10,5 +10,16 @@
   },
   "release": null,
   "artifact": null,
-  "source": { "revision": "c59b3f450a8ca14b6c9317490089a4eb98cafc44" }
+  "source": {
+    "kind": "revision",
+    "revision": "c59b3f450a8ca14b6c9317490089a4eb98cafc44"
+  },
+  "probes": [
+    {
+      "url": "https://forge-beta-api.sidcorp.co/version",
+      "identifies": "source",
+      "status": "confirmed",
+      "observed": "c59b3f450a8ca14b6c9317490089a4eb98cafc44"
+    }
+  ]
 }

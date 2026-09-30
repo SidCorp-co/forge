@@ -14,6 +14,15 @@
     "id": "sha256:8ab3f0c1d2e4"
   },
   "source": {
+    "kind": "revision",
     "revision": "fb5b9b6f5"
-  }
+  },
+  "probes": [
+    {
+      "url": "https://forge-beta-api.sidcorp.co/version",
+      "identifies": "artifact",
+      "status": "confirmed",
+      "observed": "sha256:8ab3f0c1d2e4"
+    }
+  ]
 }

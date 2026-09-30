@@ -139,12 +139,52 @@ describe('coolifyDeployAdapter', () => {
     ).rejects.toThrow(/deployment odd: status "paused"/);
   });
 
-  it('answers null for a deployment id Coolify does not hold', async () => {
-    const { client } = clientAnswering(() => json({ message: 'not found' }, 404));
-    expect(await coolifyDeployAdapter(client).deployment({ applicationUuid: APP }, 'x')).toBeNull();
+  it("reads a deployment only through the application's own list", async () => {
+    const { client, calls } = clientAnswering(() =>
+      json({ deployments: [raw({ deployment_uuid: 'mine' })] }),
+    );
+    const got = await coolifyDeployAdapter(client).deployment({ applicationUuid: APP }, 'mine');
+    expect(got.id).toBe('mine');
+    expect(calls).toEqual([
+      `https://coolify.example/api/v1/deployments/applications/${APP}?skip=0&take=50`,
+    ]);
   });
 
-  it('carries any other Coolify refusal through', async () => {
+  it('refuses by name an id that is not among the application deployments', async () => {
+    const { client, calls } = clientAnswering(() =>
+      json({ deployments: [raw({ deployment_uuid: 'mine' })] }),
+    );
+    await expect(
+      coolifyDeployAdapter(client).deployment({ applicationUuid: APP }, 'theirs'),
+    ).rejects.toThrow(
+      `Coolify deployment theirs: is not among the 1 deployments Coolify lists for application ${APP}`,
+    );
+    expect(calls.some((u) => u.includes('/api/v1/deployments/theirs'))).toBe(false);
+  });
+
+  it('pages the list until it finds the id', async () => {
+    const full = (prefix: string) =>
+      Array.from({ length: 50 }, (_, i) => raw({ deployment_uuid: `${prefix}-${i}` }));
+    const { client, calls } = clientAnswering((url) =>
+      json({
+        deployments: url.includes('skip=0') ? full('p0') : [raw({ deployment_uuid: 'old' })],
+      }),
+    );
+    const got = await coolifyDeployAdapter(client).deployment({ applicationUuid: APP }, 'old');
+    expect(got.id).toBe('old');
+    expect(calls).toHaveLength(2);
+  });
+
+  it('stops when Coolify answers the same page again instead of paging for ever', async () => {
+    const same = Array.from({ length: 50 }, (_, i) => raw({ deployment_uuid: `d-${i}` }));
+    const { client, calls } = clientAnswering(() => json({ deployments: same }));
+    await expect(
+      coolifyDeployAdapter(client).deployment({ applicationUuid: APP }, 'absent'),
+    ).rejects.toThrow(/is not among the 50 deployments/);
+    expect(calls).toHaveLength(2);
+  });
+
+  it('carries a Coolify refusal of the list through', async () => {
     const { client } = clientAnswering(() => json({}, 403));
     await expect(
       coolifyDeployAdapter(client).deployment({ applicationUuid: APP }, 'x'),

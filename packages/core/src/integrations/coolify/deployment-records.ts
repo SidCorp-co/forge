@@ -5,7 +5,7 @@ import type {
   TargetedDeployAdapter,
 } from '../../project-config/deploy-adapters/types.js';
 import type { AdapterContext } from '../types.js';
-import { CoolifyApiError, type CoolifyClient } from './client.js';
+import type { CoolifyClient } from './client.js';
 import { buildClient } from './log-fetch.js';
 import type { CoolifyConfig, CoolifyDeploymentResponse, CoolifySecrets } from './types.js';
 
@@ -23,6 +23,7 @@ const COOLIFY_STATUS: ReadonlyMap<string, DeploymentStatus> = new Map([
 
 const UNRECORDED_COMMIT = 'HEAD';
 const LATEST_PAGE = 5;
+const MEMBERSHIP_PAGE = 50;
 
 export class CoolifyDeploymentRecordError extends Error {
   constructor(deploymentId: string, what: string) {
@@ -81,6 +82,7 @@ export function coolifyDeployAdapter(client: CoolifyClient): DeployAdapter<Cooli
     provider: 'coolify',
     async latestDeployment(target) {
       const page = await client.listApplicationDeployments(target.applicationUuid, {
+        skip: 0,
         take: LATEST_PAGE,
       });
       const records = (page.deployments ?? []).map(toDeploymentRecord);
@@ -89,13 +91,24 @@ export function coolifyDeployAdapter(client: CoolifyClient): DeployAdapter<Cooli
         null,
       );
     },
-    async deployment(_target, id) {
-      try {
-        return toDeploymentRecord(await client.getDeployment(id));
-      } catch (err) {
-        if (err instanceof CoolifyApiError && err.status === 404) return null;
-        throw err;
+    async deployment(target, id) {
+      const seen = new Set<string>();
+      for (let skip = 0; ; skip += MEMBERSHIP_PAGE) {
+        const page = await client.listApplicationDeployments(target.applicationUuid, {
+          skip,
+          take: MEMBERSHIP_PAGE,
+        });
+        const rows = page.deployments ?? [];
+        const hit = rows.find((r) => r.deployment_uuid === id);
+        if (hit) return toDeploymentRecord(hit);
+        const fresh = rows.filter((r) => r.deployment_uuid && !seen.has(r.deployment_uuid));
+        for (const r of fresh) seen.add(r.deployment_uuid as string);
+        if (rows.length < MEMBERSHIP_PAGE || fresh.length === 0) break;
       }
+      throw new CoolifyDeploymentRecordError(
+        id,
+        `is not among the ${seen.size} deployments Coolify lists for application ${target.applicationUuid}, so it is not read as this target's`,
+      );
     },
   };
 }

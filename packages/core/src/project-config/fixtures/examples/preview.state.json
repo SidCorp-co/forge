@@ -1,5 +1,9 @@
 {
   "environment": "preview",
   "state": "unknown",
-  "evidence": "none"
+  "evidence": "none",
+  "reason": {
+    "cause": "external",
+    "message": "environment `preview` is deployed outside Forge, with no binding to read"
+  }
 }

@@ -191,9 +191,9 @@ export class CoolifyClient {
 
   async listApplicationDeployments(
     applicationUuid: string,
-    opts: { take: number },
+    opts: { skip: number; take: number },
   ): Promise<CoolifyApplicationDeploymentsResponse> {
-    const qs = new URLSearchParams({ skip: '0', take: String(opts.take) });
+    const qs = new URLSearchParams({ skip: String(opts.skip), take: String(opts.take) });
     return this.request<CoolifyApplicationDeploymentsResponse>(
       'GET',
       `/api/v1/deployments/applications/${encodeURIComponent(applicationUuid)}?${qs.toString()}`,

@@ -254,18 +254,59 @@ export const bindingDocumentSchema = z.strictObject({
 
 export type BindingDocument = z.infer<typeof bindingDocumentSchema>;
 
-export const environmentStateSchema = z.strictObject({
+const observedIdentity = () => z.string().min(1).max(200);
+const probeIdentity = { url: httpsUrl(), identifies: z.enum(['source', 'artifact']) };
+
+const probeOutcomeSchema = z.discriminatedUnion('status', [
+  z.strictObject({
+    ...probeIdentity,
+    status: z.literal('confirmed'),
+    observed: observedIdentity(),
+  }),
+  z.strictObject({
+    ...probeIdentity,
+    status: z.literal('mismatch'),
+    observed: observedIdentity(),
+    expected: observedIdentity(),
+  }),
+  z.strictObject({
+    ...probeIdentity,
+    status: z.literal('uncompared'),
+    observed: observedIdentity(),
+    error: z.string().min(1).max(500),
+  }),
+  z.strictObject({
+    ...probeIdentity,
+    status: z.literal('unreachable'),
+    error: z.string().min(1).max(500),
+  }),
+]);
+
+const unknownEnvironmentStateSchema = z.strictObject({
   environment: slug(),
-  state: z.enum(['deployed', 'deploying', 'failed', 'unknown']),
-  evidence: z.enum(['runtime-confirmed', 'runtime-mismatch', 'deployment-record', 'none']),
-  deployment: z
-    .strictObject({
-      id: z.string().min(1).max(100),
-      provider: z.enum(['coolify', 'shopify', 'epodsystem']),
-      status: z.enum(['queued', 'running', 'succeeded', 'failed', 'cancelled']),
-      at: z.iso.datetime({ offset: true }),
-    })
-    .optional(),
+  state: z.literal('unknown'),
+  evidence: z.literal('none'),
+  reason: z.strictObject({
+    cause: z.enum(['external', 'no-record', 'adapter-error', 'binding-refused']),
+    message: z.string().min(1).max(1000),
+  }),
+});
+
+const recordedEnvironmentStateSchema = z.strictObject({
+  environment: slug(),
+  state: z.enum(['deployed', 'deploying', 'failed', 'cancelled']),
+  evidence: z.enum([
+    'runtime-confirmed',
+    'runtime-mismatch',
+    'runtime-unreachable',
+    'deployment-record',
+  ]),
+  deployment: z.strictObject({
+    id: z.string().min(1).max(100),
+    provider: z.enum(['coolify', 'shopify', 'epodsystem']),
+    status: z.enum(['queued', 'running', 'succeeded', 'failed', 'cancelled']),
+    at: z.iso.datetime({ offset: true }),
+  }),
   release: z
     .strictObject({ id: z.string().min(1).max(100) })
     .nullable()
@@ -275,12 +316,20 @@ export const environmentStateSchema = z.strictObject({
       kind: z.enum(['container-image', 'theme', 'bundle']),
       id: z.string().min(1).max(200),
     })
-    .nullable()
-    .optional(),
-  source: z
-    .strictObject({ revision: z.string().regex(/^[0-9a-f]{7,40}$/) })
-    .nullable()
-    .optional(),
+    .nullable(),
+  source: z.discriminatedUnion('kind', [
+    z.strictObject({ kind: z.literal('revision'), revision: z.string().regex(/^[0-9a-f]{7,40}$/) }),
+    z.strictObject({ kind: z.literal('unrecorded') }),
+    z.strictObject({ kind: z.literal('non-git') }),
+  ]),
+  probes: z.array(probeOutcomeSchema).min(1).max(3).optional(),
 });
 
+export const environmentStateSchema = z.discriminatedUnion('state', [
+  unknownEnvironmentStateSchema,
+  recordedEnvironmentStateSchema,
+]);
+
 export type EnvironmentState = z.infer<typeof environmentStateSchema>;
+export type RecordedEnvironmentState = z.infer<typeof recordedEnvironmentStateSchema>;
+export type ProbeOutcomeState = z.infer<typeof probeOutcomeSchema>;
