@@ -1,50 +1,11 @@
-import { eq, type SQL, sql } from 'drizzle-orm';
+import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { projects } from '../db/schema.js';
 import { logger } from '../logger.js';
 
-const DEFAULT_MAX_RESUME_TOKENS = 150_000;
+/** The context an issue's sessions may have reached and still be resumed into, in tokens. */
+export const MAX_RESUME_TOKENS = 150_000;
 
-export interface ResumeBounds {
-  maxResumeTokens: number;
-}
-
-export async function loadResumeBounds(
-  projectId: string,
-  cachedAgentConfig?: Record<string, unknown>,
-): Promise<ResumeBounds> {
-  try {
-    let ac: Record<string, unknown>;
-    if (cachedAgentConfig !== undefined) {
-      ac = cachedAgentConfig;
-    } else {
-      const [row] = await db
-        .select({ agentConfig: projects.agentConfig })
-        .from(projects)
-        .where(eq(projects.id, projectId))
-        .limit(1);
-      ac = (row?.agentConfig ?? {}) as Record<string, unknown>;
-    }
-    const pc = (ac.pipelineConfig ?? {}) as Record<string, unknown>;
-    const maxTokens =
-      typeof pc.maxResumeTokens === 'number' && Number.isFinite(pc.maxResumeTokens)
-        ? pc.maxResumeTokens
-        : DEFAULT_MAX_RESUME_TOKENS;
-    return { maxResumeTokens: maxTokens };
-  } catch (err) {
-    logger.warn({ err, projectId }, 'session-resume: failed to load resume bounds, using defaults');
-    return { maxResumeTokens: DEFAULT_MAX_RESUME_TOKENS };
-  }
-}
-
-/**
- * ISS-580 — the peak single-request context any session of this issue has
- * reached (`MAX(input_tokens + cache_read_tokens)`), which mirrors the
- * `compact_boundary` pre-token value.
- *
- * Exported so the index test can EXPLAIN the query `estimateIssueContextTokens`
- * actually runs, rather than a copy of it that cannot observe a regression here.
- */
+/** ISS-580 — the peak single-request context any session of this issue reached, as `compact_boundary` counts it. */
 export function issueContextPeakQuery(issueId: string): SQL {
   return sql`
     SELECT MAX(ur.input_tokens + ur.cache_read_tokens) AS peak

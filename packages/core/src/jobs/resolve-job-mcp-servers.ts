@@ -1,81 +1,35 @@
 import { applyGrantedMcpServers, type ProducedMcpServer } from '../integrations/mcp-resolver.js';
-import { applyStageFalseOptOuts, expandMcpServers } from '../pipeline/mcp-catalog.js';
-import { resolveProjectDefaultMcpServers } from './stage-overrides.js';
 
 export type McpServersMap = Record<string, unknown> | null;
-
-export function dedupeBrowserServers(map: McpServersMap): McpServersMap {
-  if (!map) return map;
-  if (map.playwright && map['chrome-devtools-mcp']) {
-    const { playwright: _dropped, ...rest } = map;
-    return rest;
-  }
-  return map;
-}
 
 export interface ResolvedJobMcpServers {
   /** Final map for the runner payload (null = no servers). */
   mcpServers: McpServersMap;
   /** Server names present in the final map. */
   resolvedNames: string[];
-  /** ISS-623 W2 — declared (project-default or per-state) names that did NOT
-   *  survive resolution, minus the intentional playwright browser-dedupe. */
+  // cm:hack ISS-5 until:S3d declares a project's MCP servers in the project document — the
+  // project-declared source went with the old pipeline config, so nothing is declared and nothing
+  // can drop; the field stays because the runner and the chat preamble read it.
   droppedNames: string[];
   /** ISS-1191 — every name the granted-integration pass produced, each carrying
-   *  the binding that produced it, so a reader can tell an integration-sourced
-   *  server from a project-declared one AND which binding holds the name. Two
-   *  bindings of one provider can land on a single name, so the name alone
-   *  identifies neither. */
+   *  the binding that produced it. Two bindings of one provider can land on a
+   *  single name, so the name alone identifies neither. */
   integrationServers: ProducedMcpServer[];
 }
 
+/** The MCP servers a job or session of this project carries: its granted integration bindings. */
 export async function resolveJobMcpServers(args: {
   projectId: string;
-  stageMcpServers: McpServersMap;
-  stageDeclaredNames: string[] | null | undefined;
 }): Promise<ResolvedJobMcpServers> {
-  const projectDefault = await resolveProjectDefaultMcpServers(args.projectId);
-  // ISS-623 W2 — the truthy sentinel names declared BEFORE the merge/expand/
-  // integration-resolve chain runs, so we can diff them against what actually
-  // made it into the final map and surface anything that silently dropped.
-  const declaredNames = new Set<string>([
-    ...projectDefault.declaredNames,
-    ...(args.stageDeclaredNames ?? []),
-  ]);
-
-  let map: McpServersMap = args.stageMcpServers ? expandMcpServers(args.stageMcpServers) : null;
-  if (Object.keys(projectDefault.servers).length > 0 || map !== null) {
-    map = { ...projectDefault.servers, ...(map ?? {}) };
-  }
-
-  if (map !== null) map = applyStageFalseOptOuts(map, args.stageMcpServers);
-
-  const granted = await applyGrantedMcpServers(args.projectId, map);
-  map = granted.map;
-
-  // Browser dedupe: prefer chrome-devtools-mcp over playwright when both are present.
-  const beforeBrowserDedupe = new Set(Object.keys(map ?? {}));
-  map = dedupeBrowserServers(map);
-
-  const resolvedNames = new Set(Object.keys(map ?? {}));
-  const playwrightDedupedNotDropped =
-    beforeBrowserDedupe.has('playwright') && !resolvedNames.has('playwright');
-  const droppedNames = [...declaredNames].filter(
-    (name) => !resolvedNames.has(name) && !(name === 'playwright' && playwrightDedupedNotDropped),
-  );
-
+  const granted = await applyGrantedMcpServers(args.projectId, null);
   return {
-    mcpServers: map,
-    resolvedNames: [...resolvedNames],
-    droppedNames,
+    mcpServers: granted.map,
+    resolvedNames: Object.keys(granted.map ?? {}),
+    droppedNames: [],
     integrationServers: granted.produced,
   };
 }
 
 export async function resolveSessionMcpServers(projectId: string): Promise<ResolvedJobMcpServers> {
-  return resolveJobMcpServers({
-    projectId,
-    stageMcpServers: null,
-    stageDeclaredNames: null,
-  });
+  return resolveJobMcpServers({ projectId });
 }

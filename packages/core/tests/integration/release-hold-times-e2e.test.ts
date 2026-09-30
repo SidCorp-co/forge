@@ -16,6 +16,7 @@ import {
   createTestProject,
   createTestUser,
   registerIntegrationsForTest,
+  seedProductionDeployTrigger,
   setupTestDatabase,
   type TestDatabase,
   truncateAll,
@@ -55,11 +56,8 @@ beforeEach(async () => {
   coolify.deployments.clear();
   const owner = await createTestUser(harness.db);
   ownerId = owner.id;
-  projectId = (
-    await createTestProject(harness.db, owner.id, {
-      agentConfig: { pipelineConfig: { enabled: true, autoProdDeploy: true } },
-    })
-  ).id;
+  projectId = (await createTestProject(harness.db, owner.id)).id;
+  await seedProductionDeployTrigger(harness.db, projectId, owner.id);
   await fx.seedReleaseRunner();
 });
 

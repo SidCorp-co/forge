@@ -6,19 +6,25 @@
   "permissions": {
     "development": {
       "deny": [
-        "projects.create",
-        "projects.update",
-        "projects.archive",
-        "orgs.list",
-        "orgs.members",
-        "collaborators",
-        "runners",
-        "jobs.cancel",
-        "skills.create",
-        "skills.update",
-        "skills.delete",
-        "memory.write",
-        "memory.delete"
+        "mcp__forge__forge_projects_create",
+        "mcp__forge__forge_projects_update",
+        "mcp__forge__forge_orgs_list",
+        "mcp__forge__forge_orgs_members",
+        "mcp__forge__forge_collaborators",
+        "mcp__forge__forge_runners",
+        "mcp__forge__forge_jobs_cancel",
+        "mcp__forge__forge_skills_create",
+        "mcp__forge__forge_skills_update",
+        "mcp__forge__forge_skills_delete",
+        "mcp__forge__forge_memory_write",
+        "mcp__forge__forge_memory_delete",
+        "Bash(git push --force:*)",
+        "CronCreate",
+        "CronDelete",
+        "CronList",
+        "Workflow",
+        "RemoteTrigger",
+        "ScheduleWakeup"
       ]
     }
   },

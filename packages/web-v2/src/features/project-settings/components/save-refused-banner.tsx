@@ -10,27 +10,19 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { Banner, Button } from "@/design";
-import {
-	formatPipelineConfigError,
-	formatSettingsWriteError,
-	settingsThatMoved,
-	writeConflicts,
-} from "@/lib/api/error";
+import { formatSettingsWriteError, settingsThatMoved, writeConflicts } from "@/lib/api/error";
 import type { SettingsDraft } from "../draft";
 
 export function SaveRefusedBanner({
 	projectId,
 	error,
 	onDismiss,
-	document = "pipeline-config",
 	draft,
 }: {
 	projectId: string;
 	/** The refusal, or null where the last save was not refused. */
 	error: unknown;
 	onDismiss?: () => void;
-	/** Which settings document to re-read — the query key whose data seeds this section. */
-	document?: "pipeline-config" | "environments";
 	/** The draft this section holds. Both ways out act on it, and it is what reports back
 	 *  which edits a re-read replaced. */
 	// biome-ignore lint/suspicious/noExplicitAny: every section's draft shape, read only through the contract's own paths.
@@ -41,7 +33,7 @@ export function SaveRefusedBanner({
 
 	function reread(yielding: string[]) {
 		draft.takeStored(yielding);
-		qc.invalidateQueries({ queryKey: ["project", projectId, document] });
+		qc.invalidateQueries({ queryKey: ["project", projectId, "environments"] });
 		onDismiss?.();
 	}
 
@@ -62,11 +54,7 @@ export function SaveRefusedBanner({
 	return (
 		<Banner tone={conflicts.length > 0 ? "attention" : "danger"} onDismiss={onDismiss}>
 			<div className="space-y-2">
-				<p>
-					{document === "environments"
-						? formatSettingsWriteError(error)
-						: formatPipelineConfigError(error)}
-				</p>
+				<p>{formatSettingsWriteError(error)}</p>
 				{conflicts.length > 0 && (
 					<>
 						<p className="fg-caption text-muted">

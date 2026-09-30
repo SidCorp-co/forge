@@ -1,6 +1,6 @@
-import { type IssueStatus, issueStatuses, type JobType } from '../db/schema.js';
+import type { IssueStatus, JobType } from '../db/schema.js';
 import { ISSUE_TERMINAL_STATUSES } from '../issues/status-sets.js';
-import type { PipelineConfig } from './pipeline-config-schema.js';
+import type { PolicyDocument } from '../project-config/schema.js';
 
 /** The status at which the driver is handed the issue. */
 export const AUTONOMOUS_ENTRY_STATUS: IssueStatus = 'open';
@@ -25,16 +25,11 @@ export function autonomousStepFor(
   return { type: AUTONOMOUS_JOB_TYPE, skillName: AUTONOMOUS_SKILL_NAME };
 }
 
-const TERMINAL_FOR_BACKLOG: readonly IssueStatus[] = ['releasing'] as const;
-
-export const BACKLOG_ADMISSIBLE_STATUSES: readonly IssueStatus[] = issueStatuses.filter(
-  (s) => !AUTONOMOUS_DRIVER_STATUSES.includes(s) && !TERMINAL_FOR_BACKLOG.includes(s),
-);
-
 export const AUTONOMOUS_SKILL_NAME = 'issue-flow';
 
-export function isAutonomous(cfg: PipelineConfig | null): boolean {
-  return cfg !== null;
+/** A project runs the driver exactly when it has a policy: the policy is what says how it runs. */
+export function isAutonomous(policy: PolicyDocument | null): policy is PolicyDocument {
+  return policy !== null;
 }
 
 export const AUTONOMOUS_INFLIGHT_STATUSES: readonly IssueStatus[] =
@@ -46,7 +41,6 @@ export const AUTONOMOUS_INFLIGHT_STATUSES: readonly IssueStatus[] =
   );
 
 /** Whether a human, not a master, decides when this project's work starts. */
-export function isEntryGateClosed(cfg: PipelineConfig | null): boolean {
-  const entry = cfg?.states?.open;
-  return entry?.enabled === false || entry?.mode === 'manual';
+export function isEntryGateClosed(policy: PolicyDocument | null): boolean {
+  return policy?.intake.mode === 'manual';
 }

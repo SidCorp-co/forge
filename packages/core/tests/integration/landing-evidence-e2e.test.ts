@@ -130,24 +130,6 @@ describe('a project whose work lands outside git (kind website)', () => {
     expect((await stored(id)).merged_at).toBeNull();
   });
 
-  it('fails merged_mark on an issue whose mark names no landing', async () => {
-    const w = await world('website');
-    const id = await seedIssue(w, { mergedAt: true });
-    const short = await harness.mods.findUnmetEntryCriteria({
-      issueId: id,
-      declared: ['merged_mark'],
-    });
-    expect(short?.unmet.map((u) => u.key)).toEqual(['merged_mark']);
-  });
-
-  it('passes merged_mark on an issue whose mark names a landing', async () => {
-    const w = await world('website');
-    const id = await seedIssue(w, { landing: LANDING });
-    expect(
-      await harness.mods.findUnmetEntryCriteria({ issueId: id, declared: ['merged_mark'] }),
-    ).toBeNull();
-  });
-
   it('lists an issue whose mark names no landing under RELEASE_WORK_UNMERGED at the record door', async () => {
     const w = await world('website');
     // A one-entry chain and a live deploy binding are a release gate at all; with no probe the

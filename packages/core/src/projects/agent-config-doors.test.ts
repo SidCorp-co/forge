@@ -57,8 +57,15 @@ describe('agentConfig declared keys and their doors', () => {
     );
   });
 
-  it('spares in 0285 exactly the keys the schema declares', () => {
-    expect(migrationArray('declared_keys').sort()).toEqual([...AGENT_CONFIG_KEYS].sort());
+  it('spares in 0285 the keys the schema declared then: today less assistantWeekly, plus pipelineConfig', () => {
+    const declaredSince0285 = ['assistantWeekly'];
+    const retiredSince0285 = ['pipelineConfig'];
+    expect(migrationArray('declared_keys').sort()).toEqual(
+      [
+        ...AGENT_CONFIG_KEYS.filter((k) => !declaredSince0285.includes(k)),
+        ...retiredSince0285,
+      ].sort(),
+    );
   });
 
   it('names the owning column in every retired key message', () => {
@@ -67,7 +74,7 @@ describe('agentConfig declared keys and their doors', () => {
       baseBranch: 'projects.base_branch',
       productionBranch: 'projects.release_chain',
       activeDeviceId: 'projects.default_device_id',
-      runnerFallback: 'pipelineConfig.states[*].runner',
+      runnerFallback: 'decides nothing',
     };
     const missing = Object.entries(owners).filter(
       ([key, owner]) => !RETIRED_AGENT_CONFIG_KEYS[key]?.includes(owner),
@@ -108,7 +115,7 @@ describe('refuseAgentConfigRecord', () => {
     const messages = refusalsFor({ uxContractProfile: { rules: [] } });
     expect(messages).toHaveLength(1);
     expect(messages[0]).toContain('agentConfig.uxContractProfile is not a key');
-    expect(messages[0]).toContain('pipelineConfig, plugins');
+    expect(messages[0]).toContain('assistantWeekly, plugins');
   });
 
   it('answers every key of a record rather than only the first', () => {
@@ -128,10 +135,9 @@ describe('refuseAgentConfigRecord', () => {
     expect(messages[0]).toContain('Clear each value through its own door');
   });
 
-  it('does not promise a clear that pipelineConfig has no door for', () => {
+  it('names a clear for every declared key, each through its own door', () => {
     const message = refusalsFor(null)[0] ?? '';
-    expect(message).toContain('`pipelineConfig` is the one value with no clear');
-    expect(message).not.toMatch(/send .*`pipelineConfig`.* as null/);
+    for (const key of AGENT_CONFIG_KEYS) expect(message).toContain(`\`${key}\``);
   });
 
   it('skips a key whose message the caller already added', () => {
@@ -150,7 +156,12 @@ describe('refuseAgentConfigRecord', () => {
 describe('agentConfigSchema', () => {
   it('accepts a document holding every declared key', () => {
     const parsed = agentConfigSchema.safeParse({
-      pipelineConfig: { enabled: true },
+      assistantWeekly: {
+        enabled: true,
+        pinnedIssue: 'ISS-1',
+        judgeProviderId: 'p-1',
+        judgeModel: 'sonnet',
+      },
       plugins: [{ marketplace: 'SidCorp-co/forge-plugin', name: 'forge' }],
       personaStyle: 'terse',
       systemPrompt: 'answer in Vietnamese',

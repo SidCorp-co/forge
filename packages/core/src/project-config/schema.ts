@@ -140,7 +140,7 @@ export type ProjectDocument = z.infer<typeof projectDocumentSchema>;
 export type EnvironmentDeclaration = ProjectDocument['environments'][string];
 
 // cm:edge naming -> packages/core/src/pipeline/autonomous-mode.ts — the driver statuses minus the
-// terminal ones; not STAGE_NAMES (the replaced config, holds awaiting_release) nor every status.
+// terminal ones, not every status: nothing dispatches at `awaiting_release` or past it.
 export const POLICY_STATE_STATUSES: readonly IssueStatus[] = AUTONOMOUS_DRIVER_STATUSES.filter(
   (s) => !ISSUE_TERMINAL_STATUSES.includes(s),
 );
@@ -158,6 +158,12 @@ function nonEmpty<T>(values: readonly T[]): [T, ...T[]] {
 
 const profileName = () => z.string().regex(SHORT_NAME);
 
+// cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/terminal.rs:job_argv — the grammar of
+// one `--disallowed-tools` entry a job pane is started with: a built-in tool, optionally with a
+// specifier (`Bash(git push:*)`), or an MCP server or tool (`mcp__forge__forge_issues`, `mcp__x__*`).
+export const TOOL_PATTERN =
+  /^(?:[A-Z][A-Za-z0-9]*(?:\((?! )[^()\n]{1,200}(?<! )\))?|mcp__[A-Za-z0-9-][A-Za-z0-9_-]*(?<!_)(?:__\*)?)$/;
+
 export const policyDocumentSchema = z.strictObject({
   $schema: z.literal(`${SCHEMA_BASE}/policy-v1.json`),
   version: z.literal(1),
@@ -167,7 +173,7 @@ export const policyDocumentSchema = z.strictObject({
     z.record(
       profileName(),
       z.strictObject({
-        deny: unique(z.array(z.string().regex(/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)?$/)).max(100)),
+        deny: unique(z.array(z.string().max(220).regex(TOOL_PATTERN)).max(100)),
       }),
     ),
     { min: 1, max: 10 },

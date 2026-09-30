@@ -48,9 +48,9 @@ const REST = 'https://docs.github.com/en/rest';
 /**
  * Every GitHub REST call Forge makes as the App, and what each one costs.
  *
- * Keyed by method AND path: `GET /repos/:p/:p/check-runs/:p` reads a check run with `checks: read`
- * and `PATCH` on the same path writes one, and a table keyed by path alone would let a write be
- * added under a read row without anything noticing.
+ * Keyed by method AND path: one path read with `GET` and written with another method costs two
+ * permission levels, and a table keyed by path alone would let a write be added under a read row
+ * without anything noticing.
  */
 export const GITHUB_ENDPOINTS: readonly GitHubEndpoint[] = [
   {
@@ -160,15 +160,6 @@ export const GITHUB_ENDPOINTS: readonly GitHubEndpoint[] = [
     docs: `${REST}/branches/branch-protection#get-branch-protection`,
   },
   {
-    path: '/repos/:p/:p/check-runs',
-    method: 'POST',
-    auth: 'installation',
-    permission: 'checks',
-    level: 'write',
-    callSites: ['check-run.ts:publishCheckRun'],
-    docs: `${REST}/checks/runs#create-a-check-run`,
-  },
-  {
     path: '/repos/:p/:p/check-runs/:p',
     method: 'GET',
     auth: 'installation',
@@ -176,15 +167,6 @@ export const GITHUB_ENDPOINTS: readonly GitHubEndpoint[] = [
     level: 'read',
     callSites: ['agent-ops.ts:readCheckRunLog'],
     docs: `${REST}/checks/runs#get-a-check-run`,
-  },
-  {
-    path: '/repos/:p/:p/check-runs/:p',
-    method: 'PATCH',
-    auth: 'installation',
-    permission: 'checks',
-    level: 'write',
-    callSites: ['check-run.ts:publishCheckRun'],
-    docs: `${REST}/checks/runs#update-a-check-run`,
   },
   {
     path: '/repos/:p/:p/commits/:p',
@@ -201,7 +183,7 @@ export const GITHUB_ENDPOINTS: readonly GitHubEndpoint[] = [
     auth: 'installation',
     permission: 'checks',
     level: 'read',
-    callSites: ['check-run.ts:existingRunId', 'merge-read.ts:readHeadChecks'],
+    callSites: ['merge-read.ts:readHeadChecks'],
     docs: `${REST}/checks/runs#list-check-runs-for-a-git-reference`,
   },
   {
@@ -345,13 +327,6 @@ const EVENT_DOCS = 'https://docs.github.com/en/webhooks/webhook-events-and-paylo
 
 /** Every webhook event the App subscribes to, and what GitHub charges for the subscription. */
 export const GITHUB_EVENT_SUBSCRIPTIONS: readonly GitHubEventSubscription[] = [
-  {
-    event: 'issues',
-    permission: 'issues',
-    level: 'read',
-    handler: 'webhooks/github-adapter.ts:handleGitHubEvent',
-    docs: `${EVENT_DOCS}#issues`,
-  },
   {
     event: 'pull_request',
     permission: 'pull_requests',

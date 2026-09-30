@@ -1,5 +1,4 @@
 import type { z } from 'zod';
-import { refuseRetiredStageKeys } from '../pipeline/pipeline-config-schema.js';
 import { RETIRED_STATE_CONTEXT_MESSAGE } from './agent-config.js';
 import { refuseAgentConfigRecord } from './agent-config-schema.js';
 import { ENVIRONMENTS_MOVED_MESSAGE, RETIRED_PREVIEW_DEPLOY_MESSAGE } from './environments.js';
@@ -21,7 +20,7 @@ export function refuseRetiredProjectKeys(raw: unknown, ctx: z.RefinementCtx): vo
   if ('previewDeploy' in body) retired(['previewDeploy'], RETIRED_PREVIEW_DEPLOY_MESSAGE);
   if ('environments' in body) retired(['environments'], ENVIRONMENTS_MOVED_MESSAGE);
   if (!('agentConfig' in body)) return;
-  const ac = body.agentConfig as { pipelineConfig?: unknown } | null | undefined;
+  const ac = body.agentConfig as Record<string, unknown> | null | undefined;
   if (!ac || typeof ac !== 'object') {
     refuseAgentConfigRecord(ac, ctx);
     return;
@@ -31,8 +30,6 @@ export function refuseRetiredProjectKeys(raw: unknown, ctx: z.RefinementCtx): vo
   if ('projectFactsConfig' in ac) {
     retired(['agentConfig', 'projectFactsConfig'], RETIRED_PROJECT_FACTS_CONFIG_MESSAGE);
   }
-  const states = (ac.pipelineConfig as { states?: unknown } | null | undefined)?.states;
-  refuseRetiredStageKeys(states, ctx, ['agentConfig', 'pipelineConfig', 'states']);
   refuseAgentConfigRecord(ac, ctx, ['agentConfig'], NAMED_ABOVE);
 }
 

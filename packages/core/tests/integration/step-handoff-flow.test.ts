@@ -77,9 +77,7 @@ describe('step-handoff lifecycle flow (proposal Y)', () => {
     );
   });
 
-  async function seedProjectWithHandoffsEnabled(
-    opts: { missingMarkerPolicy?: 'fail' | 'warn' | 'silent' } = {},
-  ) {
+  async function seedProject() {
     const user = await createTestUser(harness.db);
     await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`);
     const project = await createTestProject(harness.db, user.id);
@@ -88,29 +86,6 @@ describe('step-handoff lifecycle flow (proposal Y)', () => {
       projectId: project.id,
       role: 'admin',
     });
-    // Inject the handoff policy onto the project's agentConfig — the
-    // verifier reads it from the same path the prompt builder consumes.
-    const agentConfig = JSON.stringify({
-      pipelineConfig: {
-        states: {
-          approved: {
-            userPromptPolicy: {
-              handoffs: {
-                enabled: true,
-                requireHandoffWrite: true,
-                injectFromSteps: ['triage'],
-                missingMarkerPolicy: opts.missingMarkerPolicy ?? 'fail',
-              },
-            },
-          },
-        },
-      },
-    });
-    await harness.db.execute(sql`
-      UPDATE projects
-      SET agent_config = ${agentConfig}::jsonb
-      WHERE id = ${project.id}
-    `);
     const userToken = await signUserToken(user.id);
     const issued = await pairDevice({
       ownerId: user.id,
@@ -161,7 +136,7 @@ describe('step-handoff lifecycle flow (proposal Y)', () => {
   }
 
   it('writes handoff + emits DONE → job finalizes as done', async () => {
-    const { projectId, userToken, device, deviceToken } = await seedProjectWithHandoffsEnabled();
+    const { projectId, userToken, device, deviceToken } = await seedProject();
     const { jobId, runId, issueId } = await createPipelineRunAndJob({
       projectId,
       deviceId: device.id,
@@ -210,7 +185,7 @@ describe('step-handoff lifecycle flow (proposal Y)', () => {
   // ---------- DONE without write — handoff is NOT a status gate ----------
 
   it('emits DONE WITHOUT writing the handoff → still finalizes as done (no failure stamp)', async () => {
-    const { projectId, device, deviceToken } = await seedProjectWithHandoffsEnabled();
+    const { projectId, device, deviceToken } = await seedProject();
     const { jobId } = await createPipelineRunAndJob({ projectId, deviceId: device.id });
 
     // Skip the write — go straight to /complete.
@@ -235,7 +210,7 @@ describe('step-handoff lifecycle flow (proposal Y)', () => {
   // ---------- HANDOFF_GIVE_UP marker — also NOT a status gate ----------
 
   it('emits HANDOFF_GIVE_UP with exitCode 0 → still finalizes as done (marker not gated)', async () => {
-    const { projectId, device, deviceToken } = await seedProjectWithHandoffsEnabled();
+    const { projectId, device, deviceToken } = await seedProject();
     const { jobId } = await createPipelineRunAndJob({ projectId, deviceId: device.id });
 
     const completeRes = await app.request(`/api/jobs/${jobId}/complete`, {
@@ -259,12 +234,10 @@ describe('step-handoff lifecycle flow (proposal Y)', () => {
     expect(rows[0]?.failure_reason).toBeNull();
   });
 
-  // ---------- Missing marker + policy=warn ----------
+  // ---------- Missing marker — nothing reads a handoff policy since ISS-5 ----------
 
-  it('missing marker + missingMarkerPolicy=warn → finalizes as done (rollout-safe)', async () => {
-    const { projectId, device, deviceToken } = await seedProjectWithHandoffsEnabled({
-      missingMarkerPolicy: 'warn',
-    });
+  it('a missing marker still finalizes as done', async () => {
+    const { projectId, device, deviceToken } = await seedProject();
     const { jobId } = await createPipelineRunAndJob({ projectId, deviceId: device.id });
 
     const completeRes = await app.request(`/api/jobs/${jobId}/complete`, {
@@ -284,8 +257,7 @@ describe('step-handoff lifecycle flow (proposal Y)', () => {
   // ---------- Non-handoff step exempt ----------
 
   it('clarify step is exempt from handoff verification', async () => {
-    const { projectId, device, deviceToken } = await seedProjectWithHandoffsEnabled();
-    // Direct insert: clarify isn't in HANDOFF_STEPS, so policy doesn't apply.
+    const { projectId, device, deviceToken } = await seedProject();
     const issueId = randomUUID();
     const runId = randomUUID();
     const jobId = randomUUID();

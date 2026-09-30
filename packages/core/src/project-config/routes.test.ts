@@ -127,7 +127,7 @@ const policyDoc = {
   version: 1,
   qa: 'independent',
   intake: { mode: 'auto' },
-  permissions: { development: { deny: ['projects.update'] } },
+  permissions: { development: { deny: ['mcp__forge__forge_projects_update'] } },
   states: { open: { model: 'opus', permissions: 'development' } },
 };
 
@@ -315,6 +315,19 @@ describe('policy and testing profiles', () => {
     const res = await put('/policy', { baseRevision: null, document: doc });
     expect(res.status).toBe(422);
     expect(((await res.json()) as Refusals).error.code).toBe('PERMISSION_PROFILE_UNDEFINED');
+    expect(mem.policy.size).toBe(0);
+  });
+
+  it('refuses a retired capability id by name, at its path, and writes nothing', async () => {
+    const deny = ['CronCreate', 'projects.update'];
+    const doc = { ...policyDoc, permissions: { development: { deny } } };
+    const res = await put('/policy', { baseRevision: null, document: doc });
+    expect(res.status).toBe(422);
+    const { error } = (await res.json()) as Refusals;
+    expect(error.code).toBe('TOOL_PATTERN_INVALID');
+    expect(error.refusals).toEqual([
+      expect.objectContaining({ path: '/permissions/development/deny/1' }),
+    ]);
     expect(mem.policy.size).toBe(0);
   });
 

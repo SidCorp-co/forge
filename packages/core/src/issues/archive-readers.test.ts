@@ -40,7 +40,6 @@ const NOT_DISCOVERY: Record<string, string> = {
   'devices/run-session.ts': 'the seqs a run names',
   'feedback/routes.ts': 'the issue a feedback row links',
   'feedback/service.ts': 'by issue id',
-  'integrations/github/contract-answer.ts': 'by issue id',
   'integrations/github/issue-link.ts': 'the seq a pull request names',
   'integrations/github/review-note.ts': 'by issue id, locked for a write',
   'integrations/rocketchat/comment-inbound.ts': 'by issue id, or by mirror and comment rows',
@@ -65,7 +64,6 @@ const NOT_DISCOVERY: Record<string, string> = {
   'issues/display-ids.ts': 'the ids passed in',
   'issues/drop-cascade.ts': 'dependents over live edges of the dropped issue, a write path',
   'issues/drop-unblock.ts': 'by issue id',
-  'issues/entry-criteria.ts': 'by issue id',
   'issues/extras-routes.ts': 'by id; pipeline timing is an aggregate with no identity',
   'issues/held-hydrator.ts': 'the ids passed in',
   'issues/list-projection.ts':
@@ -82,8 +80,8 @@ const NOT_DISCOVERY: Record<string, string> = {
   'issues/transition.ts': 'dependents over edges of the issues being moved',
   'issues/update-service.ts': 'guards by issue id inside a write',
   'jobs/agent-session-link.ts': 'the issue of the job',
-  'jobs/budget-check.ts': 'by issue id',
   'jobs/finalize-failure.ts': 'the issue of the job',
+  'jobs/job-policy.ts': 'the issue of the job',
   'jobs/prepare-claimed-job.ts': 'the issue of the job',
   'jobs/queued-gates.ts': 'queued jobs only',
   'jobs/routes.ts': 'by issue id',
@@ -112,7 +110,6 @@ const NOT_DISCOVERY: Record<string, string> = {
   'pipeline/idle-issues.ts': 'reads only non-terminal statuses',
   'pipeline/inv7-alarms.ts': 'held or queued jobs and running runs',
   'pipeline/issue-run-invariant.ts': 'reads only work-in-progress statuses',
-  'pipeline/pipeline-config-service.ts': 'reads only stage statuses, all non-terminal',
   'pipeline/shipped-at.ts':
     'the first shipped moment per issue, read only into counts and timings; an archived issue still shipped on its day',
   'pipeline/reconciler.ts': 'reads only entry and in-flight statuses',

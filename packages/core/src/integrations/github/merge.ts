@@ -4,7 +4,6 @@ import { pipelineRuns } from '../../db/schema.js';
 import { repoPullRequests } from '../../db/schema-repo-projection.js';
 import { recordIssueMerge } from '../../issues/merge-record.js';
 import { logger } from '../../logger.js';
-import { hooks } from '../../pipeline/hooks.js';
 import { recordDelivery, updateDelivery } from '../deliveries.js';
 import { githubBindingCredential } from './binding-credential.js';
 import { buildRepoClient, GitHubClientError, type GitHubRepoClient } from './client.js';
@@ -143,20 +142,6 @@ async function writeEvidence(args: {
   }
 }
 
-/** Republish the contract on this issue's OTHER open pull requests; never inside the transaction. */
-async function announce(row: StoredRow): Promise<void> {
-  if (!row.issueId) return;
-  try {
-    await hooks.emit('contractInputChanged', {
-      projectId: row.projectId,
-      issueId: row.issueId,
-      reason: 'merged by the kernel',
-    });
-  } catch (err) {
-    logger.warn({ err, pullRequestId: row.id }, 'merge: announcing the contract change failed');
-  }
-}
-
 async function refuse(deliveryId: string, reason: string, detail: string): Promise<MergeOutcome> {
   await updateDelivery(deliveryId, {
     status: 'failed',
@@ -176,8 +161,7 @@ interface MergeAnswer {
 /**
  * Merge one stored pull request as the App, and record the landing.
  *
- * `expectBindingId` is how a caller authorised for ONE binding says so — the
- * same guard `contract-check.ts` carries, and it matters more here: a dispatch
+ * `expectBindingId` is how a caller authorised for ONE binding says so: a dispatch
  * holding a context for binding A and a row belonging to binding B would
  * validate A and then MERGE on B's repository.
  */
@@ -252,7 +236,6 @@ export async function mergeStoredPullRequest(
       response: { alreadyMerged: true, commitSha, stamped },
       completedAt: new Date(),
     });
-    if (stamped) await announce(row);
     return { kind: 'already-merged', deliveryId, commitSha, mergedAt, stamped };
   }
 
@@ -330,6 +313,5 @@ export async function mergeStoredPullRequest(
     response: { commitSha: answer.sha, requestedBy: req.requestedBy, stamped },
     completedAt: new Date(),
   });
-  if (stamped) await announce(row);
   return { kind: 'merged', deliveryId, commitSha: answer.sha, mergedAt, stamped };
 }

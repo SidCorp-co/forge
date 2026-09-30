@@ -220,8 +220,8 @@ skillRegisterRoutes.post(
 );
 
 // ISS-109 — list current per-stage skill bindings for a project. Read access
-// is project membership (mirrors the GET /pipeline-config rule); the skill
-// registrations themselves contain no privileged data.
+// is project membership; the skill registrations themselves contain no
+// privileged data.
 skillRegisterRoutes.use('/:projectId/skill-registrations', requireAuth(), assertEmailVerified());
 skillRegisterRoutes.get(
   '/:projectId/skill-registrations',

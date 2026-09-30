@@ -25,7 +25,6 @@ type Mods = {
   errorHandler: typeof import('../../src/middleware/error.js')['errorHandler'];
   mintPat: typeof import('../../src/auth/pat.js')['mintPat'];
   transitionIssueStatus: typeof import('../../src/issues/apply-transition.js')['transitionIssueStatus'];
-  findUnmetEntryCriteria: typeof import('../../src/issues/entry-criteria.js')['findUnmetEntryCriteria'];
   collectReleaseBlockers: typeof import('../../src/release-batch/blockers.js')['collectReleaseBlockers'];
 };
 
@@ -169,7 +168,7 @@ export function useLandingHarness(): void {
     process.env.CORS_ORIGINS ??= 'http://localhost:3000';
     process.env.NODE_ENV ??= 'test';
 
-    const [mergeMod, routesMod, jwtMod, errMod, patMod, transitionMod, criteriaMod, blockersMod] =
+    const [mergeMod, routesMod, jwtMod, errMod, patMod, transitionMod, blockersMod] =
       await Promise.all([
         import('../../src/issues/merge-routes.js'),
         import('../../src/issues/routes.js'),
@@ -177,7 +176,6 @@ export function useLandingHarness(): void {
         import('../../src/middleware/error.js'),
         import('../../src/auth/pat.js'),
         import('../../src/issues/apply-transition.js'),
-        import('../../src/issues/entry-criteria.js'),
         import('../../src/release-batch/blockers.js'),
       ]);
     mods = {
@@ -187,7 +185,6 @@ export function useLandingHarness(): void {
       errorHandler: errMod.errorHandler,
       mintPat: patMod.mintPat,
       transitionIssueStatus: transitionMod.transitionIssueStatus,
-      findUnmetEntryCriteria: criteriaMod.findUnmetEntryCriteria,
       collectReleaseBlockers: blockersMod.collectReleaseBlockers,
     };
     app = new Hono();

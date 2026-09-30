@@ -5,7 +5,7 @@ import { RESULT_QUIET_MINUTES } from '../jobs/loop-monitor.js';
 import { gateReasonsForQueuedJobsIn } from '../jobs/queued-gates.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
-import { DEFAULT_NO_PROGRESS_ROUNDS } from './reopen-policy.js';
+import { NO_PROGRESS_ROUNDS } from './reopen-policy.js';
 import { pauseResumesItself } from './run-pause.js';
 import { advanceSweep, type SweepPosition, sweepWindow } from './sweep-cursor.js';
 import {
@@ -311,10 +311,7 @@ export async function alarmRejectionStreaks(): Promise<Inv7AlarmResult> {
            p.issue_prefix,
            i.title,
            count(*)::int AS streak,
-           COALESCE(
-             (p.agent_config -> 'pipelineConfig' -> 'reopenPolicy' ->> 'noProgressRounds')::int,
-             ${DEFAULT_NO_PROGRESS_ROUNDS}
-           ) AS threshold
+           ${NO_PROGRESS_ROUNDS}::int AS threshold
     FROM verdicts v
     LEFT JOIN last_approve la ON la.run_id = v.run_id
     JOIN pipeline_runs pr ON pr.id = v.run_id
@@ -325,10 +322,7 @@ export async function alarmRejectionStreaks(): Promise<Inv7AlarmResult> {
       AND pr.status = 'running'
       AND i.status NOT IN ('closed', 'awaiting_release', 'draft')
     GROUP BY v.run_id, i.project_id, i.id, i.iss_seq, i.title, p.id, p.issue_prefix
-    HAVING count(*) >= COALESCE(
-             (p.agent_config -> 'pipelineConfig' -> 'reopenPolicy' ->> 'noProgressRounds')::int,
-             ${DEFAULT_NO_PROGRESS_ROUNDS}
-           )
+    HAVING count(*) >= ${NO_PROGRESS_ROUNDS}
   `);
 
   for (const row of rows) {

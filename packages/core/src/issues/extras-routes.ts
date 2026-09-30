@@ -19,6 +19,7 @@ import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../m
 import { zValidator } from '../middleware/zod-validator.js';
 import { hooks } from '../pipeline/hooks.js';
 import { ActiveJobConflictError, triggerPipelineStepManual } from '../pipeline/orchestrator.js';
+import { PolicyRefusedError } from '../project-config/dispatch-policy.js';
 import {
   EMPTY_USAGE_TOTALS,
   usageSessionMatch,
@@ -332,6 +333,9 @@ issueExtrasRoutes.post(
             type: err.type,
           },
         });
+      }
+      if (err instanceof PolicyRefusedError) {
+        throw new HTTPException(409, { message: err.message, cause: { code: err.code } });
       }
       if (err instanceof Error && err.message.startsWith('AUTONOMOUS_NOT_AT_ENTRY')) {
         throw new HTTPException(409, {

@@ -1,6 +1,6 @@
 ---
 name: forge-onboard
-description: "Interactive onboarding conversation that surveys a freshly-bootstrapped project's real repo and builds its initial Project Brain — knowledge entries (overview / workflow / rules / guides), a handful of seed memories, and a proposed pipeline config — through a chat that asks one question at a time and never writes without an explicit human confirm. Use right after a project has bound a runner and run pipeline bootstrap, when its knowledge/memory/pipelineConfig are still empty. Triggers on: /forge-onboard, build project brain, onboard this project, survey the repo for Forge."
+description: "Interactive onboarding conversation that surveys a freshly-bootstrapped project's real repo and builds its initial Project Brain — knowledge entries (overview / workflow / rules / guides), a handful of seed memories, and a proposed policy — through a chat that asks one question at a time and never writes without an explicit human confirm. Use right after a project has bound a runner and run pipeline bootstrap, when its knowledge and memory are still empty. Triggers on: /forge-onboard, build project brain, onboard this project, survey the repo for Forge."
 user_invocable: true
 arguments: ""
 ---
@@ -20,7 +20,7 @@ gap — never by guessing silently and writing, always by proposing and waiting 
    I wait, let me also ask...". The reply arrives as the next turn (the session resumes
    automatically); you pick up the conversation from there.
 2. **Never write without an explicit confirm.** Before any `forge_knowledge` upsert, `forge_memory`
-   write, `forge_knowledge` write, `forge_config` pipelineConfig patch, or pipeline-config change, present a
+   write, `forge_knowledge` write, `forge_config` update, or policy write, present a
    short plain-English summary of exactly what you intend to write and ask "Write this?" (a single
    question, per rule 1). Only write after an unambiguous yes. A "no", a follow-up question, or the
    user closing the tab must never leave a partial write behind — nothing you propose exists until
@@ -85,7 +85,7 @@ Summarize what you plan to write, grouped by target, then ask "Write this?" (rul
   non-negotiable one — **never put a secret in `textContent`; store a pointer to where it lives
   instead.** Search (`forge_memory` action=search) before writing so you upsert an existing slug
   instead of duplicating a topic.
-- **Pipeline config** (`forge_config` action=update, `pipelineConfig`) and the **release shape**
+- **Policy** (`PUT /api/projects/:id/policy`, the whole document with the `baseRevision` read) and the **release shape**
   (`forge_projects` action=update, `baseBranch`/`releaseChain`) — propose ONLY when the survey
   found real evidence contradicting the current default (e.g. the branch work merges into differs
   from what bootstrap assumed, or the project promotes to a second branch and nothing says so).

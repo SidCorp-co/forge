@@ -292,13 +292,13 @@ describe('boundaries: policy, testing profile and state', () => {
     expectAccepted(
       'policy',
       withPol((d) => {
-        d.permissions.development.deny = n(100, (i) => `c${i}`);
+        d.permissions.development.deny = n(100, (i) => `Bash(tool-${i}:*)`);
       }),
     );
     expectRefused(
       'policy',
       withPol((d) => {
-        d.permissions.development.deny = n(101, (i) => `c${i}`);
+        d.permissions.development.deny = n(101, (i) => `Bash(tool-${i}:*)`);
       }),
       { path: '/permissions/development/deny', code: 'too_big' },
     );

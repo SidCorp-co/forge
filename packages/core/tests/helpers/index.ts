@@ -17,6 +17,7 @@ export {
   createTestUser,
   type SeedOrgOverrides,
   seedOrg,
+  seedProductionDeployTrigger,
   type TestDevice,
   type TestOrg,
   type TestOrgMember,

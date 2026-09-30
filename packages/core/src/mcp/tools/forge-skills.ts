@@ -4,7 +4,6 @@ import {
   loadProjectSkillSyncStatus,
   resolveEffectiveSkillsForProject,
 } from '../../skills/effective.js';
-import { SkillLockedError } from '../../skills/lock.js';
 import { MetaSkillReservedError } from '../../skills/meta-skills.js';
 import {
   listSkillRegistrations,
@@ -219,7 +218,7 @@ export const forgeSkillsRegisterTool: ContextScopedMcpToolFactory = ({ principal
 export const forgeSkillsListRegistrationsTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_skills.list_registrations',
   description:
-    "List the project's stage→skill bindings overlaid with per-stage `enabled` and `mode` from `agentConfig.pipelineConfig.states`. `enabled` applies at every stage. `mode` ('auto'|'manual') gates at the ENTRY status alone — it decides whether a human releases work before it starts — and comes back `null` at every other stage, where the field gates nothing and setting it is refused. Stages with no registration are omitted — clients diff against `STAGE_NAMES` to find gaps. Returns `{ registrations: [{ stage, skillId, skillName, scope, mode, enabled, registeredBy, registeredAt }] }`.",
+    "List the project's stage→skill bindings overlaid with `enabled` and `mode` from the project's policy: `enabled` is whether the policy declares that state, and `mode` is the policy's `intake.mode` (`auto`|`manual`) at the ENTRY status alone — it decides whether a human releases work before it starts — and `null` at every other stage. Stages with no registration are omitted — clients diff against `STAGE_NAMES` to find gaps. Returns `{ registrations: [{ stage, skillId, skillName, scope, mode, enabled, registeredBy, registeredAt }] }`.",
   inputSchema: zodToMcpSchema(listRegistrationsInputSchema),
   handler: async (args) => {
     const { projectId } = listRegistrationsInputSchema.parse(args);
@@ -252,9 +251,6 @@ export const forgeSkillsCreateTool: ContextScopedMcpToolFactory = (ctx) => ({
       if (err instanceof MetaSkillReservedError) {
         throw new Error(`BAD_REQUEST: ${err.code}: ${err.message}`);
       }
-      if (err instanceof SkillLockedError) {
-        throw new Error(`BAD_REQUEST: ${err.code}: ${err.message}`);
-      }
       throw err;
     }
   },
@@ -280,9 +276,6 @@ export const forgeSkillsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
       return { skill };
     } catch (err) {
       if (err instanceof MetaSkillReservedError) {
-        throw new Error(`BAD_REQUEST: ${err.code}: ${err.message}`);
-      }
-      if (err instanceof SkillLockedError) {
         throw new Error(`BAD_REQUEST: ${err.code}: ${err.message}`);
       }
       throw err;
@@ -353,9 +346,6 @@ export const forgeSkillsAdoptTool: ContextScopedMcpToolFactory = (ctx) => ({
         throw new Error(`BAD_REQUEST: ${err.code}: ${err.message}`);
       }
       if (err instanceof MetaSkillReservedError) {
-        throw new Error(`BAD_REQUEST: ${err.code}: ${err.message}`);
-      }
-      if (err instanceof SkillLockedError) {
         throw new Error(`BAD_REQUEST: ${err.code}: ${err.message}`);
       }
       throw err;

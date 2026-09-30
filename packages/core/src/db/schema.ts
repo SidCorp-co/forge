@@ -2947,7 +2947,8 @@ export interface ReconcileBundleSnapshot {
   charter: unknown | null;
   /** Slug → body of this project's knowledge entries, each cut at `SNAPSHOT_BODY_MAX_CHARS`. Was `projectFacts` until ISS-1048 moved project prose out of `agentConfig`. */
   projectKnowledge: Record<string, unknown>;
-  pipelineConfig: Record<string, unknown>;
+  /** The project's policy-v1 document at assembly, or null where it has none. */
+  projectPolicy: Record<string, unknown> | null;
   recentRunEvidence: unknown[];
   priorReconcileHistory: unknown[];
   invariantSet: Record<string, unknown>;

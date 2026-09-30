@@ -5,8 +5,8 @@
  * promise: `canDispatch: true` beside no `dispatchOutbound` fails the form axis,
  * and so does the reverse. This file is about the other half — what the verb
  * does when it is reached with something it does not serve, because a default
- * arm that published the contract check for any event would make a caller's
- * mistake return 200 and look like it worked.
+ * arm that merged for any event would make a caller's mistake return 200 and
+ * look like it worked.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -27,20 +27,6 @@ vi.mock('../deliveries.js', () => ({
   updateDelivery: async () => undefined,
 }));
 
-const publishForStoredPullRequest = vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => ({
-  kind: 'published',
-  deliveryId: 'delivery-2',
-  outcome: 'created',
-  checkRunId: 42,
-}));
-vi.mock('./contract-check.js', async (importOriginal) => {
-  const actual = (await importOriginal()) as Record<string, unknown>;
-  return {
-    ...actual,
-    publishForStoredPullRequest: (...args: unknown[]) => publishForStoredPullRequest(...args),
-  };
-});
-
 const mergeStoredPullRequest = vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => ({
   kind: 'merged',
   deliveryId: 'delivery-3',
@@ -56,7 +42,6 @@ vi.mock('./merge.js', async (importOriginal) => {
   };
 });
 
-const { CHECK_PUBLISH_EVENT } = await import('./contract-check.js');
 const { MERGE_EVENT } = await import('./merge.js');
 const { NonRetryableDispatchError } = await import('../types.js');
 const { githubIntegration } = await import('./adapter.js');
@@ -93,11 +78,10 @@ describe('the declaration and the implementation agree', () => {
 
   it('is reachable through `dispatchThrough` instead of its "implements no outbound" refusal', async () => {
     const result = await dispatchThrough('github', ctx, {
-      eventName: CHECK_PUBLISH_EVENT,
-      payload: { pullRequestId: PR_ID },
+      eventName: MERGE_EVENT,
+      payload: { pullRequestId: PR_ID, requestedBy: 'user:alice' },
     });
-    expect(result).toMatchObject({ deliveryId: 'delivery-2', externalId: '42' });
-    expect(publishForStoredPullRequest).toHaveBeenCalledWith(PR_ID, 'binding-1');
+    expect(result).toMatchObject({ deliveryId: 'delivery-3', externalId: 'e45b4ec' });
   });
 });
 
@@ -107,12 +91,12 @@ describe('what it refuses, and by what name', () => {
       dispatch()?.(ctx, { eventName: 'pull_request.open', payload: {} }),
     ).rejects.toThrow(/pull_request\.open/);
     await expect(
-      dispatch()?.(ctx, { eventName: 'pull_request.open', payload: {} }),
-    ).rejects.toThrow(new RegExp(CHECK_PUBLISH_EVENT.replace('.', '\\.')));
+      dispatch()?.(ctx, { eventName: 'check_run.publish', payload: {} }),
+    ).rejects.toThrow(/no outbound verb named `check_run\.publish`/);
     await expect(
       dispatch()?.(ctx, { eventName: 'pull_request.open', payload: {} }),
     ).rejects.toThrow(/pull_request\.merge/);
-    expect(publishForStoredPullRequest).not.toHaveBeenCalled();
+    expect(mergeStoredPullRequest).not.toHaveBeenCalled();
   });
 
   it('sends a caller naming a judgement verb to the face that carries it', async () => {
@@ -124,13 +108,16 @@ describe('what it refuses, and by what name', () => {
   it('refuses a project with no active binding, and writes that refusal to the log', async () => {
     bindingRows = [];
     await expect(
-      dispatch()?.(ctx, { eventName: CHECK_PUBLISH_EVENT, payload: { pullRequestId: PR_ID } }),
+      dispatch()?.(ctx, {
+        eventName: MERGE_EVENT,
+        payload: { pullRequestId: PR_ID, requestedBy: 'user:alice' },
+      }),
     ).rejects.toThrow(/no active GitHub binding/);
     expect(recordDelivery).toHaveBeenCalledWith(
       expect.objectContaining({
         bindingId: null,
         direction: 'outbound',
-        eventName: CHECK_PUBLISH_EVENT,
+        eventName: MERGE_EVENT,
         status: 'failed',
       }),
     );
@@ -140,32 +127,19 @@ describe('what it refuses, and by what name', () => {
   });
 
   it('refuses a payload that names no pull request, saying what shape is valid', async () => {
-    await expect(
-      dispatch()?.(ctx, { eventName: CHECK_PUBLISH_EVENT, payload: {} }),
-    ).rejects.toThrow(/pullRequestId/);
+    await expect(dispatch()?.(ctx, { eventName: MERGE_EVENT, payload: {} })).rejects.toThrow(
+      /pullRequestId/,
+    );
   });
 
   it('refuses a pull request the projection does not hold, naming its id', async () => {
-    publishForStoredPullRequest.mockResolvedValue(null);
+    mergeStoredPullRequest.mockResolvedValueOnce(null);
     await expect(
-      dispatch()?.(ctx, { eventName: CHECK_PUBLISH_EVENT, payload: { pullRequestId: PR_ID } }),
+      dispatch()?.(ctx, {
+        eventName: MERGE_EVENT,
+        payload: { pullRequestId: PR_ID, requestedBy: 'user:alice' },
+      }),
     ).rejects.toThrow(new RegExp(PR_ID));
-  });
-});
-
-describe('what it reports back', () => {
-  it('carries no external id for a skip, because nothing was published', async () => {
-    publishForStoredPullRequest.mockResolvedValue({
-      kind: 'skipped',
-      deliveryId: 'delivery-3',
-      reason: 'the head branch names no issue',
-    });
-    const result = await dispatch()?.(ctx, {
-      eventName: CHECK_PUBLISH_EVENT,
-      payload: { pullRequestId: PR_ID },
-    });
-    expect(result).toMatchObject({ deliveryId: 'delivery-3' });
-    expect(result?.externalId).toBeUndefined();
   });
 });
 

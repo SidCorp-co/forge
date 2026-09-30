@@ -1,5 +1,6 @@
 import type { z } from 'zod';
 import type { ConfigRefusal, ConfigRefusalCode } from './rules.js';
+import { TOOL_PATTERN } from './schema.js';
 
 export type ApiRefusalCode =
   | ConfigRefusalCode
@@ -29,6 +30,16 @@ function issueRefusals(issue: z.core.$ZodIssue): ApiRefusal[] {
       path: pointer([...issue.path, key]),
       detail: `"${key}" is not a key of this document; version 1 refuses keys it does not define.`,
     }));
+  }
+  if (issue.code === 'invalid_format' && issue.pattern === String(TOOL_PATTERN)) {
+    return [
+      {
+        code: 'TOOL_PATTERN_INVALID',
+        path: pointer(issue.path),
+        detail:
+          'not a tool pattern the runner can deny: a built-in tool name (`Bash`), optionally with a specifier (`Bash(git push:*)`), or an MCP server or tool (`mcp__forge__forge_issues`, `mcp__playwright__*`).',
+      },
+    ];
   }
   return [{ code: 'SCHEMA_VIOLATION', path: pointer(issue.path), detail: issue.message }];
 }

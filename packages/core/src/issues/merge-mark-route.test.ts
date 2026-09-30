@@ -80,7 +80,7 @@ vi.mock('./landing-evidence.js', async (importOriginal) => ({
   readLandingShape: async () => shape,
 }));
 vi.mock('./read-service.js', () => ({ findIssueById: async () => issueAfter }));
-vi.mock('../integrations/github/contract-check.js', () => ({
+vi.mock('../integrations/repo-projection.js', () => ({
   openPullRequestsForIssue: async () => [],
 }));
 vi.mock('../integrations/github/projection-health.js', () => ({

@@ -81,6 +81,11 @@ vi.mock('../logger.js', () => ({
   logger: { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
+const autoProd = vi.fn(async (_projectId: string) => false);
+vi.mock('./auto-prod-deploy.js', () => ({
+  projectAutoProdDeploy: (projectId: string) => autoProd(projectId),
+}));
+
 const { logger } = await import('../logger.js');
 const { tryDispatchCoolifyRelease, dispatchCoolifyDeployDirect, isIssueAtReleaseStage } =
   await import('./release-coolify.js');
@@ -255,11 +260,11 @@ describe('tryDispatchCoolifyRelease — a run that cannot witness its deploy (IS
   });
 });
 
-describe('tryDispatchCoolifyRelease — prod autoProdDeploy bypass', () => {
-  it('auto-dispatches prod like staging when the project opted into autoProdDeploy', async () => {
+describe('tryDispatchCoolifyRelease — prod deploys on land', () => {
+  it('auto-dispatches prod like staging when the production environment deploys on land', async () => {
     listBindingsSpy.mockResolvedValueOnce([prodPair]);
     selectQueue.push([{ status: 'running' }]);
-    selectQueue.push([{ agentConfig: { pipelineConfig: { autoProdDeploy: true } } }]);
+    autoProd.mockResolvedValueOnce(true);
 
     const outcome = await tryDispatchCoolifyRelease({
       projectId: PROJECT_ID,
@@ -275,9 +280,9 @@ describe('tryDispatchCoolifyRelease — prod autoProdDeploy bypass', () => {
     expect(outcome.integrationIds).toEqual([PROD_INT]);
   });
 
-  it('run-less prod also auto-dispatches when autoProdDeploy is on', async () => {
+  it('run-less prod also auto-dispatches when the production environment deploys on land', async () => {
     listBindingsSpy.mockResolvedValueOnce([prodPair]);
-    selectQueue.push([{ agentConfig: { pipelineConfig: { autoProdDeploy: true } } }]);
+    autoProd.mockResolvedValueOnce(true);
 
     const outcome = await dispatchCoolifyDeployDirect({
       projectId: PROJECT_ID,
@@ -330,10 +335,10 @@ describe('tryDispatchCoolifyRelease — integrationId hard filter + allowLive', 
     expect(outcome.integrationIds).toEqual([STAGING_INT]);
   });
 
-  it('no new args (auto-subscriber shape): prod still auto-dispatches under autoProdDeploy — unchanged', async () => {
+  it('no new args (auto-subscriber shape): prod still auto-dispatches when it deploys on land — unchanged', async () => {
     listBindingsSpy.mockResolvedValueOnce([prodPair]);
     selectQueue.push([{ status: 'running' }]);
-    selectQueue.push([{ agentConfig: { pipelineConfig: { autoProdDeploy: true } } }]);
+    autoProd.mockResolvedValueOnce(true);
 
     const outcome = await tryDispatchCoolifyRelease({
       projectId: PROJECT_ID,
@@ -370,7 +375,6 @@ describe('tryDispatchCoolifyRelease — prod confirm gate', () => {
   it('returns pendingHumanConfirm and enqueues nothing when the gate is unconfirmed', async () => {
     listBindingsSpy.mockResolvedValueOnce([prodPair]); // active coolify bindings
     selectQueue.push([{ status: 'running' }]);
-    selectQueue.push([]); // projectAutoProdDeploy: no agentConfig → gate stays on
     selectQueue.push([]); // getProdGateStateForRun: this run carries no gate
     selectQueue.push([{ metadata: {} }]); // markPendingHumanConfirm: run metadata read
 
@@ -392,7 +396,6 @@ describe('tryDispatchCoolifyRelease — prod confirm gate', () => {
   it('refuses a gate confirmed for a different run — one confirmation is one deploy', async () => {
     listBindingsSpy.mockResolvedValueOnce([prodPair]);
     selectQueue.push([{ status: 'running' }]);
-    selectQueue.push([]); // projectAutoProdDeploy: gate stays on
     selectQueue.push([
       {
         metadata: {
@@ -447,7 +450,6 @@ describe('one application behind two stages is still the production box', () => 
       oneBox(PROD_INT, ['live']),
     ]);
     selectQueue.push([{ status: 'running' }]);
-    selectQueue.push([]); // projectAutoProdDeploy: gate stays on
     selectQueue.push([]); // getProdGateState: unconfirmed, preview binding
     selectQueue.push([{ metadata: {} }]);
     selectQueue.push([]); // getProdGateState: unconfirmed, live binding
@@ -474,7 +476,6 @@ describe('one application behind two stages is still the production box', () => 
     };
     listBindingsSpy.mockResolvedValueOnce([separate, oneBox(PROD_INT, ['live'])]);
     selectQueue.push([{ status: 'running' }]);
-    selectQueue.push([]); // projectAutoProdDeploy
     selectQueue.push([]); // getProdGateState for the live binding
     selectQueue.push([{ metadata: {} }]);
 

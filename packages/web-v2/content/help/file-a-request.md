@@ -59,13 +59,9 @@ saying why. Dropped is final — see [Read an issue's status](?path=issue-status
 
 ## What happens next
 
-Look at the status on the issue's page. It shows one of two things, depending on
-how your project is set up:
-
-- **Open** — the work is with the pipeline. Nothing is needed from you.
-- **Draft**, with an **intake** label — your project reviews new issues before any
-  work starts. Nothing runs until someone with access to the project moves it to
-  **Open**.
+Look at the status on the issue's page. It shows **Open**: the work is with the
+pipeline, and nothing is needed from you. If your project starts work by hand, the
+issue waits at **Open** until whoever runs the project starts it.
 
 From then on the status says who holds the work. If an agent needs something from
 you, the status becomes **Needs info** and its question appears on the issue page.
@@ -83,7 +79,7 @@ Answer it there.
 | Symptom | What is going on |
 |---|---|
 | Choosing **New issue** only says to open a project | You are not inside a project. Open one, then choose **New issue**. |
-| The issue stays at **Draft** | Your project reviews new issues first. Ask whoever runs the project to move it to **Open**. |
+| The issue stays at **Open** and nothing runs | Your project starts work by hand. Ask whoever runs the project to start it. |
 | An agent asked you something | Answer it on the issue page. The work continues once you do. |
 
 Next: [Tell when an issue is done](?path=what-done-means).

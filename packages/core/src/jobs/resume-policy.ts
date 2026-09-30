@@ -6,8 +6,7 @@ import { recordResumeDrop } from '../observability/hold-metrics.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { getTrippedDeviceIds } from '../runners/select.js';
 import { readAutoRetryPayload } from './retry.js';
-import { estimateIssueContextTokens, loadResumeBounds } from './session-resume.js';
-import type { StageOverrides } from './stage-overrides.js';
+import { estimateIssueContextTokens, MAX_RESUME_TOKENS } from './session-resume.js';
 
 /**
  * Why a dispatch that HAD a prior session to continue started from an empty transcript instead.
@@ -17,6 +16,7 @@ import type { StageOverrides } from './stage-overrides.js';
  * `priorClaudeSessionId === null` is that case.
  */
 export type ResumeDropReason =
+  // cm:why history-only: rows written before per-state runner pools were deleted (ISS-5) carry it.
   | 'stage_pool'
   | 'resume_bound_tokens'
   | 'resume_bound_reopen_cycles'
@@ -92,18 +92,16 @@ async function loadParentAttempt(job: typeof jobs.$inferSelect): Promise<{
 async function exceedsResumeBounds(args: {
   job: typeof jobs.$inferSelect;
   issueId: string;
-  agentConfig: Record<string, unknown> | undefined;
 }): Promise<ResumeDropReason | null> {
-  const bounds = await loadResumeBounds(args.job.projectId, args.agentConfig);
   const estTokens = await estimateIssueContextTokens(args.issueId);
-  if (!(bounds.maxResumeTokens > 0 && estTokens > bounds.maxResumeTokens)) return null;
+  if (estTokens <= MAX_RESUME_TOKENS) return null;
   const reason: ResumeDropReason = 'resume_bound_tokens';
   logger.info(
     {
       jobId: args.job.id,
       issueId: args.issueId,
       estTokens,
-      maxResumeTokens: bounds.maxResumeTokens,
+      maxResumeTokens: MAX_RESUME_TOKENS,
       reason,
     },
     'resume-policy: resume bound exceeded — dispatching fresh session',
@@ -119,11 +117,8 @@ async function exceedsResumeBounds(args: {
 
 export async function resolveResumePolicy(args: {
   job: typeof jobs.$inferSelect;
-  overrides: StageOverrides;
-  agentConfig: Record<string, unknown> | undefined;
 }): Promise<ResumePolicy> {
-  const { job, overrides } = args;
-  const stagePool = overrides.deviceIds;
+  const { job } = args;
   let offeredClaudeSessionId: string | null = null;
   let offeredDeviceId: string | null = null;
   let parentFailureAction: string | null = null;
@@ -140,27 +135,17 @@ export async function resolveResumePolicy(args: {
     skipPrimary = true;
     excludeDeviceIds = autoRetry.done;
     pinDeviceId = autoRetry.target;
-    let targetOutOfPool = false;
-    if (stagePool && pinDeviceId && !stagePool.includes(pinDeviceId)) {
-      pinDeviceId = null;
-      targetOutOfPool = true;
-    }
     const parent = await loadParentAttempt(job);
     offeredClaudeSessionId = parent?.claudeSessionId ?? null;
     offeredDeviceId = parent?.deviceId ?? null;
     parentFailureAction = parent?.failureAction ?? null;
     dropReason = null;
     if (parent) {
-      if (targetOutOfPool) dropReason = 'stage_pool';
-      else if (pinDeviceId === null || pinDeviceId !== parent.deviceId) dropReason = 'rotation';
+      if (pinDeviceId === null || pinDeviceId !== parent.deviceId) dropReason = 'rotation';
       else if (parent.failureAction !== 'retry') dropReason = 'failure_action';
     }
     if (!dropReason && offeredClaudeSessionId && job.issueId) {
-      dropReason = await exceedsResumeBounds({
-        job,
-        issueId: job.issueId,
-        agentConfig: args.agentConfig,
-      });
+      dropReason = await exceedsResumeBounds({ job, issueId: job.issueId });
       if (dropReason) pinDeviceId = null;
     }
   } else {

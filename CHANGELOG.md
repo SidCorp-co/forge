@@ -2522,6 +2522,13 @@
   (ISS-1313)
 
 ### Removed
+- **The pipeline configuration is gone.** Model, permissions, QA and intake come from the policy
+  alone; the old route, `forge_config` door and settings sections are removed. Re-enter the weekly
+  assistant setting, which moved to the project.
+- **Removed with it:** the intake gate, GitHub issue intake, pool backlog statuses, knowledge
+  promotion, entry criteria and the `forge/issue-contract` check. An answered question returns
+  the issue to Open.
+
 - **Forge no longer writes your release steps.** A project that declares its own procedure gets it;
   one that declares none is told where its method lives, instead of being refused for a deploy
   target Forge has no steps for.
@@ -6164,6 +6171,12 @@
   deploy. Shipped 2026-09-02; this line was owed then and is written now. (ISS-870)
 
 ### Changed
+- **Each job runs under its project's policy: that status's model and deny list.** A project with
+  no policy, or a status it leaves out, is refused by name. New projects get a default policy.
+- **A deny list is written as tool patterns, such as `Bash(git push:*)`.** One the runner could
+  not enforce is refused when saved, as `TOOL_PATTERN_INVALID`, naming its position.
+- **The Pipeline settings screen edits the policy:** the QA mode, how work is admitted, and each
+  status's model and permission profile.
 - **`forge-runner top` opens on one table row per project.** Each row shows pane, runs, issue
   lanes, a coloured verdict and what changed; arrow keys select, Enter opens the full detail, `s`
   shows sources. `--once` still prints everything.

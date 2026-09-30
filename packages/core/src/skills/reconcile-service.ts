@@ -39,6 +39,7 @@ import { resolveNotifications } from '../notifications/auto-resolve.js';
 import { emitNotification } from '../notifications/emit.js';
 import { projectAdminUserIds } from '../notifications/project-admins.js';
 import { closeRun, openOneShotRun } from '../pipeline/runs.js';
+import { readEffectivePolicy } from '../project-config/effective.js';
 import type { RecordSkillActivityEventInput, SkillActivityExecutor } from './activity.js';
 import { recordSkillActivityEvent } from './activity.js';
 import { globalEffectiveMd } from './effective.js';
@@ -240,11 +241,7 @@ export async function assembleBundle(
     lastPolicyEvent,
   ] = await Promise.all([
     db.select().from(updatePackets).where(eq(updatePackets.id, input.packetId)).limit(1),
-    db
-      .select({ agentConfig: projects.agentConfig })
-      .from(projects)
-      .where(eq(projects.id, input.projectId))
-      .limit(1),
+    db.select({ id: projects.id }).from(projects).where(eq(projects.id, input.projectId)).limit(1),
     db
       .select({
         id: skills.id,
@@ -359,11 +356,7 @@ export async function assembleBundle(
     runningHash,
     charter: charter ? { entries: charter.entries } : null,
     projectKnowledge: await selectKnowledgeBodies(input.projectId),
-    pipelineConfig:
-      ((project.agentConfig as Record<string, unknown> | null)?.pipelineConfig as Record<
-        string,
-        unknown
-      >) ?? {},
+    projectPolicy: (await readEffectivePolicy(input.projectId))?.document ?? null,
     recentRunEvidence: recentRunRows,
     priorReconcileHistory: priorReconcileRows,
     invariantSet: policyEvent
@@ -388,7 +381,7 @@ export async function assembleBundle(
       runningHash: runningIsObserved ? 'observed-from-run' : 'from-code',
       charter: 'human',
       projectKnowledge: 'human',
-      pipelineConfig: 'human',
+      projectPolicy: 'human',
       recentRunEvidence: 'observed-from-run',
       priorReconcileHistory: 'observed-from-run',
       invariantSet: 'observed-from-run',

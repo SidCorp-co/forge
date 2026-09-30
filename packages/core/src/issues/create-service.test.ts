@@ -36,16 +36,6 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
-const applyIntakeGateMock = vi.fn(async (_p: string, status: string) => ({
-  status,
-  gated: false,
-}));
-const finalizeIntakeMock = vi.fn(async () => undefined);
-vi.mock('./intake-gate.js', () => ({
-  applyIntakeGate: (p: string, s: string) => applyIntakeGateMock(p, s),
-  finalizeIntake: () => finalizeIntakeMock(),
-}));
-
 const decodeMock = vi.fn((a: unknown[]) => a.map(() => ({ stub: true })));
 const persistMock = vi.fn(async () => {
   calls.push('attachments');
@@ -206,18 +196,6 @@ describe('createIssue — entry status allow-list (ISS-130 / ISS-236)', () => {
   it('defaults to open when omitted', async () => {
     await createIssue({ projectId: PROJECT_ID, title: 'New' }, writer);
     expect(txInsertValues).toHaveBeenCalledWith(expect.objectContaining({ status: 'open' }));
-  });
-
-  it('lets the intake gate override the requested status', async () => {
-    applyIntakeGateMock.mockResolvedValueOnce({ status: 'draft', gated: true });
-    await createIssue({ projectId: PROJECT_ID, title: 'New', status: 'open' }, writer);
-    expect(txInsertValues).toHaveBeenCalledWith(expect.objectContaining({ status: 'draft' }));
-    expect(finalizeIntakeMock).toHaveBeenCalledTimes(1);
-  });
-
-  it('does not notify the owner when the gate did not park the issue', async () => {
-    await createIssue({ projectId: PROJECT_ID, title: 'New' }, writer);
-    expect(finalizeIntakeMock).not.toHaveBeenCalled();
   });
 });
 

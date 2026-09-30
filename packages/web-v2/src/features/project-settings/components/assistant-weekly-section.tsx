@@ -1,39 +1,31 @@
 "use client";
 
-import {
-  Banner,
-  Button,
-  CardTitle,
-  Toggle,
-	Input,
-} from "@/design";
+import { Button, CardTitle, Input, Toggle } from "@/design";
+import { useProject } from "@/features/projects/hooks";
 import { useSettingsDraft } from "../draft";
-import { useRunAssistantWeekly, useUpdatePipelineConfig } from "../hooks";
-import { type PipelineConfig, sectionWrite } from "../types";
-import { SaveRefusedBanner } from "./save-refused-banner";
+import { useRunAssistantWeekly, useUpdateProject } from "../hooks";
+import type { AssistantWeekly, ProjectAgentConfig } from "../types";
 
-type Slice = NonNullable<PipelineConfig["assistantWeekly"]>;
+const EMPTY: AssistantWeekly = { enabled: false, pinnedIssue: "", judgeProviderId: "", judgeModel: "" };
 
-const EMPTY: Slice = { enabled: false, pinnedIssue: "", judgeProviderId: "", judgeModel: "" };
-
-const AT = ["assistantWeekly"] as const;
-
-const seed = (config: PipelineConfig): Slice => ({ ...EMPTY, ...(config.assistantWeekly ?? {}) });
+/** The weekly reading as `agentConfig.assistantWeekly` stores it, over the empty defaults. */
+function storedOf(agentConfig: unknown): AssistantWeekly {
+	const stored = (agentConfig as ProjectAgentConfig | null | undefined)?.assistantWeekly;
+	return { ...EMPTY, ...(stored ?? {}) };
+}
 
 export function AssistantWeeklySection({
 	projectId,
-	config,
 	canEdit,
 }: {
 	projectId: string;
-	/** The full server-fetched pipelineConfig (round-tripped on save). */
-	config: PipelineConfig;
 	canEdit: boolean;
 }) {
-	const update = useUpdatePipelineConfig(projectId);
+	const projectQ = useProject(projectId);
+	const update = useUpdateProject(projectId);
 	const runNow = useRunAssistantWeekly(projectId);
-	const seeded = seed(config);
-	const held = useSettingsDraft(seeded, { at: AT });
+	const seeded = storedOf(projectQ.data?.agentConfig);
+	const held = useSettingsDraft(seeded);
 	const { draft: slice, setDraft: setSlice, dirty } = held;
 	const complete =
 		!slice.enabled ||
@@ -43,20 +35,15 @@ export function AssistantWeeklySection({
 
 	function save() {
 		const source = slice.source?.trim();
-		update.mutate(
-			sectionWrite(
-				{ assistantWeekly: config.assistantWeekly },
-				{
-					assistantWeekly: {
-						enabled: slice.enabled,
-						pinnedIssue: slice.pinnedIssue.trim(),
-						judgeProviderId: slice.judgeProviderId.trim(),
-						judgeModel: slice.judgeModel.trim(),
-						...(source ? { source } : {}),
-					},
-				},
-			),
-		);
+		update.mutate({
+			assistantWeekly: {
+				enabled: slice.enabled,
+				pinnedIssue: slice.pinnedIssue.trim(),
+				judgeProviderId: slice.judgeProviderId.trim(),
+				judgeModel: slice.judgeModel.trim(),
+				...(source ? { source } : {}),
+			},
+		});
 	}
 
 	const field = (
@@ -114,17 +101,6 @@ export function AssistantWeeklySection({
 
 			{canEdit && (
 				<div className="mt-3 space-y-3">
-					<SaveRefusedBanner
-						projectId={projectId}
-						error={update.isError ? update.error : null}
-						onDismiss={() => update.reset()}
-						draft={held}
-					/>
-					{update.isSuccess && !dirty && (
-						<Banner tone="success" onDismiss={() => update.reset()}>
-							Assistant weekly reading saved.
-						</Banner>
-					)}
 					<div className="flex flex-wrap gap-3">
 						<Button
 							variant="primary"

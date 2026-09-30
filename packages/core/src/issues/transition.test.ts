@@ -410,7 +410,6 @@ describe('POST /api/issues/:id/transition — draft as a target (ISS-787)', () =
   it('blames the status race, not a phantom run, when the conditional UPDATE loses', async () => {
     const token = await signUserToken(USER_ID);
     queueAuthAndIssue({ status: 'open' });
-    selectLimit.mockResolvedValueOnce([{ agentConfig: {} }]);
     selectLimit.mockResolvedValueOnce([{ n: 0 }]);
     selectLimit.mockResolvedValueOnce([{ n: 0 }]);
     updateReturning.mockResolvedValueOnce([]);

@@ -54,12 +54,8 @@ export interface FakeOptions {
   rows?: FakeState['chatLogs'];
   /** The judge endpoint's answer: the text the model returns, or an HTTP status to refuse with. */
   judge?: (input: { query: string; reply: string | null; model: string }) => string | number;
-  /** The stage keys the project's stored config names; defaults to the one key nearly every project holds. */
-  states?: string[];
-  /** Stage keys the project switched off, which is the one override a project has over the ladder (ISS-1066). */
-  statesOff?: string[];
-  /** ISS-606 — on, a filing is parked at `draft` for a person to admit; the brief says which. */
-  intakeGate?: boolean;
+  /** The project's policy intake; `none` answers the policy route with no document. Defaults to `auto`. */
+  intake?: 'auto' | 'manual' | 'none';
   /** The project's own row, as `GET /api/projects/:id` serves it and the list route does not. */
   detail?: { description?: string | null; issuePrefix?: string | null };
   /** The author's kebab-key map, which ISS-1048 is moving into knowledge entries. */
@@ -310,18 +306,10 @@ function issueRoutes(ctx: Ctx, method: string, url: URL): Response | null {
       ctx.opts.pageSize,
     );
   }
-  if (method === 'GET' && path === `/api/projects/${ctx.project.id}/pipeline-config`) {
-    const states: Record<string, { enabled?: boolean }> = Object.fromEntries(
-      (ctx.opts.states ?? ['open']).map((s) => [s, {}]),
-    );
-    for (const off of ctx.opts.statesOff ?? []) states[off] = { enabled: false };
-    return json(200, {
-      pipelineConfig: {
-        enabled: true,
-        states,
-        ...(ctx.opts.intakeGate ? { intakeGate: { enabled: true } } : {}),
-      },
-    });
+  if (method === 'GET' && path === `/api/projects/${ctx.project.id}/policy`) {
+    const intake = ctx.opts.intake ?? 'auto';
+    if (intake === 'none') return json(200, { declared: false, revision: null, document: null });
+    return json(200, { declared: true, revision: 1, document: { intake: { mode: intake } } });
   }
   const issue = /^\/api\/issues\/([^/]+)$/.exec(path);
   if (method === 'GET' && issue) {

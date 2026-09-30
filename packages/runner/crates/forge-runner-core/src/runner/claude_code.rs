@@ -107,13 +107,6 @@ fn describe_holders(holders: &[String]) -> String {
     holders.join(", ")
 }
 
-fn resolve_residency(configured: Option<u64>) -> Duration {
-    match configured {
-        Some(secs) if secs > 0 => Duration::from_secs(secs),
-        _ => SESSION_IDLE_TIMEOUT,
-    }
-}
-
 /// Signals captured from the claude stream + process exit, written
 /// incrementally by the reader/completion tasks so they survive a reader abort
 /// and let us emit a precise, diagnosable failure reason.
@@ -569,18 +562,6 @@ fn build_args(spec: &JobSpec, mcp_path: &str) -> Vec<String> {
         args.push("--append-system-prompt".into());
         args.push(sp.into());
     }
-    if let Some(tools) = spec.allowed_tools.as_deref().filter(|s| !s.is_empty()) {
-        args.push("--allowed-tools".into());
-        args.push(tools.into());
-    }
-    // Capability denylist (ISS-531). `--disallowed-tools` removes a tool from
-    // the available SET even under `--permission-mode bypassPermissions`
-    // (verified on claude v2.1.185), so it is a real least-agency hard-deny,
-    // not just an auto-approval gate.
-    if let Some(tools) = spec.disallowed_tools.as_deref().filter(|s| !s.is_empty()) {
-        args.push("--disallowed-tools".into());
-        args.push(tools.into());
-    }
     if let Some(model) = spec.model.as_deref().filter(|s| !s.is_empty()) {
         args.push("--model".into());
         args.push(model.into());
@@ -804,7 +785,6 @@ impl Runner for ClaudeCodeRunner {
         let args = build_args(&spec, &mcp_path.to_string_lossy());
         let turn_started = Arc::new(tokio::sync::Notify::new());
         let turn_done = Arc::new(tokio::sync::Notify::new());
-        let residency_secs = spec.session_residency_seconds;
 
         let mut cmd = build_command(&args, &effective_repo);
         cmd.env("FORGE_PAT", &credential);
@@ -996,7 +976,7 @@ impl Runner for ClaudeCodeRunner {
                     turn_started: &turn_started_for_turns,
                     turn_done: &turn_done_for_turns,
                     is_issue_job,
-                    residency: resolve_residency(residency_secs),
+                    residency: SESSION_IDLE_TIMEOUT,
                 },
                 &mut reader,
             )
@@ -1308,15 +1288,12 @@ mod tests {
             prompt: Some("hello".into()),
             system_prompt: None,
             model: None,
-            allowed_tools: None,
-            disallowed_tools: None,
             permission_mode: None,
             timeout_seconds: None,
             mcp_servers_override: None,
             resume_id: None,
             agent_session_id: None,
             counts_against_session_cap,
-            session_residency_seconds: None,
             credential: None,
         }
     }
@@ -1925,14 +1902,6 @@ mod tests {
             runner.resident(&"j1".to_string()).await.is_none(),
             "the budget elapsing must not leave the session resident"
         );
-    }
-
-    #[test]
-    fn a_zero_or_absent_residency_is_the_default_and_not_no_residency() {
-        assert_eq!(resolve_residency(None), SESSION_IDLE_TIMEOUT);
-        assert_eq!(resolve_residency(Some(0)), SESSION_IDLE_TIMEOUT);
-        assert_eq!(resolve_residency(Some(3600)), Duration::from_secs(3600));
-        assert_eq!(resolve_residency(Some(1)), Duration::from_secs(1));
     }
 
     #[tokio::test]

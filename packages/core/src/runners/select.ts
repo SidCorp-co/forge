@@ -12,8 +12,8 @@ import {
 import type { RequiredCapabilities } from './types.js';
 
 /**
- * Per-state runner pool (`pipelineConfig.states[x].deviceIds`) as a candidate
- * filter. `null`/empty pool → no fragment, so the fleet stays fully eligible.
+ * A caller's device allow-list as a candidate filter. `null`/empty → no
+ * fragment, so the fleet stays fully eligible.
  *
  * `column` lets a caller that aliases `runners` pass `sql`r.device_id``.
  */

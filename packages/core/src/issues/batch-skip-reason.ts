@@ -12,7 +12,6 @@ export const BATCH_SKIP_BY_CODE = {
   NO_WORK_EVIDENCE: 'no_work_evidence',
   RELEASE_RECORD_REQUIRED: 'release_record_required',
   CLOSE_REQUIRES_SHIPPED: 'close_requires_shipped',
-  ENTRY_CRITERIA_UNMET: 'entry_criteria_unmet',
   ISSUE_ARCHIVED: 'issue_archived',
   OPEN_QUESTIONS: 'open_questions',
   VOID_REASON_REQUIRED: 'void_reason_required',

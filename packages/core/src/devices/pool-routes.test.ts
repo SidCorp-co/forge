@@ -31,7 +31,10 @@ vi.mock('../auth/device-credential.js', () => ({
 }));
 
 const readPool = vi.fn(async (_args: unknown) => [] as unknown[]);
-const readAdmissibleIssues = vi.fn(async (_args: unknown) => [] as unknown[]);
+const readAdmissibleIssues = vi.fn(async (_args: unknown) => ({
+  items: [] as unknown[],
+  refused: [] as unknown[],
+}));
 const openRunSession = vi.fn(async (_args: unknown) => ({}) as unknown);
 const readRunSessionTerminal = vi.fn(async (_args: unknown) => null as boolean | null);
 
@@ -89,7 +92,7 @@ const ISSUE = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 
 beforeEach(() => {
   readPool.mockReset().mockResolvedValue([]);
-  readAdmissibleIssues.mockReset().mockResolvedValue([]);
+  readAdmissibleIssues.mockReset().mockResolvedValue({ items: [], refused: [] });
   openRunSession.mockReset();
   readRunSessionTerminal.mockReset().mockResolvedValue(null);
 });
@@ -106,7 +109,10 @@ describe('GET /me/pool', () => {
 
   it('carries no issues at all, under any key', async () => {
     readPool.mockResolvedValue([{ jobId: 'j1' }]);
-    readAdmissibleIssues.mockResolvedValue([{ issueId: ISSUE, status: 'draft' }]);
+    readAdmissibleIssues.mockResolvedValue({
+      items: [{ issueId: ISSUE, status: 'draft' }],
+      refused: [],
+    });
     const res = await app.request('/api/devices/me/pool', { headers: AUTH });
     const body = (await res.json()) as Record<string, unknown>;
     expect(body).toEqual({ items: [{ jobId: 'j1' }], count: 1 });
@@ -122,14 +128,19 @@ describe('GET /me/pool', () => {
 describe('GET /me/issues/admissible', () => {
   it('answers the admissible issues on their own route, scoped to the device', async () => {
     const projectId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-    readAdmissibleIssues.mockResolvedValue([{ issueId: ISSUE, status: 'draft' }]);
+    const refused = [{ projectId: 'p-2', code: 'POLICY_UNDECLARED', message: 'no policy' }];
+    readAdmissibleIssues.mockResolvedValue({
+      items: [{ issueId: ISSUE, status: 'open' }],
+      refused,
+    });
     const res = await app.request(`/api/devices/me/issues/admissible?projectId=${projectId}`, {
       headers: AUTH,
     });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
-      items: [{ issueId: ISSUE, status: 'draft' }],
+      items: [{ issueId: ISSUE, status: 'open' }],
       count: 1,
+      refused,
     });
     expect(readAdmissibleIssues).toHaveBeenCalledWith({ deviceId: 'dev-1', projectId });
   });

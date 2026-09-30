@@ -116,35 +116,34 @@ describe('buildPipelinePreambleStructured', () => {
     expect(custom.blocks.some((b) => b.id === 'state-block')).toBe(false);
   });
 
-  it('replace-mode override drops the shared prefix AND the state block', async () => {
+  it('renders the policy state a job runs under after project-config', async () => {
     mockBranchSelect([{ baseBranch: 'main', releaseChain: [] }]);
 
     const built = await buildPipelinePreambleStructured('p1', {
       step: 'release_batch',
-      override: { mode: 'replace', extras: 'ONLY THIS.' },
+      policy: {
+        revision: 3,
+        qa: 'independent',
+        status: 'open',
+        from: 'entry',
+        model: 'opus',
+        profile: 'driver',
+        deniedTools: ['Bash(git push:*)', 'CronCreate'],
+      },
     });
-    expect(built.content).toBe('ONLY THIS.');
-    expect(built.blocks.map((b) => b.id)).toEqual(['state-extras']);
+    const ids = built.blocks.map((b) => b.id);
+    expect(ids.indexOf('policy')).toBe(ids.indexOf('project-config') + 1);
+    expect(built.content).toContain('## Policy');
+    expect(built.content).toContain('policy revision 3, profile `driver`');
+    expect(built.content).toContain('the entry state `open`');
+    expect(built.content).toContain('`Bash(git push:*)`, `CronCreate`');
+    expect(built.content).toContain('another run judges it');
   });
 
-  it('append-mode override lands after the state block', async () => {
+  it('renders no policy block for a preamble no job runs', async () => {
     mockBranchSelect([{ baseBranch: 'main', releaseChain: [] }]);
-
-    const built = await buildPipelinePreambleStructured('p1', {
-      step: 'release_batch',
-      override: { mode: 'append', extras: 'EXTRA RULE.' },
-    });
-    expect(built.blocks.map((b) => b.id)).toEqual([
-      'pipeline-rules',
-      'tool-reference',
-      'project-config',
-      'project-context',
-      'forge-facts',
-      'state-block',
-      'state-extras',
-    ]);
-    expect(built.content).toContain('REPAIR FORWARD');
-    expect(built.content.trimEnd().endsWith('EXTRA RULE.')).toBe(true);
+    const built = await buildPipelinePreambleStructured('p1', { step: 'release_batch' });
+    expect(built.blocks.map((b) => b.id)).not.toContain('policy');
   });
 
   it('content matches the unstructured buildPipelinePreamble for the same project', async () => {

@@ -51,7 +51,7 @@ vi.mock('../middleware/auth.js', () => ({
 }));
 
 let openPullRequests: string[] = [PR_ROW];
-vi.mock('../integrations/github/contract-check.js', () => ({
+vi.mock('../integrations/repo-projection.js', () => ({
   openPullRequestsForIssue: async () => openPullRequests,
 }));
 

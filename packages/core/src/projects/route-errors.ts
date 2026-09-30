@@ -50,12 +50,6 @@ export const notFound = () =>
 export const forbidden = (message: string) =>
   new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
 
-export const pipelineFlagOff = () =>
-  new HTTPException(404, {
-    message: 'pipeline configuration disabled',
-    cause: { code: 'FEATURE_OFF' },
-  });
-
 /** A refusal that names the door rather than the field it was typed at. */
 export function refuseByName(
   error: { issues: readonly { message: string }[] },

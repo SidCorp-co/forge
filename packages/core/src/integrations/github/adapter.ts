@@ -18,7 +18,6 @@ import {
 } from '../types.js';
 import { GitHubAuthError, installationToken } from './app-auth.js';
 import { githubInboundSecret, syncRepoUrlFromGitHubBinding } from './bind-effects.js';
-import { CHECK_PUBLISH_EVENT, publishForStoredPullRequest } from './contract-check.js';
 import { readAppHookConfig } from './hook-config.js';
 import { checkInstallationGrant } from './installation-permissions.js';
 import { MERGE_EVENT, MERGE_METHODS, type MergeMethod, mergeStoredPullRequest } from './merge.js';
@@ -79,7 +78,7 @@ function isMergeMethod(value: unknown): value is MergeMethod {
  * cases are. Adding a verb here and a branch below is one edit; the sentence a
  * caller gets for a name that is not on it needs no edit at all.
  */
-const SERVED_VERBS = [CHECK_PUBLISH_EVENT, MERGE_EVENT] as const;
+const SERVED_VERBS = [MERGE_EVENT] as const;
 
 function isServedVerb(name: string): name is (typeof SERVED_VERBS)[number] {
   return (SERVED_VERBS as readonly string[]).includes(name);
@@ -306,7 +305,7 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
       .where(and(eq(integrationBindings.id, ctx.bindingId), eq(integrationBindings.active, true)))
       .limit(1);
     if (!live) {
-      const message = `github: project ${ctx.projectId} has no active GitHub binding — binding ${ctx.bindingId} is gone or deactivated, so there is no repository to publish a contract check on`;
+      const message = `github: project ${ctx.projectId} has no active GitHub binding — binding ${ctx.bindingId} is gone or deactivated, so there is no repository to merge on`;
       await recordDelivery({
         bindingId: null,
         direction: 'outbound',
@@ -325,38 +324,24 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
       );
     }
 
-    if (input.eventName === MERGE_EVENT) {
-      const read = readMergePayload(payload);
-      if ('refusal' in read) throw new Error(read.refusal);
-      const merged = await mergeStoredPullRequest(
-        { pullRequestId, runId: input.runId ?? null, ...read },
-        ctx.bindingId,
-      );
-      if (!merged) {
-        throw new Error(
-          `github: no stored pull request ${pullRequestId} — nothing on this project's projection has that id`,
-        );
-      }
-      if (merged.kind === 'refused') {
-        throw new NonRetryableDispatchError(merged.detail, merged.reason);
-      }
-      return {
-        deliveryId: merged.deliveryId,
-        durationMs: Date.now() - startedAt,
-        externalId: merged.commitSha,
-      };
-    }
-
-    const outcome = await publishForStoredPullRequest(pullRequestId, ctx.bindingId);
-    if (!outcome) {
+    const read = readMergePayload(payload);
+    if ('refusal' in read) throw new Error(read.refusal);
+    const merged = await mergeStoredPullRequest(
+      { pullRequestId, runId: input.runId ?? null, ...read },
+      ctx.bindingId,
+    );
+    if (!merged) {
       throw new Error(
         `github: no stored pull request ${pullRequestId} — nothing on this project's projection has that id`,
       );
     }
+    if (merged.kind === 'refused') {
+      throw new NonRetryableDispatchError(merged.detail, merged.reason);
+    }
     return {
-      deliveryId: outcome.deliveryId,
+      deliveryId: merged.deliveryId,
       durationMs: Date.now() - startedAt,
-      ...(outcome.kind === 'published' ? { externalId: String(outcome.checkRunId) } : {}),
+      externalId: merged.commitSha,
     };
   },
 };

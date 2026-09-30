@@ -16,10 +16,6 @@
 import { eq } from 'drizzle-orm';
 import { agentRefusalText } from '../../agent-sessions/session-credential.js';
 import { ESCALATE_TOOL_NAME } from '../../assistant/tools/escalate.js';
-import {
-  buildExternalMcpToolsets,
-  type ExternalMcpToolsets,
-} from '../../assistant/tools/external-mcp.js';
 import { type ConversationVenue, codeAuthored } from '../../conversations/ports.js';
 import type { WindowCut, WindowTurnInputs } from '../../conversations/route-window.js';
 import type { TurnInputs, TurnReply } from '../../conversations/turn-runner.js';
@@ -111,7 +107,6 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
     userId: bot.botUserId,
   };
   let seed: Seed | undefined;
-  let external: ExternalMcpToolsets | undefined;
 
   const readSeed = async (): Promise<Seed> => {
     if (seed) return seed;
@@ -204,8 +199,6 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
       handleUserId,
     }): Promise<TurnInputs> => {
       const s = await readSeed();
-      setPhase('mcp');
-      external = await buildExternalMcpToolsets(s.agentConfig);
       setPhase('images');
       const fast = await prepareFastTurn({
         route,
@@ -215,7 +208,6 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
         rid: subject.rid,
         ...(subject.tmid ? { tmid: subject.tmid } : {}),
         images: subject.images,
-        externalToolsets: external.toolsets,
       });
       return {
         tools: fast.tools,
@@ -270,10 +262,6 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
           screenReplaced: true,
         };
       return { send: false, reason: 'escalation-dispatch-failed' };
-    },
-
-    dispose: async () => {
-      await external?.dispose();
     },
   };
 }

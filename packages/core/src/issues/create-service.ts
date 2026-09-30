@@ -15,7 +15,6 @@ import {
   persistDecodedIssueAttachments,
 } from './attachment-service.js';
 import { claimDetectorKey, isValidDetectorKey } from './detector-key.js';
-import { applyIntakeGate, finalizeIntake } from './intake-gate.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
 import {
   type LabelAttachInput,
@@ -116,8 +115,6 @@ export async function createIssue(
     throw new IssueCreateError('INVALID_STATUS', requestedStatus);
   }
 
-  const intake = await applyIntakeGate(input.projectId, requestedStatus as IssueStatus);
-
   let decodedAttachments: DecodedAttachment[] = [];
   if (input.attachments && input.attachments.length > 0) {
     decodedAttachments = decodeAndValidateAttachments([...input.attachments]);
@@ -165,7 +162,7 @@ export async function createIssue(
         title: input.title,
         description: prepared ? prepared.body : (input.description ?? null),
         descriptionFormat: prepared?.format ?? 'markdown',
-        status: intake.status,
+        status: requestedStatus as IssueStatus,
         priority: (input.priority ?? 'medium') as IssueCreateRow['priority'],
         category: input.category ?? null,
         complexity: (input.complexity ?? null) as IssueCreateRow['complexity'],
@@ -213,8 +210,6 @@ export async function createIssue(
     attachments = result.persisted;
     attachmentErrors = result.errors;
   }
-
-  if (intake.gated) await finalizeIntake(input.projectId, { id: created.id, title: created.title });
 
   await flushIssueRelationEffects(
     { actor: writer.actor, createdById: writer.createdById },

@@ -54,8 +54,6 @@ pub struct JobSpec {
     pub prompt: Option<String>,
     pub system_prompt: Option<String>,
     pub model: Option<String>,
-    pub allowed_tools: Option<String>,
-    pub disallowed_tools: Option<String>,
     pub permission_mode: Option<String>,
     pub timeout_seconds: Option<u64>,
     pub mcp_servers_override: Option<serde_json::Value>,
@@ -63,10 +61,6 @@ pub struct JobSpec {
     pub resume_id: Option<String>,
     pub agent_session_id: Option<String>,
     pub counts_against_session_cap: bool,
-    /// How long a resident session may sit parked between turns, from
-    /// `pipelineConfig.sessionResidencySeconds`. `None` and `Some(0)` both mean
-    /// "use the default" — see `resolve_residency`.
-    pub session_residency_seconds: Option<u64>,
     /// The token core minted for the person this session answers (ISS-17). When present it is
     /// the session's `forge` MCP credential and its `$FORGE_PAT`, in place of the box's own —
     /// which belongs to whoever paired the box, not to the person who asked.

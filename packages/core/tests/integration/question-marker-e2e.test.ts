@@ -134,20 +134,6 @@ async function answer(questionId: string) {
   });
 }
 
-async function admit(statuses: string[]) {
-  const config = { pipelineConfig: { poolBacklog: { statuses } } };
-  await harness.db.execute(
-    sql`UPDATE projects SET agent_config = ${JSON.stringify(config)}::jsonb WHERE id = ${projectId}`,
-  );
-}
-
-async function transitionReasons(issueId: string): Promise<string[]> {
-  const rows = await harness.db.execute(sql`
-    SELECT body FROM comments WHERE issue_id = ${issueId} ORDER BY created_at
-  `);
-  return rows.map((r) => String((r as { body: unknown }).body));
-}
-
 async function lockWaiter() {
   for (let i = 0; i < 200; i++) {
     const rows = await harness.db.execute(sql`
@@ -222,24 +208,14 @@ describe('an ask marks the issue and moves nothing', () => {
 });
 
 describe('an answer moves only a needs_info park', () => {
-  it('settles an answered park at confirmed where the project admits confirmed', async () => {
-    await admit(['confirmed', 'developed']);
-    const issueId = await insertIssue('needs_info');
-    await answer(await openQuestion(issueId));
-    expect(await statusOf(issueId)).toBe('confirmed');
-  });
-
-  it('returns an answered park to open where the project admits nothing at confirmed, and says why', async () => {
-    await admit(['developed']);
+  it('returns an answered park to open, the one status a master admits', async () => {
     const issueId = await insertIssue('needs_info');
     await answer(await openQuestion(issueId));
     expect(await statusOf(issueId)).toBe('open');
-    expect((await transitionReasons(issueId)).join('\n')).toMatch(/`confirmed`/);
   });
 
   for (const status of ['testing', 'in_progress', 'developed', 'awaiting_release'] as const) {
     it(`leaves an issue at ${status} where it is when its question is answered`, async () => {
-      await admit(['confirmed']);
       const issueId = await insertIssue(status);
       await answer(await openQuestion(issueId));
       expect(await statusOf(issueId)).toBe(status);

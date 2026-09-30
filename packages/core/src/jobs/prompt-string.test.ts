@@ -61,20 +61,6 @@ describe('buildJobPromptString', () => {
       }
     });
 
-    it('includeFields override re-inlines the requested fields', () => {
-      const out = buildJobPromptString({
-        jobType: 'code',
-        issueId: 'iss-1',
-        issueSnapshot: SAMPLE,
-        policy: { includeFields: ['description', 'plan', 'acceptanceCriteria'] },
-      });
-      expect(out).toContain('Description:');
-      expect(out).toContain('Plan:');
-      expect(out).toContain('rate-limit.ts');
-      expect(out).toContain('Acceptance:');
-      expect(out).toContain('429 returned');
-    });
-
     it('renders metadata line with status/priority/complexity (always, no override needed)', () => {
       const out = buildJobPromptString({
         jobType: 'plan',
@@ -82,55 +68,6 @@ describe('buildJobPromptString', () => {
         issueSnapshot: SAMPLE,
       });
       expect(out).toContain('Status: approved · Priority: high · Complexity: m');
-    });
-
-    it('truncates long description with marker that names char count + tool hint', () => {
-      const longDesc = 'x'.repeat(9000);
-      const out = buildJobPromptString({
-        jobType: 'code',
-        issueId: 'iss-1',
-        issueSnapshot: { ...SAMPLE, description: longDesc },
-        policy: { includeFields: ['description', 'plan'] },
-      });
-      // Marker includes the cut position + original length + tool hint
-      expect(out).toMatch(
-        /… \[truncated at \d+\/9000 chars — call forge_issues\.get for full body\]/,
-      );
-      const descSection = out.slice(out.indexOf('Description:'), out.indexOf('Plan:'));
-      expect(descSection.length).toBeLessThan(9000);
-    });
-
-    it('truncates at paragraph boundary when one exists within window', () => {
-      // Build a description where a clean \n\n boundary sits inside the
-      // [80% cap, cap] window. The cut should land exactly there.
-      const head = 'A'.repeat(6500);
-      const tail = 'B'.repeat(2500);
-      const desc = `${head}\n\n${tail}`;
-      const out = buildJobPromptString({
-        jobType: 'code',
-        issueId: 'iss-1',
-        issueSnapshot: { ...SAMPLE, description: desc },
-        policy: { includeFields: ['description', 'plan'] },
-      });
-      // Body must end at the head paragraph — no B's should leak through.
-      const descSection = out.slice(out.indexOf('Description:'), out.indexOf('Plan:'));
-      expect(descSection).not.toContain('B');
-      // And it should include the truncation marker.
-      expect(descSection).toContain('[truncated at');
-    });
-
-    it('falls back to byte cut when no boundary exists within window', () => {
-      // No spaces, no newlines → boundary search returns -1 → cut at cap.
-      const desc = 'z'.repeat(9000);
-      const out = buildJobPromptString({
-        jobType: 'code',
-        issueId: 'iss-1',
-        issueSnapshot: { ...SAMPLE, description: desc },
-        policy: { includeFields: ['description', 'plan'] },
-      });
-      const descSection = out.slice(out.indexOf('Description:'), out.indexOf('Plan:'));
-      // Cut should be at the cap (8000); marker reports it.
-      expect(descSection).toMatch(/\[truncated at 8000\/9000 chars/);
     });
   });
 
@@ -151,63 +88,7 @@ describe('buildJobPromptString', () => {
       expect(out).not.toContain('## Previous Session Context');
     });
 
-    it('renders the block for code when sessionCount >= 1 (fields re-enabled via override)', () => {
-      const out = buildJobPromptString({
-        jobType: 'code',
-        issueId: 'iss-1',
-        issueSnapshot: {
-          ...SAMPLE,
-          sessionContext: {
-            sessionCount: 2,
-            currentState: 'mid-implementation, build green',
-            decisions: ['use middleware (not per-route)', 'redis backend for counts'],
-            filesModified: ['packages/core/src/middleware/rate-limit.ts'],
-            errorsResolved: ['ECONNREFUSED redis on test'],
-            reviewFeedback: ['expand AC for X-RateLimit-* headers'],
-            lastUpdated: '2026-05-20T12:00:00Z',
-          },
-        },
-        policy: {
-          sessionContext: {
-            fields: ['decisions', 'filesModified', 'errorsResolved', 'reviewFeedback'],
-          },
-        },
-      });
-      expect(out).toContain('## Previous Session Context');
-      expect(out).toContain('**Current state:** mid-implementation');
-      expect(out).toContain('**Key decisions:**');
-      expect(out).toContain('use middleware');
-      expect(out).toContain('**Files touched:**');
-      expect(out).toContain('rate-limit.ts');
-      expect(out).toContain('**Errors resolved:**');
-      expect(out).toContain('ECONNREFUSED');
-      expect(out).toContain('**Review feedback:**');
-      expect(out).toContain('Context from 2 previous session(s)');
-    });
-
-    it('sessionContext.fields override gates which fields render (decisions + filesModified only)', () => {
-      const out = buildJobPromptString({
-        jobType: 'review',
-        issueId: 'iss-1',
-        issueSnapshot: {
-          ...SAMPLE,
-          sessionContext: {
-            sessionCount: 1,
-            decisions: ['d1'],
-            filesModified: ['f1'],
-            errorsResolved: ['e1'],
-            reviewFeedback: ['fb1'],
-          },
-        },
-        policy: { sessionContext: { fields: ['decisions', 'filesModified'] } },
-      });
-      expect(out).toContain('**Key decisions:**');
-      expect(out).toContain('**Files touched:**');
-      expect(out).not.toContain('**Errors resolved:**');
-      expect(out).not.toContain('**Review feedback:**');
-    });
-
-    it('triage skips sessionContext entirely even with sessionCount >= 1', () => {
+    it('renders the current state and the count, and never the per-field lists', () => {
       const out = buildJobPromptString({
         jobType: 'triage',
         issueId: 'iss-1',
@@ -217,7 +98,6 @@ describe('buildJobPromptString', () => {
         },
       });
       expect(out).toContain('## Previous Session Context');
-      // Triage policy: no decisions, no filesModified rendered
       expect(out).not.toContain('**Key decisions:**');
       expect(out).not.toContain('**Files touched:**');
     });

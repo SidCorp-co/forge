@@ -3,8 +3,7 @@
  *
  * The operator's browser POSTs a manifest to GitHub, GitHub creates the App
  * and redirects back with a short-lived code, and converting that code yields
- * the App's id, private key and webhook secret. Nothing is typed by hand, so
- * nothing can be mistyped, and Forge never asks anyone for a token.
+ * the App's id, private key and webhook secret: nothing is typed by hand.
  */
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
@@ -100,20 +99,13 @@ export function buildAppManifest(args: {
     default_permissions: {
       actions: 'read',
       administration: 'read',
-      checks: 'write',
+      checks: 'read',
       contents: 'write',
       issues: 'write',
       metadata: 'read',
       pull_requests: 'write',
     },
-    default_events: [
-      'issues',
-      'pull_request',
-      'pull_request_review',
-      'check_run',
-      'push',
-      'workflow_run',
-    ],
+    default_events: ['pull_request', 'pull_request_review', 'check_run', 'push', 'workflow_run'],
   };
 }
 

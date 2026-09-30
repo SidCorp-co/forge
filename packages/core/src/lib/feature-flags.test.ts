@@ -19,15 +19,15 @@ describe('feature-flags', () => {
   });
 
   it('returns true by default (no env set) — flags ship on for v0.1.x alpha', () => {
-    expect(isEnabled('pipelineControl')).toBe(true);
     expect(isEnabled('commentMentions')).toBe(true);
+    expect(isEnabled('knowledgeOps')).toBe(true);
   });
 
   it('explicit FEATURE_X=false overrides default-on', () => {
     process.env.FEATURE_COMMENT_MENTIONS = 'false';
     expect(isEnabled('commentMentions')).toBe(false);
-    process.env.FEATURE_PIPELINE_CONTROL = '0';
-    expect(isEnabled('pipelineControl')).toBe(false);
+    process.env.FEATURE_KNOWLEDGE_OPS = '0';
+    expect(isEnabled('knowledgeOps')).toBe(false);
   });
 
   it('reads `true` from env (camelCase → SCREAMING_SNAKE_CASE)', () => {
@@ -36,8 +36,8 @@ describe('feature-flags', () => {
   });
 
   it('reads `1` as enabled', () => {
-    process.env.FEATURE_PIPELINE_CONTROL = '1';
-    expect(isEnabled('pipelineControl')).toBe(true);
+    process.env.FEATURE_KNOWLEDGE_OPS = '1';
+    expect(isEnabled('knowledgeOps')).toBe(true);
   });
 
   it('rejects other values (e.g. "on", "yes")', () => {
@@ -50,7 +50,6 @@ describe('feature-flags', () => {
   it('snapshotFlags returns every defined flag', () => {
     const snap = snapshotFlags();
     const expectedKeys: FeatureFlag[] = [
-      'pipelineControl',
       'commentMentions',
       'userPreferences',
       'knowledgeOps',

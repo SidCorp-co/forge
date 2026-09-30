@@ -132,3 +132,28 @@ describe('business rule: a key not in the schema is refused, never stripped', ()
     expectRefused(schema, d, { path, code: 'unrecognized_keys', key });
   });
 });
+
+describe('a deny entry is a tool pattern, to zod and to the emitted JSON Schema alike', () => {
+  const withDeny = (entry: string): Doc => {
+    const d = clone(read('sim-forge-dev/policy.json'));
+    d.permissions.development.deny = [entry];
+    return d;
+  };
+
+  it.each([
+    'Bash(git push:*)',
+    'CronCreate',
+    'WebFetch(domain:example.com)',
+    'mcp__playwright__*',
+    'mcp__forge__forge_jobs_cancel',
+  ])('accepts %s', (entry) => {
+    expectAccepted('policy', withDeny(entry));
+  });
+
+  it.each(['bash', 'Bash()', 'Bash( git)', 'mcp__', 'mcp__forge__', 'projects.update'])(
+    'refuses %s at its path',
+    (entry) => {
+      expectRefused('policy', withDeny(entry), { path: '/permissions/development/deny/0' });
+    },
+  );
+});
