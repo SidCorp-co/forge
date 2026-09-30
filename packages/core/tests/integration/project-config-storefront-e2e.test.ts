@@ -53,6 +53,7 @@ beforeAll(async () => {
   const { signUserToken } = await import('../../src/auth/jwt.js');
   adminToken = await signUserToken(admin.id);
   ({ app } = await import('../../src/index.js'));
+  (await import('../../src/integrations/register-all.js')).registerAllIntegrations();
 });
 
 afterAll(async () => {
@@ -114,7 +115,7 @@ describe('a storefront project with a source binding and a deploy binding', () =
     expect(res.json.error.code).toBe('CONNECTION_PROVIDER_MISMATCH');
   });
 
-  it('accepts the store example end to end', async () => {
+  it('refuses Forge deploying the storefront, then accepts it deployed outside Forge', async () => {
     expect((await putBinding('store-deploy.binding.json')).status).toBe(200);
     for (const id of ['theme-preview', 'storefront-smoke']) {
       const res = await send('PUT', at(`/testing-profiles/${id}`), {
@@ -125,6 +126,15 @@ describe('a storefront project with a source binding and a deploy binding', () =
     }
     const doc = example('store.project.json');
     doc.project.id = projectId;
+    const refused = await send('PUT', at('/config'), { baseRevision: null, document: doc });
+    expect(refused.status).toBe(422);
+    expect(refused.json.error.refusals).toEqual([
+      expect.objectContaining({
+        code: 'TRIGGER_UNSUPPORTED',
+        path: '/environments/production/deployment/trigger',
+      }),
+    ]);
+    doc.environments.production.deployment = { mode: 'external' };
     const res = await send('PUT', at('/config'), { baseRevision: null, document: doc });
     expect(res.json).toMatchObject({ declared: true, revision: 1, updatedBy: adminId });
     expect(res.status).toBe(200);
@@ -140,6 +150,7 @@ describe('a storefront project with a source binding and a deploy binding', () =
 
     const doc = example('store.project.json');
     doc.project.id = projectId;
+    doc.environments.production.deployment = { mode: 'external' };
     const res = await send('PUT', at('/config'), { baseRevision: 1, document: doc });
     expect(res.status).toBe(422);
     expect(res.json.error.refusals).toEqual([

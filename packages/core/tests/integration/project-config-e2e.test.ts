@@ -78,6 +78,7 @@ beforeAll(async () => {
   deviceToken = (await mintPat({ userId: admin.id, name: 'box', deviceId })).plaintext;
 
   ({ app } = await import('../../src/index.js'));
+  (await import('../../src/integrations/register-all.js')).registerAllIntegrations();
 });
 
 afterAll(async () => {
