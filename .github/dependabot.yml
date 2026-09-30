@@ -52,6 +52,16 @@ updates:
     rebase-strategy: "disabled"
     open-pull-requests-limit: 5
     labels: ["dependencies"]
+    # Amnesty (ISS-1354): dependency-cruiser is held at 18.2.0, exact, in
+    # packages/core/package.json. 18.3.0 renamed its CLI to
+    # bin/dependency-cruiser.mjs, and the vendored archmap 0.1.4 spawns only
+    # bin/dependency-cruise.mjs, so any newer version takes the relations gate
+    # down. Traded: dependency-cruiser's fixes after 18.2.0. Ends when archmap
+    # releases its ISS-10 fix (on archmap master since 2026-09-18, in no tag):
+    # run `archmap install --force`, then remove this entry and the exact pin.
+    ignore:
+      - dependency-name: "dependency-cruiser"
+        versions: [">18.2.0"]
     groups:
       minor-and-patch:
         update-types: ["minor", "patch"]
