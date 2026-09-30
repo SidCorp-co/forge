@@ -17,9 +17,7 @@ use crate::error::{Error, Result};
 
 /// Path to the dedicated forge-runner git credentials file.
 pub fn git_credentials_path() -> Result<PathBuf> {
-    let dir = dirs_next::config_dir()
-        .ok_or_else(|| Error::Config("cannot resolve OS config dir".into()))?;
-    Ok(dir.join("forge-runner").join("git-credentials"))
+    Ok(crate::config::base_dir()?.join("git-credentials"))
 }
 
 /// Percent-encode the userinfo portion of a credential URL (RFC 3986 sub-delims
@@ -86,9 +84,7 @@ pub fn write_git_credential(cred: &GitCredential) -> Result<String> {
 
 /// Dir holding per-project SSH deploy keys delivered during provision.
 pub fn ssh_keys_dir() -> Result<PathBuf> {
-    let dir = dirs_next::config_dir()
-        .ok_or_else(|| Error::Config("cannot resolve OS config dir".into()))?;
-    Ok(dir.join("forge-runner").join("keys"))
+    Ok(crate::config::base_dir()?.join("keys"))
 }
 
 /// Write a project's git SSH private key to a `0600` file and return its path.

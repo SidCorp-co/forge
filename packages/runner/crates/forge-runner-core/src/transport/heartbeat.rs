@@ -408,6 +408,23 @@ mod tests {
         );
     }
 
+    /// ISS-1344. A key core's schema refuses, planted beside the fixture's
+    /// record, leaves the body exactly the fixture: it does not travel, and
+    /// every project id beside it still does.
+    #[test]
+    fn a_key_core_would_refuse_does_not_ride_and_the_rest_of_the_body_does() {
+        let dir = scratch("bad-key");
+        planted_pool(&dir);
+        let path = crate::daemon::pool_reads::path(&dir);
+        let mut record: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        let blind = record["projects"][BLIND_PROJECT].clone();
+        record["projects"]["proj-u"] = blind;
+        std::fs::write(&path, record.to_string()).unwrap();
+        let body = heartbeat_body("0.17.18", None, &Conditions::read(Some(&dir), NOW));
+        assert_eq!(body["pool"], pool_fixture()["pool"], "{}", body["pool"]);
+    }
+
     #[test]
     fn the_pool_bounds_the_fixture_states_are_the_ones_this_box_emits() {
         use crate::daemon::degraded::WIRE_UNITS_CEILING;

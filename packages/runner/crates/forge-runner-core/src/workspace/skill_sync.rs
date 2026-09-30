@@ -27,9 +27,7 @@ use crate::transport::CoreClient;
 
 /// `~/.config/forge-runner/skills-cache/<project_id>/<skill_id>/`.
 fn cache_dir(project_id: &str, skill_id: &str) -> Result<PathBuf> {
-    let base = dirs_next::config_dir()
-        .ok_or_else(|| Error::Config("no config dir".into()))?
-        .join("forge-runner")
+    let base = crate::config::base_dir()?
         .join("skills-cache")
         .join(project_id)
         .join(skill_id);

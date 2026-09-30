@@ -202,13 +202,10 @@ fn sweep_stale(dir: &Path) {
     }
 }
 
-/// Dedicated folder for the runner's per-job MCP configs:
-/// `~/.config/forge-runner/mcp/`. Falls back to `<tmp>/forge-runner/mcp/` only
-/// when no config dir is resolvable. Created on demand; best-effort `0700`.
 /// Where the session configs live, for a message that names the path an
 /// operator has to make writable.
 pub fn session_dir() -> PathBuf {
-    mcp_config_dir()
+    mcp_read_dir()
 }
 
 /// The file this box writes one project's session MCP servers to.
@@ -218,13 +215,36 @@ pub fn session_dir() -> PathBuf {
 /// the reading that cost ISS-1191's reporter three wrong conclusions. The surface that says
 /// delivered names this path.
 pub fn session_path(slug: &str) -> PathBuf {
-    session_path_in(&mcp_config_dir(), slug)
+    session_path_in(&mcp_read_dir(), slug)
 }
 
+/// `~/.config/forge-runner/mcp/`, for a reader: resolved as [`crate::config::Config::path`]
+/// resolves, and created by nobody.
+fn mcp_read_dir() -> PathBuf {
+    crate::config::Config::path()
+        .ok()
+        .and_then(|p| p.parent().map(Path::to_path_buf))
+        .unwrap_or_else(unresolved_base)
+        .join("mcp")
+}
+
+/// Where the configs go when no config dir resolves at all.
+fn unresolved_base() -> PathBuf {
+    std::env::temp_dir().join("forge-runner")
+}
+
+/// Dedicated folder for the runner's per-job MCP configs, for a writer:
+/// `~/.config/forge-runner/mcp/`, created on demand, best-effort `0700`.
 fn mcp_config_dir() -> PathBuf {
-    let base = dirs_next::config_dir()
-        .map(|d| d.join("forge-runner"))
-        .unwrap_or_else(|| std::env::temp_dir().join("forge-runner"));
+    let base = match crate::config::base_dir() {
+        Ok(base) => base,
+        // A test build's refusal is the test's to answer, never a shared
+        // `<tmp>/forge-runner` every test process writes into (ISS-1344).
+        #[cfg(any(test, feature = "test-support"))]
+        Err(e) => panic!("{e}"),
+        #[cfg(not(any(test, feature = "test-support")))]
+        Err(_) => unresolved_base(),
+    };
     let dir = base.join("mcp");
     let _ = std::fs::create_dir_all(&dir);
     restrict_dir_perms(&dir);
@@ -371,7 +391,7 @@ fn clear_session_in(dir: &Path, slug: &str) -> Result<()> {
 /// question worth asking is whether the file it was given still says what core
 /// says now.
 pub fn session_matches(slug: &str, servers: &serde_json::Map<String, Value>) -> bool {
-    session_matches_in(&mcp_config_dir(), slug, servers)
+    session_matches_in(&mcp_read_dir(), slug, servers)
 }
 
 fn session_matches_in(dir: &Path, slug: &str, servers: &serde_json::Map<String, Value>) -> bool {
@@ -1197,6 +1217,39 @@ mod tests {
         );
         assert_eq!(doc["mcpServers"]["playwright"]["command"], "npx");
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// ISS-1344. A test that has not scoped a scratch config dir is refused by
+    /// name, never handed the shared `<tmp>/forge-runner` every test process
+    /// would write into; one that has writes into its own scratch.
+    #[test]
+    fn a_test_with_no_scratch_config_dir_is_refused_and_writes_nowhere_shared() {
+        let _env = crate::auth::cred_store::ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let own = crate::test_scratch::Scratch::new("mcp-own");
+        let shared = own
+            .path()
+            .parent()
+            .unwrap()
+            .join("forge-runner")
+            .join("mcp");
+        let had_shared = shared.exists();
+        let xdg = ScopedVar::set("XDG_CONFIG_HOME", "/iss-1344-nobody/.config");
+        let none = serde_json::Map::new();
+        let refused = std::panic::catch_unwind(|| write_session("proj", &none))
+            .expect_err("no scratch config dir, so no write");
+        let why = refused
+            .downcast_ref::<String>()
+            .cloned()
+            .unwrap_or_default();
+        assert!(why.contains("is not one"), "{why}");
+        assert_eq!(shared.exists(), had_shared, "nothing shared was created");
+
+        xdg.move_to(own.path());
+        let _ = write_session("proj", &none);
+        assert!(own.path().join("forge-runner").join("mcp").is_dir());
+        assert_eq!(shared.exists(), had_shared, "nothing shared was created");
     }
 
     #[test]

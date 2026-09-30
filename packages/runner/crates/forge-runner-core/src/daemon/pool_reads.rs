@@ -48,6 +48,26 @@ pub fn path(config_dir: &Path) -> PathBuf {
     config_dir.join("pool-reads.json")
 }
 
+/// Whether core's heartbeat schema takes `id` as a project id: the hyphenated
+/// form with an RFC 9562 version and variant, or the nil or max id, which is
+/// what its `z.uuid()` reads. One key it refuses refuses the whole report, so
+/// no other project's condition reaches core either (ISS-1344).
+pub fn is_project_id(id: &str) -> bool {
+    let b = id.as_bytes();
+    if id == "00000000-0000-0000-0000-000000000000"
+        || id.eq_ignore_ascii_case("ffffffff-ffff-ffff-ffff-ffffffffffff")
+    {
+        return true;
+    }
+    b.len() == 36
+        && b.iter().enumerate().all(|(i, c)| match i {
+            8 | 13 | 18 | 23 => *c == b'-',
+            _ => c.is_ascii_hexdigit(),
+        })
+        && (b'1'..=b'8').contains(&b[14])
+        && matches!(b[19], b'8' | b'9' | b'a' | b'b' | b'A' | b'B')
+}
+
 /// One failed read, as the transport reported it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -169,6 +189,22 @@ impl std::fmt::Display for Unreadable {
     }
 }
 
+/// The record with every key [`is_project_id`] refuses taken out, and those
+/// keys, so the caller that writes can say which it dropped.
+fn load_valid(config_dir: &Path) -> Result<(Record, Vec<String>), Unreadable> {
+    let mut r = load(config_dir)?;
+    let refused: Vec<String> = r
+        .projects
+        .keys()
+        .filter(|id| !is_project_id(id))
+        .cloned()
+        .collect();
+    for id in &refused {
+        r.projects.remove(id);
+    }
+    Ok((r, refused))
+}
+
 /// An absent file is no record; any other failure to read it is [`Unreadable`].
 fn load(config_dir: &Path) -> Result<Record, Unreadable> {
     let at = path(config_dir);
@@ -201,9 +237,15 @@ pub fn note(config_dir: &Path, project_id: &str, took: &Took, now_ms: i64) {
     let Some(outcome) = Outcome::of(took) else {
         return;
     };
+    if !is_project_id(project_id) {
+        tracing::warn!(
+            "[pool] {project_id:?} is not a project id core takes (a UUID), so this read of its pool is not recorded — a record holding it would make core refuse every project's report"
+        );
+        return;
+    }
     let _held = WRITE.lock().unwrap_or_else(|e| e.into_inner());
-    let mut r = match load(config_dir) {
-        Ok(r) => r,
+    let (mut r, refused) = match load_valid(config_dir) {
+        Ok(loaded) => loaded,
         Err(e) => {
             if let Outcome::Failed(f) = outcome {
                 tracing::warn!(
@@ -214,13 +256,19 @@ pub fn note(config_dir: &Path, project_id: &str, took: &Took, now_ms: i64) {
             return;
         }
     };
+    for id in &refused {
+        tracing::warn!(
+            "[pool] dropped {id:?} from {}: not a project id core takes (a UUID), and while it stood core refused this box's whole pool report",
+            path(config_dir).display()
+        );
+    }
     let known = r.projects.contains_key(project_id);
-    if !known && matches!(outcome, Outcome::Read) {
+    if !known && matches!(outcome, Outcome::Read) && refused.is_empty() {
         return;
     }
     let p = r.projects.entry(project_id.to_string()).or_default();
     let was = (p.streak_since, p.consecutive);
-    if !apply(p, outcome, now_ms) {
+    if !apply(p, outcome, now_ms) && refused.is_empty() {
         return;
     }
     if let (Some(since), n, Outcome::Read) = (was.0, was.1, outcome) {
@@ -306,7 +354,13 @@ fn condition(project_id: &str, p: &Project, now_ms: i64) -> Option<Condition> {
 /// Every project that failed a read inside the window, blind ones first.
 /// A project absent from this list read cleanly all window, or was never read.
 pub fn report(config_dir: &Path, now_ms: i64) -> Result<Vec<Condition>, Unreadable> {
-    let r = load(config_dir)?;
+    let (r, refused) = load_valid(config_dir)?;
+    for id in &refused {
+        tracing::warn!(
+            "[pool] {id:?} in {} is not a project id core takes (a UUID) and is left out of the report; the daemon's next pool read removes it",
+            path(config_dir).display()
+        );
+    }
     let mut out: Vec<Condition> = r
         .projects
         .iter()
@@ -335,6 +389,9 @@ mod tests {
 
     const NOW: i64 = 1_790_236_800_000;
     const MIN: i64 = 60_000;
+    const P1: &str = "68567cd4-0000-4000-8000-00000000000a";
+    const INTERMITTENT: &str = "68567cd4-0000-4000-8000-00000000000b";
+    const BLIND: &str = "68567cd4-0000-4000-8000-00000000000c";
 
     /// Every case but the unreadable ones reads a record this module wrote.
     fn report(d: &Path, now_ms: i64) -> Vec<Condition> {
@@ -364,8 +421,8 @@ mod tests {
     #[test]
     fn a_failed_read_leaves_the_project_blind_on_disk() {
         let d = dir("blind");
-        note(&d, "p1", &gw525(), NOW - 2 * MIN);
-        note(&d, "p1", &gw525(), NOW - MIN);
+        note(&d, P1, &gw525(), NOW - 2 * MIN);
+        note(&d, P1, &gw525(), NOW - MIN);
         let r = report(&d, NOW);
         assert_eq!(r.len(), 1);
         let c = &r[0];
@@ -383,9 +440,9 @@ mod tests {
     #[test]
     fn a_good_read_ends_the_streak_and_keeps_the_count() {
         let d = dir("recover");
-        note(&d, "p1", &gw525(), NOW - 10 * MIN);
-        note(&d, "p1", &Took::NothingClaimable, NOW - 9 * MIN);
-        note(&d, "p1", &Took::NothingClaimable, NOW - 8 * MIN);
+        note(&d, P1, &gw525(), NOW - 10 * MIN);
+        note(&d, P1, &Took::NothingClaimable, NOW - 9 * MIN);
+        note(&d, P1, &Took::NothingClaimable, NOW - 8 * MIN);
         let c = &report(&d, NOW)[0];
         assert_eq!(c.verdict, Verdict::Intermittent);
         assert_eq!(c.recovered_at, Some(NOW - 9 * MIN), "the FIRST good read");
@@ -399,12 +456,12 @@ mod tests {
     #[test]
     fn a_project_clean_for_a_whole_window_carries_no_condition() {
         let d = dir("aged");
-        note(&d, "p1", &gw525(), NOW - WINDOW_MS - MIN);
-        note(&d, "p1", &Took::NothingClaimable, NOW - WINDOW_MS);
+        note(&d, P1, &gw525(), NOW - WINDOW_MS - MIN);
+        note(&d, P1, &Took::NothingClaimable, NOW - WINDOW_MS);
         assert!(report(&d, NOW).is_empty());
-        note(&d, "p1", &Took::NothingClaimable, NOW);
+        note(&d, P1, &Took::NothingClaimable, NOW);
         assert!(
-            !path(&d).exists() || !std::fs::read_to_string(path(&d)).unwrap().contains("p1"),
+            !path(&d).exists() || !std::fs::read_to_string(path(&d)).unwrap().contains(P1),
             "an aged-out project leaves the file"
         );
         let _ = std::fs::remove_dir_all(&d);
@@ -413,8 +470,8 @@ mod tests {
     #[test]
     fn a_project_never_failed_is_never_written() {
         let d = dir("clean");
-        note(&d, "p1", &Took::NothingClaimable, NOW);
-        note(&d, "p1", &Took::Started("j1".into()), NOW);
+        note(&d, P1, &Took::NothingClaimable, NOW);
+        note(&d, P1, &Took::Started("j1".into()), NOW);
         assert!(!path(&d).exists(), "a clean read writes nothing");
         let _ = std::fs::remove_dir_all(&d);
     }
@@ -423,8 +480,8 @@ mod tests {
     #[test]
     fn a_pass_at_its_bound_is_not_a_read() {
         let d = dir("bound");
-        note(&d, "p1", &gw525(), NOW - MIN);
-        note(&d, "p1", &Took::AtBound, NOW);
+        note(&d, P1, &gw525(), NOW - MIN);
+        note(&d, P1, &Took::AtBound, NOW);
         assert_eq!(report(&d, NOW)[0].verdict, Verdict::Blind);
         let _ = std::fs::remove_dir_all(&d);
     }
@@ -435,7 +492,7 @@ mod tests {
     fn past_the_cap_the_count_is_a_floor_and_a_restart_still_says_so() {
         let d = dir("cap");
         for i in 0..(MAX_FAILURES as i64 + 5) {
-            note(&d, "p1", &gw525(), NOW - 100 * MIN + i * 1000);
+            note(&d, P1, &gw525(), NOW - 100 * MIN + i * 1000);
         }
         let c = &report(&d, NOW)[0];
         assert_eq!(c.failures, MAX_FAILURES);
@@ -455,7 +512,7 @@ mod tests {
         let d = dir("nostatus");
         note(
             &d,
-            "p1",
+            P1,
             &unread(None, "pool request: operation timed out"),
             NOW,
         );
@@ -481,12 +538,12 @@ mod tests {
     #[test]
     fn blind_projects_come_first() {
         let d = dir("order");
-        note(&d, "a-intermittent", &gw525(), NOW - 3 * MIN);
-        note(&d, "a-intermittent", &Took::NothingClaimable, NOW - 2 * MIN);
-        note(&d, "b-blind", &gw525(), NOW - 5 * MIN);
+        note(&d, INTERMITTENT, &gw525(), NOW - 3 * MIN);
+        note(&d, INTERMITTENT, &Took::NothingClaimable, NOW - 2 * MIN);
+        note(&d, BLIND, &gw525(), NOW - 5 * MIN);
         let r = report(&d, NOW);
-        assert_eq!(r[0].project_id, "b-blind");
-        assert_eq!(r[1].project_id, "a-intermittent");
+        assert_eq!(r[0].project_id, BLIND);
+        assert_eq!(r[1].project_id, INTERMITTENT);
         let _ = std::fs::remove_dir_all(&d);
     }
 
@@ -497,7 +554,12 @@ mod tests {
         let d = dir("many");
         let n = MAX_PROJECTS + 5;
         for i in 0..n {
-            note(&d, &format!("p-{i:03}"), &gw525(), NOW - MIN);
+            note(
+                &d,
+                &format!("68567cd4-0000-4000-8000-{i:012}"),
+                &gw525(),
+                NOW - MIN,
+            );
         }
         assert_eq!(report(&d, NOW).len(), n);
         let _ = std::fs::remove_dir_all(&d);
@@ -513,7 +575,7 @@ mod tests {
         let e = super::report(&d, NOW).expect_err("junk is not an empty record");
         assert_eq!(e.path, path(&d));
         assert!(e.reason.starts_with("does not parse"), "{e}");
-        note(&d, "p1", &gw525(), NOW);
+        note(&d, P1, &gw525(), NOW);
         assert_eq!(std::fs::read_to_string(path(&d)).unwrap(), "{not json");
         let _ = std::fs::remove_dir_all(&d);
     }
@@ -526,5 +588,120 @@ mod tests {
         let e = super::report(&d, NOW).expect_err("a directory is not a record");
         assert!(!e.reason.starts_with("does not parse"), "{e}");
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// The record this box held on 2026-09-30: every key a project id but one,
+    /// a fixture's, whose failures carry `fake_core::ROUTE_ABSENT` byte for byte.
+    fn plant_the_boxs_record(d: &Path) {
+        let body = serde_json::json!({ "projects": {
+            "proj-u": {
+                "failures": [{ "at": NOW - 2 * MIN, "status": 404, "reason": format!(
+                    "pool 404 Not Found: {}", crate::transport::fake_core::ROUTE_ABSENT) }],
+                "droppedThrough": null, "streakSince": NOW - 2 * MIN, "consecutive": 1, "recoveredAt": null
+            },
+            BLIND: {
+                "failures": [{ "at": NOW - MIN, "status": 525, "reason": "pool 525" }],
+                "droppedThrough": null, "streakSince": NOW - MIN, "consecutive": 1, "recoveredAt": null
+            }
+        }});
+        std::fs::write(path(d), body.to_string()).unwrap();
+    }
+
+    /// ISS-1344. A key core's schema refuses is left out of the report, and the
+    /// project beside it still goes: one bad key used to refuse them all.
+    #[test]
+    fn a_key_core_would_refuse_is_left_out_and_every_project_id_still_goes() {
+        let d = dir("bad-key");
+        plant_the_boxs_record(&d);
+        let r = report(&d, NOW);
+        let ids: Vec<&str> = r.iter().map(|c| c.project_id.as_str()).collect();
+        assert_eq!(ids, vec![BLIND], "only the project id travels: {r:?}");
+    }
+
+    /// What `f` logged, for the criteria that are about what the daemon says.
+    fn logged(f: impl FnOnce()) -> String {
+        #[derive(Clone)]
+        struct Buf(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+        impl std::io::Write for Buf {
+            fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(b);
+                Ok(b.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let buf = Buf(Default::default());
+        let made = buf.clone();
+        crate::daemon::keep_tracing_capturable();
+        let sub = tracing_subscriber::fmt()
+            .with_writer(move || made.clone())
+            .with_ansi(false)
+            .finish();
+        tracing::subscriber::with_default(sub, f);
+        let out = buf.0.lock().unwrap().clone();
+        String::from_utf8_lossy(&out).into_owned()
+    }
+
+    /// ISS-1344. The first pool read the daemon records takes the bad key out of
+    /// the file, whichever project that read was of and however it went, and
+    /// says which key it dropped.
+    #[test]
+    fn the_next_recorded_read_removes_a_key_core_would_refuse_from_the_file() {
+        let d = dir("bad-key-drop");
+        plant_the_boxs_record(&d);
+        let said = logged(|| note(&d, P1, &Took::NothingClaimable, NOW));
+        let body = std::fs::read_to_string(path(&d)).unwrap();
+        assert!(!body.contains("proj-u"), "{body}");
+        assert!(body.contains(BLIND), "the valid entry is kept: {body}");
+        assert!(said.contains(r#"dropped "proj-u" from"#), "{said}");
+    }
+
+    /// ISS-1344. A read of a project whose id core would refuse is not stored,
+    /// so it can never reach the report, and the log names the id.
+    #[test]
+    fn a_read_of_a_project_id_core_would_refuse_is_not_recorded() {
+        let d = dir("bad-key-note");
+        let said = logged(|| note(&d, "proj-u", &gw525(), NOW));
+        assert!(!path(&d).exists(), "nothing was written");
+        assert!(
+            said.contains(r#""proj-u" is not a project id core takes"#),
+            "{said}"
+        );
+        note(&d, P1, &gw525(), NOW);
+        note(&d, "proj-u", &gw525(), NOW);
+        let r = report(&d, NOW);
+        assert_eq!(r.len(), 1);
+        assert_eq!(r[0].project_id, P1);
+    }
+
+    /// The shapes core's `z.uuid()` takes and refuses, which is what the box
+    /// has to match rather than what `uuid::Uuid::parse_str` would take.
+    #[test]
+    fn a_project_id_is_the_shape_cores_schema_takes() {
+        for ok in [
+            P1,
+            "da368b0a-8e21-4763-9d90-8f7b9d0c7115",
+            "DA368B0A-8E21-4763-9D90-8F7B9D0C7115",
+            "00000000-0000-0000-0000-000000000000",
+            "ffffffff-ffff-ffff-ffff-ffffffffffff",
+        ] {
+            assert!(is_project_id(ok), "{ok}");
+        }
+        for bad in [
+            "",
+            "proj-u",
+            "p1",
+            "da368b0a8e2147639d908f7b9d0c7115",
+            "{da368b0a-8e21-4763-9d90-8f7b9d0c7115}",
+            "urn:uuid:da368b0a-8e21-4763-9d90-8f7b9d0c7115",
+            "da368b0a-8e21-0763-9d90-8f7b9d0c7115",
+            "da368b0a-8e21-9763-9d90-8f7b9d0c7115",
+            "da368b0a-8e21-4763-cd90-8f7b9d0c7115",
+            "da368b0a-8e21-4763-9d90-8f7b9d0c711g",
+            "da368b0a-8e21-4763-9d90-8f7b9d0c71150",
+        ] {
+            assert!(!is_project_id(bad), "{bad}");
+        }
     }
 }
