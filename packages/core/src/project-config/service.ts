@@ -7,6 +7,7 @@ import {
   secretRefOf,
   staleBase,
 } from './documents.js';
+import { getAdapter, providerCanDeploy } from '../integrations/registry.js';
 import { checkPolicy, checkProjectConfig, type ProjectConfigContext } from './rules.js';
 import {
   type PolicyDocument,
@@ -107,7 +108,17 @@ export async function buildProjectConfigContext(projectId: string): Promise<Proj
     readPolicy(projectId),
   ]);
   return {
-    bindings: new Map(bindings.map((b) => [b.id, { role: b.role }])),
+    bindings: new Map(
+      bindings.map((b) => [
+        b.id,
+        {
+          role: b.role,
+          provider: b.provider,
+          canDeploy: providerCanDeploy(b.provider),
+          readsHistory: getAdapter(b.provider)?.deploymentRecords !== undefined,
+        },
+      ]),
+    ),
     testingProfileIds: new Set(profiles.map((p) => p.profileId)),
     ...(policy ? { policy: policy.document } : {}),
   };

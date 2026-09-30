@@ -5,6 +5,7 @@ import {
   type ConfigRefusal,
   checkPolicy,
   checkProjectConfig,
+  type BindingFacts,
   type ProjectConfigContext,
   PURE_REFUSAL_CODES,
 } from './rules.js';
@@ -30,8 +31,19 @@ const simProfiles = ['testing.beta.json', 'testing.dev.json'].map(
   (f) => testingProfileSchema.parse(raw(`sim-forge-dev/${f}`)).id,
 );
 
+// cm:why the facts a registry answers at write time, fixed per provider so each plant names its own cause.
+const CAPABILITIES: Record<string, Pick<BindingFacts, 'canDeploy' | 'readsHistory'>> = {
+  coolify: { canDeploy: true, readsHistory: true },
+  shopify: { canDeploy: false, readsHistory: false },
+};
+const factsOf = (b: BindingDocument): [string, BindingFacts] => {
+  const known = CAPABILITIES[b.target.provider];
+  if (!known) throw new Error(`no capability fixture for provider ${b.target.provider}`);
+  return [b.id, { role: b.role, provider: b.target.provider, ...known }];
+};
+
 const simCtx = (): ProjectConfigContext => ({
-  bindings: new Map(simBindings.map((b) => [b.id, { role: b.role }])),
+  bindings: new Map(simBindings.map(factsOf)),
   testingProfileIds: new Set(simProfiles),
   policy: structuredClone(simPolicy),
 });
@@ -62,7 +74,7 @@ describe('happy', () => {
     const doc = projectDocumentSchema.parse(raw('examples/forge-dev.project.json'));
     const b = bindingDocumentSchema.parse(raw('examples/forge-beta.binding.json'));
     const ctx: ProjectConfigContext = {
-      bindings: new Map([[b.id, { role: b.role }]]),
+      bindings: new Map([factsOf(b)]),
       testingProfileIds: new Set(['forge-beta']),
       policy: policyDocumentSchema.parse(raw('examples/forge-dev.policy.json')),
     };
@@ -322,17 +334,66 @@ describe('boundaries', () => {
 });
 
 describe('the declared store example', () => {
-  it('passes with one source binding for the storefront and one deploy binding for production', () => {
+  it('refuses Forge deploying the storefront while Forge has no shopify deploy adapter', () => {
     const doc = projectDocumentSchema.parse(raw('examples/store.project.json'));
     const bindings = ['store-source.binding.json', 'store-deploy.binding.json'].map((f) =>
       bindingDocumentSchema.parse(raw(`examples/${f}`)),
     );
     expect(new Set(bindings.map((b) => b.connection)).size).toBe(1);
     const ctx: ProjectConfigContext = {
-      bindings: new Map(bindings.map((b) => [b.id, { role: b.role }])),
+      bindings: new Map(bindings.map(factsOf)),
       testingProfileIds: new Set(['theme-preview', 'storefront-smoke']),
     };
-    expect(checkProjectConfig(doc, ctx)).toEqual([]);
+    const out = checkProjectConfig(doc, ctx);
+    for (const r of out) seen.add(r.code);
+    expect(pick(out)).toEqual([
+      { code: 'TRIGGER_UNSUPPORTED', path: '/environments/production/deployment/trigger' },
+    ]);
+    expect(out[0]?.detail).toContain('no deploy adapter for shopify');
+  });
+
+  it('passes the storefront once production is deployed outside Forge', () => {
+    const doc = projectDocumentSchema.parse(raw('examples/store.project.json'));
+    const production = doc.environments.production;
+    if (!production) throw new Error('store example has no production');
+    production.deployment = { mode: 'external' };
+    const bindings = ['store-source.binding.json', 'store-deploy.binding.json'].map((f) =>
+      bindingDocumentSchema.parse(raw(`examples/${f}`)),
+    );
+    expect(
+      checkProjectConfig(doc, {
+        bindings: new Map(bindings.map(factsOf)),
+        testingProfileIds: new Set(['theme-preview', 'storefront-smoke']),
+      }),
+    ).toEqual([]);
+  });
+
+  it('refuses trigger provider through an adapter that cannot read deployment history', () => {
+    const doc = projectDocumentSchema.parse(raw('examples/store.project.json'));
+    const production = doc.environments.production;
+    if (!production || !('binding' in production.deployment)) throw new Error('store example has no bound production');
+    production.deployment = { ...production.deployment, trigger: 'provider' };
+    const bindings = ['store-source.binding.json', 'store-deploy.binding.json'].map((f) =>
+      bindingDocumentSchema.parse(raw(`examples/${f}`)),
+    );
+    const out = checkProjectConfig(doc, {
+      bindings: new Map(bindings.map(factsOf)),
+      testingProfileIds: new Set(['theme-preview', 'storefront-smoke']),
+    });
+    expect(pick(out)).toEqual([
+      { code: 'TRIGGER_UNSUPPORTED', path: '/environments/production/deployment/trigger' },
+    ]);
+    expect(out[0]?.detail).toContain("cannot read shopify's deployment history");
+  });
+
+  it('accepts trigger provider through an adapter that reads deployment history', () => {
+    expect(
+      refusals((d) => {
+        const dev = d.environments.dev;
+        if (!dev || !('binding' in dev.deployment)) throw new Error('sim fixture has no bound dev');
+        dev.deployment = { ...dev.deployment, trigger: 'provider' };
+      }),
+    ).toEqual([]);
   });
 
   it('refuses deploysFrom on a storefront project', () => {
@@ -340,11 +401,14 @@ describe('the declared store example', () => {
     const preview = doc.environments.preview;
     if (!preview) throw new Error('store example has no preview');
     preview.deploysFrom = 'main';
+    const production = doc.environments.production;
+    if (!production) throw new Error('store example has no production');
+    production.deployment = { mode: 'external' };
     const bindings = ['store-source.binding.json', 'store-deploy.binding.json'].map((f) =>
       bindingDocumentSchema.parse(raw(`examples/${f}`)),
     );
     const out = checkProjectConfig(doc, {
-      bindings: new Map(bindings.map((b) => [b.id, { role: b.role }])),
+      bindings: new Map(bindings.map(factsOf)),
       testingProfileIds: new Set(['theme-preview', 'storefront-smoke']),
     });
     for (const r of out) seen.add(r.code);
