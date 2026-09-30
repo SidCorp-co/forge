@@ -106,9 +106,8 @@ function projectIdFromArgs(args: Record<string, unknown>): string | null {
   return null;
 }
 
-export function createMcpServer(ctx: McpContext): Server {
-  const { principal } = ctx;
-  const tools: McpTool[] = [
+export function mcpTools(ctx: McpContext): McpTool[] {
+  return [
     forgeMemorySearchTool(ctx),
     forgeMemoryWriteTool(ctx),
     forgeMemoryGetTool(ctx),
@@ -175,6 +174,19 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeSentryTool(ctx),
     forgeGuideTool(ctx),
   ];
+}
+
+export function toolListing(tools: McpTool[]) {
+  return tools.map((t) => ({
+    name: t.name,
+    description: t.description,
+    inputSchema: t.inputSchema,
+  }));
+}
+
+export function createMcpServer(ctx: McpContext): Server {
+  const { principal } = ctx;
+  const tools = mcpTools(ctx);
   const toolMap = new Map(tools.map((t) => [t.name, t]));
 
   const server = new Server(
@@ -208,13 +220,7 @@ export function createMcpServer(ctx: McpContext): Server {
     };
   });
 
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: tools.map((t) => ({
-      name: t.name,
-      description: t.description,
-      inputSchema: t.inputSchema,
-    })),
-  }));
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: toolListing(tools) }));
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: rawArgs } = request.params;
