@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   applyStatusTransitionMock,
   autonomousWedgeQueue,
@@ -138,6 +138,46 @@ describe('autonomous driver wedge reset (ISS-890)', () => {
 
     expect(result.autonomousReset).toBe(1);
     expect(recordRescueMock).toHaveBeenCalledWith('run-a1');
+  });
+});
+
+describe('the wedge read of a lease at its expiry (ISS-1317)', () => {
+  const now = new Date('2026-09-30T12:00:00.000Z');
+
+  function seedWithLease(renewedAt: string): void {
+    stuckQueue.push([]);
+    staleCountQueue.push([{ count: 0 }]);
+    autonomousWedgeQueue.push([
+      {
+        id: 'iss-l1',
+        project_id: 'proj-l',
+        status: 'in_progress',
+        reopen_count: 0,
+        created_by: 'owner-l',
+        lease: { holder: 'run-l', renewedAt, minutes: 1 },
+      },
+    ]);
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'], now });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('reads a lease whose renewedAt plus minutes equals now as lapsed, and resets', async () => {
+    seedWithLease('2026-09-30T11:59:00.000Z');
+    const result = await runReconcilerOnce();
+    expect(result.autonomousReset).toBe(1);
+    expect(applyStatusTransitionMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads a lease one millisecond short of now as held, and leaves the issue', async () => {
+    seedWithLease('2026-09-30T11:59:00.001Z');
+    const result = await runReconcilerOnce();
+    expect(result.autonomousReset).toBe(0);
+    expect(applyStatusTransitionMock).not.toHaveBeenCalled();
   });
 });
 
