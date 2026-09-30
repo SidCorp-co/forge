@@ -1114,14 +1114,16 @@ pub async fn run(
             master::run(
                 client,
                 cfg,
-                masters,
-                activity,
-                job_panes,
-                job_records,
+                master::Shared {
+                    masters,
+                    activity,
+                    job_panes,
+                    job_records,
+                    drain,
+                },
                 adopted_rx,
                 cancel_rx,
                 wake_rx,
-                drain,
             )
             .await
         });

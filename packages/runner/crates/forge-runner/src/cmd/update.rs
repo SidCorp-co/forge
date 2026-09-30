@@ -276,6 +276,7 @@ fn say_and_act(decision: Decision, still_the_same: impl Fn(u32) -> bool) {
     }
 }
 
+#[cfg(target_os = "linux")]
 /// What restarting a lagging daemon comes to, once this box's units are read.
 ///
 /// It is separated from the acting so it can be tested: the pid↔unit match is
@@ -298,6 +299,7 @@ pub(crate) enum Restart {
     Moved(String),
 }
 
+#[cfg(target_os = "linux")]
 /// Which unit, if any, a restart for `pid` may touch.
 ///
 /// **An unconfirmed identity restarts nothing.** `status` refuses to assert
@@ -450,6 +452,7 @@ fn unit_main_pid(unit: &str) -> Option<u32> {
     main_pid_of(&String::from_utf8_lossy(&out.stdout))
 }
 
+#[cfg(target_os = "linux")]
 /// What `systemctl show -p MainPID --value` says, as a pid or nothing.
 ///
 /// Split from the call so it can be tested: with the reader injected into

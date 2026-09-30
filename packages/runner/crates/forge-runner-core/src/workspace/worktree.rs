@@ -1001,11 +1001,10 @@ pub(crate) mod tests {
         let r = root.to_string_lossy().to_string();
         let wt = create(&r, "ISS-5", None).await.unwrap();
         std::fs::remove_dir_all(&wt).unwrap();
-        let admin = root.join(".git/worktrees");
-
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
+            let admin = root.join(".git/worktrees");
             std::fs::set_permissions(&admin, std::fs::Permissions::from_mode(0o000)).unwrap();
             let said = residence_of(&root, &wt).await;
             std::fs::set_permissions(&admin, std::fs::Permissions::from_mode(0o755)).unwrap();

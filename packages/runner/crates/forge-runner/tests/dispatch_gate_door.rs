@@ -318,3 +318,164 @@ fn a_payload_this_box_cannot_read_is_allowed_and_marked() {
         "an ordinary tool call is not a failure; marking it would bury the ones that are"
     );
 }
+
+/// The registered command run with no capability and no tmux around it: a
+/// Claude Code session the daemon never placed, standing in a Forge checkout.
+fn run_gate_tokenless(command: &str, config_home: &Path, payload: &str) -> String {
+    let mut child = Command::new("sh")
+        .arg("-c")
+        .arg(command)
+        .env(config_home_at(config_home).0, config_home)
+        .env_remove("FORGE_CONTROL_TOKEN")
+        .env_remove("TMUX")
+        .env_remove("TMUX_PANE")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .expect("the registered command must name a verb that exists");
+    child
+        .stdin
+        .as_mut()
+        .expect("stdin")
+        .write_all(payload.as_bytes())
+        .expect("write payload");
+    let out = child.wait_with_output().expect("wait");
+    assert!(out.status.success(), "{:?}", out.status);
+    String::from_utf8_lossy(&out.stdout).trim().to_string()
+}
+
+/// ISS-1316 criterion 17, through the door: a session the daemon never placed
+/// is let through and leaves no mark saying the gate stopped gating.
+#[test]
+fn a_session_the_daemon_never_placed_is_let_through_unmarked() {
+    let scratch = Scratch::new("notours");
+    let config_dir = config_dir_at(scratch.path());
+    let command = registered_gate_command(env!("CARGO_BIN_EXE_forge-runner"));
+    let printed = run_gate_tokenless(&command, scratch.path(), DISPATCH_PAYLOAD);
+    assert_eq!(printed, "{}");
+    assert!(
+        !config_dir.join("gate-marks.jsonl").exists(),
+        "a session that was never the gate's subject is not counted as one it failed to decide"
+    );
+}
+
+/// A tmux server of this test's own, at the socket the gate resolves as the
+/// runner's for `config_home`, running the gate inside a session named `pane`.
+///
+/// `None` where this box cannot host one, after failing the test instead
+/// wherever the run promised tmux (`FORGE_TEST_REQUIRE_TMUX` set and not
+/// empty, as CI sets it on Linux; on the other runners CI sets it empty).
+fn gate_in_a_runner_pane(config_home: &Path, pane: &str, payload: &str) -> Option<String> {
+    let skip = |why: &str| {
+        assert!(
+            !std::env::var_os("FORGE_TEST_REQUIRE_TMUX").is_some_and(|v| !v.is_empty()),
+            "{why}, and FORGE_TEST_REQUIRE_TMUX promised this run a tmux to drive"
+        );
+        eprintln!("skipped: {why}");
+        None
+    };
+    if cfg!(target_os = "macos") {
+        return skip("macOS resolves the tmux socket outside the config home a test can set");
+    }
+    if Command::new("tmux").arg("-V").output().is_err() {
+        return skip("tmux is not installed here");
+    }
+    let dir = config_dir_at(config_home);
+    let sock = dir.join("tmux.sock");
+    let input = config_home.join("payload.json");
+    let output = config_home.join("printed.json");
+    std::fs::write(&input, payload).expect("payload");
+    let command = registered_gate_command(env!("CARGO_BIN_EXE_forge-runner"));
+    let script = format!(
+        "env -u FORGE_CONTROL_TOKEN {}='{}' sh -c '{}' < '{}' > '{}.part' && mv '{}.part' '{}'",
+        config_home_at(config_home).0,
+        config_home.display(),
+        command.replace('\'', r"'\''"),
+        input.display(),
+        output.display(),
+        output.display(),
+        output.display(),
+    );
+    let started = Command::new("tmux")
+        .arg("-S")
+        .arg(&sock)
+        .args(["new-session", "-d", "-s", pane, "sh", "-c", &script])
+        .env_remove("TMUX")
+        .env_remove("FORGE_CONTROL_TOKEN")
+        .status()
+        .expect("tmux runs");
+    assert!(
+        started.success(),
+        "the runner-shaped tmux server must start"
+    );
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    let printed = loop {
+        if let Ok(text) = std::fs::read_to_string(&output) {
+            break text;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the gate inside the pane printed nothing within the bound"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    };
+    let _ = Command::new("tmux")
+        .arg("-S")
+        .arg(&sock)
+        .arg("kill-server")
+        .stderr(Stdio::null())
+        .status();
+    Some(printed.trim().to_string())
+}
+
+fn record_for(config_home: &Path, pane: &str, project: &str) {
+    let map = serde_json::json!({
+        "tok-that-never-arrived": { "session": "sess-e2e", "project": project, "pane": pane }
+    });
+    std::fs::write(
+        config_dir_at(config_home).join("control-tokens.json"),
+        map.to_string(),
+    )
+    .expect("the capability map");
+}
+
+/// ISS-1316 criterion 16, through the door and a real tmux server: a pane
+/// the daemon placed, whose capability never reached its environment.
+#[test]
+fn a_runner_pane_whose_capability_never_arrived_is_refused_by_name() {
+    let scratch = Scratch::new("lostmint");
+    record_for(scratch.path(), "forge-master-e2e", "proj-e2e");
+    let Some(printed) = gate_in_a_runner_pane(scratch.path(), "forge-master-e2e", DISPATCH_PAYLOAD)
+    else {
+        return;
+    };
+    let v: serde_json::Value = serde_json::from_str(&printed).expect("the gate printed json");
+    let out = &v["hookSpecificOutput"];
+    assert_eq!(out["permissionDecision"], "deny", "{printed}");
+    let why = out["permissionDecisionReason"].as_str().unwrap_or("");
+    assert!(
+        why.contains("forge-master-e2e") && why.contains("proj-e2e"),
+        "the refusal names the pane and its project: {why}"
+    );
+}
+
+/// ISS-1316 criterion 19, through the door: a session on the runner's server
+/// that no record names is let through and named in the mark it leaves.
+#[test]
+fn a_runner_pane_no_record_names_is_let_through_and_named() {
+    let scratch = Scratch::new("unrecorded");
+    record_for(scratch.path(), "forge-master-someone-else", "proj-e2e");
+    let Some(printed) =
+        gate_in_a_runner_pane(scratch.path(), "forge-master-unrecorded", DISPATCH_PAYLOAD)
+    else {
+        return;
+    };
+    assert_eq!(printed, "{}");
+    let marks = std::fs::read_to_string(config_dir_at(scratch.path()).join("gate-marks.jsonl"))
+        .expect("a degraded admission leaves a mark");
+    assert!(
+        marks.contains("forge-master-unrecorded") && marks.contains("\"degraded\""),
+        "{marks}"
+    );
+}

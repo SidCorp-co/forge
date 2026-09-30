@@ -28,6 +28,7 @@ pub async fn serve_always(status: &'static str, body: &'static str) -> String {
     format!("http://{addr}")
 }
 
+#[cfg(unix)]
 /// Answers each request by its path: the first `(path, status, body)` whose path
 /// the request line names, and `404` where none does. For a caller that makes
 /// two calls which have to be answered differently.
