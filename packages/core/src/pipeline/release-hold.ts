@@ -12,7 +12,7 @@ import { db } from '../db/client.js';
 import { comments, issues } from '../db/schema.js';
 import type { IssueCriteriaReport } from '../issues/criteria-verdicts.js';
 import { logger } from '../logger.js';
-import type { ServingReading } from '../release-batch/serving-reading.js';
+import { type ServingReading, servedClause } from '../release-batch/serving-reading.js';
 
 /** The session_context key this module owns. */
 export const RELEASE_HOLD_KEY = 'releaseHold';
@@ -60,12 +60,24 @@ export function withoutReadingTimes(text: string): string {
   return text.replace(/read at \d{4}-\d{2}-\d{2}T[\d:.]+Z/g, 'read at a moment');
 }
 
+/** A runner's reset time to the minute: its milliseconds move each heartbeat while the limit stands. */
+export function withoutResetDrift(text: string): string {
+  return text.replace(
+    /(is rate limited|is quarantined) until (\d{4}-\d{2}-\d{2}T\d{2}:\d{2})[\d:.]*Z/g,
+    '$1 until $2Z',
+  );
+}
+
+function comparable(text: string): string {
+  return withoutResetDrift(withoutReadingTimes(text));
+}
+
 /** Whether two holds say the same thing; `at` is when it was written, never what it says. */
 export function sameReleaseHold(a: ReleaseHold | null, b: ReleaseHold): boolean {
   return (
     a !== null &&
     a.code === b.code &&
-    withoutReadingTimes(a.reason) === withoutReadingTimes(b.reason) &&
+    comparable(a.reason) === comparable(b.reason) &&
     a.owes === b.owes &&
     a.waitingFor === b.waitingFor
   );
@@ -83,18 +95,17 @@ function reasonsByWhy(report: IssueCriteriaReport): string {
   return [...byWhy].map(([why, numbers]) => `${criteriaNamed(numbers)}: ${why}`).join('; ');
 }
 
-/** Where a verdict has to be judged for it to count, said from the reading rather than from a field. */
+/** Where a verdict has to be judged to count: each served commit beside where it runs (ISS-1346). */
 function judgeClause(serving: ServingReading): string {
-  const asked = serving.kind === 'undeclared' ? '' : ` (read from ${serving.hosts.join(', ')})`;
   if (serving.kind === 'serving') {
-    const rollout = serving.commits.length > 1 ? ' — more than one commit is running' : '';
     const unread = serving.unread.length === 0 ? '' : ` (unread: ${serving.unread.join('; ')})`;
     return (
-      `record a verdict on each criterion named, judged at what this project is serving${asked}, ` +
-      `\`${serving.commits.join('` and `')}\`${rollout}, read at ${serving.readAt}${unread}`
+      'record a verdict on each criterion named, judged at a commit this project is serving — ' +
+      `${servedClause(serving.served)}, read at ${serving.readAt}${unread}`
     );
   }
   if (serving.kind === 'unreadable') {
+    const asked = serving.hosts.length === 0 ? '' : ` (read from ${serving.hosts.join(', ')})`;
     return (
       `nothing could be read from what this project answers through${asked}, read at ` +
       `${serving.readAt}: ${serving.why}. Record a verdict on each criterion named — a verdict ` +
@@ -102,9 +113,8 @@ function judgeClause(serving: ServingReading): string {
     );
   }
   return (
-    `nothing here can read what this project is serving: ${serving.missing}. Deploy through a ` +
-    'Coolify deploy binding, or declare `verify.probes` on the live one, then record a verdict on ' +
-    'each criterion named'
+    `nothing here can read what this project is serving: ${serving.missing}. To give it a way, ` +
+    `${serving.route}, then record a verdict on each criterion named`
   );
 }
 
@@ -132,17 +142,15 @@ export function criteriaHold(report: IssueCriteriaReport): ReleaseHold {
  * No run can clear it: nothing can read what the project serves, so no verdict a run writes can
  * be weighed. It is the project's to answer, and the sweep comments it on one row alone.
  */
-export function runtimeUnroutedHold(missing: string): ReleaseHold {
+export function runtimeUnroutedHold(missing: string, route: string): ReleaseHold {
   return {
     code: 'RELEASE_RUNTIME_UNROUTED',
     reason:
       `The automatic release carries only an issue whose every acceptance criterion is earned at ` +
       `what this project is serving, and nothing here can read what it is serving: ${missing}, ` +
       'and no live binding declares `verify.probes`. No verdict a run records can be weighed until ' +
-      "that changes, so this is the project's to answer and not this issue's: deploy through a " +
-      'Coolify deploy binding, or declare `verify.probes` on the live one, and the next sweep weighs ' +
-      'every waiting issue again. This same reason holds every issue of this project waiting here ' +
-      'on its criteria, and is written as a comment on the oldest of them alone.',
+      `that changes, so this is the project's to answer and not this issue's: ${route}, and the ` +
+      'next sweep weighs every waiting issue again.',
     owes: 'human',
     waitingFor: 'a way for this project to be read for what it is serving',
   };
@@ -251,15 +259,20 @@ export function cutFailedHold(reasons: readonly string[]): ReleaseHold {
   };
 }
 
-export function releaseHoldComment(hold: ReleaseHold): string {
+export function releaseHoldComment(hold: ReleaseHold, shared = false): string {
   const who = hold.owes === 'human' ? 'a person' : 'an agent run';
+  const where = shared
+    ? 'The same reason is on every issue of this project it holds, under `releaseHold`, and is ' +
+      'written as a comment on the oldest of them alone; it is removed from each once it no ' +
+      'longer holds.'
+    : 'The same reason is on the issue itself, under `releaseHold`, and is removed once it no ' +
+      'longer holds.';
   return [
     '**The automatic release is holding this issue at `awaiting_release`.**',
     '',
     hold.reason,
     '',
-    `It is waiting for ${hold.waitingFor}, which ${who} owes. The same reason is on the issue ` +
-      'itself, under `releaseHold`, and is removed once it no longer holds.',
+    `It is waiting for ${hold.waitingFor}, which ${who} owes. ${where}`,
     '',
     `\`release-hold: ${hold.code}\``,
   ].join('\n');
@@ -302,7 +315,7 @@ export async function writeReleaseHolds(args: {
   holdFor: (issueId: string) => ReleaseHold;
   authorId: string | null;
   now: Date;
-  /** The rows a changed hold is commented on; absent, every one of them. */
+  /** The rows a hold shared by every row named is commented on; absent, each row's own. */
   commentOn?: ReadonlySet<string>;
 }): Promise<ReleaseHoldTally> {
   const tally: ReleaseHoldTally = { written: 0, unchanged: 0, skipped: 0 };
@@ -314,10 +327,11 @@ export async function writeReleaseHolds(args: {
 
   for (const row of rows) {
     const hold = args.holdFor(row.id);
-    if (sameReleaseHold(readReleaseHold(row.held), hold)) {
+    const carried = readReleaseHold(row.held);
+    if (carried && sameReleaseHold(carried, hold)) {
       tally.unchanged += 1;
       if (args.authorId && args.commentOn?.has(row.id)) {
-        await commentOnce(row.id, args.authorId, releaseHoldComment(hold));
+        await commentOnce(row.id, args.authorId, releaseHoldComment(carried, true));
       }
       continue;
     }
@@ -342,9 +356,8 @@ export async function writeReleaseHolds(args: {
       `)) as unknown as Array<{ id: string }>;
       if (updated.length === 0) return false;
       if (args.authorId && (args.commentOn?.has(row.id) ?? true)) {
-        await tx
-          .insert(comments)
-          .values({ issueId: row.id, authorId: args.authorId, body: releaseHoldComment(hold) });
+        const body = releaseHoldComment(hold, args.commentOn !== undefined);
+        await tx.insert(comments).values({ issueId: row.id, authorId: args.authorId, body });
       }
       return true;
     });

@@ -183,6 +183,12 @@ async function servingNow() {
   return readServingNow(projectId);
 }
 
+async function commitsServed() {
+  const { servedCommits } = await import('../../src/release-batch/serving-reading.js');
+  const reading = await servingNow();
+  return reading.kind === 'serving' ? servedCommits(reading) : reading;
+}
+
 describe('what Forge deployed is the reading where no probe is declared', () => {
   it('names the commit of the latest finished Forge deployment of the target, not an older one', async () => {
     const binding = await bindCoolify();
@@ -195,9 +201,10 @@ describe('what Forge deployed is the reading where no probe is declared', () => 
 
     expect(reading.kind).toBe('serving');
     if (reading.kind !== 'serving') return;
-    expect(reading.commits).toEqual([SERVED]);
-    expect(reading.hosts.join(' ')).toContain('dep-new');
-    expect(reading.hosts.join(' ')).toContain('Coolify target `App` (live)');
+    expect(reading.served.map((s) => s.commit)).toEqual([SERVED]);
+    const where = reading.served[0]?.where ?? '';
+    expect(where).toContain("Coolify target `App` (live), Forge's deployment dep-new finished");
+    expect(where).not.toContain('dep-old');
   });
 
   it('names a target with no Forge deployment, and one whose record fails, while the answering one decides', async () => {
@@ -211,7 +218,7 @@ describe('what Forge deployed is the reading where no probe is declared', () => 
 
     expect(reading.kind).toBe('serving');
     if (reading.kind !== 'serving') return;
-    expect(reading.commits).toEqual([SERVED]);
+    expect(reading.served.map((s) => s.commit)).toEqual([SERVED]);
     const unread = reading.unread.join('\n');
     expect(unread).toContain('`Web` (live) has no deployment Forge made and saw finish on record');
     expect(unread).toMatch(/dep-api to Coolify target `Api` \(live\).*could not be read/);
@@ -230,9 +237,7 @@ describe('what Forge deployed is the reading where no probe is declared', () => 
       'deploy.rollback.requested',
     );
 
-    const reading = await servingNow();
-
-    expect(reading.kind === 'serving' ? reading.commits : reading).toEqual([OLDER]);
+    expect(await commitsServed()).toEqual([OLDER]);
   });
 
   // Review 1881fe F2: the label is a name; the target is its id and the resource it points at.
@@ -251,9 +256,7 @@ describe('what Forge deployed is the reading where no probe is declared', () => 
     deployments.set('dep-renamed', SERVED);
     await deployed(binding, APP, 'dep-renamed', '2026-09-29T11:00:00Z');
 
-    const reading = await servingNow();
-
-    expect(reading.kind === 'serving' ? reading.commits : reading).toEqual([SERVED]);
+    expect(await commitsServed()).toEqual([SERVED]);
   });
 
   it('says unreadable, naming the target, where the route exists and nothing is on record yet', async () => {
@@ -302,11 +305,32 @@ describe('a row held before the route existed is carried by the next sweep', () 
     expect(result.issuesCut).toBe(0);
     const hold = await holdOf(id);
     expect(hold?.code).toBe('RELEASE_CRITERIA_UNEARNED');
-    expect(String(hold?.reason)).toContain(SERVED);
     expect(String(hold?.reason)).toContain(
-      "Forge's deployment dep-2 to Coolify target `App` (live)",
+      `\`${SERVED}\` at Coolify target \`App\` (live), Forge's deployment dep-2 finished`,
     );
     expect(String(hold?.reason)).not.toContain('commitUrl');
+  }, 30_000);
+
+  // Judge finding 2: staging and production on two commits is a project between releases.
+  it('pairs each served commit with the target running it, and calls two commits no fault', async () => {
+    const binding = await bindCoolify([APP, WEB]);
+    const id = await waitingRow(OLDER, '2026-09-29T09:00:00Z');
+    const other = '9f3b2c1d0e4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c';
+    deployments.set('dep-app', SERVED);
+    deployments.set('dep-web', other);
+    await deployed(binding, APP, 'dep-app', '2026-09-29T11:00:00Z');
+    await deployed(binding, WEB, 'dep-web', '2026-09-29T10:00:00Z');
+
+    await sweep();
+
+    const reason = String((await holdOf(id))?.reason);
+    expect(reason).toContain(
+      `\`${SERVED}\` at Coolify target \`App\` (live), Forge's deployment dep-app`,
+    );
+    expect(reason).toContain(
+      `\`${other}\` at Coolify target \`Web\` (live), Forge's deployment dep-web`,
+    );
+    expect(reason).not.toContain('more than one commit is running');
   }, 30_000);
 });
 
@@ -379,6 +403,108 @@ describe('a project nothing can read is told once', () => {
     expect(codes).not.toContain('RELEASE_CRITERIA_UNEARNED');
     const unrouted = readiness?.blockers.find((b) => b.code === 'RELEASE_RUNTIME_UNROUTED');
     expect(unrouted?.message).toContain('epodsystem');
-    expect(unrouted?.message).toContain('Held: 2 issue(s)');
+    expect(unrouted?.message).not.toContain('Held: 2 issue(s)');
+    expect(unrouted?.message.match(/`ISS-\d+` owes criterion 1, 2/g)).toHaveLength(2);
+  }, 30_000);
+
+  // Judge finding 4: an epodsystem project cannot deploy through Coolify, so it is not told to.
+  it('offers a project bound through a provider that reports nothing only a route it can take', async () => {
+    await bindUnreporting();
+    const id = await waitingRow(SERVED, '2026-09-27T09:00:00Z');
+    const { loadReleaseReadiness } = await import('../../src/release-batch/readiness.js');
+
+    await sweep();
+    const readiness = await loadReleaseReadiness(projectId);
+
+    const hold = String((await holdOf(id))?.reason);
+    const card = readiness?.blockers.find((b) => b.code === 'RELEASE_RUNTIME_UNROUTED')?.message;
+    for (const said of [hold, String(card)]) {
+      expect(said).toContain('declare `verify.probes` on the live deploy binding');
+      expect(said).not.toMatch(/Coolify/);
+    }
+  }, 30_000);
+});
+
+describe('a reason every waiting row shares is said once (judge finding 1)', () => {
+  /** A preview-only binding through a provider that reports no commit: still no live target. */
+  async function bindPreviewOnly(): Promise<void> {
+    const connectionId = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO integration_connections (id, owner_type, owner_id, provider, active)
+      VALUES (${connectionId}, 'user', ${ownerId}, 'epodsystem', true)
+    `);
+    await harness.db.execute(sql`
+      INSERT INTO integration_bindings (connection_id, project_id, provider, role, stages, active, config)
+      VALUES (${connectionId}, ${projectId}, 'epodsystem', 'deploy', ARRAY['preview']::text[], true, '{}'::jsonb)
+    `);
+  }
+
+  // Review 32467c F1: with no live target the gate refuses first, whatever preview bindings exist.
+  it.each([
+    ['no binding at all', false],
+    ['only a preview binding that reports no commit', true],
+  ])(
+    'holds every row RELEASE_TARGET_UNDECLARED with %s, commenting the oldest alone',
+    async (_, preview) => {
+      await harness.db.execute(sql`
+      UPDATE projects SET base_branch = 'main', release_chain = '[{"branch": "main"}]'::jsonb
+       WHERE id = ${projectId}
+    `);
+      if (preview) await bindPreviewOnly();
+      const newest = await waitingRow(SERVED, '2026-09-29T09:00:00Z');
+      const oldest = await waitingRow(SERVED, '2026-09-27T09:00:00Z');
+      const middle = await waitingRow(SERVED, '2026-09-28T09:00:00Z');
+      const { loadReleaseReadiness } = await import('../../src/release-batch/readiness.js');
+
+      await sweep();
+      await sweep();
+      const codes = (await loadReleaseReadiness(projectId))?.blockers.map((b) => b.code) ?? [];
+
+      for (const id of [oldest, middle, newest]) {
+        const hold = await holdOf(id);
+        expect(hold?.code).toBe('RELEASE_TARGET_UNDECLARED');
+        expect(String(hold?.reason)).toContain(
+          "no active deploy binding carrying the 'live' stage",
+        );
+      }
+      expect(await holdComments(oldest)).toBe(1);
+      expect(await holdComments(middle)).toBe(0);
+      expect(await holdComments(newest)).toBe(0);
+      expect(codes.filter((c) => c === 'RELEASE_TARGET_UNDECLARED')).toHaveLength(1);
+      expect(codes).not.toContain('RELEASE_RUNTIME_UNROUTED');
+    },
+    30_000,
+  );
+
+  /** Every runner of the project rate limited until `until`, as a heartbeat reports it. */
+  async function rateLimited(until: string): Promise<void> {
+    await harness.db.execute(sql`
+      UPDATE runners SET limit_reason = 'rate_limit', rate_limited_until = ${until}::timestamptz
+       WHERE project_id = ${projectId}
+    `);
+  }
+
+  it('comments a refused cut on the oldest row it refused, once, while the reset drifts by milliseconds', async () => {
+    const binding = await bindCoolify();
+    deployments.set('dep-1', SERVED);
+    await deployed(binding, APP, 'dep-1', '2026-09-29T11:00:00Z');
+    const later = await waitingRow(SERVED, '2026-09-29T09:00:00Z');
+    const oldest = await waitingRow(SERVED, '2026-09-28T09:00:00Z');
+    const reset = new Date(Date.now() + 3_600_000);
+    reset.setUTCSeconds(9, 790);
+    await rateLimited(reset.toISOString());
+
+    await sweep();
+    expect((await holdOf(oldest))?.code).toBe('NO_RUNNER_ONLINE');
+    expect(String((await holdOf(oldest))?.reason)).toContain(
+      `rate limited until ${reset.toISOString()}`,
+    );
+    reset.setUTCMilliseconds(375);
+    await rateLimited(reset.toISOString());
+    await sweep();
+
+    expect((await holdOf(later))?.code).toBe('NO_RUNNER_ONLINE');
+    expect(await holdComments(oldest)).toBe(1);
+    expect(await holdComments(later)).toBe(0);
   }, 30_000);
 });
