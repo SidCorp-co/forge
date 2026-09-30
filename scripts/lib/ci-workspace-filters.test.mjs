@@ -25,8 +25,10 @@ export function filtersOf(yaml) {
     if (line.search(/\S/) <= indent) break;
     const name = line.match(/^\s+([\w-]+):\s*$/);
     const entry = line.match(/^\s+- '([^']+)'\s*$/);
-    if (name) filters[(current = name[1])] = [];
-    else if (entry && current) filters[current].push(entry[1]);
+    if (name) {
+      current = name[1];
+      filters[current] = [];
+    } else if (entry && current) filters[current].push(entry[1]);
     else throw new Error(`filters block line is neither a filter name nor a quoted entry: ${line}`);
   }
   return filters;
@@ -39,7 +41,8 @@ export function filteredJobs(yaml) {
   for (const line of yaml.split('\n')) {
     const head = line.match(/^ {2}([\w-]+):\s*$/);
     if (head) {
-      job = jobs[head[1]] = { outputs: [], packages: [] };
+      job = { outputs: [], packages: [] };
+      jobs[head[1]] = job;
       continue;
     }
     if (!job || line.trim().startsWith('#')) continue;
