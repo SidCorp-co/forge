@@ -78,9 +78,12 @@ export async function findAvailableDeviceForProject(
 export async function findChatCapableDeviceForProject(
   projectId: string,
   deviceId: string,
-  opts: { allowLimited?: boolean } = {},
+  opts: { allowLimited?: boolean; requireCapability?: string } = {},
 ): Promise<string | null> {
   const livenessSeconds = Math.floor(dispatchLivenessMs() / 1000);
+  const capableClause = opts.requireCapability
+    ? sql`AND EXISTS (SELECT 1 FROM devices c WHERE c.id = r.device_id AND c.capabilities ->> ${opts.requireCapability} = 'true')`
+    : sql``;
   const healthClause = opts.allowLimited
     ? sql``
     : sql`AND (r.rate_limited_until IS NULL OR r.rate_limited_until <= now())
@@ -98,6 +101,7 @@ export async function findChatCapableDeviceForProject(
         SELECT 1 FROM devices d WHERE d.id = r.device_id AND d.disabled_at IS NOT NULL
       )
       ${healthClause}
+      ${capableClause}
     LIMIT 1
   `);
   return rows[0]?.device_id ?? null;

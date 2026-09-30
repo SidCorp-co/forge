@@ -82,17 +82,23 @@ export async function resolveSessionAuthority(args: {
   return { ok: true, value: { authority, menu } };
 }
 
-/** Mint the session's token. Its plaintext exists only here and in the frame it is sent in. */
+/**
+ * Mint the session's token, superseding any the session still holds: one left by a turn whose
+ * dispatch never completed would otherwise take the name. Its plaintext exists only here and in
+ * the frame it is sent in.
+ */
 export async function mintSessionCredential(args: {
   sessionId: string;
   deviceId: string;
   value: SessionAuthority;
+  ttlMs?: number;
 }): Promise<string> {
+  await revokeSessionCredential(args.sessionId);
   const minted = await mintTurnCredential({
     authority: args.value.authority,
     menu: args.value.menu,
     name: turnTokenNameFor(args.sessionId),
-    ttlMs: SESSION_CREDENTIAL_TTL_MS,
+    ttlMs: args.ttlMs ?? SESSION_CREDENTIAL_TTL_MS,
     deviceId: args.deviceId,
   });
   return minted.token;

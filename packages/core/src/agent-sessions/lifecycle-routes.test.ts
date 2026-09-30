@@ -46,7 +46,8 @@ const resolveSessionRepoPathForDevice = vi.fn(
     projectRepoPath ?? null,
 );
 vi.mock('../lib/device-pool.js', () => ({
-  findAvailableDeviceForProject: (id: string) => findAvailableDeviceForProject(id),
+  findAvailableDeviceForProject: (id: string, opts?: object) =>
+    findAvailableDeviceForProject(id, opts),
   findChatCapableDeviceForProject: (projectId: string, deviceId: string) =>
     findChatCapableDeviceForProject(projectId, deviceId),
   resolveRepoPath: (override: string | null | undefined, repo: string | null) =>
@@ -90,10 +91,23 @@ vi.mock('../pipeline/runs.js', () => ({
 // Org-level authz: stub the db-touching resolvers; pure helpers stay real.
 const projectAccessMock = vi.fn();
 const loadVisibleProjectIdsMock = vi.fn(async () => [] as string[]);
+const effectiveRoleMock = vi.fn(async () => ({ role: 'member' as string | null }));
 vi.mock('../lib/authz.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lib/authz.js')>()),
   loadProjectAccess: (...args: unknown[]) => projectAccessMock(...args),
   loadVisibleProjectIds: (...args: unknown[]) => loadVisibleProjectIdsMock(...(args as [])),
+  effectiveProjectRole: () => effectiveRoleMock(),
+}));
+
+const mintSessionCredential = vi.fn(async () => 'forge_pat_test_turn');
+vi.mock('./session-credential.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./session-credential.js')>()),
+  resolveSessionAuthority: vi.fn(async () => ({
+    ok: true,
+    value: { authority: {}, menu: [] },
+  })),
+  mintSessionCredential: (...args: unknown[]) => mintSessionCredential(...(args as [])),
+  revokeSessionCredential: vi.fn(async () => undefined),
 }));
 
 const { agentSessionRoutes } = await import('./routes.js');
@@ -285,6 +299,55 @@ describe('POST /api/agent-sessions/start', () => {
     expect(data.projectSlug).toBe('apiflow');
     expect(data.systemPrompt).toBe('## Tool Reference (test)');
     expect(String(data.prompt)).toContain('hello');
+    expect(data.forgeToken).toBe('forge_pat_test_turn');
+    expect(mintSessionCredential).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: SESSION_ID, deviceId: DEVICE_ID }),
+    );
+  });
+
+  it('403 SESSION_VIEWER refuses a viewer before a row is created', async () => {
+    const token = await signUserToken(USER_ID);
+    mockAuthVerified();
+    selectLimit.mockResolvedValueOnce([
+      { id: PROJECT_ID, slug: 'apiflow', repoPath: '/repo', defaultDeviceId: null },
+    ]);
+    grantAccess('viewer');
+
+    const res = await buildApp().fetch(
+      req('/api/agent-sessions/start', {
+        method: 'POST',
+        token,
+        body: JSON.stringify({ projectSlug: 'apiflow', prompt: 'hi' }),
+      }),
+    );
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as { code?: string }).code).toBe('SESSION_VIEWER');
+    expect(insertReturning).not.toHaveBeenCalled();
+  });
+
+  it('409 RUNNER_OUTDATED when only a runner that cannot carry the token is free', async () => {
+    const token = await signUserToken(USER_ID);
+    mockAuthVerified();
+    selectLimit.mockResolvedValueOnce([
+      { id: PROJECT_ID, slug: 'apiflow', repoPath: '/repo', defaultDeviceId: null },
+    ]);
+    grantAccess('member');
+    findAvailableDeviceForProject.mockImplementation(async (_id: string, opts?: object) =>
+      opts && 'requireCapability' in opts ? null : DEVICE_ID,
+    );
+
+    const res = await buildApp().fetch(
+      req('/api/agent-sessions/start', {
+        method: 'POST',
+        token,
+        body: JSON.stringify({ projectSlug: 'apiflow', prompt: 'hi' }),
+      }),
+    );
+    findAvailableDeviceForProject.mockReset();
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { code?: string }).code).toBe('RUNNER_OUTDATED');
+    expect(insertReturning).not.toHaveBeenCalled();
+    expect(publishSpy).not.toHaveBeenCalled();
   });
 
   it.each(['qa', 'qa-reindex'])(
@@ -376,7 +439,7 @@ describe('POST /api/agent-sessions/send', () => {
     ]);
     grantAccess('admin');
     selectLimit
-      .mockResolvedValueOnce([{ status: 'online' }]) // resolveChatDevice: pinned device online
+      .mockResolvedValueOnce([{ status: 'online', capabilities: { followUpCredential: true } }])
       .mockResolvedValueOnce([{ id: PROJECT_ID, slug: 'apiflow', repoPath: '/repo' }]);
     updateReturning.mockResolvedValueOnce([
       {
@@ -406,6 +469,37 @@ describe('POST /api/agent-sessions/send', () => {
     expect(sendCall).toBeDefined();
     expect((sendCall![1] as { data: any }).data.message).toBe('second');
     expect((sendCall![1] as { data: any }).data.projectSlug).toBe('apiflow');
+    expect((sendCall![1] as { data: any }).data.forgeToken).toBe('forge_pat_test_turn');
+  });
+
+  it('409 SESSION_RUNNING refuses a follow-up while a turn is live, minting nothing', async () => {
+    const token = await signUserToken(USER_ID);
+    mockAuthVerified();
+    selectLimit.mockResolvedValueOnce([
+      {
+        id: SESSION_ID,
+        projectId: PROJECT_ID,
+        userId: USER_ID,
+        deviceId: DEVICE_ID,
+        status: 'running',
+        messages: [],
+        metadata: { deviceId: DEVICE_ID },
+        claudeSessionId: 'claude-abc',
+      },
+    ]);
+    grantAccess('member');
+
+    const res = await buildApp().fetch(
+      req('/api/agent-sessions/send', {
+        method: 'POST',
+        token,
+        body: JSON.stringify({ sessionId: SESSION_ID, message: 'second' }),
+      }),
+    );
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { code?: string }).code).toBe('SESSION_RUNNING');
+    expect(mintSessionCredential).not.toHaveBeenCalled();
+    expect(publishSpy).not.toHaveBeenCalled();
   });
 
   it('409 NO_CLAUDE_CLIENT when the pinned device is offline (ISS-420)', async () => {
@@ -424,7 +518,9 @@ describe('POST /api/agent-sessions/send', () => {
       },
     ]);
     grantAccess('admin');
-    selectLimit.mockResolvedValueOnce([{ status: 'offline' }]); // pinned device offline
+    selectLimit
+      .mockResolvedValueOnce([{ status: 'offline' }])
+      .mockResolvedValueOnce([{ status: 'offline' }]);
 
     const app = buildApp();
     const res = await app.fetch(

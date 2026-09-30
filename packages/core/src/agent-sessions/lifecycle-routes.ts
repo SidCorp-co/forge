@@ -26,12 +26,13 @@ import { resolveRegisteredEffectiveSkills } from '../skills/effective.js';
 import { deviceRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { broadcastSession } from './broadcast.js';
+import { createChatSessionRow, noClaudeClient } from './chat-turn.js';
 import {
-  createChatSessionRow,
-  dispatchChatTurn,
-  noClaudeClient,
-  resolveChatDevice,
-} from './chat-turn.js';
+  assertMayRunSession,
+  authorizeInteractiveTurn,
+  dispatchInteractiveTurn,
+  resolveInteractiveClient,
+} from './interactive-credential.js';
 import {
   abortBodySchema,
   buildPromptBodySchema,
@@ -89,13 +90,17 @@ agentSessionLifecycleRoutes.post(
     if (!project) throw notFound('project not found');
 
     const access = await loadProjectAccess(project.id, userId);
-    assertProjectRole(access, 'member');
+    assertMayRunSession(access.role);
 
-    const client = await resolveChatDevice(
+    const client = await resolveInteractiveClient(
       { projectId: project.id, deviceId: null, metadata: null },
-      input.origin,
+      { origin: input.origin, scope: 'project' },
     );
-    if (!client.isLocal && !client.deviceId) throw noClaudeClient('project');
+    const authority = await authorizeInteractiveTurn({
+      client,
+      projectId: project.id,
+      asker: { userId, viaTokenId: c.get('patTokenId') ?? null },
+    });
 
     const rawPrompt = input.prompt;
 
@@ -139,10 +144,11 @@ agentSessionLifecycleRoutes.post(
       repoPath: input.repoPath ?? null,
       metadata: Object.keys(metadata).length ? metadata : null,
     });
-    const updated = await dispatchChatTurn({
+    const updated = await dispatchInteractiveTurn({
       session,
       project: { id: project.id, slug: project.slug, repoPath: project.repoPath },
       client,
+      authority,
       message: rawPrompt,
       origin: input.origin ?? null,
       pageContext: input.pageContext ?? null,
@@ -168,6 +174,13 @@ agentSessionLifecycleRoutes.post(
     const userId = c.get('userId');
 
     const { session } = await ensureSessionOwnerOrAdmin(input.sessionId, userId);
+    if (session.status === 'running' || session.status === 'queued') {
+      throw new HTTPException(409, {
+        message:
+          'The agent is still working on this conversation, under the access of the person whose turn it is. Wait for it to finish or stop it, then send.',
+        cause: { code: 'SESSION_RUNNING' },
+      });
+    }
 
     // Resolve the client through the SHARED path: honour an explicit runner pick
     // (input.deviceId) when present, else reuse the session's pinned device,
@@ -175,10 +188,16 @@ agentSessionLifecycleRoutes.post(
     // session created empty via `POST /` has no pin, so the old pin-only guard
     // 409'd forever). No online remote client → 409; a rejected explicit pick
     // gets the 'picked' wording so the user knows their choice was unavailable.
-    const client = await resolveChatDevice(session, input.origin, input.deviceId);
-    if (!client.isLocal && !client.deviceId) {
-      throw noClaudeClient(input.deviceId ? 'picked' : 'session');
-    }
+    const client = await resolveInteractiveClient(session, {
+      origin: input.origin,
+      overrideDeviceId: input.deviceId,
+      scope: input.deviceId ? 'picked' : 'session',
+    });
+    const authority = await authorizeInteractiveTurn({
+      client,
+      projectId: session.projectId,
+      asker: { userId, viaTokenId: c.get('patTokenId') ?? null },
+    });
 
     const [project] = await db
       .select({ id: projects.id, slug: projects.slug, repoPath: projects.repoPath })
@@ -187,10 +206,11 @@ agentSessionLifecycleRoutes.post(
       .limit(1);
     if (!project) throw notFound('project not found');
 
-    await dispatchChatTurn({
+    await dispatchInteractiveTurn({
       session,
       project,
       client,
+      authority,
       message: input.message,
       origin: input.origin ?? null,
       pageContext: input.pageContext ?? null,

@@ -38,6 +38,7 @@ import { syncRunnerHealthFromChatTerminal } from './chat-runner-health.js';
 import { createChatSessionRow } from './chat-turn.js';
 import { agentSessionEventsRoutes } from './events-routes.js';
 import { agentSessionInboxRoutes } from './inbox-routes.js';
+import { assertMayRunSession } from './interactive-credential.js';
 import { assertCallerDeclaresNoKind, kindFromQuery } from './kind-query.js';
 import { agentSessionLifecycleRoutes } from './lifecycle-routes.js';
 import { applyTranscriptPatch } from './patch-transcript.js';
@@ -447,7 +448,7 @@ agentSessionRoutes.post(
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(input.projectId, userId);
-    assertProjectRole(access, 'member');
+    assertMayRunSession(access.role);
 
     const clientMetadata = input.metadata as Record<string, unknown> | null | undefined;
     assertCallerDeclaresNoKind(clientMetadata, badRequest);

@@ -24,17 +24,17 @@ vi.mock('./session-access.js', async (importOriginal) => ({
 }));
 
 const createChatSessionRow = vi.fn();
-const dispatchChatTurn = vi.fn();
-const resolveChatDevice = vi.fn();
 vi.mock('./chat-turn.js', () => ({
   createChatSessionRow: (...args: unknown[]) => createChatSessionRow(...args),
-  dispatchChatTurn: (...args: unknown[]) => dispatchChatTurn(...args),
-  noClaudeClient: () =>
-    new HTTPException(409, {
-      message: 'No online Claude client for this session.',
-      cause: { code: 'NO_CLAUDE_CLIENT' },
-    }),
-  resolveChatDevice: (...args: unknown[]) => resolveChatDevice(...args),
+}));
+
+const dispatchChatTurn = vi.fn();
+const resolveChatDevice = vi.fn();
+const authorizeInteractiveTurn = vi.fn();
+vi.mock('./interactive-credential.js', () => ({
+  resolveInteractiveClient: (...args: unknown[]) => resolveChatDevice(...args),
+  authorizeInteractiveTurn: (...args: unknown[]) => authorizeInteractiveTurn(...args),
+  dispatchInteractiveTurn: (...args: unknown[]) => dispatchChatTurn(...args),
 }));
 
 vi.mock('./session-activity.js', () => ({
@@ -50,7 +50,7 @@ function session(over: Record<string, unknown> = {}) {
   return {
     id: SESSION_ID,
     projectId: PROJECT_ID,
-    userId: '33333333-3333-4333-8333-333333333333',
+    userId: '44444444-4444-4444-8444-444444444444',
     status: 'idle',
     title: 'Original chat',
     messages: [{ type: 'user', content: 'original prompt' }],
@@ -61,6 +61,7 @@ function session(over: Record<string, unknown> = {}) {
 }
 
 const CALLER_ID = '33333333-3333-4333-8333-333333333333';
+const AUTHORITY = { deviceId: 'device-1', value: { authority: {}, menu: [] } };
 
 function app() {
   const router = new Hono<{ Variables: { userId: string; agency: 'human' | 'agent' } }>();
@@ -92,6 +93,8 @@ beforeEach(() => {
   createChatSessionRow.mockReset();
   dispatchChatTurn.mockReset();
   resolveChatDevice.mockReset();
+  authorizeInteractiveTurn.mockReset();
+  authorizeInteractiveTurn.mockResolvedValue(AUTHORITY);
 });
 
 describe('POST /:id/rerun', () => {
@@ -107,7 +110,9 @@ describe('POST /:id/rerun', () => {
 
   it('fails before creating a child session when no chat runner is available', async () => {
     ensureSessionOwnerOrAdmin.mockResolvedValueOnce({ session: session() });
-    resolveChatDevice.mockResolvedValueOnce({ deviceId: null, isLocal: false });
+    resolveChatDevice.mockRejectedValueOnce(
+      new HTTPException(409, { message: 'no runner', cause: { code: 'NO_CLAUDE_CLIENT' } }),
+    );
 
     const res = await app().request(`/api/agent-sessions/${SESSION_ID}/rerun`, { method: 'POST' });
 
@@ -129,9 +134,14 @@ describe('POST /:id/rerun', () => {
     const res = await app().request(`/api/agent-sessions/${SESSION_ID}/rerun`, { method: 'POST' });
 
     expect(res.status).toBe(201);
+    expect(authorizeInteractiveTurn).toHaveBeenCalledWith({
+      client: { deviceId: 'device-1', isLocal: false },
+      projectId: PROJECT_ID,
+      asker: { userId: CALLER_ID, viaTokenId: null },
+    });
     expect(createChatSessionRow).toHaveBeenCalledWith({
       projectId: PROJECT_ID,
-      userId: original.userId,
+      userId: CALLER_ID,
       title: 'Original chat (rerun)',
       // ISS-1136 — a rerun is cut from the session it reran, and core writes
       // that edge in a column rather than leaving it to be read back out of
@@ -143,6 +153,7 @@ describe('POST /:id/rerun', () => {
       session: child,
       project: { id: PROJECT_ID, slug: 'project', repoPath: '/repo' },
       client: { deviceId: 'device-1', isLocal: false },
+      authority: AUTHORITY,
       message: 'original prompt',
       broadcastEvent: 'agent-session.created',
     });
