@@ -110,3 +110,19 @@ describe("TransitionReasonDialog, leaving a park without the answer", () => {
     expect(onConfirm).toHaveBeenCalledWith("decided in standup", undefined);
   });
 });
+
+describe("TransitionReasonDialog's words for leaving without the answer", () => {
+  it.each(["move_anyway", "not_needed"] as const)("%s speaks no kernel word — park, rung", (status) => {
+    const { container } = render(
+      <TransitionReasonDialog
+        status={status}
+        targets={["open", "in_progress"]}
+        loading={false}
+        onConfirm={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    const said = `${document.body.textContent ?? ""} ${container.textContent ?? ""}`;
+    expect(said).not.toMatch(/\b(park|parked|rung|decision round)\b/i);
+  });
+});

@@ -12,7 +12,7 @@
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DecisionPanel } from "./decision-panel";
+import { DecisionPanel, focusDecisionPanel } from "./decision-panel";
 
 expect.extend(matchers);
 afterEach(cleanup);
@@ -42,7 +42,7 @@ beforeEach(() => {
 describe("DecisionPanel, on an issue parked for information with no question", () => {
   it("reports what it queried rather than what the absence means", () => {
     render(<DecisionPanel issueId="i-1" parkedForInfo />);
-    expect(screen.getByText(/No decision round on this issue/i)).toBeInTheDocument();
+    expect(screen.getByText(/No questions on this issue/i)).toBeInTheDocument();
     expect(
       screen.getByText(/lists the questions filed against this issue, and there are none/i),
     ).toBeInTheDocument();
@@ -82,7 +82,7 @@ describe("DecisionPanel, when the query itself could not be made", () => {
     };
     const { container } = render(<DecisionPanel issueId="i-1" parkedForInfo />);
     expect(screen.getByText(/Couldn't load this issue's decisions/i)).toBeInTheDocument();
-    expect(container.textContent ?? "").not.toMatch(/No decision round/i);
+    expect(container.textContent ?? "").not.toMatch(/No questions on this issue/i);
   });
 });
 
@@ -90,16 +90,38 @@ describe("DecisionPanel, when the query itself could not be made", () => {
 describe("DecisionPanel, on a park whose question is only in the thread", () => {
   const asked = {
     prompt: "Who holds a release's lease: the door, or the issue's own run?",
-    readings: ["the door -> one lease per release", "the run -> the release waits on it"],
+    why: "the release lease has no owner",
+    readings: [
+      { choice: "the door", outcome: "one lease per release" },
+      { choice: "the run", outcome: "the release waits on it" },
+    ],
+    answer: null,
   };
 
-  it("shows the question and its readings instead of saying there is none", () => {
-    render(
+  it("shows the sentence asked, why it stopped, and each choice with where it leads", () => {
+    const { container } = render(
       <DecisionPanel issueId="i-1" parkedForInfo threadQuestion={asked} onAnswerInThread={vi.fn()} />,
     );
     expect(screen.getByText(asked.prompt)).toBeInTheDocument();
-    for (const reading of asked.readings) expect(screen.getByText(reading)).toBeInTheDocument();
-    expect(screen.queryByText(/No decision round on this issue/i)).toBeNull();
+    expect(screen.getByText(asked.why)).toBeInTheDocument();
+    const items = screen.getAllByRole("listitem").map((li) => li.textContent);
+    expect(items).toEqual(["the door — one lease per release", "the run — the release waits on it"]);
+    expect(container.textContent ?? "").not.toContain("->");
+    expect(container.textContent ?? "").not.toMatch(/\b(park|parked|rung|decision round)\b/i);
+    expect(screen.queryByText(/No questions on this issue/i)).toBeNull();
+  });
+
+  it("shows the answer a person gave and no box, once one is on the thread", () => {
+    const answered = {
+      ...asked,
+      answer: { commentId: "c9", postedAt: "2026-09-30T00:00:00.000Z", text: "the door" },
+    };
+    render(
+      <DecisionPanel issueId="i-1" parkedForInfo threadQuestion={answered} onAnswerInThread={vi.fn()} />,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent(/Answered in the comments\s*the door/);
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Post answer" })).toBeNull();
   });
 
   it("posts the typed answer and says where it went", async () => {
@@ -119,5 +141,21 @@ describe("DecisionPanel, on a park whose question is only in the thread", () => 
     render(<DecisionPanel issueId="i-1" parkedForInfo threadQuestion={asked} />);
     expect(screen.getByText(asked.prompt)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Post answer" })).toBeNull();
+  });
+});
+
+describe("focusDecisionPanel", () => {
+  it("scrolls the questions to sit below the sticky header rather than under it", () => {
+    const panel = document.createElement("div");
+    panel.id = "issue-decisions";
+    const scrolled = vi.fn();
+    panel.scrollIntoView = scrolled;
+    document.body.append(panel);
+    const header = document.createElement("div");
+    Object.defineProperty(header, "offsetHeight", { value: 148 });
+    focusDecisionPanel(header);
+    expect(panel.style.scrollMarginTop).toBe("160px");
+    expect(scrolled).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
+    panel.remove();
   });
 });

@@ -52,14 +52,14 @@ const COPY: Record<DialogMode, CopySpec> = {
     title: "Move this issue anyway",
     confirm: "Move",
     blurb:
-      "This leaves the park without the answer it waits on. Say why in one line: it is posted on the thread, where the next run reads it before it puts the park back.",
+      "This moves the issue on without what it is waiting for. Say why in one line: it is posted on the thread, where the next run reads it before it stops the issue again.",
     placeholder: "e.g. settled on the call — the build can go on without the tenant",
   },
   not_needed: {
     title: "The question is not needed any more",
     confirm: "Withdraw it and resume",
     blurb:
-      "Withdraws the open question with your reason and resumes the issue at the rung its park recorded, in one move. The reason is posted on the thread and kept on the question.",
+      "Withdraws the open question with your reason and resumes the issue where its work stopped, in one move. The reason is posted on the thread and kept on the question.",
     placeholder: "e.g. the owner decided in standup — ship the smaller reading",
   },
   void_questions: {

@@ -32,7 +32,7 @@ import {
 } from "@/design";
 import { useResumeRun } from "@/features/pipeline/hooks";
 import { useProjects } from "@/features/projects/hooks";
-import { DECISION_PANEL_ANCHOR, DecisionPanel } from "@/features/questions/components/decision-panel";
+import { DecisionPanel, focusDecisionPanel } from "@/features/questions/components/decision-panel";
 import { buildShareLink, useRecents } from "@/features/shell";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
@@ -40,7 +40,7 @@ import { useRoom } from "@/lib/ws/use-room";
 import { useToast } from "@/providers/toast-provider";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   canonicalIssueId,
   deriveBlockerState,
@@ -168,6 +168,7 @@ export function IssueDetailScreen({
   const issue = issueQ.data;
   // ISS-1310 — one reading of what a person owes this issue, for the banner, the status control and the decision panel.
   const park = useIssuePark(issue?.id, issue?.status);
+  const stickyHeader = useRef<HTMLDivElement>(null);
   const answerInThread = useCreateComment(issue?.id ?? "");
   const checklist = useMemo(() => {
     const criteria = parseChecklist(issue?.acceptanceCriteria);
@@ -244,9 +245,7 @@ export function IssueDetailScreen({
 
   const focusDecisions = () => {
     if (typeof window !== "undefined") {
-      requestAnimationFrame(() =>
-        document.getElementById(DECISION_PANEL_ANCHOR)?.scrollIntoView({ behavior: "smooth", block: "start" }),
-      );
+      requestAnimationFrame(() => focusDecisionPanel(stickyHeader.current));
     }
   };
 
@@ -314,7 +313,7 @@ export function IssueDetailScreen({
           TopBar now carries the breadcrumb trail (ISS-358/359), so the in-page
           breadcrumb was removed to stop the doubled header that hid the detail
           (ISS-360 regression). Full-bleed via negative gutters. */}
-      <div className="sticky top-0 z-20 -mx-4 mb-5 flex flex-wrap items-start gap-3 border-b border-line-subtle bg-app/95 px-4 py-3 backdrop-blur sm:-mx-8 sm:px-8">
+      <div ref={stickyHeader} className="sticky top-0 z-20 -mx-4 mb-5 flex flex-wrap items-start gap-3 border-b border-line-subtle bg-app/95 px-4 py-3 backdrop-blur sm:-mx-8 sm:px-8">
         <IconButton
           icon="arrowRight"
           aria-label="Back to issues"

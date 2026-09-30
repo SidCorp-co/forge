@@ -120,6 +120,10 @@
 
 ### Added
 
+- **Finished changes can land together on one validation, each as its own merge commit.**
+  `pnpm verify --entry` runs only the checks one change can fail; a window runs the rest once,
+  naming the change a failure belongs to, if any.
+
 - **How to contribute, and who decides, are now in the repository.** `CONTRIBUTING.md`,
   `GOVERNANCE.md` and `docs/adr/` state the rules and the decisions behind them, including that
   this file is the release note and there is no second changelog.
@@ -3135,6 +3139,10 @@
 - **Automatic release works again without a verify probe.** An issue judged at what Forge last
   deployed through your Coolify binding now ships. A project nothing can be read from is told once,
   on its release card and oldest waiting issue.
+
+- **A reason every waiting issue shares is said once**, on the oldest of them. A hold also pairs
+  each commit with where it runs, offers only a route the project can take, and no longer re-posts
+  a runner's rate limit.
 
 - **A stopped run's report on its issue no longer says its checkout was kept when the box removed
   it.** It says whether the box refuses the removal, and the box's log says why a push failed.

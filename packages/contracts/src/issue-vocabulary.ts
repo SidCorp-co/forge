@@ -72,3 +72,24 @@ export function statusesForLabels(...labels: AutonomousLabel[]): KernelIssueStat
     (s) => labels.includes(toAutonomousLabel(s, true)) || labels.includes(toAutonomousLabel(s, false)),
   );
 }
+
+/** Each kernel status as a person reads it, one map for every surface that names a status in words. */
+export const ISSUE_STATUS_LABELS: Record<KernelIssueStatus, string> = {
+  open: 'Open',
+  confirmed: 'Confirmed',
+  clarified: 'Clarified',
+  waiting: 'Waiting',
+  approved: 'Approved',
+  in_progress: 'In progress',
+  developed: 'Developed',
+  testing: 'Testing',
+  tested: 'Tested',
+  awaiting_release: 'Awaiting release',
+  releasing: 'Releasing',
+  closed: 'Closed',
+  reopen: 'Reopened',
+  on_hold: 'On hold',
+  needs_info: 'Needs info',
+  draft: 'Draft',
+  dropped: 'Dropped',
+};

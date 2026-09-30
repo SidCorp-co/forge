@@ -1,6 +1,7 @@
 
 import {
 	type AutonomousLabel,
+	ISSUE_STATUS_LABELS,
 	LABEL_TO_KERNEL,
 	statusesForLabels,
 	type WritableLabel,
@@ -39,25 +40,7 @@ import type {
 	StepHandoffRow,
 } from "./types";
 
-export const STATUS_LABELS: Record<IssueStatus, string> = {
-	open: "Open",
-	confirmed: "Confirmed",
-	clarified: "Clarified",
-	waiting: "Waiting",
-	approved: "Approved",
-	in_progress: "In progress",
-	developed: "Developed",
-	testing: "Testing",
-	tested: "Tested",
-	awaiting_release: "Awaiting release",
-	releasing: "Releasing",
-	closed: "Closed",
-	reopen: "Reopened",
-	on_hold: "On hold",
-	needs_info: "Needs info",
-	draft: "Draft",
-	dropped: "Dropped",
-};
+export const STATUS_LABELS: Record<IssueStatus, string> = ISSUE_STATUS_LABELS;
 
 /**
  * The lane vocabulary's own words. A label is not its kernel status renamed: `running` is written
@@ -604,21 +587,41 @@ export type ParkReading =
 
 export const NO_PARK: ParkReading = { state: "ready", park: null };
 
-/** Whether Answer the question has anything to take the reader to. */
+/** Whether Answer the question has anything to take the reader to: a question nobody has answered yet. */
 export function parkAsksAQuestion(park: IssuePark): boolean {
 	if (park.openQuestionIds.length > 0) return true;
-	return threadQuestionOf(park) !== null;
+	const asked = threadQuestionOf(park);
+	return asked !== null && asked.answer === null;
 }
 
-/** The question a `needs_info` park asked only in the thread — its words and readings — or `null` where a question row carries it or none was asked. */
-export function threadQuestionOf(
-	park: IssuePark,
-): { prompt: string | null; readings: string[] } | null {
+/** One reading as the run wrote it, `reading -> outcome`, split into the choice and where it leads. */
+export interface ThreadReading {
+	choice: string;
+	outcome: string | null;
+}
+
+/** A question a `needs_info` issue asked only in the thread: the sentence it stopped with, why, its choices, and the answer a person gave. */
+export interface ThreadQuestionView {
+	prompt: string | null;
+	why: string | null;
+	readings: ThreadReading[];
+	answer: IssuePark["answer"];
+}
+
+function readingOf(raw: string): ThreadReading {
+	const at = raw.indexOf("->");
+	if (at < 0) return { choice: raw.trim(), outcome: null };
+	return { choice: raw.slice(0, at).trim(), outcome: raw.slice(at + 2).trim() || null };
+}
+
+/** This park's thread question, or `null` where a question row carries it or none was asked. */
+export function threadQuestionOf(park: IssuePark): ThreadQuestionView | null {
 	if (park.shape !== "park" || park.status !== "needs_info") return null;
 	if (park.openQuestionIds.length > 0) return null;
-	const prompt = park.record?.why ?? park.reason;
+	const prompt = park.reason ?? park.record?.why ?? null;
 	if (!prompt && park.readings.length === 0) return null;
-	return { prompt, readings: park.readings };
+	const why = park.record?.why && park.record.why !== prompt ? park.record.why : null;
+	return { prompt, why, readings: park.readings.map(readingOf), answer: park.answer ?? null };
 }
 
 /** What the person owes, in their words rather than the enum's. */
@@ -637,13 +640,23 @@ export const PARK_OWES_COPY: Record<ParkOwes | "unstated", { reason: string; who
 		who: "Supply it, then resume it where it stopped.",
 	},
 	unstated: {
-		reason: "This issue is stopped until a person acts, and its park did not say for what.",
+		reason: "This issue is stopped until a person acts, and it did not say for what.",
 		who: "Read what it waits on in the thread, then resume it or move it on.",
 	},
 };
 
+/** The banner once a question asked in the thread has a person's answer on it. */
+export const ANSWERED_COPY = {
+	reason: "The question this issue asked has an answer on the thread.",
+	who: "Resume it where it stopped once the answer is enough to go on.",
+};
+
+export const NOTHING_TO_RESUME_AT =
+	"Nothing says where this issue picks up again — Move anyway… in the status menu lists every move.";
+
 function parkBlocker(park: IssuePark, blockingRefs: BlockingRef[]): BlockerState {
-	const copy = PARK_OWES_COPY[park.owes ?? "unstated"];
+	const answered = threadQuestionOf(park)?.answer ? ANSWERED_COPY : null;
+	const copy = answered ?? PARK_OWES_COPY[park.owes ?? "unstated"];
 	const refs = blockingRefs.length ? { blockingRefs } : {};
 	if (parkAsksAQuestion(park)) {
 		return {
@@ -670,7 +683,7 @@ function parkBlocker(park: IssuePark, blockingRefs: BlockingRef[]): BlockerState
 		reason: copy.reason,
 		whoMustAct: copy.who,
 		cta: { label: "", kind: "none" },
-		detail: "No rung to resume at was recorded for this park — Move anyway… in the status menu lists every move.",
+		detail: NOTHING_TO_RESUME_AT,
 		...refs,
 	};
 }

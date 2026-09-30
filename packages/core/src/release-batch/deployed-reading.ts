@@ -12,15 +12,16 @@ import {
 } from '../integrations/store.js';
 import type { AdapterContext } from '../integrations/types.js';
 import { recognisableIdentity } from '../messaging/verdict-identity.js';
+import type { ServedAt } from './serving-reading.js';
 import { PROBE_REQUEST_CAP_MS } from './verify.js';
 
-/** `answered` names at least one commit, `unanswered` is a route that answered nothing this time,
- *  and `unrouted` is a project with nothing Forge could ever read a commit from. */
+/** `answered` names at least one commit beside the target running it, `unanswered` is a route that
+ *  answered nothing this time, and `unrouted` is a project with nothing Forge could ever read a
+ *  commit from — `route` says what would open one for the bindings it has. */
 export type DeployedReading =
   | {
       readonly kind: 'answered';
-      readonly commits: readonly string[];
-      readonly readFrom: readonly string[];
+      readonly served: readonly ServedAt[];
       readonly unread: readonly string[];
     }
   | {
@@ -28,10 +29,10 @@ export type DeployedReading =
       readonly readFrom: readonly string[];
       readonly unread: readonly string[];
     }
-  | { readonly kind: 'unrouted'; readonly missing: string };
+  | { readonly kind: 'unrouted'; readonly missing: string; readonly route: string };
 
 interface TargetAnswer {
-  readonly commit: string | null;
+  readonly served: ServedAt | null;
   readonly readFrom: string | null;
   readonly unread: string | null;
 }
@@ -116,7 +117,7 @@ async function readTarget(
   const last = await latestFinished(pair.binding.id, target);
   if (!last) {
     return {
-      commit: null,
+      served: null,
       readFrom: null,
       unread: `${name} has no deployment Forge made and saw finish on record, so nothing names what it runs — deploy it through Forge`,
     };
@@ -126,12 +127,13 @@ async function readTarget(
     const commit = String((await readCommit(last.uuid)) ?? '').trim();
     if (!recognisableIdentity(commit)) {
       const said = commit === '' ? 'no commit' : `\`${commit}\`, which is not a commit`;
-      return { commit: null, readFrom: where, unread: `${where} reports ${said}` };
+      return { served: null, readFrom: where, unread: `${where} reports ${said}` };
     }
-    return { commit: commit.toLowerCase(), readFrom: where, unread: null };
+    const runs = `${name}, Forge's deployment ${last.uuid} finished ${last.at}`;
+    return { served: { commit: commit.toLowerCase(), where: runs }, readFrom: where, unread: null };
   } catch (err) {
     const why = err instanceof Error ? err.message : String(err);
-    return { commit: null, readFrom: where, unread: `${where} could not be read: ${why}` };
+    return { served: null, readFrom: where, unread: `${where} could not be read: ${why}` };
   }
 }
 
@@ -143,11 +145,11 @@ async function readBinding(pair: BindingWithConnection): Promise<TargetAnswer[]>
     ctx = buildContextFromBinding(pair);
   } catch (err) {
     const why = err instanceof Error ? err.message : String(err);
-    return [{ commit: null, readFrom: null, unread: `${named} could not be opened: ${why}` }];
+    return [{ served: null, readFrom: null, unread: `${named} could not be opened: ${why}` }];
   }
   const targets = targetsOf(ctx);
   if (!read || targets.length === 0) {
-    return [{ commit: null, readFrom: null, unread: `${named} names no target` }];
+    return [{ served: null, readFrom: null, unread: `${named} names no target` }];
   }
   const readCommit: ReadCommit = (id) => read(ctx, id, PROBE_REQUEST_CAP_MS);
   return Promise.all(targets.map((target) => readTarget(pair, target, readCommit)));
@@ -171,11 +173,28 @@ function unroutedWhy(pairs: readonly BindingWithConnection[]): string {
   return `its deploy bindings go through ${providers}, and none of them reports the commit a deployment built`;
 }
 
+/** The act that would give this project a route, offered only where its bindings can take it: a
+ *  provider that cannot report a commit is not told to become one (ISS-1346, judge finding 4). */
+function unroutedRoute(pairs: readonly BindingWithConnection[]): string {
+  if (pairs.length === 0) {
+    return (
+      'bind a deploy binding Forge deploys through whose provider reports the commit a deployment ' +
+      'built (Coolify does), or declare `verify.probes` on the live deploy binding'
+    );
+  }
+  return (
+    'declare `verify.probes` on the live deploy binding, naming an address of this project that ' +
+    'answers with the commit it is serving'
+  );
+}
+
 /** Every commit the latest finished Forge deployment of each target reports, now. */
 export async function readForgeDeployments(projectId: string): Promise<DeployedReading> {
   const pairs = await activeDeployBindings(projectId);
   const reporting = pairs.filter(reports);
-  if (reporting.length === 0) return { kind: 'unrouted', missing: unroutedWhy(pairs) };
+  if (reporting.length === 0) {
+    return { kind: 'unrouted', missing: unroutedWhy(pairs), route: unroutedRoute(pairs) };
+  }
 
   const answers = (await Promise.all(reporting.map(readBinding))).flat();
   const silent = pairs
@@ -183,9 +202,11 @@ export async function readForgeDeployments(projectId: string): Promise<DeployedR
     .map(
       (p) => `the ${providerName(p)} binding ${p.binding.id} reports no commit a deployment built`,
     );
-  const commits = [...new Set(answers.flatMap((a) => (a.commit ? [a.commit] : [])))];
-  const readFrom = answers.flatMap((a) => (a.readFrom ? [a.readFrom] : []));
+  const served = answers.flatMap((a) => (a.served ? [a.served] : []));
   const unread = [...answers.flatMap((a) => (a.unread ? [a.unread] : [])), ...silent];
-  if (commits.length === 0) return { kind: 'unanswered', readFrom, unread };
-  return { kind: 'answered', commits, readFrom, unread };
+  if (served.length === 0) {
+    const readFrom = answers.flatMap((a) => (a.readFrom ? [a.readFrom] : []));
+    return { kind: 'unanswered', readFrom, unread };
+  }
+  return { kind: 'answered', served, unread };
 }
