@@ -1,0 +1,173 @@
+# cm:edge lockstep -> docker-compose.prod.yml — the dev environment runs the same two services; a change to either service there is made here too
+# cm:why no postgres service and no host ports: this stack shares its server with the beta stack, whose postgres owns 5532 and whose services own 19450/19451
+services:
+  core:
+    build:
+      # Build context = repo root so pnpm workspace can resolve
+      # workspace:* deps (@forge/observability, future shared packages).
+      # Mirrors the web service's pattern.
+      context: .
+      dockerfile: packages/core/Dockerfile
+      # cm:guard the ONE writer of "which commit is this" for both services below.
+      # `SOURCE_COMMIT` is Coolify's own predefined deploy variable, so this resolves with
+      # no env-var row to add; `:-` keeps a plain `docker compose build` working, and an
+      # empty value is reported as missing rather than served.
+      # cm:edge lockstep -> packages/core/Dockerfile — its runtime-stage ARG/ENV pair.
+      args:
+        SOURCE_COMMIT: ${SOURCE_COMMIT:-}
+    restart: unless-stopped
+    expose:
+      - "8080"
+    volumes:
+      # Comment attachments default to local-fs storage at UPLOADS_DIR
+      # (=./uploads = /app/uploads in the container). Without a volume the
+      # directory is wiped on every container recreate. Switch to S3 by
+      # setting STORAGE_DRIVER=s3 + S3_BUCKET/S3_REGION when ready.
+      - core_uploads:/app/uploads
+      # forge-runner release assets (ISS-310). Boot-time `fetch-release.js`
+      # populates this from the latest `runner-v*` GitHub Release; the install
+      # routes serve it as /install.sh, /install/latest.json, /install/bin/*.
+      # Persisted so a redeploy doesn't re-download on every restart.
+      - runner_dist:/data/runner-dist
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: "8080"
+      # cm:guard never defaulted: an unset DATABASE_URL must fail the deploy, not reach a database it was not given
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL must name the dev database}
+      JWT_SECRET: ${JWT_SECRET}
+      DEVICE_TOKEN_PEPPER: ${DEVICE_TOKEN_PEPPER}
+      # ISS-234 — AES-256-GCM master key for the integration framework's
+      # CredentialVault (openssl rand -base64 32). Optional: the vault stays
+      # bootable without it on fresh installs, but refuses to boot if any
+      # active project_integrations row exists. Read directly from
+      # process.env (not the env schema), so it MUST be declared here for
+      # Coolify-style ${VAR} injection to reach the container.
+      INTEGRATION_MASTER_KEY: ${INTEGRATION_MASTER_KEY:-}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+      SMTP_FROM: ${SMTP_FROM}
+      APP_BASE_URL: ${APP_BASE_URL:-http://localhost:3000}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      # Public origin of THIS API (e.g. https://forge-beta-api.example.com). Used
+      # by forge_uploads to build absolute presigned upload URLs. Distinct from
+      # APP_BASE_URL (the web frontend). Leave empty to have forge_uploads return
+      # only a relative uploadPath that callers prepend their own API origin to.
+      PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:-}
+      # When web + api live on different subdomains of the same registrable
+      # domain (e.g. forge-beta.example.com + forge-beta-api.example.com),
+      # set AUTH_COOKIE_DOMAIN=.example.com so the auth cookie is shared
+      # across both. Without it the cookie stays host-scoped to api.* and
+      # the web origin cannot read it → user appears unauthenticated.
+      AUTH_COOKIE_DOMAIN: ${AUTH_COOKIE_DOMAIN:-}
+      LITELLM_API_URL: ${LITELLM_API_URL:-}
+      LITELLM_API_KEY: ${LITELLM_API_KEY:-}
+      LITELLM_MODEL: ${LITELLM_MODEL:-}
+      LITELLM_FAST_MODEL: ${LITELLM_FAST_MODEL:-}
+      LITELLM_FAST_REASONING_EFFORT: ${LITELLM_FAST_REASONING_EFFORT:-}
+      CHAT_CONTEXT_BUDGET_TOKENS: ${CHAT_CONTEXT_BUDGET_TOKENS:-}
+      ANTHROPIC_API_URL: ${ANTHROPIC_API_URL:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-}
+      ANTHROPIC_MAX_TOKENS: ${ANTHROPIC_MAX_TOKENS:-}
+      # OAuth/OIDC (ISS-314). Toggle FEATURE_SOCIAL_AUTH=true to expose
+      # provider buttons; provider rows are read at request time so you can
+      # add/remove providers without restarting once the flag is on.
+      FEATURE_SOCIAL_AUTH: ${FEATURE_SOCIAL_AUTH:-false}
+      OAUTH_REDIRECT_BASE: ${OAUTH_REDIRECT_BASE:-${APP_BASE_URL}}
+      GITHUB_OAUTH_CLIENT_ID: ${GITHUB_OAUTH_CLIENT_ID:-}
+      GITHUB_OAUTH_CLIENT_SECRET: ${GITHUB_OAUTH_CLIENT_SECRET:-}
+      # Google uses full OIDC; env names follow the schema in
+      # packages/core/src/config/env.ts (GOOGLE_OIDC_*, not GOOGLE_OAUTH_*).
+      GOOGLE_OIDC_CLIENT_ID: ${GOOGLE_OIDC_CLIENT_ID:-}
+      GOOGLE_OIDC_CLIENT_SECRET: ${GOOGLE_OIDC_CLIENT_SECRET:-}
+      OIDC_ISSUER_URL: ${OIDC_ISSUER_URL:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      # Comma-separated allow-list of admin emails; gates /api/admin/*.
+      # Without it every admin route 403s — set at least one email so a
+      # human can reach the admin surface on a fresh deployment.
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      # Embeddings (memory-knowledge module). Empty = disabled; embeddings
+      # singleton is lazy and only errors on first semantic-search use.
+      EMBEDDINGS_BASE_URL: ${EMBEDDINGS_BASE_URL:-}
+      EMBEDDINGS_API_KEY: ${EMBEDDINGS_API_KEY:-}
+      EMBEDDINGS_MODEL: ${EMBEDDINGS_MODEL:-}
+      EMBEDDINGS_DIM: ${EMBEDDINGS_DIM:-}
+      # config/env.ts reads these two as well; without a line here Coolify's
+      # ${VAR} injection cannot reach them and setting either in the UI is a
+      # silent no-op — the same defect 8ff505af fixed for the PAT limit knobs below.
+      EMBEDDINGS_FALLBACK_MODEL: ${EMBEDDINGS_FALLBACK_MODEL:-}
+      EMBEDDINGS_TIMEOUT_MS: ${EMBEDDINGS_TIMEOUT_MS:-}
+      # Optional Sentry telemetry. Use SENTRY_DSN_CORE in `.env` (not bare
+      # SENTRY_DSN) so core and web can route to separate Sentry projects
+      # — they share the same compose interpolation namespace. Empty =
+      # SDK no-op; @sentry/node never attaches. See packages/core/src/
+      # observability/sentry.ts for the opt-in contract.
+      SENTRY_DSN: ${SENTRY_DSN_CORE:-}
+      # forge-runner distribution (ISS-310). Where boot-time fetch-release.js
+      # stores the runner binaries + VERSION and the install routes read them.
+      # Defaults to the persisted volume mount below; override to relocate.
+      RUNNER_RELEASE_DIR: ${RUNNER_RELEASE_DIR:-/data/runner-dist}
+      # Repo whose `runner-v*` GitHub Releases the populate step pulls from.
+      RUNNER_RELEASE_REPO: ${RUNNER_RELEASE_REPO:-SidCorp-co/forge}
+      # Optional GitHub token — only needed if the repo/releases are private or
+      # to lift the 60-req/hr unauthenticated API limit. fetch-release.js reads
+      # GITHUB_TOKEN; operators set RUNNER_RELEASE_GITHUB_TOKEN in `.env`.
+      GITHUB_TOKEN: ${RUNNER_RELEASE_GITHUB_TOKEN:-}
+      # Two per-token PAT buckets since ISS-961, reads counted apart from
+      # writes. RATE_LIMIT_PAT_MAX / RATE_LIMIT_PAT_WINDOW_MS are retired and
+      # core refuses to boot while either is set, so an operator who had them
+      # in the UI is told rather than silently unthrottled.
+      RATE_LIMIT_PAT_READ_MAX: ${RATE_LIMIT_PAT_READ_MAX:-}
+      RATE_LIMIT_PAT_READ_WINDOW_MS: ${RATE_LIMIT_PAT_READ_WINDOW_MS:-}
+      RATE_LIMIT_PAT_WRITE_MAX: ${RATE_LIMIT_PAT_WRITE_MAX:-}
+      RATE_LIMIT_PAT_WRITE_WINDOW_MS: ${RATE_LIMIT_PAT_WRITE_WINDOW_MS:-}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
+
+  # web-v2 — the canonical Forge cloud UI (ISS-397 retired v1 `packages/web`
+  # + the `/v2` prefix). next.config defaults basePath/assetPrefix to "" (no
+  # env needed), so the app serves at the host ROOT. In Coolify, give THIS
+  # service the root host domain ("https://<host>") — it replaces the old `web`
+  # service. To re-mount under a prefix instead, pass build args
+  # WEB_V2_BASE_PATH=/v2 + NEXT_PUBLIC_BASE_PATH=/v2. Reuses NEXT_PUBLIC_API_URL
+  # (the core API subdomain) — web-v2 calls the API by absolute origin.
+  web-v2:
+    build:
+      context: .
+      dockerfile: packages/web-v2/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000/api}
+        NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-}
+        # cm:guard Next.js bakes NEXT_PUBLIC_* into the client bundle at build time, so
+        # this MUST be a build arg — a matching `environment:` row would reach the
+        # container and still leave the browser's DSN empty.
+        NEXT_PUBLIC_SENTRY_DSN: ${SENTRY_DSN_WEB:-}
+        # cm:edge lockstep -> packages/web-v2/Dockerfile — becomes
+        # NEXT_PUBLIC_SOURCE_COMMIT above `pnpm build`, and must be the same value core's
+        # build takes or the two halves of one deploy report different commits.
+        SOURCE_COMMIT: ${SOURCE_COMMIT:-}
+    restart: unless-stopped
+    depends_on:
+      - core
+    expose:
+      - "3000"
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000/api}
+      # cm:guard no SENTRY_DSN row belongs here. web-v2's only Sentry surface is the
+      # browser client and its DSN is inlined by Next from the build arg above, so a
+      # runtime row would reach the container and configure nothing. This package has
+      # no `instrumentation.ts` and no server-side SDK; adding a row is a claim that
+      # one of those exists.
+
+volumes:
+  core_uploads:
+  runner_dist:
