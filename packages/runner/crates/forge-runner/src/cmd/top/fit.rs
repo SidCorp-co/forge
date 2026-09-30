@@ -152,8 +152,11 @@ pub fn wrap(line: &str, width: usize) -> Vec<String> {
     let mut out = Vec::new();
     let (mut start, mut pad) = (0, 0);
     while start < chars.len() {
-        let room = width - pad;
-        let lead = " ".repeat(pad);
+        // The hang gives way where the row's first character would not fit
+        // beside it: a character that fits the screen always fits its row.
+        let row_pad = pad.min(width.saturating_sub(chars[start].1));
+        let room = width - row_pad;
+        let lead = " ".repeat(row_pad);
         // `end` is the first character that does not fit in the room.
         let (mut used, mut end) = (0, start);
         while end < chars.len() && used + chars[end].1 <= room {
@@ -213,6 +216,24 @@ mod tests {
         );
         assert!(widest(&rows) <= 10, "{rows:?}");
         assert_eq!(rows.concat().replace(' ', ""), "界".repeat(10));
+    }
+
+    /// Whole-set consult at e693ade, F1: on a screen two cells wide the hang
+    /// gives way, so each wide character gets a row of its own that fits.
+    #[test]
+    fn the_hang_gives_way_to_a_character_that_would_not_fit_beside_it() {
+        assert_eq!(wrap("界界", 2), vec!["界".to_string(), "界".to_string()]);
+        let f = vec!["h".to_string(), "界界界".to_string(), "界".to_string()];
+        let size = Some(Screen { cols: 2, rows: 2 });
+        let mut page = 0;
+        loop {
+            let s = screen(&f, size, page);
+            assert!(s.rows.len() <= 2 && widest(&s.rows) <= 2, "{:?}", s.rows);
+            page = s.next;
+            if page == 0 {
+                break;
+            }
+        }
     }
 
     /// A combining mark takes no cell and is never split from its letter: a
