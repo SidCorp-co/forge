@@ -127,7 +127,8 @@ pub fn install(repo: &Path) -> Outcome {
         }
         Err(e) => return failed(format!("the checkout {}: {e}", repo.display())),
     }
-    match git_exclude::ensure_ignored(repo, RELATIVE) {
+    // Asked of the directory: the write stages a temporary sibling there first.
+    match git_exclude::ensure_ignored_as(repo, RELATIVE, ".claude/skills/forge-master/") {
         Ok(_) => {}
         Err(Refused::Tracked) => return Outcome::Tracked,
         Err(Refused::StillNotIgnored { exclude }) => return Outcome::NotIgnored { exclude },
@@ -609,6 +610,17 @@ mod tests {
         assert_eq!(skill(&repo), None);
         let said = got.says(Some(&repo), "0.1 (abc)");
         assert!(said.contains("a rule of its own"), "{said}");
+    }
+
+    /// A rule covering only `SKILL.md` leaves the temporary sibling the write
+    /// stages beside it untracked, so the directory is what is asked about.
+    #[test]
+    fn a_rule_covering_only_the_file_still_gets_the_line_for_its_directory() {
+        let s = Scratch::new("mskill-file-rule");
+        let repo = checkout(s.path(), "r", false);
+        std::fs::write(repo.join(".gitignore"), format!("{RELATIVE}\n")).unwrap();
+        assert_eq!(install(&repo), Outcome::Written);
+        assert!(excluded(&repo), "the directory was left unignored");
     }
 
     #[test]

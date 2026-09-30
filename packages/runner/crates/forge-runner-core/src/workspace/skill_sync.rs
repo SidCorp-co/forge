@@ -307,20 +307,23 @@ fn find_prunable(skills_root: &Path, keep: &std::collections::HashSet<&str>) -> 
 /// untracked work (owner, ISS-1357, 2026-09-30). Asked per destination: a skill
 /// the checkout tracks is its own committed file, which an ignore rule cannot
 /// change, and is synced into as it always was, while a new skill beside it
-/// still needs the exclude line. The question is put about the skill's
-/// directory, trailing slash and all, since a sync writes a whole tree there:
-/// a rule ignoring only its `SKILL.md` leaves the rest of it untracked. Whether
-/// it is the checkout's own is asked of its `SKILL.md` alone, so another
-/// tracked file in that directory does not waive the step.
+/// still needs the exclude line. The ignore question is put about
+/// `.claude/skills/` itself, trailing slash and all: a seed is staged in a
+/// sibling of its destination and the tree it replaces is moved to another,
+/// so a rule covering only the skill's own directory, or only its `SKILL.md`,
+/// leaves those untracked. Whether a skill is the checkout's own is asked of
+/// its `SKILL.md` alone, so another tracked file beside it waives nothing.
+const SKILLS_DIR: &str = ".claude/skills/";
+
 fn ignore_skills<'a>(worktree: &Path, names: impl IntoIterator<Item = &'a str>) -> Result<()> {
     use crate::daemon::git_exclude::{ensure_ignored_as, Refused};
     for name in names {
-        let target = format!(".claude/skills/{name}/");
-        match ensure_ignored_as(worktree, &format!("{target}SKILL.md"), &target) {
+        let own = format!(".claude/skills/{name}/SKILL.md");
+        match ensure_ignored_as(worktree, &own, SKILLS_DIR) {
             Ok(_) | Err(Refused::Tracked) => {}
             Err(refused) => {
                 return Err(Error::Other(format!(
-                    "no skill is synced into {}: {target}: {refused}",
+                    "no skill is synced into {}: {SKILLS_DIR} for {name}: {refused}",
                     worktree.display()
                 )))
             }
@@ -819,7 +822,7 @@ mod tests {
             make_writable(&ex);
             let msg = got.expect_err("a new skill with no exclude").to_string();
             assert!(msg.contains(&ex.display().to_string()), "{msg}");
-            assert!(msg.contains(".claude/skills/forge-code/"), "{msg}");
+            assert!(msg.contains(".claude/skills/ for forge-code"), "{msg}");
         }
         ignore_skills(s.path(), ["own", "forge-code"]).expect("ignored");
         assert_eq!(std::fs::read_to_string(&ex).unwrap(), "*.swp\n.claude/\n");
@@ -879,6 +882,31 @@ mod tests {
         }
         ignore_skills(s.path(), ["example"]).expect("ignored");
         assert_eq!(std::fs::read_to_string(&ex).unwrap(), "*.swp\n.claude/\n");
+    }
+
+    /// Whole-set review at 5facd44a5, F1: a seed is staged in a sibling of its
+    /// destination, so a rule covering only the skill's own directory leaves
+    /// the staging tree untracked.
+    #[test]
+    fn a_rule_covering_only_the_skills_own_directory_still_gets_the_line() {
+        use crate::daemon::git_exclude::tests::run_git;
+        let s = crate::test_scratch::Scratch::new("sync-dir-rule");
+        run_git(s.path(), &["init", "-q"]);
+        std::fs::write(s.path().join(".gitignore"), ".claude/skills/forge-code/\n").unwrap();
+        ignore_skills(s.path(), ["forge-code"]).expect("ignored");
+        let dest = s.path().join(".claude").join("skills").join("forge-code");
+        let staging = staging_dir_for(&dest, "seed").unwrap();
+        std::fs::create_dir_all(&staging).unwrap();
+        std::fs::write(staging.join("SKILL.md"), "x").unwrap();
+        std::fs::remove_file(s.path().join(".gitignore")).unwrap();
+        let status = std::process::Command::new("git")
+            .arg("-C")
+            .arg(s.path())
+            .args(["status", "--porcelain", "--untracked-files=all"])
+            .env_remove("GIT_DIR")
+            .output()
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&status.stdout), "");
     }
 
     /// The step runs before the first skill is seeded.
