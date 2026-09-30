@@ -2587,7 +2587,7 @@ pub(crate) fn resume_for(
 }
 
 fn transcript_path(slug: &str) -> Option<std::path::PathBuf> {
-    let dir = Config::path().ok()?.with_file_name("master").join(slug);
+    let dir = crate::config::base_dir().ok()?.join("master").join(slug);
     std::fs::create_dir_all(&dir).ok()?;
     Some(dir.join("transcript.log"))
 }
