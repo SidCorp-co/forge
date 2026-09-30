@@ -434,8 +434,12 @@ describe('a reason is said once for as long as a row stays held', () => {
         commentOn: new Set([commentOn]),
       });
 
+    // A writer that read `next` before another commented it finds the hold moved, and posts nothing.
+    await shared(oldest);
+    const stale = { id: next, held: await holdOf(next) };
     await shared(next);
-    await Promise.all([shared(next), shared(next)]);
+    const { commentOnce } = await holds();
+    await commentOnce(stale, ownerId, refusalHold('NO_RUNNER_ONLINE', offline), []);
     expect(await holdComments(next)).toHaveLength(1);
 
     await clearReleaseHolds([next]);

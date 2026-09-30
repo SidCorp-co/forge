@@ -330,7 +330,7 @@ function saidInComment(body: string): string {
  * the row only now oldest (38d791 F1); a comment of the per-row wording already says it (834824 F1),
  * and so does one naming another set of covered rows (ISS-1346). Its reason joins what the row said.
  */
-async function commentOnce(
+export async function commentOnce(
   row: { id: string; held: unknown },
   authorId: string,
   hold: ReleaseHold,
