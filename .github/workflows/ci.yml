@@ -539,9 +539,12 @@ jobs:
           AR_x86_64_apple_darwin: 'true'
         run: |
           rustup target add x86_64-pc-windows-gnu x86_64-apple-darwin
+          # Both targets run whatever the first says, so one push names every target it breaks.
+          failed=""
           for target in x86_64-pc-windows-gnu x86_64-apple-darwin; do
-            cargo clippy --workspace --all-targets --target "$target" -- -D warnings
+            cargo clippy --workspace --all-targets --target "$target" -- -D warnings || failed="$failed $target"
           done
+          if [ -n "$failed" ]; then echo "::error::cross-target clippy failed for:$failed"; exit 1; fi
       # The tests that drive a master pane through a real tmux server return early where tmux is
       # absent, and a return passes green having asserted nothing — so whether this gate caught
       # the ensure_master mutants they exist for rested on what the image happened to carry
