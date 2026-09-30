@@ -179,6 +179,10 @@
           "why": "The provider's own directory \u2014 the one place ISS-1071 puts a provider's name. Everything here is ABOUT epodsystem and no generic path reads it."
         },
         {
+          "glob": "packages/core/src/project-config/schema.ts",
+          "why": "The schema vocabulary of the project-config v1 documents: each binding target is one provider's own shape (a coolify applicationUuid, a shopify or epodsystem store), so the discriminated union has to name the provider it describes, and the storefront and deployment-record enums are the providers the published JSON Schema admits, which is narrower than the registry by design. Deriving them from the registry would widen the published contract silently whenever a provider is added."
+        },
+        {
           "glob": "packages/core/src/integrations/sentry/**",
           "why": "The provider's own directory \u2014 the one place ISS-1071 puts a provider's name. Everything here is ABOUT sentry and no generic path reads it."
         },
