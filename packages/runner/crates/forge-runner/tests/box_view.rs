@@ -785,6 +785,38 @@ struct Pty {
     keyboard: std::fs::File,
     /// The secondary end, kept open to read the terminal's modes from.
     secondary: std::fs::File,
+    /// The terminal's modes before the view started.
+    modes_before: libc::termios,
+}
+
+/// The terminal's modes on `tty`.
+fn modes(tty: &std::fs::File) -> libc::termios {
+    use std::os::fd::AsRawFd;
+    // SAFETY: tcgetattr on a descriptor this test holds, into a termios it owns.
+    let mut t: libc::termios = unsafe { std::mem::zeroed() };
+    assert_eq!(unsafe { libc::tcgetattr(tty.as_raw_fd(), &mut t) }, 0);
+    t
+}
+
+/// The fields of two terminal modes that differ, by name.
+fn modes_differ(a: &libc::termios, b: &libc::termios) -> Vec<&'static str> {
+    let mut out = Vec::new();
+    if a.c_iflag != b.c_iflag {
+        out.push("c_iflag");
+    }
+    if a.c_oflag != b.c_oflag {
+        out.push("c_oflag");
+    }
+    if a.c_cflag != b.c_cflag {
+        out.push("c_cflag");
+    }
+    if a.c_lflag != b.c_lflag {
+        out.push("c_lflag");
+    }
+    if a.c_cc != b.c_cc {
+        out.push("c_cc");
+    }
+    out
 }
 
 /// What a home-and-clear is: the start of every screen the view draws.
@@ -829,6 +861,7 @@ fn on_a_terminal_reading(b: &PlantedBox, cols: u16, rows: u16, args: &[&str], ke
             std::fs::File::from_raw_fd(sec),
         )
     };
+    let modes_before = modes(&secondary);
     let path = format!("{}:/usr/bin:/bin", b.root.join("bin").display());
     let child = Command::new(env!("CARGO_BIN_EXE_forge-runner"))
         .arg("top")
@@ -873,6 +906,7 @@ fn on_a_terminal_reading(b: &PlantedBox, cols: u16, rows: u16, args: &[&str], ke
         cleared,
         keyboard,
         secondary,
+        modes_before,
     }
 }
 
@@ -982,11 +1016,7 @@ fn a_live_frame_fits_the_screen_it_is_drawn_on_and_pages_the_rest() {
     // counted: it is the first row that opens with `page `, and the body
     // starts under the row its sentence ends on.
     let page_row = |f: &[String]| f.iter().position(|l| l.starts_with("page "));
-    let body_from = |f: &[String]| {
-        f.iter()
-            .position(|l| l.ends_with("reads it whole"))
-            .map(|i| i + 1)
-    };
+    let body_from = |f: &[String]| f.iter().position(|l| l.ends_with(" whole")).map(|i| i + 1);
     let pages_of = |f: &[String]| {
         let l = &f[page_row(f)?];
         l.split(" of ")
@@ -1352,4 +1382,165 @@ fn a_core_that_cannot_be_reached_is_named_by_its_cause_on_every_row() {
             "{row}"
         );
     }
+}
+
+impl Pty {
+    fn screens_drawn(&self) -> usize {
+        self.cleared.lock().unwrap().len()
+    }
+
+    /// The page row of each whole screen drawn after the first `after`, the
+    /// wrapped row joined back into one line.
+    fn page_rows_after(&self, after: usize) -> Vec<String> {
+        let text = self.text();
+        let parts: Vec<&str> = text.split("\x1b[H\x1b[2J").collect();
+        parts
+            .iter()
+            .skip(after + 1)
+            .filter_map(|screen| {
+                let rows: Vec<&str> = screen.split("\r\n").collect();
+                let from = rows.iter().position(|r| r.starts_with("page "))?;
+                let to = rows[from..].iter().position(|r| r.ends_with(" whole"))?;
+                Some(
+                    rows[from..=from + to]
+                        .iter()
+                        .map(|r| r.trim())
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                )
+            })
+            .collect()
+    }
+
+    /// Whether a screen drawn after the first `after` has a page row opening
+    /// with `what`, waiting up to `within` for one.
+    fn draws_page(&self, after: usize, what: &str, within: std::time::Duration) -> bool {
+        let until = std::time::Instant::now() + within;
+        loop {
+            if self
+                .page_rows_after(after)
+                .iter()
+                .any(|r| r.starts_with(what))
+            {
+                return true;
+            }
+            if std::time::Instant::now() > until {
+                return false;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        }
+    }
+
+    fn type_keys(&mut self, keys: &str) {
+        self.keyboard.write_all(keys.as_bytes()).unwrap();
+        self.keyboard.flush().unwrap();
+    }
+}
+
+/// Criteria 32, 33, 34, 35 and 37 (judge r3j, finding 78): on a terminal
+/// whose stdin is the terminal, space holds the page across redraws and the
+/// page row says so, `n` and `p` turn it at once, space lets pages turn
+/// again, and Ctrl-C gives the terminal back the modes it had.
+#[test]
+fn keys_hold_and_turn_pages_and_the_terminal_is_given_back() {
+    let core = fake_core("200 OK");
+    let b = plant(&core.url);
+    let mut pty = on_a_terminal_reading(&b, 100, 20, &["--interval", "5"], true);
+    let second = std::time::Duration::from_secs(1);
+    assert!(
+        pty.draws_page(0, "page 1 of ", std::time::Duration::from_secs(20)),
+        "no first page: {}",
+        pty.text()
+    );
+    let first = pty.page_rows_after(0).remove(0);
+    let pages: usize = first["page 1 of ".len()..]
+        .split(' ')
+        .next()
+        .and_then(|n| n.parse().ok())
+        .unwrap_or_else(|| panic!("{first}"));
+    assert!(pages > 3, "{first}");
+    assert!(first.contains("space holds, n and p turn"), "{first}");
+    let taken = modes(&pty.secondary);
+    assert_eq!(
+        taken.c_lflag & (libc::ICANON | libc::ECHO),
+        0,
+        "the view reads keys a byte at a time, unechoed"
+    );
+    assert_ne!(taken.c_lflag & libc::ISIG, 0, "Ctrl-C still interrupts");
+
+    let at = pty.screens_drawn();
+    pty.type_keys(" ");
+    let held = format!("page 1 of {pages} HELD until space");
+    assert!(
+        pty.draws_page(at, &held, second),
+        "space: {:?}",
+        pty.page_rows_after(at)
+    );
+    // Two intervals: pages would have turned twice.
+    let at = pty.screens_drawn();
+    std::thread::sleep(std::time::Duration::from_secs(11));
+    let since = pty.page_rows_after(at);
+    assert!(since.len() >= 2, "the view kept redrawing: {since:?}");
+    assert!(since.iter().all(|r| r.starts_with(&held)), "{since:?}");
+
+    for (key, page) in [("n", 2), ("p", 1), ("p", pages)] {
+        let at = pty.screens_drawn();
+        pty.type_keys(key);
+        let want = format!("page {page} of {pages} HELD until space");
+        assert!(
+            pty.draws_page(at, &want, second),
+            "{key}: {:?}",
+            pty.page_rows_after(at)
+        );
+    }
+    let at = pty.screens_drawn();
+    pty.type_keys(" ");
+    assert!(
+        pty.draws_page(at, &format!("page {pages} of {pages} — "), second),
+        "space again: {:?}",
+        pty.page_rows_after(at)
+    );
+    assert!(
+        pty.draws_page(
+            at,
+            &format!("page 1 of {pages} — "),
+            std::time::Duration::from_secs(8)
+        ),
+        "pages turn again: {:?}",
+        pty.page_rows_after(at)
+    );
+
+    // SAFETY: a signal to the child this test spawned and still holds.
+    assert_eq!(
+        unsafe { libc::kill(pty.child.id() as libc::pid_t, libc::SIGINT) },
+        0
+    );
+    let st = pty.exited_within(std::time::Duration::from_secs(8));
+    assert!(st.is_some_and(|s| s.success()), "{st:?}");
+    let after = modes(&pty.secondary);
+    assert_eq!(
+        modes_differ(&pty.modes_before, &after),
+        Vec::<&str>::new(),
+        "the terminal was not given back its modes"
+    );
+}
+
+/// Criterion 36: with stdin not a terminal, the page row says keys are not
+/// read, and why.
+#[test]
+fn a_view_that_cannot_read_keys_says_so_on_its_page_row() {
+    let core = fake_core("200 OK");
+    let b = plant(&core.url);
+    let pty = on_a_terminal(&b, 100, 20, &["--interval", "1"]);
+    assert!(
+        pty.draws_page(0, "page 1 of ", std::time::Duration::from_secs(20)),
+        "{}",
+        pty.text()
+    );
+    let row = pty.page_rows_after(0).remove(0);
+    let words = row.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        words.contains("keys are not read (stdin is not a terminal)"),
+        "{row}"
+    );
 }

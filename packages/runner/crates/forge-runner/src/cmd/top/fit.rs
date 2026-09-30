@@ -46,14 +46,30 @@ pub struct Shown {
     /// How many rows under the page row are headings carried from earlier
     /// pages rather than rows of this one.
     pub carried: usize,
+    /// The page drawn, from 0, and how many this frame took on this screen.
+    pub at: usize,
+    pub pages: usize,
+}
+
+/// What the page row says of the keys that turn pages.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PageKeys {
+    /// Keys are read, and pages turn one per redraw.
+    Turning,
+    /// Keys are read, and the page shown stays until space is pressed again.
+    Held,
+    /// Keys are not read, for the reason given.
+    Unread(String),
 }
 
 /// The page row's wording, from the page shown and the page count.
 type PageRow<'a> = dyn Fn(usize, usize) -> String + 'a;
 
-/// One screenful of `frame`, whose first line is its header. `page` counts
-/// redraws, so it is taken modulo however many pages this frame needs.
-pub fn screen(frame: &[String], size: Option<Screen>, page: usize) -> Shown {
+/// One screenful of `frame`, whose first line is its header. `page` is taken
+/// modulo however many pages this frame needs on this screen, and `Shown`
+/// says which page that was: a page held on a frame that has since shrunk is
+/// the one it comes round to.
+pub fn screen(frame: &[String], size: Option<Screen>, page: usize, keys: &PageKeys) -> Shown {
     let Some(size) = size else {
         let mut rows: Vec<String> = frame.iter().map(|l| printable(l)).collect();
         rows.insert(
@@ -66,6 +82,8 @@ pub fn screen(frame: &[String], size: Option<Screen>, page: usize) -> Shown {
             next: 0,
             top,
             carried: 0,
+            at: 0,
+            pages: 1,
         };
     };
     let (header, body) = match frame.split_first() {
@@ -97,18 +115,34 @@ pub fn screen(frame: &[String], size: Option<Screen>, page: usize) -> Shown {
             next: 0,
             top,
             carried: 0,
+            at: 0,
+            pages: 1,
         };
     }
     // Room for the body under the header and a page row, trying the full page
     // row, then a short one, then no header, then the body alone, so every
     // page fits however small the screen is and every row is still shown.
+    let (cols, rows) = (size.cols, size.rows);
     let full = |at: usize, pages: usize| {
-        format!(
-            "page {at} of {pages} — {total} rows on this {}x{} screen, one page per redraw; `forge-runner top --once | less` reads it whole",
-            size.cols, size.rows
-        )
+        match keys {
+        PageKeys::Turning => format!(
+            "page {at} of {pages} — {total} rows at {cols}x{rows}; space holds, n and p turn; `forge-runner top --once | less` reads it whole"
+        ),
+        PageKeys::Held => format!(
+            "page {at} of {pages} HELD until space — n and p turn; {total} rows at {cols}x{rows}; `forge-runner top --once | less` reads it whole"
+        ),
+        PageKeys::Unread(why) => format!(
+            "page {at} of {pages} — {total} rows at {cols}x{rows}, one page per redraw; keys are not read ({why}); `forge-runner top --once | less` reads it whole"
+        ),
+    }
     };
-    let short = |at: usize, pages: usize| format!("page {at} of {pages}; --once reads it whole");
+    let short = |at: usize, pages: usize| match keys {
+        PageKeys::Turning => format!("page {at} of {pages}; space holds; --once reads it whole"),
+        PageKeys::Held => format!("page {at} of {pages} HELD until space; --once reads it whole"),
+        PageKeys::Unread(_) => {
+            format!("page {at} of {pages}; keys are not read; --once reads it whole")
+        }
+    };
     let plans: [(bool, Option<&PageRow>); 4] = [
         (true, Some(&full)),
         (true, Some(&short)),
@@ -124,7 +158,7 @@ pub fn screen(frame: &[String], size: Option<Screen>, page: usize) -> Shown {
         let Some(status) = status else {
             let pages = paged(0).expect("a screen of one row holds one row");
             let at = page % pages.len();
-            return pages[at].shown(Vec::new(), &body, (at + 1) % pages.len());
+            return pages[at].shown(Vec::new(), &body, at, pages.len());
         };
         // The page row's height depends on the page count it states, and the
         // page count on the room the page row leaves: settle it in two passes.
@@ -159,7 +193,7 @@ pub fn screen(frame: &[String], size: Option<Screen>, page: usize) -> Shown {
         };
         let mut top = head.to_vec();
         top.extend(text);
-        return pages[at].shown(top, &body, (at + 1) % pages.len());
+        return pages[at].shown(top, &body, at, pages.len());
     }
     unreachable!("the last plan, the body alone, always fits")
 }
@@ -179,16 +213,18 @@ struct Page {
 }
 
 impl Page {
-    fn shown(&self, top: Vec<String>, body: &[Row], next: usize) -> Shown {
+    fn shown(&self, top: Vec<String>, body: &[Row], at: usize, pages: usize) -> Shown {
         let opened = top.len();
         let mut rows = top;
         rows.extend(self.carried.iter().cloned());
         rows.extend(body[self.from..self.to].iter().map(|r| r.text.clone()));
         Shown {
             rows,
-            next,
+            next: (at + 1) % pages,
             top: opened,
             carried: self.carried.len(),
+            at,
+            pages,
         }
     }
 }
@@ -440,6 +476,11 @@ pub fn wrap(line: &str, width: usize) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The screen as a view reading keys draws it while pages turn.
+    fn screen(frame: &[String], size: Option<Screen>, page: usize) -> Shown {
+        super::screen(frame, size, page, &PageKeys::Turning)
+    }
 
     fn widest(rows: &[String]) -> usize {
         rows.iter().map(|r| cells(r)).max().unwrap_or(0)
