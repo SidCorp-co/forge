@@ -1828,8 +1828,8 @@ mod tests {
 
         let declared = declaring(&["epodsystem"]).mcp_servers;
         let err = job_pane_argv(&not_a_dir, "forge-job-j1", &launch(&declared, "", &[]))
-        .expect_err("a pane that would lack its servers is not started")
-        .to_string();
+            .expect_err("a pane that would lack its servers is not started")
+            .to_string();
 
         assert!(
             err.contains("epodsystem"),

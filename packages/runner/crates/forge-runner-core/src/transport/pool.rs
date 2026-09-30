@@ -121,7 +121,9 @@ impl Refusal {
     /// The word, and core's sentence where it sent one — what a log line needs to be acted on.
     pub fn describe(&self) -> String {
         match self {
-            Self::PolicyRefused(detail) if !detail.is_empty() => format!("policy_refused: {detail}"),
+            Self::PolicyRefused(detail) if !detail.is_empty() => {
+                format!("policy_refused: {detail}")
+            }
             other => other.as_str().to_string(),
         }
     }
@@ -608,7 +610,10 @@ mod tests {
             "deniedTools": ["Bash(git push:*)", "CronCreate"]
         });
         let prepared: PreparedJob = serde_json::from_value(raw).unwrap();
-        assert_eq!(prepared.denied_tools, vec!["Bash(git push:*)", "CronCreate"]);
+        assert_eq!(
+            prepared.denied_tools,
+            vec!["Bash(git push:*)", "CronCreate"]
+        );
         assert_eq!(prepared.model, "opus");
     }
 
