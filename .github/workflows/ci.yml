@@ -359,6 +359,9 @@ jobs:
               - 'packages/contracts/**'
               - 'packages/core/**'
               - '.npmrc'
+              - 'pnpm-workspace.yaml'
+              - 'pnpm-lock.yaml'
+              - 'package.json'
               - '.github/workflows/ci.yml'
               - 'scripts/lib/whole-tree-*.mjs'
               - 'scripts/check-whole-tree-gates.mjs'
@@ -368,10 +371,11 @@ jobs:
             # verdicts without them. It matched no filter, so a change to it skipped `core`,
             # `web`, `core-integration` and `runner` at once — and a skipped job passes
             # `ci-passed`, which is the shape `39431309` already cost a production deploy.
-            # Still unmatched by `web`, and left so deliberately: `pnpm-lock.yaml`,
-            # `package.json` and `pnpm-workspace.yaml`, which `core` carries. A dependency
-            # bump can break the web build the same way; widening it is a separate argument
-            # about paying a web build on every bump, not this one.
+            # `pnpm-lock.yaml`, the root `package.json` and `pnpm-workspace.yaml` sit under
+            # both for the same reason: they decide which versions web-v2 installs, so a
+            # lockfile-only bump can break its build. `web` skipped on exactly that change
+            # (#785, ISS-1348), and web-v2 was proved by hand before it landed (ISS-1364).
+            # The price is a ~1m40s web build on each such change, and they are rare.
             core:
               - 'packages/core/**'
               - 'pnpm-workspace.yaml'
