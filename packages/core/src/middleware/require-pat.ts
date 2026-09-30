@@ -1,8 +1,9 @@
 import type { Context, MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { writeMcpAudit } from '../auth/mcp-audit.js';
-import { patPrincipalOf, touchPatUsage, verifyPat } from '../auth/pat.js';
+import { touchPatUsage, verifyPat } from '../auth/pat.js';
 import { isPatLike } from '../auth/pat-format.js';
+import { patPrincipalOf } from '../auth/pat-principal.js';
 import { type PatRequestClass, patRuleFor } from '../config/rate-limits.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { userRoom } from '../ws/rooms.js';

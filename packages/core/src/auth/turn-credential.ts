@@ -14,7 +14,7 @@ import { personalAccessTokens, users } from '../db/schema.js';
 import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
 import { logger } from '../logger.js';
 import type { PatPrincipal } from '../middleware/require-pat.js';
-import { mintPat, patPrincipalOf, revokePat } from './pat.js';
+import { mintPat, revokePat } from './pat.js';
 import { patIsLive } from './pat-live.js';
 import {
   PAT_GRANT_EPOCH,
@@ -23,6 +23,7 @@ import {
   type PatPermission,
   patGrantCovers,
 } from './pat-permissions.js';
+import { patPrincipalOf } from './pat-principal.js';
 
 /** What an in-process chat turn's tools reach: the tracker verbs the `forge` CLI runs, and the reads beside them. */
 export const CHAT_TURN_MENU: readonly PatPermission[] = [

@@ -3,7 +3,6 @@ import { and, eq, type InferSelectModel, isNull, sql } from 'drizzle-orm';
 import { env } from '../config/env.js';
 import { db, type Tx } from '../db/client.js';
 import { personalAccessTokens, type UserKind, users } from '../db/schema.js';
-import type { PatPrincipal } from '../middleware/require-pat.js';
 import {
   generatePatPlaintext,
   isPatValid,
@@ -110,26 +109,6 @@ export interface VerifiedPat {
    * a PAT principal is built can answer `agency` from WHO holds the token.
    */
   ownerKind: UserKind;
-}
-
-/**
- * The one place a token row becomes a principal, so a token core mints for itself acts
- * exactly as it would when presented at a door.
- */
-export function patPrincipalOf({ row, ownerKind }: VerifiedPat): PatPrincipal {
-  return {
-    kind: 'pat',
-    agency: ownerKind,
-    agentUserId: ownerKind === 'agent' ? row.userId : null,
-    userId: row.userId,
-    tokenId: row.id,
-    scopes: row.scopes,
-    projectIds: row.projectIds ?? null,
-    permissions: row.permissions ?? null,
-    grantEpoch: row.grantEpoch,
-    boundProjectId: row.boundProjectId ?? null,
-    deviceId: row.deviceId ?? null,
-  };
 }
 
 /**

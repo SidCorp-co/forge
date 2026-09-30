@@ -1,6 +1,5 @@
 import type { agentSessions } from '../db/schema.js';
 import { logger } from '../logger.js';
-import { revokeSessionCredential } from './session-credential.js';
 
 type SessionRow = typeof agentSessions.$inferSelect;
 
@@ -54,7 +53,7 @@ export function sessionCarriesBridgeMarker(metadata: unknown): boolean {
  * handed: a session that answered a person is marked by a bridge, so this is where it ends.
  */
 export async function fireTerminalSessionBridges(row: SessionRow): Promise<void> {
-  await revokeSessionCredential(row.id);
+  await (await import('./session-credential.js')).revokeSessionCredential(row.id);
   const metadata = (row.metadata as Record<string, unknown> | null) ?? {};
   for (const bridge of TERMINAL_SESSION_BRIDGES) {
     if (!metadata[bridge.marker]) continue;
