@@ -107,7 +107,9 @@ describe('what core refuses, by name', () => {
   // forge-runner's `pool_reads::is_project_id` asserts the same list: one id core
   // refuses and the box keeps refuses every project's report (ISS-1344).
   it.each(fixture.projectIds.taken)('takes %j as a project id, as the box does', (id) => {
-    expect(readHeartbeatPool({ projects: [{ ...blind(), projectId: id }] }).refused).toBeUndefined();
+    expect(
+      readHeartbeatPool({ projects: [{ ...blind(), projectId: id }] }).refused,
+    ).toBeUndefined();
   });
 
   it.each(fixture.projectIds.refused)('refuses %j as a project id, as the box does', (id) => {
