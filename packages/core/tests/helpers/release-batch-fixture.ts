@@ -49,6 +49,13 @@ export interface ReleaseBatchFixture {
   commentCount(issueId: string): Promise<number>;
   /** `ISS-nn` for each id, in the order given. */
   displayIds(ids: string[]): Promise<string[]>;
+  /** A waiting row merged at `mergedAt` whose two criteria passed at `commit`, written the way the
+   *  forge-plugin writes a `commit:` verdict. */
+  judgedRow(commit: string, mergedAt: string): Promise<string>;
+  /** The `releaseHold` a sweep left on the row, or null. */
+  holdOf(issueId: string): Promise<Record<string, unknown> | null>;
+  /** How many hold comments the row carries. */
+  holdComments(issueId: string): Promise<number>;
   /**
    * Whatever `createReleaseBatch` returns, named by its own type rather than copied. The copy
    * this replaced went stale the moment ISS-1120 put `version` on the result.
@@ -199,6 +206,54 @@ export function releaseBatchFixture(
     return idList.map((id) => String(shown.get(id)));
   }
 
+  async function judgedRow(commit: string, mergedAt: string): Promise<string> {
+    const { ownerId } = ids();
+    const id = await insertIssue();
+    await harness().db.execute(sql`
+      UPDATE issues SET acceptance_criteria = ${'1. ok\n2. ok'}, merged_at = ${mergedAt}::timestamptz,
+                        merged_commit_sha = ${commit}
+       WHERE id = ${id}
+    `);
+    const block = (n: number) =>
+      [`criterion: ${n} — ok`, 'verdict: pass', `commit: ${commit}`, 'evidence: judge.txt'].join(
+        '\n',
+      );
+    const body = [
+      '## Verdict',
+      '',
+      '```forge-record',
+      block(1),
+      block(2),
+      '```',
+      '',
+      '`forge-record: verdict · contract 1`',
+    ].join('\n');
+    await harness().db.execute(sql`
+      INSERT INTO comments (id, issue_id, author_id, body)
+      VALUES (${randomUUID()}, ${id}, ${ownerId}, ${body})
+    `);
+    await harness().db.execute(sql`
+      INSERT INTO issue_attachments (id, issue_id, uploader_id, name, path, mime, size)
+      VALUES (${randomUUID()}, ${id}, ${ownerId}, 'judge.txt', ${`uploads/${id}`}, 'text/plain', 8)
+    `);
+    return id;
+  }
+
+  async function holdOf(issueId: string): Promise<Record<string, unknown> | null> {
+    const rows = (await harness().db.execute(sql`
+      SELECT session_context -> 'releaseHold' AS hold FROM issues WHERE id = ${issueId}
+    `)) as unknown as Array<{ hold: Record<string, unknown> | null }>;
+    return rows[0]?.hold ?? null;
+  }
+
+  async function holdComments(issueId: string): Promise<number> {
+    const rows = (await harness().db.execute(sql`
+      SELECT count(*)::int AS n FROM comments
+       WHERE issue_id = ${issueId} AND body LIKE '%release-hold: %'
+    `)) as unknown as Array<{ n: number }>;
+    return Number(rows[0]?.n ?? 0);
+  }
+
   async function waitFor(cond: () => Promise<boolean>): Promise<void> {
     for (let i = 0; i < 100; i += 1) {
       if (await cond()) return;
@@ -221,6 +276,9 @@ export function releaseBatchFixture(
     storedJob,
     commentCount,
     displayIds,
+    judgedRow,
+    holdOf,
+    holdComments,
     claim,
     waitFor,
   };
