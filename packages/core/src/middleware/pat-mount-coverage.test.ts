@@ -10,8 +10,7 @@
  * behind a JWT-only or device-only gate lists a permission no token can use.
  * So every such route is sent a token with `beginPatRequest` replaced by a
  * sentinel, and a route that never reaches the sentinel is named — unless it
- * answers a request carrying no credential at all without a 401, which is a
- * public route no grant could narrow.
+ * is one of the public routes listed below, which read no credential at all.
  */
 import { readFileSync } from 'node:fs';
 import type { Hono } from 'hono';
@@ -35,6 +34,13 @@ const { PAT_UNGRANTABLE, patPermissionPrefixes, patPrefixForPath, patUngrantable
   await import('../auth/pat-permissions.js');
 
 type Route = { method: string; path: string };
+
+/**
+ * Public lookups by the invitation's own token, beside token-gated siblings
+ * (`/pending`, `/:token/accept`) under the same prefix, so no path exclusion
+ * can name them without shutting the siblings too.
+ */
+const PUBLIC_UNDER_MENU = ['GET /api/invitations/:token', 'GET /api/org-invitations/:token'];
 
 let app: Hono;
 let routes: Route[];
@@ -116,6 +122,15 @@ describe('every route is in the grant grammar or named out of it', () => {
 });
 
 describe('every grantable route admits a token', () => {
+  it('lists as public only live routes that answer with no credential', async () => {
+    for (const entry of PUBLIC_UNDER_MENU) {
+      const [method = '', path = ''] = entry.split(' ');
+      expect(routes, entry).toContainEqual({ method, path });
+      const res = await app.request(concrete(path), { method });
+      expect([401, 403, SENTINEL], entry).not.toContain(res.status);
+    }
+  });
+
   it('reaches the PAT door from every route under a menu prefix', async () => {
     const send = (r: Route, token: string | null) =>
       app.request(concrete(r.path), {
@@ -131,7 +146,7 @@ describe('every grantable route admits a token', () => {
       if (patUngrantableFor(r.path, r.method) || !patPrefixForPath(r.path)) continue;
       const res = await send(r, `forge_pat_dev_${'a'.repeat(64)}`);
       if (res.status === SENTINEL) continue;
-      if ((await send(r, null)).status !== 401) continue;
+      if (PUBLIC_UNDER_MENU.includes(`${r.method} ${r.path}`)) continue;
       const body = (await res.text()).slice(0, 160);
       shut.push(
         `${r.method} ${r.path} answered ${res.status} ${body}, mounted at ${mountOf(r.path)}`,
