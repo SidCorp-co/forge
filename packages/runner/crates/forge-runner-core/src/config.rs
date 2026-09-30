@@ -445,11 +445,6 @@ mod tests {
                 "session_config_dir, the tmux socket's dir, and unoverridden_config_dir, a \
                  comparison; held by ISS-1265, the first owed base_dir",
             ),
-            (
-                "forge-runner-core/src/daemon/master.rs",
-                1,
-                "transcript_path creates master/<slug>; held by ISS-1357, owed base_dir",
-            ),
             ("forge-runner/src/cmd/config.rs", 2, "prints the path"),
             ("forge-runner/src/cmd/doctor.rs", 1, "reads the config"),
             (

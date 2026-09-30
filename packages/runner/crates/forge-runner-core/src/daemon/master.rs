@@ -2128,13 +2128,21 @@ async fn give_back_lost_runs(
     }
 }
 
-const MASTER_SKILL: &str = include_str!("../../assets/forge-master-skill.md");
-
-/// Write the skill where the session about to start will look for it.
-fn install_skill(repo: &std::path::Path) -> std::io::Result<()> {
-    let dir = repo.join(".claude/skills/forge-master");
-    std::fs::create_dir_all(&dir)?;
-    std::fs::write(dir.join("SKILL.md"), MASTER_SKILL)
+/// Write the skill where the session about to start will look for it, under
+/// the rule every other write point keeps: a checkout the install leaves
+/// unwritten gets no skill, and so no pane (ISS-1357). `dir` is where the
+/// outcome is recorded for `forge-runner status`.
+fn install_skill(
+    repo: &std::path::Path,
+    slug: &str,
+    dir: Option<&std::path::Path>,
+) -> Result<(), String> {
+    use crate::daemon::master_skill::{install_and_record, Point};
+    let outcome = install_and_record(slug, repo, Point::Placement, dir);
+    if outcome.installed() {
+        return Ok(());
+    }
+    Err(outcome.says(Some(repo), crate::update::CURRENT_VERSION))
 }
 
 fn install_hooks_logged(repo: &std::path::Path, slug: &str) {
@@ -2655,7 +2663,7 @@ pub(crate) fn resume_for(
 }
 
 fn transcript_path(slug: &str) -> Option<std::path::PathBuf> {
-    let dir = Config::path().ok()?.with_file_name("master").join(slug);
+    let dir = crate::config::base_dir().ok()?.join("master").join(slug);
     std::fs::create_dir_all(&dir).ok()?;
     Some(dir.join("transcript.log"))
 }
@@ -3245,7 +3253,11 @@ async fn ensure_master(
         }
     };
 
-    if let Err(e) = install_skill(&resolved.repo_path) {
+    if let Err(e) = install_skill(
+        &resolved.repo_path,
+        &resolved.slug,
+        crate::daemon::control::config_dir().as_deref(),
+    ) {
         tracing::error!(
             "[master] {}: could not install the forge-master skill into {}: {e} — not starting a master",
             resolved.slug,
@@ -3255,9 +3267,7 @@ async fn ensure_master(
             masters,
             project_id,
             &resolved.slug,
-            Unplaced::SkillMissing {
-                detail: e.to_string(),
-            },
+            Unplaced::SkillMissing { detail: e },
         );
         return PaneState::Absent;
     }
@@ -4119,6 +4129,7 @@ async fn end_master(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::daemon::master_skill::ASSET as MASTER_SKILL;
 
     const THIS_SOURCE: &str = include_str!("master.rs");
 
@@ -7920,6 +7931,82 @@ mod unplaced_tests {
         );
     }
 
+    /// ISS-1357 criteria 6, 12 and 13: placement installs under the rule every
+    /// other write point keeps. A checkout that does not ignore the skill gets
+    /// `.claude/` in its exclude file and the skill; one whose own rule
+    /// un-ignores it gets none, the pane is refused, and the reason is the
+    /// unplaced one. The record goes where the caller says: `dirs_next`
+    /// resolves the config directory from `XDG_CONFIG_HOME` on Linux only, so
+    /// a test that steered it that way read an empty scratch on macOS.
+    #[test]
+    fn placement_refuses_a_checkout_whose_git_does_not_ignore_the_skill() {
+        use crate::daemon::master_skill::{read, Outcome, Read};
+        let git_init = |dir: &std::path::Path| {
+            let ok = std::process::Command::new("git")
+                .arg("-C")
+                .arg(dir)
+                .args(["init", "-q"])
+                .env_remove("GIT_DIR")
+                .status()
+                .unwrap()
+                .success();
+            assert!(ok);
+        };
+        let record = crate::test_scratch::Scratch::new("place-skill-record");
+
+        let open = crate::test_scratch::Scratch::new("place-skill-open");
+        git_init(open.path());
+        install_skill(open.path(), "open", Some(record.path()))
+            .expect("a checkout that merely does not ignore .claude/ is written");
+        assert!(
+            std::fs::read_to_string(open.path().join(".git").join("info").join("exclude"))
+                .unwrap()
+                .lines()
+                .any(|l| l == ".claude/"),
+            "placement wrote the skill without the exclude line"
+        );
+
+        let repo = crate::test_scratch::Scratch::new("place-skill-negated");
+        git_init(repo.path());
+        std::fs::write(repo.path().join(".gitignore"), "!.claude/\n!.claude/**\n").unwrap();
+        let why = install_skill(repo.path(), "acme", Some(record.path()))
+            .expect_err("a checkout that un-ignores .claude/ is refused");
+        assert!(why.contains("does not ignore"), "{why}");
+        assert!(
+            !repo.path().join(".claude").exists(),
+            "placement wrote into it anyway"
+        );
+        let said = Unplaced::SkillMissing { detail: why }.to_string();
+        assert!(
+            said.contains("does not ignore .claude/skills/forge-master/SKILL.md"),
+            "{said}"
+        );
+        let Read::Record(r) = read(record.path()) else {
+            panic!("placement recorded nothing")
+        };
+        assert_eq!(
+            r.of("open").map(|e| &e.outcome).collect::<Vec<_>>(),
+            [&Outcome::Written]
+        );
+        assert!(matches!(
+            r.of("acme").map(|e| &e.outcome).collect::<Vec<_>>()[..],
+            [Outcome::NotIgnored { .. }]
+        ));
+
+        let body = ensure_master_body();
+        let at = |needle: &str| body.find(needle).unwrap_or_else(|| panic!("`{needle}`"));
+        let arm =
+            &body[at("install_skill(\n        &resolved.repo_path,")..at("install_hooks_logged(")];
+        assert!(
+            arm.contains("crate::daemon::control::config_dir()"),
+            "placement records somewhere `forge-runner status` does not read: {arm}"
+        );
+        assert!(
+            arm.contains("Unplaced::SkillMissing") && arm.contains("return PaneState::Absent;"),
+            "a refused install must record its reason and start no pane: {arm}"
+        );
+    }
+
     /// Criterion 2: the refusal is the project's recorded reason, carries what
     /// the read met, and is an error an operator reads.
     #[test]
@@ -8618,7 +8705,7 @@ mod unplaced_tests {
             .find("let verdict = verdict_over_unwithdrawn(")
             .expect("the adopt branch must judge the capability the pane holds");
         let spawn = body
-            .find("install_skill(&resolved.repo_path)")
+            .find("install_skill(\n        &resolved.repo_path,")
             .expect("the spawn path must start with the skill install");
         let between = &body[adopted..spawn];
         assert!(

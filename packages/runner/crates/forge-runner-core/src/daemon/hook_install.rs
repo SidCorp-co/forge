@@ -227,12 +227,36 @@ pub fn install(cwd: &Path, exe: &Path) -> Result<PathBuf> {
         }
     }
     let next = merged(existing.as_deref(), exe)?;
+    ignore_settings(cwd, &path)?;
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)
             .map_err(|e| Error::Other(format!("cannot create {}: {e}", dir.display())))?;
     }
     write_atomically(&path, &next)?;
     Ok(path)
+}
+
+/// Make the checkout's git ignore the settings file before it is written, so a
+/// checkout that does not ignore `.claude/` gains no untracked work (owner,
+/// ISS-1357, 2026-09-30). A settings file the checkout tracks is its own
+/// committed file, which an ignore rule cannot change, and is written as it
+/// always was.
+fn ignore_settings(cwd: &Path, path: &Path) -> Result<()> {
+    use crate::daemon::git_exclude::{ensure_ignored, Refused};
+    match ensure_ignored(cwd, SETTINGS) {
+        Ok(_) => Ok(()),
+        Err(Refused::Tracked) => {
+            tracing::warn!(
+                "[hooks] {} is tracked by that checkout's git, so the hooks are written into a committed file",
+                path.display()
+            );
+            Ok(())
+        }
+        Err(refused) => Err(Error::Other(format!(
+            "{} is not written: {refused}",
+            path.display()
+        ))),
+    }
 }
 
 /// Write beside the file and rename over it, the way `Config::save` writes.
@@ -1433,6 +1457,62 @@ mod tests {
         assert!(
             !settings_path(&dir).with_extension("json.tmp").exists(),
             "the temporary file was left beside the settings file"
+        );
+    }
+
+    fn git_checkout(label: &str) -> crate::test_scratch::Scratch {
+        let s = crate::test_scratch::Scratch::new(label);
+        crate::daemon::git_exclude::tests::run_git(s.path(), &["init", "-q"]);
+        s
+    }
+
+    /// Owner, ISS-1357: a checkout whose git does not ignore `.claude/` gets it
+    /// in its exclude file before the settings file is written, so the gate
+    /// keeps working there and nothing shows as untracked.
+    #[test]
+    fn a_checkout_that_does_not_ignore_claude_gets_the_exclude_line_before_the_settings() {
+        use crate::daemon::git_exclude::tests::exclude_of;
+        let (_runner, exe) = scratch_runner("hooks-exclude");
+        let repo = git_checkout("hooks-exclude-repo");
+
+        let written = install(repo.path(), &exe).expect("installed");
+        assert_eq!(written, settings_path(repo.path()));
+        assert!(std::fs::read_to_string(exclude_of(repo.path()))
+            .unwrap()
+            .lines()
+            .any(|l| l == ".claude/"));
+        let status = std::process::Command::new("git")
+            .arg("-C")
+            .arg(repo.path())
+            .args(["status", "--porcelain", "--untracked-files=all"])
+            .env_remove("GIT_DIR")
+            .output()
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&status.stdout), "");
+    }
+
+    #[test]
+    fn a_read_only_exclude_is_refused_by_name_and_no_settings_file_is_written() {
+        use crate::daemon::git_exclude::tests::{exclude_of, make_read_only, make_writable};
+        let (_runner, exe) = scratch_runner("hooks-exclude-ro");
+        let repo = git_checkout("hooks-exclude-ro-repo");
+        let ex = exclude_of(repo.path());
+        std::fs::create_dir_all(ex.parent().unwrap()).unwrap();
+        std::fs::write(&ex, "*.swp\n").unwrap();
+        if !make_read_only(&ex) {
+            return;
+        }
+        let got = install(repo.path(), &exe);
+        make_writable(&ex);
+
+        let msg = got
+            .expect_err("an unwritable exclude is refused")
+            .to_string();
+        assert!(msg.contains(&ex.display().to_string()), "{msg}");
+        assert!(msg.contains("settings.local.json"), "{msg}");
+        assert!(
+            !settings_path(repo.path()).exists(),
+            "the settings file was written unignored"
         );
     }
 }
