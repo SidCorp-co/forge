@@ -125,7 +125,7 @@ async function publishLoginEvent(
 
 deviceLoginRoutes.post(
   '/login/init',
-  rateLimit(RULES.deviceLoginInit, { name: 'deviceLoginInit' }),
+  rateLimit(() => RULES.deviceLoginInit, { name: 'deviceLoginInit' }),
   async (c) => {
     let body: {
       device_label?: unknown;
@@ -256,7 +256,7 @@ async function resolveApprovableAgent(raw: unknown, approverId: string): Promise
 
 deviceLoginRoutes.post(
   '/login/approve',
-  rateLimit(RULES.deviceLoginApprove, { name: 'deviceLoginApprove' }),
+  rateLimit(() => RULES.deviceLoginApprove, { name: 'deviceLoginApprove' }),
   requireAuth(),
   async (c) => {
     const userId = c.get('userId');

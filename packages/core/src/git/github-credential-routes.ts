@@ -8,12 +8,12 @@
  * device's runners and the project's binding every time it is asked for.
  */
 
-import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { logger } from '../logger.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import { GitCredentialError, mintGitCredentialForDevice } from './github-app-credential.js';
 
 export const deviceGitCredentialRoutes = new Hono<{ Variables: DeviceVars }>();

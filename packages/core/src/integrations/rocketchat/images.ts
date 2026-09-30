@@ -4,6 +4,7 @@ import { buildChatToolContext } from '../../assistant/tools/principal.js';
 import { buildProjectToolset } from '../../assistant/tools/registry.js';
 import { withTurnImages } from '../../assistant/tools/turn-images.js';
 import type { ImageResolver, TurnImage } from '../../assistant/vision.js';
+import type { TurnCredential } from '../../auth/turn-credential.js';
 import { buildTranscriptSearchToolset } from '../../conversations/transcript-search-tool.js';
 import { logger } from '../../logger.js';
 import type { ChatTurnFacts } from '../../mcp/tools/lib.js';
@@ -68,7 +69,8 @@ export interface FastTurnInputs {
 
 export async function prepareFastTurn(opts: {
   route: { projectId: string; projectSlug: string };
-  principalUserId: string;
+  /** The token minted for the person this turn answers (`auth/turn-credential.ts`). */
+  credential: TurnCredential;
   /** The room and its linked speaker, for the tools that write on the speaker's behalf (ISS-1034). */
   turn: ChatTurnFacts;
   restAuth: RocketChatRestAuth;
@@ -79,8 +81,7 @@ export async function prepareFastTurn(opts: {
 }): Promise<FastTurnInputs> {
   const images = await downloadTurnImages(opts.restAuth, opts.images);
   const ctx = buildChatToolContext({
-    userId: opts.principalUserId,
-    projectId: opts.route.projectId,
+    credential: opts.credential,
     projectSlug: opts.route.projectSlug,
     turn: opts.turn,
   });
@@ -92,7 +93,7 @@ export async function prepareFastTurn(opts: {
         buildProjectToolset(ctx),
         buildRocketChatHistoryToolset(opts.restAuth, opts.rid),
         buildRocketChatQuoteContextToolset(opts.restAuth, opts.rid),
-        ...transcriptSearchToolsets(opts),
+        ...transcriptSearchToolsets({ ...opts, principalUserId: opts.credential.principal.userId }),
         buildEscalationToolset(),
       ),
       images,

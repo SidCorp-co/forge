@@ -1,4 +1,4 @@
-import { conversationAgentDeviceAvailable } from '../agent-sessions/conversation-agent.js';
+import { conversationAgentUnavailableReason } from '../agent-sessions/conversation-agent.js';
 import { type ConversationRow, effectiveConversationMode } from '../conversations/store.js';
 
 export async function agentModeOffer(
@@ -19,8 +19,7 @@ export async function agentModeOffer(
       reason: `a turn runs under exactly one project, and this room is about ${scope.length}`,
     };
   }
-  if (!(await conversationAgentDeviceAvailable(projectId))) {
-    return { available: false, reason: 'this project has no runner paired' };
-  }
+  const unavailable = await conversationAgentUnavailableReason(projectId);
+  if (unavailable) return { available: false, reason: unavailable };
   return { available: true, reason: null };
 }

@@ -110,7 +110,6 @@ export async function routeOne(
   }
   const outcome = await routeWindow({
     window,
-    manySpeakersPrincipalUserId: route.principalUserId,
     handoffFor: async (windowId) =>
       (await import('../../agent-sessions/conversation-agent.js')).conversationAgentTurnForWindow(
         windowId,

@@ -7,7 +7,6 @@
  * file only validates the body and upserts the singleton.
  */
 
-import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -15,6 +14,7 @@ import { db } from '../db/client.js';
 import { ADMIN_THRESHOLDS_ID, adminThresholds } from '../db/schema-admin-thresholds.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/require-admin.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import { readThresholds } from './thresholds.js';
 import { SENTRY_THRESHOLD_MAX, SENTRY_THRESHOLD_MIN } from './types.js';
 

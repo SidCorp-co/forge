@@ -17,7 +17,7 @@ import { failureLine, type WeeklyReport } from '../bench/history/report.js';
 
 export interface PostWeeklyArgs {
   issueId: string;
-  /** The project's creator, the actor every sweeper's comment is posted as. */
+  /** The project's assistant handle: the reading is the assistant's own, posted by no person (ISS-17). */
   authorId: string;
   report: WeeklyReport;
 }

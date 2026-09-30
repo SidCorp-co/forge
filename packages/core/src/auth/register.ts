@@ -1,4 +1,3 @@
-import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -7,6 +6,7 @@ import { db } from '../db/client.js';
 import { users } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { rateLimit } from '../middleware/rate-limit.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import { ensurePersonalOrg } from '../orgs/service.js';
 import { sendVerificationEmail } from './email.js';
 import { hashPassword } from './password.js';
@@ -22,7 +22,10 @@ export type RegisterInput = z.infer<typeof registerSchema>;
 
 export const authRoutes = new Hono();
 
-authRoutes.use('/register', rateLimit(RULES.authRegister, { name: 'authRegister' }));
+authRoutes.use(
+  '/register',
+  rateLimit(() => RULES.authRegister, { name: 'authRegister' }),
+);
 
 authRoutes.post(
   '/register',

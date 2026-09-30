@@ -159,6 +159,7 @@ export interface AppendMessageArgs {
   authorUserId?: string | null;
   authorLabel?: string | null;
   authorKey?: string | null;
+  authorTokenId?: string | null;
   externalId?: string | null;
   replyToExternalId?: string | null;
   images?: readonly ConversationImage[] | undefined;
@@ -234,6 +235,7 @@ export async function appendMessagesIn(
           authorUserId: m.authorUserId ?? null,
           authorLabel: m.authorLabel ?? null,
           authorKey: m.authorKey ?? null,
+          authorTokenId: m.authorTokenId ?? null,
           content: m.content,
           externalId: m.externalId ?? null,
           replyToExternalId: m.replyToExternalId ?? null,
@@ -416,4 +418,21 @@ export function asImages(value: unknown): ConversationImage[] {
     out.push({ name: rec.name, mime: rec.mime, ref: rec.ref });
   }
   return out;
+}
+
+/**
+ * The token a message was sent with, or null where its author used none. Read apart from
+ * {@link StoredConversationMessage}, which every reader of the room is served: which token
+ * another person holds is not theirs to see.
+ */
+export async function messageAuthorTokenId(
+  messageId: string,
+  tx: Executor = defaultDb,
+): Promise<string | null> {
+  const [row] = await tx
+    .select({ authorTokenId: conversationMessages.authorTokenId })
+    .from(conversationMessages)
+    .where(eq(conversationMessages.id, messageId))
+    .limit(1);
+  return row?.authorTokenId ?? null;
 }

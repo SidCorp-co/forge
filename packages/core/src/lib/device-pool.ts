@@ -1,13 +1,21 @@
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, isNull, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { devices, projects, runners } from '../db/schema.js';
 import { dispatchLivenessMs } from './dispatch-liveness.js';
 
 export async function findAvailableDeviceForProject(
   projectId: string,
-  opts: { excludeDeviceIds?: string[] } = {},
+  opts: {
+    excludeDeviceIds?: string[];
+    /** Only a box whose heartbeat declared this capability `true`. */
+    requireCapability?: string;
+  } = {},
 ): Promise<string | null> {
   const livenessSeconds = Math.floor(dispatchLivenessMs() / 1000);
+  const capable = (deviceId: SQL) =>
+    opts.requireCapability
+      ? sql`AND EXISTS (SELECT 1 FROM devices c WHERE c.id = ${deviceId} AND c.capabilities ->> ${opts.requireCapability} = 'true')`
+      : sql``;
   const exclude = (opts.excludeDeviceIds ?? []).filter((id): id is string => !!id);
   // Build a parenthesised parameter list and use `NOT IN (...)`. Interpolating a
   // JS array directly (`<> ALL(${exclude}::uuid[])`) expands as a record tuple
@@ -31,6 +39,7 @@ export async function findAvailableDeviceForProject(
         SELECT 1 FROM devices d WHERE d.id = r.device_id AND d.disabled_at IS NOT NULL
       )
       ${excludeClause}
+      ${capable(sql`r.device_id`)}
     ORDER BY
       (CASE WHEN (r.rate_limited_until IS NULL OR r.rate_limited_until <= now())
                  AND r.limit_reason IS DISTINCT FROM 'auth'
@@ -56,6 +65,9 @@ export async function findAvailableDeviceForProject(
         eq(devices.id, project.defaultDeviceId),
         eq(devices.status, 'online'),
         isNull(devices.disabledAt),
+        ...(opts.requireCapability
+          ? [sql`${devices.capabilities} ->> ${opts.requireCapability} = 'true'`]
+          : []),
       ),
     )
     .limit(1);

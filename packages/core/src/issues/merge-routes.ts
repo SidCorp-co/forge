@@ -19,7 +19,6 @@
  * `member` for both.
  */
 
-import { zValidator } from '@hono/zod-validator';
 import { and, eq } from 'drizzle-orm';
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -40,6 +39,7 @@ import {
 import { openPullRequestsForIssue } from '../integrations/repo-projection.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import { mergedLandingSchema } from './landing-evidence.js';
 import { applyMergeMarker, MergeMarkerError, mergedCommitShaSchema } from './merge-marker.js';
 

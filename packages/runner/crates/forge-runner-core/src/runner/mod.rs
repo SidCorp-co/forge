@@ -63,6 +63,20 @@ pub struct JobSpec {
     pub resume_id: Option<String>,
     pub agent_session_id: Option<String>,
     pub counts_against_session_cap: bool,
+    /// The token core minted for the person this session answers (ISS-17). When present it is
+    /// the session's `forge` MCP credential and its `$FORGE_PAT`, in place of the box's own —
+    /// which belongs to whoever paired the box, not to the person who asked.
+    pub credential: Option<TurnCredential>,
+}
+
+/// A per-session token handed over by core. Its `Debug` never prints the secret.
+#[derive(Clone, PartialEq, Eq)]
+pub struct TurnCredential(pub String);
+
+impl std::fmt::Debug for TurnCredential {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("TurnCredential(<redacted>)")
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

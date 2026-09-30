@@ -28,8 +28,8 @@
     },
     "knowledge": {
       "level": 3,
-      "gate": "check-honest-costs + check-injected-doc-modes + check-pat-surface + check-status-tuples + check-doc-citations + build-flow-map",
-      "owns": "whether a document asking to be adopted prices what adopting it costs; whether a doc injected into every session names the pipeline mode its status transitions belong to; whether the PAT permission menu covers every route it claims; whether one question in the source has more than one answer; whether a document's citations of this repo's own files are still true; whether the flow map is generated rather than hand-kept"
+      "gate": "check-honest-costs + check-injected-doc-modes + check-pat-surface + check-status-tuples + check-doc-citations + build-flow-map + check-api-contracts",
+      "owns": "whether a document asking to be adopted prices what adopting it costs; whether a doc injected into every session names the pipeline mode its status transitions belong to; whether the PAT permission menu covers every route it claims; whether one question in the source has more than one answer; whether a document's citations of this repo's own files are still true; whether the flow map is generated rather than hand-kept; whether the committed API and MCP contracts are what the code serves, route by route and tool by tool"
     },
     "relations": {
       "level": 2,

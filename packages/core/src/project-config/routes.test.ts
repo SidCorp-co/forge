@@ -54,6 +54,8 @@ vi.mock('../auth/device-credential.js', () => ({
 const { projectConfigRoutes } = await import('./routes.js');
 const { projectConfigSchemaRoutes } = await import('./schema-routes.js');
 const { decryptSecret } = await import('../integrations/vault.js');
+const { registerAllIntegrations } = await import('../integrations/register-all.js');
+registerAllIntegrations();
 
 function app() {
   const a = new Hono();

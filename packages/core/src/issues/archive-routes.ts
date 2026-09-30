@@ -4,12 +4,12 @@
  * project archive routes use one level down.
  */
 
-import { zValidator } from '@hono/zod-validator';
 import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import {
   type ArchiveDirection,
   IssueArchiveRefusedError,

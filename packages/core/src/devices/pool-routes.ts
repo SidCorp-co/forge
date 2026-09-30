@@ -6,7 +6,6 @@
  * only through its daemon, so there is one holder of the device token.
  */
 
-import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -15,6 +14,7 @@ import type { AnswerShape, QuestionBlockerKind, QuestionOption } from '../db/sch
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import { utf16String } from '../lib/utf16-string.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import { PARK_PROTECTIONS } from '../questions/protections.js';
 import { answerOf, registerWaiter, waiterFor } from '../questions/read.js';
 import { type AskAnswer, askQuestion, QuestionRefused } from '../questions/write.js';

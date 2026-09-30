@@ -157,7 +157,12 @@ pub(crate) fn heartbeat_body(
     commit: Option<&str>,
     conditions: &Conditions,
 ) -> serde_json::Value {
-    let mut body = serde_json::json!({ "agentVersion": version });
+    let mut body = serde_json::json!({
+        "agentVersion": version,
+        // A session handed a `forgeToken` on `agent:start` runs under it (ISS-17); core picks
+        // only a box that says so for a turn that answers a person.
+        "capabilities": { "turnCredential": true },
+    });
     if let Some(commit) = commit {
         body["agentCommit"] = serde_json::Value::String(commit.to_string());
     }
@@ -271,6 +276,14 @@ mod tests {
             "an absent gate is not an empty one: {without}"
         );
         assert_eq!(without["agentVersion"], "0.17.17");
+    }
+
+    /// ISS-17: core hands a turn that answers a person only to a box that declares it runs a
+    /// session under the token it is handed; every heartbeat says so.
+    #[test]
+    fn every_heartbeat_declares_it_carries_a_turn_credential() {
+        let body = heartbeat_body("0.17.17", None, &Conditions::default());
+        assert_eq!(body["capabilities"]["turnCredential"], true, "{body}");
     }
 
     fn fixture() -> serde_json::Value {

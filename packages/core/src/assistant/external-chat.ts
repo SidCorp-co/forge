@@ -49,6 +49,12 @@ export interface ExternalChatTurnArgs {
   message: string;
   /** The Forge user this turn runs as. A turn that names a room REQUIRES one; an ephemeral turn, which names none, does not. */
   userId?: string | null;
+  /**
+   * The role `userId` needs on the room this turn continues: `member` (default) where the turn
+   * appends the person's words; `viewer` where it appends only the handle's reply, the person's
+   * writes being refused per tool by the role each takes (ISS-17).
+   */
+  readerRole?: 'viewer' | 'member' | undefined;
   /** Continue this conversation. */
   conversationId?: string | undefined;
   /** Or open/resume the venue it happens in, in the transport's own terms. */
@@ -166,6 +172,7 @@ export async function runExternalChatTurn(
           externalId: args.externalId,
           shape: args.shape ?? 'direct',
           readerUserId: args.userId ?? null,
+          ...(args.readerRole ? { readerRole: args.readerRole } : {}),
           db: dbi,
         })
       : null;

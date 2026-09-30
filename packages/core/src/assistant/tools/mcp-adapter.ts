@@ -6,6 +6,7 @@
  * `allowedActions` allowlist plus an optional arg `guard`.
  */
 
+import { type PatPermission, patGrantCovers } from '../../auth/pat-permissions.js';
 import { type CallToolResult, toToolCallContent } from '../../mcp/tool-result.js';
 import type { ContextScopedMcpToolFactory, McpContext } from '../../mcp/tools/lib.js';
 import type { ChatTool } from '../providers/types.js';
@@ -13,6 +14,12 @@ import type { ChatTool } from '../providers/types.js';
 /** One entry in the chat tool allowlist. */
 export interface ChatToolSpec {
   factory: ContextScopedMcpToolFactory;
+  /**
+   * The permission the equivalent REST route needs, which the turn's grant must cover before the
+   * handler runs (ISS-17). `null` only for a tool that reads nothing a grant fences, or that
+   * reaches REST itself and meets that door's own check.
+   */
+  grant: PatPermission | null;
   /** Permitted `action` values; omit for single-action tools. */
   allowedActions?: string[];
   describe?: string;
@@ -137,6 +144,14 @@ export function buildToolset(ctx: McpContext, specs: ChatToolSpec[]): ChatToolse
     }
 
     dropUndeclaredKeys(args, entry.declared);
+    const wanted = entry.spec.grant;
+    const grant = ctx.grant !== undefined ? ctx.grant : ctx.principal.permissions;
+    if (wanted !== null && !patGrantCovers(grant, wanted)) {
+      return toolError(
+        `FORBIDDEN: ${name} needs '${wanted}', and the access token the person asking reached Forge with was not granted it (it holds: ${(grant ?? []).join(', ')}). Nothing was done; tell them so.`,
+      );
+    }
+
     if (entry.spec.allowedActions) {
       const action = args.action;
       if (typeof action !== 'string' || !entry.spec.allowedActions.includes(action)) {

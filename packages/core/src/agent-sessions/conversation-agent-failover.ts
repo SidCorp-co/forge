@@ -10,7 +10,6 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type agentSessions, type MemberLens, projects } from '../db/schema.js';
-import { findAvailableDeviceForProject } from '../lib/device-pool.js';
 import { logger } from '../logger.js';
 import { createChatSessionRow, dispatchChatTurn } from './chat-turn.js';
 import {
@@ -21,6 +20,11 @@ import {
   TITLE_MAX,
 } from './conversation-agent.js';
 import { scheduleAck } from './conversation-agent-ack.js';
+import {
+  mintSessionCredential,
+  pickConversationAgentDevice,
+  resolveSessionAuthority,
+} from './session-credential.js';
 
 type SessionRow = typeof agentSessions.$inferSelect;
 
@@ -30,7 +34,14 @@ export type ConversationAgentFailoverResult =
   | { ok: true; sessionId: string; deviceId: string }
   | {
       ok: false;
-      status: 'not-a-conversation-turn' | 'exhausted' | 'no-device' | 'no-prompt' | 'error';
+      status:
+        | 'not-a-conversation-turn'
+        | 'exhausted'
+        | 'no-device'
+        | 'no-prompt'
+        | 'no-asker'
+        | 'authority-refused'
+        | 'error';
     };
 
 export async function redispatchConversationAgentTurn(
@@ -55,10 +66,21 @@ export async function redispatchConversationAgentTurn(
   );
   if (!firstUser) return { ok: false, status: 'no-prompt' };
 
-  const deviceId = await findAvailableDeviceForProject(session.projectId, {
-    excludeDeviceIds: tried,
-  });
+  if (!meta.asker) return { ok: false, status: 'no-asker' };
+  const deviceId = await pickConversationAgentDevice(session.projectId, tried);
   if (!deviceId) return { ok: false, status: 'no-device' };
+  const authorised = await resolveSessionAuthority({
+    asker: meta.asker,
+    projectId: session.projectId,
+    deviceId,
+  });
+  if (!authorised.ok) {
+    logger.warn(
+      { failedSessionId: session.id, code: authorised.refusal.code },
+      'conversation-agent failover: the asker may no longer be acted as; not re-dispatched',
+    );
+    return { ok: false, status: 'authority-refused' };
+  }
 
   const [project] = await db
     .select({ id: projects.id, slug: projects.slug, repoPath: projects.repoPath })
@@ -80,7 +102,7 @@ export async function redispatchConversationAgentTurn(
   try {
     retry = await createChatSessionRow({
       projectId: session.projectId,
-      userId: session.userId,
+      userId: meta.asker.userId,
       title: session.title ?? `Chat: ${meta.question.slice(0, TITLE_MAX)}`,
       parentSessionId: session.id,
       runKind: 'system',
@@ -104,6 +126,11 @@ export async function redispatchConversationAgentTurn(
       session: retry,
       project,
       client: { deviceId, isLocal: false, migrated: false },
+      credential: await mintSessionCredential({
+        sessionId: retry.id,
+        deviceId,
+        value: authorised.value,
+      }),
       message: firstUser.content,
       ...(priorMeta.lensOverride
         ? { forceLenses: priorMeta.lensOverride as readonly MemberLens[] }

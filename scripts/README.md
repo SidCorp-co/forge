@@ -40,10 +40,10 @@ a sibling that stopped blocking, which is the whole failure mode here. `form` is
 `check-lint-budget` for `web-v2` and `core` · a bare `biome check scripts` for the checkers themselves ·
 `check-provider-literals` for where an integration provider may be named · `check-integration-declarations`
 for whether each provider declares the fields the generic paths read),
-`behaviour` three times (reachability · signal · flow coverage) and `knowledge` five (honest
+`behaviour` three times (reachability · signal · flow coverage) and `knowledge` six (honest
 costs · the mode-qualification of injected docs · the PAT permission surface · whether one question
 in the source has more than one answer · whether a document's citations of this repo's own files
-are still true). `comment` is gated once, by `check-comment-budget`.
+are still true · whether the published API and MCP contracts are what the code serves). `comment` is gated once, by `check-comment-budget`.
 
 **`record` is the axis that was missing.** The other five each own a property of the code, and on
 2026-08-28 commit `3df9a8e9` removed 1,034 lines from `CHANGELOG.md` inside a commit about dangling
@@ -63,6 +63,7 @@ passed, because the external record of what shipped belonged to none of them.
 | PAT surface | `check-pat-surface` — `injected-docs` | whether every route a project-scoped token can reach is covered by the permission menu that claims to fence it | whether a given fence is correct — that is review's |
 | status tuples | `check-status-tuples` — `lang-check` | whether one question has more than one answer: two declarations holding the same status tuple, or a status-literal array written inline where a named constant for that tuple already exists. Compares by VALUE, not by name, in either quote style, and reads the three vocabularies out of `packages/core/src/db/schema.ts` rather than carrying a copy. It scans `packages/core/src`, `packages/core/tests`, `packages/contracts/src` and `packages/web-v2/src`: a browser file answering a question core already answers is the same defect as a core file doing it. A declaration reaches it by three routes — an array literal, a `new Set(...)` of one, and a `Record<…Status, boolean>`, whose `true` keys are a tuple written as a classification. A `status-tuple: differs` marker excuses a declaration only against a peer it NAMES, because a reason written about one neighbour is no excuse against a different one. And one NAME answers one question: a name holding two different tuples is refused whatever the markers say, because two answers under one name never collide by value — which is exactly how `packages/core/src/pipeline/runs-rollup.ts` held a three-member `LIVE_JOB_STATUSES` beside the four-member one with this gate green | whether a tuple's MEMBERSHIP is right; SQL string literals including `ARRAY[…]`, type unions, a tuple written as an object-literal value, which is a table row rather than a named question, and a `Record<…Status, T>` for any `T` but boolean, which is a lookup table rather than a yes/no question. In a test file it reads `.each` case lists ONLY: that list is the domain the test claims to cover, while every other tuple there is the assertion itself, which importing the constant would make vacuous. **Nor a copy that has already drifted**: two answers to one question whose members no longer match do not collide, so this catches a second declaration before it rots and never after — `packages/core/src/db/status-sets-parity.test.ts` is what holds an existing pair together |
 | doc citations | `check-doc-citations` — `lang-check` | whether a document's citation of a file in this repo is still true: a path no tracked file carries and an anchor whose file does not hold that symbol each fail, a line-number citation fails because `CLAUDE.md` already forbids one, and a live citation whose target was changed after the document was comes back on the worklist without failing. Resolves in two scopes and no third — the document's own directory and its package — with a root-written path resolved exactly or not at all, so no namesake can stand in for a deleted file and no part of resolution reads whether the target is present. An excusal names the tokens it excuses | a document's PROSE, which no machine can check; a count or a number in a document; whether a symbol that still exists still means what the sentence says; `CHANGELOG.md` and `docs/proposals/`, each excluded with its reason in `.forge/conformance.json` |
+| API contracts | `check-api-contracts` — `conformance` | whether `packages/core/contracts/forge-api.openapi.json` and `forge-mcp.tools.json` are byte for byte what the generator writes from the running app, naming each route (`METHOD /path`) or tool that was added, removed or changed and the JSON pointer where it differs; and whether every mounted route and served tool is describable at all — one the generator cannot describe is its refusal, never an omission | whether a route's contract is GOOD — a response schema, a missing validator, a description; and whether a change is breaking, which is the differ's (oasdiff, and a JSON Schema differ for the tools) |
 | costs | `check-honest-costs` — `lang-check` | whether `docs/VISION.md` and every `docs/proposals/*.md` price what adopting them costs | whether the price stated is honest — that is review's |
 | relations | `archmap check` — `archmap` | which module may depend on which | how a file is written |
 | reachability | `check-test-reachability` — `conformance` | whether every tracked test file is collected, and whether a skipped suite says why | what a test asserts once it runs |
@@ -416,6 +417,42 @@ exists", a measured fact about the repo, and returning it for an absent binary r
 as having lost their gates. `conformance-audit.mjs` draws the same line for `R7`, its one rule that
 runs a tool: `n/a` rather than a rule this repo fails, and exit `2` before either profile verdict —
 a `--` mark means the rule does not apply, `n/a` means it applies and was not answered.
+
+## check-api-contracts.mjs — the published contracts are the code's
+
+`packages/core/contracts/` holds the two artifacts a contract differ reads: `forge-api.openapi.json`
+(OpenAPI 3.1) and `forge-mcp.tools.json` (`{name, description, inputSchema}` per tool, sorted by
+name). `pnpm --filter @forge/core contracts:generate` writes both; this checker runs the same
+generator into a scratch directory and compares bytes. Exit `0` equal · `1` drift or a refusal ·
+`2` could not run.
+
+**Generated from the running app, not from a second description.** The generator imports `app`
+from `packages/core/src/index.ts` and walks `app.routes`, which is what Hono itself dispatches on,
+so a route is in the contract exactly when it is mounted — including the `/` and `/api` twins and
+the feature-flagged ones at their shipped defaults. A route's inputs come off the validators it
+holds: `packages/core/src/middleware/zod-validator.ts` is `@hono/zod-validator`'s middleware
+unchanged, keeping the schema against the middleware it returned, and `packages/core/biome.json`
+refuses importing the library anywhere else — a validator built past the wrapper would leave its
+route looking unvalidated. The environment is replaced, not inherited, so a `FEATURE_*` variable in
+the caller's shell cannot mount a different route set.
+
+**What the contract does not say, it says it does not say.** No route declares a response schema,
+so every operation carries one `default` response whose description reads *Undeclared* — the same
+text everywhere, so a differ sees a response being declared as the change it is. `x-forge-validated`
+on each operation lists the request parts (`json`, `param`, `query`) a validator holds; a part not
+listed is undescribed, which is not the same as absent — a handler reading `c.req.json()` itself is
+invisible here. Zod refinements are not JSON Schema and do not appear. A coerced date is described
+as a `date-time` string, the convention zod uses for every coerced input.
+
+**A route the generator cannot describe is refused by name**: a wildcard or optional path segment,
+two routes reaching one OpenAPI path, a `use()`/`all()` entry covering no route, a query validator
+that is not an object, a param validator naming a param the path lacks, and any schema holding a
+type JSON Schema cannot represent. Each is red here, naming `METHOD /path` and the reason.
+
+Canonical form: keys sorted recursively, arrays kept in order, two-space JSON with a trailing
+newline, paths sorted by code unit and methods in OpenAPI's order. `info.version` is `unversioned`
+on purpose: `package.json`'s version moves at every release cut, and a contract version is the
+differ's to assign, not the build's.
 
 ## check-size-budget.mjs — file and function length
 
@@ -931,7 +968,19 @@ CI on PR #457 reported `1 file failed` with the file itself reading
 `packages/core/vitest.setup.ts`; `packages/core/vitest.integration.config.ts` carries no
 `setupFiles`, which is where it bit.
 
-This checker is what keeps the two lazy, because the property is invisible in a green run: one new
+A third export joined them with ISS-18: `RULES` in `packages/core/src/config/rate-limits.ts` reads
+`env` on every read, so a route file writing `rateLimit(RULES.x)` at module scope validated the
+environment when imported. A caller now hands `rateLimit` a function returning the rule.
+
+**An import is matched by where it resolves, not by how it is spelled.**
+<!-- doc-citation: unchecked `config/env.js` `./env.js` — import specifiers as written in source, not paths in this tree. -->
+Matching the specifier's tail — `config/env.js` — missed `packages/core/src/config/rate-limits.ts`
+for as long as it existed, because it sits beside `packages/core/src/config/env.ts` and imports
+`./env.js`; 22 import-time reads went unreported while this gate was green.
+Resolving each relative specifier from the importing file closes that, and the lazy modules
+themselves are scanned too rather than skipped.
+
+This checker is what keeps them lazy, because the property is invisible in a green run: one new
 module-scope read puts the side effect back for every module downstream of the file that does it,
 and breaks nothing on the day it lands. No type can hold it — `env.UPLOADS_MAX_BYTES` is legal
 wherever `env` is in scope, which is what an import is for — so the rule is a walk over the

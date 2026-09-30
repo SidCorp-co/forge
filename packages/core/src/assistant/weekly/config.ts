@@ -15,7 +15,6 @@ export interface AssistantWeeklyConfig {
 export interface OptedInProject {
   projectId: string;
   slug: string;
-  createdBy: string;
   config: AssistantWeeklyConfig;
 }
 
@@ -55,15 +54,13 @@ export async function listOptedInProjects(dbi: Executor = db): Promise<OptedInPr
     .select({
       projectId: projects.id,
       slug: projects.slug,
-      createdBy: projects.createdBy,
       agentConfig: projects.agentConfig,
     })
     .from(projects);
   const out: OptedInProject[] = [];
   for (const row of rows) {
     const config = readAssistantWeekly(row.agentConfig);
-    if (config && row.createdBy)
-      out.push({ projectId: row.projectId, slug: row.slug, createdBy: row.createdBy, config });
+    if (config) out.push({ projectId: row.projectId, slug: row.slug, config });
   }
   return out;
 }

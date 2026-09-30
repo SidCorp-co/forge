@@ -7,12 +7,12 @@
  * holding a project-scoped token reaches its own charter and no other.
  */
 
-import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import { divergenceCharterEntrySchema } from './divergence-charters.js';
 import { readCharter, upsertCharterAtomic } from './divergence-charters-service.js';
 

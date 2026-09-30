@@ -74,6 +74,7 @@ const runtimeProbeSchema = z.strictObject({
 });
 
 export const DEPLOYMENT_TRIGGERS = ['on-land', 'on-request', 'provider'] as const;
+export type DeploymentTrigger = (typeof DEPLOYMENT_TRIGGERS)[number];
 
 const environmentSchema = z.strictObject({
   tier: z.enum(['production', 'staging', 'preview', 'dev']),

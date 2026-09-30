@@ -13,13 +13,12 @@
 // had to carve an exception for.
 
 import { randomUUID } from 'node:crypto';
-import { zValidator } from '@hono/zod-validator';
 import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import {
-  conversationAgentDeviceAvailable,
+  conversationAgentUnavailableReason,
   readConversationAgentTurns,
 } from '../agent-sessions/conversation-agent.js';
 import { listConversationAttachmentsByIds } from '../conversations/attachment-service.js';
@@ -51,6 +50,7 @@ import { conversationModes } from '../db/schema-conversations.js';
 import { assertProjectRole, effectiveProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import {
   mayChangeMembership,
   readableConversation,
@@ -225,11 +225,8 @@ conversationRoutes.get(
     const { projectId } = c.req.valid('query');
     const access = await loadProjectAccess(projectId, c.get('userId'));
     assertProjectRole(access, 'viewer', 'not a project member');
-    return c.json(
-      (await conversationAgentDeviceAvailable(projectId))
-        ? { available: true, reason: null }
-        : { available: false, reason: 'this project has no runner paired' },
-    );
+    const unavailable = await conversationAgentUnavailableReason(projectId);
+    return c.json({ available: unavailable === null, reason: unavailable });
   },
 );
 
@@ -397,9 +394,11 @@ conversationRoutes.post(
       });
     }
     const asking = mode ?? effectiveConversationMode(conversation);
-    if (asking === 'agent' && !(await conversationAgentDeviceAvailable(projectId))) {
+    const unavailable =
+      asking === 'agent' ? await conversationAgentUnavailableReason(projectId) : null;
+    if (unavailable) {
       throw new HTTPException(409, {
-        message: `no paired device is free to take an Agent turn for project ${projectId}, so this message was not taken in — nothing was answered in Assistant mode in its place`,
+        message: `no paired device can take an Agent turn for project ${projectId} (${unavailable}), so this message was not taken in — nothing was answered in Assistant mode in its place`,
         cause: { code: 'CONVERSATION_AGENT_NO_DEVICE', details: { projectId } },
       });
     }
@@ -429,6 +428,7 @@ conversationRoutes.post(
         },
         projectId,
         userId,
+        viaTokenId: c.get('patTokenId') ?? null,
         userLabel: me?.displayName ?? me?.email ?? null,
         content,
         mode: asking,

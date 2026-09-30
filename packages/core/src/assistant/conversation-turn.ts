@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { handleForProject } from '../conversations/participants.js';
-import { assertConversationWritable } from '../conversations/scope.js';
+import { assertConversationReadable, assertConversationWritable } from '../conversations/scope.js';
 import {
   appendMessages,
   type ConversationImage,
@@ -67,6 +67,11 @@ export interface OpenTurnOptions {
    * project the room is about — not `viewer`, which is permission to look at one.
    */
   readerUserId?: string | null;
+  /**
+   * What `readerUserId` must hold on a room this turn CONTINUES; see `ExternalChatTurnArgs`.
+   * Opening a venue always takes `member`.
+   */
+  readerRole?: 'viewer' | 'member';
   db?: typeof defaultDb;
 }
 
@@ -99,7 +104,10 @@ export async function openTurn(opts: OpenTurnOptions): Promise<ConversationTurn>
       .where(eq(conversations.id, opts.conversationId))
       .limit(1);
     if (!row) throw notFound('conversation not found');
-    const scope = await assertConversationWritable(row.id, opts.readerUserId ?? null);
+    const scope =
+      opts.readerRole === 'viewer'
+        ? await assertConversationReadable(row.id, opts.readerUserId ?? null)
+        : await assertConversationWritable(row.id, opts.readerUserId ?? null);
     if (!scope.includes(opts.projectId)) {
       throw conflict(
         `conversation ${row.id} is about ${scope.join(', ')} and this turn arrives under project ${opts.projectId}; a turn runs in a room its own project is in`,

@@ -15,6 +15,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
+import { agentRefusalText } from '../agent-sessions/session-credential.js';
 import { collectInboundMessage } from '../conversations/collect-inbound.js';
 import { type ProjectHandle, resolveProjectHandle } from '../conversations/handles.js';
 import { type ConversationVenue, codeAuthored } from '../conversations/ports.js';
@@ -101,7 +102,7 @@ export function webConversationTurn(args: {
       blocks: args.progress.blocksForRecord(deliveredText),
     }),
 
-    divertBeforeTurn: async ({ setPhase }) => {
+    divertBeforeTurn: async ({ setPhase, authority }) => {
       if (args.window.mode !== 'agent') return null;
       setPhase('agent-turn');
       if (!(await args.window.reserve()))
@@ -118,6 +119,7 @@ export function webConversationTurn(args: {
         handleName: args.handleName,
         question: args.window.question,
         askedByLabel: args.askedBy,
+        asker: authority,
         conversationContext: await args.window.conversationContext(),
         ...(args.window.images.length ? { images: args.window.images } : {}),
         persona: webAgentConversationPersona(args.project.name, args.project.slug, args.askedBy),
@@ -138,6 +140,12 @@ export function webConversationTurn(args: {
           message: codeAuthored(WEB_AGENT_REPLIES.noDevice),
           screenReplaced: false,
         };
+      if (started.reason === 'runner-outdated' || started.reason === 'authority-refused')
+        return {
+          send: true,
+          message: codeAuthored(agentRefusalText(started)),
+          screenReplaced: false,
+        };
       if (started.reason === 'attachment-unreadable')
         return {
           send: true,
@@ -149,13 +157,12 @@ export function webConversationTurn(args: {
       return { send: false, reason: 'agent-turn-dispatch-failed' };
     },
 
-    prepare: async ({ principalUserId, speakerUserId, conversationId, handleUserId }) => ({
+    prepare: async ({ credential, speakerUserId, conversationId, handleUserId }) => ({
       persona: webConversationPersona(args.project.name, args.project.slug, args.askedBy),
       resolveImage: makeConversationImageResolver(conversationId),
       tools: buildProjectToolset(
         buildChatToolContext({
-          userId: principalUserId,
-          projectId: args.project.id,
+          credential: await credential(),
           projectSlug: args.project.slug,
           turn: { conversationId, speakerUserId, handleUserId },
         }),
@@ -208,6 +215,8 @@ export async function sendWebConversationMessage(args: {
   room: WebConversationRoom;
   projectId: string;
   userId: string;
+  /** The access token the sender reached this route with, or null for a browser session (ISS-17). */
+  viaTokenId: string | null;
   userLabel: string | null;
   content: string;
   /** What this send asks the room to answer in — honoured on the FIRST message and nowhere else. */
@@ -232,7 +241,7 @@ export async function sendWebConversationMessage(args: {
     message: args.content,
     speakerKey: args.userId,
     speakerLabel: args.userLabel,
-    manySpeakersPrincipalUserId: args.userId,
+    speakerTokenId: args.viaTokenId,
     ...(args.images && args.images.length > 0 ? { images: args.images } : {}),
     withinCollection: async (tx, { conversationId, seq }) => {
       if (seq === 0 && (await settleConversationMode(tx, conversationId, args.mode))) return;
@@ -335,7 +344,6 @@ export async function routeWebWindow(
   try {
     outcome = await routeWindow({
       window,
-      manySpeakersPrincipalUserId: subject.handle.userId,
       handoffFor: async (windowId) =>
         (await import('../agent-sessions/conversation-agent.js')).conversationAgentTurnForWindow(
           windowId,

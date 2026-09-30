@@ -1,4 +1,3 @@
-import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -6,6 +5,7 @@ import { resolveIssueKeyInProject } from '../issues/issue-route-ref.js';
 import { assertProjectAccess } from '../lib/authz.js';
 import { stepHandoffSchema } from '../memory/step-handoff-schema.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import { resolveActor } from './activity.js';
 import { deleteIssueContext, getIssueContexts, writeIssueContext } from './issue-context-store.js';
 

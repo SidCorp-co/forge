@@ -1,5 +1,4 @@
 import type { IssueParkResponse } from '@forge/contracts';
-import { zValidator } from '@hono/zod-validator';
 import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -8,6 +7,7 @@ import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import { loadIssuePark } from './park-view.js';
 
 const idParamSchema = z.object({ id: z.uuid() });

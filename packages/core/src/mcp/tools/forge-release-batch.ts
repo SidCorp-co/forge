@@ -205,8 +205,9 @@ export const forgeReleaseBatchTool: ContextScopedMcpToolFactory = (ctx) => ({
   handler: async (args) => {
     const input = inputSchema.parse(args);
     const projectId = await resolveEffectiveProjectId(ctx, input.projectId ?? null);
-    await assertPrincipalIsWriter(ctx.principal, projectId);
+    // cm:why the release run's own refusal says how to end the turn, which the writer gate's does not
     assertCanRecord(ctx.principal);
+    await assertPrincipalIsWriter(ctx.principal, projectId);
     await assertRunOfProject(input.runId, projectId);
     return run(ctx.principal, input, projectId);
   },

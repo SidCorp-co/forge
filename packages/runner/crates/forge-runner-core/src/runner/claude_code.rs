@@ -748,7 +748,10 @@ impl Runner for ClaudeCodeRunner {
             .prompt
             .clone()
             .ok_or_else(|| Error::Other("job has no prompt".into()))?;
-        let credential = mcp::config::job_credential()?;
+        let credential = match &spec.credential {
+            Some(handed) => handed.0.clone(),
+            None => mcp::config::job_credential()?,
+        };
 
         let invoked_with_resume = spec.resume_id.is_some();
         // ISS-570 hard-fail on a down `forge` server is scoped to reconciler-driven
@@ -1252,6 +1255,7 @@ fn project_env(spec: &JobSpec) -> Vec<(&'static str, String)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::runner::TurnCredential;
     use serde_json::json;
 
     #[test]
@@ -1304,6 +1308,7 @@ mod tests {
             resume_id: None,
             agent_session_id: None,
             counts_against_session_cap,
+            credential: None,
         }
     }
 
@@ -1317,6 +1322,46 @@ mod tests {
             takes_session_permit(&spec(true)),
             "a pipeline job is what the ceiling is for"
         );
+    }
+
+    /// ISS-17: a session core handed a token runs under it. The box here holds only its
+    /// device token, which the box's own credential path refuses, so a start that got past
+    /// credentials at all did so on the token it was handed.
+    #[test]
+    fn a_handed_turn_credential_is_the_sessions_and_the_box_store_is_not_read() {
+        use crate::auth::cred_store::{ScopedVar, ENV_TEST_LOCK};
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let home = crate::test_scratch::Scratch::new("iss17-spawn");
+        std::fs::create_dir_all(home.join("forge-runner")).unwrap();
+        std::fs::write(
+            home.join("forge-runner/credentials.json"),
+            format!(r#"{{"device_token":"forge_pat_dev_{}"}}"#, "a".repeat(64)),
+        )
+        .unwrap();
+        let _xdg = ScopedVar::set("XDG_CONFIG_HOME", &home);
+        let _store = ScopedVar::set("FORGE_RUNNER_CRED_STORE", "file");
+        let _pat = ScopedVar::unset("FORGE_PAT");
+
+        let runner = ClaudeCodeRunner::new("http://core.invalid", "tok", 1);
+        let mut job = spec(false);
+        job.project_slug = Some("iss-17".into());
+        job.repo_path = home.join("no-such-checkout");
+        job.credential = Some(TurnCredential(format!("forge_pat_dev_{}", "b".repeat(64))));
+        let (tx, _rx) = mpsc::channel(4);
+        let started = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(Runner::start(&runner, job, tx));
+        let err = match started {
+            Ok(id) => panic!("no checkout exists, so nothing may start; it started {id}"),
+            Err(e) => e.to_string(),
+        };
+        assert!(
+            !err.contains("personal access token"),
+            "the box's own credential was consulted though a turn token was handed: {err}"
+        );
+        assert!(err.contains("failed to spawn claude"), "{err}");
     }
 
     /// ISS-1218: a paired box whose store holds only the device token used to

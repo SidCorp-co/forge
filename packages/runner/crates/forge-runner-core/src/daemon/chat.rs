@@ -31,7 +31,7 @@ use uuid::Uuid;
 use crate::config::Config;
 use crate::error::{Error, Result};
 use crate::runner::claude_code::ClaudeCodeRunner;
-use crate::runner::{JobSpec, Runner, RunnerEvent};
+use crate::runner::{JobSpec, Runner, RunnerEvent, TurnCredential};
 use crate::transport::agent_sessions::{self, SessionPatch};
 use crate::transport::CoreClient;
 use crate::workspace::refresh;
@@ -73,6 +73,10 @@ struct StartFrame {
     mcp_servers_override: Option<serde_json::Value>,
     #[serde(default)]
     attachments: Option<Vec<AttachmentRef>>,
+    /// The token core minted for the person this session answers (ISS-17); absent on a session
+    /// that answers nobody but the box's own holder.
+    #[serde(default)]
+    forge_token: Option<String>,
 }
 
 /// `agent:send` payload (a follow-up turn on an existing session).
@@ -113,6 +117,9 @@ struct Turn {
     attachment_dir: Option<PathBuf>,
     /// The `seq` core's own row for this turn took; this turn's lines follow it.
     event_seq_base: Option<u64>,
+    /// See `StartFrame::forge_token`. Only a start carries one: a follow-up reuses the process
+    /// the start spawned, whose MCP config already holds it.
+    credential: Option<TurnCredential>,
 }
 
 /// Download a turn's attachments to a fresh temp dir, authenticated with the
@@ -256,6 +263,10 @@ pub async fn handle_start(
             mcp_servers_override: f.mcp_servers_override,
             attachment_dir,
             event_seq_base: f.event_seq_base,
+            credential: f
+                .forge_token
+                .filter(|t| !t.trim().is_empty())
+                .map(TurnCredential),
         },
     )
     .await
@@ -300,6 +311,7 @@ pub async fn handle_send(
             mcp_servers_override: f.mcp_servers_override,
             attachment_dir,
             event_seq_base: f.event_seq_base,
+            credential: None,
         },
     )
     .await
@@ -335,6 +347,7 @@ fn chat_spec(session_id: &str, prompt: &str, turn: &Turn) -> JobSpec {
         resume_id: turn.resume_id.clone(),
         agent_session_id: Some(session_id.to_string()),
         counts_against_session_cap: false,
+        credential: turn.credential.clone(),
     }
 }
 
@@ -592,7 +605,39 @@ mod tests {
             mcp_servers_override: None,
             attachment_dir: None,
             event_seq_base: Some(1),
+            credential: None,
         }
+    }
+
+    #[test]
+    fn a_start_frame_token_becomes_the_sessions_credential() {
+        let f: StartFrame = serde_json::from_value(json!({
+            "sessionId": "s1", "prompt": "hi", "forgeToken": "forge_pat_dev_turn"
+        }))
+        .unwrap();
+        assert_eq!(f.forge_token.as_deref(), Some("forge_pat_dev_turn"));
+        let turn = Turn {
+            credential: f.forge_token.map(TurnCredential),
+            ..turn_for_test()
+        };
+        let spec = chat_spec("s1", "hi", &turn);
+        assert_eq!(
+            spec.credential,
+            Some(TurnCredential("forge_pat_dev_turn".into())),
+            "the session must run under the asker's token, not the box's own"
+        );
+        assert!(
+            !format!("{spec:?}").contains("forge_pat_dev_turn"),
+            "a spec printed to a log must not carry the token"
+        );
+    }
+
+    #[test]
+    fn a_start_frame_without_a_token_leaves_the_box_credential_in_place() {
+        let f: StartFrame =
+            serde_json::from_value(json!({ "sessionId": "s1", "prompt": "hi" })).unwrap();
+        assert!(f.forge_token.is_none());
+        assert!(chat_spec("s1", "hi", &turn_for_test()).credential.is_none());
     }
 
     #[test]

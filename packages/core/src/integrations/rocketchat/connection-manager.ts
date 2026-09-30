@@ -353,7 +353,6 @@ class RocketChatConnectionManager {
       externalMessageId: m.id,
       replyToExternalId: m.replyToId ?? null,
       images: m.images,
-      manySpeakersPrincipalUserId: route.principalUserId,
     });
 
     if (outcome.kind === 'venue-unresolved') {

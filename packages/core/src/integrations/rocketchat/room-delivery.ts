@@ -72,6 +72,8 @@ export interface RoomReplyMeta {
   question: string;
   shape: 'direct' | 'group' | null;
   principalUserId: string | null;
+  /** The token that person sent the question with, where they used one; null otherwise. */
+  principalTokenId: string | null;
   deliveredAt: string | null;
 }
 
@@ -98,6 +100,7 @@ export function readRoomReplyMeta(
     question: typeof m.question === 'string' ? m.question : '',
     shape: m.shape === 'direct' || m.shape === 'group' ? m.shape : null,
     principalUserId: typeof m.principalUserId === 'string' ? m.principalUserId : null,
+    principalTokenId: typeof m.principalTokenId === 'string' ? m.principalTokenId : null,
     deliveredAt: typeof m.deliveredAt === 'string' ? m.deliveredAt : null,
   };
 }

@@ -1,8 +1,8 @@
-import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import type { AuthVars } from '../middleware/auth.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import {
   RETIRED_PROJECT_FACTS_CONFIG_MESSAGE,
   RETIRED_PROJECT_FACTS_MESSAGE,

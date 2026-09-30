@@ -1,4 +1,3 @@
-import { zValidator } from '@hono/zod-validator';
 import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -7,6 +6,7 @@ import { RULES } from '../config/rate-limits.js';
 import { db } from '../db/client.js';
 import { users } from '../db/schema.js';
 import { rateLimit } from '../middleware/rate-limit.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import { assertNotAgent } from './agent-account.js';
 import { setAuthCookie, setRefreshCookie } from './cookie.js';
 import { signUserToken } from './jwt.js';
@@ -22,7 +22,10 @@ export type LoginInput = z.infer<typeof loginSchema>;
 
 export const loginRoutes = new Hono();
 
-loginRoutes.use('/local', rateLimit(RULES.authLocal, { name: 'authLocal' }));
+loginRoutes.use(
+  '/local',
+  rateLimit(() => RULES.authLocal, { name: 'authLocal' }),
+);
 
 loginRoutes.post(
   '/local',

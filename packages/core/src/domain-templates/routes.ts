@@ -1,4 +1,3 @@
-import { zValidator } from '@hono/zod-validator';
 import { asc, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -7,6 +6,7 @@ import { db } from '../db/client.js';
 import { domainTemplates } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import { applyTemplate, TemplateInvalidManifestError, TemplateNotFoundError } from './apply.js';
 
 const keyParamSchema = z.object({ key: z.string().trim().min(1).max(200) });

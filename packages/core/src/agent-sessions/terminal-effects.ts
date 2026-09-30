@@ -49,9 +49,11 @@ export function sessionCarriesBridgeMarker(metadata: unknown): boolean {
 }
 
 /**
- * Fire every bridge this session's metadata selects.
+ * Fire every bridge this session's metadata selects, after revoking the token the session was
+ * handed: a session that answered a person is marked by a bridge, so this is where it ends.
  */
 export async function fireTerminalSessionBridges(row: SessionRow): Promise<void> {
+  await (await import('./session-credential.js')).revokeSessionCredential(row.id);
   const metadata = (row.metadata as Record<string, unknown> | null) ?? {};
   for (const bridge of TERMINAL_SESSION_BRIDGES) {
     if (!metadata[bridge.marker]) continue;

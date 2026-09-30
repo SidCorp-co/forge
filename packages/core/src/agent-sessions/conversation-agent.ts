@@ -28,8 +28,16 @@ import { logger } from '../logger.js';
 import type { ProgressFacts } from '../messaging/facts.js';
 import { getStorage } from '../storage/index.js';
 import { persistSessionAttachment } from './attachment-service.js';
-import { createChatSessionRow, dispatchChatTurn, resolveChatDevice } from './chat-turn.js';
+import { createChatSessionRow, dispatchChatTurn } from './chat-turn.js';
 import { scheduleAck } from './conversation-agent-ack.js';
+import {
+  mintSessionCredential,
+  noConversationAgentDeviceReason,
+  pickConversationAgentDevice,
+  readSessionAsker,
+  resolveSessionAuthority,
+  type SessionAsker,
+} from './session-credential.js';
 
 type SessionRow = typeof agentSessions.$inferSelect;
 
@@ -62,6 +70,8 @@ export interface ConversationAgentTurnArgs {
   /** Everything the window collected, as one body. */
   question: string;
   askedByLabel?: string | null | undefined;
+  /** The person whose message this turn answers; the session runs as them (ISS-17). */
+  asker: SessionAsker;
   persona: string;
   conversationContext?: string | null | undefined;
   /** Where the reply is screened when it comes back. */
@@ -83,9 +93,17 @@ export type ConversationAgentTurnResult =
   | { started: true; sessionId: string }
   | {
       started: false;
-      reason: 'deduped' | 'no-device' | 'dispatch-failed' | 'attachment-unreadable';
+      reason:
+        | 'deduped'
+        | 'no-device'
+        | 'runner-outdated'
+        | 'dispatch-failed'
+        | 'attachment-unreadable'
+        | 'authority-refused';
       /** The file the turn could not carry, for a refusal that names it. */
       file?: string;
+      /** On `authority-refused`: why, in the words the room is shown. */
+      message?: string;
     };
 
 /** What a session carries about the conversation turn it is answering. */
@@ -97,6 +115,8 @@ export interface ConversationAgentMeta {
   handleName: string;
   question: string;
   askedByLabel: string | null;
+  /** Who asked: the person this session acts as, read again by a failover. */
+  asker: SessionAsker | null;
   door: 'agent-chat-completion' | 'web-agent-completion';
   replies: ConversationAgentReplies;
   ackAfterMs: number | null;
@@ -135,6 +155,7 @@ export function readConversationAgentMeta(metadata: unknown): ConversationAgentM
     handleName: typeof m.handleName === 'string' ? m.handleName : '',
     question: typeof m.question === 'string' ? m.question : '',
     askedByLabel: typeof m.askedByLabel === 'string' ? m.askedByLabel : null,
+    asker: readSessionAsker(m.asker),
     door: m.door === 'web-agent-completion' ? 'web-agent-completion' : 'agent-chat-completion',
     replies: {
       dedup: typeof replies.dedup === 'string' ? replies.dedup : '',
@@ -268,8 +289,17 @@ function turnState(
  * Whether a box could take a turn for this project right now.
  */
 export async function conversationAgentDeviceAvailable(projectId: string): Promise<boolean> {
-  const client = await resolveChatDevice({ projectId, deviceId: null, metadata: null }, undefined);
-  return Boolean(client.deviceId);
+  return (await conversationAgentUnavailableReason(projectId)) === null;
+}
+
+/** Why Agent mode cannot answer here right now, in a sentence; null where a box can. */
+export async function conversationAgentUnavailableReason(
+  projectId: string,
+): Promise<string | null> {
+  if (await pickConversationAgentDevice(projectId)) return null;
+  return (await noConversationAgentDeviceReason(projectId)) === 'runner-outdated'
+    ? 'the runners paired to this project are too old to act as the person asking; update forge-runner'
+    : 'this project has no runner paired';
 }
 
 /**
@@ -322,11 +352,19 @@ export async function startConversationAgentTurn(
     return { started: false, reason: 'deduped' };
   }
 
-  const client = await resolveChatDevice(
-    { projectId: args.venue.projectId, deviceId: null, metadata: null },
-    undefined,
-  );
-  if (!client.deviceId) return { started: false, reason: 'no-device' };
+  const deviceId = await pickConversationAgentDevice(args.venue.projectId);
+  if (!deviceId) {
+    return { started: false, reason: await noConversationAgentDeviceReason(args.venue.projectId) };
+  }
+  const asker: SessionAsker = { userId: args.asker.userId, viaTokenId: args.asker.viaTokenId };
+  const authorised = await resolveSessionAuthority({
+    asker,
+    projectId: args.venue.projectId,
+    deviceId,
+  });
+  if (!authorised.ok) {
+    return { started: false, reason: 'authority-refused', message: authorised.refusal.message };
+  }
 
   const progress = await computeProjectProgress(args.venue.projectId);
   const progressFacts: ProgressFacts | null = progress
@@ -347,6 +385,7 @@ export async function startConversationAgentTurn(
     handleName: args.handleName,
     question: args.question,
     askedByLabel: args.askedByLabel ?? null,
+    asker,
     door: args.door,
     replies: args.replies,
     ackAfterMs: args.ackAfterMs ?? null,
@@ -357,7 +396,7 @@ export async function startConversationAgentTurn(
 
   const session = await createChatSessionRow({
     projectId: args.venue.projectId,
-    userId: null,
+    userId: asker.userId,
     title: `Chat: ${args.question.slice(0, TITLE_MAX)}`,
     runKind: 'system',
     runMetadata: { source: 'conversation.agentTurn', conversationId: args.conversationId },
@@ -377,10 +416,16 @@ export async function startConversationAgentTurn(
   }
 
   try {
+    const credential = await mintSessionCredential({
+      sessionId: session.id,
+      deviceId,
+      value: authorised.value,
+    });
     await dispatchChatTurn({
       session,
       project: args.project,
-      client,
+      client: { deviceId, isLocal: false, migrated: false },
+      credential,
       ...(carried.ids.length ? { attachmentIds: carried.ids } : {}),
       message: buildConversationAgentPrompt({
         persona: args.persona,
