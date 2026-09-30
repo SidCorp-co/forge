@@ -431,7 +431,11 @@ describe('the bounds a runner clips in UTF-16 code units', () => {
       units: 500,
       body: (detail: string) => ({ outcome: 'ended', detail }),
     },
-    { path: '/me/limit', units: 200, body: (detail: string) => ({ reason: 'usage_limit', detail }) },
+    {
+      path: '/me/limit',
+      units: 200,
+      body: (detail: string) => ({ reason: 'usage_limit', detail }),
+    },
   ];
   const post = (path: string, body: unknown) =>
     app.request(`/api/devices${path}`, {
