@@ -60,7 +60,7 @@
     "forge-plugin": "https://codeload.github.com/SidCorp-co/forge-plugin/tar.gz/2f3f40e245dd79c416f1abdbdd52e6487c632b97",
     "hono": "^4.13.9",
     "jose": "^6.2.12",
-    "nodemailer": "^10.0.10",
+    "nodemailer": "^10.0.11",
     "pg": "^8.23.0",
     "pg-boss": "^10.4.2",
     "pino": "^10.3.1",
