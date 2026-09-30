@@ -4,7 +4,7 @@
 // before the file runs. It cannot see a listing the run never executes, native code, or a listing
 // delegated to a process the test did not start: docs/proposals/a-test-reading-a-named-file-*.md.
 
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
@@ -15,6 +15,7 @@ import {
   globListings,
   guardVerdict,
   logLines,
+  processRunning,
 } from './whole-tree-gates.mjs';
 import { installWatch, ROOT } from './whole-tree-watch.mjs';
 
@@ -72,19 +73,11 @@ function readLog() {
   return lines;
 }
 
-/** Whether a process is still running: signalable and not a zombie waiting to be reaped. */
-function running(pid) {
-  try {
-    process.kill(pid, 0);
-  } catch (e) {
-    return e?.code === 'EPERM';
-  }
-  try {
-    return !/^\d+ \(.*\) Z /s.test(readFileSync(`/proc/${pid}/stat`, 'utf8'));
-  } catch {
-    return !existsSync('/proc/self');
-  }
-}
+const running = (pid) =>
+  processRunning(pid, {
+    signal: (p) => process.kill(p, 0),
+    stat: (p) => readFileSync(`/proc/${p}/stat`, 'utf8'),
+  });
 
 /** The listings this file's processes and workers made, waiting out any still running; one still
  * running at the end counts as the root, since what it lists afterwards no file reads. */
