@@ -57,6 +57,14 @@ const WALKER_PATH = 'packages/core/src/pipeline/walks.test.ts';
 const ROOT = '/repo';
 const CORE = '/repo/packages/core';
 
+/** An asymmetric matcher for a string that begins with `prefix`, compared as text. */
+function startingWith(prefix) {
+  return {
+    asymmetricMatch: (actual) => typeof actual === 'string' && actual.startsWith(prefix),
+    toString: () => 'StringStartingWith',
+    toAsymmetricMatcher: () => `StringStartingWith ${JSON.stringify(prefix)}`,
+  };
+}
 describe('reading a declaration', () => {
   it('finds one in a docblock and one after //, with the line each sits on', () => {
     expect(declarationsIn(declared('whole-tree'))).toEqual([{ value: 'whole-tree', line: 2 }]);
@@ -341,13 +349,18 @@ describe('the guard installed in this very run', () => {
     writeFileSync(state.log, '');
     return lines.map((l) => JSON.parse(l)).filter((l) => !l.started);
   };
-  /** The refusal a git call in the root's own repository with no pathspec is read as. */
+  /** The refusal a git call in the root's own repository with no pathspec is read as, compared as
+   * text: a spawner's name is never read as a pattern. */
   const readsWholeTree = (spawner, sub = 'ls-files') =>
-    expect.stringMatching(
-      new RegExp(
-        `^${spawner.replace(/[()#]/g, '\\$&')} running \`git ${sub}\` in the root's own repository with no pathspec`,
-      ),
-    );
+    startingWith(`${spawner} running \`git ${sub}\` in the root's own repository with no pathspec`);
+
+  it('reads a spawner name as text, whatever characters it holds', () => {
+    const name = String.raw`a\.b()`;
+    const said = `${name} running \`git ls-files\` in the root's own repository with no pathspec, so`;
+    expect(said).toEqual(readsWholeTree(name));
+    expect(said.replace('\\', '')).not.toEqual(readsWholeTree(name));
+    expect(said.replace('.', 'x')).not.toEqual(readsWholeTree(name));
+  });
   // Every case here lists the root on purpose, so each clears what it recorded before `afterAll`
   // would refuse this undeclared file for it.
   afterEach(() => {
