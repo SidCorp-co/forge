@@ -67,7 +67,7 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
  *
  * `mergedAt` alone reads as "shipped" whichever it is. An `asserted` mark means Forge holds no
  * record of the merge and took somebody's word for it; an `observed` one carries the commit Forge
- * read off its own record of the pull request. Shown apart from the date because a reader deciding
+ * read for itself, off a pull request or the repository. Shown apart from the date because a reader deciding
  * whether the work is really out there is asking this question and not the other one.
  *
  * The kind is core's reading (`merge-record.ts`), never re-derived here. An older server that sends

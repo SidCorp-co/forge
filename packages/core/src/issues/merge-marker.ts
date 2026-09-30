@@ -5,6 +5,7 @@ import type { Actor } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
 import { collectWorkEvidence, findMissingWorkEvidence } from '../pipeline/work-evidence.js';
 import type { ActorAgency } from './actor-agency.js';
+import { type CommitLanding, readCommitLanding } from './commit-landing.js';
 import {
   landingMarkRefusal,
   markTargetRequired,
@@ -78,7 +79,8 @@ export class MergeMarkerError extends Error {
       | 'LANDING_REQUIRED'
       | 'LANDING_NOT_THIS_SHAPE'
       | 'MARK_ALREADY_STANDS'
-      | 'TARGET_REQUIRED',
+      | 'TARGET_REQUIRED'
+      | Exclude<CommitLanding, { ok: true }>['code'],
     message: string,
     readonly details?: Record<string, unknown>,
   ) {
@@ -126,6 +128,7 @@ export async function applyMergeMarker(args: {
   let stampResult: MergeRecord = { wrote: true, mergedAt: null, commitSha: null, landing: null };
   /** The commit the caller claimed, where Forge has no merge of its own to put in the column. */
   let claimedCommit: string | null = null;
+  let fromRepository: Extract<CommitLanding, { ok: true }> | null = null;
   if (args.op === 'mark') {
     const shape = await readLandingShape(db, before.projectId);
     // A landing on a git project is refused below whatever the target, and that refusal names the
@@ -133,9 +136,17 @@ export async function applyMergeMarker(args: {
     if (markTargetRequired(shape) && !args.target && !args.landing) {
       throw new MergeMarkerError('TARGET_REQUIRED', 'target is required');
     }
+    // An agent with nothing else behind it may still have landed on the base branch itself, where
+    // the commit is the only trace: it counts once the repository says it is this issue's landing.
     if (args.actor.agency === 'agent') {
       const missing = await findMissingWorkEvidence(before.id);
-      if (missing) throw new MergeMarkerError('NO_WORK_EVIDENCE', missing);
+      if (missing) {
+        if (!args.commit || shape !== 'git')
+          throw new MergeMarkerError('NO_WORK_EVIDENCE', missing);
+        const read = await readCommitLanding({ issueId: before.id, commit: args.commit });
+        if (!read.ok) throw new MergeMarkerError(read.code, read.detail, read.details);
+        fromRepository = read;
+      }
     }
     const observed = await observedMergeForIssue(db, before.id);
     const landing = args.landing ?? null;
@@ -155,6 +166,16 @@ export async function applyMergeMarker(args: {
       const claimed = args.commit ?? null;
       claimedCommit =
         claimed && claimed.toLowerCase() !== observed.commitSha.toLowerCase() ? claimed : null;
+    } else if (fromRepository) {
+      stampResult = await recordIssueMerge(db, {
+        issueId: before.id,
+        evidence: {
+          kind: 'observed',
+          commitSha: fromRepository.sha,
+          mergedAt: fromRepository.committedAt,
+          via: 'repository',
+        },
+      });
     } else if (landing) {
       stampResult = await recordIssueMerge(db, {
         issueId: before.id,
@@ -224,6 +245,7 @@ export async function applyMergeMarker(args: {
     commitSha: stampResult.commitSha,
     claimedCommit,
     landing: stampResult.landing,
+    ...(fromRepository && stampResult.wrote ? { readFrom: fromRepository } : {}),
   });
   const marked = args.op === 'mark' ? `\n${markDetail}` : '';
   const auditComment = await writeAuditComment(

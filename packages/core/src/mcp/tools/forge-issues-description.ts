@@ -60,9 +60,13 @@ export function forgeIssuesDescription(refClause: string): string {
     'what stands, and unmark then mark is the correction. data.landing is the live URL, CMS entry or ' +
     'storefront resource the work now is, required on a website project unless Forge observed a ' +
     'merged pull request (LANDING_REQUIRED) and refused on any other (LANDING_NOT_THIS_SHAPE); ' +
-    'it is stored in merged_landing and the mark reads landed. It writes merged_commit_sha ONLY where Forge already ' +
-    'holds its own record of the merge - a pull request it saw merged - and the sha it writes ' +
-    "there is that record's, never data.commit. Your commit never reaches the column: it " +
+    'it is stored in merged_landing and the mark reads landed. It writes merged_commit_sha ONLY from a ' +
+    'record Forge holds itself: a pull request it saw merged, or - for an agent on a git project ' +
+    'whose issue holds no branch, handoff or merged commit, i.e. work landed on the base branch ' +
+    "itself - the data.commit it checked against the project's repository: resolved there, " +
+    'declaring this issue in its subject, and contained in the base or live branch, else refused ' +
+    'COMMIT_NOT_IN_REPOSITORY, COMMIT_NOT_THIS_ISSUE, COMMIT_NOT_LANDED or COMMIT_UNVERIFIED. ' +
+    'Anywhere else your commit never reaches the column: it ' +
     'reaches the audit trail as YOUR CLAIM. The answer, and every row this tool returns, ' +
     'carries mark/mergeMark (observed | landed | asserted | unmarked) plus detail - observed means ' +
     'Forge witnessed the merge itself, asserted means it witnessed none and took your word ' +

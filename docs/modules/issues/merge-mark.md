@@ -19,7 +19,8 @@ witnessed; unlike `asserted` it names the thing that landed. The table's
 
 `asserted` is not a half-written row. It is ISS-959's encoding for a merge nobody here
 observed: somebody's claim that work shipped. `observed` is a merge Forge holds its own
-record of. The two are as different as a receipt is from a promise, and until ISS-1126
+record of — a pull request it saw merged, or a commit it read from the project's repository
+itself (below). The two are as different as a receipt is from a promise, and until ISS-1126
 the distinction lived only in the columns — every surface that wanted it had to re-derive
 it from a null test, and none of them did. Measured on forge-dev, 2026-09-20: 851 of 851 marks
 were asserted and nothing an agent read said so.
@@ -41,11 +42,29 @@ timestamp is `unmarked`.
 (`observedMergeForIssue`). Where it finds one it stamps `merged_at` AND
 `merged_commit_sha`, from that record. Where it finds none it stamps `merged_at` alone.
 
+Where an agent marks an issue on the `git` shape that holds no other work evidence
+(`findMissingWorkEvidence`) and the call carries `data.commit`, the commit is the only trace
+the work left: it landed on the base branch itself, where no branch of its own exists
+(ISS-1318). `readCommitLanding` (`packages/core/src/issues/commit-landing.ts`) reads it from the
+project's repository through its GitHub binding. It counts only where the repository resolves
+it, its subject declares this issue by `declaredIssueSeqs` — the rule `commitOwners` places
+commits with, so a base-branch commit that is another issue's landing is refused — and the base
+branch or the release chain's live branch contains it. Then `merged_at` and
+`merged_commit_sha` are stamped with the full sha the repository resolved and its committer
+date, and the mark reads `observed`. Every other answer is a refusal by name and writes
+nothing: `COMMIT_NOT_IN_REPOSITORY`, `COMMIT_NOT_THIS_ISSUE`, `COMMIT_NOT_LANDED`, and
+`COMMIT_UNVERIFIED` where the repository could not be read — a commit is never taken as
+evidence unchecked.
+
 Where the caller names a `landing` and no merged pull request exists, it stamps `merged_at` AND
-`merged_landing`. The caller's `data.commit` never reaches the column on any path — it reaches the
-audit trail as the caller's claim. That is why the tool description states the condition the
-column is written under rather than a blanket "always" or "never": both blankets have
-been written into it and both were false.
+`merged_landing`. On every path but the one above, the caller's `data.commit` never reaches the
+column — it reaches the audit trail as the caller's claim. That is why the tool description
+states the condition the column is written under rather than a blanket "always" or "never":
+both blankets have been written into it and both were false.
+
+A merged commit on the row is work evidence: `collectWorkEvidence` reads `merged_commit_sha`
+where `merged_at` is set, so an issue the mark accepted is not refused `NO_WORK_EVIDENCE` at
+`developed` or `testing` one status later.
 
 Where the row already holds a stamp, the gated UPDATE moves nothing and the answer
 describes what the row HOLDS, not which branch this call took. So the "your commit is not
