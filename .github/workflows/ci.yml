@@ -535,7 +535,8 @@ jobs:
         shell: bash
         env:
           FORGE_TEST_REQUIRE_TMUX: ${{ runner.os == 'Linux' && '1' || '' }}
-        run: |
+        # Anchored: `runner-platforms` runs this same script by alias, so the two cannot drift.
+        run: &runner-gate |
           if [ "$RUNNER_OS" = Linux ]; then
             sudo apt-get update -q && sudo apt-get install -y -q tmux
             tmux -V
@@ -545,8 +546,8 @@ jobs:
           cargo clippy --workspace --all-targets -- -D warnings
           cargo test --workspace
 
-  # The same step as `runner`, on the two platforms a pull request no longer waits on (ISS-1370).
-  # Post-merge and nightly; `ci-passed` does not need it, and `$postMerge` names it.
+  # The `runner` gate, by the `*runner-gate` alias, on the two platforms a pull request no longer
+  # waits on (ISS-1370). Post-merge and nightly; `ci-passed` does not need it, `$postMerge` names it.
   runner-platforms:
     needs: changes
     if: github.event_name != 'pull_request' && (github.event_name == 'schedule' || needs.changes.outputs.runner == 'true')
@@ -566,11 +567,7 @@ jobs:
       - name: Lockfile sync + fmt + clippy + test
         working-directory: packages/runner
         shell: bash
-        run: |
-          cargo metadata --locked --format-version=1 >/dev/null
-          cargo fmt --check
-          cargo clippy --workspace --all-targets -- -D warnings
-          cargo test --workspace
+        run: *runner-gate
 
   docs:
     needs: changes

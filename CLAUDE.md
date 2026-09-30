@@ -27,8 +27,8 @@ running them; CI runs them, and `main` takes no merge whose **`ci-passed`** is r
 required check.
 
 **Four jobs run after the merge, not before it** — `core-integration`, `whole-tree`, `images` and
-the runner's macOS and Windows legs run on every push to `main` and nightly, and `ci-passed` does not
-need them (ISS-1370, priced in `.forge/conformance.json` `$postMerge`). A red there is fixed forward
+the runner's macOS and Windows legs run on every push to a gated branch (`main`, `dev`) and nightly,
+and `ci-passed` does not need them (ISS-1370, priced in `.forge/conformance.json` `$postMerge`). A red there is fixed forward
 by the next run to land: read `main`'s latest run before you push.
 
 **Green covers the jobs that RAN.** A skipped job passes `ci-passed`, and `changes` decides which
