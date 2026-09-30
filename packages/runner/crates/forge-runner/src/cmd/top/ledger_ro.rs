@@ -310,13 +310,23 @@ mod tests {
         assert_eq!(v.runs[0].held_keys(), ["ISS-1"]);
         assert_eq!(v.masters["p-1"].session_id.as_deref(), Some("sess-now"));
         assert_eq!(abandoned_because(&v.runs[0], &v, Some("boot-1")), None);
+        // A session id is shown as its `short` prefix only, and these
+        // assertions print nothing of it: the whole string is compared, never
+        // echoed into a failure message.
         let why = abandoned_because(&v.runs[1], &v, Some("boot-1")).expect("abandoned");
         assert!(
-            why.contains("sess-bef") && why.contains("sess-now"),
-            "{why}"
+            why == "declared by master session sess-bef, and this project's master is now sess-now",
+            "the abandoned reason names both sessions by their short prefix"
+        );
+        assert!(
+            !why.contains("sess-before"),
+            "a full session id is never shown"
         );
         let why = abandoned_because(&v.runs[0], &v, Some("boot-2")).expect("foreign");
-        assert!(why.contains("boot boot-1"), "{why}");
+        assert!(
+            why == "declared under boot boot-1, not this one",
+            "a run from another boot is named by its boot"
+        );
     }
 
     /// Criterion 24, from the side a write cannot hide on: a ledger nothing
