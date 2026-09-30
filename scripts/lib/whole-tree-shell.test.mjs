@@ -357,10 +357,10 @@ describe('a path placed where the kernel resolves it', () => {
   symlinkSync(join(FAR, 'a', 'b', 'c', 'd'), join(CORE, 'deep'));
   afterAll(() => rmSync(FAR, { recursive: true, force: true }));
 
-  it('follows a symlink before its `..`, and a `cd` the way the shell does', () => {
+  it('follows a symlink before its `..`, and counts a `cd` through one as the root', () => {
     expect(dirs('ls', [join(OUT, 'link')])).toEqual([join(ROOT, 'packages')]);
     expect(dirs('ls', [`${OUT}/link/..`])).toEqual([ROOT]);
-    expect(sh(`cd ${OUT}/link/.. && ls`)).toEqual([OUT]);
+    expect(sh(`cd ${OUT}/link/.. && ls`)).toEqual([ROOT]);
   });
 
   it('places a git pathspec both where git normalises it and where the kernel reads it', () => {
@@ -472,5 +472,148 @@ describe('the programs around git', () => {
     expect(sh('cat package.json | wc -l')).toEqual([]);
     expect(dirs('pgrep', ['-af', '/elsewhere'])).toEqual([]);
     expect(dirs('sort', ['f.txt'])).toEqual([]);
+  });
+});
+
+describe('a shell string, read by an allowlist', () => {
+  // Judge j9's and reopen 7's shapes, each one a shell listing the root where the reader before
+  // the allowlist placed it elsewhere. T stands outside the root; lc links into it, out out of it.
+  const T = realpathSync(mkdtempSync(join(tmpdir(), 'whole-tree-allow-')));
+  const DEEP = join(T, 'a', 'b', 'c', 'd', 'e');
+  mkdirSync(DEEP, { recursive: true });
+  symlinkSync(CORE, join(T, 'lc'));
+  const PROBE = join(CORE, 'src', 'probe');
+  mkdirSync(PROBE, { recursive: true });
+  symlinkSync(DEEP, join(PROBE, 'out'));
+  const bin = join(T, 'bin');
+  mkdirSync(bin);
+  writeFileSync(join(bin, 'git'), '#!/bin/sh\nexec /usr/bin/git -C / "$@"\n', { mode: 0o755 });
+  afterAll(() => {
+    rmSync(T, { recursive: true, force: true });
+    rmSync(PROBE, { recursive: true, force: true });
+  });
+  const at =
+    (cwd) =>
+    (text, opts = {}) =>
+      sh(text, { cwd, ...opts });
+  const inT = at(T);
+
+  it('counts every cd but the exact form as the root (j9)', () => {
+    expect(inT('cd -P lc/../.. && git ls-files')).toContain(ROOT);
+    expect(dirs('bash', ['-c', 'set -P; cd lc/../.. && git ls-files'], { cwd: T })).toContain(ROOT);
+    expect(dirs('bash', ['-c', 'cd -P lc && cd ../.. && git ls-files'], { cwd: T })).toContain(
+      ROOT,
+    );
+    expect(at(PROBE)('cd out && cd ../../../../.. && git ls-files')).toContain(ROOT);
+    expect(at(PROBE)('cd out && cd ../../../../.. && git grep -l k')).toContain(ROOT);
+    expect(inT('cd -P lc/../.. && git grep -l k')).toContain(ROOT);
+    const cdpath = { env: { ...ENV, CDPATH: ROOT } };
+    expect(inT('cd packages >/dev/null && cd .. && git ls-files', cdpath)).toContain(ROOT);
+    expect(inT('cd packages >/dev/null && cd .. && git grep -l k', cdpath)).toContain(ROOT);
+    expect(inT(`CDPATH=${ROOT}; cd packages >/dev/null && cd .. && git ls-files`)).toContain(ROOT);
+    expect(dirs('zsh', ['-c', 'setopt chaselinks; cd lc/../.. && git ls-files'])).toEqual([ROOT]);
+  });
+
+  it('counts a cd as the root where the shell may not keep it, or never make it', () => {
+    expect(sh('cd ../.. ; (cd /tmp); git ls-files')).toContain(ROOT);
+    expect(sh('cd ../.. ; false && cd /tmp; git ls-files')).toContain(ROOT);
+    expect(sh('cd ../.. ; cd /tmp | true; git ls-files')).toContain(ROOT);
+    expect(sh('for i in 1 2 3; do git ls-files; cd ..; done')).toContain(ROOT);
+    expect(sh('cd ../..; pushd /tmp; git ls-files')).toContain(ROOT);
+    expect(sh('cd ../..; cd /no-such-dir; git ls-files')).toContain(ROOT);
+    expect(sh('cd() { :; }; cd /tmp; git ls-files', { cwd: ROOT })).toContain(ROOT);
+    expect(sh('cd ../.. || exit; git ls-files')).toContain(ROOT);
+    expect(sh('cd ../..', { env: { ...ENV, PWD: `${T}/lc` } })).toEqual([]);
+    expect(sh('cd ../.. && git ls-files', { cwd: CORE, env: { ...ENV, PWD: `${T}/lc` } })).toEqual([
+      ROOT,
+    ]);
+  });
+
+  it('keeps a substitution’s cd inside it', () => {
+    expect(sh('echo $(cd /tmp) >/dev/null; git ls-files', { cwd: ROOT })).toEqual([ROOT]);
+    expect(sh('echo "$(cd /tmp && git ls-files)"', { cwd: ROOT })).toEqual([ROOT]);
+    expect(sh('x=$(cd src && pwd); ls')).toEqual([CORE]);
+  });
+
+  it('counts a shell whose start it has not read as the root', () => {
+    const fn = { env: { ...ENV, 'BASH_FUNC_git%%': '() { command git -C ../.. "$@"; }' } };
+    expect(dirs('bash', ['-c', 'git ls-files'], fn)).toEqual([ROOT]);
+    for (const key of ['BASH_ENV', 'SHELLOPTS', 'BASHOPTS', 'PS4', 'EXECIGNORE'])
+      expect(dirs('bash', ['-c', 'true'], { env: { ...ENV, [key]: 'x' } })).toEqual([ROOT]);
+    expect(dirs('bash', ['-c', 'true'], { env: { ...ENV, SSH_CLIENT: 'h 1 2' } })).toEqual([ROOT]);
+    expect(dirs('bash', ['-c', 'true'], { env: { ...ENV, SSH_CLIENT: 'h', SHLVL: '1' } })).toEqual(
+      [],
+    );
+    expect(dirs('bash', ['-lc', 'git ls-files'])).toEqual([ROOT]);
+    expect(dirs('bash', ['-i', '-c', 'true'])).toEqual([ROOT]);
+    expect(dirs('bash', ['--rcfile', 'x', '-c', 'true'])).toEqual([ROOT]);
+    expect(dirs('bash', ['-P', '-c', 'true'])).toEqual([ROOT]);
+    expect(dirs('bash', ['-o', 'physical', '-c', 'true'])).toEqual([ROOT]);
+    expect(dirs('zsh', ['-c', 'true'])).toEqual([ROOT]);
+    expect(dirs('ksh', ['-c', 'true'])).toEqual([ROOT]);
+    expect(sh('git ls-files', { shell: '/usr/bin/zsh' })).toEqual([ROOT]);
+    expect(dirs('bash', ['-euo', 'pipefail', '-c', 'set -euo pipefail; true'])).toEqual([]);
+    expect(dirs('bash', ['-euo', 'physical', '-c', 'true'])).toEqual([ROOT]);
+    expect(sh('set -eo physical; true')).toEqual([ROOT]);
+    expect(dirs('bash', ['-eu', '-o', 'pipefail', '--noprofile', '--norc', '-c', 'true'])).toEqual(
+      [],
+    );
+  });
+
+  it('counts a builtin that runs or rebinds code as the root, and one that sets a name as unevaluable', () => {
+    expect(sh("trap 'git -C ../.. ls-files' EXIT")).toEqual([ROOT]);
+    expect(dirs('bash', ['-c', "PS4='$(ls ../..)'; set -x; true"])).toEqual([ROOT]);
+    expect(dirs('bash', ['-c', 'hash -p /usr/bin/git cat; cat ls-files ../..'])).toContain(ROOT);
+    expect(sh("alias cat='git ls-files ../..'\ncat")).toContain(ROOT);
+    expect(dirs('bash', ['-c', 'shopt -s lastpipe; echo ../.. | read X; ls $X'])).toContain(ROOT);
+    expect(dirs('bash', ['-c', 'jobs -x git ls-files ../..'])).toEqual([ROOT]);
+    expect(dirs('bash', ['-c', 'x=1; declare -i x; true'])).toEqual([ROOT]);
+    expect(dirs('bash', ['-c', "[ -v 'a[$(ls /)]' ]"])).toContain(ROOT);
+    expect(dirs('bash', ['-c', "printf -v 'a[$(ls /)]' x"])).toContain(ROOT);
+    expect(dirs('bash', ['-c', "x='a[$(ls /)]'; [[ $x -eq 0 ]]"])).toEqual([ROOT]);
+    expect(dirs('bash', ['-c', 'echo $((x))'])).toEqual([ROOT]);
+    expect(dirs('bash', ['-c', 'echo ${x:0:1} ${!x} ${a[1]} ${x@P}'])).toEqual([ROOT]);
+    expect(sh('export -f f; true')).toEqual([ROOT]);
+    expect(sh('X=/tmp; X=../.. :; git ls-files $X')).toContain(ROOT);
+    expect(sh('X=; : ${X:=../..}; git ls-files $X')).toContain(ROOT);
+    expect(sh('X=/tmp; echo ../.. | { read X; git ls-files $X; }')).toContain(ROOT);
+    expect(sh('X=/tmp; read X; git ls-files $X')).toContain(ROOT);
+    expect(sh('OPTARG=src; getopts x: o -x ../..; git ls-files "$OPTARG"')).toContain(ROOT);
+    expect(sh("read -p 'a[$(ls /)]' x")).toContain(ROOT);
+  });
+
+  it('counts an unquoted word the shell would split as unevaluable', () => {
+    expect(sh('D="../.. x"; ls $D')).toContain(ROOT);
+    expect(dirs('sh', ['-c', 'ls $@', 'sh', '../.. x'])).toContain(ROOT);
+    expect(dirs('sh', ['-c', 'ls "x$@"', 'sh', 'a', '../..'])).toContain(ROOT);
+    expect(sh('IFS=/; D=src; ls $D')).toEqual([ROOT]);
+    expect(sh('ls $D', { env: { ...ENV, IFS: ':', D: 'src' } })).toEqual([ROOT]);
+    expect(sh('D=; ls $D')).toEqual([CORE]);
+  });
+
+  it('reads a program on the PATH the string sets, and counts one it made unevaluable', () => {
+    expect(sh(`PATH=${bin}; git merge-file a b c`)).toEqual([ROOT]);
+    expect(sh('PATH=/usr/bin; git merge-file a b c')).toEqual([]);
+    expect(sh('false && PATH=/x; git merge-file a b c')).toEqual([ROOT]);
+    expect(sh('NODE_OPTIONS=--x; node x.mjs')).toEqual([ROOT]);
+    expect(sh('unset GIT_DIR; git ls-files src')).toEqual([ROOT]);
+  });
+
+  it('keeps an exact state for the forms it has read', () => {
+    expect(sh('cd src && git ls-files')).toEqual([join(CORE, 'src')]);
+    expect(sh('set -eu; cd src && ls')).toEqual([join(CORE, 'src')]);
+    expect(sh('cd src; cd ..; ls')).toEqual([CORE]);
+    expect(sh('cd ./src/../src && ls')).toEqual([join(CORE, 'src')]);
+    expect(sh('git ls-files src | wc -l')).toEqual([join(CORE, 'src')]);
+    expect(sh('cd src && ls &')).toEqual([join(CORE, 'src')]);
+    expect(sh('X=src; ls "$X"; ls $X')).toEqual([join(CORE, 'src'), join(CORE, 'src')]);
+    expect(sh('true && X=src && ls $X')).toEqual([join(CORE, 'src')]);
+    expect(sh('export D=src; ls $D')).toEqual([join(CORE, 'src')]);
+    expect(sh('set -- src; ls "$1"')).toEqual([join(CORE, 'src')]);
+    expect(sh('read X; echo "$X"')).toEqual([]);
+    expect(sh('[ -n "$x" ] && echo y')).toEqual([]);
+    expect(sh('echo ${HOME:-x} ${#HOME} ${HOME%/*}')).toEqual([]);
+    expect(dirs('bash', ['-c', 'shopt -s nullglob dotglob; echo done'])).toEqual([]);
+    expect(dirs('dash', ['-ec', 'cd ../.. && ls'])).toEqual([ROOT]);
   });
 });
