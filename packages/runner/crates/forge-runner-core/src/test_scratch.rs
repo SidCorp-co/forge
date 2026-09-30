@@ -16,19 +16,39 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Whether `dir` is, or is inside, a directory a [`Scratch`] made: the only
-/// place a test build lets a writer resolve its config dir (ISS-1344).
+/// place a test build lets a writer resolve its config dir (ISS-1344). A `..`
+/// is refused outright, and the part of `dir` that exists is read through its
+/// symlinks, so neither walks a path out of the scratch it names.
 pub fn is_scratch(dir: &Path) -> bool {
-    [std::env::temp_dir(), PathBuf::from("/tmp")]
-        .iter()
-        .any(|base| {
+    let bases = [std::env::temp_dir(), PathBuf::from("/tmp")];
+    let inside = |dir: &Path, bases: &[PathBuf]| {
+        bases.iter().any(|base| {
             dir.strip_prefix(base).is_ok_and(|rest| {
-                rest.components().next().is_some_and(|c| {
+                let mut parts = rest.components();
+                parts.next().is_some_and(|c| {
                     c.as_os_str()
                         .to_str()
                         .is_some_and(|s| s.starts_with("forge-test-"))
-                })
+                }) && parts.all(|c| matches!(c, std::path::Component::Normal(_)))
             })
         })
+    };
+    if !inside(dir, &bases) {
+        return false;
+    }
+    let Some(real) = resolved(dir) else {
+        return false;
+    };
+    let real_bases: Vec<PathBuf> = bases.iter().filter_map(|b| b.canonicalize().ok()).collect();
+    inside(&real, &real_bases)
+}
+
+/// `dir` with its deepest existing ancestor read through its symlinks and the
+/// part not yet created appended as written.
+fn resolved(dir: &Path) -> Option<PathBuf> {
+    let existing = dir.ancestors().find(|a| a.exists())?;
+    let rest = dir.strip_prefix(existing).ok()?;
+    Some(existing.canonicalize().ok()?.join(rest))
 }
 
 /// A directory under the system temp dir, removed with everything in it on drop.
@@ -199,6 +219,28 @@ impl AsRef<OsStr> for InScratch {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// ISS-1344. Only a scratch or a path inside one is a test's own, and
+    /// neither a `..` nor a symlink walks a path out of the scratch it names.
+    #[test]
+    fn only_a_path_inside_a_scratch_is_a_tests_own() {
+        let own = Scratch::new("is-scratch");
+        assert!(is_scratch(own.path()));
+        assert!(is_scratch(&own.path().join("forge-runner").join("not-yet")));
+        let temp = own.path().parent().unwrap().to_path_buf();
+        assert!(!is_scratch(&temp), "the temp dir itself");
+        assert!(!is_scratch(&temp.join("runner-user-config")));
+        assert!(!is_scratch(&own.path().join("..").join("outside")));
+        assert!(!is_scratch(Path::new("/iss-1344-nobody/.config")));
+        #[cfg(unix)]
+        {
+            let away = Scratch::new("is-scratch-away");
+            let link = own.path().join("link");
+            std::os::unix::fs::symlink(away.path().parent().unwrap(), &link).unwrap();
+            assert!(!is_scratch(&link), "a symlink out of the scratch");
+            assert!(!is_scratch(&link.join("forge-runner")));
+        }
+    }
 
     fn populated(tag: &str) -> Scratch {
         let s = Scratch::new(tag);

@@ -222,9 +222,15 @@ pub fn session_path(slug: &str) -> PathBuf {
 }
 
 fn mcp_config_dir() -> PathBuf {
-    let base = crate::config::base_dir()
-        .ok()
-        .unwrap_or_else(|| std::env::temp_dir().join("forge-runner"));
+    let base = match crate::config::base_dir() {
+        Ok(base) => base,
+        // A test build's refusal is the test's to answer, never a shared
+        // `<tmp>/forge-runner` every test process writes into (ISS-1344).
+        #[cfg(any(test, feature = "test-support"))]
+        Err(e) => panic!("{e}"),
+        #[cfg(not(any(test, feature = "test-support")))]
+        Err(_) => std::env::temp_dir().join("forge-runner"),
+    };
     let dir = base.join("mcp");
     let _ = std::fs::create_dir_all(&dir);
     restrict_dir_perms(&dir);
@@ -1197,6 +1203,37 @@ mod tests {
         );
         assert_eq!(doc["mcpServers"]["playwright"]["command"], "npx");
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// ISS-1344. A test that has not scoped a scratch config dir is refused by
+    /// name, never handed the shared `<tmp>/forge-runner` every test process
+    /// would write into; one that has writes into its own scratch.
+    #[test]
+    fn a_test_with_no_scratch_config_dir_is_refused_and_writes_nowhere_shared() {
+        let _env = crate::auth::cred_store::ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let own = crate::test_scratch::Scratch::new("mcp-own");
+        let shared = own
+            .path()
+            .parent()
+            .unwrap()
+            .join("forge-runner")
+            .join("mcp");
+        let had_shared = shared.exists();
+        let xdg = ScopedVar::set("XDG_CONFIG_HOME", "/iss-1344-nobody/.config");
+        let refused = std::panic::catch_unwind(|| session_path("proj"))
+            .expect_err("no scratch config dir, so no path");
+        let why = refused
+            .downcast_ref::<String>()
+            .cloned()
+            .unwrap_or_default();
+        assert!(why.contains("is not one"), "{why}");
+        assert_eq!(shared.exists(), had_shared, "nothing shared was created");
+
+        xdg.move_to(own.path());
+        let path = session_path("proj");
+        assert!(path.starts_with(own.path()), "{}", path.display());
     }
 
     #[test]
