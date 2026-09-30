@@ -339,8 +339,6 @@ fn chat_spec(session_id: &str, prompt: &str, turn: &Turn) -> JobSpec {
         prompt: Some(prompt.to_string()),
         system_prompt: turn.system_prompt.clone(),
         model: turn.model.clone(),
-        allowed_tools: None,
-        disallowed_tools: None,
         permission_mode: None,
         timeout_seconds: None,
         mcp_servers_override: turn.mcp_servers_override.clone(),

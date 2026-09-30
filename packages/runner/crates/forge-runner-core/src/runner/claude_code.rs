@@ -562,18 +562,6 @@ fn build_args(spec: &JobSpec, mcp_path: &str) -> Vec<String> {
         args.push("--append-system-prompt".into());
         args.push(sp.into());
     }
-    if let Some(tools) = spec.allowed_tools.as_deref().filter(|s| !s.is_empty()) {
-        args.push("--allowed-tools".into());
-        args.push(tools.into());
-    }
-    // Capability denylist (ISS-531). `--disallowed-tools` removes a tool from
-    // the available SET even under `--permission-mode bypassPermissions`
-    // (verified on claude v2.1.185), so it is a real least-agency hard-deny,
-    // not just an auto-approval gate.
-    if let Some(tools) = spec.disallowed_tools.as_deref().filter(|s| !s.is_empty()) {
-        args.push("--disallowed-tools".into());
-        args.push(tools.into());
-    }
     if let Some(model) = spec.model.as_deref().filter(|s| !s.is_empty()) {
         args.push("--model".into());
         args.push(model.into());
@@ -1300,8 +1288,6 @@ mod tests {
             prompt: Some("hello".into()),
             system_prompt: None,
             model: None,
-            allowed_tools: None,
-            disallowed_tools: None,
             permission_mode: None,
             timeout_seconds: None,
             mcp_servers_override: None,
