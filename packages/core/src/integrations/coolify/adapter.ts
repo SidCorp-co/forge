@@ -24,6 +24,7 @@ import {
 import { breakerAllowsDispatch, maybeResetBreaker, maybeTripBreaker } from './circuit-breaker.js';
 import { CoolifyApiError, coolifyAbilityForRoute, describeCoolifyForbidden } from './client.js';
 import { type CoolifyConfirmJob, enqueueCoolifyConfirm } from './confirm.js';
+import { coolifyDeploymentRecords } from './deployment-records.js';
 import { buildClient } from './log-fetch.js';
 import {
   COOLIFY_BINDING_CONFIG_KEYS,
@@ -426,6 +427,8 @@ const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySec
     const commit = (await buildClient(ctx, timeoutMs).getDeployment(deploymentId)).commit;
     return typeof commit === 'string' && commit.trim() !== '' ? commit.trim() : null;
   },
+
+  deploymentRecords: coolifyDeploymentRecords,
 
   async handleInbound() {
     throw new Error(

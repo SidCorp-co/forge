@@ -1,5 +1,6 @@
 import type { z } from 'zod';
 import type { BindingRole, DeployStage } from '../db/schema.js';
+import type { TargetedDeployAdapter } from '../project-config/deploy-adapters/types.js';
 
 export type IntegrationProvider =
   | 'coolify'
@@ -333,6 +334,10 @@ export interface IntegrationAdapterMethods<
     deploymentId: string,
     timeoutMs: number,
   ): Promise<string | null>;
+  deploymentRecords?(
+    ctx: AdapterContext<TConfig, TSecrets>,
+    timeoutMs: number,
+  ): TargetedDeployAdapter;
   dispatchOutbound?(
     ctx: AdapterContext<TConfig, TSecrets>,
     input: OutboundDispatchInput,

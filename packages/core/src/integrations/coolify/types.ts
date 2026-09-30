@@ -99,4 +99,10 @@ export interface CoolifyDeploymentResponse {
   logs?: string | CoolifyDeploymentLogLine[];
   commit?: string;
   id?: number;
+  created_at?: string;
+}
+
+export interface CoolifyApplicationDeploymentsResponse {
+  count?: number;
+  deployments?: CoolifyDeploymentResponse[];
 }
