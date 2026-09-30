@@ -58,14 +58,14 @@ a tool calls what the route calls.
 
 ## What this direction owes
 
-1. **An API reference generated from the routes.** It gives each route's exact input and output
+1. **An API reference generated from the routes** (ISS-1371). It gives each route's exact input and output
    schema, its errors and the permission it needs. It is served by core and checked in CI, so a
    route and its document cannot disagree.
-2. **Flow pages beside the reference.** They show, as diagrams, the order of calls for the flows an
+2. **Flow pages beside the reference** (ISS-1371). They show, as diagrams, the order of calls for the flows an
    agent drives: pair a runner, claim a job, move an issue through its statuses, grant a token.
-3. **Every feature mount grantable to a token.** An exclusion is refused unless it is named with its
+3. **Every feature mount grantable to a token** (ISS-1373). An exclusion is refused unless it is named with its
    reason.
-4. **MCP and the CLI on the API's path.** A capability has one implementation, and every wrapper
+4. **MCP and the CLI on the API's path** (ISS-1372; the CLI half is reached by issue in forge-plugin). A capability has one implementation, and every wrapper
    calls it.
 
 ## Honest costs
@@ -78,5 +78,5 @@ a tool calls what the route calls.
 | A reference generated and checked in CI | a route whose schema is loose, or whose output is shaped by hand, fails the check until it is typed. Refactors pay that at the moment they touch a route |
 | Runner limited to relay and watching | runner features that someone wants wait. Their value is real, and they are out of focus while this holds |
 
-Each of these is tracked as an issue. What is built today, and in what order, belongs to the
+The issues named above track that work. What is built today, and in what order, belongs to the
 tracker and not here.
