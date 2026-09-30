@@ -29,7 +29,7 @@ use tokio::process::Command;
 use crate::error::Result;
 use crate::runner::ledger::Ledger;
 use crate::workspace::worktree::{kind_at, Kind};
-use crate::workspace::worktree_processes::{Clearing, Loud, Reading, Say, Verdict};
+use crate::workspace::worktree_processes::{residents_of, Clearing, Loud, Reading, Say, Verdict};
 
 pub const MIN_AGE: Duration = Duration::from_secs(14 * 24 * 3600);
 
@@ -218,6 +218,72 @@ fn report_the_stranded(repo: &Path, clearing: &Clearing<'_>) {
     }
 }
 
+/// The line each stray directory was last given, for the life of this daemon.
+///
+/// A stray stands until a person acts, and the sweep reads it every period, so
+/// a line said at every reading is the same words for days that nobody can
+/// tell from a new one (ISS-1250, judge r4 item 3). It is said once, and again
+/// only when what the sweep read there changes.
+static STRAYS: std::sync::Mutex<std::collections::BTreeMap<PathBuf, String>> =
+    std::sync::Mutex::new(std::collections::BTreeMap::new());
+
+/// What the sweep read at a stray directory, and what would end it.
+fn stray_line(p: &Path, top: &Path, holder: Option<&str>, clearing: &Clearing<'_>) -> String {
+    let living = match residents_of(clearing.proc_root, p) {
+        Reading::Read { residents, .. } if residents.is_empty() => {
+            "no process this box can read is living in it".to_string()
+        }
+        Reading::Read { residents, .. } => format!(
+            "still living in it: {}",
+            residents
+                .iter()
+                .map(|r| r.to_string())
+                .collect::<Vec<_>>()
+                .join("; ")
+        ),
+        Reading::NoTable(why) | Reading::Unreadable(why) => {
+            format!("who is living in it could not be read ({why})")
+        }
+    };
+    let held = holder
+        .map(|run| format!(" Run {run} holds it in the ledger until it is gone."))
+        .unwrap_or_default();
+    format!(
+        "leaving {} standing — git, asked at the path, answers for the enclosing checkout {}, so \
+         whether it holds work cannot be read from it and this box will not remove it; {living}.\
+         {held} To end it: once nothing in it is wanted, end what is living in it, remove the \
+         directory by hand, and run `git worktree prune` in {}. Said again only when this \
+         reading changes or the daemon restarts.",
+        p.display(),
+        top.display(),
+        top.display()
+    )
+}
+
+/// Say a stray's line unless it is the one it was last given.
+fn say_stray(p: &Path, line: String) {
+    let mut said = STRAYS.lock().unwrap_or_else(|e| e.into_inner());
+    if said.get(p) == Some(&line) {
+        tracing::debug!(
+            "[worktree-reap] {} reads as it did when last said",
+            p.display()
+        );
+        return;
+    }
+    tracing::warn!("[worktree-reap] {line}");
+    said.insert(p.to_path_buf(), line);
+}
+
+/// Forget every stray under this repository's roots the sweep no longer read
+/// as one, so one that goes and comes back is said again.
+fn forget_strays(repo: &Path, still: &[PathBuf]) {
+    let roots: Vec<PathBuf> = WORKTREE_ROOTS.iter().map(|r| repo.join(r)).collect();
+    STRAYS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .retain(|p, _| !roots.iter().any(|r| p.starts_with(r)) || still.contains(p));
+}
+
 /// [`reap_repo`], with the reading and the signalling supplied.
 pub async fn reap_repo_clearing(
     repo: &Path,
@@ -228,6 +294,7 @@ pub async fn reap_repo_clearing(
     report_the_stranded(repo, clearing);
     let mut removed: Vec<PathBuf> = Vec::new();
     let mut held: Vec<(PathBuf, String)> = Vec::new();
+    let mut strays: Vec<PathBuf> = Vec::new();
     for root in WORKTREE_ROOTS {
         let Ok(entries) = std::fs::read_dir(repo.join(root)) else {
             continue;
@@ -243,12 +310,8 @@ pub async fn reap_repo_clearing(
             // checkout's answer. Asked ahead of the ledger's hold too, so a run
             // holding it does not hide what git said (ISS-1250, judge j3).
             if let Kind::Enclosed(top) = kind_at(&p).await {
-                tracing::warn!(
-                    "[worktree-reap] leaving {} standing — git, asked at the path, answers for \
-                     the enclosing checkout {}, so whether it holds work cannot be read from it",
-                    p.display(),
-                    top.display()
-                );
+                say_stray(&p, stray_line(&p, &top, held_by.holder(&p), clearing));
+                strays.push(p);
                 continue;
             }
             if let Some(run_id) = held_by.holder(&p) {
@@ -345,6 +408,7 @@ pub async fn reap_repo_clearing(
     if !removed.is_empty() {
         git(repo, &["worktree", "prune"]).await;
     }
+    forget_strays(repo, &strays);
     Reaped { removed, held }
 }
 
@@ -751,6 +815,62 @@ mod tests {
         );
     }
 
+    /// ISS-1250 judge r4 item 3: sid-desk `judge-ISS-483` drew the same warning
+    /// every sweep for days, and not one of them said what would end it.
+    #[test]
+    fn a_stray_directory_is_said_once_with_what_ends_it_and_again_only_when_it_comes_back() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        let (repo, wt) = rt.block_on(half_deleted("enclosedonce"));
+        let leaving = format!("leaving {} standing", wt.display());
+
+        let said = crate::workspace::worktree::tests::logged_while(|| {
+            for _ in 0..3 {
+                rt.block_on(reap_repo(&repo, NOW, &led()));
+            }
+        });
+        assert_eq!(
+            said.matches(&leaving).count(),
+            1,
+            "three sweeps reading the same stray say it once: {said}"
+        );
+        let top = repo.canonicalize().unwrap();
+        assert!(
+            said.contains("remove the directory by hand")
+                && said.contains(&format!("`git worktree prune` in {}", top.display())),
+            "the line names what ends it: {said}"
+        );
+
+        std::fs::remove_dir_all(&wt).unwrap();
+        let gone = crate::workspace::worktree::tests::logged_while(|| {
+            rt.block_on(reap_repo(&repo, NOW, &led()));
+        });
+        std::fs::create_dir_all(&wt).unwrap();
+        std::fs::write(wt.join("f.txt"), "back\n").unwrap();
+        let back = crate::workspace::worktree::tests::logged_while(|| {
+            rt.block_on(reap_repo(&repo, NOW, &led()));
+        });
+        assert!(!gone.contains(&leaving), "{gone}");
+        assert_eq!(
+            back.matches(&leaving).count(),
+            1,
+            "a stray that went and came back is said again: {back}"
+        );
+
+        let held = crate::workspace::worktree::tests::logged_while(|| {
+            rt.block_on(reap_repo(&repo, NOW, &led_holding(&wt, true, false)));
+            rt.block_on(reap_repo(&repo, NOW, &led_holding(&wt, true, false)));
+        });
+        assert_eq!(
+            held.matches(&leaving).count(),
+            1,
+            "a run coming to hold it is a changed reading, said once: {held}"
+        );
+        assert!(held.contains("Run run-held holds it"), "{held}");
+    }
+
     /// ISS-1250 — the second remover on this box said nothing either.
     ///
     /// `reap_repo` prints `keeping <path>` for every tree it leaves and its
@@ -995,6 +1115,43 @@ mod tests {
             wt.is_dir(),
             "neither `git worktree remove` nor `remove_dir_all` was reached: removing the \
              directory leaves the process exactly as running and takes the only thing naming it"
+        );
+        let _ = std::fs::remove_dir_all(&repo);
+    }
+
+    /// Judge r4 item 3's other stray, portal-lighthuman `ISS-71`, still had a
+    /// `next-server` living in it: what the stray holds is part of the reading,
+    /// so a resident arriving is a changed reading and is said.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_stray_directory_is_said_again_when_a_process_is_found_living_in_it() {
+        let (repo, wt) = half_deleted("enclosedresident").await;
+        let proc = repo.join("proc-of-this-test");
+        std::fs::create_dir_all(&proc).unwrap();
+        let hand = residents::Wont::default();
+        let leaving = format!("leaving {} standing", wt.display());
+
+        let (log, guard) = crate::log_capture::capturing();
+        let _ = reap_repo_clearing(&repo, NOW, &led(), &residents::clearing(&proc, &hand)).await;
+        let _ = reap_repo_clearing(&repo, NOW, &led(), &residents::clearing(&proc, &hand)).await;
+        residents::plant(&proc, 909, &wt.to_string_lossy(), "next-server (v16.2.1)");
+        let _ = reap_repo_clearing(&repo, NOW, &led(), &residents::clearing(&proc, &hand)).await;
+        drop(guard);
+        let said = log.said();
+
+        assert_eq!(
+            said.matches(&leaving).count(),
+            2,
+            "said at the first reading and at the one that found a resident: {said}"
+        );
+        assert!(
+            said.contains("pid 909") && said.contains("next-server"),
+            "the resident is named: {said}"
+        );
+        assert!(
+            hand.sent.lock().unwrap().is_empty(),
+            "a stray's resident is named and never signalled: {:?}",
+            hand.sent.lock().unwrap()
         );
         let _ = std::fs::remove_dir_all(&repo);
     }
