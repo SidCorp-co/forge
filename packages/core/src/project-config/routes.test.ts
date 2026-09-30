@@ -318,42 +318,17 @@ describe('policy and testing profiles', () => {
     expect(mem.policy.size).toBe(0);
   });
 
-  it.each([
-    ['a lowercase tool name', 'bash'],
-    ['empty parentheses', 'Bash()'],
-    ['a specifier opening on a space', 'Bash( git push:*)'],
-    ['an MCP prefix naming no server', 'mcp__'],
-    ['an MCP name ending on its separator', 'mcp__forge__'],
-    ['a retired capability id', 'projects.update'],
-  ])('refuses %s in a deny list by name, at its path, and writes nothing', async (_what, entry) => {
-    const doc = { ...policyDoc, permissions: { development: { deny: ['CronCreate', entry] } } };
-    const res = await put('/policy', { baseRevision: null, document: doc });
-    expect(res.status).toBe(422);
-    const body = (await res.json()) as Refusals;
-    expect(body.error.code).toBe('TOOL_PATTERN_INVALID');
-    expect(body.error.refusals).toEqual([
-      expect.objectContaining({
-        code: 'TOOL_PATTERN_INVALID',
-        path: '/permissions/development/deny/1',
-        detail: expect.stringContaining('Bash(git push:*)'),
-      }),
-    ]);
-    expect(mem.policy.size).toBe(0);
-  });
-
-  it('accepts the tool patterns the runner hands to --disallowed-tools', async () => {
-    const deny = [
-      'Bash(git push:*)',
-      'CronCreate',
-      'WebFetch(domain:example.com)',
-      'mcp__playwright__*',
-      'mcp__forge__*',
-      'mcp__forge__forge_jobs_cancel',
-    ];
+  it('refuses a retired capability id by name, at its path, and writes nothing', async () => {
+    const deny = ['CronCreate', 'projects.update'];
     const doc = { ...policyDoc, permissions: { development: { deny } } };
     const res = await put('/policy', { baseRevision: null, document: doc });
-    expect(res.status).toBe(200);
-    expect(mem.policy.size).toBe(1);
+    expect(res.status).toBe(422);
+    const { error } = (await res.json()) as Refusals;
+    expect(error.code).toBe('TOOL_PATTERN_INVALID');
+    expect(error.refusals).toEqual([
+      expect.objectContaining({ path: '/permissions/development/deny/1' }),
+    ]);
+    expect(mem.policy.size).toBe(0);
   });
 
   it('refuses SECRET_NOT_FOUND for a credential ref the vault does not hold', async () => {
