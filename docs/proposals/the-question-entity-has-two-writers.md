@@ -50,10 +50,8 @@ status OR marker.
   sentence, `ended_reason: 'issue_terminal'`. Every door refuses an ask on a terminal issue
   (`QUESTION_ISSUE_TERMINAL`).
 - **Out of `needs_info` on an answer.** `pipeline/answer-resume.ts` moves the issue once its last
-  open question is answered, and not before: to `confirmed`, the rung that says the requirements
-  are settled, where the project's `poolBacklog.statuses` admit it; to `open` where they do not,
-  with a comment saying why, because nothing there reads `confirmed`. An answer at any other rung
-  moves nothing.
+  open question is answered, and not before: back to `open`, the driver's entry and the one status
+  a master admits. An answer at any other rung moves nothing.
 - **The wedge reset** (`pipeline/reconciler.ts:resetAutonomousWedgesOnce`) leaves an issue holding
   the marker at its rung: its next move is a person's, so it is not wedged.
 
@@ -86,9 +84,6 @@ them and stores what they carry (`tests/integration/question-runner-wire-e2e.tes
   since neither moves the issue, an Issues list or an issue page already open shows the marker,
   `Needs you`, its count and the banner as of its last fetch until it refetches (focus, remount, or
   its own poll — which the issue page's question read skips while the issue holds none).
-- **23 of 33 live projects on beta (measured 2026-09-27) admit nothing at `confirmed`**, so an
-  answered park there returns to `open` instead. The day each autonomous project's admission reads
-  `confirmed`, `answer-resume.ts:answerTarget` loses its second branch.
 - **`issue_id` stays nullable.** A master's question from the device door may carry none, and those
   are what the Questions tab still lists. Making the column `NOT NULL` breaks the runner's wire.
 - `packages/runner/crates/forge-runner-core/src/runner/blocked.rs` — `arm_bounded` and
