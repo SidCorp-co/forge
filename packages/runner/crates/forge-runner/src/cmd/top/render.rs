@@ -968,6 +968,105 @@ mod tests {
         );
     }
 
+    /// A skill line under a pane this view could not read, as `alpha`'s
+    /// checkout stands on `matches`.
+    fn skill_under_unread_pane(matches: bool, plant: impl Fn(&mut Snapshot)) -> String {
+        let mut s = snap(vec![Project {
+            skill: Some(Skill::Read {
+                path: "/repo/a/SKILL.md".into(),
+                bytes: 9,
+                written_ms: Ok(NOW - 60_000),
+                matches: Ok(matches),
+            }),
+            ..row("alpha", "id-a", "/repo/a")
+        }]);
+        s.sessions = Ok(Default::default());
+        plant(&mut s);
+        frame(&s, None)
+            .into_iter()
+            .find(|l| l.contains("/repo/a/SKILL.md"))
+            .expect("a skill line")
+    }
+
+    /// Judge w3's `tmux-fails` (finding 53, criterion 22): tmux could not be
+    /// asked, so whether a master pane runs on a drifted skill is not known,
+    /// and the line never says no pane is seen on it.
+    #[test]
+    fn a_drifted_skill_under_an_unread_tmux_is_not_said_to_have_no_pane() {
+        let line = skill_under_unread_pane(false, |s| {
+            s.sessions = Err(Unreadable::new("tmux list-sessions", "exit status: 1"));
+        });
+        assert!(line.contains("DRIFT — is NOT the forge-master asset"), "{line}");
+        assert!(!line.contains("no running master pane is seen"), "{line}");
+        assert!(!line.contains("this pane stands"), "{line}");
+        assert!(
+            line.contains("whether a master pane runs on it cannot be read"),
+            "{line}"
+        );
+    }
+
+    /// Judge w3's `ledger-000-runners-401`: core's slug and the ledger both
+    /// unread, so the pane cannot be named, let alone looked for.
+    #[test]
+    fn a_drifted_skill_whose_pane_cannot_be_named_is_not_said_to_have_no_pane() {
+        let line = skill_under_unread_pane(false, |s| {
+            s.projects[0].core_slug = None;
+            s.discovery = Err(Unreadable::new("GET /api/devices/me/runners", "401"));
+            s.ledger = Err(Unreadable::new("/d/ledger.sqlite", "unable to open"));
+            let mut panes = crate::cmd::top::panes::Sessions::new();
+            panes.insert("forge-master-alpha".into(), NOW / 1000 - 30);
+            s.sessions = Ok(panes);
+        });
+        assert!(!line.contains("no running master pane is seen"), "{line}");
+        assert!(
+            line.contains("whether a master pane runs on it cannot be read"),
+            "{line}"
+        );
+    }
+
+    /// The same third state with core readable: core does not serve the
+    /// project, but the ledger that would name a pane placed earlier is
+    /// unread, so neither the master line nor the skill line says no pane.
+    #[test]
+    fn a_pane_the_ledger_cannot_rule_out_is_not_said_to_be_absent() {
+        let mut s = snap(vec![Project {
+            core_slug: None,
+            skill: Some(Skill::Read {
+                path: "/repo/a/SKILL.md".into(),
+                bytes: 9,
+                written_ms: Ok(NOW - 60_000),
+                matches: Ok(false),
+            }),
+            ..row("alpha", "id-a", "/repo/a")
+        }]);
+        s.sessions = Ok(Default::default());
+        s.ledger = Err(Unreadable::new("/d/ledger.sqlite", "not a database"));
+        let text = frame(&s, None).join("\n");
+        assert!(!text.contains("master   no pane"), "{text}");
+        assert!(
+            text.contains("whether one placed earlier still runs cannot be said: the ledger, which records the pane the daemon placed, is UNREADABLE — /d/ledger.sqlite: not a database"),
+            "{text}"
+        );
+        assert!(!text.contains("no running master pane is seen"), "{text}");
+    }
+
+    /// Criterion 10 under the third state: a skill that is the asset, under a
+    /// pane whose start could not be read, says the rewrite check was not made
+    /// rather than dropping it.
+    #[test]
+    fn a_rewrite_check_that_could_not_be_made_says_so() {
+        let line = skill_under_unread_pane(true, |s| {
+            s.sessions = Err(Unreadable::new("tmux list-sessions", "exit status: 1"));
+        });
+        assert!(line.contains("is the forge-master asset"), "{line}");
+        assert!(
+            line.contains("whether its pane started before this write cannot be read"),
+            "{line}"
+        );
+        let seen = skill_under_unread_pane(true, |_| {});
+        assert!(!seen.contains("cannot be read"), "a pane read not running: {seen}");
+    }
+
     /// Whole-set consult at 6fdc929, F1: a run naming no project this box
     /// knows is listed once, as a stray, and never under a binding that names
     /// no project id.

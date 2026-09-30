@@ -701,6 +701,64 @@ fn an_unread_ledger_is_not_read_as_one_recording_no_master() {
     );
 }
 
+/// Alpha's skill line: alpha's checkout stands on a skill the daemon's
+/// executable does not carry, under a master pane the planted tmux runs.
+fn alpha_skill_line(text: &str) -> &str {
+    text.lines()
+        .find(|l| l.contains("repos/alpha/.claude/skills/forge-master/SKILL.md"))
+        .unwrap_or_else(|| panic!("no skill line for alpha:\n{text}"))
+}
+
+/// Judge w3's variant `tmux-fails` (finding 53, criterion 22): tmux cannot
+/// be asked, so alpha's drifted skill is not said to have no pane on it while
+/// its pane runs.
+#[test]
+fn a_drifted_skill_is_not_called_paneless_when_tmux_cannot_be_asked() {
+    let core = fake_core("200 OK");
+    let b = plant(&core.url);
+    std::fs::write(
+        b.root.join("bin/tmux"),
+        "#!/bin/sh\necho 'error connecting to /tmp/tmux-1000/forge (Permission denied)' >&2\nexit 1\n",
+    )
+    .unwrap();
+    let text = String::from_utf8_lossy(&top(&b, &["--once"]).stdout).into_owned();
+    let projects = section(&text, "PROJECTS");
+    assert!(
+        projects.contains("master   forge-master-alpha: UNREADABLE — tmux list-sessions"),
+        "{projects}"
+    );
+    let line = alpha_skill_line(projects);
+    assert!(line.contains("DRIFT — is NOT the forge-master asset"), "{line}");
+    assert!(!line.contains("no running master pane is seen"), "{line}");
+    assert!(
+        line.contains("whether a master pane runs on it cannot be read"),
+        "{line}"
+    );
+}
+
+/// Judge w3's variant `ledger-000-runners-401`: core's project list refused
+/// and the ledger unreadable, so the pane cannot even be named, and alpha's
+/// drifted skill is still not said to have no pane on it.
+#[test]
+fn a_drifted_skill_is_not_called_paneless_when_its_pane_cannot_be_named() {
+    let core = fake_core("401 Unauthorized");
+    let b = plant(&core.url);
+    std::fs::write(
+        &b.ledger,
+        b"not a database, long enough to be taken for one",
+    )
+    .unwrap();
+    let text = String::from_utf8_lossy(&top(&b, &["--once"]).stdout).into_owned();
+    let projects = section(&text, "PROJECTS");
+    assert!(projects.contains("its pane cannot be named"), "{projects}");
+    let line = alpha_skill_line(projects);
+    assert!(!line.contains("no running master pane is seen"), "{line}");
+    assert!(
+        line.contains("whether a master pane runs on it cannot be read"),
+        "{line}"
+    );
+}
+
 /// A terminal for the view to draw on: the child's stdout is the pty's
 /// secondary end, sized as asked, and everything drawn is kept.
 struct Pty {
