@@ -48,7 +48,7 @@ type PageRow<'a> = dyn Fn(usize, usize) -> String + 'a;
 /// redraws, so it is taken modulo however many pages this frame needs.
 pub fn screen(frame: &[String], size: Option<Screen>, page: usize) -> Shown {
     let Some(size) = size else {
-        let mut rows = frame.to_vec();
+        let mut rows: Vec<String> = frame.iter().map(|l| printable(l)).collect();
         rows.insert(
             1.min(rows.len()),
             "the screen's size could not be read, so this frame is not fitted to it".into(),
@@ -131,6 +131,30 @@ pub fn cells(s: &str) -> usize {
     UnicodeWidthStr::width(s)
 }
 
+/// `line` as a terminal shows it cell for cell: a tab expanded to the next
+/// stop of eight, and every other control character written out as its
+/// escape, so text read from core can neither move the cursor nor measure
+/// shorter than it draws.
+fn printable(line: &str) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut col = 0;
+    for c in line.chars() {
+        if c == '\t' {
+            let n = 8 - col % 8;
+            out.extend(std::iter::repeat_n(' ', n));
+            col += n;
+        } else if c.is_control() {
+            let e = format!("\\u{{{:x}}}", u32::from(c));
+            col += e.len();
+            out.push_str(&e);
+        } else {
+            col += UnicodeWidthChar::width(c).unwrap_or(0);
+            out.push(c);
+        }
+    }
+    out
+}
+
 /// `line` as rows no wider than `width` cells, broken at a space where one
 /// falls in the row and mid-word where none does, never between a character
 /// and the mark combined onto it; a continued row is indented two past the
@@ -139,6 +163,8 @@ pub fn cells(s: &str) -> usize {
 /// the one case a row can be wider than `width`.
 pub fn wrap(line: &str, width: usize) -> Vec<String> {
     let width = width.max(1);
+    let line = printable(line);
+    let line = line.as_str();
     if cells(line) <= width {
         return vec![line.to_string()];
     }
@@ -234,6 +260,19 @@ mod tests {
                 break;
             }
         }
+    }
+
+    /// Whole-set consult at 5e15f5b, F1: a tab is drawn to its stop, so it is
+    /// measured there; and a control character from core's text is written
+    /// out rather than sent to the terminal, where it would move the cursor.
+    #[test]
+    fn tabs_and_control_characters_are_measured_as_they_draw() {
+        let rows = wrap("a\tbc", 8);
+        assert_eq!(rows, vec!["a".to_string(), "  bc".to_string()]);
+        assert!(rows.iter().all(|r| !r.contains('\t')), "{rows:?}");
+        let rows = wrap("x\u{1b}[2Jy", 80);
+        assert_eq!(rows, vec!["x\\u{1b}[2Jy".to_string()]);
+        assert!(rows.iter().all(|r| !r.chars().any(char::is_control)));
     }
 
     /// A combining mark takes no cell and is never split from its letter: a
