@@ -125,7 +125,7 @@ const policyDoc = {
   version: 1,
   qa: 'independent',
   intake: { mode: 'auto' },
-  permissions: { development: { deny: ['projects.update'] } },
+  permissions: { development: { deny: ['mcp__forge__forge_projects_update'] } },
   states: { open: { model: 'opus', permissions: 'development' } },
 };
 
@@ -314,6 +314,44 @@ describe('policy and testing profiles', () => {
     expect(res.status).toBe(422);
     expect(((await res.json()) as Refusals).error.code).toBe('PERMISSION_PROFILE_UNDEFINED');
     expect(mem.policy.size).toBe(0);
+  });
+
+  it.each([
+    ['a lowercase tool name', 'bash'],
+    ['empty parentheses', 'Bash()'],
+    ['a specifier opening on a space', 'Bash( git push:*)'],
+    ['an MCP prefix naming no server', 'mcp__'],
+    ['an MCP name ending on its separator', 'mcp__forge__'],
+    ['a retired capability id', 'projects.update'],
+  ])('refuses %s in a deny list by name, at its path, and writes nothing', async (_what, entry) => {
+    const doc = { ...policyDoc, permissions: { development: { deny: ['CronCreate', entry] } } };
+    const res = await put('/policy', { baseRevision: null, document: doc });
+    expect(res.status).toBe(422);
+    const body = (await res.json()) as Refusals;
+    expect(body.error.code).toBe('TOOL_PATTERN_INVALID');
+    expect(body.error.refusals).toEqual([
+      expect.objectContaining({
+        code: 'TOOL_PATTERN_INVALID',
+        path: '/permissions/development/deny/1',
+        detail: expect.stringContaining('Bash(git push:*)'),
+      }),
+    ]);
+    expect(mem.policy.size).toBe(0);
+  });
+
+  it('accepts the tool patterns the runner hands to --disallowed-tools', async () => {
+    const deny = [
+      'Bash(git push:*)',
+      'CronCreate',
+      'WebFetch(domain:example.com)',
+      'mcp__playwright__*',
+      'mcp__forge__*',
+      'mcp__forge__forge_jobs_cancel',
+    ];
+    const doc = { ...policyDoc, permissions: { development: { deny } } };
+    const res = await put('/policy', { baseRevision: null, document: doc });
+    expect(res.status).toBe(200);
+    expect(mem.policy.size).toBe(1);
   });
 
   it('refuses SECRET_NOT_FOUND for a credential ref the vault does not hold', async () => {

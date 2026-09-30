@@ -246,6 +246,19 @@ describe('the rest of the pure codes', () => {
     ).toEqual([]);
   });
 
+  it('checkPolicy refuses a Forge tool this server does not register, by the entry', () => {
+    const p: PolicyDocument = structuredClone(simPolicy);
+    const deny = p.permissions.development?.deny;
+    if (!deny) throw new Error('sim policy has no development profile');
+    deny.push('mcp__forge__forge_projects_archive', 'mcp__forge__*', 'mcp__playwright__*');
+    const out = checkPolicy(p);
+    for (const r of out) seen.add(r.code);
+    expect(pick(out)).toEqual([
+      { code: 'TOOL_PATTERN_INVALID', path: `/permissions/development/deny/${deny.length - 3}` },
+    ]);
+    expect(out[0]?.detail).toContain('mcp__forge__forge_jobs_cancel');
+  });
+
   it('checkPolicy stands alone and passes the sim policy', () => {
     expect(checkPolicy(simPolicy)).toEqual([]);
     const p: PolicyDocument = structuredClone(simPolicy);

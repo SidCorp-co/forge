@@ -1,3 +1,4 @@
+import { REGISTERED_TOOLS } from '../mcp/registered-tools.js';
 import type { BindingRole, PolicyDocument, ProjectDocument } from './schema.js';
 
 // cm:why enumerating is the point: this list IS the refusal vocabulary callers switch on.
@@ -17,6 +18,7 @@ export const PURE_REFUSAL_CODES = [
   'BINDING_IN_USE',
   'TESTING_PROFILE_NOT_FOUND',
   'PERMISSION_PROFILE_UNDEFINED',
+  'TOOL_PATTERN_INVALID',
 ] as const;
 
 // cm:why these need storage, a registry or the request; S2 implements them. UNKNOWN_KEY is the
@@ -30,7 +32,6 @@ export const STORED_REFUSAL_CODES = [
   'TRIGGER_UNSUPPORTED',
   'CONNECTION_NOT_FOUND',
   'CONNECTION_PROVIDER_MISMATCH',
-  'CAPABILITY_UNKNOWN',
   'SECRET_NOT_FOUND',
 ] as const;
 
@@ -238,8 +239,32 @@ function checkEnvironments(doc: ProjectDocument, ctx: ProjectConfigContext): Con
   return out;
 }
 
-export function checkPolicy(doc: PolicyDocument): ConfigRefusal[] {
+const FORGE_TOOL_PREFIX = 'mcp__forge__';
+
+// cm:why the grammar (schema.ts:TOOL_PATTERN) cannot see a Forge tool that does not exist; this
+// server knows its own surface, and a deny entry naming no tool denies nothing, silently.
+const FORGE_TOOLS: ReadonlySet<string> = new Set(
+  REGISTERED_TOOLS.map((name) => `${FORGE_TOOL_PREFIX}${name.replaceAll('.', '_')}`),
+);
+
+function checkDenyEntries(doc: PolicyDocument): ConfigRefusal[] {
   const out: ConfigRefusal[] = [];
+  for (const [profile, { deny }] of Object.entries(doc.permissions)) {
+    deny.forEach((entry, i) => {
+      if (!entry.startsWith(FORGE_TOOL_PREFIX) || entry === `${FORGE_TOOL_PREFIX}*`) return;
+      if (FORGE_TOOLS.has(entry)) return;
+      out.push({
+        code: 'TOOL_PATTERN_INVALID',
+        path: pointer('permissions', profile, 'deny', i),
+        detail: `"${entry}" names no tool this Forge server registers, so denying it denies nothing; a Forge tool is ${FORGE_TOOL_PREFIX}<tool> with the tool's dots as underscores, e.g. ${FORGE_TOOL_PREFIX}forge_jobs_cancel.`,
+      });
+    });
+  }
+  return out;
+}
+
+export function checkPolicy(doc: PolicyDocument): ConfigRefusal[] {
+  const out: ConfigRefusal[] = checkDenyEntries(doc);
   const profiles = Object.keys(doc.permissions);
   for (const [status, state] of Object.entries(doc.states)) {
     if (state && !Object.hasOwn(doc.permissions, state.permissions)) {
