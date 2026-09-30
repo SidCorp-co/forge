@@ -20,6 +20,10 @@ let attachments: ReturnType<typeof ok> = ok([]);
 let pipelineHealth: Record<string, unknown> | undefined;
 let status = "open";
 let park: Record<string, unknown> = { state: "ready", park: null };
+let role: string = "admin";
+let intake: "auto" | "manual" = "auto";
+let sessionContext: Record<string, unknown> | null = null;
+const startIssue = vi.fn();
 
 const ISSUE = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -40,7 +44,10 @@ const ISSUE = {
 };
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), prefetch: vi.fn() }) }));
-vi.mock("@/features/projects/hooks", () => ({ useProjects: () => ({ data: [{ id: "p1", role: "admin" }] }) }));
+vi.mock("@/features/projects/hooks", () => ({ useProjects: () => ({ data: [{ id: "p1", role }] }) }));
+vi.mock("@/features/project-settings/hooks", () => ({
+  usePolicy: () => ok({ declared: true, revision: 1, document: { intake: { mode: intake } } }),
+}));
 vi.mock("@/features/pipeline/hooks", () => ({ useResumeRun: () => ({ mutate: vi.fn(), isPending: false }) }));
 vi.mock("@/features/questions/components/decision-panel", () => ({
   DecisionPanel: () => null,
@@ -63,7 +70,7 @@ vi.mock("./html-attachment-card", () => ({
   HtmlAttachmentCard: ({ name }: { name: string }) => <div>preview {name}</div>,
 }));
 vi.mock("../detail-hooks", () => ({
-  useIssue: () => ok({ ...ISSUE, status, pipelineHealth }),
+  useIssue: () => ok({ ...ISSUE, status, pipelineHealth, sessionContext }),
   useComments: () => ok({ items: [], totalCount: 0 }),
   useActivity: () => ok({ items: [] }),
   useTasks: () => ok([]),
@@ -79,6 +86,7 @@ vi.mock("../hooks", () => ({
   usePatchIssue: () => ({ mutate: vi.fn(), isPending: false }),
   useProjectMembers: () => ok([]),
   useSaveDescription: () => ({ mutate: vi.fn(), isPending: false }),
+  useRunPipelineStep: () => ({ mutate: startIssue, isPending: false }),
 }));
 
 function renderScreen() {
@@ -101,6 +109,10 @@ beforeEach(() => {
   pipelineHealth = undefined;
   status = "open";
   park = { state: "ready", park: null };
+  role = "admin";
+  intake = "auto";
+  sessionContext = null;
+  startIssue.mockClear();
 });
 afterEach(cleanup);
 
@@ -237,5 +249,46 @@ describe("the issue page of work a person owes an answer", () => {
     park = { state: "ready", park: null };
     renderScreen();
     expect(screen.queryByText(WAITING_FOR_INFORMATION)).toBeNull();
+  });
+});
+
+// ISS-29 — a project whose intake is manual holds an open issue until a person starts it.
+describe("the issue header's start on a manual-intake project", () => {
+  it.each(["member", "admin"])("offers a %s Start, which calls the start route for this issue", (r) => {
+    intake = "manual";
+    role = r;
+    renderScreen();
+    screen.getByRole("button", { name: "Start" }).click();
+    expect(startIssue).toHaveBeenCalledWith({ id: ISSUE.id }, expect.anything());
+    expect(screen.queryByRole("button", { name: "Run pipeline" })).toBeNull();
+  });
+
+  it("shows a viewer no Start, only who it waits for", () => {
+    intake = "manual";
+    role = "viewer";
+    renderScreen();
+    expect(screen.queryByRole("button", { name: "Start" })).toBeNull();
+    expect(screen.getByText("Waits for a project member to start it")).toBeInTheDocument();
+  });
+
+  it("says an issue already started is waiting for a runner, and offers no second Start", () => {
+    intake = "manual";
+    sessionContext = { runRelease: new Date().toISOString() };
+    renderScreen();
+    expect(screen.queryByRole("button", { name: "Start" })).toBeNull();
+    expect(screen.getByText(/Started .* waiting for a runner/)).toBeInTheDocument();
+  });
+
+  it("offers no Start on a project whose intake is auto", () => {
+    renderScreen();
+    expect(screen.queryByRole("button", { name: "Start" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Run pipeline" })).toBeInTheDocument();
+  });
+
+  it("offers no Start once the issue has left Open", () => {
+    intake = "manual";
+    status = "needs_info";
+    renderScreen();
+    expect(screen.queryByRole("button", { name: "Start" })).toBeNull();
   });
 });

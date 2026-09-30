@@ -31,6 +31,7 @@ import {
   type TabItem,
 } from "@/design";
 import { useResumeRun } from "@/features/pipeline/hooks";
+import { usePolicy } from "@/features/project-settings/hooks";
 import { useProjects } from "@/features/projects/hooks";
 import { DecisionPanel, focusDecisionPanel } from "@/features/questions/components/decision-panel";
 import { buildShareLink, useRecents } from "@/features/shell";
@@ -84,6 +85,7 @@ import { type LiveAgentState, LiveAgentPanel } from "./live-agent-panel";
 import { ModulePicker } from "./module-picker";
 import { PropertiesRail } from "./properties-rail";
 import { SessionGroupTimeline } from "./session-group-timeline";
+import { readStart, StartIssueAction } from "./start-issue-action";
 import { StepArtifactCard } from "./step-artifact-card";
 
 const TASK_STATUS_TONE: Record<
@@ -128,6 +130,7 @@ export function IssueDetailScreen({
   const projectsQ = useProjects();
   const projectRole = projectsQ.data?.find((p) => p.id === projectId)?.role;
   const canWrite = projectRole !== "viewer";
+  const policyQ = usePolicy(projectId);
   const [modulePickerOpen, setModulePickerOpen] = useState(false);
 
   // ISS-1160 — `id` off the URL is the display key as often as the row uuid;
@@ -268,6 +271,12 @@ export function IssueDetailScreen({
   const openSessions = () =>
     router.push(`/projects/${slug}/agents?issue=${issue.id}`);
   const openPipeline = () => router.push(`/projects/${slug}/pipeline`);
+  const start = readStart({
+    status: issue.status,
+    policy: policyQ.data,
+    role: projectRole,
+    sessionContext: issue.sessionContext,
+  });
 
   const moreItems: MenuItem[] = [
     { label: "Open pipeline", icon: "pipeline", onSelect: openPipeline },
@@ -343,12 +352,14 @@ export function IssueDetailScreen({
             summary="The full record for one issue: pipeline progress, description, acceptance criteria, the agent plan, and Comments / Activity / Tasks."
             actions={[
               "Edit properties (status, priority, complexity) in the rail",
-              "Run / pause / reopen the pipeline from the header",
+              "Start an open issue on a project that starts work by hand, or pause / reopen it, from the header",
               "Jump to related sessions, pipeline, and runs",
             ]}
             shortcuts={[{ keys: "⌘K", desc: "Open the command palette" }]}
           />
-          {!canWrite || isTerminal ? (
+          {start.kind !== "none" && !isRunActive ? (
+            <StartIssueAction issueId={issue.id} reading={start} onStarted={refreshIssue} />
+          ) : !canWrite || isTerminal ? (
             canWrite ? (
               <Button
                 variant="primary"
