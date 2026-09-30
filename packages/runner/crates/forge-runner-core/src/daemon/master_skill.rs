@@ -141,7 +141,9 @@ fn failed(detail: String) -> Outcome {
 fn write_replacing(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     let dir = path.parent().expect("RELATIVE has a parent");
     std::fs::create_dir_all(dir)?;
-    let tmp = dir.join(format!(".SKILL.md.{}.tmp", std::process::id()));
+    static ATTEMPT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = ATTEMPT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let tmp = dir.join(format!(".SKILL.md.{}.{n}.tmp", std::process::id()));
     let written = std::fs::write(&tmp, bytes).and_then(|()| std::fs::rename(&tmp, path));
     if written.is_err() {
         let _ = std::fs::remove_file(&tmp);
@@ -369,25 +371,32 @@ pub fn install_and_record(slug: &str, repo: &Path, point: Point, dir: Option<&Pa
     outcome
 }
 
-/// Install into every checkout this box is bound to, and record each, and each
-/// assignment naming no checkout. `complete` is whether the set is the whole
-/// census: one read without the server's assignments prunes nothing, since the
-/// lines it would drop are the server-bound projects it could not see.
+/// Install into every checkout this box is bound to, once per checkout, and
+/// record a line for each project at each, and each assignment naming no
+/// checkout. `census_from` is when the set was read, and is `None` where it is
+/// not the whole census: one read without the server's assignments prunes
+/// nothing, since the lines it would drop are the projects it could not see.
 pub fn install_every(
     checkouts: &[(String, PathBuf)],
     pathless: &[String],
-    complete: bool,
+    census_from: Option<i64>,
     dir: Option<&Path>,
 ) -> Vec<Entry> {
-    let since_ms = crate::daemon::agent_activity::now_ms();
-    let mut entries: Vec<Entry> = checkouts
-        .iter()
-        .map(|(slug, repo)| {
-            let entry = Entry::now(slug, Some(repo), Point::Start, install(repo));
-            log(&entry);
-            entry
-        })
-        .collect();
+    let mut done: Vec<(&Path, Outcome)> = Vec::new();
+    let mut entries: Vec<Entry> = Vec::new();
+    for (slug, repo) in checkouts {
+        let outcome = match done.iter().find(|(p, _)| p == repo) {
+            Some((_, o)) => o.clone(),
+            None => {
+                let o = install(repo);
+                done.push((repo, o.clone()));
+                o
+            }
+        };
+        let entry = Entry::now(slug, Some(repo), Point::Start, outcome);
+        log(&entry);
+        entries.push(entry);
+    }
     for slug in pathless {
         if entries.iter().any(|e| &e.slug == slug) {
             continue;
@@ -396,10 +405,9 @@ pub fn install_every(
         log(&entry);
         entries.push(entry);
     }
-    let merge = if complete {
-        Merge::Census { since_ms }
-    } else {
-        Merge::Upsert
+    let merge = match census_from {
+        Some(since_ms) => Merge::Census { since_ms },
+        None => Merge::Upsert,
     };
     save(dir, entries.clone(), merge);
     entries
@@ -659,7 +667,7 @@ mod tests {
             ("gamma".to_string(), ok.clone()),
         ];
 
-        install_every(&checkouts, &["delta".to_string()], true, Some(&cfg));
+        install_every(&checkouts, &["delta".to_string()], Some(0), Some(&cfg));
 
         assert_eq!(
             skill(&ok).as_deref(),
@@ -689,7 +697,7 @@ mod tests {
         let before = tree(&cfg);
         let ok = checkout(s.path(), "ok", true);
 
-        install_every(&[("ok".to_string(), ok)], &[], true, Some(&cfg));
+        install_every(&[("ok".to_string(), ok)], &[], Some(0), Some(&cfg));
 
         let mut after = tree(&cfg);
         assert!(after.remove(Path::new(RECORD)).is_some());
@@ -707,11 +715,16 @@ mod tests {
         install_every(
             &[("gone".to_string(), gone), ("a".to_string(), a.clone())],
             &[],
-            true,
+            Some(0),
             Some(&cfg),
         );
         std::thread::sleep(std::time::Duration::from_millis(5));
-        install_every(&[("a".to_string(), a)], &[], true, Some(&cfg));
+        install_every(
+            &[("a".to_string(), a)],
+            &[],
+            Some(crate::daemon::agent_activity::now_ms()),
+            Some(&cfg),
+        );
         install_and_record("b", &b, Point::Bind, Some(&cfg));
 
         let Read::Record(r) = read(&cfg) else {
@@ -772,7 +785,7 @@ mod tests {
         record(&cfg, vec![server_only], Merge::Upsert).unwrap();
         let local = checkout(s.path(), "local", true);
 
-        install_every(&[("local".to_string(), local)], &[], false, Some(&cfg));
+        install_every(&[("local".to_string(), local)], &[], None, Some(&cfg));
 
         let Read::Record(r) = read(&cfg) else {
             panic!()
@@ -797,7 +810,7 @@ mod tests {
                 ("acme".to_string(), old.clone()),
             ],
             &[],
-            true,
+            Some(0),
             Some(&cfg),
         );
 
@@ -823,6 +836,56 @@ mod tests {
         };
         let outcomes: Vec<&Outcome> = r.of("acme").map(|e| &e.outcome).collect();
         assert_eq!(outcomes, [&Outcome::NotIgnored, &Outcome::Current], "{r:?}");
+    }
+
+    /// Review F1 of the second whole-set read: two projects bound to one
+    /// checkout each keep a line, and the checkout is written once.
+    #[test]
+    fn two_projects_sharing_a_checkout_each_keep_a_line() {
+        let s = Scratch::new("mskill-shared");
+        let cfg = s.path().join("config");
+        let shared = checkout(s.path(), "shared", true);
+
+        let entries = install_every(
+            &[
+                ("one".to_string(), shared.clone()),
+                ("two".to_string(), shared.clone()),
+            ],
+            &[],
+            Some(0),
+            Some(&cfg),
+        );
+
+        let outcomes: Vec<&Outcome> = entries.iter().map(|e| &e.outcome).collect();
+        assert_eq!(
+            outcomes,
+            [&Outcome::Written, &Outcome::Written],
+            "installed once, recorded twice"
+        );
+        let Read::Record(r) = read(&cfg) else {
+            panic!()
+        };
+        assert_eq!(one(&r, "one").path.as_deref(), Some(shared.as_path()));
+        assert_eq!(one(&r, "two").path.as_deref(), Some(shared.as_path()));
+    }
+
+    /// Review F1 of the second whole-set read against master.rs: two installs
+    /// into one stale checkout at once, as two placements in this process can
+    /// be, both succeed rather than one consuming the other's temporary file.
+    #[test]
+    fn two_installs_at_once_into_one_checkout_both_succeed() {
+        let s = Scratch::new("mskill-concurrent");
+        let repo = checkout(s.path(), "r", true);
+        for _ in 0..20 {
+            put(&repo, OLDER);
+            let (a, b) = (repo.clone(), repo.clone());
+            let one = std::thread::spawn(move || install(&a));
+            let two = std::thread::spawn(move || install(&b));
+            for got in [one.join().unwrap(), two.join().unwrap()] {
+                assert!(got.installed(), "{got:?}");
+            }
+            assert_eq!(skill(&repo).as_deref(), Some(ASSET));
+        }
     }
 
     #[test]

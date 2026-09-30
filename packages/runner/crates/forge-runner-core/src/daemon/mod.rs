@@ -389,9 +389,13 @@ fn repair_installed_hooks(server: Option<&[MeRunner]>, cfg: &Config, when: &str)
 /// is bound to, whether or not a master is placed or adopted there (ISS-1357).
 /// Run at start only: the process an update replaces carries the old build's
 /// asset, and the restart that applies the update is a start.
+///
+/// `census_from` is taken before `cfg` was read, so a `bind` that `cfg` does not
+/// show is one recorded after it and survives the census.
 fn install_master_skills(
     server: Option<&[MeRunner]>,
     cfg: &Config,
+    census_from: i64,
     record_dir: Option<&std::path::Path>,
 ) {
     let bound = bound_checkouts(server.unwrap_or_default(), cfg);
@@ -402,9 +406,9 @@ fn install_master_skills(
         );
     }
     crate::daemon::master_skill::install_every(
-        &bound.checkouts,
+        &bound.every,
         &bound.pathless,
-        server.is_some(),
+        server.is_some().then_some(census_from),
         record_dir,
     );
 }
@@ -413,6 +417,9 @@ fn install_master_skills(
 struct BoundCheckouts {
     /// Slug and working directory, one per distinct path, sorted.
     checkouts: Vec<(String, std::path::PathBuf)>,
+    /// Every distinct slug and working directory, so two projects sharing a
+    /// checkout are each named where a per-project record is kept.
+    every: Vec<(String, std::path::PathBuf)>,
     /// Slugs assigned to this device that name a checkout on neither side, so
     /// there is no settings file to sweep and the daemon cannot make one.
     pathless: Vec<String>,
@@ -436,11 +443,13 @@ struct BoundCheckouts {
 /// the sweep is the only thing that reaches a checkout no pane is prepared for.
 fn bound_checkouts(server: &[MeRunner], cfg: &Config) -> BoundCheckouts {
     let mut checkouts: Vec<(String, std::path::PathBuf)> = Vec::new();
+    let mut every: Vec<(String, std::path::PathBuf)> = Vec::new();
     let mut pathless: Vec<String> = Vec::new();
     let mut seen: std::collections::HashSet<std::path::PathBuf> = std::collections::HashSet::new();
     for r in server {
         match resolve_repo(server, cfg, &r.project_id) {
             Ok(resolved) => {
+                every.push((resolved.slug.clone(), resolved.repo_path.clone()));
                 if seen.insert(resolved.repo_path.clone()) {
                     checkouts.push((resolved.slug, resolved.repo_path));
                 }
@@ -449,15 +458,19 @@ fn bound_checkouts(server: &[MeRunner], cfg: &Config) -> BoundCheckouts {
         }
     }
     for (slug, binding) in &cfg.bindings {
+        every.push((slug.clone(), binding.repo_path.clone()));
         if seen.insert(binding.repo_path.clone()) {
             checkouts.push((slug.clone(), binding.repo_path.clone()));
         }
     }
     checkouts.sort();
+    every.sort();
+    every.dedup();
     pathless.sort();
     pathless.dedup();
     BoundCheckouts {
         checkouts,
+        every,
         pathless,
     }
 }
@@ -548,7 +561,14 @@ pub async fn run(
     // Before any pane is prepared: whatever the daemon this one replaced wrote
     // into these checkouts is still there, and this process CAN name itself.
     repair_installed_hooks(server.as_deref(), &cfg, "boot");
-    install_master_skills(server.as_deref(), &cfg, control::config_dir().as_deref());
+    let census_from = agent_activity::now_ms();
+    let fresh = Config::load().unwrap_or_else(|_| cfg.clone());
+    install_master_skills(
+        server.as_deref(),
+        &fresh,
+        census_from,
+        control::config_dir().as_deref(),
+    );
 
     let (cancel_tx, cancel_rx) = watch::channel(false);
     let (frame_tx, mut frame_rx) = mpsc::channel::<Frame>(256);
@@ -2656,7 +2676,7 @@ mod master_skill_sweep_tests {
             server_only("nowhere", None),
         ];
 
-        install_master_skills(Some(&server), &cfg, Some(&record_dir));
+        install_master_skills(Some(&server), &cfg, 0, Some(&record_dir));
 
         for repo in [&adopted, &masterless] {
             assert_eq!(
@@ -2679,16 +2699,49 @@ mod master_skill_sweep_tests {
             .find(r#"repair_installed_hooks(server.as_deref(), &cfg, "boot");"#)
             .expect("the boot hook repair");
         let call = src[hooks..]
-            .find("install_master_skills(server.as_deref(), &cfg,")
+            .find("install_master_skills(\n        server.as_deref(),\n        &fresh,")
             .map(|i| i + hooks)
             .expect("daemon::run does not write the skill at start, so an adopted pane keeps the copy it was placed with");
         let masters = src
             .find("master::run(")
             .expect("where run starts the master sweep");
+        let from = src[hooks..]
+            .find("let census_from = agent_activity::now_ms();")
+            .map(|i| i + hooks)
+            .expect("the census is timed");
+        let reread = src[hooks..]
+            .find("let fresh = Config::load()")
+            .map(|i| i + hooks)
+            .expect("the census reads config.toml afresh");
+        assert!(
+            from < reread && reread < call,
+            "a bind recorded between the census's read and its time would be pruned as stale"
+        );
         assert!(
             call < masters,
             "the skill is written after the master sweep can adopt or place a pane"
         );
+    }
+
+    /// Two projects assigned to one checkout each get their line: the hook
+    /// sweep's one-per-path set would name only the first.
+    #[test]
+    fn two_projects_at_one_checkout_are_both_recorded_at_start() {
+        let root = crate::test_scratch::Scratch::new("skill-shared-start");
+        let shared = ignoring_checkout(&root, "shared");
+        let record_dir = root.join("config");
+        let server = [
+            server_only("one", Some(&shared)),
+            server_only("two", Some(&shared)),
+        ];
+
+        install_master_skills(Some(&server), &Config::default(), 0, Some(&record_dir));
+
+        let Read::Record(r) = master_skill::read(&record_dir) else {
+            panic!("nothing recorded")
+        };
+        let slugs: Vec<&str> = r.entries.iter().map(|e| e.slug.as_str()).collect();
+        assert_eq!(slugs, ["one", "two"]);
     }
 
     /// The process an update replaces carries the old build's asset; writing
