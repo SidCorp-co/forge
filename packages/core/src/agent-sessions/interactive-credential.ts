@@ -25,10 +25,7 @@ import {
 
 type AgentSessionRow = typeof agentSessions.$inferSelect;
 
-/**
- * The capability a runner declares when a follow-up turn (`agent:send`) runs under the token it
- * carries as well as a first one: a web session's every turn carries its own.
- */
+/** A runner declaring this runs a follow-up turn (`agent:send`) under the token it carries, too. */
 export const FOLLOW_UP_CREDENTIAL_CAPABILITY = 'followUpCredential';
 
 /** Bounds a turn whose stop is never written; a turn is revoked when it stops, and may run for hours. */
@@ -58,11 +55,7 @@ export function assertMayRunSession(role: ProjectMemberRole | null | undefined):
   }
 }
 
-/**
- * The box a web turn goes to: one whose runner runs every turn under the token it is handed.
- * Where only older runners are free the turn is refused by name rather than handed to one that
- * would spend its holder's credential.
- */
+/** Where only older runners are free a turn is refused, never handed to one that spends its holder's credential. */
 export async function resolveInteractiveClient(
   session: Pick<AgentSessionRow, 'projectId' | 'deviceId' | 'metadata'>,
   opts: {

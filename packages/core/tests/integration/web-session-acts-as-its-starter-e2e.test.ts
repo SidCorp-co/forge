@@ -128,7 +128,6 @@ async function codeOf(res: Response): Promise<string | undefined> {
   return ((await res.json()) as { code?: string }).code;
 }
 
-/** What the session reaches Forge with: its frame's token, or the holder's where it carries none. */
 function sessionCredentialOf(frame: { data: unknown } | undefined): string {
   if (!frame) throw new Error('no frame reached the box');
   return (frame.data as { forgeToken?: string }).forgeToken ?? holderPat;
