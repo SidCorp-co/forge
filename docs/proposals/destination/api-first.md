@@ -30,22 +30,20 @@ four. While this holds, it takes fixes that block the parts above, and nothing m
 
 ## Measured against main on 2026-09-30
 
-**Token grants reach 19 of the 44 API mounts.** `auth/pat-permissions.ts:PAT_PERMISSION_RESOURCES`
-is the one list of what a token can be granted, and `middleware/pat-rest-surface.ts:PAT_ALLOWED_PREFIXES`
-is derived from it. It covers eight resources: `issues`, `tasks`, `pipeline`, `knowledge`,
-`skills`, `schedules`, `projects` and `questions`.
+**Every API mount is in the token grant grammar or named out of it** (ISS-1373, 2026-10-01).
+`auth/pat-permissions.ts:PAT_PERMISSION_RESOURCES` is the one list of what a token can be granted:
+16 resources, each `project` reach (a project-scoped token may hold it, and `check-pat-surface`
+proves every route under it fenced) or `account` reach (only a token with no project list may hold
+it). `PAT_UNGRANTABLE` beside it names every path kept out, each with its reason: public routes,
+the browser session's own lifecycle under `/api/auth`, token management at `/api/pat`, signed
+webhooks, ticketed uploads, the GitHub install redirect, the MCP transport, and the paired box's
+own device routes. `middleware/pat-mount-coverage.test.ts` reads the composed app's routes and
+fails naming any route under neither list, and any route under a menu prefix that a token cannot
+reach.
 
-The mounts in `packages/core/src/index.ts` that no grant covers are:
-- `/api/admin`, `/api/agents`, `/api/agent-sessions`, `/api/app-config`, `/api/auth`, `/api/body`
-- `/api/chat-logs`, `/api/conversations`, `/api/devices`, `/api/domain-templates`
-- `/api/feedback-reports`, `/api/improvement-messages`, `/api/integration-connections`
-- `/api/invitations`, `/api/me`, `/api/notifications`, `/api/org-invitations`, `/api/orgs`
-- `/api/pipeline`, `/api/runners`, `/api/skill-activity`, `/api/update-packets`, `/api/uploads`
-- `/api/usage-records`, `/api/webhooks`
-
-Some of these are cookie-only by design (`/api/auth`). The rule this direction sets is that each
-mount kept outside the grant grammar is named with its reason, and none is left out silently. No
-list of those reasons exists yet.
+A token keeps the reach it was minted with: each prefix carries the grant epoch it joined at and
+each token the epoch it was minted at, so a token issued before a prefix joined the menu is refused
+there, whatever it was granted.
 
 **No API reference exists.** No OpenAPI or other machine-readable description of any route is in
 `packages/core/src` or `docs/`. A route's input and output are read today from its handler.

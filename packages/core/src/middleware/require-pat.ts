@@ -28,6 +28,7 @@ export type PatPrincipal = {
    * group, not no group.
    */
   permissions?: readonly string[] | null;
+  grantEpoch?: number;
   /**
    * The paired box this token was issued to, or `null` for a token a person
    * holds. It is what `requireDevice` and `/ws` resolve a device from now that
@@ -223,6 +224,7 @@ export async function authenticatePat(
     scopes: row.scopes,
     projectIds: row.projectIds ?? null,
     permissions: row.permissions ?? null,
+    grantEpoch: row.grantEpoch,
     boundProjectId: row.boundProjectId ?? null,
     deviceId: row.deviceId ?? null,
   };

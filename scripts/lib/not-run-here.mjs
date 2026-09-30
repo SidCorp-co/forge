@@ -1,7 +1,7 @@
 const GATED_HEADER =
   'A green here does not cover these — CI runs them, and ci-passed gates the merge:';
 const AFTER_MERGE_HEADER =
-  'Nor these — CI runs them after the merge, on main and nightly, and ci-passed does not gate them:';
+  'Nor these — CI runs them after the merge, on main, nightly and on a dispatch, and ci-passed does not gate them:';
 const OFF_TREE_HEADER =
   'Nor these, which ci-passed does not gate either — read them on the pull request:';
 

@@ -3136,6 +3136,10 @@
 
 ### Fixed
 
+- **The CI jobs that run after the merge can run on a branch before it lands**:
+  `gh workflow run CI --ref <branch> -f base=<target>`. The nightly run no longer fails its checks
+  for want of a base branch (ISS-1370).
+
 - **One stray project id no longer hides every project's pool health.** A non-UUID id in a box's
   record had its whole pool report refused; that entry is now dropped alone (ISS-1344).
 

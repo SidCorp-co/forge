@@ -30,6 +30,16 @@ on:
   # red one is found on a day nothing landed as well.
   schedule:
     - cron: '0 19 * * *'
+  # The same heavy jobs on a branch before it lands, which a pull request no longer runs:
+  # `gh workflow run CI --ref <branch> -f base=<the branch it lands on>`. `base` is required and
+  # has no default, because GitHub cannot know where a dispatched branch lands and every
+  # delta-scoped gate measures against it (`scripts/lib/base-branch.mjs`).
+  workflow_dispatch:
+    inputs:
+      base:
+        description: 'The branch this work lands on (main or dev); the gates measure against it'
+        required: true
+        type: string
 
 # A pull request's newer run cancels its older one. A push run is never cancelled: since ISS-1370
 # the heavy jobs run only there, and a landing cancelled by the next one would be measured by
@@ -470,7 +480,7 @@ jobs:
       # Integration tests run in `core-integration` below, after the merge.
 
   # Integration tests (Testcontainers) for core. POST-MERGE since ISS-1370: it
-  # runs on the push to a gated branch and nightly, never on a pull request,
+  # runs on the push to a gated branch, nightly and on a dispatch, never on a pull request,
   # and `ci-passed` does not need it. It gated from 2026-07-10 because the
   # first "visibility-only" run sat red for a week (8 rotted tests) while
   # everyone learned to ignore it — the price `.forge/conformance.json`
@@ -480,7 +490,7 @@ jobs:
   # whichever run lands next, before anything else.
   core-integration:
     needs: changes
-    if: github.event_name != 'pull_request' && (github.event_name == 'schedule' || needs.changes.outputs.core == 'true')
+    if: github.event_name != 'pull_request' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || needs.changes.outputs.core == 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -572,10 +582,11 @@ jobs:
           cargo test --workspace
 
   # The `runner` gate, by the `*runner-gate` alias, on the two platforms a pull request no longer
-  # waits on (ISS-1370). Post-merge and nightly; `ci-passed` does not need it, `$postMerge` names it.
+  # waits on (ISS-1370). Post-merge, nightly and on a dispatch; `ci-passed` does not need it,
+  # `$postMerge` names it.
   runner-platforms:
     needs: changes
-    if: github.event_name != 'pull_request' && (github.event_name == 'schedule' || needs.changes.outputs.runner == 'true')
+    if: github.event_name != 'pull_request' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || needs.changes.outputs.runner == 'true')
     strategy:
       fail-fast: false
       matrix:
@@ -622,7 +633,7 @@ jobs:
   #
   # NOT path-filtered on purpose. A filter would have to enumerate "files outside
   # the COPY set", which is the reasoning that fails here by construction.
-  # POST-MERGE since ISS-1370: every push to a gated branch and nightly, never a
+  # POST-MERGE since ISS-1370: every push to a gated branch, nightly and on a dispatch, never a
   # pull request, and `ci-passed` does not need it — so the defect class above
   # now reaches `main` and is found there (`.forge/conformance.json` `$postMerge`).
   images:
@@ -637,7 +648,7 @@ jobs:
   # test of one module and wrong for a guard that walks every file: #710 changed only documents,
   # `core` was skipped, and the guard that document broke merged green and left `main` red for the
   # next branch to find (ISS-1314). A test carrying `@gate-input whole-tree` runs here on every
-  # push to a gated branch and nightly; the checker refuses one that walks from the root without
+  # push to a gated branch, nightly and on a dispatch; the checker refuses one that walks from the root without
   # it. NOT path-filtered on purpose. POST-MERGE since ISS-1370, like `images`: a pull request
   # never runs it and `ci-passed` does not need it, which is #710's shape again, priced in
   # `.forge/conformance.json` `$postMerge`.

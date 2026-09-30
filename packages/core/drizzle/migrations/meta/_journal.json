@@ -2059,6 +2059,13 @@
       "when": 1810339200000,
       "tag": "0316_an_agent_account_is_shown_by_its_handle",
       "breakpoints": true
+    },
+    {
+      "idx": 319,
+      "version": "7",
+      "when": 1810598400000,
+      "tag": "0319_a_token_reach_is_fixed_at_mint",
+      "breakpoints": true
     }
   ]
 }

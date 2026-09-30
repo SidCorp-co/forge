@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 
 /**
  * Which branch a change in this checkout will land on, and which ref names it here (ISS-1304).
@@ -29,7 +30,8 @@ function withoutRemote(ref) {
 
 const SOURCES = [
   '$GITHUB_BASE_REF, the base of the pull request being built',
-  '$GITHUB_REF on a push event, where it names a branch',
+  '$GITHUB_REF on a push or schedule event, where it names a branch',
+  'inputs.base in the $GITHUB_EVENT_PATH payload of a workflow_dispatch event',
   `refs/remotes/${REMOTE}/HEAD, git's record of the remote's default branch`,
 ];
 
@@ -38,10 +40,40 @@ const NO_TARGET_SUMMARY =
 
 const NO_TARGET =
   `${NO_TARGET_SUMMARY}.\n` +
-  `Three sources were read, in this order:\n${SOURCES.map((s) => `  - ${s}`).join('\n')}\n` +
-  `Set the third with \`git remote set-head ${REMOTE} -a\`, or fetch the branch this work is cut\n` +
+  `Four sources were read, in this order:\n${SOURCES.map((s) => `  - ${s}`).join('\n')}\n` +
+  `Set the fourth with \`git remote set-head ${REMOTE} -a\`, or fetch the branch this work is cut\n` +
   'from. Nothing falls back to `main`: measuring a delta against a branch the work does not\n' +
   'derive from reports a pass it has not earned, which is the failure this refusal exists to stop.';
+
+/**
+ * A dispatched run's own statement of where its branch lands. `$GITHUB_REF` there is the branch
+ * being run, not its target, and GitHub cannot know the target, so the dispatcher names it.
+ */
+function dispatchedBase(env) {
+  const path = String(env.GITHUB_EVENT_PATH ?? '').trim();
+  const refuse = (why) => {
+    const summary = `a workflow_dispatch run names its merge target in inputs.base, and ${why}`;
+    return {
+      summary,
+      refusal:
+        `${summary}.\n` +
+        'Dispatch it as `gh workflow run CI --ref <branch> -f base=<the branch it lands on>`. No\n' +
+        `other source is read for a dispatched run: ${REMOTE}/HEAD names the default branch, which\n` +
+        'is not where every dispatched branch lands, and a delta measured against the wrong base\n' +
+        'reports a pass it has not earned.',
+    };
+  };
+  if (!path) return refuse('$GITHUB_EVENT_PATH is unset, so there is no payload to read it from');
+  let payload;
+  try {
+    payload = JSON.parse(readFileSync(path, 'utf8'));
+  } catch (e) {
+    return refuse(`the payload at ${path} could not be read as JSON (${e.message})`);
+  }
+  const base = shortBranch(payload?.inputs?.base);
+  if (!base) return refuse(`the payload at ${path} names none`);
+  return { branch: base, source: 'inputs.base' };
+}
 
 /**
  * The branch this change will land on, from the first of `SOURCES` that answers. Each one
@@ -55,14 +87,16 @@ export function mergeTarget(root, env = process.env) {
   const prBase = shortBranch(env.GITHUB_BASE_REF);
   if (prBase) return { branch: prBase, source: 'GITHUB_BASE_REF' };
 
-  // The ref, not `GITHUB_REF_NAME`: a tag push is a push event and carries a ref name too.
+  // The ref, not `GITHUB_REF_NAME`: a tag push is a push event and carries a ref name too. A
+  // schedule run checks out the head of the branch this names, so, as on a push, that branch is
+  // the tree itself.
+  const event = String(env.GITHUB_EVENT_NAME ?? '').trim();
   const pushedRef = String(env.GITHUB_REF ?? '').trim();
-  if (
-    String(env.GITHUB_EVENT_NAME ?? '').trim() === 'push' &&
-    pushedRef.startsWith('refs/heads/')
-  ) {
+  if ((event === 'push' || event === 'schedule') && pushedRef.startsWith('refs/heads/')) {
     return { branch: shortBranch(pushedRef), source: 'GITHUB_REF' };
   }
+
+  if (event === 'workflow_dispatch') return dispatchedBase(env);
 
   const head = git(['symbolic-ref', '--short', `refs/remotes/${REMOTE}/HEAD`], root);
   if (head) return { branch: withoutRemote(head), source: `${REMOTE}/HEAD` };

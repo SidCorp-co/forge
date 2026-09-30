@@ -38,5 +38,34 @@
         }
       }
     ]
+  },
+  "projectIds": {
+    "taken": [
+      "68567cd4-0000-4000-8000-000000000001",
+      "da368b0a-8e21-4763-9d90-8f7b9d0c7115",
+      "DA368B0A-8E21-4763-9D90-8F7B9D0C7115",
+      "da368b0a-8e21-1763-bd90-8f7b9d0c7115",
+      "da368b0a-8e21-8763-Ad90-8f7b9d0c7115",
+      "00000000-0000-0000-0000-000000000000",
+      "ffffffff-ffff-ffff-ffff-ffffffffffff"
+    ],
+    "refused": [
+      "",
+      "proj-u",
+      "p1",
+      "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF",
+      "FfFfFfFf-ffff-ffff-ffff-ffffffffffff",
+      "da368b0a8e2147639d908f7b9d0c7115",
+      "{da368b0a-8e21-4763-9d90-8f7b9d0c7115}",
+      "urn:uuid:da368b0a-8e21-4763-9d90-8f7b9d0c7115",
+      "da368b0a-8e21-0763-9d90-8f7b9d0c7115",
+      "da368b0a-8e21-9763-9d90-8f7b9d0c7115",
+      "da368b0a-8e21-4763-7d90-8f7b9d0c7115",
+      "da368b0a-8e21-4763-cd90-8f7b9d0c7115",
+      "da368b0a-8e21-4763-9d90-8f7b9d0c711g",
+      "da368b0a-8e21-4763-9d90-8f7b9d0c711",
+      "da368b0a-8e21-4763-9d90-8f7b9d0c71150",
+      "00000000-0000-0000-0000-00000000000"
+    ]
   }
 }

@@ -36,6 +36,8 @@ import {
 
 export interface CreateAgentAccountInput {
   orgId: string;
+  /** The menu epoch the agent's credential is fixed at: see `mintPat`. */
+  grantEpoch?: number;
   /**
    * Every project this agent works on, at least one (ISS-1093). A box serving
    * several projects holds ONE credential, so an agent that reaches only one
@@ -153,6 +155,7 @@ export async function createAgentAccount(
         name: `agent:${input.handle}`,
         scopes: ['read', 'write'],
         permissions: PAT_GRANT_ALL,
+        grantEpoch: input.grantEpoch,
         ...fence,
       },
       tx,
@@ -260,6 +263,7 @@ export async function loadOrgAgent(
 export async function mintAgentCredential(
   orgId: string,
   agentUserId: string,
+  grantEpoch?: number,
 ): Promise<{ plaintext: string; fence: AgentCredentialFence } | null> {
   const agent = await loadOrgAgent(orgId, agentUserId);
   if (!agent) return null;
@@ -269,7 +273,7 @@ export async function mintAgentCredential(
     const minted = await mintDistinctlyNamed(
       agent.id,
       `agent:${agent.handle ?? agent.id}`,
-      fence,
+      { ...fence, grantEpoch },
       tx,
     );
     return { plaintext: minted, fence };
@@ -288,7 +292,7 @@ export async function mintAgentCredential(
 async function mintDistinctlyNamed(
   userId: string,
   base: string,
-  fence: AgentCredentialFence,
+  fence: AgentCredentialFence & { grantEpoch?: number | undefined },
   tx: Tx = db,
 ): Promise<string> {
   const stamp = new Date().toISOString().slice(0, 16).replace('T', ' ');
