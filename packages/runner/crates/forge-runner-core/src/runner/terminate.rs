@@ -374,9 +374,6 @@ pub async fn force_terminal(
     }
 
     let worktree = Path::new(&run.worktree_path);
-    // One credential for this release, resolved from what this box provisioned
-    // rather than from what a git child happens to read (ISS-1250).
-    let cred = RepoCred::of(run.project_id.as_deref(), worktree).await;
 
     // What is at the path is git's answer and never the filesystem's, asked
     // before anything here is touched. A run declared against the repository's
@@ -392,6 +389,13 @@ pub async fn force_terminal(
         run_id,
         worktree,
     )?;
+
+    // One credential for this release, resolved from what this box provisioned
+    // rather than from what a git child happens to read (ISS-1250). It is read
+    // at the path, so only once git has answered that the path is a checkout
+    // of its own: at an enclosed one it would be the enclosing checkout's
+    // configuration (consult on 9ecec0c09 F1).
+    let cred = RepoCred::of(run.project_id.as_deref(), worktree).await;
 
     // A checkout whose branch this box cannot name is a DETACHED one, not an
     // unreadable one, and it is no longer fatal here. The branch name is what
@@ -2399,6 +2403,13 @@ mod tests {
             "what the path is must be settled BEFORE the preserve step and before \
              `git worktree remove` — reading it out of the removal's failure is one defect \
              (ISS-1183) and reading it off `exists()` is the other (ISS-1193)"
+        );
+        let cred = body.find("RepoCred::of").expect("the credential read");
+        assert!(
+            asked < cred,
+            "and before the credential is read at the path: at a path git answers for from the \
+             enclosing checkout, that read is the enclosing checkout's configuration (ISS-1250, \
+             consult on 9ecec0c09 F1)"
         );
         assert!(
             !body.contains("worktree::remove_at"),
