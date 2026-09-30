@@ -38,7 +38,6 @@ assistantWeeklyRoutes.post(
       .select({
         id: projects.id,
         slug: projects.slug,
-        createdBy: projects.createdBy,
         agentConfig: projects.agentConfig,
       })
       .from(projects)
@@ -55,16 +54,8 @@ assistantWeeklyRoutes.post(
         },
         409,
       );
-    if (!row.createdBy)
-      return c.json(
-        {
-          code: 'ASSISTANT_WEEKLY_NO_AUTHOR',
-          message: 'the project has no creator to post the reading as',
-        },
-        409,
-      );
     const outcome = await runAssistantWeeklyForProject(
-      { projectId: row.id, slug: row.slug, createdBy: row.createdBy, config },
+      { projectId: row.id, slug: row.slug, config },
       realDeps(),
       new Date(),
     );
