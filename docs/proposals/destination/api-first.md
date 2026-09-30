@@ -68,5 +68,15 @@ a tool calls what the route calls.
 4. **MCP and the CLI on the API's path.** A capability has one implementation, and every wrapper
    calls it.
 
+## Honest costs
+
+| The choice | What it costs |
+|---|---|
+| Backend first, UI not a focus | the web UI falls behind the API. A capability can land with no screen, and a person reads it through the CLI, MCP or the API reference until the UI catches up |
+| Every feature grantable to a token | each new route must name its permission before it merges, and each exclusion must carry a reason. A feature can no longer ship behind the session cookie alone |
+| MCP and the CLI only wrap the API | a capability that exists only in an MCP tool or a CLI verb today has to move into core first. Until it does, the wrapper is the one path, and this direction counts that as a defect |
+| A reference generated and checked in CI | a route whose schema is loose, or whose output is shaped by hand, fails the check until it is typed. Refactors pay that at the moment they touch a route |
+| Runner limited to relay and watching | runner features that someone wants wait. Their value is real, and they are out of focus while this holds |
+
 Each of these is tracked as an issue. What is built today, and in what order, belongs to the
 tracker and not here.
