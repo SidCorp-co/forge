@@ -454,14 +454,16 @@ mod tests {
             concat!("\"USER", "PROFILE\""),
         ];
         // The name a setter is handed scopes a variable rather than reading
-        // it; any other occurrence on the same line still counts.
+        // it; any other occurrence on the same line still counts. Each setter
+        // is anchored on the `::` or `.` before it, so an identifier that only
+        // ends like one (`reset(`, `my_env_remove(`) is no setter.
         let setters = [
-            "set(",
-            "unset(",
-            "set_var(",
-            "remove_var(",
+            "::set(",
+            "::unset(",
+            "::set_var(",
+            "::remove_var(",
             ".env(",
-            "env_remove(",
+            ".env_remove(",
         ];
         let reads_env = |line: &str| {
             env_names.iter().any(|name| {
@@ -630,10 +632,21 @@ mod tests {
             r#"ME").unwrap());"#
         );
         let a_setters_name = concat!(r#"cmd.env("HO"#, r#"ME", root);"#);
+        let a_scoped_name = concat!(r#"let _h = ScopedVar::set("HO"#, r#"ME", home);"#);
+        let only_ends_like_a_setter = [
+            concat!(r#"env_remove(std::env::var("HO"#, r#"ME").unwrap());"#),
+            concat!(r#"my_env_remove("HO"#, r#"ME");"#),
+            concat!(r#"reset("HO"#, r#"ME");"#),
+        ];
         assert!(
-            reads_env(read_beside_a_setter) && !reads_env(a_setters_name),
+            reads_env(read_beside_a_setter)
+                && !reads_env(a_setters_name)
+                && !reads_env(a_scoped_name),
             "a read beside a setter counts and the name a setter is handed does not"
         );
+        for line in only_ends_like_a_setter {
+            assert!(reads_env(line), "no setter hands this name: {line}");
+        }
         let master =
             std::fs::read_to_string(crates.join("forge-runner-core/src/daemon/master.rs")).unwrap();
         let take = master
