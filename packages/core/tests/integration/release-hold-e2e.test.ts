@@ -225,6 +225,47 @@ describe('every exit before the cut is written on the row', () => {
     expect((await stored(id)).claim).toBeNull();
   }, 30_000);
 
+  // ISS-1346 judge r2 findings 2 and 5: the hold opened with its code and a project uuid, and the
+  // one comment standing for several rows named none of them.
+  it('says RELEASE_TARGET_UNDECLARED in the words the card gives it, naming every row it holds on the oldest', async () => {
+    const merged = async (at: string) => {
+      const id = await heldRow('pass');
+      await harness.db.execute(
+        sql`UPDATE issues SET merged_at = ${at}::timestamptz WHERE id = ${id}`,
+      );
+      return id;
+    };
+    const newest = await merged('2026-09-29T09:00:00Z');
+    const oldest = await merged('2026-09-27T09:00:00Z');
+    const middle = await merged('2026-09-28T09:00:00Z');
+    await harness.db.execute(sql`
+      UPDATE integration_bindings SET active = false WHERE project_id = ${projectId}
+    `);
+    const chainRows = (await harness.db.execute(sql`
+      SELECT release_chain FROM projects WHERE id = ${projectId}
+    `)) as unknown as Array<{ release_chain: unknown }>;
+    const releaseChain = chainRows[0]?.release_chain;
+    const { releaseBlockerSentence } = await import('../../src/release-batch/blocker-sentences.js');
+
+    await sweep();
+
+    const said = releaseBlockerSentence('RELEASE_TARGET_UNDECLARED', { releaseChain });
+    for (const id of [oldest, middle, newest]) expect((await holdOf(id))?.reason).toBe(said);
+    expect(said).not.toContain(projectId);
+    const names = (await fx.displayIds([oldest, middle, newest])).map((n) => `\`${n}\``);
+    const posted = await holdComments(oldest);
+    expect(posted).toHaveLength(1);
+    expect(posted[0]).toContain(
+      `3 issues of this project, oldest merge first: ${names.join(', ')}.`,
+    );
+
+    // A row joining the same hold carries it, and costs the oldest no second comment.
+    const joined = await merged('2026-09-30T09:00:00Z');
+    await sweep();
+    expect((await holdOf(joined))?.code).toBe('RELEASE_TARGET_UNDECLARED');
+    expect(await holdComments(oldest)).toHaveLength(1);
+  }, 30_000);
+
   it('writes NO_RELEASE_GATE on a row still waiting on a project that declares no release', async () => {
     const id = await heldRow('pass');
     await harness.db.execute(sql`
@@ -332,5 +373,78 @@ describe('the hold and its comment commit together', () => {
     expect(a.written + b.written).toBe(1);
     expect(await holdComments(id)).toHaveLength(1);
     expect((await holdOf(id))?.code).toBe('RELEASE_NO_ACTOR');
+  }, 30_000);
+});
+
+// ISS-1346 judge r2 finding 4: anhome ISS-596 was commented on every flip of one runner's state.
+describe('a reason is said once for as long as a row stays held', () => {
+  async function holds() {
+    return import('../../src/pipeline/release-hold.js');
+  }
+  const offline = ['`sid-xeon-1` reported itself offline.'];
+  const cloning = ['`sid-xeon-1` has not finished provisioning its workspace (`cloning`).'];
+
+  it('writes every flip on the row and comments each set of words once', async () => {
+    const id = await heldRow();
+    const { writeReleaseHolds, refusalHold } = await holds();
+    const write = (reasons: string[]) =>
+      writeReleaseHolds({
+        issueIds: [id],
+        holdFor: () => refusalHold('NO_RUNNER_ONLINE', reasons),
+        authorId: ownerId,
+        now: new Date(),
+      });
+
+    for (const reasons of [offline, cloning, offline, cloning, offline]) await write(reasons);
+
+    expect(await holdComments(id)).toHaveLength(2);
+    expect(String((await holdOf(id))?.reason)).toContain('reported itself offline');
+  }, 30_000);
+
+  it('comments a row held afresh after its hold was cleared, whatever it said before', async () => {
+    const id = await heldRow();
+    const { writeReleaseHolds, refusalHold, clearReleaseHolds } = await holds();
+    const write = () =>
+      writeReleaseHolds({
+        issueIds: [id],
+        holdFor: () => refusalHold('NO_RUNNER_ONLINE', offline),
+        authorId: ownerId,
+        now: new Date(),
+      });
+
+    await write();
+    await clearReleaseHolds([id]);
+    await write();
+
+    expect(await holdComments(id)).toHaveLength(2);
+  }, 30_000);
+
+  // Review 208900 F1 and its pre-existing note: a newly oldest row is commented once however many
+  // writers reach it, and a row held again after a clear is not silenced by an earlier episode.
+  it('comments a row newly the oldest once, and again after it was held afresh', async () => {
+    const oldest = await heldRow();
+    const next = await heldRow();
+    const { writeReleaseHolds, refusalHold, clearReleaseHolds } = await holds();
+    const shared = (commentOn: string) =>
+      writeReleaseHolds({
+        issueIds: [oldest, next],
+        holdFor: () => refusalHold('NO_RUNNER_ONLINE', offline),
+        authorId: ownerId,
+        now: new Date(),
+        commentOn: new Set([commentOn]),
+      });
+
+    // A writer that read `next` before another commented it finds the hold moved, and posts nothing.
+    await shared(oldest);
+    const stale = { id: next, held: await holdOf(next) };
+    await shared(next);
+    const { commentOnce } = await holds();
+    await commentOnce(stale, ownerId, refusalHold('NO_RUNNER_ONLINE', offline), []);
+    expect(await holdComments(next)).toHaveLength(1);
+
+    await clearReleaseHolds([next]);
+    await shared(oldest);
+    await shared(next);
+    expect(await holdComments(next)).toHaveLength(2);
   }, 30_000);
 });

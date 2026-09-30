@@ -11,6 +11,7 @@ import { db } from '../db/client.js';
 import { comments, issues } from '../db/schema.js';
 import { type IssueCriteriaReport, unearnedCriteriaReports } from '../issues/criteria-verdicts.js';
 import { logger } from '../logger.js';
+import { releaseBlockerSentence } from '../release-batch/blocker-sentences.js';
 import {
   RELEASE_GATE_STATUS,
   ReleaseTargetUndeclaredError,
@@ -261,7 +262,11 @@ async function readGate(
     return gate ? { ok: true } : { ok: false, hold: NO_RELEASE_GATE_HOLD };
   } catch (err) {
     if (err instanceof ReleaseTargetUndeclaredError) {
-      return { ok: false, hold: targetUndeclaredHold(err.message) };
+      // The card's sentence, not the error's: a person reads this, and a uuid is on no screen.
+      const said = releaseBlockerSentence('RELEASE_TARGET_UNDECLARED', {
+        releaseChain: err.releaseChain,
+      });
+      return { ok: false, hold: targetUndeclaredHold(said) };
     }
     logger.error({ err, projectId }, 'release-sweep: the release gate could not be read');
     return {

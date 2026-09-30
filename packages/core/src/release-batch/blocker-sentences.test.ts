@@ -21,6 +21,7 @@ import {
   runnerHoldClause,
   runnerPreferenceUnmetSentence,
 } from './blocker-sentences.js';
+import type { ServingReading } from './serving-reading.js';
 
 function hold(over: Partial<RunnerHold> = {}): RunnerHold {
   return { deviceName: 'dev1', reason: 'retired', lastSeenSeconds: 13, reporting: true, ...over };
@@ -230,9 +231,30 @@ describe('the criteria hold', () => {
     expect(message).toContain('ISS-1142` owes criterion 1');
   });
 
+  const served: ServingReading = { kind: 'serving', served: [], unread: [], readAt: 'now' };
+
   it('says a release will still be cut where only some are held', () => {
-    expect(heldBackWarningSentence(held)).toContain('A release will still be cut');
-    expect(heldBackWarningSentence(held)).toContain('ISS-1142` owes criterion 1');
+    expect(heldBackWarningSentence(held, served)).toContain('A release will still be cut');
+    expect(heldBackWarningSentence(held, served)).toContain('ISS-1142` owes criterion 1');
+  });
+});
+
+// ISS-1346 judge r2 finding 1: with rows owing nothing beside rows no run can clear, the card told
+// a person to dispatch a judging run on a project no verdict can be weighed on.
+describe('the held-back warning where nothing can read what the project serves', () => {
+  const held = [{ issueId: 'u-3', displayId: 'ISS-3', criteria: [1] }];
+  const missing = 'its deploy bindings go through epodsystem, and none of them reports the commit';
+  const route = 'declare `verify.probes` on the live deploy binding';
+  const sentence = heldBackWarningSentence(held, { kind: 'undeclared', missing, route });
+
+  it('names the missing piece and the route', () => {
+    expect(sentence).toContain(`What is missing: ${missing}.`);
+    expect(sentence).toContain(`The way to give it one: ${route}.`);
+  });
+
+  it('says no judging run earns those criteria until the project can be read', () => {
+    expect(sentence).toContain('no judging run can earn one until the project can be read');
+    expect(sentence).not.toContain('still owes a judging run');
   });
 });
 
@@ -241,6 +263,20 @@ describe('the codes this change did not touch', () => {
     expect(
       releaseBlockerSentence('RELEASE_RECORD_MISSING', { issueIds: ['a', 'b', 'c'] }),
     ).toContain('3 issue(s)');
+  });
+
+  // ISS-1346 judge r2 finding 2: "2 issue(s) named here have no release note", naming neither.
+  it('names each issue a record refusal is about by its display id', () => {
+    const details = { issueIds: ['a', 'b'], displayIds: ['ISS-1', 'ISS-2'] };
+    expect(releaseBlockerSentence('RELEASE_RECORD_MISSING', details)).toContain(
+      '2 issue(s) named here (`ISS-1`, `ISS-2`) have no release note',
+    );
+    expect(releaseBlockerSentence('RELEASE_WORK_UNMERGED', details)).toContain(
+      '2 issue(s) named here (`ISS-1`, `ISS-2`) have no merge',
+    );
+    expect(
+      releaseBlockerSentence('RELEASE_WORK_UNMERGED', { ...details, shape: 'outside_git' }),
+    ).toContain('2 issue(s) named here (`ISS-1`, `ISS-2`) have no mark');
   });
 
   it('keeps naming the check that could not be run', () => {

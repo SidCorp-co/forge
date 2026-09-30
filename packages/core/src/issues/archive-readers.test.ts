@@ -125,6 +125,8 @@ const NOT_DISCOVERY: Record<string, string> = {
   'pipeline/runs-rollup.ts': 'the issues of the runs',
   'pipeline/stranded-issues.ts': 'reads only `waiting` and non-terminal merged rows',
   'pipeline/sweeper.ts': 'reaps runs still running on closed or dropped issues, a write path',
+  'pipeline/wedge-lease.ts':
+    'the lease of the one in-flight issue a wedge reset has locked, by id; an archived issue is never in flight',
   'pipeline/work-evidence.ts': 'by issue id',
   'pm/routes.ts': 'the ids a decision event names',
   'pm/snapshot-service.ts': 'status counts; stalled rows read only active statuses',

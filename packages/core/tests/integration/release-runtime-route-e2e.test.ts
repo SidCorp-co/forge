@@ -392,8 +392,8 @@ describe('a project nothing can read is told once', () => {
 
   it('answers one project-level blocker naming what is missing, in place of the per-row one', async () => {
     await bindUnreporting();
-    await waitingRow(SERVED, '2026-09-27T09:00:00Z');
-    await waitingRow(SERVED, '2026-09-28T09:00:00Z');
+    const later = await waitingRow(SERVED, '2026-09-28T09:00:00Z');
+    const earlier = await waitingRow(SERVED, '2026-09-27T09:00:00Z');
     const { loadReleaseReadiness } = await import('../../src/release-batch/readiness.js');
 
     const readiness = await loadReleaseReadiness(projectId);
@@ -405,6 +405,27 @@ describe('a project nothing can read is told once', () => {
     expect(unrouted?.message).toContain('epodsystem');
     expect(unrouted?.message).not.toContain('Held: 2 issue(s)');
     expect(unrouted?.message.match(/`ISS-\d+` owes criterion 1, 2/g)).toHaveLength(2);
+    // Judge r2 finding 5: held rows are listed oldest merge first, not in the order Postgres returns.
+    const [first, second] = await fx.displayIds([earlier, later]);
+    expect(unrouted?.message).toContain(`\`${first}\` owes criterion 1, 2; \`${second}\``);
+  }, 30_000);
+
+  // Judge r2 finding 1: beside rows owing nothing, the card sent a person to a judging run.
+  it('names the route, not a judging run, where only some waiting rows owe a criterion', async () => {
+    await bindUnreporting();
+    const owing = await waitingRow(SERVED, '2026-09-27T09:00:00Z');
+    const free = await waitingRow(SERVED, '2026-09-28T09:00:00Z');
+    await harness.db.execute(sql`UPDATE issues SET acceptance_criteria = NULL WHERE id = ${free}`);
+    const { loadReleaseReadiness } = await import('../../src/release-batch/readiness.js');
+
+    const readiness = await loadReleaseReadiness(projectId);
+
+    const said = readiness?.warnings.find((w) => w.code === 'RELEASE_CRITERIA_HELD_BACK')?.message;
+    expect(said).toContain(`\`${(await fx.displayIds([owing]))[0]}\` owes criterion 1, 2`);
+    expect(said).toContain('What is missing: its deploy bindings go through epodsystem');
+    expect(said).toContain('The way to give it one: declare `verify.probes`');
+    expect(said).toContain('no judging run can earn one until the project can be read');
+    expect(said).not.toContain('still owes a judging run');
   }, 30_000);
 
   // Judge finding 4: an epodsystem project cannot deploy through Coolify, so it is not told to.
@@ -464,7 +485,7 @@ describe('a reason every waiting row shares is said once (judge finding 1)', () 
         const hold = await holdOf(id);
         expect(hold?.code).toBe('RELEASE_TARGET_UNDECLARED');
         expect(String(hold?.reason)).toContain(
-          "no active deploy binding carrying the 'live' stage",
+          'no active deploy binding carrying the `live` stage',
         );
       }
       expect(await holdComments(oldest)).toBe(1);
