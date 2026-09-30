@@ -96,9 +96,11 @@ export async function criteriaHold(
     out.push(blocker('RELEASE_CRITERIA_UNEARNED', { held }, 'roster'));
     return;
   }
+  const route =
+    serving.kind === 'undeclared' ? { missing: serving.missing, route: serving.route } : {};
   warnings.push({
     code: 'RELEASE_CRITERIA_HELD_BACK',
-    message: heldBackWarningSentence(held),
-    details: { held },
+    message: heldBackWarningSentence(held, serving),
+    details: { held, ...route },
   });
 }

@@ -80,6 +80,12 @@ const WARNING_CODES = [
 ] as const;
 
 const HELD = [{ issueId: 'u-9', displayId: 'ISS-9', criteria: [1, 2] }];
+const SERVED: ServingReading = { kind: 'serving', served: [], unread: [], readAt: 'now' };
+const UNROUTED: ServingReading = {
+  kind: 'undeclared',
+  missing: 'this project has no active deploy binding',
+  route: 'declare `verify.probes` on the live deploy binding',
+};
 
 /** Every message this project can print, code by code, composed as its door composes it. */
 function everyMessage(): Array<{ code: ReasonCode; message: string }> {
@@ -111,7 +117,14 @@ function everyMessage(): Array<{ code: ReasonCode; message: string }> {
       code: 'RELEASE_RUNNER_PREFERENCE_UNMET' as ReasonCode,
       message: runnerPreferenceUnmetSentence('release'),
     },
-    { code: 'RELEASE_CRITERIA_HELD_BACK' as ReasonCode, message: heldBackWarningSentence(HELD) },
+    {
+      code: 'RELEASE_CRITERIA_HELD_BACK' as ReasonCode,
+      message: heldBackWarningSentence(HELD, SERVED),
+    },
+    {
+      code: 'RELEASE_CRITERIA_HELD_BACK' as ReasonCode,
+      message: heldBackWarningSentence(HELD, UNROUTED),
+    },
   ];
 }
 
@@ -389,3 +402,5 @@ describe('withdrawing the release runner label', () => {
     expect(await preferenceLabelsFor(withdrawReleaseRunnerLabel(declared))).toEqual([]);
   });
 });
+
+import type { ServingReading } from './serving-reading.js';

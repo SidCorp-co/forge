@@ -93,7 +93,9 @@ vi.mock('./release-coolify.js', () => ({
 const resolveReleaseGateMock = vi.fn(
   async (_projectId: string) => 'awaiting_release' as string | null,
 );
-class ReleaseTargetUndeclaredError extends Error {}
+class ReleaseTargetUndeclaredError extends Error {
+  releaseChain = [{ branch: 'production' }];
+}
 vi.mock('../release-batch/gate.js', () => ({
   RELEASE_GATE_STATUS: 'awaiting_release',
   ReleaseTargetUndeclaredError,
@@ -235,7 +237,7 @@ describe('sweepAutomaticReleases — policy gate', () => {
     expect(result.holdsWritten).toBe(2);
   });
 
-  it('writes RELEASE_TARGET_UNDECLARED, carrying the refusal, when there is nowhere to release onto', async () => {
+  it('writes RELEASE_TARGET_UNDECLARED, in the words the card gives it, when there is nowhere to release onto', async () => {
     candidateRows = [candidateRow('proj-1', 'iss-1', '2026-09-22T00:00:00Z')];
     waitingIds = ['iss-1'];
     resolveReleaseGateMock.mockRejectedValueOnce(
@@ -244,11 +246,8 @@ describe('sweepAutomaticReleases — policy gate', () => {
 
     await sweepAutomaticReleases();
 
-    expect(holds['iss-1']).toMatchObject({
-      code: 'RELEASE_TARGET_UNDECLARED',
-      reason: 'RELEASE_TARGET_UNDECLARED: no live binding',
-      owes: 'human',
-    });
+    expect(holds['iss-1']).toMatchObject({ code: 'RELEASE_TARGET_UNDECLARED', owes: 'human' });
+    expect(holds['iss-1']?.reason).toMatch(/^This project's release chain ends at `production`/);
     expect(cutWaitingReleaseMock).not.toHaveBeenCalled();
   });
 

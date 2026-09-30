@@ -8,8 +8,10 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
 import { issues, projects } from '../db/schema.js';
+import { issueDisplayIds } from '../issues/display-ids.js';
 import { landingShapeOf, landingShortfall } from '../issues/landing-evidence.js';
 import { issuesMissingReleaseRecord } from '../issues/release-record-required.js';
+import { logger } from '../logger.js';
 import { releaseIneligibleRunners } from '../runners/ineligible.js';
 import { onlineCapableDeviceIds } from '../runners/select.js';
 import { attempt, blocker, evaluate } from './blocker-kit.js';
@@ -133,6 +135,18 @@ async function claimBlockers(
 }
 
 /** What the roster owes before it may be closed: a note, and a merge. */
+/** `ISS-nn` for each, in the order given, so a refusal names the rows it is about (ISS-1346). A
+ *  failed read costs the names and not the reason: the refusal still counts them, and says so. */
+async function namedAs(ids: string[]): Promise<string[]> {
+  try {
+    const shown = await issueDisplayIds(ids);
+    return ids.map((id) => shown.get(id) ?? id);
+  } catch (err) {
+    logger.warn({ err }, 'release-blockers: the refused issues could not be named');
+    return [];
+  }
+}
+
 async function rosterBlockers(
   door: ReleaseDoor,
   issueIds: string[],
@@ -145,7 +159,8 @@ async function rosterBlockers(
     out,
   );
   if (unrecorded && unrecorded.length > 0) {
-    out.push(blocker('RELEASE_RECORD_MISSING', { issueIds: unrecorded }));
+    const displayIds = await namedAs(unrecorded);
+    out.push(blocker('RELEASE_RECORD_MISSING', { issueIds: unrecorded, displayIds }));
   }
   if (door !== 'record') return;
   // Unmerged means what the close would refuse, on this project's shape: `landing-evidence.ts`.
@@ -174,7 +189,9 @@ async function rosterBlockers(
   if (unmerged.length > 0) {
     // One roster is one project, so one shape; it chooses which sentence the reader is owed.
     const shape = unmerged[0]?.shape;
-    out.push(blocker('RELEASE_WORK_UNMERGED', { issueIds: unmerged.map((r) => r.id), shape }));
+    const ids = unmerged.map((r) => r.id);
+    const displayIds = await namedAs(ids);
+    out.push(blocker('RELEASE_WORK_UNMERGED', { issueIds: ids, shape, displayIds }));
   }
 }
 
