@@ -335,15 +335,22 @@ pub fn questions(route: &str, v: &Value) -> Read<Vec<Question>> {
                 asked_ms: Some(parse_utc_ms(asked).ok_or_else(|| {
                     shape(route, &format!("readable time on a question (`{asked}`)"))
                 })?),
-                prompt: field(route, q, "prompt", "question")?
-                    .lines()
-                    .next()
-                    .unwrap_or("")
-                    .to_string(),
+                prompt: first_line(field(route, q, "prompt", "question")?).to_string(),
                 id: field(route, q, "id", "question")?.to_string(),
             })
         })
         .collect()
+}
+
+/// A prompt's first line with anything on it: a prompt that opens on a blank
+/// line still asks what its next line asks, and only one with no text at all
+/// holds no step (judge w3, finding 54).
+fn first_line(prompt: &str) -> &str {
+    prompt
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .unwrap_or("")
 }
 
 /// One page of the project issue list: each row's display key.
@@ -502,6 +509,25 @@ mod tests {
         assert_eq!(q[0].id, "q1");
         assert_eq!(q[0].asked_ms, parse_utc_ms("2026-09-30T01:30:00Z"));
         assert!(questions("/r", &serde_json::json!({"items": []})).is_err());
+    }
+
+    /// Judge w3's finding 54: a prompt opening on a blank line is shown by the
+    /// first line that says something, and only a prompt of nothing but
+    /// whitespace reads as holding no step.
+    #[test]
+    fn a_prompt_opening_on_a_blank_line_is_shown_by_its_first_line_with_text() {
+        let prompt = |p: &str| {
+            let v = serde_json::json!({"questions": [{"id": "q4", "blockerKind": "human",
+                "createdAt": "2026-09-30T01:00:00.000Z", "askedAt": "", "prompt": p}]});
+            questions("/q", &v).unwrap()[0].prompt.clone()
+        };
+        assert_eq!(
+            prompt("\nWhich branch ships tonight, stg or main?"),
+            "Which branch ships tonight, stg or main?"
+        );
+        assert_eq!(prompt("  \r\n\t\n  Rotate the key?  \nsecond"), "Rotate the key?");
+        assert_eq!(prompt(" \n\t\n"), "");
+        assert_eq!(prompt(""), "");
     }
 
     /// Criteria 17, 28's parse.
