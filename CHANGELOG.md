@@ -3138,6 +3138,9 @@
 
 - **A half-deleted run checkout is no longer taken for the project's own.** The box said it was
   left standing as it went. It now holds it, refuses to release it and names it in its log.
+- **The box's log names the run holding such a checkout,** and a checkout it records as gone no
+  longer reads as one this box removed. A leftover folder it cannot read is named once, with how
+  to clear it.
 - **An issue a run is still working is no longer sent back to `open`.** Forge's net for stuck work
   leaves an issue alone while its run holds a live claim, and says so on any issue it moves.
 - **Releases and other background jobs now get your project's tools.** A batch release started

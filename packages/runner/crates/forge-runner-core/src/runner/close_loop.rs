@@ -119,7 +119,11 @@ pub fn state(ledger: &Ledger, run_id: &str) -> Result<CloseState> {
 /// of this change and not a gap: the release path always has the repo root,
 /// and a run whose project this box cannot resolve is one an operator is
 /// already being warned about.
-async fn checkout_returned(repo: Option<&Path>, path: &Path) -> Option<CheckoutReturn> {
+async fn checkout_returned(
+    run_id: &str,
+    repo: Option<&Path>,
+    path: &Path,
+) -> Option<CheckoutReturn> {
     let repo = repo?;
     match crate::workspace::worktree::residence_of(repo, path).await {
         Residence::Gone => Some(CheckoutReturn::Gone),
@@ -130,9 +134,9 @@ async fn checkout_returned(repo: Option<&Path>, path: &Path) -> Option<CheckoutR
         // ISS-689 checkout was called "left standing" and then went (ISS-1250).
         Residence::Enclosed(top) => {
             tracing::warn!(
-                "[close] {} stands, but git, asked at the path, answers for the enclosing \
-                 checkout {} — it is no checkout of its own, so the run keeps holding it until \
-                 git registers it or it is gone",
+                "[close] run={run_id}: {} stands, but git, asked at the path, answers for the \
+                 enclosing checkout {} — it is no checkout of its own, so the run keeps holding \
+                 it until git registers it or it is gone",
                 path.display(),
                 top.display()
             );
@@ -145,7 +149,7 @@ async fn checkout_returned(repo: Option<&Path>, path: &Path) -> Option<CheckoutR
         | Residence::Ambiguous(_) => None,
         Residence::Unknown(why) => {
             tracing::warn!(
-                "[close] {}: git could not be asked whether this checkout is still registered ({why}) — the run keeps holding it",
+                "[close] run={run_id}: {}: git could not be asked whether this checkout is still registered ({why}) — the run keeps holding it",
                 path.display()
             );
             None
@@ -186,7 +190,7 @@ pub async fn close(
 
     let mut checkout_is_back = run.released_as.is_some();
     if !checkout_is_back {
-        if let Some(how) = checkout_returned(repo, Path::new(&run.worktree_path)).await {
+        if let Some(how) = checkout_returned(run_id, repo, Path::new(&run.worktree_path)).await {
             ledger.mark_checkout_returned_observed(run_id, how)?;
             // The one writer of `worktree_gone_at`, so the one place a line
             // covers every checkout recorded gone — including the ones a
@@ -195,7 +199,7 @@ pub async fn close(
             match how {
                 CheckoutReturn::Gone => tracing::info!(
                     "[close] run={run_id}: {} is no longer a checkout git registers, so it is \
-                     recorded as gone — a removal this box made is logged where it made it",
+                     recorded as gone",
                     run.worktree_path.display()
                 ),
                 // What git answered and what the run is recorded as, and
@@ -751,6 +755,16 @@ mod tests {
             1,
             "a checkout recorded gone is said once, naming its path: {out}"
         );
+        // Nothing on this box removed `gone()`, so the line may claim no
+        // removal, this box's or anyone's (judge r3, item 5).
+        let said = out
+            .lines()
+            .find(|l| l.contains(&line))
+            .expect("the line was found above");
+        assert!(
+            !said.contains("remov"),
+            "the gone line says what git answers, not who removed the directory: {said}"
+        );
     }
 
     /// ISS-1250 criteria 27, 28 — judge j3: a nested worktree whose `.git` file
@@ -792,11 +806,12 @@ mod tests {
         let top = root.canonicalize().unwrap();
         assert!(
             out.contains(&format!(
-                "{} stands, but git, asked at the path, answers for the enclosing checkout {}",
+                "[close] run=run-1: {} stands, but git, asked at the path, answers for the \
+                 enclosing checkout {}",
                 nested.display(),
                 top.display()
             )),
-            "the journal names the path and the checkout git answered for: {out}"
+            "the journal names the run, the path and the checkout git answered for: {out}"
         );
     }
 

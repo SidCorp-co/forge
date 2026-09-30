@@ -513,13 +513,19 @@ mod tests {
             "a report read off the enclosing checkout is about that checkout: {:?}",
             spy.seen.borrow()
         );
-        assert!(
-            logged.contains(&nested.display().to_string()),
-            "the journal names the path no report was taken from: {logged}"
-        );
+        // The nested path begins with the enclosing checkout's, so a bare
+        // `contains(top)` holds whenever the path is named and guards nothing
+        // (judge r3, P31). Each is asserted in the place the line puts it.
         let top = work.canonicalize().expect("the parent is there");
         assert!(
-            logged.contains(&top.display().to_string()),
+            logged.contains(&format!("{} stands, but git", nested.display())),
+            "the journal names the path no report was taken from: {logged}"
+        );
+        assert!(
+            logged.contains(&format!(
+                "answers for the enclosing checkout {},",
+                top.display()
+            )),
             "and the checkout git answered for: {logged}"
         );
     }
