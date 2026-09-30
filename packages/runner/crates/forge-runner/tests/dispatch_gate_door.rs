@@ -364,12 +364,12 @@ fn a_session_the_daemon_never_placed_is_let_through_unmarked() {
 /// runner's for `config_home`, running the gate inside a session named `pane`.
 ///
 /// `None` where this box cannot host one, after failing the test instead
-/// wherever the run promised tmux (`FORGE_TEST_REQUIRE_TMUX`, which CI sets on
-/// Linux).
+/// wherever the run promised tmux (`FORGE_TEST_REQUIRE_TMUX` set and not
+/// empty, as CI sets it on Linux; on the other runners CI sets it empty).
 fn gate_in_a_runner_pane(config_home: &Path, pane: &str, payload: &str) -> Option<String> {
     let skip = |why: &str| {
         assert!(
-            std::env::var_os("FORGE_TEST_REQUIRE_TMUX").is_none(),
+            !std::env::var_os("FORGE_TEST_REQUIRE_TMUX").is_some_and(|v| !v.is_empty()),
             "{why}, and FORGE_TEST_REQUIRE_TMUX promised this run a tmux to drive"
         );
         eprintln!("skipped: {why}");
