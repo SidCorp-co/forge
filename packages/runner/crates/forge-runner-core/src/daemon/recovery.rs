@@ -177,6 +177,7 @@ pub async fn reconcile(
     closing: Closing<'_>,
     watch: RunWatch<'_>,
 ) -> Result<Vec<Recovered>> {
+    end_what_no_master_can_close(ledger);
     let mut out = Vec::new();
     let mut unanswered_reads: Vec<String> = Vec::new();
     let mut ended_by_process: Vec<String> = Vec::new();
@@ -454,6 +455,39 @@ pub async fn reconcile(
         tracing::warn!("{line}");
     }
     Ok(out)
+}
+
+/// End the runs no master on this box answers for once their marks close
+/// them, and name each one ended (ISS-1355).
+///
+/// Taken first, because `unclosed_runs` below never selects such a row: a
+/// replaced master's run whose lease this sweep reads back is ended by the
+/// next one. A ledger that refuses the ending stops nothing else this sweep
+/// owes, and says so.
+fn end_what_no_master_can_close(ledger: &Ledger) {
+    let ended = match ledger.end_closed_runs_no_master_answers_for() {
+        Ok(ended) => ended,
+        Err(e) => {
+            tracing::warn!(
+                "[recovery] the runs no master on this box answers for could not be ended ({e}); they stay open, and `forge-runner status` names them"
+            );
+            return;
+        }
+    };
+    for u in ended {
+        let keys = u
+            .issues
+            .iter()
+            .map(|m| m.issue_key.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        tracing::info!(
+            "[recovery] run {} ({}: {keys}) ended: declared under master session {}, which no master on this box holds now, and its session, checkout and leases are all back",
+            u.run.run_id,
+            u.run.project_id.as_deref().unwrap_or("no project"),
+            crate::runner::ledger::short_id(&u.run.master_session_id)
+        );
+    }
 }
 
 /// What a sweep tmux could not answer says it did. The pane read gives no
@@ -1207,6 +1241,113 @@ mod tests {
         .unwrap();
         let _ = std::fs::remove_dir_all(&wt);
         done
+    }
+
+    /// Core keeps every lease: a give-back is taken and never reads returned.
+    struct LeasesKept;
+    #[async_trait::async_trait]
+    impl LeaseKeeper for LeasesKept {
+        async fn release(&self, _project_id: Option<&str>, _issue_key: &str) -> Result<()> {
+            Ok(())
+        }
+        async fn is_returned(&self, _project_id: Option<&str>, _issue_key: &str) -> Result<bool> {
+            Ok(false)
+        }
+    }
+
+    async fn sweep_with_leases(led: &mut Ledger, leases: &dyn LeaseKeeper) {
+        reconcile(
+            led,
+            "boot-a",
+            &NoRegistryEntry,
+            &nothing_refuted(),
+            Closing {
+                sessions: &Sessions,
+                leases,
+                roots: &Roots,
+            },
+            RunWatch {
+                beat: &Beats::default(),
+                idle: &NeverReports,
+            },
+        )
+        .await
+        .unwrap();
+    }
+
+    /// ISS-1355 criteria 1, 4, 5, 6 and 11, through the sweep itself: a run
+    /// whose master session was replaced is left while core still holds its
+    /// lease, is closed by its marks on the sweep that reads the lease back,
+    /// and is ended and named on the sweep after — while the current master's
+    /// own finished run is left for that master to close.
+    #[tokio::test]
+    async fn a_replaced_master_s_run_is_ended_by_the_sweep_after_its_marks_close_it() {
+        let mut led = seeded("orphan", "655c2532-before", "boot-a", &["ISS-496"]);
+        led.bind_agent("orphan", "agent-orphan").unwrap();
+        led.note_master(
+            "proj-1",
+            "forge-master-p",
+            None,
+            Some("b50cb00e-now"),
+            "boot-a",
+        )
+        .unwrap();
+        led.create_run_group(NewRun {
+            run_id: "own".into(),
+            project_id: "proj-1".into(),
+            master_session_id: "b50cb00e-now".into(),
+            worktree_path: PathBuf::from("/tmp/forge-recovery-absent-own"),
+            boot_id: "boot-a".into(),
+            issue_keys: vec!["ISS-497".into()],
+        })
+        .unwrap();
+        led.attach_session("own", "core-sess-own").unwrap();
+        led.mark_session_terminal_observed("own").unwrap();
+        led.mark_checkout_returned_observed("own", crate::runner::ledger::CheckoutReturn::Gone)
+            .unwrap();
+        led.mark_lease_returned_observed("own", "ISS-497").unwrap();
+
+        sweep_with_leases(&mut led, &LeasesKept).await;
+        let row = led.run("orphan").unwrap().unwrap();
+        assert!(row.released_as.is_some() && row.session_terminal_at.is_some());
+        assert_eq!(row.ended_by, None, "criterion 5: its lease is still out");
+
+        let returning = Leases(Mutex::new(HashSet::new()));
+        sweep_with_leases(&mut led, &returning).await;
+        assert!(led
+            .issues("orphan")
+            .unwrap()
+            .iter()
+            .all(|m| m.lease_returned_at.is_some()));
+        assert_eq!(
+            led.run("orphan").unwrap().unwrap().ended_by,
+            None,
+            "the sweep that reads the lease back does not also end it"
+        );
+
+        let (said, guard) = crate::log_capture::capturing();
+        sweep_with_leases(&mut led, &returning).await;
+        drop(guard);
+        let said = said.said();
+        let row = led.run("orphan").unwrap().unwrap();
+        assert_eq!(
+            row.ended_by.as_deref(),
+            Some("recovery"),
+            "criteria 1 and 6"
+        );
+        assert_eq!(
+            led.run("own").unwrap().unwrap().ended_by,
+            None,
+            "criterion 4"
+        );
+        let line = said
+            .lines()
+            .find(|l| l.contains("run orphan"))
+            .unwrap_or_else(|| panic!("criterion 11: the ending is named: {said}"));
+        assert!(
+            line.contains("proj-1: ISS-496") && line.contains("655c2532,"),
+            "criterion 11: {line}"
+        );
     }
 
     #[tokio::test]
