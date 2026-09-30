@@ -273,7 +273,8 @@ describe('what the tool description tells an agent about the column', () => {
   });
 
   it('states the condition it is true under rather than a blanket never', () => {
-    expect(text).toContain('It writes merged_commit_sha ONLY where Forge already');
+    expect(text).toContain('It writes merged_commit_sha ONLY from a record Forge holds itself');
+    expect(text).toContain('Anywhere else your commit never reaches the column');
     expect(text).not.toContain('It does not write merged_commit_sha');
   });
 

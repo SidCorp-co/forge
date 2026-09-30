@@ -49,6 +49,7 @@ describe('collectWorkEvidence', () => {
       handoffCommitSha: 'abc123',
       handoffFilesModified: 1,
       branch: 'ISS-1-foo',
+      mergedCommitSha: null,
     });
   });
 
@@ -118,6 +119,7 @@ describe('collectWorkEvidence', () => {
       handoffCommitSha: null,
       handoffFilesModified: 0,
       branch: null,
+      mergedCommitSha: null,
     });
   });
 
@@ -168,6 +170,7 @@ describe('hasCodeEvidence', () => {
         handoffCommitSha: null,
         handoffFilesModified: 0,
         branch: 'ISS-1-foo',
+        mergedCommitSha: null,
       }),
     ).toBe(true);
   });
@@ -179,6 +182,7 @@ describe('hasCodeEvidence', () => {
         handoffCommitSha: 'sha',
         handoffFilesModified: 0,
         branch: null,
+        mergedCommitSha: null,
       }),
     ).toBe(true);
   });
@@ -190,6 +194,7 @@ describe('hasCodeEvidence', () => {
         handoffCommitSha: null,
         handoffFilesModified: 3,
         branch: null,
+        mergedCommitSha: null,
       }),
     ).toBe(true);
   });
@@ -201,8 +206,78 @@ describe('hasCodeEvidence', () => {
         handoffCommitSha: null,
         handoffFilesModified: 0,
         branch: null,
+        mergedCommitSha: null,
       }),
     ).toBe(false);
+  });
+});
+
+describe('a merged commit Forge holds on the row (ISS-1318)', () => {
+  const SHA = '3f1c2b4a5d6e7f8091a2b3c4d5e6f708192a3b4c';
+
+  it('counts as evidence on an issue whose only recorded branch is the base branch', async () => {
+    setup(
+      [],
+      [],
+      [
+        {
+          sessionContext: { worklog: { branch: 'main' } },
+          mergedAt: new Date('2026-09-30T10:00:00Z'),
+          mergedCommitSha: SHA,
+          baseBranch: 'main',
+          releaseChain: [],
+        },
+      ],
+    );
+    const evidence = await collectWorkEvidence('iss-1');
+    expect(evidence.branch).toBeNull();
+    expect(evidence.mergedCommitSha).toBe(SHA);
+    expect(hasCodeEvidence(evidence)).toBe(true);
+  });
+
+  it('is no evidence where merged_at is empty: a sha with no mark is unmarked', async () => {
+    setup(
+      [],
+      [],
+      [
+        {
+          sessionContext: { branch: 'main' },
+          mergedAt: null,
+          mergedCommitSha: SHA,
+          baseBranch: 'main',
+          releaseChain: [],
+        },
+      ],
+    );
+    const evidence = await collectWorkEvidence('iss-1');
+    expect(evidence.mergedCommitSha).toBeNull();
+    expect(hasCodeEvidence(evidence)).toBe(false);
+  });
+
+  it('is no evidence where the column holds only whitespace', async () => {
+    setup(
+      [],
+      [],
+      [
+        {
+          sessionContext: null,
+          mergedAt: new Date(),
+          mergedCommitSha: '  ',
+          baseBranch: 'main',
+          releaseChain: [],
+        },
+      ],
+    );
+    expect(hasCodeEvidence(await collectWorkEvidence('iss-1'))).toBe(false);
+  });
+
+  it('names the commit route in the refusal, beside the branch and the handoff', async () => {
+    setup([], [], [], [{ sessionContext: null, baseBranch: 'main', releaseChain: [] }]);
+    const detail = await findMissingWorkEvidence('iss-1');
+    expect(detail).toContain('`mark_merged` carrying `data.commit`');
+    expect(detail).toContain("checks against the project's repository");
+    expect(detail).toContain('sessionContext.worklog.branch');
+    expect(detail).toContain('commitSha/filesModified');
   });
 });
 
