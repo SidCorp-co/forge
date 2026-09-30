@@ -2404,12 +2404,16 @@ mod tests {
              `git worktree remove` — reading it out of the removal's failure is one defect \
              (ISS-1183) and reading it off `exists()` is the other (ISS-1193)"
         );
+        // The refusal is `held_checkout(..)?`, so the credential is read only
+        // after it has returned: after the question alone would still let a
+        // read slip in between the two (consult on 5a187bed3 F1).
+        let refused = body.find("held_checkout(").expect("the refusal");
         let cred = body.find("RepoCred::of").expect("the credential read");
         assert!(
-            asked < cred,
-            "and before the credential is read at the path: at a path git answers for from the \
-             enclosing checkout, that read is the enclosing checkout's configuration (ISS-1250, \
-             consult on 9ecec0c09 F1)"
+            asked < cred && refused < cred,
+            "and the credential is read at the path only once the refusal has had its say: at a \
+             path git answers for from the enclosing checkout, that read is the enclosing \
+             checkout's configuration (ISS-1250, consult on 9ecec0c09 F1)"
         );
         assert!(
             !body.contains("worktree::remove_at"),
