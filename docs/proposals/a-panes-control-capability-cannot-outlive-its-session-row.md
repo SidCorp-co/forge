@@ -38,11 +38,12 @@ pane's capability, which carries a record too, declares nothing.
 
 `master.rs:capability_of` judges a resident pane current where a record names its project and pane,
 whatever session core serves it now. On that adoption `Masters::readopt` moves the registry to the
-session core serves, and the sweep's `carried_across` re-records the project's open runs whose
-recorded Claude Code process is still running under that session, so the pane's `run close` and
-`run choice` answer for them. The process, not the session, is what attributes a run to the pane:
-core hands the pane placed next under the same name the same non-terminal row, and a pane that went
-took its process with it. A run no process was read for is left where it is and counted.
+session core serves, and the sweep's `carried_across` re-records under that session the project's
+open runs whose recorded Claude Code process still runs beneath the pane's own process
+(`subagent_host::Hosts::beneath`), so the pane's `run close` and `run choice` answer for them. The
+process's parentage, not the session, is what attributes a run to the pane: core hands the pane
+placed next under the same name the same non-terminal row, and a process merely alive is tied to no
+pane. A run whose process could not be placed is left where it is and counted.
 
 **Why not shape 2 — re-point the entry on adoption.** It makes a minted capability's meaning
 mutable. Under `VISION: kernel-hard-policy-soft` authority is kernel and its tolerance is zero — a
@@ -127,7 +128,7 @@ pane it runs in; making the mark name the declared run the pane holds is still u
 is, `gateAtOpen` says what it is, and says it is the box's.
 
 **Closing a run declared under a previous pane.** `carried_across` moves only runs whose recorded
-process is still running, which a replaced pane's are not. A run declared by a pane that has since been replaced by a different one stays under
+process runs beneath the adopted pane, which a replaced pane's never do. A run declared by a pane that has since been replaced by a different one stays under
 that pane's session and its successor cannot close it — ISS-1355's deliverable.
 
 ## Honest costs

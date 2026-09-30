@@ -1622,6 +1622,7 @@ mod tests {
         let (ctl, token, _dir) = a_pane_core_re_minted("record");
         const RUN: &str = "run-declared-before";
         const PANE_CLAUDE: u32 = 51_001;
+        const PANE_PID: u32 = 51_000;
         {
             let mut held = ctl.ledger.lock().unwrap();
             let led = held.as_mut().unwrap();
@@ -1666,11 +1667,13 @@ mod tests {
                 PANE_CLAUDE,
                 crate::daemon::subagent_host::HostRead::Alive,
             );
+            hosts.under.lock().unwrap().insert((PANE_CLAUDE, PANE_PID));
             let moved = crate::daemon::master::carried_across(
                 held.as_mut().unwrap(),
                 "proj-1",
                 PANE,
                 REMINT,
+                Some(PANE_PID),
                 &hosts,
                 "forge-dev",
             );

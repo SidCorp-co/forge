@@ -1300,15 +1300,18 @@ async fn sweep(
         if let Some(found) = deaf.take() {
             deaf_found.push(found);
         }
-        if pane == PaneState::Adopted && heard {
-            if let (Some(led), Some((successor, name))) =
-                (ledger.as_mut(), masters.get(&runner.project_id))
-            {
+        if let (true, Some((successor, name))) = (
+            pane == PaneState::Adopted && heard,
+            masters.get(&runner.project_id),
+        ) {
+            let pane_pid = terminal::pane_pid(&name).await;
+            if let Some(led) = ledger.as_mut() {
                 carried_across(
                     led,
                     &runner.project_id,
                     &name,
                     &successor,
+                    pane_pid,
                     &hosts,
                     &resolved.slug,
                 );
@@ -2258,13 +2261,14 @@ pub(crate) fn placed_again(
 ///
 /// A run is this pane's where the Claude Code process recorded for it — read
 /// above the process that declared it, and again above the subagent that took
-/// it — is still running: a pane that went, and every pane before it, took its
-/// process with it. A session id cannot say this, because core reuses a
-/// non-terminal row for the pane placed next under the same name. So every
-/// open run of the project that this box does not serve under the pane's
-/// session now, and whose process reads alive, is recorded under that session,
-/// where its `run close` and `run choice` act. A run whose process is gone, or
-/// was never read, is left where it is and counted.
+/// it — still runs, beneath the pane's own process `pane_pid`. A session id
+/// cannot say this, because core reuses a non-terminal row for the pane placed
+/// next under the same name, and a process merely alive cannot either, since
+/// nothing but its parentage ties it to this pane. So every open run of the
+/// project that this box does not serve under the pane's session now, and whose
+/// process runs beneath this pane, is recorded under that session, where its
+/// `run close` and `run choice` act. A run whose process is gone or runs
+/// elsewhere is left where it is; one that could not be placed is counted.
 ///
 /// Nothing here reads the session the pane acted under before. The pane's own
 /// frames rewrite that record the moment the registry moves, so a carry keyed
@@ -2274,6 +2278,7 @@ pub(crate) fn carried_across(
     project_id: &str,
     pane: &str,
     successor: &str,
+    pane_pid: Option<u32>,
     hosts: &dyn subagent_host::Hosts,
     slug: &str,
 ) -> usize {
@@ -2293,11 +2298,14 @@ pub(crate) fn carried_across(
             && r.project_id.as_deref() == Some(project_id)
             && r.master_session_id != successor
     }) {
-        let alive = match (run.host_pid, run.host_start.as_deref()) {
-            (Some(pid), Some(start)) => hosts.read(pid, start),
+        let ours = match (run.host_pid, run.host_start.as_deref(), pane_pid) {
+            (Some(pid), Some(start), Some(pane)) => match hosts.read(pid, start) {
+                subagent_host::HostRead::Alive => hosts.beneath(pid, pane),
+                read => read,
+            },
             _ => subagent_host::HostRead::Unreadable,
         };
-        match alive {
+        match ours {
             subagent_host::HostRead::Alive => match led.reparent_run(&run.run_id, successor) {
                 Ok(()) => moved += 1,
                 Err(e) => tracing::warn!(
@@ -2312,12 +2320,12 @@ pub(crate) fn carried_across(
     }
     if moved > 0 {
         tracing::info!(
-            "[master] {slug}: {moved} open run(s) declared from {pane}'s still-running process are now recorded under {successor}, the session core serves it as, so its close and its choice answer for them"
+            "[master] {slug}: {moved} open run(s) declared from a process still running in {pane} are now recorded under {successor}, the session core serves it as, so its close and its choice answer for them"
         );
     }
     if unattributed > 0 {
         tracing::warn!(
-            "[master] {slug}: {unattributed} open run(s) of this project are under another session and no process this box can read is recorded for them, so whether {pane} declared them cannot be said and they are left where they are"
+            "[master] {slug}: {unattributed} open run(s) of this project are under another session and whether their recorded process runs in {pane} could not be read, so they are left where they are"
         );
     }
     moved
@@ -4018,12 +4026,15 @@ mod tests {
         }
     }
 
+    const THE_PANE: u32 = 41_000;
     const THE_PANES_CLAUDE: u32 = 41_001;
     const A_PREDECESSORS_CLAUDE: u32 = 41_002;
+    const ANOTHER_LIVE_CLAUDE: u32 = 41_003;
 
-    /// ISS-1316 criterion 8, and the review's F2: a run is carried by the
-    /// process it was declared from, never by the session it is under, because
-    /// core hands the pane placed next under the same name the same row.
+    /// ISS-1316 criterion 8, and review e801b2's F2: a run is carried by the
+    /// process it was declared from running beneath the pane, never by the
+    /// session it is under, because core hands the pane placed next under the
+    /// same name the same row.
     #[test]
     fn an_adopted_pane_carries_the_runs_its_own_process_declared_and_no_other() {
         let mut led = Ledger::open_in_memory().unwrap();
@@ -4032,6 +4043,12 @@ mod tests {
             subagent_host::HostRead::Alive,
         );
         hosts.set(A_PREDECESSORS_CLAUDE, subagent_host::HostRead::Gone);
+        hosts.set(ANOTHER_LIVE_CLAUDE, subagent_host::HostRead::Alive);
+        hosts
+            .under
+            .lock()
+            .unwrap()
+            .insert((THE_PANES_CLAUDE, THE_PANE));
         let mine = Some(THE_PANES_CLAUDE);
         a_run_of(
             &mut led,
@@ -4074,12 +4091,21 @@ mod tests {
             "sess-reused",
             mine,
         );
+        a_run_of(
+            &mut led,
+            "alive-elsewhere",
+            "ISS-6",
+            "proj-1",
+            "sess-reused",
+            Some(ANOTHER_LIVE_CLAUDE),
+        );
 
         let moved = carried_across(
             &mut led,
             "proj-1",
             "forge-master-one",
             "sess-now",
+            Some(THE_PANE),
             &hosts,
             "one",
         );
@@ -4104,11 +4130,17 @@ mod tests {
         );
         assert_eq!(under("other-project"), "sess-reused");
         assert_eq!(
+            under("alive-elsewhere"),
+            "sess-reused",
+            "a process merely alive is not this pane's: only one running beneath the pane is"
+        );
+        assert_eq!(
             carried_across(
                 &mut led,
                 "proj-1",
                 "forge-master-one",
                 "sess-now",
+                Some(THE_PANE),
                 &hosts,
                 "one"
             ),
