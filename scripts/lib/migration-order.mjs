@@ -13,6 +13,30 @@ export function floorOf(entries) {
   return entries.reduce((max, e) => (e.when > max ? e.when : max), Number.NEGATIVE_INFINITY);
 }
 
+/**
+ * A drizzle journal read from `text`: `{ doc }`, or `{ problem }` naming `where` and what is wrong.
+ * The one reading of the journal's shape, for the checker and the verify window alike.
+ */
+export function readJournal(text, where) {
+  let doc;
+  try {
+    doc = JSON.parse(text);
+  } catch (err) {
+    return { problem: `the journal at ${where} is not readable JSON: ${err.message}` };
+  }
+  if (!Array.isArray(doc?.entries)) {
+    return { problem: `the journal at ${where} carries no \`entries\` array` };
+  }
+  for (const e of doc.entries) {
+    if (typeof e?.idx !== 'number' || typeof e?.when !== 'number' || typeof e?.tag !== 'string') {
+      return {
+        problem: `the journal at ${where} holds an entry without idx, when and tag: ${JSON.stringify(e)}`,
+      };
+    }
+  }
+  return { doc };
+}
+
 /** The entries of `branch` that the base branch does not already carry, in index order. */
 export function newEntries(branch, base) {
   const landed = new Set(base.map((e) => e.tag));
@@ -149,4 +173,56 @@ export function checkSet({ base, baseRef, self, siblings }) {
   const strandedByUs = ahead > 0 ? order.slice(0, ahead) : [];
 
   return { floor, refusals, betweenSiblings, stranded, order, next, strandedByUs };
+}
+
+/**
+ * Every open remote branch's entries above the base's journal; `null` where the remote could not be
+ * read, a `hole` where one branch's ancestry, tree or journal would not — an unknown, never an absence, which
+ * is why absence is read off `ls-tree` and not `cat-file -e`. `afterFetch` re-reads the base.
+ * `baseRef` is the ref skipped as the base itself; `baseCommit` is what a branch already landed is
+ * judged against, which a replay pins to the window's base rather than wherever the ref has moved.
+ */
+export function readOpenSet({
+  git,
+  isAncestor,
+  journal,
+  baseRef,
+  baseCommit,
+  isOurs,
+  parse,
+  afterFetch,
+  fetch = true,
+}) {
+  if (!baseCommit)
+    throw new TypeError('readOpenSet needs the baseCommit it judges ancestry against');
+  if (typeof isAncestor !== 'function')
+    throw new TypeError('readOpenSet needs isAncestor, answering true, false or null for unknown');
+  if (fetch) {
+    const fetched = git([
+      'fetch',
+      '--no-tags',
+      '--prune',
+      'origin',
+      '+refs/heads/*:refs/remotes/origin/*',
+    ]);
+    if (fetched === null) return null;
+  }
+  const refs = git(['for-each-ref', '--format=%(refname:short)', 'refs/remotes/origin']);
+  if (refs === null) return null;
+  const base = afterFetch();
+  const open = [];
+  for (const ref of refs.split('\n').filter(Boolean)) {
+    if (ref === 'origin/HEAD' || ref === baseRef || isOurs(ref)) continue;
+    const landed = isAncestor(ref, baseCommit);
+    if (landed === null) return { hole: { ref, kind: 'ancestry' } };
+    if (landed) continue;
+    const listed = git(['ls-tree', '--name-only', ref, '--', journal]);
+    if (listed === null) return { hole: { ref, kind: 'tree' } };
+    if (listed === '') continue;
+    const text = git(['show', `${ref}:${journal}`]);
+    if (text === null) return { hole: { ref, kind: 'journal' } };
+    const entries = newEntries(parse(text, `${ref}:${journal}`), base);
+    if (entries.length > 0) open.push({ branch: ref, entries });
+  }
+  return { open };
 }

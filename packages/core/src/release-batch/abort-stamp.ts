@@ -84,18 +84,56 @@ export async function settleAbortStamp(
   stampId: string,
   settled: { roster: 'held' | 'released'; closed: string[] },
 ): Promise<void> {
-  await db.execute(sql`
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`
+      UPDATE pipeline_runs
+      SET metadata = jsonb_set(metadata, '{abort}', (metadata -> 'abort') || jsonb_build_object(
+            'roster', ${settled.roster}::text,
+            'closed', (SELECT coalesce(jsonb_agg(DISTINCT id), '[]'::jsonb) FROM jsonb_array_elements_text(
+              (CASE WHEN jsonb_typeof(metadata -> 'abort' -> 'closed') = 'array'
+                    THEN metadata -> 'abort' -> 'closed' ELSE '[]'::jsonb END)
+              || ${JSON.stringify(settled.closed)}::jsonb) AS t(id)))),
+          updated_at = now()
+      WHERE id = ${runId} AND metadata -> 'abort' ->> 'id' = ${stampId}
+    `);
+    await rewordStoredAbort(runId, tx);
+  });
+}
+
+/**
+ * Re-word an aborted refusal a finish stored while the abort was still `returning` the roster, to
+ * the account that abort settled on. Run with the row held: the finish that stored it and the
+ * abort that settles it each call this after their own write, so whichever lands second finds the
+ * other's. Any other stored account is the one that stood when the attempt ended, and stays.
+ */
+export async function rewordStoredAbort(runId: string, executor?: Tx): Promise<void> {
+  if (!executor) return db.transaction((tx) => rewordStoredAbort(runId, tx));
+  const rows = await executor.execute<{ code: string | null; reason: string | null }>(sql`
+    SELECT metadata -> 'finish' -> 'refusal' ->> 'code' AS code,
+           metadata -> 'finish' -> 'refusal' ->> 'reason' AS reason
+    FROM pipeline_runs WHERE id = ${runId} AND metadata -> 'finish' ->> 'state' = 'failed'
+    FOR UPDATE
+  `);
+  const row = rows[0];
+  if (row?.code !== ABORTED_CODE || row.reason !== RETURNING_SENTENCE) return;
+  const reason = abortedSentence(await abortedError(runId, executor));
+  if (reason === row.reason) return;
+  await executor.execute(sql`
     UPDATE pipeline_runs
-    SET metadata = jsonb_set(metadata, '{abort}', (metadata -> 'abort') || jsonb_build_object(
-          'roster', ${settled.roster}::text,
-          'closed', (SELECT coalesce(jsonb_agg(DISTINCT id), '[]'::jsonb) FROM jsonb_array_elements_text(
-            (CASE WHEN jsonb_typeof(metadata -> 'abort' -> 'closed') = 'array'
-                  THEN metadata -> 'abort' -> 'closed' ELSE '[]'::jsonb END)
-            || ${JSON.stringify(settled.closed)}::jsonb) AS t(id)))),
+    SET metadata = jsonb_set(metadata, '{finish}', (metadata -> 'finish') || jsonb_build_object(
+          'refusal', (metadata -> 'finish' -> 'refusal') || jsonb_build_object('reason', ${reason}::text),
+          'version', ((metadata -> 'finish' ->> 'version')::int + 1),
+          'updatedAt', ${new Date().toISOString()}::text)),
         updated_at = now()
-    WHERE id = ${runId} AND metadata -> 'abort' ->> 'id' = ${stampId}
+    WHERE id = ${runId}
   `);
 }
+
+const RETURNING_SENTENCE =
+  'This batch was aborted, so there is nothing left to finish. The abort had not finished putting its roster back at the release gate when this was read, so each issue’s own status says whether its claim is released yet.';
+
+/** The code a finish on an aborted batch is refused with, at the door and on the stored record. */
+export const ABORTED_CODE = 'RELEASE_BATCH_ABORTED';
 
 /** The closed issues the run recorded: its last finish attempt's, and those its claim releases wrote. */
 function recordedClosed(metadata: unknown): string[] {
@@ -171,4 +209,39 @@ export async function abortedError(
   const { account, closed } = abortAccount({ ...row, heldClosed });
   const shown = await issueDisplayIds(closed ?? [], executor);
   return new ReleaseBatchAbortedError(account, row.project_id, closed, shown);
+}
+
+/** What a finish on an aborted batch is told, by what the abort did to that batch. */
+export function abortedSentence(err: ReleaseBatchAbortedError): string {
+  const none = 'This batch was aborted, so there is nothing left to finish';
+  const closed = err.closed ?? [];
+  const kept = closed.length > 0 ? ` ${closedBeforeAbortSentence(closed, err.shown)}` : '';
+  switch (err.account) {
+    case 'shipped':
+      return `${none}: its release had already shipped, so the issues its finish closed stay closed, and the abort moved none of them.`;
+    case 'held': {
+      const rest = closed.length > 0 ? 'Every other issue stays' : 'Its issues stay';
+      // `release-records` takes only issues at the gate that no batch claims, so the abort that
+      // puts them there comes first and is never offered beside it.
+      return `${none}: it recorded a promotion, so the abort kept its claims.${kept} ${rest} at \`releasing\`, still claimed, for a person to settle. To settle them, abort this batch again with \`promotedRoster: "return-to-gate"\`, which puts them back at the release gate; once they are there, if the release did land, record it with POST /api/projects/${err.projectId}/release-records, naming the commit production is serving.`;
+    }
+    case 'returning':
+      return RETURNING_SENTENCE;
+    case 'released':
+      if (closed.length > 0) {
+        return `${none}.${kept} Its claims were released and the rest of its roster is back where the abort put it. If the release did land after all, that is a person’s call to make on each of those.`;
+      }
+      return `${none}: its claims were released and its roster is back where the abort put it. If the release did land after all, that is a person’s call to make on each issue.`;
+    case 'unrecorded':
+      return 'This batch’s run was cancelled, so there is nothing left to finish. Nothing on the run records what that did to its issues, so each issue’s own status and notes are the account; if the release did land after all, that is a person’s call to make on each issue.';
+  }
+}
+
+/** The issues a finish closed before the abort landed, by the key a person knows each by. */
+function closedBeforeAbortSentence(ids: string[], shown: ReadonlyMap<string, string>): string {
+  const one = ids.length === 1;
+  const names = ids
+    .map((id) => shown.get(id) ?? id)
+    .sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
+  return `Its finish had already closed ${names.join(', ')} before the abort, and ${one ? 'it stays' : 'they stay'} closed.`;
 }

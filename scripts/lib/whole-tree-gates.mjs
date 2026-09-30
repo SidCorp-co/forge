@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { globBase } from './whole-tree-shell.mjs';
+import { climbsAfterMagic, globBase, physical } from './whole-tree-shell.mjs';
 
 export const DECLARATION_VALUES = ['whole-tree'];
 
@@ -46,17 +46,21 @@ export function coversRoot(root, dir) {
   return root.startsWith(prefix);
 }
 
+/** Where the kernel takes a path argument: the directory a listing of it really lists. */
 function toPath(value, cwd) {
-  if (typeof value === 'string') return resolve(cwd, value);
-  if (value instanceof URL && value.protocol === 'file:') return resolve(fileURLToPath(value));
-  if (Buffer.isBuffer(value)) return resolve(cwd, value.toString());
-  return null;
+  let path;
+  if (typeof value === 'string') path = value;
+  else if (value instanceof URL && value.protocol === 'file:') path = fileURLToPath(value);
+  else if (Buffer.isBuffer(value)) path = value.toString();
+  else return null;
+  return physical(isAbsolute(path) ? path : `${cwd}/${path}`);
 }
 
 /**
  * The absolute directories one `node:fs` listing call lists, read off the arguments it was really
- * called with: whatever spelling built the path, this is where it landed. A path argument that is
- * none of a string, a Buffer or a file URL is `null`: a listing the guard cannot place, which the
+ * called with and placed where the kernel resolves them: whatever spelling or symlink built the
+ * path, this is where it landed. A path argument that is none of a string, a Buffer or a file URL,
+ * and a glob climbing after a wildcard, is `null`: a listing the guard cannot place, which the
  * watch counts as the root. `cp` and `cpSync` list the tree they copy.
  */
 export function fsListing(name, args, cwd) {
@@ -65,8 +69,8 @@ export function fsListing(name, args, cwd) {
     const base = toPath(opts.cwd ?? '.', cwd);
     const patterns = [].concat(args[0]);
     return patterns.map((p) => {
-      if (typeof p !== 'string' || base === null) return null;
-      return isAbsolute(p) ? resolve(globBase(p)) : resolve(base, globBase(p));
+      if (typeof p !== 'string' || base === null || climbsAfterMagic(p)) return null;
+      return isAbsolute(p) ? physical(globBase(p)) : physical(`${base}/${globBase(p)}`);
     });
   }
   if (args[0] instanceof URL && args[0].protocol !== 'file:') return [];
@@ -265,15 +269,19 @@ export function globListings({ source, file, root, ts }) {
       for (const item of items) {
         const pattern = item ? literal(item) : null;
         if (pattern?.startsWith('!')) continue;
-        const dir = pattern === null ? null : globDir(pattern, file, root);
+        const climbs = pattern !== null && climbsAfterMagic(pattern);
+        const dir = pattern === null || climbs ? null : globDir(pattern, file, root);
         const text = pattern === null ? (item?.getText(sf) ?? '').slice(0, 60) : `'${pattern}'`;
         const call = `import.meta.glob(${text})`;
         const at = `${shown}:${line}`;
+        const why = climbs
+          ? "a '..' after a wildcard, which ends wherever the matches lead"
+          : 'a pattern the guard cannot resolve';
         found.push(
           dir === null
             ? {
                 dir: root,
-                via: `${call} (a pattern the guard cannot resolve, so counted as the root)`,
+                via: `${call} (${why}, so counted as the root)`,
                 at,
                 call,
                 line,
@@ -306,7 +314,7 @@ export function judgeGlobs({ files, root, ts }) {
     for (const g of covering) {
       const from = g.resolved
         ? 'from the repository root'
-        : 'with a pattern the guard cannot resolve (an alias, a `#` import, or not a literal), which counts as the root';
+        : "with a pattern the guard cannot resolve (an alias, a `#` import, not a literal, or a '..' after a wildcard), which counts as the root";
       refused.push({
         path,
         kind: 'glob',
