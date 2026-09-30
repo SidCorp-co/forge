@@ -834,7 +834,6 @@ describe('a run of a file that lists the root', () => {
     writeFileSync(
       join(shared, 'a.test.mjs'),
       [
-        `// ${MARK} whole-tree`,
         "import { Worker } from 'node:worker_threads';",
         "it('leaves a worker', () => { new Worker('setTimeout(() => {}, 20000)', { eval: true }).unref(); });",
       ].join('\n'),
@@ -847,8 +846,10 @@ describe('a run of a file that lists the root', () => {
     );
     writeFileSync(globalThis[Symbol.for('forge.whole-tree-guard')].log, '');
     rmSync(shared, { recursive: true, force: true });
-    expect(`${r.stdout}${r.stderr}`).not.toContain('were still running');
-    expect(r.status).toBe(0);
+    const out = `${r.stdout}${r.stderr}`;
+    expect(out).toMatch(/a\.test\.mjs 1 worker thread\(s\) were still running when the file ended/);
+    expect(out).not.toMatch(/b\.test\.mjs[^\n]*were still running/);
+    expect(r.status).toBe(1);
   }, 60_000);
 
   it('fails one whose child log was removed, since what its processes listed is then unknown', () => {
@@ -1096,11 +1097,23 @@ describe('judging the declarations', () => {
 describe('judging the vitest configurations', () => {
   const guard = `${ROOT}/scripts/lib/whole-tree-guard.mjs`;
 
-  it('passes one whose resolved test.setupFiles holds the guard', () => {
+  it('passes one whose resolved test.setupFiles holds the guard first', () => {
+    const configs = [
+      { path: 'packages/core/vitest.config.ts', root: CORE, setupFiles: [guard, `${CORE}/s.ts`] },
+    ];
+    expect(judgeConfigs(configs, ROOT)).toEqual([]);
+  });
+
+  it('refuses one that runs another setup file before the guard, naming both', () => {
     const configs = [
       { path: 'packages/core/vitest.config.ts', root: CORE, setupFiles: [`${CORE}/s.ts`, guard] },
     ];
-    expect(judgeConfigs(configs, ROOT)).toEqual([]);
+    expect(judgeConfigs(configs, ROOT)).toEqual([
+      {
+        path: 'packages/core/vitest.config.ts',
+        why: "runs 's.ts' before the guard, so a listing function it takes is never watched — put '../../scripts/lib/whole-tree-guard.mjs' first in its `test.setupFiles`",
+      },
+    ]);
   });
 
   it('refuses one that does not, naming the path to add from the root vitest resolves it at', () => {
