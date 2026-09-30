@@ -1,5 +1,5 @@
-// The preload the root-walk watch hands every Node process and worker thread a test starts: what it
-// lists that covers the repository root is appended to the parent's log, one JSON line each.
+// The preload the watch hands every Node process and worker a test starts: a line naming the
+// process, then each listing covering the repository root, one JSON line each on the parent's log.
 
 import { appendFileSync } from 'node:fs';
 import process from 'node:process';
@@ -12,6 +12,7 @@ const where = isMainThread
   ? `child process ${process.pid}`
   : `worker ${threadId} of process ${process.pid}`;
 if (log) {
+  if (isMainThread) appendFileSync(log, `${JSON.stringify({ started: process.pid })}\n`);
   installWatch(
     (entries) => {
       for (const e of entries) {
