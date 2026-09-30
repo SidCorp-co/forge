@@ -7,10 +7,9 @@ export type RateLimitRule = {
 };
 
 /**
- * A dispatcher plus the four to six agents it runs, and one spare. Not a
- * capacity plan — the number of sessions that were observed sharing one
- * credential when the single 600/min bucket started refusing ordinary reads
- * (ISS-961, forge-plugin's box, 2026-09-07).
+ * A dispatcher plus the four to six agents it runs, and one spare. Not a capacity plan — the
+ * sessions observed sharing one credential when the single 600/min bucket started refusing
+ * ordinary reads (ISS-961, forge-plugin's box, 2026-09-07).
  */
 const SESSIONS_PER_TOKEN = 8;
 
@@ -40,11 +39,34 @@ const DEFAULTS = {
   backlogStream: { windowMs: 60_000, max: 20, by: 'user' },
 } as const satisfies Record<string, RateLimitRule>;
 
-function resolve(
-  base: RateLimitRule,
-  max: number | undefined,
-  windowMs: number | undefined,
-): RateLimitRule {
+type RuleName = keyof typeof DEFAULTS;
+
+const OVERRIDES: Record<RuleName, () => [max: number | undefined, windowMs: number | undefined]> = {
+  authLocal: () => [env.RATE_LIMIT_AUTH_LOCAL_MAX, env.RATE_LIMIT_AUTH_LOCAL_WINDOW_MS],
+  authRegister: () => [env.RATE_LIMIT_AUTH_REGISTER_MAX, env.RATE_LIMIT_AUTH_REGISTER_WINDOW_MS],
+  devicesPair: () => [env.RATE_LIMIT_DEVICES_PAIR_MAX, env.RATE_LIMIT_DEVICES_PAIR_WINDOW_MS],
+  patRead: () => [env.RATE_LIMIT_PAT_READ_MAX, env.RATE_LIMIT_PAT_READ_WINDOW_MS],
+  patWrite: () => [env.RATE_LIMIT_PAT_WRITE_MAX, env.RATE_LIMIT_PAT_WRITE_WINDOW_MS],
+  deviceLoginInit: () => [
+    env.RATE_LIMIT_DEVICE_LOGIN_INIT_MAX,
+    env.RATE_LIMIT_DEVICE_LOGIN_INIT_WINDOW_MS,
+  ],
+  deviceLoginApprove: () => [
+    env.RATE_LIMIT_DEVICE_LOGIN_APPROVE_MAX,
+    env.RATE_LIMIT_DEVICE_LOGIN_APPROVE_WINDOW_MS,
+  ],
+  memoryWrite: () => [env.RATE_LIMIT_MEMORY_WRITE_MAX, env.RATE_LIMIT_MEMORY_WRITE_WINDOW_MS],
+  memorySearch: () => [env.RATE_LIMIT_MEMORY_SEARCH_MAX, env.RATE_LIMIT_MEMORY_SEARCH_WINDOW_MS],
+  knowledgeSearch: () => [
+    env.RATE_LIMIT_KNOWLEDGE_SEARCH_MAX,
+    env.RATE_LIMIT_KNOWLEDGE_SEARCH_WINDOW_MS,
+  ],
+  backlogStream: () => [env.RATE_LIMIT_BACKLOG_STREAM_MAX, env.RATE_LIMIT_BACKLOG_STREAM_WINDOW_MS],
+};
+
+function resolve(name: RuleName): RateLimitRule {
+  const base: RateLimitRule = DEFAULTS[name];
+  const [max, windowMs] = OVERRIDES[name]();
   return {
     by: base.by,
     max: max ?? base.max,
@@ -52,65 +74,11 @@ function resolve(
   };
 }
 
-export const RULES: Record<keyof typeof DEFAULTS, RateLimitRule> = {
-  authLocal: resolve(
-    DEFAULTS.authLocal,
-    env.RATE_LIMIT_AUTH_LOCAL_MAX,
-    env.RATE_LIMIT_AUTH_LOCAL_WINDOW_MS,
-  ),
-  authRegister: resolve(
-    DEFAULTS.authRegister,
-    env.RATE_LIMIT_AUTH_REGISTER_MAX,
-    env.RATE_LIMIT_AUTH_REGISTER_WINDOW_MS,
-  ),
-  devicesPair: resolve(
-    DEFAULTS.devicesPair,
-    env.RATE_LIMIT_DEVICES_PAIR_MAX,
-    env.RATE_LIMIT_DEVICES_PAIR_WINDOW_MS,
-  ),
-  patRead: resolve(
-    DEFAULTS.patRead,
-    env.RATE_LIMIT_PAT_READ_MAX,
-    env.RATE_LIMIT_PAT_READ_WINDOW_MS,
-  ),
-  patWrite: resolve(
-    DEFAULTS.patWrite,
-    env.RATE_LIMIT_PAT_WRITE_MAX,
-    env.RATE_LIMIT_PAT_WRITE_WINDOW_MS,
-  ),
-  deviceLoginInit: resolve(
-    DEFAULTS.deviceLoginInit,
-    env.RATE_LIMIT_DEVICE_LOGIN_INIT_MAX,
-    env.RATE_LIMIT_DEVICE_LOGIN_INIT_WINDOW_MS,
-  ),
-  deviceLoginApprove: resolve(
-    DEFAULTS.deviceLoginApprove,
-    env.RATE_LIMIT_DEVICE_LOGIN_APPROVE_MAX,
-    env.RATE_LIMIT_DEVICE_LOGIN_APPROVE_WINDOW_MS,
-  ),
-  memoryWrite: resolve(
-    DEFAULTS.memoryWrite,
-    env.RATE_LIMIT_MEMORY_WRITE_MAX,
-    env.RATE_LIMIT_MEMORY_WRITE_WINDOW_MS,
-  ),
-  memorySearch: resolve(
-    DEFAULTS.memorySearch,
-    env.RATE_LIMIT_MEMORY_SEARCH_MAX,
-    env.RATE_LIMIT_MEMORY_SEARCH_WINDOW_MS,
-  ),
-  knowledgeSearch: resolve(
-    DEFAULTS.knowledgeSearch,
-    env.RATE_LIMIT_KNOWLEDGE_SEARCH_MAX,
-    env.RATE_LIMIT_KNOWLEDGE_SEARCH_WINDOW_MS,
-  ),
-  backlogStream: resolve(
-    DEFAULTS.backlogStream,
-    env.RATE_LIMIT_BACKLOG_STREAM_MAX,
-    env.RATE_LIMIT_BACKLOG_STREAM_WINDOW_MS,
-  ),
-};
+export const RULES = {} as Readonly<Record<RuleName, RateLimitRule>>;
+for (const name of Object.keys(DEFAULTS) as RuleName[]) {
+  Object.defineProperty(RULES, name, { enumerable: true, get: () => resolve(name) });
+}
 
-/** Which of the two per-token buckets a PAT request charges. */
 export type PatRequestClass = 'read' | 'write';
 
 export function patRuleFor(requestClass: PatRequestClass): RateLimitRule {

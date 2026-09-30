@@ -22,7 +22,10 @@ export type RegisterInput = z.infer<typeof registerSchema>;
 
 export const authRoutes = new Hono();
 
-authRoutes.use('/register', rateLimit(RULES.authRegister, { name: 'authRegister' }));
+authRoutes.use(
+  '/register',
+  rateLimit(() => RULES.authRegister, { name: 'authRegister' }),
+);
 
 authRoutes.post(
   '/register',

@@ -11,7 +11,7 @@ const INLINE_GUARD = 'if (import.meta.url === `file://${process.argv[1]}`) {\n';
 const IMPORT_ENV = "import { env } from '../config/env.js';\n";
 const IMPORT_DB = "import { db } from '../db/client.js';\n";
 const reads = (body, header = IMPORT_ENV) =>
-  importTimeReads('packages/core/src/fixture.ts', header + body);
+  importTimeReads('packages/core/src/feature/fixture.ts', header + body);
 
 describe('check-lazy-module-init — reads that run at import', () => {
   it('catches a direct module-scope read', () => {
@@ -81,12 +81,12 @@ describe('check-lazy-module-init — reads that do not run at import', () => {
   });
 
   it('passes a file that imports neither module', () => {
-    expect(importTimeReads('packages/core/src/f.ts', 'const x = 1;\n')).toEqual([]);
+    expect(importTimeReads('packages/core/src/feature/f.ts', 'const x = 1;\n')).toEqual([]);
   });
 
   it('passes a read of some other export of the same module', () => {
     const found = importTimeReads(
-      'packages/core/src/f.ts',
+      'packages/core/src/feature/f.ts',
       "import { Env } from '../config/env.js';\nconst x = Env;\n",
     );
     expect(found).toEqual([]);
@@ -96,7 +96,7 @@ describe('check-lazy-module-init — reads that do not run at import', () => {
 describe('check-lazy-module-init — holes the review found', () => {
   it('catches a read through a namespace import', () => {
     const found = importTimeReads(
-      'packages/core/src/f.ts',
+      'packages/core/src/feature/f.ts',
       "import * as config from '../config/env.js';\nconst port = config.env.PORT;\n",
     );
     expect(found).toHaveLength(1);
@@ -105,7 +105,7 @@ describe('check-lazy-module-init — holes the review found', () => {
 
   it('catches a db read through a namespace import', () => {
     const found = importTimeReads(
-      'packages/core/src/f.ts',
+      'packages/core/src/feature/f.ts',
       "import * as client from '../db/client.js';\nconst rows = client.db.select();\n",
     );
     expect(found).toHaveLength(1);
@@ -114,7 +114,7 @@ describe('check-lazy-module-init — holes the review found', () => {
 
   it('passes a namespace read that is deferred into a function', () => {
     const found = importTimeReads(
-      'packages/core/src/f.ts',
+      'packages/core/src/feature/f.ts',
       "import * as config from '../config/env.js';\nexport const port = () => config.env.PORT;\n",
     );
     expect(found).toEqual([]);
@@ -122,7 +122,7 @@ describe('check-lazy-module-init — holes the review found', () => {
 
   it('passes a namespace identifier that names no lazy export', () => {
     const found = importTimeReads(
-      'packages/core/src/f.ts',
+      'packages/core/src/feature/f.ts',
       "import * as config from '../config/env.js';\nexport type E = typeof config;\nconst x = config.EnvSchema;\n",
     );
     expect(found).toEqual([]);
@@ -184,6 +184,24 @@ describe('check-lazy-module-init — holes the review found', () => {
     const found = reads('export class C {\n  [env.PORT]() {\n    return env.NODE_ENV;\n  }\n}\n');
     expect(found).toHaveLength(1);
     expect(found[0].line).toBe(3);
+  });
+});
+
+describe('check-lazy-module-init — which import names the lazy module', () => {
+  it('catches a read through an import from the same directory', () => {
+    const found = importTimeReads(
+      'packages/core/src/config/rate-limits.ts',
+      "import { env } from './env.js';\nexport const max = env.RATE_LIMIT_AUTH_LOCAL_MAX;\n",
+    );
+    expect(found.map((r) => r.name)).toEqual(['env']);
+  });
+
+  it('does not track a different module whose path merely ends the same way', () => {
+    const found = importTimeReads(
+      'packages/core/src/feature/f.ts',
+      "import { env } from './config/env.js';\nexport const max = env.X;\n",
+    );
+    expect(found).toEqual([]);
   });
 });
 

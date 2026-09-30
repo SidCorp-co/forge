@@ -106,7 +106,7 @@ backlogStreamRoutes.use(
   '/:id/backlog/*',
   requireAuth(),
   assertEmailVerified(),
-  rateLimit(RULES.backlogStream, { name: 'backlog-stream' }),
+  rateLimit(() => RULES.backlogStream, { name: 'backlog-stream' }),
 );
 
 /** Cloudflare sits in front of production and nothing in this repo owns its buffering settings. */

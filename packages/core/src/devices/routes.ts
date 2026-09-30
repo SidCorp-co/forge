@@ -92,7 +92,7 @@ export const devicePublicRoutes = new Hono();
 
 devicePublicRoutes.post(
   '/pair',
-  rateLimit(RULES.devicesPair, { name: 'devices:pair' }),
+  rateLimit(() => RULES.devicesPair, { name: 'devices:pair' }),
   zValidator('json', pairBodySchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),

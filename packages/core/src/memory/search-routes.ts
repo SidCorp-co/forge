@@ -29,7 +29,7 @@ memorySearchRoutes.use(
   '/search',
   requireAuth(),
   assertEmailVerified(),
-  rateLimit(RULES.memorySearch, { name: 'memory-search' }),
+  rateLimit(() => RULES.memorySearch, { name: 'memory-search' }),
 );
 memorySearchRoutes.post(
   '/search',

@@ -931,7 +931,19 @@ CI on PR #457 reported `1 file failed` with the file itself reading
 `packages/core/vitest.setup.ts`; `packages/core/vitest.integration.config.ts` carries no
 `setupFiles`, which is where it bit.
 
-This checker is what keeps the two lazy, because the property is invisible in a green run: one new
+A third export joined them with ISS-18: `RULES` in `packages/core/src/config/rate-limits.ts` reads
+`env` on every read, so a route file writing `rateLimit(RULES.x)` at module scope validated the
+environment when imported. A caller now hands `rateLimit` a function returning the rule.
+
+**An import is matched by where it resolves, not by how it is spelled.**
+<!-- doc-citation: unchecked `config/env.js` `./env.js` — import specifiers as written in source, not paths in this tree. -->
+Matching the specifier's tail — `config/env.js` — missed `packages/core/src/config/rate-limits.ts`
+for as long as it existed, because it sits beside `packages/core/src/config/env.ts` and imports
+`./env.js`; 22 import-time reads went unreported while this gate was green.
+Resolving each relative specifier from the importing file closes that, and the lazy modules
+themselves are scanned too rather than skipped.
+
+This checker is what keeps them lazy, because the property is invisible in a green run: one new
 module-scope read puts the side effect back for every module downstream of the file that does it,
 and breaks nothing on the day it lands. No type can hold it — `env.UPLOADS_MAX_BYTES` is legal
 wherever `env` is in scope, which is what an import is for — so the rule is a walk over the

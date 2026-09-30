@@ -82,10 +82,14 @@ export type RateLimitOptions = {
   name?: string;
 };
 
-export function rateLimit(rule: RateLimitRule, opts: RateLimitOptions = {}): MiddlewareHandler {
+export function rateLimit(
+  ruleOf: RateLimitRule | (() => RateLimitRule),
+  opts: RateLimitOptions = {},
+): MiddlewareHandler {
   const ruleName = opts.name ?? 'default';
 
   return async (c, next) => {
+    const rule = typeof ruleOf === 'function' ? ruleOf() : ruleOf;
     const derived = deriveKey(rule, ruleName, c);
     if (!derived) {
       // No identifier available — let the request through rather than share a

@@ -9,11 +9,19 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SCAN_ROOT = join(ROOT, 'packages', 'core', 'src');
 const SKIP_DIRS = new Set(['node_modules', 'dist', 'coverage', '.next', '.turbo']);
 
-/** The two modules whose exports must not be read at import time, and the export each owns. */
+/** The modules whose exports must not be read at import time, and the export each owns. */
 const LAZY_EXPORTS = [
-  { file: 'config/env.ts', specifier: /config\/env\.js$/, name: 'env' },
-  { file: 'db/client.ts', specifier: /db\/client\.js$/, name: 'db' },
+  { file: 'config/env.ts', name: 'env' },
+  { file: 'db/client.ts', name: 'db' },
+  { file: 'config/rate-limits.ts', name: 'RULES' },
 ];
+
+/** The lazy module an import names, resolved from the importing file rather than matched by spelling. */
+function lazyExportFor(fileName, spec) {
+  if (!spec.startsWith('.')) return undefined;
+  const target = resolve(ROOT, dirname(fileName), spec).replace(/\.js$/, '.ts');
+  return LAZY_EXPORTS.find((e) => target === join(SCAN_ROOT, e.file));
+}
 
 function die(message) {
   console.error(`check-lazy-module-init: ${message}`);
@@ -40,7 +48,7 @@ function trackedNames(sourceFile) {
     if (!ts.isImportDeclaration(statement)) continue;
     if (!ts.isStringLiteral(statement.moduleSpecifier)) continue;
     const spec = statement.moduleSpecifier.text;
-    const lazy = LAZY_EXPORTS.find((e) => e.specifier.test(spec));
+    const lazy = lazyExportFor(sourceFile.fileName, spec);
     if (lazy === undefined) continue;
     const bindings = statement.importClause?.namedBindings;
     if (bindings === undefined) continue;
@@ -195,8 +203,6 @@ function main() {
   const offenders = [];
   for (const path of files) {
     const rel = relative(ROOT, path);
-    // The two modules own their own exports and are where the lazy read is built.
-    if (LAZY_EXPORTS.some((e) => rel.endsWith(e.file))) continue;
     const reads = importTimeReads(path, readFileSync(path, 'utf8'));
     if (reads.length > 0) offenders.push({ path: rel, reads });
   }
@@ -214,8 +220,8 @@ function main() {
   }
   console.error(
     '\nEach of these makes IMPORTING this file do work: reading `env` validates the whole\n' +
-      'environment and throws on a missing variable, and reading `db` constructs the postgres\n' +
-      'pool. Every module downstream of this one inherits that, and the failure it produces\n' +
+      'environment and throws on a missing variable, reading `db` constructs the postgres\n' +
+      'pool, and reading `RULES` reads `env`. Every module downstream of this one inherits that, and the failure it produces\n' +
       'names no test and carries no assertion (ISS-1067).\n' +
       '\n' +
       'Move the read to the moment the value is needed. The three shapes already in the tree:\n' +

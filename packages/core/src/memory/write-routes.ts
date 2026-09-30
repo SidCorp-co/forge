@@ -27,7 +27,7 @@ memoryWriteRoutes.use(
   '*',
   requireAuth(),
   assertEmailVerified(),
-  rateLimit(RULES.memoryWrite, { name: 'memory-write' }),
+  rateLimit(() => RULES.memoryWrite, { name: 'memory-write' }),
 );
 
 memoryWriteRoutes.post(

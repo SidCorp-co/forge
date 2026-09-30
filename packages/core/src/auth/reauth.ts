@@ -18,7 +18,10 @@ const reauthSchema = z.object({
 
 // Reuse the authLocal rate-limit bucket: same risk profile (password brute-
 // force against a known user), keyed by IP. Five attempts per 15 minutes.
-reauthRoutes.use('/reauth', rateLimit(RULES.authLocal, { name: 'authReauth' }));
+reauthRoutes.use(
+  '/reauth',
+  rateLimit(() => RULES.authLocal, { name: 'authReauth' }),
+);
 reauthRoutes.use('/reauth', requireAuth());
 
 reauthRoutes.post(

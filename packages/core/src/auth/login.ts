@@ -22,7 +22,10 @@ export type LoginInput = z.infer<typeof loginSchema>;
 
 export const loginRoutes = new Hono();
 
-loginRoutes.use('/local', rateLimit(RULES.authLocal, { name: 'authLocal' }));
+loginRoutes.use(
+  '/local',
+  rateLimit(() => RULES.authLocal, { name: 'authLocal' }),
+);
 
 loginRoutes.post(
   '/local',

@@ -112,7 +112,7 @@ const searchBodySchema = z.object({
 
 knowledgeRoutes.post(
   '/:id/knowledge/search',
-  rateLimit(RULES.knowledgeSearch, { name: 'knowledge-search' }),
+  rateLimit(() => RULES.knowledgeSearch, { name: 'knowledge-search' }),
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest('invalid project id');
   }),
