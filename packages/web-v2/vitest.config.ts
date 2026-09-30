@@ -1,16 +1,23 @@
 import { resolve } from 'node:path';
 import { cpus } from 'node:os';
 import { defineConfig } from 'vitest/config';
-import { workerOverride } from '../../scripts/lib/worker-override.mjs';
 
 // vitest defaults to one worker per core minus one, PER PACKAGE, and turbo fans the
 // packages out at the same time — which put a 12-core box at load average 27 and made
 // the machine unusable while the suites ran. A share of the cores, floored, keeps the
-// whole fan-out inside the box. VITEST_MAX_WORKERS overrides it for a one-off run, and a value
-// that is not a positive whole number is refused by name.
+// whole fan-out inside the box. VITEST_MAX_WORKERS overrides it for a one-off run; anything but a
+// positive whole number is refused here, not shared, as the images copy only packages/.
 function workers(share: number, { cap = Number.POSITIVE_INFINITY, min = 1 } = {}): number {
-  const override = workerOverride(process.env, 'packages/web-v2/vitest.config.ts');
-  if (override !== undefined) return override;
+  const override = process.env.VITEST_MAX_WORKERS;
+  if (override !== undefined && override !== '') {
+    if (!/^[1-9][0-9]*$/.test(override)) {
+      throw new Error(
+        `VITEST_MAX_WORKERS="${override}" is not a worker count for packages/web-v2/vitest.config.ts. ` +
+          'It takes a positive whole number such as 4, or is left unset so the machine decides.',
+      );
+    }
+    return Number(override);
+  }
   return Math.max(min, Math.min(cap, Math.floor((cpus().length || 1) / share) || 1));
 }
 
