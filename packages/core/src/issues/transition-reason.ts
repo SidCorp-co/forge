@@ -24,6 +24,14 @@ const HEADINGS: Record<string, (from: IssueStatus, kind?: WaitingKind | null) =>
       : `⏸ **Waiting on a human decision** — moved from \`${from}\``,
 };
 
+/** The first line of every announcement this module writes: a move into a park, or a person leaving one. */
+const ANNOUNCES_A_MOVE = /(?:— moved from `[a-z_]+`|^↩ \*\*Left `[a-z_]+` for `[a-z_]+`\*\*)$/u;
+
+/** Whether a comment is one of this module's move announcements rather than something a person wrote. */
+export function announcesAMove(body: string): boolean {
+  return ANNOUNCES_A_MOVE.test(body.split('\n')[0]?.trim() ?? '');
+}
+
 export function buildTransitionReasonBody(
   toStatus: IssueStatus,
   fromStatus: IssueStatus,

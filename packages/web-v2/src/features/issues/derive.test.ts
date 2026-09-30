@@ -809,6 +809,7 @@ function readPark(over: Partial<IssuePark> = {}): ParkReading {
 			resume: { at: null, why: "no park record" },
 			record: null,
 			readings: [],
+			answer: null,
 			openQuestionIds: [],
 			...over,
 		},
@@ -991,6 +992,47 @@ describe("deriveBlockerState", () => {
 			expect(b?.reason).toContain("did not say for what");
 			expect(b?.cta.kind).toBe("none");
 			expect(b?.detail).toMatch(/Move anyway/);
+		});
+
+		it("says a thread question is answered and resumes where the work stopped, once a person replied", () => {
+			const b = deriveBlockerState(
+				blockerIssue({ status: "needs_info" }),
+				undefined,
+				undefined,
+				readPark({
+					status: "needs_info",
+					reason: "Which tenant?",
+					resume: { at: "in_progress", recordId: "c1" },
+					answer: { commentId: "a1", postedAt: "2026-09-30T00:00:00.000Z", text: "tenant B" },
+				}),
+			);
+			expect(b?.reason).toMatch(/has an answer/);
+			expect(b?.cta).toEqual({ label: "Resume at In progress", kind: "resume-park" });
+			expect(b?.resumeAt).toBe("in_progress");
+		});
+
+		it("speaks no kernel word — park, rung, decision round — in any banner a park can show", () => {
+			const KERNEL_WORDS = /\b(park|parked|parking|rung|decision round)\b/i;
+			const shapes: Array<Partial<IssuePark>> = [];
+			for (const owes of ["information", "decision", "resource", null] as const) {
+				for (const resume of [{ at: "developed" as const, recordId: "c" }, { at: null, why: "x" }]) {
+					shapes.push({ status: "waiting", owes, resume });
+					shapes.push({ status: "needs_info", owes, resume, reason: "Which tenant?" });
+					shapes.push({
+						status: "needs_info",
+						owes,
+						resume,
+						reason: "Which tenant?",
+						answer: { commentId: "a", postedAt: "x", text: "B" },
+					});
+				}
+			}
+			for (const shape of shapes) {
+				const b = deriveBlockerState(blockerIssue({ status: shape.status ?? "needs_info" }), undefined, undefined, readPark(shape));
+				for (const said of [b?.reason, b?.whoMustAct, b?.cta.label, b?.detail]) {
+					expect(said ?? "").not.toMatch(KERNEL_WORDS);
+				}
+			}
 		});
 
 		it("never requests approved from any park shape", () => {

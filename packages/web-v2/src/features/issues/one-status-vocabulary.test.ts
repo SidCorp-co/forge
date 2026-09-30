@@ -59,13 +59,11 @@ describe("the lane word is not reachable under a status-label name", () => {
 
 describe("exactly one kernel-status-to-word map", () => {
   const KEY_OF = new RegExp(`^\\s*(${ISSUE_STATUSES.join("|")})\\s*:\\s*["'\`]`, "u");
-  const HOME = "features/issues/derive.ts";
-  // A DISPLAY-WORD map has to be total or nearly so: `statusLabel` is called for whatever status a
-  // row holds, and a partial table shows raw enum values on the rest. So a second one is a literal
-  // over a large majority of the statuses. Twelve spares the two eight-status tables in
-  // `features/skills/types.ts` and `lib/api/error.ts`, which map a status to the pipeline STEP it
-  // dispatches: a different vocabulary about the same key, and a near-duplicate of each other
-  // rather than of this map. `docs/proposals/two-copies-of-the-status-to-step-table.md` holds it.
+  const HOME = resolve(SRC, "../../contracts/src/issue-vocabulary.ts");
+  // A DISPLAY-WORD map is total or nearly so, since a partial one shows raw enum values, so a second
+  // one is a literal over a large majority of the statuses. Twelve spares the two eight-status tables
+  // in `features/skills/types.ts` and `lib/api/error.ts`, which map a status to the pipeline STEP it
+  // dispatches — another vocabulary; `docs/proposals/two-copies-of-the-status-to-step-table.md`.
   const MAJORITY = 12;
 
   const statusesIn = (text: string): Set<string> => {
@@ -82,7 +80,6 @@ describe("exactly one kernel-status-to-word map", () => {
     for (const { path, text } of FILES) {
       // A test's expected-word fixture is a second opinion, not a second map.
       if (path.endsWith(".test.ts") || path.endsWith(".test.tsx")) continue;
-      if (path === HOME) continue;
       const n = statusesIn(text).size;
       if (n >= MAJORITY) found.push(`${path}: ${n} kernel statuses keyed to words`);
     }
@@ -90,9 +87,7 @@ describe("exactly one kernel-status-to-word map", () => {
   });
 
   it("finds the one that IS there, so the scan is not passing on a broken pattern", () => {
-    const home = FILES.find((f) => f.path === HOME);
-    expect(home, `${HOME} was not walked`).toBeDefined();
-    const seen = statusesIn((home as { text: string }).text);
+    const seen = statusesIn(readFileSync(HOME, "utf8"));
     expect([...seen].sort()).toEqual([...ISSUE_STATUSES].sort());
   });
 });

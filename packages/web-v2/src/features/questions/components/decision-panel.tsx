@@ -19,6 +19,20 @@ import { QuestionCard } from "./question-card";
 
 export const DECISION_PANEL_ANCHOR = "issue-decisions";
 
+/** The gap left between a sticky header and the question it would otherwise cover. */
+const BELOW_HEADER_PX = 12;
+
+/**
+ * Bring the questions into view with their first line below `stickyHeader`, which a plain
+ * `scrollIntoView` scrolls them under — on a phone the header wraps and covers the prompt.
+ */
+export function focusDecisionPanel(stickyHeader: HTMLElement | null): void {
+  const panel = document.getElementById(DECISION_PANEL_ANCHOR);
+  if (!panel) return;
+  panel.style.scrollMarginTop = `${(stickyHeader?.offsetHeight ?? 0) + BELOW_HEADER_PX}px`;
+  panel.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 /**
  * What this panel found, and nothing about why.
  *
@@ -33,7 +47,7 @@ function NothingToAnswer() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>No decision round on this issue</CardTitle>
+        <CardTitle>No questions on this issue</CardTitle>
       </CardHeader>
       <CardContent className="space-y-2">
         <p className="fg-body-sm text-fg">
@@ -49,15 +63,20 @@ function NothingToAnswer() {
   );
 }
 
-/** A question a park asked only in the thread: no question row carries it (ISS-1310). */
+/** A question an issue asked only in the thread: no question row carries it (ISS-1310). */
 export interface ThreadQuestion {
+  /** The sentence the run stopped with. */
   prompt: string | null;
-  readings: string[];
+  /** Why the work stopped, where it says more than the sentence. */
+  why: string | null;
+  readings: Array<{ choice: string; outcome: string | null }>;
+  answer: { commentId: string; postedAt: string; text: string } | null;
 }
 
 /**
  * The question as the run wrote it in the thread, answered where it is shown. The run reads a
- * person's comment posted after its park as the answer, so the answer goes up as that comment.
+ * person's comment posted after it stopped as the answer, so the answer goes up as that comment,
+ * and once one is there the card shows it and asks nothing more.
  */
 function ThreadQuestionCard({
   question,
@@ -82,24 +101,41 @@ function ThreadQuestionCard({
       setSending(false);
     }
   };
+  const answer = question.answer;
   return (
     <Card>
       <CardHeader>
-        <CardTitle>The question this issue is waiting on</CardTitle>
+        <CardTitle>
+          {answer ? "The question this issue asked" : "The question this issue is waiting on"}
+        </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        <p className="fg-caption text-muted">
-          The run asked this in the thread rather than as a decision round.
-        </p>
+        <p className="fg-caption text-muted">The run asked this in the comments.</p>
         {question.prompt && <p className="fg-body-sm whitespace-pre-wrap text-fg">{question.prompt}</p>}
+        {question.why && (
+          <p className="fg-body-sm text-muted">
+            <span className="text-fg">Why it stopped:</span> {question.why}
+          </p>
+        )}
         {question.readings.length > 0 && (
           <ul className="fg-body-sm list-disc space-y-1 pl-5 text-fg">
             {question.readings.map((reading) => (
-              <li key={reading}>{reading}</li>
+              <li key={`${reading.choice}-${reading.outcome ?? ""}`}>
+                <span className="font-medium">{reading.choice}</span>
+                {reading.outcome && <span className="text-muted"> — {reading.outcome}</span>}
+              </li>
             ))}
           </ul>
         )}
-        {!onAnswer ? null : sent ? (
+        {answer ? (
+          <div role="status" className="space-y-1 rounded-md border border-line-subtle p-3">
+            <p className="fg-caption text-muted">Answered in the comments</p>
+            <p className="fg-body-sm whitespace-pre-wrap text-fg">{answer.text}</p>
+            <p className="fg-caption text-muted">
+              Resume the issue from its status once the answer is enough to go on.
+            </p>
+          </div>
+        ) : !onAnswer ? null : sent ? (
           <p role="status" className="fg-body-sm text-fg">
             Your answer is on the thread. Resume the issue from its status when it can go on.
           </p>

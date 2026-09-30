@@ -43,8 +43,8 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), prefetch:
 vi.mock("@/features/projects/hooks", () => ({ useProjects: () => ({ data: [{ id: "p1", role: "admin" }] }) }));
 vi.mock("@/features/pipeline/hooks", () => ({ useResumeRun: () => ({ mutate: vi.fn(), isPending: false }) }));
 vi.mock("@/features/questions/components/decision-panel", () => ({
-  DECISION_PANEL_ANCHOR: "decisions",
   DecisionPanel: () => null,
+  focusDecisionPanel: vi.fn(),
 }));
 vi.mock("@/features/shell", () => ({ buildShareLink: (p: string) => p, useRecents: () => ({ push: vi.fn() }) }));
 vi.mock("@/lib/ws/use-room", () => ({ useRoom: () => undefined }));
@@ -224,6 +224,7 @@ describe("the issue page of work a person owes an answer", () => {
         resume: { at: null, why: "not stopped" },
         record: null,
         readings: [],
+        answer: null,
         openQuestionIds: ["q1"],
       },
     };

@@ -40,7 +40,9 @@ export function useIssuePark(
 export const ANSWER_LABEL = "Answer the question";
 export const NOT_NEEDED_LABEL = "The question is not needed any more…";
 export const MOVE_ANYWAY_LABEL = "Move anyway…";
-export const NO_RUNG_LABEL = "No resume rung was recorded for this park";
+export const NO_RUNG_LABEL = "Nothing says where this issue picks up again";
+export const PARK_LOADING_LABEL = "Reading what this issue is waiting on…";
+export const PARK_ERROR_LABEL = "Couldn't read what this issue is waiting on, so no resume is offered";
 
 export interface ParkMenuActions {
 	answer: () => void;
@@ -83,10 +85,7 @@ export function parkMenuItems(args: {
 		: ordinary.map((item) => ({ ...item, separatorBefore: true }));
 	if (reading.state !== "ready") {
 		if (!parked) return null;
-		const said =
-			reading.state === "loading"
-				? "Reading what this park waits on…"
-				: "Couldn't read what this park waits on, so no resume rung is offered";
+		const said = reading.state === "loading" ? PARK_LOADING_LABEL : PARK_ERROR_LABEL;
 		return [{ label: said, disabled: true }, ...anyway];
 	}
 	const park = reading.park;
