@@ -80,9 +80,10 @@ exactly where it is now — `placement_under` in `daemon/master.rs`, off the led
   `packages/runner/crates/forge-runner-core/src/daemon/master.rs` — the whole decision, pure, and
   the reason a pane is absent, in words that name the act that reverses it.
 - `master_exit::holding`, which answers what runs a master holds in three values rather than two.
-- `forge-runner master status`, which prints three answers as three lines: the pane, the owner's
-  standing, and whether this box's runner row takes work at all. A web surface has the same three
-  questions to answer, and it answers the first today.
+- `forge-runner master status`, which prints its answers one per line: the pane, why the last pane
+  exited where it is gone, the owner's standing, whether this box's runner row takes work at all,
+  and whether this box can be heard by the pane it has. A web surface has the pane, the standing and
+  the runner row to answer too, and it answers the first today.
 - `residentMasterSql` in `packages/core/src/devices/master-session.ts`, and the `ResidentMaster`
   block in `packages/web-v2/src/features/runners/components/resident-master.tsx` — which is where a
   control core can set would mount, beside the reading it would change.
