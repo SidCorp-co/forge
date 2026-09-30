@@ -70,8 +70,8 @@ export function renderLedger(ledger) {
     `- Open branches outside the window read for migration numbers: ${ledger.openBranches.length}`,
     `- Combination: \`${ledger.chain.head}\`, ${ledger.chain.landed} member(s) entered`,
     '',
-    '| # | Issue | Branch | Reviewed head | Arrived | Admission | Landing |',
-    '|---|---|---|---|---|---|---|',
+    '| # | Issue | Branch | Reviewed head | Entry gate | Arrived | Admission | Landing |',
+    '|---|---|---|---|---|---|---|---|',
   ];
   for (const [i, m] of ledger.members.entries()) {
     const landing = m.landing
@@ -80,7 +80,7 @@ export function renderLedger(ledger) {
         ? 'isolated'
         : 'refused';
     out.push(
-      `| ${i + 1} | ${cell(m.issue)} | ${cell(m.branch)} | \`${m.head.slice(0, 12)}\` | ${cell(m.arrivedAt)} | ${cell(m.admission)} | ${landing} |`,
+      `| ${i + 1} | ${cell(m.issue)} | ${cell(m.branch)} | \`${m.head.slice(0, 12)}\` | ${cell(m.entry?.record ?? 'none')} | ${cell(m.arrivedAt)} | ${cell(m.admission)} | ${landing} |`,
     );
   }
   const notes = [];
@@ -96,8 +96,15 @@ export function renderLedger(ledger) {
       notes.push(`- ${m.issue}: the old tag was rewritten in ${m.rewrites.join(', ')}`);
     if (m.unions?.length) notes.push(`- ${m.issue}: both sides kept in ${m.unions.join(', ')}`);
   }
-  for (const a of ledger.attributions ?? [])
-    notes.push(`- Attribution (${a.kind}${a.owner ? `, ${a.owner}` : ''}): ${a.says}`);
+  for (const a of ledger.attributions ?? []) {
+    const earlier =
+      a.chain && a.chain !== ledger.chain.head
+        ? `, measured on the earlier chain \`${a.chain.slice(0, 12)}\``
+        : '';
+    notes.push(
+      `- Attribution of \`${cell(a.subject)}\` (${a.kind}${a.owner ? `, ${a.owner}` : ''}${earlier}): ${a.says}`,
+    );
+  }
   for (const pass of ledger.passes ?? []) {
     notes.push(`- ${passLine(pass)}`);
     if (pass.words) {

@@ -144,7 +144,10 @@ function mergeAdditive(base, ours, theirs, at = []) {
   return out;
 }
 
-/** The first object `adder` points at that `other` removes or changes, as its refusal. */
+/**
+ * The first object `adder` points at that `other` removes or changes, as its refusal. Each side is
+ * named by a function of the object it touched, so an earlier member is named for the object.
+ */
 function danglingReference(adder, other, adderName, otherName) {
   for (const [key, d] of adder) {
     if (d.op === 'remove') continue;
@@ -152,7 +155,7 @@ function danglingReference(adder, other, adderName, otherName) {
       const hit = other.get(ref);
       if (hit && !hit.additive) {
         const verb = hit.op === 'remove' ? 'removes' : 'changes';
-        return `${key} in ${adderName} points at ${ref}, which ${otherName} ${verb}`;
+        return `${key} in ${adderName(key)} points at ${ref}, which ${otherName(ref)} ${verb}`;
       }
     }
   }
@@ -163,10 +166,17 @@ function danglingReference(adder, other, adderName, otherName) {
  * `snap` — diffed by its member from `oldParent` — re-expressed over `newParent`. Refused, naming
  * the object, where the member and the combination both touch one object and either side removes
  * or changes what was there, or where one side points at an object the other removed or changed:
- * the snapshot that came out would describe a schema no migration order produces.
+ * the snapshot that came out would describe a schema no migration order produces. `earlier` names
+ * the earlier member that touched an object, `an earlier member` where the caller cannot say.
  * @returns {{ snapshot: object } | { refusal: string }}
  */
-export function rebaseSnapshot({ oldParent, newParent, snap }) {
+export function rebaseSnapshot({
+  oldParent,
+  newParent,
+  snap,
+  earlier = () => 'an earlier member',
+}) {
+  const me = () => 'this member';
   for (const k of ['version', 'dialect']) {
     if (snap[k] !== newParent[k]) {
       return {
@@ -181,10 +191,10 @@ export function rebaseSnapshot({ oldParent, newParent, snap }) {
     const [coll, name] = [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)];
     const other = theirs.get(key);
     if (other && (!d.additive || !other.additive)) {
-      const who = !d.additive ? 'this member' : 'an earlier member';
+      const who = !d.additive ? 'this member' : earlier(key);
       const what = (!d.additive ? d : other).op === 'remove' ? 'removes' : 'changes what was in';
       return {
-        refusal: `${key} is touched by this member and by an earlier member, and ${who} ${what} it`,
+        refusal: `${key} is touched by this member and by ${earlier(key)}, and ${who} ${what} it`,
       };
     }
     out[coll] ??= {};
@@ -195,21 +205,20 @@ export function rebaseSnapshot({ oldParent, newParent, snap }) {
       if (merged instanceof Conflict && merged.twice) {
         const at =
           merged.at.length > 0
-            ? `added to by this member and by an earlier member alike, at ${merged.at.join('.')}`
-            : 'added by this member and by an earlier member alike';
+            ? `added to by this member and by ${earlier(key)} alike, at ${merged.at.join('.')}`
+            : `added by this member and by ${earlier(key)} alike`;
         return { refusal: `${key} is ${at}, and two migrations cannot both create it` };
       }
       if (merged instanceof Conflict) {
         return {
-          refusal: `${key} is added to by this member and an earlier member, and the two additions disagree`,
+          refusal: `${key} is added to by this member and ${earlier(key)}, and the two additions disagree`,
         };
       }
       out[coll][name] = merged;
     }
   }
   const byRef =
-    danglingReference(mine, theirs, 'this member', 'an earlier member') ??
-    danglingReference(theirs, mine, 'an earlier member', 'this member');
+    danglingReference(mine, theirs, me, earlier) ?? danglingReference(theirs, mine, earlier, me);
   if (byRef) return { refusal: byRef };
   const meta = mergeAdditive(oldParent?._meta, newParent._meta, snap._meta);
   if (meta instanceof Conflict)

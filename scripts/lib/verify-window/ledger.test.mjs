@@ -118,6 +118,49 @@ describe('renderLedger', () => {
     });
     const row = md.split('\n').find((l) => /^\| 1 \|/.test(l));
     expect(row).toContain('ISS-1-x\\\\\\|spoof');
-    expect(row.replace(/\\./g, '').split('|')).toHaveLength(9);
+    expect(row.replace(/\\./g, '').split('|')).toHaveLength(10);
+  });
+
+  it('names what each attribution was about, and the chain it was measured on where that was an earlier one', () => {
+    const now = 'c'.repeat(40);
+    const md = renderLedger({
+      window: 'w1',
+      base: { branch: 'main', sha: 'b'.repeat(40) },
+      thresholds: null,
+      declarations: 'x',
+      openBranches: [],
+      members: [
+        {
+          ...member,
+          entry: { at: head, record: 'ISS-1 comment 7f3a' },
+          admission: 'admitted',
+          landing: now,
+          isolated: null,
+          refusals: [],
+        },
+      ],
+      chain: { head: now, landed: 1 },
+      attributions: [
+        {
+          subject: 'src/a.ts',
+          chain: now,
+          kind: 'member',
+          owner: 'ISS-1',
+          says: 'last to change it',
+        },
+        {
+          subject: 'pnpm test',
+          chain: 'd'.repeat(40),
+          kind: 'pre-existing',
+          owner: null,
+          says: 'it fails on the base alone',
+        },
+      ],
+    });
+    expect(md).toContain('- Attribution of `src/a.ts` (member, ISS-1): last to change it');
+    expect(md).toContain(
+      '- Attribution of `pnpm test` (pre-existing, measured on the earlier chain `dddddddddddd`): it fails on the base alone',
+    );
+    expect(md).toMatch(/\| 1 \| ISS-1 \| ISS-1-x \| `aaaaaaaaaaaa` \| ISS-1 comment 7f3a \|/);
   });
 });

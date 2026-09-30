@@ -6,6 +6,19 @@ export function windowBranch(window) {
   return `chore/verify-window-${window}`;
 }
 
+const IN_FLIGHT = new Set(['queued', 'in_progress', 'waiting', 'requested', 'pending']);
+const VERDICTS = new Set(['failure', 'timed_out']);
+
+/** What to do about a required check that is not a success: nothing has refused until it concludes. */
+export function nextForCheck(state, branch, base) {
+  if (state === 'absent') {
+    return `nothing has reported there yet, so nothing has refused: the check runs on the window's one pull request from ${branch} into ${base}, and is read again once that run concludes`;
+  }
+  if (IN_FLIGHT.has(state)) return 'its run has not concluded: read it again once it has';
+  if (VERDICTS.has(state)) return 'attribute the refusal before anything lands';
+  return 'that conclusion is no verdict on the tree, so nothing is attributed: re-run the check';
+}
+
 /**
  * Whether a validated window may land now, and how. Refused where the base or any landed member
  * moved since the combination was built — the validation then describes a tree nobody is landing —
@@ -76,7 +89,7 @@ export function planLanding({ repoDir, ledger, readCheck }) {
   if (check.refusal) refusals.push(check.refusal);
   else if (check.state !== 'success') {
     refusals.push(
-      `${read.config.check} at the chain head ${ledger.chain.head} is ${check.state}: attribute the refusal before anything lands`,
+      `${read.config.check} at the chain head ${ledger.chain.head} is ${check.state}: ${nextForCheck(check.state, branch, ledger.base.branch)}`,
     );
   }
   lines.push(

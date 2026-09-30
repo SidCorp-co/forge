@@ -5,31 +5,95 @@
  * versions of an edited line publishes the old one and the new one side by side.
  */
 
-const MAX_CELLS = 25_000_000;
-
-/** For each line of `a`, the line of `b` a longest common subsequence matches it to, or -1. */
-function matchLines(a, b) {
-  const width = b.length + 1;
-  const len = new Uint32Array((a.length + 1) * width);
-  for (let i = a.length - 1; i >= 0; i--) {
-    for (let j = b.length - 1; j >= 0; j--) {
-      len[i * width + j] =
-        a[i] === b[j]
-          ? len[(i + 1) * width + j + 1] + 1
-          : Math.max(len[(i + 1) * width + j], len[i * width + j + 1]);
+/**
+ * Where two ranges of line ids meet on a shortest edit script: Myers' middle snake, found by
+ * walking forward from the start and backward from the end until the two paths overlap. Called
+ * only once both ranges are non-empty and differ at both ends, so the point is strictly inside.
+ */
+function middleSnake(x, xLo, xHi, y, yLo, yHi) {
+  const n = xHi - xLo;
+  const m = yHi - yLo;
+  const max = Math.ceil((n + m) / 2);
+  const off = max + 1;
+  const size = 2 * max + 3;
+  const fwd = new Int32Array(size).fill(-1);
+  const rev = new Int32Array(size).fill(-1);
+  fwd[off + 1] = 0;
+  rev[off + 1] = 0;
+  const delta = n - m;
+  const odd = delta % 2 !== 0;
+  let [fStart, fEnd, rStart, rEnd] = [0, 0, 0, 0];
+  for (let d = 0; d <= max; d++) {
+    for (let k = -d + fStart; k <= d - fEnd; k += 2) {
+      const i = off + k;
+      let a = k === -d || (k !== d && fwd[i - 1] < fwd[i + 1]) ? fwd[i + 1] : fwd[i - 1] + 1;
+      let b = a - k;
+      while (a < n && b < m && x[xLo + a] === y[yLo + b]) {
+        a++;
+        b++;
+      }
+      fwd[i] = a;
+      if (a > n) fEnd += 2;
+      else if (b > m) fStart += 2;
+      else if (odd) {
+        const j = off + delta - k;
+        if (j >= 0 && j < size && rev[j] !== -1 && a >= n - rev[j]) return [xLo + a, yLo + b];
+      }
+    }
+    for (let k = -d + rStart; k <= d - rEnd; k += 2) {
+      const i = off + k;
+      let a = k === -d || (k !== d && rev[i - 1] < rev[i + 1]) ? rev[i + 1] : rev[i - 1] + 1;
+      let b = a - k;
+      while (a < n && b < m && x[xHi - 1 - a] === y[yHi - 1 - b]) {
+        a++;
+        b++;
+      }
+      rev[i] = a;
+      if (a > n) rEnd += 2;
+      else if (b > m) rStart += 2;
+      else if (!odd) {
+        const j = off + delta - k;
+        if (j >= 0 && j < size && fwd[j] !== -1 && fwd[j] >= n - a) {
+          return [xLo + fwd[j], yLo + fwd[j] - (j - off)];
+        }
+      }
     }
   }
-  const map = new Array(a.length).fill(-1);
-  let i = 0;
-  let j = 0;
-  while (i < a.length && j < b.length) {
-    if (a[i] === b[j]) {
-      map[i] = j;
-      i++;
-      j++;
-    } else if (len[(i + 1) * width + j] >= len[i * width + j + 1]) i++;
-    else j++;
+  throw new Error(
+    `no middle snake between ${n} and ${m} lines, which a shortest edit script always has`,
+  );
+}
+
+/** Record in `map` the matches of one longest common subsequence of the two ranges. */
+function align(x, xLo, xHi, y, yLo, yHi, map) {
+  let [a0, a1, b0, b1] = [xLo, xHi, yLo, yHi];
+  while (a0 < a1 && b0 < b1 && x[a0] === y[b0]) map[a0++] = b0++;
+  while (a0 < a1 && b0 < b1 && x[a1 - 1] === y[b1 - 1]) {
+    a1--;
+    b1--;
+    map[a1] = b1;
   }
+  if (a0 === a1 || b0 === b1) return;
+  const [sa, sb] = middleSnake(x, a0, a1, y, b0, b1);
+  align(x, a0, sa, y, b0, sb, map);
+  align(x, sa, a1, y, sb, b1, map);
+}
+
+/**
+ * For each line of `a`, the line of `b` a longest common subsequence matches it to, or -1. The
+ * work grows with how much the two differ rather than with the product of their lengths, and the
+ * memory with their lengths, so no file is too large to union.
+ */
+export function matchLines(a, b) {
+  const ids = new Map();
+  const id = (line) => {
+    if (!ids.has(line)) ids.set(line, ids.size);
+    return ids.get(line);
+  };
+  const x = Int32Array.from(a, id);
+  const y = Int32Array.from(b, id);
+  const map = new Array(a.length).fill(-1);
+  align(x, 0, x.length, y, 0, y.length, map);
   return map;
 }
 
@@ -64,9 +128,6 @@ function insertedBlocks(t, inTheirs) {
  */
 export function unionInsertions({ base, ours, theirs, path }) {
   const [b, o, t] = [linesOf(base), linesOf(ours), linesOf(theirs)];
-  if ((b.length + 1) * (Math.max(o.length, t.length) + 1) > MAX_CELLS) {
-    return { refusal: `${path} is too large to union line by line here` };
-  }
   const inTheirs = matchLines(b, t);
   const gone = inTheirs.indexOf(-1);
   if (gone !== -1) {
@@ -87,5 +148,5 @@ export function unionInsertions({ base, ours, theirs, path }) {
   }
   const out = [...(insertAfter.get(-1) ?? [])];
   for (const [k, line] of o.entries()) out.push(line, ...(insertAfter.get(k) ?? []));
-  return { text: `${out.join('\n')}\n` };
+  return { text: out.length === 0 ? '' : `${out.join('\n')}\n` };
 }

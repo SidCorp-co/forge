@@ -188,11 +188,13 @@ export function prepareWindow({ repoDir, manifest, replay, rebuild = false, with
 
 /**
  * A `replay` (see `prepareWindow`) is not admitted again: the window it came from admitted it.
- * @param {{ repoDir: string, manifest: object, treeDir: string, readCheck: Function,
- *   replay?: { base: string, branches: string[] } }} input
- * @returns {{ refusal: string } | { ledger: object }}
+ * `leftOut` names the members this build refused or isolated. One left out by a recorded
+ * `isolate` is not among them, since leaving it out is what was asked.
+ * @param {{ repoDir: string, manifest: object, treeDir: string,
+ *   replay?: { base: string, branches: string[] }, rebuild?: boolean }} input
+ * @returns {{ refusal: string } | { ledger: object, leftOut: string[] }}
  */
-export function assemble({ repoDir, manifest, treeDir, readCheck, replay, rebuild }) {
+export function assemble({ repoDir, manifest, treeDir, replay, rebuild }) {
   const ready = prepareWindow({ repoDir, manifest, replay, rebuild });
   if (ready.refusal) return ready;
   const { g, baseSha, config, open } = ready;
@@ -200,7 +202,7 @@ export function assemble({ repoDir, manifest, treeDir, readCheck, replay, rebuil
     return { refusal: `${treeDir} already exists; a window is built in a tree of its own` };
 
   const admissions = !replay
-    ? admitMembers({ g, baseSha, members: manifest.members, config, readCheck })
+    ? admitMembers({ g, baseSha, members: manifest.members, config })
     : manifest.members.map((m) => ({ issue: m.issue, refusals: [] }));
   g.must(['worktree', 'add', '-q', '--detach', treeDir, baseSha]);
   const t = gitIn(treeDir);
@@ -208,18 +210,19 @@ export function assemble({ repoDir, manifest, treeDir, readCheck, replay, rebuil
   const rows = [];
   for (const [i, member] of manifest.members.entries()) {
     const refusals = admissions[i].refusals;
-    if (refusals.length > 0) {
-      rows.push({ ...member, admission: 'refused', refusals, landing: null, isolated: null });
-      continue;
-    }
+    const admission = refusals.length > 0 ? 'refused' : 'admitted';
     if (prior.has(member.issue)) {
       rows.push({
         ...member,
-        admission: 'admitted',
-        refusals: [],
+        admission,
+        refusals,
         landing: null,
         isolated: prior.get(member.issue),
       });
+      continue;
+    }
+    if (refusals.length > 0) {
+      rows.push({ ...member, admission, refusals, landing: null, isolated: null });
       continue;
     }
     const landed = rows.filter((r) => r.landing);
@@ -238,6 +241,12 @@ export function assemble({ repoDir, manifest, treeDir, readCheck, replay, rebuil
   }
   const head = t.must(['rev-parse', 'HEAD']).trim();
   return {
+    leftOut: rows
+      .filter(
+        (r) =>
+          !prior.has(r.issue) && (r.admission === 'refused' || r.isolated?.kind === 'assembly'),
+      )
+      .map((r) => r.issue),
     ledger: {
       window: manifest.window,
       base: { branch: manifest.base, sha: baseSha },

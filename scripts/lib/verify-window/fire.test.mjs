@@ -54,6 +54,39 @@ describe('decideFire', () => {
     expect(r.refusal).toMatch(/must be a ceiling at or above `size` \(3\)/);
   });
 
+  it.each([
+    [
+      { ...thresholds, size: 0 },
+      '`thresholds.size` is declared as 0; it must be a positive whole number',
+    ],
+    [
+      { ...thresholds, size: 2.5 },
+      '`thresholds.size` is declared as 2.5; it must be a positive whole number',
+    ],
+    [
+      { ...thresholds, minutes: -5 },
+      '`thresholds.minutes` is declared as -5; it must be a positive number',
+    ],
+    [
+      { ...thresholds, maxSize: 0 },
+      '`thresholds.maxSize` is declared as 0; it must be a positive whole number',
+    ],
+  ])('refuses %j as a declared value that is not a threshold, not as an absent one', (t, want) => {
+    const r = decideFire({ members: members(5, 600), thresholds: t, now });
+    expect(r.refusal).toBe(want);
+  });
+
+  it('refuses a member that arrived after the time the window is judged at', () => {
+    const r = decideFire({
+      members: [{ issue: 'ISS-3', arrivedAt: '2026-09-29T12:30:00Z' }],
+      thresholds,
+      now,
+    });
+    expect(r.refusal).toBe(
+      'ISS-3 arrived at 2026-09-29T12:30:00Z, after the time the window is judged at (2026-09-29T12:00:00.000Z), so its wait cannot be measured',
+    );
+  });
+
   it('refuses a member whose arrival cannot be read', () => {
     const r = decideFire({
       members: [{ issue: 'ISS-2', arrivedAt: 'yesterday' }],
