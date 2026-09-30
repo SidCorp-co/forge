@@ -726,6 +726,20 @@ mod tests {
         assert!(name.ends_with('\u{2026}'), "the cut is marked: {name}");
     }
 
+    #[test]
+    fn a_name_outside_the_basic_plane_is_measured_the_way_core_measures_it() {
+        let key = "\u{1d518}".repeat(12);
+        let set = vec![key.clone(), key.clone(), key.clone()];
+        assert_eq!(set.join("+").chars().count(), 38);
+        let name = session_name(&set);
+        assert!(
+            name.encode_utf16().count() <= MAX_NAME_CODE_UNITS,
+            "{} units passed a {MAX_NAME_CODE_UNITS}-unit cap: {name}",
+            name.encode_utf16().count()
+        );
+        assert_eq!(name, format!("{key}+{key}+1 more"));
+    }
+
     /// Criterion 18, on both sides of the boundary and on it.
     #[test]
     fn a_detail_within_the_cap_reaches_core_unchanged() {
