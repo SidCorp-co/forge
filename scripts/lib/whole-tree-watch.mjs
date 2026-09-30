@@ -11,10 +11,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 import workerThreads from 'node:worker_threads';
 import { FS_LISTING_CALLS, fsListing, spawnCwd } from './whole-tree-gates.mjs';
-import { subprocessListing } from './whole-tree-shell.mjs';
+import { physical, subprocessListing } from './whole-tree-shell.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-export const ROOT = resolve(HERE, '..', '..');
+/** The repository root by its realpath, the one spelling every placement is compared against. */
+export const ROOT = physical(resolve(HERE, '..', '..')) ?? resolve(HERE, '..', '..');
 export const LOG_ENV = 'FORGE_WHOLE_TREE_LOG';
 const PRELOAD = pathToFileURL(resolve(HERE, 'whole-tree-child.mjs')).href;
 const OWN = new Set(
