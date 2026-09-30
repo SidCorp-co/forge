@@ -429,6 +429,7 @@ const RUN_COLUMNS: &[&str] = &[
     "host_ended_by",
     "host_pid",
     "host_start",
+    "refusal_wrote_ending",
 ];
 
 #[cfg(test)]
@@ -505,7 +506,8 @@ CREATE TABLE IF NOT EXISTS runs (
   host_ended_at_ms    INTEGER,
   host_ended_by       TEXT,
   host_pid            INTEGER,
-  host_start          TEXT
+  host_start          TEXT,
+  refusal_wrote_ending INTEGER
 );
 CREATE TABLE IF NOT EXISTS run_issues (
   run_id            TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
@@ -588,6 +590,7 @@ const ADDED_COLUMNS: &[(&str, &str, &str)] = &[
     ("runs", "host_ended_by", "TEXT"),
     ("runs", "host_pid", "INTEGER"),
     ("runs", "host_start", "TEXT"),
+    ("runs", "refusal_wrote_ending", "INTEGER"),
     ("masters", "session_id", "TEXT"),
 ];
 
@@ -807,6 +810,7 @@ impl Ledger {
         tx.execute_batch(SCHEMA).map_err(sql_err)?;
         Self::add_missing_columns(&tx)?;
         Self::carry_the_old_mark_forward(&tx)?;
+        Self::carry_the_refusal_ending_forward(&tx)?;
         Self::carry_the_standing_forward(&tx, carried)?;
         tx.commit().map_err(sql_err)
     }
@@ -1814,6 +1818,26 @@ impl Ledger {
         Ok(())
     }
 
+    /// Say which decided refusals wrote their run's ending, on rows a build
+    /// before `refusal_wrote_ending` decided. That build's
+    /// `conclude_release_refusal` always wrote the ending, from the same text
+    /// it kept as the refusal, and `settle_release_refusal` wrote none, so a
+    /// decided row whose reason is its refusal is exactly one it ended. Only
+    /// rows the column has never been written on are read: every decision this
+    /// build takes writes it.
+    fn carry_the_refusal_ending_forward(conn: &Connection) -> Result<()> {
+        conn.execute(
+            "UPDATE runs SET refusal_wrote_ending = 1
+              WHERE refusal_wrote_ending IS NULL
+                AND release_terminal_at IS NOT NULL
+                AND ended_by IS NOT NULL
+                AND ended_reason IS release_refusal",
+            [],
+        )
+        .map_err(sql_err)?;
+        Ok(())
+    }
+
     pub fn liveness(run: &Run, this_boot: &str, pid_refuted: bool) -> Liveness {
         if run.boot_id != this_boot {
             return Liveness::Unknown;
@@ -2134,7 +2158,12 @@ impl Ledger {
         })
     }
 
-    /// Say this refusal is one no retry gets past, and end the run over it.
+    /// Say this refusal is one no retry gets past, and end the run over it,
+    /// where nothing ended it before. An ending already on the row stands, as
+    /// [`Ledger::end_run`] keeps it: a master's `run close` whose release is
+    /// then refused is still the master's (ISS-1312 criterion 74).
+    /// `refusal_wrote_ending` says which of the two it was, so a retraction
+    /// takes back only an ending this decision wrote.
     ///
     /// One transaction, because the two halves are one decision: a box that
     /// stopped between them would come back holding a run that no sweep picks
@@ -2151,7 +2180,9 @@ impl Ledger {
         let tx = self.conn.transaction().map_err(sql_err)?;
         tx.execute(
             "UPDATE runs SET release_terminal_at = ?2, work = 'done', incarnation = 'exited',
-                    ended_by = ?3, ended_reason = ?4
+                    refusal_wrote_ending = CASE WHEN ended_by IS NULL THEN 1 ELSE 0 END,
+                    ended_reason = CASE WHEN ended_by IS NULL THEN ?4 ELSE ended_reason END,
+                    ended_by = COALESCE(ended_by, ?3)
               WHERE run_id = ?1",
             params![run_id, at, ended_by, reason],
         )
@@ -2175,13 +2206,13 @@ impl Ledger {
     ///
     /// `release_refusal` is kept verbatim, because what was refused is still
     /// the fact and an operator reading the row is owed it. The ending is left
-    /// alone too: another path may already have written one, and
-    /// `conclude_release_refusal` would overwrite it with this verb's own.
+    /// alone too: another path may already have written one, and this verb
+    /// has no ending of its own to give.
     pub fn settle_release_refusal(&mut self, run_id: &str, at: i64) -> Result<bool> {
         let n = self
             .conn
             .execute(
-                "UPDATE runs SET release_terminal_at = ?2
+                "UPDATE runs SET release_terminal_at = ?2, refusal_wrote_ending = 0
                   WHERE run_id = ?1
                     AND release_refused_at IS NOT NULL
                     AND release_terminal_at IS NULL",
@@ -2207,17 +2238,24 @@ impl Ledger {
     /// Take back the decision that a run's release could not be made, so the
     /// next sweep attempts it again. Answers whether there was one to take back.
     ///
-    /// The ending goes with it, in the same transaction, because the ending was
-    /// PART of that decision. Left in place it would say the run is over while
-    /// its release is owed again — and `held_worktrees` reads exactly that to
-    /// decide what the reaper may not touch, so the checkout being kept for the
-    /// retry would stop being kept the moment an operator asked for one.
+    /// The ending goes with it, in the same transaction, where the decision
+    /// wrote it, because it was PART of that decision. Left in place it would
+    /// say the run is over while its release is owed again — and
+    /// `held_worktrees` reads exactly that to decide what the reaper may not
+    /// touch, so the checkout being kept for the retry would stop being kept
+    /// the moment an operator asked for one. An ending the decision found on
+    /// the row, such as a master's `run close`, is not the decision's to take
+    /// back, and the run returns to the state it was in before its release was
+    /// refused (ISS-1312 criterion 74).
     pub fn retract_release_refusal(&mut self, run_id: &str) -> Result<bool> {
         let tx = self.conn.transaction().map_err(sql_err)?;
         let n = tx
             .execute(
                 &format!(
-                    "UPDATE runs SET {CLEAR_REFUSAL}, ended_by = NULL, ended_reason = NULL
+                    "UPDATE runs SET {CLEAR_REFUSAL},
+                            ended_by = CASE WHEN refusal_wrote_ending = 1 THEN NULL ELSE ended_by END,
+                            ended_reason = CASE WHEN refusal_wrote_ending = 1 THEN NULL ELSE ended_reason END,
+                            refusal_wrote_ending = NULL
                       WHERE run_id = ?1
                         AND (release_refused_at IS NOT NULL OR release_terminal_at IS NOT NULL)"
                 ),
@@ -2298,7 +2336,7 @@ impl Ledger {
 
     /// End a run. The first ending recorded stands: a release that follows a
     /// master's `run close` finishes the run and leaves who ended it and why,
-    /// where it wrote its own over the close (ISS-1312 criterion 73, run
+    /// where it wrote its own over the close (ISS-1312 criterion 74, run
     /// 172f356e).
     pub fn end_run(&self, run_id: &str, ended_by: &str, reason: &str) -> Result<()> {
         self.conn
@@ -4875,7 +4913,7 @@ mod tests {
         );
     }
 
-    /// ISS-1312 criterion 73, the eighth judge's J6: run 172f356e was closed
+    /// ISS-1312 criterion 74, the eighth judge's J6: run 172f356e was closed
     /// by its master, and recovery's release then wrote `recovery / the run's
     /// process is gone` over that ending, for a run that never had a process.
     #[test]
@@ -4899,12 +4937,132 @@ mod tests {
         assert_eq!(
             (run.ended_by.as_deref(), run.ended_reason.as_deref()),
             (Some("master"), Some("its report is in")),
-            "criterion 73: the first ending stands"
+            "criterion 74: the first ending stands"
         );
         assert_eq!(
             (run.work.wire(), run.incarnation.wire()),
             ("done", "exited"),
             "the release still finishes the run"
+        );
+    }
+
+    /// ISS-1312 criterion 74, the ninth judge's K1: the refused arm of a
+    /// release. A master closes the run, its release is refused until the
+    /// window decides, and the decision wrote `recovery` and its refusal over
+    /// the master's ending.
+    #[test]
+    fn a_decided_refusal_after_a_close_leaves_the_close_on_the_row() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(seed(&["ISS-1"])).unwrap();
+        led.end_run("run-1", "master", "its report is in").unwrap();
+        led.note_release_refusal("run-1", "the diff was not preserved", 1_790_000_000)
+            .unwrap();
+
+        led.conclude_release_refusal(
+            "run-1",
+            1_790_000_300,
+            "recovery",
+            "the diff was not preserved",
+        )
+        .unwrap();
+
+        let run = led.run("run-1").unwrap().unwrap();
+        assert_eq!(
+            (run.ended_by.as_deref(), run.ended_reason.as_deref()),
+            (Some("master"), Some("its report is in")),
+            "criterion 74: the decision finds an ending on the row and leaves it"
+        );
+        assert_eq!(
+            (run.release_terminal_at, run.release_refusal.as_deref()),
+            (Some(1_790_000_300), Some("the diff was not preserved")),
+            "and it is still decided, with what was refused kept verbatim"
+        );
+        assert_eq!(
+            (run.work.wire(), run.incarnation.wire()),
+            ("done", "exited")
+        );
+    }
+
+    /// Retracting that decision takes back the refusal and not the master's
+    /// close, so the run is as it was before its release was refused: closed
+    /// by its master, its release owed.
+    #[test]
+    fn retracting_a_decision_that_found_a_close_leaves_the_close() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(seed(&["ISS-1"])).unwrap();
+        led.end_run("run-1", "master", "its report is in").unwrap();
+        led.note_release_refusal("run-1", "the diff was not preserved", 1_790_000_000)
+            .unwrap();
+        led.conclude_release_refusal(
+            "run-1",
+            1_790_000_300,
+            "recovery",
+            "the diff was not preserved",
+        )
+        .unwrap();
+
+        assert!(led.retract_release_refusal("run-1").unwrap());
+
+        let run = led.run("run-1").unwrap().unwrap();
+        assert_eq!(
+            (run.ended_by.as_deref(), run.ended_reason.as_deref()),
+            (Some("master"), Some("its report is in")),
+            "the decision wrote no ending, so it has none to take back"
+        );
+        assert_eq!(
+            (run.release_refused_at, run.release_terminal_at),
+            (None, None)
+        );
+    }
+
+    /// A ledger an earlier build decided refusals on has no record of which
+    /// endings a decision wrote. That build always wrote the refusal's own text
+    /// as the ending, and a settled refusal wrote none, so a row whose ending
+    /// is its refusal is taken back on retraction and any other is kept.
+    #[test]
+    fn a_ledger_from_before_the_refusal_ending_mark_retracts_only_the_endings_its_decisions_wrote()
+    {
+        let path = a_ledger_path("refusal-ending");
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(SCHEMA).unwrap();
+            conn.execute_batch("ALTER TABLE runs DROP COLUMN refusal_wrote_ending;")
+                .unwrap();
+            for (run_id, by, why) in [
+                (
+                    "run-decided",
+                    "recovery",
+                    "refusing to Kill run run-decided",
+                ),
+                ("run-settled", "master", "its report is in"),
+            ] {
+                conn.execute(
+                    "INSERT INTO runs (run_id, master_session_id, worktree_path, boot_id,
+                            incarnation, work, created_at, ended_by, ended_reason,
+                            release_refused_at, release_refusal, release_terminal_at)
+                     VALUES (?1, 'm', '/tmp/w', 'boot-1', 'exited', 'done', 1, ?2, ?3,
+                             1790000000, 'refusing to Kill run run-decided', 1790000300)",
+                    params![run_id, by, why],
+                )
+                .unwrap();
+            }
+        }
+        let mut led = Ledger::open(&path).unwrap();
+
+        assert!(led.retract_release_refusal("run-decided").unwrap());
+        assert!(led.retract_release_refusal("run-settled").unwrap());
+
+        let decided = led.run("run-decided").unwrap().unwrap();
+        assert_eq!(
+            (decided.ended_by, decided.ended_reason),
+            (None, None),
+            "the earlier build's decision wrote this ending, so the retraction takes it back"
+        );
+        let settled = led.run("run-settled").unwrap().unwrap();
+        assert_eq!(
+            (settled.ended_by.as_deref(), settled.ended_reason.as_deref()),
+            (Some("master"), Some("its report is in")),
+            "and an ending some other path wrote is kept"
         );
     }
 

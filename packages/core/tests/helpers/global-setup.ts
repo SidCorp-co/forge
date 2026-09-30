@@ -1,5 +1,5 @@
 import type { TestProject } from 'vitest/node';
-import { integrationWorkers } from './integration-workers.js';
+import { integrationWorkers, workerLine } from './integration-workers.js';
 import { reapAbandoned, runToken, sweepRunScratchDbs, templateDbName } from './scratch-db.js';
 
 let stopContainer: (() => Promise<void>) | null = null;
@@ -30,15 +30,8 @@ async function buildTemplate(adminUrl: string, name: string): Promise<void> {
 
 /** The count vitest resolved, read off the run that uses it, and the rule that chose it. */
 function reportWorkers(project: TestProject): void {
-  const resolved = project.config.maxWorkers;
-  const chosen = integrationWorkers();
-  const overruled =
-    resolved === chosen.count
-      ? ''
-      : `; the command line asked for ${resolved} over its ${chosen.count}`;
-  console.log(
-    `[integration] ${resolved} worker(s) on ${chosen.cores} core(s) — ${chosen.rule}${overruled}`,
-  );
+  const flag = project.vitest.config.cliOptions.maxWorkers;
+  console.log(workerLine(integrationWorkers(), project.config.maxWorkers, flag));
 }
 
 export async function setup(project: TestProject): Promise<void> {

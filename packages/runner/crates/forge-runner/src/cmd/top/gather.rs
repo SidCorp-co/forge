@@ -94,6 +94,10 @@ pub async fn frame(ctx: &Ctx, carry: &mut Carry) -> Snapshot {
     let config = Config::load().map_err(|e| Unreadable::new(&config_path, e));
     let config_dir = forge_runner_core::daemon::control::config_dir();
 
+    let record_path = config_dir
+        .as_deref()
+        .map(serving::path)
+        .unwrap_or_else(|| PathBuf::from("serving.json"));
     let record = match &config_dir {
         Some(d) => serving::read(d),
         None => Err(serving::Unreadable {
@@ -103,7 +107,7 @@ pub async fn frame(ctx: &Ctx, carry: &mut Carry) -> Snapshot {
     };
     let probe = serving::Probe::this_box();
     let daemon = binary::daemon(&record, &probe);
-    let binary_lines = binary::lines(&record, &probe, daemon.as_ref(), now_ms);
+    let binary_lines = binary::lines(&record, &record_path, &probe, daemon.as_ref(), now_ms);
     let exe = daemon_exe(carry, daemon.as_ref());
 
     let (discovery_at, discovery) = discover(ctx, config.as_ref().ok(), carry, now_ms).await;
