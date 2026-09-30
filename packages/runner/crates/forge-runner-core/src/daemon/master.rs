@@ -32,6 +32,7 @@ use crate::daemon::job_exit;
 use crate::daemon::job_unheard;
 use crate::daemon::master_exit::{self, Verdict};
 use crate::daemon::master_limit;
+use crate::daemon::pane_exit;
 use crate::daemon::pool_jobs::{self, JobPanes, Records};
 use crate::daemon::pool_reads;
 use crate::daemon::recovery;
@@ -149,14 +150,26 @@ struct Registry {
     /// sweep, so the account is given when the read first goes unanswered and
     /// not on every sweep it stays that way.
     unanswered: std::collections::HashSet<String>,
-    /// Where the output of the pane this box last placed for each project is
-    /// kept, and how long that file was when the pane started, so what the
-    /// pane printed is read without what earlier panes printed before it.
-    placed_output: HashMap<String, (std::path::PathBuf, u64)>,
+    /// When this box last placed each project's pane, and where its output is
+    /// kept from, so what the pane printed is read without what earlier panes
+    /// printed before it.
+    placed: HashMap<String, PlacedPane>,
     /// The conversation a pane this box placed exited over, saying Claude Code
-    /// runs it as a background session. No pane resuming it is placed while a
-    /// process on this box names it (ISS-1312, F1).
-    elsewhere: HashMap<String, String>,
+    /// runs it as a background session, with the short id that refusal
+    /// printed. No pane resuming it is placed while a process on this box
+    /// names it (ISS-1312, F1).
+    elsewhere: HashMap<String, (String, Option<String>)>,
+    /// Consecutive early exits of each project's pane for one reason, which
+    /// decide only what the journal says (ISS-1343).
+    exits: HashMap<String, pane_exit::Tally>,
+}
+
+/// One pane this box placed: when, and where its output begins.
+struct PlacedPane {
+    at: Instant,
+    /// The transcript and its length when the pane started; `None` where the
+    /// pane was placed with no transcript.
+    output: Option<(std::path::PathBuf, u64)>,
 }
 
 #[derive(Default, Clone, PartialEq, Eq)]
@@ -259,10 +272,12 @@ pub(crate) enum Unplaced {
     },
     /// The pane last placed for this project resumed its conversation and
     /// exited, printing that Claude Code runs that conversation as a
-    /// background session; `pid` is a process on this box naming it now. A
-    /// pane placed again would exit the same way (ISS-1312, F1).
+    /// background session under the id `short`; `pid` is a process on this
+    /// box naming it now. A pane placed again would exit the same way
+    /// (ISS-1312, F1).
     ConversationElsewhere {
         conversation: String,
+        short: Option<String>,
         pid: u32,
     },
     /// As [`Unplaced::ConversationElsewhere`], where this box could not read
@@ -270,6 +285,7 @@ pub(crate) enum Unplaced {
     /// conversation. Not knowing is not its end (ISS-1312, F1).
     ConversationUnaskable {
         conversation: String,
+        short: Option<String>,
     },
 }
 
@@ -353,13 +369,24 @@ impl std::fmt::Display for Unplaced {
                 f,
                 "everything it needs was in place and the pane itself did not start ({detail})"
             ),
-            Self::ConversationElsewhere { conversation, pid } => write!(
+            Self::ConversationElsewhere {
+                conversation,
+                short,
+                pid,
+            } => write!(
                 f,
-                "the pane this box last placed for it resumed conversation {conversation} and exited, printing that Claude Code runs that conversation as a background session, and process {pid} on this box names it now. A pane placed again would exit the same way, so none is placed while a process names that conversation. `claude stop {conversation}` ends the background session, and the next sweep then places a pane resuming it"
+                "the pane this box last placed for it resumed conversation {conversation} and exited, printing that Claude Code runs that conversation as a background session{}, and process {pid} on this box names it now. A pane placed again would exit the same way, so none is placed while a process names that conversation. {WAITS_NOT_FORKS} {}, and once no process names it a pane resuming it is placed on the next sweep whose other gates admit one",
+                short_said(short.as_deref()),
+                pane_exit::remedy(conversation, short.as_deref())
             ),
-            Self::ConversationUnaskable { conversation } => write!(
+            Self::ConversationUnaskable {
+                conversation,
+                short,
+            } => write!(
                 f,
-                "the pane this box last placed for it resumed conversation {conversation} and exited, printing that Claude Code runs that conversation as a background session, and this box cannot read its process table to tell whether one still does. A pane placed again would exit the same way while it does, so none is placed until a sweep reads the whole table and finds no process naming it, or this daemon restarts and forgets the exit. `claude stop {conversation}` ends the background session if it still runs"
+                "the pane this box last placed for it resumed conversation {conversation} and exited, printing that Claude Code runs that conversation as a background session{}, and this box cannot read its process table to tell whether one still does. A pane placed again would exit the same way while it does, so none is placed until a sweep reads the whole table and finds no process naming it, or this daemon restarts and forgets the exit. {WAITS_NOT_FORKS} {}",
+                short_said(short.as_deref()),
+                pane_exit::remedy(conversation, short.as_deref())
             ),
             Self::StaleCapability { session, pane } => write!(
                 f,
@@ -367,6 +394,16 @@ impl std::fmt::Display for Unplaced {
             ),
         }
     }
+}
+
+/// Why a held conversation is waited out rather than forked, said wherever
+/// the wait is.
+// cm:guard the deliberate choice ISS-1343 asks to be named. `--fork-session` would start a pane at once, and as a second conversation for this project while the first still runs as a background session that can still claim, dispatch and write; two masters for one project is the failure this box is built to prevent, so it waits and says so.
+const WAITS_NOT_FORKS: &str = "This box waits for that session to end rather than starting a pane with `--fork-session`: a fork is a second conversation for this project while the first still runs and can still act.";
+
+/// The short id a background-session refusal printed, as a parenthesis.
+fn short_said(short: Option<&str>) -> String {
+    short.map(|s| format!(" ({s})")).unwrap_or_default()
 }
 
 impl Unplaced {
@@ -902,24 +939,63 @@ impl Masters {
         changed
     }
 
-    fn note_placed_output(&self, project_id: &str, at: (std::path::PathBuf, u64)) {
+    fn note_placed(&self, project_id: &str, output: Option<(std::path::PathBuf, u64)>) {
         let mut reg = self.0.lock().expect("masters poisoned");
-        reg.placed_output.insert(project_id.to_string(), at);
+        reg.placed.insert(
+            project_id.to_string(),
+            PlacedPane {
+                at: Instant::now(),
+                output,
+            },
+        );
     }
 
-    fn take_placed_output(&self, project_id: &str) -> Option<(std::path::PathBuf, u64)> {
+    fn take_placed(&self, project_id: &str) -> Option<PlacedPane> {
         let mut reg = self.0.lock().expect("masters poisoned");
-        reg.placed_output.remove(project_id)
+        reg.placed.remove(project_id)
     }
 
-    fn note_elsewhere(&self, project_id: &str, conversation: String) {
+    /// Count an exit into this project's run of early exits, answering its
+    /// place in it (0 where it was not early).
+    fn count_exit(&self, project_id: &str, lived: Option<Duration>, exit: &pane_exit::Exit) -> u32 {
         let mut reg = self.0.lock().expect("masters poisoned");
-        reg.elsewhere.insert(project_id.to_string(), conversation);
+        reg.exits
+            .entry(project_id.to_string())
+            .or_default()
+            .count(lived, exit)
+    }
+
+    /// This project's pane was read up past the early window after its
+    /// placement: ends its run of early exits, answering the run's length
+    /// where it had been named as a condition.
+    fn outlived(&self, project_id: &str) -> Option<u32> {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        let past = reg
+            .placed
+            .get(project_id)
+            .is_some_and(|p| p.at.elapsed() >= pane_exit::EARLY_EXIT);
+        if !past {
+            return None;
+        }
+        reg.exits
+            .get_mut(project_id)
+            .and_then(pane_exit::Tally::outlived)
+    }
+
+    fn note_elsewhere(&self, project_id: &str, conversation: String, short: Option<String>) {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        reg.elsewhere
+            .insert(project_id.to_string(), (conversation, short));
     }
 
     fn elsewhere(&self, project_id: &str) -> Option<String> {
         let reg = self.0.lock().expect("masters poisoned");
-        reg.elsewhere.get(project_id).cloned()
+        reg.elsewhere.get(project_id).map(|(c, _)| c.clone())
+    }
+
+    fn elsewhere_short(&self, project_id: &str) -> Option<String> {
+        let reg = self.0.lock().expect("masters poisoned");
+        reg.elsewhere.get(project_id).and_then(|(_, s)| s.clone())
     }
 
     fn clear_elsewhere(&self, project_id: &str) {
@@ -3130,13 +3206,18 @@ async fn ensure_master(
         .elsewhere(project_id)
         .filter(|c| stored_conversation == Some(c.as_str()))
     {
+        let short = masters.elsewhere_short(project_id);
         match carry.hosts.running(&conversation) {
             subagent_host::Running::Found(pid) => {
                 say_unplaced(
                     masters,
                     project_id,
                     &resolved.slug,
-                    Unplaced::ConversationElsewhere { conversation, pid },
+                    Unplaced::ConversationElsewhere {
+                        conversation,
+                        short,
+                        pid,
+                    },
                 );
                 return PaneState::Absent;
             }
@@ -3145,7 +3226,10 @@ async fn ensure_master(
                     masters,
                     project_id,
                     &resolved.slug,
-                    Unplaced::ConversationUnaskable { conversation },
+                    Unplaced::ConversationUnaskable {
+                        conversation,
+                        short,
+                    },
                 );
                 return PaneState::Absent;
             }
@@ -3344,8 +3428,8 @@ async fn ensure_master(
     );
     remember(masters, project_id, &session);
     masters.clear_unplaced(project_id);
-    if let (true, Some(path), Some(from)) = (started, transcript.clone(), output_from) {
-        masters.note_placed_output(project_id, (path, from));
+    if started {
+        masters.note_placed(project_id, transcript.clone().zip(output_from));
     }
     carry
         .started
@@ -3855,71 +3939,17 @@ async fn nudge_master(
         None => tracing::info!("[master] {slug}: admissible work — nudging {name}"),
     }
     if let Err(e) = terminal::send_line(&name, &nudge()).await {
-        tracing::warn!("[master] {slug}: could not nudge {name}: {e}");
-    }
-}
-
-/// What Claude Code prints when asked to resume a conversation it is already
-/// running as a background session, captured from a pane on sid-xeon-1
-/// (2026-09-29): `Session <id> is running as a background session (<short>).
-/// Run `claude attach <short>` to open it, or `claude stop <short>` first to
-/// resume it here.`
-const BACKGROUND_SESSION: &str = "is running as a background session";
-
-/// A pane's raw output as the words a person reads on it. Claude Code places
-/// each word with a cursor move rather than a space, so an escape sequence is
-/// read as a space and every other control character is dropped.
-fn screen_words(raw: &str) -> String {
-    let mut out = String::with_capacity(raw.len());
-    let mut chars = raw.chars().peekable();
-    while let Some(c) = chars.next() {
-        if c == '\x1b' {
-            match chars.next() {
-                Some('[') => {
-                    while chars
-                        .next()
-                        .is_some_and(|b| !('\x40'..='\x7e').contains(&b))
-                    {}
-                }
-                Some('(' | ')') => {
-                    chars.next();
-                }
-                _ => {}
-            }
-            out.push(' ');
-        } else if c.is_control() {
-            out.push(' ');
+        // A pane that exited before the nudge reached it is reported by the
+        // sweep that reads it gone, with why; a warning here too would be the
+        // second line per placement ISS-1343 counted on sid-desk.
+        if recovery_ports::pane_presence(&name).await == recovery::MasterPresence::Gone {
+            tracing::debug!(
+                "[master] {slug}: {name} exited before the nudge reached it ({e}); the sweep that reads it gone says why"
+            );
         } else {
-            out.push(c);
+            tracing::warn!("[master] {slug}: could not nudge {name}: {e}");
         }
     }
-    out.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
-/// The conversation `raw` pane output says is running as a background
-/// session, taken from the last such sentence in it.
-pub(crate) fn background_session_named(raw: &str) -> Option<String> {
-    let text = screen_words(raw);
-    let before = &text[..text.rfind(BACKGROUND_SESSION)?];
-    let id = before.rsplit("Session ").next()?.trim();
-    (!id.is_empty() && !id.contains(char::is_whitespace)).then(|| id.to_string())
-}
-
-/// How much of a pane's output is read for why it exited: the sentence is
-/// printed last, and a pane that ran for hours printed a great deal first.
-const EXIT_TAIL: u64 = 64 * 1024;
-
-/// The conversation the output at `path`, written from byte `from` on, says
-/// is running as a background session.
-fn exited_over_a_background_session(path: &std::path::Path, from: u64) -> Option<String> {
-    use std::io::{Read, Seek, SeekFrom};
-    let mut file = std::fs::File::open(path).ok()?;
-    let len = file.metadata().ok()?.len();
-    let start = from.max(len.saturating_sub(EXIT_TAIL)).min(len);
-    file.seek(SeekFrom::Start(start)).ok()?;
-    let mut raw = Vec::new();
-    file.read_to_end(&mut raw).ok()?;
-    background_session_named(&String::from_utf8_lossy(&raw))
 }
 
 async fn supervise(
@@ -3944,20 +3974,43 @@ async fn supervise(
             "[master] {slug}: tmux could not be asked whether resident session {name} is there, so its core session is left open and it stays this project's master until tmux answers"
         );
     }
+    if read == recovery::MasterPresence::Alive {
+        if let Some(n) = masters.outlived(project_id) {
+            tracing::info!(
+                "[master] {slug}: {name} has stayed up past {}s of its placement, so the condition of {n} early exits in a row has ended",
+                pane_exit::EARLY_EXIT.as_secs()
+            );
+        }
+    }
     if read == recovery::MasterPresence::Gone {
-        tracing::warn!("[master] {slug}: resident session {name} is gone — closing its row");
-        // Why the pane this box placed is gone, where it printed why: a pane
+        // Why the pane is gone, from what it printed after this box placed
+        // it, said in the one line that says it is gone (ISS-1343). A pane
         // resuming a conversation Claude Code runs as a background session
         // exits at once saying so, and placing another only repeats that.
-        if let Some(conversation) = masters
-            .take_placed_output(project_id)
-            .and_then(|(path, from)| exited_over_a_background_session(&path, from))
-        {
-            tracing::warn!(
-                "[master] {slug}: {name} exited printing that conversation {conversation} is running as a background session"
-            );
-            masters.note_elsewhere(project_id, conversation);
+        let placed = masters.take_placed(project_id);
+        let lived = placed.as_ref().map(|p| p.at.elapsed());
+        let exit = match &placed {
+            None => pane_exit::Exit::not_placed(),
+            Some(PlacedPane { output: None, .. }) => pane_exit::Exit::no_transcript(),
+            Some(PlacedPane {
+                output: Some((path, from)),
+                ..
+            }) => pane_exit::classify(path, *from),
+        };
+        let in_a_row = masters.count_exit(project_id, lived, &exit);
+        match pane_exit::journal(slug, &name, lived, &exit, in_a_row) {
+            pane_exit::Say::Warn(line) => tracing::warn!("{line}"),
+            pane_exit::Say::Error(line) => tracing::error!("{line}"),
+            pane_exit::Say::Quiet(line) => tracing::debug!("{line}"),
         }
+        if let pane_exit::Exit::Elsewhere {
+            conversation,
+            short,
+        } = &exit
+        {
+            masters.note_elsewhere(project_id, conversation.clone(), short.clone());
+        }
+        record_exit(slug, &name, lived, in_a_row, exit);
         end_master(
             client,
             masters,
@@ -3967,6 +4020,34 @@ async fn supervise(
             "terminal session vanished",
         )
         .await;
+    }
+}
+
+/// Keep `exit` where `forge-runner master status` reads it, saying so where it
+/// cannot be kept.
+fn record_exit(
+    slug: &str,
+    name: &str,
+    lived: Option<Duration>,
+    in_a_row: u32,
+    exit: pane_exit::Exit,
+) {
+    let record = pane_exit::Record {
+        pane: name.to_string(),
+        read_gone_at: master_limit::now_unix(),
+        lived_secs: lived.map(|l| l.as_secs()),
+        in_a_row,
+        exit,
+    };
+    let written = pane_exit::master_dir(slug)
+        .map_err(|e| e.to_string())
+        .and_then(|dir| {
+            pane_exit::write(&dir, &record).map_err(|e| format!("{}: {e}", dir.display()))
+        });
+    if let Err(e) = written {
+        tracing::warn!(
+            "[master] {slug}: could not keep why {name} exited ({e}), so `forge-runner master status {slug}` cannot say it"
+        );
     }
 }
 
@@ -5520,47 +5601,6 @@ mod give_back_tests {
 
     fn no_hosts() -> subagent_host::testing::FakeHosts {
         subagent_host::testing::FakeHosts::default()
-    }
-
-    /// The bytes forge-master-sid-desk's pane wrote on sid-xeon-1
-    /// (2026-09-29, `~/.config/forge-runner/master/sid-desk/transcript.log`):
-    /// Claude Code places each word with a cursor move, not a space.
-    const SID_DESK_EXIT: &str = "\x1b[?25h\x1b[38;5;211mSession\x1b[9G19793a14-07b1-4970-9f51-3262792c1414\x1b[46Gis\x1b[49Grunning\x1b[57Gas\x1b[60Ga\x1b[62Gbackground\x1b[73Gsession\x1b[81G(19793a14).\x1b[93GRun\x1b[97G`claude\x1b[105Gattach\x1b[112G19793a14`\x1b[122Gto\x1b[125Gopen\x1b[130Git,\x1b[134Gor\x1b[137G`claude\x1b[145Gstop\x1b[150G19793a14`\x1b[160Gfirst\x1b[166Gto\x1b[169Gresume\x1b[176Git\x1b[179Ghere.\x1b[39m\r\r\n\x1b[38;5;211mcopy\x1b[6Ginstead.\x1b[39m\r\r\n\x1b[?25h\x1b(B\x0f\x1b[?1016l\x1b7\x1b[r\x1b8";
-
-    #[test]
-    fn a_pane_s_own_bytes_name_the_conversation_running_as_a_background_session() {
-        assert_eq!(
-            background_session_named(SID_DESK_EXIT).as_deref(),
-            Some("19793a14-07b1-4970-9f51-3262792c1414")
-        );
-        assert_eq!(
-            background_session_named("Session abc exited\r\n"),
-            None,
-            "a pane that exited for anything else names nothing"
-        );
-    }
-
-    #[test]
-    fn only_what_the_pane_this_box_placed_printed_is_read() {
-        let dir = crate::test_scratch::Scratch::new("pane-exit");
-        let path = dir.join("transcript.log");
-        std::fs::write(&path, SID_DESK_EXIT).unwrap();
-        let from = std::fs::metadata(&path).unwrap().len();
-        assert_eq!(
-            exited_over_a_background_session(&path, 0).as_deref(),
-            Some("19793a14-07b1-4970-9f51-3262792c1414")
-        );
-        assert_eq!(
-            exited_over_a_background_session(&path, from),
-            None,
-            "an earlier pane's sentence is not why this one exited"
-        );
-        let mut later = std::fs::OpenOptions::new()
-            .append(true)
-            .open(&path)
-            .unwrap();
-        std::io::Write::write_all(&mut later, b"\x1b[2J\x1b[Hbye\r\n").unwrap();
-        assert_eq!(exited_over_a_background_session(&path, from), None);
     }
 
     #[test]
@@ -9849,7 +9889,7 @@ mod servers_refusal_walk_tests {
         .await;
         let conv = "19793a14-07b1-4970-9f51-3262792c1414";
         let masters = Arc::new(Masters::new());
-        masters.note_elsewhere("proj-walk", conv.to_string());
+        masters.note_elsewhere("proj-walk", conv.to_string(), Some("19793a14".into()));
         let deaf = DeafSink::default();
         let hosts = FakeHosts::default();
         let walkbg = resolved("walkbg", &repo);
@@ -9906,8 +9946,12 @@ mod servers_refusal_walk_tests {
         );
         assert!(String::from_utf8_lossy(&buf.lock().unwrap()).contains(conv));
         match recorded(&masters) {
-            Some(Unplaced::ConversationUnaskable { conversation }) => {
-                assert_eq!(conversation, conv, "criterion 71")
+            Some(Unplaced::ConversationUnaskable {
+                conversation,
+                short,
+            }) => {
+                assert_eq!(conversation, conv, "criterion 71");
+                assert_eq!(short.as_deref(), Some("19793a14"), "ISS-1343 criterion 6")
             }
             other => panic!("criterion 71: {:?}", other.map(|w| w.to_string())),
         }
@@ -9931,6 +9975,7 @@ mod servers_refusal_walk_tests {
             recorded(&masters)
                 == Some(Unplaced::ConversationElsewhere {
                     conversation: conv.to_string(),
+                    short: Some("19793a14".into()),
                     pid: 3_850_261,
                 }),
             "criterion 61: {:?}",
@@ -10544,7 +10589,9 @@ mod servers_refusal_walk_tests {
             logged()
         );
         match withheld(&masters) {
-            Some(Unplaced::ConversationElsewhere { conversation, pid }) => assert_eq!(
+            Some(Unplaced::ConversationElsewhere {
+                conversation, pid, ..
+            }) => assert_eq!(
                 (conversation.as_str(), pid),
                 (conv.as_str(), session.id()),
                 "criterion 61"
@@ -10593,6 +10640,252 @@ mod servers_refusal_walk_tests {
             "{}",
             logged()
         );
+    }
+
+    /// ISS-1343 criteria 6 and 7: the held-conversation refusal names who
+    /// frees it, with the id Claude Code printed, and why this box waits
+    /// rather than forking.
+    #[test]
+    fn a_held_conversation_refusal_says_it_waits_rather_than_forks_and_whose_act_frees_it() {
+        let conversation = "19793a14-07b1-4970-9f51-3262792c1414".to_string();
+        for why in [
+            Unplaced::ConversationElsewhere {
+                conversation: conversation.clone(),
+                short: Some("19793a14".into()),
+                pid: 3_850_261,
+            },
+            Unplaced::ConversationUnaskable {
+                conversation: conversation.clone(),
+                short: Some("19793a14".into()),
+            },
+        ] {
+            let said = why.to_string();
+            for part in [
+                "rather than starting a pane with `--fork-session`",
+                "a fork is a second conversation for this project while the first still runs",
+                "`claude stop 19793a14`",
+                "`claude attach 19793a14`",
+                "never stops or attaches another Claude session itself",
+                "a person's or a master's act",
+                "background session (19793a14)",
+            ] {
+                assert!(said.contains(part), "`{part}` missing: {said}");
+            }
+        }
+    }
+
+    /// ISS-1343 criteria 1, 2 and 8-12: a pane that exits seconds after every
+    /// placement for a reason that is not a held conversation. It is placed
+    /// again on every sweep, as ISS-933 decided, and the journal says why it
+    /// exited once, names the run of them once at the third, and says nothing
+    /// per placement after that, where it used to say `gone` every time.
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_pane_that_exits_early_again_and_again_is_one_condition_and_still_placed() {
+        use crate::runner::ledger::Ledger;
+        let _serialised = terminal::testing::ONE_AT_A_TIME.lock().await;
+        let _env = crate::auth::cred_store::ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let iso = terminal::testing::IsolatedServer::new("sweepex");
+        if !terminal::available() {
+            terminal::testing::cannot_run(
+                "tmux is not installed here — the transport this rests on cannot run",
+            );
+            return;
+        }
+        if !iso.took() {
+            terminal::testing::cannot_run("this box does not resolve its tmux socket from the config dir, so the only server here is its own — not starting a pane on it");
+            return;
+        }
+        let home = crate::test_scratch::Scratch::new("sweepex-home");
+        let _home = ScopedVar::set("HOME", home.path());
+        let claude_home = crate::test_scratch::Scratch::new("sweepex-claude");
+        let _trust = ScopedVar::set("CLAUDE_CONFIG_DIR", claude_home.path());
+        let stub_dir = crate::test_scratch::Scratch::new("sweepex-stub");
+        let stub = stub_dir.join("claude");
+        std::fs::write(
+            &stub,
+            "#!/bin/sh\n[ \"$1\" = --probe ] && exit 0\nsleep 1\nprintf '\\033[31mError:\\033[8Gsettings\\033[17Gunreadable\\033[39m\\r\\r\\n'\n",
+        )
+        .expect("the stub is written");
+        let mut perms = std::fs::metadata(&stub).expect("stub mode").permissions();
+        std::os::unix::fs::PermissionsExt::set_mode(&mut perms, 0o755);
+        std::fs::set_permissions(&stub, perms).expect("the stub is executable");
+        let runs = (0..50).any(|_| {
+            let ok = std::process::Command::new(&stub)
+                .arg("--probe")
+                .status()
+                .is_ok_and(|s| s.success());
+            if !ok {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            ok
+        });
+        assert!(
+            runs,
+            "the stub never ran, so no pane could be started with it"
+        );
+        let _claude = crate::runner::process::testing::StubClaude::installed(&stub);
+        let repo = crate::test_scratch::Scratch::new("sweepex-repo");
+        let map = crate::test_scratch::Scratch::new("sweepex-map").at("control-tokens.json");
+        let store = session_tokens::SessionTokens::at(map.to_path_buf());
+        let runners: &'static str = Box::leak(
+            format!(
+                r#"[{{"projectId":"proj-ex","runnerId":"r-1","slug":"sweepex","baseBranch":null,"repoPath":{},"branch":null,"status":"active"}}]"#,
+                serde_json::to_string(&repo.path().to_string_lossy()).unwrap()
+            )
+            .into_boxed_str(),
+        );
+        let routes: &'static [(&'static str, &'static str, &'static str)] = Box::leak(
+            vec![
+                ("/api/devices/me/runners", "200 OK", runners),
+                (
+                    "/api/devices/me/issues/admissible",
+                    "200 OK",
+                    r#"{"items":[{"issueId":"i-1","issueKey":"ISS-1","projectId":"proj-ex","status":"open"}]}"#,
+                ),
+                (
+                    REGISTER,
+                    "200 OK",
+                    r#"{"sessionId":"sess-ex","name":"forge-master-sweepex","created":true}"#,
+                ),
+                (SERVERS, "200 OK", DECLARES),
+            ]
+            .into_boxed_slice(),
+        );
+        let core = fake_core::serve_routes(routes).await;
+        let mut ledger = Some(Ledger::open_in_memory().unwrap());
+
+        let buf = std::sync::Arc::new(std::sync::Mutex::new(Vec::<u8>::new()));
+        let made = buf.clone();
+        #[derive(Clone)]
+        struct Buf(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+        impl std::io::Write for Buf {
+            fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(b);
+                Ok(b.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        crate::daemon::keep_tracing_capturable();
+        let _logs = tracing::subscriber::set_default(
+            tracing_subscriber::fmt()
+                .with_writer(move || Buf(made.clone()))
+                .with_ansi(false)
+                .finish(),
+        );
+        let logged = || String::from_utf8_lossy(&buf.lock().unwrap()).into_owned();
+        let lines_with = |level: &str, said: &str| {
+            logged()
+                .lines()
+                .filter(|l| l.contains(level) && l.contains(said))
+                .count()
+        };
+        let client = CoreClient::new(core, "device-token");
+        let masters = Arc::new(Masters::new());
+        let (_adopted_tx, adopted) = tokio::sync::watch::channel(true);
+        let mut said = None;
+        let pane = terminal::session_name(terminal::MASTER_PREFIX, "sweepex");
+        macro_rules! a_sweep {
+            () => {
+                let _ = sweep(
+                    &client,
+                    &Config::default(),
+                    &SweepShared {
+                        masters: &masters,
+                        activity: &agent_activity::Activities::new(),
+                        job_panes: &Arc::new(JobPanes::new()),
+                        job_records: &crate::daemon::pool_jobs::NoRecords,
+                        drain: &crate::daemon::drain::Drain::unrecorded(),
+                    },
+                    &adopted,
+                    &mut ledger,
+                    Some(&store),
+                    &mut said,
+                )
+                .await;
+            };
+        }
+        let until_gone = || async {
+            for _ in 0..100 {
+                if !terminal::alive(&pane).await {
+                    return true;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+            false
+        };
+        let placed = || logged().matches("cold-started").count();
+
+        for n in 1..=5 {
+            a_sweep!();
+            assert_eq!(
+                placed(),
+                n,
+                "criteria 10 and 11: sweep {n} placed a pane, whatever the count of exits before it: {}",
+                logged()
+            );
+            assert!(
+                until_gone().await,
+                "the stub's pane exits, as sid-desk's did"
+            );
+        }
+
+        let why = "it exited having printed last: \"Error: settings unreadable\"";
+        assert_eq!(
+            lines_with("WARN", why),
+            1,
+            "criteria 1 and 8: the first exit is one warning carrying why: {}",
+            logged()
+        );
+        assert!(
+            logged().contains("resident session forge-master-sweepex is gone, read gone"),
+            "criterion 1: and within how long of its placement: {}",
+            logged()
+        );
+        assert_eq!(
+            lines_with("ERROR", "One condition"),
+            1,
+            "criterion 8: the third is one error naming the condition: {}",
+            logged()
+        );
+        assert!(
+            logged().contains("each of its last 3 placements"),
+            "{}",
+            logged()
+        );
+        assert_eq!(
+            lines_with("WARN", "is gone"),
+            1,
+            "criterion 8: no warning per placement after the first: {}",
+            logged()
+        );
+        assert_eq!(
+            lines_with("WARN", "could not nudge"),
+            0,
+            "criterion 12: a nudge to a pane already gone adds no warning of its own: {}",
+            logged()
+        );
+        let dir = pane_exit::master_dir("sweepex").expect("the isolated config dir");
+        match pane_exit::read(&dir) {
+            pane_exit::Found::Record(r) => {
+                assert_eq!(r.pane, "forge-master-sweepex", "criterion 2");
+                assert_eq!(r.in_a_row, 4, "criterion 2: the four exits read so far");
+                assert!(r.lived_secs.is_some_and(|s| s < 90), "criterion 2: {r:?}");
+                assert_eq!(
+                    r.exit,
+                    pane_exit::Exit::Printed {
+                        last: "Error: settings unreadable".into()
+                    },
+                    "criterion 2"
+                );
+            }
+            other => panic!("criterion 2: the exit is kept for `master status`: {other:?}"),
+        }
+        let _ = terminal::kill(&pane).await;
     }
 
     /// ISS-1312 criterion 45: `supervise` read an unaskable tmux as a pane gone,

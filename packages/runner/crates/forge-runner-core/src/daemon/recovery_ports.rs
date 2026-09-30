@@ -35,7 +35,7 @@ impl MasterLiveness for PaneMasters<'_> {
 
 /// What tmux says of the pane named `name`: the one reading both recovery and
 /// the master sweep take, so neither ends a master the other still holds.
-pub(crate) async fn pane_presence(name: &str) -> MasterPresence {
+pub async fn pane_presence(name: &str) -> MasterPresence {
     match terminal::pane_pid(name).await {
         Some(_) => MasterPresence::Alive,
         None => absent_or_unanswered(name).await,
