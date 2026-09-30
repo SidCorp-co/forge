@@ -62,8 +62,8 @@ pub enum PageKeys {
     Unread(String),
 }
 
-/// The page row's wording, from the page shown and the page count.
-type PageRow<'a> = dyn Fn(usize, usize) -> String + 'a;
+/// The page row's wording, from the page shown, the page count and the keys.
+type PageRow<'a> = dyn Fn(usize, usize, &PageKeys) -> String + 'a;
 
 /// One screenful of `frame`, whose first line is its header. `page` is taken
 /// modulo however many pages this frame needs on this screen, and `Shown`
@@ -123,7 +123,7 @@ pub fn screen(frame: &[String], size: Option<Screen>, page: usize, keys: &PageKe
     // row, then a short one, then no header, then the body alone, so every
     // page fits however small the screen is and every row is still shown.
     let (cols, rows) = (size.cols, size.rows);
-    let full = |at: usize, pages: usize| {
+    let full = |at: usize, pages: usize, keys: &PageKeys| {
         match keys {
         PageKeys::Turning => format!(
             "page {at} of {pages} — {total} rows at {cols}x{rows}; space holds, n and p turn; `forge-runner top --once | less` reads it whole"
@@ -136,12 +136,19 @@ pub fn screen(frame: &[String], size: Option<Screen>, page: usize, keys: &PageKe
         ),
     }
     };
-    let short = |at: usize, pages: usize| match keys {
+    let short = |at: usize, pages: usize, keys: &PageKeys| match keys {
         PageKeys::Turning => format!("page {at} of {pages}; space holds; --once reads it whole"),
         PageKeys::Held => format!("page {at} of {pages} HELD until space; --once reads it whole"),
         PageKeys::Unread(_) => {
             format!("page {at} of {pages}; keys are not read; --once reads it whole")
         }
+    };
+    // Holding a page changes the page row's words, and must not change the
+    // page's rows: the height reserved is the tallest either wording takes
+    // (whole-set read at 7a70ba3, F2).
+    let family: &[&PageKeys] = match keys {
+        PageKeys::Unread(_) => &[keys],
+        PageKeys::Turning | PageKeys::Held => &[&PageKeys::Turning, &PageKeys::Held],
     };
     let plans: [(bool, Option<&PageRow>); 4] = [
         (true, Some(&full)),
@@ -178,12 +185,13 @@ pub fn screen(frame: &[String], size: Option<Screen>, page: usize, keys: &PageKe
             // they break at the same spaces: one of each count is every height.
             let tallest = std::iter::successors(Some(1usize), |at| at.checked_mul(10))
                 .take_while(|&at| at <= n)
-                .map(|at| wrap(&status(at, n), size.cols).len())
+                .flat_map(|at| family.iter().map(move |k| (at, *k)))
+                .map(|(at, k)| wrap(&status(at, n, k), size.cols).len())
                 .max()
                 .unwrap_or(1);
             if tallest == rows_for_status {
                 let at = page % n;
-                fitted = Some((pages, at, wrap(&status(at + 1, n), size.cols)));
+                fitted = Some((pages, at, wrap(&status(at + 1, n, keys), size.cols)));
                 break;
             }
             rows_for_status = tallest;
@@ -366,7 +374,8 @@ fn prefix(s: &str, n: usize) -> &str {
     s[..end].trim_end()
 }
 
-/// The longest end of `s` taking at most `n` cells.
+/// The longest end of `s` taking at most `n` cells, never opening on a mark
+/// combined onto a character the cut left out.
 fn suffix(s: &str, n: usize) -> &str {
     let mut used = 0;
     let start = s
@@ -377,7 +386,7 @@ fn suffix(s: &str, n: usize) -> &str {
             used > n
         })
         .map_or(0, |(i, c)| i + c.len_utf8());
-    &s[start..]
+    s[start..].trim_start_matches(|c: char| start > 0 && UnicodeWidthChar::width(c) == Some(0))
 }
 
 /// The terminal cells `s` takes: a wide character two, a combining mark none.
@@ -883,6 +892,42 @@ mod tests {
         let wide = format!("  {}: 界界界界界界界界界界界界", "界".repeat(3));
         let got = fit_heading(&wide, 16);
         assert!(cells(&got) <= 16, "{got:?}");
+    }
+
+    /// Consult on the r4 head (whole-set read at 7a70ba3), F2: holding a page
+    /// changes the page row's words and never the page's rows, even where the
+    /// held wording would wrap and the turning one would not.
+    #[test]
+    fn holding_a_page_keeps_the_rows_it_shows() {
+        let mut f = vec!["head".to_string()];
+        f.extend((1..=40).map(|i| format!("r{i}")));
+        for cols in [80, 100, 110, 120, 140] {
+            for rows in [5, 7, 24] {
+                let size = Some(Screen { cols, rows });
+                for page in 0..14 {
+                    let body = |k: &PageKeys| {
+                        let s = super::screen(&f, size, page, k);
+                        (s.at, s.pages, s.rows[s.top + s.carried..].to_vec())
+                    };
+                    assert_eq!(
+                        body(&PageKeys::Turning),
+                        body(&PageKeys::Held),
+                        "{cols}x{rows}, page {page}"
+                    );
+                }
+            }
+        }
+    }
+
+    /// Consult on the r4 head, F1: an end cut between a letter and the mark
+    /// combined onto it takes neither, so the mark is never set on the `…`.
+    #[test]
+    fn an_end_cut_never_starts_on_a_combining_mark() {
+        assert_eq!(suffix("e\u{301}x", 1), "x");
+        assert_eq!(suffix("ae\u{301}", 1), "e\u{301}");
+        let head = format!("  questions  {}: 2 open", "caf\u{e9}e\u{301}".repeat(8));
+        let got = fit_heading(&head, 20);
+        assert!(!got.contains("…\u{301}"), "{got:?}");
     }
 
     /// Boundary: where the carried headings would fill a page, the outermost
