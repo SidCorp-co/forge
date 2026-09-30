@@ -65,6 +65,8 @@ describe('absentPrerequisites', () => {
     expect(missing.map((m) => m.name)).toEqual(['archmap-resolver']);
     expect(missing[0].what).toContain('bin/dependency-cruise.mjs');
     expect(missing[0].what).toContain('dependency-cruiser 18.3.0');
+    expect(missing[0].remedy).toContain('pins');
+    expect(missing[0].remedy).toContain('18.2.0');
   });
 
   it('does not blame the rename when the bin is on disk under the package that declares it', () => {

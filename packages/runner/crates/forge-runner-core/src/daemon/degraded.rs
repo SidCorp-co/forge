@@ -284,7 +284,7 @@ pub const MAX_REASONS: usize = 24;
 
 /// The most UTF-16 code units any one string in a condition carries. Details
 /// interpolate pane ids and role names, so the length is not ours to promise.
-/// The unit is the CONSUMER's: zod's `z.string().max()` counts UTF-16 units, so
+/// The unit is the CONSUMER's: core's `utf16String` counts UTF-16 units, so
 /// a bound counted in Unicode scalars would pass here and be refused there for
 /// every string outside the basic plane. A clipped string says how much went;
 /// the file keeps the whole of it.
@@ -834,7 +834,7 @@ mod tests {
         }
     }
 
-    /// Consult F1, recheck. The consumer's `z.string().max()` counts UTF-16
+    /// Consult F1, recheck. The consumer's `utf16String` counts UTF-16
     /// units and this box counted Unicode scalars, so 300 characters outside the
     /// basic plane passed here and were refused there — and a refused report is
     /// a box gone quiet. The bound is now the consumer's unit.

@@ -101,13 +101,16 @@ function windowFiles(name, members, checks, base = 'main') {
       window: name,
       base,
       thresholds: { size: 10, minutes: 360, source: 'fixture' },
-      members: members.map(([issue, br, head, entry = { at: head, record: `${issue}'s run` }]) => ({
-        issue,
-        branch: br,
-        head,
-        arrivedAt: '2026-09-29T00:00:00Z',
-        ...(entry === null ? {} : { entry }),
-      })),
+      members: members.map(([issue, br, head, given]) => {
+        const entry = given === undefined ? { at: head, record: `${issue}'s run` } : given;
+        return {
+          issue,
+          branch: br,
+          head,
+          arrivedAt: '2026-09-29T00:00:00Z',
+          ...(entry === null ? {} : { entry }),
+        };
+      }),
     }),
   );
   const checksFile = join(box, `${name}.checks.json`);

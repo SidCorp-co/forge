@@ -411,3 +411,56 @@ describe('GET /me/run-sessions/:sessionId — core reads a run session back over
     expect(res.status).toBe(401);
   });
 });
+
+describe('the bounds a runner clips in UTF-16 code units', () => {
+  const astral = (units: number) => '\u{1D518}'.repeat(units / 2);
+  const session = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+  const bounds = [
+    {
+      path: '/me/run-sessions',
+      units: 60,
+      body: (name: string) => ({
+        projectId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        runId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+        issueKeys: ['ISS-957'],
+        name,
+      }),
+    },
+    {
+      path: `/me/run-sessions/${session}/close`,
+      units: 500,
+      body: (detail: string) => ({ outcome: 'ended', detail }),
+    },
+    {
+      path: '/me/limit',
+      units: 200,
+      body: (detail: string) => ({ reason: 'usage_limit', detail }),
+    },
+  ];
+  const post = (path: string, body: unknown) =>
+    app.request(`/api/devices${path}`, {
+      method: 'POST',
+      headers: { ...AUTH, 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+  beforeEach(async () => {
+    openRunSession.mockResolvedValue({ sessionId: 's9', runId: 'r9' });
+    recordMasterLimit.mockResolvedValue({ runnerId: 'r-1' });
+    const { closeRunSession } = await import('./run-session.js');
+    vi.mocked(closeRunSession).mockResolvedValue({ alreadyTerminal: false, returned: [] });
+  });
+
+  it.each(bounds)('$path takes astral text at exactly $units units', async (b) => {
+    const res = await post(b.path, b.body(astral(b.units)));
+    expect(res.status).toBe(200);
+  });
+
+  it.each(bounds)('$path refuses one unit past $units, naming the unit', async (b) => {
+    const over = `${astral(b.units)}x`;
+    expect([...over].length, 'fits a code-point bound').toBeLessThan(b.units);
+    const res = await post(b.path, b.body(over));
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(await res.json())).toContain(`${b.units} UTF-16 code units`);
+  });
+});

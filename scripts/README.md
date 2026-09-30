@@ -299,9 +299,12 @@ no files (.)` and exited 2 in 0.117s.
 dependency-cruiser 18.3.0 had renamed the CLI entry point
 `bin/dependency-cruise.mjs` to `bin/dependency-cruiser.mjs`, and the vendored archmap walks
 `node_modules` for the old name alone — so the package was installed, complete and runnable, and the
-resolver was missing. `^18` in `packages/core/package.json` admits 18.3.x, so every npm
+resolver was missing. `^18` in `packages/core/package.json` admitted 18.3.x, so every npm
 dependency-group PR met it: #369, #394, #425 and #448 closed unmerged and #509 failed twice, each
-told only that this repo's scope matched nothing. The `archmap-resolver` prerequisite resolves the
+told only that this repo's scope matched nothing. `packages/core/package.json` now pins
+dependency-cruiser to exactly 18.2.0 and `.github/dependabot.yml` ignores every newer version. Both
+go when archmap releases its resolver fix (archmap ISS-10) and `archmap install --force` re-vendors
+it (ISS-1354). The `archmap-resolver` prerequisite resolves the
 entry point archmap actually spawns, and `check-archmap-ready.mjs` runs the same table in the CI job,
 which runs the vendored binary directly rather than through `verify`. A directory is not a tool; name
 the file the gate executes (ISS-1098).
