@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { standingSentence, verdictStanding } from '../issues/verdict-standing.js';
 import { runnerHoldClause } from '../release-batch/blocker-sentences.js';
 import type { ServingReading } from '../release-batch/serving-reading.js';
 import type { RunnerHold } from '../runners/ineligible.js';
@@ -266,26 +267,78 @@ describe('a reason said once per hold (ISS-1346 judge r2 finding 4)', () => {
   });
 });
 
-// ISS-1346 judge r2 finding 5: ISS-529's hold printed the whole served clause twice.
+// ISS-1346 criterion 25: the reading is the report's, so the hold says it once whatever each
+// criterion's reason is — the reasons below are the ones `standingSentence` writes, not stand-ins.
 describe('a criteria hold names what is served once', () => {
-  it('points back at the served commits a superseded criterion already named', () => {
-    const reading = live();
-    const clause = `\`${SERVING}\` at ${HOST}, read at ${READ_AT}`;
-    const superseded = {
-      criterion: 1,
+  const JUDGED_A = 'dce6f354c727baa81c681f144cbadf30050eabfc';
+  const JUDGED_B = '72b94aff846279e6bfb4f6d347586ee67a3cd5f1';
+  const times = (text: string, what: string) => text.split(what).length - 1;
+  const unearnedAt = (criterion: number, value: string, serving: ServingReading) => {
+    const standing = verdictStanding({ kind: 'source', value }, serving, { source: JUDGED_A });
+    return {
+      criterion,
       verdict: 'pass',
-      standing: 'superseded' as const,
-      why: `judged at dce6f35, which is not a commit this project is serving; it is serving ${clause}`,
+      standing,
+      why: standingSentence(standing, { kind: 'source', value }, serving, { source: JUDGED_A }),
     };
-    const { reason } = criteriaHold({ ...REPORT, serving: reading, unearned: [superseded] });
-    expect(reason.split(`\`${SERVING}\``)).toHaveLength(2);
-    expect(reason).toContain('judged at a commit this project is serving, named above');
+  };
+
+  it('names the served commits once where criteria were judged at two commits it is not serving', () => {
+    const reading = live();
+    const unearned = [unearnedAt(1, JUDGED_A, reading), unearnedAt(2, JUDGED_B, reading)];
+    const { reason } = criteriaHold({ ...REPORT, serving: reading, unearned });
+    expect(reason).toContain(`criterion 1: judged at ${JUDGED_A}`);
+    expect(reason).toContain(`criterion 2: judged at ${JUDGED_B}`);
+    expect(times(reason, `\`${SERVING}\``)).toBe(1);
+    expect(times(reason, HOST)).toBe(1);
+    expect(times(reason, READ_AT)).toBe(1);
   });
 
-  it('still names the served commits where no criterion did', () => {
+  it('names each commit a disagreeing fleet answered once, beside where it runs, and what answered nothing', () => {
+    const other = '1d1d63492f0ab8c5e5c3d1c6f6bb0b3b0c6a9f11';
+    const reading: ServingReading = {
+      kind: 'serving',
+      served: [
+        { commit: SERVING, where: HOST },
+        { commit: other, where: 'https://second.test/health' },
+      ],
+      unread: ['https://third.test/health is unreachable (ECONNREFUSED)'],
+      readAt: READ_AT,
+    };
+    const unearned = [unearnedAt(1, JUDGED_A, reading), unearnedAt(2, JUDGED_B, reading)];
+    const { reason } = criteriaHold({ ...REPORT, serving: reading, unearned });
+    expect(reason).toContain(
+      `\`${SERVING}\` at ${HOST}; \`${other}\` at https://second.test/health`,
+    );
+    expect(times(reason, other)).toBe(1);
+    expect(times(reason, 'ECONNREFUSED')).toBe(1);
+    expect(reason).not.toContain('more than one commit is running');
+  });
+
+  it('still names the served commits where no criterion was judged anywhere', () => {
     const { reason } = criteriaHold(REPORT);
-    expect(reason.split(`\`${SERVING}\``)).toHaveLength(2);
-    expect(reason).not.toContain('named above');
+    expect(times(reason, `\`${SERVING}\``)).toBe(1);
+  });
+
+  it('says once what is missing where a source verdict stands unwitnessed and nothing can be read', () => {
+    const missing = 'this project has no active deploy binding';
+    const serving = { kind: 'undeclared', missing, route: NO_BINDING_ROUTE } as const;
+    const unearned = [unearnedAt(1, JUDGED_A, serving)];
+    expect(unearned[0]?.standing).toBe('unwitnessed');
+    const { reason } = criteriaHold({ ...REPORT, serving, unearned });
+    expect(reason).toContain('never that the code was running');
+    expect(times(reason, missing)).toBe(1);
+  });
+
+  it('says once what could not be read, where and when, where a source verdict stands unwitnessed', () => {
+    const why = 'https://x.test/h is unreachable (getaddrinfo ENOTFOUND)';
+    const serving = { kind: 'unreadable', why, hosts: [HOST], readAt: READ_AT } as const;
+    const unearned = [unearnedAt(1, JUDGED_A, serving)];
+    expect(unearned[0]?.standing).toBe('unwitnessed');
+    const { reason } = criteriaHold({ ...REPORT, serving, unearned });
+    expect(times(reason, why)).toBe(1);
+    expect(times(reason, HOST)).toBe(1);
+    expect(times(reason, READ_AT)).toBe(1);
   });
 });
 

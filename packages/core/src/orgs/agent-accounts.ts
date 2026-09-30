@@ -11,7 +11,7 @@
 import { randomBytes } from 'node:crypto';
 import { and, count, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
-import { isAgentHandle, synthesizeAgentEmail } from '../auth/agent-account.js';
+import { agentAccountRow, isAgentHandle } from '../auth/agent-account.js';
 import { mintPat } from '../auth/pat.js';
 import { patIsLive } from '../auth/pat-live.js';
 import { PAT_GRANT_ALL } from '../auth/pat-permissions.js';
@@ -121,19 +121,14 @@ export async function createAgentAccount(
   }
 
   const projectRole: ProjectMemberRole = input.projectRole ?? 'member';
-  const email = synthesizeAgentEmail(input.handle);
+  const account = agentAccountRow(input.handle);
+  const { email } = account;
 
   const created = await mapHandleCollision(input, () =>
     db.transaction(async (tx) => {
       const [row] = await tx
         .insert(users)
-        .values({
-          email,
-          kind: 'agent',
-          passwordHash: null,
-          emailVerifiedAt: new Date(),
-          displayName: input.handle,
-        })
+        .values(account)
         .returning({ id: users.id, createdAt: users.createdAt });
       if (!row) throw new Error('createAgentAccount: user insert returned no row');
 

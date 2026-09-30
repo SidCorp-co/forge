@@ -17,7 +17,11 @@ import {
   ReleaseTargetUndeclaredError,
   resolveReleaseGate,
 } from '../release-batch/gate.js';
-import { readServingNow, whyUncorroborated } from '../release-batch/serving-reading.js';
+import {
+  readServingNow,
+  servingClause,
+  whyUncorroborated,
+} from '../release-batch/serving-reading.js';
 import { loadCreatedBy } from '../schedules/release-batch-dispatch.js';
 import { cutWaitingRelease } from '../schedules/release-batch-run.js';
 import { projectAutoProdDeploy } from './release-coolify.js';
@@ -148,10 +152,19 @@ async function reportClaimedFailure(
  */
 function reportHeldBack(projectId: string, held: readonly IssueCriteriaReport[]): void {
   for (const report of held) {
+    // Each reason says how its verdict resolved; the reading they were weighed against is said
+    // once, beside them (ISS-1346).
+    const reading =
+      report.serving.kind === 'serving'
+        ? `it is serving ${servingClause(report.serving)}`
+        : whyUncorroborated(report.serving);
+    const numbers = report.unearned.map((c) => c.criterion).join(', ');
+    const reasons = report.unearned.map((c) => `${c.criterion}: ${c.why}`).join('; ');
     logger.info(
       {
         projectId,
         issueId: report.issueId,
+        serving: report.serving,
         criteria: report.unearned.map((c) => ({
           criterion: c.criterion,
           verdict: c.verdict,
@@ -159,9 +172,7 @@ function reportHeldBack(projectId: string, held: readonly IssueCriteriaReport[])
           why: c.why,
         })),
       },
-      `release-sweep: ${report.issueId} is held back on criterion ${report.unearned
-        .map((c) => c.criterion)
-        .join(', ')} — ${report.unearned.map((c) => `${c.criterion}: ${c.why}`).join('; ')}`,
+      `release-sweep: ${report.issueId} is held back on criterion ${numbers} — ${reasons}; ${reading}`,
     );
   }
 }

@@ -105,6 +105,24 @@ async function commentsOn(id: string): Promise<string[]> {
   return rows.map((r) => String((r as { body: unknown }).body));
 }
 
+/** Every agent account, organization member and project member row an agent holds. */
+async function agentFootprint(): Promise<{
+  users: number;
+  orgMembers: number;
+  projectMembers: number;
+}> {
+  const [row] = (await harness.db.execute(sql`
+    SELECT (SELECT count(*)::int FROM users WHERE kind = 'agent') AS users,
+           (SELECT count(*)::int FROM organization_members m JOIN users u ON u.id = m.user_id
+             WHERE u.kind = 'agent') AS "orgMembers",
+           (SELECT count(*)::int FROM project_members m JOIN users u ON u.id = m.user_id
+             WHERE u.kind = 'agent') AS "projectMembers"
+  `)) as unknown as Array<{ users: number; orgMembers: number; projectMembers: number }>;
+  return row as { users: number; orgMembers: number; projectMembers: number };
+}
+
+const NO_AGENT = { users: 0, orgMembers: 0, projectMembers: 0 };
+
 async function lockWaiter(): Promise<void> {
   for (let i = 0; i < 200; i++) {
     const rows = await harness.db.execute(sql`
@@ -197,6 +215,38 @@ describe('the wedge net reads the lease (ISS-1317)', () => {
     expect(reset).toBe(0);
     expect(await statusOf(id)).toBe('in_progress');
     expect(await commentsOn(id)).toEqual([]);
+    expect(await agentFootprint()).toEqual(NO_AGENT);
+  });
+
+  it('keeps an issue a person was asked about after the pass chose it, and mints nobody', async () => {
+    const id = await wedged(lapsedLease());
+    const reset = await whileRowIsHeld(
+      id,
+      (tx) =>
+        tx.execute(sql`
+          INSERT INTO agent_questions (id, project_id, issue_id, status, blocker_kind, steps)
+          VALUES (${randomUUID()}, ${projectId}, ${id}, 'open', 'human', '[{"round":1}]'::jsonb)
+        `),
+      () => reconciler.resetAutonomousWedgesOnce(),
+    );
+    expect(reset).toBe(0);
+    expect(await statusOf(id)).toBe('in_progress');
+    expect(await commentsOn(id)).toEqual([]);
+    expect(await agentFootprint()).toEqual(NO_AGENT);
+  });
+
+  it('calls a reset off when another writer minted the agent account after the pass read none', async () => {
+    const { resolveProjectHandle } = await import('../../src/conversations/handles.js');
+    const id = await wedged(lapsedLease());
+    const reset = await whileRowIsHeld(
+      id,
+      (tx) => resolveProjectHandle(tx as never, projectId),
+      () => reconciler.resetAutonomousWedgesOnce(),
+    );
+    expect(reset).toBe(0);
+    expect(await statusOf(id)).toBe('in_progress');
+    expect(await commentsOn(id)).toEqual([]);
+    expect(await agentFootprint()).toEqual({ users: 1, orgMembers: 1, projectMembers: 1 });
   });
 });
 
@@ -269,6 +319,24 @@ describe('the reconciler is the one named on a reset (ISS-1317 r4)', () => {
     expect(comment?.kind).toBe('agent');
     expect(comment?.author_id).not.toBe(ownerId);
     expect(comment?.member).toBe(true);
+  });
+
+  it('shows the account it minted under its handle, never under a made-up address', async () => {
+    const { resolveActors } = await import('../../src/issues/actor-resolution.js');
+    const { actorKey } = await import('../../src/issues/actor-identity.js');
+    const id = await wedged(lapsedLease());
+    await reconciler.resetAutonomousWedgesOnce();
+    const authorId = String((await resetTrail(id)).comment?.author_id);
+    const [membership] = (await harness.db.execute(
+      sql`SELECT handle FROM organization_members WHERE user_id = ${authorId}`,
+    )) as unknown as Array<{ handle: string }>;
+    const shown = (await resolveActors([{ type: 'user', id: authorId }])).get(
+      actorKey('user', authorId),
+    );
+    expect(membership?.handle).toMatch(/^[a-z0-9-]+$/);
+    expect(shown?.displayName).toBe(membership?.handle);
+    expect(shown?.displayName).not.toMatch(/@agents\.forge\.invalid$/);
+    expect(shown?.isAgent).toBe(true);
   });
 
   it('records the move in kernel_transitions and activity under that agent, as an agent', async () => {

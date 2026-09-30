@@ -78,8 +78,9 @@ export const users = pgTable('users', {
    * The label a person reads, and NOTHING else (ISS-1003).
    *
    * Free text, accented, changeable, not unique — a person sets their own and
-   * an org admin sets an agent's. Null until somebody types one, which is what
-   * every renderer's "or the email address" branch is for.
+   * an org admin sets an agent's. An agent account is minted carrying its
+   * handle here; a person's is null until they type one, which is what every
+   * renderer's "or the email address" branch is for.
    */
   displayName: text('display_name'),
   /**
