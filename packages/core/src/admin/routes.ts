@@ -1,4 +1,3 @@
-import { zValidator } from '@hono/zod-validator';
 import { and, count, desc, eq, gte, ilike, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -23,6 +22,7 @@ import {
   requireAuth,
 } from '../middleware/auth.js';
 import { onAdminList, requireAdmin } from '../middleware/require-admin.js';
+import { zValidator } from '../middleware/zod-validator.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });

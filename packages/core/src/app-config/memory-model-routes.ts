@@ -2,7 +2,6 @@
 // estimate, flip, status, cancel. A project admin's action, never a side
 // effect of PUT /api/app-config — an hours-long paid job is not a boolean.
 
-import { zValidator } from '@hono/zod-validator';
 import { eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -20,6 +19,7 @@ import {
   writeReindex,
 } from '../memory/chunk-reindex.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { zValidator } from '../middleware/zod-validator.js';
 
 const paramSchema = z.object({ projectId: z.uuid() });
 const flipSchema = z.object({ model: z.enum(memoryModels) }).strict();

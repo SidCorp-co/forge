@@ -1,4 +1,3 @@
-import { zValidator } from '@hono/zod-validator';
 import {
   and,
   count,
@@ -30,6 +29,7 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { listResponse } from '../lib/pagination.js';
 import { queryBadRequest } from '../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import { holdsOpenHumanQuestion } from '../questions/issue-coupling.js';
 import { usageSessionMatch } from '../usage-records/rollup.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';

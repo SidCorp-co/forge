@@ -8,7 +8,6 @@
  * long is still readable afterwards.
  */
 
-import { zValidator } from '@hono/zod-validator';
 import { and, desc, eq, gt } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -16,6 +15,7 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { notificationSilences, notificationTypes } from '../db/schema.js';
 import type { AuthVars } from '../middleware/auth.js';
+import { zValidator } from '../middleware/zod-validator.js';
 
 const MAX_SILENCE_MS = 7 * 24 * 60 * 60 * 1000;
 

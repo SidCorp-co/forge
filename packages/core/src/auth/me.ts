@@ -1,4 +1,3 @@
-import { zValidator } from '@hono/zod-validator';
 import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -7,6 +6,7 @@ import { db } from '../db/client.js';
 import { oauthAccounts, userPreferences, users } from '../db/schema.js';
 import { assertOrgAccess } from '../lib/authz.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
+import { zValidator } from '../middleware/zod-validator.js';
 
 export const meRoutes = new Hono<{ Variables: AuthVars }>();
 

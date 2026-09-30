@@ -1,9 +1,9 @@
-import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { assertOrgRoleOnProject, loadProjectAccess } from '../lib/authz.js';
 import { isEnabled } from '../lib/feature-flags.js';
 import type { AuthVars } from '../middleware/auth.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import { pipelineConfigPatchSchema } from '../pipeline/pipeline-config-schema.js';
 import { updatePipelineConfig } from '../pipeline/pipeline-config-service.js';
 import { ENVIRONMENTS_WRITE_SHAPE_MESSAGE } from './environments.js';

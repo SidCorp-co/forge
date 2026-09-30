@@ -1,4 +1,3 @@
-import { zValidator } from '@hono/zod-validator';
 import { and, count, desc, eq, gte, inArray, lte, type SQL } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -8,6 +7,7 @@ import { chatLogs, type ProjectMemberRole, projects, qaRatings } from '../db/sch
 import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import { findProjectIdBySlug } from '../projects/service.js';
 
 const idParamSchema = z.object({ id: z.uuid() });

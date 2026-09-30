@@ -1,10 +1,10 @@
-import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { phaseJournalOutcomes } from '../db/schema-journal.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import { endPhase, listPhases, resumePoint, startPhase } from './phase-journal.js';
 import { readPipelineRun } from './runs.js';
 

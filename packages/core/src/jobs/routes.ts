@@ -1,4 +1,3 @@
-import { zValidator } from '@hono/zod-validator';
 import { and, count, desc, eq, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -17,6 +16,7 @@ import {
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { listResponse, paginationSchema } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import { openIssueRun, openOneShotRun } from '../pipeline/runs.js';
 import { canonicalSessionId, usageSessionMatch } from '../usage-records/rollup.js';
 import { readJob } from './job-queries.js';

@@ -9,7 +9,6 @@
  * would have had to fan out over every project it can see.
  */
 
-import { zValidator } from '@hono/zod-validator';
 import { and, eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
@@ -18,6 +17,7 @@ import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import { loadVisibleProjectIds } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import { readPulseFlow } from './pulse-flow.js';
 import { emptyBuckets } from './pulse-folds.js';
 import { readPulseLiveness } from './pulse-liveness.js';

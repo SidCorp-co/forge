@@ -7,12 +7,12 @@
  * path is shared with the matching `forge_pipeline_runs.*` MCP tools.
  */
 
-import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import { readPipelineRun } from './runs.js';
 import {
   cancelPipelineRun,
