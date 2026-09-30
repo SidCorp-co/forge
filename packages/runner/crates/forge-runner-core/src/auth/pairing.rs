@@ -268,3 +268,8 @@ mod tests {
         assert_eq!(classify_poll_status(404), PollClass::Fatal);
     }
 }
+
+#[cfg(windows)]
+use std::os::windows::ffi::OsStrExt;
+#[cfg(target_os = "macos")]
+use std::os::macos::fs::MetadataExt;
