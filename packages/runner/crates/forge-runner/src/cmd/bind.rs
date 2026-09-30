@@ -66,6 +66,31 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn config_dir() -> Option<PathBuf> {
+    forge_runner_core::daemon::control::config_dir()
+}
+
+/// The master skill is written at bind, so a bound project carries it whether
+/// or not a master is ever placed for it (ISS-1357). The line printed, and
+/// whether it was installed.
+fn install_skill(
+    slug: &str,
+    repo: &std::path::Path,
+    dir: Option<&std::path::Path>,
+) -> (String, bool) {
+    use forge_runner_core::daemon::master_skill::{install_and_record, Point};
+    let outcome = install_and_record(slug, repo, Point::Bind, dir);
+    let build = format!(
+        "{} ({})",
+        forge_runner_core::update::CURRENT_VERSION,
+        forge_runner_core::update::BUILD_COMMIT
+    );
+    (
+        format!("skill {slug}: {}", outcome.says(Some(repo), &build)),
+        outcome.installed(),
+    )
+}
+
 /// A device-token client for the configured core, or the reason there is none.
 pub fn client_for(ctx: &Ctx, cfg: &Config) -> anyhow::Result<CoreClient> {
     let core_url = ctx
@@ -115,6 +140,15 @@ pub async fn write_binding(
     );
     cfg.save()?;
 
+    // Before the server is asked: the binding is saved from here on, and a
+    // refused PATCH must not leave it without the skill.
+    let (line, installed) = install_skill(slug, path, config_dir().as_deref());
+    if installed {
+        println!("{line}");
+    } else {
+        eprintln!("{line}");
+    }
+
     runners::patch_runner(
         client,
         &assignment.runner_id,
@@ -160,4 +194,102 @@ pub async fn provision_checkout(
         );
     }
     Ok(target)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use forge_runner_core::daemon::master_skill::{self, path_in, Outcome, Read, ASSET};
+    use forge_runner_core::test_scratch::Scratch;
+
+    fn git_checkout(dir: &std::path::Path, ignores: bool) {
+        std::fs::create_dir_all(dir).unwrap();
+        let ok = std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(["init", "-q"])
+            .env_remove("GIT_DIR")
+            .status()
+            .unwrap()
+            .success();
+        assert!(ok);
+        if ignores {
+            std::fs::write(dir.join(".gitignore"), ".claude/\n").unwrap();
+        }
+    }
+
+    #[test]
+    fn bind_writes_the_skill_and_says_so() {
+        let s = Scratch::new("bind-skill");
+        let repo = s.path().join("repo");
+        git_checkout(&repo, true);
+        let cfg = s.path().join("cfg");
+
+        let (line, installed) = install_skill("acme", &repo, Some(&cfg));
+
+        assert!(installed, "{line}");
+        assert!(line.starts_with("skill acme: written by "), "{line}");
+        assert_eq!(std::fs::read_to_string(path_in(&repo)).unwrap(), ASSET);
+        let Read::Record(r) = master_skill::read(&cfg) else {
+            panic!("bind recorded nothing")
+        };
+        let lines: Vec<_> = r.of("acme").map(|e| (&e.outcome, e.point)).collect();
+        assert_eq!(lines, [(&Outcome::Written, master_skill::Point::Bind)]);
+    }
+
+    /// Owner, 2026-09-30: a checkout that merely does not ignore `.claude/`
+    /// gets it in its exclude file and the skill.
+    #[test]
+    fn bind_into_a_checkout_that_does_not_ignore_it_excludes_and_writes() {
+        let s = Scratch::new("bind-skill-open");
+        let repo = s.path().join("repo");
+        git_checkout(&repo, false);
+
+        let (line, installed) = install_skill("acme", &repo, Some(&s.path().join("cfg")));
+
+        assert!(installed, "{line}");
+        assert_eq!(std::fs::read_to_string(path_in(&repo)).unwrap(), ASSET);
+        assert!(
+            std::fs::read_to_string(repo.join(".git").join("info").join("exclude"))
+                .unwrap()
+                .lines()
+                .any(|l| l == ".claude/")
+        );
+    }
+
+    #[test]
+    fn bind_into_a_checkout_whose_own_rule_un_ignores_it_writes_nothing_and_says_why() {
+        let s = Scratch::new("bind-skill-negated");
+        let repo = s.path().join("repo");
+        git_checkout(&repo, false);
+        std::fs::write(repo.join(".gitignore"), "!.claude/\n!.claude/**\n").unwrap();
+
+        let (line, installed) = install_skill("acme", &repo, Some(&s.path().join("cfg")));
+
+        assert!(!installed);
+        assert!(
+            line.contains("NOT WRITTEN") && line.contains("does not ignore"),
+            "{line}"
+        );
+        assert!(!repo.join(".claude").exists());
+    }
+
+    /// Review 294dd5's successor F1: the binding is saved before the server is
+    /// asked, so the skill is installed between the two, and a refused PATCH
+    /// leaves a saved binding that already carries it.
+    #[test]
+    fn the_skill_is_installed_after_the_save_and_before_the_server_is_asked() {
+        const SRC: &str = include_str!("bind.rs");
+        let body = SRC
+            .split("\npub async fn write_binding(")
+            .nth(1)
+            .and_then(|r| r.split("\n}\n").next())
+            .expect("write_binding");
+        let at = |n: &str| {
+            body.find(n)
+                .unwrap_or_else(|| panic!("`{n}` in write_binding"))
+        };
+        assert!(at("cfg.save()?;") < at("install_skill(slug, path,"));
+        assert!(at("install_skill(slug, path,") < at("runners::patch_runner("));
+    }
 }

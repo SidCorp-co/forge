@@ -21,6 +21,7 @@ pub mod degraded;
 pub mod dispatch;
 pub mod dispatch_gate;
 pub mod drain;
+pub mod git_exclude;
 pub mod headroom;
 pub mod held_report;
 pub mod hook_install;
@@ -30,6 +31,7 @@ pub mod job_unheard;
 pub mod master;
 pub mod master_exit;
 pub mod master_limit;
+pub mod master_skill;
 pub mod pool_jobs;
 pub mod pool_reads;
 pub mod recovery;
@@ -384,10 +386,42 @@ fn repair_installed_hooks(server: Option<&[MeRunner]>, cfg: &Config, when: &str)
     }
 }
 
+/// Write the running build's forge-master skill into every checkout this box
+/// is bound to, whether or not a master is placed or adopted there (ISS-1357).
+/// Run at start only: the process an update replaces carries the old build's
+/// asset, and the restart that applies the update is a start.
+///
+/// `census_from` is taken before `cfg` was read, so a `bind` that `cfg` does not
+/// show is one recorded after it and survives the census; `None` where `cfg`
+/// is not a fresh read, which prunes nothing.
+fn install_master_skills(
+    server: Option<&[MeRunner]>,
+    cfg: &Config,
+    census_from: Option<i64>,
+    record_dir: Option<&std::path::Path>,
+) {
+    let bound = bound_checkouts(server.unwrap_or_default(), cfg);
+    if server.is_none() {
+        tracing::warn!(
+            "[skill] this box could not ask core which projects are assigned to it, so the forge-master skill is written only into the {} checkout(s) config.toml names",
+            bound.checkouts.len()
+        );
+    }
+    crate::daemon::master_skill::install_every(
+        &bound.every,
+        &bound.pathless,
+        census_from.filter(|_| server.is_some()),
+        record_dir,
+    );
+}
+
 /// Every checkout this box is bound to, and every assignment that names none.
 struct BoundCheckouts {
     /// Slug and working directory, one per distinct path, sorted.
     checkouts: Vec<(String, std::path::PathBuf)>,
+    /// Every distinct slug and working directory, so two projects sharing a
+    /// checkout are each named where a per-project record is kept.
+    every: Vec<(String, std::path::PathBuf)>,
     /// Slugs assigned to this device that name a checkout on neither side, so
     /// there is no settings file to sweep and the daemon cannot make one.
     pathless: Vec<String>,
@@ -411,11 +445,13 @@ struct BoundCheckouts {
 /// the sweep is the only thing that reaches a checkout no pane is prepared for.
 fn bound_checkouts(server: &[MeRunner], cfg: &Config) -> BoundCheckouts {
     let mut checkouts: Vec<(String, std::path::PathBuf)> = Vec::new();
+    let mut every: Vec<(String, std::path::PathBuf)> = Vec::new();
     let mut pathless: Vec<String> = Vec::new();
     let mut seen: std::collections::HashSet<std::path::PathBuf> = std::collections::HashSet::new();
     for r in server {
         match resolve_repo(server, cfg, &r.project_id) {
             Ok(resolved) => {
+                every.push((resolved.slug.clone(), resolved.repo_path.clone()));
                 if seen.insert(resolved.repo_path.clone()) {
                     checkouts.push((resolved.slug, resolved.repo_path));
                 }
@@ -424,15 +460,19 @@ fn bound_checkouts(server: &[MeRunner], cfg: &Config) -> BoundCheckouts {
         }
     }
     for (slug, binding) in &cfg.bindings {
+        every.push((slug.clone(), binding.repo_path.clone()));
         if seen.insert(binding.repo_path.clone()) {
             checkouts.push((slug.clone(), binding.repo_path.clone()));
         }
     }
     checkouts.sort();
+    every.sort();
+    every.dedup();
     pathless.sort();
     pathless.dedup();
     BoundCheckouts {
         checkouts,
+        every,
         pathless,
     }
 }
@@ -523,6 +563,22 @@ pub async fn run(
     // Before any pane is prepared: whatever the daemon this one replaced wrote
     // into these checkouts is still there, and this process CAN name itself.
     repair_installed_hooks(server.as_deref(), &cfg, "boot");
+    let census_from = agent_activity::now_ms();
+    let (fresh, census_from) = match Config::load() {
+        Ok(fresh) => (fresh, Some(census_from)),
+        Err(e) => {
+            tracing::warn!(
+                "[skill] config.toml could not be read again ({e}), so the forge-master install covers the bindings read at start and prunes no line of its record"
+            );
+            (cfg.clone(), None)
+        }
+    };
+    install_master_skills(
+        server.as_deref(),
+        &fresh,
+        census_from,
+        control::config_dir().as_deref(),
+    );
 
     let (cancel_tx, cancel_rx) = watch::channel(false);
     let (frame_tx, mut frame_rx) = mpsc::channel::<Frame>(256);
@@ -2550,5 +2606,172 @@ mod hook_repair_tests {
             next_sweep < next_drain,
             "the sweep is behind the drain, which is the wait that never ends on a busy box — so it never runs"
         );
+    }
+}
+
+/// The start sweep that writes the forge-master skill into every bound
+/// checkout, master or none (ISS-1357).
+#[cfg(test)]
+mod master_skill_sweep_tests {
+    use super::*;
+    use crate::daemon::master_skill::{self, Outcome, Read, ASSET, RELATIVE};
+
+    const SOURCE: &str = include_str!("mod.rs");
+
+    fn production() -> &'static str {
+        SOURCE.split("\nmod hook_repair_tests {").next().unwrap()
+    }
+
+    fn ignoring_checkout(root: &std::path::Path, name: &str) -> std::path::PathBuf {
+        let repo = root.join(name);
+        std::fs::create_dir_all(&repo).unwrap();
+        let ok = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&repo)
+            .args(["init", "-q"])
+            .env_remove("GIT_DIR")
+            .status()
+            .unwrap()
+            .success();
+        assert!(ok);
+        std::fs::write(repo.join(".gitignore"), ".claude/\n").unwrap();
+        repo
+    }
+
+    fn server_only(slug: &str, repo: Option<&std::path::Path>) -> MeRunner {
+        MeRunner {
+            project_id: format!("p-{slug}"),
+            runner_id: format!("runner-{slug}"),
+            slug: slug.into(),
+            base_branch: None,
+            repo_path: repo.map(|p| p.to_str().expect("utf-8").to_string()),
+            branch: None,
+            status: "draining".into(),
+            workspace_setup: None,
+            master_policy: None,
+            rate_limited_for_seconds: None,
+            limit_reason: None,
+        }
+    }
+
+    /// Criteria 1, 2 and 15. The checkout an adopted pane stands on holds the
+    /// copy it was placed with; a project bound only on the server, draining,
+    /// with no master, holds none. After the start sweep both hold the asset,
+    /// and `run` is read for the call — removing it leaves the functional half
+    /// green and this assertion red, which is the shape the drift took.
+    #[test]
+    fn after_a_start_every_bound_checkout_holds_this_builds_skill() {
+        let root = crate::test_scratch::Scratch::new("skill-at-start");
+        let adopted = ignoring_checkout(&root, "adopted");
+        let p = adopted.join(RELATIVE);
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(
+            &p,
+            "---\nname: forge-master\n---\nthe copy an older build placed\n",
+        )
+        .unwrap();
+        let masterless = ignoring_checkout(&root, "masterless");
+        let record_dir = root.join("config");
+        let mut cfg = Config::default();
+        cfg.bindings.insert(
+            "adopted".into(),
+            crate::config::Binding {
+                repo_path: adopted.clone(),
+                branch: None,
+                project_id: None,
+            },
+        );
+        let server = [
+            server_only("masterless", Some(&masterless)),
+            server_only("nowhere", None),
+        ];
+
+        install_master_skills(Some(&server), &cfg, Some(0), Some(&record_dir));
+
+        for repo in [&adopted, &masterless] {
+            assert_eq!(
+                std::fs::read_to_string(repo.join(RELATIVE)).unwrap(),
+                ASSET,
+                "{} does not hold this build's skill after a start",
+                repo.display()
+            );
+        }
+        let Read::Record(r) = master_skill::read(&record_dir) else {
+            panic!("the start sweep recorded nothing")
+        };
+        assert_eq!(
+            r.of("nowhere").map(|e| &e.outcome).collect::<Vec<_>>(),
+            [&Outcome::NoCheckout]
+        );
+
+        let src = production();
+        let hooks = src
+            .find(r#"repair_installed_hooks(server.as_deref(), &cfg, "boot");"#)
+            .expect("the boot hook repair");
+        let call = src[hooks..]
+            .find("install_master_skills(\n        server.as_deref(),\n        &fresh,")
+            .map(|i| i + hooks)
+            .expect("daemon::run does not write the skill at start, so an adopted pane keeps the copy it was placed with");
+        let masters = src
+            .find("master::run(")
+            .expect("where run starts the master sweep");
+        let from = src[hooks..]
+            .find("let census_from = agent_activity::now_ms();")
+            .map(|i| i + hooks)
+            .expect("the census is timed");
+        let reread = src[hooks..]
+            .find("let (fresh, census_from) = match Config::load() {")
+            .map(|i| i + hooks)
+            .expect("the census reads config.toml afresh");
+        assert!(
+            src[reread..call].contains("(cfg.clone(), None)"),
+            "a config.toml that will not read again must prune nothing, since the snapshot it falls back to predates the census"
+        );
+        assert!(
+            from < reread && reread < call,
+            "a bind recorded between the census's read and its time would be pruned as stale"
+        );
+        assert!(
+            call < masters,
+            "the skill is written after the master sweep can adopt or place a pane"
+        );
+    }
+
+    /// Two projects assigned to one checkout each get their line: the hook
+    /// sweep's one-per-path set would name only the first.
+    #[test]
+    fn two_projects_at_one_checkout_are_both_recorded_at_start() {
+        let root = crate::test_scratch::Scratch::new("skill-shared-start");
+        let shared = ignoring_checkout(&root, "shared");
+        let record_dir = root.join("config");
+        let server = [
+            server_only("one", Some(&shared)),
+            server_only("two", Some(&shared)),
+        ];
+
+        install_master_skills(
+            Some(&server),
+            &Config::default(),
+            Some(0),
+            Some(&record_dir),
+        );
+
+        let Read::Record(r) = master_skill::read(&record_dir) else {
+            panic!("nothing recorded")
+        };
+        let slugs: Vec<&str> = r.entries.iter().map(|e| e.slug.as_str()).collect();
+        assert_eq!(slugs, ["one", "two"]);
+    }
+
+    /// The process an update replaces carries the old build's asset; writing
+    /// it there would put the old skill back over the new one.
+    #[test]
+    fn the_skill_is_not_written_by_the_process_an_update_replaced() {
+        let src = production();
+        let applied = src
+            .find("— draining before restart")
+            .expect("the line the update writes once it has replaced the binary");
+        let arm = &src[applied..src[applied..].find("std::process::exit(0)").unwrap() + applied];
+        assert!(!arm.contains("install_master_skills("), "{arm}");
     }
 }

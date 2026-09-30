@@ -254,7 +254,7 @@ fn ledger_master(s: &Snapshot, p: &Project, out: &mut Vec<String>) {
 fn skill_line(s: &Snapshot, p: &Project, k: &Skill) -> String {
     match k {
         Skill::Absent { path } => format!(
-            "no forge-master skill installed, so no master was placed from this checkout ← {}",
+            "no forge-master skill installed ← {}; a daemon of this build or later writes it at bind, at provision and at every start, master or none, so this checkout is one it refused or failed to write — `forge-runner status` says which",
             path.display()
         ),
         Skill::Unreadable(e) => e.to_string(),
@@ -271,9 +271,9 @@ fn skill_line(s: &Snapshot, p: &Project, k: &Skill) -> String {
             let pane = pane_state(s, p);
             let verdict = match (matches, &pane) {
                 (Ok(true), _) => "is the forge-master asset of the binary the daemon runs ← its /proc/<pid>/exe".to_string(),
-                (Ok(false), Pane::Running { .. }) => "DRIFT — is NOT the forge-master asset of the binary the daemon runs, so this pane stands on another build's skill ← its /proc/<pid>/exe".to_string(),
-                // No pane stands on it, and placing one writes the asset over it.
-                (Ok(false), Pane::NotRunning) => "DRIFT — is NOT the forge-master asset of the binary the daemon runs; no running master pane is seen on it, and the daemon writes its own asset over it when it places one ← its /proc/<pid>/exe".to_string(),
+                (Ok(false), Pane::Running { .. }) => "DRIFT — is NOT the forge-master asset of the binary the daemon runs, so this pane stands on another build's skill; a daemon writes its own asset at every start, so a copy still drifted is one it refused or failed to write, or one written since — `forge-runner status` says which ← its /proc/<pid>/exe".to_string(),
+                // No pane stands on it; the next start or placement writes it, unless refused.
+                (Ok(false), Pane::NotRunning) => "DRIFT — is NOT the forge-master asset of the binary the daemon runs; no running master pane is seen on it, and the daemon writes its own asset over it at its next start or placement, unless it refuses that checkout — `forge-runner status` says why ← its /proc/<pid>/exe".to_string(),
                 (Ok(false), Pane::Unread) => "DRIFT — is NOT the forge-master asset of the binary the daemon runs, and whether a master pane runs on it cannot be read (its master line, above, says why), so a running pane may stand on another build's skill ← its /proc/<pid>/exe".to_string(),
                 (Err(e), _) => format!("cannot be judged: {e}"),
             };
@@ -1224,7 +1224,7 @@ mod tests {
             ["/repo/a", "/repo/b"]
                 .iter()
                 .all(|r| text.contains(&format!(
-                    "no master was placed from this checkout ← {}",
+                    "no forge-master skill installed ← {};",
                     std::path::PathBuf::from(r).join("SKILL.md").display()
                 ))),
             "{text}"

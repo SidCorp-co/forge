@@ -302,6 +302,36 @@ fn find_prunable(skills_root: &Path, keep: &std::collections::HashSet<&str>) -> 
         .collect()
 }
 
+/// Make the checkout's git ignore every skill about to be synced before any
+/// is written, so a checkout that does not ignore `.claude/` gains no
+/// untracked work (owner, ISS-1357, 2026-09-30). Asked per destination: a skill
+/// the checkout tracks is its own committed file, which an ignore rule cannot
+/// change, and is synced into as it always was, while a new skill beside it
+/// still needs the exclude line. The ignore question is put about
+/// `.claude/skills/` itself, trailing slash and all: a seed is staged in a
+/// sibling of its destination and the tree it replaces is moved to another,
+/// so a rule covering only the skill's own directory, or only its `SKILL.md`,
+/// leaves those untracked. Whether a skill is the checkout's own is asked of
+/// its `SKILL.md` alone, so another tracked file beside it waives nothing.
+const SKILLS_DIR: &str = ".claude/skills/";
+
+fn ignore_skills<'a>(worktree: &Path, names: impl IntoIterator<Item = &'a str>) -> Result<()> {
+    use crate::daemon::git_exclude::{ensure_ignored_as, Refused};
+    for name in names {
+        let own = format!(".claude/skills/{name}/SKILL.md");
+        match ensure_ignored_as(worktree, &own, SKILLS_DIR) {
+            Ok(_) | Err(Refused::Tracked) => {}
+            Err(refused) => {
+                return Err(Error::Other(format!(
+                    "no skill is synced into {}: {SKILLS_DIR} for {name}: {refused}",
+                    worktree.display()
+                )))
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Pull the manifest, refresh the local cache for changed skills, seed every
 /// skill into `<worktree>/.claude/skills/<name>/`, PRUNE any Forge-managed
 /// skill dir no longer in the manifest (ISS-802 converge-on-delete), and
@@ -334,6 +364,8 @@ pub async fn sync_skills(client: &CoreClient, project_id: &str, worktree: &Path)
         }
         return Ok(0);
     }
+
+    ignore_skills(worktree, manifest.iter().map(|e| e.name.as_str()))?;
 
     let mut report: Vec<SkillReportEntry> = Vec::with_capacity(manifest.len());
 
@@ -740,5 +772,158 @@ mod tests {
         assert!(cache.join("SKILL.md").exists());
         let _ = std::fs::remove_file(skill_lock_path(project_id, &skill_id).unwrap());
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Review F2 of the whole-set read at 1ff308de6: the synced skills take the
+    /// same exclude step as the master skill, before anything is written.
+    #[test]
+    fn a_checkout_that_does_not_ignore_claude_gets_the_line_before_skills_are_synced() {
+        use crate::daemon::git_exclude::tests::{exclude_of, run_git};
+        let s = crate::test_scratch::Scratch::new("sync-exclude");
+        run_git(s.path(), &["init", "-q"]);
+        ignore_skills(s.path(), ["forge-code"]).expect("ignored");
+        assert!(std::fs::read_to_string(exclude_of(s.path()))
+            .unwrap()
+            .lines()
+            .any(|l| l == ".claude/"));
+    }
+
+    fn tracking_its_own(label: &str) -> crate::test_scratch::Scratch {
+        use crate::daemon::git_exclude::tests::run_git;
+        let s = crate::test_scratch::Scratch::new(label);
+        run_git(s.path(), &["init", "-q"]);
+        let own = s.path().join(".claude").join("skills").join("own");
+        std::fs::create_dir_all(&own).unwrap();
+        std::fs::write(own.join("SKILL.md"), "x").unwrap();
+        run_git(s.path(), &["add", "-f", ".claude/skills/own/SKILL.md"]);
+        s
+    }
+
+    #[test]
+    fn a_skill_the_checkout_tracks_is_synced_into_with_the_exclude_untouched() {
+        use crate::daemon::git_exclude::tests::exclude_of;
+        let s = tracking_its_own("sync-tracked");
+        let before = std::fs::read(exclude_of(s.path())).ok();
+        ignore_skills(s.path(), ["own"]).expect("a tracked skill is synced into");
+        assert_eq!(std::fs::read(exclude_of(s.path())).ok(), before);
+    }
+
+    /// Consult on the revised plan, F1: tracking one skill does not protect a
+    /// new one beside it.
+    #[test]
+    fn a_new_skill_beside_a_tracked_one_still_takes_the_exclude_step() {
+        use crate::daemon::git_exclude::tests::{exclude_of, make_read_only, make_writable};
+        let s = tracking_its_own("sync-mixed");
+        let ex = exclude_of(s.path());
+        std::fs::create_dir_all(ex.parent().unwrap()).unwrap();
+        std::fs::write(&ex, "*.swp\n").unwrap();
+        if make_read_only(&ex) {
+            let got = ignore_skills(s.path(), ["own", "forge-code"]);
+            make_writable(&ex);
+            let msg = got.expect_err("a new skill with no exclude").to_string();
+            assert!(msg.contains(&ex.display().to_string()), "{msg}");
+            assert!(msg.contains(".claude/skills/ for forge-code"), "{msg}");
+        }
+        ignore_skills(s.path(), ["own", "forge-code"]).expect("ignored");
+        assert_eq!(std::fs::read_to_string(&ex).unwrap(), "*.swp\n.claude/\n");
+    }
+
+    /// Whole-set review at 6f9885013, F1: a rule ignoring only a skill's
+    /// `SKILL.md` leaves the `.hash` marker and the rest of its tree untracked,
+    /// so the question is about the directory.
+    #[test]
+    fn a_rule_covering_only_the_skill_md_still_gets_the_line_for_the_whole_tree() {
+        use crate::daemon::git_exclude::tests::run_git;
+        let s = crate::test_scratch::Scratch::new("sync-file-rule");
+        run_git(s.path(), &["init", "-q"]);
+        std::fs::write(
+            s.path().join(".gitignore"),
+            ".claude/skills/forge-code/SKILL.md\n",
+        )
+        .unwrap();
+        ignore_skills(s.path(), ["forge-code"]).expect("ignored");
+        let dir = s.path().join(".claude").join("skills").join("forge-code");
+        std::fs::create_dir_all(dir.join("references")).unwrap();
+        for f in ["SKILL.md", ".hash", "references/guide.md"] {
+            std::fs::write(dir.join(f), "x").unwrap();
+        }
+        std::fs::remove_file(s.path().join(".gitignore")).unwrap();
+        let status = std::process::Command::new("git")
+            .arg("-C")
+            .arg(s.path())
+            .args(["status", "--porcelain", "--untracked-files=all"])
+            .env_remove("GIT_DIR")
+            .output()
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&status.stdout), "");
+    }
+
+    /// Consult on the revised plan, F1: another file the checkout tracks in a
+    /// skill's directory does not make the skill the checkout's own.
+    #[test]
+    fn a_tracked_readme_in_a_skills_directory_does_not_waive_the_step() {
+        use crate::daemon::git_exclude::tests::{
+            exclude_of, make_read_only, make_writable, run_git,
+        };
+        let s = crate::test_scratch::Scratch::new("sync-tracked-readme");
+        run_git(s.path(), &["init", "-q"]);
+        let dir = s.path().join(".claude").join("skills").join("example");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("README.md"), "x").unwrap();
+        run_git(s.path(), &["add", "-f", ".claude/skills/example/README.md"]);
+        let ex = exclude_of(s.path());
+        std::fs::create_dir_all(ex.parent().unwrap()).unwrap();
+        std::fs::write(&ex, "*.swp\n").unwrap();
+        if make_read_only(&ex) {
+            let got = ignore_skills(s.path(), ["example"]);
+            make_writable(&ex);
+            let msg = got.expect_err("refused before seeding").to_string();
+            assert!(msg.contains(&ex.display().to_string()), "{msg}");
+        }
+        ignore_skills(s.path(), ["example"]).expect("ignored");
+        assert_eq!(std::fs::read_to_string(&ex).unwrap(), "*.swp\n.claude/\n");
+    }
+
+    /// Whole-set review at 5facd44a5, F1: a seed is staged in a sibling of its
+    /// destination, so a rule covering only the skill's own directory leaves
+    /// the staging tree untracked.
+    #[test]
+    fn a_rule_covering_only_the_skills_own_directory_still_gets_the_line() {
+        use crate::daemon::git_exclude::tests::run_git;
+        let s = crate::test_scratch::Scratch::new("sync-dir-rule");
+        run_git(s.path(), &["init", "-q"]);
+        std::fs::write(s.path().join(".gitignore"), ".claude/skills/forge-code/\n").unwrap();
+        ignore_skills(s.path(), ["forge-code"]).expect("ignored");
+        let dest = s.path().join(".claude").join("skills").join("forge-code");
+        let staging = staging_dir_for(&dest, "seed").unwrap();
+        std::fs::create_dir_all(&staging).unwrap();
+        std::fs::write(staging.join("SKILL.md"), "x").unwrap();
+        std::fs::remove_file(s.path().join(".gitignore")).unwrap();
+        let status = std::process::Command::new("git")
+            .arg("-C")
+            .arg(s.path())
+            .args(["status", "--porcelain", "--untracked-files=all"])
+            .env_remove("GIT_DIR")
+            .output()
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&status.stdout), "");
+    }
+
+    /// The step runs before the first skill is seeded.
+    #[test]
+    fn sync_skills_takes_the_exclude_step_before_it_writes() {
+        const SRC: &str = include_str!("skill_sync.rs");
+        let body = SRC
+            .split("\npub async fn sync_skills(")
+            .nth(1)
+            .expect("sync_skills");
+        let step = body.find("ignore_skills(worktree,").expect("the step");
+        let seed = body
+            .find("for entry in &manifest")
+            .expect("the seeding loop");
+        assert!(
+            step < seed,
+            "skills are written before the checkout ignores them"
+        );
     }
 }
