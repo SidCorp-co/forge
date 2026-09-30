@@ -21,6 +21,7 @@ const readForgeDeploymentsMock = vi.fn(
   async (_projectId: string): Promise<unknown> => ({
     kind: 'unrouted',
     missing: 'this project has no active deploy binding',
+    route: 'bind a deploy binding Forge deploys through',
   }),
 );
 vi.mock('./deployed-reading.js', () => ({
@@ -30,7 +31,9 @@ vi.mock('../db/client.js', () => ({
   db: { select: () => ({ from: () => ({ where: () => ({ limit: () => selectLimit() }) }) }) },
 }));
 
-const { declaredProbesOf, readServingNow } = await import('./serving-reading.js');
+const { declaredProbesOf, readServingNow, servedClause, servedCommits } = await import(
+  './serving-reading.js'
+);
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const SERVED = '0d98a6be6d9680b967d3f16542eadd25d02602cb';
@@ -116,9 +119,8 @@ describe('readServingNow', () => {
 
     expect(await readServingNow(PROJECT_ID, now)).toEqual({
       kind: 'serving',
-      commits: [SERVED],
+      served: [{ commit: SERVED, where: 'https://one.test/health' }],
       unread: [],
-      hosts: ['https://one.test/health'],
       readAt: FROZEN.toISOString(),
     });
   });
@@ -137,7 +139,14 @@ describe('readServingNow', () => {
     );
 
     const reading = await readServingNow(PROJECT_ID, now);
-    expect(reading).toMatchObject({ kind: 'serving', commits: [SERVED, OTHER], unread: [] });
+    expect(reading).toMatchObject({
+      kind: 'serving',
+      served: [
+        { commit: SERVED, where: 'https://one.test/health' },
+        { commit: OTHER, where: 'https://two.test/health' },
+      ],
+      unread: [],
+    });
   });
 
   /**
@@ -152,7 +161,10 @@ describe('readServingNow', () => {
     vi.stubGlobal('fetch', answering({ 'https://one.test/health': `{"commit":"${SERVED}"}` }));
 
     const reading = await readServingNow(PROJECT_ID, now);
-    expect(reading).toMatchObject({ kind: 'serving', commits: [SERVED] });
+    expect(reading).toMatchObject({
+      kind: 'serving',
+      served: [{ commit: SERVED, where: 'https://one.test/health' }],
+    });
     expect(reading.kind === 'serving' && reading.unread.join(' ')).toContain('down.test');
   });
 
@@ -162,6 +174,7 @@ describe('readServingNow', () => {
     expect(await readServingNow(PROJECT_ID, now)).toEqual({
       kind: 'undeclared',
       missing: 'this project has no active deploy binding',
+      route: 'bind a deploy binding Forge deploys through',
     });
   });
 
@@ -169,18 +182,16 @@ describe('readServingNow', () => {
   it('reads what Forge deployed where no probe is declared', async () => {
     resolveReleaseChannelsMock.mockResolvedValue([channel({ verify: null, verifySource: 'none' })]);
     const where =
-      "Forge's deployment d1 to Coolify target `App` (preview), finished 2026-09-29T19:21:18.158Z";
+      "Coolify target `App` (preview), Forge's deployment d1 finished 2026-09-29T19:21:18.158Z";
     readForgeDeploymentsMock.mockResolvedValueOnce({
       kind: 'answered',
-      commits: [SERVED],
-      readFrom: [where],
+      served: [{ commit: SERVED, where }],
       unread: ['Coolify target `Api` (live) has no deployment Forge made and saw finish on record'],
     });
     expect(await readServingNow(PROJECT_ID, now)).toEqual({
       kind: 'serving',
-      commits: [SERVED],
+      served: [{ commit: SERVED, where }],
       unread: ['Coolify target `Api` (live) has no deployment Forge made and saw finish on record'],
-      hosts: [where],
       readAt: FROZEN.toISOString(),
     });
     expect(readForgeDeploymentsMock).toHaveBeenCalledWith(PROJECT_ID);
@@ -230,8 +241,7 @@ describe('readServingNow', () => {
 
     expect(await readServingNow(PROJECT_ID, now)).toMatchObject({
       kind: 'serving',
-      commits: [SERVED],
-      hosts: ['https://env.test/health'],
+      served: [{ commit: SERVED, where: 'https://env.test/health' }],
     });
   });
 
@@ -269,7 +279,10 @@ describe('readServingNow', () => {
     vi.stubGlobal('fetch', answering({ 'https://one.test/health': `{"commit":"${SERVED}"}` }));
 
     const reading = await readServingNow(PROJECT_ID, now);
-    expect(reading).toMatchObject({ kind: 'serving', commits: [SERVED] });
+    expect(reading).toMatchObject({
+      kind: 'serving',
+      served: [{ commit: SERVED, where: 'https://one.test/health' }],
+    });
     expect(reading.kind === 'serving' && reading.unread.join(' ')).toContain('not-a-url');
   });
 
@@ -305,5 +318,34 @@ describe('readServingNow', () => {
     const reading = await readServingNow(PROJECT_ID, now);
     expect(reading.kind).toBe('unreadable');
     expect(reading.kind === 'unreadable' && reading.why).toContain('refused as a declaration');
+  });
+});
+
+// ISS-1346 judge finding 2 — a commit is said beside where it runs, never as a bare list.
+describe('servedClause', () => {
+  it('groups every place a commit runs under that commit, in the order first answered', () => {
+    const served = [
+      { commit: SERVED, where: 'App (preview)' },
+      { commit: OTHER, where: 'Web (live)' },
+      { commit: OTHER, where: 'Home (live)' },
+    ];
+    expect(servedClause(served)).toBe(
+      `\`${SERVED}\` at App (preview); \`${OTHER}\` at Web (live) and Home (live)`,
+    );
+  });
+
+  it('names each distinct commit once, however many places run it', () => {
+    const reading = {
+      kind: 'serving' as const,
+      served: [
+        { commit: OTHER, where: 'a' },
+        { commit: SERVED, where: 'b' },
+        { commit: OTHER, where: 'c' },
+      ],
+      unread: [],
+      readAt: FROZEN.toISOString(),
+    };
+    expect(servedCommits(reading)).toEqual([OTHER, SERVED]);
+    expect(servedCommits({ kind: 'undeclared', missing: 'm', route: 'r' })).toEqual([]);
   });
 });

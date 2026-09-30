@@ -62,6 +62,7 @@ function park(over: Partial<IssuePark>): ParkReading {
       resume: { at: null, why: "no record" },
       record: null,
       readings: [],
+      answer: null,
       openQuestionIds: [],
       ...over,
     },
@@ -133,12 +134,12 @@ describe("the status control at a park (ISS-1310)", () => {
     );
     expect(labels()).toEqual([
       "Answer the question",
-      "No resume rung was recorded for this park",
+      "Nothing says where this issue picks up again",
       "On hold",
       "Dropped",
       "Move anyway…",
     ]);
-    expect(screen.getByText("No resume rung was recorded for this park")).toHaveAttribute(
+    expect(screen.getByText("Nothing says where this issue picks up again")).toHaveAttribute(
       "aria-disabled",
       "true",
     );
@@ -166,16 +167,16 @@ describe("the status control at a park (ISS-1310)", () => {
   });
 
   it.each([
-    ["loading", "Reading what this park waits on…"],
-    ["error", "Couldn't read what this park waits on, so no resume rung is offered"],
+    ["loading", "Reading what this issue is waiting on…"],
+    ["error", "Couldn't read what this issue is waiting on, so no resume is offered"],
   ] as const)("while the park is %s it offers no resume and says which", async (state, said) => {
     await openAt("waiting", { state });
     expect(labels()).toEqual([said, "Move anyway…"]);
   });
 
   it.each([
-    ["loading", "Reading what this park waits on…"],
-    ["error", "Couldn't read what this park waits on, so no resume rung is offered"],
+    ["loading", "Reading what this issue is waiting on…"],
+    ["error", "Couldn't read what this issue is waiting on, so no resume is offered"],
   ] as const)("says the park is %s while the map is unread too, and offers no Move anyway", async (state, said) => {
     get.mockReturnValue(new Promise(() => {}));
     wrap(<StatusEdit status="waiting" onTransition={vi.fn()} park={{ reading: { state }, actions: actions() }} />);

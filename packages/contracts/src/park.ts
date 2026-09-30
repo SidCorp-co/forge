@@ -14,6 +14,12 @@ export interface ParkRecordView {
   postedAt: string;
 }
 
+export interface ParkAnswerView {
+  commentId: string;
+  postedAt: string;
+  text: string;
+}
+
 export interface IssuePark {
   /** `park` at `needs_info` or `waiting`; `question` at a working rung holding an open human question. */
   shape: "park" | "question";
@@ -25,6 +31,8 @@ export interface IssuePark {
   resume: ParkResume;
   record: ParkRecordView | null;
   readings: string[];
+  /** `null` until a person replies after the park record, and always where there is no record. */
+  answer: ParkAnswerView | null;
   openQuestionIds: string[];
 }
 

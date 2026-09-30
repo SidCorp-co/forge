@@ -12,7 +12,7 @@ use crate::workspace::skill_sync;
 /// is the source of truth for `repo_path`; `config.toml` is only a local
 /// fallback/cache when the server has no path set yet (ISS-271).
 #[derive(Debug)]
-pub(crate) struct Resolved {
+pub struct Resolved {
     pub slug: String,
     pub repo_path: PathBuf,
     /// The project's base branch per the server, when it has one. Only the
@@ -26,9 +26,9 @@ pub(crate) struct Resolved {
 }
 
 /// Merge server assignments with local config bindings for one project id.
-/// Returns `Ok(None)` when the project is assigned but has no usable path on
-/// either side (caller emits a `bind` hint), and `Err` only never (kept simple).
-pub(crate) fn resolve_repo(
+/// `Err` carries the project's slug where neither side gives it a usable path,
+/// which is what a caller names in its `bind` hint.
+pub fn resolve_repo(
     server: &[MeRunner],
     cfg: &Config,
     project_id: &str,
