@@ -208,6 +208,21 @@ export function visibleProjectsWhere(): SQL[] {
   return conditions;
 }
 
+/**
+ * The PAT fence for work that belongs to no one project: a token fenced to
+ * projects is refused, and only a request carrying its owner's whole reach
+ * may go on.
+ */
+export function assertUnfenced(what: string): void {
+  if (fencedProjectIds() === null) return;
+  throw new HTTPException(403, {
+    message:
+      `${what} reaches beyond the projects this token is fenced to, so a fenced token may not ` +
+      'do it. Use a token with no project list, or a session.',
+    cause: { code: 'PAT_ACCOUNT_ROUTE', details: { action: what } },
+  });
+}
+
 export async function loadVisibleProjectIds(userId: string | null | undefined): Promise<string[]> {
   if (!userId) return [];
   const rows = await db

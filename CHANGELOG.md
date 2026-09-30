@@ -23,6 +23,9 @@
 - **A new token reaches only what its creator chose.** Creating one without picking permissions used
   to hand over everything; it is now refused, and full access is something you tick on purpose.
   Tokens you already hold are unchanged.
+- **A token limited to some projects can no longer act outside them.** Creating a project and
+  reading the skill-activity audit now need a token with no project list, and the runner's own
+  session callbacks refuse personal and agent tokens.
 
 - **The Attention inbox no longer shows you issues from projects you were removed from.**
   The "Awaiting input" list picked an issue because you were its assignee, or because you filed it
