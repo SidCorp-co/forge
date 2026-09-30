@@ -25,6 +25,7 @@ use crate::runner::ledger::{Incarnation, Ledger, Run};
 use crate::transport::{run_sessions, CoreClient};
 use crate::workspace::repo_cred::RepoCred;
 use crate::workspace::salvage::{self, Fate, Publication};
+use crate::workspace::worktree::Kind;
 
 /// What the box says about a checkout an exited run left behind.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -82,11 +83,29 @@ impl HeldReporter for CoreHeld<'_> {
     }
 }
 
-pub async fn at_risk(run: &Run, cred: &RepoCred) -> Option<Held> {
+pub async fn at_risk(run: &Run) -> Option<Held> {
     let worktree = run.worktree_path.as_path();
     if !worktree.is_absolute() || !worktree.exists() {
         return None;
     }
+    // Every line below reads git at the path, and at a path that is no
+    // checkout's top level git answers for the checkout around it: sid-desk's
+    // ISS-684 report named the parent's `staging` at the parent's HEAD
+    // (ISS-1250, judge j3). What is at the path is asked first.
+    if let Kind::Enclosed(top) = crate::workspace::worktree::kind_at(worktree).await {
+        tracing::warn!(
+            "[held-report] run {}: {} stands, but git, asked at the path, answers for the \
+             enclosing checkout {}, so nothing this box would read from it is this checkout's — \
+             no report is taken from it",
+            run.run_id,
+            worktree.display(),
+            top.display()
+        );
+        return None;
+    }
+    // The credential is read at the path too, so it is resolved only here,
+    // once the path has answered for itself (consult on 9ecec0c09 F1).
+    let cred = &RepoCred::of(run.project_id.as_deref(), worktree).await;
     let head = git_line(worktree, &["rev-parse", "HEAD"]).await?;
     // A detached checkout answers `HEAD`, which is no branch at all, and a
     // report naming it as one sends a reader looking for a branch that is not
@@ -231,8 +250,7 @@ pub async fn report_held_worktrees(
         let Some(session_id) = run.session_id.clone() else {
             continue;
         };
-        let cred = RepoCred::of(run.project_id.as_deref(), &run.worktree_path).await;
-        let Some(held) = at_risk(&run, &cred).await else {
+        let Some(held) = at_risk(&run).await else {
             continue;
         };
         match reporter.report(&session_id, &held).await {
@@ -448,6 +466,89 @@ mod tests {
         );
     }
 
+    /// ISS-1250 criteria 30, 31 — judge j3: sid-desk ISS-684's kept report named
+    /// branch `staging` at the parent checkout's own HEAD. A nested worktree
+    /// whose `.git` file a delete had taken reads, at the path, as the
+    /// repository around it, so every word a report took there would be about
+    /// that other checkout.
+    #[test]
+    fn no_report_is_taken_from_a_path_git_answers_for_from_the_enclosing_checkout() {
+        let (root, work) = a_box_with_a_worktree("enclosed");
+        std::fs::write(work.join("parent.txt"), "the parent's own work\n").expect("write");
+        sh(&work, &["add", "-A"]);
+        sh(
+            &work,
+            &["commit", "-qm", "the parent's own unpushed commit"],
+        );
+        refuse_pushes(&root);
+        let nested = work.join(".claude/worktrees/ISS-689");
+        std::fs::create_dir_all(nested.parent().unwrap()).expect("mkdir");
+        sh(
+            &work,
+            &[
+                "worktree",
+                "add",
+                "-q",
+                nested.to_str().expect("utf8"),
+                "-b",
+                "ISS-689",
+            ],
+        );
+        std::fs::remove_file(nested.join(".git")).expect("the delete took the .git file");
+        let mut led = a_ledger_holding(&nested, Incarnation::Exited);
+        let spy = Spy::default();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+
+        let mut said = 0;
+        let logged = crate::workspace::worktree::tests::logged_while(|| {
+            said = rt.block_on(report_held_worktrees(&spy, &mut led, "boot-a"));
+        });
+
+        assert_eq!(
+            said,
+            0,
+            "a report read off the enclosing checkout is about that checkout: {:?}",
+            spy.seen.borrow()
+        );
+        assert!(
+            logged.contains(&nested.display().to_string()),
+            "the journal names the path no report was taken from: {logged}"
+        );
+        let top = work.canonicalize().expect("the parent is there");
+        assert!(
+            logged.contains(&top.display().to_string()),
+            "and the checkout git answered for: {logged}"
+        );
+    }
+
+    /// ISS-1250 criterion 30, consult on 9ecec0c09 F1: the credential is read
+    /// at the path as well, so what the path is is asked before it, or the
+    /// sweep reads the enclosing checkout's configuration on its way to
+    /// taking no report.
+    #[test]
+    fn what_the_path_is_is_asked_before_the_credential_is_read_there() {
+        const SOURCE: &str = include_str!("held_report.rs");
+        let sweep = SOURCE
+            .split("pub async fn report_held_worktrees")
+            .nth(1)
+            .and_then(|rest| rest.split("#[cfg(test)]").next())
+            .expect("the sweep must be findable");
+        assert!(
+            !sweep.contains("RepoCred::of"),
+            "the sweep resolves no credential of its own ahead of `at_risk`"
+        );
+        let reading = SOURCE
+            .split("pub async fn at_risk(")
+            .nth(1)
+            .expect("at_risk must be findable");
+        let asked = reading.find("kind_at(").expect("the question put to git");
+        let cred = reading.find("RepoCred::of").expect("the credential read");
+        assert!(asked < cred, "what the path is comes first");
+    }
+
     #[tokio::test]
     async fn says_nothing_about_a_run_whose_process_is_still_up() {
         let (root, wt) = a_box_with_a_worktree("live");
@@ -552,8 +653,7 @@ mod tests {
         refuse_pushes(&root);
 
         let run = a_run_at(&wt);
-        let cred = crate::workspace::repo_cred::RepoCred::of(None, &wt).await;
-        let held = at_risk(&run, &cred).await.expect("the work is at risk");
+        let held = at_risk(&run).await.expect("the work is at risk");
         let fate = crate::workspace::salvage::fate_of(&wt).await;
         let _ = std::fs::remove_dir_all(&root);
 
@@ -592,10 +692,7 @@ mod tests {
         std::fs::write(forge_refs.join("broken"), "not-a-sha\n").expect("ref");
 
         let run = a_run_at(&wt);
-        let cred = crate::workspace::repo_cred::RepoCred::of(None, &wt).await;
-        let held = at_risk(&run, &cred)
-            .await
-            .expect("a kept checkout is reported");
+        let held = at_risk(&run).await.expect("a kept checkout is reported");
         let _ = std::fs::remove_dir_all(&root);
 
         assert!(
@@ -632,8 +729,7 @@ mod tests {
         sh(&wt, &["commit", "-qm", "on no branch at all"]);
 
         let run = a_run_at(&wt);
-        let cred = crate::workspace::repo_cred::RepoCred::of(None, &wt).await;
-        let held = at_risk(&run, &cred).await.expect("the work is at risk");
+        let held = at_risk(&run).await.expect("the work is at risk");
         let fate = crate::workspace::salvage::fate_of(&wt).await;
         let _ = std::fs::remove_dir_all(&root);
 
@@ -835,10 +931,7 @@ mod tests {
         sh(&wt, &["commit", "-qm", "work"]);
 
         let run = a_run_at(&wt);
-        let cred = RepoCred::of(None, &wt).await;
-        let held = at_risk(&run, &cred)
-            .await
-            .expect("work on no remote is reported");
+        let held = at_risk(&run).await.expect("work on no remote is reported");
         let fate = salvage::fate_of(&wt).await;
         let pinned = wire_line(0);
         let sent = as_pinned(&held, &wt, &pinned);
@@ -875,10 +968,7 @@ mod tests {
         std::fs::write(forge_refs.join("broken"), "not-a-sha\n").expect("ref");
 
         let run = a_run_at(&wt);
-        let cred = RepoCred::of(None, &wt).await;
-        let held = at_risk(&run, &cred)
-            .await
-            .expect("a kept checkout is reported");
+        let held = at_risk(&run).await.expect("a kept checkout is reported");
         let fate = salvage::fate_of(&wt).await;
         let pinned = wire_line(1);
         let sent = as_pinned(&held, &wt, &pinned);
@@ -918,8 +1008,7 @@ mod tests {
         sh(&wt, &["commit", "-qm", "on no branch at all"]);
 
         let run = a_run_at(&wt);
-        let cred = RepoCred::of(None, &wt).await;
-        let held = at_risk(&run, &cred).await.expect("reported");
+        let held = at_risk(&run).await.expect("reported");
         let fate = salvage::fate_of(&wt).await;
         let pinned = wire_line(2);
         let sent = as_pinned(&held, &wt, &pinned);
@@ -954,8 +1043,7 @@ mod tests {
         sh(&wt, &["commit", "-qm", "base"]);
 
         let run = a_run_at(&wt);
-        let cred = RepoCred::of(None, &wt).await;
-        let held = at_risk(&run, &cred).await.expect("reported");
+        let held = at_risk(&run).await.expect("reported");
         let _ = std::fs::remove_dir_all(&root);
 
         assert!(
@@ -985,8 +1073,7 @@ mod tests {
         sh(&wt, &["commit", "-qm", "work"]);
 
         let run = a_run_at(&wt);
-        let cred = RepoCred::of(None, &wt).await;
-        let held = at_risk(&run, &cred).await.expect("reported");
+        let held = at_risk(&run).await.expect("reported");
         let _ = std::fs::remove_dir_all(&root);
 
         assert!(

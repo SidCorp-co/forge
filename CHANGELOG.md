@@ -3136,6 +3136,9 @@
 
 ### Fixed
 
+- **A half-deleted run checkout is no longer taken for the project's own.** The box said it was
+  left standing as it went. It now holds it, refuses to release it and names it in its log.
+
 - **Releases and other background jobs now get your project's tools.** A batch release started
   without the servers your project declares, so it could not publish to a storefront. A job that
   cannot be given them now waits instead.

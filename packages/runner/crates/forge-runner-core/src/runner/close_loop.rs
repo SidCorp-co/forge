@@ -124,6 +124,20 @@ async fn checkout_returned(repo: Option<&Path>, path: &Path) -> Option<CheckoutR
     match crate::workspace::worktree::residence_of(repo, path).await {
         Residence::Gone => Some(CheckoutReturn::Gone),
         Residence::MainWorkingTree => Some(CheckoutReturn::MainWorkingTreeKept),
+        // Git answered for the checkout around this path, which says nothing
+        // about this one: the path stands and nothing established that it is
+        // back. Recording it as the repository's own tree is how sid-desk's
+        // ISS-689 checkout was called "left standing" and then went (ISS-1250).
+        Residence::Enclosed(top) => {
+            tracing::warn!(
+                "[close] {} stands, but git, asked at the path, answers for the enclosing \
+                 checkout {} — it is no checkout of its own, so the run keeps holding it until \
+                 git registers it or it is gone",
+                path.display(),
+                top.display()
+            );
+            None
+        }
         Residence::Linked
         | Residence::NotAWorktree
         | Residence::MovedTo(_)
@@ -184,9 +198,12 @@ pub async fn close(
                      recorded as gone — a removal this box made is logged where it made it",
                     run.worktree_path.display()
                 ),
+                // What git answered and what the run is recorded as, and
+                // nothing about the directory's future (ISS-1250, judge j3).
                 CheckoutReturn::MainWorkingTreeKept => tracing::info!(
-                    "[close] run={run_id}: {} is the repository's own working tree, so it is \
-                     recorded as returned and left standing",
+                    "[close] run={run_id}: git answers that {} is the repository's own working \
+                     tree, so the run holds no checkout of the pool's and is recorded as having \
+                     none to return",
                     run.worktree_path.display()
                 ),
             }
@@ -734,6 +751,94 @@ mod tests {
             1,
             "a checkout recorded gone is said once, naming its path: {out}"
         );
+    }
+
+    /// ISS-1250 criteria 27, 28 — judge j3: a nested worktree whose `.git` file
+    /// a delete had taken was recorded as the repository's own working tree and
+    /// "left standing", and then it went. Git asked there answers for the
+    /// repository around it, which is no answer about this checkout at all.
+    #[test]
+    fn a_path_git_answers_for_from_the_enclosing_checkout_is_not_recorded_returned() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let (root, nested) = rt.block_on(crate::workspace::worktree::tests::half_deleted_nested(
+            "close-enclosed",
+        ));
+        let mut led = seeded(&["ISS-689"], nested.clone());
+        let out = logged_while(|| {
+            let st = rt
+                .block_on(close(
+                    &mut led,
+                    "run-1",
+                    Some(&root),
+                    &Sessions(true),
+                    &Leases::new(true, &["ISS-689"]),
+                ))
+                .unwrap();
+            assert!(
+                !st.checkout_returned,
+                "a directory still standing, which git cannot answer for, is a checkout the run \
+                 still holds"
+            );
+        });
+        let row = led.run("run-1").unwrap().unwrap();
+        assert!(row.released_as.is_none(), "nothing is recorded returned");
+        assert!(
+            !out.contains("left standing"),
+            "and nothing says the directory is left standing: {out}"
+        );
+        let top = root.canonicalize().unwrap();
+        assert!(
+            out.contains(&format!(
+                "{} stands, but git, asked at the path, answers for the enclosing checkout {}",
+                nested.display(),
+                top.display()
+            )),
+            "the journal names the path and the checkout git answered for: {out}"
+        );
+    }
+
+    /// ISS-1250 criterion 24 — the main working tree's line says what git
+    /// answered and what the run is recorded as, and nothing about what becomes
+    /// of the directory.
+    #[test]
+    fn a_main_working_tree_recorded_returned_is_named_without_a_claim_about_its_future() {
+        let root = a_repository();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let mut led = seeded(&["ISS-1183"], root.clone());
+        let out = logged_while(|| {
+            let st = rt
+                .block_on(close(
+                    &mut led,
+                    "run-1",
+                    Some(&root),
+                    &Sessions(true),
+                    &Leases::new(true, &["ISS-1183"]),
+                ))
+                .unwrap();
+            assert!(
+                st.checkout_returned,
+                "the premise: the main tree is recorded returned"
+            );
+        });
+        assert!(
+            out.contains(&format!(
+                "git answers that {} is the repository's own working tree",
+                root.display()
+            )),
+            "{out}"
+        );
+        for future in ["left standing", "stays", "will "] {
+            assert!(
+                !out.contains(future),
+                "no claim about the directory ({future}): {out}"
+            );
+        }
     }
 
     /// ISS-1139 — a lease is keyed by project and issue, so both calls carry the

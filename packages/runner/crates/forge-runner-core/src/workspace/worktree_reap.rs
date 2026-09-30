@@ -28,6 +28,7 @@ use tokio::process::Command;
 
 use crate::error::Result;
 use crate::runner::ledger::Ledger;
+use crate::workspace::worktree::{kind_at, Kind};
 use crate::workspace::worktree_processes::{Clearing, Loud, Reading, Say, Verdict};
 
 pub const MIN_AGE: Duration = Duration::from_secs(14 * 24 * 3600);
@@ -234,6 +235,20 @@ pub async fn reap_repo_clearing(
         for e in entries.flatten() {
             let p = e.path();
             if !p.is_dir() {
+                continue;
+            }
+            // What is at the path is asked before anything is read off it: at a
+            // directory that is no checkout's top level, git answers for the
+            // checkout around it, and whether it "holds work" would be that
+            // checkout's answer. Asked ahead of the ledger's hold too, so a run
+            // holding it does not hide what git said (ISS-1250, judge j3).
+            if let Kind::Enclosed(top) = kind_at(&p).await {
+                tracing::warn!(
+                    "[worktree-reap] leaving {} standing — git, asked at the path, answers for \
+                     the enclosing checkout {}, so whether it holds work cannot be read from it",
+                    p.display(),
+                    top.display()
+                );
                 continue;
             }
             if let Some(run_id) = held_by.holder(&p) {
@@ -671,6 +686,69 @@ mod tests {
         assert_eq!(reap_repo(&repo, NOW, &led()).await.removed.len(), 1);
         assert!(!wt.exists());
         let _ = std::fs::remove_dir_all(&repo);
+    }
+
+    /// A clean, pushed worktree caught partway through a recursive delete: its
+    /// `.git` file is gone and its directory stands. The repository ignores
+    /// what sits under the worktree roots, as the fleet's do, so git asked at
+    /// the path answers with the enclosing checkout's clean, published state.
+    async fn half_deleted(tag: &str) -> (crate::test_scratch::InScratch, PathBuf) {
+        let (repo, wt) = repo_with_worktree(tag).await;
+        let exclude = repo.join(".git/info/exclude");
+        let mut ignored = std::fs::read_to_string(&exclude).unwrap_or_default();
+        for root in WORKTREE_ROOTS {
+            ignored.push_str(&format!("/{root}/\n"));
+        }
+        std::fs::write(&exclude, ignored).unwrap();
+        std::fs::remove_file(wt.join(".git")).unwrap();
+        (repo, wt)
+    }
+
+    /// ISS-1250 criteria 32, 33 — judge j3: whether a directory holds work was
+    /// read, at a path with no `.git` of its own, off the checkout around it.
+    #[test]
+    fn a_directory_git_answers_for_from_the_enclosing_checkout_is_left_standing_and_named() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        let (repo, wt) = rt.block_on(half_deleted("enclosed"));
+
+        let said = crate::workspace::worktree::tests::logged_while(|| {
+            let swept = rt.block_on(reap_repo(&repo, NOW, &led()));
+            assert!(swept.removed.is_empty(), "{:?}", swept.removed);
+        });
+
+        assert!(wt.join("f.txt").is_file(), "the directory stands");
+        assert!(
+            said.contains(&wt.display().to_string()),
+            "the journal names the directory: {said}"
+        );
+        let top = repo.canonicalize().unwrap();
+        assert!(
+            said.contains(&format!("enclosing checkout {}", top.display())),
+            "and the checkout git answered for: {said}"
+        );
+    }
+
+    #[test]
+    fn a_held_directory_git_answers_for_from_the_enclosing_checkout_is_named_as_that() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        let (repo, wt) = rt.block_on(half_deleted("enclosedheld"));
+
+        let said = crate::workspace::worktree::tests::logged_while(|| {
+            rt.block_on(reap_repo(&repo, NOW, &led_holding(&wt, true, false)));
+        });
+
+        assert!(wt.join("f.txt").is_file(), "the directory stands");
+        let top = repo.canonicalize().unwrap();
+        assert!(
+            said.contains(&format!("enclosing checkout {}", top.display())),
+            "a run holding it does not hide what git answered at it: {said}"
+        );
     }
 
     /// ISS-1250 — the second remover on this box said nothing either.
