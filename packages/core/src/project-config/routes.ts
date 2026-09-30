@@ -8,8 +8,8 @@ import { readBearerToken } from '../middleware/bearer.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { badRequest } from '../projects/route-errors.js';
 import { listBindings, readBinding, writeBinding } from './bindings.js';
-import { type ApiRefusal, parseWriteEnvelope } from './documents.js';
 import { buildEffectiveConfig } from './effective.js';
+import { envelopeOf, refused } from './respond.js';
 import {
   deleteTestingProfile,
   type Held,
@@ -73,32 +73,6 @@ const serialise = <T>(held: Held<T>) => ({
   updatedBy: held.updatedBy,
   updatedAt: held.updatedAt.toISOString(),
 });
-
-function refused(c: Context, refusals: ApiRefusal[]) {
-  const codes = [...new Set(refusals.map((r) => r.code))];
-  const code = codes.length === 1 && codes[0] ? codes[0] : 'CONFIG_REFUSED';
-  return c.json(
-    {
-      error: {
-        code,
-        message: `refused, nothing written: ${refusals.map((r) => `${r.code} at ${r.path || '/'}`).join('; ')}`,
-        refusals,
-      },
-    },
-    422,
-  );
-}
-
-function envelopeOf(raw: unknown) {
-  const envelope = parseWriteEnvelope(raw);
-  if (!envelope.ok) {
-    throw new HTTPException(400, {
-      message: envelope.message,
-      cause: { code: 'CONFIG_WRITE_SHAPE' },
-    });
-  }
-  return envelope.value;
-}
 
 function answer<T>(c: Context, outcome: WriteOutcome<T>) {
   if (!outcome.ok) return refused(c, outcome.refusals);

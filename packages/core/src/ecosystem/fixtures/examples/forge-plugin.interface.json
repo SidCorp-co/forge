@@ -1,0 +1,44 @@
+{
+  "$schema": "https://forge.sidcorp.co/schemas/interface-v1.json",
+  "version": 1,
+  "project": "8f4c3d6b-ae5a-4b1d-8243-5d6e7f8091a3",
+  "publishes": {
+    "driver-skill": {
+      "title": "Driver skill",
+      "summary": "The issue-flow skill and the forge CLI verbs a drive job runs, and the five driver statuses they move through.",
+      "type": "json-schema",
+      "artifact": {
+        "path": "contracts/driver-skill.json"
+      },
+      "lifecycle": "production",
+      "ecosystems": ["5c1f0a3e-7b2d-4e8a-9f10-2a3b4c5d6e70"]
+    }
+  },
+  "consumes": [
+    {
+      "contract": "forge/forge-api",
+      "ecosystem": "5c1f0a3e-7b2d-4e8a-9f10-2a3b4c5d6e70",
+      "builtAgainst": "2026-09-20",
+      "usedBy": ["forge-cli"],
+      "elements": [
+        "GET /api/issues/{id}",
+        "POST /api/issues/{id}/phase",
+        "POST /api/devices/me/run-sessions"
+      ]
+    },
+    {
+      "contract": "forge/forge-mcp",
+      "ecosystem": "5c1f0a3e-7b2d-4e8a-9f10-2a3b4c5d6e70",
+      "builtAgainst": "2026-09-20",
+      "usedBy": ["claude-plugin"]
+    }
+  ],
+  "commitments": {
+    "versioning": "dated",
+    "deprecationNoticeDays": 14,
+    "responseDays": {
+      "rfi": 3,
+      "change-request": 7
+    }
+  }
+}

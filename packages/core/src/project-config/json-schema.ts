@@ -27,16 +27,19 @@ export function schemaId(name: ProjectConfigSchemaName): string {
   return `${SCHEMA_BASE}/${name}-v1.json`;
 }
 
-function emit(name: ProjectConfigSchemaName): object {
+export function emitJsonSchema(schema: z.ZodType, id: string): object {
   return {
-    ...z.toJSONSchema(SOURCES[name], {
+    ...z.toJSONSchema(schema, {
       target: 'draft-2020-12',
       io: 'input',
       unrepresentable: 'throw',
     }),
-    $id: schemaId(name),
+    $id: id,
   };
 }
+
+const emit = (name: ProjectConfigSchemaName): object =>
+  emitJsonSchema(SOURCES[name], schemaId(name));
 
 export const projectConfigJsonSchemas: Record<ProjectConfigSchemaName, object> = {
   project: emit('project'),
