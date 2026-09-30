@@ -127,6 +127,7 @@ beforeEach(async () => {
   await truncateAll(harness.db);
   repo.reads.length = 0;
   repo.down = null;
+  repo.pullRequest = null;
   repo.commits = new Map<string, FakeCommit>([
     [OWN, { message: `fix(core): mark by commit (ISS-${SEQ})`, on: ['main'] }],
     [FOREIGN, { message: 'fix(core): something else (ISS-1316)', on: ['main'] }],
