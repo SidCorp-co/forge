@@ -119,7 +119,8 @@ export function processRunning(pid, { signal, stat }) {
 /**
  * The whole JSON lines a log holds past `offset`, and the offset to read from next. A log only ever
  * grows, so a line appended during a read is read next time; an unended line stays, and `pending`
- * says so. A log shorter than `offset` was emptied, and is read from its start.
+ * says so, and a line that is not JSON comes back as `{ malformed }`. A log shorter than `offset`
+ * was emptied, and is read from its start.
  */
 export function logLines(bytes, offset) {
   const from = bytes.length < offset ? 0 : offset;
@@ -130,7 +131,13 @@ export function logLines(bytes, offset) {
     lines: text
       .split('\n')
       .filter(Boolean)
-      .map((line) => JSON.parse(line)),
+      .map((line) => {
+        try {
+          return JSON.parse(line);
+        } catch {
+          return { malformed: line };
+        }
+      }),
     offset: end,
     pending,
   };
