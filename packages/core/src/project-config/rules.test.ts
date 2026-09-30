@@ -1,11 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
+  type BindingFacts,
   CONFIG_REFUSAL_CODES,
   type ConfigRefusal,
   checkPolicy,
   checkProjectConfig,
-  type BindingFacts,
   type ProjectConfigContext,
   PURE_REFUSAL_CODES,
 } from './rules.js';
@@ -186,8 +186,11 @@ describe('the rest of the pure codes', () => {
 
   it('BINDING_ROLE_MISMATCH when a deployment points at a non-deploy binding', () => {
     const out = refusals((_d, c) => {
-      (c.bindings as Map<string, { role: 'deploy' | 'source' | 'service' }>).set(DEV, {
+      (c.bindings as Map<string, BindingFacts>).set(DEV, {
         role: 'service',
+        provider: 'coolify',
+        canDeploy: true,
+        readsHistory: true,
       });
     });
     expect(pick(out)).toEqual([
@@ -228,8 +231,11 @@ describe('the rest of the pure codes', () => {
   it('storefront.binding must exist and have role source', () => {
     const shop = (c: ProjectConfigContext, role?: 'deploy' | 'source' | 'service') => {
       if (role)
-        (c.bindings as Map<string, { role: 'deploy' | 'source' | 'service' }>).set(STRANGER, {
+        (c.bindings as Map<string, BindingFacts>).set(STRANGER, {
           role,
+          provider: 'shopify',
+          canDeploy: false,
+          readsHistory: false,
         });
     };
     const storefront = (d: ProjectDocument) => {
@@ -371,7 +377,8 @@ describe('the declared store example', () => {
   it('refuses trigger provider through an adapter that cannot read deployment history', () => {
     const doc = projectDocumentSchema.parse(raw('examples/store.project.json'));
     const production = doc.environments.production;
-    if (!production || !('binding' in production.deployment)) throw new Error('store example has no bound production');
+    if (!production || !('binding' in production.deployment))
+      throw new Error('store example has no bound production');
     production.deployment = { ...production.deployment, trigger: 'provider' };
     const bindings = ['store-source.binding.json', 'store-deploy.binding.json'].map((f) =>
       bindingDocumentSchema.parse(raw(`examples/${f}`)),

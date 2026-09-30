@@ -1,3 +1,4 @@
+import { getAdapter, providerCanDeploy } from '../integrations/registry.js';
 import { encryptSecret, isVaultConfigured } from '../integrations/vault.js';
 import {
   type ApiRefusal,
@@ -7,7 +8,6 @@ import {
   secretRefOf,
   staleBase,
 } from './documents.js';
-import { getAdapter, providerCanDeploy } from '../integrations/registry.js';
 import { checkPolicy, checkProjectConfig, type ProjectConfigContext } from './rules.js';
 import {
   type PolicyDocument,
