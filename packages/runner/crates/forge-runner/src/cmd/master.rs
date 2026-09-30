@@ -480,15 +480,8 @@ async fn status(ctx: &Ctx, slug: Option<&str>) -> anyhow::Result<()> {
             size / 1024,
             path.display()
         );
-        match presence {
-            MasterPresence::Gone => {
-                println!("{:<20} last exit {}", "", last_exit_line(&s));
-            }
-            MasterPresence::Unanswered | MasterPresence::Unknown => println!(
-                "{:<20} pane: tmux could not be asked about {name}, so whether it runs is not known here and no exit is reported for it",
-                ""
-            ),
-            MasterPresence::Alive => {}
+        if let Some(line) = presence_detail(presence, &name, || last_exit_line(&s)) {
+            println!("{:<20} {line}", "");
         }
         println!("{:<20} standing  {}", "", standing_line(led.as_ref(), &s));
         if slug.is_some() {
@@ -524,6 +517,24 @@ fn pane_word(presence: MasterPresence) -> &'static str {
         MasterPresence::Alive => "alive",
         MasterPresence::Gone => "gone",
         MasterPresence::Unanswered | MasterPresence::Unknown => "unknown",
+    }
+}
+
+/// The line `status` prints under the pane line: why the pane exited where it
+/// was read gone, that nothing is known where tmux could not be asked, and
+/// nothing for a live pane. `last_exit` is asked only for a pane read gone, so
+/// no exit is ever reported under a pane that may be running.
+fn presence_detail(
+    presence: MasterPresence,
+    name: &str,
+    last_exit: impl FnOnce() -> String,
+) -> Option<String> {
+    match presence {
+        MasterPresence::Gone => Some(format!("last exit {}", last_exit())),
+        MasterPresence::Unanswered | MasterPresence::Unknown => Some(format!(
+            "pane: tmux could not be asked about {name}, so whether it runs is not known here and no exit is reported for it"
+        )),
+        MasterPresence::Alive => None,
     }
 }
 
@@ -894,15 +905,45 @@ mod tests {
             !body.contains("terminal::alive("),
             "status reads the pane through the three-valued reading, never the fold of an unasked tmux into gone"
         );
-        let gone_arm = body
-            .split("MasterPresence::Gone =>")
-            .nth(1)
-            .unwrap_or_default();
         assert!(
-            gone_arm
-                .trim_start()
-                .starts_with("{\n                println!(\"{:<20} last exit"),
-            "the last exit is printed under a pane read gone: {gone_arm}"
+            body.contains("presence_detail(presence,"),
+            "status prints the line under the pane through presence_detail, which the cases below judge"
+        );
+        let asked = std::cell::Cell::new(0);
+        let exit = || {
+            asked.set(asked.get() + 1);
+            "the recorded reason".to_string()
+        };
+        assert_eq!(
+            presence_detail(MasterPresence::Gone, "forge-master-p", exit).as_deref(),
+            Some("last exit the recorded reason"),
+            "the last exit is printed under a pane read gone"
+        );
+        assert_eq!(
+            asked.get(),
+            1,
+            "a pane read gone asks for its last exit once"
+        );
+        for unasked in [MasterPresence::Unanswered, MasterPresence::Unknown] {
+            let line = presence_detail(unasked, "forge-master-p", exit).unwrap_or_default();
+            assert!(
+                line.contains("tmux could not be asked about forge-master-p")
+                    && line.contains("no exit is reported"),
+                "{unasked:?}: an unasked pane says whether it runs is not known: {line}"
+            );
+            assert!(
+                !line.contains("last exit"),
+                "{unasked:?}: no last exit under a pane that may be running: {line}"
+            );
+        }
+        assert_eq!(
+            presence_detail(MasterPresence::Alive, "forge-master-p", exit),
+            None
+        );
+        assert_eq!(
+            asked.get(),
+            1,
+            "only a pane read gone reads the exit record: a pane alive or unasked never does"
         );
     }
 
