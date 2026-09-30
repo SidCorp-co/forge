@@ -362,7 +362,6 @@ jobs:
               - 'pnpm-workspace.yaml'
               - 'pnpm-lock.yaml'
               - 'package.json'
-              - '.github/workflows/ci.yml'
               - 'scripts/lib/whole-tree-*.mjs'
               - 'scripts/check-whole-tree-gates.mjs'
             # `.npmrc` sits under both because it decides how EVERY package resolves its
