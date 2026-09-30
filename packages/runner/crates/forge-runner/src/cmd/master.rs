@@ -905,9 +905,22 @@ mod tests {
             !body.contains("terminal::alive("),
             "status reads the pane through the three-valued reading, never the fold of an unasked tmux into gone"
         );
+        // Single-line patterns only: a pattern spanning a line break never
+        // matches a CRLF checkout, which is how this test went red on Windows.
         assert!(
-            body.contains("presence_detail(presence,"),
-            "status prints the line under the pane through presence_detail, which the cases below judge"
+            body.contains(
+                "if let Some(line) = presence_detail(presence, &name, || last_exit_line(&s)) {"
+            ),
+            "status prints the line under the pane from presence_detail's result, which the cases below judge"
+        );
+        assert_eq!(
+            body.matches("last_exit_line(").count(),
+            1,
+            "status reads the exit record only through presence_detail, so no path prints an exit presence_detail withheld"
+        );
+        assert!(
+            !body.contains("last exit {"),
+            "status spells no exit line of its own beside presence_detail's"
         );
         let asked = std::cell::Cell::new(0);
         let exit = || {
