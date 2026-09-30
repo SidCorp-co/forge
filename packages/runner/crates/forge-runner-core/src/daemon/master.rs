@@ -712,6 +712,20 @@ impl Masters {
         reg.live.insert(project_id.to_string(), state);
     }
 
+    /// `f` over the session this box serves `pane` under as `project_id`'s
+    /// master, with the registry held so no adoption moves it meanwhile, or
+    /// `None` where `pane` is not that master.
+    pub fn while_live<R>(
+        &self,
+        project_id: &str,
+        pane: &str,
+        f: impl FnOnce(&str) -> R,
+    ) -> Option<R> {
+        let reg = self.0.lock().expect("masters poisoned");
+        let m = reg.live.get(project_id).filter(|m| m.name == pane)?;
+        Some(f(&m.session_id))
+    }
+
     /// Serve the live pane for this project under `session_id`, keeping
     /// everything else this box knows about it, and answer the session it
     /// was served under before where that differs.

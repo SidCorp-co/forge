@@ -537,14 +537,39 @@ fn run_declare_as(
             return ClaimReply::refused(format!("cannot read this pane's inherited runs: {e}"));
         }
     }
-    match led.create_run_group(crate::runner::ledger::NewRun {
+    let new_run = |session: &str| crate::runner::ledger::NewRun {
         run_id: run_id.clone(),
         project_id: project_id.to_string(),
-        master_session_id: session_id.to_string(),
+        master_session_id: session.to_string(),
         worktree_path: std::path::PathBuf::from(worktree_path),
         boot_id: ctl.boot_id.clone(),
         issue_keys: issue_keys.to_vec(),
-    }) {
+    };
+    // A record's run is written while the registry is held, under the session
+    // it names for the pane at that moment: an adoption between the bound
+    // above and this write would otherwise leave the row under the session it
+    // replaced, or let a pane that had just stopped being the master declare.
+    let (recorded, written) = match holder {
+        Holder::Minted(m) => {
+            let under = ctl.masters.while_live(&m.project, &m.pane, |live| {
+                (live.to_string(), led.create_run_group(new_run(live)))
+            });
+            match under {
+                Some(w) => w,
+                None => {
+                    return ClaimReply::refused(format!(
+                        "pane {} stopped being this box's master for {} while the declaration was being written. Nothing was recorded",
+                        m.pane, m.project
+                    ))
+                }
+            }
+        }
+        Holder::Legacy { .. } => (
+            session_id.to_string(),
+            led.create_run_group(new_run(session_id)),
+        ),
+    };
+    match written {
         Ok(run) => {
             tracing::info!(
                 "[control] {project_id}: run {} declared over {:?}",
@@ -555,7 +580,7 @@ fn run_declare_as(
             ClaimReply {
                 ok: true,
                 job_id: Some(run.run_id),
-                agent_session_id: Some(session_id.to_string()),
+                agent_session_id: Some(recorded),
                 issue_key: issue_keys.first().cloned(),
                 reason: None,
             }
@@ -1553,6 +1578,38 @@ mod tests {
             "a pre-record capability names only its session, which core replaced: {reply:?}"
         );
         assert_eq!(run_count(&ctl), 0);
+    }
+
+    /// Review 2e629b3's F1: the session a record's run is written under is
+    /// read at the write, with the registry held, and not taken from the frame
+    /// resolution that ran before it. The frame here resolved while the box
+    /// still served the pane as `PLACED`; the sweep has since moved it.
+    #[cfg(unix)]
+    #[test]
+    fn a_declaration_is_written_under_the_session_the_registry_holds_at_the_write() {
+        let (ctl, token, _dir) = a_pane_core_re_minted("record");
+        let holder = ctl.tokens.resolve(&token).expect("the record");
+        let reply = run_declare_as(
+            &ctl,
+            &holder,
+            "proj-1",
+            &["ISS-7".into()],
+            "/w/ISS-7",
+            PLACED,
+            None,
+        );
+        assert!(reply.ok, "{reply:?}");
+        assert_eq!(reply.agent_session_id.as_deref(), Some(REMINT));
+        let run = ctl
+            .ledger
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .run(reply.job_id.as_deref().unwrap())
+            .unwrap()
+            .unwrap();
+        assert_eq!(run.master_session_id, REMINT);
     }
 
     /// ISS-1316 criterion 4, which is ISS-1050 criterion 7 at the record.
