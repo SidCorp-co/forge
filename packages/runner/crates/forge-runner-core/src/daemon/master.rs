@@ -2339,10 +2339,7 @@ pub(crate) fn carried_across(
             && r.master_session_id != successor
     }) {
         let ours = match (run.host_pid, run.host_start.as_deref(), pane_pid) {
-            (Some(pid), Some(start), Some(pane)) => match hosts.read(pid, start) {
-                subagent_host::HostRead::Alive => hosts.beneath(pid, pane),
-                read => read,
-            },
+            (Some(pid), Some(start), Some(pane)) => hosts.beneath(pid, start, pane),
             _ => subagent_host::HostRead::Unreadable,
         };
         match ours {
