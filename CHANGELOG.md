@@ -3136,9 +3136,9 @@
 
 ### Fixed
 
-- **Work committed straight to the main branch can be marked merged by the commit it landed at.**
-  Forge checks that commit in your repository: it must exist, name the issue and be on the main or
-  live branch. Anything else is refused, saying why.
+- **Work committed to the main branch can be marked merged by its commit.** Forge checks the commit
+  in your repository: it must exist, name the issue and sit on the main or live branch, or it is
+  refused.
 
 - **A half-deleted run checkout is no longer taken for the project's own.** The box said it was
   left standing as it went. It now holds it, refuses to release it and names it in its log.
