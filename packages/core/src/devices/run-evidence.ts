@@ -17,7 +17,7 @@
  * into the kernel through a second door (ISS-1050).
  */
 
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { agentSessions, comments, devices, issues, pipelineRuns } from '../db/schema.js';
@@ -348,12 +348,16 @@ async function insertHeldReportOnChange(args: {
     await tx.execute(
       sql`SELECT pg_advisory_xact_lock(hashtextextended(${`run-evidence:${args.issueId}:${args.family}`}, 0))`,
     );
+    // Whole markers only, each closed by its backtick and matched literally: a
+    // bare family is a prefix of every longer head's, and a LIKE over it would
+    // let another commit's report stand in for this one's latest.
+    const whole = [args.family, `${args.family}:refused`, `${args.family}:not-refused`].map(
+      (m) => sql`strpos(${comments.body}, ${`\`${m}\``}) > 0`,
+    );
     const [latest] = await tx
       .select({ body: comments.body })
       .from(comments)
-      .where(
-        and(eq(comments.issueId, args.issueId), sql`${comments.body} LIKE ${`%${args.family}%`}`),
-      )
+      .where(and(eq(comments.issueId, args.issueId), or(...whole)))
       .orderBy(desc(comments.createdAt), desc(comments.id))
       .limit(1);
     if (latest?.body.includes(`\`${args.marker}\``)) return false;

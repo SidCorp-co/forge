@@ -119,6 +119,22 @@ describe('a checkout this box is still holding, said on the issues it holds', ()
     expect(bodies[2]).toContain("The reading this box took refuses the checkout's removal");
   });
 
+  it('does not read another commit as this one when its head is a prefix of that one', async () => {
+    const { device, issueIds, session } = await aRunOver([9], 'x');
+    const report = (head: string) =>
+      mods.writeHeldWorktreeReport({
+        deviceId: device.id,
+        sessionId: session.sessionId,
+        held: { ...A_HELD, head },
+      });
+
+    expect(await report('cccccccccccc')).toEqual({ issues: 1, written: 1 });
+    expect(await report('ccccccccccccdddd')).toEqual({ issues: 1, written: 1 });
+    expect(await report('cccccccccccc')).toEqual({ issues: 1, written: 0 });
+
+    expect(await bodiesOn(issueIds[0] as string)).toHaveLength(2);
+  });
+
   it('says the reading once more over a report written before the reading was marked', async () => {
     const { device, issueIds, session } = await aRunOver([9], 'x');
     const first = issueIds[0] as string;
