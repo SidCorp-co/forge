@@ -48,8 +48,7 @@ export interface DispatchOutcome {
  *
  * A prod binding with no run behind it never dispatches, because confirming a
  * prod deploy is run-keyed and a run-less action has no gate to release. The
- * project opts out wholesale when its production environment deploys `on-land`
- * (`auto-prod-deploy.ts:projectAutoProdDeploy`).
+ * project opts out when production deploys `on-land` (`projectAutoProdDeploy`).
  * `tryDispatchCoolifyRelease` applies the same rule through `reachesLiveOf`,
  * which it needs anyway to answer for a whole binding set at once.
  */

@@ -81,11 +81,8 @@ export function readHoldState(payload: unknown): HoldState | null {
 }
 
 /**
- * Insert the held successor for a job whose retries are spent.
- *
- * Returns the new row's id, or `null` when the reason is not a hold reason or
- * the insert lost a race with a concurrent active job for the same issue+type
- * (the `jobs_active_unique` partial index is the arbiter).
+ * Insert the held successor for a job whose retries are spent: its id, or `null` for a reason
+ * that is not a hold reason or an insert `jobs_active_unique` refused to a concurrent active job.
  */
 export async function holdJobForReason(job: JobRow, reason: string): Promise<string | null> {
   if (!HOLD_REASONS.has(reason)) return null;
@@ -130,8 +127,7 @@ export async function holdJobForReason(job: JobRow, reason: string): Promise<str
   }
 }
 
-// cm:hack ISS-5 until:no held job carries this reason — the monthly budget gate that held a job on
-// it was deleted with the pipeline config, so nothing can say "pause" again; a row it held releases.
+// cm:hack ISS-5 until:no held job carries this reason — its budget gate is gone, so it releases.
 const RETIRED_BUDGET_HOLD = 'monthly_budget_exhausted';
 
 async function conditionCleared(job: JobRow, reason: string): Promise<boolean> {

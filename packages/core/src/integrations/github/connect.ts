@@ -3,8 +3,7 @@
  *
  * The operator's browser POSTs a manifest to GitHub, GitHub creates the App
  * and redirects back with a short-lived code, and converting that code yields
- * the App's id, private key and webhook secret. Nothing is typed by hand, so
- * nothing can be mistyped, and Forge never asks anyone for a token.
+ * the App's id, private key and webhook secret: nothing is typed by hand.
  */
 
 import { createHmac, timingSafeEqual } from 'node:crypto';

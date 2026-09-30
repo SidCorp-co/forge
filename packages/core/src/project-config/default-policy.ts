@@ -1,9 +1,7 @@
 import { checkPolicy } from './rules.js';
 import { type PolicyDocument, policyDocumentSchema, SCHEMA_BASE } from './schema.js';
 
-// cm:why the tools a driver run must never reach whatever else a project denies: each one outlives
-// the run that calls it (a cron, a workflow, a remote trigger, a wake-up), so a run that ends has
-// still acted. Carried over from the deny list every stage got by default before policy-v1.
+// cm:why each outlives the run that calls it — a cron, a workflow, a trigger, a wake-up.
 export const DRIVER_DENY = [
   'CronCreate',
   'CronDelete',
@@ -17,9 +15,7 @@ export const DEFAULT_POLICY_PROFILE = 'driver';
 
 const DRIVER_STATE = { model: 'opus', permissions: DEFAULT_POLICY_PROFILE } as const;
 
-// cm:why written at project creation (projects/service.ts:createProject) as a real revision 1, so
-// a new project dispatches under a document its owner can read and change, never under defaults
-// the dispatcher invents; a project created before this has none and is refused by name instead.
+// cm:why projects/service.ts:createProject writes it as revision 1, so no default is invented later.
 export const DEFAULT_POLICY: PolicyDocument = {
   $schema: `${SCHEMA_BASE}/policy-v1.json`,
   version: 1,

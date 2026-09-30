@@ -1,14 +1,9 @@
 /**
  * ISS-1186 — no code path in this repository fires a deployment on its own.
  *
- * Until this landed, `pipeline/landing-deploy.ts` subscribed to `transition` and dispatched a
- * Coolify deployment the moment an issue reached `developed`: code firing a deploy, and firing it
- * before any verdict on the change existed.
- *
  * The subject is the REFERENCE and not the import statement, because `integrations/coolify/
- * routes.ts` reaches `confirmPendingProdDeploy` through a dynamic `await import()`. The wrapper
- * `runCoolifyDeploy` is forbidden beside the three dispatchers, reaching it being
- * indistinguishable from reaching past it. Non-test files only: a test dispatches nothing.
+ * routes.ts` reaches `confirmPendingProdDeploy` through a dynamic `await import()`; the wrapper
+ * `runCoolifyDeploy` is forbidden too. Non-test files only: a test dispatches nothing.
  *
  * @gate-input whole-tree
  */

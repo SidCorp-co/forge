@@ -80,14 +80,10 @@ export function formatApiError(err: unknown): string {
   return 'Unknown error';
 }
 
-
-
 // ─── A save refused because the document moved under it ──────────────────────
 //
-// `ENVIRONMENTS_STALE` carries `details.conflicts`: one row per path the
-// write named, with the value the caller read and the value stored now. The person is owed
-// three things from that (ISS-1170): WHICH settings changed under them, that NOTHING was
-// written, and the re-read that makes the save possible.
+// `ENVIRONMENTS_STALE` carries `details.conflicts`: one row per path the write named, with the
+// value read and the value stored now (ISS-1170).
 
 interface WriteConflict {
   path: string;
@@ -128,7 +124,6 @@ function listOf(names: string[]): string {
   return `${unique.slice(0, -1).join(', ')} and ${unique[unique.length - 1]}`;
 }
 
-/** Dotted document paths as one phrase in the screen's own names, for a sentence about them. */
 export function settingsThatMoved(paths: string[]): string {
   return listOf(paths.map(settingLabel));
 }

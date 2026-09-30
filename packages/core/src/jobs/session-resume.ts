@@ -5,14 +5,7 @@ import { logger } from '../logger.js';
 /** The context an issue's sessions may have reached and still be resumed into, in tokens. */
 export const MAX_RESUME_TOKENS = 150_000;
 
-/**
- * ISS-580 — the peak single-request context any session of this issue has
- * reached (`MAX(input_tokens + cache_read_tokens)`), which mirrors the
- * `compact_boundary` pre-token value.
- *
- * Exported so the index test can EXPLAIN the query `estimateIssueContextTokens`
- * actually runs, rather than a copy of it that cannot observe a regression here.
- */
+/** ISS-580 — the peak single-request context any session of this issue reached, as `compact_boundary` counts it. */
 export function issueContextPeakQuery(issueId: string): SQL {
   return sql`
     SELECT MAX(ur.input_tokens + ur.cache_read_tokens) AS peak

@@ -186,8 +186,7 @@ async function integrationRows(
  * Every MCP server a project-wide agent session for this project receives, and every reason one of
  * them does not.
  *
- * The granted integration bindings feed that set, and `resolveSessionMcpServers` is the only code
- * that composes it. This reads its
+ * `resolveSessionMcpServers` alone composes that set from the granted bindings; this reads its
  * answer rather than re-deriving half of it, so the panel and `GET /api/devices/me/mcp-servers`
  * cannot disagree about which servers reach an agent (ISS-1191). Its credential-bearing
  * `mcpServers` map is never touched: only the names come from it. `Authorization` is redacted BY

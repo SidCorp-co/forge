@@ -88,10 +88,7 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
  * A `sessionContext` write replaces the field whole, so one that omits a key the
  * field already holds destroys it — there is no history to read it back from.
  * A caller that sent `expect` read the current value and means the removal, so
- * it passes. One that did not is refused by name, naming the keys it would have
- * dropped, because the alternative is the write landing silently: a probe body
- * of `{ probe: 1 }` took `landing`, `lease` and `worklog` off ISS-1127 in one
- * call on 2026-09-21, and the landing checkpoint underneath was unrecoverable.
+ * it passes. One that did not is refused by name, naming the keys it would drop.
  */
 async function refuseUnreadSessionContextDrop(
   tx: Parameters<Parameters<typeof db.transaction>[0]>[0],

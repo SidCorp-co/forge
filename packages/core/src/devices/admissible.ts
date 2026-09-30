@@ -5,10 +5,6 @@
  * says "what job may I claim"; this says "what is sitting here that no run and
  * no job has been opened for". A master reads both and decides.
  *
- * It was called the *backlog* while a row here became work only by being
- * promoted into a `drive` job. ISS-933 deleted that act — a master opens the
- * run session itself — so the name is the fact now rather than the pool key.
- *
  * A project admits its entry status when its policy's intake is `auto`, and only
  * the issues a human released at the entry when it is `manual`. A project with no
  * policy admits nothing and is named in `refused`, never left out in silence.
@@ -54,11 +50,9 @@ export type AdmissibleIssue = {
   pullRequests: IssuePullRequest[];
 };
 
-/** How this project admits its entry status, and how many rows it lets a master read. */
 export type Admission = {
   projectId: string;
   limit: number;
-  /** Only the entry issues a human released (`runRelease`), because the policy's intake is manual. */
   entryOnRelease: boolean;
 };
 
@@ -74,10 +68,8 @@ function admissionOf(projectId: string, policy: PolicyDocument): Admission {
 }
 
 /**
- * Every project this device is bound to: admitted as its policy's intake says, or refused for
- * having no policy.
- *
- * Scoped through `runners` exactly as `readPool` is: the device principal sees
+ * Every project this device is bound to, scoped through `runners` exactly as `readPool` is: the
+ * device principal sees
  * its own bindings and nothing its owner's account could otherwise reach.
  */
 export async function readAdmissions(args: {

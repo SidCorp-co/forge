@@ -1,22 +1,6 @@
 /**
- * SSOT for the user prompt (`-p` argument to Claude CLI). Stamped at every
- * issue-bound job insert site (orchestrator, PM dispatch, escalation fallback,
- * chat preview) and forwarded verbatim to the runner via the `job.assigned`
- * WS event.
- *
- * Format:
- *   /<skill> <issueId>
- *
- *   [optional] ## Pipeline Rules (this turn)  — turn-level rules when resuming
- *   <system prompt embedded here>             (fallback path for --resume sessions
- *                                               where CLI may ignore --append-system-prompt)
- *
- *   [optional] ## Issue
- *   Title: ...
- *   Description / Plan / Acceptance (per job type)
- *
- *   [optional] ## Previous Session Context
- *   currentState / decisions / filesModified / errorsResolved / reviewFeedback
+ * SSOT for the user prompt (`-p` argument to Claude CLI): `/<skill> <issueId>`, then the turn's
+ * rules, the issue's title and status, and the previous session context, each when present.
  */
 
 import type { JobType } from '../db/schema.js';
@@ -166,9 +150,6 @@ export function injectTurnLevelRules(
     '',
     tlSp,
   ].join('\n');
-  // Find the first \n (end of the `/<skill> <id>` line) and splice in the
-  // rules block right after it. If there is no newline (single-line prompt),
-  // append the block to the end.
   const firstNl = promptString.indexOf('\n');
   if (firstNl === -1) return `${promptString}${block}`;
   return `${promptString.slice(0, firstNl)}${block}${promptString.slice(firstNl)}`;
@@ -221,9 +202,6 @@ export function buildJobPromptString(args: {
   }
 
   const injectFromSteps = new Set<HandoffStep>(handoffInjectSteps(args.jobType));
-  // Filter pre-fetched handoffs to the step's allow-list so callers can
-  // fetch broadly (all handoffs for the run) without leaking ones this
-  // step does not read.
   const handoffsToRender =
     args.priorHandoffs && args.priorHandoffs.length > 0
       ? args.priorHandoffs.filter((h) => injectFromSteps.has(h.step))

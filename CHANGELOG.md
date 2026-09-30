@@ -2515,14 +2515,12 @@
   (ISS-1313)
 
 ### Removed
-- **The pipeline configuration is gone.** Its route, the `forge_config` pipeline door and the
-  settings sections are removed, and nothing reads the stored copy. Model, permissions, QA and
-  intake now come from the policy alone. The weekly assistant setting moved to the project and has
-  to be set again.
-- **Removed with it: the intake gate, the GitHub issue intake, pool backlog statuses, knowledge
-  promotion, per-status entry criteria, the per-stage `disallowedTools` list and the
-  `forge/issue-contract` GitHub check.** A GitHub issue no longer becomes a Forge issue, and an
-  answered question always sends the issue back to Open.
+- **The pipeline configuration is gone.** Model, permissions, QA and intake come from the policy
+  alone; the old route, `forge_config` door and settings sections are removed. Re-enter the weekly
+  assistant setting, which moved to the project.
+- **Removed with it:** the intake gate, GitHub issue intake, pool backlog statuses, knowledge
+  promotion, entry criteria and the `forge/issue-contract` check. An answered question returns
+  the issue to Open.
 
 - **Forge no longer writes your release steps.** A project that declares its own procedure gets it;
   one that declares none is told where its method lives, instead of being refused for a deploy
@@ -6166,14 +6164,10 @@
   deploy. Shipped 2026-09-02; this line was owed then and is written now. (ISS-870)
 
 ### Changed
-- **Each job starts under its project's policy: that state's model and that profile's deny list.**
-  The runner used to apply neither. A project with no policy, or a status its policy leaves out, is
-  refused by name when a job is claimed and when a run opens, instead of running under defaults.
-  Every new project is given a default policy that denies the six tools a driver run must never
-  reach (`CronCreate`, `CronDelete`, `CronList`, `Workflow`, `RemoteTrigger`, `ScheduleWakeup`).
-- **A deny list is written as tool patterns, such as `Bash(git push:*)`.** A pattern the runner
-  could not enforce is refused when the policy is saved, with `TOOL_PATTERN_INVALID` and its
-  position in the list. It replaces the capability ids and `CAPABILITY_UNKNOWN`.
+- **Each job runs under its project's policy: that status's model and deny list.** A project with
+  no policy, or a status it leaves out, is refused by name. New projects get a default policy.
+- **A deny list is written as tool patterns, such as `Bash(git push:*)`.** One the runner could
+  not enforce is refused when saved, as `TOOL_PATTERN_INVALID`, naming its position.
 - **The Pipeline settings screen edits the policy:** the QA mode, how work is admitted, and each
   status's model and permission profile.
 - **`forge-runner top` opens on one table row per project.** Each row shows pane, runs, issue
