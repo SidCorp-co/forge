@@ -400,22 +400,22 @@ fn file_clause(r: &Running) -> String {
 /// unreadable, "wrote no serving record" is a claim the command cannot make —
 /// the file it cannot parse may be that very process's.
 #[derive(Clone, Copy, PartialEq, Eq)]
-enum Premise {
+enum RecordPremise {
     /// No record stands here at all.
-    NoRecord,
+    Absent,
     /// A record stands, and the daemon it names is gone.
-    GoneRecord,
+    Gone,
     /// A record stands and cannot be read.
-    UnreadableRecord,
+    Unreadable,
 }
 
-impl Premise {
+impl RecordPremise {
     fn why_no_build(self) -> &'static str {
         match self {
-            Self::NoRecord | Self::GoneRecord => {
+            Self::Absent | Self::Gone => {
                 "and wrote no serving record, so which build it is serving cannot be read from here"
             }
-            Self::UnreadableRecord => {
+            Self::Unreadable => {
                 "and the record here cannot be read, so which build it is serving cannot be read from here"
             }
         }
@@ -441,7 +441,7 @@ enum Unrecorded {
 /// daemon is down that a daemon is up — which is the state ISS-1223 exists to
 /// end, arriving from the other side. One whose environment cannot be read is
 /// named as unattributed rather than claimed either way.
-fn unrecorded(probe: &Probe, premise: Premise) -> Unrecorded {
+fn unrecorded(probe: &Probe, premise: RecordPremise) -> Unrecorded {
     let Some(found) = (probe.daemons)() else {
         return Unrecorded::Blind;
     };
@@ -495,7 +495,7 @@ fn elsewhere_sentence(dirs: &[PathBuf]) -> Option<String> {
 
 /// The `daemon` lines where no record stands at all.
 fn unrecorded_lines(probe: &Probe) -> Vec<String> {
-    match unrecorded(probe, Premise::NoRecord) {
+    match unrecorded(probe, RecordPremise::Absent) {
         Unrecorded::Blind => vec![
             "daemon     no record — and this platform gives no way to look for a daemon that predates the record, so whether one is running, and on which build, cannot be said from here"
                 .to_string(),
@@ -522,7 +522,7 @@ fn unrecorded_lines(probe: &Probe) -> Vec<String> {
 /// only evidence left that anything is serving — which is why this case needs
 /// them most, and why none of their lines may say the record is absent.
 fn beside_an_unreadable_record(probe: &Probe) -> Vec<String> {
-    match unrecorded(probe, Premise::UnreadableRecord) {
+    match unrecorded(probe, RecordPremise::Unreadable) {
         Unrecorded::Blind => vec![format!(
             "{INDENT}and this platform gives no way to look at the `forge-runner start` processes here, so whether one is serving cannot be said from here"
         )],
@@ -547,7 +547,7 @@ fn beside_an_unreadable_record(probe: &Probe) -> Vec<String> {
 /// an older daemon that writes no record can be serving beside a newer record
 /// it never wrote. So the processes are read here too.
 fn beside_a_gone_record(gone: String, probe: &Probe) -> Vec<String> {
-    match unrecorded(probe, Premise::GoneRecord) {
+    match unrecorded(probe, RecordPremise::Gone) {
         Unrecorded::Answering(bodies, elsewhere) => {
             let mut out = vec![format!(
                 "daemon     the record is stale — {gone}; what else is running on this box:"

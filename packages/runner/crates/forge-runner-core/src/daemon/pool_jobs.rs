@@ -467,11 +467,18 @@ pub enum Took {
     Unresolved(String),
 }
 
+/// The four boundaries a claim crosses: the pool it reads, the terminal a
+/// pane starts in, core's record of what was placed, and this box's own.
+#[derive(Clone, Copy)]
+pub struct JobPorts<'a> {
+    pub pool: &'a dyn Pool,
+    pub panes: &'a dyn Panes,
+    pub report: &'a dyn Report,
+    pub records: &'a dyn Records,
+}
+
 pub async fn take_one(
-    pool_ports: &dyn Pool,
-    panes: &dyn Panes,
-    report: &dyn Report,
-    records: &dyn Records,
+    ports: &JobPorts<'_>,
     registry: &JobPanes,
     project_id: &str,
     session_id: &str,
@@ -479,6 +486,12 @@ pub async fn take_one(
     bound: usize,
     tokens: Option<&session_tokens::SessionTokens>,
 ) -> Took {
+    let JobPorts {
+        pool: pool_ports,
+        panes,
+        report,
+        records,
+    } = *ports;
     if registry.count() >= bound {
         return Took::AtBound;
     }
@@ -1504,10 +1517,12 @@ mod tests {
 
     async fn take(w: &World, bound: usize) -> Took {
         take_one(
-            &w.pool,
-            &w.panes,
-            &w.report,
-            &w.records,
+            &JobPorts {
+                pool: &w.pool,
+                panes: &w.panes,
+                report: &w.report,
+                records: &w.records,
+            },
             &w.registry,
             "p1",
             "master-session",
@@ -1874,14 +1889,16 @@ mod tests {
             async move {
                 let client = CoreClient::new(url, "device-token");
                 take_one(
-                    &CorePool {
-                        client: &client,
-                        limit: 20,
-                        deadline: pool::CALL_DEADLINE,
+                    &JobPorts {
+                        pool: &CorePool {
+                            client: &client,
+                            limit: 20,
+                            deadline: pool::CALL_DEADLINE,
+                        },
+                        panes,
+                        report,
+                        records,
                     },
-                    panes,
-                    report,
-                    records,
                     registry,
                     project,
                     "master-session",
@@ -1959,14 +1976,16 @@ mod tests {
             async move {
                 let client = CoreClient::new(url, "device-token");
                 take_one(
-                    &CorePool {
-                        client: &client,
-                        limit: 20,
-                        deadline: std::time::Duration::from_millis(300),
+                    &JobPorts {
+                        pool: &CorePool {
+                            client: &client,
+                            limit: 20,
+                            deadline: std::time::Duration::from_millis(300),
+                        },
+                        panes,
+                        report,
+                        records,
                     },
-                    panes,
-                    report,
-                    records,
                     registry,
                     project,
                     "master-session",
@@ -3076,10 +3095,12 @@ mod tests {
         }
 
         let took = take_one(
-            &w.pool,
-            &w.panes,
-            &w.report,
-            &w.records,
+            &JobPorts {
+                pool: &w.pool,
+                panes: &w.panes,
+                report: &w.report,
+                records: &w.records,
+            },
             &w.registry,
             "p1",
             "master-session",
@@ -3110,10 +3131,12 @@ mod tests {
         }
 
         let took = take_one(
-            &w.pool,
-            &w.panes,
-            &w.report,
-            &w.records,
+            &JobPorts {
+                pool: &w.pool,
+                panes: &w.panes,
+                report: &w.report,
+                records: &w.records,
+            },
             &w.registry,
             "p1",
             "master-session",

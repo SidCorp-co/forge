@@ -998,17 +998,44 @@ pub fn wake_channel() -> (mpsc::Sender<Wake>, mpsc::Receiver<Wake>) {
     mpsc::channel(1)
 }
 
+/// The registries the master loop shares with the rest of the daemon.
+pub struct Shared {
+    pub masters: Arc<Masters>,
+    pub activity: Arc<agent_activity::Activities>,
+    pub job_panes: Arc<JobPanes>,
+    pub job_records: Arc<dyn Records>,
+    pub drain: Arc<crate::daemon::drain::Drain>,
+}
+
+impl Shared {
+    fn borrowed(&self) -> SweepShared<'_> {
+        SweepShared {
+            masters: &self.masters,
+            activity: &self.activity,
+            job_panes: &self.job_panes,
+            job_records: self.job_records.as_ref(),
+            drain: &self.drain,
+        }
+    }
+}
+
+/// [`Shared`] as one sweep reads it.
+#[derive(Clone, Copy)]
+pub(crate) struct SweepShared<'a> {
+    masters: &'a Arc<Masters>,
+    activity: &'a agent_activity::Activities,
+    job_panes: &'a Arc<JobPanes>,
+    job_records: &'a dyn Records,
+    drain: &'a crate::daemon::drain::Drain,
+}
+
 pub async fn run(
     client: CoreClient,
     cfg: Config,
-    masters: Arc<Masters>,
-    activity: Arc<agent_activity::Activities>,
-    job_panes: Arc<JobPanes>,
-    job_records: Arc<dyn Records>,
+    shared: Shared,
     adopted: tokio::sync::watch::Receiver<bool>,
     mut cancel: tokio::sync::watch::Receiver<bool>,
     mut wake: mpsc::Receiver<Wake>,
-    drain: Arc<crate::daemon::drain::Drain>,
 ) {
     let mut delay = POLL_INTERVAL;
     let mut last_sweep = Instant::now();
@@ -1029,7 +1056,7 @@ pub async fn run(
     loop {
         tokio::select! {
             _ = tokio::time::sleep(delay) => {
-                delay = sweep(&client, &cfg, &masters, &activity, &job_panes, job_records.as_ref(), &adopted, &mut ledger, tokens.as_ref(), &mut account_limit_said, &drain)
+                delay = sweep(&client, &cfg, &shared.borrowed(), &adopted, &mut ledger, tokens.as_ref(), &mut account_limit_said)
                     .await;
                 last_sweep = Instant::now();
             }
@@ -1039,7 +1066,7 @@ pub async fn run(
                     tokio::time::sleep(WAKE_FLOOR - since).await;
                 }
                 tracing::info!("[master] wake ({}) — sweeping now", w.describe());
-                delay = sweep(&client, &cfg, &masters, &activity, &job_panes, job_records.as_ref(), &adopted, &mut ledger, tokens.as_ref(), &mut account_limit_said, &drain)
+                delay = sweep(&client, &cfg, &shared.borrowed(), &adopted, &mut ledger, tokens.as_ref(), &mut account_limit_said)
                     .await;
                 last_sweep = Instant::now();
             }
@@ -1078,16 +1105,19 @@ fn next_poll_delay(served: &[runners::MeRunner]) -> Duration {
 async fn sweep(
     client: &CoreClient,
     cfg: &Config,
-    masters: &Arc<Masters>,
-    activity: &agent_activity::Activities,
-    job_panes: &Arc<JobPanes>,
-    job_records: &dyn Records,
+    shared: &SweepShared<'_>,
     adopted: &tokio::sync::watch::Receiver<bool>,
     ledger: &mut Option<Ledger>,
     tokens: Option<&session_tokens::SessionTokens>,
     account_limit_said: &mut Option<String>,
-    drain: &crate::daemon::drain::Drain,
 ) -> Duration {
+    let SweepShared {
+        masters,
+        activity,
+        job_panes,
+        drain,
+        ..
+    } = *shared;
     let now_unix = master_limit::now_unix();
     let mut account_said: Vec<master_limit::Decisive> = Vec::new();
     let mut deaf_found: Vec<Deaf> = Vec::new();
@@ -1178,17 +1208,7 @@ async fn sweep(
             continue;
         }
         supervise(client, masters, tokens, &runner.project_id, &runner.slug).await;
-        take_pool_job(
-            client,
-            cfg,
-            &served,
-            job_panes,
-            job_records,
-            adopted,
-            tokens,
-            runner,
-        )
-        .await;
+        take_pool_job(client, cfg, &served, shared, adopted, tokens, runner).await;
 
         // The owner's veto, read off the ledger this sweep already holds and
         // decided before anything is asked of core. A stand-down governs the
@@ -1719,12 +1739,16 @@ async fn take_pool_job(
     client: &CoreClient,
     cfg: &Config,
     served: &[runners::MeRunner],
-    job_panes: &Arc<JobPanes>,
-    job_records: &dyn Records,
+    shared: &SweepShared<'_>,
     adopted: &tokio::sync::watch::Receiver<bool>,
     tokens: Option<&session_tokens::SessionTokens>,
     runner: &runners::MeRunner,
 ) {
+    let SweepShared {
+        job_panes,
+        job_records,
+        ..
+    } = *shared;
     if !*adopted.borrow() {
         return;
     }
@@ -1733,14 +1757,16 @@ async fn take_pool_job(
         .ok()
         .map(|r| r.repo_path);
     let took = pool_jobs::take_one(
-        &pool_jobs::CorePool {
-            client,
-            limit: 20,
-            deadline: crate::transport::pool::CALL_DEADLINE,
+        &pool_jobs::JobPorts {
+            pool: &pool_jobs::CorePool {
+                client,
+                limit: 20,
+                deadline: crate::transport::pool::CALL_DEADLINE,
+            },
+            panes: &pool_jobs::TmuxPanes,
+            report: &pool_jobs::CoreReport { client },
+            records: job_records,
         },
-        &pool_jobs::TmuxPanes,
-        &pool_jobs::CoreReport { client },
-        job_records,
         job_panes,
         &runner.project_id,
         job_panes.session_id(),
@@ -9962,15 +9988,17 @@ mod servers_refusal_walk_tests {
         let _ = sweep(
             &CoreClient::new(core, "device-token"),
             &Config::default(),
-            &masters,
-            &agent_activity::Activities::new(),
-            &Arc::new(JobPanes::new()),
-            &crate::daemon::pool_jobs::NoRecords,
+            &SweepShared {
+                masters: &masters,
+                activity: &agent_activity::Activities::new(),
+                job_panes: &Arc::new(JobPanes::new()),
+                job_records: &crate::daemon::pool_jobs::NoRecords,
+                drain: &crate::daemon::drain::Drain::unrecorded(),
+            },
             &adopted,
             &mut ledger,
             Some(&store),
             &mut said,
-            &crate::daemon::drain::Drain::unrecorded(),
         )
         .await;
 
@@ -10142,15 +10170,17 @@ mod servers_refusal_walk_tests {
         let _ = sweep(
             &CoreClient::new(core, "device-token"),
             &Config::default(),
-            &masters,
-            &agent_activity::Activities::new(),
-            &Arc::new(JobPanes::new()),
-            &crate::daemon::pool_jobs::NoRecords,
+            &SweepShared {
+                masters: &masters,
+                activity: &agent_activity::Activities::new(),
+                job_panes: &Arc::new(JobPanes::new()),
+                job_records: &crate::daemon::pool_jobs::NoRecords,
+                drain: &crate::daemon::drain::Drain::unrecorded(),
+            },
             &adopted,
             &mut ledger,
             Some(&store),
             &mut said,
-            &crate::daemon::drain::Drain::unrecorded(),
         )
         .await;
 
@@ -10375,15 +10405,17 @@ mod servers_refusal_walk_tests {
                 let _ = sweep(
                     &client,
                     &Config::default(),
-                    &masters,
-                    &agent_activity::Activities::new(),
-                    &Arc::new(JobPanes::new()),
-                    &crate::daemon::pool_jobs::NoRecords,
+                    &SweepShared {
+                        masters: &masters,
+                        activity: &agent_activity::Activities::new(),
+                        job_panes: &Arc::new(JobPanes::new()),
+                        job_records: &crate::daemon::pool_jobs::NoRecords,
+                        drain: &crate::daemon::drain::Drain::unrecorded(),
+                    },
                     &adopted,
                     &mut ledger,
                     Some(&store),
                     &mut said,
-                    &crate::daemon::drain::Drain::unrecorded(),
                 )
                 .await;
             };
@@ -11683,15 +11715,17 @@ mod drain_sweep_tests {
         let _ = sweep(
             &client,
             &Config::default(),
-            &masters,
-            &agent_activity::Activities::new(),
-            &Arc::new(JobPanes::new()),
-            &crate::daemon::pool_jobs::NoRecords,
+            &SweepShared {
+                masters: &masters,
+                activity: &agent_activity::Activities::new(),
+                job_panes: &Arc::new(JobPanes::new()),
+                job_records: &crate::daemon::pool_jobs::NoRecords,
+                drain,
+            },
             &adopted,
             &mut ledger,
             None,
             &mut said,
-            drain,
         )
         .await;
         let paths = seen.lock().unwrap().clone();
