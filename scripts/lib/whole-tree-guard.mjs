@@ -52,8 +52,9 @@ function readLog() {
   let bytes;
   try {
     bytes = readFileSync(state.log);
-  } catch {
-    return [];
+  } catch (e) {
+    const why = `this file's child log could not be read (${e?.code ?? 'unknown'}), so what its processes listed is unknown and counted as the root`;
+    return [{ dir: ROOT, via: why, at: null }];
   }
   const { lines, offset } = logLines(bytes, state.offset);
   state.offset = offset;
