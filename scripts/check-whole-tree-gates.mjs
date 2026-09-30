@@ -11,7 +11,7 @@
 // Exit 0 clean · 1 a refusal or a failing gate · 2 could not run, or nothing declared at all.
 
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
@@ -25,12 +25,13 @@ import {
   judgeDeclarations,
   judgeGlobs,
   judgeRun,
+  runDirOf,
   SOURCE_FILE_RE,
   suiteMessage,
   vitestSetup,
 } from './lib/whole-tree-gates.mjs';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const ROOT = realpathSync(resolve(dirname(fileURLToPath(import.meta.url)), '..'));
 const RUN = process.argv.includes('--run');
 
 function die(msg) {
@@ -64,19 +65,19 @@ const globs = files.some((f) => GLOB_CALL_RE.test(f.source))
     })
   : [];
 /** The root and `test.setupFiles` vitest resolves for a config, loaded by the vitest its package
- * declares. */
-async function setupFilesOf(path) {
-  const dir = resolve(ROOT, dirname(path));
+ * declares and started from the directory the config is run from. */
+function setupFilesOf(path) {
+  const dir = runDirOf(join(ROOT, path), ROOT);
   try {
     const vitestNode = createRequire(join(dir, 'package.json')).resolve('vitest/node');
-    return { path, ...(await vitestSetup(resolve(ROOT, path), vitestNode)) };
+    return { path, ...vitestSetup(join(ROOT, path), vitestNode, dir) };
   } catch (e) {
     return { path, error: suiteMessage(e?.message ?? e) ?? 'vitest gave no message' };
   }
 }
 
 const loaded = [];
-for (const path of configs) loaded.push(await setupFilesOf(path));
+for (const path of configs) loaded.push(setupFilesOf(path));
 const configRefused = judgeConfigs(loaded, ROOT);
 const refused = [...judged.refused, ...globs, ...configRefused];
 
@@ -118,11 +119,20 @@ if (!RUN) process.exit(0);
 if (configs.length === 0) die('found no vitest config — nothing could run a declared file');
 const absolute = declared.map((f) => join(ROOT, f));
 
+// Each config is started where it is run from, its package's directory, and named by its absolute
+// path: `pnpm exec` moves to the package whatever directory it is handed, so a config named by its
+// basename from its own subdirectory would be the package's main config instead.
+const runDir = (config) => runDirOf(join(ROOT, config), ROOT);
+
 function vitest(config, args) {
   return spawnSync(
     'pnpm',
-    ['exec', 'vitest', ...args, '--config', config.split('/').pop(), ...absolute],
-    { cwd: resolve(ROOT, dirname(config)), encoding: 'utf8', timeout: 600_000 },
+    ['exec', 'vitest', ...args, '--config', join(ROOT, config), ...absolute],
+    {
+      cwd: runDir(config),
+      encoding: 'utf8',
+      timeout: 600_000,
+    },
   );
 }
 
@@ -133,7 +143,7 @@ for (const config of configs) {
   if (r.status !== 0 && !/No test files found/.test(out)) {
     die(`\`vitest list\` failed for ${config}:\n${r.stderr ?? ''}`);
   }
-  const cwd = resolve(ROOT, dirname(config));
+  const cwd = runDir(config);
   const found = (r.stdout ?? '')
     .split('\n')
     .map((l) => l.trim())
@@ -158,13 +168,13 @@ try {
         'vitest',
         'run',
         '--config',
-        config.split('/').pop(),
+        join(ROOT, config),
         '--reporter=default',
         `--reporter=${join(ROOT, 'scripts/lib/whole-tree-reporter.mjs')}`,
         ...list.map((f) => join(ROOT, f)),
       ],
       {
-        cwd: resolve(ROOT, dirname(config)),
+        cwd: runDir(config),
         env: { ...process.env, WHOLE_TREE_REPORT: out },
         stdio: ['ignore', 'inherit', 'inherit'],
       },

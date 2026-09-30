@@ -51,12 +51,20 @@ pub(crate) async fn create(repo: &str, branch: &str, start_point: Option<&str>) 
 /// path's shape, which is why it needs no repo root and why it holds wherever
 /// the worktree sits: a checkout under `<repo>/.claude/worktrees/` answers
 /// `Linked` exactly as one under `<repo>/.worktrees/` does.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Kind {
     /// A linked worktree. `git worktree remove` takes it.
     Linked,
     /// The repository's main working tree. It is nobody's to remove.
     MainWorkingTree,
+    /// A directory that is no checkout's top level, so git asked there climbed
+    /// to the checkout around it and answered for that one, named here. A
+    /// nested worktree whose `.git` file a recursive delete has already taken
+    /// reads this way while its directory stands, and so does any stray
+    /// directory under a repository's worktree roots. Nothing git says at the
+    /// path is about the path: read as an answer, it recorded sid-desk's
+    /// ISS-689 checkout as the repository's own working tree (ISS-1250).
+    Enclosed(PathBuf),
     /// Git names no worktree here.
     NotAWorktree,
     /// Git could not be asked, which is not an answer.
@@ -65,16 +73,25 @@ pub enum Kind {
 
 /// Ask git what `worktree` is.
 ///
-/// A main working tree's `--git-dir` and `--git-common-dir` are the same
-/// directory; a linked worktree's `--git-dir` is `<common>/worktrees/<name>`
-/// and differs. Both are resolved against the checkout before they are
-/// compared, because git answers either one relatively.
+/// The top level comes first: a path that is not its own top level is
+/// answered for by whatever checkout encloses it, and neither directory below
+/// is about the path. Then a main working tree's `--git-dir` and
+/// `--git-common-dir` are the same directory; a linked worktree's `--git-dir`
+/// is `<common>/worktrees/<name>` and differs. Both are resolved against the
+/// checkout before they are compared, because git answers either one
+/// relatively. A bare repository or a `.git` directory has no top level, git
+/// refuses the question there, and that reads as no worktree.
 pub async fn kind_at(worktree: &Path) -> Kind {
     if !worktree.is_dir() {
         return Kind::NotAWorktree;
     }
     let out = Command::new("git")
-        .args(["rev-parse", "--git-dir", "--git-common-dir"])
+        .args([
+            "rev-parse",
+            "--show-toplevel",
+            "--git-dir",
+            "--git-common-dir",
+        ])
         .current_dir(worktree)
         .stdin(Stdio::null())
         .output()
@@ -88,26 +105,30 @@ pub async fn kind_at(worktree: &Path) -> Kind {
     kind_of(worktree, &String::from_utf8_lossy(&out.stdout))
 }
 
-/// What git's two-line answer means, split from the asking so the reading is
-/// testable without a git that can be made to answer wrongly.
+/// What git's three-line answer means, split from the asking so the reading
+/// is testable without a git that can be made to answer wrongly.
 ///
-/// An answer that is not two paths is `Unknown` rather than a guess: the
+/// An answer that is not three paths is `Unknown` rather than a guess: the
 /// caller refuses on that, and refusing costs an operator a sweep where
 /// guessing could cost them a checkout.
+///
+/// Git's answers are joined to the directory the child ran in, which is
+/// `worktree`, and every path in the comparison — the three answers and
+/// `worktree` itself — is spelled by [`resolved_for_compare`] and by nothing
+/// else. Two spellings of one path then compare equal: a symlinked or `..`
+/// one, one whose leaf a removal has already taken, and on Windows a rootless
+/// `/repo`, which only a spelling that walks to an ancestor gives a drive.
 fn kind_of(worktree: &Path, answer: &str) -> Kind {
     let mut lines = answer.lines();
-    let (Some(git_dir), Some(common_dir)) = (lines.next(), lines.next()) else {
+    let (Some(top), Some(git_dir), Some(common_dir)) = (lines.next(), lines.next(), lines.next())
+    else {
         return Kind::Unknown;
     };
-    let resolve = |p: &str| {
-        let p = Path::new(p);
-        let abs = if p.is_absolute() {
-            p.to_path_buf()
-        } else {
-            worktree.join(p)
-        };
-        abs.canonicalize().unwrap_or(abs)
-    };
+    let resolve = |p: &str| resolved_for_compare(&worktree.join(p));
+    let top = resolve(top);
+    if top != resolved_for_compare(worktree) {
+        return Kind::Enclosed(top);
+    }
     if resolve(git_dir) == resolve(common_dir) {
         Kind::MainWorkingTree
     } else {
@@ -134,6 +155,10 @@ pub enum Residence {
     Linked,
     /// The repository's own main working tree. It is nobody's to remove.
     MainWorkingTree,
+    /// The path is a directory that is no checkout's top level, and git asked
+    /// there answered for the enclosing checkout named here — [`Kind::Enclosed`].
+    /// Whatever it holds, nothing read at it is this checkout's.
+    Enclosed(PathBuf),
     /// The path is a directory and git names no worktree at it. Something is
     /// there; a checkout is not.
     NotAWorktree,
@@ -292,6 +317,7 @@ pub async fn residence_of(repo: &Path, worktree: &Path) -> Residence {
     match kind_at(worktree).await {
         Kind::Linked => return Residence::Linked,
         Kind::MainWorkingTree => return Residence::MainWorkingTree,
+        Kind::Enclosed(top) => return Residence::Enclosed(top),
         Kind::Unknown => {
             return Residence::Unknown(format!(
                 "git could not be asked what {} is",
@@ -528,27 +554,154 @@ pub(crate) mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// A run's linked worktree nested inside its repository, caught partway
+    /// through a recursive delete: its `.git` file is gone and its directory
+    /// still stands, so git asked there climbs to the repository around it.
+    /// That is the shape sid-desk's ISS-689 checkout was in when the close loop
+    /// recorded it as the repository's own working tree (ISS-1250, judge j3).
+    pub(crate) async fn half_deleted_nested(tag: &str) -> (crate::test_scratch::Scratch, PathBuf) {
+        let root = repo(tag).await;
+        let nested = root.join(".claude/worktrees/ISS-689");
+        std::fs::create_dir_all(nested.parent().unwrap()).unwrap();
+        run(
+            &root,
+            &[
+                "worktree",
+                "add",
+                &nested.to_string_lossy(),
+                "-b",
+                "ISS-689",
+            ],
+        )
+        .await;
+        assert_eq!(
+            kind_at(&nested).await,
+            Kind::Linked,
+            "the premise: before the delete it is a linked worktree"
+        );
+        std::fs::remove_file(nested.join(".git")).unwrap();
+        assert!(nested.is_dir(), "the premise: the directory still stands");
+        (root, nested)
+    }
+
+    #[tokio::test]
+    async fn a_nested_worktree_whose_git_file_is_gone_is_not_the_repositorys_own_tree() {
+        let (root, nested) = half_deleted_nested("kindhalf").await;
+
+        let top = root.canonicalize().unwrap();
+        assert_ne!(
+            kind_at(&nested).await,
+            Kind::MainWorkingTree,
+            "git answered for the repository around this path, not for the path"
+        );
+        assert_ne!(
+            residence_of(&root, &nested).await,
+            Residence::MainWorkingTree,
+            "and a residence read off that answer is the enclosing checkout's"
+        );
+        assert_eq!(kind_at(&nested).await, Kind::Enclosed(top.clone()));
+        assert_eq!(residence_of(&root, &nested).await, Residence::Enclosed(top));
+        assert_eq!(
+            kind_at(&root).await,
+            Kind::MainWorkingTree,
+            "while the repository itself is still its own working tree"
+        );
+    }
+
+    /// Consult b8523b F3: the top-level comparison must not turn a real checkout
+    /// asked through another spelling of its own path into an enclosed one.
+    #[tokio::test]
+    async fn another_spelling_of_a_real_checkout_is_still_that_checkout() {
+        let root = repo("kindspell").await;
+        let r = root.to_string_lossy().to_string();
+        let linked = create(&r, "ISS-10", None).await.unwrap();
+        let dotted = linked.join("..").join(linked.file_name().unwrap());
+        assert_eq!(kind_at(&dotted).await, Kind::Linked, "a `..` spelling");
+        assert_eq!(
+            kind_at(&root.join(".").join("..").join(root.file_name().unwrap())).await,
+            Kind::MainWorkingTree,
+            "and the main checkout through one"
+        );
+        #[cfg(unix)]
+        {
+            let links = crate::test_scratch::Scratch::new("worktree-kind-links");
+            let to_linked = links.join("linked");
+            let to_root = links.join("root");
+            std::os::unix::fs::symlink(&linked, &to_linked).unwrap();
+            std::os::unix::fs::symlink(&*root, &to_root).unwrap();
+            assert_eq!(
+                kind_at(&to_linked).await,
+                Kind::Linked,
+                "a symlinked spelling"
+            );
+            assert_eq!(
+                kind_at(&to_root).await,
+                Kind::MainWorkingTree,
+                "and the main checkout through one"
+            );
+        }
+    }
+
     #[test]
-    fn an_answer_that_is_not_two_paths_identifies_nothing() {
+    fn an_answer_that_is_not_three_paths_identifies_nothing() {
         let wt = Path::new("/repo");
         assert_eq!(kind_of(wt, ""), Kind::Unknown, "no answer at all");
         assert_eq!(
-            kind_of(wt, "/repo/.git\n"),
+            kind_of(wt, "/repo\n/repo/.git\n"),
             Kind::Unknown,
-            "one path cannot say whether it is the common dir or this tree's own"
+            "two paths cannot say whether the second is the common dir or this tree's own"
         );
         assert_eq!(
-            kind_of(wt, "/repo/.git\n/repo/.git\n"),
+            kind_of(wt, "/repo\n/repo/.git\n/repo/.git\n"),
             Kind::MainWorkingTree
         );
         assert_eq!(
-            kind_of(wt, "/repo/.git/worktrees/a\n/repo/.git\n"),
+            kind_of(wt, "/repo\n/repo/.git/worktrees/a\n/repo/.git\n"),
             Kind::Linked
         );
         assert_eq!(
-            kind_of(wt, ".git\n.git\n"),
+            kind_of(wt, "/repo\n.git\n.git\n"),
             Kind::MainWorkingTree,
             "git answers relatively in the main tree, and both sides resolve the same way"
+        );
+    }
+
+    #[test]
+    fn a_top_level_that_is_not_the_path_is_an_answer_about_another_checkout() {
+        let wt = Path::new("/repo/.claude/worktrees/ISS-689");
+        let top = resolved_for_compare(Path::new("/repo"));
+        assert_eq!(
+            kind_of(wt, "/repo\n/repo/.git\n/repo/.git\n"),
+            Kind::Enclosed(top.clone()),
+            "two alike directories make a main working tree only at its own top level"
+        );
+        assert_eq!(
+            kind_of(wt, "/repo\n/repo/.git/worktrees/b\n/repo/.git\n"),
+            Kind::Enclosed(top.clone()),
+            "and a linked answer from a checkout around the path is that checkout's"
+        );
+    }
+
+    /// Runner (windows-latest), run 36686332110: git's `/repo` and the path's
+    /// `/repo` were spelled by two functions, and on Windows only the path's
+    /// took a drive. A path that has begun to go does the same on any
+    /// platform, so the plant is a half-gone directory reached through a link.
+    #[test]
+    fn one_path_spelled_once_by_git_and_once_by_the_caller_is_one_path() {
+        let base = crate::test_scratch::Scratch::new("worktree-kind-one-spelling");
+        let real = base.join("real");
+        std::fs::create_dir_all(&real).unwrap();
+        let link = base.join("by-another-name");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        #[cfg(not(unix))]
+        std::os::windows::fs::symlink_dir(&real, &link).unwrap();
+        let gone = link.join("going");
+        let g = gone.to_string_lossy();
+        assert_eq!(
+            kind_of(&gone, &format!("{g}\n{g}/.git\n{g}/.git\n")),
+            Kind::MainWorkingTree,
+            "the top level git names IS the path asked about, whatever of it is left"
         );
     }
 

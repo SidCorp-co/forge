@@ -37,7 +37,7 @@ enum Command {
     Status(cmd::status::Args),
     /// A live, read-only view of this box: projects, runs, panes, what waits on a person, health.
     Top(cmd::top::Args),
-    /// Tail the runner log.
+    /// Say where this box's runner log is read.
     Logs(cmd::logs::Args),
     /// Inspect or edit local config.
     Config(cmd::config::Args),
