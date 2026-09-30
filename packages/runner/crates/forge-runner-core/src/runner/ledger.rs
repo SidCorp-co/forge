@@ -2296,11 +2296,16 @@ impl Ledger {
             .map_err(sql_err)
     }
 
+    /// End a run. The first ending recorded stands: a release that follows a
+    /// master's `run close` finishes the run and leaves who ended it and why,
+    /// where it wrote its own over the close (ISS-1312 criterion 73, run
+    /// 172f356e).
     pub fn end_run(&self, run_id: &str, ended_by: &str, reason: &str) -> Result<()> {
         self.conn
             .execute(
-                "UPDATE runs SET work = 'done', incarnation = 'exited', ended_by = ?2,
-                        ended_reason = ?3
+                "UPDATE runs SET work = 'done', incarnation = 'exited',
+                        ended_reason = CASE WHEN ended_by IS NULL THEN ?3 ELSE ended_reason END,
+                        ended_by = COALESCE(ended_by, ?2)
                  WHERE run_id = ?1",
                 params![run_id, ended_by, reason],
             )
@@ -3753,6 +3758,47 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
+    /// The statements in `body` that write `master_standing`. A read is not
+    /// one: `FROM master_standing` alone refused a read-only `SELECT`
+    /// (ISS-1341's routed finding 9b196db8), while `DELETE FROM` is a write.
+    fn writes_to_the_standing_table(body: &str) -> Vec<&'static str> {
+        let flat = body
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .to_uppercase();
+        [
+            "INTO MASTER_STANDING",
+            "UPDATE MASTER_STANDING",
+            "DELETE FROM MASTER_STANDING",
+            "TABLE MASTER_STANDING",
+        ]
+        .into_iter()
+        .filter(|w| flat.contains(w))
+        .collect()
+    }
+
+    #[test]
+    fn a_read_of_the_standing_table_is_not_a_write_to_it() {
+        assert!(
+            writes_to_the_standing_table("SELECT project_id FROM master_standing WHERE x = 1")
+                .is_empty(),
+            "a read-only SELECT is refused by nothing"
+        );
+        for write in [
+            "INSERT INTO master_standing (a) VALUES (1)",
+            "insert or replace into master_standing (a) values (1)",
+            "UPDATE master_standing SET a = 1",
+            "DELETE\n   FROM master_standing WHERE a = 1",
+            "DROP TABLE master_standing",
+        ] {
+            assert!(
+                !writes_to_the_standing_table(write).is_empty(),
+                "a write goes unnoticed: {write}"
+            );
+        }
+    }
+
     /// Criterion 26. The reason is required by a Rust signature and not by a
     /// column, because the migrated NULLs above mean SQLite cannot hold a NOT
     /// NULL there. That trade is only sound while this module is the sole
@@ -3783,14 +3829,8 @@ mod tests {
                     continue;
                 }
                 let body = std::fs::read_to_string(&path).unwrap_or_default();
-                for write in [
-                    "INTO master_standing",
-                    "UPDATE master_standing",
-                    "FROM master_standing",
-                ] {
-                    if body.contains(write) {
-                        offenders.push(format!("{} holds `{write}`", path.display()));
-                    }
+                for write in writes_to_the_standing_table(&body) {
+                    offenders.push(format!("{} holds `{write}`", path.display()));
                 }
             }
         }
@@ -4832,6 +4872,39 @@ mod tests {
             Some("recovery"),
             "a release that got through ended the run on purpose, and forgetting the refusal it \
              got past is not a reason to un-end it"
+        );
+    }
+
+    /// ISS-1312 criterion 73, the eighth judge's J6: run 172f356e was closed
+    /// by its master, and recovery's release then wrote `recovery / the run's
+    /// process is gone` over that ending, for a run that never had a process.
+    #[test]
+    fn a_release_after_a_close_leaves_the_close_on_the_row() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(NewRun {
+            run_id: "run-1".into(),
+            project_id: "proj-1".into(),
+            master_session_id: "m".into(),
+            worktree_path: PathBuf::from("/tmp/w"),
+            boot_id: "boot-1".into(),
+            issue_keys: vec!["ISS-1".into()],
+        })
+        .unwrap();
+        led.end_run("run-1", "master", "its report is in").unwrap();
+
+        led.end_run("run-1", "recovery", "the run's process is gone")
+            .unwrap();
+
+        let run = led.run("run-1").unwrap().unwrap();
+        assert_eq!(
+            (run.ended_by.as_deref(), run.ended_reason.as_deref()),
+            (Some("master"), Some("its report is in")),
+            "criterion 73: the first ending stands"
+        );
+        assert_eq!(
+            (run.work.wire(), run.incarnation.wire()),
+            ("done", "exited"),
+            "the release still finishes the run"
         );
     }
 

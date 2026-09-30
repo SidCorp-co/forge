@@ -2050,7 +2050,10 @@ mod tests {
         {
             let mut peers = hosts.peers.lock().unwrap();
             peers.insert(900_001, host(3_850_261, "901"));
-            peers.insert(900_002, host(3_850_261, "901"));
+            // The start's hook runs under a process other than the
+            // declaration's, so the start's own record is what the row shows
+            // after it (the eighth judge's J5, plant j8:P57a).
+            peers.insert(900_002, host(3_860_444, "933"));
             peers.insert(900_003, host(3_990_000, "977"));
         }
         let (ctl, _t, _dir) = declaring_control_over("sess-a", "proj-1", hosts);
@@ -2093,8 +2096,8 @@ mod tests {
         );
         assert_eq!(
             row(&ctl),
-            (Some(3_850_261), Some("901".into())),
-            "criterion 57: start"
+            (Some(3_860_444), Some("933".into())),
+            "criterion 57: the start's hook ran under another process, and the start recorded it"
         );
         agent_event(
             &ctl,
