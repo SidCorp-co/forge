@@ -109,29 +109,45 @@ describe('workerLine, the account a run prints of its own count', () => {
 });
 
 describe('the integration config given both --maxWorkers and VITEST_MAX_WORKERS', () => {
-  it('refuses before any file runs, naming both, off the flag vitest itself parsed', () => {
-    const core = join(dirname(fileURLToPath(import.meta.url)), '../..');
-    const vitest = join(
-      dirname(createRequire(import.meta.url).resolve('vitest/package.json')),
-      'vitest.mjs',
-    );
-    const env: NodeJS.ProcessEnv = { VITEST_MAX_WORKERS: '2' };
-    for (const [k, v] of Object.entries(process.env)) if (!k.startsWith('VITEST')) env[k] ??= v;
-    const run = spawnSync(
-      process.execPath,
-      [
-        vitest,
-        'run',
-        '--config',
-        'vitest.integration.config.ts',
-        '--maxWorkers=5',
-        'file-database-isolation',
-      ],
-      { cwd: core, env, encoding: 'utf8', timeout: 60_000 },
-    );
-    const out = `${run.stdout}${run.stderr}`;
-    expect(out).toContain('--maxWorkers=5 and VITEST_MAX_WORKERS=2 both set a worker count');
-    expect(out).not.toMatch(/Test Files/);
-    expect(run.status).toBe(1);
-  }, 90_000);
+  const core = join(dirname(fileURLToPath(import.meta.url)), '../..');
+  const vitest = join(
+    dirname(createRequire(import.meta.url).resolve('vitest/package.json')),
+    'vitest.mjs',
+  );
+
+  it.each([
+    [['--maxWorkers=5'], '5'],
+    [['--maxWorkers', '5'], '5'],
+    [['--max-workers=5'], '5'],
+    [['--maxWorkers=50%'], '50%'],
+  ])(
+    'refuses %j before any file runs, naming both, off the flag vitest parsed',
+    (flag, value) => {
+      // An unreachable server: a run that got past the refusal fails at connect, not in a container.
+      const env: NodeJS.ProcessEnv = {
+        VITEST_MAX_WORKERS: '2',
+        TEST_DATABASE_URL: 'postgres://forge:forge@127.0.0.1:1/unreachable',
+      };
+      for (const [k, v] of Object.entries(process.env)) if (!k.startsWith('VITEST')) env[k] ??= v;
+      const run = spawnSync(
+        process.execPath,
+        [
+          vitest,
+          'run',
+          '--config',
+          'vitest.integration.config.ts',
+          ...flag,
+          'file-database-isolation',
+        ],
+        { cwd: core, env, encoding: 'utf8', timeout: 60_000 },
+      );
+      const out = `${run.stdout}${run.stderr}`;
+      expect(out).toContain(
+        `--maxWorkers=${value} and VITEST_MAX_WORKERS=2 both set a worker count`,
+      );
+      expect(out).not.toMatch(/Test Files/);
+      expect(run.status).toBe(1);
+    },
+    90_000,
+  );
 });
