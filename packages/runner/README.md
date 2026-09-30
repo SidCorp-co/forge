@@ -20,8 +20,8 @@ fallback), WebSocket connect/subscribe/reconnect, 30s heartbeat, job dispatch
 cancel/abort, `doctor`, `bind`, `status`, `runners`, `service install`
 (systemd). Release binary ≈ 3.7 MB.
 
-Deferred: Windows/WSL spawn; `status --watch` TUI; auto-clone; reporting
-`claudeSessionId` to `agent_sessions` for resume.
+Deferred: Windows/WSL spawn; auto-clone; reporting `claudeSessionId` to
+`agent_sessions` for resume.
 
 (Browser-approve login and `install.sh`/binary release have both SHIPPED —
 `login` is the OAuth device flow, and this same README pipes `install.sh` 60
@@ -38,7 +38,8 @@ lines below. They were listed here as deferred long after they landed.)
 | `login` | Pair this device: prints an approval URL (`--open` launches a browser); `--pat` stores a REST token instead |
 | `bind` | Bind a project slug to a local repo path |
 | `start` | Run the daemon — connect, register, accept jobs |
-| `status` | Connection + runner status |
+| `status` | Connection + runner status; `--watch` is `top` |
+| `top` | A live, read-only view of the box: every project, its master pane, the skill that pane stands on and the CLI slug its checkout resolves; every run holding a lease, aged by the newest file under its worktree; what waits on a person; gate and pool health. Each row names what it read, and a source it cannot read says so. `--once` prints one frame, as it does when stdout is not a terminal |
 | `logs` | Tail the runner log |
 | `config` | Inspect or edit local config |
 | `doctor` | Diagnose the environment (claude CLI, git, cred store, core reachability) |

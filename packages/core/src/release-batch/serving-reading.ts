@@ -12,24 +12,42 @@ import { readForgeDeployments } from './deployed-reading.js';
 import type { ReleaseChannel } from './plan.js';
 import { invalidProbeUrls, readLiveState, type VerifyConfig, type VerifyProbe } from './verify.js';
 
-/** One reading. `commits` is every distinct commit a probe or a Forge deployment answered (one
- *  settled fleet, more a rollout or two stages), `unread` a line per source answering none, `hosts`
- *  what was asked, and only a project with nothing to ask is an absence — `missing` says why. */
+export interface ServedAt {
+  readonly commit: string;
+  readonly where: string;
+}
+
+/** One reading. `served` pairs each commit a probe or a Forge deployment answered with where it
+ *  runs — a probe's url, a target's deployment — `unread` is a line per source answering none, and
+ *  only a project with nothing to ask is an absence: `missing` says why, `route` what opens one. */
 export type ServingReading =
   | {
       readonly kind: 'serving';
-      readonly commits: readonly string[];
+      readonly served: readonly ServedAt[];
       readonly unread: readonly string[];
-      readonly hosts: readonly string[];
       readonly readAt: string;
     }
-  | { readonly kind: 'undeclared'; readonly missing: string }
+  | { readonly kind: 'undeclared'; readonly missing: string; readonly route: string }
   | {
       readonly kind: 'unreadable';
       readonly why: string;
       readonly hosts: readonly string[];
       readonly readAt: string;
     };
+
+export function servedCommits(serving: ServingReading): string[] {
+  if (serving.kind !== 'serving') return [];
+  return [...new Set(serving.served.map((s) => s.commit))];
+}
+
+/** Each served commit beside everywhere it runs — `3c38c68` at A; `ea69715` at B and C. */
+export function servedClause(served: readonly ServedAt[]): string {
+  const byCommit = new Map<string, string[]>();
+  for (const s of served) byCommit.set(s.commit, [...(byCommit.get(s.commit) ?? []), s.where]);
+  return [...byCommit]
+    .map(([commit, where]) => `\`${commit}\` at ${where.join(' and ')}`)
+    .join('; ');
+}
 
 /** The probes the live channels declare, and how many declared a block `parseVerifyConfig` refused
  *  — which decides anything only where `cfg` is null. */
@@ -90,7 +108,9 @@ export function whyUncorroborated(serving: ServingReading): string {
 /** Where no probe is declared, the latest deployment Forge saw finish through each bound target. */
 async function fromDeployments(projectId: string, now: () => Date): Promise<ServingReading> {
   const deployed = await readForgeDeployments(projectId);
-  if (deployed.kind === 'unrouted') return { kind: 'undeclared', missing: deployed.missing };
+  if (deployed.kind === 'unrouted') {
+    return { kind: 'undeclared', missing: deployed.missing, route: deployed.route };
+  }
   const readAt = now().toISOString();
   if (deployed.kind === 'unanswered') {
     return {
@@ -100,13 +120,7 @@ async function fromDeployments(projectId: string, now: () => Date): Promise<Serv
       readAt,
     };
   }
-  return {
-    kind: 'serving',
-    commits: deployed.commits,
-    unread: deployed.unread,
-    hosts: deployed.readFrom,
-    readAt,
-  };
+  return { kind: 'serving', served: deployed.served, unread: deployed.unread, readAt };
 }
 
 /** What this project is serving, now. The read is the server's: a caller's claim about what is
@@ -137,8 +151,9 @@ export async function readServingNow(
   const state = await readLiveState({ ...declared.cfg, probes: usable });
   const readAt = now().toISOString();
   const unread = [...defects, ...state.unhealthy, ...state.unidentified];
-  if (state.answeredCommits.length === 0) {
+  if (state.answeredBy.length === 0) {
     return { kind: 'unreadable', why: [...defects, ...state.readings].join('; '), hosts, readAt };
   }
-  return { kind: 'serving', commits: state.answeredCommits, unread, hosts, readAt };
+  const served = state.answeredBy.map((a) => ({ commit: a.commit, where: a.url }));
+  return { kind: 'serving', served, unread, readAt };
 }

@@ -8,14 +8,14 @@ use super::Ctx;
 
 #[derive(ClapArgs)]
 pub struct Args {
-    /// (planned M4) live view.
+    /// The live view of this box: the same as `forge-runner top`.
     #[arg(long)]
     pub watch: bool,
 }
 
 pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     if args.watch {
-        println!("⏳ --watch (live TUI) not implemented yet (M4) — printing static status:\n");
+        return super::top::run(ctx, super::top::Args::default()).await;
     }
     let cfg = Config::load()?;
     println!(
@@ -100,10 +100,39 @@ fn print_gate(cfg: &Config) {
         return;
     };
     let now = forge_runner_core::daemon::agent_activity::now_ms();
-    let report = forge_runner_core::daemon::degraded::report(&dir, now);
-    for line in gate_lines(&report.degraded, &report.undeclared) {
+    for line in gate_reading(&dir, now) {
         println!("{line}");
     }
+}
+
+/// What `status` and `top` both print about the gate. `degraded::tally` reads
+/// a marks file it cannot open, and a line it cannot parse, as no mark at all,
+/// and a box with no marks prints nothing — so an unreadable record would read
+/// as a gate that never failed open. That is said here instead (ISS-1341).
+pub(crate) fn gate_reading(dir: &std::path::Path, now: i64) -> Vec<String> {
+    let path = forge_runner_core::daemon::degraded::marks_path(dir);
+    let unparsed = match std::fs::read_to_string(&path) {
+        Ok(body) => body
+            .lines()
+            .filter(|l| serde_json::from_str::<serde_json::Value>(l).is_err())
+            .count(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => 0,
+        Err(e) => {
+            return vec![format!(
+                "gate       UNREADABLE — {}: {e}. How many dispatches went through undecided cannot be said",
+                path.display()
+            )]
+        }
+    };
+    let report = forge_runner_core::daemon::degraded::report(dir, now);
+    let mut out = gate_lines(&report.degraded, &report.undeclared);
+    if unparsed > 0 {
+        out.push(format!(
+            "gate       {unparsed} line(s) of {} do not parse and are not in the counts above",
+            path.display()
+        ));
+    }
+    out
 }
 
 fn print_pool(cfg: &Config) {
@@ -593,5 +622,40 @@ mod tests {
         assert_eq!(span(45 * 60_000), "45m");
         assert_eq!(span(3 * 3_600_000 + 30 * 60_000), "3h 30m");
         assert_eq!(span(3 * DAY + 17 * 3_600_000), "3d 17h");
+    }
+
+    // ---- ISS-1341: the gate reading says what it could not read ----
+
+    /// Criterion 23. A marks file that cannot be read is said to be, where
+    /// `degraded::tally` reads it as no mark and `status` printed nothing.
+    #[test]
+    fn a_marks_file_that_cannot_be_read_is_unreadable_and_never_silent() {
+        let s = forge_runner_core::test_scratch::Scratch::new("gate-unreadable");
+        std::fs::create_dir_all(forge_runner_core::daemon::degraded::marks_path(s.path())).unwrap();
+        let out = gate_reading(s.path(), NOW).join("\n");
+        assert!(out.contains("gate       UNREADABLE"), "{out}");
+        assert!(out.contains("gate-marks.jsonl"), "{out}");
+    }
+
+    #[test]
+    fn a_mark_that_does_not_parse_is_counted_aloud_beside_the_rest() {
+        let s = forge_runner_core::test_scratch::Scratch::new("gate-unparsed");
+        std::fs::write(
+            forge_runner_core::daemon::degraded::marks_path(s.path()),
+            "{\"kind\":\"degraded\",\"detail\":\"x\",\"at\":1790236700000}\n{half\n",
+        )
+        .unwrap();
+        let out = gate_reading(s.path(), NOW).join("\n");
+        assert!(out.contains("degraded   1"), "{out}");
+        assert!(
+            out.contains("1 line(s)") && out.contains("do not parse"),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn no_marks_file_is_still_a_gate_that_never_failed_open() {
+        let s = forge_runner_core::test_scratch::Scratch::new("gate-none");
+        assert!(gate_reading(s.path(), NOW).is_empty());
     }
 }
