@@ -11,6 +11,7 @@ use forge_runner_core::daemon::terminal;
 
 use super::cli_slug::Slug;
 use super::gather::{Project, Snapshot};
+use super::lanes;
 use super::ledger_ro::{self, short, Run};
 use super::people::ProjectCore;
 use super::skill::Skill;
@@ -98,7 +99,7 @@ fn projects(s: &Snapshot, out: &mut Vec<String>) {
     }
 }
 
-fn runs_by_project(s: &Snapshot) -> BTreeMap<String, Vec<&Run>> {
+pub(super) fn runs_by_project(s: &Snapshot) -> BTreeMap<String, Vec<&Run>> {
     let mut by: BTreeMap<String, Vec<&Run>> = BTreeMap::new();
     let Ok(view) = &s.ledger else { return by };
     for r in view.runs.iter().filter(|r| !r.held_keys().is_empty()) {
@@ -137,6 +138,7 @@ fn project(s: &Snapshot, p: &Project, runs: Option<&Vec<&Run>>, out: &mut Vec<St
         out.push(format!("{I2}cli      {}", slug_line(slug)));
     }
     releasable(s, p, out);
+    lanes_line(s, p, out);
     match (runs, &s.ledger) {
         (_, Err(_)) => {}
         (None, Ok(v)) => out.push(format!(
@@ -178,7 +180,7 @@ fn master(s: &Snapshot, p: &Project, out: &mut Vec<String>) {
 }
 
 /// Why a project's master pane has no name this view can look for.
-enum Unnamed {
+pub(super) enum Unnamed {
     /// Core does not serve the project and the ledger records no pane placed
     /// for it: the daemon has placed none, so there is none to look for.
     NoPane(String),
@@ -199,7 +201,7 @@ impl Unnamed {
 /// core's slug for it (`daemon/master.rs`, from the runner row). Where that
 /// slug cannot be read, the name the ledger recorded for the pane it placed,
 /// and where neither can, why — a binding's own key is not the pane's name.
-fn master_pane(s: &Snapshot, p: &Project) -> Result<String, Unnamed> {
+pub(super) fn master_pane(s: &Snapshot, p: &Project) -> Result<String, Unnamed> {
     if let Some(slug) = p.core_slug.as_deref() {
         return Ok(terminal::session_name(terminal::MASTER_PREFIX, slug));
     }
@@ -308,13 +310,13 @@ fn skill_line(s: &Snapshot, p: &Project, k: &Skill) -> String {
 /// answer and never "not running": taken as that, a stale skill under a live
 /// pane reads as harmless, which is the drift this view exists to show
 /// (judge w3, finding 53).
-enum Pane {
+pub(super) enum Pane {
     Running { started_ms: i64 },
     NotRunning,
     Unread,
 }
 
-fn pane_state(s: &Snapshot, p: &Project) -> Pane {
+pub(super) fn pane_state(s: &Snapshot, p: &Project) -> Pane {
     let pane = match master_pane(s, p) {
         Ok(pane) => pane,
         Err(Unnamed::NoPane(_)) => return Pane::NotRunning,
@@ -366,7 +368,109 @@ fn releasable(s: &Snapshot, p: &Project, out: &mut Vec<String>) {
     }
 }
 
-fn project_core<'a>(s: &'a Snapshot, p: &Project) -> Option<&'a ProjectCore> {
+/// The project's issues by lane, with the statuses each lane sums, or why
+/// they could not be counted.
+fn lanes_line(s: &Snapshot, p: &Project, out: &mut Vec<String>) {
+    let Some(id) = p.project_id.as_deref() else {
+        return;
+    };
+    let route = super::people::lanes_route(id);
+    let (_, all) = match &s.core {
+        Ok(c) => c,
+        Err(e) => return out.push(format!("{I2}lanes    {e}")),
+    };
+    let counts = match core_of(p, all).map(|c| &c.lanes) {
+        Err(why) => return out.push(format!("{I2}lanes    {why}")),
+        Ok(Err(e)) => return out.push(format!("{I2}lanes    {e}")),
+        Ok(Ok(c)) => c,
+    };
+    let sums = lanes::sums(counts);
+    let each: Vec<String> = lanes::LANES
+        .iter()
+        .zip(sums)
+        .map(|((name, statuses), n)| {
+            let parts: Vec<String> = statuses
+                .iter()
+                .filter_map(|st| {
+                    counts
+                        .get(*st)
+                        .filter(|n| **n > 0)
+                        .map(|n| format!("{st} {n}"))
+                })
+                .collect();
+            if parts.is_empty() {
+                format!("{name} {n}")
+            } else {
+                format!("{name} {n} ({})", parts.join(", "))
+            }
+        })
+        .collect();
+    let mut line = format!("{I2}lanes    {}", each.join(" · "));
+    let other = lanes::outside(counts);
+    if !other.is_empty() {
+        let named: Vec<String> = other.iter().map(|(k, n)| format!("{k} {n}")).collect();
+        line.push_str(&format!("; in no lane: {}", named.join(", ")));
+    }
+    line.push_str(&format!("{} ← GET {route}", core_age(s)));
+    out.push(line);
+}
+
+/// One project's block of the frame, and its rows under WAITING ON A
+/// PERSON: what the table's detail for that project shows.
+pub(super) fn project_detail(s: &Snapshot, p: &Project) -> Vec<String> {
+    let mut out = Vec::new();
+    let runs = runs_by_project(s);
+    project(
+        s,
+        p,
+        p.project_id.as_deref().and_then(|id| runs.get(id)),
+        &mut out,
+    );
+    if let Err(e) = &s.ledger {
+        out.push(format!("{I1}runs   {e}"));
+    }
+    out.push(String::new());
+    out.push("WAITING ON A PERSON".into());
+    match &s.core {
+        Err(e) => out.push(format!("{I1}questions  {e}")),
+        Ok((_, all)) => {
+            if let Said::Nothing = project_questions(s, p, all, &mut out) {
+                out.push(format!(
+                    "{I1}questions  none open{} ← GET /api/questions?projectId={}&status=open",
+                    core_age(s),
+                    p.project_id.as_deref().unwrap_or("")
+                ));
+            }
+            if let Said::Nothing = project_releases(s, p, all, &mut out) {
+                out.push(format!(
+                    "{I1}releases   none rests at awaiting_release without a release path{} ← GET /api/projects/{}/issues?status=awaiting_release",
+                    core_age(s),
+                    p.project_id.as_deref().unwrap_or("")
+                ));
+            }
+        }
+    }
+    if let Ok(view) = &s.ledger {
+        for r in view.runs.iter().filter(|r| {
+            r.parked_on_a_person()
+                && p.project_id.is_some()
+                && r.project_id.as_deref() == p.project_id.as_deref()
+        }) {
+            let keys: Vec<&str> = r.issues.iter().map(|(k, _)| k.as_str()).collect();
+            out.push(format!(
+                "{I1}parked     {} run {} waits on {} ← runs",
+                keys.join(","),
+                short(&r.run_id),
+                r.waiting_on
+                    .as_deref()
+                    .unwrap_or("an answer it did not record")
+            ));
+        }
+    }
+    out
+}
+
+pub(super) fn project_core<'a>(s: &'a Snapshot, p: &Project) -> Option<&'a ProjectCore> {
     let (_, all) = s.core.as_ref().ok()?;
     all.get(p.project_id.as_deref()?)
 }
@@ -465,7 +569,7 @@ fn waiting(s: &Snapshot, out: &mut Vec<String>) {
     releases(s, out);
 }
 
-fn core_age(s: &Snapshot) -> String {
+pub(super) fn core_age(s: &Snapshot) -> String {
     match &s.core {
         Ok((at, _)) => read_ago(s.now_ms, *at),
         Err(_) => String::new(),
@@ -475,7 +579,7 @@ fn core_age(s: &Snapshot) -> String {
 /// How old a kept answer is, where it is old enough to say. "read", never
 /// "asked": the question rows under it say when each was asked, and one word
 /// meaning two ages misleads (judge w3, finding 57).
-fn read_ago(now: i64, at: i64) -> String {
+pub(super) fn read_ago(now: i64, at: i64) -> String {
     if now - at > 1_000 {
         format!(" (read {})", ago(now, at))
     } else {
@@ -490,45 +594,10 @@ fn questions(s: &Snapshot, out: &mut Vec<String>) {
     };
     let (mut any, mut unread) = (false, 0usize);
     for p in &s.projects {
-        let core = match core_of(p, all) {
-            Ok(c) => c,
-            Err(why) => {
-                unread += 1;
-                out.push(format!("{I1}questions  {}: {why}", p.key));
-                continue;
-            }
-        };
-        match &core.questions {
-            Err(e) => {
-                unread += 1;
-                out.push(format!("{I1}questions  {}: {e}", p.key))
-            }
-            Ok(q) if q.total == 0 => {}
-            Ok(q) => {
-                any = true;
-                out.push(format!(
-                    "{I1}questions  {}: {} open{} ← GET /api/questions?projectId={}&status=open",
-                    p.key,
-                    q.total,
-                    core_age(s),
-                    p.project_id.as_deref().unwrap_or("")
-                ));
-                for one in &q.listed {
-                    let prompt = if one.prompt.is_empty() {
-                        "(the question holds no step yet)"
-                    } else {
-                        one.prompt.as_str()
-                    };
-                    let age = one
-                        .asked_ms
-                        .map(|a| ago(s.now_ms, a))
-                        .unwrap_or_else(|| "at an unreadable time".into());
-                    out.push(format!(
-                        "{I3}{} blocker, asked {age}, question {}: {prompt}",
-                        one.blocker_kind, one.id
-                    ));
-                }
-            }
+        match project_questions(s, p, all, out) {
+            Said::Some => any = true,
+            Said::Unread => unread += 1,
+            Said::Nothing => {}
         }
     }
     if !any && unread == 0 {
@@ -544,6 +613,62 @@ fn questions(s: &Snapshot, out: &mut Vec<String>) {
             "has an open question",
             "GET /api/questions per project",
         ));
+    }
+}
+
+/// What one project's rows under a section said: something waits, it could
+/// not be read, or nothing waits.
+pub(super) enum Said {
+    Some,
+    Unread,
+    Nothing,
+}
+
+/// One project's open-question rows.
+pub(super) fn project_questions(
+    s: &Snapshot,
+    p: &Project,
+    all: &BTreeMap<String, ProjectCore>,
+    out: &mut Vec<String>,
+) -> Said {
+    let core = match core_of(p, all) {
+        Ok(c) => c,
+        Err(why) => {
+            out.push(format!("{I1}questions  {}: {why}", p.key));
+            return Said::Unread;
+        }
+    };
+    match &core.questions {
+        Err(e) => {
+            out.push(format!("{I1}questions  {}: {e}", p.key));
+            Said::Unread
+        }
+        Ok(q) if q.total == 0 => Said::Nothing,
+        Ok(q) => {
+            out.push(format!(
+                "{I1}questions  {}: {} open{} ← GET /api/questions?projectId={}&status=open",
+                p.key,
+                q.total,
+                core_age(s),
+                p.project_id.as_deref().unwrap_or("")
+            ));
+            for one in &q.listed {
+                let prompt = if one.prompt.is_empty() {
+                    "(the question holds no step yet)"
+                } else {
+                    one.prompt.as_str()
+                };
+                let age = one
+                    .asked_ms
+                    .map(|a| ago(s.now_ms, a))
+                    .unwrap_or_else(|| "at an unreadable time".into());
+                out.push(format!(
+                    "{I3}{} blocker, asked {age}, question {}: {prompt}",
+                    one.blocker_kind, one.id
+                ));
+            }
+            Said::Some
+        }
     }
 }
 
@@ -650,53 +775,10 @@ fn releases(s: &Snapshot, out: &mut Vec<String>) {
     };
     let (mut any, mut unread) = (false, 0usize);
     for p in &s.projects {
-        let core = match core_of(p, all) {
-            Ok(c) => c,
-            Err(why) => {
-                unread += 1;
-                out.push(format!("{I1}releases   {}: {why}", p.key));
-                continue;
-            }
-        };
-        let id = p.project_id.as_deref().unwrap_or("");
-        match &core.awaiting {
-            Err(e) => {
-                unread += 1;
-                out.push(format!("{I1}releases   {}: {e}", p.key))
-            }
-            Ok(a) if a.total == 0 => {}
-            Ok(a) => match &a.blockers {
-                Err(e) => {
-                    any = true;
-                    out.push(format!(
-                        "{I1}releases   {}: {} at awaiting_release ({}), and whether a release can start: {e}",
-                        p.key,
-                        a.total,
-                        keys(&a.keys)
-                    ));
-                }
-                Ok(b) if b.is_empty() => {}
-                Ok(b) => {
-                    any = true;
-                    out.push(format!(
-                        "{I1}releases   {}: {} at awaiting_release ({}) with no release path: {} — {}{} ← GET /api/projects/{id}/release-readiness",
-                        p.key,
-                        a.total,
-                        keys(&a.keys),
-                        b[0].code,
-                        b[0].message,
-                        core_age(s)
-                    ));
-                    if b.len() > 1 {
-                        let codes: Vec<&str> = b[1..].iter().map(|x| x.code.as_str()).collect();
-                        out.push(format!(
-                            "{I3}and {} more blocker(s): {}",
-                            b.len() - 1,
-                            codes.join(", ")
-                        ));
-                    }
-                }
-            },
+        match project_releases(s, p, all, out) {
+            Said::Some => any = true,
+            Said::Unread => unread += 1,
+            Said::Nothing => {}
         }
     }
     if !any && unread == 0 {
@@ -715,10 +797,66 @@ fn releases(s: &Snapshot, out: &mut Vec<String>) {
     }
 }
 
+/// One project's rows at awaiting_release that no release can start over.
+pub(super) fn project_releases(
+    s: &Snapshot,
+    p: &Project,
+    all: &BTreeMap<String, ProjectCore>,
+    out: &mut Vec<String>,
+) -> Said {
+    let core = match core_of(p, all) {
+        Ok(c) => c,
+        Err(why) => {
+            out.push(format!("{I1}releases   {}: {why}", p.key));
+            return Said::Unread;
+        }
+    };
+    let id = p.project_id.as_deref().unwrap_or("");
+    match &core.awaiting {
+        Err(e) => {
+            out.push(format!("{I1}releases   {}: {e}", p.key));
+            Said::Unread
+        }
+        Ok(a) if a.total == 0 => Said::Nothing,
+        Ok(a) => match &a.blockers {
+            Err(e) => {
+                out.push(format!(
+                        "{I1}releases   {}: {} at awaiting_release ({}), and whether a release can start: {e}",
+                        p.key,
+                        a.total,
+                        keys(&a.keys)
+                    ));
+                Said::Some
+            }
+            Ok(b) if b.is_empty() => Said::Nothing,
+            Ok(b) => {
+                out.push(format!(
+                        "{I1}releases   {}: {} at awaiting_release ({}) with no release path: {} — {}{} ← GET /api/projects/{id}/release-readiness",
+                        p.key,
+                        a.total,
+                        keys(&a.keys),
+                        b[0].code,
+                        b[0].message,
+                        core_age(s)
+                    ));
+                if b.len() > 1 {
+                    let codes: Vec<&str> = b[1..].iter().map(|x| x.code.as_str()).collect();
+                    out.push(format!(
+                        "{I3}and {} more blocker(s): {}",
+                        b.len() - 1,
+                        codes.join(", ")
+                    ));
+                }
+                Said::Some
+            }
+        },
+    }
+}
+
 /// Core's answer for one project, or why there is none to show: a binding
 /// with no project id is never asked, and an id core's reads did not answer
 /// is a read that did not finish. Neither is a project with nothing waiting.
-fn core_of<'a>(
+pub(super) fn core_of<'a>(
     p: &Project,
     all: &'a BTreeMap<String, ProjectCore>,
 ) -> Result<&'a ProjectCore, String> {
@@ -787,15 +925,15 @@ fn keys(all: &[String]) -> String {
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
     use crate::cmd::top::gather::Project;
     use crate::cmd::top::source::Unreadable;
     use forge_runner_core::config::Config;
 
-    const NOW: i64 = 1_790_726_400_000;
+    pub(crate) const NOW: i64 = 1_790_726_400_000;
 
-    fn snap(projects: Vec<Project>) -> Snapshot {
+    pub(crate) fn snap(projects: Vec<Project>) -> Snapshot {
         let no = || Unreadable::new("test", "not planted");
         Snapshot {
             now_ms: NOW,
@@ -811,6 +949,8 @@ mod tests {
             trees: Default::default(),
             jobs: Err(no()),
             core: Err(no()),
+            core_before: None,
+            daemon_pid: None,
             gate: Vec::new(),
             gate_source: "/c/gate-marks.jsonl".into(),
             pool: Vec::new(),
@@ -818,7 +958,7 @@ mod tests {
         }
     }
 
-    fn row(key: &str, id: &str, skill_at: &str) -> Project {
+    pub(crate) fn row(key: &str, id: &str, skill_at: &str) -> Project {
         Project {
             key: key.into(),
             project_id: Some(id.into()),
@@ -844,6 +984,7 @@ mod tests {
                     listed: questions,
                 }),
                 awaiting: Ok(awaiting),
+                lanes: Ok(Default::default()),
             },
         );
         s.core = Ok((NOW, all));
@@ -1333,7 +1474,7 @@ mod tests {
         out
     }
 
-    fn held_run(id: &str, project: &str, session: &str, tree: &str) -> Run {
+    pub(crate) fn held_run(id: &str, project: &str, session: &str, tree: &str) -> Run {
         Run {
             run_id: id.into(),
             project_id: Some(project.into()),
@@ -1357,7 +1498,7 @@ mod tests {
     /// something in every place something can be, and the other has nothing
     /// anywhere, so between them every line the renderer writes for a source
     /// that read fine is drawn.
-    fn a_fine_box(busy: bool) -> Snapshot {
+    pub(crate) fn a_fine_box(busy: bool) -> Snapshot {
         let (a, b) = ("aaaaaaaa-1111", "bbbbbbbb-2222");
         let mut alpha = row("alpha", a, "/repo/a");
         alpha.skill = Some(Skill::Read {
@@ -1469,6 +1610,14 @@ mod tests {
                         listed: questions,
                     }),
                     awaiting: Ok(awaiting),
+                    lanes: Ok(if busy && id == a {
+                        [("in_progress", 1), ("open", 2), ("draft", 1), ("closed", 5)]
+                            .iter()
+                            .map(|(k, n)| (k.to_string(), *n))
+                            .collect()
+                    } else {
+                        Default::default()
+                    }),
                 },
             );
         }

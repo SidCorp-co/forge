@@ -36,6 +36,11 @@ const BETA: &str = "22222222-2222-4222-8222-222222222222";
 const READING: &str = "reading this box's sources for the first frame";
 /// A core whose one question on alpha carries terminal control sequences.
 const CONTROL_PROMPT: &str = "control-prompt";
+/// Alpha's issues by status, as core's search buckets carry them.
+const ALPHA_BY_STATUS: &str =
+    r#"{"in_progress":1,"awaiting_release":2,"open":3,"draft":1,"closed":9}"#;
+/// A word the table's column heading carries and the text frame does not.
+const TABLE: &str = "VERDICT";
 
 /// A core that answers the routes `top` reads and records every request line.
 struct FakeCore {
@@ -110,6 +115,15 @@ fn answer(path: &str, runners_status: &str) -> (String, String) {
                     .into(),
             );
         }
+    }
+    // Each project's issues by status, which the table's lanes sum.
+    if path.starts_with(&format!("/api/projects/{ALPHA}/issues/search?")) {
+        return ok(format!(
+            r#"{{"items":[],"total":16,"buckets":{{"byStatus":{ALPHA_BY_STATUS},"detector":0,"humanDraft":0,"waitingOnPersonByStatus":{{}}}}}}"#
+        ));
+    }
+    if path.starts_with(&format!("/api/projects/{BETA}/issues/search?")) {
+        return ok(r#"{"items":[],"total":1,"buckets":{"byStatus":{"awaiting_release":1},"detector":0,"humanDraft":0,"waitingOnPersonByStatus":{}}}"#.into());
     }
     if path.starts_with("/api/devices/me/runners") {
         if runners_status != "200 OK" {
@@ -557,6 +571,16 @@ fn one_frame_of_a_planted_box_reads_every_source_and_writes_nothing() {
     );
     assert!(health.contains("abandoned  ISS-3 run run-orph still holds its lease(s): declared by master session sess-bef"), "{health}");
 
+    // ISS-1369 criterion 25: one `lanes` line per project, naming its route.
+    assert!(
+        projects.contains(&format!("lanes    MOV 1 (in_progress 1) · HAND 2 (awaiting_release 2) · QUE 3 (open 3) · BLK 0 · DRF 1 (draft 1) ← GET /api/projects/{ALPHA}/issues/search?limit=1&withBuckets=true")),
+        "{projects}"
+    );
+    assert!(
+        projects.contains(&format!("lanes    MOV 0 · HAND 1 (awaiting_release 1) · QUE 0 · BLK 0 · DRF 0 ← GET /api/projects/{BETA}/issues/search?limit=1&withBuckets=true")),
+        "{projects}"
+    );
+
     // Criterion 24: the ledger is as it was, byte for byte and stamp for stamp.
     assert!(before == stamp(&b.ledger), "the view wrote the ledger");
     // Criterion 25: tmux was asked to list, and nothing else; core was sent GETs alone.
@@ -565,6 +589,14 @@ fn one_frame_of_a_planted_box_reads_every_source_and_writes_nothing() {
     let seen = core.seen.lock().unwrap().clone();
     assert!(!seen.is_empty());
     assert!(seen.iter().all(|r| r.starts_with("GET ")), "{seen:#?}");
+    for id in [ALPHA, BETA] {
+        assert!(
+            seen.iter().any(|r| r.starts_with(&format!(
+                "GET /api/projects/{id}/issues/search?limit=1&withBuckets=true "
+            )) && r.contains("Bearer pat-tok")),
+            "{seen:#?}"
+        );
+    }
     assert!(
         seen.iter()
             .filter(|r| r.contains("/api/devices/me/runners"))
@@ -881,6 +913,18 @@ fn on_a_terminal(b: &PlantedBox, cols: u16, rows: u16, args: &[&str]) -> Pty {
 /// As `on_a_terminal`, and with `keys` the child's stdin is the pty too, so
 /// what the test types on `Pty::keyboard` reaches the view as keys.
 fn on_a_terminal_reading(b: &PlantedBox, cols: u16, rows: u16, args: &[&str], keys: bool) -> Pty {
+    on_a_terminal_with(b, cols, rows, args, keys, &[])
+}
+
+/// As `on_a_terminal_reading`, with `env` set for the child as well.
+fn on_a_terminal_with(
+    b: &PlantedBox,
+    cols: u16,
+    rows: u16,
+    args: &[&str],
+    keys: bool,
+    env: &[(&str, &str)],
+) -> Pty {
     use std::os::fd::FromRawFd;
     // SAFETY: plain libc calls on descriptors this test opens and owns; the
     // secondary's name is copied out of the buffer ptsname_r fills.
@@ -917,6 +961,7 @@ fn on_a_terminal_reading(b: &PlantedBox, cols: u16, rows: u16, args: &[&str], ke
         .env("XDG_CONFIG_HOME", b.root.join("c"))
         .env("XDG_DATA_HOME", b.root.join("d"))
         .env("FORGE_RUNNER_CRED_STORE", "file")
+        .envs(env.iter().copied())
         .stdin(if keys {
             Stdio::from(secondary.try_clone().unwrap())
         } else {
@@ -956,7 +1001,14 @@ fn on_a_terminal_reading(b: &PlantedBox, cols: u16, rows: u16, args: &[&str], ke
 }
 
 impl Pty {
+    /// Everything drawn, its colour taken out: every `ESC [ … m` goes, and
+    /// the home-and-clear that starts each screen stays.
     fn text(&self) -> String {
+        uncoloured(&String::from_utf8_lossy(&self.drawn.lock().unwrap()))
+    }
+
+    /// Everything drawn, colour and all.
+    fn raw(&self) -> String {
         String::from_utf8_lossy(&self.drawn.lock().unwrap()).into_owned()
     }
 
@@ -996,6 +1048,25 @@ impl Pty {
     }
 }
 
+fn uncoloured(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find("\x1b[") {
+        out.push_str(&rest[..at]);
+        let seq = &rest[at + 2..];
+        let end = seq.find(|c: char| !(c.is_ascii_digit() || c == ';'));
+        match end {
+            Some(e) if seq[e..].starts_with('m') => rest = &seq[e + 1..],
+            _ => {
+                out.push_str("\x1b[");
+                rest = seq;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
 fn what_is_there(text: &str, what: &str) -> bool {
     text.matches(what).count() > 0
 }
@@ -1021,7 +1092,7 @@ fn a_ctrl_c_sent_while_a_frame_is_gathered_ends_the_view() {
     .unwrap();
     let mut pty = on_a_terminal(&b, 200, 60, &["--interval", "1"]);
     assert!(
-        pty.wait_for("WAITING ON A PERSON", std::time::Duration::from_secs(20)),
+        pty.wait_for(TABLE, std::time::Duration::from_secs(20)),
         "no first frame: {}",
         pty.text()
     );
@@ -1047,14 +1118,16 @@ fn a_ctrl_c_sent_while_a_frame_is_gathered_ends_the_view() {
 
 /// The judge's finding at d7da543: at 120x40 the live frame took 217 rows and
 /// only its last 25 stayed on screen. On a screen smaller than the planted
-/// box's frame, every frame drawn fits the screen, the pages are said, and
-/// the long question reads whole across its wrapped rows.
+/// box's frame, the box's detail (ISS-1369 criterion 22: the whole frame)
+/// fits the screen on every page, the pages are said, and the long question
+/// reads whole across its wrapped rows.
 #[test]
 fn a_live_frame_fits_the_screen_it_is_drawn_on_and_pages_the_rest() {
     let core = fake_core("200 OK");
     let b = plant(&core.url);
     let (cols, rows) = (100usize, 20usize);
-    let pty = on_a_terminal(&b, cols as u16, rows as u16, &["--interval", "1"]);
+    let mut pty = on_a_terminal_reading(&b, cols as u16, rows as u16, &["--interval", "1"], true);
+    open_the_box(&mut pty);
     let until = std::time::Instant::now() + std::time::Duration::from_secs(30);
     let mut frames = Vec::new();
     // The header wraps by the host's name, so the page row is found, not
@@ -1072,7 +1145,11 @@ fn a_live_frame_fits_the_screen_it_is_drawn_on_and_pages_the_rest() {
             .ok()
     };
     while std::time::Instant::now() < until {
-        frames = pty.frames();
+        frames = pty
+            .frames()
+            .into_iter()
+            .filter(|f| page_row(f).is_some())
+            .collect();
         if frames
             .first()
             .and_then(|f| pages_of(f))
@@ -1173,7 +1250,7 @@ fn the_live_view_says_it_is_reading_before_its_first_frame() {
         pty.text()
     );
     assert!(
-        !pty.text().contains("WAITING ON A PERSON"),
+        !pty.text().contains(TABLE),
         "the reading line came before the frame, not with it"
     );
     assert!(
@@ -1182,7 +1259,7 @@ fn the_live_view_says_it_is_reading_before_its_first_frame() {
         pty.text()
     );
     assert!(
-        pty.wait_for("WAITING ON A PERSON", std::time::Duration::from_secs(20)),
+        pty.wait_for(TABLE, std::time::Duration::from_secs(20)),
         "no frame followed: {:?}",
         pty.text()
     );
@@ -1495,6 +1572,7 @@ fn keys_hold_and_turn_pages_and_the_terminal_is_given_back() {
     let b = plant(&core.url);
     let mut pty = on_a_terminal_reading(&b, 100, 20, &["--interval", "5"], true);
     let second = std::time::Duration::from_secs(1);
+    open_the_box(&mut pty);
     assert!(
         pty.draws_page(0, "page 1 of ", std::time::Duration::from_secs(20)),
         "no first page: {}",
@@ -1573,23 +1651,32 @@ fn keys_hold_and_turn_pages_and_the_terminal_is_given_back() {
     );
 }
 
-/// Criterion 36: with stdin not a terminal, the page row says keys are not
-/// read, and why.
+/// ISS-1341's criterion 36 and ISS-1369's 26: with stdin not a terminal,
+/// the table says keys are not read, and why, and still redraws.
 #[test]
-fn a_view_that_cannot_read_keys_says_so_on_its_page_row() {
+fn a_view_that_cannot_read_keys_says_so_on_its_table() {
     let core = fake_core("200 OK");
     let b = plant(&core.url);
-    let pty = on_a_terminal(&b, 100, 20, &["--interval", "1"]);
+    let pty = on_a_terminal(&b, 100, 30, &["--interval", "1"]);
     assert!(
-        pty.draws_page(0, "page 1 of ", std::time::Duration::from_secs(20)),
+        pty.wait_for(TABLE, std::time::Duration::from_secs(20)),
         "{}",
         pty.text()
     );
-    let row = pty.page_rows_after(0).remove(0);
-    let words = row.split_whitespace().collect::<Vec<_>>().join(" ");
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while pty.frames().len() < 2 && std::time::Instant::now() < until {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    let frames = pty.frames();
+    assert!(frames.len() >= 2, "it redraws: {}", pty.text());
+    let words = frames[0]
+        .join(" ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
     assert!(
-        words.contains("keys are not read (stdin is not a terminal)"),
-        "{row}"
+        words.contains("keys are not read (stdin is not a terminal), so no row can be opened; the table redraws every 1s"),
+        "{words}"
     );
 }
 
@@ -1609,7 +1696,19 @@ fn slow_after_the_first_gather(b: &PlantedBox) -> PathBuf {
     count
 }
 
-fn first_page_count(pty: &Pty) -> usize {
+/// Wait for the table, then press Enter on its first row, the box, whose
+/// detail is the whole frame, paged.
+fn open_the_box(pty: &mut Pty) {
+    assert!(
+        pty.wait_for(TABLE, std::time::Duration::from_secs(20)),
+        "no table: {}",
+        pty.text()
+    );
+    pty.type_keys("\r");
+}
+
+fn first_page_count(pty: &mut Pty) -> usize {
+    open_the_box(pty);
     assert!(
         pty.draws_page(0, "page 1 of ", std::time::Duration::from_secs(20)),
         "no first page: {}",
@@ -1632,7 +1731,7 @@ fn a_key_typed_while_a_frame_is_gathered_is_answered_at_once() {
     let b = plant(&core.url);
     let count = slow_after_the_first_gather(&b);
     let mut pty = on_a_terminal_reading(&b, 100, 20, &["--interval", "2"], true);
-    let pages = first_page_count(&pty);
+    let pages = first_page_count(&mut pty);
     assert!(pages > 2);
     // The first frame, two seconds, then the second gather sits three
     // seconds in tmux.
@@ -1684,7 +1783,7 @@ fn a_view_ended_by_a_signal_gives_the_terminal_back() {
     let b = plant(&core.url);
     for signal in [libc::SIGTERM, libc::SIGQUIT] {
         let mut pty = on_a_terminal_reading(&b, 100, 20, &["--interval", "1"], true);
-        first_page_count(&pty);
+        first_page_count(&mut pty);
         let taken = modes(&pty.secondary);
         assert_eq!(taken.c_lflag & libc::ICANON, 0, "the view took the input");
         assert_eq!(taken.c_cc[libc::VQUIT], 0, "Ctrl-\\ still quits");
@@ -1739,5 +1838,252 @@ fn a_daemon_that_becomes_its_binary_late_is_planted_from_that_binary() {
     assert!(
         beta.contains("is the forge-master asset of the binary the daemon runs"),
         "{beta}"
+    );
+}
+
+impl Pty {
+    /// Each whole screen drawn after the first `after`, colour taken out.
+    fn screens_after(&self, after: usize) -> Vec<String> {
+        let text = self.text();
+        let parts: Vec<&str> = text.split("\x1b[H\x1b[2J").collect();
+        parts
+            .iter()
+            .skip(after + 1)
+            .map(|s| s.to_string())
+            .collect()
+    }
+
+    /// Whether a screen drawn after the first `after` satisfies `ok`,
+    /// waiting up to `within` for one.
+    fn draws(&self, after: usize, ok: impl Fn(&str) -> bool, within: std::time::Duration) -> bool {
+        let until = std::time::Instant::now() + within;
+        loop {
+            if self.screens_after(after).iter().any(|s| ok(s)) {
+                return true;
+            }
+            if std::time::Instant::now() > until {
+                return false;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(25));
+        }
+    }
+
+    /// The first whole frame of the table.
+    fn first_table(&self) -> Vec<String> {
+        let until = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        loop {
+            if let Some(f) = self
+                .frames()
+                .into_iter()
+                .find(|f| f.iter().any(|l| l.contains(TABLE)))
+            {
+                return f;
+            }
+            assert!(
+                std::time::Instant::now() < until,
+                "no table: {}",
+                self.text()
+            );
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+    }
+}
+
+/// The word in a table row's VERDICT column, found under the heading.
+fn verdict_of(frame: &[String], row: &str) -> String {
+    let heading = frame.iter().find(|l| l.contains(TABLE)).unwrap();
+    let at = heading[..heading.find(TABLE).unwrap()].chars().count();
+    let line = frame
+        .iter()
+        .find(|l| l.contains(row))
+        .unwrap_or_else(|| panic!("no {row} row: {frame:#?}"));
+    line.chars()
+        .skip(at)
+        .collect::<String>()
+        .split_whitespace()
+        .next()
+        .unwrap_or("")
+        .to_string()
+}
+
+/// ISS-1369 criteria 1, 2, 6, 7 and 12 on the binary a person runs: the first
+/// screen is the table — the box, then alpha, then beta — at 80 and at 170
+/// columns no row is wider than the screen and the frame fits its rows, and
+/// each row's verdict is whole: the box's job pane waiting on permission,
+/// alpha's runnable run whose worktree is gone, beta's served pane down.
+#[test]
+fn the_table_is_the_first_screen_and_fits_80_and_170_columns() {
+    let core = fake_core("200 OK");
+    let b = plant(&core.url);
+    for cols in [80usize, 170] {
+        let pty = on_a_terminal(&b, cols as u16, 40, &["--interval", "1"]);
+        let f = pty.first_table();
+        assert!(f.len() <= 40, "{cols}: {} rows: {f:#?}", f.len());
+        for l in &f {
+            assert!(
+                l.chars().count() <= cols,
+                "{cols}: a row of {}: {l}",
+                l.chars().count()
+            );
+        }
+        let at = |what: &str| {
+            f.iter()
+                .position(|l| l.contains(what))
+                .unwrap_or_else(|| panic!("{cols}: no {what}: {f:#?}"))
+        };
+        assert!(
+            at(TABLE) < at("(box)") && at("(box)") < at(" alpha ") && at(" alpha ") < at(" beta "),
+            "{f:#?}"
+        );
+        assert!(f[at("(box)")].starts_with('>'), "the box is selected first");
+        assert_eq!(verdict_of(&f, "(box)"), "ASKS", "{cols}");
+        assert_eq!(verdict_of(&f, " alpha "), "STALL", "{cols}");
+        assert_eq!(verdict_of(&f, " beta "), "DOWN", "{cols}");
+        // Alpha's lanes, as core's buckets counted them.
+        let alpha: Vec<&str> = f[at(" alpha ")].split_whitespace().collect();
+        // Four runs hold a lease: live, gone, orphaned, and parked on a person.
+        assert_eq!(
+            &alpha[2..9],
+            &["up", "4", "1", "2", "3", "·", "1"],
+            "{alpha:?}"
+        );
+        let under: Vec<&String> = f[at(" alpha ")..at(" beta ")]
+            .iter()
+            .filter(|l| l.contains("▶"))
+            .collect();
+        assert_eq!(
+            under.len(),
+            4,
+            "one line a run, the parked one once: {under:#?}"
+        );
+        // The run whose worktree is gone, on its own line under alpha.
+        assert!(
+            f[at(" alpha ")..at(" beta ")]
+                .iter()
+                .any(|l| l.contains("▶ ISS-2 runnable · worktree gone")),
+            "{f:#?}"
+        );
+    }
+}
+
+/// ISS-1369 criteria 12, 13, 14 and 15: on a terminal a red row is written
+/// red and the selected row reversed; under `NO_COLOR` not one colour escape
+/// is written, and the selection still reads `>`.
+#[test]
+fn colour_marks_severity_on_a_terminal_and_never_under_no_color() {
+    let core = fake_core("200 OK");
+    let b = plant(&core.url);
+    let pty = on_a_terminal(&b, 170, 40, &["--interval", "1"]);
+    pty.first_table();
+    let raw = pty.raw();
+    let line = |what: &str| {
+        raw.split("\r\n")
+            .find(|l| l.contains(what))
+            .unwrap_or_else(|| panic!("no {what}: {raw:?}"))
+            .to_string()
+    };
+    assert!(
+        line(" alpha ").starts_with("\x1b[31m "),
+        "{:?}",
+        line(" alpha ")
+    );
+    assert!(
+        line(" beta ").starts_with("\x1b[33m "),
+        "{:?}",
+        line(" beta ")
+    );
+    assert!(line("(box)").contains("\x1b[31;7m>"), "{:?}", line("(box)"));
+
+    let plain = on_a_terminal_with(
+        &b,
+        170,
+        40,
+        &["--interval", "1"],
+        false,
+        &[("NO_COLOR", "1")],
+    );
+    let f = plain.first_table();
+    let raw = plain.raw().replace("\x1b[H\x1b[2J", "");
+    assert!(
+        !raw.contains('\x1b'),
+        "a colour escape under NO_COLOR: {raw:?}"
+    );
+    assert!(
+        f.iter().any(|l| l.starts_with('>') && l.contains("(box)")),
+        "{f:#?}"
+    );
+    assert_eq!(verdict_of(&f, " alpha "), "STALL");
+}
+
+/// ISS-1369 criteria 17, 19, 20, 21, 23 and 24 on a terminal: `j` and the
+/// down arrow move the selection, Enter opens the selected project's detail
+/// with its findings and lanes, Esc returns to the table, `s` shows each
+/// row's sources, and `q` ends the view and gives the terminal back.
+#[test]
+fn keys_select_open_return_show_sources_and_quit() {
+    let core = fake_core("200 OK");
+    let b = plant(&core.url);
+    let mut pty = on_a_terminal_reading(&b, 170, 40, &["--interval", "5"], true);
+    pty.first_table();
+    let second = std::time::Duration::from_secs(2);
+    let selected = |who: &'static str| {
+        move |s: &str| {
+            s.split("\r\n")
+                .any(|l| l.starts_with('>') && l.contains(who))
+        }
+    };
+
+    let at = pty.screens_drawn();
+    pty.type_keys("j");
+    assert!(
+        pty.draws(at, selected(" alpha "), second),
+        "{:?}",
+        pty.screens_after(at)
+    );
+
+    let at = pty.screens_drawn();
+    pty.type_keys("\r");
+    let opened = |s: &str| {
+        s.contains("DETAIL alpha")
+            && s.contains("STALL  ISS-2 run run-gone is runnable and its worktree is gone")
+            && s.contains("LANES BY STATUS")
+    };
+    assert!(pty.draws(at, opened, second), "{:?}", pty.screens_after(at));
+
+    let at = pty.screens_drawn();
+    pty.type_keys("\x1b");
+    assert!(
+        pty.draws(at, |s| s.contains(TABLE) && selected(" alpha ")(s), second),
+        "Esc: {:?}",
+        pty.screens_after(at)
+    );
+
+    let at = pty.screens_drawn();
+    pty.type_keys("s");
+    assert!(
+        pty.draws(
+            at,
+            |s| s.contains(TABLE) && s.contains("← PANE tmux list-sessions"),
+            second
+        ),
+        "s: {:?}",
+        pty.screens_after(at)
+    );
+
+    let at = pty.screens_drawn();
+    pty.type_keys("\x1b[B");
+    assert!(
+        pty.draws(at, selected(" beta "), second),
+        "down: {:?}",
+        pty.screens_after(at)
+    );
+
+    pty.type_keys("q");
+    let st = pty.exited_within(std::time::Duration::from_secs(8));
+    assert!(st.is_some_and(|s| s.success()), "q: {st:?}");
+    assert_eq!(
+        modes_differ(&pty.modes_before, &modes(&pty.secondary)),
+        Vec::<&str>::new(),
+        "the terminal was not given back its modes"
     );
 }

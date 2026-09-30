@@ -23,6 +23,7 @@ use forge_runner_core::transport::status::unanswered;
 use forge_runner_core::transport::CoreClient;
 use serde_json::Value;
 
+use super::lanes::Counts;
 use super::source::{Read, Unreadable};
 
 /// One pool job's record, as the daemon left it.
@@ -173,6 +174,8 @@ pub struct AwaitingRelease {
 pub struct ProjectCore {
     pub questions: Read<Questions>,
     pub awaiting: Read<AwaitingRelease>,
+    /// The project's issues counted by status, which the table's lanes sum.
+    pub lanes: Read<Counts>,
 }
 
 const DEADLINE: Duration = Duration::from_secs(10);
@@ -208,8 +211,52 @@ const PAGE: usize = 200;
 const PAGES: usize = 20;
 
 pub async fn project_core(pat: &CoreClient, project_id: &str) -> ProjectCore {
-    let questions = all_questions(pat, project_id).await;
-    let awaiting = match all_awaiting(pat, project_id).await {
+    let (questions, awaiting, lanes) = tokio::join!(
+        all_questions(pat, project_id),
+        awaiting_release(pat, project_id),
+        by_status(pat, project_id)
+    );
+    ProjectCore {
+        questions,
+        awaiting,
+        lanes,
+    }
+}
+
+/// The route the lanes are read from, which the detail names.
+pub fn lanes_route(project_id: &str) -> String {
+    format!("/api/projects/{project_id}/issues/search?limit=1&withBuckets=true")
+}
+
+/// The project's issue counts by status: one page of one row, asked for its
+/// `buckets`, which core counts under the project filter alone.
+async fn by_status(pat: &CoreClient, project_id: &str) -> Read<Counts> {
+    let route = lanes_route(project_id);
+    let v = get_json(pat, &route).await?;
+    counts(&route, &v)
+}
+
+/// `buckets.byStatus` of a search answer. An answer without it, or with a
+/// count that is not a whole number, is refused by name: read as empty it
+/// would draw every lane as a project with nothing in it.
+pub fn counts(route: &str, v: &Value) -> Read<Counts> {
+    let by = v["buckets"]["byStatus"]
+        .as_object()
+        .ok_or_else(|| shape(route, "`buckets.byStatus` count by status"))?;
+    by.iter()
+        .map(|(status, n)| {
+            n.as_u64().map(|n| (status.clone(), n)).ok_or_else(|| {
+                shape(
+                    route,
+                    &format!("whole count for `{status}` in `buckets.byStatus` (it holds {n})"),
+                )
+            })
+        })
+        .collect()
+}
+
+async fn awaiting_release(pat: &CoreClient, project_id: &str) -> Read<AwaitingRelease> {
+    match all_awaiting(pat, project_id).await {
         Err(e) => Err(e),
         Ok(keys) if keys.is_empty() => Ok(AwaitingRelease {
             total: 0,
@@ -225,10 +272,6 @@ pub async fn project_core(pat: &CoreClient, project_id: &str) -> ProjectCore {
                 blockers,
             })
         }
-    };
-    ProjectCore {
-        questions,
-        awaiting,
     }
 }
 
@@ -717,5 +760,49 @@ mod tests {
         assert_eq!(query_value("MjAyNi0wOS0zMHxhYmM"), "MjAyNi0wOS0zMHxhYmM");
         assert_eq!(query_value("a+b&c=="), "a%2Bb%26c%3D%3D");
         assert_eq!(query_value("x/y z"), "x%2Fy%20z");
+    }
+
+    /// Criterion 3's read, and criterion 8's refusal: core's counts by status
+    /// are taken whole, and an answer without them, or with a count that is
+    /// not a whole number, is refused naming what it lacked, never read as a
+    /// project with nothing in it.
+    #[test]
+    fn counts_by_status_are_read_whole_or_refused_by_name() {
+        let r = "/api/projects/p/issues/search?limit=1&withBuckets=true";
+        let v: Value = serde_json::from_str(
+            r#"{"items":[],"total":7,"buckets":{"byStatus":{"open":3,"draft":4},"detector":0}}"#,
+        )
+        .unwrap();
+        let c = counts(r, &v).unwrap();
+        assert_eq!(c.get("open"), Some(&3));
+        assert_eq!(c.get("draft"), Some(&4));
+        assert_eq!(c.len(), 2);
+        let empty: Value = serde_json::from_str(r#"{"buckets":{"byStatus":{}}}"#).unwrap();
+        assert!(
+            counts(r, &empty).unwrap().is_empty(),
+            "a project with no issue"
+        );
+        for (body, says) in [
+            (
+                r#"{"items":[],"total":0}"#,
+                "`buckets.byStatus` count by status",
+            ),
+            (
+                r#"{"buckets":{"byStatus":[]}}"#,
+                "`buckets.byStatus` count by status",
+            ),
+            (
+                r#"{"buckets":{"byStatus":{"open":"3"}}}"#,
+                "whole count for `open` in `buckets.byStatus` (it holds \"3\")",
+            ),
+            (
+                r#"{"buckets":{"byStatus":{"open":-1}}}"#,
+                "whole count for `open` in `buckets.byStatus` (it holds -1)",
+            ),
+        ] {
+            let v: Value = serde_json::from_str(body).unwrap();
+            let e = counts(r, &v).expect_err(body).to_string();
+            assert!(e.contains(says) && e.contains(r), "{body}: {e}");
+        }
     }
 }
