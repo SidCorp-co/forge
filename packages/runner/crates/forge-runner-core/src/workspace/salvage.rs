@@ -252,6 +252,11 @@ pub async fn publish(worktree: &Path, branch: &str, cred: &RepoCred) -> Pushed {
 /// so a line saying the commits are safe can say where they are. `None` where
 /// none does or git could not say; the caller's own predicate is what decides,
 /// and this only names what it found.
+///
+/// Which one matters to the reader: in refname order the first was, on every
+/// forge-core release at ff38a38, another issue's branch that happened to
+/// contain the run's commits (ISS-1250, judge j2 finding 1). So the checkout's
+/// own branch comes first, then a remote-tracking ref, then the rest by name.
 pub async fn named_by(worktree: &Path) -> Option<String> {
     let out = git(
         worktree,
@@ -259,7 +264,6 @@ pub async fn named_by(worktree: &Path) -> Option<String> {
             "for-each-ref",
             "--contains",
             "HEAD",
-            "--count=1",
             "--format=%(refname)",
             "refs/heads/",
             "refs/tags/",
@@ -271,8 +275,23 @@ pub async fn named_by(worktree: &Path) -> Option<String> {
     if !out.status.success() {
         return None;
     }
-    let name = stdout_trim(&out);
-    (!name.is_empty()).then_some(name)
+    let listed = stdout_trim(&out);
+    let names: Vec<&str> = listed
+        .lines()
+        .filter(|n| !n.is_empty() && !n.ends_with("/HEAD"))
+        .collect();
+    let own = match git(worktree, &["symbolic-ref", "-q", "HEAD"]).await {
+        Some(o) if o.status.success() => Some(stdout_trim(&o)),
+        _ => None,
+    };
+    own.filter(|b| names.contains(&b.as_str()))
+        .or_else(|| {
+            names
+                .iter()
+                .find(|n| n.starts_with("refs/remotes/"))
+                .map(|n| n.to_string())
+        })
+        .or_else(|| names.first().map(|n| n.to_string()))
 }
 
 /// Whether this repository names any remote at all. `None` where git could not
@@ -1130,5 +1149,38 @@ mod tests {
     fn omits_optional_fields_rather_than_sending_null() {
         let v = Salvage::bare(Outcome::None).to_json();
         assert_eq!(v, serde_json::json!({ "outcome": "none" }));
+    }
+
+    /// criterion 23 — judge j2 finding 1: every forge-core release at ff38a38
+    /// named another issue's branch, because it sorted first and happened to
+    /// contain the run's commits.
+    mod which_ref_is_named {
+        use super::*;
+
+        #[tokio::test]
+        async fn the_checkouts_own_branch_is_named_over_one_that_sorts_first() {
+            let (root, wt) = repo("namedby-own", "ISS-9-work").await;
+            std::fs::write(wt.join("w.txt"), "w\n").unwrap();
+            run(&wt, &["add", "."]).await;
+            run(&wt, &["commit", "-m", "work"]).await;
+            run(&root, &["branch", "AAA-another-issue", "ISS-9-work"]).await;
+
+            let named = named_by(&wt).await;
+            cleanup(&root);
+
+            assert_eq!(named.as_deref(), Some("refs/heads/ISS-9-work"));
+        }
+
+        #[tokio::test]
+        async fn a_remote_tracking_ref_is_named_over_another_local_branch() {
+            let (root, wt) = repo("namedby-remote", "ISS-9-work").await;
+            run(&wt, &["switch", "--detach", "-q"]).await;
+            run(&root, &["branch", "AAA-another-issue", "main"]).await;
+
+            let named = named_by(&wt).await;
+            cleanup(&root);
+
+            assert_eq!(named.as_deref(), Some("refs/remotes/origin/main"));
+        }
     }
 }

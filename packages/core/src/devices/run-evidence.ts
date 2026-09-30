@@ -17,7 +17,7 @@
  * into the kernel through a second door (ISS-1050).
  */
 
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { agentSessions, comments, devices, issues, pipelineRuns } from '../db/schema.js';
@@ -185,29 +185,48 @@ export function buildResumeChoiceBody(args: { choice: ResumeChoice }): string {
   ].join('\n');
 }
 
-export function heldWorktreeMarker(sessionId: string, head: string): string {
+/** Every held report about one run's checkout at one commit, whatever its reading. */
+export function heldWorktreeFamily(sessionId: string, head: string): string {
   return `held-worktree: ${sessionId}:${head}`;
 }
 
-export function buildHeldWorktreeBody(args: { sessionId: string; held: HeldWorktree }): string {
+/**
+ * One reading of one checkout. The reading is part of the marker because a
+ * report is posted where it differs from the latest one: keyed on the commit
+ * alone, a kept report was the last word on an issue whose checkout the next
+ * sweep's reading let the release take (ISS-1250, judge j2).
+ */
+export function heldWorktreeMarker(
+  sessionId: string,
+  held: Pick<HeldWorktree, 'head' | 'kept'>,
+): string {
+  return `${heldWorktreeFamily(sessionId, held.head)}:${held.kept ? 'refused' : 'not-refused'}`;
+}
+
+export function buildHeldWorktreeBody(args: {
+  sessionId: string;
+  held: HeldWorktree;
+  box: string;
+}): string {
   const { held } = args;
   const count = held.commitsUnpushed ?? null;
   const directory = held.kept
     ? [
-        '**This box refuses to remove the checkout.** It stays where it is, and the box reads it',
-        'again on every sweep.',
+        "**The reading this box took refuses the checkout's removal.** This report is that one",
+        'reading and says nothing about a later one; what the release does with the checkout is the',
+        "box's journal to record.",
       ]
     : [
-        "**The box's reading does not refuse the checkout's removal.** Whether it is then removed is",
-        "the release's to decide and the box's journal to record; this report is taken before that and",
-        'says nothing about it.',
+        "**The reading this box took does not refuse the checkout's removal.** Whether it is then",
+        "removed is the release's to decide and the box's journal to record; this report is taken",
+        'before that and says nothing about it.',
       ];
   return [
     count === null
       ? '## A stopped run left a checkout on this issue'
       : '## Work on this issue is on one machine only',
     '',
-    `\`${heldWorktreeMarker(args.sessionId, held.head)}\``,
+    `\`${heldWorktreeMarker(args.sessionId, held)}\``,
     '',
     count === null
       ? 'A run that was working this issue has stopped. What the box read about its checkout is below.'
@@ -215,6 +234,7 @@ export function buildHeldWorktreeBody(args: { sessionId: string; held: HeldWorkt
     '',
     ...directory,
     '',
+    `- box: \`${args.box}\` — \`forge-runner logs\` there says where its journal is read`,
     `- branch: ${held.branch ? `\`${held.branch}\`` : '_not read_'}`,
     `- commit: \`${held.head}\``,
     count === null ? '- commits on no remote: _not counted_' : `- commits on no remote: ${count}`,
@@ -308,6 +328,49 @@ async function insertCommentOnce(args: {
   });
 }
 
+/**
+ * Post a held report unless the latest one in its family already says this reading.
+ *
+ * `insertCommentOnce` asks whether ANY comment carries the marker, which let a
+ * reading that went kept, then not, then kept again leave the middle one as the
+ * last word. The lock is the family's, so two sweeps racing on different
+ * readings are ordered rather than both reading "none yet".
+ */
+async function insertHeldReportOnChange(args: {
+  issueId: string;
+  family: string;
+  marker: string;
+  body: string;
+  authorId: string;
+  deviceId: string;
+}): Promise<boolean> {
+  return await db.transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtextextended(${`run-evidence:${args.issueId}:${args.family}`}, 0))`,
+    );
+    // Whole markers only, each closed by its backtick and matched literally: a
+    // bare family is a prefix of every longer head's, and a LIKE over it would
+    // let another commit's report stand in for this one's latest.
+    const whole = [args.family, `${args.family}:refused`, `${args.family}:not-refused`].map(
+      (m) => sql`strpos(${comments.body}, ${`\`${m}\``}) > 0`,
+    );
+    const [latest] = await tx
+      .select({ body: comments.body })
+      .from(comments)
+      .where(and(eq(comments.issueId, args.issueId), or(...whole)))
+      .orderBy(desc(comments.createdAt), desc(comments.id))
+      .limit(1);
+    if (latest?.body.includes(`\`${args.marker}\``)) return false;
+    await tx.insert(comments).values({
+      issueId: args.issueId,
+      authorId: args.authorId,
+      authorDeviceId: args.deviceId,
+      body: args.body,
+    });
+    return true;
+  });
+}
+
 export interface RunEvidenceResult {
   /** Issues the run was holding. */
   issues: number;
@@ -344,7 +407,13 @@ export async function writeRunEvidence(args: {
       next: row.next,
     });
     if (
-      await insertCommentOnce({ issueId: row.id, marker, body, authorId, deviceId: args.deviceId })
+      await insertCommentOnce({
+        issueId: row.id,
+        marker,
+        body,
+        authorId,
+        deviceId: args.deviceId,
+      })
     )
       written += 1;
   }
@@ -374,13 +443,25 @@ export async function writeHeldWorktreeReport(args: {
   if (!session) return null;
   const keys = (session.issueKeys ?? []).map((k) => canonicalIssueKey(Number(k.split('-')[1])));
   const rows = await runIssuesWithTestimony(session.projectId, keys);
-  const marker = heldWorktreeMarker(args.sessionId, args.held.head);
-  const body = buildHeldWorktreeBody({ sessionId: args.sessionId, held: args.held });
-  const authorId = await ownerOfDevice(args.deviceId);
+  const family = heldWorktreeFamily(args.sessionId, args.held.head);
+  const marker = heldWorktreeMarker(args.sessionId, args.held);
+  const box = await deviceOf(args.deviceId);
+  const body = buildHeldWorktreeBody({
+    sessionId: args.sessionId,
+    held: args.held,
+    box: box.name,
+  });
   let written = 0;
   for (const row of rows) {
     if (
-      await insertCommentOnce({ issueId: row.id, marker, body, authorId, deviceId: args.deviceId })
+      await insertHeldReportOnChange({
+        issueId: row.id,
+        family,
+        marker,
+        body,
+        authorId: box.ownerId,
+        deviceId: args.deviceId,
+      })
     )
       written += 1;
   }
@@ -418,7 +499,13 @@ export async function writeResumeChoice(args: {
   let written = 0;
   for (const row of rows) {
     if (
-      await insertCommentOnce({ issueId: row.id, marker, body, authorId, deviceId: args.deviceId })
+      await insertCommentOnce({
+        issueId: row.id,
+        marker,
+        body,
+        authorId,
+        deviceId: args.deviceId,
+      })
     )
       written += 1;
   }
@@ -438,11 +525,16 @@ export async function writeResumeChoice(args: {
 
 /** The person a box's credential belongs to, which is who a box's comment is authored as. */
 async function ownerOfDevice(deviceId: string): Promise<string> {
+  return (await deviceOf(deviceId)).ownerId;
+}
+
+/** A box's owner and the name it was paired under. */
+async function deviceOf(deviceId: string): Promise<{ ownerId: string; name: string }> {
   const [row] = await db
-    .select({ ownerId: devices.ownerId })
+    .select({ ownerId: devices.ownerId, name: devices.name })
     .from(devices)
     .where(eq(devices.id, deviceId))
     .limit(1);
   if (!row) throw new Error(`writeRunEvidence: no device ${deviceId}`);
-  return row.ownerId;
+  return row;
 }

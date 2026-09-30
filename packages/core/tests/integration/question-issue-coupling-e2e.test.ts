@@ -180,7 +180,7 @@ describe('an issue cannot reach a terminal status while it holds an open questio
     expect(await statusOf(issueId)).toBe('dropped');
     const [q] = await questionsOn(issueId);
     expect(q?.status).toBe('void');
-    expect(q?.voidReason).toContain('went to dropped with this question open');
+    expect(q?.voidReason).toContain('went to Dropped with this question open');
     expect(q?.voidReason).toContain('a duplicate of the tenant issue');
     expect(q?.endedReason).toBe('issue_terminal');
   });

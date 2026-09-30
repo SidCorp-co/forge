@@ -26,3 +26,24 @@ export const ISSUE_RESOLVED_STATUSES: readonly IssueStatus[] = ['awaiting_releas
 
 /** The issue is not counted as open work in a project's totals. */
 export const NON_OPEN_STATUSES: readonly IssueStatus[] = ['awaiting_release', 'closed', 'draft'];
+
+/** Each status in a person's words: contracts' map, which core cannot import at runtime; held equal by a parity test. */
+export const ISSUE_STATUS_LABELS: Readonly<Record<IssueStatus, string>> = {
+  open: 'Open',
+  confirmed: 'Confirmed',
+  clarified: 'Clarified',
+  waiting: 'Waiting',
+  approved: 'Approved',
+  in_progress: 'In progress',
+  developed: 'Developed',
+  testing: 'Testing',
+  tested: 'Tested',
+  awaiting_release: 'Awaiting release',
+  releasing: 'Releasing',
+  closed: 'Closed',
+  reopen: 'Reopened',
+  on_hold: 'On hold',
+  needs_info: 'Needs info',
+  draft: 'Draft',
+  dropped: 'Dropped',
+};

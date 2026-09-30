@@ -223,6 +223,27 @@ describe('a batch aborted while its finish attempt is verifying', () => {
     expect(await refusalMessage(() => accept(runId, PUSHED))).toBe(reason);
   }, 30_000);
 
+  it('stores the account the abort settles on when the finish records its refusal between the two abort writes', async () => {
+    const { runId } = await twoIssueBatch();
+    await accept(runId, PUSHED);
+    const working = job.runReleaseBatchFinish(runId);
+    await untilState(runId, 'verifying');
+    let between: string | undefined;
+    // The finish sees the stamp and records its refusal while the roster is still `returning`.
+    await abort(runId, {
+      afterRosterRecovered: async () => {
+        serving = PUSHED;
+        await working;
+        between = await storedReason(runId);
+      },
+    });
+
+    expect(between).toMatch(/had not finished putting its roster back/);
+    const reason = await storedReason(runId);
+    expect(reason).toMatch(/its claims were released/);
+    expect(await refusalMessage(() => accept(runId, PUSHED))).toBe(reason);
+  }, 30_000);
+
   it('ends the attempt within one poll of the abort, not at the end of its verify window', async () => {
     await harness.db.execute(sql`
       UPDATE integration_bindings

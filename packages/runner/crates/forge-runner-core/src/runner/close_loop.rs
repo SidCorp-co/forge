@@ -174,6 +174,22 @@ pub async fn close(
     if !checkout_is_back {
         if let Some(how) = checkout_returned(repo, Path::new(&run.worktree_path)).await {
             ledger.mark_checkout_returned_observed(run_id, how)?;
+            // The one writer of `worktree_gone_at`, so the one place a line
+            // covers every checkout recorded gone — including the ones a
+            // master or a person removed, which no removal line of this box's
+            // could ever name (ISS-1250, judge finding 5).
+            match how {
+                CheckoutReturn::Gone => tracing::info!(
+                    "[close] run={run_id}: {} is no longer a checkout git registers, so it is \
+                     recorded as gone — a removal this box made is logged where it made it",
+                    run.worktree_path.display()
+                ),
+                CheckoutReturn::MainWorkingTreeKept => tracing::info!(
+                    "[close] run={run_id}: {} is the repository's own working tree, so it is \
+                     recorded as returned and left standing",
+                    run.worktree_path.display()
+                ),
+            }
             checkout_is_back = true;
         }
     }
@@ -673,6 +689,50 @@ mod tests {
         assert!(
             out.contains("projectId"),
             "the refusal carries the way out, which is the whole of what makes it worth printing: {out}"
+        );
+    }
+
+    /// ISS-1250 criterion 24 — judge finding 5: master-closed checkouts were
+    /// stamped gone with no line anywhere. The stamp is the one writer, so the
+    /// line is asserted where the stamp is made, over a path nothing on this
+    /// box removed, and once only however many sweeps read it back.
+    #[test]
+    fn a_checkout_recorded_gone_names_its_path_in_the_log_once() {
+        let out = logged_while(|| {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap();
+            rt.block_on(async {
+                let mut led = seeded(&["ISS-880"], gone());
+                for _ in 0..3 {
+                    close(
+                        &mut led,
+                        "run-1",
+                        Some(&a_repository()),
+                        &Sessions(true),
+                        &Leases::new(true, &["ISS-880"]),
+                    )
+                    .await
+                    .unwrap();
+                }
+                assert!(led
+                    .run("run-1")
+                    .unwrap()
+                    .unwrap()
+                    .worktree_gone_at
+                    .is_some());
+            });
+        });
+
+        let line = format!(
+            "{} is no longer a checkout git registers, so it is recorded as gone",
+            gone().display()
+        );
+        assert_eq!(
+            out.matches(&line).count(),
+            1,
+            "a checkout recorded gone is said once, naming its path: {out}"
         );
     }
 

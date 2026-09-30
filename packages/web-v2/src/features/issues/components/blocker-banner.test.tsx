@@ -137,6 +137,7 @@ function parked(over: Partial<IssuePark>) {
       resume: { at: null, why: "no record" },
       record: null,
       readings: [],
+      answer: null,
       openQuestionIds: [],
       ...over,
     },
