@@ -70,11 +70,11 @@ async function send(method: string, path: string, body?: unknown) {
 
 const at = (suffix: string) => `/api/projects/${projectId}${suffix}`;
 
-async function insertBinding(id: string, role: string, stages: string) {
-  await harness.db.execute(sql`
-    INSERT INTO integration_bindings (id, connection_id, project_id, provider, role, stages, active)
-    VALUES (${id}, ${CONNECTION}, ${projectId}, 'shopify', ${role}, ${stages}::text[], true)
-  `);
+async function putBinding(file: string, baseRevision: number | null = null) {
+  return send('PUT', at(`/bindings/${example(file).id}`), {
+    baseRevision,
+    document: example(file),
+  });
 }
 
 const profile = (id: string) => ({
@@ -87,8 +87,14 @@ const profile = (id: string) => ({
 });
 
 describe('a storefront project with a source binding and a deploy binding', () => {
-  it('holds a source binding with no stage, and refuses one that names a stage', async () => {
-    await insertBinding(SOURCE_BINDING, 'source', '{}');
+  it('writes the source binding through the binding API, with no stage', async () => {
+    const res = await putBinding('store-source.binding.json');
+    expect(res.status).toBe(200);
+    expect(res.json).toMatchObject({ revision: 1, document: { role: 'source' } });
+    const [row] = (await harness.db.execute(
+      sql`SELECT role, stages FROM integration_bindings WHERE id = ${SOURCE_BINDING}`,
+    )) as unknown as { role: string; stages: string[] }[];
+    expect(row).toEqual({ role: 'source', stages: [] });
     await expect(
       harness.db.execute(sql`
         INSERT INTO integration_bindings (connection_id, project_id, provider, role, stages, active)
@@ -97,8 +103,19 @@ describe('a storefront project with a source binding and a deploy binding', () =
     ).rejects.toThrow();
   });
 
+  it('refuses CONNECTION_PROVIDER_MISMATCH against the stored connection', async () => {
+    const doc = example('store-deploy.binding.json');
+    doc.target = { provider: 'coolify', applicationUuid: 'y8w4c4kss8ogo8gc44ow44kc' };
+    const res = await send('PUT', at(`/bindings/${DEPLOY_BINDING}`), {
+      baseRevision: null,
+      document: doc,
+    });
+    expect(res.status).toBe(422);
+    expect(res.json.error.code).toBe('CONNECTION_PROVIDER_MISMATCH');
+  });
+
   it('accepts the store example end to end', async () => {
-    await insertBinding(DEPLOY_BINDING, 'deploy', '{live}');
+    expect((await putBinding('store-deploy.binding.json')).status).toBe(200);
     for (const id of ['theme-preview', 'storefront-smoke']) {
       const res = await send('PUT', at(`/testing-profiles/${id}`), {
         baseRevision: null,
@@ -109,15 +126,18 @@ describe('a storefront project with a source binding and a deploy binding', () =
     const doc = example('store.project.json');
     doc.project.id = projectId;
     const res = await send('PUT', at('/config'), { baseRevision: null, document: doc });
-    expect(res.json).toMatchObject({ declared: true, revision: 1 });
+    expect(res.json).toMatchObject({ declared: true, revision: 1, updatedBy: adminId });
     expect(res.status).toBe(200);
-    expect(adminId).toBe(res.json.updatedBy);
   });
 
-  it('refuses the example once its source binding is a service binding', async () => {
+  it('bumps a binding revision on any update, so a write based on the old one is STALE_BASE', async () => {
     await harness.db.execute(sql`
       UPDATE integration_bindings SET role = 'service' WHERE id = ${SOURCE_BINDING}
     `);
+    const stale = await putBinding('store-source.binding.json', 1);
+    expect(stale.status).toBe(422);
+    expect(stale.json.error.code).toBe('STALE_BASE');
+
     const doc = example('store.project.json');
     doc.project.id = projectId;
     const res = await send('PUT', at('/config'), { baseRevision: 1, document: doc });

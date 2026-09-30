@@ -5,7 +5,9 @@ export type ApiRefusalCode =
   | ConfigRefusalCode
   | 'SCHEMA_VIOLATION'
   | 'TESTING_PROFILE_ID_MISMATCH'
-  | 'TESTING_PROFILE_IN_USE';
+  | 'TESTING_PROFILE_IN_USE'
+  | 'BINDING_ID_MISMATCH'
+  | 'BINDING_TARGET_UNSUPPORTED';
 
 export interface ApiRefusal extends Omit<ConfigRefusal, 'code'> {
   code: ApiRefusalCode;

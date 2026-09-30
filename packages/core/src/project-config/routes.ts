@@ -7,6 +7,7 @@ import { assertProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { readBearerToken } from '../middleware/bearer.js';
 import { badRequest } from '../projects/route-errors.js';
+import { listBindings, readBinding, writeBinding } from './bindings.js';
 import { type ApiRefusal, parseWriteEnvelope } from './documents.js';
 import { buildEffectiveConfig } from './effective.js';
 import {
@@ -36,6 +37,8 @@ for (const path of [
   '/:id/testing-profiles/*',
   '/:id/secrets',
   '/:id/secrets/*',
+  '/:id/bindings',
+  '/:id/bindings/*',
 ]) {
   projectConfigRoutes.use(path, requireAuth(), assertEmailVerified());
 }
@@ -43,6 +46,7 @@ for (const path of [
 const NAME = /^[a-z][a-z0-9-]{0,62}$/;
 const idParam = z.object({ id: z.uuid() });
 const profileParam = z.object({ id: z.uuid(), profileId: z.string().regex(NAME) });
+const bindingParam = z.object({ id: z.uuid(), bindingId: z.uuid() });
 const secretParam = z.object({
   id: z.uuid(),
   scope: z.string().regex(NAME),
@@ -266,5 +270,51 @@ projectConfigRoutes.put(
       name: outcome.secret.name,
       updatedAt: outcome.secret.updatedAt.toISOString(),
     });
+  },
+);
+
+projectConfigRoutes.get('/:id/bindings', paramOf(idParam), async (c) => {
+  const { id } = c.req.valid('param');
+  await assertProjectAccess(id, c.get('userId'), 'viewer');
+  const { held, unrepresentable } = await listBindings(id);
+  return c.json({
+    bindings: held.map((h) => ({ declared: true as const, ...h })),
+    unrepresentable,
+    returned: held.length,
+  });
+});
+
+projectConfigRoutes.get('/:id/bindings/:bindingId', paramOf(bindingParam), async (c) => {
+  const { id, bindingId } = c.req.valid('param');
+  await assertProjectAccess(id, c.get('userId'), 'viewer');
+  const read = await readBinding(id, bindingId);
+  if (!read) return c.json(UNDECLARED);
+  if (!read.ok) {
+    throw new HTTPException(409, {
+      message: `binding ${bindingId} has no binding-document form: ${read.unrepresentable}`,
+      cause: { code: 'BINDING_NOT_REPRESENTABLE' },
+    });
+  }
+  return c.json({ declared: true as const, ...read.held });
+});
+
+projectConfigRoutes.put(
+  '/:id/bindings/:bindingId',
+  paramOf(bindingParam),
+  zValidator('json', z.unknown()),
+  async (c) => {
+    const { id, bindingId } = c.req.valid('param');
+    const userId = c.get('userId');
+    await assertProjectAccess(id, userId, 'admin');
+    const { baseRevision, document } = envelopeOf(c.req.valid('json'));
+    const outcome = await writeBinding({
+      projectId: id,
+      bindingId,
+      userId,
+      baseRevision,
+      raw: document,
+    });
+    if (!outcome.ok) return refused(c, outcome.refusals);
+    return c.json({ declared: true as const, ...outcome.held, created: outcome.created });
   },
 );
