@@ -309,10 +309,11 @@ pub fn record_path(master_dir: &Path) -> PathBuf {
 }
 
 /// The directory this box keeps `slug`'s master transcript and last exit in.
+/// The daemon writes the record here, so it resolves through
+/// [`crate::config::base_dir`], the one resolution a test build refuses outside
+/// a scratch (ISS-1344).
 pub fn master_dir(slug: &str) -> crate::error::Result<PathBuf> {
-    Ok(crate::config::Config::path()?
-        .with_file_name("master")
-        .join(slug))
+    Ok(crate::config::base_dir()?.join("master").join(slug))
 }
 
 /// Write `record` into `master_dir`, whole or not at all.
