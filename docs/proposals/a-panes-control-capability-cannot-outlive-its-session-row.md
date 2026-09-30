@@ -27,8 +27,10 @@ the same refusal, while five rows waited behind it.
 
 ## The decision: shape 1, the capability carries the project
 
-The token store (`daemon/session_tokens.rs`) holds `token -> { session, project, pane }`, written
-by `SessionTokens::mint` at placement for a pane the daemon is about to start. Nothing rewrites an
+The token store (`daemon/session_tokens.rs`) holds `token -> { session, project, slug, pane }`,
+written by `SessionTokens::mint` at placement for a pane the daemon is about to start. The slug is
+there for the operator rather than the kernel: nothing resolves authority through it, and a record
+forge-runner 0.17.72 wrote carries none. Nothing rewrites an
 entry after its mint. `control.rs:caller_of` resolves a frame to that record and to the session it
 acts under: the session this daemon now holds for the record's project, where this daemon's master
 pane for that project is the record's pane. `control.rs:declaring_project` bounds a declaration by
@@ -77,10 +79,12 @@ required a shape core reads. It does not: core never reads `control-tokens.json`
 A map written before the record maps a token to a bare session id. The reader
 (`SessionTokens::load`) accepts both shapes: a pre-record entry resolves to its session exactly as it
 always did, and `SessionTokens::resolve` says so once per session per process, naming it as a
-capability that loses its authority with its row. Refusing those entries would have refused every
+capability minted by forge-runner before 0.17.72 that loses its authority with its row. Refusing those entries would have refused every
 live master on every box at the upgrade. A file in neither shape, or with an entry carrying an empty
 value, is refused by name — the file, and both valid shapes — and every frame against it is refused
-rather than read as an empty map, which is indistinguishable from a box with no panes.
+rather than read as an empty map, which is indistinguishable from a box with no panes. The daemon
+logs such a failure once, again only when the failure changes, and once when the map reads again:
+a pane sends a frame per hook, so a line per frame would bury the journal.
 
 ## The declaration gate's hook, which the record now answers for too
 
@@ -94,7 +98,10 @@ session the daemon never placed.
 `cmd/gate.rs:tokenless` now tells them apart from the process's own `$TMUX` and the record. Off the
 runner's tmux server, the session is not the gate's subject: it is let through and leaves no mark.
 On it, the hook asks tmux its session name: a session a record names is a placed pane that lost its
-capability, and its dispatch is refused naming the pane and its project; a session no record names
+capability, and its dispatch is refused naming the pane, its project by slug, and the command that
+ends it with every value filled in — `forge-runner master kill <slug>` for a master pane, and
+`tmux -S <runner socket> kill-session -t =<pane>` for a job pane or a record carrying no slug; a
+session no record names
 is let through with a degraded mark naming it, because a pane placed before capabilities carried
 their pane cannot be told from one this box did not place. Where either read fails, the mark says
 which. The hook still denies nothing the daemon did not place — the regression ISS-1296 was dropped
@@ -138,7 +145,7 @@ What adopting shape 1 took, and what it still costs.
 | Cost | What it buys, and who pays |
 |---|---|
 | A format change to `control-tokens.json` with a total failure mode | A file this daemon cannot parse answers for no pane, so every live master on the box is refused until the file is repaired. The reader accepts both shapes and refuses only a file in neither, by name; the refusal is tested against a record file, a pre-record file, a mixed file and four files in neither shape. Every box pays the risk; the one box with a torn file pays the outage |
-| Two daemon versions read one file | A daemon older than ISS-1316 parses only `token -> string`, so a downgrade reads a file holding a record as not a map and refuses every frame by name — it does not overwrite it (`cf22738f9`, `runner-v0.15.0` and later). Rolling back therefore owes removing `control-tokens.json` and ending the master panes so each is placed again; that is the version floor, stated rather than enforced |
+| Two daemon versions read one file | A daemon older than forge-runner 0.17.72 parses only `token -> string`, so a downgrade reads a file holding a record as not a map and refuses every frame by name — it does not overwrite it (`cf22738f9`, `runner-v0.15.0` and later). Rolling back past 0.17.72 therefore owes removing `control-tokens.json` and ending the master panes so each is placed again; that is the version floor, stated rather than enforced. 0.17.72 itself reads a record carrying a slug, since `Minted` ignores a field it does not declare |
 | The declaration bound moved | It sits in `control.rs:declaring_project` rather than behind the registry's session map, and every argument ISS-1050 criterion 7 made had to be re-established there by a reviewer. A later change to what a record holds re-opens that pass |
 | Pre-record capabilities keep their old failure until replaced | A pane placed before the upgrade still loses its authority when core replaces its row, and ISS-1208 then ends it — killing its subagents — to place one carrying a record. That bill arrives at most once per pane |
 | Entries nobody retires | `retire` removes by session and `retire_pane` by pane when a master ends; a mint removes every earlier entry for its session and for its project and pane. An entry whose pane never started and whose project is never placed again is carried through every rewrite, and a pre-record entry naming a session core never heard of is carried as written, since rewriting it would decide afterwards what it was for |
