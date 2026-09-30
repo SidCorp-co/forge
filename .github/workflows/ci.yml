@@ -30,6 +30,7 @@ on:
   # red one is found on a day nothing landed as well.
   schedule:
     - cron: '0 19 * * *'
+  workflow_dispatch:
 
 # A pull request's newer run cancels its older one. A push run is never cancelled: since ISS-1370
 # the heavy jobs run only there, and a landing cancelled by the next one would be measured by
@@ -575,7 +576,7 @@ jobs:
   # waits on (ISS-1370). Post-merge and nightly; `ci-passed` does not need it, `$postMerge` names it.
   runner-platforms:
     needs: changes
-    if: github.event_name != 'pull_request' && (github.event_name == 'schedule' || needs.changes.outputs.runner == 'true')
+    if: github.event_name != 'pull_request' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || needs.changes.outputs.runner == 'true')
     strategy:
       fail-fast: false
       matrix:
