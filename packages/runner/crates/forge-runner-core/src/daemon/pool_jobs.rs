@@ -66,14 +66,14 @@ pub trait Records: Send + Sync {
 /// The pane a job runs in.
 #[async_trait::async_trait]
 pub trait Panes: Send + Sync {
-    /// Start the pane with the project's declared `servers`, refusing where it cannot be.
+    /// Start the pane as `launch` says, refusing where it cannot be.
     async fn open(
         &self,
         name: &str,
         cwd: &Path,
         prompt: &str,
         env: &[(String, String)],
-        servers: &serde_json::Map<String, serde_json::Value>,
+        launch: &Launch<'_>,
     ) -> Result<()>;
     /// This box has let go of the job this pane ran: whatever `open` wrote for it goes.
     async fn released(&self, name: &str);
@@ -83,6 +83,14 @@ pub trait Panes: Send + Sync {
     async fn kill(&self, name: &str) -> Result<()>;
     /// Every job pane on this box right now, by name.
     async fn names(&self) -> Vec<String>;
+}
+
+/// What a job pane is started with beyond where it runs and what it is told: the project's
+/// declared servers, and the model and denied tools of the policy state core prepared it under.
+pub struct Launch<'a> {
+    pub servers: &'a serde_json::Map<String, serde_json::Value>,
+    pub model: &'a str,
+    pub denied_tools: &'a [String],
 }
 
 const HEARTBEAT_KIND: &str = "progress";
@@ -526,7 +534,7 @@ pub async fn take_one(
             tracing::info!(
                 "[pool] {project_id}: job {} not taken: {}",
                 entry.job_id,
-                r.as_str()
+                r.describe()
             );
             return Took::Refused(r.as_str().to_string());
         }
@@ -598,7 +606,17 @@ pub async fn take_one(
 
     let opened_at = now_ms();
     if let Err(e) = panes
-        .open(&pane, &cwd, &prompt, &env, &declared.mcp_servers)
+        .open(
+            &pane,
+            &cwd,
+            &prompt,
+            &env,
+            &Launch {
+                servers: &declared.mcp_servers,
+                model: &prepared.model,
+                denied_tools: &prepared.denied_tools,
+            },
+        )
         .await
     {
         panes.released(&pane).await;
@@ -1096,21 +1114,24 @@ impl Records for NoRecords {
 
 pub struct TmuxPanes;
 
-/// The command a job pane is started with: the same `pane_argv` a master pane takes, handed the
-/// project's declared servers through a config of the job's own. A declaration that cannot be
-/// written is a refusal, because the pane it would start carries none of it.
-fn job_pane_argv(
-    dir: &Path,
-    name: &str,
-    servers: &serde_json::Map<String, serde_json::Value>,
-) -> Result<Vec<String>> {
+/// The command a job pane is started with: the launch a master pane takes, handed the project's
+/// declared servers through a config of the job's own, and the model and denied tools of its
+/// policy state. A declaration that cannot be written is a refusal, because the pane it would
+/// start carries none of it.
+fn job_pane_argv(dir: &Path, name: &str, launch: &Launch<'_>) -> Result<Vec<String>> {
+    let servers = launch.servers;
     let config = crate::mcp::config::write_job_session_in(dir, name, servers).map_err(|e| {
         Error::Other(format!(
             "the project's declared MCP servers ({}) could not be written for {name}: {e}",
             servers.keys().cloned().collect::<Vec<_>>().join(", ")
         ))
     })?;
-    Ok(terminal::pane_argv(config.as_deref(), None))
+    Ok(terminal::job_argv(
+        config.as_deref(),
+        None,
+        Some(launch.model),
+        launch.denied_tools,
+    ))
 }
 
 #[async_trait::async_trait]
@@ -1121,14 +1142,14 @@ impl Panes for TmuxPanes {
         cwd: &Path,
         prompt: &str,
         env: &[(String, String)],
-        servers: &serde_json::Map<String, serde_json::Value>,
+        launch: &Launch<'_>,
     ) -> Result<()> {
         if !terminal::available() {
             return Err(Error::Other(
                 "tmux is not installed on this box, and a job pane needs it".into(),
             ));
         }
-        let argv = job_pane_argv(&crate::mcp::config::session_dir(), name, servers)?;
+        let argv = job_pane_argv(&crate::mcp::config::session_dir(), name, launch)?;
         terminal::ensure(name, cwd, &argv, env, None).await?;
         terminal::brief_new_pane(name, prompt).await
     }
@@ -1180,6 +1201,7 @@ mod tests {
         envs: Mutex<Vec<Vec<(String, String)>>>,
         /// The declared servers each pane was opened with, as `pane|name,name`.
         servers: Mutex<Vec<String>>,
+        launched: Mutex<Vec<String>>,
         /// Every pane whose job this box let go of, through `Panes::released`.
         unconfigured: Mutex<Vec<String>>,
     }
@@ -1218,6 +1240,7 @@ mod tests {
             system_prompt: "sys".into(),
             prompt_string: prompt.map(str::to_string),
             model: "claude".into(),
+            denied_tools: Vec::new(),
             repo_path: Some(core_repo().to_string_lossy().into_owned()),
             prior_claude_session_id: None,
             runner_id: "r1".into(),
@@ -1313,14 +1336,19 @@ mod tests {
             cwd: &Path,
             prompt: &str,
             env: &[(String, String)],
-            servers: &serde_json::Map<String, serde_json::Value>,
+            launch: &Launch<'_>,
         ) -> Result<()> {
             if self.open_fails {
                 return Err(Error::Other("no tmux".into()));
             }
             self.rec.servers.lock().unwrap().push(format!(
                 "{name}|{}",
-                servers.keys().cloned().collect::<Vec<_>>().join(",")
+                launch.servers.keys().cloned().collect::<Vec<_>>().join(",")
+            ));
+            self.rec.launched.lock().unwrap().push(format!(
+                "{name}|{}|{}",
+                launch.model,
+                launch.denied_tools.join(";")
             ));
             self.rec.envs.lock().unwrap().push(env.to_vec());
             self.rec.cwds.lock().unwrap().push(cwd.to_path_buf());
@@ -1642,6 +1670,23 @@ mod tests {
         }
     }
 
+    /// ISS-6: the deny list core prepared the job under is what the pane is started without.
+    #[tokio::test]
+    async fn a_prepared_deny_list_reaches_the_pane_it_starts() {
+        let mut prep = prepared("j1", Some("go"));
+        if let Prepared::Took(p) = &mut prep {
+            p.model = "opus".into();
+            p.denied_tools = vec!["Bash(git push:*)".into(), "CronCreate".into()];
+        }
+        let w = world(vec![entry("j1", None)], Some(prep), None);
+
+        assert_eq!(take(&w, 2).await, Took::Started("j1".into()));
+        assert_eq!(
+            w.rec.launched.lock().unwrap().clone(),
+            vec!["forge-job-j1|opus|Bash(git push:*);CronCreate".to_string()]
+        );
+    }
+
     #[tokio::test]
     async fn a_project_declaring_nothing_opens_its_pane_with_nothing() {
         let w = world(
@@ -1697,12 +1742,57 @@ mod tests {
         );
     }
 
+    fn launch<'a>(
+        servers: &'a serde_json::Map<String, serde_json::Value>,
+        model: &'a str,
+        denied_tools: &'a [String],
+    ) -> Launch<'a> {
+        Launch {
+            servers,
+            model,
+            denied_tools,
+        }
+    }
+
+    #[test]
+    fn a_job_pane_is_started_without_the_tools_its_policy_state_denies() {
+        let dir = crate::test_scratch::Scratch::new("job-argv-denied");
+        let none = serde_json::Map::new();
+        let denied = vec!["Bash(git push:*)".to_string(), "CronCreate".to_string()];
+
+        let argv = job_pane_argv(dir.path(), "forge-job-j1", &launch(&none, "opus", &denied))
+            .expect("nothing to write is not a failure");
+
+        assert!(
+            argv[2].contains(" --model 'opus'"),
+            "the pane runs the model its policy state names: {}",
+            argv[2]
+        );
+        assert!(
+            argv[2].contains(" --disallowed-tools 'Bash(git push:*)' 'CronCreate'"),
+            "each denied pattern is one argument, the space inside the first kept: {}",
+            argv[2]
+        );
+    }
+
+    #[test]
+    fn a_job_pane_denied_nothing_carries_no_deny_flag() {
+        let dir = crate::test_scratch::Scratch::new("job-argv-open");
+        let none = serde_json::Map::new();
+
+        let argv = job_pane_argv(dir.path(), "forge-job-j1", &launch(&none, "opus", &[]))
+            .expect("nothing to write is not a failure");
+
+        assert!(!argv[2].contains("--disallowed-tools"), "{}", argv[2]);
+    }
+
     #[test]
     fn a_job_pane_is_launched_with_a_config_holding_the_declared_servers() {
         let dir = crate::test_scratch::Scratch::new("job-argv");
         let declared = declaring(&["epodsystem"]).mcp_servers;
 
-        let argv = job_pane_argv(dir.path(), "forge-job-j1", &declared).expect("written");
+        let argv = job_pane_argv(dir.path(), "forge-job-j1", &launch(&declared, "", &[]))
+            .expect("written");
 
         let path = crate::mcp::config::job_session_path_in(dir.path(), "forge-job-j1");
         assert!(
@@ -1722,7 +1812,8 @@ mod tests {
     fn a_job_pane_for_a_project_declaring_nothing_carries_no_mcp_config() {
         let dir = crate::test_scratch::Scratch::new("job-argv-none");
 
-        let argv = job_pane_argv(dir.path(), "forge-job-j1", &serde_json::Map::new())
+        let none = serde_json::Map::new();
+        let argv = job_pane_argv(dir.path(), "forge-job-j1", &launch(&none, "", &[]))
             .expect("nothing to write is not a failure");
 
         assert_eq!(argv, terminal::pane_argv(None, None));
@@ -1735,11 +1826,8 @@ mod tests {
         let not_a_dir = dir.path().join("occupied");
         std::fs::write(&not_a_dir, "a file where the config directory should be").unwrap();
 
-        let err = job_pane_argv(
-            &not_a_dir,
-            "forge-job-j1",
-            &declaring(&["epodsystem"]).mcp_servers,
-        )
+        let declared = declaring(&["epodsystem"]).mcp_servers;
+        let err = job_pane_argv(&not_a_dir, "forge-job-j1", &launch(&declared, "", &[]))
         .expect_err("a pane that would lack its servers is not started")
         .to_string();
 

@@ -63,10 +63,6 @@ pub struct JobSpec {
     pub resume_id: Option<String>,
     pub agent_session_id: Option<String>,
     pub counts_against_session_cap: bool,
-    /// How long a resident session may sit parked between turns, from
-    /// `pipelineConfig.sessionResidencySeconds`. `None` and `Some(0)` both mean
-    /// "use the default" — see `resolve_residency`.
-    pub session_residency_seconds: Option<u64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

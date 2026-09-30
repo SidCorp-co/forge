@@ -335,7 +335,6 @@ fn chat_spec(session_id: &str, prompt: &str, turn: &Turn) -> JobSpec {
         resume_id: turn.resume_id.clone(),
         agent_session_id: Some(session_id.to_string()),
         counts_against_session_cap: false,
-        session_residency_seconds: None,
     }
 }
 

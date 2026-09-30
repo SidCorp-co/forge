@@ -57,6 +57,9 @@ pub struct PreparedJob {
     pub prompt_string: Option<String>,
     #[serde(default)]
     pub model: String,
+    /// The tools this job's policy state denies, as the pane's `--disallowed-tools`.
+    #[serde(default)]
+    pub denied_tools: Vec<String>,
     #[serde(default)]
     pub repo_path: Option<String>,
     #[serde(default)]
@@ -70,7 +73,8 @@ pub enum Refusal {
     NotFound,
     AlreadyHeld,
     IssueBusy,
-    BudgetExhausted,
+    /// The project's policy cannot say how this job runs; core's sentence says why.
+    PolicyRefused(String),
     HoldLost,
     RunnerTooOld,
     RunnerWithdrawn,
@@ -81,12 +85,12 @@ pub enum Refusal {
 }
 
 impl Refusal {
-    fn of(raw: &str) -> Self {
+    fn of(raw: &str, detail: Option<&str>) -> Self {
         match raw {
             "not_found" => Self::NotFound,
             "already_held" => Self::AlreadyHeld,
             "issue_busy" => Self::IssueBusy,
-            "budget_exhausted" => Self::BudgetExhausted,
+            "policy_refused" => Self::PolicyRefused(detail.unwrap_or_default().to_string()),
             "hold_lost" => Self::HoldLost,
             "runner_too_old" => Self::RunnerTooOld,
             "runner_withdrawn" => Self::RunnerWithdrawn,
@@ -103,7 +107,7 @@ impl Refusal {
             Self::NotFound => "not_found",
             Self::AlreadyHeld => "already_held",
             Self::IssueBusy => "issue_busy",
-            Self::BudgetExhausted => "budget_exhausted",
+            Self::PolicyRefused(_) => "policy_refused",
             Self::HoldLost => "hold_lost",
             Self::RunnerTooOld => "runner_too_old",
             Self::RunnerWithdrawn => "runner_withdrawn",
@@ -111,6 +115,14 @@ impl Refusal {
             Self::RunnerUnbound => "runner_unbound",
             Self::ReleaseLabelMissing => "release_label_missing",
             Self::Unknown(raw) => raw,
+        }
+    }
+
+    /// The word, and core's sentence where it sent one — what a log line needs to be acted on.
+    pub fn describe(&self) -> String {
+        match self {
+            Self::PolicyRefused(detail) if !detail.is_empty() => format!("policy_refused: {detail}"),
+            other => other.as_str().to_string(),
         }
     }
 }
@@ -132,6 +144,8 @@ struct ClaimResponse {
     ok: bool,
     #[serde(default)]
     reason: Option<String>,
+    #[serde(default)]
+    detail: Option<String>,
     #[serde(default)]
     prepared: Option<PreparedJob>,
 }
@@ -228,6 +242,7 @@ pub async fn prepare_within(
     }
     Ok(Prepared::Refused(Refusal::of(
         parsed.reason.as_deref().unwrap_or("unknown"),
+        parsed.detail.as_deref(),
     )))
 }
 
@@ -239,6 +254,7 @@ pub async fn start(client: &CoreClient, job_id: &str, session_id: &str) -> Resul
     }
     Ok(Started::Refused(Refusal::of(
         parsed.reason.as_deref().unwrap_or("unknown"),
+        parsed.detail.as_deref(),
     )))
 }
 
@@ -546,7 +562,7 @@ mod tests {
             "not_found",
             "already_held",
             "issue_busy",
-            "budget_exhausted",
+            "policy_refused",
             "hold_lost",
             "runner_too_old",
             "runner_withdrawn",
@@ -554,7 +570,7 @@ mod tests {
             "runner_unbound",
             "release_label_missing",
         ] {
-            let refusal = Refusal::of(raw);
+            let refusal = Refusal::of(raw, None);
             assert!(
                 !matches!(refusal, Refusal::Unknown(_)),
                 "`{raw}` fell through to Unknown"
@@ -565,9 +581,35 @@ mod tests {
 
     #[test]
     fn a_reason_from_a_newer_core_keeps_its_word() {
-        let refusal = Refusal::of("some_future_reason");
+        let refusal = Refusal::of("some_future_reason", None);
         assert_eq!(refusal, Refusal::Unknown("some_future_reason".into()));
         assert_eq!(refusal.as_str(), "some_future_reason");
+    }
+
+    #[test]
+    fn a_policy_refusal_keeps_the_sentence_core_sent() {
+        let raw: ClaimResponse = serde_json::from_value(serde_json::json!({
+            "ok": false, "reason": "policy_refused", "code": "POLICY_UNDECLARED",
+            "detail": "POLICY_UNDECLARED: project p1 has no policy"
+        }))
+        .unwrap();
+        let refusal = Refusal::of(raw.reason.as_deref().unwrap(), raw.detail.as_deref());
+        assert_eq!(refusal.as_str(), "policy_refused");
+        assert_eq!(
+            refusal.describe(),
+            "policy_refused: POLICY_UNDECLARED: project p1 has no policy"
+        );
+    }
+
+    #[test]
+    fn a_preparation_carries_the_denied_tools_its_policy_state_names() {
+        let raw = serde_json::json!({
+            "jobId": "j1", "agentSessionId": "s1", "model": "opus",
+            "deniedTools": ["Bash(git push:*)", "CronCreate"]
+        });
+        let prepared: PreparedJob = serde_json::from_value(raw).unwrap();
+        assert_eq!(prepared.denied_tools, vec!["Bash(git push:*)", "CronCreate"]);
+        assert_eq!(prepared.model, "opus");
     }
 
     #[test]
