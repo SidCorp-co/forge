@@ -807,6 +807,21 @@ describe('a run of a file that lists the root', () => {
     expect(r.status).toBe(0);
   }, 60_000);
 
+  it('fails one whose child log was removed, since what its processes listed is then unknown', () => {
+    writeFileSync(
+      join(dir, 'unlogged.test.mjs'),
+      [
+        "import { rmSync } from 'node:fs';",
+        "it('removes the log', () => { rmSync(process.env.FORGE_WHOLE_TREE_LOG); });",
+      ].join('\n'),
+    );
+    const r = vitest('unlogged.test.mjs');
+    expect(r.status).toBe(1);
+    expect(`${r.stdout}${r.stderr}`).toMatch(
+      /unlogged\.test\.mjs this file's child log could not be read \(ENOENT\)/,
+    );
+  }, 60_000);
+
   it('passes the same file once it carries the declaration', () => {
     writeFileSync(join(dir, 'marked.test.mjs'), [`// ${MARK} whole-tree`, ...body].join('\n'));
     const r = vitest('marked.test.mjs');
