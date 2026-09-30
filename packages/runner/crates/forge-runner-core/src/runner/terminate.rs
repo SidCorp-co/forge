@@ -316,7 +316,8 @@ fn held_checkout(residence: &Residence, verb: Verb, run_id: &str, path: &Path) -
             "refusing to {verb:?} run {run_id}: {} stands, but it is no checkout of its own — \
              git, asked at the path, answers for the enclosing checkout {}, so anything read, \
              preserved or pushed from it would be that checkout's. Nothing was preserved, pushed \
-             or removed; the directory is partway through a removal, or its `.git` file is gone",
+             or removed; a directory reads this way partway through a removal, where a \
+             checkout's `.git` file is missing, or where it was never a checkout",
             path.display(),
             top.display()
         ))),
@@ -2356,6 +2357,30 @@ mod tests {
             assert!(
                 err.contains("registers"),
                 "the refusal must say what git said, not that something went wrong: {err}"
+            );
+        }
+    }
+
+    /// Consult on 0473857b9 F1: an ordinary subdirectory that never held a
+    /// `.git` file reads `Enclosed` too, so the refusal names both paths and
+    /// asserts no deletion it never measured.
+    #[test]
+    fn an_enclosed_refusal_names_both_paths_and_claims_no_history() {
+        let p = Path::new("/repo/.claude/worktrees/stray");
+        let err = held_checkout(
+            &Residence::Enclosed(PathBuf::from("/repo")),
+            Verb::Abandon,
+            "run-1",
+            p,
+        )
+        .expect_err("an answer about another checkout is no answer about this one")
+        .to_string();
+        assert!(err.contains("/repo/.claude/worktrees/stray"), "{err}");
+        assert!(err.contains("enclosing checkout /repo,"), "{err}");
+        for claimed in ["is partway", "is gone", "was removed"] {
+            assert!(
+                !err.contains(claimed),
+                "no unmeasured history ({claimed}): {err}"
             );
         }
     }
