@@ -296,6 +296,10 @@ describe('reading a child log', () => {
       { dir: '/b' },
     ]);
   });
+  it('says a line is pending while the log ends mid-line, and not once it ends on a newline', () => {
+    expect(logLines(bytes('{"dir":"/a"}\n{"dir"'), 0).pending).toBe(true);
+    expect(logLines(bytes('{"dir":"/a"}\n'), 0).pending).toBe(false);
+  });
   it('reads a log emptied since the last read from its start', () => {
     expect(logLines(bytes('{"dir":"/c"}\n'), 400).lines).toEqual([{ dir: '/c' }]);
   });
@@ -819,6 +823,21 @@ describe('a run of a file that lists the root', () => {
     expect(r.status).toBe(1);
     expect(`${r.stdout}${r.stderr}`).toMatch(
       /unlogged\.test\.mjs this file's child log could not be read \(ENOENT\)/,
+    );
+  }, 60_000);
+
+  it('fails one whose child log ends in a line nothing finished writing', () => {
+    writeFileSync(
+      join(dir, 'torn.test.mjs'),
+      [
+        "import { appendFileSync } from 'node:fs';",
+        "it('tears the log', () => { appendFileSync(process.env.FORGE_WHOLE_TREE_LOG, '{\"dir\":'); });",
+      ].join('\n'),
+    );
+    const r = vitest('torn.test.mjs');
+    expect(r.status).toBe(1);
+    expect(`${r.stdout}${r.stderr}`).toMatch(
+      /torn\.test\.mjs the child log ends in a line no process finished writing/,
     );
   }, 60_000);
 

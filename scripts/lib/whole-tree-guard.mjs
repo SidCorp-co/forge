@@ -56,8 +56,9 @@ function readLog() {
     const why = `this file's child log could not be read (${e?.code ?? 'unknown'}), so what its processes listed is unknown and counted as the root`;
     return [{ dir: ROOT, via: why, at: null }];
   }
-  const { lines, offset } = logLines(bytes, state.offset);
+  const { lines, offset, pending } = logLines(bytes, state.offset);
   state.offset = offset;
+  state.pending = pending;
   return lines;
 }
 
@@ -108,6 +109,12 @@ async function childHits() {
     hits.push({
       dir: ROOT,
       via: `child process ${pid} was still running when the file ended, so what it lists afterwards is read by nobody and counted as the root`,
+      at: null,
+    });
+  if (state.pending)
+    hits.push({
+      dir: ROOT,
+      via: 'the child log ends in a line no process finished writing, so what it held is unknown and counted as the root',
       at: null,
     });
   if (mine().length > 0)
