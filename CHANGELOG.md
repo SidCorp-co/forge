@@ -3149,6 +3149,9 @@
   leaves an issue alone while its run holds a live claim, and says so on any issue it moves.
 - **Forge now moves stuck work back to `open` as itself.** The note and the status change appear
   under the project's agent account instead of the project owner's, at the same time.
+- **A project's agent account is shown by its handle,** not a made-up `agents.forge.invalid`
+  address, existing accounts included; a name somebody gave one is kept. A move Forge calls off no
+  longer adds that account to your project.
 - **Releases and other background jobs now get your project's tools.** A batch release started
   without the servers your project declares, so it could not publish to a storefront. A job that
   cannot be given them now waits instead.
