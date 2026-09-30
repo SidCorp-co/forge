@@ -1,5 +1,9 @@
+import { spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { HOSTED_WORKERS_PER_CORE, integrationWorkers } from './integration-workers.js';
+import { HOSTED_WORKERS_PER_CORE, integrationWorkers, workerLine } from './integration-workers.js';
 
 const HOSTED = { GITHUB_ACTIONS: 'true', RUNNER_ENVIRONMENT: 'github-hosted' };
 
@@ -56,4 +60,78 @@ describe('integrationWorkers under VITEST_MAX_WORKERS', () => {
       );
     },
   );
+});
+
+describe('workerLine, the account a run prints of its own count', () => {
+  const shared = integrationWorkers({}, 56);
+
+  it('names the count, the cores and the rule where nothing overrode it', () => {
+    expect(workerLine(shared, 3, undefined, {})).toBe(
+      '[integration] 3 worker(s) on 56 core(s) — a shared machine, a quarter of the cores and at most 3',
+    );
+  });
+
+  it('names the flag that overrode the rule, and the count the rule gave', () => {
+    expect(workerLine(shared, 5, 5, {})).toMatch(/^\[integration\] 5 worker\(s\) on 56 core\(s\)/);
+    expect(workerLine(shared, 5, 5, {})).toMatch(
+      /; --maxWorkers=5 overrode the 3 that rule gives$/,
+    );
+  });
+
+  it('says so where something other than the flag moved the count', () => {
+    expect(workerLine(shared, 7, undefined, {})).toMatch(
+      /; something outside that rule overrode the 3 that rule gives$/,
+    );
+  });
+
+  it('adds nothing where the flag asks for what the rule gives', () => {
+    expect(workerLine(shared, 3, 3, {})).not.toMatch(/overrode/);
+  });
+
+  it.each([5, '5', '50%', 2])(
+    'refuses --maxWorkers=%j beside VITEST_MAX_WORKERS=2, naming both',
+    (flag) => {
+      const env = { VITEST_MAX_WORKERS: '2' };
+      expect(() => workerLine(integrationWorkers(env, 56), 2, flag, env)).toThrow(
+        `--maxWorkers=${flag} and VITEST_MAX_WORKERS=2 both set a worker count, and vitest takes ` +
+          'the variable and drops the flag. Give one:',
+      );
+    },
+  );
+
+  it('takes VITEST_MAX_WORKERS alone, and an empty one beside the flag, without refusing', () => {
+    const env = { VITEST_MAX_WORKERS: '2' };
+    expect(workerLine(integrationWorkers(env, 56), 2, undefined, env)).toMatch(
+      /— VITEST_MAX_WORKERS=2$/,
+    );
+    expect(workerLine(shared, 5, 5, { VITEST_MAX_WORKERS: '' })).toMatch(/--maxWorkers=5 overrode/);
+  });
+});
+
+describe('the integration config given both --maxWorkers and VITEST_MAX_WORKERS', () => {
+  it('refuses before any file runs, naming both, off the flag vitest itself parsed', () => {
+    const core = join(dirname(fileURLToPath(import.meta.url)), '../..');
+    const vitest = join(
+      dirname(createRequire(import.meta.url).resolve('vitest/package.json')),
+      'vitest.mjs',
+    );
+    const env: NodeJS.ProcessEnv = { VITEST_MAX_WORKERS: '2' };
+    for (const [k, v] of Object.entries(process.env)) if (!k.startsWith('VITEST')) env[k] ??= v;
+    const run = spawnSync(
+      process.execPath,
+      [
+        vitest,
+        'run',
+        '--config',
+        'vitest.integration.config.ts',
+        '--maxWorkers=5',
+        'file-database-isolation',
+      ],
+      { cwd: core, env, encoding: 'utf8', timeout: 60_000 },
+    );
+    const out = `${run.stdout}${run.stderr}`;
+    expect(out).toContain('--maxWorkers=5 and VITEST_MAX_WORKERS=2 both set a worker count');
+    expect(out).not.toMatch(/Test Files/);
+    expect(run.status).toBe(1);
+  }, 90_000);
 });

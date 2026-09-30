@@ -71,8 +71,10 @@ and global setup prints what vitest resolved before the first file:
 | Anywhere else | a quarter of the cores, at least 1, at most 3 | vitest's default is one worker per core PER PACKAGE and turbo fans packages out together, which put a 12-core box at load average 27. |
 | Either, with `VITEST_MAX_WORKERS=<n>` | `n` | A one-off run. A value that is not a positive whole number is refused by name; an empty one reads as unset. |
 
-A `--maxWorkers` on the command line beats the machine's rule, and the printed line says so; it
-does not beat `VITEST_MAX_WORKERS`, which vitest itself reads after the command line.
+A `--maxWorkers` on the command line beats the machine's rule, and the printed line names the flag
+and the count the rule would have given. Giving it beside `VITEST_MAX_WORKERS` is refused before any
+file runs, naming both: vitest reads the variable after the command line and would drop the flag
+without a word, so the run asks for one of the two.
 
 Running files in parallel is safe because every file clones a database of its own (see *Concurrent
 runs on one server*); `tests/integration/file-database-isolation-e2e.test.ts` goes red the day two
