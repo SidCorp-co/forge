@@ -13,6 +13,22 @@ export function synthesizeAgentEmail(handle: string): string {
   return `${handle}.${randomBytes(6).toString('hex')}@${AGENT_EMAIL_DOMAIN}`;
 }
 
+/**
+ * The `users` row an agent account is minted with, wherever one is minted. Its handle is also the
+ * label a reader is shown, so no renderer falls back to the synthesized address, which exists only
+ * because the column is required and unique (ISS-1317).
+ */
+export function agentAccountRow(handle: string, id?: string) {
+  return {
+    ...(id ? { id } : {}),
+    email: synthesizeAgentEmail(handle),
+    kind: 'agent' as const,
+    passwordHash: null,
+    emailVerifiedAt: new Date(),
+    displayName: handle,
+  };
+}
+
 export const AGENT_CANNOT_LOGIN =
   'this account is an agent and cannot sign in — an agent authenticates with its ' +
   'Agent Access Token and holds no password, no session and no mailbox. An org ' +
