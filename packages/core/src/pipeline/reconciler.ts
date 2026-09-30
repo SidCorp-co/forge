@@ -12,7 +12,11 @@ import {
   AUTONOMOUS_JOB_TYPE,
 } from './autonomous-mode.js';
 import { checkAutonomousRescueCap, recordAutonomousRescue } from './autonomous-rescue-cap.js';
-import { reconcilerActorFor } from './reconciler-actor.js';
+import {
+  AgentMintedSinceSelected,
+  mintReconcilerActor,
+  reconcilerActorFor,
+} from './reconciler-actor.js';
 import {
   buildWedgeResetBody,
   readWedgeLease,
@@ -245,6 +249,7 @@ async function resetOneWedge(row: WedgeCandidate): Promise<boolean> {
           if (await personOwesAnAnswer(tx, row.id)) throw new AskedSinceSelected();
           const reading = readWedgeLease(await wedgeLeaseUnderLock(tx, row.id), new Date());
           if (wedgeLeaseHoldsTheIssue(reading)) throw new LeaseRenewedSinceSelected();
+          await mintReconcilerActor(tx, row.project_id, actor);
           await tx.insert(comments).values({
             issueId: row.id,
             authorId: actor.id,
@@ -285,6 +290,13 @@ async function resetOneWedge(row: WedgeCandidate): Promise<boolean> {
       logger.info(
         { issueId: row.id },
         'reconciler: a lease was renewed since the wedge read, so it stays',
+      );
+      return false;
+    }
+    if (err instanceof AgentMintedSinceSelected) {
+      logger.info(
+        { issueId: row.id, projectId: row.project_id },
+        'reconciler: the project gained an agent account since the wedge read, so the next pass resets it',
       );
       return false;
     }

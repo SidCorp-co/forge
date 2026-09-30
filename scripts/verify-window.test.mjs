@@ -131,6 +131,9 @@ const heads = {};
 beforeAll(() => {
   box = mkdtempSync(join(tmpdir(), 'verify-window-'));
   git(box, 'init', '-q', '--bare', '--initial-branch=main', join(box, 'origin.git'));
+  // Every clone copies origin.git's objects file by file. From git 2.54 a push starts a detached repack
+  // there, which deletes loose objects a clone has listed and not yet copied, so no push may start one.
+  git(join(box, 'origin.git'), 'config', 'maintenance.auto', 'false');
   seed = clone('seed');
   put(seed, {
     '.forge/verify-queue.json': CONFIG,

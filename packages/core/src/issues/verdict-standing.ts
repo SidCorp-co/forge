@@ -5,15 +5,11 @@
  * being unable to say what a host serves now (ISS-1286). Where that reading names what is running,
  * it decides a verdict written in either field, the observation being Forge's (ISS-1346); where it
  * names nothing, a source verdict resolves against the issue's own source. The shapes an identity
- * may be written in: `messaging/verdict-identity.ts`.
+ * may be written in: `messaging/verdict-identity.ts`. Its report says the reading, once (ISS-1346).
  */
 
 import { sameIdentity } from '../messaging/verdict-identity.js';
-import {
-  type ServingReading,
-  servedClause,
-  servedCommits,
-} from '../release-batch/serving-reading.js';
+import { type ServingReading, servedCommits } from '../release-batch/serving-reading.js';
 
 /** `source` is a commit that was read, which cannot say the code was ever running. */
 export interface VerdictIdentity {
@@ -117,23 +113,6 @@ function missingClause(serving: ServingReading): string {
   return serving.kind === 'undeclared' ? ` — ${serving.missing}` : '';
 }
 
-function unwitnessedWhy(serving: ServingReading): string {
-  if (serving.kind === 'undeclared') {
-    return `, and nothing here can read what this project is serving: ${serving.missing}`;
-  }
-  if (serving.kind === 'unreadable') {
-    return `, and what this project answers through could not be read${askedClause(serving)}: ${serving.why}`;
-  }
-  return '';
-}
-
-/** Each served commit beside where it runs: two commits on two stages is a project between
- *  releases, not a fault, so it is never said as a warning (ISS-1346, judge finding 2). */
-function servingClause(serving: Extract<ServingReading, { kind: 'serving' }>): string {
-  const unread = serving.unread.length === 0 ? '' : ` (unread: ${serving.unread.join('; ')})`;
-  return `${servedClause(serving.served)}, read at ${serving.readAt}${unread}`;
-}
-
 function supersededSentence(
   at: VerdictIdentity | null,
   serving: ServingReading,
@@ -146,7 +125,7 @@ function supersededSentence(
   if (serving.kind !== 'serving') {
     return `judged at ${judged}, and nothing this project declares answered what it is serving`;
   }
-  return `judged at ${judged}, which is not a commit this project is serving; it is serving ${servingClause(serving)}`;
+  return `judged at ${judged}, which is not a commit this project is serving`;
 }
 
 export function standingSentence(
@@ -156,8 +135,7 @@ export function standingSentence(
   identities: IssueIdentities,
 ): string {
   if (standing === 'stands') {
-    const where = serving.kind === 'serving' ? `: ${servingClause(serving)}` : '';
-    return `judged at ${named(at?.value ?? null)}, which this project is serving${where}`;
+    return `judged at ${named(at?.value ?? null)}, which this project is serving`;
   }
   if (standing === 'unanchored') {
     return at
@@ -165,7 +143,7 @@ export function standingSentence(
       : 'judged without naming what it was judged against, so nothing says where it held';
   }
   if (standing === 'unwitnessed') {
-    return `judged against source ${named(at?.value ?? null)}, which is still the source this issue stands at, but no runtime witnessed it — a source identity says which code was read, never that the code was running${unwitnessedWhy(serving)}`;
+    return `judged against source ${named(at?.value ?? null)}, which is still the source this issue stands at, but no runtime witnessed it — a source identity says which code was read, never that the code was running`;
   }
   if (standing === 'uncorroborated') return uncorroboratedSentence(at, serving);
   return supersededSentence(at, serving, identities);
