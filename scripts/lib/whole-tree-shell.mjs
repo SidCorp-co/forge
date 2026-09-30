@@ -43,14 +43,29 @@ export function climbsAfterMagic(pattern) {
 /**
  * Where the kernel resolves a path: the realpath of the path as written, its parent segments not
  * collapsed first, so a symlink's `..` and `/proc/self/cwd` land where a listing of them lands. A
- * path that does not exist keeps its lexical placement.
+ * path that does not exist keeps its lexical placement, since nothing can list it; one the kernel
+ * cannot resolve for any other reason (a symlink loop, a directory it may not search) is `null`,
+ * which every caller counts as the root.
  */
 export function physical(path) {
   try {
     return realpathSync.native(path);
-  } catch {
-    return resolve(path);
+  } catch (e) {
+    return e?.code === 'ENOENT' || e?.code === 'ENOTDIR' ? resolve(path) : null;
   }
+}
+
+/**
+ * Whether `dir` is `root` or inside it, decided on canonical paths: each side is read both as
+ * written and by its realpath, and either reading inside counts. A spelling of the root the
+ * kernel resolves — a symlink to it, `/proc/<pid>/cwd/..` — is therefore the root, whatever the
+ * string; a directory that cannot be canonicalized is too.
+ */
+export function withinRoot(root, dir) {
+  const dirs = [dir, physical(dir)];
+  if (dirs.includes(null)) return true;
+  const roots = [...new Set([root, physical(root) ?? root])];
+  return dirs.some((d) => roots.some((r) => d === r || d.startsWith(`${r}${sep}`)));
 }
 
 /** `base` joined with `word` where the kernel would take it, or null where either is unevaluable. */
@@ -1338,7 +1353,7 @@ function repositoryReads(sub, tail, dir, gitDir, root) {
 /** The work tree a directory inside this repository belongs to: the root, as far as this reads. */
 function topOf(dir, root) {
   if (dir === null) return null;
-  return dir === root || dir.startsWith(`${root}${sep}`) ? root : dir;
+  return withinRoot(root, dir) ? root : dir;
 }
 
 /**
@@ -1390,7 +1405,9 @@ function pathspecDir(spec, base, top, via, root) {
     s = m[3];
   }
   if (from === null || climbsAfterMagic(s)) return [place(null, via, root)];
-  return [
-    place(physical(isAbsolute(s) ? globBase(s) : `${from}/${globBase(s || '.')}`), via, root),
-  ];
+  // git normalises a pathspec's `..` itself, before any symlink is read, and the kernel reads the
+  // symlinks: both readings are where it may list, so each is placed.
+  const path = isAbsolute(s) ? globBase(s) : `${from}/${globBase(s || '.')}`;
+  const readings = [...new Set([physical(path), resolve(path)])];
+  return readings.map((dir) => place(dir, via, root));
 }
