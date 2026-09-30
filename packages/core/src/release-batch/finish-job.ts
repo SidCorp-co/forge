@@ -18,7 +18,7 @@ import { issues, pipelineRuns } from '../db/schema.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { logger } from '../logger.js';
 import { closeRunIfOneShot } from '../pipeline/runs.js';
-import { abortedError, batchAborted } from './abort-stamp.js';
+import { abortedError, batchAborted, rewordStoredAbort } from './abort-stamp.js';
 import {
   ReleaseFinishedForOtherCommitError,
   ReleaseFinishFenceLostError,
@@ -373,6 +373,13 @@ export async function runReleaseBatchFinish(
     await hold
       .commit(failed(own), async () => failed(refusalOf(await abortedError(runId)))())
       .catch(() => {});
+    // An abort still between its stamp and its settle was read as `returning`; see rewordStoredAbort.
+    await rewordStoredAbort(runId).catch((reworded) => {
+      logger.error(
+        { err: reworded, runId },
+        'release-batch: an aborted refusal could not be re-read',
+      );
+    });
   } finally {
     clearInterval(heartbeat);
   }

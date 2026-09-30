@@ -11,6 +11,7 @@
  */
 
 import { HTTPException } from 'hono/http-exception';
+import { ABORTED_CODE, abortedSentence } from './abort-stamp.js';
 import {
   alsoBlocking,
   blockerHttpStatus,
@@ -206,7 +207,7 @@ export function finishRefusal(err: unknown): HTTPException | null {
   }
   if (err instanceof ReleaseBatchAbortedError) {
     return conflict(
-      'RELEASE_BATCH_ABORTED',
+      ABORTED_CODE,
       abortedSentence(err),
       err.closed === null ? { account: err.account } : { account: err.account, closed: err.closed },
     );
@@ -237,39 +238,4 @@ export function finishedForSentence(err: ReleaseFinishedForOtherCommitError): st
       ? 'finished with no named commit, on a live build that had changed from what was serving when it opened'
       : `finished for ${err.finishedCommit}`;
   return `This batch already ${verified}, and this call names ${err.askedCommit}, which that finish never verified. A finished batch is not verified again, so its issues' closes say nothing about ${err.askedCommit}; a release of ${err.askedCommit} is a batch of its own.`;
-}
-
-/** What a finish on an aborted batch is told, by what the abort did to that batch. */
-export function abortedSentence(err: ReleaseBatchAbortedError): string {
-  const none = 'This batch was aborted, so there is nothing left to finish';
-  const closed = err.closed ?? [];
-  const kept = closed.length > 0 ? ` ${closedBeforeAbort(closed, err.shown)}` : '';
-  switch (err.account) {
-    case 'shipped':
-      return `${none}: its release had already shipped, so the issues its finish closed stay closed, and the abort moved none of them.`;
-    case 'held': {
-      const rest = closed.length > 0 ? 'Every other issue stays' : 'Its issues stay';
-      // `release-records` takes only issues at the gate that no batch claims, so the abort that
-      // puts them there comes first and is never offered beside it.
-      return `${none}: it recorded a promotion, so the abort kept its claims.${kept} ${rest} at \`releasing\`, still claimed, for a person to settle. To settle them, abort this batch again with \`promotedRoster: "return-to-gate"\`, which puts them back at the release gate; once they are there, if the release did land, record it with POST /api/projects/${err.projectId}/release-records, naming the commit production is serving.`;
-    }
-    case 'returning':
-      return `${none}. The abort had not finished putting its roster back at the release gate when this was read, so each issue’s own status says whether its claim is released yet.`;
-    case 'released':
-      if (closed.length > 0) {
-        return `${none}.${kept} Its claims were released and the rest of its roster is back where the abort put it. If the release did land after all, that is a person’s call to make on each of those.`;
-      }
-      return `${none}: its claims were released and its roster is back where the abort put it. If the release did land after all, that is a person’s call to make on each issue.`;
-    case 'unrecorded':
-      return 'This batch’s run was cancelled, so there is nothing left to finish. Nothing on the run records what that did to its issues, so each issue’s own status and notes are the account; if the release did land after all, that is a person’s call to make on each issue.';
-  }
-}
-
-/** The issues a finish closed before the abort landed, by the key a person knows each by. */
-function closedBeforeAbort(ids: string[], shown: ReadonlyMap<string, string>): string {
-  const one = ids.length === 1;
-  const names = ids
-    .map((id) => shown.get(id) ?? id)
-    .sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
-  return `Its finish had already closed ${names.join(', ')} before the abort, and ${one ? 'it stays' : 'they stay'} closed.`;
 }
