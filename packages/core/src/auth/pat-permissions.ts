@@ -122,6 +122,7 @@ export const PAT_UNGRANTABLE: Readonly<Record<string, string>> = Object.freeze({
   '/api/llms.txt': PUBLIC,
   '/pair': PUBLIC,
   '/api/pipeline/registry': PUBLIC,
+  '/api/schemas': PUBLIC,
   '/orgs':
     'the guide router is mounted at the root for its public pages and its org-guide routes ride ' +
     'along there; the token path to them is /api/orgs',
