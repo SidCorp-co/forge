@@ -274,18 +274,18 @@ fn stray_line(p: &Path, top: &Path, holder: Option<&str>, clearing: &Clearing<'_
                     named(&deleted)
                 ));
             }
+            let unread = "make sure no process this box could not read works in it, then ";
             let first = match (here.is_empty(), not_asked) {
-                (false, _) => format!(
-                    "end {}, then ",
+                (false, n) => format!(
+                    "end {}, {}",
                     here.iter()
                         .map(|r| format!("pid {}", r.pid))
                         .collect::<Vec<_>>()
-                        .join(" and ")
+                        .join(" and "),
+                    if n == 0 { "then " } else { unread }
                 ),
                 (true, 0) => String::new(),
-                (true, _) => {
-                    "make sure no process this box could not read works in it, then ".to_string()
-                }
+                (true, _) => unread.to_string(),
             };
             let after = match deleted.as_slice() {
                 [] => String::new(),
@@ -1428,6 +1428,32 @@ mod tests {
         let _ = std::fs::remove_dir_all(&repo);
     }
 
+    /// ISS-1250 criteria 43, 44, review 711cb47 F1: a resident read beside
+    /// pids the kernel refused is named to end, and the act still says the
+    /// reading was partial.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_stray_read_in_part_with_a_resident_names_both_in_its_act() {
+        let (repo, wt) = half_deleted("straymixed").await;
+        let proc = repo.join("proc-of-this-test");
+        residents::plant(&proc, 909, &wt.to_string_lossy(), "next-server (v16.2.1)");
+        let unaskable = residents::Unaskable::at(&proc, 8123);
+
+        let said = stray_said(&repo, &proc).await;
+        drop(unaskable);
+        let line = said
+            .lines()
+            .find(|l| l.contains(&format!("leaving {} standing", wt.display())))
+            .unwrap_or_else(|| panic!("no stray line: {said}"));
+
+        let act = act_of(line);
+        assert!(
+            act.contains("end pid 909") && act.contains("could not read works in it"),
+            "a test run as root reads every pid and plants nothing: {act}"
+        );
+        let _ = std::fs::remove_dir_all(&repo);
+    }
+
     /// ISS-1250 criterion 43: a reading the kernel refused in part says so,
     /// so "no process is living in it" is never a claim about pids it could
     /// not read.
@@ -1450,6 +1476,10 @@ mod tests {
             "a test run as root reads every pid and plants nothing: {line}"
         );
         assert!(!line.contains("no process is living in it"), "{line}");
+        assert!(
+            act_of(line).contains("no process this box could not read works in it"),
+            "the act says what it could not read: {line}"
+        );
         assert!(
             !line.contains("1 pid"),
             "the count moves with every other user's processes, so carrying it would say the \
