@@ -34,8 +34,8 @@ export interface ReleaseHold {
 export interface StoredReleaseHold extends ReleaseHold {
   readonly at: string;
   readonly status: 'awaiting_release';
-  /** Every reason commented on this row since it was last held afresh, as `saidKey`s. It goes
-   *  with the hold, so a row cleared and held again starts with nothing said (ISS-1346). */
+  /** The latest `SAID_LIMIT` reasons commented on this row since it was last held afresh, as
+   *  `saidKey`s; it goes with the hold, so a row held again starts with nothing said (ISS-1346). */
   readonly said?: readonly string[];
 }
 
@@ -340,23 +340,35 @@ async function commentOnce(
   const said = saidOf(row.held);
   if (said.includes(key)) return;
   const body = releaseHoldComment(hold, true, covers);
-  const wanted = new Set([saidInComment(body), saidInComment(releaseHoldComment(hold))]);
-  const posted = await db
-    .select({ body: comments.body })
-    .from(comments)
-    .where(and(eq(comments.issueId, row.id), like(comments.body, `%release-hold: ${hold.code}%`)));
+  const legacy = !Array.isArray((row.held as Record<string, unknown> | null)?.said);
+  const posted = legacy ? await saidBefore(row.id, hold, body) : false;
   await db.transaction(async (tx) => {
-    if (!posted.some((c) => wanted.has(saidInComment(c.body)))) {
-      await tx.insert(comments).values({ issueId: row.id, authorId, body });
-    }
-    await tx.execute(sql`
+    // Guarded on the hold read, as `writeReleaseHolds` is: a hold replaced since keeps its own `said`.
+    const updated = (await tx.execute(sql`
       UPDATE issues i
          SET session_context = jsonb_set(i.session_context,
                                          ${`{${RELEASE_HOLD_KEY},said}`}::text[],
                                          ${JSON.stringify(withSaid(said, key))}::jsonb, true)
-       WHERE i.id = ${row.id} AND i.session_context ? ${RELEASE_HOLD_KEY}
-    `);
+       WHERE i.id = ${row.id}
+         AND i.status = 'awaiting_release'
+         AND i.release_batch_run_id IS NULL
+         AND i.session_context -> ${RELEASE_HOLD_KEY} = ${JSON.stringify(row.held)}::jsonb
+      RETURNING i.id
+    `)) as unknown as Array<{ id: string }>;
+    if (updated.length > 0 && !posted) {
+      await tx.insert(comments).values({ issueId: row.id, authorId, body });
+    }
   });
+}
+
+/** Only a hold stored before `said` existed is looked up in the thread; any other says itself. */
+async function saidBefore(issueId: string, hold: ReleaseHold, body: string): Promise<boolean> {
+  const wanted = new Set([saidInComment(body), saidInComment(releaseHoldComment(hold))]);
+  const posted = await db
+    .select({ body: comments.body })
+    .from(comments)
+    .where(and(eq(comments.issueId, issueId), like(comments.body, `%release-hold: ${hold.code}%`)));
+  return posted.some((c) => wanted.has(saidInComment(c.body)));
 }
 
 /** `ISS-nn` for each row a shared hold is written onto, in the order given; a failed read names

@@ -418,4 +418,29 @@ describe('a reason is said once for as long as a row stays held', () => {
 
     expect(await holdComments(id)).toHaveLength(2);
   }, 30_000);
+
+  // Review 208900 F1 and its pre-existing note: a newly oldest row is commented once however many
+  // writers reach it, and a row held again after a clear is not silenced by an earlier episode.
+  it('comments a row newly the oldest once, and again after it was held afresh', async () => {
+    const oldest = await heldRow();
+    const next = await heldRow();
+    const { writeReleaseHolds, refusalHold, clearReleaseHolds } = await holds();
+    const shared = (commentOn: string) =>
+      writeReleaseHolds({
+        issueIds: [oldest, next],
+        holdFor: () => refusalHold('NO_RUNNER_ONLINE', offline),
+        authorId: ownerId,
+        now: new Date(),
+        commentOn: new Set([commentOn]),
+      });
+
+    await shared(next);
+    await Promise.all([shared(next), shared(next)]);
+    expect(await holdComments(next)).toHaveLength(1);
+
+    await clearReleaseHolds([next]);
+    await shared(oldest);
+    await shared(next);
+    expect(await holdComments(next)).toHaveLength(2);
+  }, 30_000);
 });
