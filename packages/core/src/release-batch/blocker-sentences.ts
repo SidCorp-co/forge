@@ -132,7 +132,7 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
   RELEASE_CRITERIA_UNEARNED:
     'This project releases without a person acting, and the sweep that cuts its releases is holding back every issue waiting at the gate: each still owes a judging run on an acceptance criterion. Record a verdict for each criterion named below, or move the issue out of `awaiting_release` if it is not to ship.',
   RELEASE_RUNTIME_UNROUTED:
-    'This project releases without a person acting, only an issue whose every acceptance criterion is earned at what it is serving, and nothing here can read what it is serving — so no verdict a run records can earn one, and every issue waiting at the gate is held on that one reason. Deploy through a Coolify deploy binding, or declare `verify.probes` on the live one, and the next sweep weighs every waiting issue again.',
+    'This project releases without a person acting, only an issue whose every acceptance criterion is earned at what it is serving, and nothing here can read what it is serving — so no verdict a run records can earn one, and every issue waiting at the gate is held on that one reason. Give it a way to be read, and the next sweep weighs every waiting issue again.',
   RELEASE_CHECK_UNEVALUATED:
     'One of the checks that decides whether a release may start could not be run, so this answer cannot say a release would succeed: whatever that check would have found is missing from this list. Every other reason here was reached by a check of its own — act on the ones carrying `evaluated: true`, and retry EVERY entry shaped like this one, each naming the read of its own that has to answer first.',
 };
@@ -311,8 +311,7 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
     return held.length === 0 ? remedy : heldIssuesSentence(remedy, held);
   }
   if (code === 'RELEASE_RUNTIME_UNROUTED' && typeof details?.missing === 'string') {
-    const held = (details.held as HeldIssueRef[] | undefined) ?? [];
-    return `${remedy} What is missing: ${details.missing}. Held: ${held.length} issue(s).`;
+    return unroutedSentence(remedy, details.missing, details);
   }
   if (code === 'RELEASE_WORK_UNMERGED' && details?.shape === 'outside_git') {
     const n = Array.isArray(details.issueIds) ? details.issueIds.length : 0;
@@ -344,6 +343,20 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
   const waiting = details?.waiting;
   if (typeof waiting === 'number') return `${waiting} waiting. ${remedy}`;
   return remedy;
+}
+
+/** The route is read off the bindings the project has, so a provider that cannot report a commit is
+ *  never told to become one (ISS-1346, judge finding 4). */
+function unroutedSentence(
+  remedy: string,
+  missing: string,
+  details: Record<string, unknown>,
+): string {
+  const route =
+    typeof details.route === 'string' ? ` The way to give it one: ${details.route}.` : '';
+  const held = (details.held as HeldIssueRef[] | undefined) ?? [];
+  const lead = `${remedy} What is missing: ${missing}.${route}`;
+  return held.length === 0 ? lead : heldIssuesSentence(lead, held);
 }
 
 /** A `verify` Forge refused takes no project default, so removing it is a repair and not silence. */
