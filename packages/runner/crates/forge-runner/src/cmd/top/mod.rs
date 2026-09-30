@@ -54,13 +54,33 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     let live = !args.once && std::io::stdout().is_terminal();
     if !live {
         let snapshot = gather::frame(&ctx, &mut carry).await;
-        println!("{}", render::frame(&snapshot, None).join("\n"));
+        // Core's text reaches this frame whole (question prompts, blocker
+        // messages), so a control character in it is written out here as on
+        // the live screen: `--once` on a terminal, or piped to one, would
+        // otherwise let core's text recolour or clear it (judge w3, finding 55).
+        let lines: Vec<String> = render::frame(&snapshot, None)
+            .iter()
+            .map(|l| fit::printable(l))
+            .collect();
+        println!("{}", lines.join("\n"));
         return Ok(());
     }
     // One listener for the life of the view, made before the first frame: a
     // listener made afresh beside each sleep hears nothing sent while a frame
     // is gathered or drawn, and the judge at d7da543 lost 10 of 30 that way.
     let mut interrupt = Interrupt::listen()?;
+    // The first gather takes seconds (core's reads, every worktree's walk), and
+    // a blank screen for that long reads as a view that hung (judge w3,
+    // finding 57).
+    {
+        let mut out = std::io::stdout().lock();
+        write!(
+            out,
+            "\x1b[H\x1b[2J{}\nreading this box's sources for the first frame…",
+            render::header(Some(args.interval))
+        )?;
+        out.flush()?;
+    }
     let mut page = 0;
     loop {
         let snapshot = tokio::select! {

@@ -32,6 +32,10 @@ const LONG_PROMPT: &str = "Ship the migration? It supersedes the draft whose wor
 /// at d7da543, where core's own messages say it).
 const LONG_BLOCKER: &str = "This project has no release step, so nothing can take these rows to production until one is declared in the project's pipeline configuration and a runner is online. Owed: ISS-2 criteria 3 and 4.";
 const BETA: &str = "22222222-2222-4222-8222-222222222222";
+/// What the live view draws before its first frame is gathered.
+const READING: &str = "reading this box's sources for the first frame";
+/// A core whose one question on alpha carries terminal control sequences.
+const CONTROL_PROMPT: &str = "control-prompt";
 
 /// A core that answers the routes `top` reads and records every request line.
 struct FakeCore {
@@ -84,7 +88,15 @@ const QUIET_ALPHA_REFUSED_BETA: &str = "quiet-alpha/refused-beta";
 fn answer(path: &str, runners_status: &str) -> (String, String) {
     let ok = |b: String| ("200 OK".to_string(), b);
     let split = runners_status == QUIET_ALPHA_REFUSED_BETA;
-    let runners_status = if split { "200 OK" } else { runners_status };
+    let control = runners_status == CONTROL_PROMPT;
+    let runners_status = if split || control {
+        "200 OK"
+    } else {
+        runners_status
+    };
+    if control && path.starts_with(&format!("/api/questions?projectId={ALPHA}")) {
+        return ok(r#"{"questions":[{"id":"q9","blockerKind":"human","createdAt":"2026-09-30T01:00:00.000Z","askedAt":"","prompt":"\u001b[2J\u001b]0;owned\u0007\u001b[31mShip it?\u001b[0m"}],"total":1,"hasMore":false,"nextCursor":null}"#.into());
+    }
     if split && !path.starts_with("/api/devices/") {
         if path.contains(BETA) {
             return ("403 Forbidden".into(), r#"{"error":"not a member"}"#.into());
@@ -701,6 +713,67 @@ fn an_unread_ledger_is_not_read_as_one_recording_no_master() {
     );
 }
 
+/// Alpha's skill line: alpha's checkout stands on a skill the daemon's
+/// executable does not carry, under a master pane the planted tmux runs.
+fn alpha_skill_line(text: &str) -> &str {
+    text.lines()
+        .find(|l| l.contains("repos/alpha/.claude/skills/forge-master/SKILL.md"))
+        .unwrap_or_else(|| panic!("no skill line for alpha:\n{text}"))
+}
+
+/// Judge w3's variant `tmux-fails` (finding 53, criterion 22): tmux cannot
+/// be asked, so alpha's drifted skill is not said to have no pane on it while
+/// its pane runs.
+#[test]
+fn a_drifted_skill_is_not_called_paneless_when_tmux_cannot_be_asked() {
+    let core = fake_core("200 OK");
+    let b = plant(&core.url);
+    std::fs::write(
+        b.root.join("bin/tmux"),
+        "#!/bin/sh\necho 'error connecting to /tmp/tmux-1000/forge (Permission denied)' >&2\nexit 1\n",
+    )
+    .unwrap();
+    let text = String::from_utf8_lossy(&top(&b, &["--once"]).stdout).into_owned();
+    let projects = section(&text, "PROJECTS");
+    assert!(
+        projects.contains("master   forge-master-alpha: UNREADABLE — tmux list-sessions"),
+        "{projects}"
+    );
+    let line = alpha_skill_line(projects);
+    assert!(
+        line.contains("DRIFT — is NOT the forge-master asset"),
+        "{line}"
+    );
+    assert!(!line.contains("no running master pane is seen"), "{line}");
+    assert!(
+        line.contains("whether a master pane runs on it cannot be read"),
+        "{line}"
+    );
+}
+
+/// Judge w3's variant `ledger-000-runners-401`: core's project list refused
+/// and the ledger unreadable, so the pane cannot even be named, and alpha's
+/// drifted skill is still not said to have no pane on it.
+#[test]
+fn a_drifted_skill_is_not_called_paneless_when_its_pane_cannot_be_named() {
+    let core = fake_core("401 Unauthorized");
+    let b = plant(&core.url);
+    std::fs::write(
+        &b.ledger,
+        b"not a database, long enough to be taken for one",
+    )
+    .unwrap();
+    let text = String::from_utf8_lossy(&top(&b, &["--once"]).stdout).into_owned();
+    let projects = section(&text, "PROJECTS");
+    assert!(projects.contains("its pane cannot be named"), "{projects}");
+    let line = alpha_skill_line(projects);
+    assert!(!line.contains("no running master pane is seen"), "{line}");
+    assert!(
+        line.contains("whether a master pane runs on it cannot be read"),
+        "{line}"
+    );
+}
+
 /// A terminal for the view to draw on: the child's stdout is the pty's
 /// secondary end, sized as asked, and everything drawn is kept.
 struct Pty {
@@ -784,6 +857,7 @@ impl Pty {
         let whole = parts.len().saturating_sub(1);
         parts[..whole]
             .iter()
+            .filter(|f| !f.contains(READING))
             .map(|f| f.split("\r\n").map(str::to_string).collect())
             .collect()
     }
@@ -926,7 +1000,13 @@ fn a_live_frame_fits_the_screen_it_is_drawn_on_and_pages_the_rest() {
             f[at].starts_with(&format!("page {} of {pages}", i + 1)),
             "{f:#?}"
         );
-        body.push_str(&f[body_from(f).expect("the page row's end")..].join(" "));
+        // A heading carried onto the page repeats a row of an earlier one.
+        let own: Vec<&str> = f[body_from(f).expect("the page row's end")..]
+            .iter()
+            .map(String::as_str)
+            .filter(|l| !l.ends_with(" (continued)"))
+            .collect();
+        body.push_str(&own.join(" "));
         body.push(' ');
     }
     assert!(
@@ -941,6 +1021,63 @@ fn a_live_frame_fits_the_screen_it_is_drawn_on_and_pages_the_rest() {
     assert!(
         words(&body).contains(&words(&format!("question q1: {LONG_PROMPT}"))),
         "the long question, whole across its rows"
+    );
+}
+
+/// Judge w3's finding 55, decided: `--once` writes a control character
+/// core's text carries out as its escape, as the live screen does, so a
+/// prompt cannot clear, retitle or recolour the operator's terminal.
+#[test]
+fn one_frame_writes_the_control_characters_in_cores_text_out() {
+    let core = fake_core(CONTROL_PROMPT);
+    let b = plant(&core.url);
+    let out = top(&b, &["--once"]);
+    assert!(out.status.success());
+    assert!(
+        !out.stdout.iter().any(|&c| c == 0x1b || c == 0x07),
+        "a raw ESC or BEL reached stdout: {:?}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    let text = String::from_utf8_lossy(&out.stdout).into_owned();
+    assert!(
+        text.contains("question q9: \\u{1b}[2J\\u{1b}]0;owned\\u{7}\\u{1b}[31mShip it?\\u{1b}[0m"),
+        "{text}"
+    );
+}
+
+/// Judge w3's finding 57: the first gather takes seconds, and the screen is
+/// never blank for them: the header and a reading line are drawn first.
+#[test]
+fn the_live_view_says_it_is_reading_before_its_first_frame() {
+    let core = fake_core("200 OK");
+    let b = plant(&core.url);
+    std::fs::write(
+        b.root.join("bin/tmux"),
+        format!(
+            "#!/bin/sh\nsleep 3\nprintf 'forge-master-alpha\\t{}\\n'\n",
+            now_secs() - 3600
+        ),
+    )
+    .unwrap();
+    let pty = on_a_terminal(&b, 200, 60, &["--interval", "1"]);
+    assert!(
+        pty.wait_for(READING, std::time::Duration::from_secs(2)),
+        "nothing drawn inside two seconds: {:?}",
+        pty.text()
+    );
+    assert!(
+        !pty.text().contains("WAITING ON A PERSON"),
+        "the reading line came before the frame, not with it"
+    );
+    assert!(
+        pty.text().contains("forge-runner top — "),
+        "{:?}",
+        pty.text()
+    );
+    assert!(
+        pty.wait_for("WAITING ON A PERSON", std::time::Duration::from_secs(20)),
+        "no frame followed: {:?}",
+        pty.text()
     );
 }
 
