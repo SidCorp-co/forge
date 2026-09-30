@@ -155,7 +155,7 @@ export function renderIntegrations(rows: IntegrationRow[]): string {
     const health = r.lastHealthStatus ? ` (health: ${r.lastHealthStatus})` : '';
     const guideSlug = r.hasOrgGuide ? integrationGuideSlug(r.provider) : decl?.usage?.guideSlug;
     const guidePointer = guideSlug ? ` Full guide: \`forge_guide get ${guideSlug}\`.` : '';
-    const scope = r.role === 'service' ? 'service' : r.stages.join('+') || 'deploy';
+    const scope = r.role === 'deploy' ? r.stages.join('+') || 'deploy' : r.role;
     const body = r.agentGranted === false ? ungrantedNote(r.provider) : `${hint}${guidePointer}`;
     const bullet = `- **${r.provider}** [${scope}]${health} — ${body}`;
     const extra: string[] = [];

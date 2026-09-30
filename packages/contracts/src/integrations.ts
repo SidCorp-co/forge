@@ -19,7 +19,7 @@ export type AgentAccess = (typeof AGENT_ACCESS_VALUES)[number];
 
 /** `'user' | 'org'` — the connection owner namespace. */
 export type IntegrationOwnerType = schema.IntegrationOwnerType;
-/** `'deploy' | 'service'` — what a binding is FOR. */
+/** `'deploy' | 'service' | 'source'` — what a binding is FOR. */
 export type BindingRole = schema.BindingRole;
 /** `'preview' | 'live'` — the two environments, named for who is looking at them. */
 export type DeployStage = schema.DeployStage;

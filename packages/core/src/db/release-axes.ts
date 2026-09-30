@@ -7,7 +7,7 @@ import { releaseVersionText } from './column-checks.js';
 export const releaseCrossings = ['merge-branch', 'cherry-pick'] as const;
 export type ReleaseCrossing = (typeof releaseCrossings)[number];
 
-export const bindingRoles = ['deploy', 'service'] as const;
+export const bindingRoles = ['deploy', 'service', 'source'] as const;
 export type BindingRole = (typeof bindingRoles)[number];
 
 export const deployStages = ['preview', 'live'] as const;
@@ -15,9 +15,9 @@ export type DeployStage = (typeof deployStages)[number];
 
 const RELEASE_CHAIN_CHK = sql`projects_release_chain_ok(release_chain)`;
 
-const BINDING_ROLE_CHK = sql`role IN ('deploy', 'service')`;
+const BINDING_ROLE_CHK = sql`role IN ('deploy', 'service', 'source')`;
 
-const ROLE_STAGES_CHK = sql`(role = 'service' AND cardinality(stages) = 0) OR (role = 'deploy' AND array_ndims(stages) = 1 AND cardinality(stages) BETWEEN 1 AND 2 AND stages <@ ARRAY['preview', 'live'] AND (cardinality(stages) = 1 OR stages[1] <> stages[2]))`;
+const ROLE_STAGES_CHK = sql`(role IN ('service', 'source') AND cardinality(stages) = 0) OR (role = 'deploy' AND array_ndims(stages) = 1 AND cardinality(stages) BETWEEN 1 AND 2 AND stages <@ ARRAY['preview', 'live'] AND (cardinality(stages) = 1 OR stages[1] <> stages[2]))`;
 
 export const SERVICE_ROLE_PRED = sql`role = 'service'`;
 

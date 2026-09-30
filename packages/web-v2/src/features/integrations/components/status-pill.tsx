@@ -23,6 +23,7 @@ export const ROLE_OPTIONS: { value: BindingRole; label: string; hint: string }[]
 
 export function scopeLabel(role: BindingRole, stages: DeployStage[]): string {
   if (role === "service") return "Service";
+  if (role === "source") return "Source";
   return stages.length > 0 ? stages.map((s) => STAGE_LABEL[s] ?? s).join(" + ") : "Deploy";
 }
 

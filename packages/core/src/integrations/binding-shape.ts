@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { type BindingRole, bindingRoles, type DeployStage, deployStages } from '../db/schema.js';
 import { deployCapableProviders, providerCanDeploy } from './registry.js';
 
-export const roleSchema = z.enum(bindingRoles);
+export const roleSchema = z.enum(bindingRoles).exclude(['source']);
 export const stagesSchema = z.array(z.enum(deployStages)).min(1).max(2);
 
 export const bindingShapeFields = {

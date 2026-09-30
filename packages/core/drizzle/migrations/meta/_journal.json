@@ -2066,6 +2066,13 @@
       "when": 1810425600000,
       "tag": "0317_a_project_holds_its_config_document",
       "breakpoints": true
+    },
+    {
+      "idx": 318,
+      "version": "7",
+      "when": 1810512000000,
+      "tag": "0318_a_binding_can_be_a_projects_source",
+      "breakpoints": true
     }
   ]
 }

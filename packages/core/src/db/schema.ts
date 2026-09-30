@@ -2584,6 +2584,7 @@ export const integrationBindings = pgTable(
     active: boolean('active').notNull().default(true),
     agentAccess: text('agent_access', { enum: axes.agentAccessValues }).notNull().default('none'),
     instructions: text('instructions'),
+    revision: integer('revision').notNull().default(1),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

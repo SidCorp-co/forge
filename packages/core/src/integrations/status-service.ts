@@ -62,11 +62,12 @@ function providerCapabilities(provider: IntegrationProvider): IntegrationCapabil
 }
 
 function stageKey(row: { role: string; stages: string[] }): string {
-  return row.role === 'service' ? 'service' : row.stages.join('+') || 'deploy';
+  if (row.role === 'service' || row.role === 'source') return row.role;
+  return row.stages.join('+') || 'deploy';
 }
 
 function stageLabel(row: { role: string; stages: string[] }): string {
-  if (row.role === 'service') return 'service';
+  if (row.role === 'service' || row.role === 'source') return row.role;
   return row.stages.map((s) => (s === 'live' ? 'Live' : 'Preview')).join(' + ') || 'deploy';
 }
 
