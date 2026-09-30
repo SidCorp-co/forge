@@ -402,6 +402,7 @@ dependencies = [
  "clap",
  "dirs-next",
  "forge-runner-core",
+ "libc",
  "rusqlite",
  "serde_json",
  "tokio",

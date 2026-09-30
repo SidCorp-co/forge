@@ -25,6 +25,12 @@ use forge_runner_core::runner::ledger::{Ledger, NewRun};
 use forge_runner_core::test_scratch::Scratch;
 
 const ALPHA: &str = "11111111-1111-4111-8111-111111111111";
+/// A first line past any clip width, ending in the issue it waits for (the
+/// judge's plant at d7da543 lost `ISS-45` to a clip at 110).
+const LONG_PROMPT: &str = "Ship the migration? It supersedes the draft whose wording no longer describes what ships, and the hotfix draft is held until the owner answers, because the column it drops is still read by the nightly export job waiting for ISS-45";
+/// A blocker message whose last sentence says what is owed (clipped at 160
+/// at d7da543, where core's own messages say it).
+const LONG_BLOCKER: &str = "This project has no release step, so nothing can take these rows to production until one is declared in the project's pipeline configuration and a runner is online. Owed: ISS-2 criteria 3 and 4.";
 const BETA: &str = "22222222-2222-4222-8222-222222222222";
 
 /// A core that answers the routes `top` reads and records every request line.
@@ -112,7 +118,9 @@ fn answer(path: &str, runners_status: &str) -> (String, String) {
         return ok(r#"{"questions":[{"id":"q2","blockerKind":"human","createdAt":"2026-09-30T01:10:00.000Z","askedAt":"","prompt":"Rotate the key?"}],"total":1,"hasMore":false,"nextCursor":null}"#.into());
     }
     if path.starts_with(&format!("/api/questions?projectId={ALPHA}")) {
-        return ok(r#"{"questions":[{"id":"q1","blockerKind":"human","createdAt":"2026-09-30T01:00:00.000Z","askedAt":"2026-09-30T01:00:00.000Z","prompt":"Ship the migration?\nIt drops a column."}],"total":1,"hasMore":true,"nextCursor":"c2+/="}"#.into());
+        return ok(format!(
+            r#"{{"questions":[{{"id":"q1","blockerKind":"human","createdAt":"2026-09-30T01:00:00.000Z","askedAt":"2026-09-30T01:00:00.000Z","prompt":"{LONG_PROMPT}\nIt drops a column."}}],"total":1,"hasMore":true,"nextCursor":"c2+/="}}"#
+        ));
     }
     if path.starts_with("/api/questions?") {
         return ok(r#"{"questions":[],"total":0,"hasMore":false,"nextCursor":null}"#.into());
@@ -127,7 +135,9 @@ fn answer(path: &str, runners_status: &str) -> (String, String) {
         return ok(r#"{"items":[{"displayId":"ISS-9","title":"t"}],"returned":1,"total":1,"limit":50,"offset":0,"hasMore":false}"#.into());
     }
     if path.starts_with(&format!("/api/projects/{ALPHA}/release-readiness")) {
-        return ok(r#"{"hasReleaseGate":false,"blockers":[{"code":"NO_RELEASE_GATE","httpStatus":409,"message":"This project has no release step","evaluated":true}],"warnings":[]}"#.into());
+        return ok(format!(
+            r#"{{"hasReleaseGate":false,"blockers":[{{"code":"NO_RELEASE_GATE","httpStatus":409,"message":"{LONG_BLOCKER}","evaluated":true}},{{"code":"NO_RUNNER_ONLINE","httpStatus":409,"message":"m","evaluated":true}}],"warnings":[]}}"#
+        ));
     }
     if path.starts_with(&format!("/api/projects/{BETA}/release-readiness")) {
         return ok(r#"{"hasReleaseGate":true,"blockers":[],"warnings":[]}"#.into());
@@ -366,6 +376,18 @@ fn one_frame_of_a_planted_box_reads_every_source_and_writes_nothing() {
             && binary.contains("still the file on disk"),
         "{binary}"
     );
+    // Criterion 21: the daemon line names the record it was read from.
+    let daemon_line = binary
+        .lines()
+        .find(|l| l.trim_start().starts_with("daemon "))
+        .unwrap_or_else(|| panic!("no daemon line: {binary}"));
+    assert!(
+        daemon_line.ends_with(&format!(
+            "← {}",
+            b.root.join("c/forge-runner/serving.json").display()
+        )),
+        "{daemon_line}"
+    );
 
     let projects = section(&text, "PROJECTS");
     assert!(
@@ -431,6 +453,12 @@ fn one_frame_of_a_planted_box_reads_every_source_and_writes_nothing() {
             && waiting.contains("Rotate the key?"),
         "{waiting}"
     );
+    // Criterion 14: the first line whole, beside the id that answers it.
+    assert!(
+        waiting.contains(&format!(", question q1: {LONG_PROMPT}"))
+            && waiting.contains(", question q2: Rotate the key?"),
+        "{waiting}"
+    );
     assert!(
         !waiting.contains("It drops a column"),
         "only the prompt's first line: {waiting}"
@@ -443,7 +471,17 @@ fn one_frame_of_a_planted_box_reads_every_source_and_writes_nothing() {
         waiting.contains("parked     ISS-4 run run-park waits on"),
         "{waiting}"
     );
-    assert!(waiting.contains("alpha: 2 at awaiting_release (ISS-7, ISS-8) with no release path: NO_RELEASE_GATE — This project has no release step"), "{waiting}");
+    // Criterion 17: the first blocker to its last sentence, and the rest by code.
+    assert!(
+        waiting.contains(&format!(
+            "alpha: 2 at awaiting_release (ISS-7, ISS-8) with no release path: NO_RELEASE_GATE — {LONG_BLOCKER}"
+        )),
+        "{waiting}"
+    );
+    assert!(
+        waiting.contains("and 1 more blocker(s): NO_RUNNER_ONLINE"),
+        "{waiting}"
+    );
     assert!(
         !waiting.contains("ISS-9"),
         "a releasable roster waits on nobody: {waiting}"
@@ -572,6 +610,13 @@ fn a_source_that_cannot_be_read_is_unreadable_and_never_empty() {
         "{text}"
     );
     assert!(!text.contains("none holding a lease"), "{text}");
+    // The master core names still has a ledger line, saying it was not read.
+    assert!(
+        text.contains("master   forge-master-alpha running")
+            && text.contains("ledger: UNREADABLE — ")
+            && text.contains("so when the daemon last placed and saw this master cannot be said"),
+        "{text}"
+    );
     assert!(text.contains("job panes  UNREADABLE — "), "{text}");
     assert!(
         text.contains("questions  UNREADABLE — ") && text.contains("no personal access token"),
@@ -619,18 +664,283 @@ fn none_waiting_is_said_only_of_the_projects_read() {
     );
     assert!(
         waiting.contains(
-            "questions  none open on the 1 project(s) read — PARTIAL: 1 not read, named above"
+            "questions  PARTIAL — 1 of 2 project(s) not read, named above; of the 1 read, none has an open question"
         ),
         "{waiting}"
     );
     assert!(
-        waiting.contains("releases   none without a release path on the 1 project(s) read — PARTIAL: 1 not read, named above"),
+        waiting.contains("releases   PARTIAL — 1 of 2 project(s) not read, named above; of the 1 read, none rests at awaiting_release without a release path"),
         "{waiting}"
     );
     assert!(
         !waiting.contains("none open on any project listed")
             && !waiting.contains("no issue rests at awaiting_release without a release path"),
         "{waiting}"
+    );
+}
+
+/// Criterion 22, as the judge planted it at d7da543: core's slug and the
+/// ledger both unread. The master line says the ledger was not read, and
+/// never that it records no master.
+#[test]
+fn an_unread_ledger_is_not_read_as_one_recording_no_master() {
+    let core = fake_core("401 Unauthorized");
+    let b = plant(&core.url);
+    std::fs::write(
+        &b.ledger,
+        b"not a database, long enough to be taken for one",
+    )
+    .unwrap();
+    let text = String::from_utf8_lossy(&top(&b, &["--once"]).stdout).into_owned();
+    let projects = section(&text, "PROJECTS");
+    assert!(!projects.contains("records no master"), "{projects}");
+    assert!(
+        projects.contains("its pane cannot be named: core's slug for this project is unreadable, above, and the ledger, which records the pane the daemon placed, is UNREADABLE — ")
+            && projects.contains("ledger.sqlite"),
+        "{projects}"
+    );
+}
+
+/// A terminal for the view to draw on: the child's stdout is the pty's
+/// secondary end, sized as asked, and everything drawn is kept.
+struct Pty {
+    child: Child,
+    drawn: Arc<Mutex<Vec<u8>>>,
+}
+
+impl Drop for Pty {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+fn on_a_terminal(b: &PlantedBox, cols: u16, rows: u16, args: &[&str]) -> Pty {
+    use std::os::fd::FromRawFd;
+    // SAFETY: plain libc calls on descriptors this test opens and owns; the
+    // secondary's name is copied out of the buffer ptsname_r fills.
+    let (primary, secondary) = unsafe {
+        let fd = libc::posix_openpt(libc::O_RDWR | libc::O_NOCTTY);
+        assert!(fd >= 0, "posix_openpt");
+        assert_eq!(libc::grantpt(fd), 0);
+        assert_eq!(libc::unlockpt(fd), 0);
+        let mut name = [0 as libc::c_char; 128];
+        assert_eq!(libc::ptsname_r(fd, name.as_mut_ptr(), name.len()), 0);
+        let path = std::ffi::CStr::from_ptr(name.as_ptr()).to_owned();
+        let sec = libc::open(path.as_ptr(), libc::O_RDWR | libc::O_NOCTTY);
+        assert!(sec >= 0, "open the secondary");
+        let ws = libc::winsize {
+            ws_row: rows,
+            ws_col: cols,
+            ws_xpixel: 0,
+            ws_ypixel: 0,
+        };
+        assert_eq!(libc::ioctl(sec, libc::TIOCSWINSZ, &ws), 0);
+        (
+            std::fs::File::from_raw_fd(fd),
+            std::fs::File::from_raw_fd(sec),
+        )
+    };
+    let path = format!("{}:/usr/bin:/bin", b.root.join("bin").display());
+    let child = Command::new(env!("CARGO_BIN_EXE_forge-runner"))
+        .arg("top")
+        .args(args)
+        .env_clear()
+        .env("PATH", path)
+        .env("HOME", b.root.join("h"))
+        .env("XDG_CONFIG_HOME", b.root.join("c"))
+        .env("XDG_DATA_HOME", b.root.join("d"))
+        .env("FORGE_RUNNER_CRED_STORE", "file")
+        .stdin(Stdio::null())
+        .stdout(Stdio::from(secondary))
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let drawn = Arc::new(Mutex::new(Vec::new()));
+    let sink = Arc::clone(&drawn);
+    std::thread::spawn(move || {
+        let mut primary = primary;
+        let mut buf = [0u8; 8192];
+        while let Ok(n) = primary.read(&mut buf) {
+            if n == 0 {
+                break;
+            }
+            sink.lock().unwrap().extend_from_slice(&buf[..n]);
+        }
+    });
+    Pty { child, drawn }
+}
+
+impl Pty {
+    fn text(&self) -> String {
+        String::from_utf8_lossy(&self.drawn.lock().unwrap()).into_owned()
+    }
+
+    /// Every frame drawn in full so far: each runs from one home-and-clear
+    /// to the next.
+    fn frames(&self) -> Vec<Vec<String>> {
+        let text = self.text();
+        let parts: Vec<&str> = text.split("\x1b[H\x1b[2J").skip(1).collect();
+        let whole = parts.len().saturating_sub(1);
+        parts[..whole]
+            .iter()
+            .map(|f| f.split("\r\n").map(str::to_string).collect())
+            .collect()
+    }
+
+    fn wait_for(&self, what: &str, within: std::time::Duration) -> bool {
+        let until = std::time::Instant::now() + within;
+        while std::time::Instant::now() < until {
+            if what_is_there(&self.text(), what) {
+                return true;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        false
+    }
+
+    fn exited_within(&mut self, within: std::time::Duration) -> Option<std::process::ExitStatus> {
+        let until = std::time::Instant::now() + within;
+        while std::time::Instant::now() < until {
+            if let Some(st) = self.child.try_wait().unwrap() {
+                return Some(st);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        None
+    }
+}
+
+fn what_is_there(text: &str, what: &str) -> bool {
+    text.matches(what).count() > 0
+}
+
+/// The judge's finding at d7da543: a Ctrl-C sent while a frame was being
+/// gathered went to no listener, and the view kept redrawing. Here the second
+/// gather is held in a slow `tmux`, the interrupt is sent inside it, and the
+/// view must end on it.
+#[test]
+fn a_ctrl_c_sent_while_a_frame_is_gathered_ends_the_view() {
+    let core = fake_core("200 OK");
+    let b = plant(&core.url);
+    let tmux = b.root.join("bin/tmux");
+    let count = b.root.join("tmux.count");
+    std::fs::write(
+        &tmux,
+        format!(
+            "#!/bin/sh\nn=$(cat '{c}' 2>/dev/null || echo 0)\necho $((n+1)) > '{c}'\n[ \"$n\" -ge 1 ] && sleep 3\nprintf 'forge-master-alpha\\t{}\\n'\n",
+            now_secs() - 3600,
+            c = count.display()
+        ),
+    )
+    .unwrap();
+    let mut pty = on_a_terminal(&b, 200, 60, &["--interval", "1"]);
+    assert!(
+        pty.wait_for("WAITING ON A PERSON", std::time::Duration::from_secs(20)),
+        "no first frame: {}",
+        pty.text()
+    );
+    // The first frame is drawn; one second of sleep, then the second gather
+    // sits three seconds in tmux. Send the interrupt inside that.
+    std::thread::sleep(std::time::Duration::from_millis(2_000));
+    assert_eq!(
+        std::fs::read_to_string(&count).unwrap().trim(),
+        "2",
+        "the second gather is under way"
+    );
+    // SAFETY: a signal to the child this test spawned and still holds.
+    assert_eq!(
+        unsafe { libc::kill(pty.child.id() as libc::pid_t, libc::SIGINT) },
+        0
+    );
+    let st = pty.exited_within(std::time::Duration::from_secs(8));
+    assert!(
+        st.is_some_and(|s| s.success()),
+        "the view did not end on a Ctrl-C sent while it gathered ({st:?})"
+    );
+}
+
+/// The judge's finding at d7da543: at 120x40 the live frame took 217 rows and
+/// only its last 25 stayed on screen. On a screen smaller than the planted
+/// box's frame, every frame drawn fits the screen, the pages are said, and
+/// the long question reads whole across its wrapped rows.
+#[test]
+fn a_live_frame_fits_the_screen_it_is_drawn_on_and_pages_the_rest() {
+    let core = fake_core("200 OK");
+    let b = plant(&core.url);
+    let (cols, rows) = (100usize, 20usize);
+    let pty = on_a_terminal(&b, cols as u16, rows as u16, &["--interval", "1"]);
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    let mut frames = Vec::new();
+    // The header wraps by the host's name, so the page row is found, not
+    // counted: it is the first row that opens with `page `, and the body
+    // starts under the row its sentence ends on.
+    let page_row = |f: &[String]| f.iter().position(|l| l.starts_with("page "));
+    let body_from = |f: &[String]| {
+        f.iter()
+            .position(|l| l.ends_with("reads it whole"))
+            .map(|i| i + 1)
+    };
+    let pages_of = |f: &[String]| {
+        let l = &f[page_row(f)?];
+        l.split(" of ")
+            .nth(1)?
+            .split(' ')
+            .next()?
+            .parse::<usize>()
+            .ok()
+    };
+    while std::time::Instant::now() < until {
+        frames = pty.frames();
+        if frames
+            .first()
+            .and_then(|f| pages_of(f))
+            .is_some_and(|n| frames.len() > n)
+        {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    let first = frames
+        .first()
+        .unwrap_or_else(|| panic!("no frame: {}", pty.text()));
+    let pages = pages_of(first).unwrap_or_else(|| panic!("no page row: {first:#?}"));
+    assert!(pages > 1, "{first:#?}");
+    assert!(
+        frames.len() > pages,
+        "{} frame(s) for {pages} pages",
+        frames.len()
+    );
+    let mut body = String::new();
+    for (i, f) in frames.iter().take(pages).enumerate() {
+        assert!(f.len() <= rows, "frame {i} is {} rows: {f:#?}", f.len());
+        for l in f {
+            assert!(
+                l.chars().count() <= cols,
+                "a row of {}: {l}",
+                l.chars().count()
+            );
+        }
+        let at = page_row(f).unwrap_or_else(|| panic!("no page row: {f:#?}"));
+        assert!(
+            f[at].starts_with(&format!("page {} of {pages}", i + 1)),
+            "{f:#?}"
+        );
+        body.push_str(&f[body_from(f).expect("the page row's end")..].join(" "));
+        body.push(' ');
+    }
+    assert!(
+        frames[pages][page_row(&frames[pages]).unwrap()].starts_with(&format!("page 1 of {pages}")),
+        "the pages come round: {:#?}",
+        frames[pages]
+    );
+    let words = |t: &str| t.split_whitespace().collect::<Vec<_>>().join(" ");
+    for section in ["BINARY", "PROJECTS", "WAITING ON A PERSON", "HEALTH"] {
+        assert!(body.contains(section), "{section} is on no page");
+    }
+    assert!(
+        words(&body).contains(&words(&format!("question q1: {LONG_PROMPT}"))),
+        "the long question, whole across its rows"
     );
 }
 

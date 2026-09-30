@@ -139,6 +139,9 @@ fn jobs_from(dir: &Path, listing: impl Iterator<Item = std::io::Result<PathBuf>>
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Question {
+    /// Core's id for the question, which is what answers it: the prompt is
+    /// shown whole, and this names the row the rest of it is on.
+    pub id: String,
     pub blocker_kind: String,
     pub asked_ms: Option<i64>,
     pub prompt: String,
@@ -314,9 +317,9 @@ fn field<'a>(route: &str, row: &'a Value, key: &str, what: &str) -> Read<&'a str
 
 /// One page of `projectQuestionsFor`'s answer. Core's `shapeOf` writes
 /// `prompt` and `askedAt` on every question, as `''` when it holds no step yet,
-/// so an empty one is an answer and an absent one — like an absent blocker kind
-/// or creation time — is not a question core writes, and is refused rather
-/// than shown half.
+/// so an empty one is an answer and an absent one — like an absent id, blocker
+/// kind or creation time — is not a question core writes, and is refused
+/// rather than shown half.
 pub fn questions(route: &str, v: &Value) -> Read<Vec<Question>> {
     let list = v["questions"]
         .as_array()
@@ -337,6 +340,7 @@ pub fn questions(route: &str, v: &Value) -> Read<Vec<Question>> {
                     .next()
                     .unwrap_or("")
                     .to_string(),
+                id: field(route, q, "id", "question")?.to_string(),
             })
         })
         .collect()
@@ -495,6 +499,7 @@ mod tests {
         let q = questions("/api/questions", &v).unwrap();
         assert_eq!(q[0].prompt, "Ship the migration?");
         assert_eq!(q[0].blocker_kind, "human");
+        assert_eq!(q[0].id, "q1");
         assert_eq!(q[0].asked_ms, parse_utc_ms("2026-09-30T01:30:00Z"));
         assert!(questions("/r", &serde_json::json!({"items": []})).is_err());
     }
@@ -616,7 +621,9 @@ mod tests {
             .contains("`displayId`"));
         let b = serde_json::json!({"blockers": [{"code": "X"}]});
         assert!(blockers("/r", &b).unwrap_err().reason.contains("`message`"));
-        let empty = serde_json::json!({"questions": [{"blockerKind": "human", "createdAt": "2026-09-30T01:00:00Z", "askedAt": "", "prompt": ""}]});
+        let q = serde_json::json!({"questions": [{"blockerKind": "human", "createdAt": "2026-09-30T01:00:00Z", "askedAt": "", "prompt": "x"}]});
+        assert!(questions("/q", &q).unwrap_err().reason.contains("`id`"));
+        let empty = serde_json::json!({"questions": [{"id": "q9", "blockerKind": "human", "createdAt": "2026-09-30T01:00:00Z", "askedAt": "", "prompt": ""}]});
         let got = questions("/q", &empty).unwrap();
         assert_eq!(got[0].prompt, "", "a question with no step has no prompt");
         assert_eq!(

@@ -24,5 +24,9 @@ webbrowser = { workspace = true }
 # ISS-1341 — `top` reads the ledger opened read-only, which `Ledger::open` cannot do.
 rusqlite = { workspace = true }
 
+# ISS-1341 — `top` reads the terminal's size (TIOCGWINSZ) to fit its live frame.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [dev-dependencies]
 forge-runner-core = { path = "../forge-runner-core", features = ["test-support"] }
