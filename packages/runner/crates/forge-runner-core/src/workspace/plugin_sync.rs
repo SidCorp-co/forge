@@ -195,13 +195,12 @@ pub async fn sync_clone(
         let known = git(Some(dir), &["cat-file", "-e", &format!("{sha}^{{commit}}")])
             .await
             .is_ok();
-        if !known {
-            if git(Some(dir), &["fetch", "--quiet", "origin", sha])
+        if !known
+            && git(Some(dir), &["fetch", "--quiet", "origin", sha])
                 .await
                 .is_err()
-            {
-                git(Some(dir), &["fetch", "--quiet", "--all", "--tags"]).await?;
-            }
+        {
+            git(Some(dir), &["fetch", "--quiet", "--all", "--tags"]).await?;
         }
         git(Some(dir), &["checkout", "--quiet", "--detach", sha]).await?;
     } else if follow_tip {

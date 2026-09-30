@@ -3147,6 +3147,10 @@
 - **A stopped run's report on its issue no longer says its checkout was kept when the box removed
   it.** It says whether the box refuses the removal, and the box's log says why a push failed.
 
+- **A stopped run's report is one reading, and a changed reading is posted.** It names the box and
+  no longer promises the checkout stays. The box's log names the run's own branch and each checkout
+  found gone.
+
 - **A storefront project can close work that landed outside git.** Mark it merged naming where it
   landed — a live page, CMS entry or store resource — and it closes. No commit is asked; a mark
   naming nothing is refused.
