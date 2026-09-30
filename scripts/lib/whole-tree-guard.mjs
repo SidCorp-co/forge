@@ -38,6 +38,7 @@ state.files = (state.files ?? 0) + 1;
 state.log = join(state.dir, `children-${state.files}.jsonl`);
 writeFileSync(state.log, '');
 state.offset = 0;
+state.read = Buffer.alloc(0);
 // A worker a file before this one started and left running is that file's, not this one's.
 state.workersBefore = new Set(globalThis[Symbol.for('forge.whole-tree-watch')]?.workers ?? []);
 installWatch(
@@ -56,8 +57,17 @@ function readLog() {
     const why = `this file's child log could not be read (${e?.code ?? 'unknown'}), so what its processes listed is unknown and counted as the root`;
     return [{ dir: ROOT, via: why, at: null }];
   }
+  // What was read already must still be there: a log rewritten under the guard is not evidence.
+  if (!bytes.subarray(0, state.offset).equals(state.read)) {
+    state.offset = bytes.length;
+    state.read = Buffer.from(bytes);
+    const why =
+      "this file's child log was rewritten after the guard read it, so what its processes listed is unknown and counted as the root";
+    return [{ dir: ROOT, via: why, at: null }];
+  }
   const { lines, offset, pending } = logLines(bytes, state.offset);
   state.offset = offset;
+  state.read = Buffer.from(bytes.subarray(0, offset));
   state.pending = pending;
   return lines;
 }

@@ -857,6 +857,26 @@ describe('a run of a file that lists the root', () => {
     );
   }, 60_000);
 
+  it('fails one whose child log is rewritten after the guard first read it', () => {
+    writeFileSync(
+      join(dir, 'rewrites.test.mjs'),
+      [
+        "import { spawn } from 'node:child_process';",
+        "import { readFileSync, writeFileSync } from 'node:fs';",
+        'const log = process.env.FORGE_WHOLE_TREE_LOG;',
+        "it('rewrites the log while the end waits', () => {",
+        "  spawn(process.execPath, ['-e', 'setTimeout(() => {}, 600)'], { stdio: 'ignore' });",
+        "  setTimeout(() => writeFileSync(log, readFileSync(log, 'utf8').replace(/[0-9]/g, '1')), 300);",
+        '});',
+      ].join('\n'),
+    );
+    const r = vitest('rewrites.test.mjs');
+    expect(r.status).toBe(1);
+    expect(`${r.stdout}${r.stderr}`).toMatch(
+      /rewrites\.test\.mjs this file's child log was rewritten/,
+    );
+  }, 60_000);
+
   it('passes the same file once it carries the declaration', () => {
     writeFileSync(join(dir, 'marked.test.mjs'), [`// ${MARK} whole-tree`, ...body].join('\n'));
     const r = vitest('marked.test.mjs');
