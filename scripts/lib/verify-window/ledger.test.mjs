@@ -96,4 +96,28 @@ describe('renderLedger', () => {
     expect(rows[0]).toContain('ISS-1\\|x');
     expect(rows[0]).toContain('2026\\|spoof');
   });
+
+  it('escapes a backslash before a cell separator, so the separator stays escaped', () => {
+    const md = renderLedger({
+      window: 'w1',
+      base: { branch: 'main', sha: 'b'.repeat(40) },
+      thresholds: null,
+      declarations: 'x',
+      openBranches: [],
+      members: [
+        {
+          ...member,
+          branch: 'ISS-1-x\\|spoof',
+          admission: 'admitted',
+          landing: 'c'.repeat(40),
+          isolated: null,
+          refusals: [],
+        },
+      ],
+      chain: { head: 'c'.repeat(40), landed: 1 },
+    });
+    const row = md.split('\n').find((l) => /^\| 1 \|/.test(l));
+    expect(row).toContain('ISS-1-x\\\\\\|spoof');
+    expect(row.replace(/\\./g, '').split('|')).toHaveLength(9);
+  });
 });

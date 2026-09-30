@@ -55,6 +55,7 @@ export function readManifest(raw) {
 
 function cell(v) {
   return String(v ?? '')
+    .replace(/\\/g, '\\\\')
     .replace(/\|/g, '\\|')
     .replace(/\n/g, ' ');
 }
