@@ -3136,6 +3136,10 @@
 
 ### Fixed
 
+- **One stray project id no longer hides every project's pool health.** A box whose record held an id
+  that is not a UUID had its whole pool report refused; that entry is now refused alone and removed,
+  and the rest reach core (ISS-1344).
+
 - **Work landed on the base branch can be marked merged by its commit.** Where the commit is the
   only trace, Forge checks it in the repository: it must exist, name the issue and sit on the base
   or live branch.

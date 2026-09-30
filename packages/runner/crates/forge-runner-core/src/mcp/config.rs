@@ -222,8 +222,8 @@ pub fn session_path(slug: &str) -> PathBuf {
 }
 
 fn mcp_config_dir() -> PathBuf {
-    let base = dirs_next::config_dir()
-        .map(|d| d.join("forge-runner"))
+    let base = crate::config::base_dir()
+        .ok()
         .unwrap_or_else(|| std::env::temp_dir().join("forge-runner"));
     let dir = base.join("mcp");
     let _ = std::fs::create_dir_all(&dir);

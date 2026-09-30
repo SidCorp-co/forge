@@ -15,6 +15,22 @@ use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
+/// Whether `dir` is, or is inside, a directory a [`Scratch`] made: the only
+/// place a test build lets a writer resolve its config dir (ISS-1344).
+pub fn is_scratch(dir: &Path) -> bool {
+    [std::env::temp_dir(), PathBuf::from("/tmp")]
+        .iter()
+        .any(|base| {
+            dir.strip_prefix(base).is_ok_and(|rest| {
+                rest.components().next().is_some_and(|c| {
+                    c.as_os_str()
+                        .to_str()
+                        .is_some_and(|s| s.starts_with("forge-test-"))
+                })
+            })
+        })
+}
+
 /// A directory under the system temp dir, removed with everything in it on drop.
 ///
 /// Bind it to a name for as long as anything under it is used. `Scratch::new("x").join("y")`

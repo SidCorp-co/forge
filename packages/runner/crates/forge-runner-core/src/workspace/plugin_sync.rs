@@ -159,10 +159,9 @@ pub async fn ensure_plugins(settings: &PluginSettings, server: &[PluginTarget]) 
 /// `<runner config dir>/marketplaces/<owner>__<repo>` — a clone the runner owns, so the CLI has
 /// nothing of its own to re-clone.
 pub fn marketplace_clone_dir(repo: &str) -> Option<PathBuf> {
-    let config = crate::config::Config::path().ok()?;
     Some(
-        config
-            .parent()?
+        crate::config::base_dir()
+            .ok()?
             .join("marketplaces")
             .join(repo_key(repo).replace('/', "__")),
     )

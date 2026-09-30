@@ -18,7 +18,6 @@
 use std::path::{Path, PathBuf};
 
 use clap::Args as ClapArgs;
-use forge_runner_core::config::Config;
 use forge_runner_core::daemon::degraded::{mark, Kind, Mark, Run, Source};
 use forge_runner_core::daemon::dispatch_gate::Dispatch;
 use forge_runner_core::daemon::{control, session_tokens};
@@ -93,9 +92,7 @@ const ALLOW: &str = "{}";
 
 /// Where this box's config, socket and marks live.
 fn config_dir() -> Option<PathBuf> {
-    Config::path()
-        .ok()
-        .and_then(|p| p.parent().map(Path::to_path_buf))
+    forge_runner_core::daemon::control::config_dir()
 }
 
 /// Why a mark this process writes never names a run: the registry of declared

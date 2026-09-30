@@ -30,14 +30,12 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 #[cfg(unix)]
 use tokio::net::{UnixListener, UnixStream};
 
-use crate::config::Config;
 #[cfg(unix)]
 use crate::daemon::session_tokens::Holder;
 use crate::daemon::session_tokens::SessionTokens;
 
 pub fn socket_path() -> Option<PathBuf> {
-    let cfg = Config::path().ok()?;
-    Some(cfg.with_file_name("control.sock"))
+    Some(crate::config::base_dir().ok()?.join("control.sock"))
 }
 
 /// What a hook payload names beside its event, carried from the pane's hook to
@@ -662,9 +660,7 @@ fn run_close(
 
 /// The directory this box's marks and its plugin clones sit in.
 pub fn config_dir() -> Option<PathBuf> {
-    crate::config::Config::path()
-        .ok()
-        .and_then(|p| p.parent().map(Path::to_path_buf))
+    crate::config::base_dir().ok()
 }
 
 #[cfg(unix)]
