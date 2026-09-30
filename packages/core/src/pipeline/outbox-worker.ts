@@ -92,24 +92,27 @@ async function agentUserIds(rows: readonly OutboxRow[]): Promise<Set<string>> {
   return new Set(found.filter((u) => u.kind === 'agent').map((u) => u.id));
 }
 
+function actorOf(row: OutboxRow, agents: ReadonlySet<string>): Actor {
+  if (row.actor_type === 'device' || row.actor_type === 'system') {
+    return { type: 'device', id: row.actor_id ?? '<system>', agency: 'agent' };
+  }
+  const agent = row.actor_id !== null && agents.has(row.actor_id);
+  return { type: 'user', id: row.actor_id ?? '<system>', agency: agent ? 'agent' : 'human' };
+}
+
 // cm:flow dispatch/outbox after:transition — claims the row the trigger wrote and re-emits it on the hooks bus, out of band from the transaction that produced it
 export async function drainOutboxOnce(): Promise<{ processed: number; failed: number }> {
   let processed = 0;
   let failed = 0;
   const rows = await claimBatch();
   const delivered: string[] = [];
-  const agents = await agentUserIds(rows);
+  let agents: Promise<Set<string>> | null = null;
 
   for (const row of rows) {
-    const actor: Actor =
-      row.actor_type === 'device' || row.actor_type === 'system'
-        ? { type: 'device', id: row.actor_id ?? '<system>', agency: 'agent' }
-        : {
-            type: 'user',
-            id: row.actor_id ?? '<system>',
-            agency: row.actor_id !== null && agents.has(row.actor_id) ? 'agent' : 'human',
-          };
     try {
+      // Inside the row's failure path: a lookup that fails is each row's retry, not a lost batch.
+      agents ??= agentUserIds(rows);
+      const actor = actorOf(row, await agents);
       const result = await hooks.emit('transition', {
         issueId: row.issue_id,
         projectId: row.project_id,

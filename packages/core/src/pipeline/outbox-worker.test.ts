@@ -163,6 +163,23 @@ describe('outbox-worker: who moved it and when (ISS-1317)', () => {
     expect(selectMock).not.toHaveBeenCalled();
   });
 
+  it('fails each row through its own retry path when the account lookup fails', async () => {
+    selectMock.mockImplementationOnce(() => ({
+      from: () => ({
+        where: async () => {
+          throw new Error('connection reset');
+        },
+      }),
+    }));
+    claimQueue.push([row({ actor_id: AGENT }), row({ actor_id: PERSON })]);
+
+    const result = await drainOutboxOnce();
+
+    expect(result).toEqual({ processed: 0, failed: 2 });
+    expect(emitMock).not.toHaveBeenCalled();
+    expect(updateCalls.map((c) => c.kind)).toEqual(['failed', 'failed']);
+  });
+
   it('carries the time the status changed, not the time of the drain', async () => {
     const at = new Date('2026-09-30T10:44:34.123Z');
     claimQueue.push([row({ created_at: at })]);
