@@ -62,7 +62,7 @@ impl std::fmt::Display for Resident {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "pid {} in {}", self.pid, self.at.display())?;
         if self.gone {
-            write!(f, " (already unlinked)")?;
+            write!(f, " (that directory has since been deleted)")?;
         }
         if !self.cmd.is_empty() {
             write!(f, ": {}", self.cmd)?;
@@ -933,6 +933,25 @@ mod tests {
         let d = root.join(pid.to_string());
         std::fs::create_dir_all(&d).expect("a pid directory");
         std::fs::write(d.join("status"), format!("Name:\tx\nPPid:\t{ppid}\n")).expect("a status");
+    }
+
+    /// ISS-1250 criterion 42 — judge r4 item 2: "(already unlinked)" told an
+    /// operator nothing about why removing the folder standing there now does
+    /// nothing to the process.
+    #[test]
+    fn a_resident_whose_directory_was_deleted_is_said_so_in_words() {
+        let r = Resident {
+            pid: 1960566,
+            at: PathBuf::from("/x/.claude/worktrees/lh-social"),
+            gone: true,
+            cmd: "next-server (v16.2.1)".to_string(),
+            identity: None,
+        };
+        let said = r.to_string();
+        assert!(said.contains("has since been deleted"), "{said}");
+        assert!(!said.contains("unlinked"), "{said}");
+        let here = Resident { gone: false, ..r }.to_string();
+        assert!(!here.contains("deleted"), "{here}");
     }
 
     fn pids(reading: &Reading) -> Vec<u32> {
