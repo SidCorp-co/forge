@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { baseRef } from './base-branch.mjs';
 
 export function manifestPath(root) {
   return join(root, '.forge', 'conformance.json');
@@ -115,15 +116,54 @@ export function parseMode(argv, allowed, script) {
 
 /** @returns `{files: Set<string>}` of repo-relative staged paths, or `{error}` */
 export function stagedFiles(root) {
-  let out;
+  const staged = gitPaths(root, ['diff', '--cached', '--name-only', '--diff-filter=ACM']);
+  if (staged === null) return { error: 'git diff --cached failed — cannot tell what is staged' };
+  return { files: new Set(staged) };
+}
+
+/** Paths git lists with `-z`: NUL-separated and unquoted, so a non-ASCII name reads as the tree holds it. */
+function gitPaths(root, args) {
   try {
-    out = execFileSync('git', ['diff', '--cached', '--name-only', '--diff-filter=ACM'], {
+    return execFileSync('git', [...args, '-z'], {
       cwd: root,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim();
+    })
+      .split('\0')
+      .filter(Boolean);
   } catch {
-    return { error: 'git diff --cached failed — cannot tell what is staged' };
+    return null;
   }
-  return { files: new Set(out.split('\n').filter(Boolean)) };
+}
+
+function gitLines(root, args) {
+  try {
+    return execFileSync('git', args, {
+      cwd: root,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+      .split('\n')
+      .filter(Boolean);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The files this change holds that the branch it lands on does not: committed since the merge
+ * base, changed in the tree, or new and untracked. A developer run judges these and no others.
+ * @returns `{files: Set<string>, base: string}`, or `{error}`
+ */
+export function changedFiles(root) {
+  const target = baseRef(root);
+  if (target.refusal) return { error: target.refusal };
+  const base = gitLines(root, ['merge-base', target.ref, 'HEAD'])?.[0];
+  if (!base) return { error: `git merge-base ${target.ref} HEAD failed — no change to scope` };
+  const changed = gitPaths(root, ['diff', '--name-only', '--diff-filter=ACMR', base]);
+  const untracked = gitPaths(root, ['ls-files', '--others', '--exclude-standard']);
+  if (changed === null || untracked === null) {
+    return { error: 'git could not list the changed files, so nothing can be scoped to them' };
+  }
+  return { files: new Set([...changed, ...untracked]), base };
 }

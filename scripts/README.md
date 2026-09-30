@@ -326,9 +326,37 @@ the five marks exist to prevent (ISS-955). The marks and the tally live in `lib/
 so both have a runner — `verify.mjs` executes its whole run at import and nothing inside it can be
 unit-tested.
 
+### Two layers, by what a check reads
+
+Every check declares a `layer` and, in `reads`, what it reads; `verify` exits `2` over one that
+does not (`lib/verify-layers.mjs:unlayered`). The partition is by what a check measures, never by
+its name or its cost:
+
+- **`entry`** — a verdict on each file from that file alone, or a read of the fixed files the check
+  names by path (`ci-parity` reads two: `ci.yml` and the setup-workspace composite, both under the
+  ineligible `.github/**`). A change cannot turn it red anywhere but in what it touched, so the
+  developer's own run pays it.
+  A check declaring a `scoped` form runs that over the change: `comment-budget` lints the changed
+  files with `--changed` instead of 29 seconds of the tree with `--all`. One without runs over the
+  tree, as the whole gate does, and on a base the whole gate left green it can only report what the
+  change touched; the rest cost about two seconds together, so none of them is scoped.
+- **`shared`** — a sweep whose verdict on one file depends on files the change never opened, or on
+  other branches: the import graph, the typed program, citations, status vocabularies, the open
+  migration set, the conformance levels. A change can turn it red elsewhere, so a verify window
+  pays it once for the set (`docs/modules/landing/verify-window.md`).
+
+A change touching a surface `.forge/verify-queue.json` declares ineligible (the gate itself among
+them) is not given the entry layer: `--entry` says which surface and runs the whole gate instead,
+judged by the declarations at the merge base, so a change cannot loosen its own rule.
+Where the merge base declares nothing, `--entry` exits `2` naming the missing file rather than
+reading every change as eligible: no admission rule is assumed.
+
 ### Modes
 
-- (none) — full run
+- (none) — the whole gate, both layers, every check in the form the whole gate has always run it
+- `--entry` — the entry layer, for a developer run of a queue-eligible change
+- `--window` — the shared layer plus the entry layer, scoped forms over the combination's diff,
+  run once by a verify window (the `gate` the declarations name)
 - `--ci-parity` — only the parity proof; cheap, zero-dep, no install needed
 
 Exit codes: `0` clean, `1` violations, `2` a check could not run.

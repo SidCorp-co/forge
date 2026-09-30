@@ -1,0 +1,80 @@
+import { spawnSync } from 'node:child_process';
+import { lstatSync, readFileSync, readlinkSync } from 'node:fs';
+import { join } from 'node:path';
+import { CONFIG_PATH, parseConfig } from './verify-window/config.mjs';
+import { judgeEligibility, parseDiff } from './verify-window/eligibility.mjs';
+
+/**
+ * The gate's two layers, partitioned by what a check READS. `entry`: a verdict on each file from
+ * that file alone, or on fixed files the check names by path, which a developer run pays. `shared`:
+ * a sweep whose verdict depends on files or branches the change never opened, paid once per window.
+ */
+export const LAYERS = ['entry', 'shared'];
+
+export const MODES = {
+  whole: 'every check, in the form the whole gate has always run it',
+  entry: 'the entry layer, each check scoped to the change where it declares a scoped form',
+  window: 'the shared layer, plus the entry layer scoped to the diff where a check can be',
+};
+
+/** Every check that carries no layer or no reason for it, as the sentence that refuses it. */
+export function unlayered(checks) {
+  return checks
+    .filter((c) => !LAYERS.includes(c.layer) || typeof c.reads !== 'string' || c.reads.length < 12)
+    .map((c) => `${c.label}: layer \`${c.layer}\` and a \`reads\` saying what it reads`);
+}
+
+/** The checks a mode runs; an entry check without a `scoped` form runs over the tree. */
+export function checksFor(mode, checks) {
+  const scoped = (c) => (c.scoped ? { ...c, ...c.scoped, scoped: undefined } : c);
+  if (mode === 'whole') return checks;
+  if (mode === 'entry') return checks.filter((c) => c.layer === 'entry').map(scoped);
+  if (mode === 'window') return checks.map((c) => (c.layer === 'entry' ? scoped(c) : c));
+  throw new Error(`no such verify mode: ${mode}`);
+}
+
+function git(root, args) {
+  const r = spawnSync('git', args, { cwd: root, encoding: 'utf8', maxBuffer: 1 << 28 });
+  return r.status === 0 ? r.stdout : null;
+}
+
+/**
+ * Whether the change from `base` to the working tree may take the entry layer alone, judged by the
+ * declarations at `base` that a window admits members by.
+ * @returns {{ eligible: true } | { eligible: false, surfaces: string[] } | { refusal: string }}
+ */
+export function entryEligibility(root, base) {
+  const text = git(root, ['show', `${base}:${CONFIG_PATH}`]);
+  const read = parseConfig(text, `${CONFIG_PATH} at ${base}`);
+  if (read.refusal) return { refusal: read.refusal };
+  const diff = git(root, [
+    '-c',
+    'core.quotePath=false',
+    'diff',
+    '--unified=0',
+    '--no-renames',
+    '--no-color',
+    base,
+  ]);
+  const untracked = git(root, ['ls-files', '--others', '--exclude-standard', '-z']);
+  if (diff === null || untracked === null) {
+    return { refusal: 'git could not read this change, so its eligibility cannot be judged' };
+  }
+  const files = parseDiff(diff);
+  for (const path of untracked.split('\0').filter(Boolean)) {
+    const abs = join(root, path);
+    let text;
+    try {
+      text = lstatSync(abs).isSymbolicLink() ? readlinkSync(abs) : readFileSync(abs, 'utf8');
+    } catch (err) {
+      return {
+        refusal: `the untracked ${path} could not be read (${err.code ?? err.message}), so this change's eligibility cannot be judged`,
+      };
+    }
+    files.push({ path, added: text.split('\n').map((t, i) => ({ line: i + 1, text: t })) });
+  }
+  const surfaces = judgeEligibility({ issue: 'this change', files }, read.config).map(
+    (r) => r.message,
+  );
+  return surfaces.length === 0 ? { eligible: true } : { eligible: false, surfaces };
+}

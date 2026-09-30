@@ -1,9 +1,19 @@
-import { execFile, execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { ChildProcess, exec, execFile, execFileSync, spawn, spawnSync } from 'node:child_process';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { join, relative, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 import { Worker } from 'node:worker_threads';
@@ -21,6 +31,8 @@ import {
   judgeRun,
   suiteMessage,
 } from './whole-tree-gates.mjs';
+import { subprocessListing } from './whole-tree-shell.mjs';
+import { spawnCall } from './whole-tree-watch.mjs';
 
 const MARK = `@gate-${'input'}`;
 const declared = (value, body = 'it();') => [`/**`, ` * ${MARK} ${value}`, ` */`, body].join('\n');
@@ -83,6 +95,44 @@ describe('what a node:fs call lists', () => {
     expect(fsListing('glob', ['../../docs/**/*.md'], CORE)).toEqual([`${ROOT}/docs`]);
     expect(fsListing('globSync', [['src/*.ts', '../../*']], CORE)).toEqual([`${CORE}/src`, ROOT]);
     expect(fsListing('globSync', [`${ROOT}/**`], CORE)).toEqual([ROOT]);
+  });
+
+  it('gives a glob climbing after a wildcard as null, since its prefix says nothing', () => {
+    expect(fsListing('globSync', ['./*/../../../*.yaml'], CORE)).toEqual([null]);
+  });
+
+  describe('placed where the kernel resolves it', () => {
+    const real = realpathSync(mkdtempSync(join(tmpdir(), 'whole-tree-real-')));
+    mkdirSync(join(real, 'a', 'b'), { recursive: true });
+    symlinkSync(join(real, 'a', 'b'), join(real, 'link'));
+    afterAll(() => rmSync(real, { recursive: true, force: true }));
+
+    it('follows a symlink, and its `..` from where the link points', () => {
+      expect(fsListing('readdirSync', [join(real, 'link')], '/')).toEqual([join(real, 'a', 'b')]);
+      expect(fsListing('readdirSync', [`${real}/link/..`], '/')).toEqual([join(real, 'a')]);
+      expect(fsListing('readdirSync', ['link/..'], real)).toEqual([join(real, 'a')]);
+    });
+
+    it.runIf(existsSync('/proc/self/cwd'))('follows /proc/self/cwd to the directory it is', () => {
+      expect(fsListing('readdirSync', ['/proc/self/cwd/..'], '/')).toEqual([
+        dirname(realpathSync(process.cwd())),
+      ]);
+    });
+  });
+});
+
+describe('what a spawner call runs', () => {
+  it('reads a fork as the execPath it names, and as Node without one', () => {
+    const call = spawnCall('fork', ['../..', [], { execPath: '/bin/ls', execArgv: [] }]);
+    expect([call.command, call.args]).toEqual(['/bin/ls', ['../..']]);
+    expect(subprocessListing({ ...call, cwd: CORE, root: ROOT }).map((e) => e.dir)).toEqual([ROOT]);
+    expect(spawnCall('fork', ['./child.mjs', ['x']]).command).toBe(process.execPath);
+  });
+
+  it('reads exec as a shell string and spawn with shell: true the same way', () => {
+    expect(spawnCall('exec', ['ls ../..']).shell).toBe(true);
+    expect(spawnCall('spawn', ['ls', ['../..'], { shell: true }]).shell).toBe(true);
+    expect(spawnCall('spawnSync', ['ls', ['../..']]).shell).toBe(false);
   });
 });
 
@@ -245,6 +295,33 @@ describe('the guard installed in this very run', () => {
     ]);
   });
 
+  it('sees a ChildProcess spawned directly list it, and a spawn read once', async () => {
+    const child = new ChildProcess();
+    child.spawn({ file: 'ls', args: ['ls', REPO], stdio: ['ignore', 'ignore', 'ignore'] });
+    await new Promise((done) => child.on('exit', done));
+    const direct = spawn('ls', [REPO], { stdio: 'ignore' });
+    await new Promise((done) => direct.on('exit', done));
+    expect(covering().map((h) => h.via)).toEqual([
+      'ChildProcess#spawn() running ls',
+      'spawn() running ls',
+    ]);
+  });
+
+  it('reads exec once, not again as the execFile it runs', async () => {
+    await promisify(exec)(`ls ${REPO}`);
+    expect(covering().map((h) => h.via)).toEqual(['exec() running ls']);
+  });
+
+  it('sees a listing through a symlink to it, or through a symlink’s `..`', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'whole-tree-link-'));
+    symlinkSync(REPO, join(dir, 'repo'));
+    symlinkSync(join(REPO, 'scripts'), join(dir, 'scripts'));
+    readdirSync(join(dir, 'repo'));
+    readdirSync(`${dir}/scripts/..`);
+    rmSync(dir, { recursive: true, force: true });
+    expect(covering().map((h) => h.dir)).toEqual([REPO, REPO]);
+  });
+
   it('records nothing covering the root for a listing inside it', () => {
     readdirSync(import.meta.dirname);
     expect(covering()).toEqual([]);
@@ -349,8 +426,30 @@ describe('what an import.meta.glob lists', () => {
       ts,
     });
     expect(refused.why).toMatch(
-      /^line 1 expands import\.meta\.glob\('@\/x\/\*\.ts'\) with a pattern the guard cannot resolve \(an alias, a `#` import, or not a literal\), which counts as the root before the test runs/,
+      /^line 1 expands import\.meta\.glob\('@\/x\/\*\.ts'\) with a pattern the guard cannot resolve \(an alias, a `#` import, not a literal, or a '\.\.' after a wildcard\), which counts as the root before the test runs/,
     );
+  });
+
+  it('counts a pattern climbing after a wildcard as the root, which vite resolves past its prefix', () => {
+    const [g] = at(call("'./../*/../../../../**/*.md', { eager: true }"));
+    expect(g).toEqual(
+      expect.objectContaining({
+        dir: REPO,
+        resolved: false,
+        via: "import.meta.glob('./../*/../../../../**/*.md') (a '..' after a wildcard, which ends wherever the matches lead, so counted as the root)",
+      }),
+    );
+    const [refused] = judgeGlobs({
+      files: [
+        {
+          path: 'packages/core/src/pipeline/globs.test.ts',
+          source: call("'./../*/../../../../**/*.md'"),
+        },
+      ],
+      root: REPO,
+      ts,
+    });
+    expect(refused.why).toContain("a '..' after a wildcard");
   });
 
   it('reads a call, never the same text in a string or a comment', () => {

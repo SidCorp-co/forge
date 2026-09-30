@@ -37,8 +37,9 @@ someone to remember to add a line when a test starts reading a new file.
 
 ## Two more a declaration does not reach
 
-ISS-1314's guard refuses an undeclared test that lists a directory covering the root. Two kinds of
-reach it leaves unrefused, measured on the tree its fourth build was cut from.
+ISS-1314's guard refuses an undeclared test that lists a directory covering the root. Three kinds
+of reach it leaves unrefused: the first two measured on the tree its fourth build was cut from, the
+third priced by its fifth.
 
 ### A listing of one directory below the root
 
@@ -77,3 +78,18 @@ it cannot read.
 |---|---|
 | Kernel-level tracing | Closing native code needs every directory enumeration traced (strace, seccomp or eBPF on `getdents64`) and attributed to the one test file that caused it. That means one file per process, and a Linux-only gate. |
 | Nothing closes delegation from inside | A listing made by a process the test did not start is visible only to that process. The honest guard for it is the declaration itself, written by whoever knows what the service reads. |
+
+### A program git runs from the machine's own configuration
+
+The guard reads what git is set to run in the repository it runs in, since a test writing a
+fixture decides that: a hook, `core.hooksPath`, `core.fsmonitor`, a filter, diff or merge driver,
+an editor, a signer and a transport command each count as the root for the subcommands that run
+them, and so does a config file `GIT_CONFIG_GLOBAL` or `GIT_CONFIG_SYSTEM` names. It does not read
+the user's global or system config (`~/.gitconfig`, `$XDG_CONFIG_HOME/git/config`,
+`/etc/gitconfig`). A test that points `HOME` at a directory whose `.gitconfig` sets
+`core.fsmonitor`, then runs `git status` in a fixture, passes.
+
+| Cost | What it takes |
+|---|---|
+| Reading the user's config | Every git call would be judged by settings no reviewer of the test can see, and that config differs from one machine to the next, so one test could pass in CI and be refused on a developer's box. |
+| Reading only a `HOME` the test sets | The reader would need the parent's environment beside the child's, to tell a `HOME` the test chose from the one it inherited. |
