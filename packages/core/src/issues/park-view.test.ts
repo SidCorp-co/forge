@@ -9,6 +9,9 @@ vi.mock('../config/env.js', () => ({
 }));
 
 const { boundaryOf, readPark } = await import('./park-view.js');
+const { announcesAMove, buildLeaveBody, buildTransitionReasonBody } = await import(
+  './transition-reason.js'
+);
 
 const at = (minute: number) => new Date(Date.UTC(2026, 8, 27, 10, minute));
 
@@ -277,6 +280,42 @@ describe('readPark — the answer a person gave in the thread', () => {
       ...base,
       comments: [],
       replies: [{ id: 'a1', body: 'keep it', createdAt: at(22) }],
+    });
+    expect(park?.answer).toBeNull();
+  });
+});
+
+describe('announcesAMove — the announcements an answer is never read from', () => {
+  it('knows every heading the announcement writers produce', () => {
+    for (const body of [
+      buildTransitionReasonBody('needs_info', 'in_progress', 'which order?'),
+      buildTransitionReasonBody('waiting', 'developed', 'look at it', 'needs_decision'),
+      buildTransitionReasonBody('waiting', 'developed', 'an account', 'needs_resource'),
+      buildLeaveBody('needs_info', 'developed', 'settled on the call'),
+    ]) {
+      expect(announcesAMove(body), body).toBe(true);
+    }
+  });
+
+  it('is false for what a person writes, even one that mentions a move', () => {
+    for (const body of [
+      'keep the legacy order',
+      'it moved from `in_progress` yesterday, keep it',
+    ]) {
+      expect(announcesAMove(body), body).toBe(false);
+    }
+  });
+
+  it('keeps a leave announcement from reading as the answer', () => {
+    const park = readPark({
+      status: 'needs_info',
+      waitingKind: null,
+      moves: [{ to: 'needs_info', at: at(20), reason: 'which order?' }],
+      comments: [{ id: 'rec', body: parkBody('question', 'in_progress'), createdAt: at(19) }],
+      replies: [
+        { id: 'leave', body: buildLeaveBody('waiting', 'needs_info', 'why'), createdAt: at(21) },
+      ],
+      openHumanQuestionIds: [],
     });
     expect(park?.answer).toBeNull();
   });

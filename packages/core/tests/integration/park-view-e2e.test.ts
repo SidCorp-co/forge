@@ -308,6 +308,26 @@ describe('the answer a question asked in the thread has', () => {
   });
 });
 
+describe('an answer behind a long thread', () => {
+  it('is still the answer after more typed records than a page holds', async () => {
+    const issueId = await insertIssue('needs_info');
+    await moved(issueId, 'open', 'in_progress', 60);
+    await commented(issueId, parkRecord('question', 'in_progress'), 50);
+    await moved(issueId, 'in_progress', 'needs_info', 49);
+    const answerId = await commented(issueId, 'keep the legacy order', 40);
+    for (let i = 0; i < 60; i += 1) {
+      await commented(
+        issueId,
+        ['```forge-record', `note: ${i}`, '```', '', '`forge-record: note · contract 1`'].join(
+          '\n',
+        ),
+        30 - i / 10,
+      );
+    }
+    expect((await getPark(issueId)).body.park?.answer).toMatchObject({ commentId: answerId });
+  });
+});
+
 describe('the park view exists for exactly the issues Needs you lists', () => {
   it('agrees with the search Needs you reads, row for row', async () => {
     const ids = {

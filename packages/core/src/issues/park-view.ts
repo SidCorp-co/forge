@@ -33,6 +33,7 @@ import {
   HUMAN_PARK_STATUSES,
   ISSUE_TERMINAL_STATUSES,
 } from './status-sets.js';
+import { announcesAMove } from './transition-reason.js';
 
 /** A park is set down from a working rung and returned to one; a side status never is one. */
 const SIDE_STATUSES: readonly string[] = HUMAN_PARK_STATUSES;
@@ -41,8 +42,6 @@ const NOT_A_RUNG: readonly string[] = [...HUMAN_PARK_STATUSES, ...ISSUE_TERMINAL
 const HISTORY_SHORT =
   'the moves before this park were made before Forge recorded each move inside its own write, so nothing says which park record is this one — move it where it belongs with Move anyway';
 
-/** The heading every park announcement opens with, as the plugin's `announces` reads it. */
-const ANNOUNCED = /—\s*moved from `[a-z_]+`\**$/u;
 const ANSWER_CHARS = 2000;
 
 const NO_RECORD =
@@ -189,8 +188,7 @@ function answerAfter(replies: readonly ParkComment[], recordAt: string): IssuePa
   const reply = [...replies].reverse().find((c) => {
     if (c.createdAt.getTime() <= after) return false;
     if (fieldsOf(c.body, 'answer')) return true;
-    const heading = c.body.split('\n')[0]?.trim() ?? '';
-    return !c.byDevice && !ANNOUNCED.test(heading) && !parseForgeRecord(c.body);
+    return !c.byDevice && !announcesAMove(c.body) && !parseForgeRecord(c.body);
   });
   if (!reply) return null;
   return {
@@ -312,15 +310,14 @@ export async function loadIssuePark(issueId: string): Promise<IssuePark | null> 
         or(isNull(comments.authorDeviceId), like(comments.body, '%forge-record: answer%')),
       ),
     )
-    .orderBy(desc(comments.createdAt))
-    .limit(50);
+    .orderBy(comments.createdAt);
   return readPark({
     status,
     waitingKind: (issue.waitingKind as WaitingKind | null) ?? null,
     moves,
     historyReaches: reaches,
     comments: records,
-    replies: replies.reverse().map((r) => ({ ...r, byDevice: r.device !== null })),
+    replies: replies.map((r) => ({ ...r, byDevice: r.device !== null })),
     openHumanQuestionIds,
   });
 }
