@@ -86,7 +86,7 @@ describe('unionInsertions over duplicated lines', () => {
   it('refuses a rewrite exactly where the base is not a subsequence of the member, and otherwise adds every line the member added', () => {
     let seed = 1340;
     const next = () => {
-      seed = (seed * 1103515245 + 12345) % 2147483648;
+      seed = (Math.imul(seed, 1103515245) + 12345) >>> 0;
       return seed;
     };
     const edit = (base, maxDrop) => {
@@ -101,7 +101,7 @@ describe('unionInsertions over duplicated lines', () => {
       return out;
     };
     const text = (ls) => ls.map((l) => `${l}\n`).join('');
-    let accepted = 0;
+    const seen = { accepted: 0, rewrite: 0, anchored: 0, bothLines: 0 };
     for (let round = 0; round < 3000; round++) {
       const b = Array.from({ length: next() % 10 }, () => '- same'.repeat(1 + (next() % 2)));
       const o = edit(b, 1);
@@ -109,14 +109,17 @@ describe('unionInsertions over duplicated lines', () => {
       const r = unionInsertions({ base: text(b), ours: text(o), theirs: text(t), path: 'C' });
       const rewrote = !isSubsequence(b, t);
       expect(r.refusal?.includes('removes or rewrites') ?? false, `${b}|${t}`).toBe(rewrote);
+      if (new Set(b).size === 2) seen.bothLines++;
+      if (rewrote) seen.rewrite++;
+      if (r.refusal?.includes('which the combination removed or rewrote')) seen.anchored++;
       if (r.text === undefined) continue;
-      accepted++;
+      seen.accepted++;
       const merged = lines(r.text);
       expect(isSubsequence(o, merged)).toBe(true);
       if (isSubsequence(b, o)) expect(isSubsequence(t, merged), `${b}|${o}|${t}`).toBe(true);
       expect(merged).toHaveLength(o.length + t.length - b.length);
     }
-    expect(accepted).toBeGreaterThan(500);
+    for (const [kind, n] of Object.entries(seen)) expect(n, kind).toBeGreaterThan(100);
   });
 
   it('refuses by name an addition anchored after a duplicated line the combination rewrote', () => {
@@ -142,7 +145,7 @@ describe('matchLines', () => {
   it('matches a longest common subsequence, in order and line for line, on every random pair', () => {
     let seed = 1203;
     const next = () => {
-      seed = (seed * 1103515245 + 12345) % 2147483648;
+      seed = (Math.imul(seed, 1103515245) + 12345) >>> 0;
       return seed;
     };
     for (let round = 0; round < 2000; round++) {

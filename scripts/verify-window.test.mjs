@@ -1542,6 +1542,32 @@ describe('isolating the only member a rebuild leaves out', () => {
     expect(conflicted.status).toBe(1);
     expect(conflicted.stdout).toContain('Left out by this build: ISS-3');
   });
+
+  it('keeps a recorded isolation out of what the build left out, even once its branch is gone', () => {
+    const gone = branch('ISS-40-gone', { 'src/gone.txt': 'soon deleted\n' });
+    const c = clone('isolate-gone');
+    const w = windowFiles(
+      'w-gone',
+      [
+        ['ISS-1', 'ISS-1-b', heads.m1],
+        ['ISS-40', 'ISS-40-gone', gone],
+      ],
+      {},
+    );
+    const flags = ['--window', w.manifest, '--tree', w.tree];
+    expect(run(c, 'assemble', ...flags).status).toBe(0);
+    expect(run(c, 'isolate', ...flags, '--member', 'ISS-40', '--because', 'red').status).toBe(0);
+    git(seed, 'push', '-q', 'origin', '--delete', 'ISS-40-gone');
+    const again = run(c, 'isolate', ...flags, '--member', 'ISS-40', '--because', 'red');
+    expect(again.status, again.stdout + again.stderr).toBe(0);
+    const row = JSON.parse(readFileSync(w.ledger, 'utf8')).members.find(
+      (m) => m.issue === 'ISS-40',
+    );
+    expect(row).toMatchObject({
+      admission: 'refused',
+      isolated: { because: 'red', kind: 'refusal' },
+    });
+  });
 });
 
 describe("a changelog the size of this repository's", () => {

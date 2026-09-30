@@ -210,18 +210,19 @@ export function assemble({ repoDir, manifest, treeDir, replay, rebuild }) {
   const rows = [];
   for (const [i, member] of manifest.members.entries()) {
     const refusals = admissions[i].refusals;
-    if (refusals.length > 0) {
-      rows.push({ ...member, admission: 'refused', refusals, landing: null, isolated: null });
-      continue;
-    }
+    const admission = refusals.length > 0 ? 'refused' : 'admitted';
     if (prior.has(member.issue)) {
       rows.push({
         ...member,
-        admission: 'admitted',
-        refusals: [],
+        admission,
+        refusals,
         landing: null,
         isolated: prior.get(member.issue),
       });
+      continue;
+    }
+    if (refusals.length > 0) {
+      rows.push({ ...member, admission, refusals, landing: null, isolated: null });
       continue;
     }
     const landed = rows.filter((r) => r.landing);
@@ -241,7 +242,10 @@ export function assemble({ repoDir, manifest, treeDir, replay, rebuild }) {
   const head = t.must(['rev-parse', 'HEAD']).trim();
   return {
     leftOut: rows
-      .filter((r) => r.admission === 'refused' || r.isolated?.kind === 'assembly')
+      .filter(
+        (r) =>
+          !prior.has(r.issue) && (r.admission === 'refused' || r.isolated?.kind === 'assembly'),
+      )
       .map((r) => r.issue),
     ledger: {
       window: manifest.window,
