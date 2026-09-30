@@ -459,7 +459,10 @@ pub async fn reconcile(
 /// What a sweep tmux could not answer says it did. The pane read gives no
 /// end, but the Claude Code process recorded for a subagent is read from
 /// `/proc` whatever tmux answers, and that process read gone is the one end
-/// this sweep may still have recorded (ISS-1312 criterion 31).
+/// this sweep may still have recorded (ISS-1312 criterion 31). That end is the
+/// subagent's and not the run's: the run keeps its checkout and its issues
+/// until its master closes it or recovery releases it, so the line says whose
+/// end it recorded rather than that it ended a run.
 fn unanswered_line(reads: &[String], ended_by_process: &[String]) -> Option<String> {
     if reads.is_empty() {
         return None;
@@ -468,7 +471,7 @@ fn unanswered_line(reads: &[String], ended_by_process: &[String]) -> Option<Stri
         "no end for any of them".to_string()
     } else {
         format!(
-            "no end for any of them from their pane, and ended {} ({}) because the Claude Code process its subagent ran in reads gone",
+            "no end for any of them from their pane, and the end of the subagent of {} ({}) because the Claude Code process it ran in reads gone, each such run staying open, with its checkout and its issues, until its master closes it or recovery releases it,",
             ended_by_process.len(),
             ended_by_process.join(", ")
         )
@@ -2862,12 +2865,95 @@ mod tests {
         );
         let one = unanswered_line(&reads, &["run-2".to_string()]).expect("two reads");
         assert!(
-            one.contains("no end for any of them from their pane, and ended 1 (run-2)")
-                && one.contains("reads gone")
+            one.contains(
+                "no end for any of them from their pane, and the end of the subagent of 1 (run-2)"
+            ) && one.contains("reads gone")
                 && !one.contains("recorded no end for any of them and"),
-            "a sweep that ended a run does not say it ended none: {one}"
+            "a sweep that recorded a subagent's end does not say it recorded none: {one}"
+        );
+        assert!(
+            one.contains("staying open, with its checkout and its issues")
+                && !one.contains("ended 1"),
+            "the end recorded is the subagent's, and the run it names is still open: {one}"
         );
         assert_eq!(unanswered_line(&[], &[]), None);
+    }
+
+    /// ISS-1312, the ninth judge's K2: only the formatter above was tested, so
+    /// a sweep that never told the line which ends it took (j9:P31e) left every
+    /// test green. This one reads the line the sweep itself writes.
+    #[test]
+    fn a_sweep_tmux_could_not_answer_names_in_its_line_the_subagent_end_it_recorded() {
+        let scratch = Scratch::new("tmux-unanswered-line");
+        let (mut led, _wt, _transcript) = a_subagent_run(&scratch);
+        record_host(&led);
+
+        let out = logged_while(|| {
+            block_on(async {
+                sweep_procs(&mut led, &TmuxUnanswered, &Beats::default(), &host_gone()).await;
+            })
+        });
+
+        let line = out
+            .lines()
+            .find(|l| l.contains("tmux could not be asked"))
+            .unwrap_or_else(|| panic!("no line names the unanswered read: {out}"));
+        assert!(
+            line.contains("the end of the subagent of 1 (run-1)") && line.contains("staying open"),
+            "the sweep recorded run-1's subagent as ended by its process, and says so: {line}"
+        );
+        assert!(
+            !line.contains("ended"),
+            "and it calls no run ended, the subagent's end being the one it recorded: {line}"
+        );
+        assert!(
+            led.run("run-1").unwrap().unwrap().ended_by.is_none(),
+            "and the run the line names is open, as the line says"
+        );
+    }
+
+    /// ISS-1312 criterion 74, the ninth judge's K1, as the judge probed it: a
+    /// master closes the run, its release is refused until the window decides
+    /// it, and `conclude_release_refusal` wrote `recovery` and the refusal
+    /// over the master's ending.
+    #[test]
+    fn a_closed_run_whose_release_is_refused_until_the_window_decides_keeps_its_masters_ending() {
+        let scratch = Scratch::new("closed-then-refused");
+        let (mut led, root, wt, _transcript) = a_subagent_run_in_a_worktree(&scratch);
+        git(&wt, &["checkout", "-q", "--detach"]);
+        std::fs::write(wt.join("jest-results.json"), "{}").unwrap();
+        led.end_run("run-1", "master", "its report is in").unwrap();
+
+        let now = now_ms() / 1000;
+        let refused = block_on(release_at(&mut led, &root, now));
+        assert!(
+            matches!(refused, crate::runner::terminate::Release::Refusing { .. }),
+            "the control: an unsaved file in a detached checkout refuses: {refused:?}"
+        );
+        let decided = block_on(release_at(
+            &mut led,
+            &root,
+            now + crate::runner::terminate::RELEASE_GRACE_SECS,
+        ));
+        assert!(
+            matches!(decided, crate::runner::terminate::Release::Terminal { .. }),
+            "{decided:?}"
+        );
+
+        let run = led.run("run-1").unwrap().unwrap();
+        assert_eq!(
+            (run.ended_by.as_deref(), run.ended_reason.as_deref()),
+            (Some("master"), Some("its report is in")),
+            "criterion 74: the decided refusal leaves who ended the run and why"
+        );
+        assert!(
+            run.release_terminal_at.is_some() && run.release_refusal.is_some(),
+            "and the refusal is still decided and kept: {run:?}"
+        );
+        assert!(
+            led.held_worktrees().unwrap().iter().any(|(p, _)| p == &wt),
+            "the checkout the release refused to remove stays out of the reaper's reach"
+        );
     }
 
     /// ISS-1312 criterion 33: a `pane-gone` mark is withdrawn once the same
