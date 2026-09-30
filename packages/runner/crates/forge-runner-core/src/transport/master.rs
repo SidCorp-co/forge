@@ -240,8 +240,21 @@ mod tests {
     async fn a_core_that_cannot_be_reached_is_an_error_rather_than_a_hang() {
         let (_held, addr) = refusing_addr();
         let c = client(format!("http://{addr}"));
-        assert!(report_limit(&c, "usage_limit", Some(1), "x").await.is_err());
-        assert!(clear_limit(&c).await.is_err());
+        // A refusal, by name: an error any listener could also produce (a
+        // sibling test's, holding a port released on macOS) is not this one.
+        let reported = report_limit(&c, "usage_limit", Some(1), "x")
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(
+            reported.starts_with("me/limit request: could not connect"),
+            "{reported}"
+        );
+        let cleared = clear_limit(&c).await.unwrap_err().to_string();
+        assert!(
+            cleared.starts_with("me/limit request: could not connect"),
+            "{cleared}"
+        );
     }
 
     #[tokio::test]
