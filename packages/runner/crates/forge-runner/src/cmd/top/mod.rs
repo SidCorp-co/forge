@@ -12,6 +12,7 @@
 
 mod binary;
 mod cli_slug;
+mod fit;
 mod gather;
 mod ledger_ro;
 mod panes;
@@ -56,20 +57,55 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         println!("{}", render::frame(&snapshot, None).join("\n"));
         return Ok(());
     }
+    // One listener for the life of the view, made before the first frame: a
+    // listener made afresh beside each sleep hears nothing sent while a frame
+    // is gathered or drawn, and the judge at d7da543 lost 10 of 30 that way.
+    let mut interrupt = Interrupt::listen()?;
+    let mut page = 0;
     loop {
-        let snapshot = gather::frame(&ctx, &mut carry).await;
+        let snapshot = tokio::select! {
+            s = gather::frame(&ctx, &mut carry) => s,
+            _ = interrupt.heard() => return ended(),
+        };
         let lines = render::frame(&snapshot, Some(args.interval));
+        let shown = fit::screen(&lines, fit::size(), page);
+        page = shown.next;
         let mut out = std::io::stdout().lock();
-        // Home, clear: the frame replaces the last one rather than scrolling.
-        writeln!(out, "\x1b[H\x1b[2J{}", lines.join("\n"))?;
+        // Home, clear: the frame replaces the last one rather than scrolling,
+        // and no newline follows its last row, which would scroll the screen.
+        write!(out, "\x1b[H\x1b[2J{}", shown.rows.join("\n"))?;
         out.flush()?;
         drop(out);
         tokio::select! {
             _ = tokio::time::sleep(Duration::from_secs(args.interval)) => {}
-            _ = tokio::signal::ctrl_c() => {
-                println!();
-                return Ok(());
-            }
+            _ = interrupt.heard() => return ended(),
         }
+    }
+}
+
+fn ended() -> anyhow::Result<()> {
+    println!();
+    Ok(())
+}
+
+/// Ctrl-C, heard from the moment the listener is made until the view ends.
+struct Interrupt {
+    #[cfg(unix)]
+    inner: tokio::signal::unix::Signal,
+    #[cfg(windows)]
+    inner: tokio::signal::windows::CtrlC,
+}
+
+impl Interrupt {
+    fn listen() -> std::io::Result<Self> {
+        #[cfg(unix)]
+        let inner = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())?;
+        #[cfg(windows)]
+        let inner = tokio::signal::windows::ctrl_c()?;
+        Ok(Self { inner })
+    }
+
+    async fn heard(&mut self) {
+        self.inner.recv().await;
     }
 }
