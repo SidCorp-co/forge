@@ -11,6 +11,7 @@
  * is the piece between them that decides whether to take one at all.
  */
 
+import { resolveTurnAuthority, type TurnAuthority } from '../auth/turn-credential.js';
 import type {
   ConversationMode,
   ConversationWindowCutReason,
@@ -42,6 +43,7 @@ import {
   deliveredDecisionUnderKey,
   effectiveConversationMode,
   getConversation,
+  messageAuthorTokenId,
   readMessagesInRange,
   type StoredConversationMessage,
 } from './store.js';
@@ -64,7 +66,7 @@ import {
 export type WindowTurnInputs = Omit<
   ConversationTurnRequest,
   | 'venue'
-  | 'principalUserId'
+  | 'authority'
   | 'speakerUserId'
   | 'handleUserId'
   | 'speakerKey'
@@ -81,8 +83,6 @@ export type WindowTurnInputs = Omit<
 export interface RouteWindowArgs {
   /** The claimed row; `dueAt` rides along from the claim where the caller has one, and is what `routingDelayMs` is measured from. */
   window: ConversationWindowRow & { dueAt?: Date | undefined };
-  /** Whose authority a turn runs under in a venue that has many speakers. */
-  manySpeakersPrincipalUserId: string;
   /** The adapter's own contribution to the turn, built for the window's last message. */
   inputs: (context: WindowContext) => WindowTurnInputs;
   /**
@@ -128,7 +128,8 @@ export interface WindowContext {
   mode: ConversationMode;
   /** The messages this window collected, oldest first. */
   messages: StoredConversationMessage[];
-  principalUserId: string;
+  /** The person whose message this turn answers, as they may be acted as (ISS-17). */
+  authority: TurnAuthority;
   /** The Forge user the newest person message is linked to; null in a room where nobody Forge knows spoke last. */
   speakerUserId: string | null;
   cut: WindowCut;
@@ -314,16 +315,12 @@ async function decide(
 
   const last = messages[messages.length - 1];
   const speaker = [...messages].reverse().find((m) => m.role === 'user') ?? last;
-  let principalUserId = args.manySpeakersPrincipalUserId;
-  if (venue.shape === 'direct') {
-    if (!speaker?.authorUserId) {
-      return refuseAuthority(args, venue, window, deliveryKey, claim, {
-        authorKey: speaker?.authorKey ?? null,
-        authorLabel: speaker?.authorLabel ?? null,
-      });
-    }
-    principalUserId = speaker.authorUserId;
-  }
+  const unlinked = () =>
+    refuseAuthority(args, venue, window, deliveryKey, claim, {
+      authorKey: speaker?.authorKey ?? null,
+      authorLabel: speaker?.authorLabel ?? null,
+    });
+  if (venue.shape === 'direct' && !speaker?.authorUserId) return unlinked();
 
   const handles = await roomHandles(window.conversationId);
   const selves = await readSelvesFor(handles.map((h) => h.userId));
@@ -353,6 +350,19 @@ async function decide(
   });
   if (!verdict.speak) return { decision: verdict.decision, detail: verdict.detail };
 
+  // cm:guard a turn acts as the person whose message it answers, in every shape; a group room
+  // once ran as its handle or its org's creator, so a viewer's ask wrote with their role (ISS-17).
+  if (!speaker?.authorUserId) return unlinked();
+  const resolved = await resolveTurnAuthority({
+    userId: speaker.authorUserId,
+    projectId: venue.projectId,
+    viaTokenId: await messageAuthorTokenId(speaker.id),
+  });
+  if (!resolved.ok) {
+    return refuseAuthority(args, venue, window, deliveryKey, claim, undefined, resolved.refusal);
+  }
+  const { authority } = resolved;
+
   const speakerUserId = linkedSpeakerOf(messages).userId;
   const handleUserId = await handleForProject(window.conversationId, venue.projectId);
   const inputs = args.inputs({
@@ -362,7 +372,7 @@ async function decide(
     deliveryKey,
     mode: effectiveConversationMode(conversation),
     messages,
-    principalUserId,
+    authority,
     speakerUserId,
     cut: cut.current,
     reserve: () => reserveDelivery(window.id, claim),
@@ -384,7 +394,7 @@ async function decide(
     outcome = await runConversationTurn({
       ...inputs,
       venue,
-      principalUserId,
+      authority,
       speakerUserId,
       handleUserId,
       speakerKey: speaker?.authorLabel ?? speaker?.authorUserId ?? 'unknown',

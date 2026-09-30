@@ -4,10 +4,12 @@
  * The model brings the text; core stamps everything that says where it came
  * from — the project, the room, the person who spoke and the handle that
  * listened — so a note is always attributable and always deletable by its author.
+ * It is written with that person's own authority: the turn's principal IS the
+ * speaker (ISS-17), and the role checked is the one `POST /api/memory` takes.
  */
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { assertPrincipalIsMember, type ContextScopedMcpToolFactory } from '../../mcp/tools/lib.js';
+import { assertPrincipalIsWriter, type ContextScopedMcpToolFactory } from '../../mcp/tools/lib.js';
 import { runMemoryWrite } from '../../memory/write-service.js';
 import { NOTE_TEXT_MAX } from './memory-note-gate.js';
 
@@ -45,12 +47,12 @@ export const forgeMemoryNoteTool: ContextScopedMcpToolFactory = (ctx) => ({
         'forge_memory.note stamps the project and the room it was written in, and this turn names no room',
       );
     }
-    if (!turn.speakerUserId) {
+    if (!turn.speakerUserId || turn.speakerUserId !== ctx.principal.userId) {
       throw new Error(
-        'forge_memory.note is written on behalf of the linked person who spoke, and the newest message is from nobody Forge knows — nothing may be remembered on their behalf. They can link their account first.',
+        'forge_memory.note is written as the linked person who spoke, and this turn does not run as them — nothing may be remembered on their behalf. They can link their account first.',
       );
     }
-    await assertPrincipalIsMember(ctx.principal, projectId);
+    await assertPrincipalIsWriter(ctx.principal, projectId);
     const sourceRef = `conversation:${turn.conversationId}:${randomUUID()}`;
     const result = await runMemoryWrite({
       projectId,
@@ -59,7 +61,7 @@ export const forgeMemoryNoteTool: ContextScopedMcpToolFactory = (ctx) => ({
       textContent: args.title ? `${args.title}\n\n${args.text}` : args.text,
       metadata: {
         conversationId: turn.conversationId,
-        authorUserId: turn.speakerUserId,
+        authorUserId: ctx.principal.userId,
         handleUserId: turn.handleUserId,
         ...(args.title ? { title: args.title } : {}),
       },

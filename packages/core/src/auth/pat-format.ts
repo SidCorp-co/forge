@@ -53,3 +53,11 @@ const WORKSPACE_TOKEN_NAME_PREFIX = 'workspace:';
  */
 export const workspaceTokenNameFor = (deviceId: string, projectId: string) =>
   `${WORKSPACE_TOKEN_NAME_PREFIX}${deviceId}:${projectId}`;
+
+const TURN_TOKEN_NAME_PREFIX = 'turn:';
+
+/**
+ * The token a session on a paired box answers one person's message under
+ * (`agent-sessions/session-credential.ts`), found by this name to be revoked when the session ends.
+ */
+export const turnTokenNameFor = (sessionId: string) => `${TURN_TOKEN_NAME_PREFIX}${sessionId}`;

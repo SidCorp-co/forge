@@ -45,7 +45,7 @@ export function canonicalInstructions(v: string | null): string | null {
 
 export interface PreferenceActor {
   kind: PreferenceChangeActor;
-  /** The person, the admin, or the handle that spoke. */
+  /** The person, the admin, or — through the assistant — the person whose message asked for it. */
   userId: string | null;
 }
 

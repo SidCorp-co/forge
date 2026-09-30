@@ -28,11 +28,9 @@ vi.mock('../issues/progress.js', () => ({
 
 const createChatSessionRow = vi.fn();
 const dispatchChatTurn = vi.fn();
-const resolveChatDevice = vi.fn();
 vi.mock('./chat-turn.js', () => ({
   createChatSessionRow: (...args: unknown[]) => createChatSessionRow(...args),
   dispatchChatTurn: (...args: unknown[]) => dispatchChatTurn(...args),
-  resolveChatDevice: (...args: unknown[]) => resolveChatDevice(...args),
 }));
 
 const applyKernelTransition = vi.fn();
@@ -50,6 +48,17 @@ vi.mock('../conversations/ports.js', async (orig) => ({
   ...(await orig<typeof import('../conversations/ports.js')>()),
   conversationTransport: () => ({ adapter: 'web', deliver }),
 }));
+
+const resolveSessionAuthority = vi.fn();
+const mintSessionCredential = vi.fn(async (..._args: unknown[]) => 'forge_pat_dev_retry');
+vi.mock('./session-credential.js', async (orig) => ({
+  ...(await orig<typeof import('./session-credential.js')>()),
+  resolveSessionAuthority: (...args: unknown[]) => resolveSessionAuthority(...args),
+  mintSessionCredential: (...args: unknown[]) => mintSessionCredential(...args),
+}));
+
+const ASKER = { userId: 'alice-id', viaTokenId: null };
+const AUTHORISED = { ok: true, value: { authority: { userId: 'alice-id' }, menu: [] } };
 
 const loggerInfo = vi.fn();
 vi.mock('../logger.js', () => ({
@@ -109,6 +118,7 @@ describe('redispatchConversationAgentTurn', () => {
           deliveryKey: 'key-1',
           handleName: 'Babo',
           askedByLabel: '@alice',
+          asker: ASKER,
           question: 'How does X work?',
           door: 'agent-chat-completion',
           replies: REPLIES,
@@ -127,6 +137,9 @@ describe('redispatchConversationAgentTurn', () => {
     dispatchChatTurn.mockReset();
     findAvailableDeviceForProject.mockReset();
     applyKernelTransition.mockReset();
+    resolveSessionAuthority.mockReset();
+    resolveSessionAuthority.mockResolvedValue(AUTHORISED);
+    mintSessionCredential.mockClear();
   });
 
   it('reports not-a-conversation-turn for a session carrying no conversation marker', async () => {
@@ -160,12 +173,34 @@ describe('redispatchConversationAgentTurn', () => {
     expect(result).toEqual({ ok: false, status: 'no-prompt' });
   });
 
+  it('refuses a turn whose session names nobody who asked, rather than running it as the box', async () => {
+    const session = makeSession();
+    const meta = (session as { metadata: { conversationAgent: Record<string, unknown> } }).metadata
+      .conversationAgent;
+    delete meta.asker;
+    const result = await redispatchConversationAgentTurn(session);
+    expect(result).toEqual({ ok: false, status: 'no-asker' });
+    expect(findAvailableDeviceForProject).not.toHaveBeenCalled();
+  });
+
+  it('refuses where the asker may no longer be acted as, minting nothing', async () => {
+    findAvailableDeviceForProject.mockResolvedValue('device-3');
+    resolveSessionAuthority.mockResolvedValue({
+      ok: false,
+      refusal: { code: 'TURN_NO_ROLE', message: 'gone' },
+    });
+    const result = await redispatchConversationAgentTurn(makeSession());
+    expect(result).toEqual({ ok: false, status: 'authority-refused' });
+    expect(mintSessionCredential).not.toHaveBeenCalled();
+  });
+
   it('reports no-device when no healthy runner is available', async () => {
     findAvailableDeviceForProject.mockResolvedValue(null);
     const result = await redispatchConversationAgentTurn(makeSession());
     expect(result).toEqual({ ok: false, status: 'no-device' });
     expect(findAvailableDeviceForProject).toHaveBeenCalledWith('proj-1', {
       excludeDeviceIds: ['device-1'],
+      requireCapability: 'turnCredential',
     });
   });
 
@@ -181,6 +216,7 @@ describe('redispatchConversationAgentTurn', () => {
             windowId: 'win-1',
             deliveryKey: 'key-1',
             handleName: 'Babo',
+            asker: ASKER,
             deliveredAt: null,
             failover: { attempt: 1, triedDeviceIds: ['device-1'] },
           },
@@ -189,6 +225,7 @@ describe('redispatchConversationAgentTurn', () => {
     );
     expect(findAvailableDeviceForProject).toHaveBeenCalledWith('proj-1', {
       excludeDeviceIds: ['device-1', 'device-2'],
+      requireCapability: 'turnCredential',
     });
   });
 });
@@ -211,6 +248,7 @@ describe('redispatchConversationAgentTurn \u00b7 the re-dispatch itself', () => 
           deliveryKey: 'key-1',
           handleName: 'Babo',
           askedByLabel: '@alice',
+          asker: ASKER,
           question: 'How does X work?',
           door: 'agent-chat-completion',
           replies: REPLIES,
@@ -229,6 +267,9 @@ describe('redispatchConversationAgentTurn \u00b7 the re-dispatch itself', () => 
     dispatchChatTurn.mockReset();
     findAvailableDeviceForProject.mockReset();
     applyKernelTransition.mockReset();
+    resolveSessionAuthority.mockReset();
+    resolveSessionAuthority.mockResolvedValue(AUTHORISED);
+    mintSessionCredential.mockClear();
   });
 
   it('re-dispatches to a healthy runner, carrying the bumped failover chain in metadata', async () => {
@@ -259,9 +300,18 @@ describe('redispatchConversationAgentTurn \u00b7 the re-dispatch itself', () => 
       expect.objectContaining({
         message: 'the built agent-chat prompt',
         client: { deviceId: 'device-3', isLocal: false, migrated: false },
+        credential: 'forge_pat_dev_retry',
         broadcastEvent: 'agent-session.created',
       }),
     );
+    expect(createChatSessionRow).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'alice-id' }),
+    );
+    expect(mintSessionCredential).toHaveBeenCalledWith({
+      sessionId: 'session-2',
+      deviceId: 'device-3',
+      value: AUTHORISED.value,
+    });
     expect(loggerInfo).toHaveBeenCalledWith(
       expect.objectContaining({
         fromDeviceId: 'device-1',

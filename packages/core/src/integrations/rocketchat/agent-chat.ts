@@ -4,6 +4,7 @@ import {
   type ConversationAgentTurnResult,
   startConversationAgentTurn,
 } from '../../agent-sessions/conversation-agent.js';
+import type { SessionAsker } from '../../agent-sessions/session-credential.js';
 import type { ConversationVenue } from '../../conversations/ports.js';
 import { parseRocketChatVenueId } from './conversation-port.js';
 import { hasInFlightRoomSession } from './room-delivery.js';
@@ -32,6 +33,8 @@ export interface StartAgentChatArgs {
   botName: string;
   message: string;
   askedByUsername?: string | undefined;
+  /** The linked person whose message this answers; the session runs as them (ISS-17). */
+  asker: SessionAsker;
   persona: string;
   conversationContext?: string | null | undefined;
 }
@@ -60,6 +63,7 @@ export async function startAgentChat(args: StartAgentChatArgs): Promise<StartAge
     handleName: args.botName,
     question: args.message,
     askedByLabel: args.askedByUsername ? `@${args.askedByUsername}` : null,
+    asker: args.asker,
     persona: args.persona,
     conversationContext: args.conversationContext,
     door: 'agent-chat-completion',

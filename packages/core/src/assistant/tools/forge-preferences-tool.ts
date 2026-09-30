@@ -4,6 +4,8 @@
  *
  * The tool names no user. Who it writes for is the turn's linked speaker,
  * stamped by core, so the model cannot be talked into restyling somebody else.
+ * The change is credited to that person — the turn runs as them (ISS-17) — and
+ * `changedBy: 'assistant'` says it was made through a room.
  */
 import { z } from 'zod';
 import { writeAssistantPreferences } from '../../auth/preference-changes.js';
@@ -47,15 +49,15 @@ export const forgePreferencesTool: ContextScopedMcpToolFactory = (ctx) => ({
   handler: async (raw: Record<string, unknown>) => {
     const patch = input.parse(raw);
     const turn = ctx.turn;
-    if (!turn?.speakerUserId) {
+    if (!turn?.speakerUserId || turn.speakerUserId !== ctx.principal.userId) {
       throw new Error(
-        'forge_preferences writes the preferences of the linked person who spoke, and the newest message is from nobody Forge knows — nothing may be set on their behalf. They can link their account or set it on their account page.',
+        'forge_preferences writes the preferences of the linked person who spoke, and this turn does not run as them — nothing may be set on their behalf. They can link their account or set it on their account page.',
       );
     }
     const written = await writeAssistantPreferences({
-      userId: turn.speakerUserId,
+      userId: ctx.principal.userId,
       patch,
-      actor: { kind: 'assistant', userId: turn.handleUserId },
+      actor: { kind: 'assistant', userId: ctx.principal.userId },
       conversationId: turn.conversationId,
     });
     return {

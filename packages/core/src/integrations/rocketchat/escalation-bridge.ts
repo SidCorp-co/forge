@@ -2,21 +2,24 @@
  * ISS-675/ISS-687 — the escalation completion bridge. The PM session is an
  * advisor returning `{answer, issueProposal?}`; this parses that and runs ONE
  * fresh Bao-persona turn to author the reply the user sees, creating any
- * proposed follow-up issue under Bao's own authority.
+ * proposed follow-up issue as the person who asked (ISS-17).
  */
 
 import { eq } from 'drizzle-orm';
 import { runExternalChatTurn } from '../../assistant/external-chat.js';
 import { namespaceFromServerUrl } from '../../assistant/identity/directory.js';
+import type { ChatToolset } from '../../assistant/tools/mcp-adapter.js';
 import { buildChatToolContext } from '../../assistant/tools/principal.js';
 import { buildProjectToolset } from '../../assistant/tools/registry.js';
+import {
+  CHAT_TURN_MENU,
+  mintTurnCredential,
+  resolveTurnAuthority,
+  type TurnCredential,
+} from '../../auth/turn-credential.js';
 import { recordDeliveredReplyToVenue } from '../../conversations/transcript.js';
 import { db } from '../../db/client.js';
-import {
-  type agentSessions as agentSessionsTable,
-  organizations,
-  projects,
-} from '../../db/schema.js';
+import { type agentSessions as agentSessionsTable, projects } from '../../db/schema.js';
 import { logger } from '../../logger.js';
 import { type MessageVerdict, problemsOf } from '../../messaging/contract.js';
 import { proven, wholeAgentText } from '../../messaging/proven.js';
@@ -104,24 +107,19 @@ function buildSynthesisMessage(
 interface EscalationRoute {
   slug: string;
   name: string;
-  principalUserId: string;
 }
 
 async function resolveEscalationRoute(projectId: string): Promise<EscalationRoute | null> {
   const [proj] = await db
-    .select({ slug: projects.slug, name: projects.name, orgId: projects.orgId })
+    .select({ slug: projects.slug, name: projects.name })
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1);
-  if (!proj) return null;
-  const [org] = await db
-    .select({ createdBy: organizations.createdBy })
-    .from(organizations)
-    .where(eq(organizations.id, proj.orgId))
-    .limit(1);
-  if (!org?.createdBy) return null;
-  return { slug: proj.slug, name: proj.name, principalUserId: org.createdBy };
+  return proj ?? null;
 }
+
+/** Synthesis credential lifetime: one relayed turn, with a CLI call at its edge. */
+const SYNTHESIS_CREDENTIAL_TTL_MS = 10 * 60 * 1000;
 
 const EMPTY_SYNTHESIS = {
   rule: 'non-empty',
@@ -141,30 +139,49 @@ async function synthesizeViaBao(
 ): Promise<{ text: string; proof: ReplySendProof }> {
   const route = await resolveEscalationRoute(session.projectId);
   if (!route) return { text: ESCALATION_FALLBACK_REPLY(meta.botName), proof: FIXED_REPLY_CONSTANT };
-  if (meta.shape === 'direct' && !meta.principalUserId) {
+  if (!meta.principalUserId) {
     logger.error(
       { sessionId: session.id, rid: meta.rid },
-      'rocketchat.escalation: direct room stored no speaker principal; refusing synthesis',
+      'rocketchat.escalation: the session stored no asker to act as; refusing synthesis',
     );
     return { text: ESCALATION_FALLBACK_REPLY(meta.botName), proof: FIXED_REPLY_CONSTANT };
   }
-  const principalUserId = meta.principalUserId ?? route.principalUserId;
+  let credential: TurnCredential | null = null;
+  if (payload.issueProposal) {
+    const resolved = await resolveTurnAuthority({
+      userId: meta.principalUserId,
+      projectId: session.projectId,
+      viaTokenId: meta.principalTokenId,
+    });
+    if (!resolved.ok) return { text: resolved.refusal.message, proof: FIXED_REPLY_CONSTANT };
+    credential = await mintTurnCredential({
+      authority: resolved.authority,
+      menu: CHAT_TURN_MENU,
+      ttlMs: SYNTHESIS_CREDENTIAL_TTL_MS,
+    });
+  }
+  try {
+    const tools = credential
+      ? buildProjectToolset(buildChatToolContext({ credential, projectSlug: route.slug }))
+      : undefined;
+    return await synthesizeWith(session, meta, payload, route, tools);
+  } finally {
+    await credential?.revoke();
+  }
+}
 
+async function synthesizeWith(
+  session: SessionRow,
+  meta: RoomReplyMeta,
+  payload: EscalationPayload,
+  route: EscalationRoute,
+  tools: ChatToolset | undefined,
+): Promise<{ text: string; proof: ReplySendProof }> {
   const persona = rocketChatPersona(route.name, meta.askedByUsername, {
     projectSlug: route.slug,
     webBaseUrl: webBaseUrl(),
     botName: meta.botName,
   });
-  const tools = payload.issueProposal
-    ? buildProjectToolset(
-        buildChatToolContext({
-          userId: principalUserId,
-          projectId: session.projectId,
-          projectSlug: route.slug,
-        }),
-      )
-    : undefined;
-
   const synthesise = (correction: string | null) =>
     runExternalChatTurn({
       projectId: session.projectId,

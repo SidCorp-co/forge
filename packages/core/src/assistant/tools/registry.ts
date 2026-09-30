@@ -16,17 +16,21 @@ import { buildToolset, type ChatToolSpec, type ChatToolset } from './mcp-adapter
 
 /** Curated allowlist exposed to the chat model. */
 export const CHAT_TOOL_ALLOWLIST: ChatToolSpec[] = [
-  { factory: forgeCliTool },
-  { factory: forgeGuideTool, allowedActions: ['list', 'get'] },
-  { factory: forgeKnowledgeTool, allowedActions: ['list', 'get', 'search'] },
-  { factory: forgeMemorySearchTool },
-  { factory: forgeProjectsGetTool },
-  { factory: forgePipelineRunsGetTool },
-  { factory: forgeProjectPipelineRunsTool },
-  { factory: forgeMetricsProjectStepDurationsTool },
-  { factory: forgeMetricsProjectTimeseriesTool },
-  { factory: forgePreferencesTool },
-  { factory: forgeMemoryNoteTool },
+  { factory: forgeCliTool, grant: null },
+  { factory: forgeGuideTool, grant: null, allowedActions: ['list', 'get'] },
+  {
+    factory: forgeKnowledgeTool,
+    grant: 'knowledge:read',
+    allowedActions: ['list', 'get', 'search'],
+  },
+  { factory: forgeMemorySearchTool, grant: 'knowledge:read' },
+  { factory: forgeProjectsGetTool, grant: 'projects:read' },
+  { factory: forgePipelineRunsGetTool, grant: 'pipeline:read' },
+  { factory: forgeProjectPipelineRunsTool, grant: 'pipeline:read' },
+  { factory: forgeMetricsProjectStepDurationsTool, grant: 'pipeline:read' },
+  { factory: forgeMetricsProjectTimeseriesTool, grant: 'projects:read' },
+  { factory: forgePreferencesTool, grant: 'account:write' },
+  { factory: forgeMemoryNoteTool, grant: 'knowledge:write' },
 ];
 
 /** Build the OpenAI toolset for a project-scoped chat context. */

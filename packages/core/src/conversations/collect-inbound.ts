@@ -19,8 +19,8 @@ export interface InboundCollection<Frame> {
   speakerLabel?: string | null;
   /** Image references as the transport names them — no bytes, which are fetched at route time. */
   images?: readonly ConversationImage[];
-  /** Whose authority a turn runs under in a venue that has many speakers. */
-  manySpeakersPrincipalUserId: string;
+  /** The access token the speaker reached Forge with, which bounds the turn (ISS-17). */
+  speakerTokenId?: string | null;
   /**
    * One more write the caller wants committed with this message, or not at all.
    */
@@ -68,6 +68,7 @@ export async function collectInboundMessage<Frame>(
           authorUserId,
           authorLabel: inbound.speakerLabel ?? inbound.speakerKey,
           authorKey: inbound.speakerKey,
+          authorTokenId: speaker.linked ? (inbound.speakerTokenId ?? null) : null,
           externalId: inbound.externalMessageId ?? null,
           replyToExternalId: inbound.replyToExternalId ?? null,
           ...(inbound.images && inbound.images.length > 0 ? { images: inbound.images } : {}),

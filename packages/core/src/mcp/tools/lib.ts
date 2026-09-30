@@ -42,6 +42,17 @@ export type McpContext = {
    * itself, and `handler.ts` never sets it.
    */
   turn?: ChatTurnFacts;
+  /**
+   * A chat turn's own token, for a tool that hands the turn's authority to a child process
+   * (the `forge` CLI). Absent on `/mcp`, where the caller already holds its token.
+   */
+  turnToken?: string;
+  /**
+   * A chat turn's bound: the grant of the credential the person reached Forge with, null where
+   * their project role is the whole bound (ISS-17). Absent on `/mcp`, where
+   * `principal.permissions` is the grant.
+   */
+  grant?: readonly string[] | null;
   /** ISS-150 audit-log fields, threaded through for `writeMcpAudit`. */
   requestId?: string;
   ip?: string | null;
@@ -90,6 +101,11 @@ export async function assertPrincipalIsWriter(
   }
   if (!role.isWriter) {
     throw new Error('FORBIDDEN: requires project member access (viewer is read-only)');
+  }
+  if (!principal.scopes.includes('write')) {
+    throw new Error(
+      "FORBIDDEN: this token lacks the 'write' scope, which a write takes on /mcp as it does on REST",
+    );
   }
 }
 

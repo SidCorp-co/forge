@@ -5,11 +5,14 @@
  */
 
 import { eq } from 'drizzle-orm';
+import { createChatSessionRow, dispatchChatTurn } from '../../agent-sessions/chat-turn.js';
+import type { SessionAsker } from '../../agent-sessions/session-credential.js';
 import {
-  createChatSessionRow,
-  dispatchChatTurn,
-  resolveChatDevice,
-} from '../../agent-sessions/chat-turn.js';
+  mintSessionCredential,
+  noConversationAgentDeviceReason,
+  pickConversationAgentDevice,
+  resolveSessionAuthority,
+} from '../../agent-sessions/session-credential.js';
 import { db } from '../../db/client.js';
 import { agentSessions } from '../../db/schema.js';
 import { applyKernelTransition } from '../../lifecycle/transition.js';
@@ -40,12 +43,17 @@ export interface StartEscalationArgs {
   question: string;
   askedByUsername?: string | undefined;
   shape: 'direct' | 'group';
-  principalUserId: string;
+  /** The linked person who asked; the investigating session runs as them (ISS-17). */
+  asker: SessionAsker;
 }
 
 export type StartEscalationResult =
   | { started: true; sessionId: string }
-  | { started: false; reason: 'deduped' | 'no-device' | 'dispatch-failed' };
+  | {
+      started: false;
+      reason: 'deduped' | 'no-device' | 'runner-outdated' | 'authority-refused' | 'dispatch-failed';
+      message?: string;
+    };
 
 // every frozen comment in this file is an `i18n-allow` lint pragma; deleting one to pay the drain would break the language gate instead of cleaning prose.
 export function hasInFlightEscalation(
@@ -77,17 +85,19 @@ export async function startEscalation(args: StartEscalationArgs): Promise<StartE
     return { started: false, reason: 'deduped' };
   }
 
-  const client = await resolveChatDevice(
-    { projectId: args.projectId, deviceId: null, metadata: null },
-    undefined,
-  );
-  if (!client.deviceId) {
-    return { started: false, reason: 'no-device' };
+  const deviceId = await pickConversationAgentDevice(args.projectId);
+  if (!deviceId) {
+    return { started: false, reason: await noConversationAgentDeviceReason(args.projectId) };
+  }
+  const asker = { userId: args.asker.userId, viaTokenId: args.asker.viaTokenId };
+  const authorised = await resolveSessionAuthority({ asker, projectId: args.projectId, deviceId });
+  if (!authorised.ok) {
+    return { started: false, reason: 'authority-refused', message: authorised.refusal.message };
   }
 
   const session = await createChatSessionRow({
     projectId: args.projectId,
-    userId: null,
+    userId: asker.userId,
     title: `Escalation: ${args.question.slice(0, ESCALATION_TITLE_MAX)}`,
     runKind: 'system',
     runMetadata: { source: 'rocketchat.escalation', rid: args.rid },
@@ -100,7 +110,8 @@ export async function startEscalation(args: StartEscalationArgs): Promise<StartE
         askedByUsername: args.askedByUsername ?? null,
         question: args.question,
         shape: args.shape,
-        principalUserId: args.principalUserId,
+        principalUserId: asker.userId,
+        principalTokenId: asker.viaTokenId,
         deliveredAt: null,
       },
       lensOverride: ['product'],
@@ -111,7 +122,12 @@ export async function startEscalation(args: StartEscalationArgs): Promise<StartE
     await dispatchChatTurn({
       session,
       project: args.project,
-      client,
+      client: { deviceId, isLocal: false, migrated: false },
+      credential: await mintSessionCredential({
+        sessionId: session.id,
+        deviceId,
+        value: authorised.value,
+      }),
       message: buildEscalationPrompt(args.question),
       forceLenses: ['product'],
       broadcastEvent: 'agent-session.created',

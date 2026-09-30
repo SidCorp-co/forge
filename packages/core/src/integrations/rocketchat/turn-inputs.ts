@@ -14,6 +14,7 @@
  */
 
 import { eq } from 'drizzle-orm';
+import { agentRefusalText } from '../../agent-sessions/session-credential.js';
 import { ESCALATE_TOOL_NAME } from '../../assistant/tools/escalate.js';
 import {
   buildExternalMcpToolsets,
@@ -153,7 +154,7 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
       projectId: route.projectId,
     },
 
-    divertBeforeTurn: async ({ setPhase }): Promise<TurnReply | null> => {
+    divertBeforeTurn: async ({ setPhase, authority }): Promise<TurnReply | null> => {
       setPhase('context');
       const s = await readSeed();
       if (readRocketChatAnswerMode(s.agentConfig) !== 'agent') return null;
@@ -169,6 +170,7 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
         botName: bot.botName,
         message: subject.text,
         askedByUsername: subject.username,
+        asker: authority,
         persona: s.persona,
         conversationContext: s.conversationContext,
       });
@@ -185,12 +187,18 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
           message: codeAuthored(AGENT_CHAT_NO_DEVICE_REPLY(bot.botName)),
           screenReplaced: false,
         };
+      if (started.reason === 'runner-outdated' || started.reason === 'authority-refused')
+        return {
+          send: true,
+          message: codeAuthored(agentRefusalText(started)),
+          screenReplaced: false,
+        };
       return { send: false, reason: 'agent-chat-dispatch-failed' };
     },
 
     prepare: async ({
       setPhase,
-      principalUserId,
+      credential,
       speakerUserId,
       conversationId,
       handleUserId,
@@ -201,7 +209,7 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
       setPhase('images');
       const fast = await prepareFastTurn({
         route,
-        principalUserId,
+        credential: await credential(),
         turn: { conversationId, speakerUserId, handleUserId },
         restAuth,
         rid: subject.rid,
@@ -218,7 +226,7 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
       };
     },
 
-    divertAfterTurn: async (result, { setPhase, principalUserId }): Promise<TurnReply | null> => {
+    divertAfterTurn: async (result, { setPhase, authority }): Promise<TurnReply | null> => {
       const escalateCall = result.toolCalls.find((t) => t.name === ESCALATE_TOOL_NAME);
       if (!escalateCall) return null;
       setPhase('escalate');
@@ -235,7 +243,7 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
         question: escalationQuestion(escalateCall.arguments, subject.text),
         askedByUsername: subject.username,
         shape: args.shape,
-        principalUserId,
+        asker: authority,
       });
       if (started.started)
         return {
@@ -253,6 +261,12 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
         return {
           send: true,
           message: codeAuthored(ESCALATION_NO_DEVICE_REPLY(bot.botName)),
+          screenReplaced: true,
+        };
+      if (started.reason === 'runner-outdated' || started.reason === 'authority-refused')
+        return {
+          send: true,
+          message: codeAuthored(agentRefusalText(started)),
           screenReplaced: true,
         };
       return { send: false, reason: 'escalation-dispatch-failed' };

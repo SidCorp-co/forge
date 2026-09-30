@@ -1,7 +1,7 @@
 import type { Context, MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { writeMcpAudit } from '../auth/mcp-audit.js';
-import { touchPatUsage, verifyPat } from '../auth/pat.js';
+import { patPrincipalOf, touchPatUsage, verifyPat } from '../auth/pat.js';
 import { isPatLike } from '../auth/pat-format.js';
 import { type PatRequestClass, patRuleFor } from '../config/rate-limits.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
@@ -67,11 +67,8 @@ const patBuckets = new Map<string, PatBucket>();
 const bucketKey = (tokenId: string, requestClass: PatRequestClass) => `${tokenId}:${requestClass}`;
 
 /**
- * Throttle map for `pat.used` WS events. The dispatcher fires once per
- * successful PAT request, but high-frequency MCP clients can hammer at many
- * Hz — without throttling we'd flood the user's WS connection. Emit at most
- * once per token per minute; the audit log remains the source of truth for
- * fine-grained per-request history.
+ * Throttle map for `pat.used` WS events: at most once per token per minute, since MCP
+ * clients can call at many Hz; the audit log keeps the per-request history.
  */
 const patUsedLastEmit = new Map<string, number>();
 const PAT_USED_THROTTLE_MS = 60 * 1000;
@@ -215,19 +212,7 @@ export async function authenticatePat(
 
   touchPatUsage(row.id, getClientIp(c));
   maybeEmitPatUsed(row.id, row.userId);
-  return {
-    kind: 'pat',
-    agency: ownerKind,
-    agentUserId: ownerKind === 'agent' ? row.userId : null,
-    userId: row.userId,
-    tokenId: row.id,
-    scopes: row.scopes,
-    projectIds: row.projectIds ?? null,
-    permissions: row.permissions ?? null,
-    grantEpoch: row.grantEpoch,
-    boundProjectId: row.boundProjectId ?? null,
-    deviceId: row.deviceId ?? null,
-  };
+  return patPrincipalOf({ row, ownerKind });
 }
 
 const NOT_A_PAT_REFUSAL =

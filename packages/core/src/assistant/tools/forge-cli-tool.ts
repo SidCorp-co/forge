@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { patGrantIsLegacy, patGrantIsStatedFull } from '../../auth/pat-permissions.js';
 import type { ContextScopedMcpToolFactory } from '../../mcp/tools/lib.js';
 import { runForgeCli } from './forge-cli.js';
 import { admitVerb } from './forge-cli-argv.js';
@@ -37,17 +38,28 @@ export const forgeCliTool: ContextScopedMcpToolFactory = (ctx) => ({
     const args = input.parse(raw);
     const closed = admitVerb(args.argv);
     if (closed) return { exitCode: 2, stdout: '', stderr: closed, _mcpIsError: true };
-    const userId = ctx.principal?.userId;
+    // cm:guard the CLI's tracker verbs reach /mcp, where a token's grant is not read (tools
+    // fence by role: `PAT_UNGRANTABLE['/mcp']`), so a person bounded by a named grant would
+    // reach past it through here. Refused by name rather than run wider (ISS-17).
+    if (ctx.grant && !patGrantIsLegacy(ctx.grant) && !patGrantIsStatedFull(ctx.grant)) {
+      return {
+        exitCode: 2,
+        stdout: '',
+        stderr: `FORBIDDEN: the person asking reached Forge with an access token granted only ${ctx.grant.join(', ')}, and the forge CLI reaches the tracker through /mcp, which does not read a grant — so it is not run for them. Nothing was done; tell them to ask signed in, or with a token granted '*'.`,
+        _mcpIsError: true,
+      };
+    }
+    const token = ctx.turnToken;
     const projectId = ctx.boundProjectId;
-    if (!userId || !projectId || !ctx.projectSlug) {
+    if (!token || !projectId || !ctx.projectSlug) {
       throw new Error(
-        'the forge CLI runs as a signed-in person on a bound project, and this turn names none',
+        'the forge CLI runs under the token minted for the person this turn answers, on a bound project, and this turn holds neither',
       );
     }
     const out = await runForgeCli({
       argv: args.argv,
       body: args.body,
-      userId,
+      token,
       projectId,
       projectSlug: ctx.projectSlug,
     });

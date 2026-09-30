@@ -31,11 +31,17 @@ vi.mock('../issues/progress.js', () => ({
 
 const createChatSessionRow = vi.fn();
 const dispatchChatTurn = vi.fn();
-const resolveChatDevice = vi.fn();
 vi.mock('./chat-turn.js', () => ({
   createChatSessionRow: (...args: unknown[]) => createChatSessionRow(...args),
   dispatchChatTurn: (...args: unknown[]) => dispatchChatTurn(...args),
-  resolveChatDevice: (...args: unknown[]) => resolveChatDevice(...args),
+}));
+
+const resolveSessionAuthority = vi.fn();
+const mintSessionCredential = vi.fn(async (..._args: unknown[]) => 'forge_pat_dev_turn');
+vi.mock('./session-credential.js', async (orig) => ({
+  ...(await orig<typeof import('./session-credential.js')>()),
+  resolveSessionAuthority: (...args: unknown[]) => resolveSessionAuthority(...args),
+  mintSessionCredential: (...args: unknown[]) => mintSessionCredential(...args),
 }));
 
 const applyKernelTransition = vi.fn();
@@ -127,7 +133,22 @@ const BASE_ARGS = {
   replies: REPLIES,
   ackAfterMs: ACK_DELAY_MS,
   forceLenses: ['product'] as const,
+  asker: {
+    userId: 'alice-id',
+    projectId: 'proj-1',
+    viaTokenId: null,
+    grant: null,
+    scopes: ['read', 'write'],
+    grantEpoch: 2,
+  },
 };
+
+const AUTHORISED = { ok: true, value: { authority: BASE_ARGS.asker, menu: ['issues:write'] } };
+
+/** A box that declared it carries the asker's token is free; so is every box. */
+function boxFree(deviceId: string | null) {
+  findAvailableDeviceForProject.mockImplementation(async () => deviceId);
+}
 
 describe('hasInFlightConversationAgentTurn', () => {
   beforeEach(() => {
@@ -150,7 +171,10 @@ describe('startConversationAgentTurn', () => {
     selectLimit.mockReset();
     createChatSessionRow.mockReset();
     dispatchChatTurn.mockReset();
-    resolveChatDevice.mockReset();
+    findAvailableDeviceForProject.mockReset();
+    resolveSessionAuthority.mockReset();
+    resolveSessionAuthority.mockResolvedValue(AUTHORISED);
+    mintSessionCredential.mockClear();
     applyKernelTransition.mockReset();
     loadConversationAttachment.mockReset();
     storageGet.mockReset();
@@ -166,7 +190,7 @@ describe('startConversationAgentTurn', () => {
 
   function readyToDispatch() {
     selectLimit.mockResolvedValue([]);
-    resolveChatDevice.mockResolvedValue({ deviceId: 'device-1', isLocal: false });
+    boxFree('device-1');
     createChatSessionRow.mockResolvedValue({ id: 'session-1', status: 'idle' });
     dispatchChatTurn.mockResolvedValue({ id: 'session-1' });
   }
@@ -227,13 +251,13 @@ describe('startConversationAgentTurn', () => {
     selectLimit.mockResolvedValue([{ id: 'existing-session' }]);
     const result = await startConversationAgentTurn(BASE_ARGS);
     expect(result).toEqual({ started: false, reason: 'deduped' });
-    expect(resolveChatDevice).not.toHaveBeenCalled();
+    expect(findAvailableDeviceForProject).not.toHaveBeenCalled();
     expect(createChatSessionRow).not.toHaveBeenCalled();
   });
 
   it('reports no-device without creating a session when no runner is available', async () => {
     selectLimit.mockResolvedValue([]);
-    resolveChatDevice.mockResolvedValue({ deviceId: null, isLocal: false });
+    boxFree(null);
     const result = await startConversationAgentTurn(BASE_ARGS);
     expect(result).toEqual({ started: false, reason: 'no-device' });
     expect(createChatSessionRow).not.toHaveBeenCalled();
@@ -241,7 +265,7 @@ describe('startConversationAgentTurn', () => {
 
   it('creates a system session carrying the venue, the window and the delivery key, pinned to the caller lens', async () => {
     selectLimit.mockResolvedValue([]);
-    resolveChatDevice.mockResolvedValue({ deviceId: 'device-1', isLocal: false });
+    boxFree('device-1');
     createChatSessionRow.mockResolvedValue({ id: 'session-1', status: 'idle' });
     dispatchChatTurn.mockResolvedValue({ id: 'session-1' });
 
@@ -279,7 +303,7 @@ describe('startConversationAgentTurn', () => {
 
   it('marks the session failed via applyKernelTransition when the dispatch throws, so the bridge still fires', async () => {
     selectLimit.mockResolvedValue([]);
-    resolveChatDevice.mockResolvedValue({ deviceId: 'device-1', isLocal: false });
+    boxFree('device-1');
     createChatSessionRow.mockResolvedValue({ id: 'session-1', status: 'idle' });
     dispatchChatTurn.mockRejectedValue(new Error('ws publish failed'));
     applyKernelTransition.mockResolvedValue([{ id: 'session-1', status: 'failed' }]);
@@ -330,7 +354,7 @@ describe('buildConversationAgentPrompt', () => {
 describe('the interim ack', () => {
   async function start(overrides: Record<string, unknown> = {}) {
     selectLimit.mockResolvedValue([]);
-    resolveChatDevice.mockResolvedValue({ deviceId: 'device-1', isLocal: false, migrated: false });
+    boxFree('device-1');
     createChatSessionRow.mockResolvedValue({ id: 'session-1', status: 'idle' });
     dispatchChatTurn.mockResolvedValue({ id: 'session-1' });
     return startConversationAgentTurn({ ...BASE_ARGS, ...overrides });
@@ -339,7 +363,10 @@ describe('the interim ack', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     selectLimit.mockReset();
-    resolveChatDevice.mockReset();
+    findAvailableDeviceForProject.mockReset();
+    resolveSessionAuthority.mockReset();
+    resolveSessionAuthority.mockResolvedValue(AUTHORISED);
+    mintSessionCredential.mockClear();
     createChatSessionRow.mockReset();
     dispatchChatTurn.mockReset();
     deliver.mockClear();

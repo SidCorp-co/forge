@@ -1,8 +1,8 @@
 /**
  * One conversation turn, with no transport in it.
  *
- * A caller hands over a venue its own ports resolved, the principal the turn
- * computes under, and the door the reply goes out of. This opens the
+ * A caller hands over a venue its own ports resolved, the person the turn
+ * acts as, and the door the reply goes out of. This opens the
  * conversation, runs the model, screens what came back, sends it through the
  * one outbound port and records what the venue was shown.
  *
@@ -16,6 +16,13 @@ import { type ExternalChatTurnResult, runExternalChatTurn } from '../assistant/e
 import type { ChatStreamEvent } from '../assistant/providers/types.js';
 import { type ChatToolset, mergeToolsets } from '../assistant/tools/mcp-adapter.js';
 import type { ImageResolver, TurnImage } from '../assistant/vision.js';
+import {
+  CHAT_TURN_MENU,
+  mintTurnCredential,
+  type TurnAuthority,
+  TurnAuthorityRefused,
+  type TurnCredential,
+} from '../auth/turn-credential.js';
 import type { ContentBlock } from '../lib/agent-stream-parser.js';
 import { logger } from '../logger.js';
 import type { DoorId } from '../messaging/contract.js';
@@ -39,6 +46,8 @@ import { recordDeliveredReply, recordSilence } from './transcript.js';
 
 const TURN_TIMEOUT_MS = 90_000;
 const HANDLE_TIMEOUT_MS = 120_000;
+/** The turn's token outlives the turn's own ceiling and a CLI call begun at its edge; it is revoked when the turn ends. */
+const CREDENTIAL_TTL_MS = 10 * 60 * 1000;
 
 class TurnTimeoutError extends Error {
   constructor(readonly ms: number) {
@@ -77,7 +86,14 @@ export interface TurnInputs {
 export interface TurnHookContext {
   setPhase: (phase: string) => void;
   signal: AbortSignal;
+  /** The person this turn answers and acts as; `authority.userId` is who every tool runs as. */
+  authority: TurnAuthority;
   principalUserId: string;
+  /**
+   * The token minted for that person for this turn, minted on first call and revoked when the
+   * turn ends; throws `TurnAuthorityRefused` where their grant leaves the tools nothing.
+   */
+  credential: () => Promise<TurnCredential>;
   /** The linked author of the newest person message, or null when nobody Forge knows (ISS-1034). */
   speakerUserId: string | null;
   /** The room this turn answers in, for the tools that write on the speaker's behalf. */
@@ -92,8 +108,8 @@ export type TurnReply =
 
 export interface ConversationTurnRequest {
   venue: ConversationVenue;
-  /** The Forge principal whose access this turn reads and runs its tools under. */
-  principalUserId: string;
+  /** The person whose message this turn answers: whose access it reads and runs its tools under. */
+  authority: TurnAuthority;
   /** The transport's own id for the speaker, for the audit row. */
   speakerKey: string;
   speakerUserId?: string | null | undefined;
@@ -185,15 +201,42 @@ interface TurnContext {
   conversationId: string;
   abort: AbortController;
   setPhase: (phase: string) => void;
+  credential: () => Promise<TurnCredential>;
+}
+
+/** One token per turn, minted when first asked for; `release` revokes it if it was. */
+function turnCredentialHolder(authority: TurnAuthority): {
+  get: () => Promise<TurnCredential>;
+  release: () => Promise<void>;
+} {
+  let minted: Promise<TurnCredential> | null = null;
+  let released = false;
+  return {
+    get: () => {
+      if (released) {
+        return Promise.reject(new Error('this turn has ended, and its token with it'));
+      }
+      minted ??= mintTurnCredential({ authority, menu: CHAT_TURN_MENU, ttlMs: CREDENTIAL_TTL_MS });
+      return minted;
+    },
+    release: async () => {
+      released = true;
+      if (!minted) return;
+      const held = await minted.catch(() => null);
+      await held?.revoke();
+    },
+  };
 }
 
 async function composeReply(ctx: TurnContext): Promise<TurnReply> {
   const { req } = ctx;
-  const speakerUserId = req.speakerUserId === undefined ? req.principalUserId : req.speakerUserId;
+  const speakerUserId = req.speakerUserId === undefined ? req.authority.userId : req.speakerUserId;
   const hook: TurnHookContext = {
     setPhase: ctx.setPhase,
     signal: ctx.abort.signal,
-    principalUserId: req.principalUserId,
+    authority: req.authority,
+    principalUserId: req.authority.userId,
+    credential: ctx.credential,
     speakerUserId,
     conversationId: ctx.conversationId,
     handleUserId: req.handleUserId ?? null,
@@ -203,7 +246,13 @@ async function composeReply(ctx: TurnContext): Promise<TurnReply> {
   if (early) return early;
 
   ctx.setPhase('prepare');
-  const inputs = (await req.prepare?.(hook)) ?? {};
+  let inputs: TurnInputs;
+  try {
+    inputs = (await req.prepare?.(hook)) ?? {};
+  } catch (err) {
+    if (!(err instanceof TurnAuthorityRefused)) throw err;
+    return { send: true, message: codeAuthored(err.message), screenReplaced: false };
+  }
   const capture = req.sendMode === 'tool' ? roomSendCapture() : null;
   const tools = capture
     ? mergeToolsets(capture.toolset, ...(inputs.tools ? [inputs.tools] : []))
@@ -219,7 +268,8 @@ async function composeReply(ctx: TurnContext): Promise<TurnReply> {
       : req.questionAlreadyRecorded
         ? ('silence-only' as const)
         : ('question-only' as const),
-    userId: req.principalUserId,
+    userId: req.authority.userId,
+    readerRole: 'viewer' as const,
     userKey: req.speakerKey,
     speakerUserId,
     speakerLabel: req.speakerKey,
@@ -350,6 +400,7 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
   const conversation = await openConversation(req.venue);
 
   const abort = new AbortController();
+  const credential = turnCredentialHolder(req.authority);
   const timer = setTimeout(() => abort.abort(), TURN_TIMEOUT_MS);
   timer.unref?.();
   const onExternalStop = () => abort.abort(STOPPED_BY_A_PERSON);
@@ -372,6 +423,7 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
         setPhase: (p) => {
           phase = p;
         },
+        credential: credential.get,
       }),
       HANDLE_TIMEOUT_MS,
     );
@@ -413,6 +465,7 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
   } finally {
     clearTimeout(timer);
     req.externalStop?.removeEventListener('abort', onExternalStop);
+    await credential.release();
     await req.dispose?.();
   }
 

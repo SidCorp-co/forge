@@ -15,7 +15,7 @@ import postgres from 'postgres';
 import { openAiCompatUrl } from '../lib/openai-compat-url.js';
 import { toRequestBody } from './providers/anthropic.js';
 import type { ChatTool } from './providers/types.js';
-import { buildChatToolContext } from './tools/principal.js';
+import { catalogOnlyContext } from './tools/principal.js';
 import { buildProjectToolset, CHAT_TOOL_ALLOWLIST } from './tools/registry.js';
 
 export const CHARS_PER_TOKEN = 4;
@@ -63,11 +63,7 @@ export function serializeCatalogForWire(tools: ChatTool[]): unknown[] {
 /** Build the live catalog through the same call the chat routes make, and size it. */
 export function measureLiveCatalog(): CatalogMeasurement {
   const nilUuid = '00000000-0000-0000-0000-000000000000';
-  const ctx = buildChatToolContext({
-    userId: nilUuid,
-    projectId: nilUuid,
-    projectSlug: 'measurement',
-  });
+  const ctx = catalogOnlyContext(nilUuid, 'measurement');
   const wire = serializeCatalogForWire(buildProjectToolset(ctx).tools);
   const chars = JSON.stringify(wire).length;
   return {
@@ -104,17 +100,9 @@ export function uncappedCatalogChars(ctx: Parameters<typeof buildProjectToolset>
  */
 export function catalogVariants(catalog: CatalogMeasurement): [string, number][] {
   const nilUuid = '00000000-0000-0000-0000-000000000000';
-  const boundCtx = buildChatToolContext({
-    userId: nilUuid,
-    projectId: nilUuid,
-    projectSlug: 'measurement',
-  });
+  const boundCtx = catalogOnlyContext(nilUuid, 'measurement');
   const bound = buildProjectToolset(boundCtx).tools;
-  const unbound = buildProjectToolset({
-    ...boundCtx,
-    boundProjectId: null,
-    principal: { ...boundCtx.principal, boundProjectId: null },
-  }).tools;
+  const unbound = buildProjectToolset({ ...boundCtx, boundProjectId: null }).tools;
   return [
     ['wire, project-bound — what this module prices', catalog.chars],
     [

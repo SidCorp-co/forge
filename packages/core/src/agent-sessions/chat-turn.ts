@@ -256,6 +256,12 @@ export interface DispatchChatTurnArgs {
   broadcastEvent?: 'agent-session.created' | 'agent-session.updated';
   skillName?: string | null;
   model?: ModelTier | null | undefined;
+  /**
+   * The token this session acts under in place of the box's own, minted for the person it
+   * answers (`session-credential.ts`). Carried on a cold start only: the runner writes it into
+   * the session's MCP config once, when the session is spawned.
+   */
+  credential?: string | undefined;
 }
 
 export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<AgentSessionRow> {
@@ -302,6 +308,11 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   // the remote branch only ever publishes a WS event, it never writes the DB.
   const claudeSessionId = args.claudeSessionId ?? session.claudeSessionId ?? null;
   const resumable = !!claudeSessionId && !migrated;
+  if (args.credential && (resumable || isLocal)) {
+    throw new Error(
+      `dispatchChatTurn: session ${session.id} was handed a turn credential on a ${isLocal ? 'local' : 'resumed'} turn, which carries none — the credential is written when a remote session is spawned, so it would be dropped`,
+    );
+  }
   const model =
     args.model === undefined ? readSessionModel(session.metadata) : (args.model ?? 'default');
   if (args.skillName && !isSlashCommandSkillName(args.skillName)) {
@@ -423,6 +434,7 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
         mcpServersOverride,
         ...(model ? { model } : {}),
         ...(attachments.length ? { attachments } : {}),
+        ...(args.credential ? { forgeToken: args.credential } : {}),
       },
     });
   } else {

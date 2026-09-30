@@ -152,6 +152,13 @@ export const conversationMessages = pgTable(
     role: text('role', { enum: conversationMessageRoles }).notNull(),
     authorUserId: uuid('author_user_id').references(() => users.id, { onDelete: 'set null' }),
     authorLabel: text('author_label'),
+    /**
+     * The access token a person sent this message with, where they reached Forge with one
+     * rather than a browser session: the turn answering it is bounded by that token's grant
+     * (ISS-17). No foreign key on purpose — a token row that is gone must refuse the turn,
+     * where `set null` would widen it to the person's whole role.
+     */
+    authorTokenId: uuid('author_token_id'),
     content: text('content').notNull(),
     /**
      * The transport's own id for an inbound message, where it named one.
