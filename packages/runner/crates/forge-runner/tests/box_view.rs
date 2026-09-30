@@ -1629,28 +1629,37 @@ fn a_key_typed_while_a_frame_is_gathered_is_answered_at_once() {
     assert!(since.iter().all(|r| r.starts_with(&held)), "{since:?}");
 }
 
-/// Consult on the r4 head, F1: SIGTERM ends a view reading keys through its
-/// loop, so the terminal is given back the modes it had.
+/// Consult on the r4 head, F1, and the whole-set read at 2b6a996, F1:
+/// SIGTERM and SIGQUIT each end a view reading keys through its loop, so the
+/// terminal is given back the modes it had; and while it runs, Ctrl-\\ and
+/// Ctrl-Z send nothing, and Ctrl-C is still the interrupt.
 #[test]
-fn a_view_ended_by_sigterm_gives_the_terminal_back() {
+fn a_view_ended_by_a_signal_gives_the_terminal_back() {
     let core = fake_core("200 OK");
     let b = plant(&core.url);
-    let mut pty = on_a_terminal_reading(&b, 100, 20, &["--interval", "1"], true);
-    first_page_count(&pty);
-    assert_eq!(
-        modes(&pty.secondary).c_lflag & libc::ICANON,
-        0,
-        "the view took the terminal's input"
-    );
-    // SAFETY: a signal to the child this test spawned and still holds.
-    assert_eq!(
-        unsafe { libc::kill(pty.child.id() as libc::pid_t, libc::SIGTERM) },
-        0
-    );
-    let st = pty.exited_within(std::time::Duration::from_secs(8));
-    assert!(st.is_some_and(|s| s.success()), "{st:?}");
-    assert_eq!(
-        modes_differ(&pty.modes_before, &modes(&pty.secondary)),
-        Vec::<&str>::new()
-    );
+    for signal in [libc::SIGTERM, libc::SIGQUIT] {
+        let mut pty = on_a_terminal_reading(&b, 100, 20, &["--interval", "1"], true);
+        first_page_count(&pty);
+        let taken = modes(&pty.secondary);
+        assert_eq!(taken.c_lflag & libc::ICANON, 0, "the view took the input");
+        assert_eq!(taken.c_cc[libc::VQUIT], 0, "Ctrl-\\ still quits");
+        assert_eq!(taken.c_cc[libc::VSUSP], 0, "Ctrl-Z still stops");
+        assert_eq!(
+            taken.c_cc[libc::VINTR],
+            pty.modes_before.c_cc[libc::VINTR],
+            "Ctrl-C is no longer the interrupt"
+        );
+        // SAFETY: a signal to the child this test spawned and still holds.
+        assert_eq!(
+            unsafe { libc::kill(pty.child.id() as libc::pid_t, signal) },
+            0
+        );
+        let st = pty.exited_within(std::time::Duration::from_secs(8));
+        assert!(st.is_some_and(|s| s.success()), "signal {signal}: {st:?}");
+        assert_eq!(
+            modes_differ(&pty.modes_before, &modes(&pty.secondary)),
+            Vec::<&str>::new(),
+            "signal {signal}"
+        );
+    }
 }

@@ -128,6 +128,12 @@ fn open_on_stdin() -> Result<Keys, String> {
 mod raw {
     use std::sync::Mutex;
 
+    /// The value that turns a terminal's control character off.
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    const DISABLED: libc::cc_t = libc::_POSIX_VDISABLE;
+    #[cfg(not(any(target_os = "linux", target_os = "android")))]
+    const DISABLED: libc::cc_t = 0xff;
+
     /// The mode to give back if the process panics while the view runs.
     static SAVED: Mutex<Option<(i32, libc::termios)>> = Mutex::new(None);
 
@@ -150,6 +156,12 @@ mod raw {
             quiet.c_lflag &= !(libc::ICANON | libc::ECHO);
             quiet.c_cc[libc::VMIN] = 1;
             quiet.c_cc[libc::VTIME] = 0;
+            // Ctrl-C stays the interrupt; Ctrl-\ and Ctrl-Z would quit or stop
+            // the view past the loop that gives the mode back, leaving the
+            // shell a terminal that neither echoes nor edits a line (whole-set
+            // read at 2b6a996, F1), so while the view runs they send nothing.
+            quiet.c_cc[libc::VQUIT] = DISABLED;
+            quiet.c_cc[libc::VSUSP] = DISABLED;
             *SAVED.lock().unwrap_or_else(|e| e.into_inner()) = Some((fd, saved));
             hook_once();
             if unsafe { libc::tcsetattr(fd, libc::TCSANOW, &quiet) } != 0 {

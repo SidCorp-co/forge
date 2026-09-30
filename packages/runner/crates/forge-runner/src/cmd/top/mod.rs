@@ -240,15 +240,17 @@ fn ended() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Ctrl-C, and on unix SIGTERM, heard from the moment the listener is made
-/// until the view ends: each ends the view through its loop, so the
-/// terminal's modes are given back on the way out rather than left as the
-/// view set them.
+/// Ctrl-C, and on unix SIGTERM and SIGQUIT, heard from the moment the
+/// listener is made until the view ends: each ends the view through its
+/// loop, so the terminal's modes are given back on the way out rather than
+/// left as the view set them.
 struct Interrupt {
     #[cfg(unix)]
     inner: tokio::signal::unix::Signal,
     #[cfg(unix)]
     term: tokio::signal::unix::Signal,
+    #[cfg(unix)]
+    quit: tokio::signal::unix::Signal,
     #[cfg(windows)]
     inner: tokio::signal::windows::CtrlC,
 }
@@ -261,6 +263,7 @@ impl Interrupt {
             Ok(Self {
                 inner: signal(SignalKind::interrupt())?,
                 term: signal(SignalKind::terminate())?,
+                quit: signal(SignalKind::quit())?,
             })
         }
         #[cfg(windows)]
@@ -274,6 +277,7 @@ impl Interrupt {
         tokio::select! {
             _ = self.inner.recv() => {}
             _ = self.term.recv() => {}
+            _ = self.quit.recv() => {}
         }
         #[cfg(windows)]
         self.inner.recv().await;
