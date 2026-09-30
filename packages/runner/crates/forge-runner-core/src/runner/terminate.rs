@@ -2112,13 +2112,22 @@ mod tests {
         )
         .to_string();
 
-        assert!(
-            err.contains(&wt.display().to_string()),
-            "names the path: {err}"
-        );
+        // Another guard refuses this fixture too, naming the path, and the path
+        // begins with the enclosing checkout's (judge r3, P29): what is asserted
+        // is this refusal, with each path where it puts it.
         let top = root.canonicalize().unwrap();
         assert!(
-            err.contains(&top.display().to_string()),
+            err.contains(&format!(
+                "{} stands, but it is no checkout of its own",
+                wt.display()
+            )),
+            "refuses because git answers for another checkout, naming the path: {err}"
+        );
+        assert!(
+            err.contains(&format!(
+                "answers for the enclosing checkout {},",
+                top.display()
+            )),
             "names the checkout git answered for: {err}"
         );
         assert_eq!(refs_of(&root).await, refs_before, "no ref was written");
