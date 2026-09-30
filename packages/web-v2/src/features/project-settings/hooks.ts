@@ -5,11 +5,7 @@
 // the dashboard, the console and the WS reconnect-replay read, and a private key updates none.
 
 import { ApiError } from "@/lib/api/client";
-import {
-	formatApiError,
-	formatPipelineConfigError,
-	formatSettingsWriteError,
-} from "@/lib/api/error";
+import { formatApiError, formatSettingsWriteError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { projectSettingsApi } from "./api";
@@ -21,6 +17,7 @@ import type {
 	MemoryModel,
 	MemoryModelStatus,
 	PluginDesignation,
+	PolicyDocument,
 	ProjectUpdateInput,
 } from "./types";
 
@@ -86,41 +83,28 @@ export function useUnarchiveProject(id: string | undefined) {
 	});
 }
 
-/** GET pipeline config. `enabled:false` on the query when the flag is off is
- *  NOT possible to know ahead of time — instead the caller branches on the
- *  `FEATURE_OFF` error code (404) to render an info empty-state. */
-export function usePipelineConfig(id: string | undefined) {
+/** GET the policy dispatch reads. `declared: false` is an answer, not an error. */
+export function usePolicy(id: string | undefined) {
 	return useQuery({
-		queryKey: ["project", id, "pipeline-config"],
-		queryFn: () => projectSettingsApi.getPipelineConfig(id as string),
+		queryKey: ["project", id, "policy"],
+		queryFn: () => projectSettingsApi.getPolicy(id as string),
 		enabled: !!id,
 		retry: false,
 	});
 }
 
-export function useUpdatePipelineConfig(id: string | undefined) {
+/** PUT the whole policy against the revision it was read at. A refusal is left on the
+ *  mutation for the section to list; only a success is toasted. */
+export function useUpdatePolicy(id: string | undefined) {
 	const qc = useQueryClient();
 	const { toast } = useToast();
 	return useMutation({
-		mutationFn: (write: DocumentWrite) =>
-			projectSettingsApi.updatePipelineConfig(id as string, write),
+		mutationFn: (write: { baseRevision: number | null; document: PolicyDocument }) =>
+			projectSettingsApi.putPolicy(id as string, write.baseRevision, write.document),
 		onSuccess: (data) => {
-			qc.setQueryData(["project", id, "pipeline-config"], data);
-			toast({ title: "Pipeline config saved", tone: "success" });
-			if (data.warnings?.length) {
-				toast({
-					title: "Saved with warnings",
-					description: data.warnings.join(" "),
-					tone: "info",
-				});
-			}
+			qc.setQueryData(["project", id, "policy"], data);
+			toast({ title: "Policy saved", tone: "success" });
 		},
-		onError: (err) =>
-			toast({
-				title: "Couldn't save pipeline config",
-				description: formatPipelineConfigError(err),
-				tone: "error",
-			}),
 	});
 }
 
@@ -399,14 +383,6 @@ export function useDeleteLabel(id: string | undefined) {
 				tone: "error",
 			}),
 	});
-}
-
-/** True when an error is the pipeline `FEATURE_OFF` 404 (flag disabled). */
-export function isFeatureOff(err: unknown): boolean {
-	return (
-		err instanceof ApiError &&
-		(err.status === 404 || err.code === "FEATURE_OFF")
-	);
 }
 
 export const MEMORY_MODEL_POLL_MS = 5_000;

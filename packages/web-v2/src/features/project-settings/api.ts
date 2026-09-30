@@ -4,10 +4,11 @@ import { apiClient } from "@/lib/api/client";
 import type {
 	DocumentWrite,
 	EnvironmentsConfig,
-	PipelineConfig,
 	ProjectInvitationRow,
 	LabelCreateInput,
 	LabelPatchInput,
+	PolicyDocument,
+	PolicyRead,
 	ProjectLabel,
 	ProjectMemberRow,
 	PluginDesignation,
@@ -33,10 +34,16 @@ export const projectSettingsApi = {
 	unarchive: (id: string) =>
 		apiClient<ProjectDetail>(`/projects/${id}/unarchive`, { method: "POST" }),
 
-	getPipelineConfig: (id: string) =>
-		apiClient<{ pipelineConfig: PipelineConfig }>(
-			`/projects/${id}/pipeline-config`,
-		),
+	/** `GET /api/projects/:id/policy` — the policy dispatch reads, or `declared: false`. */
+	getPolicy: (id: string) => apiClient<PolicyRead>(`/projects/${id}/policy`),
+
+	/** `PUT /api/projects/:id/policy` — the whole document, against the revision it was read at
+	 *  (`null` when there is none). A 422 carries `error.refusals`, each naming its path. */
+	putPolicy: (id: string, baseRevision: number | null, document: PolicyDocument) =>
+		apiClient<PolicyRead & { created: boolean }>(`/projects/${id}/policy`, {
+			method: "PUT",
+			body: JSON.stringify({ baseRevision, document }),
+		}),
 
 	runAssistantWeekly: (id: string) =>
 		apiClient<
@@ -44,18 +51,6 @@ export const projectSettingsApi = {
 			| { outcome: "skipped"; windowId: string; reason: string }
 			| { outcome: "failed"; windowId: string; error: string }
 		>(`/projects/${id}/assistant-weekly/run`, { method: "POST" }),
-
-	/** `PATCH /api/projects/:id/pipeline-config` — the keys one section changed, and the
-	 *  values it read them against. A bare document is refused by name: sent whole, it
-	 *  replaced every key the sender did not resend (ISS-1170). */
-	updatePipelineConfig: (id: string, write: DocumentWrite) =>
-		apiClient<{ pipelineConfig: PipelineConfig; warnings?: string[] }>(
-			`/projects/${id}/pipeline-config`,
-			{
-				method: "PATCH",
-				body: JSON.stringify(write),
-			},
-		),
 
 	/** `GET /api/projects/:id/environments` — the document a write's `base` comes from. */
 	getEnvironments: (id: string) =>

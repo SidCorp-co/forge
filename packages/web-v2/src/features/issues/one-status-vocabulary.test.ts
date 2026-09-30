@@ -29,7 +29,6 @@ it("walks a tree that is actually there", () => {
 });
 
 describe("the lane word is not reachable under a status-label name", () => {
-  // The unqualified names only: `pipelineStatusLabel` says which statuses it labels.
   const AMBIGUOUS = /^(?:use)?[Ss]tatus[Ll]abel/;
   const KERNEL_NAMED = new Set(["statusLabel", "STATUS_LABELS"]);
   const DECLARED =

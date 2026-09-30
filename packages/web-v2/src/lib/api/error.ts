@@ -81,107 +81,10 @@ export function formatApiError(err: unknown): string {
 }
 
 
-/**
- * Map a pipeline stage *status* (as it appears in error `details`) to the
- * human-facing auto-stage toggle label shown in the Pipeline settings tab.
- * Mirrors `STEP_TOGGLE_LABELS` in `features/project-settings/types.ts`.
- * Any status outside the 8 toggle stages (STAGE_HAS_ISSUES / DEAD_END_CONFIG
- * can reference others) falls back to its raw status name.
- */
-const STAGE_LABELS: Record<string, string> = {
-  open: 'Auto triage',
-  confirmed: 'Auto clarify',
-  clarified: 'Auto plan',
-  approved: 'Auto code',
-  developed: 'Auto review',
-  testing: 'Auto test',
-  reopen: 'Auto fix',
-  awaiting_release: 'Auto release',
-};
-
-function stageLabel(status: string): string {
-  return STAGE_LABELS[status] ?? status;
-}
-
-/** Read a `string[]` field from the untyped `details` blob, defensively. */
-function detailStringList(details: unknown, key: string): string[] {
-  if (details && typeof details === 'object') {
-    const value = (details as Record<string, unknown>)[key];
-    if (Array.isArray(value)) {
-      return value.filter((v): v is string => typeof v === 'string');
-    }
-  }
-  return [];
-}
-
-function joinStageLabels(statuses: string[]): string {
-  return statuses.map(stageLabel).join(', ');
-}
-
-/**
- * Format a pipeline-config save rejection into a clear, actionable, stage-naming
- * message. Falls back to {@link formatApiError} for non-ApiError values and any
- * code without a dedicated message (so behaviour never regresses).
- */
-const ZOD_REFUSAL_KEYS = ['poolBacklog', 'intakeGate', 'mcpServers', 'states'];
-
-function zodRefusal(details: unknown): string | null {
-  if (!details || typeof details !== 'object') return null;
-  const fieldErrors = (details as { fieldErrors?: unknown }).fieldErrors;
-  if (!fieldErrors || typeof fieldErrors !== 'object') return null;
-  for (const key of ZOD_REFUSAL_KEYS) {
-    const msgs = (fieldErrors as Record<string, unknown>)[key];
-    if (Array.isArray(msgs) && typeof msgs[0] === 'string') return msgs[0];
-  }
-  return null;
-}
-
-export function formatPipelineConfigError(err: unknown): string {
-  if (!(err instanceof ApiError)) return formatApiError(err);
-
-  if (err.code === 'BAD_REQUEST') {
-    const refusal = zodRefusal(err.details);
-    if (refusal) return refusal;
-  }
-
-  switch (err.code) {
-    case 'CONFIG_STALE':
-      return formatSettingsWriteError(err);
-    case 'CONFIG_CONFLICT':
-      return err.message;
-    case 'MISSING_SKILL_FOR_ENABLED_STAGE':
-    case 'AUTO_STAGE_NEEDS_SKILL': {
-      const stages = detailStringList(err.details, 'stagesMissingSkill');
-      if (stages.length === 0) break;
-      const labels = joinStageLabels(stages);
-      return `Can't save: ${labels} ${stages.length === 1 ? 'needs' : 'need'} a registered skill before ${stages.length === 1 ? 'it' : 'they'} can run automatically. Register a skill for ${stages.length === 1 ? 'that stage' : 'those stages'} (Library) or turn the toggle off.`;
-    }
-    case 'STAGE_HAS_ISSUES': {
-      const stages = detailStringList(err.details, 'stagesBlocked');
-      const blocking = detailStringList(err.details, 'blockingIssueIds');
-      if (stages.length === 0) break;
-      const labels = joinStageLabels(stages);
-      const count = blocking.length;
-      const issuesPhrase = count > 0 ? `${count} issue${count === 1 ? '' : 's'} ${count === 1 ? 'is' : 'are'} currently at ${count === 1 ? 'that stage' : 'those stages'}` : 'issues are currently at those stages';
-      return `Can't disable ${labels}: ${issuesPhrase}. Move or close them first.`;
-    }
-    case 'DEAD_END_CONFIG': {
-      const stages = detailStringList(err.details, 'unreachable');
-      if (stages.length === 0) break;
-      const labels = joinStageLabels(stages);
-      return `These stages would have no forward path: ${labels}. Re-enable one of them or an earlier stage.`;
-    }
-    case 'OPEN_LOCKED_ON':
-      return "The Open stage can't be disabled.";
-  }
-
-  return formatApiError(err);
-}
-
 
 // ─── A save refused because the document moved under it ──────────────────────
 //
-// `CONFIG_STALE` / `ENVIRONMENTS_STALE` carry `details.conflicts`: one row per path the
+// `ENVIRONMENTS_STALE` carries `details.conflicts`: one row per path the
 // write named, with the value the caller read and the value stored now. The person is owed
 // three things from that (ISS-1170): WHICH settings changed under them, that NOTHING was
 // written, and the re-read that makes the save possible.
@@ -192,45 +95,16 @@ interface WriteConflict {
   stored: unknown;
 }
 
-/** Dotted paths, as the settings screen labels them. Longest prefix wins. */
+/** Dotted paths of the environments document, as the settings screen labels them. Longest prefix wins. */
 const SETTING_LABELS: [prefix: string, label: string][] = [
-  ['states.', 'Stage settings'],
-  ['intakeGate', 'Intake gate'],
-  ['poolBacklog', 'Master backlog'],
-  ['knowledgePromotion', 'Knowledge promotion'],
-  ['assistantWeekly', 'Assistant weekly reading'],
-  ['mcpServers', 'MCP servers'],
-  ['plugins', 'Plugins'],
-  ['enabled', 'Pipeline enabled'],
   ['live', 'Live'],
   ['preview', 'Preview'],
   ['testCredentials', 'Test credentials'],
   ['limits', 'Limits'],
 ];
 
-const STAGE_SETTING_LABELS: Record<string, string> = {
-  deviceIds: 'Runner pools',
-  allowedTools: 'Stage permissions',
-  disallowedTools: 'Stage permissions',
-  mcpServers: 'Stage permissions',
-};
-
-/** A stage as the SETTINGS rows name it, which is not what the auto-stage toggles are
- *  called: mirrors `PIPELINE_STATUS_ROWS` in `features/project-settings/types.ts`. */
-const SETTINGS_STAGE_LABELS: Record<string, string> = {
-  open: 'Queued',
-  in_progress: 'Running',
-  needs_info: 'Needs a human',
-  awaiting_release: 'Awaiting release',
-};
-
-/** `states.open.deviceIds` → "Runner pools (Queued)"; `intakeGate.enabled` → "Intake gate". */
+/** `live.url` → "Live"; a path no row names reads as itself. */
 export function settingLabel(path: string): string {
-  const parts = path.split('.');
-  if (parts[0] === 'states' && parts.length >= 3) {
-    const leaf = STAGE_SETTING_LABELS[parts[2]] ?? 'Stage settings';
-    return `${leaf} (${SETTINGS_STAGE_LABELS[parts[1]] ?? parts[1]})`;
-  }
   for (const [prefix, label] of SETTING_LABELS) {
     if (path === prefix || path.startsWith(prefix)) return label;
   }
@@ -239,7 +113,7 @@ export function settingLabel(path: string): string {
 
 export function writeConflicts(err: unknown): WriteConflict[] {
   if (!(err instanceof ApiError)) return [];
-  if (err.code !== 'CONFIG_STALE' && err.code !== 'ENVIRONMENTS_STALE') return [];
+  if (err.code !== 'ENVIRONMENTS_STALE') return [];
   const rows = (err.details as { conflicts?: unknown } | undefined)?.conflicts;
   if (!Array.isArray(rows)) return [];
   return rows.filter(

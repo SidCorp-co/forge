@@ -186,7 +186,6 @@ export function McpServersPanel({
   const preview = useMcpPreview(projectId);
   const bindings = useIntegrationsList(projectId);
   const byBindingId = new Map((bindings.data?.bindings ?? []).map((b) => [b.id, b]));
-  const stateOnly = preview.data?.stateOnlyNames ?? [];
   const dropped = preview.data?.droppedNames ?? [];
 
   return (
@@ -194,11 +193,10 @@ export function McpServersPanel({
       <CardContent>
         <SectionTitle className="fg-h3 mb-1">Agent MCP servers</SectionTitle>
         <p className="fg-body-sm mb-3 text-muted">
-          Every MCP server injected into a Claude agent dispatched for this project without a
-          per-state override, from both sources that feed them: this project&rsquo;s own pipeline
-          configuration and its granted integrations. The list comes from the same resolver that
-          performs the injection; credentials are attached at dispatch time and never shown here. A
-          connected integration reaches an agent only once it is granted, on the row below.
+          Every MCP server injected into a Claude agent dispatched for this project: its granted
+          integrations. The list comes from the same resolver that performs the injection;
+          credentials are attached at dispatch time and never shown here. A connected integration
+          reaches an agent only once it is granted, on the row below.
         </p>
         {preview.isLoading ? (
           <div className="flex flex-col gap-2">
@@ -223,14 +221,7 @@ export function McpServersPanel({
         {dropped.length > 0 && (
           <p className="fg-body-sm mt-3 text-[var(--amberw-600)]">
             Declared for this project and not supplied, so the list above does not carry them:{" "}
-            {dropped.join(", ")}. A pipeline state that declares one with a spec of its own may
-            still supply it on that state&rsquo;s dispatches.
-          </p>
-        )}
-        {stateOnly.length > 0 && (
-          <p className="fg-body-sm mt-2 text-subtle">
-            Declared only for particular pipeline states, so they are not in the list above and
-            whether each one resolves is decided on that state&rsquo;s dispatch: {stateOnly.join(", ")}.
+            {dropped.join(", ")}.
           </p>
         )}
       </CardContent>
