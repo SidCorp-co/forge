@@ -306,6 +306,9 @@ describe('POST /api/agent-sessions/start', () => {
     );
   });
 
+});
+
+describe('POST /api/agent-sessions/start refuses before a row is created', () => {
   it('403 SESSION_VIEWER refuses a viewer before a row is created', async () => {
     const token = await signUserToken(USER_ID);
     mockAuthVerified();

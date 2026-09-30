@@ -11,8 +11,8 @@
 ### Security
 
 - **An agent session you start from the web acts as you, not as whoever paired the box.** Each
-  turn carries a short-lived token for its sender, never wider than the box owner's. Viewers, and
-  boxes on an older forge-runner, are refused.
+  turn carries a short-lived token for its sender, never wider than the box owner's. Viewers and
+  older forge-runners are refused.
 - **A signed-in browser can no longer broadcast to the whole organisation's live channel.** The
   prompt-relay route that allowed it had no caller and is gone.
 - **A box can only start work on a project it serves.** A box with no runner there, a disabled
