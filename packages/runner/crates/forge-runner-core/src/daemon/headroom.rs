@@ -380,6 +380,7 @@ pub fn scratch_roots() -> Vec<PathBuf> {
     vec![std::env::temp_dir()]
 }
 
+#[cfg(any(unix, test))]
 /// The configured root, plus `shared` when that is a filesystem of its own.
 ///
 /// `device` is the caller's, so the rule can be tested without a box that

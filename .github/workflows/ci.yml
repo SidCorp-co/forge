@@ -518,7 +518,9 @@ jobs:
       # that) and sets FORGE_TEST_REQUIRE_TMUX, under which such a test fails naming what it
       # lacked instead of returning. macOS resolves the config dir, and so the socket, outside
       # XDG_CONFIG_HOME, so a test there cannot get a server of its own and still skips;
-      # Windows does not compile the module.
+      # Windows does not compile the module. Clippy denies warnings, here, in runner-release.yml's
+      # check job and in scripts/check-runner-gates.mjs alike: a lint that only warns is read by
+      # nobody, and five stood on main that way.
       - name: Lockfile sync + fmt + clippy + test
         working-directory: packages/runner
         shell: bash
@@ -531,7 +533,7 @@ jobs:
           fi
           cargo metadata --locked --format-version=1 >/dev/null
           cargo fmt --check
-          cargo clippy --workspace --all-targets
+          cargo clippy --workspace --all-targets -- -D warnings
           cargo test --workspace
 
   docs:

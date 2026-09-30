@@ -798,6 +798,7 @@ use testing::tmux_command;
 #[cfg(test)]
 pub(crate) mod testing {
     use super::*;
+    #[cfg(unix)]
     use crate::auth::cred_store::ScopedVar;
     use std::cell::{Cell, RefCell};
     use std::rc::Rc;
@@ -949,6 +950,7 @@ pub(crate) mod testing {
         eprintln!("{why}");
     }
 
+    #[cfg(unix)]
     /// A tmux server of this test's own, addressed the way production
     /// addresses the box's: through the config dir.
     ///
@@ -960,6 +962,7 @@ pub(crate) mod testing {
         dir: crate::test_scratch::Scratch,
     }
 
+    #[cfg(unix)]
     impl IsolatedServer {
         pub(crate) fn new(label: &str) -> Self {
             // `short`: the socket is `<dir>/forge-runner/tmux.sock`, and a path past the 100-byte
@@ -982,6 +985,7 @@ pub(crate) mod testing {
         }
     }
 
+    #[cfg(unix)]
     impl Drop for IsolatedServer {
         fn drop(&mut self) {
             if let Some(sock) = socket_path() {
@@ -1028,6 +1032,7 @@ pub(crate) mod testing {
         }
     }
 
+    #[cfg(unix)]
     /// A tmux that refuses `kill-session` and answers every other verb from the
     /// real server, for the one window `kill`'s postcondition is about.
     ///
@@ -1040,6 +1045,7 @@ pub(crate) mod testing {
         _dir: crate::test_scratch::Scratch,
     }
 
+    #[cfg(unix)]
     impl RefusingKill {
         pub(crate) fn installed() -> Self {
             let real = which::which("tmux").expect("a real tmux to pass everything else to");
@@ -1059,6 +1065,7 @@ pub(crate) mod testing {
         }
     }
 
+    #[cfg(unix)]
     /// What a shim tmux answers when it is asked whether a session is there.
     ///
     /// tmux exits non-zero for both of the last two and says which in its own
@@ -1073,6 +1080,7 @@ pub(crate) mod testing {
         NoServer,
     }
 
+    #[cfg(unix)]
     impl Asked {
         fn as_env(self) -> &'static str {
             match self {
@@ -1083,6 +1091,7 @@ pub(crate) mod testing {
         }
     }
 
+    #[cfg(unix)]
     /// A tmux that answers out of what the test set rather than out of a server.
     ///
     /// `RefusingKill` above hands everything it does not care about to the real
@@ -1098,6 +1107,7 @@ pub(crate) mod testing {
         _dir: crate::test_scratch::Scratch,
     }
 
+    #[cfg(unix)]
     const SHIM: &str = r#"#!/bin/sh
 [ "$1" = --forge-shim-probe ] && exit 0
 verb=''
@@ -1125,6 +1135,7 @@ esac
 exit 0
 "#;
 
+    #[cfg(unix)]
     impl ShimTmux {
         /// `fail` names the one verb the shim refuses, for the failures that
         /// happen after a pane has already answered alive and been read.
@@ -1159,6 +1170,7 @@ exit 0
         }
     }
 
+    #[cfg(unix)]
     pub(crate) fn shim_quote(s: &str) -> String {
         format!("'{}'", s.replace('\'', "'\\''"))
     }
@@ -1166,7 +1178,9 @@ exit 0
 
 #[cfg(test)]
 mod tests {
-    use super::testing::{cannot_run, Asked, RefusingKill, ShimTmux, UnaskableTmux, ONE_AT_A_TIME};
+    use super::testing::{cannot_run, UnaskableTmux, ONE_AT_A_TIME};
+    #[cfg(unix)]
+    use super::testing::{Asked, RefusingKill, ShimTmux};
 
     /// ISS-1312 criteria 67 and 68: a shim is handed to no tmux call while
     /// anything can still write it. A sibling thread's fork holds the write
