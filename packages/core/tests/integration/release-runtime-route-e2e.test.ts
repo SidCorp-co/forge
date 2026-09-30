@@ -476,6 +476,30 @@ describe('a reason every waiting row shares is said once (judge finding 1)', () 
     30_000,
   );
 
+  // Review 834824 F1: a row commented before this change already carries the per-row wording.
+  it('posts no second comment on an oldest row that carries the per-row wording of the same hold', async () => {
+    await harness.db.execute(sql`
+      UPDATE projects SET base_branch = 'main', release_chain = '[{"branch": "main"}]'::jsonb
+       WHERE id = ${projectId}
+    `);
+    const oldest = await waitingRow(SERVED, '2026-09-27T09:00:00Z');
+    await waitingRow(SERVED, '2026-09-28T09:00:00Z');
+    await sweep();
+    const { readReleaseHold, releaseHoldComment } = await import(
+      '../../src/pipeline/release-hold.js'
+    );
+    const hold = readReleaseHold(await holdOf(oldest));
+    if (!hold) throw new Error('the first sweep wrote no hold');
+    await harness.db.execute(sql`
+      UPDATE comments SET body = ${releaseHoldComment(hold)}
+       WHERE issue_id = ${oldest} AND body LIKE '%release-hold: %'
+    `);
+
+    await sweep();
+
+    expect(await holdComments(oldest)).toBe(1);
+  }, 30_000);
+
   /** Every runner of the project rate limited until `until`, as a heartbeat reports it. */
   async function rateLimited(until: string): Promise<void> {
     await harness.db.execute(sql`
