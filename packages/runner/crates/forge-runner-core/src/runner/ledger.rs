@@ -235,6 +235,82 @@ pub const HOST_PROCESS_GONE: &str = "process-gone";
 const CLOSED_BY_ITS_MARKS: &str = "(r.session_terminal_at IS NOT NULL AND r.released_as IS NOT NULL
       AND NOT EXISTS (SELECT 1 FROM run_issues m WHERE m.run_id = r.run_id AND m.lease_returned_at IS NULL))";
 
+/// A run no master on this box answers for: it has no ending, and the master
+/// session it was declared under is no session the `masters` table records, so
+/// `run close` from every pane is refused as another master's (ISS-1355).
+#[derive(Debug, Clone)]
+pub struct Unanswered {
+    pub run: Run,
+    pub issues: Vec<Membership>,
+    pub closed_by_its_marks: bool,
+    /// Its project's `masters` row records no session, so whether the pane
+    /// there declared it cannot be told.
+    pub master_row_has_no_session: bool,
+}
+
+/// What will end a run no master answers for, read off its own row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WhatEndsIt {
+    /// Its marks close it, so the next recovery sweep ends it.
+    NextSweep,
+    /// Core has not called its session over, and recovery releases it once it has.
+    SessionOver,
+    /// Its release was given up on, so only `forge-runner run release` puts it back.
+    OperatorRelease,
+    /// Recovery still owes the checkout back.
+    CheckoutRelease,
+    /// Recovery has these leases still to read back.
+    LeasesBack(Vec<String>),
+    /// Its row records no project, so no sweep can tie it to a master.
+    NothingNoProject,
+    /// Its project's master row records no session, so that pane may be its
+    /// declarer and its close is the only way out.
+    NothingMasterUnknown,
+}
+
+impl Unanswered {
+    /// Whether the recovery sweep ends it now. A run whose project is unknown,
+    /// or whose project's master may be its declarer, is left.
+    pub fn sweep_ends_it(&self) -> bool {
+        self.closed_by_its_marks && self.run.project_id.is_some() && !self.master_row_has_no_session
+    }
+
+    pub fn what_ends_it(&self) -> WhatEndsIt {
+        if self.run.project_id.is_none() {
+            return WhatEndsIt::NothingNoProject;
+        }
+        if self.master_row_has_no_session {
+            return WhatEndsIt::NothingMasterUnknown;
+        }
+        if self.closed_by_its_marks {
+            return WhatEndsIt::NextSweep;
+        }
+        if self.run.session_terminal_at.is_none() {
+            return WhatEndsIt::SessionOver;
+        }
+        if self.run.released_as.is_none() {
+            return if self.run.release_terminal_at.is_some() {
+                WhatEndsIt::OperatorRelease
+            } else {
+                WhatEndsIt::CheckoutRelease
+            };
+        }
+        WhatEndsIt::LeasesBack(
+            self.issues
+                .iter()
+                .filter(|m| m.lease_returned_at.is_none())
+                .map(|m| m.issue_key.clone())
+                .collect(),
+        )
+    }
+}
+
+/// The first eight characters of an id, which is how a session is named in
+/// what this box writes for a person.
+pub fn short_id(id: &str) -> &str {
+    id.get(..8).unwrap_or(id)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MasterRow {
     pub project_id: String,
@@ -772,6 +848,19 @@ impl Ledger {
         Ok(dir.join("forge-runner").join("ledger.sqlite"))
     }
 
+    /// Open the ledger at `path` for reading only: no migration, no directory
+    /// created, and any write through it refused by SQLite. For a command an
+    /// operator types, which must leave a live box's ledger as it found it.
+    pub fn open_read_only(path: &Path) -> Result<Self> {
+        let conn = Connection::open_with_flags(
+            path,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )
+        .map_err(sql_err)?;
+        conn.busy_timeout(Duration::from_secs(2)).map_err(sql_err)?;
+        Ok(Self { conn })
+    }
+
     /// An in-memory ledger, for tests that must not touch the box.
     pub fn open_in_memory() -> Result<Self> {
         Self::from_conn(Connection::open_in_memory().map_err(sql_err)?)
@@ -1148,6 +1237,86 @@ impl Ledger {
             .query_map(params![project_id, boot_id], map_run)
             .map_err(sql_err)?;
         rows.collect::<rusqlite::Result<Vec<_>>>().map_err(sql_err)
+    }
+
+    /// Every run no master on this box answers for, oldest first.
+    ///
+    /// The declaring session is compared with every `masters` row and not only
+    /// its project's, because `run close` authorises by session alone: a run
+    /// is answered for exactly when some pane's recorded session could close it.
+    pub fn runs_no_master_answers_for(&self) -> Result<Vec<Unanswered>> {
+        let ids: Vec<(String, bool, bool)> = {
+            let mut stmt = self
+                .conn
+                .prepare(&format!(
+                    "SELECT r.run_id, {CLOSED_BY_ITS_MARKS},
+                            EXISTS (SELECT 1 FROM masters m
+                                     WHERE m.project_id = r.project_id AND m.session_id IS NULL)
+                       FROM runs r
+                      WHERE r.ended_by IS NULL
+                        AND NOT EXISTS (SELECT 1 FROM masters m WHERE m.session_id = r.master_session_id)
+                      ORDER BY r.created_at, r.run_id"
+                ))
+                .map_err(sql_err)?;
+            let rows = stmt
+                .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+                .map_err(sql_err)?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()
+                .map_err(sql_err)?
+        };
+        let mut out = Vec::with_capacity(ids.len());
+        for (run_id, closed_by_its_marks, master_row_has_no_session) in ids {
+            let Some(run) = self.run(&run_id)? else {
+                continue;
+            };
+            out.push(Unanswered {
+                issues: self.issues(&run_id)?,
+                run,
+                closed_by_its_marks,
+                master_row_has_no_session,
+            });
+        }
+        Ok(out)
+    }
+
+    /// End every run no master answers for that its marks already close, and
+    /// answer the ones it ended.
+    ///
+    /// Such a row holds nothing — `live_run_holding` and `unclosed_runs` both
+    /// pass over it — and no writer of `ended_by` ever reaches it: its master's
+    /// close is refused to every pane, and recovery walks only `unclosed_runs`.
+    /// On one box that left 51 rows open for up to six days (ISS-1355). The
+    /// update repeats the selection in its own `WHERE`, so a row that a pane
+    /// took over between the read and the write is left to that pane.
+    pub fn end_closed_runs_no_master_answers_for(&self) -> Result<Vec<Unanswered>> {
+        let mut ended = Vec::new();
+        for u in self.runs_no_master_answers_for()? {
+            if !u.sweep_ends_it() {
+                continue;
+            }
+            let reason = format!(
+                "no master on this box can close it: it was declared under master session {}, which is no master session this box records, and its marks already close it — its session is over, its checkout was returned ({}) and every lease is back",
+                short_id(&u.run.master_session_id),
+                u.run.released_as.as_deref().unwrap_or("unrecorded")
+            );
+            let changed = self
+                .conn
+                .execute(
+                    &format!(
+                        "UPDATE runs SET work = 'done', incarnation = 'exited',
+                                ended_by = 'recovery', ended_reason = ?2
+                          WHERE run_id = ?1 AND ended_by IS NULL
+                            AND NOT EXISTS (SELECT 1 FROM masters m WHERE m.session_id = runs.master_session_id)
+                            AND run_id IN (SELECT r.run_id FROM runs r WHERE r.run_id = ?1 AND {CLOSED_BY_ITS_MARKS})"
+                    ),
+                    params![u.run.run_id, reason],
+                )
+                .map_err(sql_err)?;
+            if changed == 1 {
+                ended.push(u);
+            }
+        }
+        Ok(ended)
     }
 
     /// Record that the process the subagent of `run_id` lived in ended at
@@ -4513,6 +4682,10 @@ mod tests {
         }
     }
 
+    fn ended_by(led: &Ledger, run_id: &str) -> Option<String> {
+        led.run(run_id).unwrap().unwrap().ended_by
+    }
+
     /// ISS-1352 criteria 1 and 2, in the shape the box held on 2026-09-27:
     /// sid-desk's judge of its own ISS-496 (run d87c1f79), its worktree gone
     /// and its session over, with its lease still out, while anhome declares
@@ -4570,6 +4743,224 @@ mod tests {
             "criterion 3: {why}"
         );
         assert!(!why.contains("belongs to"), "criterion 4: {why}");
+    }
+
+    /// ISS-1355 criteria 1-4: the one sweep that ends such a row, what it
+    /// writes, and the current master's own run it leaves.
+    #[test]
+    fn a_run_no_master_answers_for_ends_once_its_marks_close_it() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.note_master("p", "forge-master-p", None, Some("b50cb00e-now"), "boot-a")
+            .unwrap();
+        declared(
+            &mut led,
+            "orphan",
+            "p",
+            "655c2532-before",
+            &["ISS-1", "ISS-2"],
+        );
+        declared(&mut led, "own", "p", "b50cb00e-now", &["ISS-3"]);
+        marks(&led, "orphan", &[]);
+        marks(&led, "own", &[]);
+        let ended: Vec<String> = led
+            .end_closed_runs_no_master_answers_for()
+            .unwrap()
+            .into_iter()
+            .map(|u| u.run.run_id)
+            .collect();
+        assert_eq!(ended, ["orphan"]);
+        let row = led.run("orphan").unwrap().unwrap();
+        assert_eq!(row.ended_by.as_deref(), Some("recovery"), "criterion 1");
+        let why = row.ended_reason.unwrap();
+        assert!(
+            why.contains("master session 655c2532,") && !why.contains("655c2532-before"),
+            "criterion 2: {why}"
+        );
+        assert!(
+            why.starts_with("no master on this box can close it"),
+            "criterion 3: {why}"
+        );
+        assert_eq!(ended_by(&led, "own"), None, "criterion 4");
+        assert!(
+            led.end_closed_runs_no_master_answers_for()
+                .unwrap()
+                .is_empty(),
+            "an ending is written once"
+        );
+    }
+
+    /// ISS-1355 criteria 5-10: every run the ending must leave, and the two
+    /// the absence of a master row decides.
+    #[test]
+    fn the_ending_leaves_every_run_it_cannot_establish() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.note_master("p", "forge-master-p", None, Some("now-p"), "boot-a")
+            .unwrap();
+        led.note_master("q", "forge-master-q", None, None, "boot-a")
+            .unwrap();
+        declared(&mut led, "lease-out", "p", "before-p", &["ISS-1", "ISS-2"]);
+        marks(&led, "lease-out", &["ISS-2"]);
+        declared(&mut led, "session-open", "p", "before-p", &["ISS-3"]);
+        led.mark_checkout_returned_observed("session-open", CheckoutReturn::Gone)
+            .unwrap();
+        led.mark_lease_returned_observed("session-open", "ISS-3")
+            .unwrap();
+        declared(&mut led, "no-master-row", "r", "before-r", &["ISS-4"]);
+        marks(&led, "no-master-row", &[]);
+        declared(&mut led, "master-unknown", "q", "before-q", &["ISS-5"]);
+        marks(&led, "master-unknown", &[]);
+        declared(&mut led, "no-project", "p", "before-x", &["ISS-6"]);
+        marks(&led, "no-project", &[]);
+        led.exec_for_test("UPDATE runs SET project_id = NULL WHERE run_id = 'no-project'");
+
+        let mut listed: Vec<(String, WhatEndsIt)> = led
+            .runs_no_master_answers_for()
+            .unwrap()
+            .into_iter()
+            .map(|u| (u.run.run_id.clone(), u.what_ends_it()))
+            .collect();
+        listed.sort_by(|a, b| a.0.cmp(&b.0));
+        assert_eq!(
+            listed,
+            [
+                (
+                    "lease-out".into(),
+                    WhatEndsIt::LeasesBack(vec!["ISS-2".into()])
+                ),
+                ("master-unknown".into(), WhatEndsIt::NothingMasterUnknown),
+                ("no-master-row".into(), WhatEndsIt::NextSweep),
+                ("no-project".into(), WhatEndsIt::NothingNoProject),
+                ("session-open".into(), WhatEndsIt::SessionOver),
+            ]
+        );
+        let ended: Vec<String> = led
+            .end_closed_runs_no_master_answers_for()
+            .unwrap()
+            .into_iter()
+            .map(|u| u.run.run_id)
+            .collect();
+        assert_eq!(ended, ["no-master-row"], "criterion 8");
+        assert_eq!(ended_by(&led, "lease-out"), None, "criterion 5");
+        assert_eq!(ended_by(&led, "session-open"), None, "criterion 7");
+        assert_eq!(ended_by(&led, "master-unknown"), None, "criterion 9");
+        assert_eq!(ended_by(&led, "no-project"), None, "criterion 10");
+
+        led.mark_lease_returned_observed("lease-out", "ISS-2")
+            .unwrap();
+        let ended: Vec<String> = led
+            .end_closed_runs_no_master_answers_for()
+            .unwrap()
+            .into_iter()
+            .map(|u| u.run.run_id)
+            .collect();
+        assert_eq!(ended, ["lease-out"], "criterion 6");
+    }
+
+    /// The box's own population, planted small: three projects, each master
+    /// replaced at least once, with every case the ending must tell apart
+    /// between them. Exactly the rows its marks close under a replaced session
+    /// end, whichever project they are in.
+    #[test]
+    fn the_ending_takes_exactly_the_closed_orphans_of_every_project() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        for p in ["epod", "sid-desk", "forge-dev"] {
+            led.note_master(
+                p,
+                &format!("forge-master-{p}"),
+                None,
+                Some(&format!("{p}-now")),
+                "boot-a",
+            )
+            .unwrap();
+        }
+        let mut n = 0;
+        let mut plant = |led: &mut Ledger, p: &str, master: &str, closed: bool| {
+            n += 1;
+            let id = format!("{p}-{n}");
+            let key = format!("ISS-{n}");
+            declared(led, &id, p, master, &[key.as_str()]);
+            if closed {
+                marks(led, &id, &[]);
+            } else {
+                marks(led, &id, &[key.as_str()]);
+            }
+            id
+        };
+        let mut want = Vec::new();
+        for (p, orphans) in [("epod", 3), ("sid-desk", 2), ("forge-dev", 1)] {
+            for _ in 0..orphans {
+                want.push(plant(&mut led, p, &format!("{p}-before"), true));
+            }
+            plant(&mut led, p, &format!("{p}-before"), false);
+            plant(&mut led, p, &format!("{p}-now"), true);
+        }
+        let mut ended: Vec<String> = led
+            .end_closed_runs_no_master_answers_for()
+            .unwrap()
+            .into_iter()
+            .map(|u| u.run.run_id)
+            .collect();
+        ended.sort();
+        want.sort();
+        assert_eq!(ended, want);
+        assert!(led
+            .runs_no_master_answers_for()
+            .unwrap()
+            .iter()
+            .all(|u| !u.closed_by_its_marks));
+    }
+
+    /// ISS-1355 criterion 14: the read-only open reads a ledger whose file
+    /// and directory nobody may write, and leaves nothing beside it.
+    #[cfg(unix)]
+    #[test]
+    fn the_read_only_open_reads_what_it_cannot_write() {
+        use std::os::unix::fs::PermissionsExt;
+        let s = crate::test_scratch::Scratch::new("ledger-ro");
+        let dir = s.path().join("locked");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("ledger.sqlite");
+        {
+            let mut led = Ledger::open(&path).unwrap();
+            declared(&mut led, "orphan", "p", "before", &["ISS-1"]);
+        }
+        let before = std::fs::read(&path).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o444)).unwrap();
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o555)).unwrap();
+        let listed = Ledger::open_read_only(&path).and_then(|led| led.runs_no_master_answers_for());
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let listed = listed.expect("criterion 14: an unwritable ledger reads");
+        assert_eq!(listed.len(), 1);
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+        assert_eq!(
+            std::fs::read_dir(&dir).unwrap().count(),
+            1,
+            "no journal or sidecar was left beside it"
+        );
+    }
+
+    /// ISS-1355 criterion 15: over a ledger anybody may write, the read-only
+    /// open still refuses a write through itself, and the file is unchanged.
+    #[test]
+    fn the_read_only_open_refuses_a_write_the_file_would_allow() {
+        let s = crate::test_scratch::Scratch::new("ledger-ro-write");
+        let path = s.path().join("ledger.sqlite");
+        {
+            let mut led = Ledger::open(&path).unwrap();
+            declared(&mut led, "orphan", "p", "before", &["ISS-1"]);
+        }
+        let before = std::fs::read(&path).unwrap();
+        let led = Ledger::open_read_only(&path).unwrap();
+        let refused = led
+            .conn
+            .execute("UPDATE runs SET ended_by = 'x'", [])
+            .map_err(sql_err)
+            .expect_err("criterion 15")
+            .to_string();
+        assert!(refused.contains("readonly"), "criterion 15: {refused}");
+        drop(led);
+        assert_eq!(std::fs::read(&path).unwrap(), before);
     }
 
     /// ISS-1312, criterion 19: what a pane started now inherits is its
