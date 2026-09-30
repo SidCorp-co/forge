@@ -477,10 +477,21 @@ pub struct JobPorts<'a> {
     pub records: &'a dyn Records,
 }
 
+/// The project a job is taken for: its id, and the slug an operator knows it
+/// by, which the pane's capability record carries (ISS-1316 criterion 20).
+///
+/// One struct rather than two parameters because `take_one` sits at exactly
+/// the argument count `clippy::too_many_arguments` allows.
+#[derive(Debug, Clone, Copy)]
+pub struct ServedProject<'a> {
+    pub id: &'a str,
+    pub slug: &'a str,
+}
+
 pub async fn take_one(
     ports: &JobPorts<'_>,
     registry: &JobPanes,
-    project_id: &str,
+    project: ServedProject<'_>,
     session_id: &str,
     fallback_cwd: Option<&Path>,
     bound: usize,
@@ -492,6 +503,7 @@ pub async fn take_one(
         report,
         records,
     } = *ports;
+    let project_id = project.id;
     if registry.count() >= bound {
         return Took::AtBound;
     }
@@ -578,6 +590,7 @@ pub async fn take_one(
         &cwd,
         &prepared.agent_session_id,
         project_id,
+        project.slug,
         &pane,
         tokens,
         control::HOOKS_CAN_REPORT,
@@ -690,6 +703,7 @@ fn open_channel(
     cwd: &Path,
     agent_session_id: &str,
     project_id: &str,
+    slug: &str,
     pane: &str,
     tokens: Option<&session_tokens::SessionTokens>,
     hooks_can_report: bool,
@@ -716,7 +730,7 @@ fn open_channel(
         );
         return (env, None);
     };
-    match store.mint(agent_session_id, project_id, pane) {
+    match store.mint(agent_session_id, project_id, slug, pane) {
         Ok(token) => {
             let mut env = env;
             env.push((session_tokens::TOKEN_ENV.to_string(), token));
@@ -1471,6 +1485,7 @@ mod tests {
             home.path(),
             "sess-1",
             "p1",
+            "p1-slug",
             "forge-job-j1",
             Some(&tokens),
             hooks_can_report,
@@ -1489,6 +1504,21 @@ mod tests {
         assert!(
             env.iter().any(|(k, _)| k == session_tokens::TOKEN_ENV),
             "the pane carries the capability its hooks are refused without"
+        );
+    }
+
+    /// ISS-1316 criterion 20, for a job pane: its record carries the slug, so
+    /// the gate can name the project the way an operator types it.
+    #[test]
+    fn a_job_panes_capability_record_carries_the_projects_slug() {
+        let (_, _, home) = channel_for(true);
+        let minted = session_tokens::SessionTokens::at(home.path().join("control-tokens.json"))
+            .minted_for_pane("forge-job-j1")
+            .expect("the map reads")
+            .expect("the job pane has a record");
+        assert_eq!(
+            (minted.project.as_str(), minted.slug.as_deref()),
+            ("p1", Some("p1-slug"))
         );
     }
 
@@ -1524,7 +1554,10 @@ mod tests {
                 records: &w.records,
             },
             &w.registry,
-            "p1",
+            ServedProject {
+                id: "p1",
+                slug: "p1-slug",
+            },
             "master-session",
             Some(&box_repo()),
             bound,
@@ -1900,7 +1933,10 @@ mod tests {
                         records,
                     },
                     registry,
-                    project,
+                    ServedProject {
+                        id: project,
+                        slug: "slug",
+                    },
                     "master-session",
                     Some(&box_repo()),
                     2,
@@ -1987,7 +2023,10 @@ mod tests {
                         records,
                     },
                     registry,
-                    project,
+                    ServedProject {
+                        id: project,
+                        slug: "slug",
+                    },
                     "master-session",
                     Some(&box_repo()),
                     2,
@@ -3102,7 +3141,10 @@ mod tests {
                 records: &w.records,
             },
             &w.registry,
-            "p1",
+            ServedProject {
+                id: "p1",
+                slug: "p1-slug",
+            },
             "master-session",
             Some(Path::new("/also/nowhere")),
             2,
@@ -3138,7 +3180,10 @@ mod tests {
                 records: &w.records,
             },
             &w.registry,
-            "p1",
+            ServedProject {
+                id: "p1",
+                slug: "p1-slug",
+            },
             "master-session",
             None,
             2,

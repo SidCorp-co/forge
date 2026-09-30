@@ -125,8 +125,14 @@ pub enum Tokenless {
     /// never the gate's subject.
     NotOurs,
     /// A pane the daemon placed for `project`, whose capability never reached
-    /// its environment.
-    LostMint { pane: String, project: String },
+    /// its environment. `slug` is the record's, absent from one 0.17.72 wrote;
+    /// `socket` is the runner tmux server the pane was found on.
+    LostMint {
+        pane: String,
+        project: String,
+        slug: Option<String>,
+        socket: PathBuf,
+    },
     /// On the runner's tmux server, in a session no capability names: a pane
     /// placed before capabilities carried their pane, or one this box did not
     /// place. Which, nothing here can say.
@@ -141,7 +147,7 @@ pub fn tokenless(
     tmux: Option<&str>,
     runner_socket: Option<&Path>,
     session_name: impl FnOnce(&Path) -> Result<String, String>,
-    recorded_for: impl FnOnce(&str) -> Result<Option<String>, String>,
+    recorded_for: impl FnOnce(&str) -> Result<Option<session_tokens::Minted>, String>,
 ) -> Tokenless {
     let Some(tmux) = tmux.filter(|t| !t.is_empty()) else {
         return Tokenless::NotOurs;
@@ -167,7 +173,12 @@ pub fn tokenless(
         Err(why) => return Tokenless::Unknown(why),
     };
     match recorded_for(&pane) {
-        Ok(Some(project)) => Tokenless::LostMint { pane, project },
+        Ok(Some(minted)) => Tokenless::LostMint {
+            pane,
+            project: minted.project,
+            slug: minted.slug,
+            socket: runner.to_path_buf(),
+        },
         Ok(None) => Tokenless::Unrecorded { pane },
         Err(why) => Tokenless::Unknown(why),
     }
@@ -233,10 +244,59 @@ async fn tokenless_here(dir: Option<&Path>) -> Tokenless {
             None => Err("this box's config directory could not be resolved, so its capability records could not be read".into()),
             Some(store) => store
                 .minted_for_pane(pane)
-                .map(|m| m.map(|m| m.project))
                 .map_err(|e| e.to_string()),
         }
         },
+    )
+}
+
+/// `s` as one single-quoted shell word, so a printed command runs as printed
+/// whatever the path under it holds.
+fn shell_word(s: &str) -> String {
+    format!("'{}'", s.replace('\'', r"'\''"))
+}
+
+/// The refusal a pane that lost its capability is given: which pane, which
+/// project, and the one command that ends it, with nothing left to fill in.
+///
+/// A master pane is one whose record's slug names it — the pane
+/// `forge-runner master kill <slug>` reaches. Every other pane, a job's or a
+/// master's whose record carries no slug, is ended on the runner's own tmux
+/// server by name, since a bare `tmux` reaches the operator's default server
+/// instead.
+pub fn lost_mint_reason(pane: &str, project: &str, slug: Option<&str>, socket: &Path) -> String {
+    use forge_runner_core::daemon::terminal::{session_name, JOB_PREFIX, MASTER_PREFIX};
+    let placed = match slug {
+        Some(slug) => format!("project {slug} ({project})"),
+        None => format!(
+            "project {project} (its record, written by forge-runner 0.17.72, names no slug)"
+        ),
+    };
+    let by_name = format!(
+        "`tmux -S {} kill-session -t {}` ends it on the runner's own tmux server",
+        shell_word(&socket.to_string_lossy()),
+        // `=`: tmux matches a bare target by prefix, and this names one pane.
+        shell_word(&format!("={pane}"))
+    );
+    let (what, fix) = match slug.filter(|s| session_name(MASTER_PREFIX, s) == pane) {
+        Some(slug) => (
+            "the master pane",
+            format!(
+                "`forge-runner master kill {slug}` ends it, and the next master this box places \
+                 for {slug} carries its capability"
+            ),
+        ),
+        None if pane.starts_with(&format!("{JOB_PREFIX}-")) => (
+            "a job pane",
+            format!("{by_name}; this box then reports the job to core as having lost its pane"),
+        ),
+        None => ("a pane", by_name),
+    };
+    format!(
+        "this process runs in {pane}, which the runner daemon placed as {what} for {placed}, and \
+         the control capability it minted for it never reached this process \
+         (FORGE_CONTROL_TOKEN is unset). Without it no run can be declared, so this hand-off \
+         would be undeclared work. {fix}"
     )
 }
 
@@ -256,14 +316,13 @@ async fn answer(dir: Option<&Path>, caller: Caller<'_>, d: &Dispatch) -> String 
     let token = match caller {
         Caller::Token(token) => token,
         Caller::Tokenless(Tokenless::NotOurs) => return ALLOW.to_string(),
-        Caller::Tokenless(Tokenless::LostMint { pane, project }) => {
-            return deny(&format!(
-                "this process runs in {pane}, which the runner daemon placed as a pane for project \
-                 {project}, and the control capability it minted for it never reached this \
-                 process (FORGE_CONTROL_TOKEN is unset). Without it no run can be declared, so \
-                 this hand-off would be undeclared work. End the pane (`forge-runner master kill \
-                 <slug>` for a master) and the next sweep places one carrying its capability"
-            ));
+        Caller::Tokenless(Tokenless::LostMint {
+            pane,
+            project,
+            slug,
+            socket,
+        }) => {
+            return deny(&lost_mint_reason(&pane, &project, slug.as_deref(), &socket));
         }
         Caller::Tokenless(Tokenless::Unrecorded { pane }) => {
             return open_because(&format!(
@@ -677,7 +736,7 @@ mod tests {
         );
     }
 
-    /// ISS-1316 criterion 16.
+    /// ISS-1316 criteria 16 and 21.
     #[tokio::test]
     async fn a_placed_pane_whose_capability_never_arrived_is_refused_by_name() {
         let dir = Scratch::new("gateverb-lost");
@@ -687,6 +746,8 @@ mod tests {
             Caller::Tokenless(Tokenless::LostMint {
                 pane: "forge-master-forge-dev".into(),
                 project: "da368b0a".into(),
+                slug: Some("forge-dev".into()),
+                socket: RUNNER_SOCK.into(),
             }),
             &d,
         )
@@ -696,8 +757,12 @@ mod tests {
         assert_eq!(out["permissionDecision"], "deny", "{said}");
         let why = out["permissionDecisionReason"].as_str().unwrap_or("");
         assert!(
-            why.contains("forge-master-forge-dev") && why.contains("da368b0a"),
-            "the refusal names the pane and its project: {why}"
+            why.contains("forge-master-forge-dev") && why.contains("project forge-dev"),
+            "the refusal names the pane, and its project by slug: {why}"
+        );
+        assert!(
+            why.contains("`forge-runner master kill forge-dev`") && !why.contains('<'),
+            "and the command that ends it, filled in: {why}"
         );
         let (degraded, _) = forge_runner_core::daemon::degraded::tally(dir.path());
         assert_eq!(
@@ -730,12 +795,21 @@ mod tests {
 
     const RUNNER_SOCK: &str = "/home/u/.config/forge-runner/tmux.sock";
 
+    fn record(project: &str, slug: Option<&str>, pane: &str) -> session_tokens::Minted {
+        session_tokens::Minted {
+            session: "sess-a".into(),
+            project: project.into(),
+            slug: slug.map(str::to_string),
+            pane: pane.into(),
+        }
+    }
+
     /// `None` for a read the classification must not reach, which panics if it does.
     fn classify(
         tmux: Option<&str>,
         runner: Option<&str>,
         name: Option<Result<&str, &str>>,
-        record: Option<Result<Option<&str>, &str>>,
+        record: Option<Result<Option<session_tokens::Minted>, &str>>,
     ) -> Tokenless {
         tokenless(
             tmux,
@@ -748,7 +822,6 @@ mod tests {
             |_| {
                 record
                     .expect("the record is read only for a session name tmux gave")
-                    .map(|r| r.map(str::to_string))
                     .map_err(str::to_string)
             },
         )
@@ -784,11 +857,13 @@ mod tests {
                 on,
                 Some(RUNNER_SOCK),
                 Some(Ok("forge-master-a")),
-                Some(Ok(Some("proj-a")))
+                Some(Ok(Some(record("proj-a", Some("a"), "forge-master-a"))))
             ),
             Tokenless::LostMint {
                 pane: "forge-master-a".into(),
-                project: "proj-a".into()
+                project: "proj-a".into(),
+                slug: Some("a".into()),
+                socket: RUNNER_SOCK.into(),
             }
         );
         assert_eq!(
@@ -835,5 +910,63 @@ mod tests {
                 other => panic!("expected an unknown naming {want}, got {other:?}"),
             }
         }
+    }
+
+    /// ISS-1316 criterion 22: a job pane has no `master kill`, so it is given
+    /// the command that reaches its pane on the runner's own server.
+    #[test]
+    fn a_job_pane_is_given_the_command_that_ends_it_on_the_runners_server() {
+        let why = lost_mint_reason(
+            "forge-job-j42",
+            "proj-a",
+            Some("sidpeak"),
+            Path::new(RUNNER_SOCK),
+        );
+        assert!(
+            why.contains(&format!(
+                "`tmux -S '{RUNNER_SOCK}' kill-session -t '=forge-job-j42'`"
+            )) && why.contains("a job pane")
+                && why.contains("project sidpeak (proj-a)")
+                && why.contains("lost its pane"),
+            "{why}"
+        );
+        assert!(!why.contains("master kill") && !why.contains('<'), "{why}");
+    }
+
+    /// ISS-1316 criterion 23: a record 0.17.72 wrote carries no slug, so the
+    /// project is named by id and the pane is ended by name.
+    #[test]
+    fn a_record_with_no_slug_names_the_project_by_id_and_a_command_needing_none() {
+        let why = lost_mint_reason("forge-master-a", "proj-a", None, Path::new(RUNNER_SOCK));
+        assert!(
+            why.contains("project proj-a")
+                && why.contains(&format!(
+                    "`tmux -S '{RUNNER_SOCK}' kill-session -t '=forge-master-a'`"
+                ))
+                && !why.contains('<')
+                && !why.contains("master kill"),
+            "{why}"
+        );
+    }
+
+    /// Criterion 21's boundary: a slug whose master pane is not this pane does
+    /// not earn `master kill`, which would end a different pane.
+    #[test]
+    fn a_slug_that_names_another_pane_is_not_given_master_kill() {
+        let why = lost_mint_reason(
+            "forge-master-a-2",
+            "proj-a",
+            Some("a"),
+            Path::new(RUNNER_SOCK),
+        );
+        assert!(
+            !why.contains("master kill") && why.contains("kill-session -t '=forge-master-a-2'"),
+            "{why}"
+        );
+    }
+
+    #[test]
+    fn a_socket_path_holding_a_quote_is_still_one_shell_word() {
+        assert_eq!(shell_word("/a b/it's"), r"'/a b/it'\''s'");
     }
 }
