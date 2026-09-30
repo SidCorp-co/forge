@@ -107,9 +107,13 @@ describe('a runtime verdict against what the host answers (ISS-1286)', () => {
     judgedAt(STORED_ANCESTOR);
     const [report] = await unearnedCriteriaReports(['iss-546'], SERVED);
     expect(report?.unearned[0]?.standing).toBe('superseded');
-    expect(report?.unearned[0]?.why).toContain(SERVED_HEAD);
-    expect(report?.unearned[0]?.why).toContain('https://helpdesk-api.musetools.com/api/build-info');
-    expect(report?.unearned[0]?.why).toContain(READ_AT);
+    expect(report?.unearned[0]?.why).toContain(
+      `judged at ${STORED_ANCESTOR}, which is not a commit this project is serving`,
+    );
+    // What is served, where and when is the reading the report carries, said once by its writer
+    // rather than inside each criterion's reason (ISS-1346, criterion 25).
+    expect(report?.serving).toBe(SERVED);
+    expect(report?.unearned[0]?.why).not.toContain(SERVED_HEAD);
   });
 
   it('earns it where the project declares no way to ask, and says the verdict is uncorroborated', async () => {
@@ -213,5 +217,56 @@ describe('a runtime verdict against what the host answers (ISS-1286)', () => {
     };
     const [report] = await unearnedCriteriaReports(['iss-543'], rollout);
     expect(report?.unearned).toEqual([]);
+  });
+});
+
+/**
+ * ISS-1346 criterion 25 — sid-desk ISS-536 spelled one commit `b7bb63bb98621e…` in one comment and
+ * `b7bb63bb` in another, and its hold read them as two judged commits.
+ */
+describe('one judged commit, however it was spelled', () => {
+  const SERVING = '33637c612ef15be6f924520c0d201a0889d8ed7e';
+  const JUDGED = '34450f4420ae4a3b6de40b6d3cfb2b0e66aa2f51';
+  const LIVE: ServingReading = {
+    kind: 'serving',
+    served: [{ commit: SERVING, where: 'https://app.test/build-info' }],
+    unread: [],
+    readAt: READ_AT,
+  };
+  const row = (id: string): IssueRow => ({
+    id,
+    acceptanceCriteria: '1. ok\n2. ok',
+    sessionContext: { landing: { head: SOURCE } },
+    mergedCommitSha: null,
+  });
+  const sourceBlock = (criterion: number, commit: string) =>
+    [`criterion: ${criterion} — a`, 'verdict: pass', `commit: ${commit}`].join('\n');
+
+  it('names it by its longest spelling, in one reason', async () => {
+    issueRows = [row('iss-spelled')];
+    listIssueCommentsMock.mockResolvedValueOnce([
+      { body: verdictComment([sourceBlock(1, JUDGED), sourceBlock(2, JUDGED.slice(0, 8))]) },
+    ]);
+    const [report] = await unearnedCriteriaReports(['iss-spelled'], LIVE);
+    expect(report?.unearned.map((c) => c.standing)).toEqual(['superseded', 'superseded']);
+    expect(report?.unearned[1]?.why).toBe(report?.unearned[0]?.why);
+    expect(report?.unearned[1]?.why).toContain(`judged at ${JUDGED},`);
+  });
+
+  // The respelling moves words only: a short runtime is compared exactly, and one that stands
+  // beside it lends it no spelling that would say a served commit is not served.
+  it('leaves a short runtime its own standing and spelling beside a whole one that stands', async () => {
+    issueRows = [row('iss-short-runtime')];
+    listIssueCommentsMock.mockResolvedValueOnce([
+      {
+        body: verdictComment([
+          verdictBlock(1, 'pass', SERVING),
+          verdictBlock(2, 'pass', SERVING.slice(0, 8)),
+        ]),
+      },
+    ]);
+    const [report] = await unearnedCriteriaReports(['iss-short-runtime'], LIVE);
+    expect(report?.unearned.map((c) => [c.criterion, c.standing])).toEqual([[2, 'superseded']]);
+    expect(report?.unearned[0]?.why).toContain(`judged at ${SERVING.slice(0, 8)},`);
   });
 });

@@ -7,6 +7,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
+import { longestSpelling } from '../messaging/verdict-identity.js';
 import { liveProbeFrom, resolveReleaseChannels } from './channel.js';
 import { readForgeDeployments } from './deployed-reading.js';
 import type { ReleaseChannel } from './plan.js';
@@ -40,13 +41,25 @@ export function servedCommits(serving: ServingReading): string[] {
   return [...new Set(serving.served.map((s) => s.commit))];
 }
 
-/** Each served commit beside everywhere it runs — `3c38c68` at A; `ea69715` at B and C. */
+/** Each served commit beside everywhere it runs — `3c38c68` at A; `ea69715` at B and C — one
+ *  commit answered whole by one source and abbreviated by another named once, whole. */
 export function servedClause(served: readonly ServedAt[]): string {
+  const spelled = longestSpelling(served.map((s) => s.commit));
   const byCommit = new Map<string, string[]>();
-  for (const s of served) byCommit.set(s.commit, [...(byCommit.get(s.commit) ?? []), s.where]);
+  for (const s of served) {
+    const commit = spelled(s.commit);
+    byCommit.set(commit, [...(byCommit.get(commit) ?? []), s.where]);
+  }
   return [...byCommit]
     .map(([commit, where]) => `\`${commit}\` at ${where.join(' and ')}`)
     .join('; ');
+}
+
+/** A reading that answered, whole: what is served where, when it was read, and what answered
+ *  nothing. The one way every sentence about such a reading says it. */
+export function servingClause(serving: Extract<ServingReading, { kind: 'serving' }>): string {
+  const unread = serving.unread.length === 0 ? '' : ` (unread: ${serving.unread.join('; ')})`;
+  return `${servedClause(serving.served)}, read at ${serving.readAt}${unread}`;
 }
 
 /** The probes the live channels declare, and how many declared a block `parseVerifyConfig` refused

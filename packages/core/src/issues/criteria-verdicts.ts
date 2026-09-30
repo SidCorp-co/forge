@@ -7,7 +7,7 @@ import { listIssueComments } from '../comments/service.js';
 import { db } from '../db/client.js';
 import { commentAttachments, comments, issueAttachments, issues } from '../db/schema.js';
 import { parseForgeRecord } from '../messaging/forge-record.js';
-import { criterionBlocksIn } from '../messaging/verdict-identity.js';
+import { criterionBlocksIn, longestSpelling } from '../messaging/verdict-identity.js';
 import type { ServingReading } from '../release-batch/serving-reading.js';
 import { type CitationReport, citationSentence, unresolvedCitations } from './evidence-standing.js';
 import {
@@ -142,6 +142,30 @@ interface CriteriaFindings {
   readonly uncorroborated: number[];
 }
 
+/**
+ * The identity each verdict's sentence names: its own value, respelled by the longest spelling of
+ * the same identity among this issue's verdicts of its kind that resolved alike, so one commit
+ * written whole in one comment and abbreviated in another is one reason (ISS-1346, criterion 25).
+ * Standing was decided on the verdict's own value before this, so only the words move, and a
+ * verdict that resolved otherwise lends no spelling that would say something it did not.
+ */
+function spokenAt(
+  judged: ReadonlyArray<{ pair: CriterionVerdict; standing: VerdictStanding }>,
+): (pair: CriterionVerdict, standing: VerdictStanding) => VerdictIdentity | null {
+  const pools = new Map<string, string[]>();
+  const pool = (at: VerdictIdentity, standing: VerdictStanding) => `${at.kind}\u0000${standing}`;
+  for (const { pair, standing } of judged) {
+    if (!pair.at) continue;
+    const key = pool(pair.at, standing);
+    pools.set(key, [...(pools.get(key) ?? []), pair.at.value]);
+  }
+  return (pair, standing) => {
+    if (!pair.at) return null;
+    const spelled = longestSpelling(pools.get(pool(pair.at, standing)) ?? []);
+    return { kind: pair.at.kind, value: spelled(pair.at.value) };
+  };
+}
+
 function findingsFor(
   numbers: readonly number[],
   latest: ReadonlyMap<number, CriterionVerdict>,
@@ -152,16 +176,28 @@ function findingsFor(
   const unearned: UnearnedCriterion[] = [];
   const broken: BrokenCitations[] = [];
   const uncorroborated: number[] = [];
+  const standings = new Map<number, VerdictStanding>();
   for (const criterion of numbers) {
     const pair = latest.get(criterion);
-    if (!pair) {
+    if (pair) standings.set(criterion, verdictStanding(pair.at, serving, identities));
+  }
+  const spoken = spokenAt(
+    [...standings].map(([criterion, standing]) => ({
+      pair: latest.get(criterion) as CriterionVerdict,
+      standing,
+    })),
+  );
+  for (const criterion of numbers) {
+    const pair = latest.get(criterion);
+    const standing = standings.get(criterion);
+    if (!pair || !standing) {
       unearned.push({ criterion, verdict: null, standing: null, why: NEVER_JUDGED });
       continue;
     }
     const unresolved = unresolvedCitations(pair.cited, held);
     if (unresolved.length > 0) broken.push({ criterion, unresolved });
-    const standing = verdictStanding(pair.at, serving, identities);
-    const reasons = reasonsAgainst(pair, standing, serving, identities, unresolved);
+    const said = { ...pair, at: spoken(pair, standing) };
+    const reasons = reasonsAgainst(said, standing, serving, identities, unresolved);
     if (standing === 'uncorroborated' && reasons.length === 0) uncorroborated.push(criterion);
     if (reasons.length === 0) continue;
     unearned.push({ criterion, verdict: pair.verdict, standing, why: reasons.join('; and ') });
