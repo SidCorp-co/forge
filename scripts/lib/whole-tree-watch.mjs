@@ -61,7 +61,16 @@ export function withPreload(options = '') {
 
 function wrap(original, name, read, custom = original[promisify.custom]) {
   const watched = function watched(...args) {
-    return original.apply(this, read(name, args) ?? args);
+    const state = globalThis[WATCH];
+    const handed = read(name, args) ?? args;
+    // A spawner that calls another (`exec` runs `execFile`, each runs `ChildProcess#spawn`) was read
+    // by the outermost, so what it calls in turn is not read twice.
+    state.depth += 1;
+    try {
+      return original.apply(this, handed);
+    } finally {
+      state.depth -= 1;
+    }
   };
   // `exec` and `execFile` carry a `util.promisify.custom`, without which `promisify` would resolve
   // to stdout alone: the wrapper keeps every property, and watches the promisified form as well.
@@ -73,7 +82,8 @@ function wrap(original, name, read, custom = original[promisify.custom]) {
   return watched;
 }
 
-function spawnCall(name, args) {
+/** What one spawner call runs: its program and argv, whether a shell reads them, and its options. */
+export function spawnCall(name, args) {
   const [command, second] = args;
   const list = Array.isArray(second) ? second : [];
   const at = args.findIndex((a, i) => i > 0 && a && typeof a === 'object' && !Array.isArray(a));
@@ -97,7 +107,8 @@ const WATCH = Symbol.for('forge.whole-tree-watch');
  * its own guard. A spawned process and a file worker get the preload, even one handed its own env.
  */
 export function installWatch(onListing, logPath) {
-  globalThis[WATCH] ??= { installed: false, onListing: null };
+  globalThis[WATCH] ??= { installed: false, onListing: null, depth: 0 };
+  globalThis[WATCH].depth ??= 0;
   const state = globalThis[WATCH];
   state.onListing = onListing;
   process.env[LOG_ENV] = logPath;
@@ -113,7 +124,10 @@ export function installWatch(onListing, logPath) {
   };
   // A call the reader throws on is a listing nobody can place, so it counts as the root.
   const unreadable = (name) => [
-    { dir: ROOT, via: `${name}() with arguments the guard could not read, so counted as the root` },
+    {
+      dir: ROOT,
+      via: `${name}() with an argument the guard cannot place (not a path, or a glob climbing after a wildcard), so counted as the root`,
+    },
   ];
   const fsRead = (name, args) => {
     let entries;
@@ -135,6 +149,7 @@ export function installWatch(onListing, logPath) {
     }
   }
   const spawnRead = (name, args) => {
+    if (state.depth > 0) return args;
     const call = spawnCall(name, args);
     let entries;
     try {
@@ -155,6 +170,46 @@ export function installWatch(onListing, logPath) {
     return args.map((a, i) => (i === call.at ? { ...call.opts, env } : a));
   };
   for (const name of SPAWNERS) childProcess[name] = wrap(childProcess[name], name, spawnRead);
+  // A `ChildProcess` spawned directly goes round every exported spawner: its normalized options
+  // are read here, and the preload is added to the environment it was handed.
+  const proto = childProcess.ChildProcess.prototype;
+  const spawnChild = proto.spawn;
+  proto.spawn = function watchedSpawn(options) {
+    if (state.depth > 0 || options === null || typeof options !== 'object')
+      return spawnChild.call(this, options);
+    const pairs = Array.isArray(options.envPairs) ? options.envPairs.map(String) : null;
+    const env = pairs
+      ? Object.fromEntries(
+          pairs.map((p) => [p.slice(0, p.indexOf('=')), p.slice(p.indexOf('=') + 1)]),
+        )
+      : process.env;
+    let entries;
+    try {
+      const cwd = options.cwd ? resolve(process.cwd(), String(options.cwd)) : process.cwd();
+      const args = Array.isArray(options.args) ? options.args.slice(1).map(String) : [];
+      const found = subprocessListing({
+        command: String(options.file),
+        args,
+        cwd,
+        root: ROOT,
+        env,
+      });
+      entries = found.map((e) => ({ ...e, via: `ChildProcess#spawn() running ${e.via}` }));
+    } catch {
+      entries = unreadable('ChildProcess#spawn');
+    }
+    tell(entries);
+    if (pairs === null) return spawnChild.call(this, options);
+    const kept = pairs.filter(
+      (p) => !p.startsWith('NODE_OPTIONS=') && !p.startsWith(`${LOG_ENV}=`),
+    );
+    const envPairs = [
+      ...kept,
+      `NODE_OPTIONS=${withPreload(env.NODE_OPTIONS)}`,
+      `${LOG_ENV}=${process.env[LOG_ENV]}`,
+    ];
+    return spawnChild.call(this, { ...options, envPairs });
+  };
   const Worker = workerThreads.Worker;
   // Node runs an `execArgv` preload for a file worker and not for an `eval` one, whose source is a
   // CommonJS script: that source is handed the preload as its first line instead.
