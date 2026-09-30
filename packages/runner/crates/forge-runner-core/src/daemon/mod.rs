@@ -391,11 +391,12 @@ fn repair_installed_hooks(server: Option<&[MeRunner]>, cfg: &Config, when: &str)
 /// asset, and the restart that applies the update is a start.
 ///
 /// `census_from` is taken before `cfg` was read, so a `bind` that `cfg` does not
-/// show is one recorded after it and survives the census.
+/// show is one recorded after it and survives the census; `None` where `cfg`
+/// is not a fresh read, which prunes nothing.
 fn install_master_skills(
     server: Option<&[MeRunner]>,
     cfg: &Config,
-    census_from: i64,
+    census_from: Option<i64>,
     record_dir: Option<&std::path::Path>,
 ) {
     let bound = bound_checkouts(server.unwrap_or_default(), cfg);
@@ -408,7 +409,7 @@ fn install_master_skills(
     crate::daemon::master_skill::install_every(
         &bound.every,
         &bound.pathless,
-        server.is_some().then_some(census_from),
+        census_from.filter(|_| server.is_some()),
         record_dir,
     );
 }
@@ -562,7 +563,15 @@ pub async fn run(
     // into these checkouts is still there, and this process CAN name itself.
     repair_installed_hooks(server.as_deref(), &cfg, "boot");
     let census_from = agent_activity::now_ms();
-    let fresh = Config::load().unwrap_or_else(|_| cfg.clone());
+    let (fresh, census_from) = match Config::load() {
+        Ok(fresh) => (fresh, Some(census_from)),
+        Err(e) => {
+            tracing::warn!(
+                "[skill] config.toml could not be read again ({e}), so the forge-master install covers the bindings read at start and prunes no line of its record"
+            );
+            (cfg.clone(), None)
+        }
+    };
     install_master_skills(
         server.as_deref(),
         &fresh,
@@ -2676,7 +2685,7 @@ mod master_skill_sweep_tests {
             server_only("nowhere", None),
         ];
 
-        install_master_skills(Some(&server), &cfg, 0, Some(&record_dir));
+        install_master_skills(Some(&server), &cfg, Some(0), Some(&record_dir));
 
         for repo in [&adopted, &masterless] {
             assert_eq!(
@@ -2710,9 +2719,13 @@ mod master_skill_sweep_tests {
             .map(|i| i + hooks)
             .expect("the census is timed");
         let reread = src[hooks..]
-            .find("let fresh = Config::load()")
+            .find("let (fresh, census_from) = match Config::load() {")
             .map(|i| i + hooks)
             .expect("the census reads config.toml afresh");
+        assert!(
+            src[reread..call].contains("(cfg.clone(), None)"),
+            "a config.toml that will not read again must prune nothing, since the snapshot it falls back to predates the census"
+        );
         assert!(
             from < reread && reread < call,
             "a bind recorded between the census's read and its time would be pruned as stale"
@@ -2735,7 +2748,12 @@ mod master_skill_sweep_tests {
             server_only("two", Some(&shared)),
         ];
 
-        install_master_skills(Some(&server), &Config::default(), 0, Some(&record_dir));
+        install_master_skills(
+            Some(&server),
+            &Config::default(),
+            Some(0),
+            Some(&record_dir),
+        );
 
         let Read::Record(r) = master_skill::read(&record_dir) else {
             panic!("nothing recorded")

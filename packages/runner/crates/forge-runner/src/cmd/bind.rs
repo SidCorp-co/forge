@@ -63,12 +63,6 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         args.slug,
         bound.display()
     );
-    let (line, installed) = install_skill(&args.slug, &bound, config_dir().as_deref());
-    if installed {
-        println!("{line}");
-    } else {
-        eprintln!("{line}");
-    }
     Ok(())
 }
 
@@ -145,6 +139,15 @@ pub async fn write_binding(
         },
     );
     cfg.save()?;
+
+    // Before the server is asked: the binding is saved from here on, and a
+    // refused PATCH must not leave it without the skill.
+    let (line, installed) = install_skill(slug, path, config_dir().as_deref());
+    if installed {
+        println!("{line}");
+    } else {
+        eprintln!("{line}");
+    }
 
     runners::patch_runner(
         client,
@@ -248,5 +251,24 @@ mod tests {
             "{line}"
         );
         assert!(!repo.join(".claude").exists());
+    }
+
+    /// Review 294dd5's successor F1: the binding is saved before the server is
+    /// asked, so the skill is installed between the two, and a refused PATCH
+    /// leaves a saved binding that already carries it.
+    #[test]
+    fn the_skill_is_installed_after_the_save_and_before_the_server_is_asked() {
+        const SRC: &str = include_str!("bind.rs");
+        let body = SRC
+            .split("\npub async fn write_binding(")
+            .nth(1)
+            .and_then(|r| r.split("\n}\n").next())
+            .expect("write_binding");
+        let at = |n: &str| {
+            body.find(n)
+                .unwrap_or_else(|| panic!("`{n}` in write_binding"))
+        };
+        assert!(at("cfg.save()?;") < at("install_skill(slug, path,"));
+        assert!(at("install_skill(slug, path,") < at("runners::patch_runner("));
     }
 }

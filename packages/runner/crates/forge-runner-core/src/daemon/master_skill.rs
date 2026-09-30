@@ -9,9 +9,9 @@
 //! goes through the same rule.
 //!
 //! The file lands under `.claude/`, which is only harmless where the
-//! checkout's git ignores it. Where it does not, or where the file is tracked,
-//! a write is untracked work in somebody's repository, so it is refused and
-//! recorded rather than made.
+//! checkout's git ignores it. Where it does not, a write is untracked work in
+//! somebody's repository, and where the file is tracked it is a change to a
+//! committed one, so either is refused and recorded rather than made.
 //!
 //! `forge-runner status` is another process, so every outcome goes into
 //! [`RECORD`] in the runner's config directory, which it reads back.
@@ -41,8 +41,10 @@ pub enum Outcome {
     Written,
     /// The file already held the asset, and was left untouched.
     Current,
-    /// The checkout's git does not ignore the path, or tracks it.
+    /// The checkout's git does not ignore the path.
     NotIgnored,
+    /// The checkout's git tracks the path, which no ignore rule undoes.
+    Tracked,
     /// The checkout could not be written, or whether it may be could not be read.
     Failed { detail: String },
     /// The project is assigned to this box and names a checkout on neither side.
@@ -66,9 +68,14 @@ impl Outcome {
                 format!("already the asset of {build}, which checked it and left it untouched ← {shown}")
             }
             Outcome::NotIgnored => format!(
-                "NOT WRITTEN — that checkout's git does not ignore {RELATIVE}, or tracks it, so writing it would leave untracked work there; add `.claude/` to its .gitignore or .git/info/exclude and the next daemon start writes it ← {shown}"
+                "NOT WRITTEN — that checkout's git does not ignore {RELATIVE}, so writing it would leave untracked work there; add `.claude/` to its .gitignore or .git/info/exclude and the next daemon start writes it (checked by {build}) ← {shown}"
             ),
-            Outcome::Failed { detail } => format!("NOT WRITTEN — {detail} ← {shown}"),
+            Outcome::Tracked => format!(
+                "NOT WRITTEN — that checkout's git tracks {RELATIVE}, so writing it would change a committed file; an ignore rule does not undo that, so it is written only once somebody takes it out of the index on purpose (`git rm --cached`) and ignores it (checked by {build}) ← {shown}"
+            ),
+            Outcome::Failed { detail } => {
+                format!("NOT WRITTEN — {detail} (checked by {build}) ← {shown}")
+            }
             Outcome::NoCheckout => format!(
                 "NOT WRITTEN — assigned to this box and names a checkout on neither side, so there is nowhere to write it; `forge-runner bind <slug> --path <dir>` (checked by {build})"
             ),
@@ -100,6 +107,7 @@ impl Point {
 enum Git {
     Ignored,
     NotIgnored,
+    Tracked,
     /// Not a git work tree at all, so nothing can commit what is written.
     None,
 }
@@ -117,6 +125,7 @@ pub fn install(repo: &Path) -> Outcome {
     match ignored(repo) {
         Ok(Git::Ignored | Git::None) => {}
         Ok(Git::NotIgnored) => return Outcome::NotIgnored,
+        Ok(Git::Tracked) => return Outcome::Tracked,
         Err(detail) => return failed(detail),
     }
     let path = repo.join(RELATIVE);
@@ -170,6 +179,10 @@ fn ignored(repo: &Path) -> Result<Git, String> {
             "{} is inside a git directory rather than a work tree",
             repo.display()
         ));
+    }
+    let tracked = git(repo, &["ls-files", "--error-unmatch", "--", RELATIVE])?;
+    if tracked.status.success() {
+        return Ok(Git::Tracked);
     }
     let asked = git(repo, &["check-ignore", "-q", "--", RELATIVE])?;
     match asked.status.code() {
@@ -579,8 +592,13 @@ mod tests {
         run_git(&repo, &["add", "-f", RELATIVE]);
         run_git(&repo, &["commit", "-q", "-m", "tracked"]);
 
-        assert_eq!(install(&repo), Outcome::NotIgnored);
+        assert_eq!(install(&repo), Outcome::Tracked);
         assert_eq!(skill(&repo).as_deref(), Some(OLDER));
+        let said = Outcome::Tracked.says(Some(&repo), "0.1 (abc)");
+        assert!(
+            said.contains("an ignore rule does not undo that") && said.contains("git rm --cached"),
+            "a tracked file is promised a fix an ignore rule cannot give: {said}"
+        );
     }
 
     #[test]
@@ -998,6 +1016,19 @@ mod tests {
             .starts_with("written by 0.1 (abc)"));
         let current = Outcome::Current.says(Some(p), "0.1 (abc)");
         assert!(!current.contains("written by"), "{current}");
+        for refused in [
+            Outcome::NotIgnored,
+            Outcome::Tracked,
+            Outcome::Failed {
+                detail: "denied".into(),
+            },
+        ] {
+            let said = refused.says(Some(p), "0.1 (abc)");
+            assert!(
+                said.contains("checked by 0.1 (abc)") && !said.contains("written by"),
+                "{said}"
+            );
+        }
         let refused = Outcome::NotIgnored.says(Some(p), "0.1 (abc)");
         assert!(
             refused.contains("/r/.claude/skills/forge-master/SKILL.md")
