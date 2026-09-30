@@ -40,7 +40,7 @@ lines below. They were listed here as deferred long after they landed.)
 | `start` | Run the daemon — connect, register, accept jobs |
 | `status` | Connection + runner status; `--watch` is `top` |
 | `top` | A live, read-only view of the box: every project, its master pane, the skill that pane stands on and the CLI slug its checkout resolves; every run holding a lease, aged by the newest file under its worktree; what waits on a person; gate and pool health. Each row names what it read, and a source it cannot read says so. `--once` prints one frame, as it does when stdout is not a terminal |
-| `logs` | Tail the runner log |
+| `logs` | Say where this box's runner log is read |
 | `config` | Inspect or edit local config |
 | `doctor` | Diagnose the environment (claude CLI, git, cred store, core reachability) |
 | `service` | Install/uninstall the OS service (systemd/launchd) |
