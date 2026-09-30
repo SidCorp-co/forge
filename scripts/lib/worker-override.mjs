@@ -1,9 +1,6 @@
 const POSITIVE_WHOLE = /^[1-9][0-9]*$/;
 
-/**
- * `VITEST_MAX_WORKERS` as a worker count, `undefined` where it is unset or empty, and a refusal
- * naming the value and the config where it is anything else — vitest itself would `parseInt` it.
- */
+/** VITEST_MAX_WORKERS as a count, or refused by name: vitest would `parseInt` it unsaid. */
 export function workerOverride(env, config) {
   const value = env.VITEST_MAX_WORKERS;
   if (value === undefined || value === '') return undefined;
