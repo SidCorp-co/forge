@@ -24,7 +24,12 @@ make it arrive sooner; a contributor with no plugin installed is held to exactly
 
 **The gate is CI, not your laptop.** `verify` declares the test suites and the build rather than
 running them; CI runs them, and `main` takes no merge whose **`ci-passed`** is red — the one
-required check, `strict: true`.
+required check.
+
+**Four jobs run after the merge, not before it** — `core-integration`, `whole-tree`, `images` and
+the runner's macOS and Windows legs run on every push to a gated branch (`main`, `dev`) and nightly,
+and `ci-passed` does not need them (ISS-1370, priced in `.forge/conformance.json` `$postMerge`). A red there is fixed forward
+by the next run to land: read `main`'s latest run before you push.
 
 **Green covers the jobs that RAN.** A skipped job passes `ci-passed`, and `changes` decides which
 run: read which ran, not the aggregate alone. A suite the filter should have selected and did not
@@ -42,9 +47,9 @@ the shared ones out from the root, and `packages/runner` is cargo. Read them the
 
 ## Every gate, seven axes
 
-Every gate blocks the merge from `ci-passed`, and **that, not this file, is why they hold** — every
-threshold, baseline and refusal is enforced by a checker `pnpm verify` runs, so none is restated
-here. Seven axes: form, knowledge, relations, behaviour, language, record, comment. `record` owns
+Every gate but the four `$postMerge` names blocks the merge from `ci-passed`, and **that, not
+this file, is why they hold** — every threshold, baseline and refusal is enforced by a checker
+`pnpm verify` runs, so none is restated here. Seven axes: form, knowledge, relations, behaviour, language, record, comment. `record` owns
 `CHANGELOG.md`; `comment` owns what a comment SAYS. An axis measures at its weakest gate, and
 `.forge/conformance.json` declares each one's level, owner, reason and priced amnesty.
 

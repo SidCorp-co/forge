@@ -294,12 +294,40 @@ pub struct Binding {
     pub project_id: Option<String>,
 }
 
+/// `~/.config/forge-runner`, where every file this box writes about itself
+/// sits. [`Config::path`] names the same directory for reading; this is the
+/// one a writer resolves, so the test build's refusal covers every write.
+pub fn base_dir() -> Result<PathBuf> {
+    let dir = os_config_dir()?;
+    #[cfg(any(test, feature = "test-support"))]
+    if !crate::test_scratch::is_scratch(&dir) {
+        // A fixture project id a test wrote into the invoking user's own dir
+        // became the live box's state and silenced its pool report (ISS-1344).
+        return Err(Error::Config(format!(
+            "a test build writes under no config dir but a test's own scratch, and {} is not one — \
+             scope XDG_CONFIG_HOME to a test_scratch::Scratch first",
+            dir.display()
+        )));
+    }
+    Ok(dir.join("forge-runner"))
+}
+
+fn os_config_dir() -> Result<PathBuf> {
+    // A test build honours a scratch `XDG_CONFIG_HOME` on every platform, so a
+    // test scoping it is isolated where `dirs_next` ignores the variable.
+    #[cfg(any(test, feature = "test-support"))]
+    if let Some(x) = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from) {
+        if x.is_absolute() && crate::test_scratch::is_scratch(&x) {
+            return Ok(x);
+        }
+    }
+    dirs_next::config_dir().ok_or_else(|| Error::Config("cannot resolve OS config dir".into()))
+}
+
 impl Config {
     /// `~/.config/forge-runner/config.toml`.
     pub fn path() -> Result<PathBuf> {
-        let dir = dirs_next::config_dir()
-            .ok_or_else(|| Error::Config("cannot resolve OS config dir".into()))?;
-        Ok(dir.join("forge-runner").join("config.toml"))
+        Ok(os_config_dir()?.join("forge-runner").join("config.toml"))
     }
 
     /// Load config, or a default if the file does not exist yet.
@@ -318,7 +346,7 @@ impl Config {
 
     /// Atomic write (`.tmp` + rename).
     pub fn save(&self) -> Result<()> {
-        let p = Self::path()?;
+        let p = base_dir()?.join("config.toml");
         if let Some(parent) = p.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -333,6 +361,174 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// ISS-1344. A test build writes under no config dir but a test's own
+    /// scratch: not one that may be the invoking user's own, and not one that is
+    /// merely under the temp dir. Reading where the box's config lives is not a
+    /// write, so [`Config::path`] still answers it.
+    #[test]
+    fn a_test_build_writes_under_no_config_dir_but_a_tests_own_scratch() {
+        use crate::auth::cred_store::{ScopedVar, ENV_TEST_LOCK};
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let own = crate::test_scratch::Scratch::new("config-own");
+        let not_a_scratch = own.path().parent().expect("the temp dir").to_path_buf();
+        let users_own = PathBuf::from(if cfg!(windows) {
+            r"C:\iss-1344-nobody\AppData\Roaming"
+        } else {
+            "/iss-1344-nobody/.config"
+        });
+        let xdg = ScopedVar::set("XDG_CONFIG_HOME", &users_own);
+        for refused_dir in [&users_own, &not_a_scratch] {
+            xdg.move_to(refused_dir);
+            let refused = base_dir().expect_err("not a test's own scratch");
+            assert!(refused.to_string().contains("is not one"), "{refused}");
+            assert_eq!(crate::daemon::control::config_dir(), None);
+            assert!(crate::daemon::control::socket_path().is_none());
+            assert!(crate::daemon::pool_jobs::FileRecords::default_dir().is_none());
+            assert!(crate::auth::git_cred::git_credentials_path().is_err());
+            assert!(Config::default().save().is_err());
+        }
+        #[cfg(target_os = "linux")]
+        {
+            xdg.move_to(&users_own);
+            assert_eq!(
+                Config::path().unwrap(),
+                users_own.join("forge-runner").join("config.toml"),
+                "reading where the config lives is still answered"
+            );
+        }
+
+        xdg.move_to(own.path());
+        assert_eq!(
+            crate::daemon::control::config_dir(),
+            Some(own.path().join("forge-runner"))
+        );
+        Config::default()
+            .save()
+            .expect("a test's own scratch takes the write");
+        assert!(own
+            .path()
+            .join("forge-runner")
+            .join("config.toml")
+            .is_file());
+    }
+
+    /// ISS-1344. A writer under the config dir resolves it through
+    /// [`base_dir`], so the test build's refusal reaches it. Every other
+    /// resolution in either crate is counted here with what it does, and a new
+    /// one goes red until it is either moved or argued in.
+    #[test]
+    fn every_other_resolution_of_the_config_dir_is_a_counted_reader() {
+        let path_call = concat!("Config::", "path()");
+        let own_path_call = concat!("Self::", "path()");
+        let os_call = concat!("dirs_next::", "config_dir");
+        let os_import = concat!("dirs_next::", "{");
+        const ALLOWED: &[(&str, usize, &str)] = &[
+            (
+                "forge-runner-core/src/config.rs",
+                3,
+                "os_config_dir itself, Config::load's read, and the reader the isolation test checks",
+            ),
+            (
+                "forge-runner-core/src/daemon/serving.rs",
+                1,
+                "a test of the production rule",
+            ),
+            (
+                "forge-runner-core/src/mcp/config.rs",
+                1,
+                "mcp_read_dir: where session_path, session_dir and session_matches read",
+            ),
+            (
+                "forge-runner-core/src/daemon/terminal.rs",
+                2,
+                "session_config_dir, the tmux socket's dir, and unoverridden_config_dir, a \
+                 comparison; held by ISS-1265, the first owed base_dir",
+            ),
+            (
+                "forge-runner-core/src/daemon/master.rs",
+                1,
+                "transcript_path creates master/<slug>; held by ISS-1357, owed base_dir",
+            ),
+            ("forge-runner/src/cmd/config.rs", 2, "prints the path"),
+            ("forge-runner/src/cmd/doctor.rs", 1, "reads the config"),
+            (
+                "forge-runner/src/cmd/hook.rs",
+                1,
+                "connects to the daemon's socket",
+            ),
+            (
+                "forge-runner/src/cmd/run.rs",
+                1,
+                "connects to the daemon's socket",
+            ),
+            ("forge-runner/src/cmd/master.rs", 2, "reads transcripts"),
+            ("forge-runner/src/cmd/top/gather.rs", 1, "prints the path"),
+            (
+                "forge-runner/src/cmd/service.rs",
+                1,
+                "the systemd unit, written by `service install`, which no test runs",
+            ),
+        ];
+        let crates = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let mut seen = std::collections::BTreeMap::<String, usize>::new();
+        let mut stack = vec![
+            crates.join("forge-runner-core/src"),
+            crates.join("forge-runner/src"),
+        ];
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).unwrap().flatten() {
+                let p = entry.path();
+                if p.is_dir() {
+                    stack.push(p);
+                    continue;
+                }
+                if p.extension().and_then(|e| e.to_str()) != Some("rs") {
+                    continue;
+                }
+                let text = std::fs::read_to_string(&p).unwrap();
+                let in_config = p.ends_with("forge-runner-core/src/config.rs");
+                let hits = text
+                    .lines()
+                    .filter(|l| !l.trim_start().starts_with("//"))
+                    .filter(|l| {
+                        l.contains(path_call)
+                            || l.contains(os_call)
+                            || l.contains(os_import)
+                            || (in_config && l.contains(own_path_call))
+                    })
+                    .count();
+                if hits > 0 {
+                    let rel = p
+                        .strip_prefix(&crates)
+                        .unwrap()
+                        .to_string_lossy()
+                        .replace('\\', "/");
+                    seen.insert(rel, hits);
+                }
+            }
+        }
+        let want: std::collections::BTreeMap<String, usize> = ALLOWED
+            .iter()
+            .map(|(f, n, _)| (f.to_string(), *n))
+            .collect();
+        assert_eq!(
+            seen, want,
+            "a resolution of the config dir that is not `config::base_dir`: a writer moves to it, \
+             a reader is counted here with what it does"
+        );
+        let master =
+            std::fs::read_to_string(crates.join("forge-runner-core/src/daemon/master.rs")).unwrap();
+        let take = master
+            .split("async fn take_pool_job(")
+            .nth(1)
+            .and_then(|r| r.split("\nasync fn ").next())
+            .expect("take_pool_job is in master.rs");
+        assert!(
+            take.contains("crate::daemon::control::config_dir()"),
+            "the pool-read writer resolves its dir through the guarded route"
+        );
+    }
 
     #[test]
     fn roundtrips_through_toml() {
