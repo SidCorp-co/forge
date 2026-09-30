@@ -63,7 +63,38 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         args.slug,
         bound.display()
     );
+    let (line, installed) = install_skill(&args.slug, &bound, config_dir().as_deref());
+    if installed {
+        println!("{line}");
+    } else {
+        eprintln!("{line}");
+    }
     Ok(())
+}
+
+fn config_dir() -> Option<PathBuf> {
+    forge_runner_core::daemon::control::config_dir()
+}
+
+/// The master skill is written at bind, so a bound project carries it whether
+/// or not a master is ever placed for it (ISS-1357). The line printed, and
+/// whether it was installed.
+fn install_skill(
+    slug: &str,
+    repo: &std::path::Path,
+    dir: Option<&std::path::Path>,
+) -> (String, bool) {
+    use forge_runner_core::daemon::master_skill::{install_and_record, Point};
+    let outcome = install_and_record(slug, repo, Point::Bind, dir);
+    let build = format!(
+        "{} ({})",
+        forge_runner_core::update::CURRENT_VERSION,
+        forge_runner_core::update::BUILD_COMMIT
+    );
+    (
+        format!("skill {slug}: {}", outcome.says(Some(repo), &build)),
+        outcome.installed(),
+    )
 }
 
 /// A device-token client for the configured core, or the reason there is none.
@@ -160,4 +191,62 @@ pub async fn provision_checkout(
         );
     }
     Ok(target)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use forge_runner_core::daemon::master_skill::{self, Outcome, Read, ASSET, RELATIVE};
+    use forge_runner_core::test_scratch::Scratch;
+
+    fn git_checkout(dir: &std::path::Path, ignores: bool) {
+        std::fs::create_dir_all(dir).unwrap();
+        let ok = std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(["init", "-q"])
+            .env_remove("GIT_DIR")
+            .status()
+            .unwrap()
+            .success();
+        assert!(ok);
+        if ignores {
+            std::fs::write(dir.join(".gitignore"), ".claude/\n").unwrap();
+        }
+    }
+
+    #[test]
+    fn bind_writes_the_skill_and_says_so() {
+        let s = Scratch::new("bind-skill");
+        let repo = s.path().join("repo");
+        git_checkout(&repo, true);
+        let cfg = s.path().join("cfg");
+
+        let (line, installed) = install_skill("acme", &repo, Some(&cfg));
+
+        assert!(installed, "{line}");
+        assert!(line.starts_with("skill acme: written by "), "{line}");
+        assert_eq!(std::fs::read_to_string(repo.join(RELATIVE)).unwrap(), ASSET);
+        let Read::Record(r) = master_skill::read(&cfg) else {
+            panic!("bind recorded nothing")
+        };
+        assert_eq!(r.entries["acme"].outcome, Outcome::Written);
+        assert_eq!(r.entries["acme"].point, master_skill::Point::Bind);
+    }
+
+    #[test]
+    fn bind_into_a_checkout_that_does_not_ignore_it_writes_nothing_and_says_why() {
+        let s = Scratch::new("bind-skill-open");
+        let repo = s.path().join("repo");
+        git_checkout(&repo, false);
+
+        let (line, installed) = install_skill("acme", &repo, Some(&s.path().join("cfg")));
+
+        assert!(!installed);
+        assert!(
+            line.contains("NOT WRITTEN") && line.contains("does not ignore"),
+            "{line}"
+        );
+        assert!(!repo.join(".claude").exists());
+    }
 }

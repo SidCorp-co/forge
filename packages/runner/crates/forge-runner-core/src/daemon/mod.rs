@@ -30,6 +30,7 @@ pub mod job_unheard;
 pub mod master;
 pub mod master_exit;
 pub mod master_limit;
+pub mod master_skill;
 pub mod pool_jobs;
 pub mod pool_reads;
 pub mod recovery;
@@ -384,6 +385,25 @@ fn repair_installed_hooks(server: Option<&[MeRunner]>, cfg: &Config, when: &str)
     }
 }
 
+/// Write the running build's forge-master skill into every checkout this box
+/// is bound to, whether or not a master is placed or adopted there (ISS-1357).
+/// Run at start only: the process an update replaces carries the old build's
+/// asset, and the restart that applies the update is a start.
+fn install_master_skills(
+    server: Option<&[MeRunner]>,
+    cfg: &Config,
+    record_dir: Option<&std::path::Path>,
+) {
+    let bound = bound_checkouts(server.unwrap_or_default(), cfg);
+    if server.is_none() {
+        tracing::warn!(
+            "[skill] this box could not ask core which projects are assigned to it, so the forge-master skill is written only into the {} checkout(s) config.toml names",
+            bound.checkouts.len()
+        );
+    }
+    crate::daemon::master_skill::install_every(&bound.checkouts, &bound.pathless, record_dir);
+}
+
 /// Every checkout this box is bound to, and every assignment that names none.
 struct BoundCheckouts {
     /// Slug and working directory, one per distinct path, sorted.
@@ -523,6 +543,7 @@ pub async fn run(
     // Before any pane is prepared: whatever the daemon this one replaced wrote
     // into these checkouts is still there, and this process CAN name itself.
     repair_installed_hooks(server.as_deref(), &cfg, "boot");
+    install_master_skills(server.as_deref(), &cfg, control::config_dir().as_deref());
 
     let (cancel_tx, cancel_rx) = watch::channel(false);
     let (frame_tx, mut frame_rx) = mpsc::channel::<Frame>(256);
@@ -2550,5 +2571,127 @@ mod hook_repair_tests {
             next_sweep < next_drain,
             "the sweep is behind the drain, which is the wait that never ends on a busy box — so it never runs"
         );
+    }
+}
+
+/// The start sweep that writes the forge-master skill into every bound
+/// checkout, master or none (ISS-1357).
+#[cfg(test)]
+mod master_skill_sweep_tests {
+    use super::*;
+    use crate::daemon::master_skill::{self, Outcome, Read, ASSET, RELATIVE};
+
+    const SOURCE: &str = include_str!("mod.rs");
+
+    fn production() -> &'static str {
+        SOURCE.split("\nmod hook_repair_tests {").next().unwrap()
+    }
+
+    fn ignoring_checkout(root: &std::path::Path, name: &str) -> std::path::PathBuf {
+        let repo = root.join(name);
+        std::fs::create_dir_all(&repo).unwrap();
+        let ok = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&repo)
+            .args(["init", "-q"])
+            .env_remove("GIT_DIR")
+            .status()
+            .unwrap()
+            .success();
+        assert!(ok);
+        std::fs::write(repo.join(".gitignore"), ".claude/\n").unwrap();
+        repo
+    }
+
+    fn server_only(slug: &str, repo: Option<&std::path::Path>) -> MeRunner {
+        MeRunner {
+            project_id: format!("p-{slug}"),
+            runner_id: format!("runner-{slug}"),
+            slug: slug.into(),
+            base_branch: None,
+            repo_path: repo.map(|p| p.to_str().expect("utf-8").to_string()),
+            branch: None,
+            status: "draining".into(),
+            workspace_setup: None,
+            master_policy: None,
+            rate_limited_for_seconds: None,
+            limit_reason: None,
+        }
+    }
+
+    /// Criteria 1, 2 and 15. The checkout an adopted pane stands on holds the
+    /// copy it was placed with; a project bound only on the server, draining,
+    /// with no master, holds none. After the start sweep both hold the asset,
+    /// and `run` is read for the call — removing it leaves the functional half
+    /// green and this assertion red, which is the shape the drift took.
+    #[test]
+    fn after_a_start_every_bound_checkout_holds_this_builds_skill() {
+        let root = crate::test_scratch::Scratch::new("skill-at-start");
+        let adopted = ignoring_checkout(&root, "adopted");
+        let p = adopted.join(RELATIVE);
+        std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+        std::fs::write(
+            &p,
+            "---\nname: forge-master\n---\nthe copy an older build placed\n",
+        )
+        .unwrap();
+        let masterless = ignoring_checkout(&root, "masterless");
+        let record_dir = root.join("config");
+        let mut cfg = Config::default();
+        cfg.bindings.insert(
+            "adopted".into(),
+            crate::config::Binding {
+                repo_path: adopted.clone(),
+                branch: None,
+                project_id: None,
+            },
+        );
+        let server = [
+            server_only("masterless", Some(&masterless)),
+            server_only("nowhere", None),
+        ];
+
+        install_master_skills(Some(&server), &cfg, Some(&record_dir));
+
+        for repo in [&adopted, &masterless] {
+            assert_eq!(
+                std::fs::read_to_string(repo.join(RELATIVE)).unwrap(),
+                ASSET,
+                "{} does not hold this build's skill after a start",
+                repo.display()
+            );
+        }
+        let Read::Record(r) = master_skill::read(&record_dir) else {
+            panic!("the start sweep recorded nothing")
+        };
+        assert_eq!(r.entries["nowhere"].outcome, Outcome::NoCheckout);
+
+        let src = production();
+        let hooks = src
+            .find(r#"repair_installed_hooks(server.as_deref(), &cfg, "boot");"#)
+            .expect("the boot hook repair");
+        let call = src[hooks..]
+            .find("install_master_skills(server.as_deref(), &cfg,")
+            .map(|i| i + hooks)
+            .expect("daemon::run does not write the skill at start, so an adopted pane keeps the copy it was placed with");
+        let masters = src
+            .find("master::run(")
+            .expect("where run starts the master sweep");
+        assert!(
+            call < masters,
+            "the skill is written after the master sweep can adopt or place a pane"
+        );
+    }
+
+    /// The process an update replaces carries the old build's asset; writing
+    /// it there would put the old skill back over the new one.
+    #[test]
+    fn the_skill_is_not_written_by_the_process_an_update_replaced() {
+        let src = production();
+        let applied = src
+            .find("— draining before restart")
+            .expect("the line the update writes once it has replaced the binary");
+        let arm = &src[applied..src[applied..].find("std::process::exit(0)").unwrap() + applied];
+        assert!(!arm.contains("install_master_skills("), "{arm}");
     }
 }

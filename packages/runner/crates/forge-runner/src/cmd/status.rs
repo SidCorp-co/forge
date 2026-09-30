@@ -47,6 +47,14 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     );
     print_gate(&cfg);
     print_pool(&cfg);
+    let now = forge_runner_core::daemon::agent_activity::now_ms();
+    for line in skill_lines(
+        forge_runner_core::daemon::control::config_dir().as_deref(),
+        &cfg,
+        now,
+    ) {
+        println!("{line}");
+    }
     if cfg.bindings.is_empty() {
         println!("bindings   —");
     } else {
@@ -317,6 +325,63 @@ fn admitted(l: &Last) -> Option<String> {
     }
 }
 
+/// What the forge-master install did in each bound checkout, as the daemon,
+/// `bind` or a provision last recorded it (ISS-1357). The record is the only
+/// source that knows the server's assignments without asking core, so where it
+/// is absent the bindings `config.toml` names are all this can list.
+pub(crate) fn skill_lines(dir: Option<&std::path::Path>, cfg: &Config, now: i64) -> Vec<String> {
+    use forge_runner_core::daemon::master_skill::{self, Read, RELATIVE};
+    let Some(dir) = dir else {
+        return vec![
+            "skill      no config directory resolves on this box, so no install record can be read"
+                .into(),
+        ];
+    };
+    let path = master_skill::record_path(dir);
+    let entries = match master_skill::read(dir) {
+        Read::Unreadable(why) => {
+            return vec![format!(
+                "skill      UNREADABLE — {why}, so what the forge-master install did in each checkout cannot be said"
+            )]
+        }
+        Read::Absent => {
+            let mut out = vec![format!(
+                "skill      no install record at {} — the daemon writes one at every start, and a daemon older than this build writes none; a project assigned to this box only on the server cannot be named here until it does",
+                path.display()
+            )];
+            for (slug, b) in &cfg.bindings {
+                out.push(format!(
+                    "  {slug}  no install recorded ← {}",
+                    b.repo_path.join(RELATIVE).display()
+                ));
+            }
+            return out;
+        }
+        Read::Record(r) => r.entries,
+    };
+    let mut out = vec![format!(
+        "skill      the forge-master skill in each bound checkout, as last installed ← {}",
+        path.display()
+    )];
+    for (slug, e) in &entries {
+        out.push(format!(
+            "  {slug}  {} {} ago: {}",
+            e.point.word(),
+            span(now.saturating_sub(e.at_ms).max(0)),
+            e.outcome.says(e.path.as_deref(), &e.build)
+        ));
+    }
+    for (slug, b) in &cfg.bindings {
+        if !entries.contains_key(slug) {
+            out.push(format!(
+                "  {slug}  no install recorded for this binding since the record was last written — the next daemon start writes it ← {}",
+                b.repo_path.join(RELATIVE).display()
+            ));
+        }
+    }
+    out
+}
+
 /// A duration a person reads without arithmetic. The stamps this replaced were
 /// `epoch+1789906979s`, which states a window in a unit nobody carries.
 fn span(ms: i64) -> String {
@@ -347,6 +412,176 @@ fn span(ms: i64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ---- ISS-1357: the skill lines ----
+
+    mod skill {
+        use super::super::*;
+        use forge_runner_core::daemon::master_skill::{
+            record, record_path, Entry, Merge, Outcome, Point,
+        };
+        use forge_runner_core::test_scratch::Scratch;
+
+        const NOW: i64 = 1_790_236_800_000;
+
+        fn bound(slugs: &[(&str, &str)]) -> Config {
+            let mut cfg = Config::default();
+            for (slug, path) in slugs {
+                cfg.bindings.insert(
+                    (*slug).into(),
+                    forge_runner_core::config::Binding {
+                        repo_path: (*path).into(),
+                        branch: None,
+                        project_id: None,
+                    },
+                );
+            }
+            cfg
+        }
+
+        fn entry(path: Option<&str>, point: Point, outcome: Outcome) -> Entry {
+            Entry {
+                path: path.map(Into::into),
+                at_ms: NOW - 180_000,
+                point,
+                build: "0.17.66 (abc1234)".into(),
+                outcome,
+            }
+        }
+
+        #[test]
+        fn each_recorded_project_is_named_with_its_path_its_outcome_and_the_build() {
+            let s = Scratch::new("status-skill");
+            record(
+                s.path(),
+                vec![
+                    (
+                        "anhome".into(),
+                        entry(Some("/p/anhome"), Point::Start, Outcome::Written),
+                    ),
+                    (
+                        "forge-dev".into(),
+                        entry(Some("/p/core"), Point::Start, Outcome::Current),
+                    ),
+                    (
+                        "forge-plugin".into(),
+                        entry(Some("/p/plugin"), Point::Start, Outcome::NotIgnored),
+                    ),
+                    (
+                        "ghost".into(),
+                        entry(None, Point::Start, Outcome::NoCheckout),
+                    ),
+                    (
+                        "ro".into(),
+                        entry(
+                            Some("/p/ro"),
+                            Point::Bind,
+                            Outcome::Failed {
+                                detail:
+                                    "/p/ro/.claude/skills/forge-master/SKILL.md: Permission denied"
+                                        .into(),
+                            },
+                        ),
+                    ),
+                ],
+                Merge::Replace,
+            )
+            .unwrap();
+            let text =
+                skill_lines(Some(s.path()), &bound(&[("anhome", "/p/anhome")]), NOW).join("\n");
+
+            assert!(text.contains("anhome  at daemon start 3m ago: written by 0.17.66 (abc1234) ← /p/anhome/.claude/skills/forge-master/SKILL.md"), "{text}");
+            assert!(
+                text.contains(
+                    "forge-dev  at daemon start 3m ago: already the asset of 0.17.66 (abc1234)"
+                ),
+                "{text}"
+            );
+            assert!(
+                !text
+                    .lines()
+                    .find(|l| l.contains("forge-dev"))
+                    .unwrap()
+                    .contains("written by"),
+                "{text}"
+            );
+            assert!(text.contains("forge-plugin  at daemon start 3m ago: NOT WRITTEN — that checkout's git does not ignore"), "{text}");
+            assert!(
+                text.contains("/p/plugin/.claude/skills/forge-master/SKILL.md"),
+                "{text}"
+            );
+            assert!(text.contains("ghost  at daemon start 3m ago: NOT WRITTEN — assigned to this box and names a checkout on neither side"), "{text}");
+            assert!(text.contains("ro  at bind 3m ago: NOT WRITTEN — /p/ro/.claude/skills/forge-master/SKILL.md: Permission denied"), "{text}");
+        }
+
+        #[test]
+        fn a_binding_the_record_does_not_name_says_so() {
+            let s = Scratch::new("status-skill-unnamed");
+            record(
+                s.path(),
+                vec![(
+                    "a".into(),
+                    entry(Some("/p/a"), Point::Start, Outcome::Written),
+                )],
+                Merge::Replace,
+            )
+            .unwrap();
+            let text = skill_lines(
+                Some(s.path()),
+                &bound(&[("a", "/p/a"), ("late", "/p/late")]),
+                NOW,
+            )
+            .join("\n");
+            assert!(
+                text.contains("late  no install recorded for this binding"),
+                "{text}"
+            );
+            assert!(
+                text.contains("/p/late/.claude/skills/forge-master/SKILL.md"),
+                "{text}"
+            );
+        }
+
+        #[test]
+        fn no_record_names_each_binding_and_what_cannot_be_named() {
+            let s = Scratch::new("status-skill-none");
+            let text = skill_lines(Some(s.path()), &bound(&[("a", "/p/a")]), NOW).join("\n");
+            assert!(text.contains("no install record at"), "{text}");
+            assert!(
+                text.contains(
+                    "a project assigned to this box only on the server cannot be named here"
+                ),
+                "{text}"
+            );
+            assert!(
+                text.contains(
+                    "  a  no install recorded ← /p/a/.claude/skills/forge-master/SKILL.md"
+                ),
+                "{text}"
+            );
+        }
+
+        #[test]
+        fn a_record_that_cannot_be_read_or_is_another_version_is_unreadable_naming_it() {
+            let s = Scratch::new("status-skill-bad");
+            let p = record_path(s.path());
+            std::fs::write(&p, "{ torn").unwrap();
+            let text = skill_lines(Some(s.path()), &bound(&[]), NOW).join("\n");
+            assert!(
+                text.starts_with("skill      UNREADABLE — ")
+                    && text.contains(&p.display().to_string()),
+                "{text}"
+            );
+
+            std::fs::write(&p, r#"{"version":9,"entries":{}}"#).unwrap();
+            let text = skill_lines(Some(s.path()), &bound(&[]), NOW).join("\n");
+            assert!(
+                text.contains("UNREADABLE")
+                    && text.contains("version 9, which this build does not read"),
+                "{text}"
+            );
+        }
+    }
 
     // ---- ISS-1234: the pool lines ----
 

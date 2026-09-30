@@ -245,6 +245,17 @@ async fn finish_workspace(client: &CoreClient, _cfg: &Config, p: &Provision, rep
     }
     trust::pre_trust_logged(repo_path, &p.slug);
     record_binding(p, repo_path);
+    let skill = install_master_skill(&p.slug, repo_path);
+    if !skill.installed() {
+        let said = format!(
+            "the forge-master skill: {}",
+            skill.says(Some(repo_path), crate::update::CURRENT_VERSION)
+        );
+        ready_detail = Some(match ready_detail {
+            Some(d) => format!("{d}; {said}"),
+            None => said,
+        });
+    }
 
     report(client, &p.runner_id, "ready", ready_detail.as_deref()).await;
     tracing::info!(
@@ -252,6 +263,14 @@ async fn finish_workspace(client: &CoreClient, _cfg: &Config, p: &Provision, rep
         p.slug,
         repo_path.display()
     );
+}
+
+/// The master skill follows the binding, not a pane (ISS-1357), so the
+/// workspace carries it from the moment it is bound.
+fn install_master_skill(slug: &str, repo_path: &Path) -> crate::daemon::master_skill::Outcome {
+    use crate::daemon::master_skill::{install_and_record, Point};
+    let dir = crate::daemon::control::config_dir();
+    install_and_record(slug, repo_path, Point::Provision, dir.as_deref())
 }
 
 /// Write the local binding for a workspace this box just provisioned.
@@ -751,5 +770,47 @@ mod tests {
         fs::create_dir_all(dir.join(".forge")).unwrap();
         assert_eq!(classify_workspace(&dir, None), WorkspaceMode::RepoLess);
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// Criterion 5: the workspace carries the skill before it is reported
+    /// `ready`, recorded where `status` reads it.
+    #[test]
+    fn a_provisioned_workspace_holds_the_skill_before_it_is_ready() {
+        use crate::daemon::master_skill::{self, Outcome, Point, Read, ASSET, RELATIVE};
+        let _env = crate::auth::cred_store::ENV_TEST_LOCK
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let home = crate::test_scratch::Scratch::new("provision-skill-home");
+        let _xdg = crate::auth::cred_store::ScopedVar::set("XDG_CONFIG_HOME", home.path());
+        let repo = crate::test_scratch::Scratch::new("provision-skill-repo");
+
+        assert_eq!(
+            install_master_skill("butlocs", repo.path()),
+            Outcome::Written
+        );
+        assert_eq!(
+            fs::read_to_string(repo.path().join(RELATIVE)).unwrap(),
+            ASSET
+        );
+        let Read::Record(r) = master_skill::read(&home.path().join("forge-runner")) else {
+            panic!("the provision recorded nothing where status reads")
+        };
+        assert_eq!(r.entries["butlocs"].point, Point::Provision);
+
+        const SRC: &str = include_str!("provision.rs");
+        let body = SRC
+            .split("\nasync fn finish_workspace(")
+            .nth(1)
+            .expect("finish_workspace");
+        let install = body
+            .find("install_master_skill(&p.slug, repo_path)")
+            .expect("finish_workspace does not install the skill");
+        let ready = body
+            .find(r#"report(client, &p.runner_id, "ready""#)
+            .expect("the ready report");
+        assert!(
+            install < ready,
+            "the workspace is reported ready before it holds the skill"
+        );
     }
 }

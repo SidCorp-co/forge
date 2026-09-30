@@ -1,24 +1,24 @@
 //! Whether a master pane stands on the skill the running daemon ships.
 //!
 //! The daemon writes `assets/forge-master-skill.md` into a checkout's
-//! `.claude/skills/forge-master/SKILL.md` byte for byte, and only when it
-//! places a pane (`daemon/master.rs:install_skill`). A pane it adopts after a
-//! restart onto a newer build keeps the copy it was placed with — measured
-//! 2026-09-30, the forge-dev pane on a 12144-byte copy under a daemon whose
-//! asset is 9134 bytes. The asset is an `include_str!`, so it sits verbatim in
+//! `.claude/skills/forge-master/SKILL.md` byte for byte at bind, at provision,
+//! at every start and at pane placement (`daemon/master_skill.rs`), and refuses
+//! a checkout whose git does not ignore that path; `forge-runner status` reads
+//! what each write did. Its asset is an `include_str!`, so it sits verbatim in
 //! the daemon's executable: the installed file is that build's skill exactly
-//! when its bytes occur there.
+//! when its bytes occur there. A copy that differs is one the daemon refused
+//! or failed to write, or one a daemon older than ISS-1357 left behind.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use super::source::{mtime_ms, Read, Unreadable};
 
-pub const RELATIVE: &str = ".claude/skills/forge-master/SKILL.md";
+pub const RELATIVE: &str = forge_runner_core::daemon::master_skill::RELATIVE;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Skill {
-    /// No file at the path, so no master has been placed from this checkout.
+    /// No file at the path: a checkout the daemon refused or failed to write.
     Absent {
         path: PathBuf,
     },
@@ -111,7 +111,7 @@ mod tests {
     }
     use forge_runner_core::test_scratch::Scratch;
 
-    const ASSET: &str = include_str!("../../../../forge-runner-core/assets/forge-master-skill.md");
+    const ASSET: &str = forge_runner_core::daemon::master_skill::ASSET;
 
     fn exe_holding(asset: &str) -> Read<Arc<Vec<u8>>> {
         let mut bytes = b"\x7fELF padding padding ---\n".to_vec();
@@ -163,7 +163,7 @@ mod tests {
     }
 
     #[test]
-    fn a_checkout_no_master_was_placed_from_has_no_skill_file() {
+    fn a_checkout_the_daemon_did_not_write_has_no_skill_file() {
         let s = Scratch::new("top-skill-absent");
         assert!(matches!(
             read(s.path(), &exe_holding(ASSET)),
