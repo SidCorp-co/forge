@@ -7,10 +7,12 @@
  * `session_context.releaseHold`, its comment, and the clearers that take it off a row.
  */
 
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { createHash } from 'node:crypto';
+import { and, eq, inArray, like, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { comments, issues } from '../db/schema.js';
 import type { IssueCriteriaReport } from '../issues/criteria-verdicts.js';
+import { issueDisplayIds } from '../issues/display-ids.js';
 import { logger } from '../logger.js';
 import { type ServingReading, servedClause } from '../release-batch/serving-reading.js';
 
@@ -32,6 +34,27 @@ export interface ReleaseHold {
 export interface StoredReleaseHold extends ReleaseHold {
   readonly at: string;
   readonly status: 'awaiting_release';
+  /** Every reason commented on this row since it was last held afresh, as `saidKey`s. It goes
+   *  with the hold, so a row cleared and held again starts with nothing said (ISS-1346). */
+  readonly said?: readonly string[];
+}
+
+const SAID_LIMIT = 20;
+
+/** What a reason says, to compare by: a reading time or a reset drifting does not change it. */
+export function saidKey(hold: ReleaseHold): string {
+  const said = [hold.code, comparable(hold.reason), hold.owes, hold.waitingFor].join('\u0000');
+  return createHash('sha256').update(said).digest('hex').slice(0, 16);
+}
+
+export function saidOf(value: unknown): string[] {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return [];
+  const said = (value as Record<string, unknown>).said;
+  return Array.isArray(said) ? said.filter((k): k is string => typeof k === 'string') : [];
+}
+
+function withSaid(said: readonly string[], key: string): string[] {
+  return [...said.filter((k) => k !== key), key].slice(-SAID_LIMIT);
 }
 
 function text(value: unknown): string | null {
@@ -95,8 +118,12 @@ function reasonsByWhy(report: IssueCriteriaReport): string {
   return [...byWhy].map(([why, numbers]) => `${criteriaNamed(numbers)}: ${why}`).join('; ');
 }
 
-/** Where a verdict has to be judged to count: each served commit beside where it runs (ISS-1346). */
-function judgeClause(serving: ServingReading): string {
+/** Where a verdict has to be judged to count: each served commit beside where it runs, said once —
+ *  where a criterion's own reason already names them, this points back at it (ISS-1346). */
+function judgeClause(serving: ServingReading, reasons: string): string {
+  if (serving.kind === 'serving' && reasons.includes(servedClause(serving.served))) {
+    return 'record a verdict on each criterion named, judged at a commit this project is serving, named above';
+  }
   if (serving.kind === 'serving') {
     const unread = serving.unread.length === 0 ? '' : ` (unread: ${serving.unread.join('; ')})`;
     return (
@@ -123,12 +150,13 @@ function judgeClause(serving: ServingReading): string {
  * would is the one holding it, so every act that moves the row from here is somebody's by hand.
  */
 export function criteriaHold(report: IssueCriteriaReport): ReleaseHold {
-  const judge = judgeClause(report.serving);
+  const reasons = reasonsByWhy(report);
+  const judge = judgeClause(report.serving, reasons);
   return {
     code: 'RELEASE_CRITERIA_UNEARNED',
     reason:
       `The automatic release carries only an issue whose every acceptance criterion is earned, and ` +
-      `this one is not — ${reasonsByWhy(report)}. A person clears this: ${judge}; or, having seen ` +
+      `this one is not — ${reasons}. A person clears this: ${judge}; or, having seen ` +
       'the change running in production, close the issue by hand; or move it out of ' +
       '`awaiting_release` if it is not to ship.',
     owes: 'human',
@@ -259,7 +287,20 @@ export function cutFailedHold(reasons: readonly string[]): ReleaseHold {
   };
 }
 
-export function releaseHoldComment(hold: ReleaseHold, shared = false): string {
+const COVERS_LINE = /^When this was written it held \d+ issues? of this project.*$/m;
+
+function coversLine(covers: readonly string[]): string[] {
+  if (covers.length === 0) return [];
+  const n = `${covers.length} issue${covers.length === 1 ? '' : 's'}`;
+  const which = covers.map((id) => `\`${id}\``).join(', ');
+  return ['', `When this was written it held ${n} of this project, oldest merge first: ${which}.`];
+}
+
+export function releaseHoldComment(
+  hold: ReleaseHold,
+  shared = false,
+  covers: readonly string[] = [],
+): string {
   const who = hold.owes === 'human' ? 'a person' : 'an agent run';
   const where = shared
     ? 'The same reason is on every issue of this project it holds, under `releaseHold`, and is ' +
@@ -273,24 +314,61 @@ export function releaseHoldComment(hold: ReleaseHold, shared = false): string {
     hold.reason,
     '',
     `It is waiting for ${hold.waitingFor}, which ${who} owes. ${where}`,
+    ...(shared ? coversLine(covers) : []),
     '',
     `\`release-hold: ${hold.code}\``,
   ].join('\n');
 }
 
+/** A comment's words as they are compared: the covered rows, a reading time and a reset set aside. */
+function saidInComment(body: string): string {
+  return comparable(body.replace(COVERS_LINE, '').replace(/\n{3,}/g, '\n\n'));
+}
+
 /**
  * A named row carries its hold's comment even where it was stored before one could be written, or
- * the row only now oldest (38d791 F1); a comment of the per-row wording already says it (834824 F1).
+ * the row only now oldest (38d791 F1); a comment of the per-row wording already says it (834824 F1),
+ * and so does one naming another set of covered rows (ISS-1346). Its reason joins what the row said.
  */
-async function commentOnce(issueId: string, authorId: string, hold: ReleaseHold): Promise<void> {
-  const body = releaseHoldComment(hold, true);
-  const said = [body, releaseHoldComment(hold)];
-  const [posted] = await db
-    .select({ id: comments.id })
+async function commentOnce(
+  row: { id: string; held: unknown },
+  authorId: string,
+  hold: ReleaseHold,
+  covers: readonly string[],
+): Promise<void> {
+  const key = saidKey(hold);
+  const said = saidOf(row.held);
+  if (said.includes(key)) return;
+  const body = releaseHoldComment(hold, true, covers);
+  const wanted = new Set([saidInComment(body), saidInComment(releaseHoldComment(hold))]);
+  const posted = await db
+    .select({ body: comments.body })
     .from(comments)
-    .where(and(eq(comments.issueId, issueId), inArray(comments.body, said)))
-    .limit(1);
-  if (!posted) await db.insert(comments).values({ issueId, authorId, body });
+    .where(and(eq(comments.issueId, row.id), like(comments.body, `%release-hold: ${hold.code}%`)));
+  await db.transaction(async (tx) => {
+    if (!posted.some((c) => wanted.has(saidInComment(c.body)))) {
+      await tx.insert(comments).values({ issueId: row.id, authorId, body });
+    }
+    await tx.execute(sql`
+      UPDATE issues i
+         SET session_context = jsonb_set(i.session_context,
+                                         ${`{${RELEASE_HOLD_KEY},said}`}::text[],
+                                         ${JSON.stringify(withSaid(said, key))}::jsonb, true)
+       WHERE i.id = ${row.id} AND i.session_context ? ${RELEASE_HOLD_KEY}
+    `);
+  });
+}
+
+/** `ISS-nn` for each row a shared hold is written onto, in the order given; a failed read names
+ *  none rather than stopping the hold being written. */
+async function coveredRows(issueIds: readonly string[]): Promise<string[]> {
+  try {
+    const shown = await issueDisplayIds([...issueIds]);
+    return issueIds.map((id) => shown.get(id) ?? id);
+  } catch (err) {
+    logger.warn({ err }, 'release-hold: the covered rows could not be named');
+    return [];
+  }
 }
 
 export interface ReleaseHoldTally {
@@ -303,7 +381,10 @@ export interface ReleaseHoldTally {
 }
 
 /**
- * Write one hold onto each row, with one comment where the hold changed.
+ * Write one hold onto each row, with one comment where the hold changed to words not already
+ * commented on that row since it was last held afresh (`said`, ISS-1346): a runner flipping between
+ * two states is two reasons said once each, not a comment per flip, and the row's `releaseHold`
+ * always carries the words standing now.
  *
  * The hold and its comment commit together, so a failed insert leaves the old hold and the next
  * sweep tries both again, rather than a stored hold whose comment nobody posted. The update is
@@ -326,6 +407,8 @@ export async function writeReleaseHolds(args: {
     .select({ id: issues.id, held: sql<unknown>`${issues.sessionContext} -> ${RELEASE_HOLD_KEY}` })
     .from(issues)
     .where(inArray(issues.id, [...args.issueIds]))) as Array<{ id: string; held: unknown }>;
+  const shared = args.commentOn !== undefined;
+  const covers = shared && args.commentOn?.size ? await coveredRows(args.issueIds) : [];
 
   for (const row of rows) {
     const hold = args.holdFor(row.id);
@@ -333,14 +416,19 @@ export async function writeReleaseHolds(args: {
     if (carried && sameReleaseHold(carried, hold)) {
       tally.unchanged += 1;
       if (args.authorId && args.commentOn?.has(row.id)) {
-        await commentOnce(row.id, args.authorId, carried);
+        await commentOnce(row, args.authorId, carried, covers);
       }
       continue;
     }
+    const said = carried ? saidOf(row.held) : [];
+    const key = saidKey(hold);
+    const named = args.authorId !== null && (args.commentOn?.has(row.id) ?? true);
+    const comment = named && !said.includes(key);
     const stored: StoredReleaseHold = {
       at: args.now.toISOString(),
       status: 'awaiting_release',
       ...hold,
+      said: comment ? withSaid(said, key) : said,
     };
     const read = row.held === null || row.held === undefined ? null : JSON.stringify(row.held);
     const wrote = await db.transaction(async (tx) => {
@@ -357,8 +445,8 @@ export async function writeReleaseHolds(args: {
         RETURNING i.id
       `)) as unknown as Array<{ id: string }>;
       if (updated.length === 0) return false;
-      if (args.authorId && (args.commentOn?.has(row.id) ?? true)) {
-        const body = releaseHoldComment(hold, args.commentOn !== undefined);
+      if (comment && args.authorId) {
+        const body = releaseHoldComment(hold, shared, covers);
         await tx.insert(comments).values({ issueId: row.id, authorId: args.authorId, body });
       }
       return true;

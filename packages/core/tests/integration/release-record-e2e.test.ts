@@ -456,7 +456,12 @@ describe('a release that did not happen is refused by name', () => {
     const cause = await causeOf(res);
     expect(cause.code).toBe('RELEASE_WORK_UNMERGED');
     // `shape` chooses the sentence the refusal prints (`blocker-sentences.ts`), ISS-1327.
-    expect(cause.details).toEqual({ issueIds: [b], shape: 'git' });
+    expect(cause.details).toMatchObject({ issueIds: [b], shape: 'git' });
+    // Named by the id a screen shows, in the sentence too (ISS-1346 judge r2 finding 2).
+    const { issueDisplayIds } = await import('../../src/issues/display-ids.js');
+    const shown = String((await issueDisplayIds([b])).get(b));
+    expect((cause.details as { displayIds?: string[] }).displayIds).toEqual([shown]);
+    expect(cause.message).toContain(`1 issue(s) named here (\`${shown}\`)`);
   });
 
   it('closes nothing when one named issue was never merged', async () => {

@@ -146,7 +146,7 @@ function supersededSentence(
   if (serving.kind !== 'serving') {
     return `judged at ${judged}, and nothing this project declares answered what it is serving`;
   }
-  return `judged at ${judged}, and what this project is serving is ${servingClause(serving)}`;
+  return `judged at ${judged}, which is not a commit this project is serving; it is serving ${servingClause(serving)}`;
 }
 
 export function standingSentence(
