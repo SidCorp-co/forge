@@ -1353,7 +1353,7 @@ mod tests {
     /// own body would leave them on disk and reaching nobody.
     #[test]
     fn the_heartbeat_tick_sends_the_conditions_read_off_the_box() {
-        let src = include_str!("mod.rs");
+        let src = crate::test_scratch::lf(include_str!("mod.rs"));
         let tick = src
             .split("// Heartbeat loop.")
             .nth(1)
@@ -2160,7 +2160,8 @@ mod tests {
 mod hook_repair_tests {
     use super::*;
 
-    const SOURCE: &str = include_str!("mod.rs");
+    static SOURCE: std::sync::LazyLock<&str> =
+        std::sync::LazyLock::new(|| crate::test_scratch::lf(include_str!("mod.rs")));
 
     /// Everything above this module, which is where the calls live. Splitting
     /// at the first `#[cfg(test)]` would stop at `keep_tracing_capturable`,
@@ -2617,7 +2618,8 @@ mod master_skill_sweep_tests {
     use super::*;
     use crate::daemon::master_skill::{self, Outcome, Read, ASSET, RELATIVE};
 
-    const SOURCE: &str = include_str!("mod.rs");
+    static SOURCE: std::sync::LazyLock<&str> =
+        std::sync::LazyLock::new(|| crate::test_scratch::lf(include_str!("mod.rs")));
 
     fn production() -> &'static str {
         SOURCE.split("\nmod hook_repair_tests {").next().unwrap()

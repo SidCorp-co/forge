@@ -273,10 +273,7 @@ mod tests {
     /// issue that does. A raw read there still fails its scan on Windows once a needle spans a
     /// line; the entry goes when that file's reads go through [`lf`], and one left behind by
     /// such a change is refused below as stale.
-    const RAW_WHILE_HELD: [(&str, &str); 7] = [
-        ("forge-runner-core/src/daemon/master.rs", "ISS-1343"),
-        ("forge-runner-core/src/daemon/mod.rs", "ISS-1343"),
-        ("forge-runner/src/cmd/master.rs", "ISS-1343"),
+    const RAW_WHILE_HELD: [(&str, &str); 4] = [
         (
             "forge-runner-core/src/daemon/terminal.rs",
             "integration/batch-2",
