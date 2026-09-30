@@ -103,9 +103,8 @@ export function fsListing(name, args, cwd) {
 
 /**
  * The whole JSON lines a log holds past `offset`, and the offset to read from next. A log only ever
- * grows, so a line a child appends while it is read is read next time; a line not yet ended by its
- * newline stays for then too, and `pending` says one is there. A log shorter than `offset` was
- * emptied and is read from its start.
+ * grows, so a line appended during a read is read next time; an unended line stays, and `pending`
+ * says so. A log shorter than `offset` was emptied, and is read from its start.
  */
 export function logLines(bytes, offset) {
   const from = bytes.length < offset ? 0 : offset;
