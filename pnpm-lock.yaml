@@ -9432,3 +9432,4 @@ snapshots:
   zod@4.4.3: {}
 
   zwitch@2.0.4: {}
+# probe ISS-1364: a lockfile-only change
