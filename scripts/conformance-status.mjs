@@ -27,7 +27,7 @@ const PROBES = {
     ],
   },
   knowledge: {
-    gate: 'check-honest-costs + check-injected-doc-modes + check-pat-surface + check-status-tuples + check-doc-citations',
+    gate: 'check-honest-costs + check-injected-doc-modes + check-pat-surface + check-status-tuples + check-doc-citations + check-api-contracts',
     probe: ['node', 'scripts/check-honest-costs.mjs'],
     from: 'none',
     also: [
@@ -35,6 +35,11 @@ const PROBES = {
       { from: 'none', probe: ['node', 'scripts/check-pat-surface.mjs'] },
       { from: 'none', probe: ['node', 'scripts/check-status-tuples.mjs', '--all'] },
       { from: 'none', probe: ['node', 'scripts/check-doc-citations.mjs', '--all'] },
+      {
+        from: 'none',
+        needs: ['deps', 'observability-build', 'contracts-build'],
+        probe: ['node', 'scripts/check-api-contracts.mjs'],
+      },
     ],
   },
   relations: {
