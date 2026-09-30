@@ -5243,6 +5243,38 @@ mod tests {
         );
     }
 
+    /// ISS-1312 criterion 75, the settle arm (its judge's finding L1): a
+    /// settle writes no ending, so it marks the refusal as having written
+    /// none, and retracting a settled refusal leaves the ending a master's
+    /// close put on the row.
+    #[test]
+    fn retracting_a_settled_refusal_keeps_the_ending_a_master_wrote() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(NewRun {
+            run_id: "run-1".into(),
+            project_id: "proj-1".into(),
+            master_session_id: "m".into(),
+            worktree_path: PathBuf::from("/tmp/a-checkout-its-master-pruned"),
+            boot_id: "boot-1".into(),
+            issue_keys: vec!["ISS-1".into()],
+        })
+        .unwrap();
+        led.end_run("run-1", "master", "the master said so")
+            .unwrap();
+        led.note_release_refusal("run-1", "the diff was not preserved", 1_790_000_000)
+            .unwrap();
+        led.mark_checkout_returned_observed("run-1", CheckoutReturn::Gone)
+            .unwrap();
+        assert!(led.settle_release_refusal("run-1", 1_790_000_060).unwrap());
+        assert!(led.retract_release_refusal("run-1").unwrap());
+
+        let run = led.run("run-1").unwrap().unwrap();
+        assert_eq!(run.ended_by.as_deref(), Some("master"));
+        assert_eq!(run.ended_reason.as_deref(), Some("the master said so"));
+        assert_eq!(run.release_terminal_at, None);
+        assert_eq!(run.release_refusal, None);
+    }
+
     /// ISS-1242 — a decision taken over a checkout that is STILL HELD is what
     /// the narrowing must not touch: that is the case ISS-1188 wrote it for.
     #[test]
