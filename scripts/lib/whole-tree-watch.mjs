@@ -315,7 +315,9 @@ function install(state) {
     if (typeof this.pid === 'number' && !isEsbuildService(options)) {
       try {
         fs.appendFileSync(state.log, `${JSON.stringify({ started: this.pid })}\n`);
-      } catch {}
+      } catch (e) {
+        asRoot(`child process ${this.pid} could not be put on the log (${e?.code ?? 'unknown'})`);
+      }
     }
     return result;
   };
