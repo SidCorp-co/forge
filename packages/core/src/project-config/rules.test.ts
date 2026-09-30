@@ -322,18 +322,34 @@ describe('boundaries', () => {
 });
 
 describe('the declared store example', () => {
-  it('uses one binding as both storefront source and production deploy, which one role cannot satisfy', () => {
+  it('passes with one source binding for the storefront and one deploy binding for production', () => {
     const doc = projectDocumentSchema.parse(raw('examples/store.project.json'));
-    const shared = '7a2b3c4d-5e6f-4a1b-8c2d-3e4f5a6b7c8d';
-    const ctx = (role: 'deploy' | 'source'): ProjectConfigContext => ({
-      bindings: new Map([[shared, { role }]]),
+    const bindings = ['store-source.binding.json', 'store-deploy.binding.json'].map((f) =>
+      bindingDocumentSchema.parse(raw(`examples/${f}`)),
+    );
+    expect(new Set(bindings.map((b) => b.connection)).size).toBe(1);
+    const ctx: ProjectConfigContext = {
+      bindings: new Map(bindings.map((b) => [b.id, { role: b.role }])),
+      testingProfileIds: new Set(['theme-preview', 'storefront-smoke']),
+    };
+    expect(checkProjectConfig(doc, ctx)).toEqual([]);
+  });
+
+  it('refuses deploysFrom on a storefront project', () => {
+    const doc = projectDocumentSchema.parse(raw('examples/store.project.json'));
+    const preview = doc.environments.preview;
+    if (!preview) throw new Error('store example has no preview');
+    preview.deploysFrom = 'main';
+    const bindings = ['store-source.binding.json', 'store-deploy.binding.json'].map((f) =>
+      bindingDocumentSchema.parse(raw(`examples/${f}`)),
+    );
+    const out = checkProjectConfig(doc, {
+      bindings: new Map(bindings.map((b) => [b.id, { role: b.role }])),
       testingProfileIds: new Set(['theme-preview', 'storefront-smoke']),
     });
-    expect(pick(checkProjectConfig(doc, ctx('source')))).toEqual([
-      { code: 'BINDING_ROLE_MISMATCH', path: '/environments/production/deployment/binding' },
-    ]);
-    expect(pick(checkProjectConfig(doc, ctx('deploy')))).toEqual([
-      { code: 'BINDING_ROLE_MISMATCH', path: '/source/storefront/binding' },
+    for (const r of out) seen.add(r.code);
+    expect(pick(out)).toEqual([
+      { code: 'DEPLOYS_FROM_NEEDS_GIT', path: '/environments/preview/deploysFrom' },
     ]);
   });
 });
@@ -341,7 +357,7 @@ describe('the declared store example', () => {
 describe('the code vocabulary', () => {
   it('holds every code of the design table once', () => {
     expect(new Set(CONFIG_REFUSAL_CODES).size).toBe(CONFIG_REFUSAL_CODES.length);
-    expect(CONFIG_REFUSAL_CODES).toHaveLength(24);
+    expect(CONFIG_REFUSAL_CODES).toHaveLength(25);
   });
 
   it('every pure code is emitted by some plant in this file', () => {

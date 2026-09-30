@@ -8,6 +8,7 @@ export const PURE_REFUSAL_CODES = [
   'PROMOTION_CYCLE',
   'DEPLOYS_FROM_MISSING',
   'DEPLOYS_FROM_UNDECLARED',
+  'DEPLOYS_FROM_NEEDS_GIT',
   'PRODUCTION_NOT_UNIQUE',
   'ISOLATION_UNSUPPORTED',
   'GATE_UNSUPPORTED',
@@ -202,6 +203,13 @@ function checkEnvironments(doc: ProjectDocument, ctx: ProjectConfigContext): Con
         code: 'DEPLOYS_FROM_UNDECLARED',
         path: pointer('environments', name, 'deploysFrom'),
         detail: `"${env.deploysFrom}" is not in source.git.branches (${listed(git.branches)}).`,
+      });
+    }
+    if (!git && env.deploysFrom !== undefined) {
+      out.push({
+        code: 'DEPLOYS_FROM_NEEDS_GIT',
+        path: pointer('environments', name, 'deploysFrom'),
+        detail: `deploysFrom names a git branch, and this project's source.type is "${doc.source.type}"; remove it.`,
       });
     }
     if ('binding' in env.deployment) {

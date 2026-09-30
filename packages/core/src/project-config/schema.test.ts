@@ -15,8 +15,8 @@ import { POLICY_STATE_STATUSES } from './schema.js';
 describe('fixtures (happy)', () => {
   const files = allFixtures();
 
-  it('holds all fifteen design documents', () => {
-    expect(files).toHaveLength(15);
+  it('holds all seventeen design documents', () => {
+    expect(files).toHaveLength(17);
   });
 
   it.each(files)('%s is accepted by zod and by the emitted JSON Schema', (file) => {
