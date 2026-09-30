@@ -12,6 +12,7 @@ import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { IssueLeaseHeldError } from '../issues/issue-lease.js';
+import { utf16String } from '../lib/utf16-string.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { gateConditionSchema } from './gate-report.js';
 import { RunnerNotAdmittedError } from './pool-admission.js';
@@ -32,7 +33,7 @@ const runSessionBodySchema = z.object({
   projectId: z.string().uuid(),
   runId: z.string().uuid(),
   issueKeys: z.array(z.string().min(1)).min(1).max(16),
-  name: z.string().min(1).max(60),
+  name: utf16String(60).min(1),
   // Validated here rather than absorbed: a run is kernel, and a gate condition
   // this route cannot read is a contract break the box is told about by name
   // rather than a field quietly dropped. The heartbeat is the other way round,
@@ -78,7 +79,7 @@ deviceRunSessionRoutes.post(
 
 const closeBodySchema = z.object({
   outcome: z.enum(['ended', 'killed_idle', 'died']),
-  detail: z.string().max(500).optional(),
+  detail: utf16String(500).optional(),
   checkpoint: runCheckpointSchema.optional(),
 });
 

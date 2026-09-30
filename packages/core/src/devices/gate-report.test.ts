@@ -183,7 +183,7 @@ describe('the wire bounds', () => {
   });
 
   /**
-   * The unit is the whole finding. `z.string().max()` counts UTF-16 units, so a
+   * The unit is the whole finding. The bound counts UTF-16 units, so a
    * producer clipping at 420 Unicode scalars sends 840 units of astral text and
    * the report is refused — a box gone quiet, which is this issue's own defect
    * arriving from inside its fix. `daemon/degraded.rs` clips in units; this is
@@ -202,5 +202,6 @@ describe('the wire bounds', () => {
     });
     expect(over.report).toBeUndefined();
     expect(over.refused).toContain('detail');
+    expect(over.refused).toContain(`${WIRE_UNITS} UTF-16 code units`);
   });
 });

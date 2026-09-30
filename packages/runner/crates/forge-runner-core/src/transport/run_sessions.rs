@@ -23,8 +23,8 @@ pub const MAX_DETAIL_CODE_UNITS: usize = 500;
 
 /// `text` cut to `max` of the units core counts.
 ///
-/// Zod's `.max()` reads JavaScript's `String.length`, which counts UTF-16 code
-/// units, and a `chars()` count agrees with it only until the first character
+/// Core's `utf16String` reads JavaScript's `String.length`, which counts UTF-16
+/// code units, and a `chars()` count agrees with it only until the first character
 /// outside the basic plane — at which point a string this side calls short is
 /// one core refuses. A cut is marked, because a detail silently shortened
 /// reads afterwards as a detail somebody wrote that way.

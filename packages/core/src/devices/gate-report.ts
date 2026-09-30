@@ -4,21 +4,22 @@
  */
 
 import { z } from 'zod';
+import { utf16String } from '../lib/utf16-string.js';
 import { logger } from '../logger.js';
 
 export const gateVerdicts = ['clear', 'marked', 'failing_open'] as const;
 export type GateVerdict = (typeof gateVerdicts)[number];
 
 /**
- * The producer's bounds in the producer's unit: `z.string().max()` counts UTF-16,
- * so `daemon/degraded.rs` clips in UTF-16 and not in scalars. Narrower than the box
+ * The producer's bounds in the producer's unit: `daemon/degraded.rs` clips in
+ * UTF-16 code units, and `utf16String` counts the same unit. Narrower than the box
  * emits refuses the whole report, and the box with most to say goes quiet. Both
  * numbers live in `gate-report.fixture.json` and each side asserts them (ISS-1192).
  */
 export const WIRE_UNITS = 420;
 export const WIRE_REASONS = 24;
 
-const wire = () => z.string().max(WIRE_UNITS);
+const wire = () => utf16String(WIRE_UNITS);
 
 const lastMarkSchema = z
   .object({

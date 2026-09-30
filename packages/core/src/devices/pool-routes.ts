@@ -13,6 +13,7 @@ import { z } from 'zod';
 import { runnerLimitReasons } from '../db/schema.js';
 import type { AnswerShape, QuestionBlockerKind, QuestionOption } from '../db/schema-questions.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
+import { utf16String } from '../lib/utf16-string.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { PARK_PROTECTIONS } from '../questions/protections.js';
 import { answerOf, registerWaiter, waiterFor } from '../questions/read.js';
@@ -376,7 +377,7 @@ const masterLimitSchema = z.object({
     .min(0)
     .max(7 * 24 * 60 * 60)
     .nullish(),
-  detail: z.string().min(1).max(200),
+  detail: utf16String(200).min(1),
 });
 
 devicePoolRoutes.post(
