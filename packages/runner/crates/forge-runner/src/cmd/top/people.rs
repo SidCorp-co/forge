@@ -19,6 +19,7 @@ use std::time::Duration;
 
 use forge_runner_core::daemon::agent_activity::Doing;
 use forge_runner_core::daemon::job_exit::Reported;
+use forge_runner_core::transport::status::unanswered;
 use forge_runner_core::transport::CoreClient;
 use serde_json::Value;
 
@@ -176,6 +177,9 @@ pub struct ProjectCore {
 
 const DEADLINE: Duration = Duration::from_secs(10);
 
+/// A request that got no answer is named by its cause, never by reqwest's
+/// wrapper, whose text is the same for a refused port, a timeout and a dead
+/// network (judge r3b, finding 88).
 pub async fn get_json(client: &CoreClient, path: &str) -> Read<Value> {
     let route = format!("GET {path}");
     let resp = client
@@ -185,9 +189,12 @@ pub async fn get_json(client: &CoreClient, path: &str) -> Read<Value> {
         .timeout(DEADLINE)
         .send()
         .await
-        .map_err(|e| Unreadable::new(&route, e))?;
+        .map_err(|e| Unreadable::new(&route, unanswered(&e, DEADLINE)))?;
     let status = resp.status();
-    let text = resp.text().await.map_err(|e| Unreadable::new(&route, e))?;
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| Unreadable::new(&route, unanswered(&e, DEADLINE)))?;
     if !status.is_success() {
         let body: String = text.chars().take(200).collect();
         return Err(Unreadable::new(&route, format!("{status}: {body}")));
