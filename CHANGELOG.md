@@ -10,6 +10,13 @@
 
 ### Security
 
+- **An agent session you start from the web acts as you, not as whoever paired the box.** A
+  session landed on a paired box and used the credential its owner had stored there, so a member
+  starting one on an admin's box could do anything the admin could. Each turn now carries a
+  short-lived token for the person who sent it — their own role, never more than the box owner's —
+  and the token dies when the turn stops, however it stops. A viewer, or someone with no role on the
+  project, is refused a session and told why. A box running an older forge-runner is refused too,
+  asking for `forge-runner update`, rather than being handed a turn it would run as its owner.
 - **A box can only start work on a project it serves.** A box with no runner there, a disabled
   box or a withdrawn runner is refused before claiming anything, and told which, and what an
   admitted box is.
