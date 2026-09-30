@@ -88,7 +88,9 @@ pub struct ReleaseArgs {
 /// This verb does not release anything itself. The sweep is the one writer of a
 /// release, and a second process removing the same checkout is the race the
 /// ledger exists to stop. What it does is retract the decision, so the daemon
-/// tries again once the operator has fixed what the refusal named.
+/// tries again once the operator has fixed what the refusal named — or, where
+/// the checkout was recorded returned and the refusal only settled, clears it
+/// with nothing left to try, which is what it then says.
 fn release(run_id: &str) -> anyhow::Result<()> {
     let mut led = Ledger::open(&Ledger::default_path()?)?;
     println!("{}", retract(&mut led, run_id)?);
@@ -120,8 +122,44 @@ fn retract(led: &mut Ledger, run_id: &str) -> anyhow::Result<String> {
     if !led.retract_release_refusal(run_id)? {
         anyhow::bail!("run {run_id}'s refusal could not be retracted — nothing was written");
     }
+    let Some(after) = led.run(run_id)? else {
+        anyhow::bail!(
+            "run {run_id}'s refusal was retracted, and then the run could not be read back"
+        );
+    };
+    // What happens next is what the sweep selects, read from the ledger the
+    // sweep reads, never promised: a settled refusal's checkout is already
+    // recorded returned, and no sweep takes such a row up again (ISS-1312
+    // judge, finding L3).
+    let swept = led.unclosed_runs()?.iter().any(|r| r.run_id == run_id);
+    let next = match (after.released_as.as_deref(), swept) {
+        (None, true) => "the next sweep will try the release again".to_string(),
+        (None, false) => "no sweep selects it, so nothing will try the release again".to_string(),
+        (Some(how), true) => format!(
+            "there is no release left to try: its checkout is already recorded returned \
+             ({how}); the next sweep still takes the run up to close what it holds open, its \
+             session or its leases"
+        ),
+        (Some(how), false) => format!(
+            "no sweep will take it up: its checkout is already recorded returned ({how}), so \
+             nothing is left to release, and only the refusal is cleared from the row"
+        ),
+    };
+    let ending = match (&run.ended_by, &after.ended_by) {
+        (Some(_), None) => {
+            "The ending that decision wrote is taken back, so the run is open again.".to_string()
+        }
+        (Some(_), Some(by)) => format!(
+            "Its ending was not that decision's and is kept: ended by {by}, {}.",
+            after
+                .ended_reason
+                .as_deref()
+                .unwrap_or("no reason recorded")
+        ),
+        (None, _) => "It carried no ending, and carries none now.".to_string(),
+    };
     Ok(format!(
-        "run {run_id}: the refusal is retracted and the next sweep will try the release again.\n\
+        "run {run_id}: the refusal is retracted, and {next}.\n{ending}\n\
          It was given up on over: {why}"
     ))
 }
@@ -267,7 +305,14 @@ mod tests {
         .unwrap();
 
         let said = retract(&mut led, "run-1").expect("a decided refusal is retractable");
-        assert!(said.contains("the next sweep"), "{said}");
+        assert!(
+            said.contains("the next sweep will try the release again"),
+            "{said}"
+        );
+        assert!(
+            said.contains("The ending that decision wrote is taken back, so the run is open again"),
+            "{said}"
+        );
         assert!(
             said.contains("the diff was not preserved"),
             "the operator is told what it was given up on over, not just that it is undone: {said}"
@@ -279,6 +324,65 @@ mod tests {
         assert!(
             retract(&mut led, "run-1").is_err(),
             "and a second retraction has nothing to retract, rather than quietly saying it did"
+        );
+    }
+
+    /// The ISS-1312 judge's finding L3: a settled refusal's checkout is
+    /// already recorded returned, so no sweep selects the row, and the
+    /// retraction says that rather than promising a retry; and the ending a
+    /// master wrote is said to be kept.
+    #[test]
+    fn retracting_a_settled_refusal_promises_no_sweep_and_says_the_ending_is_kept() {
+        use forge_runner_core::runner::ledger::CheckoutReturn;
+        let mut led = led_with_a_run();
+        led.end_run("run-1", "master", "the master said so")
+            .unwrap();
+        led.note_release_refusal("run-1", "the diff was not preserved", 1_790_000_000)
+            .unwrap();
+        led.mark_checkout_returned_observed("run-1", CheckoutReturn::Gone)
+            .unwrap();
+        assert!(led.settle_release_refusal("run-1", 1_790_000_060).unwrap());
+        // Where a sweep has closed the rest, the live rows' shape.
+        let mut open = led_with_a_run();
+        open.note_release_refusal("run-1", "the diff was not preserved", 1_790_000_000)
+            .unwrap();
+        open.mark_checkout_returned_observed("run-1", CheckoutReturn::Gone)
+            .unwrap();
+        assert!(open.settle_release_refusal("run-1", 1_790_000_060).unwrap());
+        led.mark_session_terminal_observed("run-1").unwrap();
+        led.mark_lease_returned_observed("run-1", "ISS-1").unwrap();
+
+        let said = retract(&mut led, "run-1").expect("a settled refusal is retractable");
+        assert!(!said.contains("the next sweep"), "{said}");
+        assert!(
+            said.contains(
+                "no sweep will take it up: its checkout is already recorded returned (gone)"
+            ),
+            "{said}"
+        );
+        assert!(
+            said.contains("Its ending was not that decision's and is kept: ended by master, the master said so."),
+            "{said}"
+        );
+        assert!(
+            !led.unclosed_runs()
+                .unwrap()
+                .iter()
+                .any(|r| r.run_id == "run-1"),
+            "and the sweep's own selection agrees"
+        );
+
+        // A settled row a sweep still has to close is said to be taken up
+        // for that, and never for a release.
+        let said = retract(&mut open, "run-1").expect("a settled refusal is retractable");
+        assert!(!said.contains("will try the release again"), "{said}");
+        assert!(
+            said.contains("there is no release left to try: its checkout is already recorded returned (gone); the next sweep still takes the run up to close what it holds open"),
+            "{said}"
+        );
+        assert!(
+            said.contains("It carried no ending, and carries none now."),
+            "{said}"
         );
     }
 
