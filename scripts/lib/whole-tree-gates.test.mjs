@@ -234,6 +234,9 @@ describe('what a spawner call runs', () => {
     expect(spawnCall('exec', ['ls ../..']).shell).toBe(true);
     expect(spawnCall('spawn', ['ls', ['../..'], { shell: true }]).shell).toBe(true);
     expect(spawnCall('spawnSync', ['ls', ['../..']]).shell).toBe(false);
+    expect(spawnCall('execSync', ['ls', { shell: '/usr/bin/zsh' }]).shell).toBe('/usr/bin/zsh');
+    const zsh = { ...spawnCall('exec', ['ls', { shell: 'zsh' }]), cwd: CORE, root: ROOT };
+    expect(subprocessListing(zsh).map((e) => e.dir)).toEqual([ROOT]);
   });
 });
 
@@ -385,6 +388,45 @@ describe('the guard installed in this very run', () => {
     execFileSync('sh', ['-c', 'cd "$(pwd)" && ls >/dev/null'], { cwd: import.meta.dirname });
     expect(covering().map((h) => h.via)).toEqual([
       'execFileSync() running ls (at a directory or word the guard cannot evaluate, so counted as the root)',
+    ]);
+  });
+
+  it('counts a shell cd it cannot place exactly as the root, spawned for real (j9, reopen 7)', () => {
+    const t = realpathSync(mkdtempSync(join(tmpdir(), 'whole-tree-cd-')));
+    const deep = join(t, 'a', 'b', 'c');
+    mkdirSync(deep, { recursive: true });
+    symlinkSync(join(REPO, 'packages', 'core'), join(t, 'lc'));
+    const out = join(import.meta.dirname, 'whole-tree-cd-out');
+    symlinkSync(deep, out);
+    const ls = (cmd, opts) => execFileSync('sh', ['-c', `${cmd} >/dev/null`], opts);
+    try {
+      ls('cd -P lc/../.. && git ls-files', { cwd: t });
+      ls('cd whole-tree-cd-out && cd ../../.. && git ls-files', { cwd: import.meta.dirname });
+      ls('cd packages >/dev/null && cd .. && git ls-files', {
+        cwd: t,
+        env: { ...process.env, CDPATH: REPO },
+      });
+      ls('(cd /tmp); git ls-files', { cwd: REPO });
+      execFileSync('bash', ['-c', 'git ls-files >/dev/null'], {
+        cwd: import.meta.dirname,
+        env: { ...process.env, 'BASH_FUNC_git%%': '() { command git -C ../.. "$@"; }' },
+      });
+    } finally {
+      rmSync(out, { force: true });
+      rmSync(t, { recursive: true, force: true });
+    }
+    try {
+      execSync('true', { cwd: import.meta.dirname, shell: 'zsh', stdio: 'ignore' });
+    } catch {
+      // A box without zsh refuses the spawn; the watch read it before it ran.
+    }
+    expect(covering().map((h) => h.via)).toEqual([
+      'execFileSync() running git ls-files (at a directory or word the guard cannot evaluate, so counted as the root)',
+      'execFileSync() running git ls-files (at a directory or word the guard cannot evaluate, so counted as the root)',
+      'execFileSync() running git ls-files (at a directory or word the guard cannot evaluate, so counted as the root)',
+      'execFileSync() running git ls-files (at a directory or word the guard cannot evaluate, so counted as the root)',
+      'execFileSync() running a shell whose environment sets `BASH_FUNC_git%%` (a program the guard cannot see into, so counted as listing the root)',
+      'execSync() running `zsh` (zsh), whose startup files the guard does not read (a program the guard cannot see into, so counted as listing the root)',
     ]);
   });
 

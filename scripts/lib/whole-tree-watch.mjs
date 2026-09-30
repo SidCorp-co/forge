@@ -89,7 +89,9 @@ export function spawnCall(name, args) {
   const list = Array.isArray(second) ? second : [];
   const at = args.findIndex((a, i) => i > 0 && a && typeof a === 'object' && !Array.isArray(a));
   const opts = at === -1 ? {} : args[at];
-  const shell = name === 'exec' || name === 'execSync' || Boolean(opts.shell);
+  // A `shell` naming a program is the shell that reads the string; `true` is Node's /bin/sh.
+  const named = typeof opts.shell === 'string' && opts.shell !== '' ? opts.shell : null;
+  const shell = named ?? (name === 'exec' || name === 'execSync' || Boolean(opts.shell));
   // `fork` runs `execPath`, which is Node unless the call names another program.
   const argv =
     name === 'fork'
