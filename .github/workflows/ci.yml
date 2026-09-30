@@ -500,8 +500,9 @@ jobs:
   # required check — a PR not touching the runner would never run it and the
   # required check would pend forever.
   # The runner ships a binary for three platforms. Since ISS-1370 a pull
-  # request waits on ubuntu alone; macOS and Windows run in `runner-platforms`
-  # after the merge. That is the shape which let two windows-only classes reach
+  # request runs the tests on ubuntu alone and clippies Windows and macOS from
+  # it; the macOS and Windows builds and tests run in `runner-platforms` after
+  # the merge. That is the shape which let two windows-only classes reach
   # `main` once already — on 2026-09-09 `build (windows-latest)` went red on PR
   # #336 while `ci-passed` went green (a `cfg(unix)`-only dep used
   # unconditionally, and a source scan splitting on `"\n}\n"` that under CRLF
@@ -520,6 +521,27 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: packages/runner
+      # Compile and lint errors for the two platforms a pull request no longer builds on still gate
+      # it (ISS-1370): clippy type-checks every `cfg(windows)` and `cfg(target_os = "macos")` path
+      # without linking, which is the class of #816, an unused import behind `cfg(windows)`. Runtime
+      # differences — CRLF, path separators, temp-dir symlinks — are NOT caught here; they are
+      # `runner-platforms`', after the merge. `ring` and `libsqlite3-sys` compile C in their build
+      # scripts and this image has no Windows or macOS C toolchain, so CC and AR for both targets
+      # are `true`: clippy links nothing, and that vendored C is built for real by
+      # `runner-platforms` and runner-release.yml.
+      - name: Cross-target clippy for Windows and macOS
+        working-directory: packages/runner
+        shell: bash
+        env:
+          CC_x86_64_pc_windows_gnu: 'true'
+          AR_x86_64_pc_windows_gnu: 'true'
+          CC_x86_64_apple_darwin: 'true'
+          AR_x86_64_apple_darwin: 'true'
+        run: |
+          rustup target add x86_64-pc-windows-gnu x86_64-apple-darwin
+          for target in x86_64-pc-windows-gnu x86_64-apple-darwin; do
+            cargo clippy --workspace --all-targets --target "$target" -- -D warnings
+          done
       # The tests that drive a master pane through a real tmux server return early where tmux is
       # absent, and a return passes green having asserted nothing — so whether this gate caught
       # the ensure_master mutants they exist for rested on what the image happened to carry

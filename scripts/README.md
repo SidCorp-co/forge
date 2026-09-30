@@ -16,7 +16,12 @@ nightly, never on a pull request, and sit outside `ci-passed`'s `needs`. A red t
 by whichever run lands next. The owner ruled it for forge-dev while it is a beta with no production;
 `.forge/conformance.json` `$postMerge` names the four, what the move costs and what ends it, and
 conformance-audit R12 fails on a job that is in neither list or in both. So the `flows` and
-`selection` rows below measure after the merge, not before it.
+`selection` rows below measure after the merge, not before it. The runner's trade is narrower: its
+compile and lint errors for all three targets still gate the pull request, because the ubuntu
+`runner` job clippies `x86_64-pc-windows-gnu` and `x86_64-apple-darwin` too — the class of #816, an
+unused import behind `cfg(windows)`. Only runtime differences — CRLF, path separators, temp-dir
+symlinks, the class of #811 and #813 — wait for `runner-platforms` after the merge. The ending
+condition is the same.
 
 Every gate that drifted did so while documented and non-blocking — biome to 366 errors, `typecheck`
 to 84, the two length rules to 143 — and each stopped drifting the day it was baselined and gated.

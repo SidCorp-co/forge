@@ -336,6 +336,8 @@ const CI_COVERAGE = {
     'verify, the declarations half; pnpm test runs the declared files themselves',
   'node scripts/build-images.mjs':
     'pnpm images, which verify does NOT run — it needs a docker daemon',
+  'Cross-target clippy for Windows and macOS':
+    "the ubuntu runner job only — scripts/check-runner-gates.mjs clippies this box's own target",
   'Check Markdown links': 'docs job, gaurav-nelson/github-action-markdown-link-check',
   'Whether a pull_request run already proved this exact tree':
     "nothing local — it reads the event and the commit's parent count, which exist only on CI",
