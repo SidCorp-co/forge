@@ -28,8 +28,9 @@ import { type Carriage, type ChangedPaths, carriageOf, changedPathsOf } from './
 import { type ServingReading, servedCommits } from './serving-reading.js';
 import { carriageKey, type RuntimeReading, rotated, type Weighing } from './weighing.js';
 
-/** Uncached reads (one or two compares each) one weighing may make; a cached answer costs none. */
-export const WEIGHING_READ_LIMIT = 120;
+/** Uncached reads (one or two compares each) one weighing may make of each kind — landings and
+ *  carriages, so neither can starve the other; a cached answer costs none. */
+export const WEIGHING_READ_LIMIT = 60;
 
 export interface WeighingDeps {
   client?: (projectId: string) => Promise<GitHubRepoClient>;
@@ -135,7 +136,7 @@ async function readerFor(projectId: string, deps: WeighingDeps): Promise<Reader>
   }
 }
 
-const OVER_BUDGET = `it was not read this pass: one weighing makes at most ${WEIGHING_READ_LIMIT} uncached repository reads, and each pass starts its reads one place further along`;
+const OVER_BUDGET = `it was not read this pass: one weighing makes at most ${WEIGHING_READ_LIMIT} uncached repository reads of a kind, and each pass starts its reads one place further along`;
 
 /** Charged only where the cache misses; a reason once it is spent. */
 function budget(): () => string | null {
@@ -214,9 +215,8 @@ export async function readWeighingNow(
     return { read: true, runtimes, changed: new Map(), carriage: new Map() };
   }
   const reader = await readerFor(projectId, deps);
-  const spend = budget();
   passes += 1;
-  const changed = runtimes.length > 0 ? await readChanged(rows, reader, spend) : new Map();
-  const carriage = await readCarriage(judged, served, reader, spend);
+  const changed = runtimes.length > 0 ? await readChanged(rows, reader, budget()) : new Map();
+  const carriage = await readCarriage(judged, served, reader, budget());
   return { read: true, runtimes, changed, carriage };
 }
