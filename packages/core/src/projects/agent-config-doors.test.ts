@@ -77,7 +77,7 @@ describe('agentConfig declared keys and their doors', () => {
   it('names what owns the value in every retired key message', () => {
     const owners: Record<string, string> = {
       repoPath: 'device binding',
-      baseBranch: 'projects.base_branch',
+      baseBranch: 'source.git.defaultBranch',
       productionBranch: 'PUT /api/projects/:id/config',
       activeDeviceId: 'a device bound to the project',
       runnerFallback: 'decides nothing',
@@ -100,7 +100,7 @@ function refusalsFor(record: unknown): string[] {
 describe('refuseAgentConfigRecord', () => {
   it.each([
     ['repoPath', '/tmp/somewhere', 'device binding'],
-    ['baseBranch', 'main', 'projects.base_branch'],
+    ['baseBranch', 'main', 'source.git.defaultBranch'],
     ['productionBranch', 'main', 'PUT /api/projects/:id/config'],
     ['activeDeviceId', '85644100-e4f5-455a-9754-6af76c19e50a', 'a device bound to the project'],
     ['runnerFallback', { type: 'claude-code' }, 'decides nothing'],

@@ -10,6 +10,7 @@ export const agent: ProviderModule = {
   agentPathKind: "none",
   mcpServerName: null,
   multiBinding: false,
+  bindingKeys: [],
   target: () => null,
   section: null,
   connectionSection: null,

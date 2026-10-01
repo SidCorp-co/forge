@@ -15,8 +15,6 @@ import { logger } from '../logger.js';
 import { rawBody } from '../middleware/zod-validator.js';
 import { verifyHmacSignature } from './hmac.js';
 
-const GENERIC_SIGNATURE_HEADERS = ['x-hub-signature-256', 'x-forge-signature-256'] as const;
-
 const badRequest = (details: unknown, code = 'BAD_REQUEST') =>
   new HTTPException(400, { message: 'Invalid input', cause: { code, details } });
 const unauthorized = (code: string) =>
@@ -58,6 +56,15 @@ async function noteTurnedAway(
     logger.warn({ err, ...context }, 'integration inbound: recording the turn-away failed');
   }
 }
+/** A delivery naming no provider: the generic door verified it and then did nothing, so it is gone. */
+function routeRemoved(): HTTPException {
+  const headers = providerHeaderMap().map((m) => `${m.header} (${m.provider})`);
+  return new HTTPException(410, {
+    message: `POST /api/webhooks/in/:slug takes only a provider's webhook, and this request carries none of its headers: ${headers.join(', ')}. The generic delivery is removed — it was verified and then consumed by nothing. Bind the provider's integration to the project and point its webhook here.`,
+    cause: { code: 'WEBHOOK_ROUTE_REMOVED', details: { providerHeaders: headers } },
+  });
+}
+
 const notFound = () =>
   new HTTPException(404, { message: 'project not found', cause: { code: 'NOT_FOUND' } });
 
@@ -99,11 +106,13 @@ webhookInboundRoutes.post(
     const slug = c.req.param('slug');
     if (!slug) throw badRequest({ slug: 'required' });
 
+    if (!providerHeaderMap().some((m) => c.req.header(m.header))) throw routeRemoved();
+
     // Raw body first — HMAC covers the untouched bytes.
     const rawBody = await c.req.raw.clone().text();
 
     const [project] = await db
-      .select({ id: projects.id, secret: projects.webhookSecret })
+      .select({ id: projects.id })
       .from(projects)
       .where(eq(projects.slug, slug))
       .limit(1);
@@ -176,26 +185,7 @@ webhookInboundRoutes.post(
       }
     }
 
-    if (!project.secret) {
-      throw badRequest({ slug: 'webhook not enabled' }, 'WEBHOOK_DISABLED');
-    }
-
-    const signatureHeader =
-      GENERIC_SIGNATURE_HEADERS.map((h) => c.req.header(h)).find(
-        (v): v is string => typeof v === 'string' && v.length > 0,
-      ) ?? null;
-    if (!verifyHmacSignature(project.secret, rawBody, signatureHeader)) {
-      throw unauthorized('INVALID_SIGNATURE');
-    }
-
-    try {
-      if (rawBody.length > 0) JSON.parse(rawBody);
-    } catch {
-      throw badRequest({ body: 'invalid json' });
-    }
-
-    logger.info({ slug, bytes: rawBody.length }, 'webhook: generic receive');
-    return c.json({ accepted: true, handler: 'generic', actions: 0 });
+    throw routeRemoved();
   },
 );
 

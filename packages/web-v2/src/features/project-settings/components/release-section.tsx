@@ -24,7 +24,7 @@ const GAP_TEXT: Record<ReleaseReadiness["gaps"][number], string> = {
   rollback:
     "No rollback declared — a failed release aborts and comments, and rolls back nothing.",
   "rollback-prose":
-    "The production Coolify binding declares its rollback as free text, which Forge no longer executes — convert it to the Coolify rollback action, or a failed release aborts and comments.",
+    "The production Coolify connection declares its rollback as free text, which Forge no longer executes — convert it to the Coolify rollback action, or a failed release aborts and comments.",
   "verify-probes":
     "The production environment declares no runtime probe that identifies its source — a release still runs, but nothing reads the deployment, so it closes unverified and each issue it closes says so. Declare one in `environments.<name>.verification.runtime` of the project document.",
 };
@@ -263,7 +263,7 @@ export function ReleaseSection({
                 inlineCode(PROJECT_DOCUMENT_DOOR)
               ) : integrationsHref ? (
                 <Link href={integrationsHref} className="underline">
-                  Set it on the production binding
+                  Set it on the production connection
                 </Link>
               ) : null}
             </Banner>

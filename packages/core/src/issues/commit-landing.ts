@@ -8,6 +8,7 @@ import {
   githubRepoClient,
 } from '../integrations/github/client.js';
 import { promotedBranch, readReleasePath } from '../project-config/release-path.js';
+import { readDeclaredSource } from '../project-config/source.js';
 import { declaredIssueSeqs, subjectOf } from '../projects/commit-owners.js';
 import { issueRefPattern } from '../projects/live-reach.js';
 import { heldIssuePrefixes, issueRefFormatter } from './issue-prefix-read.js';
@@ -73,7 +74,6 @@ export async function readCommitLanding(
     .select({
       projectId: issues.projectId,
       issSeq: issues.issSeq,
-      baseBranch: projects.baseBranch,
     })
     .from(issues)
     .innerJoin(projects, eq(projects.id, issues.projectId))
@@ -81,9 +81,14 @@ export async function readCommitLanding(
     .limit(1);
   if (!row) return unreadable(commit, 'the issue was not found');
   const { projectId, issSeq } = row;
-  const baseBranch = row.baseBranch?.trim() || null;
-  if (!baseBranch) return unreadable(commit, 'the project names no base branch to look for it on');
   const path = await readReleasePath(projectId);
+  const { defaultBranch: baseBranch } = await readDeclaredSource(projectId);
+  if (!baseBranch) {
+    return unreadable(
+      commit,
+      'the project document declares no `source.git.defaultBranch` to look for it on',
+    );
+  }
   const live = path.ok ? promotedBranch(path.path) : null;
   const branches = live && live !== baseBranch ? [baseBranch, live] : [baseBranch];
 

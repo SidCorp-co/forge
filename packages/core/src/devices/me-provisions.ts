@@ -33,7 +33,6 @@ function queuedRows(deviceId: string) {
       slug: projects.slug,
       repoPath: runners.repoPath,
       branch: runners.branch,
-      baseBranch: projects.baseBranch,
       sshSource: workspaceSshKeys.source,
       sshPublicKey: workspaceSshKeys.publicKey,
       sshPrivateKeyEnc: workspaceSshKeys.privateKeyEnc,
@@ -63,14 +62,14 @@ deviceProvisionRoutes.get('/me/provisions', requireDevice(), async (c) => {
 
   const settled = await Promise.allSettled(
     rows.map(async (r) => {
-      const { repository } = await readDeclaredSource(r.projectId);
+      const { repository, defaultBranch } = await readDeclaredSource(r.projectId);
       // cm:why the document names a repository, not a transport: an attached deploy key can only
       // reach it over SSH, and every other credential (GitHub App, public) reaches it over HTTPS.
       const repoUrl = repository
         ? remoteOf(repository, r.sshPrivateKeyEnc ? 'ssh' : 'https')
         : null;
       return buildProvisionRow(
-        { ...r, repoUrl },
+        { ...r, repoUrl, baseBranch: defaultBranch },
         {
           deviceId: device.id,
           holderUserId,

@@ -66,9 +66,6 @@ async function seedGatedProject() {
   await harness.db.execute(
     sql`UPDATE users SET email_verified_at = now(), kind = 'agent' WHERE id = ${user.id}::uuid`,
   );
-  await harness.db.execute(
-    sql`UPDATE projects SET base_branch = 'main' WHERE id = ${project.id}::uuid`,
-  );
   await seedProduction(harness.db, { projectId: project.id, ownerId: user.id, probes: 'none' });
 
   const { plaintext } = await mintPat({

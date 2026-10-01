@@ -20,9 +20,9 @@ import {
   AGENT_ACCESS_CLOSED,
   AgentAccessChoice, agentAccessBody, agentAccessDeniedReason, mayWriteAgentAccess} from "@/features/integrations/components/agent-access-control";
 import { ProjectIntegrationsPanel } from "@/features/integrations/components/project-integrations-panel";
-import { useBindExistingConnection, useConnections, useIsOrgAdmin } from "@/features/integrations/hooks";
+import { useBindConnection, useConnections, useIsOrgAdmin } from "@/features/integrations/hooks";
 import { providerLabel, providerModule } from "@/features/integrations/providers/registry";
-import { formatApiError } from "@/lib/api/error";
+import { bindingRefusalText } from "@/features/integrations/bind-actions";
 import { providerCanDeploy } from "@forge/contracts/deploy-capability";
 import type {
   AgentAccess,
@@ -45,7 +45,7 @@ function connectionLabel(c: ConnectionSummary): string {
 
 function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
   const connectionsQ = useConnections();
-  const bind = useBindExistingConnection();
+  const bind = useBindConnection(projectId);
   const [connectionId, setConnectionId] = useState<string>("");
   const [role, setRole] = useState<BindingRole>("service");
   const [agentAccess, setAgentAccess] = useState<AgentAccess>(AGENT_ACCESS_CLOSED);
@@ -89,14 +89,14 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
       return;
     }
     setFormError(null);
+    if (!selected) return;
     bind.mutate(
       {
-        id: connectionId,
-        body: {
-          projectId,
-          role,
-          ...agentAccessBody(agentPathKind, agentAccess),
-        },
+        connectionId,
+        provider: selected.provider,
+        role,
+        binding: {},
+        ...agentAccessBody(agentPathKind, agentAccess),
       },
       {
         onSuccess: () => {
@@ -168,7 +168,7 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
               disabledReason={agentAccessDeniedReason(agentPathKind)}
             />
             {formError && <Banner tone="attention">{formError}</Banner>}
-            {bind.isError && <Banner tone="danger">{formatApiError(bind.error)}</Banner>}
+            {bind.isError && <Banner tone="danger">{bindingRefusalText(bind.error)}</Banner>}
             <div>
               <Button
                 variant="primary"

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { AGENT_ACCESS_VALUES } from './agent-access.js';
-import { bindingShapeFields, checkBindingShape, retiredStagesField } from './binding-shape.js';
+import { retiredStagesField } from './binding-shape.js';
 import { getIntegration, providerNames } from './registry.js';
 import { mergeRotatedSecrets } from './rotation.js';
 import { assertVaultConfigured, badRequest } from './route-helpers.js';
@@ -65,47 +65,6 @@ export function splitProviderConfig(
   }
   return { connection, binding };
 }
-
-/**
- * Body for `POST /:projectId/integrations` — one envelope over every provider.
- *
- * `config` and `secrets` arrive loose and are re-parsed inside the refinement against the schemas
- * the provider's declaration carries, because zod cannot pick a branch on a value the registry
- * resolves at request time. The transform then REPLACES them with the parsed values, so defaults
- * (postman's `region`, coolify's generated target ids) still reach the handler.
- */
-export const createSchema = z
-  .object({
-    provider: z.string().min(1).max(60),
-    ...bindingShapeFields,
-    config: z.record(z.string(), z.unknown()).default({}),
-    secrets: z.record(z.string(), z.unknown()).default({}),
-    orgId: z.uuid().optional(),
-    label: z
-      .string()
-      .min(1)
-      .max(60)
-      .regex(/^[a-z0-9][a-z0-9-]*$/, 'label must be kebab-case (a-z0-9-)')
-      .optional(),
-    agentAccess: agentAccessField,
-  })
-  .superRefine(checkBindingShape)
-  .transform((value, ctx) => {
-    const decl = declarationOrIssue(value.provider, ctx);
-    if (!decl) return z.NEVER;
-    if (value.label !== undefined && !decl.capabilities.multiBinding) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['label'],
-        message: `\`${decl.provider}\` holds one binding per project, so it takes no \`label\`. A label names one of several bindings of the same provider, which only a provider declaring \`multiBinding\` has.`,
-      });
-      return z.NEVER;
-    }
-    const config = parseInto(decl.schemas.bindingConfig, value.config, 'config', ctx);
-    const secrets = parseInto(decl.schemas.secrets, value.secrets, 'secrets', ctx);
-    if (config === undefined || secrets === undefined) return z.NEVER;
-    return { ...value, provider: decl.provider, config, secrets };
-  });
 
 export const updateSchema = z.object({
   config: z.record(z.string(), z.unknown()).optional(),

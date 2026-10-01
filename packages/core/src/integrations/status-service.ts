@@ -125,7 +125,7 @@ export function buildProviderCards(opts: {
 /** Build the full status-card set for a project (caller has already authz'd). */
 export async function buildIntegrationsStatusCards(projectId: string): Promise<StatusCard[]> {
   const [project] = await db
-    .select({ baseBranch: projects.baseBranch })
+    .select({ id: projects.id })
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1);
@@ -183,7 +183,7 @@ export async function buildIntegrationsStatusCards(projectId: string): Promise<S
     detail: repository ?? 'the project document declares no repository',
     lastSyncAt: null,
     configured: repository !== null,
-    meta: { repository, remoteUrl, baseBranch: project.baseBranch, deviceCreds },
+    meta: { repository, remoteUrl, baseBranch: source.defaultBranch, deviceCreds },
   });
 
   // One card PER BINDING (ISS-429 — a disabled binding must not shadow an active one), for every

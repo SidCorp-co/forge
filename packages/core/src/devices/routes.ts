@@ -21,6 +21,7 @@ import { type DeviceVars, requireDevice } from '../middleware/require-device.js'
 import { zValidator } from '../middleware/zod-validator.js';
 import { hooks } from '../pipeline/hooks.js';
 import { readPluginDesignations, unionPluginDesignations } from '../plugins/designation.js';
+import { withDefaultBranch } from '../project-config/source.js';
 import { insertRunnerEvent } from '../runners/runner-events.js';
 import { annotateDeviceBuilds } from './build-state.js';
 import { revokeDeviceCredentials } from './credential.js';
@@ -315,7 +316,6 @@ deviceOwnerRoutes.get(
         branch: runners.branch,
         status: runners.status,
         lastSeenAt: runners.lastSeenAt,
-        baseBranch: projects.baseBranch,
         provisionStatus: runners.provisionStatus,
         provisionDetail: runners.provisionDetail,
         provisionedAt: runners.provisionedAt,
@@ -324,7 +324,7 @@ deviceOwnerRoutes.get(
       .innerJoin(projects, eq(projects.id, runners.projectId))
       .where(and(eq(runners.deviceId, id), eq(runners.type, 'claude-code')));
 
-    return c.json(rows);
+    return c.json(await withDefaultBranch(rows));
   },
 );
 

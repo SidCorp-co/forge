@@ -31,6 +31,13 @@ export interface ProviderModule {
   mcpServerName: string | null;
   /** True where every binding injects its own suffixed entry rather than one winner taking the slot. */
   multiBinding: boolean;
+  /** The binding-tier config keys besides `releaseRunnerLabel`, each a field of its binding-v1 target. */
+  bindingKeys: readonly string[];
+  /** Where a target field is not its config key one to one: the target from the binding tier, and back. */
+  bindingTarget?: {
+    toTarget(config: Record<string, unknown>): Record<string, unknown>;
+    toConfig(target: Record<string, unknown>): Record<string, unknown>;
+  };
   target(config: Record<string, unknown>): string | null;
   /** The project-scoped detail section, or null where the provider has none. */
   section: (() => Promise<{ default: ProjectSection }>) | null;

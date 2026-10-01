@@ -100,7 +100,6 @@ async function seed(opts: { probes?: boolean; label?: string } = {}): Promise<Wo
     projectId: project.id,
     role: 'admin',
   });
-  await harness.db.execute(sql`UPDATE projects SET base_branch = 'main' WHERE id = ${project.id}`);
   await seedProduction(harness.db, {
     projectId: project.id,
     ownerId: user.id,

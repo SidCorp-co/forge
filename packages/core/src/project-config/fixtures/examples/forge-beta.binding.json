@@ -6,6 +6,6 @@
   "connection": "c0a1b2c3-d4e5-4f60-8a1b-2c3d4e5f6a7b",
   "target": {
     "provider": "coolify",
-    "applicationUuid": "y8w4c4kss8ogo8gc44ow44kc"
+    "applications": [{ "label": "primary", "resourceUuid": "y8w4c4kss8ogo8gc44ow44kc" }]
   }
 }

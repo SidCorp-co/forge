@@ -282,49 +282,15 @@ export type GoogleSecretsInput = {
 };
 
 /**
- * What a binding is FOR. Which environment a `deploy` binding serves is the project document's
- * `environments.<name>.deployment.binding`, never the binding's own; `stages?: never` makes the
- * retired key a compile error rather than the 400 the server answers it with.
- *
- * The provider-capability rule — `role: 'deploy'` only where Forge has a deploy adapter — is NOT
- * expressed here and is not meant to be. It is a list that changes (`DEPLOY_CAPABLE_PROVIDERS` in
- * `@forge/contracts/deploy-capability`), and encoding it in this union would make adding an
- * adapter a breaking type change for every caller. The server refuses it by name instead.
+ * Body for `PATCH /:projectId/integrations/:id` — the connection tier (config, secrets) and the
+ * binding's own switch and instructions. Binding-tier config and `agentAccess` are a binding-v1
+ * document's (`PUT /api/projects/:projectId/bindings/:bindingId`), and refused here by name.
  */
-export type BindingShapeInput =
-  | { role: 'service'; stages?: never }
-  | { role: 'deploy'; stages?: never };
-
-/**
- * Body for `POST /:projectId/integrations` — discriminated on `provider`, and on `role` through
- * `BindingShapeInput`. Each arm validates its own config + secrets. `role` is required on every
- * arm and has NO default: the column it replaced defaulted on seven of eight providers precisely
- * because it demanded a value they had no meaning for.
- */
-export type IntegrationBindingCreateInput = BindingShapeInput & {
-  provider: IntegrationProvider;
-  /** Validated against the provider's OWN declared schema, resolved from the registry. */
-  config: Record<string, unknown>;
-  secrets?: Record<string, unknown>;
-  /** Present = mint the credential as ORG-owned; absent = personal. */
-  orgId?: string;
-  /** ISS-558 — kebab label for a named extra binding, where the provider declares multiBinding. */
-  label?: string;
-  /** ISS-1071 — omitted means the closed answer, which is what a binding gets for not choosing. */
-  agentAccess?: AgentAccess;
-};
-
-/** Body for `PATCH /:projectId/integrations/:id` — re-validated against the existing provider. */
 export interface IntegrationBindingUpdateInput {
   config?: Record<string, unknown>;
   secrets?: Record<string, unknown>;
   active?: boolean;
-  /**
-   * ISS-1071 — writing this on a `direct-mcp` provider takes the org-admin escalation that already
-   * guards `active`, `secrets` and `config` on an org-owned connection, because the grant hands a
-   * project's credential to a runner box. On a `core-mediated` provider it stays project-admin.
-   */
-  agentAccess?: AgentAccess;
+  instructions?: string | null;
 }
 
 export interface ConnectionCreateInput {
@@ -341,22 +307,6 @@ export interface ConnectionUpdateInput {
   config?: Record<string, unknown>;
   secrets?: Record<string, unknown>;
   active?: boolean;
-}
-
-/**
- * Body for `POST /integration-connections/:id/bindings` — bind an EXISTING
- * connection to a project+env. Carries NO secrets (the connection already holds
- * the credential); only the target project + role. Caller must own the
- * connection and be an admin of the target project.
- */
-export interface BindExistingConnectionRequest {
-  projectId: string;
-  role: BindingRole;
-  /** Optional binding-tier overrides (coolify `targets[]`) so the shared
-   *  connection deploys different apps in this project. Connection-tier keys
-   *  (baseUrl) are dropped server-side. */
-  config?: Record<string, unknown>;
-  agentAccess?: AgentAccess;
 }
 
 /** `{ connection }` — connection list items, create (201) + update. */

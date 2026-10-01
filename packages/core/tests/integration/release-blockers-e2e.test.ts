@@ -102,9 +102,6 @@ async function seed(
   });
   // Everything `gaps` reports, declared — so a non-empty `blockers` beside an
   // empty `gaps` is the reproduction and not a half-configured fixture.
-  await harness.db.execute(sql`
-    UPDATE projects SET base_branch = 'main' WHERE id = ${project.id}
-  `);
   for (const slug of ['build-commands', 'test-commands', 'release-procedure']) {
     await harness.db.execute(sql`
       INSERT INTO knowledge_entries (id, project_id, slug, title, body, kind)
@@ -114,10 +111,8 @@ async function seed(
   await seedProduction(harness.db, {
     projectId: project.id,
     ownerId: user.id,
-    config: over.bindingConfig ?? {
-      releaseRunnerLabel: LABEL,
-      rollback: { mode: 'coolify-image' },
-    },
+    config: over.bindingConfig ?? { releaseRunnerLabel: LABEL },
+    connectionConfig: { rollback: { mode: 'coolify-image' } },
     deploysFrom: 'production',
     probes: over.probes ?? 'source',
   });

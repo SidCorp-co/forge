@@ -7,8 +7,9 @@ so the next reader finds them attached to evidence rather than rediscovering the
 ## A direct-MCP grant is readable and writable only by an org admin
 
 `agentAccessTier` in `packages/core/src/integrations/agent-access.ts` returns `org-admin` for every
-provider whose declared agent path is `direct-mcp`, and `authorizeAgentAccessWrite` in
-`packages/core/src/integrations/routes.ts` enforces it. The reasoning is sound and written down
+provider whose declared agent path is `direct-mcp`, and `bindEffects.refusals` in
+`packages/core/src/project-config/bind-effects.ts` enforces it on the one binding write
+(`AGENT_ACCESS_NEEDS_ORG_ADMIN`). The reasoning is sound and written down
 there: a `direct-mcp` grant hands the project's own credential to a runner box, which is the same
 escalation that already guards secrets on an org-owned connection.
 

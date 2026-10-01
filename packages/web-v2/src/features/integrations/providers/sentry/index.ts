@@ -11,6 +11,7 @@ export const sentry: ProviderModule = {
   agentPathKind: "direct-mcp",
   mcpServerName: "sentry",
   multiBinding: false,
+  bindingKeys: [],
   target: (config) => text(config, "host"),
   section: () => import("./section").then((m) => ({ default: m.SentrySection })),
   connectionSection: null,

@@ -190,10 +190,10 @@ async function loadProjectBranches(projectId: string): Promise<{
   deploysFrom: string | null;
   orgId: string | null;
 } | null> {
-  let project: { baseBranch: string | null; orgId: string | null } | undefined;
+  let project: { orgId: string | null } | undefined;
   try {
     [project] = await db
-      .select({ baseBranch: projects.baseBranch, orgId: projects.orgId })
+      .select({ orgId: projects.orgId })
       .from(projects)
       .where(eq(projects.id, projectId))
       .limit(1);
@@ -202,7 +202,11 @@ async function loadProjectBranches(projectId: string): Promise<{
   }
   if (!project) return null;
   const read = await readReleasePath(projectId);
-  return { ...project, deploysFrom: read.ok ? promotedBranch(read.path) : null };
+  return {
+    orgId: project.orgId,
+    baseBranch: read.ok ? read.path.defaultBranch : null,
+    deploysFrom: read.ok ? promotedBranch(read.path) : null,
+  };
 }
 
 export async function buildChatPreamble(

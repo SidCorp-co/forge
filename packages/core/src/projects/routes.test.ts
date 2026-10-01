@@ -112,6 +112,16 @@ vi.mock('../lib/authz.js', async (importOriginal) => ({
   loadPersonalOrgId: (...args: unknown[]) => personalOrg(...args),
 }));
 
+const declaredBranch = vi.fn(async (): Promise<string | null> => 'main');
+vi.mock('../project-config/source.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../project-config/source.js')>()),
+  readDeclaredSource: async () => ({
+    repository: null,
+    defaultBranch: await declaredBranch(),
+    setup: null,
+  }),
+}));
+
 const { projectRoutes } = await import('./routes.js');
 const { signUserToken } = await import('../auth/jwt.js');
 const { errorHandler } = await import('../middleware/error.js');
@@ -208,7 +218,6 @@ describe('POST /api/projects', () => {
         name: 'My Project',
         orgId: ORG_ID,
         createdBy: 'uuid-owner',
-        apiKey: 'fk_x',
         createdAt,
       },
     ]);
@@ -223,18 +232,12 @@ describe('POST /api/projects', () => {
       createdBy: 'uuid-owner',
     });
 
-    expect(txInsertProjectValues).toHaveBeenCalledWith(
-      expect.objectContaining({
-        slug: 'my-proj',
-        name: 'My Project',
-        orgId: ORG_ID,
-        createdBy: 'uuid-owner',
-        apiKey: expect.stringMatching(/^fk_[0-9a-f]{48}$/),
-        // ISS-274 — `baseBranch` is defaulted at create time so the resolver
-        // never surfaces a null-base misconfig for new projects.
-        baseBranch: 'main',
-      }),
-    );
+    expect(txInsertProjectValues).toHaveBeenCalledWith({
+      slug: 'my-proj',
+      name: 'My Project',
+      orgId: ORG_ID,
+      createdBy: 'uuid-owner',
+    });
     expect(txInsertMembersValues).toHaveBeenCalledWith({
       userId: 'uuid-owner',
       projectId: 'proj-1',
@@ -258,8 +261,10 @@ describe('POST /api/projects', () => {
   it.each([
     ['repoPath', '/srv/app', "lives on that box's device binding"],
     ['defaultDeviceId', '22222222-2222-4222-8222-222222222222', "no box is a project's default"],
+    ['webhookSecret', 'secret-of-at-least-16-chars', 'WEBHOOK_ROUTE_REMOVED'],
+    ['apiKey', 'fk_x', 'no route authenticated a project API key'],
   ])(
-    '400 BAD_REQUEST naming the field %s the device binding replaced, and creates nothing',
+    '400 BAD_REQUEST naming the retired field %s and where it went, and creates nothing',
     async (field, value, owner) => {
       const token = await signUserToken('uuid-owner');
       selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
@@ -276,6 +281,7 @@ describe('POST /api/projects', () => {
   it.each([
     ['repoUrl', 'git@github.com:acme/app.git', '`source.git.repository`'],
     ['workspaceSetup', 'pnpm install', '`workspace.setup`'],
+    ['baseBranch', 'main', '`source.git.defaultBranch`'],
   ])(
     '400 BAD_REQUEST naming the field %s the project document replaced, and creates nothing',
     async (field, value, owner) => {
@@ -409,6 +415,7 @@ describe('GET /api/projects/:id', () => {
 
   it('200 with project + members + labels + devicePool for member', async () => {
     const token = await signUserToken('uuid-user');
+    declaredBranch.mockResolvedValueOnce('trunk');
     projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]).mockResolvedValueOnce([
       {
@@ -417,9 +424,7 @@ describe('GET /api/projects/:id', () => {
         name: 'P One',
         orgId: ORG_ID,
         createdBy: 'uuid-user',
-        baseBranch: 'main',
         agentConfig: null,
-        webhookSecret: null,
         createdAt: new Date('2026-04-01T00:00:00Z'),
       },
     ]);
@@ -461,46 +466,9 @@ describe('GET /api/projects/:id', () => {
     expect(body.labels).toHaveLength(1);
     expect(body.devicePool).toHaveLength(1);
     expect(body.devicePool[0]?.runnerId).toBe('r1');
-  });
-
-  it('returns the full apiKey to project members (no redaction)', async () => {
-    const token = await signUserToken('uuid-user');
-    const fullKey = 'fk_aaaabbbbccccddddeeeeffff00001111222233334444555566667777';
-    projectAccess.mockResolvedValueOnce(access('member'));
-    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]).mockResolvedValueOnce([
-      {
-        id: 'p1',
-        slug: 'p-one',
-        name: 'P One',
-        orgId: ORG_ID,
-        createdBy: 'uuid-user',
-        baseBranch: null,
-        agentConfig: null,
-        webhookSecret: null,
-        apiKey: fullKey,
-        createdAt: new Date('2026-04-01T00:00:00Z'),
-      },
-    ]);
-    selectWhere
-      .mockReturnValueOnce({ limit: selectLimit })
-      .mockReturnValueOnce({ limit: selectLimit })
-      .mockResolvedValueOnce([{ userId: 'uuid-user', role: 'member' }])
-      .mockResolvedValueOnce([{ id: 'l1', name: 'bug', color: '#f00' }])
-      .mockResolvedValueOnce([
-        {
-          id: 'd1',
-          name: 'Beta-Linux',
-          platform: 'linux',
-          status: 'online',
-          lastSeenAt: null,
-          runnerId: 'r1',
-        },
-      ]);
-
-    const res = await req('/11111111-1111-4111-8111-111111111111', { token });
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { apiKey: string };
-    expect(body.apiKey).toBe(fullKey);
+    expect(body).toMatchObject({ baseBranch: 'trunk' });
+    expect(body).not.toHaveProperty('apiKey');
+    expect(body).not.toHaveProperty('webhookSecret');
   });
 });
 
@@ -561,43 +529,15 @@ describe('PATCH /api/projects/:id', () => {
     const token = await signUserToken('uuid-owner');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
     projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
-    updateReturning.mockResolvedValueOnce([
-      patchedRow({
-        name: 'New Name',
-        webhookSecret: 'secret-of-at-least-16-chars',
-      }),
-    ]);
+    updateReturning.mockResolvedValueOnce([patchedRow({ name: 'New Name' })]);
 
     const res = await req('/11111111-1111-4111-8111-111111111111', {
       method: 'PATCH',
-      body: JSON.stringify({
-        name: 'New Name',
-        webhookSecret: 'secret-of-at-least-16-chars',
-      }),
+      body: JSON.stringify({ name: 'New Name' }),
       token,
     });
     expect(res.status).toBe(200);
-    expect(updateSet).toHaveBeenCalledWith({
-      name: 'New Name',
-      webhookSecret: 'secret-of-at-least-16-chars',
-    });
-  });
-
-  it('200 updates new settings fields (branches)', async () => {
-    const token = await signUserToken('uuid-owner');
-    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
-    updateReturning.mockResolvedValueOnce([
-      patchedRow({ baseBranch: 'staging', agentConfig: null, webhookSecret: null }),
-    ]);
-
-    const res = await req('/11111111-1111-4111-8111-111111111111', {
-      method: 'PATCH',
-      body: JSON.stringify({ baseBranch: 'staging' }),
-      token,
-    });
-    expect(res.status).toBe(200);
-    expect(updateSet).toHaveBeenCalledWith({ baseBranch: 'staging' });
+    expect(updateSet).toHaveBeenCalledWith({ name: 'New Name' });
   });
 
   it.each([
@@ -605,8 +545,11 @@ describe('PATCH /api/projects/:id', () => {
     ['repoPath', null, "lives on that box's device binding"],
     ['defaultDeviceId', '22222222-2222-4222-8222-222222222222', "no box is a project's default"],
     ['defaultDeviceId', null, "no box is a project's default"],
+    ['webhookSecret', 'secret-of-at-least-16-chars', 'WEBHOOK_ROUTE_REMOVED'],
+    ['webhookSecret', null, 'WEBHOOK_ROUTE_REMOVED'],
+    ['apiKey', 'fk_x', 'no route authenticated a project API key'],
   ])(
-    '400 BAD_REQUEST naming the field %s (%s) the device binding replaced, and writes nothing',
+    '400 BAD_REQUEST naming the retired field %s (%s) and where it went, and writes nothing',
     async (field, value, owner) => {
       const token = await signUserToken('uuid-owner');
       selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
@@ -630,6 +573,8 @@ describe('PATCH /api/projects/:id', () => {
     ['repoUrl', null, '`source.git.repository`'],
     ['workspaceSetup', 'pnpm install', '`workspace.setup`'],
     ['workspaceSetup', null, '`workspace.setup`'],
+    ['baseBranch', 'staging', '`source.git.defaultBranch`'],
+    ['baseBranch', null, '`source.git.defaultBranch`'],
   ])(
     '400 BAD_REQUEST naming the field %s (%s) the project document replaced, and writes nothing',
     async (field, value, owner) => {
@@ -760,7 +705,7 @@ describe('PATCH /api/projects/:id · retired keys and the agentConfig doors', ()
     [
       'the shadow baseBranch',
       { agentConfig: { baseBranch: 'main' } },
-      'the `projects.base_branch` column',
+      '`source.git.defaultBranch`',
     ],
     [
       'the shadow activeDeviceId',
@@ -880,36 +825,6 @@ describe('PATCH /api/projects/:id · retired keys and the agentConfig doors', ()
   });
 });
 
-describe('POST /api/projects/:id/api-key/rotate', () => {
-  const ID = '11111111-1111-4111-8111-111111111111';
-
-  it('403 FORBIDDEN for non-admin member', async () => {
-    const token = await signUserToken('uuid-member');
-    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    projectAccess.mockResolvedValueOnce(access('member'));
-
-    const res = await req(`/${ID}/api-key/rotate`, { method: 'POST', token });
-    expect(res.status).toBe(403);
-    expect(updateSet).not.toHaveBeenCalled();
-  });
-
-  it('200 with fresh fk_-prefixed key for admin', async () => {
-    const token = await signUserToken('uuid-admin');
-    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    projectAccess.mockResolvedValueOnce(access('admin'));
-    updateReturning.mockImplementationOnce(async () => {
-      const setArg = updateSet.mock.calls[0]?.[0] as { apiKey: string };
-      return [{ id: 'p1', apiKey: setArg.apiKey }];
-    });
-
-    const res = await req(`/${ID}/api-key/rotate`, { method: 'POST', token });
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { id: string; apiKey: string };
-    expect(body.id).toBe('p1');
-    expect(body.apiKey).toMatch(/^fk_[0-9a-f]{48}$/);
-  });
-});
-
 describe('GET /api/projects/:id/issues/:issueId/branch-config (ISS-135 PR-A)', () => {
   const PID = '11111111-1111-4111-8111-111111111111';
   const IID = '22222222-2222-4222-8222-222222222222';
@@ -936,7 +851,7 @@ describe('GET /api/projects/:id/issues/:issueId/branch-config (ISS-135 PR-A)', (
     projectAccess.mockResolvedValueOnce(access('member'));
     selectLimit
       .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ baseBranch: 'develop' }])
+      .mockResolvedValueOnce([{ id: PID }])
       .mockResolvedValueOnce([]);
 
     const res = await req(`/${PID}/issues/${IID}/branch-config`, { token });
@@ -947,10 +862,11 @@ describe('GET /api/projects/:id/issues/:issueId/branch-config (ISS-135 PR-A)', (
 
   it('200 returns the project defaults when the issue has no override', async () => {
     const token = await signUserToken('uuid-user');
+    declaredBranch.mockResolvedValueOnce('develop');
     projectAccess.mockResolvedValueOnce(access('member'));
     selectLimit
       .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ baseBranch: 'develop' }])
+      .mockResolvedValueOnce([{ id: PID }])
       .mockResolvedValueOnce([{ id: IID, sessionContext: null }]);
 
     const res = await req(`/${PID}/issues/${IID}/branch-config`, { token });
@@ -961,10 +877,11 @@ describe('GET /api/projects/:id/issues/:issueId/branch-config (ISS-135 PR-A)', (
 
   it('200 layers a sessionContext.branchConfig override on top of project defaults', async () => {
     const token = await signUserToken('uuid-user');
+    declaredBranch.mockResolvedValueOnce('develop');
     projectAccess.mockResolvedValueOnce(access('member'));
     selectLimit
       .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ baseBranch: 'develop' }])
+      .mockResolvedValueOnce([{ id: PID }])
       .mockResolvedValueOnce([
         {
           id: IID,
@@ -980,10 +897,11 @@ describe('GET /api/projects/:id/issues/:issueId/branch-config (ISS-135 PR-A)', (
 
   it('200 returns null branches (no hard fallback) when project defaults are null and no override — surfaces misconfig', async () => {
     const token = await signUserToken('uuid-user');
+    declaredBranch.mockResolvedValueOnce(null);
     projectAccess.mockResolvedValueOnce(access('member'));
     selectLimit
       .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ baseBranch: null }])
+      .mockResolvedValueOnce([{ id: PID }])
       .mockResolvedValueOnce([{ id: IID, sessionContext: null }]);
 
     const res = await req(`/${PID}/issues/${IID}/branch-config`, { token });
@@ -1132,7 +1050,6 @@ describe('GET /api/projects/:id answers no release key the project document repl
         name: 'P One',
         orgId: ORG_ID,
         createdBy: 'u',
-        baseBranch: 'main',
       },
     ]);
     selectWhere

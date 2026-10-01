@@ -43,7 +43,7 @@ export const RETIRED_AGENT_CONFIG_KEYS: Record<string, string> = {
   repoPath:
     "agentConfig.repoPath decides nothing — a checkout is a path on one box, so it lives on that box's device binding (`forge-runner bind <slug> --path <dir>`, or PATCH /api/projects/:id/runners/:runnerId { repoPath }). Remove repoPath from agentConfig.",
   baseBranch:
-    'agentConfig.baseBranch decides nothing — the branch work is cut from is the `projects.base_branch` column, read by `branches/resolve.ts:resolveIssueBranches`. It is not a release fact: where a release goes is the production environment of the project document. One copy stored in this jsonb said `main` against a column of `release/stg`. Set it with the `baseBranch` field on `PATCH /api/projects/:id`, and remove baseBranch from agentConfig.',
+    "agentConfig.baseBranch decides nothing — the branch work is cut from is the project document's `source.git.defaultBranch`, written with PUT /api/projects/:id/config. Remove baseBranch from agentConfig.",
   productionBranch:
     "agentConfig.productionBranch names a column that does not exist: the branch production deploys from is the project document's production environment `deploysFrom`, and how a change reaches it is that document's `promotions` (`PUT /api/projects/:id/config`). Remove productionBranch from agentConfig.",
   activeDeviceId:

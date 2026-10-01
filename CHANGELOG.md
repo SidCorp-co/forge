@@ -2540,9 +2540,15 @@
   (ISS-1313)
 
 ### Removed
+- **A binding is written only as its binding document.** Connecting, sharing a connection and
+  picking a GitHub repository all write it; the old binding routes refuse by name and point there.
+  A binding holds no rollback.
 - **A project's repository and setup steps live only in its configuration.** A repo URL or
   workspace setup sent to settings is refused by name. The old columns are dropped;
   `scripts/export-legacy-project-config.mjs` prints them, read-only, before the release.
+- **A project's base branch lives only in its configuration.** The branch is its default branch
+  there; the webhook secret is gone with the generic webhook, which did nothing. Settings refuse
+  both, and the unused API key, by name.
 - **A checkout is the device binding's alone.** Projects have no repo path or default device,
   and settings refuse both by name. Jobs and chat turns run in the box's bound folder; a binding
   naming none is refused.

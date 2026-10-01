@@ -2164,6 +2164,13 @@
       "when": 1811894400000,
       "tag": "0334_the_legacy_project_columns_are_dropped",
       "breakpoints": true
+    },
+    {
+      "idx": 336,
+      "version": "7",
+      "when": 1811980800000,
+      "tag": "0336_the_branch_and_the_project_secrets_leave_the_row",
+      "breakpoints": true
     }
   ]
 }
