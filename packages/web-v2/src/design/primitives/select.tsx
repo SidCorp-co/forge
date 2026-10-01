@@ -1,11 +1,15 @@
 "use client";
 
+import type { SelectHTMLAttributes } from "react";
 import {
-  useCallback, useEffect, useId, useRef, useState, type SelectHTMLAttributes,
-} from "react";
+  Select as ShadcnSelect,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils/cn";
 import { Icon, type IconName } from "@/design/icons/icon";
-import { Popover } from "@/design/primitives/popover";
 
 export interface SelectOption {
   value: string;
@@ -22,177 +26,64 @@ export interface SelectProps {
   disabled?: boolean;
   id?: string;
   invalid?: boolean;
-  /** Required when no visible <label> names the trigger — a combobox whose only
-   *  text is its placeholder has no accessible name once a value is chosen. */
   "aria-label"?: string;
   "aria-describedby"?: string;
   className?: string;
 }
 
-/**
- * Accessible custom listbox (WAI-ARIA combobox pattern) — styled options with
- * icons + a selected check, brand-consistent popover, full keyboard support:
- * ↑/↓ move, Enter/Space select, Esc close, Home/End jump, type-ahead. Focus
- * stays on the trigger, which names the active option through
- * aria-activedescendant, and returns to it on close. The listbox is placed by
- * Popover, so no clipping ancestor cuts it. For a plain OS control use NativeSelect.
- */
 export function Select({
   options, value, onChange, placeholder = "Select…", disabled, id, invalid,
   className, ...aria
 }: SelectProps) {
-  const [open, setOpen] = useState(false);
-  const [active, setActive] = useState(0);
-  const btnRef = useRef<HTMLButtonElement>(null);
-  const [panel, setPanel] = useState<HTMLDivElement | null>(null);
-  const typeahead = useRef("");
-  const typeaheadAt = useRef(0);
-  const baseId = useId();
   const selected = options.find((o) => o.value === value);
   const isInvalid = invalid || (aria as Record<string, unknown>)["aria-invalid"] === true;
-
-  const close = useCallback((focusTrigger = true) => {
-    setOpen(false);
-    if (focusTrigger) btnRef.current?.focus();
-  }, []);
-
-  const openList = useCallback(() => {
-    if (disabled) return;
-    const i = options.findIndex((o) => o.value === value);
-    setActive(i >= 0 ? i : options.findIndex((o) => !o.disabled));
-    setOpen(true);
-  }, [disabled, options, value]);
-
-  const commit = useCallback(
-    (i: number) => {
-      const o = options[i];
-      if (!o || o.disabled) return;
-      onChange?.(o.value);
-      close();
-    },
-    [options, onChange, close],
-  );
-
-  const move = useCallback(
-    (dir: 1 | -1) => {
-      setActive((cur) => {
-        let i = cur;
-        for (let n = 0; n < options.length; n++) {
-          i = (i + dir + options.length) % options.length;
-          if (!options[i].disabled) return i;
-        }
-        return cur;
-      });
-    },
-    [options],
-  );
-
-  // The listbox mounts through a portal a render after `open` flips, so this
-  // waits for the node: the selected option is in view the moment it opens.
-  useEffect(() => {
-    if (!open || !panel) return;
-    panel.querySelector<HTMLElement>(`[data-idx="${active}"]`)?.scrollIntoView({ block: "nearest" });
-  }, [open, active, panel]);
-
-  const onKeyDown = (e: React.KeyboardEvent) => {
-    if (!open) {
-      if (["ArrowDown", "ArrowUp", "Enter", " "].includes(e.key)) {
-        e.preventDefault();
-        openList();
-      }
-      return;
-    }
-    switch (e.key) {
-      case "ArrowDown": e.preventDefault(); move(1); break;
-      case "ArrowUp": e.preventDefault(); move(-1); break;
-      case "Home": e.preventDefault(); setActive(options.findIndex((o) => !o.disabled)); break;
-      case "End": e.preventDefault(); { const r = [...options].reverse().findIndex((o) => !o.disabled); setActive(r < 0 ? 0 : options.length - 1 - r); } break;
-      case "Enter": case " ": e.preventDefault(); commit(active); break;
-      case "Escape": e.preventDefault(); close(); break;
-      case "Tab": close(false); break;
-      default:
-        if (e.key.length === 1) {
-          const now = Date.now();
-          typeahead.current = now - typeaheadAt.current > 800 ? e.key : typeahead.current + e.key;
-          typeaheadAt.current = now;
-          const q = typeahead.current.toLowerCase();
-          const i = options.findIndex((o) => !o.disabled && o.label.toLowerCase().startsWith(q));
-          if (i >= 0) setActive(i);
-        }
-    }
-  };
-
   return (
     <div className={cn("relative", className)}>
-      <button
-        ref={btnRef}
-        type="button"
-        id={id}
-        role="combobox"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-controls={`${baseId}-list`}
-        aria-activedescendant={open ? `${baseId}-opt-${active}` : undefined}
-        aria-invalid={isInvalid || undefined}
-        aria-describedby={aria["aria-describedby"] as string | undefined}
-        aria-label={aria["aria-label"] as string | undefined}
+      <ShadcnSelect
+        value={selected ? value : null}
         disabled={disabled}
-        onClick={() => (open ? close() : openList())}
-        onKeyDown={onKeyDown}
-        className={cn(
-          "flex w-full items-center gap-2 rounded-md border bg-surface py-2 pl-3 pr-2.5 text-left text-sm transition-shadow",
-          "focus-visible:shadow-[var(--shadow-focus)] focus-visible:outline-none",
-          "disabled:cursor-not-allowed disabled:opacity-50",
-          isInvalid ? "border-[color:var(--red-500)] focus-visible:border-[color:var(--red-500)]" : "border-line-strong focus-visible:border-[color:var(--link)]",
-        )}
+        items={options.map((o) => ({ value: o.value, label: o.label }))}
+        onValueChange={(next) => {
+          if (typeof next === "string") onChange?.(next);
+        }}
       >
-        {selected?.icon && <Icon name={selected.icon} size={16} className="text-subtle" />}
-        <span className={cn("flex-1 truncate", selected ? "text-fg" : "text-disabled")}>
-          {selected ? selected.label : placeholder}
-        </span>
-        <Icon name="chevronDown" size={16} className="text-subtle" />
-      </button>
-
-      <Popover
-        open={open}
-        anchor={btnRef}
-        onDismiss={() => setOpen(false)}
-        placement="bottom-start"
-        matchAnchorWidth
-        maxHeight={256}
-        lockScroll
-        panelRef={setPanel}
-        id={`${baseId}-list`}
-        role="listbox"
-        tabIndex={-1}
-        className="forge-drop overflow-y-auto rounded-lg border border-line bg-surface p-1.5 shadow-lg"
-      >
-        {options.map((o, i) => {
-          const isSel = o.value === value;
-          const isActive = i === active;
-          return (
-            <div
+        <SelectTrigger
+          id={id}
+          aria-label={aria["aria-label"]}
+          aria-describedby={aria["aria-describedby"]}
+          aria-invalid={isInvalid || undefined}
+          className={cn(
+            "h-auto! w-full gap-2 rounded-md bg-surface py-2 pl-3 pr-2.5 text-left text-sm transition-shadow",
+            "focus-visible:ring-0 focus-visible:shadow-[var(--shadow-focus)]",
+            isInvalid
+              ? "border-[color:var(--red-500)] focus-visible:border-[color:var(--red-500)]"
+              : "border-line-strong focus-visible:border-[color:var(--link)]",
+          )}
+        >
+          {selected?.icon && <Icon name={selected.icon} size={16} className="text-subtle" />}
+          <SelectValue className={cn("flex-1 truncate", selected ? "text-fg" : "text-disabled")}>
+            {() => (selected ? selected.label : placeholder)}
+          </SelectValue>
+        </SelectTrigger>
+        <SelectContent
+          align="start"
+          alignItemWithTrigger={false}
+          sideOffset={6}
+          className="max-h-[min(256px,var(--available-height))] rounded-lg border border-line bg-surface p-1.5 shadow-lg ring-0"
+        >
+          {options.map((o) => (
+            <SelectItem
               key={o.value}
-              id={`${baseId}-opt-${i}`}
-              data-idx={i}
-              role="option"
-              aria-selected={isSel}
-              aria-disabled={o.disabled || undefined}
-              onMouseEnter={() => !o.disabled && setActive(i)}
-              onClick={() => commit(i)}
-              className={cn(
-                "flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-13-5",
-                o.disabled && "cursor-not-allowed opacity-50",
-                isActive && !o.disabled ? "bg-accent-tint text-accent-text" : "text-fg",
-              )}
+              value={o.value}
+              disabled={o.disabled}
+              className="group gap-2.5 rounded-md px-2.5 py-2 pr-8 text-13-5 text-fg data-highlighted:bg-accent-tint data-highlighted:text-accent-text focus:bg-accent-tint focus:text-accent-text [&_[data-slot=select-item-indicator]]:text-accent"
             >
-              {o.icon && <Icon name={o.icon} size={16} style={isActive ? { color: "var(--accent)" } : { color: "var(--fg-subtle)" }} />}
+              {o.icon && <Icon name={o.icon} size={16} className="text-subtle group-data-highlighted:text-accent" />}
               <span className="flex-1 truncate">{o.label}</span>
-              {isSel && <Icon name="check" size={15} strokeWidth={2.5} style={{ color: "var(--accent)" }} />}
-            </div>
-          );
-        })}
-      </Popover>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </ShadcnSelect>
     </div>
   );
 }

@@ -1,13 +1,14 @@
 "use client";
 
-// Small reusable confirm modal for destructive/irreversible actions (remove
-// member, revoke invitation, delete org, delete a private key). Wraps the
-// SlideOver pattern (focus-trap + Esc-to-close + focus-restore already built
-// in). Presentational only — the caller owns the mutation and clears state in
-// onConfirm/onClose.
-
 import type { ReactNode } from "react";
-import { SlideOver } from "@/design/patterns/slide-over";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/design/primitives/button";
 
 export interface ConfirmDialogProps {
@@ -15,7 +16,6 @@ export interface ConfirmDialogProps {
   title: string;
   message: ReactNode;
   confirmLabel: string;
-  /** `danger` renders a red confirm button for destructive actions. */
   tone?: "danger" | "default";
   loading?: boolean;
   onConfirm: () => void;
@@ -33,10 +33,20 @@ export function ConfirmDialog({
   onClose,
 }: ConfirmDialogProps) {
   return (
-    <SlideOver open={open} onClose={onClose} title={title} width={420}>
-      <div className="flex h-full flex-col gap-4">
-        <p className="fg-body-sm text-fg">{message}</p>
-        <div className="mt-auto flex items-center justify-end gap-2.5 pt-2">
+    <AlertDialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next && !loading) onClose();
+      }}
+    >
+      <AlertDialogContent className="gap-4 rounded-xl border border-line bg-surface p-5 text-fg shadow-lg ring-0 data-[size=default]:max-w-[calc(100%-2rem)] data-[size=default]:sm:max-w-[420px]">
+        <AlertDialogHeader className="place-items-start text-left">
+          <AlertDialogTitle className="fg-h3">{title}</AlertDialogTitle>
+          <AlertDialogDescription render={<div />} className="fg-body-sm text-fg">
+            {message}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter className="m-0 flex-row justify-end gap-2.5 border-0 bg-transparent p-0 pt-2">
           <Button type="button" variant="ghost" onClick={onClose} disabled={loading}>
             Cancel
           </Button>
@@ -48,8 +58,8 @@ export function ConfirmDialog({
           >
             {confirmLabel}
           </Button>
-        </div>
-      </div>
-    </SlideOver>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }

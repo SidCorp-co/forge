@@ -1,5 +1,5 @@
 import {
-  Activity, Archive, ArrowRight, Bell, BookOpen, Calendar, Check, ChevronDown,
+  Activity, Archive, ArrowDown, ArrowRight, ArrowUp, Bell, BookOpen, Calendar, Check, ChevronDown,
   ChevronLeft, ChevronRight, ChevronsUpDown, Circle, CircleHelp, Clock, Command,
   Cpu, DollarSign, Filter, Folder, GitBranch, GitFork, Inbox, Keyboard,
   LayoutGrid, Link as LinkIcon, List, Lock, LogOut, type LucideIcon, Mail,
@@ -48,6 +48,8 @@ const ICONS = {
   rename: Pencil,
   trash: Trash2,
   arrowRight: ArrowRight,
+  arrowUp: ArrowUp,
+  arrowDown: ArrowDown,
   agent: Sparkles,
   chat: MessageSquare,
   folder: Folder,

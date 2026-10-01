@@ -19,13 +19,18 @@ import {
   SegmentedControl,
   Select,
   SlideOver,
+  SortableTH,
   Table,
   TBody,
   TH,
   THead,
   TR,
+  getCoreRowModel,
+  useReactTable,
+  type ColumnDef,
   type SegmentOption,
   type SelectOption,
+  type SortingState,
 } from "@/design";
 import { decodeFilter, decodeNumber, usePinnedViews } from "@/features/shell";
 import { formatApiError } from "@/lib/api/error";
@@ -62,6 +67,7 @@ import {
   ISSUE_PRIORITIES,
   type IssueFilter,
   type IssuePriority,
+  type IssueRow,
   type IssueSort,
 } from "../types";
 import { BulkActionBar } from "./bulk-action-bar";
@@ -119,6 +125,29 @@ const SORT_OPTIONS: SelectOption[] = [
   { value: "priority:asc", label: "Priority ↑" },
 ];
 
+const ISSUE_COLUMNS: ColumnDef<IssueRow, unknown>[] = [
+  { id: "createdAt", header: "ID", enableSorting: true, sortDescFirst: true },
+  { id: "title", header: "Issue", enableSorting: false },
+  { id: "module", header: "Module", enableSorting: false },
+  { id: "status", header: "Status", enableSorting: false },
+  { id: "updatedAt", header: "Updated", enableSorting: true, sortDescFirst: true },
+  { id: "priority", header: "Priority", enableSorting: true, sortDescFirst: true },
+  { id: "complexity", header: "Complexity", enableSorting: false },
+  { id: "cost", header: "Cost", enableSorting: false },
+  { id: "creator", header: "Creator", enableSorting: false },
+];
+
+function sortToState(sort: IssueSort): SortingState {
+  const [id, dir] = sort.split(":");
+  return [{ id, desc: dir === "desc" }];
+}
+
+function stateToSort(state: SortingState): IssueSort {
+  const first = state[0];
+  if (!first) return "createdAt:desc";
+  return `${first.id}:${first.desc ? "desc" : "asc"}` as IssueSort;
+}
+
 const PRIORITY_FILTER_OPTIONS: SelectOption[] = [
   { value: "", label: "Priority: any" },
   ...ISSUE_PRIORITIES.map((p) => ({ value: p, label: priorityLabel(p) })),
@@ -160,6 +189,7 @@ export function IssuesListView({
   const groupBy = VALID_GROUP_BY.includes(rawGroupBy) ? rawGroupBy : "none";
   const sort = decodeFilter<IssueSort>(sp, "sort", "createdAt:desc");
   const page = decodeNumber(sp, "page", 1);
+  const sorting = useMemo(() => sortToState(sort), [sort]);
 
   /** Shallow-merge `patch` into the live query string ("" deletes the key).
    *  Guarded to the issues route so an in-flight navigation to a child route
@@ -334,6 +364,19 @@ export function IssuesListView({
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const bulkEnabled = canWrite;
+  const sortTable = useReactTable<IssueRow>({
+    columns: ISSUE_COLUMNS,
+    data: rows,
+    manualSorting: true,
+    enableSortingRemoval: true,
+    getCoreRowModel: getCoreRowModel(),
+    state: { sorting },
+    onSortingChange: (updater) => {
+      const next = stateToSort(typeof updater === "function" ? updater(sorting) : updater);
+      setParams({ sort: next !== "createdAt:desc" ? next : "", page: "" });
+    },
+  });
+  const headers = sortTable.getHeaderGroups()[0]?.headers ?? [];
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset on any view change, not on `selected` itself.
   useEffect(() => {
     setSelected(new Set());
@@ -667,15 +710,13 @@ export function IssuesListView({
                           />
                         </TH>
                       )}
-                      <TH>ID</TH>
-                      <TH>Issue</TH>
-                      <TH>Module</TH>
-                      <TH>Status</TH>
-                      <TH>Updated</TH>
-                      <TH>Priority</TH>
-                      <TH>Complexity</TH>
-                      <TH className="text-right">Cost</TH>
-                      <TH>Creator</TH>
+                      {headers.map((header) => (
+                        <SortableTH
+                          key={header.id}
+                          header={header}
+                          className={header.id === "cost" ? "text-right" : undefined}
+                        />
+                      ))}
                       <TH className="sr-only">Actions</TH>
                     </TR>
                   </THead>

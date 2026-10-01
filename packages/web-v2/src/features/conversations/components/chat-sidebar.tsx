@@ -196,7 +196,7 @@ export function ChatSidebar({
           <Input
             aria-label="Search conversations"
             icon="search"
-            placeholder="Search conversations…"
+            placeholder="Search chats"
             className="min-w-0 flex-1"
             value={search}
             onChange={(e) => setSearch(e.target.value)}

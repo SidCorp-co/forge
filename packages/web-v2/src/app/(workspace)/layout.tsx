@@ -11,7 +11,7 @@ import {
 } from "@/design";
 import { useLocationSearch } from "@/lib/utils/use-location-search";
 import { useAuth } from "@/providers/auth-provider";
-import { ToastLane, useToast } from "@/providers/toast-provider";
+import { useToast } from "@/providers/toast-provider";
 import { inActiveOrg } from "@/features/projects/derive";
 import { useProjects } from "@/features/projects/hooks";
 import { usePinnedProjects } from "@/features/projects/pins";
@@ -276,7 +276,6 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
           <CurrentProjectProvider project={railProject}>{children}</CurrentProjectProvider>
         </main>
 
-        <ToastLane className="mb-[calc(56px+env(safe-area-inset-bottom))] md:mb-0" />
       </div>
 
       <BottomTabBar

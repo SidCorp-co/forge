@@ -1,8 +1,8 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { Checkbox as ShadcnCheckbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils/cn";
-import { Icon } from "@/design/icons/icon";
 
 export interface CheckboxProps {
   checked: boolean;
@@ -10,12 +10,7 @@ export interface CheckboxProps {
   disabled?: boolean;
   label?: ReactNode;
   id?: string;
-  /** Tri-state: render a "partial" dash and `aria-checked="mixed"` (e.g. a
-   *  select-all that covers some-but-not-all rows). `checked` still drives what
-   *  `onChange` toggles to. */
   indeterminate?: boolean;
-  /** Accessible name when there is no visible `label` (icon-only checkbox in a
-   *  table cell). */
   ariaLabel?: string;
 }
 
@@ -28,30 +23,21 @@ export function Checkbox({
   indeterminate = false,
   ariaLabel,
 }: CheckboxProps) {
-  const filled = checked || indeterminate;
   const box = (
-    <button
-      type="button"
-      role="checkbox"
-      aria-checked={indeterminate ? "mixed" : checked}
-      aria-label={ariaLabel}
-      disabled={disabled}
+    <ShadcnCheckbox
       id={id}
-      onClick={() => onChange?.(!checked)}
+      checked={checked}
+      indeterminate={indeterminate}
+      disabled={disabled}
+      aria-label={ariaLabel}
+      onCheckedChange={(next) => onChange?.(next)}
       className={cn(
-        "inline-flex size-[18px] flex-none items-center justify-center rounded-sm border transition-colors duration-[120ms]",
-        "disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none",
-        filled
-          ? "border-transparent bg-accent text-on-accent focus-visible:shadow-[var(--shadow-focus-accent)]"
-          : "border-line-strong bg-surface hover:border-strong",
+        "size-[18px] rounded-sm border-line-strong bg-surface hover:border-strong",
+        "data-checked:border-transparent data-checked:bg-accent data-checked:text-on-accent",
+        "data-indeterminate:border-transparent data-indeterminate:bg-accent data-indeterminate:text-on-accent",
+        "focus-visible:ring-0 focus-visible:shadow-[var(--shadow-focus-accent)]",
       )}
-    >
-      {checked ? (
-        <Icon name="check" size={13} strokeWidth={3} />
-      ) : indeterminate ? (
-        <span className="h-0.5 w-2.5 rounded-full bg-on-accent" />
-      ) : null}
-    </button>
+    />
   );
   if (!label) return box;
   return (

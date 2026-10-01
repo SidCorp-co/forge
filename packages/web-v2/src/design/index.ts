@@ -34,7 +34,7 @@ export { EmptyPanelLine, type EmptyPanelLineProps } from "./primitives/empty-pan
 export { ComingSoon, type ComingSoonProps } from "./primitives/coming-soon";
 export { ErrorState, type ErrorStateProps } from "./primitives/error-state";
 export { LiveDot, type LiveDotProps } from "./primitives/live-dot";
-export { Toast, type ToastView, type ToastTone } from "./primitives/toast";
+export { Toaster, showToast, type ToastView, type ToastTone, type ToastInput } from "./primitives/toast";
 export { Input, type InputProps } from "./primitives/input";
 export { Field, type FieldProps } from "./primitives/field";
 export { Toggle, type ToggleProps } from "./primitives/toggle";
@@ -53,7 +53,7 @@ export { Divider, type DividerProps } from "./primitives/divider";
 export { Banner, type BannerProps } from "./primitives/banner";
 export { Tooltip, type TooltipProps } from "./primitives/tooltip";
 export {
-  Popover, Layer, type PopoverProps, type PopoverPlacement, type LayerProps,
+  Popover, type PopoverProps, type PopoverPlacement,
 } from "./primitives/popover";
 export { ConfirmDialog, type ConfirmDialogProps } from "./primitives/confirm-dialog";
 export { Tabs, type TabsProps, type TabItem } from "./primitives/tabs";
@@ -62,7 +62,11 @@ export { PageContainer, type PageContainerProps } from "./patterns/page-containe
 export { Breadcrumb, type BreadcrumbProps, type Crumb } from "./primitives/breadcrumb";
 export { Pagination, type PaginationProps } from "./primitives/pagination";
 export { Collapsible, type CollapsibleProps } from "./primitives/collapsible";
-export { Table, THead, TBody, TR, TH, TD } from "./primitives/table";
+export {
+  Table, THead, TBody, TR, TH, TD, SortableTH, DataTable,
+  useReactTable, getCoreRowModel, getSortedRowModel, flexRender,
+  type SortableTHProps, type DataTableProps, type ColumnDef, type SortingState, type OnChangeFn,
+} from "./primitives/table";
 export {
   HelpButton, type HelpButtonProps, type HelpContent, type HelpShortcut,
 } from "./primitives/help-button";
