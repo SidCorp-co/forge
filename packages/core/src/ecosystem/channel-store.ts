@@ -95,9 +95,10 @@ export async function readNumbered(tx: Tx, number: string): Promise<DocumentRow 
 
 export async function documentsWhere(
   tx: Tx,
-  filter: { from?: string; to?: string; thread?: string; published?: true },
+  filter: { ecosystem?: string; from?: string; to?: string; thread?: string; published?: true },
 ): Promise<DocumentRow[]> {
   const conditions = [
+    ...(filter.ecosystem ? [eq(channelDocuments.ecosystemId, filter.ecosystem)] : []),
     ...(filter.from ? [eq(channelDocuments.fromProjectId, filter.from)] : []),
     ...(filter.to ? [arrayContains(channelDocuments.toProjectIds, [filter.to])] : []),
     ...(filter.thread ? [eq(channelDocuments.thread, filter.thread)] : []),

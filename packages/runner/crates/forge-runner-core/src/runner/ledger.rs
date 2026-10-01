@@ -841,8 +841,15 @@ impl Ledger {
         Self::from_conn(conn)
     }
 
-    /// `~/.local/share/forge-runner/ledger.sqlite`.
+    /// `~/.local/share/forge-runner/ledger.sqlite` for the box's own daemon; `ledger.sqlite` in
+    /// the config dir for a daemon run under a config dir of its own.
     pub fn default_path() -> Result<PathBuf> {
+        let base = crate::config::base_dir()?;
+        // cm:guard the OS data dir is per user, not per daemon: a second daemon reading it sweeps
+        // the first one's runs and stamps them closed at its own core (ISS-10)
+        if !crate::daemon::terminal::is_the_boxs_own_config_dir(&base) {
+            return Ok(base.join("ledger.sqlite"));
+        }
         let dir = dirs_next::data_dir()
             .ok_or_else(|| Error::Other("ledger: cannot resolve OS data dir".into()))?;
         Ok(dir.join("forge-runner").join("ledger.sqlite"))

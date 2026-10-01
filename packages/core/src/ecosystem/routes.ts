@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { envelopeOf, refused } from '../project-config/respond.js';
+import { REGISTER_STATUSES, readRegister } from './channel-register.js';
 import {
   createEcosystem,
   type EcosystemOutcome,
@@ -19,6 +20,7 @@ import {
   transition,
   visibleMemberships,
 } from './membership-service.js';
+import { DOCUMENT_TYPES } from './schema.js';
 import { listEcosystemRevisions } from './store.js';
 
 export const ecosystemRoutes = new Hono<{ Variables: AuthVars }>();
@@ -179,3 +181,30 @@ membershipRoutes.post('/:id/leave', idParam, reasonBody, (c) =>
 membershipRoutes.post('/:id/remove', idParam, reasonBody, (c) =>
   move(c, c.req.valid('param').id, 'remove', c.req.valid('json').reason),
 );
+
+const registerQuery = zValidator(
+  'query',
+  z.strictObject({
+    status: z.enum(REGISTER_STATUSES).optional(),
+    type: z.enum(DOCUMENT_TYPES).optional(),
+    party: z.uuid().optional(),
+    limit: z.coerce.number().int().min(1).max(500).default(200),
+  }),
+  (r) => {
+    if (!r.success) {
+      throw new HTTPException(400, {
+        message: `the register is filtered by status (${REGISTER_STATUSES.join(' | ')}), type (one of the five), party (a project uuid) and limit (1 to 500)`,
+        cause: { code: 'BAD_REQUEST' },
+      });
+    }
+  },
+);
+
+ecosystemRoutes.get('/:id/register', idParam, registerQuery, async (c) => {
+  const { rows, total } = await readRegister(
+    c.get('userId'),
+    c.req.valid('param').id,
+    c.req.valid('query'),
+  );
+  return c.json({ documents: rows, returned: rows.length, total });
+});
