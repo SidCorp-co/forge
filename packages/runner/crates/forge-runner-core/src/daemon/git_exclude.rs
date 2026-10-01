@@ -435,8 +435,8 @@ pub(crate) mod tests {
         let file = locked_on(&ex);
         let lock = ExcludeLock::take(&file).unwrap();
 
-        assert_eq!(std::fs::read_to_string(&ex).unwrap(), "*.swp\n.claude/\n");
         assert_eq!(check_ignore(&r, T), Ok(true));
+        assert_eq!(std::fs::read_to_string(&ex).unwrap(), "*.swp\n.claude/\n");
         drop(lock);
     }
 
