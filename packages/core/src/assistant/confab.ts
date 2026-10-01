@@ -61,16 +61,19 @@ const CHANNEL_WRITE_SET: ReadonlySet<string> = new Set(CHANNEL_WRITES);
 const CHANNEL_TARGET_FIELDS = ['ref', 'thread', 'inReplyTo'] as const;
 const CLI_SET_FLAGS: ReadonlySet<string> = new Set(['--set', '--blocks', '--relates', '--unlink']);
 
+function argsOf(record: ClaimCall): Record<string, unknown> {
+  try {
+    const parsed: unknown = JSON.parse(record.arguments || '{}');
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
 function cliArgvOf(record: ClaimCall): string[] | null {
   if (record.name !== CLI_TOOL) return null;
-  try {
-    const parsed = JSON.parse(record.arguments || '{}') as { argv?: unknown };
-    return Array.isArray(parsed.argv) && parsed.argv.every((a) => typeof a === 'string')
-      ? (parsed.argv as string[])
-      : null;
-  } catch {
-    return null;
-  }
+  const { argv } = argsOf(record);
+  return Array.isArray(argv) && argv.every((a) => typeof a === 'string') ? argv : null;
 }
 
 function cliWriteOf(argv: readonly string[]): { action: string; target: string | null } | null {
@@ -85,15 +88,6 @@ function cliWriteOf(argv: readonly string[]): { action: string; target: string |
   return null;
 }
 
-function argsOf(record: ClaimCall): Record<string, unknown> {
-  try {
-    const parsed: unknown = JSON.parse(record.arguments || '{}');
-    return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
-  } catch {
-    return {};
-  }
-}
-
 // cm:why a channel write is a write whatever its verb, and one that names no published number (a draft, a reply, a submit by uuid) is claimed like a create: the reply can only invent the number
 function channelActionOf(record: ClaimCall): string | null {
   const action = argsOf(record).action;
@@ -105,12 +99,8 @@ function actionOf(record: ClaimCall): string | null {
   const argv = cliArgvOf(record);
   if (argv) return cliWriteOf(argv)?.action ?? null;
   if (record.name === CHANNEL_TOOL) return channelActionOf(record);
-  try {
-    const parsed = JSON.parse(record.arguments || '{}') as { action?: unknown };
-    return typeof parsed.action === 'string' ? parsed.action : null;
-  } catch {
-    return null;
-  }
+  const { action } = argsOf(record);
+  return typeof action === 'string' ? action : null;
 }
 
 /** Every display ref named anywhere in a string — right for a sentence, wrong for a call's arguments. */
@@ -127,18 +117,12 @@ function targetRefsOf(record: ClaimCall): string[] {
     const target = cliWriteOf(argv)?.target;
     return target ? [target] : [];
   }
-  try {
-    const parsed = JSON.parse(record.arguments || '{}') as Record<string, unknown>;
-    const refs: string[] = [];
-    const fields = record.name === CHANNEL_TOOL ? CHANNEL_TARGET_FIELDS : TARGET_FIELDS;
-    for (const field of fields) {
-      const value = parsed[field];
-      if (typeof value === 'string') refs.push(...refsIn(value));
-    }
-    return refs;
-  } catch {
-    return [];
-  }
+  const args = argsOf(record);
+  const fields = record.name === CHANNEL_TOOL ? CHANNEL_TARGET_FIELDS : TARGET_FIELDS;
+  return fields.flatMap((field) => {
+    const value = args[field];
+    return typeof value === 'string' ? refsIn(value) : [];
+  });
 }
 
 function sentencesOf(text: string): string[] {
@@ -192,7 +176,7 @@ function namedCall(call: ClaimCall): Pick<ConfabClaim, 'action' | 'target' | 're
     typeof args.ref === 'string' ? args.ref : typeof args.thread === 'string' ? args.thread : null;
   return {
     action: verb,
-    target: targetRefsOf(call)[0] ?? (argv ? (cliWriteOf(argv)?.target ?? null) : named),
+    target: targetRefsOf(call)[0] ?? (argv ? null : named),
     refusalCode: call.refusalCode ?? null,
   };
 }
