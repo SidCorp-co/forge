@@ -21,6 +21,7 @@ import {
   mergeMarkKindOf,
   observedMergeForIssue,
   recordIssueMerge,
+  recordMergeTarget,
 } from './merge-record.js';
 import { refuseUnmarkOnClosed } from './merged-at.js';
 import { findIssueById, type IssueRow } from './read-service.js';
@@ -205,6 +206,7 @@ export async function applyMergeMarker(args: {
       },
     });
     if (standing) throw new MergeMarkerError(standing.code, standing.detail, standing.details);
+    if (args.target) await recordMergeTarget(db, before.id, args.target);
   } else {
     // The `closed` guard is the UPDATE's own WHERE, so nothing can close the row between the
     // decision and the write. A zero-row answer is read back rather than guessed at: the row is

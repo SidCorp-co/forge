@@ -147,6 +147,12 @@ describe('what is kept out of the grant grammar', () => {
     expect(patUngrantableFor('/api/jobs/j1/ack', 'POST')?.pattern).toBe('POST /api/jobs/:id/ack');
   });
 
+  it('keeps a job read of its testing secrets out of every grant', () => {
+    const path = '/api/jobs/self/testing-profiles/qa/secrets';
+    expect(patUngrantableFor(path, 'GET')?.pattern).toBe('GET /api/jobs/:id/testing-profiles');
+    expect(patUngrantableFor(path, 'POST')).toBeNull();
+  });
+
   it('keeps a method-led entry to that method', () => {
     expect(patUngrantableFor('/api/jobs/j1/ack', 'GET')).toBeNull();
     expect(patUngrantableFor('/api/jobs/j1/events', 'GET')).toBeNull();

@@ -50,8 +50,12 @@ There is no data migration (design D8). An operator re-enters by hand what the o
   `timeoutSeconds` or `stableReads`, so every release waits the defaults in
   `packages/core/src/release-batch/verify.ts:verifyDeployed`: 300 s, two stable reads.
 - **Test credentials leave the project row.** A tester gets in through the testing profile an
-  environment names. That profile holds `secret://` references. No route hands a run the value
-  behind one.
+  environment names. That profile holds `secret://` references. The one route that hands out the
+  value behind one is `GET /api/jobs/self/testing-profiles/<profile>/secrets`
+  (`packages/core/src/project-config/testing-secrets.ts:resolveTestingSecrets`): it answers only a
+  running job's own credential, only for the profile named by the environment whose `deploysFrom`
+  is the target its issue's merge mark recorded, audits each read and scrubs each value from that
+  job's output.
 - **forge-plugin reads the deleted fields.** It reads `releaseModel`, `liveBranch`,
   `releaseStrategy` and `environments` from `forge_projects.get` and `forge_config`, and `stages`
   from `forge_coolify_deploy list`. Those readers break until that repository moves to the

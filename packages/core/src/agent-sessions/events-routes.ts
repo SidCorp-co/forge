@@ -20,6 +20,7 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
 import { agentSessionEvents } from '../db/schema-agent-session-events.js';
+import { jobsOfSession, scrubJobOutput } from '../jobs/job-secret-scrub.js';
 import { maybeDeriveIncrementalFor } from '../jobs/session-transcript.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
@@ -128,6 +129,8 @@ agentSessionEventsRoutes.post(
       });
     }
 
+    const lines = await scrubJobOutput(await jobsOfSession(sessionId), events);
+
     const inserted = await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${sessionId}))`);
       const claimed = await tx
@@ -152,7 +155,7 @@ agentSessionEventsRoutes.post(
       return tx
         .insert(agentSessionEvents)
         .values(
-          events.map((e) => ({
+          lines.map((e) => ({
             agentSessionId: sessionId,
             kind: e.kind,
             data: e.data,
