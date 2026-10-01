@@ -17,6 +17,7 @@ import {
   Textarea,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { useSubmitGuard } from "@/lib/utils/use-submit-guard";
 import { useCreateSkill, useUpdateSkill } from "../hooks";
 import {
   buildSkillMd,
@@ -100,6 +101,7 @@ export function SkillStudioDrawer({
   const isEdit = !!skill;
   const create = useCreateSkill(projectId);
   const update = useUpdateSkill(projectId);
+  const submitting = useSubmitGuard();
   const pending = create.isPending || update.isPending;
   const mutErr = create.error ?? update.error;
 
@@ -124,8 +126,9 @@ export function SkillStudioDrawer({
     setFormErr(null);
     create.reset();
     update.reset();
+    submitting.release();
     // Re-seed only when the drawer opens or switches target skill.
-  }, [open, skill?.id]);
+  }, [open, skill?.id, submitting]);
 
   const activeFile = active === SKILL_MD ? null : (files.find((f) => f.path === active) ?? null);
 
@@ -158,6 +161,7 @@ export function SkillStudioDrawer({
       return;
     }
     setFormErr(null);
+    if (!submitting.claim()) return;
     const payload = {
       name: name.trim(),
       description: description.trim(),
@@ -170,6 +174,7 @@ export function SkillStudioDrawer({
       else await create.mutateAsync(payload);
       onClose();
     } catch {
+      submitting.release();
       // surfaced via the mutation-error Banner
     }
   }

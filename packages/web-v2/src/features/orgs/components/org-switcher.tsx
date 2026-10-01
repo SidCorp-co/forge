@@ -100,7 +100,7 @@ export function OrgSwitcher({ variant }: { variant: "compact" | "expanded" }) {
     );
   }
 
-  // Expanded variant (232px rail + mobile drawer): a labeled row mirroring the
+  // Expanded variant (248px rail + mobile drawer): a labeled row mirroring the
   // project switcher button.
   const rowInner = (
     <>

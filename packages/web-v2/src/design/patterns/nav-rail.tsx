@@ -277,10 +277,10 @@ export function NavRail({
     <nav
       className={cn(
         "flex h-full flex-none flex-col gap-3.5 border-r border-line bg-surface py-4 transition-[width] duration-150",
-        collapsed ? "w-[60px] px-2" : "w-[232px] px-3",
+        collapsed ? "w-[60px] px-2" : "w-[248px] px-3",
       )}
     >
-      <div className={cn("flex items-center", collapsed ? "justify-center" : "gap-2 px-1.5")}>
+      <div data-testid="brand-row" className={cn("flex items-center", collapsed ? "justify-center" : "gap-1.5 px-1")}>
         {/* Real Forge brand mark. Plain <img> needs assetPath() so the src is
             prefixed with the /v2 basePath (Next does NOT auto-prefix raw img). */}
         <img
@@ -293,15 +293,16 @@ export function NavRail({
         />
         {!collapsed && (
           <>
-            <span className="fg-h3 flex-1" style={{ fontSize: "var(--text-16)" }}>
+            <span className="fg-h3 min-w-0 flex-1 truncate" style={{ fontSize: "var(--text-16)" }}>
               Forge
             </span>
+            {modeSwitch}
             {onToggleCollapsed && (
               <button
                 type="button"
                 onClick={onToggleCollapsed}
                 aria-label="Collapse sidebar"
-                className="inline-flex size-7 items-center justify-center rounded-md text-subtle transition-colors hover:bg-hover hover:text-fg"
+                className="inline-flex size-7 flex-none items-center justify-center rounded-md text-subtle transition-colors hover:bg-hover hover:text-fg"
               >
                 <Icon name="panelLeft" size={16} />
               </button>
@@ -323,7 +324,7 @@ export function NavRail({
         </Tooltip>
       )}
 
-      {modeSwitch}
+      {collapsed && modeSwitch}
 
       {!collapsed && orgSwitcher}
 

@@ -12,6 +12,7 @@ import {
   Skeleton,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { useSubmitGuard } from "@/lib/utils/use-submit-guard";
 import { SLUG_RE, slugify } from "@/lib/slug";
 import { useToast } from "@/providers/toast-provider";
 // Settings → Organizations. List the caller's orgs (personal pinned first),
@@ -104,6 +105,7 @@ export function OrgsTab() {
 
 function CreateOrgForm() {
   const create = useCreateOrg();
+  const submitting = useSubmitGuard();
   const { toast } = useToast();
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
@@ -142,6 +144,7 @@ function CreateOrgForm() {
           return;
         }
         setSlugError(undefined);
+        if (!submitting.claim()) return;
         create.mutate(
           { name: trimmedName, slug: trimmedSlug },
           {
@@ -157,6 +160,7 @@ function CreateOrgForm() {
                 description: formatApiError(err),
                 tone: "error",
               }),
+            onSettled: submitting.release,
           },
         );
       }}

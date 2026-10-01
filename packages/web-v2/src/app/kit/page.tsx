@@ -598,7 +598,7 @@ export default function KitPage() {
             </div>
           </Section>
 
-          <Section id="navrail" title="Nav rail" hint="Concept C, two modes. Default: the compact 88px icon Rail — the workspace tier, a hover project switcher, then the flat project tier (both tiers come from the shared nav model the shell renders). Active row = flame tint + a 3px accent bar; badged rows carry count pills. Brand expands it to the labeled 232px rail.">
+          <Section id="navrail" title="Nav rail" hint="Concept C, two modes. Default: the compact 88px icon Rail — the workspace tier, a hover project switcher, then the flat project tier (both tiers come from the shared nav model the shell renders). Active row = flame tint + a 3px accent bar; badged rows carry count pills. Brand expands it to the labeled 248px rail.">
             <div className="flex gap-6">
               {/* Default: compact 88px rail. Hover the project mark for the switcher. */}
               <div className="h-[560px] overflow-hidden rounded-md border border-line">
@@ -617,7 +617,7 @@ export default function KitPage() {
                   userInitials="SK"
                 />
               </div>
-              {/* Expanded: the labeled 232px rail (brand toggles between the two). */}
+              {/* Expanded: the labeled 248px rail (brand toggles between the two). */}
               <div className="h-[560px] flex-1 overflow-hidden rounded-md border border-line">
                 <NavRail
                   workspaceItems={WORKSPACE_NAV}

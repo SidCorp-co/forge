@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils/cn";
 import { Icon, type IconName } from "@/design/icons/icon";
 import { Popover, type PopoverPlacement } from "@/design/primitives/popover";
@@ -16,6 +16,10 @@ export interface MenuItem {
   disabled?: boolean;
   /** Draw a rule above this item, separating it from the group before it. */
   separatorBefore?: boolean;
+  /** Set → a choice that is on or off: a menuitemcheckbox, ticked while true. */
+  checked?: boolean;
+  /** The heading of the run of items this one belongs to; a new value opens a new labelled group. */
+  group?: string;
 }
 
 export interface MenuProps {
@@ -36,6 +40,16 @@ export interface MenuProps {
     the trigger. Closes on outside click. The panel is placed by Popover:
     flipped, capped to the room it has and scrolled inside, never clipped. */
 const isInert = (el: HTMLButtonElement) => el.getAttribute("aria-disabled") === "true";
+
+function groupsOf(items: MenuItem[]) {
+  const runs: Array<{ group: string | undefined; items: Array<{ it: MenuItem; i: number }> }> = [];
+  items.forEach((it, i) => {
+    const last = runs[runs.length - 1];
+    if (last && last.group === it.group) last.items.push({ it, i });
+    else runs.push({ group: it.group, items: [{ it, i }] });
+  });
+  return runs;
+}
 
 function placementOf(side: "top" | "bottom", align: "left" | "right"): PopoverPlacement {
   return `${side}-${align === "right" ? "end" : "start"}`;
@@ -117,34 +131,51 @@ export function Menu({
         onKeyDown={onKeyDown}
         className="forge-drop min-w-[180px] overflow-y-auto rounded-lg border border-line bg-surface p-1.5 shadow-lg"
       >
-        {items.map((it, i) => (
-          <button
-            // biome-ignore lint/suspicious/noArrayIndexKey: a menu's items are positional and hold no state of their own — the list is rebuilt whole on every render and never reordered while open — and the index is what keeps two items legitimately sharing a label from colliding (ISS-982)
-            key={`${i}-${it.label}`}
-            ref={(el) => {
-              itemRefs.current[i] = el;
-            }}
-            type="button"
-            role="menuitem"
-            aria-disabled={it.disabled}
-            onClick={() => {
-              if (it.disabled) return;
-              it.onSelect?.();
-              close();
-            }}
-            className={cn(
-              "flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-13-5 transition-colors focus-visible:outline-none",
-              it.separatorBefore && "mt-1 border-line border-t pt-2.5",
-              it.disabled
-                ? "cursor-default text-subtle focus-visible:bg-hover"
-                : "hover:bg-hover focus-visible:bg-hover",
-              it.danger ? "text-[color:var(--red-600)]" : it.disabled ? "" : "text-fg",
-            )}
-          >
-            {it.icon && <Icon name={it.icon} size={16} style={it.danger ? { color: "var(--red-500)" } : { color: "var(--fg-subtle)" }} />}
-            {it.label}
-          </button>
-        ))}
+        {groupsOf(items).map((run) => {
+          const rows = run.items.map(({ it, i }) => (
+            <button
+              key={`${i}-${it.label}`}
+              ref={(el) => {
+                itemRefs.current[i] = el;
+              }}
+              type="button"
+              {...(it.checked === undefined
+                ? { role: "menuitem" }
+                : { role: "menuitemcheckbox", "aria-checked": it.checked })}
+              aria-disabled={it.disabled}
+              onClick={() => {
+                if (it.disabled) return;
+                it.onSelect?.();
+                close();
+              }}
+              className={cn(
+                "flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-13-5 transition-colors focus-visible:outline-none",
+                it.separatorBefore && "mt-1 border-line border-t pt-2.5",
+                it.disabled
+                  ? "cursor-default text-subtle focus-visible:bg-hover"
+                  : "hover:bg-hover focus-visible:bg-hover",
+                it.danger ? "text-[color:var(--red-600)]" : it.disabled ? "" : "text-fg",
+              )}
+            >
+              {it.icon && <Icon name={it.icon} size={16} style={it.danger ? { color: "var(--red-500)" } : { color: "var(--fg-subtle)" }} />}
+              {it.label}
+              {it.checked && <Icon name="check" size={15} className="ml-auto flex-none" style={{ color: "var(--accent)" }} />}
+            </button>
+          ));
+          const first = run.items[0]?.i ?? 0;
+          if (run.group === undefined) return <Fragment key={`run-${first}`}>{rows}</Fragment>;
+          return (
+            <fieldset key={`run-${first}`} aria-label={run.group} className="m-0 min-w-0 border-0 p-0">
+              <div
+                aria-hidden
+                className={cn("fg-overline px-2.5 pb-1 text-subtle", first > 0 ? "mt-1 border-line border-t pt-2.5" : "pt-1")}
+              >
+                {run.group}
+              </div>
+              {rows}
+            </fieldset>
+          );
+        })}
       </Popover>
     </div>
   );

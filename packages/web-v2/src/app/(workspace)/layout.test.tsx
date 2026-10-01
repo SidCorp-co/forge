@@ -131,22 +131,65 @@ describe("switching modes", () => {
   });
 });
 
+describe("the mode switch sits on the Forge logo row", () => {
+  it.each([
+    ["Activity", "/projects/forge-dev/issues"],
+    ["Chat", "/chat/forge-dev"],
+  ])("in %s mode at desktop width", (_, route) => {
+    window.localStorage.setItem("web-v2:sidebar", JSON.stringify({ collapsed: false, groupOpen: {} }));
+    at(route);
+    mount();
+    const brand = within(within(screen.getByTestId("desktop-sidebar")).getByTestId("brand-row"));
+    expect(brand.getByAltText("Forge")).toBeInTheDocument();
+    expect(brand.getByTestId("mode-switch")).toBeInTheDocument();
+  });
+
+  it("keeps its own place in the compact rail", () => {
+    window.localStorage.setItem("web-v2:sidebar", JSON.stringify({ collapsed: true, groupOpen: {} }));
+    at("/projects/forge-dev/issues");
+    mount();
+    const side = within(screen.getByTestId("desktop-sidebar"));
+    expect(side.getByTestId("mode-switch")).toBeInTheDocument();
+    fireEvent.click(modeTab("Chat"));
+    expect(nav.push).toHaveBeenLastCalledWith("/chat/forge-dev");
+  });
+});
+
 describe("every top-bar item has a new home", () => {
   it.each([
     ["the compact rail", "/projects/forge-dev/issues", true],
     ["the expanded rail", "/projects/forge-dev/issues", false],
     ["the chat sidebar", "/chat/forge-dev", false],
-  ])("puts search, the bell and the account in %s", (_, route, collapsed) => {
+  ])("puts the bell and the account in %s", (_, route, collapsed) => {
     window.localStorage.setItem("web-v2:sidebar", JSON.stringify({ collapsed, groupOpen: {} }));
     at(route);
     mount();
     expect(screen.queryByRole("banner")).toBeNull();
     const side = within(screen.getByTestId("desktop-sidebar"));
     expect(side.getByTestId("mode-switch")).toBeInTheDocument();
-    expect(side.getByRole("button", { name: "Search (⌘K)" })).toBeInTheDocument();
     expect(side.getByRole("button", { name: "Account menu" })).toBeInTheDocument();
     fireEvent.click(side.getByRole("button", { name: "Notifications, 2 open" }));
     expect(screen.getByTestId("bell-open")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["the compact rail", true],
+    ["the expanded rail", false],
+  ])("puts the search row in %s", (_, collapsed) => {
+    window.localStorage.setItem("web-v2:sidebar", JSON.stringify({ collapsed, groupOpen: {} }));
+    at("/projects/forge-dev/issues");
+    mount();
+    expect(within(screen.getByTestId("desktop-sidebar")).getByRole("button", { name: "Search (⌘K)" })).toBeInTheDocument();
+  });
+
+  it("leaves the search row out of the chat sidebar, and ⌘K still opens the palette there", () => {
+    at("/chat/forge-dev");
+    mount();
+    const side = within(screen.getByTestId("desktop-sidebar"));
+    expect(side.queryByRole("button", { name: "Search (⌘K)" })).toBeNull();
+    expect(side.getByRole("textbox", { name: "Search conversations" })).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    expect(screen.getByText("Create issue")).toBeInTheDocument();
   });
 
   it("puts the breadcrumb above an Activity page", () => {

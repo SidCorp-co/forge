@@ -114,4 +114,31 @@ describe("Menu", () => {
     screen.getByTestId("table").dispatchEvent(e);
     expect(e.defaultPrevented).toBe(true);
   });
+
+  it("reports a choice that is on or off as a ticked menuitemcheckbox", () => {
+    render(<InTable items={[{ label: "Archived", checked: true }, { label: "Alpha", checked: false }, { label: "Edit" }]} />);
+    fireEvent.click(trigger());
+    expect(screen.getByRole("menuitemcheckbox", { name: "Archived" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("menuitemcheckbox", { name: "Alpha" })).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByRole("menuitem", { name: "Edit" })).not.toHaveAttribute("aria-checked");
+  });
+
+  it("labels each run of items sharing a group, and keeps an ungrouped item out of every group", () => {
+    render(
+      <InTable
+        items={[
+          { label: "Alpha", group: "Project" },
+          { label: "Beta", group: "Project" },
+          { label: "Platform", group: "Ecosystem" },
+          { label: "Edit" },
+        ]}
+      />,
+    );
+    fireEvent.click(trigger());
+    const project = screen.getByRole("group", { name: "Project" });
+    expect(project).toContainElement(screen.getByRole("menuitem", { name: "Beta" }));
+    expect(project).not.toContainElement(screen.getByRole("menuitem", { name: "Platform" }));
+    expect(screen.getByRole("group", { name: "Ecosystem" })).toContainElement(screen.getByRole("menuitem", { name: "Platform" }));
+    expect(screen.getByRole("menuitem", { name: "Edit" }).closest('[role="group"]')).toBeNull();
+  });
 });

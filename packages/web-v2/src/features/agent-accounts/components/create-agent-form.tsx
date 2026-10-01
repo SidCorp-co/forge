@@ -24,6 +24,7 @@ import {
 } from "@/design";
 import { useOrgScopedProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
+import { useSubmitGuard } from "@/lib/utils/use-submit-guard";
 import { useCreateAgent } from "../hooks";
 
 const HANDLE_RULE = /^[a-z0-9](?:[a-z0-9-]{1,38})[a-z0-9]$/;
@@ -44,6 +45,7 @@ export function handleProblem(handle: string): string | null {
 export function CreateAgentForm({ orgId }: { orgId: string }) {
   const { projects, isLoading } = useOrgScopedProjects();
   const create = useCreateAgent(orgId);
+  const submitting = useSubmitGuard();
   const [handle, setHandle] = useState("");
   const [picked, setPicked] = useState<string[]>([]);
   const [minted, setMinted] = useState<{ handle: string; plaintext: string } | null>(null);
@@ -59,6 +61,7 @@ export function CreateAgentForm({ orgId }: { orgId: string }) {
   async function submit() {
     setTouched(true);
     if (problem || noProjects) return;
+    if (!submitting.claim()) return;
     try {
       const agent = await create.mutateAsync({ handle: handle.trim(), projectIds: picked });
       setMinted({ handle: agent.handle, plaintext: agent.plaintext });
@@ -67,6 +70,8 @@ export function CreateAgentForm({ orgId }: { orgId: string }) {
       setTouched(false);
     } catch {
       // The banner below renders `create.error`; nothing is lost by not toasting.
+    } finally {
+      submitting.release();
     }
   }
 

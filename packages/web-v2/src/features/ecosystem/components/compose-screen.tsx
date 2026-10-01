@@ -7,6 +7,7 @@ import { useApiPage, useChannelWrite, useDocument, useProjectEcosystems } from "
 import { type Refusal, readingOf, refusalsOf } from "@/lib/api/refusals";
 import { type DocumentType, type DocumentView, REPLY_TYPES } from "../types";
 import { canWriteProject } from "@/features/projects/write-access";
+import { useSubmitGuard } from "@/lib/utils/use-submit-guard";
 import type { Role } from "./document-actions";
 import { Loading, ReadOnlyNotice, RefusalNotice, UnreadNotice } from "./notices";
 import { useProjectNames } from "./people";
@@ -102,6 +103,7 @@ function ComposeForm({
 }) {
   const [form, setForm] = useState<Form>(() => initialForm({ draft, parent }));
   const [local, setLocal] = useState<Refusal | null>(null);
+  const submitting = useSubmitGuard();
   const save = useChannelWrite((input: Parameters<typeof ecosystemApi.draft>[2]) =>
     draft ? ecosystemApi.edit(projectId, draft.id, input) : ecosystemApi.draft(projectId, ecosystem, input),
   );
@@ -116,6 +118,7 @@ function ComposeForm({
       return;
     }
     setLocal(null);
+    if (!submitting.claim()) return;
     save.mutate(
       {
         type: form.type,
@@ -125,7 +128,7 @@ function ComposeForm({
         ...(inReplyTo ? { inReplyTo } : {}),
         body: body.body,
       },
-      { onSuccess: onSaved },
+      { onSuccess: onSaved, onSettled: submitting.release },
     );
   };
 

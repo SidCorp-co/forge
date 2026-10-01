@@ -85,7 +85,6 @@ export function WorkspaceSidebar(props: WorkspaceSidebarProps) {
         activeKey=""
         modeSwitch={<ModeSwitch mode={mode} onSwitch={onSwitchMode} />}
         orgSwitcher={<OrgSwitcher variant="expanded" />}
-        search={props.search(false)}
         bell={props.bell}
         body={
           <ChatSidebar slug={props.chat.slug} conversationId={props.chat.conversationId} onNavigate={onRoute} />

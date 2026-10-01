@@ -9,6 +9,7 @@ import { useActiveOrg } from '@/features/orgs/active-org';
 import { useOrgs } from '@/features/orgs/hooks';
 import { ApiError } from '@/lib/api/client';
 import { formatApiError } from '@/lib/api/error';
+import { useSubmitGuard } from '@/lib/utils/use-submit-guard';
 import { useToast } from '@/providers/toast-provider';
 import { SLUG_RE, slugify } from '@/lib/slug';
 import { useCreateProject, useOnboardProject } from '../hooks';
@@ -25,6 +26,7 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
   const router = useRouter();
   const { toast } = useToast();
   const create = useCreateProject();
+  const submitting = useSubmitGuard();
 
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
@@ -55,9 +57,10 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
       setCreated(null);
       setOnboardError(null);
       create.reset();
+      submitting.release();
     }
     // `create` is stable from React Query; resetting only on `open` is intended.
-  }, [open]);
+  }, [open, submitting]);
 
   // Mirror the name into the slug until the user takes manual control.
   const onNameChange = (value: string) => {
@@ -91,6 +94,7 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
       return;
     }
     setErrors({});
+    if (!submitting.claim()) return;
 
     try {
       const row = await create.mutateAsync({
@@ -102,6 +106,7 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
       // ISS-453 — don't navigate yet: advance to the "Set up pipeline" step.
       setCreated(row);
     } catch (err) {
+      submitting.release();
       // A taken slug is a field-level problem; everything else is a form banner.
       if (err instanceof ApiError && err.code === 'SLUG_TAKEN') {
         setErrors({ slug: 'That slug is already taken.' });

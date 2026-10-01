@@ -24,6 +24,7 @@ import {
   Textarea,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { useSubmitGuard } from "@/lib/utils/use-submit-guard";
 import { useToast } from "@/providers/toast-provider";
 import { useCreateIssue } from "../hooks";
 import type { IssueComplexity, IssuePriority } from "../types";
@@ -120,6 +121,7 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
   const router = useRouter();
   const { toast } = useToast();
   const create = useCreateIssue(scope.projectId);
+  const submitting = useSubmitGuard();
 
   const [mode, setMode] = useState<DialogMode>("standard");
   const [title, setTitle] = useState("");
@@ -150,9 +152,10 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
       setWarnings([]);
       setDragOver(false);
       create.reset();
+      submitting.release();
     }
     // `create` is stable from React Query; resetting only on `open` is intended.
-  }, [open]);
+  }, [open, submitting]);
 
   const acceptFiles = useCallback((picked: FileList | File[]) => {
     const accepted: File[] = [];
@@ -256,6 +259,7 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
       return;
     }
     setErrors({});
+    if (!submitting.claim()) return;
 
     try {
       let created;
@@ -297,6 +301,7 @@ export function NewIssueDialog({ open, onClose, scope }: NewIssueDialogProps) {
       onClose();
       router.push(`/projects/${scope.slug}/issues/${created.id}`);
     } catch (err) {
+      submitting.release();
       setErrors({ form: formatApiError(err) });
     }
   }
