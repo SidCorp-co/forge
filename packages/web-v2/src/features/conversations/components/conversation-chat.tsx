@@ -47,6 +47,7 @@ import { ConversationModeControl, modePlaceholder } from "./mode-control";
 import { ConversationMembers } from "./conversation-members";
 import { ConversationThread } from "./conversation-thread";
 import { ScopeNotice } from "./scope-notice";
+import { useUiActions, useUiSnapshot } from "../ui-actions/use-ui-actions";
 
 export function ConversationChat({
   projectId,
@@ -72,7 +73,8 @@ export function ConversationChat({
   const resolvedId = conversationId ?? activeId;
 
   const projectsQ = useProjects();
-  const canWrite = canWriteProject(projectsQ.data?.find((p) => p.id === projectId)?.role);
+  const projectRow = projectsQ.data?.find((p) => p.id === projectId);
+  const canWrite = canWriteProject(projectRow?.role);
 
   const roomQ = useConversation(resolvedId);
   const accepted = useAcceptedMessages(resolvedId);
@@ -96,6 +98,15 @@ export function ConversationChat({
   const [pick, setPick] = useState<ConversationMode>("assistant");
 
   const messages = useMemo(() => roomQ.data?.messages ?? [], [roomQ.data]);
+  const page = useUiSnapshot(projectRow?.slug);
+  const pageRef = useRef(page);
+  pageRef.current = page;
+  const ui = useUiActions({
+    slug: projectRow?.slug ?? "",
+    ready: Boolean(projectRow) && (!resolvedId || roomQ.isSuccess),
+    messages,
+    progress,
+  });
 
   useEffect(() => {
     const seen = new Set(messages.map((m) => m.id));
@@ -186,6 +197,7 @@ export function ConversationChat({
           ...(fresh ? { mode: pick } : {}),
           clientToken: next.id,
           ...(attachmentIds.length ? { attachmentIds } : {}),
+          ...(pageRef.current.sees ? { uiSnapshot: pageRef.current.snapshot } : {}),
         });
         stored.current.delete(next.id);
         setOutbox((o) => o.filter((m) => m.id !== next.id));
@@ -288,6 +300,7 @@ export function ConversationChat({
               withdrawn={withdrawn}
               agentTurns={agentTurns}
               onRetry={retry}
+              afterEntry={ui.cardsFor}
             />
           )}
           {stage && (
@@ -327,6 +340,15 @@ export function ConversationChat({
                 disabled={busy}
               />
               {scopeChip}
+              {page.sees && (
+                <span
+                  data-testid="composer-sees"
+                  title="What the assistant is told about the page beside the chat"
+                  className="fg-caption inline-flex max-w-[16rem] items-center gap-1 truncate text-subtle"
+                >
+                  Sees {page.sees}
+                </span>
+              )}
             </div>
           }
         />

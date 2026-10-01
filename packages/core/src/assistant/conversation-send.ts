@@ -50,7 +50,10 @@ import { type ConversationProgress, startConversationProgress } from './conversa
 import { registerTurnStop } from './conversation-stops.js';
 import { webAgentConversationPersona, webConversationPersona } from './door-persona.js';
 import { buildChatToolContext } from './tools/principal.js';
+import { mergeToolsets } from './tools/mcp-adapter.js';
 import { buildProjectToolset } from './tools/registry.js';
+import { buildUiActionToolset } from './tools/ui-actions-tool.js';
+import { uiSnapshotPageContext } from './ui-snapshot.js';
 
 /** The room a send happens in, as the route already read it. */
 export interface WebConversationRoom {
@@ -160,7 +163,9 @@ export function webConversationTurn(args: {
     prepare: async ({ credential, speakerUserId, conversationId, handleUserId }) => ({
       persona: webConversationPersona(args.project.name, args.project.slug, args.askedBy),
       resolveImage: makeConversationImageResolver(conversationId),
-      tools: buildProjectToolset(
+      pageContext: uiSnapshotPageContext(conversationId),
+      tools: mergeToolsets(
+        buildProjectToolset(
         buildChatToolContext({
           credential: await credential(),
           projectSlug: args.project.slug,
@@ -171,6 +176,8 @@ export function webConversationTurn(args: {
             ecosystemId: (await getConversation(conversationId))?.ecosystemId ?? null,
           },
         }),
+        ),
+        buildUiActionToolset(),
       ),
     }),
   };

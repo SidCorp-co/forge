@@ -79,6 +79,8 @@ export interface TurnInputs {
   tools?: ChatToolset | undefined;
   persona?: string | null;
   conversationContext?: string | null;
+  /** The page the person sees beside the chat, rendered above their newest message (ISS-47). */
+  pageContext?: Record<string, unknown> | null;
   images?: readonly TurnImage[] | undefined;
   resolveImage?: ImageResolver | undefined;
 }
@@ -276,6 +278,7 @@ async function composeReply(ctx: TurnContext): Promise<TurnReply> {
     speakerLabel: req.speakerKey,
     persona: inputs.persona ?? null,
     conversationContext: inputs.conversationContext ?? null,
+    pageContext: inputs.pageContext ?? null,
     tools,
     resolveImage: inputs.resolveImage,
     signal: ctx.abort.signal,

@@ -61,6 +61,7 @@ export const issuesApi = {
     if (opts.q) params.set("q", opts.q);
     if (opts.priority) params.set("priority", opts.priority);
     if (opts.createdBy) params.set("createdBy", opts.createdBy);
+    if (opts.assignee) params.set("assignee", opts.assignee);
     if (opts.label) params.set("label", opts.label);
     if (opts.module) params.set("module", opts.module);
     const { status, statusNot, origin, orWaitingOnPerson } = filterToQueryParams(

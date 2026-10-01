@@ -76,6 +76,7 @@ export interface ExternalChatTurnArgs {
   persona?: string | null;
   /** Seeded recent-conversation block for the system prompt (ISS-609). */
   conversationContext?: string | null;
+  pageContext?: Record<string, unknown> | null;
   /** Images that arrived WITH this message, bytes in hand; stored by reference, sent as content parts. */
   images?: readonly TurnImage[] | undefined;
   /** Re-fetch bytes for an image from an EARLIER turn inside the vision lookback; omit to let older images fall out of view. */
@@ -216,7 +217,7 @@ export async function runExternalChatTurn(
         ? toProviderMessages(turn, resolvedImages).slice(-PROVIDER_HISTORY_WINDOW)
         : [{ role: 'user' as const, content: args.message }]),
     ],
-    { conversationContext: args.conversationContext, speakerContext },
+    { conversationContext: args.conversationContext, pageContext: args.pageContext ?? null, speakerContext },
   );
 
   const startedAt = Date.now();

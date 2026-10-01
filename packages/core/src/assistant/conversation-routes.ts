@@ -70,6 +70,8 @@ import {
 } from './conversation-scope.js';
 import { ConversationModeSettledError, sendWebConversationMessage } from './conversation-send.js';
 import { conversationToolCallRoutes } from './conversation-tool-calls.js';
+import { rememberUiSnapshot } from './ui-snapshot.js';
+import { uiSnapshotSchema } from '@forge/contracts/ui-actions';
 
 const READ_WINDOW = 200;
 
@@ -144,6 +146,8 @@ const sendSchema = z
      * Files already uploaded to THIS room, staged in its composer (ISS-1146).
      */
     attachmentIds: z.array(z.uuid()).max(10).optional(),
+    /** The page beside the chat as the browser holds it, typed by the UI-action registry (ISS-47). */
+    uiSnapshot: uiSnapshotSchema.optional(),
   })
   .strict()
   .refine((v) => v.content.trim().length > 0 || (v.attachmentIds?.length ?? 0) > 0, {
@@ -398,7 +402,7 @@ conversationRoutes.post(
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    const { content, mode, clientToken, attachmentIds } = c.req.valid('json');
+    const { content, mode, clientToken, attachmentIds, uiSnapshot } = c.req.valid('json');
     const userId = c.get('userId');
 
     const conversation = await writableConversation(id, userId);
@@ -444,6 +448,7 @@ conversationRoutes.post(
       .where(eq(users.id, userId))
       .limit(1);
 
+    if (uiSnapshot) rememberUiSnapshot(conversation.id, uiSnapshot);
     let sent: Awaited<ReturnType<typeof sendWebConversationMessage>>;
     try {
       sent = await sendWebConversationMessage({

@@ -1,4 +1,5 @@
 
+import type { UiSnapshot } from "@forge/contracts/ui-actions";
 import { apiClient, apiClientList, apiPutBytes } from "@/lib/api/client";
 import type { RoomToolCalls } from "./context";
 import type {
@@ -125,6 +126,7 @@ export const conversationsApi = {
     mode?: ConversationMode,
     clientToken?: string,
     attachmentIds?: string[],
+    uiSnapshot?: UiSnapshot,
   ) =>
     apiClient<SendResult>(`/conversations/${id}/messages`, {
       method: "POST",
@@ -133,6 +135,7 @@ export const conversationsApi = {
         ...(mode ? { mode } : {}),
         ...(clientToken ? { clientToken } : {}),
         ...(attachmentIds?.length ? { attachmentIds } : {}),
+        ...(uiSnapshot ? { uiSnapshot } : {}),
       }),
     }),
 
