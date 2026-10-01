@@ -204,28 +204,41 @@ const LOCK_AT: u64 = 0x7FFF_FFFF_FFFF_FFFE;
 struct ExcludeLock<'a>(&'a std::fs::File);
 
 impl<'a> ExcludeLock<'a> {
-    #[cfg(not(windows))]
+    /// Wait for the lock.
     fn take(file: &'a std::fs::File) -> std::io::Result<Self> {
-        file.lock()?;
+        Self::lock(file, true)
+    }
+
+    /// Take it only where nobody holds it.
+    #[cfg(test)]
+    fn try_take(file: &'a std::fs::File) -> std::io::Result<Self> {
+        Self::lock(file, false)
+    }
+
+    #[cfg(not(windows))]
+    fn lock(file: &'a std::fs::File, wait: bool) -> std::io::Result<Self> {
+        if wait {
+            file.lock()?;
+        } else {
+            file.try_lock()?;
+        }
         Ok(Self(file))
     }
 
     #[cfg(windows)]
-    fn take(file: &'a std::fs::File) -> std::io::Result<Self> {
+    fn lock(file: &'a std::fs::File, wait: bool) -> std::io::Result<Self> {
         use std::os::windows::io::AsRawHandle;
-        use windows_sys::Win32::Storage::FileSystem::{LockFileEx, LOCKFILE_EXCLUSIVE_LOCK};
+        use windows_sys::Win32::Storage::FileSystem::{
+            LockFileEx, LOCKFILE_EXCLUSIVE_LOCK, LOCKFILE_FAIL_IMMEDIATELY,
+        };
+        let flags = if wait {
+            LOCKFILE_EXCLUSIVE_LOCK
+        } else {
+            LOCKFILE_EXCLUSIVE_LOCK | LOCKFILE_FAIL_IMMEDIATELY
+        };
         let mut at = overlapped_at(LOCK_AT);
         // SAFETY: the handle stays open for the life of `file`, and `at` outlives the call.
-        let ok = unsafe {
-            LockFileEx(
-                file.as_raw_handle(),
-                LOCKFILE_EXCLUSIVE_LOCK,
-                0,
-                1,
-                0,
-                &mut at,
-            )
-        };
+        let ok = unsafe { LockFileEx(file.as_raw_handle(), flags, 0, 1, 0, &mut at) };
         if ok == 0 {
             return Err(std::io::Error::last_os_error());
         }
@@ -427,9 +440,11 @@ pub(crate) mod tests {
         drop(lock);
     }
 
-    /// Criterion 20 with the overlap made certain rather than raced: an
-    /// install arriving while another holds the lock waits for it, then finds
-    /// the line the holder added and adds none.
+    /// Criterion 20 with the lock held before the second install starts: it
+    /// waits, then finds the line the holder added and adds none. Where the
+    /// worker is scheduled only after the release, its fast path passes this
+    /// on its own; the exclusion is asserted apart, by
+    /// `a_held_lock_keeps_a_second_one_out_until_it_is_released`.
     #[test]
     fn an_install_arriving_while_another_holds_the_lock_waits_and_adds_nothing() {
         let s = Scratch::new("gx-waits");
@@ -452,9 +467,10 @@ pub(crate) mod tests {
         assert_eq!(std::fs::read_to_string(&ex).unwrap(), "*.swp\n.claude/\n");
     }
 
-    /// The exclusion itself, apart from what an install does with it: a
-    /// second lock taken through another handle is not had until the first
-    /// is released.
+    /// The exclusion itself, apart from what an install does with it and
+    /// from when a thread is scheduled: while one lock is held, a second
+    /// asked through another handle is refused at once, and is had once the
+    /// first is released.
     #[test]
     fn a_held_lock_keeps_a_second_one_out_until_it_is_released() {
         let s = Scratch::new("gx-excludes");
@@ -462,27 +478,15 @@ pub(crate) mod tests {
         let ex = exclude_of(&r);
         std::fs::create_dir_all(ex.parent().unwrap()).unwrap();
         std::fs::write(&ex, "*.swp\n").unwrap();
-        let file = locked_on(&ex);
-        let lock = ExcludeLock::take(&file).unwrap();
+        let (first, second) = (locked_on(&ex), locked_on(&ex));
+        let lock = ExcludeLock::take(&first).unwrap();
 
-        let (had, rx) = std::sync::mpsc::channel();
-        let second = {
-            let ex = ex.clone();
-            std::thread::spawn(move || {
-                let file = locked_on(&ex);
-                let _lock = ExcludeLock::take(&file).unwrap();
-                had.send(()).unwrap();
-            })
-        };
-        let wait = std::time::Duration::from_millis(500);
         assert!(
-            rx.recv_timeout(wait).is_err(),
+            ExcludeLock::try_take(&second).is_err(),
             "a second lock was had while the first was held"
         );
         drop(lock);
-        rx.recv_timeout(std::time::Duration::from_secs(10))
-            .expect("the second lock is had once the first is released");
-        second.join().unwrap();
+        ExcludeLock::try_take(&second).expect("the second lock is had once the first is released");
     }
 
     #[test]
