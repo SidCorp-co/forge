@@ -71,6 +71,7 @@ const inputSchema = z
 
 export const forgeProjectPmTool: ContextScopedMcpToolFactory = ({ principal }) => ({
   name: 'forge_project_pm',
+  reach: 'project',
   grant: {
     byAction: {
       snapshot: 'issues:read',

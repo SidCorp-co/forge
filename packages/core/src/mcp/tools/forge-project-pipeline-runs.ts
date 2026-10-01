@@ -37,6 +37,7 @@ const inputSchema = z
 
 export const forgeProjectPipelineRunsTool: ContextScopedMcpToolFactory = ({ principal }) => ({
   name: 'forge_project_pipeline_runs',
+  reach: 'project',
   grant: {
     byAction: {
       list: 'pipeline:read',

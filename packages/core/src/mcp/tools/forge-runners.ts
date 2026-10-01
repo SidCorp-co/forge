@@ -88,6 +88,7 @@ function parseCapabilitiesOrThrow(input: unknown): Record<string, unknown> {
 
 export const forgeRunnersTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_runners',
+  reach: 'project',
   grant: {
     byAction: {
       list: 'runners:read',

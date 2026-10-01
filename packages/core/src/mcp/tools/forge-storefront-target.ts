@@ -56,6 +56,7 @@ async function resolveInjectionStatus(
 
 export const forgeStorefrontTargetTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_storefront_target',
+  reach: 'project',
   grant: 'projects:read',
   description:
     "Return the project's Epodsystem storefront target so a shop skill knows WHICH store " +
