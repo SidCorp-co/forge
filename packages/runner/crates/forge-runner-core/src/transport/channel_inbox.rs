@@ -23,9 +23,38 @@ pub struct UnansweredDocument {
     pub overdue: bool,
 }
 
+/// The type an open builder run is carried under beside the channel's documents (ISS-39).
+pub const BUILDER_RUN_TYPE: &str = "builder-run";
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OpenBuilderRun {
+    id: String,
+    ecosystem: String,
+}
+
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct UnansweredResponse {
     items: Vec<UnansweredDocument>,
+    /// Priced amnesty: a core before ISS-39 sends no `builderRuns`, read as none
+    /// open; it ends once every paired core serves it.
+    #[serde(default)]
+    builder_runs: Vec<OpenBuilderRun>,
+}
+
+impl UnansweredResponse {
+    /// The channel's documents, then each open builder run as one more piece of master work.
+    fn into_work(self) -> Vec<UnansweredDocument> {
+        let runs = self.builder_runs.into_iter().map(|r| UnansweredDocument {
+            id: r.id,
+            number: None,
+            r#type: Some(BUILDER_RUN_TYPE.into()),
+            from: Some(r.ecosystem),
+            overdue: false,
+        });
+        self.items.into_iter().chain(runs).collect()
+    }
 }
 
 pub async fn unanswered(client: &CoreClient, project_id: &str) -> Result<Vec<UnansweredDocument>> {
@@ -55,7 +84,7 @@ pub async fn unanswered(client: &CoreClient, project_id: &str) -> Result<Vec<Una
         .json()
         .await
         .map_err(|e| Error::Other(format!("channel inbox decode: {e}")))?;
-    Ok(parsed.items)
+    Ok(parsed.into_work())
 }
 
 #[cfg(test)]
@@ -81,6 +110,20 @@ mod tests {
             parsed.is_err(),
             "an answer that does not say what is owed must not read as an empty inbox"
         );
+    }
+
+    #[test]
+    fn an_open_builder_run_is_master_work_beside_the_documents() {
+        let raw = serde_json::json!({
+            "items": [{ "id": "d1", "number": "FP-CR-1" }],
+            "builderRuns": [{ "id": "r1", "ecosystem": "e1", "trigger": { "kind": "joined" } }]
+        });
+        let work = serde_json::from_value::<UnansweredResponse>(raw)
+            .unwrap()
+            .into_work();
+        assert_eq!(work.len(), 2);
+        assert_eq!(work[1].id, "r1");
+        assert_eq!(work[1].r#type.as_deref(), Some(BUILDER_RUN_TYPE));
     }
 
     #[tokio::test]

@@ -1,8 +1,9 @@
-/** What a project's channel owes a reply to, read by the box carrying its master on every sweep (ISS-38). */
+/** What a project's channel owes a reply to, and the builder runs it owes (ISS-39), read by the box carrying its master on every sweep (ISS-38). */
 
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { unanswered } from '../ecosystem/channel-read.js';
+import { openRunsOf } from '../ecosystem/link-service.js';
 import { unansweredView } from '../ecosystem/channel-view.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { badRequest } from '../middleware/route-errors.js';
@@ -23,6 +24,7 @@ deviceChannelInboxRoutes.get(
     const { projectId } = c.req.valid('query');
     await assertDeviceBoundToProject(c.get('device').id, projectId);
     const items = unansweredView(await unanswered(projectId));
-    return c.json({ projectId, items, count: items.length });
+    const builderRuns = await openRunsOf(projectId);
+    return c.json({ projectId, items, count: items.length, builderRuns });
   },
 );

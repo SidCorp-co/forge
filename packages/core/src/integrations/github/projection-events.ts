@@ -1,4 +1,5 @@
 import { db } from '../../db/client.js';
+import { openPushedRuns } from '../../ecosystem/builder-trigger.js';
 import { observeLand } from '../../ecosystem/contract/land.js';
 import { recordIssueMerge } from '../../issues/merge-record.js';
 import { logger } from '../../logger.js';
@@ -127,6 +128,12 @@ async function onPush(ctx: DeliveryContext, payload: PushPayload): Promise<numbe
   const branch = branchOfPush(payload);
   if (!branch) return 0;
   const lands = await observeLand({ ...ctx, branch, commit: payload.after });
+  await openPushedRuns({
+    projectId: ctx.projectId,
+    branch,
+    defaultBranch: payload.repository?.default_branch ?? null,
+    commit: payload.after,
+  });
   const rows = await openPullRequestsOnBase(ctx, branch);
   if (rows.length === 0) return lands;
   const got = clientFor(ctx);

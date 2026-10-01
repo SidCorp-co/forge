@@ -54,7 +54,8 @@ function writerOf(c: Context<{ Variables: AuthVars }>): RecordWriter {
 
 function answer<W extends object>(c: Context, outcome: RecordOutcome<W>) {
   if (!outcome.ok) return refused(c, outcome.refusals);
-  return c.json({ ...recordView(outcome.held), created: outcome.created });
+  const report = outcome.report ? { report: outcome.report } : {};
+  return c.json({ ...recordView(outcome.held), created: outcome.created, ...report });
 }
 
 linkProjectRoutes.post('/:id/links', idParam, envelope, async (c) => {

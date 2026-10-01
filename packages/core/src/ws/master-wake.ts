@@ -15,7 +15,7 @@ export const MASTER_WAKE_STATUSES: readonly IssueStatus[] = [
 ] as const;
 
 // cm:why a wake names what fired it, and the runner (`daemon/master.rs:WakeSource`) refuses one it does not know by name, so a source added here without its reader is a loud line on the box, never a dropped signal
-export const MASTER_WAKE_SOURCES = ['issue', 'answer', 'channel'] as const;
+export const MASTER_WAKE_SOURCES = ['issue', 'answer', 'channel', 'ecosystem_build'] as const;
 export type MasterWakeSource = (typeof MASTER_WAKE_SOURCES)[number];
 
 export function isMasterWakeStatus(status: IssueStatus): boolean {
@@ -72,6 +72,13 @@ export async function wakeMastersForChannel(
   projectId: string,
 ): Promise<{ boxes: number; delivered: number }> {
   return publishWake(projectId, { projectId, source: 'channel' });
+}
+
+/** A builder run was opened for this project (a join or a push), and its master owes it (ISS-39). */
+export async function wakeMastersForBuild(
+  projectId: string,
+): Promise<{ boxes: number; delivered: number }> {
+  return publishWake(projectId, { projectId, source: 'ecosystem_build' });
 }
 
 async function publishWake(
