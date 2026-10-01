@@ -286,6 +286,31 @@ describe("the document page shows standing, holds and who wrote it", () => {
   });
 });
 
+describe("a returned document is edited before it is submitted again", () => {
+  const returned = () =>
+    view({
+      thread: null,
+      document: {
+        ...view().document,
+        state: "returned",
+        publishedAt: undefined,
+        gate: { mode: "approve", note: "name the date field" },
+      },
+    });
+
+  it("offers its writer Edit draft and no Submit, since core submits only a draft", async () => {
+    documentScreen(returned());
+    expect(await screen.findByRole("link", { name: "Edit draft" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Submit" })).not.toBeInTheDocument();
+    expect(screen.getByText(/edit it to submit it again/i)).toBeInTheDocument();
+  });
+
+  it("still offers Submit on a draft", async () => {
+    documentScreen(view({ thread: null, document: { ...view().document, state: "draft", publishedAt: undefined } }));
+    expect(await screen.findByRole("button", { name: "Submit" })).toBeInTheDocument();
+  });
+});
+
 describe("the approve gate is decided by answering its question", () => {
   const submitted = () =>
     view({
