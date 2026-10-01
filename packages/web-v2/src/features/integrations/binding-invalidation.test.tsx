@@ -22,11 +22,16 @@ vi.mock("./api", () => ({
 	integrationConnectionsApi: {},
 }));
 vi.mock("@/features/project-settings/config-api", () => ({
-	configApi: { putBinding: vi.fn(async () => ({ revision: 2 })) },
+	configApi: {
+		putBinding: vi.fn(async () => ({ revision: 2 })),
+		putProjectDocument: vi.fn(async () => ({ revision: 2 })),
+	},
 }));
 
 const hooks = await import("./hooks");
-const { useWriteBinding } = await import("@/features/project-settings/config-hooks");
+const { useWriteBinding, useWriteProjectDocument } = await import(
+	"@/features/project-settings/config-hooks"
+);
 
 const P = "p1";
 const BINDING_PANELS = [
@@ -52,7 +57,7 @@ const WRITES: Array<[string, () => { mutate: (v: never) => void; isSuccess: bool
 	["useBindConnection", () => hooks.useBindConnection(P), { connectionId: "c1" }],
 	["useCreateProviderIntegration", () => hooks.useCreateProviderIntegration(P), { provider: "coolify" }],
 	["useUpdateProviderIntegration", () => hooks.useUpdateProviderIntegration(P), { id: "b1", body: {} }],
-	["useDeleteProviderIntegration", () => hooks.useDeleteProviderIntegration(P), "b1"],
+	["useDeleteProviderIntegration", () => hooks.useDeleteProviderIntegration(P), { id: "b1", revision: 3 }],
 	["useWriteBinding (config tab)", () => useWriteBinding(P, "b1"), { base: 1, document: {} }],
 ];
 
@@ -63,5 +68,16 @@ describe("a binding write refreshes every panel that reads the binding", () => {
 		act(() => result.current.mutate(input as never));
 		await waitFor(() => expect(result.current.isSuccess).toBe(true));
 		for (const key of BINDING_PANELS) expect(keys()).toContainEqual(key);
+	});
+});
+
+describe("a project document write refreshes the project row it projects", () => {
+	it("invalidates the project detail and the console list, where the slug and name are read", async () => {
+		const { wrapper, keys } = harness();
+		const { result } = renderHook(() => useWriteProjectDocument(P), { wrapper });
+		act(() => result.current.mutate({ baseRevision: 1, document: {} }));
+		await waitFor(() => expect(result.current.isSuccess).toBe(true));
+		expect(keys()).toContainEqual(["project", P]);
+		expect(keys()).toContainEqual(["projects"]);
 	});
 });

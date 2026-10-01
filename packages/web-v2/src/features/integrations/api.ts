@@ -43,15 +43,13 @@ export const integrationsApi = {
     }),
 
   /** `DELETE /api/projects/:projectId/bindings/:bindingId { baseRevision }` — switch the binding
-   *  off through its binding-v1 document, at the revision read just before. */
-  remove: async (projectId: string, id: string) => {
-    const path = `/projects/${projectId}/bindings/${encodeURIComponent(id)}`;
-    const read = await apiClient<{ revision: number | null }>(path);
-    return apiClient<{ removed: true; bindingId: string; revision: number }>(path, {
-      method: "DELETE",
-      body: JSON.stringify({ baseRevision: read.revision }),
-    });
-  },
+   *  off by its id at the revision its row was listed at. It reads no binding document first, so a
+   *  binding with no document form (`BINDING_NOT_REPRESENTABLE` to a read) is disconnected too. */
+  remove: (projectId: string, binding: Pick<IntegrationSummary, "id" | "revision">) =>
+    apiClient<{ removed: true; bindingId: string; revision: number }>(
+      `/projects/${projectId}/bindings/${encodeURIComponent(binding.id)}`,
+      { method: "DELETE", body: JSON.stringify({ baseRevision: binding.revision }) },
+    ),
 
   /** `PATCH .../integrations/:id` — update config/secrets/active. */
   update: (projectId: string, id: string, body: UpdateIntegrationInput) =>

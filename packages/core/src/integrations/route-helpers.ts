@@ -91,6 +91,7 @@ export function summarizeBinding(pair: BindingWithConnection) {
     integrationSecretSet: binding.integrationSecret !== null,
     agentAccess: binding.agentAccess as AgentAccess,
     agentPathKind: getIntegration(binding.provider)?.capabilities.agentPath.kind ?? 'none',
+    revision: binding.revision,
     createdAt: binding.createdAt,
     updatedAt: binding.updatedAt,
   };

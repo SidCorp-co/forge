@@ -225,7 +225,7 @@ function BindingPanel({
     if (!existing) return;
     if (!window.confirm(`Delete the Coolify integration ${bindingName(existing)}?`))
       return;
-    remove.mutate(existing.id);
+    remove.mutate(existing);
   }
 
   return (

@@ -91,6 +91,9 @@ export interface BindingSummary {
    * Forge stays in the call path, `direct-mcp` means the credential is handed to the runner box.
    */
   agentPathKind: AgentPathKind;
+  /** The binding row's revision: what `DELETE /api/projects/:id/bindings/:bindingId` is sent as
+   *  `baseRevision`, so a binding is disconnected whether or not it has a binding-v1 document. */
+  revision: number;
   createdAt: string;
   updatedAt: string;
 }

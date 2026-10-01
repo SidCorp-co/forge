@@ -272,3 +272,25 @@ describe('check-status-tuples — which vocabulary a tuple is drawn from', () =>
     expect(twoAnswers).toEqual([]);
   });
 });
+
+describe('check-status-tuples — which marker excuses a declaration', () => {
+  it('reads the nearest marker above, not an earlier one still within reach', () => {
+    // Two one-line declarations, each under its own marker: the first marker ends within reach of
+    // the second declaration too, and names a different peer.
+    const mirror = scan(
+      [
+        '/* status-tuple: differs — the copy of LIVE_PEER. */',
+        "export const LIVE_COPY = ['queued', 'dispatched', 'running', 'held'] as const;",
+        '',
+        '/* status-tuple: differs — the copy of SHUT_PEER. */',
+        "export const SHUT_COPY = ['closed', 'dropped'] as const;",
+      ].join('\n'),
+      'packages/contracts/src/fixture.ts',
+    );
+    const { twoAnswers } = judge([
+      ...mirror,
+      ...scan("export const SHUT_PEER = ['closed', 'dropped'];\n", 'peer.ts'),
+    ]);
+    expect(twoAnswers).toEqual([]);
+  });
+});

@@ -156,7 +156,7 @@ function GoogleBindingPanel({
 
   function handleDelete() {
     if (!window.confirm("Disconnect the Google service account from this project?")) return;
-    remove.mutate(binding.id);
+    remove.mutate(binding);
   }
 
   return (

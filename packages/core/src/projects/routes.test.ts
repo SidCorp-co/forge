@@ -473,7 +473,7 @@ describe('GET /api/projects/:id', () => {
 });
 
 /** The row the PATCH handler returns — every case in this describe differs only
- *  by `agentConfig` and the odd `name`, so the shape lives here once. */
+ *  by `agentConfig`, so the shape lives here once. */
 function patchedRow(over: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     id: 'p1',
@@ -506,7 +506,7 @@ describe('PATCH /api/projects/:id', () => {
 
     const res = await req('/11111111-1111-4111-8111-111111111111', {
       method: 'PATCH',
-      body: JSON.stringify({ name: 'New' }),
+      body: JSON.stringify({ issuePrefix: 'NEW' }),
       token,
     });
     expect(res.status).toBe(403);
@@ -519,25 +519,29 @@ describe('PATCH /api/projects/:id', () => {
 
     const res = await req('/11111111-1111-4111-8111-111111111111', {
       method: 'PATCH',
-      body: JSON.stringify({ name: 'New' }),
+      body: JSON.stringify({ issuePrefix: 'NEW' }),
       token,
     });
     expect(res.status).toBe(403);
   });
 
-  it('200 updates allowed fields when caller is org admin', async () => {
+  it('400 refuses `name` by name, pointing at the project document, and writes nothing', async () => {
     const token = await signUserToken('uuid-owner');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
     projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
-    updateReturning.mockResolvedValueOnce([patchedRow({ name: 'New Name' })]);
 
     const res = await req('/11111111-1111-4111-8111-111111111111', {
       method: 'PATCH',
       body: JSON.stringify({ name: 'New Name' }),
       token,
     });
-    expect(res.status).toBe(200);
-    expect(updateSet).toHaveBeenCalledWith({ name: 'New Name' });
+    expect(res.status).toBe(400);
+    const text = await res.text();
+    expect(text).toContain('`name` is not written by PATCH /api/projects/:id');
+    expect(text).toContain("project document's `project.name`");
+    expect(text).toContain('PUT /api/projects/:id/config');
+    expect(updateSet).not.toHaveBeenCalled();
+    expect(dbExecute).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -556,7 +560,7 @@ describe('PATCH /api/projects/:id', () => {
 
       const res = await req('/11111111-1111-4111-8111-111111111111', {
         method: 'PATCH',
-        body: JSON.stringify({ name: 'kept', [field]: value }),
+        body: JSON.stringify({ issuePrefix: null, [field]: value }),
         token,
       });
       expect(res.status).toBe(400);
@@ -583,7 +587,7 @@ describe('PATCH /api/projects/:id', () => {
 
       const res = await req('/11111111-1111-4111-8111-111111111111', {
         method: 'PATCH',
-        body: JSON.stringify({ name: 'kept', [field]: value }),
+        body: JSON.stringify({ issuePrefix: null, [field]: value }),
         token,
       });
       expect(res.status).toBe(400);
@@ -609,7 +613,7 @@ describe('PATCH /api/projects/:id', () => {
 
     const res = await req('/11111111-1111-4111-8111-111111111111', {
       method: 'PATCH',
-      body: JSON.stringify({ name: 'kept', [field]: value }),
+      body: JSON.stringify({ issuePrefix: null, [field]: value }),
       token,
     });
     expect(res.status).toBe(400);
@@ -658,15 +662,16 @@ describe('PATCH /api/projects/:id · the release keys moved to the project docum
     const token = await signUserToken('uuid-owner');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
     projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
-    updateReturning.mockResolvedValueOnce([patchedRow({ name: 'Renamed' })]);
+    selectLimit.mockResolvedValueOnce([patchedRow()]);
 
     const res = await req('/11111111-1111-4111-8111-111111111111', {
       method: 'PATCH',
-      body: JSON.stringify({ name: 'Renamed' }),
+      body: JSON.stringify({ orgId: ORG_ID }),
       token,
     });
     expect(res.status).toBe(200);
-    expect(updateSet).toHaveBeenCalledWith({ name: 'Renamed' });
+    expect(await res.json()).toMatchObject({ id: 'p1', orgId: ORG_ID });
+    expect(updateSet).not.toHaveBeenCalled();
   });
 });
 

@@ -39,6 +39,17 @@ export interface OwedRound {
 }
 
 /**
+ * A question decided signed in to Forge — a channel approve gate, decided in Attention and on the
+ * document's gate panel, or one asked in a web chat, answered there. No room is owed its rounds, so
+ * a project with no room is the normal case for it and never an undeliverable alert.
+ */
+const decidedOnTheWeb = sql`coalesce(
+  ${agentQuestions.origin} ->> 'kind' = 'channel_gate'
+  or (${agentQuestions.origin} ->> 'kind' = 'conversation' and ${agentQuestions.origin} ->> 'adapter' = 'web'),
+  false
+)`;
+
+/**
  * Every round a room is still owed, whether or not it has ever been attempted.
  */
 export async function owedRounds(now: Date = new Date()): Promise<OwedRound[]> {
@@ -64,6 +75,7 @@ export async function owedRounds(now: Date = new Date()): Promise<OwedRound[]> {
       and(
         eq(agentQuestions.status, 'open'),
         eq(agentQuestions.blockerKind, 'human'),
+        sql`not ${decidedOnTheWeb}`,
         or(
           isNull(rocketchatQuestionDeliveries.id),
           and(
@@ -368,6 +380,16 @@ function askerOf(origin: QuestionOrigin | null): string | null {
   return origin?.kind === 'conversation' ? origin.askedByLabel : null;
 }
 
+/** An alert an earlier drain raised for a web-decided question was never true; resolve it. */
+async function clearWebDecidedAlerts(): Promise<void> {
+  const raised = await db
+    .selectDistinct({ questionId: rocketchatQuestionDeliveries.questionId })
+    .from(rocketchatQuestionDeliveries)
+    .innerJoin(agentQuestions, eq(agentQuestions.id, rocketchatQuestionDeliveries.questionId))
+    .where(and(eq(rocketchatQuestionDeliveries.status, 'undeliverable'), decidedOnTheWeb));
+  for (const { questionId } of raised) await resolveNotifications(undeliverableKey(questionId));
+}
+
 export interface QuestionDrainResult {
   owed: number;
   delivered: number;
@@ -381,6 +403,7 @@ export async function drainQuestionDeliveries(
   clock: Date | (() => Date) = () => new Date(),
 ): Promise<QuestionDrainResult> {
   const at = typeof clock === 'function' ? clock : (): Date => clock;
+  await clearWebDecidedAlerts();
   const owed = await owedRounds(at());
   const result: QuestionDrainResult = {
     owed: owed.length,

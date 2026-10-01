@@ -63,6 +63,7 @@ const refusedAs = (r: { isError: boolean; json: Doc }): string[] => {
 
 let between = '';
 let pluginDraft = '';
+let pluginSent = { id: '', number: '' };
 
 beforeAll(async () => {
   w = await openChannelWorld();
@@ -97,6 +98,15 @@ beforeAll(async () => {
       subject: 'A plugin draft the forge side did not write',
     }),
   ).id;
+  const plugin = `/api/projects/${w.project.plugin}/channel`;
+  const sent = ok(
+    await say('masterPlugin', 'POST', `${plugin}/drafts`, { ...rfi(w), to: [w.project.store] }),
+  );
+  pluginSent = {
+    id: sent.id,
+    number: ok(await say('masterPlugin', 'POST', `${plugin}/documents/${sent.id}/submit`)).document
+      .number,
+  };
 }, 180_000);
 
 afterAll(async () => {
@@ -112,6 +122,8 @@ describe('a read at ecosystem scope widens to the person’s other member projec
     const eco = await chatAs(w.user.platform, w.project.forge, w.eco);
     const read = done(await call(eco, { action: 'read', ref: between }));
     expect(read.document).toMatchObject({ number: between, from: w.project.store });
+    // Read as the plugin project the person holds a role on, which is the document's recipient.
+    expect(read.side).toBe('recipient');
   });
 
   it('lists that document in the register at ecosystem scope, and not at project scope', async () => {
@@ -142,7 +154,9 @@ describe('a counterparty’s documents stay hidden', () => {
 describe('a write at ecosystem scope acts from the home project only', () => {
   it('refuses to submit or withdraw a document another member project holds', async () => {
     const eco = await chatAs(w.user.platform, w.project.forge, w.eco);
-    expect(refusedAs(await call(eco, { action: 'submit', ref: pluginDraft })).length).toBe(1);
+    expect(refusedAs(await call(eco, { action: 'submit', ref: pluginDraft }))).toEqual([
+      'CHANNEL_NOT_A_PARTY /ref',
+    ]);
     const still = ok(
       await say(
         'platform',
@@ -154,6 +168,21 @@ describe('a write at ecosystem scope acts from the home project only', () => {
     expect(
       refusedAs(await call(eco, { action: 'withdraw', ref: between, reason: 'not ours' })),
     ).toEqual(['CHANNEL_NOT_A_PARTY /ref']);
+    // A document the plugin project sent, which the person could withdraw from a chat there: from
+    // forge's chat it is still refused, and it stays published.
+    expect(
+      refusedAs(
+        await call(eco, { action: 'withdraw', ref: pluginSent.number, reason: 'not ours' }),
+      ),
+    ).toEqual(['CHANNEL_NOT_A_PARTY /ref']);
+    const kept = ok(
+      await say(
+        'platform',
+        'GET',
+        `/api/projects/${w.project.plugin}/channel/documents/${pluginSent.id}`,
+      ),
+    );
+    expect(kept.document.state).toBe('published');
   });
 
   it('drafts from the home project into the scope’s ecosystem', async () => {

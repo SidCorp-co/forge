@@ -19,7 +19,7 @@ import type {
 	ProjectUpdateInput,
 } from "./types";
 
-/** PATCH project basics/repo. Invalidates the detail + console list. */
+/** PATCH the project row (org, issue prefix, weekly assistant). Invalidates the detail + console list. */
 export function useUpdateProject(id: string | undefined) {
 	const qc = useQueryClient();
 	const { toast } = useToast();

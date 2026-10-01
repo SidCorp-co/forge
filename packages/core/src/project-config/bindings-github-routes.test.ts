@@ -308,6 +308,7 @@ describe('a binding switched off, or holding nothing a document would drop', () 
       baseRevision: 4,
       document: { ...githubDoc(), connection: other },
     });
+    expect(swapped.status).toBe(422);
     expect((await refusalsOf(swapped))[0]).toMatchObject({
       code: 'CONNECTION_NOT_FOUND',
       detail: expect.stringContaining('takes an organisation admin'),

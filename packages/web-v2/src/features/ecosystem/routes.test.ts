@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { REGISTER_STATUS } from "./api";
-import { ecosystemRoutes } from "./routes";
+import { ecosystemRoutes, REGISTER_FILTERS } from "./routes";
 
 describe("the route builders part B links to", () => {
   it("builds each ecosystem page under the project", () => {
@@ -22,13 +21,7 @@ describe("the route builders part B links to", () => {
     expect(ecosystemRoutes.apiPage("forge")).toBe("/projects/forge/ecosystem/api");
   });
 
-  it("maps every register filter to a status core's register defines", () => {
-    expect(REGISTER_STATUS).toEqual({
-      awaiting: "open",
-      overdue: "overdue",
-      held: "held",
-      answered: "answered",
-      closed: "closed",
-    });
+  it("filters by the very words core's register defines, plus all", () => {
+    expect(REGISTER_FILTERS).toEqual(["all", "awaiting", "overdue", "held", "answered", "closed"]);
   });
 });

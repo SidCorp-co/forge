@@ -14,15 +14,6 @@ import type {
   ThreadView,
 } from "./types";
 
-/** The register's own status for each filter the page offers; "awaiting" is core's `open`. */
-export const REGISTER_STATUS: Record<Exclude<RegisterFilter, "all">, string> = {
-  awaiting: "open",
-  overdue: "overdue",
-  held: "held",
-  answered: "answered",
-  closed: "closed",
-};
-
 export interface DraftInput {
   type: DocumentType;
   to: string[];
@@ -44,7 +35,7 @@ export const ecosystemApi = {
 
   register: (ecosystemId: string, opts: { filter: RegisterFilter; party: string }) => {
     const q = new URLSearchParams({ party: opts.party, limit: "500" });
-    if (opts.filter !== "all") q.set("status", REGISTER_STATUS[opts.filter]);
+    if (opts.filter !== "all") q.set("status", opts.filter);
     return apiClient<RegisterResponse>(`/ecosystems/${ecosystemId}/register?${q}`);
   },
 

@@ -53,18 +53,32 @@ function hueFor(row: NotificationRow): NotificationItem["hue"] {
   return "cobalt";
 }
 
+/**
+ * A delivery whose every record cleared — a condition resolved, a task done. It reads as resolved
+ * rather than as still waiting: the "Resolved — …" notice beside it announces the change, and this
+ * is the row that told of the thing in the first place.
+ */
+export function deliveryResolved(row: {
+  kind: string;
+  resolvedNotice: boolean;
+  openMembers: number;
+}): boolean {
+  return !row.resolvedNotice && row.kind !== "signal" && row.openMembers === 0;
+}
+
 export function toNotificationItem(
   row: NotificationRow,
   actions?: NotificationAction[],
 ): NotificationItem {
+  const resolved = deliveryResolved(row);
   return {
     id: row.id,
-    label: row.resolvedNotice ? "RESOLVED" : typeLabel(row.type),
+    label: row.resolvedNotice || resolved ? "RESOLVED" : typeLabel(row.type),
     text: row.title,
     sub: row.body ?? undefined,
     time: formatRelativeTime(row.createdAt),
-    unread: row.readAt === null,
-    hue: hueFor(row),
+    unread: row.readAt === null && !resolved,
+    hue: resolved ? "green" : hueFor(row),
     // A delivery carrying one record is a plain row; one carrying several names the
     // cause, says how many are still true, and expands to them.
     group: row.members > 1 ? { total: row.members, open: row.openMembers } : undefined,

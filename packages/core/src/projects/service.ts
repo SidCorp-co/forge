@@ -174,16 +174,6 @@ export async function readProjectSummary(projectId: string) {
   return { ...row, baseBranch: (await readDeclaredSource(projectId)).defaultBranch };
 }
 
-export async function updateProject(projectId: string, updates: Record<string, unknown>) {
-  const [row] = await db.update(projects).set(updates).where(eq(projects.id, projectId)).returning({
-    id: projects.id,
-    slug: projects.slug,
-    name: projects.name,
-    orgId: projects.orgId,
-  });
-  return row ?? null;
-}
-
 /** The project's identity and branches plus its whole agentConfig blob. */
 export async function readProjectWithConfig(projectId: string) {
   const [row] = await db

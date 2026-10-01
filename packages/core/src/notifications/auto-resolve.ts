@@ -11,7 +11,9 @@ import { hooks } from '../pipeline/hooks.js';
 /**
  * Auto-resolve (ISS-510): mark every UNRESOLVED notification carrying
  * `resolutionKey` as read and stamp `resolvedAt`, then emit `notificationRead`
- * per cleared row so the recipient's bell + unread count update live.
+ * per cleared row so the recipient's bell + unread count update live. A condition
+ * ends `resolved` and a task `done` — the work a gate waited on was decided — so
+ * neither is left in a state that still reads as open.
  *
  * Mark-read (not delete) keeps history auditable. The key embeds the entity it
  * tracks (e.g. `wedge:<jobId>`), so clearing by key alone scopes to the
@@ -30,7 +32,7 @@ export async function resolveNotifications(resolutionKey: string): Promise<numbe
     const cleared = await db.execute<{ id: string; state: string }>(sql`
       UPDATE notifications n
       SET resolved_at = now(),
-          state = CASE WHEN n.kind = 'condition' THEN 'resolved' ELSE n.state END
+          state = CASE n.kind WHEN 'condition' THEN 'resolved' WHEN 'task' THEN 'done' ELSE n.state END
       FROM (
         SELECT id FROM notifications
         WHERE resolution_key = ${resolutionKey} AND resolved_at IS NULL

@@ -16,7 +16,7 @@ import type {
 } from "./types";
 
 export const projectSettingsApi = {
-	/** `PATCH /api/projects/:id` — basics + repo (owner only). Returns the row. */
+	/** `PATCH /api/projects/:id` — org, issue prefix and the weekly assistant (org admin). Returns the row. */
 	update: (id: string, patch: ProjectUpdateInput) =>
 		apiClient<ProjectDetail>(`/projects/${id}`, {
 			method: "PATCH",

@@ -61,4 +61,15 @@ export const BLOCKER_SETTLED_STATUSES = [
   'closed',
 ] as const;
 
+/* status-tuple: differs — the browser's copy of core's `ecosystem/channel-register.ts`
+   REGISTER_STATUSES, the register's filters in the words its rows use, so the page's filters and
+   the query core accepts are one list; status-sets-parity.test.ts binds the two. */
+export const REGISTER_STATUSES = [
+  'awaiting',
+  'overdue',
+  'held',
+  'answered',
+  'closed',
+] as const;
+
 export type MemoryReindexState = (typeof MEMORY_REINDEX_STATES)[number];

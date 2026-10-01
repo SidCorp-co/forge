@@ -117,9 +117,7 @@ const source = {
     rows.map((r) => ({ ...r, baseBranch: 'main', workspaceSetup: null })),
 };
 vi.mock('../project-config/source.js', () => source);
-vi.mock('../ws/server.js', () => ({
-  roomManager: { publish: publishMock },
-}));
+vi.mock('../ws/server.js', () => ({ roomManager: { publish: publishMock } }));
 
 const routes = await import('./routes.js');
 const { errorHandler } = await import('../middleware/error.js');

@@ -96,7 +96,7 @@ function BindingControls({
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => remove.mutate(binding.id)}
+          onClick={() => remove.mutate(binding)}
           disabled={remove.isPending}
         >
           Disconnect from this project

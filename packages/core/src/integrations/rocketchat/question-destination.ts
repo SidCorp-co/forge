@@ -159,10 +159,9 @@ export async function resolveQuestionDestination(
   }
 
   if (input.origin.kind === 'channel_gate') {
-    return {
-      kind: 'unresolvable',
-      reason: `${input.origin.number} waits at a channel approve gate, which an admin of this project decides signed in to Forge, where a return carries its note and the decision is recorded under their name; it is not posted to a room`,
-    };
+    throw new Error(
+      `rocketchat.question-destination: ${input.origin.number} waits at a channel approve gate, which is decided signed in to Forge; question-delivery.ts:owedRounds never owes it to a room, so reaching here is a defect`,
+    );
   }
 
   if (input.origin.adapter !== 'rocketchat') {

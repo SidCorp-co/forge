@@ -56,8 +56,9 @@ async function bell(userId: string, type: string) {
     title: string;
     project_id: string;
     resolved_at: string | null;
+    state: string;
   }>(sql`
-    SELECT n.title, n.project_id, n.resolved_at FROM notifications n
+    SELECT n.title, n.project_id, n.resolved_at, n.state FROM notifications n
     JOIN notification_delivery_members m ON m.notification_id = n.id
     JOIN notification_deliveries d ON d.id = m.delivery_id
     WHERE d.user_id = ${userId} AND n.type = ${type} AND d.resolved_notice = false
@@ -152,7 +153,7 @@ describe('the owner holds the thread, and the other master sees the hold and can
   it('resolves the held notice on release, and the reply then crosses, waking forge', async () => {
     ok(await say('plugin', 'POST', `${plugin()}/threads/FP-CN-1/release`, {}));
     expect(await bell(w.user.plugin, 'channel_thread_held')).toEqual([
-      expect.objectContaining({ resolved_at: expect.stringMatching(/^\d{4}-/) }),
+      expect.objectContaining({ resolved_at: expect.stringMatching(/^\d{4}-/), state: 'resolved' }),
     ]);
     publish.mockClear();
     const ack = ok(await send('masterPlugin', plugin(), acknowledgement(w, 'FP-CN-1')));
@@ -201,8 +202,9 @@ describe('a gated type tells the sending admins, and the answer clears it', () =
         optionId: 'approve',
       }),
     );
+    // The task the gate set is done, not left `open` with a resolution stamp beside it.
     expect(await bell(w.user.platform, 'channel_gate_pending')).toEqual([
-      expect.objectContaining({ resolved_at: expect.stringMatching(/^\d{4}-/) }),
+      expect.objectContaining({ resolved_at: expect.stringMatching(/^\d{4}-/), state: 'done' }),
     ]);
     expect(await bell(w.user.plugin, 'channel_document_published')).toHaveLength(3);
     expect(wakes()).toContainEqual({

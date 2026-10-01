@@ -43,7 +43,13 @@ export async function readBinding(projectId: string, id: string): Promise<Bindin
 export async function listBindings(projectId: string) {
   const rows = await store.listProjectBindings(projectId);
   const held: HeldBinding[] = [];
-  const unrepresentable: { id: string; provider: string; role: string; reason: string }[] = [];
+  const unrepresentable: {
+    id: string;
+    provider: string;
+    role: string;
+    revision: number;
+    reason: string;
+  }[] = [];
   for (const row of rows) {
     const read = toDocument(row);
     if (read.ok) held.push(read.held);
@@ -52,6 +58,7 @@ export async function listBindings(projectId: string) {
         id: row.id,
         provider: row.provider,
         role: row.role,
+        revision: row.revision,
         reason: read.unrepresentable,
       });
   }
@@ -274,7 +281,10 @@ export type BindingRemoveOutcome =
 /**
  * Switch a binding off — the one removal there is, since a binding row is kept for the deliveries
  * that name it. The same path as {@link writeBinding}: the revision it was read at, `BINDING_IN_USE`
- * while the project document names it, the revision bump of a write and its effects after.
+ * while the project document names it, the revision bump of a write and its effects after. It
+ * takes the binding by id and revision alone and never reads it as a document, so a row with no
+ * binding-v1 form (`BINDING_NOT_REPRESENTABLE` to a read) can still be disconnected, keeping every
+ * key it holds.
  */
 export async function removeBinding(input: {
   projectId: string;

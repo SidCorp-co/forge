@@ -18,6 +18,7 @@ import {
 } from "./bind-actions";
 import type {
   ConnectionUpdateInput,
+  IntegrationSummary,
 } from "./types";
 
 /** Integration status cards for a project. Keyed `['integrations','status',id]`. */
@@ -193,7 +194,8 @@ export function useDeleteProviderIntegration(projectId: string | undefined) {
   const invalidate = useInvalidateBindingChange(projectId);
   const { toast } = useToast();
   return useMutation({
-    mutationFn: (id: string) => integrationsApi.remove(projectId as string, id),
+    mutationFn: (binding: Pick<IntegrationSummary, "id" | "revision">) =>
+      integrationsApi.remove(projectId as string, binding),
     onSuccess: () => {
       invalidate();
       toast({ title: "Integration removed", tone: "success" });

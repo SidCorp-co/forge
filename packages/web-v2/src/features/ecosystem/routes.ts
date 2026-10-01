@@ -1,5 +1,9 @@
+import { REGISTER_STATUSES } from "@forge/contracts/status-sets";
+
 // cm:edge contract -> packages/core/src/me/attention-routes.ts:gateItem — core links a gate question to `document(slug, number)`, so that path is part of the API and changes in both places together
-export const REGISTER_FILTERS = ["all", "awaiting", "overdue", "held", "answered", "closed"] as const;
+
+/** The page's filters: every status core's register filters by, sent as is, and "all". */
+export const REGISTER_FILTERS = ["all", ...REGISTER_STATUSES] as const;
 export type RegisterFilter = (typeof REGISTER_FILTERS)[number];
 
 const base = (projectSlug: string) => `/projects/${encodeURIComponent(projectSlug)}/ecosystem`;
