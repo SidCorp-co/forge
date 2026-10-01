@@ -91,9 +91,7 @@ describe('ISS-1070 — 0285 deletes the shadow keys and reconciles nothing', () 
       async (tx, { projectId }) => {
         await tx`
           UPDATE projects
-             SET repo_path = '/home/kieutrung/tools/forge',
-                 base_branch = 'release/stg',
-                 default_device_id = NULL,
+             SET base_branch = 'release/stg',
                  agent_config = ${JSON.stringify({
                    repoPath: '/home/kieutrung/tools/forge/jarvis-agents',
                    baseBranch: 'main',
@@ -109,16 +107,14 @@ describe('ISS-1070 — 0285 deletes the shadow keys and reconciles nothing', () 
         expect(error).toBeNull();
 
         const [row] = await tx`
-          SELECT repo_path, base_branch, default_device_id, agent_config
+          SELECT base_branch, agent_config
             FROM projects WHERE id = ${projectId}`;
 
         expect(row?.agent_config).toEqual({
           pipelineConfig: { enabled: true },
           personaStyle: 'keep me',
         });
-        expect(row?.repo_path).toBe('/home/kieutrung/tools/forge');
         expect(row?.base_branch).toBe('release/stg');
-        expect(row?.default_device_id).toBeNull();
       },
     );
   });

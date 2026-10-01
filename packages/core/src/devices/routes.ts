@@ -283,8 +283,7 @@ deviceOwnerRoutes.delete(
 // Mirrors the device-token `GET /me/runners` (above) but authed by the user
 // JWT and param-scoped to a device the caller owns, so Settings → Devices →
 // [device] can list assigned projects with each runner's repo path/branch and
-// online/offline status. `projectDefaultRepoPath`/`baseBranch` give the UI a
-// sensible prefill when a runner has no per-device path set yet.
+// online/offline status.
 deviceOwnerRoutes.get(
   '/devices/:id/runners',
   zValidator('param', deviceIdParamSchema, (r) => {
@@ -314,7 +313,6 @@ deviceOwnerRoutes.get(
         branch: runners.branch,
         status: runners.status,
         lastSeenAt: runners.lastSeenAt,
-        projectDefaultRepoPath: projects.repoPath,
         baseBranch: projects.baseBranch,
         provisionStatus: runners.provisionStatus,
         provisionDetail: runners.provisionDetail,

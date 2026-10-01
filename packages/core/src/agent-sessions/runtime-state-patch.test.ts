@@ -60,7 +60,6 @@ vi.mock('../auth/device-credential.js', () => ({
 
 vi.mock('../lib/device-pool.js', () => ({
   findAvailableDeviceForProject: vi.fn(async () => null),
-  resolveRepoPath: () => null,
 }));
 
 vi.mock('../pipeline/activity.js', () => ({ safeRecordActivity: vi.fn(async () => {}) }));

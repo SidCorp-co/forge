@@ -53,13 +53,11 @@ function sentryPair(over: { id?: string; agentAccess?: string; secretsEnc?: stri
 function resolvedAs(args: {
   resolvedNames: string[];
   integrationServers?: { name: string; bindingId: string }[];
-  droppedNames?: string[];
 }) {
   resolveSessionMcpServers.mockResolvedValue({
     mcpServers: Object.fromEntries(args.resolvedNames.map((n) => [n, { secret: 'never-read' }])),
     resolvedNames: args.resolvedNames,
     integrationServers: args.integrationServers ?? [],
-    droppedNames: args.droppedNames ?? [],
   });
 }
 
@@ -100,35 +98,10 @@ beforeEach(() => {
   resolvedAs({ resolvedNames: [] });
 });
 
-describe('buildMcpPreview — every source, or none (ISS-1191)', () => {
-  it('reports a server the project declared in pipelineConfig, which the old preview omitted', async () => {
+describe('buildMcpPreview — every granted server, or a refusal (ISS-1191)', () => {
+  it('refuses by name a resolved server no granted binding claims', async () => {
     resolvedAs({ resolvedNames: ['playwright'] });
-    const { servers } = await buildMcpPreview(PROJECT);
-    expect(servers.map((s) => s.serverName)).toContain('playwright');
-  });
-
-  it('names the source that put each server in the set', async () => {
-    resolvedAs({ resolvedNames: ['playwright'] });
-    const { servers } = await buildMcpPreview(PROJECT);
-    expect(servers.find((s) => s.serverName === 'playwright')?.source).toBe('project');
-    expect(servers.find((s) => s.serverName === 'sentry')?.source).toBe('integration');
-  });
-
-  it('reads no url off a project-declared server spec', async () => {
-    resolvedAs({ resolvedNames: ['playwright'] });
-    const { servers } = await buildMcpPreview(PROJECT);
-    expect(servers.find((s) => s.serverName === 'playwright')?.url).toBeNull();
-  });
-
-  it('reads no headers off a project-declared server spec', async () => {
-    resolvedAs({ resolvedNames: ['playwright'] });
-    const { servers } = await buildMcpPreview(PROJECT);
-    expect(servers.find((s) => s.serverName === 'playwright')?.headers).toBeNull();
-  });
-
-  it('carries the declared names resolution did not supply', async () => {
-    resolvedAs({ resolvedNames: [], droppedNames: ['nope'] });
-    expect((await buildMcpPreview(PROJECT)).droppedNames).toEqual(['nope']);
+    await expect(buildMcpPreview(PROJECT)).rejects.toThrow(/MCP_PREVIEW_UNCLAIMED.*`playwright`/);
   });
 
   it('reports as reaching the agent exactly the names the session resolver resolved', async () => {
@@ -137,15 +110,15 @@ describe('buildMcpPreview — every source, or none (ISS-1191)', () => {
       provider === 'sentry' ? [sentryPair()] : [],
     );
     resolvedAs({
-      resolvedNames: ['playwright', 'sentry'],
+      resolvedNames: ['sentry'],
       integrationServers: [{ name: 'sentry', bindingId: 'b-sentry' }],
     });
     const { servers } = await buildMcpPreview(PROJECT);
     const reaching = servers.filter((s) => s.willInject).map((s) => s.serverName);
-    expect([...new Set(reaching)].sort()).toEqual(['playwright', 'sentry']);
+    expect([...new Set(reaching)].sort()).toEqual(['sentry']);
   });
 
-  it('does not repeat an integration server as a project row', async () => {
+  it('shows an integration server once', async () => {
     listBindingsForProject.mockResolvedValue([sentryPair()]);
     listAgentGrantedBindings.mockImplementation(async (_p: string, provider: string) =>
       provider === 'sentry' ? [sentryPair()] : [],
@@ -233,7 +206,7 @@ describe('buildMcpPreview — every source, or none (ISS-1191)', () => {
     expect(servers.find((s) => s.bindingId === 'b-lose')?.reason).toBe('shadowed');
   });
 
-  it('adds no project row for a name an integration binding already delivered', async () => {
+  it('shows the winning binding of a name, once', async () => {
     const winner = sentryPair({ id: 'b-win' });
     listBindingsForProject.mockResolvedValue([winner, sentryPair({ id: 'b-lose' })]);
     listAgentGrantedBindings.mockImplementation(async (_p: string, provider: string) =>
@@ -244,7 +217,7 @@ describe('buildMcpPreview — every source, or none (ISS-1191)', () => {
       integrationServers: [{ name: 'sentry', bindingId: 'b-win' }],
     });
     const { servers } = await buildMcpPreview(PROJECT);
-    expect(servers.filter((s) => s.source === 'project')).toEqual([]);
+    expect(servers.filter((s) => s.serverName === 'sentry' && s.willInject)).toHaveLength(1);
   });
 
   it('calls a multiBinding binding whose name another binding holds shadowed, not not_resolved', async () => {
@@ -291,7 +264,14 @@ describe('buildMcpPreview — every source, or none (ISS-1191)', () => {
   });
 
   it('never reads a spec out of the credential-bearing map the resolver returns', async () => {
-    resolvedAs({ resolvedNames: ['playwright'] });
+    listBindingsForProject.mockResolvedValue([sentryPair()]);
+    listAgentGrantedBindings.mockImplementation(async (_p: string, provider: string) =>
+      provider === 'sentry' ? [sentryPair()] : [],
+    );
+    resolvedAs({
+      resolvedNames: ['sentry'],
+      integrationServers: [{ name: 'sentry', bindingId: 'b-sentry' }],
+    });
     const { servers } = await buildMcpPreview(PROJECT);
     expect(JSON.stringify(servers)).not.toContain('never-read');
   });

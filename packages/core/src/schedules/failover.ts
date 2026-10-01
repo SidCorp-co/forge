@@ -189,7 +189,7 @@ async function attemptScheduleFailover(sessionId: string): Promise<ScheduleFailo
   const { authority } = authorised;
 
   const [project] = await db
-    .select({ id: projects.id, slug: projects.slug, repoPath: projects.repoPath })
+    .select({ id: projects.id, slug: projects.slug })
     .from(projects)
     .where(eq(projects.id, failed.projectId))
     .limit(1);

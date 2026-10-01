@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { extractPayloadExtras, extractResolvedFlags, redactMcpSecrets } from './prompt-route.js';
+import { extractPayloadExtras, extractResolvedFlags, redactSecretHeaders } from './prompt-route.js';
 
-describe('redactMcpSecrets', () => {
+describe('redactSecretHeaders', () => {
   it('redacts Authorization header with length marker', () => {
-    const out = redactMcpSecrets({ headers: { Authorization: 'Bearer abc123' } }) as {
+    const out = redactSecretHeaders({ headers: { Authorization: 'Bearer abc123' } }) as {
       headers: Record<string, string>;
     };
     expect(out.headers.Authorization).toBe('[REDACTED 13 chars]');
@@ -11,7 +11,7 @@ describe('redactMcpSecrets', () => {
 
   it('matches headers case-insensitively across known scrub keys', () => {
     const value = 'sekrit';
-    const out = redactMcpSecrets({
+    const out = redactSecretHeaders({
       authorization: value,
       AUTHORIZATION: value,
       'X-Device-Token': value,
@@ -30,24 +30,24 @@ describe('redactMcpSecrets', () => {
       transport: 'sse',
       env: { LOG_LEVEL: 'debug' },
     };
-    expect(redactMcpSecrets(input)).toEqual(input);
+    expect(redactSecretHeaders(input)).toEqual(input);
   });
 
-  it('redacts deeply nested mcpServers.<name>.headers.Cookie', () => {
-    const out = redactMcpSecrets({
-      mcpServers: {
+  it('redacts deeply nested servers.<name>.headers.Cookie', () => {
+    const out = redactSecretHeaders({
+      servers: {
         forge: {
           url: 'https://api.forge.test/mcp',
           headers: { Cookie: 'session=top-secret' },
         },
       },
-    }) as { mcpServers: { forge: { url: string; headers: { Cookie: string } } } };
-    expect(out.mcpServers.forge.headers.Cookie).toBe('[REDACTED 18 chars]');
-    expect(out.mcpServers.forge.url).toBe('https://api.forge.test/mcp');
+    }) as { servers: { forge: { url: string; headers: { Cookie: string } } } };
+    expect(out.servers.forge.headers.Cookie).toBe('[REDACTED 18 chars]');
+    expect(out.servers.forge.url).toBe('https://api.forge.test/mcp');
   });
 
   it('handles arrays of server entries', () => {
-    const out = redactMcpSecrets([
+    const out = redactSecretHeaders([
       { url: 'https://a', headers: { Authorization: 'Bearer aaa' } },
       { url: 'https://b', headers: { Authorization: 'Bearer bbbbb' } },
     ]) as Array<{ url: string; headers: { Authorization: string } }>;
@@ -57,7 +57,7 @@ describe('redactMcpSecrets', () => {
   });
 
   it('collapses non-string secret values to [REDACTED]', () => {
-    const out = redactMcpSecrets({ headers: { Cookie: 42, Authorization: null } }) as {
+    const out = redactSecretHeaders({ headers: { Cookie: 42, Authorization: null } }) as {
       headers: Record<string, unknown>;
     };
     expect(out.headers.Cookie).toBe('[REDACTED]');
@@ -66,28 +66,27 @@ describe('redactMcpSecrets', () => {
 
   it('does not mutate the input', () => {
     const input = { headers: { Authorization: 'Bearer abc' } };
-    redactMcpSecrets(input);
+    redactSecretHeaders(input);
     expect(input.headers.Authorization).toBe('Bearer abc');
   });
 
   it('returns null/undefined unchanged', () => {
-    expect(redactMcpSecrets(null)).toBeNull();
-    expect(redactMcpSecrets(undefined)).toBeUndefined();
+    expect(redactSecretHeaders(null)).toBeNull();
+    expect(redactSecretHeaders(undefined)).toBeUndefined();
   });
 
   it('bounds recursion depth without throwing on deeply nested input', () => {
     let nested: unknown = { Authorization: 'Bearer x' };
     for (let i = 0; i < 50; i++) nested = { wrap: nested };
-    expect(() => redactMcpSecrets(nested)).not.toThrow();
+    expect(() => redactSecretHeaders(nested)).not.toThrow();
   });
 });
 
 describe('extractPayloadExtras', () => {
-  it('strips promptString, skillName, mcpServers; keeps everything else', () => {
+  it('strips promptString and skillName; keeps everything else', () => {
     const out = extractPayloadExtras({
       promptString: '/forge-plan iss-1',
       skillName: 'forge-plan',
-      mcpServers: [{ url: 'https://x' }],
       preventiveContext: { hint: 'see ISS-42' },
       modelOverride: 'sonnet-4-6',
     });
@@ -97,13 +96,22 @@ describe('extractPayloadExtras', () => {
     });
   });
 
+  it('redacts a secret header inside any extra it keeps', () => {
+    const out = extractPayloadExtras({
+      servers: [{ url: 'https://x', headers: { Authorization: 'Bearer abc' } }],
+    });
+    expect(out).toEqual({
+      servers: [{ url: 'https://x', headers: { Authorization: '[REDACTED 10 chars]' } }],
+    });
+  });
+
   it('returns {} for null/undefined input', () => {
     expect(extractPayloadExtras(null)).toEqual({});
     expect(extractPayloadExtras(undefined)).toEqual({});
   });
 
   it('returns {} when payload contains only stripped keys', () => {
-    expect(extractPayloadExtras({ promptString: 'x', skillName: 'y', mcpServers: [] })).toEqual({});
+    expect(extractPayloadExtras({ promptString: 'x', skillName: 'y' })).toEqual({});
   });
 
   it('strips dispatcher-stamped resolvedFlags keys so they do not double-render', () => {
@@ -115,7 +123,6 @@ describe('extractPayloadExtras', () => {
         timeoutSeconds: 1800,
         stageStatus: 'developed',
         claudeSessionId: 'cli-abc',
-        mcpServersOverride: { x: 1 },
         // Real extras
         preventiveContext: { hint: 'h' },
       }),

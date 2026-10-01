@@ -172,7 +172,6 @@ export function makeProjectResolver(src: {
   projectId: string;
   baseBranch: string | null;
   deploysFrom: string | null;
-  repoPath: string | null;
   document: ProjectDocument | null;
   profiles: ReadonlyMap<string, TestingProfile>;
   integrations: IntegrationRow[];
@@ -182,7 +181,8 @@ export function makeProjectResolver(src: {
     'live-branch': () => src.deploysFrom ?? undefined,
     'production-branch': () =>
       '⚠️ `{{project:production-branch}}` was retired when a project gained a declared release model (ISS-1046). Use `{{project:live-branch}}`, which resolves only where the promotions of the project document carry a landed change on to the branch its production environment deploys from. Update this skill body.',
-    'repo-path': () => src.repoPath ?? undefined,
+    'repo-path': () =>
+      '⚠️ `{{project:repo-path}}` was retired with the project checkout column (ISS-14): a checkout is a path on one box, named by that device binding, and a step already runs inside it — use the working directory. Update this skill body.',
     'test-urls': () => renderTestUrls(src.document),
     'test-creds': () => renderTestCreds(src.projectId, src.document),
     'test-notes': () => renderTestNotes(src.document, src.profiles),
@@ -216,7 +216,6 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
   let baseBranch: string | null = null;
   let deploysFrom: string | null = null;
   let production: string | null = null;
-  let repoPath: string | null = null;
   let document: ProjectDocument | null = null;
   let profiles = new Map<string, TestingProfile>();
   let integrations: IntegrationRow[] = [];
@@ -229,7 +228,6 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
   try {
     const [row] = await db
       .select({
-        repoPath: projects.repoPath,
         repoUrl: projects.repoUrl,
         baseBranch: projects.baseBranch,
         orgId: projects.orgId,
@@ -238,7 +236,6 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
       .where(eq(projects.id, projectId))
       .limit(1);
     baseBranch = row?.baseBranch ?? null;
-    repoPath = row?.repoPath ?? null;
     repoUrl = row?.repoUrl ?? null;
 
     integrations = await loadActiveIntegrationRows(projectId, row?.orgId ?? null);
@@ -263,7 +260,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
       selectOnDemandSlugsFromKnowledge(projectId),
       selectAllSlugsFromKnowledge(projectId),
     ]);
-    missingObligations = missingProjectKnowledge({ repoPath, repoUrl, production }, heldSlugs);
+    missingObligations = missingProjectKnowledge({ repoUrl, production }, heldSlugs);
   } catch (err) {
     factsUnavailable = true;
     alwaysInjectFacts = [];
@@ -282,7 +279,6 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
       projectId,
       baseBranch,
       deploysFrom,
-      repoPath,
       document,
       profiles,
       integrations,

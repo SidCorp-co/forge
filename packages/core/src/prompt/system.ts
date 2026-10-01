@@ -29,8 +29,7 @@ export type PreambleBlockId =
   | 'policy'
   | 'project-context'
   | 'forge-facts'
-  | 'state-block'
-  | 'mcp-servers';
+  | 'state-block';
 
 export interface PreambleBlock {
   id: PreambleBlockId;
@@ -210,7 +209,6 @@ export async function buildChatPreamble(
   projectId: string,
   userId?: string | null,
   forceLenses?: readonly MemberLens[] | null,
-  mcpDiagnostics?: { resolved: string[]; dropped: string[] } | null,
 ): Promise<string> {
   const project = await loadProjectBranches(projectId);
   if (!project) return '';
@@ -224,9 +222,6 @@ export async function buildChatPreamble(
   ];
   const integrations = await renderChatIntegrations(projectId, project.orgId);
   if (integrations) sections.push(integrations);
-  if (mcpDiagnostics && mcpDiagnostics.dropped.length > 0) {
-    sections.push(formatMcpServersBlock(mcpDiagnostics.resolved, mcpDiagnostics.dropped));
-  }
   return `${sections.join('\n\n')}\n\n---\n\n`;
 }
 
@@ -253,18 +248,6 @@ export interface BuildPreambleOptions {
   step?: JobType | null;
   /** The policy state the job runs under; absent for a preamble no job runs (chat, preview). */
   policy?: DispatchState | null;
-  mcpDiagnostics?: { resolved: string[]; dropped: string[] } | null;
-}
-
-function formatMcpServersBlock(resolved: string[], dropped: string[]): string {
-  const resolvedList =
-    resolved.length > 0 ? resolved.map((n) => `\`mcp__${n}__*\``).join(', ') : '(none)';
-  return `## MCP servers — this session
-Resolved and available this session: ${resolvedList}
-
-WARNING — declared for this project but did NOT resolve: ${dropped.map((n) => `\`${n}\``).join(', ')}
-
-A declared name fails to resolve when it is neither a known catalog server nor a known integration name (a typo), OR it names a real integration (e.g. \`epodsystem\`) that has no active binding for this project. If your task depends on tools from one of the dropped names, STOP and report the unresolved name in your response instead of retrying or assuming a credential/auth problem — the integration status badge does not gate injection, so "connected" does not mean "declared for this dispatch".`;
 }
 
 export async function buildPipelinePreambleStructured(
@@ -308,13 +291,6 @@ export async function buildPipelinePreambleStructured(
   const stateBlock = getStatePrompt(opts?.step);
   if (stateBlock) {
     sections.push({ id: 'state-block', body: stateBlock });
-  }
-  const mcpDiagnostics = opts?.mcpDiagnostics ?? null;
-  if (mcpDiagnostics && mcpDiagnostics.dropped.length > 0) {
-    sections.push({
-      id: 'mcp-servers',
-      body: formatMcpServersBlock(mcpDiagnostics.resolved, mcpDiagnostics.dropped),
-    });
   }
   const content = sections.map((s) => s.body).join('\n\n');
   const blocks: PreambleBlock[] = sections.map((s) => ({

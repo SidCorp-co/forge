@@ -259,12 +259,15 @@ export async function bindTestRunner(
     projectId: string;
     deviceId: string;
     status?: 'online' | 'offline' | 'draining' | 'disabled';
+    /** The binding's checkout; `null` plants a binding that names none. */
+    repoPath?: string | null;
   },
 ): Promise<void> {
+  const repoPath = args.repoPath === undefined ? '/srv/checkout' : args.repoPath;
   await db.execute(sql`
-    INSERT INTO runners (id, project_id, device_id, name, type, status)
+    INSERT INTO runners (id, project_id, device_id, name, type, status, repo_path)
     VALUES (gen_random_uuid(), ${args.projectId}, ${args.deviceId}, ${`runner-${randomUUID().slice(0, 8)}`},
-            'claude-code', ${args.status ?? 'online'})
+            'claude-code', ${args.status ?? 'online'}, ${repoPath})
   `);
 }
 

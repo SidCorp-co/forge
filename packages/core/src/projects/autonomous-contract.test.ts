@@ -6,21 +6,19 @@ import {
 } from './autonomous-contract.js';
 import { RESERVED_PROJECT_FACT_KEYS } from './project-facts.js';
 
-const REPO = { repoPath: '/srv/app', repoUrl: null, production: null };
-const NOTHING = { repoPath: null, repoUrl: null, production: null };
+const REPO = { repoUrl: 'git@github.com:x/y.git', production: null };
+const NOTHING = { repoUrl: null, production: null };
 
 describe('declaresRepository', () => {
-  it('accepts either column on its own', () => {
+  it('is the repository url', () => {
     expect(declaresRepository(REPO)).toBe(true);
-    expect(declaresRepository({ ...NOTHING, repoUrl: 'git@github.com:x/y.git' })).toBe(true);
   });
 
-  it('is false when both are null', () => {
+  it('is false when it is null', () => {
     expect(declaresRepository(NOTHING)).toBe(false);
   });
 
-  it('counts a whitespace-only column as no repository', () => {
-    expect(declaresRepository({ ...NOTHING, repoPath: '   ' })).toBe(false);
+  it('counts a whitespace-only url as no repository', () => {
     expect(declaresRepository({ ...NOTHING, repoUrl: '\n\t' })).toBe(false);
   });
 });

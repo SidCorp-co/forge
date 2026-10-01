@@ -150,7 +150,7 @@ agentSessionInteractiveRoutes.post(
     });
     const updated = await dispatchInteractiveTurn({
       session,
-      project: { id: project.id, slug: project.slug, repoPath: project.repoPath },
+      project: { id: project.id, slug: project.slug },
       client,
       authority,
       message: rawPrompt,
@@ -204,7 +204,7 @@ agentSessionInteractiveRoutes.post(
     });
 
     const [project] = await db
-      .select({ id: projects.id, slug: projects.slug, repoPath: projects.repoPath })
+      .select({ id: projects.id, slug: projects.slug })
       .from(projects)
       .where(eq(projects.id, session.projectId))
       .limit(1);

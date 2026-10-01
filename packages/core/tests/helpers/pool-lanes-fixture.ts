@@ -31,12 +31,12 @@ export async function seedPoolBox(harness: TestDatabase): Promise<PoolBox> {
     UPDATE devices SET agent_version = ${CLAIM_CAPABLE_VERSION}, last_seen_at = now()
     WHERE id = ${deviceId}
   `);
-  await harness.db.execute(
-    sql`UPDATE projects SET repo_path = '/tmp/pool-lanes' WHERE id = ${projectId}`,
-  );
   await harness.db.execute(sql`
     INSERT INTO runners (id, project_id, device_id, type, name, status, last_seen_at)
     VALUES (${randomUUID()}, ${projectId}, ${deviceId}, 'claude-code', 'pool-runner', 'online', now())
+  `);
+  await harness.db.execute(sql`
+    UPDATE runners SET repo_path = '/tmp/pool-lanes' WHERE project_id = ${projectId}
   `);
   return { ownerId, projectId, deviceId, deviceToken: issued.plaintext };
 }

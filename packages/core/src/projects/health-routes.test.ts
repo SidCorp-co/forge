@@ -200,14 +200,12 @@ describe('GET /api/projects/health', () => {
         slug: 'alpha',
         name: 'Alpha',
         agentConfig: null,
-        repoPath: 'org/alpha',
       },
       {
         id: PROJECT_B_ID,
         slug: 'beta',
         name: 'Beta',
         agentConfig: null,
-        repoPath: null,
       },
     ]); // visibleProjects
     queryQueue.push([{ projectId: PROJECT_A_ID, status: 'open', n: 2 }]); // statusRows
@@ -232,7 +230,6 @@ describe('GET /api/projects/health', () => {
     const body = (await res.json()) as Array<{
       id: string;
       projectSlug: string;
-      repoPath: string | null;
       liveRuns: number;
       runnerCount: number;
       spend24hUsd: number;
@@ -245,7 +242,7 @@ describe('GET /api/projects/health', () => {
     const beta = body.find((p) => p.projectSlug === 'beta');
     expect(alpha?.id).toBe(PROJECT_A_ID);
     expect(alpha).not.toHaveProperty('description');
-    expect(alpha?.repoPath).toBe('org/alpha');
+    expect(alpha).not.toHaveProperty('repoPath');
     expect(alpha?.liveRuns).toBe(3);
     expect(alpha?.runnerCount).toBe(2);
     expect(alpha?.spend24hUsd).toBeCloseTo(13.38);

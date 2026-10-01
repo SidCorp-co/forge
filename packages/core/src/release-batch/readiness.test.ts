@@ -83,7 +83,7 @@ const SOURCE_PROBED = production({
 
 function project(over: {
   facts?: Record<string, unknown>;
-  repoPath?: string | null;
+  repoUrl?: string | null;
   production?: EnvironmentDeclaration | null;
   others?: Record<string, EnvironmentDeclaration>;
   promotions?: Promotion[];
@@ -95,8 +95,7 @@ function project(over: {
   selectLimit.mockResolvedValue([
     {
       id: PROJECT_ID,
-      repoPath: over.repoPath === undefined ? '/srv/app' : over.repoPath,
-      repoUrl: null,
+      repoUrl: over.repoUrl === undefined ? 'git@github.com:acme/app.git' : over.repoUrl,
       baseBranch: 'main',
     },
   ]);
@@ -154,7 +153,7 @@ describe('loadReleaseReadiness', () => {
   });
 
   it('owes no build or test commands to a project that declares no repository', async () => {
-    project({ facts: {}, repoPath: null });
+    project({ facts: {}, repoUrl: null });
 
     const out = await loadReleaseReadiness(PROJECT_ID);
 

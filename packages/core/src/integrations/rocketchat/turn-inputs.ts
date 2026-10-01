@@ -13,14 +13,11 @@
  * or it hands the model back the rest of its own question.
  */
 
-import { eq } from 'drizzle-orm';
 import { agentRefusalText } from '../../agent-sessions/session-credential.js';
 import { ESCALATE_TOOL_NAME } from '../../assistant/tools/escalate.js';
 import { type ConversationVenue, codeAuthored } from '../../conversations/ports.js';
 import type { WindowCut, WindowTurnInputs } from '../../conversations/route-window.js';
 import type { TurnInputs, TurnReply } from '../../conversations/turn-runner.js';
-import { db } from '../../db/client.js';
-import { projects } from '../../db/schema.js';
 import { buildConversationContext } from './context.js';
 import {
   ESCALATION_ACK,
@@ -86,7 +83,6 @@ export type RocketChatTurn = WindowTurnInputs;
 interface Seed {
   persona: string;
   conversationContext: string | null;
-  repoPath: string | null;
 }
 
 /**
@@ -103,22 +99,14 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
 
   const readSeed = async (): Promise<Seed> => {
     if (seed) return seed;
-    const [conversationContext, projectRow] = await Promise.all([
-      buildConversationContext(restAuth, {
-        rid: subject.rid,
-        tmid: subject.tmid,
-        excludeMessageIds: subject.messageIds,
-        triggerText: subject.text,
-      }),
-      db
-        .select({ repoPath: projects.repoPath })
-        .from(projects)
-        .where(eq(projects.id, route.projectId))
-        .limit(1),
-    ]);
+    const conversationContext = await buildConversationContext(restAuth, {
+      rid: subject.rid,
+      tmid: subject.tmid,
+      excludeMessageIds: subject.messageIds,
+      triggerText: subject.text,
+    });
     seed = {
       conversationContext,
-      repoPath: projectRow[0]?.repoPath ?? null,
       persona: rocketChatPersona(route.projectName, subject.username, {
         projectSlug: route.projectSlug,
         webBaseUrl: args.webBaseUrl,
@@ -174,10 +162,9 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
       setPhase('escalate');
       if (args.beforeDivert && !(await args.beforeDivert()))
         return { send: false, reason: 'superseded-before-escalation' };
-      const s = await readSeed();
       const started = await startEscalation({
         projectId: route.projectId,
-        project: { ...project, repoPath: s.repoPath },
+        project,
         connectionId: args.connectionId,
         rid: subject.rid,
         tmid: subject.tmid,

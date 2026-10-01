@@ -30,8 +30,8 @@ vi.mock('../db/client.js', () => {
 const findAvailableDeviceForProject = vi.fn();
 const findChatCapableDeviceForProject = vi.fn();
 const resolveSessionRepoPathForDevice = vi.fn(
-  async (_projectId: string, _deviceId: string | null, projectRepoPath: string | null) =>
-    projectRepoPath ?? null,
+  async (_projectId: string, deviceId: string | null): Promise<string | null> =>
+    deviceId ? '/repo' : null,
 );
 vi.mock('../lib/device-pool.js', () => ({
   findAvailableDeviceForProject: (id: string) => findAvailableDeviceForProject(id),
@@ -40,11 +40,8 @@ vi.mock('../lib/device-pool.js', () => ({
     deviceId: string,
     opts?: { allowLimited?: boolean },
   ) => findChatCapableDeviceForProject(projectId, deviceId, opts),
-  resolveSessionRepoPathForDevice: (
-    projectId: string,
-    deviceId: string | null,
-    repo: string | null,
-  ) => resolveSessionRepoPathForDevice(projectId, deviceId, repo),
+  resolveSessionRepoPathForDevice: (projectId: string, deviceId: string | null) =>
+    resolveSessionRepoPathForDevice(projectId, deviceId),
 }));
 
 vi.mock('../lib/chat-preamble.js', () => ({
@@ -56,7 +53,6 @@ vi.mock('../jobs/resolve-job-mcp-servers.js', () => ({
   resolveSessionMcpServers: async () => ({
     mcpServers: { playwright: { type: 'stdio' } },
     resolvedNames: ['playwright'],
-    droppedNames: [],
     integrationServers: [{ name: 'playwright', bindingId: 'b-1' }],
   }),
 }));
@@ -87,7 +83,7 @@ vi.mock('../pipeline/runs.js', () => ({
 
 const { resolveChatDevice, dispatchChatTurn } = await import('./chat-turn.js');
 
-const PROJECT = { id: 'proj-1', slug: 'apiflow', repoPath: '/repo' };
+const PROJECT = { id: 'proj-1', slug: 'apiflow' };
 const DEVICE = 'dev-1';
 
 function baseSession(over: Record<string, unknown> = {}) {
@@ -340,14 +336,26 @@ describe('dispatchChatTurn', () => {
       client: { deviceId: 'dev-2', isLocal: false, migrated: true },
       message: 'again on the new box',
     });
-    expect(resolveSessionRepoPathForDevice).toHaveBeenCalledWith(
-      PROJECT.id,
-      'dev-2',
-      PROJECT.repoPath,
-    );
+    expect(resolveSessionRepoPathForDevice).toHaveBeenCalledWith(PROJECT.id, 'dev-2');
     const updates = updateSet.mock.calls[0]?.[0] as { repoPath?: string | null };
     expect(updates.repoPath).toBe('/repo/on/dev-2');
     expect(updates.repoPath).not.toBe('/repo/on/dev-1');
+  });
+
+  it('refuses a remote turn whose device binding names no checkout, and publishes nothing', async () => {
+    resolveSessionRepoPathForDevice.mockResolvedValueOnce(null);
+    await expect(
+      dispatchChatTurn({
+        session: baseSession({ deviceId: DEVICE, repoPath: null }),
+        project: PROJECT,
+        client: { deviceId: DEVICE, isLocal: false, migrated: false },
+        message: 'hello',
+      }),
+    ).rejects.toThrow(
+      /CHECKOUT_UNBOUND: device dev-1's binding to project proj-1 names no checkout/,
+    );
+    expect(publishSpy).not.toHaveBeenCalled();
+    expect(updateSet).not.toHaveBeenCalled();
   });
 
   it('no device change + session.repoPath already set → NOT re-resolved (no extra query)', async () => {

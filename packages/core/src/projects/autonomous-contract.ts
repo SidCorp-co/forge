@@ -7,16 +7,15 @@ export interface KnowledgeObligation {
   because: string;
 }
 
-/** What the contract is a function of: two project columns and the project document's production. */
+/** What the contract is a function of: the repository column and the project document's production. */
 export interface ProjectDeclarations {
-  repoPath: string | null;
   repoUrl: string | null;
   /** The production environment's name, or null where the project document declares none. */
   production: string | null;
 }
 
 export function declaresRepository(p: ProjectDeclarations): boolean {
-  return (p.repoPath ?? '').trim().length > 0 || (p.repoUrl ?? '').trim().length > 0;
+  return (p.repoUrl ?? '').trim().length > 0;
 }
 
 export function requiredProjectKnowledge(p: ProjectDeclarations): KnowledgeObligation[] {

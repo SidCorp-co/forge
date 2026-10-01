@@ -74,12 +74,12 @@ describe('agentConfig declared keys and their doors', () => {
     );
   });
 
-  it('names the owning column in every retired key message', () => {
+  it('names what owns the value in every retired key message', () => {
     const owners: Record<string, string> = {
-      repoPath: 'projects.repo_path',
+      repoPath: 'device binding',
       baseBranch: 'projects.base_branch',
       productionBranch: 'PUT /api/projects/:id/config',
-      activeDeviceId: 'projects.default_device_id',
+      activeDeviceId: 'a device bound to the project',
       runnerFallback: 'decides nothing',
     };
     const missing = Object.entries(owners).filter(
@@ -99,10 +99,10 @@ function refusalsFor(record: unknown): string[] {
 
 describe('refuseAgentConfigRecord', () => {
   it.each([
-    ['repoPath', '/tmp/somewhere', 'projects.repo_path'],
+    ['repoPath', '/tmp/somewhere', 'device binding'],
     ['baseBranch', 'main', 'projects.base_branch'],
     ['productionBranch', 'main', 'PUT /api/projects/:id/config'],
-    ['activeDeviceId', '85644100-e4f5-455a-9754-6af76c19e50a', 'projects.default_device_id'],
+    ['activeDeviceId', '85644100-e4f5-455a-9754-6af76c19e50a', 'a device bound to the project'],
     ['runnerFallback', { type: 'claude-code' }, 'decides nothing'],
   ])('refuses the retired key %s naming what owns its value', (key, value, owner) => {
     const messages = refusalsFor({ [key]: value });

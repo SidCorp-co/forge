@@ -21,8 +21,7 @@ const { getTrippedDeviceIds, onlineCapableDeviceIds } = await import('./select.j
 beforeEach(() => {
   execute.mockReset();
   limit.mockReset();
-  // Default: no defaultDeviceId set on project.
-  limit.mockResolvedValue([{ defaultDeviceId: null }]);
+  limit.mockResolvedValue([]);
 });
 
 describe('getTrippedDeviceIds (device circuit breaker)', () => {

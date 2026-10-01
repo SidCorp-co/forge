@@ -100,11 +100,11 @@ async function seed() {
     UPDATE devices SET agent_version = '0.11.0', last_seen_at = now() WHERE id = ${device.id}
   `);
   await harness.db.execute(sql`
-    UPDATE projects SET repo_path = '/tmp/pool-test' WHERE id = ${project.id}
-  `);
-  await harness.db.execute(sql`
     INSERT INTO runners (id, project_id, device_id, type, name, status, last_seen_at)
     VALUES (${runner}, ${project.id}, ${device.id}, 'claude-code', 'pool-runner', 'online', now())
+  `);
+  await harness.db.execute(sql`
+    UPDATE runners SET repo_path = '/tmp/pool-test' WHERE project_id = ${project.id}
   `);
   await harness.db.execute(sql`
     INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id)
@@ -373,6 +373,30 @@ describe('master pool — reaping, load and preparation', () => {
     );
     const result = await take(job, device.id, randomUUID());
     expect(result).toEqual({ ok: false, reason: 'runner_too_old' });
+    const [row] = (await harness.db.execute(
+      sql`SELECT status, held_by, device_id FROM jobs WHERE id = ${job}`,
+    )) as unknown as Array<Record<string, unknown>>;
+    expect(row?.status).toBe('queued');
+    expect(row?.held_by).toBeNull();
+    expect(row?.device_id).toBeNull();
+  });
+
+  it('prepares the job in the checkout its device binding names', async () => {
+    const { device, job } = await seed();
+    const result = await take(job, device.id, randomUUID());
+    expect(result.ok && result.prepared.repoPath).toBe('/tmp/pool-test');
+  });
+
+  it('refuses a claim on a binding that names no checkout, by name and without a hold', async () => {
+    const { device, job, project } = await seed();
+    await harness.db.execute(
+      sql`UPDATE runners SET repo_path = NULL WHERE project_id = ${project.id}`,
+    );
+    const result = await take(job, device.id, randomUUID());
+    expect(result.ok === false && result.reason).toBe('checkout_unbound');
+    expect(result.ok === false && 'detail' in result && result.detail).toMatch(
+      new RegExp(`^CHECKOUT_UNBOUND: device ${device.id}'s binding to project ${project.id}`),
+    );
     const [row] = (await harness.db.execute(
       sql`SELECT status, held_by, device_id FROM jobs WHERE id = ${job}`,
     )) as unknown as Array<Record<string, unknown>>;

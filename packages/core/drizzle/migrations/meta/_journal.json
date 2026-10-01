@@ -2122,6 +2122,13 @@
       "when": 1811289600000,
       "tag": "0327_bindings_carry_no_stage_and_locks_name_an_environment",
       "breakpoints": true
+    },
+    {
+      "idx": 328,
+      "version": "7",
+      "when": 1811376000000,
+      "tag": "0328_a_checkout_is_the_device_bindings",
+      "breakpoints": true
     }
   ]
 }
