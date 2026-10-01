@@ -34,8 +34,7 @@ export interface DeployLockHolder {
   expiresAt: string;
 }
 
-/** `holder` is null only where nothing could be read — a concurrent acquire that has not
- *  committed — and the message says so. */
+/** `holder` is null only where nothing could be read: a concurrent acquire not yet committed. */
 export class DeployEnvironmentLockedError extends Error {
   readonly code = DEPLOY_ENVIRONMENT_LOCKED;
 

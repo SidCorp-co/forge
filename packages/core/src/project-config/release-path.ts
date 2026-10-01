@@ -88,7 +88,6 @@ export function promotedBranch(path: ReleasePath): string | null {
   return path.crossings.at(-1)?.to ?? null;
 }
 
-/** The branch work lands on, and the branch production deploys from where a promotion crosses into it. */
 export async function readLandingBranches(
   projectId: string,
 ): Promise<{ defaultBranch: string | null; promoted: string | null }> {

@@ -32,11 +32,10 @@ deviceOrgRoutes.get(
     const visibleIds = await loadVisibleProjectIds(userId);
     if (visibleIds.length === 0) return c.json([]);
 
-    // `capabilities` and the gate report are a box's own diagnostics, held back
-    // from everyone but its owner. `array_agg` is not DISTINCT: one runner per
-    // (project, device, type) by `runners_project_device_type_uq`, so one name
-    // per assignment, where DISTINCT would collapse two same-named projects
-    // `runnerCount` still counts as two (ISS-1162).
+    // `capabilities` and the gate report are a box's own diagnostics, held back from everyone but
+    // its owner. `array_agg` is not DISTINCT: one runner per (project, device, type) by
+    // `runners_project_device_type_uq`, so one name per assignment, where DISTINCT would collapse
+    // two same-named projects `runnerCount` still counts as two (ISS-1162).
     const rows = await db
       .select({
         id: devices.id,

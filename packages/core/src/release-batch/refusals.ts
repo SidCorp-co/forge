@@ -33,11 +33,9 @@ import type { ReleaseRunHoldingError } from './state.js';
 /**
  * One refusal, carrying every reason that stood beside it.
  *
- * ISS-1127: releasing ISS-1103 by hand was refused twice by this same endpoint
- * minutes apart — a missing release note, and then a merge nobody had marked —
- * each individually correct and neither mentioning the other. The thrown code
- * and its wording are unchanged; `alsoBlocking` is what stops the second
- * refusal being a surprise.
+ * ISS-1127: releasing ISS-1103 by hand was refused twice by this same endpoint minutes apart — a
+ * missing release note, then an unmarked merge — each correct and neither naming the other.
+ * `alsoBlocking` is what stops the second refusal being a surprise.
  */
 export function releaseBlockerHttp(
   err: unknown,

@@ -10,11 +10,8 @@ const TERMINAL = sql.raw(terminalAgentSessionStatuses.map((s) => `'${s}'`).join(
 
 /**
  * Close the master sessions whose box has stopped answering, and say how many.
- *
  * Flipping the row terminal invokes the descent in `applyKernelTransition`,
- * which returns the children's issue leases.
- *
- * A master is silent only if the sessions it OWNS are: a child that beat inside
+ * which returns the children's issue leases. A master is silent only if the sessions it OWNS are: a child that beat inside
  * the window means a live box with a broken master heartbeat. "Owns" is the
  * immediate edge, and a child counts only once it has REPORTED — `created_at`
  * is not a fall back, because `prepareClaimedJob` mints a queued child the

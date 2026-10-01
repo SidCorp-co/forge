@@ -3,7 +3,6 @@ import type { AgentPathKind, IntegrationDeclaration } from './types.js';
 export const AGENT_ACCESS_VALUES = ['none', 'all'] as const;
 export type AgentAccess = (typeof AGENT_ACCESS_VALUES)[number];
 
-/** The closed answer, which is what a binding gets for not choosing. */
 export const AGENT_ACCESS_CLOSED: AgentAccess = 'none';
 
 export function grantHolds(

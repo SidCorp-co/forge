@@ -47,10 +47,7 @@ export const REST_ISSUE_LIST_COLUMNS = {
     .as('waiting_on_person_since'),
 } as const;
 
-/**
- * The names this projection deliberately does not select, so a test can assert
- * on the set rather than on a hand-copied list that drifts from it.
- */
+/** The names this projection deliberately does not select, so a test asserts on the set. */
 export const REST_ISSUE_LIST_OMITTED = [
   'description',
   'descriptionFormat',
