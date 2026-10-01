@@ -12,9 +12,9 @@ import {
   connectionCreateSchema,
   connectionUpdateSchema,
 } from './provider-schemas.js';
-import { getAdapter } from './registry.js';
 import { withdrawNulls } from './release-channel-schema.js';
 import {
+  adapterOrRefuse,
   assertVaultConfigured,
   bindingWriteMoved,
   defaultConnectionDisplayName,
@@ -38,30 +38,15 @@ import {
   updateConnection,
 } from './store.js';
 
-async function loadManageableConnection(
-  id: string,
-  userId: string,
-): Promise<IntegrationConnectionRow> {
-  const connection = await findConnectionById(id);
-  if (!connection) throw notFound('connection');
-  if (connection.ownerType === 'user') {
-    if (connection.ownerId !== userId) throw notFound('connection');
-    return connection;
-  }
-  const orgRole = await loadOrgRole(connection.ownerId, userId);
-  if (!orgRole) throw notFound('connection');
-  if (!orgRoleAtLeast(orgRole, 'admin')) throw forbidden();
-  return connection;
-}
-
 /**
  * Reading a connection, as opposed to managing it. Every principal the list
- * route shows a connection to can also read it here; only WRITING is gated on
+ * route shows a connection to can also read it; only WRITING is gated on
  * org admin.
  */
-async function loadVisibleConnection(
+async function loadConnection(
   id: string,
   userId: string,
+  intent: 'read' | 'manage',
 ): Promise<IntegrationConnectionRow> {
   const connection = await findConnectionById(id);
   if (!connection) throw notFound('connection');
@@ -71,6 +56,7 @@ async function loadVisibleConnection(
   }
   const orgRole = await loadOrgRole(connection.ownerId, userId);
   if (!orgRole) throw notFound('connection');
+  if (intent === 'manage' && !orgRoleAtLeast(orgRole, 'admin')) throw forbidden();
   return connection;
 }
 
@@ -123,7 +109,7 @@ integrationConnectionsRoutes.post('/:id/bindings', () => {
 integrationConnectionsRoutes.get('/:id/bindings', async (c) => {
   const id = c.req.param('id');
   const userId = c.get('userId');
-  await loadVisibleConnection(id, userId);
+  await loadConnection(id, userId, 'read');
   const pairs = await listBindingsForConnection(id);
   const bindings = pairs.map(summarizeBinding);
   return c.json({ bindings, items: bindings });
@@ -132,7 +118,7 @@ integrationConnectionsRoutes.get('/:id/bindings', async (c) => {
 integrationConnectionsRoutes.post('/:id/test', async (c) => {
   const id = c.req.param('id');
   const userId = c.get('userId');
-  await loadManageableConnection(id, userId);
+  await loadConnection(id, userId, 'manage');
 
   // listBindingsForConnection is newest-first; walk from the back for the
   // oldest active binding (health-sweep / resolver ordering).
@@ -145,13 +131,7 @@ integrationConnectionsRoutes.post('/:id/test', async (c) => {
     });
   }
 
-  const adapter = getAdapter(pair.binding.provider);
-  if (!adapter) {
-    throw new HTTPException(400, {
-      message: `no adapter registered for provider=${pair.binding.provider}`,
-      cause: { code: 'NO_ADAPTER' },
-    });
-  }
+  const adapter = adapterOrRefuse(pair.binding.provider);
   // Time-boxed like the health sweep — a blackholed provider must not pin the
   // HTTP request open indefinitely. A timeout is reported as a truthful error
   // result, not a 5xx (the adapter keeps running and persists its own outcome).
@@ -173,7 +153,7 @@ integrationConnectionsRoutes.patch(
   async (c) => {
     const id = c.req.param('id');
     const userId = c.get('userId');
-    const existing = await loadManageableConnection(id, userId);
+    const existing = await loadConnection(id, userId, 'manage');
     const patch = c.req.valid('json');
 
     const connPatch: Parameters<typeof updateConnection>[1] = {};
@@ -210,7 +190,7 @@ integrationConnectionsRoutes.patch(
 integrationConnectionsRoutes.delete('/:id', async (c) => {
   const id = c.req.param('id');
   const userId = c.get('userId');
-  const existing = await loadManageableConnection(id, userId);
+  const existing = await loadConnection(id, userId, 'manage');
   // Cascade: bindings reference the connection with ON DELETE CASCADE, but we
   // only soft-delete here (active=false) so existing bindings stop resolving via
   // the resolvers' `connection.active` filter without dropping audit rows.

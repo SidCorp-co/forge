@@ -29,11 +29,11 @@ import {
   updateSchema,
 } from './provider-schemas.js';
 import { enqueueOutboundDispatch } from './queue.js';
-import { getAdapter } from './registry.js';
 import { withdrawNulls } from './release-channel-schema.js';
 import { rocketChatBindingOfProject } from './rocketchat/binding.js';
 import { fetchBotRooms } from './rocketchat/rest-client.js';
 import {
+  adapterOrRefuse,
   assertAdmin,
   assertProjectMember,
   bindingWriteMoved,
@@ -45,6 +45,7 @@ import {
 } from './route-helpers.js';
 import { buildIntegrationsStatusCards } from './status-service.js';
 import {
+  type BindingWithConnection,
   buildContextFromBinding,
   findBindingWithConnectionById,
   listBindingsForProject,
@@ -61,6 +62,20 @@ export const integrationsRoutes = new Hono<{ Variables: AuthVars }>();
 integrationsRoutes.use('*', requireAuth(), assertEmailVerified());
 
 registerCoolifyDeployRoutes(integrationsRoutes);
+
+/** The binding `id` of this project, after the caller's membership (and, for `admin`, role). */
+async function projectBinding(
+  projectId: string,
+  id: string,
+  userId: string,
+  need?: 'admin',
+): Promise<BindingWithConnection> {
+  const role = await assertProjectMember(projectId, userId);
+  if (need === 'admin') assertAdmin(role);
+  const existing = await findBindingWithConnectionById(id);
+  if (!existing || existing.binding.projectId !== projectId) throw notFound();
+  return existing;
+}
 
 integrationsRoutes.get('/:projectId/integrations', async (c) => {
   const projectId = c.req.param('projectId');
@@ -86,12 +101,7 @@ integrationsRoutes.patch(
     const projectId = c.req.param('projectId');
     const id = c.req.param('id');
     const userId = c.get('userId');
-    const role = await assertProjectMember(projectId, userId);
-    assertAdmin(role);
-
-    const existing = await findBindingWithConnectionById(id);
-    if (!existing || existing.binding.projectId !== projectId) throw notFound();
-    const { binding, connection } = existing;
+    const { binding, connection } = await projectBinding(projectId, id, userId, 'admin');
 
     const patch = c.req.valid('json');
     const moved = (['agentAccess', 'active', 'instructions'] as const).filter(
@@ -163,12 +173,7 @@ integrationsRoutes.patch(
 integrationsRoutes.delete('/:projectId/integrations/:id', async (c) => {
   const projectId = c.req.param('projectId');
   const id = c.req.param('id');
-  const userId = c.get('userId');
-  const role = await assertProjectMember(projectId, userId);
-  assertAdmin(role);
-
-  const existing = await findBindingWithConnectionById(id);
-  if (!existing || existing.binding.projectId !== projectId) throw notFound();
+  const existing = await projectBinding(projectId, id, c.get('userId'), 'admin');
 
   // Soft-delete the binding (stops resolution for this project). The connection
   // is left intact — it may be shared by other projects, and credential removal
@@ -185,19 +190,9 @@ integrationsRoutes.delete('/:projectId/integrations/:id', async (c) => {
 integrationsRoutes.post('/:projectId/integrations/:id/test', async (c) => {
   const projectId = c.req.param('projectId');
   const id = c.req.param('id');
-  const userId = c.get('userId');
-  await assertProjectMember(projectId, userId);
+  const existing = await projectBinding(projectId, id, c.get('userId'));
 
-  const existing = await findBindingWithConnectionById(id);
-  if (!existing || existing.binding.projectId !== projectId) throw notFound();
-
-  const adapter = getAdapter(existing.binding.provider);
-  if (!adapter) {
-    throw new HTTPException(400, {
-      message: `no adapter registered for provider=${existing.binding.provider}`,
-      cause: { code: 'NO_ADAPTER' },
-    });
-  }
+  const adapter = adapterOrRefuse(existing.binding.provider);
   const ctx = buildContextFromBinding(existing);
   const result = await adapter.healthcheck(ctx);
   return c.json(result);
@@ -261,12 +256,7 @@ integrationsRoutes.post(
 integrationsRoutes.post('/:projectId/integrations/:id/rotate-secret', async (c) => {
   const projectId = c.req.param('projectId');
   const id = c.req.param('id');
-  const userId = c.get('userId');
-  const role = await assertProjectMember(projectId, userId);
-  assertAdmin(role);
-
-  const existing = await findBindingWithConnectionById(id);
-  if (!existing || existing.binding.projectId !== projectId) throw notFound();
+  const existing = await projectBinding(projectId, id, c.get('userId'), 'admin');
 
   // The inbound HMAC secret is per-binding (an inbound webhook is project+env
   // scoped), so rotation targets the binding.
@@ -284,11 +274,7 @@ integrationsRoutes.post('/:projectId/integrations/:id/rotate-secret', async (c) 
 integrationsRoutes.get('/:projectId/integrations/:id/deliveries', async (c) => {
   const projectId = c.req.param('projectId');
   const id = c.req.param('id');
-  const userId = c.get('userId');
-  await assertProjectMember(projectId, userId);
-
-  const existing = await findBindingWithConnectionById(id);
-  if (!existing || existing.binding.projectId !== projectId) throw notFound();
+  const _existing = await projectBinding(projectId, id, c.get('userId'));
 
   const rows = await db
     .select()
@@ -307,12 +293,7 @@ integrationsRoutes.post('/:projectId/integrations/:id/deliveries/:deliveryId/ret
   const projectId = c.req.param('projectId');
   const id = c.req.param('id');
   const deliveryId = c.req.param('deliveryId');
-  const userId = c.get('userId');
-  const role = await assertProjectMember(projectId, userId);
-  assertAdmin(role);
-
-  const existing = await findBindingWithConnectionById(id);
-  if (!existing || existing.binding.projectId !== projectId) throw notFound();
+  const _existing = await projectBinding(projectId, id, c.get('userId'), 'admin');
 
   const delivery = await findDeliveryById(deliveryId);
   if (!delivery || delivery.bindingId !== id) throw notFound('delivery');

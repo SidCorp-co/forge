@@ -13,7 +13,7 @@ import {
   type IntegrationBindingRow,
   type IntegrationConnectionRow,
 } from './store.js';
-import type { HealthCheckResult, IntegrationProvider } from './types.js';
+import type { HealthCheckResult, IntegrationAdapterMethods, IntegrationProvider } from './types.js';
 import { isVaultConfigured } from './vault.js';
 
 export function assertVaultConfigured(): void {
@@ -39,6 +39,17 @@ export function bindingWriteMoved(what: string): HTTPException {
     message: `${what} no longer writes a binding: a binding is written only through ${BINDING_DOOR}. A connection is created with POST /api/integration-connections and named in the document's \`connection\`.`,
     cause: { code: 'BINDING_WRITE_MOVED' },
   });
+}
+
+export function adapterOrRefuse(provider: string): IntegrationAdapterMethods {
+  const adapter = getAdapter(provider);
+  if (!adapter) {
+    throw new HTTPException(400, {
+      message: `no adapter registered for provider=${provider}`,
+      cause: { code: 'NO_ADAPTER' },
+    });
+  }
+  return adapter;
 }
 
 export function notifyConnectionChanged(provider: string, connectionId: string): void {
