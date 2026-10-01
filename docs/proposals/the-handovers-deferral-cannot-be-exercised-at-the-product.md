@@ -28,10 +28,10 @@ begins a handover only after it has downloaded a manifest and swapped the binary
 runs from. So the second asker cannot be raised without either a manifest fixture served to a
 daemon whose install path is disposable, or overwriting a real runner's binary.
 
-## What would open it
+## Honest costs
 
-Not proposed here, and not costed — this page exists so that the next person to reach for it starts
-from the walls rather than rediscovering them.
+Not proposed here — this page exists so that the next person to reach for it starts from the walls
+rather than rediscovering them. Each way in, and what it takes:
 
 | Choice | What it costs | What it buys |
 |---|---|---|
