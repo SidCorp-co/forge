@@ -51,6 +51,7 @@ const inputSchema = z
 
 export const forgeSchedulesTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_schedules',
+  reach: 'project',
   grant: {
     byAction: {
       list: 'schedules:read',

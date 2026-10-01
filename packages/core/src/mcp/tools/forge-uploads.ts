@@ -65,6 +65,7 @@ async function mintDownloadTicket(
 
 export const forgeUploadsTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_uploads',
+  reach: 'project',
   grant: { byAction: { request: 'issues:write', fetch: 'issues:read' } },
   description:
     'Upload (action=request) or READ (action=fetch) an issue/comment/session attachment.\n' +

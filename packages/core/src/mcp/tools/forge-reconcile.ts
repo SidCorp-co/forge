@@ -64,6 +64,7 @@ const inputSchema = z
 
 export const forgeReconcileTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_reconcile',
+  reach: 'project',
   grant: {
     byAction: {
       trigger: 'skills:write',

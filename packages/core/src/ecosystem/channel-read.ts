@@ -1,0 +1,100 @@
+import { db } from '../db/client.js';
+import { notFound } from './access.js';
+import { heldThreads, REPLIES } from './channel-rules.js';
+import { NUMBER_PATTERN, type ThreadHold } from './channel-schema.js';
+import {
+  type DocumentRow,
+  documentsWhere,
+  holdsOn,
+  readDocument,
+  readNumbered,
+  repliesFrom,
+} from './channel-store.js';
+import { holdOf, type ServedDocument, serveAll } from './channel-world.js';
+
+export interface PartyView extends ServedDocument {
+  side: 'sender' | 'recipient';
+  hold: ThreadHold | null;
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+// cm:why the narrow party read: a recipient sees a document only once it is published, the sender sees its own in every state, and nobody sees another pair's
+const sideOf = (row: DocumentRow, projectId: string): PartyView['side'] | null => {
+  if (row.fromProjectId === projectId) return 'sender';
+  if (row.state === 'published' && row.toProjectIds.includes(projectId)) return 'recipient';
+  return null;
+};
+
+async function viewsOf(projectId: string, rows: readonly DocumentRow[]): Promise<PartyView[]> {
+  const mine = rows.flatMap((r) => {
+    const side = sideOf(r, projectId);
+    return side ? [{ row: r, side }] : [];
+  });
+  const served = await serveAll(
+    db,
+    mine.map((m) => m.row),
+  );
+  const threads = [...new Set(mine.flatMap((m) => (m.row.thread ? [m.row.thread] : [])))];
+  const held = heldThreads((await holdsOn(db, threads)).map(holdOf));
+  return mine.map((m, i) => {
+    const s = served[i];
+    if (!s) throw new Error(`channel: ${m.row.id} served nothing`);
+    return { ...s, side: m.side, hold: (m.row.thread && held.get(m.row.thread)) || null };
+  });
+}
+
+export async function readAs(projectId: string, ref: string): Promise<PartyView> {
+  const row = UUID.test(ref)
+    ? await readDocument(db, ref)
+    : NUMBER_PATTERN.test(ref)
+      ? await readNumbered(db, ref)
+      : null;
+  const [view] = row ? await viewsOf(projectId, [row]) : [];
+  if (!view) throw notFound(`no document ${ref} that project ${projectId} is a party to`);
+  return view;
+}
+
+export async function outbox(projectId: string): Promise<PartyView[]> {
+  return viewsOf(projectId, await documentsWhere(db, { from: projectId }));
+}
+
+export interface InboxEntry extends PartyView {
+  owesReply: boolean;
+  answered: boolean;
+  overdue: boolean;
+}
+
+// cm:why answered and overdue are derived on every read and never stored, so a lapsed due date reads as overdue rather than closing itself
+export async function inbox(projectId: string): Promise<InboxEntry[]> {
+  const views = (
+    await viewsOf(projectId, await documentsWhere(db, { to: projectId, published: true }))
+  ).filter((v) => v.document.state === 'published');
+  const numbers = views.flatMap((v) => (v.document.number ? [v.document.number] : []));
+  const answered = await repliesFrom(db, projectId, numbers);
+  const today = new Date().toISOString().slice(0, 10);
+  return views.map((v) => {
+    const d = v.document;
+    const owesReply =
+      REPLIES[d.type].length > 0 && !(d.type === 'change-notice' && d.body.binding === false);
+    const done = d.number ? answered.has(d.number) : false;
+    return {
+      ...v,
+      owesReply,
+      answered: done,
+      overdue: owesReply && !done && d.dueBy !== undefined && d.dueBy < today,
+    };
+  });
+}
+
+export async function threadAs(
+  projectId: string,
+  number: string,
+): Promise<{ thread: string; documents: PartyView[]; holds: ThreadHold[] }> {
+  const root = await readNumbered(db, number);
+  if (!root || !sideOf(root, projectId)) {
+    throw notFound(`no conversation ${number} that project ${projectId} is a party to`);
+  }
+  const documents = await viewsOf(projectId, await documentsWhere(db, { thread: number }));
+  return { thread: number, documents, holds: (await holdsOn(db, [number])).map(holdOf) };
+}

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://forge.sidcorp.co/schemas/document-v1.json",
+  "version": 1,
+  "id": "c0000000-0000-4000-8000-000000000006",
+  "ecosystem": "5c1f0a3e-7b2d-4e8a-9f10-2a3b4c5d6e70",
+  "type": "acknowledgement",
+  "state": "draft",
+  "to": ["da368b0a-8e21-4763-9d90-8f7b9d0c7115"],
+  "subject": "FP-CN-12: no impact on the Claude plugin",
+  "authoredBy": {
+    "kind": "agent",
+    "id": "master-forge-plugin",
+    "via": "master"
+  },
+  "from": "8f4c3d6b-ae5a-4b1d-8243-5d6e7f8091a3",
+  "number": null,
+  "inReplyTo": "FP-CN-12",
+  "body": {
+    "disposition": "no-impact",
+    "evidence": "The plugin reaches the API only through forge-mcp, which this version does not change."
+  }
+}

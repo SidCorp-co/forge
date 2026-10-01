@@ -1,14 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import {
+  coreTokenNamePrefixOf,
+  deviceTokenNameFor,
   generatePatPlaintext,
   isPatLike,
   isPatValid,
+  isTurnTokenName,
   PAT_PATTERN,
   PAT_PREFIX_LEN,
   PAT_PREFIX_PATTERN,
   PAT_STRING_PATTERN,
   patEnvForNodeEnv,
   patPrefixOf,
+  turnTokenDefaultName,
+  turnTokenNameFor,
+  workspaceTokenNameFor,
 } from './pat-format.js';
 
 describe('PAT_PATTERN', () => {
@@ -81,5 +87,22 @@ describe('PAT_STRING_PATTERN', () => {
     const prd = 'forge_pat_prd_cccc';
     const combined = `${dev} ${stg} ${prd}`;
     expect(combined.match(PAT_STRING_PATTERN)).toEqual([dev, stg, prd]);
+  });
+});
+
+describe('the names core gives the tokens it mints', () => {
+  it('reads both turn-token names as a turn, and nothing a person names', () => {
+    expect(isTurnTokenName(turnTokenNameFor('s-1'))).toBe(true);
+    expect(isTurnTokenName(turnTokenDefaultName(new Date(0), 'ab12'))).toBe(true);
+    expect(isTurnTokenName('laptop')).toBe(false);
+    expect(isTurnTokenName('turnkey')).toBe(false);
+  });
+
+  it('reserves every prefix core mints under, so a personal token cannot pass for one', () => {
+    expect(coreTokenNamePrefixOf(turnTokenNameFor('s'))).toBe('turn:');
+    expect(coreTokenNamePrefixOf(turnTokenDefaultName(new Date(0), 'x'))).toBe('turn ');
+    expect(coreTokenNamePrefixOf(deviceTokenNameFor('d'))).toBe('device:');
+    expect(coreTokenNamePrefixOf(workspaceTokenNameFor('d', 'p'))).toBe('workspace:');
+    expect(coreTokenNamePrefixOf('ci on the laptop')).toBeNull();
   });
 });

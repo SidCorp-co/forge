@@ -13,7 +13,7 @@ import { membershipDocumentSchema } from './schema.js';
 
 describe('the emitted JSON Schemas and the zod sources agree on the design examples', () => {
   it('reads every example', () => {
-    expect(exampleFiles()).toHaveLength(7);
+    expect(exampleFiles()).toHaveLength(14);
   });
 
   it.each(exampleFiles())('accepts %s', (file) => {

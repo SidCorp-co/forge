@@ -124,6 +124,7 @@ function decodeBase64Strict(input: string): Buffer | null {
 
 export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_comments',
+  reach: 'project',
   grant: {
     byAction: {
       list: 'issues:read',
