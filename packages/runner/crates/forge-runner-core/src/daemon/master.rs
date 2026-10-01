@@ -1447,11 +1447,11 @@ async fn sweep(
         ) {
             let pane_pid = terminal::pane_pid(&name).await;
             if let Some(led) = ledger.as_mut() {
-                carried_across(
+                let _ = &successor;
+                answer_for_adopted(
                     led,
+                    masters,
                     &runner.project_id,
-                    &name,
-                    &successor,
                     pane_pid,
                     &hosts,
                     &resolved.slug,
@@ -2493,6 +2493,20 @@ pub(crate) fn carried_across(
         );
     }
     moved
+}
+
+pub(crate) fn answer_for_adopted(
+    led: &mut Ledger,
+    masters: &Masters,
+    project_id: &str,
+    pane_pid: Option<u32>,
+    hosts: &dyn subagent_host::Hosts,
+    slug: &str,
+) -> usize {
+    let Some((successor, name)) = masters.get(project_id) else {
+        return 0;
+    };
+    carried_across(led, project_id, &name, &successor, pane_pid, hosts, slug)
 }
 
 /// What [`placed_again`] says it did. A run is called ended with the pane only
@@ -12743,6 +12757,158 @@ mod outdated_tests {
             last.act,
             OutdatedAct::Replace,
             "criterion 42: once its last run is closed and its turn is over, it is replaced"
+        );
+    }
+
+    /// Criteria 29 and 42 as the live box failed them (the judge's c29): a
+    /// handover adopts the pane under a session core re-minted, the sweep
+    /// carries its runs there, and the pane, idle at its prompt, says nothing
+    /// that would move its ledger row. Its runs are under the session this box
+    /// serves it as, and its row still names the one before.
+    #[test]
+    fn a_pane_whose_runs_were_carried_to_the_session_this_box_serves_it_as_is_left_holding_them()
+    {
+        let dir = Scratch::new("outdated-carried");
+        let mut led = Ledger::open_in_memory().unwrap();
+        a_master_row(&led, Some("0.0.1 (old)"));
+        led.create_run_group(NewRun {
+            run_id: "run-1".into(),
+            project_id: "p".into(),
+            master_session_id: "sess-old".into(),
+            worktree_path: "/w/run-1".into(),
+            boot_id: "boot-a".into(),
+            issue_keys: vec!["ISS-1".into()],
+        })
+        .unwrap();
+        assert!(led.note_host("run-1", 41_101, "4400").unwrap());
+        let masters = Arc::new(Masters::new());
+        remember(
+            &masters,
+            "p",
+            &master_api::MasterSession {
+                session_id: "sess-new".into(),
+                name: "forge-master-proj".into(),
+                created: false,
+            },
+        );
+        let hosts = subagent_host::testing::FakeHosts::with(41_101, subagent_host::HostRead::Alive);
+        hosts.under.lock().unwrap().insert((41_101, 41_100));
+        let activity = agent_activity::Activities::new();
+        activity.record(
+            "sess-new",
+            agent_activity::Report {
+                event: agent_activity::Event::Stopped,
+                at: 1_000,
+                subject: None,
+                conversation: Some("conv-1"),
+                transcript: None,
+            },
+        );
+        let judge = |led: &Ledger| {
+            judge_resident(
+                led,
+                &masters,
+                &activity,
+                "forge-master-proj",
+                &resolved(&dir),
+                "p",
+                Placement::AdoptOrStart,
+            )
+            .expect("outdated")
+            .act
+        };
+
+        answer_for_adopted(
+            &mut led,
+            &masters,
+            "p",
+            Some(41_100),
+            &hosts,
+            "proj",
+        );
+        assert_eq!(led.run("run-1").unwrap().unwrap().master_session_id, "sess-new");
+        assert_eq!(
+            led.master_for_project("p").unwrap().unwrap().session_id.as_deref(),
+            Some("sess-new"),
+            "the row names the session the runs were carried to"
+        );
+        let OutdatedAct::Leave(reason) = judge(&led) else {
+            panic!("criterion 29: replaced while holding run-1 under the session it serves")
+        };
+        assert!(reason.contains("run-1"), "{reason}");
+        let row = led.master_for_project("p").unwrap();
+        let Holding::These(held) = master_exit::holding(&led, row.as_ref()).unwrap() else {
+            panic!("a stand-down reading the ledger alone must see run-1 too")
+        };
+        assert_eq!(held[0].run_id, "run-1");
+
+        led.end_run("run-1", "master", "done").unwrap();
+        led.mark_session_terminal_observed("run-1").unwrap();
+        led.mark_checkout_returned_observed("run-1", crate::runner::ledger::CheckoutReturn::Gone)
+            .unwrap();
+        led.mark_lease_returned_observed("run-1", "ISS-1").unwrap();
+        assert_eq!(
+            judge(&led),
+            OutdatedAct::Replace,
+            "criterion 42: replaced once its last run has ended"
+        );
+    }
+
+    /// The same split with nothing carried: a run declared under the session
+    /// this box serves the pane as, while the pane's row, unwritten since,
+    /// names another. Where the two disagree nothing about the pane's runs can
+    /// be read off either, so the pane is left and the line names both.
+    #[test]
+    fn a_pane_whose_row_names_another_session_than_this_box_serves_is_left_and_both_are_named() {
+        let dir = Scratch::new("outdated-split");
+        let mut led = Ledger::open_in_memory().unwrap();
+        a_master_row(&led, Some("0.0.1 (old)"));
+        led.create_run_group(NewRun {
+            run_id: "run-2".into(),
+            project_id: "p".into(),
+            master_session_id: "sess-new".into(),
+            worktree_path: "/w/run-2".into(),
+            boot_id: "boot-a".into(),
+            issue_keys: vec!["ISS-2".into()],
+        })
+        .unwrap();
+        let masters = Arc::new(Masters::new());
+        remember(
+            &masters,
+            "p",
+            &master_api::MasterSession {
+                session_id: "sess-new".into(),
+                name: "forge-master-proj".into(),
+                created: false,
+            },
+        );
+        let activity = agent_activity::Activities::new();
+        activity.record(
+            "sess-new",
+            agent_activity::Report {
+                event: agent_activity::Event::Stopped,
+                at: 1_000,
+                subject: None,
+                conversation: Some("conv-1"),
+                transcript: None,
+            },
+        );
+        let found = judge_resident(
+            &led,
+            &masters,
+            &activity,
+            "forge-master-proj",
+            &resolved(&dir),
+            "p",
+            Placement::AdoptOrStart,
+        )
+        .expect("outdated");
+        let OutdatedAct::Leave(reason) = &found.act else {
+            panic!("criterion 29: replaced while run-2 is open under the session it is served as")
+        };
+        assert!(
+            reason.contains("sess-old") && reason.contains("sess-new"),
+            "{reason}"
         );
     }
 

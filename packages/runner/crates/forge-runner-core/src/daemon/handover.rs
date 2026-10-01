@@ -145,7 +145,7 @@ mod tests {
     #[test]
     fn a_listener_bound_where_this_process_binds_is_taken() {
         use std::os::fd::AsRawFd;
-        let dir = crate::test_scratch::Scratch::new("handover-take");
+        let dir = crate::test_scratch::Scratch::short("handover-take");
         let path = sock_in(&dir);
         let bound = std::os::unix::net::UnixListener::bind(&path).unwrap();
         let fd = bound.as_raw_fd();
@@ -157,7 +157,7 @@ mod tests {
     #[test]
     fn a_listener_bound_elsewhere_is_refused_by_where_it_is_bound_and_left_open() {
         use std::os::fd::AsRawFd;
-        let dir = crate::test_scratch::Scratch::new("handover-elsewhere");
+        let dir = crate::test_scratch::Scratch::short("handover-elsewhere");
         let bound = std::os::unix::net::UnixListener::bind(dir.join("other.sock")).unwrap();
         let why = take_listener(bound.as_raw_fd(), &sock_in(&dir)).expect_err("refused");
         assert!(why.contains("other.sock"), "{why}");
@@ -170,7 +170,7 @@ mod tests {
     #[test]
     fn a_descriptor_that_is_not_a_socket_is_refused_and_left_open() {
         use std::os::fd::AsRawFd;
-        let dir = crate::test_scratch::Scratch::new("handover-file");
+        let dir = crate::test_scratch::Scratch::short("handover-file");
         let file = std::fs::File::create(dir.join("plain")).unwrap();
         let why = take_listener(file.as_raw_fd(), &sock_in(&dir)).expect_err("refused");
         assert!(why.contains("is not a socket"), "{why}");
@@ -179,7 +179,7 @@ mod tests {
 
     #[test]
     fn a_descriptor_that_is_not_open_is_refused() {
-        let dir = crate::test_scratch::Scratch::new("handover-closed");
+        let dir = crate::test_scratch::Scratch::short("handover-closed");
         let why = take_listener(987_654, &sock_in(&dir)).expect_err("refused");
         assert!(why.contains("is not open"), "{why}");
     }
@@ -191,7 +191,7 @@ mod tests {
     fn an_exec_that_cannot_happen_returns_why_and_leaves_the_listener_serving() {
         use nix::fcntl::{fcntl, FcntlArg, FdFlag};
         use std::os::fd::AsRawFd;
-        let dir = crate::test_scratch::Scratch::new("handover-noexec");
+        let dir = crate::test_scratch::Scratch::short("handover-noexec");
         let path = sock_in(&dir);
         let bound = std::os::unix::net::UnixListener::bind(&path).unwrap();
         let missing = dir.join("no-such-build");
@@ -202,5 +202,32 @@ mod tests {
         let client = std::os::unix::net::UnixStream::connect(&path).expect("still bound");
         drop(client);
         assert!(bound.accept().is_ok(), "and still accepting");
+    }
+
+    /// The disposition `signal` has in this process now.
+    fn disposition(signal: nix::libc::c_int) -> nix::libc::sighandler_t {
+        // SAFETY: a query: no handler is installed, the old one is only read.
+        unsafe {
+            let mut old: nix::libc::sigaction = std::mem::zeroed();
+            assert_eq!(nix::libc::sigaction(signal, std::ptr::null(), &mut old), 0);
+            old.sa_sigaction
+        }
+    }
+
+    /// Criterion 12: an old build left serving is left as it was serving. The
+    /// runtime ignores SIGPIPE, which is what lets a hook that hangs up
+    /// mid-reply cost this daemon a write error rather than its life; an exec
+    /// that did not happen must not have put the default back.
+    #[test]
+    fn an_exec_that_cannot_happen_leaves_this_process_ignoring_sigpipe() {
+        let dir = crate::test_scratch::Scratch::short("handover-pipe");
+        assert_eq!(disposition(nix::libc::SIGPIPE), nix::libc::SIG_IGN, "as the runtime set it");
+        let err = replace_image(&dir.join("no-such-build"), &[], None);
+        assert_eq!(err.kind(), std::io::ErrorKind::NotFound, "{err}");
+        assert_eq!(
+            disposition(nix::libc::SIGPIPE),
+            nix::libc::SIG_IGN,
+            "a failed exec put SIGPIPE back to its default, so the next hook that hangs up mid-reply ends the daemon"
+        );
     }
 }
