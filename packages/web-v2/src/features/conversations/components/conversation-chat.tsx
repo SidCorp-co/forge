@@ -47,7 +47,7 @@ import { ConversationModeControl, modePlaceholder } from "./mode-control";
 import { ConversationMembers } from "./conversation-members";
 import { ConversationThread } from "./conversation-thread";
 import { ScopeNotice } from "./scope-notice";
-import { useUiActions, useUiSnapshot } from "../ui-actions/use-ui-actions";
+import { seesDetail, useUiActions, useUiSnapshot } from "../ui-actions/use-ui-actions";
 
 export function ConversationChat({
   projectId,
@@ -343,7 +343,10 @@ export function ConversationChat({
               {page.sees && (
                 <span
                   data-testid="composer-sees"
-                  title="What the assistant is told about the page beside the chat"
+                  title={seesDetail(page.snapshot, {
+                    project: projectRow?.name ?? null,
+                    scope: ecosystemId ? "ecosystem" : "project",
+                  })}
                   className="fg-caption inline-flex max-w-[16rem] items-center gap-1 truncate text-subtle"
                 >
                   Sees {page.sees}

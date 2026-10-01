@@ -213,7 +213,7 @@ export function projectRailItems(badges: ProjectBadges): RailItem[] {
 export function bottomTabItems(attentionCount: number): BottomTabItem[] {
   return [
     { key: "home", label: "Home", icon: "grid" },
-    { key: "chat", label: "Chat", icon: "chat" },
+    { key: "chat", label: "Ask Agent", icon: "chat" },
     { key: "attention", label: "Attention", icon: "inbox", badge: attentionCount },
     { key: "more", label: "More", icon: "menu" },
   ];

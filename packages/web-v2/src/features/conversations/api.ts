@@ -1,7 +1,6 @@
 
 import type { UiSnapshot } from "@forge/contracts/ui-actions";
 import { apiClient, apiClientList, apiPutBytes } from "@/lib/api/client";
-import type { RoomToolCalls } from "./context";
 import type {
   AgentModeOffer,
   ConversationCandidates,
@@ -67,7 +66,6 @@ export const conversationsApi = {
       method: pinned ? "PUT" : "DELETE",
     }),
 
-  toolCalls: (id: string) => apiClient<RoomToolCalls>(`/conversations/${id}/tool-calls`),
 
   /** `POST /api/conversations` — open a room in this project, with whoever it starts with. */
   open: (args: OpenConversationArgs) =>

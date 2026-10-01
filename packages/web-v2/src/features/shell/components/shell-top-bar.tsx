@@ -1,8 +1,9 @@
 "use client";
 
 import { Button } from "@/design";
+import { DOCK_TITLE } from "@/features/conversations/components/chat-dock";
 
-// cm:why the bar is desktop-only: below md the bottom tabs carry Chat, and a second entry there would be the same control twice
+// cm:why the bar is desktop-only: below md the bottom tabs carry Ask Agent, and a second entry there would be the same control twice
 export function ShellTopBar({ chatOpen, onToggleChat }: { chatOpen: boolean; onToggleChat: () => void }) {
   return (
     <header className="hidden h-12 flex-none items-center justify-end gap-2 border-b border-line bg-surface px-4 sm:px-6 md:flex">
@@ -14,7 +15,7 @@ export function ShellTopBar({ chatOpen, onToggleChat }: { chatOpen: boolean; onT
         aria-pressed={chatOpen}
         onClick={onToggleChat}
       >
-        Chat
+        {DOCK_TITLE}
       </Button>
     </header>
   );

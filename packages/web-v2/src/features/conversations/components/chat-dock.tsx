@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { Icon, IconButton, SegmentedControl, type SegmentOption, SlideOver, useMediaQuery } from "@/design";
+import { Icon, IconButton, Popover, SlideOver, useMediaQuery } from "@/design";
 import { useProjectEcosystems } from "@/features/ecosystem/hooks";
 import { useProjects } from "@/features/projects/hooks";
 import { projectRoom } from "@/lib/ws/rooms";
@@ -9,21 +9,15 @@ import { useRoom } from "@/lib/ws/use-room";
 import type { ChatDockApi } from "../dock";
 import { DOCK_MAX_WIDTH, DOCK_MIN_WIDTH, clampDockWidth, targetConversationId } from "../dock-target";
 import { BOARD_DOCK_WIDTH, BoardPanel } from "../board/board-panel";
-import { boardStore, useBoard } from "../board/board-store";
+import { useBoard } from "../board/board-store";
 import { useUiSnapshot } from "../ui-actions/use-ui-actions";
 import { useConversation } from "../hooks";
-import { ContextPanel } from "./context-panel";
 import { ConversationChat } from "./conversation-chat";
 import { ConversationList } from "./conversation-list";
 import { StartConversation } from "./start-conversation";
 
-type DockTab = "chat" | "chats" | "context";
-
-const TABS: SegmentOption<DockTab>[] = [
-  { value: "chat", label: "Chat" },
-  { value: "chats", label: "Chats" },
-  { value: "context", label: "Context" },
-];
+/** What a person sees the dock called — the top-bar button, the dock title and its labels. */
+export const DOCK_TITLE = "Ask Agent";
 
 function RoomSub({ projectId }: { projectId: string }) {
   useRoom(projectRoom(projectId));
@@ -51,13 +45,13 @@ function RoomScopeChip({ project, ecosystemId }: { project: { id: string; name: 
 }
 
 export function ChatDockBody({ dock }: { dock: ChatDockApi }) {
-  const [tab, setTab] = useState<DockTab>("chat");
+  const [history, setHistory] = useState(false);
+  const historyAnchor = useRef<HTMLSpanElement>(null);
   const board = useBoard();
   const projectsQ = useProjects();
   const target = dock.target;
   const conversationId = targetConversationId(target);
   const roomQ = useConversation(conversationId ?? undefined);
-  const said = (roomQ.data?.messages.length ?? 0) + (roomQ.data?.windows.filter((w) => w.closedAt).length ?? 0);
   const project =
     target && target.kind !== "people" ? projectsQ.data?.find((p) => p.id === target.projectId) : undefined;
   const ecosystemId =
@@ -66,26 +60,12 @@ export function ChatDockBody({ dock }: { dock: ChatDockApi }) {
   const pick = useCallback(
     (t: Parameters<ChatDockApi["select"]>[0]) => {
       dock.select(t);
-      setTab("chat");
+      setHistory(false);
     },
     [dock],
   );
 
   const body = () => {
-    if (tab === "chats") {
-      return (
-        <div className="flex h-full min-h-0 flex-col p-3">
-          <ConversationList projectId={dock.projectId} conversationId={conversationId} onSelect={pick} />
-        </div>
-      );
-    }
-    if (tab === "context") {
-      return project ? (
-        <ContextPanel conversationId={conversationId} said={said} slug={project.slug} />
-      ) : (
-        <p className="fg-body-sm p-4 text-muted">Context belongs to a chat in a project; this one has none yet.</p>
-      );
-    }
     if (!target || target.kind === "people") {
       return (
         <StartConversation onStarted={(id, projectId) => pick({ kind: "room", projectId, conversationId: id })} />
@@ -126,17 +106,36 @@ export function ChatDockBody({ dock }: { dock: ChatDockApi }) {
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="chat-dock-body">
       <header className="flex flex-none items-center gap-2 border-b border-line px-3 py-2">
-        <SegmentedControl options={TABS} value={tab} onChange={setTab} />
-        <span className="min-w-0 flex-1" />
+        <h2 className="fg-body-sm min-w-0 flex-1 truncate font-semibold text-fg">{DOCK_TITLE}</h2>
+        <span ref={historyAnchor} className="inline-flex">
+          <IconButton
+            icon="history"
+            size="sm"
+            aria-label="Past conversations"
+            title="Past conversations"
+            aria-expanded={history}
+            onClick={() => setHistory((v) => !v)}
+          />
+        </span>
         <IconButton
-          icon="board"
+          icon="plus"
           size="sm"
-          aria-label={board.open ? "Close the board" : "Open a board"}
-          aria-pressed={board.open}
-          onClick={board.open ? boardStore.close : boardStore.openBlank}
+          aria-label="New conversation"
+          title="New conversation"
+          onClick={() => pick(dock.projectId ? { kind: "draft", projectId: dock.projectId } : { kind: "people" })}
         />
-        <IconButton icon="x" size="sm" aria-label="Close chat" onClick={dock.close} />
+        <IconButton icon="x" size="sm" aria-label={`Close ${DOCK_TITLE}`} title="Close" onClick={dock.close} />
       </header>
+      <Popover
+        open={history}
+        anchor={historyAnchor}
+        onDismiss={() => setHistory(false)}
+        placement="bottom-end"
+        maxHeight={520}
+        className="flex w-[360px] max-w-[calc(100vw-2rem)] flex-col p-3"
+      >
+        <ConversationList projectId={dock.projectId} conversationId={conversationId} onSelect={pick} />
+      </Popover>
       <div className="min-h-0 flex-1 overflow-hidden">{body()}</div>
     </div>
   );
@@ -161,7 +160,7 @@ function ResizeHandle({
   return (
     <hr
       aria-orientation="vertical"
-      aria-label="Resize the chat panel"
+      aria-label={`Resize the ${DOCK_TITLE} panel`}
       aria-valuenow={width}
       aria-valuemin={DOCK_MIN_WIDTH}
       aria-valuemax={DOCK_MAX_WIDTH}
@@ -213,7 +212,7 @@ export function ChatDock({ dock }: { dock: ChatDockApi }) {
   const width = live ?? (board.open ? Math.max(dock.width, clampDockWidth(BOARD_DOCK_WIDTH)) : dock.width);
   return (
     <aside
-      aria-label="Chat"
+      aria-label={DOCK_TITLE}
       data-testid="chat-dock"
       className="relative hidden h-full flex-none flex-col border-l border-line bg-app md:flex"
       style={{ width }}

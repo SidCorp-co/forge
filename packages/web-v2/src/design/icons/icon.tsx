@@ -4,7 +4,7 @@ import {
   Cpu, DollarSign, Filter, Folder, GitBranch, GitFork, Inbox, Keyboard,
   LayoutGrid, Link as LinkIcon, List, Lock, LogOut, type LucideIcon, Mail,
   Menu as MenuIcon, MessageSquare, Network, Monitor, MoreHorizontal, PanelLeftClose, Pause, Pin, Play,
-  Pencil, Plus, Rocket, RotateCw, Rows3, Search, Server, Settings, Shield, Sparkles, Square,
+  History, Pencil, PenLine, Plus, Rocket, RotateCw, Rows3, Search, Server, Settings, Shield, Sparkles, Square,
   Star, Trash2, TriangleAlert, Users, Waypoints, Workflow, X,
   Bold, Code, Heading, Italic, ListOrdered, Quote, SquareCode,
 } from "lucide-react";
@@ -30,6 +30,8 @@ const ICONS = {
   monitor: Monitor,
   activity: Activity,
   clock: Clock,
+  history: History,
+  sketch: PenLine,
   search: Search,
   bell: Bell,
   plus: Plus,

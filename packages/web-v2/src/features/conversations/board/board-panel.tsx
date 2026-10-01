@@ -19,7 +19,7 @@ export const BOARD_DOCK_WIDTH = 880;
 const stamp = () => new Date().toISOString().replace(/[-:]/g, "").replace(/\..*$/, "").replace("T", "-");
 
 /**
- * The board inside the chat panel: the canvas, what it reads as, and Attach — which stores the board on
+ * The assistant's board inside the chat panel, read-only to the person: the canvas, what it reads as, and Attach — which stores the board on
  * an issue as `board-<time>.wireframe.json` (the spec a run reads) and its SVG beside it.
  */
 export function BoardPanel({ projectId, issueKey }: { projectId: string; issueKey?: string | undefined }) {
@@ -33,7 +33,7 @@ export function BoardPanel({ projectId, issueKey }: { projectId: string; issueKe
 
   const attach = async () => {
     const doc = board.doc;
-    if (!doc || board.refused) return;
+    if (!doc) return;
     setState({ busy: true, said: null, error: false });
     try {
       const issue = await issueDetailApi.get(key.trim(), projectId);
@@ -65,19 +65,13 @@ export function BoardPanel({ projectId, issueKey }: { projectId: string; issueKe
         <Button
           size="sm"
           variant="primary"
-          disabled={!validKey || state.busy || Boolean(board.refused) || !board.doc}
+          disabled={!validKey || state.busy || !board.doc}
           onClick={attach}
-          title={board.refused ?? undefined}
         >
           {state.busy ? "Attaching…" : `Attach to ${validKey ? key.trim() : "issue"}`}
         </Button>
         <IconButton icon="x" size="sm" aria-label="Close the board" onClick={boardStore.close} />
       </header>
-      {board.refused && (
-        <p role="alert" data-testid="board-refused" className="fg-caption flex-none px-3 pb-2 text-[color:var(--red-600)]">
-          {board.refused}
-        </p>
-      )}
       {state.said && (
         <p
           role={state.error ? "alert" : "status"}
