@@ -60,6 +60,7 @@ pub struct PreparedJob {
     /// The tools this job's policy state denies, as the pane's `--disallowed-tools`.
     #[serde(default)]
     pub denied_tools: Vec<String>,
+    /// The checkout this device's binding to the project names (`runners.repo_path`).
     #[serde(default)]
     pub repo_path: Option<String>,
     #[serde(default)]
@@ -80,6 +81,8 @@ pub enum Refusal {
     RunnerWithdrawn,
     DeviceDisabled,
     RunnerUnbound,
+    /// This device's binding to the project names no checkout; core's sentence says how to bind one.
+    CheckoutUnbound(String),
     ReleaseLabelMissing,
     Unknown(String),
 }
@@ -96,6 +99,7 @@ impl Refusal {
             "runner_withdrawn" => Self::RunnerWithdrawn,
             "device_disabled" => Self::DeviceDisabled,
             "runner_unbound" => Self::RunnerUnbound,
+            "checkout_unbound" => Self::CheckoutUnbound(detail.unwrap_or_default().to_string()),
             "release_label_missing" => Self::ReleaseLabelMissing,
             other => Self::Unknown(other.to_string()),
         }
@@ -113,6 +117,7 @@ impl Refusal {
             Self::RunnerWithdrawn => "runner_withdrawn",
             Self::DeviceDisabled => "device_disabled",
             Self::RunnerUnbound => "runner_unbound",
+            Self::CheckoutUnbound(_) => "checkout_unbound",
             Self::ReleaseLabelMissing => "release_label_missing",
             Self::Unknown(raw) => raw,
         }
@@ -123,6 +128,9 @@ impl Refusal {
         match self {
             Self::PolicyRefused(detail) if !detail.is_empty() => {
                 format!("policy_refused: {detail}")
+            }
+            Self::CheckoutUnbound(detail) if !detail.is_empty() => {
+                format!("checkout_unbound: {detail}")
             }
             other => other.as_str().to_string(),
         }
@@ -570,6 +578,7 @@ mod tests {
             "runner_withdrawn",
             "device_disabled",
             "runner_unbound",
+            "checkout_unbound",
             "release_label_missing",
         ] {
             let refusal = Refusal::of(raw, None);
@@ -600,6 +609,25 @@ mod tests {
         assert_eq!(
             refusal.describe(),
             "policy_refused: POLICY_UNDECLARED: project p1 has no policy"
+        );
+    }
+
+    #[test]
+    fn a_binding_with_no_checkout_is_refused_with_the_sentence_core_sent() {
+        let raw: ClaimResponse = serde_json::from_value(serde_json::json!({
+            "ok": false, "reason": "checkout_unbound",
+            "detail": "CHECKOUT_UNBOUND: device d1's binding to project p1 names no checkout path"
+        }))
+        .unwrap();
+        let refusal = Refusal::of(raw.reason.as_deref().unwrap(), raw.detail.as_deref());
+        assert!(
+            matches!(refusal, Refusal::CheckoutUnbound(_)),
+            "{refusal:?}"
+        );
+        assert_eq!(refusal.as_str(), "checkout_unbound");
+        assert_eq!(
+            refusal.describe(),
+            "checkout_unbound: CHECKOUT_UNBOUND: device d1's binding to project p1 names no checkout path"
         );
     }
 
