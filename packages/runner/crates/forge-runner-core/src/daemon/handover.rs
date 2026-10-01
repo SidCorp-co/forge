@@ -183,4 +183,24 @@ mod tests {
         let why = take_listener(987_654, &sock_in(&dir)).expect_err("refused");
         assert!(why.contains("is not open"), "{why}");
     }
+
+    /// Criteria 12 and 13 at this layer: an exec that cannot happen returns
+    /// why, naming the path, and leaves the listener as it was — open, bound
+    /// and closed-on-exec — so the old build goes on serving it.
+    #[test]
+    fn an_exec_that_cannot_happen_returns_why_and_leaves_the_listener_serving() {
+        use nix::fcntl::{fcntl, FcntlArg, FdFlag};
+        use std::os::fd::AsRawFd;
+        let dir = crate::test_scratch::Scratch::new("handover-noexec");
+        let path = sock_in(&dir);
+        let bound = std::os::unix::net::UnixListener::bind(&path).unwrap();
+        let missing = dir.join("no-such-build");
+        let err = replace_image(&missing, &[], Some(bound.as_raw_fd() as i64));
+        assert_eq!(err.kind(), std::io::ErrorKind::NotFound, "{err}");
+        let flags = FdFlag::from_bits_truncate(fcntl(&bound, FcntlArg::F_GETFD).unwrap());
+        assert!(flags.contains(FdFlag::FD_CLOEXEC), "closed-on-exec again");
+        let client = std::os::unix::net::UnixStream::connect(&path).expect("still bound");
+        drop(client);
+        assert!(bound.accept().is_ok(), "and still accepting");
+    }
 }

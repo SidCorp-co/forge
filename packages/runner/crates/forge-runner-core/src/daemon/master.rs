@@ -12655,7 +12655,7 @@ mod outdated_tests {
     }
 
     #[test]
-    fn a_pane_the_previous_build_placed_holding_a_run_is_left_and_recorded_outdated() {
+    fn a_pane_the_previous_build_placed_is_left_while_it_holds_a_run_and_replaced_after() {
         let dir = Scratch::new("outdated-judge");
         let mut led = Ledger::open_in_memory().unwrap();
         a_master_row(&led, Some("0.0.1 (old)"));
@@ -12717,6 +12717,32 @@ mod outdated_tests {
             matches!(&again.act, OutdatedAct::Leave(r) if r.contains("can say whether its turn is over")),
             "with its run closed only an unreadable turn holds it: {:?}",
             again.act
+        );
+
+        activity.record(
+            "sess-old",
+            agent_activity::Report {
+                event: agent_activity::Event::Stopped,
+                at: 1_000,
+                subject: None,
+                conversation: Some("conv-1"),
+                transcript: None,
+            },
+        );
+        let last = judge_resident(
+            &led,
+            &masters,
+            &activity,
+            "forge-master-proj",
+            &resolved(&dir),
+            "p",
+            Placement::AdoptOrStart,
+        )
+        .expect("still outdated");
+        assert_eq!(
+            last.act,
+            OutdatedAct::Replace,
+            "criterion 42: once its last run is closed and its turn is over, it is replaced"
         );
     }
 
