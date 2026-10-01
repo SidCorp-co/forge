@@ -110,7 +110,9 @@ export function ConversationRow({
         </div>
       </button>
 
-      <div className="flex flex-none items-center gap-0.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+      {/* Out of the layout until wanted: an invisible group still takes its width, and four
+          actions in a 207px row left the title none. */}
+      <div className="hidden flex-none items-center gap-0.5 group-focus-within:flex group-hover:flex">
         {onPin && (
           <IconButton
             icon="pin"
