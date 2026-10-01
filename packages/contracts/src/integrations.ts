@@ -1,7 +1,5 @@
-import type { IntegrationProvider, schema } from '@forge/core/public';
-
 /** Re-exported, never re-declared — `INTEGRATION_PROVIDERS` in core is the list. */
-import type { AgentPathKind } from '@forge/core/public';
+import type { AgentPathKind, IntegrationProvider, schema } from '@forge/core/public';
 
 export type {
   AgentPathKind,
@@ -427,9 +425,6 @@ export interface ConnectionBindingsResponse {
   items: BindingSummary[];
 }
 
-/** Which source put a server in an agent's set: a granted integration binding, or a name no binding claims. */
-export type McpServerSource = 'integration' | 'project';
-
 export type McpServerPreviewReason =
   | 'ok'
   | 'not_configured'
@@ -440,11 +435,9 @@ export type McpServerPreviewReason =
   | 'not_resolved';
 
 export interface McpServerPreviewEntry {
-  source: McpServerSource;
-  /** The provider behind an integration row — null for a project-declared one. */
-  provider: IntegrationProvider | null;
+  provider: IntegrationProvider;
   serverName: string;
-  /** Binding id backing this entry — null for a project row and the synthetic not_configured one. */
+  /** Binding id backing this entry — null for the synthetic not_configured one. */
   bindingId: string | null;
   role: BindingRole | null;
   configured: boolean;
@@ -460,8 +453,6 @@ export interface McpServerPreviewEntry {
 /** Envelope for `GET /:projectId/integrations/mcp-preview`. */
 export interface McpPreviewResponse {
   servers: McpServerPreviewEntry[];
-  /** Names the project declares that resolution did not supply. */
-  droppedNames: string[];
 }
 
 /**

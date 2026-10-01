@@ -73,7 +73,6 @@ export type NewProject = {
   name: string;
   orgId: string;
   createdBy: string;
-  repoPath?: string | undefined;
   baseBranch?: string | undefined;
 };
 
@@ -94,7 +93,6 @@ export async function createProject(input: NewProject) {
           createdBy: input.createdBy,
           apiKey: generateApiKey(),
           baseBranch: input.baseBranch ?? 'main',
-          ...(input.repoPath !== undefined ? { repoPath: input.repoPath } : {}),
         })
         .returning({
           id: projects.id,
@@ -182,10 +180,8 @@ export async function readProjectSummary(projectId: string) {
       name: projects.name,
       orgId: projects.orgId,
       createdBy: projects.createdBy,
-      repoPath: projects.repoPath,
       workspaceSetup: projects.workspaceSetup,
       baseBranch: projects.baseBranch,
-      defaultDeviceId: projects.defaultDeviceId,
       createdAt: projects.createdAt,
     })
     .from(projects)
@@ -200,7 +196,6 @@ export async function updateProject(projectId: string, updates: Record<string, u
     slug: projects.slug,
     name: projects.name,
     orgId: projects.orgId,
-    repoPath: projects.repoPath,
     workspaceSetup: projects.workspaceSetup,
     baseBranch: projects.baseBranch,
   });
@@ -228,7 +223,6 @@ export async function readProjectWithConfig(projectId: string) {
       id: projects.id,
       slug: projects.slug,
       name: projects.name,
-      repoPath: projects.repoPath,
       baseBranch: projects.baseBranch,
       agentConfig: projects.agentConfig,
     })

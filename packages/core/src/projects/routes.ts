@@ -36,7 +36,11 @@ import { applyIssuePrefixPatch } from './issue-prefix-patch.js';
 import { projectOnboardRoutes } from './onboard-routes.js';
 import { projectFactsRoutes } from './project-facts-routes.js';
 import { PATCHED_PROJECT, PROJECT_DETAIL } from './projections.js';
-import { refuseRetiredProjectKeys, undeclaredFieldError } from './retired-project-keys.js';
+import {
+  refuseRetiredProjectFields,
+  refuseRetiredProjectKeys,
+  undeclaredFieldError,
+} from './retired-project-keys.js';
 import { badRequest, flatten, forbidden, idParamSchema, notFound } from './route-errors.js';
 import { projectRunnerRoutes } from './runners-routes.js';
 import { createProject, generateApiKey, ProjectSlugTakenError } from './service.js';
@@ -56,16 +60,19 @@ export const createProjectSchema = z.strictObject(createProjectFields, {
   error: undeclaredFieldError('POST /api/projects', Object.keys(createProjectFields)),
 });
 
+export const createProjectBodySchema = z
+  .unknown()
+  .superRefine(refuseRetiredProjectFields)
+  .pipe(createProjectSchema);
+
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
 
 const updateProjectFields = {
   name: z.string().trim().min(1).max(200).optional(),
-  repoPath: z.string().trim().max(500).nullable().optional(),
   repoUrl: z.string().trim().max(500).nullable().optional(),
   workspaceSetup: z.string().trim().max(8000).nullable().optional(),
   baseBranch: z.string().trim().max(100).nullable().optional(),
   issuePrefix: z.string().trim().max(16).nullable().optional(),
-  defaultDeviceId: z.uuid().nullable().optional(),
   assistantWeekly: assistantWeeklySchema.nullable().optional(),
   webhookSecret: z.string().min(16).max(128).nullable().optional(),
   // Move the project to another org. Requires org owner/admin on BOTH the
@@ -102,7 +109,7 @@ projectRoutes.use('*', requireAuth(), assertEmailVerified());
 
 projectRoutes.post(
   '/',
-  zValidator('json', createProjectSchema, (result) => {
+  zValidator('json', createProjectBodySchema, (result) => {
     if (!result.success) {
       throw badRequest(flatten(result.error));
     }
@@ -150,9 +157,19 @@ projectRoutes.post(
   },
 );
 
-projectRoutes.get('/', async (c) => {
+const listQuery = zValidator('query', z.object({ archived: z.string().optional() }), (result) => {
+  if (!result.success) {
+    throw new HTTPException(400, {
+      message: 'archived takes one value: 1 or true lists archived projects too',
+      cause: { code: 'BAD_REQUEST' },
+    });
+  }
+});
+
+projectRoutes.get('/', listQuery, async (c) => {
   const userId = c.get('userId');
-  const includeArchived = ['1', 'true'].includes((c.req.query('archived') ?? '').toLowerCase());
+  const archived = c.req.valid('query').archived ?? '';
+  const includeArchived = ['1', 'true'].includes(archived.toLowerCase());
   // Visible = explicit membership (any role) OR org owner/admin on the
   // project's org (implicit admin) — same rule as lib/authz.ts.
   const rows = await db
@@ -341,11 +358,9 @@ projectRoutes.patch(
       updates.orgId = patch.orgId;
     }
     if (patch.name !== undefined) updates.name = patch.name;
-    if (patch.repoPath !== undefined) updates.repoPath = patch.repoPath;
     if (patch.repoUrl !== undefined) updates.repoUrl = patch.repoUrl;
     if (patch.baseBranch !== undefined) updates.baseBranch = patch.baseBranch;
     if (patch.workspaceSetup !== undefined) updates.workspaceSetup = patch.workspaceSetup;
-    if (patch.defaultDeviceId !== undefined) updates.defaultDeviceId = patch.defaultDeviceId;
 
     const agentConfigPatch: AgentConfigKeyPatch = {};
     if (patch.assistantWeekly !== undefined)

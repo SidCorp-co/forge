@@ -153,7 +153,6 @@ export async function dispatchScheduleRun(
     .select({
       id: projects.id,
       slug: projects.slug,
-      repoPath: projects.repoPath,
     })
     .from(projects)
     .where(eq(projects.id, resolvedProjectId))
@@ -219,7 +218,7 @@ export async function dispatchScheduleRun(
   try {
     inserted = await dispatchInteractiveTurn({
       session,
-      project: { id: project.id, slug: project.slug, repoPath: project.repoPath },
+      project: { id: project.id, slug: project.slug },
       client: { deviceId: authorised.authority.deviceId, isLocal: false, migrated: false },
       authority: authorised.authority,
       message: effectivePrompt,

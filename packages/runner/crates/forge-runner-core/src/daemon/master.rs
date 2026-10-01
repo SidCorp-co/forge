@@ -61,7 +61,6 @@ fn standing_prompt(
     project: &str,
     base_branch: Option<&str>,
     master_policy: Option<&str>,
-    dropped: &[String],
     reach: &crate::mcp::config::PaneReach,
 ) -> String {
     let mut out = format!(
@@ -73,19 +72,7 @@ this box, and you will be woken again in this same session rather than started f
             "\nYou are standing in this project's checkout, on its base branch `{base}`.\n"
         ));
     }
-    // The reach is what this pane HOLDS, read off the two files it will be
-    // started with. `dropped` below is what core ASKED for and could not
-    // supply; a pane told only that still cannot say what it has. A pane whose
-    // declaration could not be read at all is never started (ISS-1235).
     out.push_str(&reach.brief());
-    if !dropped.is_empty() {
-        out.push_str(&format!(
-            "\nThis project declares MCP server(s) this box could NOT supply: {}. Work you hand \
-out will not have their tools. An issue whose work needs one of them cannot be built here — say so \
-on the issue rather than parking it as a run that failed.\n",
-            dropped.join(", ")
-        ));
-    }
     if let Some(policy) = master_policy {
         out.push_str(
             "\n## The project owner's standing policy\n\nThis is the owner's own instruction for \
@@ -1284,7 +1271,7 @@ async fn sweep(
             continue;
         }
         supervise(client, masters, tokens, &runner.project_id, &runner.slug).await;
-        take_pool_job(client, cfg, &served, shared, adopted, tokens, runner).await;
+        take_pool_job(client, cfg, shared, adopted, tokens, runner).await;
 
         // The owner's veto, read off the ledger this sweep already holds and
         // decided before anything is asked of core. A stand-down governs the
@@ -1814,7 +1801,6 @@ async fn report_account_limit(
 async fn take_pool_job(
     client: &CoreClient,
     cfg: &Config,
-    served: &[runners::MeRunner],
     shared: &SweepShared<'_>,
     adopted: &tokio::sync::watch::Receiver<bool>,
     tokens: Option<&session_tokens::SessionTokens>,
@@ -1829,9 +1815,6 @@ async fn take_pool_job(
         return;
     }
     let bound = cfg.runner.max_job_panes.max(1) as usize;
-    let fallback = resolve_repo(served, cfg, &runner.project_id)
-        .ok()
-        .map(|r| r.repo_path);
     let took = pool_jobs::take_one(
         &pool_jobs::JobPorts {
             pool: &pool_jobs::CorePool {
@@ -1849,7 +1832,6 @@ async fn take_pool_job(
             slug: &runner.slug,
         },
         job_panes.session_id(),
-        fallback.as_deref(),
         bound,
         tokens,
     )
@@ -3473,7 +3455,6 @@ surface it reads",
         &resolved.slug,
         resolved.base_branch.as_deref(),
         resolved.master_policy.as_deref(),
-        &declared.dropped_names,
         &reach,
     );
     let brief = match resume.as_deref() {
@@ -5037,7 +5018,6 @@ mod tests {
             "forge-dev",
             Some("main"),
             Some(policy),
-            &[],
             &healthy_reach("the_owner_policy_reaches_the_brief_verbatim"),
         );
         assert!(
@@ -5111,7 +5091,7 @@ mod tests {
     #[test]
     fn the_standing_brief_is_only_what_a_wave_cannot_know() {
         let reach = healthy_reach("the_standing_brief_is_only_what_a_wave_cannot_know");
-        let brief = standing_prompt("forge-dev", Some("main"), None, &[], &reach);
+        let brief = standing_prompt("forge-dev", Some("main"), None, &reach);
         assert_eq!(
             brief,
             format!("{STANDING_BRIEF}{}", reach.brief()),
@@ -5128,7 +5108,6 @@ mod tests {
             "forge-dev",
             Some("main"),
             None,
-            &[],
             &healthy_reach(
                 "the_brief_no_longer_carries_the_two_claims_that_stopped_masters_declaring",
             ),
@@ -5149,7 +5128,6 @@ mod tests {
             "forge-dev",
             Some("main"),
             None,
-            &["playwright".into()],
             &healthy_reach("the_brief_states_no_rule_the_skill_file_owns"),
         )
         .to_lowercase();
@@ -5177,7 +5155,6 @@ mod tests {
             "forge-dev",
             Some("main"),
             Some(policy),
-            &[],
             &healthy_reach("the_owner_policy_survives_words_the_brief_itself_may_not_use"),
         );
         assert!(
@@ -5213,7 +5190,6 @@ mod tests {
                 .map(|n| (n.to_string(), serde_json::json!({"type": "stdio"})))
                 .collect(),
             resolved_names: names.iter().map(|n| n.to_string()).collect(),
-            dropped_names: vec![],
         }
     }
 
@@ -5311,7 +5287,6 @@ mod tests {
             "mowment",
             Some("main"),
             None,
-            &[],
             &healthy_reach("no_brief_describes_an_unreadable_declaration"),
         );
         assert!(!brief.contains("could NOT read"), "{brief}");
@@ -5338,7 +5313,7 @@ mod tests {
             Some(&["playwright"]),
             false,
         );
-        let brief = standing_prompt("forge-dev", Some("main"), None, &[], &reach);
+        let brief = standing_prompt("forge-dev", Some("main"), None, &reach);
         assert!(
             brief.contains("The `forge` MCP server is in NEITHER half"),
             "a pane whose union holds no `forge` is told nothing about it: {brief}"
@@ -5370,7 +5345,7 @@ mod tests {
     #[test]
     fn a_provisioned_pane_is_told_its_union_and_nothing_is_raised() {
         let reach = healthy_reach("a_provisioned_pane_is_told_its_union_and_nothing_is_raised");
-        let brief = standing_prompt("forge-dev", Some("main"), None, &[], &reach);
+        let brief = standing_prompt("forge-dev", Some("main"), None, &reach);
         assert!(
             brief.contains("forge, playwright"),
             "a healthy pane is not told the union it holds: {brief}"
@@ -5395,7 +5370,7 @@ mod tests {
     #[test]
     fn a_declared_forge_is_never_reported_as_a_working_one() {
         let reach = healthy_reach("a_declared_forge_is_never_reported_as_a_working_one");
-        let brief = standing_prompt("forge-dev", Some("main"), None, &[], &reach);
+        let brief = standing_prompt("forge-dev", Some("main"), None, &reach);
         assert!(
             brief.contains("That is what those two files DECLARE")
                 && brief.contains("Nothing here has checked that any of them answers"),
@@ -5413,7 +5388,7 @@ mod tests {
             None,
             true,
         );
-        let brief = standing_prompt("forge-dev", Some("main"), None, &[], &reach);
+        let brief = standing_prompt("forge-dev", Some("main"), None, &reach);
         assert!(
             brief.contains("The `forge` MCP server is in NEITHER half"),
             "{brief}"
@@ -5440,8 +5415,7 @@ mod tests {
             Some(&declares(&["playwright"])),
         );
         for has_pat in [false, true] {
-            let brief =
-                standing_prompt("forge-dev", Some("main"), None, &[], &files.reach(has_pat));
+            let brief = standing_prompt("forge-dev", Some("main"), None, &files.reach(has_pat));
             assert!(
                 brief.contains("could NOT be determined"),
                 "an unreadable half must be reported as unknown: {brief}"
@@ -5461,27 +5435,6 @@ mod tests {
                 );
             }
         }
-    }
-
-    #[test]
-    fn a_declared_server_this_box_cannot_supply_is_named_in_the_brief() {
-        let dropped = vec!["epodsystem".to_string(), "postman".to_string()];
-        let brief = standing_prompt(
-            "mowment",
-            Some("main"),
-            None,
-            &dropped,
-            &healthy_reach("a_declared_server_this_box_cannot_supply_is_named_in_the_brief"),
-        );
-        assert!(brief.contains("epodsystem, postman"), "{brief}");
-        assert!(
-            brief.contains("could NOT supply"),
-            "the master must be told this is a shortfall, not an inventory: {brief}"
-        );
-        assert!(
-            brief.contains("rather than parking it as a run that failed"),
-            "the brief must say what to do instead of discovering it as an empty park: {brief}"
-        );
     }
 }
 
@@ -9788,7 +9741,7 @@ mod servers_refusal_walk_tests {
     const SERVERS: &str = "/api/devices/me/mcp-servers";
     const SESSION: &str =
         r#"{"sessionId":"sess-core-serves-now","name":"forge-master-walk","created":false}"#;
-    const DECLARES: &str = r#"{"mcpServers":{"playwright":{"type":"stdio","command":"true"}},"resolvedNames":["playwright"],"droppedNames":[]}"#;
+    const DECLARES: &str = r#"{"mcpServers":{"playwright":{"type":"stdio","command":"true"}},"resolvedNames":["playwright"]}"#;
     const GATEWAY_PAGE: &str =
         "<!DOCTYPE html><html><head><title>origin error</title></head><body>error code: 520</body></html>";
 
@@ -11013,11 +10966,7 @@ mod servers_refusal_walk_tests {
         .expect("the pane standing in for the master must start");
         let core = fake_core::serve_routes(&[
             (REGISTER, "200 OK", SESSION),
-            (
-                SERVERS,
-                "200 OK",
-                r#"{"mcpServers":{},"resolvedNames":[],"droppedNames":[]}"#,
-            ),
+            (SERVERS, "200 OK", r#"{"mcpServers":{},"resolvedNames":[]}"#),
         ])
         .await;
         let masters = Arc::new(Masters::new());

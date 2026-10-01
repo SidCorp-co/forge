@@ -28,7 +28,7 @@ deviceMcpServerRoutes.get(
     const { projectId } = c.req.valid('query');
     await assertDeviceBoundToProject(device.id, projectId);
 
-    const { mcpServers, resolvedNames, droppedNames } = await resolveSessionMcpServers(projectId);
-    return c.json({ mcpServers: mcpServers ?? {}, resolvedNames, droppedNames });
+    const { mcpServers, resolvedNames } = await resolveSessionMcpServers(projectId);
+    return c.json({ mcpServers: mcpServers ?? {}, resolvedNames });
   },
 );

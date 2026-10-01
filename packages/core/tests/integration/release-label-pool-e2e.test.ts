@@ -93,14 +93,14 @@ async function seed(opts: {
     UPDATE devices SET agent_version = '0.11.0', last_seen_at = now() WHERE id = ${device.id}
   `);
   await harness.db.execute(sql`
-    UPDATE projects SET repo_path = '/tmp/release-label-test' WHERE id = ${project.id}
-  `);
-  await harness.db.execute(sql`
     INSERT INTO runners (id, project_id, device_id, type, name, status, last_seen_at, labels)
     VALUES (
       ${runner}, ${project.id}, ${device.id}, 'claude-code', 'box', 'online', now(),
       ${JSON.stringify(opts.labels)}::jsonb
     )
+  `);
+  await harness.db.execute(sql`
+    UPDATE runners SET repo_path = '/tmp/release-label-test' WHERE project_id = ${project.id}
   `);
   if (opts.bindingConfig !== null) {
     ({ bindingId } = await seedProduction(harness.db, {

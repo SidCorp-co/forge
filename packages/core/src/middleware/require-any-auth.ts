@@ -5,6 +5,7 @@ import { isPatLike } from '../auth/pat-format.js';
 import { runWithPatScope } from '../auth/pat-scope.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { readBearerToken } from './bearer.js';
+import { declareGate } from './declared-gate.js';
 import { beginPatRequest } from './pat-rest-surface.js';
 
 export type AnyAuthVars = {
@@ -17,7 +18,7 @@ const unauth = (message: string) =>
   new HTTPException(401, { message, cause: { code: 'UNAUTHENTICATED' } });
 
 export function requireAnyAuth(): MiddlewareHandler<{ Variables: AnyAuthVars }> {
-  return async (c, next) => {
+  return declareGate('requireAnyAuth', async (c, next) => {
     const token = readBearerToken(c);
 
     if (isPatLike(token)) {
@@ -38,5 +39,5 @@ export function requireAnyAuth(): MiddlewareHandler<{ Variables: AnyAuthVars }> 
     c.set('principal', 'user');
     c.set('agency', 'human');
     await next();
-  };
+  });
 }

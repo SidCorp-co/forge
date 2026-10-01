@@ -27,12 +27,14 @@ const { app } = await import('../index.js');
 const { mcpTools, toolListing } = await import('../mcp/server.js');
 const { buildApiContract, UNDECLARED_RESPONSE } = await import('./openapi.js');
 const { buildMcpContract } = await import('./mcp-tools.js');
+const { undeclaredSourceReads } = await import('./request-reads.js');
+const SRC = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 const api = buildApiContract(app.routes, {
   title: 'forge-api',
   version: 'unversioned',
   description:
-    'Every route packages/core/src/index.ts mounts, generated from the running app. A request part is described only where a zod validator holds it, and `x-forge-validated` on each operation lists which parts those are: a part missing from that list is not described, which is not the same as absent. Responses are undeclared throughout: ' +
+    'Every route packages/core/src/index.ts mounts, generated from the running app. A request part is described where a zod validator holds it, and `x-forge-validated` on each operation lists which parts those are. The generator refuses a route whose handlers read a body or a query no validator declares, so a part missing from that list is one the route does not read: a path parameter with no validator is any string, a body declared with rawBody() is not JSON and carries its media type and description only, and `x-forge-input: none` marks an operation that reads no input at all. `x-forge-refinements` on a schema names each refine() by the message it refuses with; the predicate itself is not described. `x-forge-auth` lists, in the order they run, the gate middlewares mounted on the route, each defined under `x-forge-auth-gates`; an empty list means no gate middleware, and a handler may still check a credential of its own. Responses are undeclared throughout: ' +
     UNDECLARED_RESPONSE,
   'x-forge-generator': GENERATOR,
 });
@@ -44,7 +46,11 @@ const mcp = buildMcpContract(toolListing(mcpTools(ctx as never)), {
   generator: GENERATOR,
 });
 
-const refusals = [...api.refusals, ...mcp.refusals];
+const refusals = [
+  ...undeclaredSourceReads(SRC, resolve(SRC, '..', '..', '..')),
+  ...api.refusals,
+  ...mcp.refusals,
+];
 if (refusals.length > 0) {
   console.error(
     `api-contract: ${refusals.length} route(s) or tool(s) this generator cannot describe:`,

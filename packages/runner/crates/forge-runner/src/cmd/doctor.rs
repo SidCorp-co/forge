@@ -614,23 +614,6 @@ fn mcp_verdict(
     pane: Pane,
 ) -> (Mark, String) {
     let file = path.display();
-    // Core's own answer, which nothing on this box moves: a name this project declares and this
-    // deployment cannot supply is a problem with or without a pane, so it is read before the
-    // file is.
-    if !found.dropped_names.is_empty() {
-        return (
-            Mark::Fail,
-            format!(
-                "declared but NOT available here: {} — a run on this project gets none of their tools{} (this box's copy: {file})",
-                found.dropped_names.join(", "),
-                if found.resolved_names.is_empty() {
-                    String::new()
-                } else {
-                    format!(" (available: {})", found.resolved_names.join(", "))
-                }
-            ),
-        );
-    }
     if let SessionFile::Obstructed(why) = disk {
         return (
             Mark::Fail,
@@ -850,12 +833,7 @@ mod tests {
 
     /// A core that answers every MCP request after `delay`, for `n` requests.
     async fn slow_core(n: usize, delay: std::time::Duration) -> String {
-        slow_core_body(
-            n,
-            delay,
-            r#"{"mcpServers":{},"resolvedNames":[],"droppedNames":[]}"#,
-        )
-        .await
+        slow_core_body(n, delay, r#"{"mcpServers":{},"resolvedNames":[]}"#).await
     }
 
     /// A core that answers `body` after `delay`, for `n` requests.
@@ -924,7 +902,7 @@ mod tests {
     async fn core_counting_in_flight(n: usize) -> (String, std::sync::Arc<InFlight>) {
         use std::sync::atomic::Ordering::SeqCst;
         let hold = ONLINE_TIMEOUT / 2;
-        let body = r#"{"mcpServers":{},"resolvedNames":[],"droppedNames":[]}"#;
+        let body = r#"{"mcpServers":{},"resolvedNames":[]}"#;
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let seen = std::sync::Arc::new(InFlight::default());
@@ -1004,32 +982,6 @@ mod tests {
         let _ = mark;
         assert!(line.starts_with("slug-1:"), "{line}");
         assert!(line.contains("no MCP servers declared"), "{line}");
-
-        // A project that owes one gets it BACK, with its own name inside the
-        // text — the print loop places a line it cannot otherwise attribute.
-        let noisy = slow_core_body(
-            1,
-            std::time::Duration::ZERO,
-            r#"{"mcpServers":{},"resolvedNames":[],"droppedNames":["epodsystem"]}"#,
-        )
-        .await;
-        let (mark, line) = mcp_servers_line(
-            &CoreClient::new(noisy, String::from("tok")),
-            "p-2",
-            "butlocs",
-        )
-        .await
-        .expect("a dropped server owes a row");
-        assert!(
-            mark.failed(),
-            "a server this box cannot supply is not a pass: {line}"
-        );
-        assert!(
-            line.starts_with("butlocs:"),
-            "the row must name its own project, because the loop prints it verbatim: {line}"
-        );
-        assert!(line.contains("epodsystem"), "{line}");
-        assert!(print_mcp_row("butlocs", Some((mark, line))));
     }
 
     /// ISS-1191 — a file this box cannot read is not evidence that it holds nothing. Over an empty
@@ -1053,7 +1005,7 @@ mod tests {
     #[test]
     fn a_resolved_set_with_no_session_file_says_nothing_is_written() {
         let (mark, line) = mcp_verdict(
-            &found(&["playwright"], &[]),
+            &found(&["playwright"]),
             &a_path(),
             &SessionFile::Absent,
             Pane::Resident,
@@ -1070,7 +1022,7 @@ mod tests {
     #[test]
     fn a_resolved_set_with_no_session_file_and_no_pane_is_an_observation_not_a_failure() {
         let (mark, line) = mcp_verdict(
-            &found(&["playwright"], &[]),
+            &found(&["playwright"]),
             &a_path(),
             &SessionFile::Absent,
             Pane::None,
@@ -1092,7 +1044,7 @@ mod tests {
     #[test]
     fn a_session_path_this_box_cannot_write_is_a_cross_with_no_pane_too() {
         let (mark, line) = mcp_verdict(
-            &found(&["playwright"], &[]),
+            &found(&["playwright"]),
             &a_path(),
             &SessionFile::Obstructed(String::from("it is a directory")),
             Pane::None,
@@ -1135,7 +1087,7 @@ mod tests {
         let disk = session_file(&path, &declared);
         assert!(matches!(disk, SessionFile::Obstructed(_)));
 
-        let (mark, line) = mcp_verdict(&found(&["playwright"], &[]), &path, &disk, Pane::None);
+        let (mark, line) = mcp_verdict(&found(&["playwright"]), &path, &disk, Pane::None);
         assert!(mark.failed(), "{line}");
         assert!(line.contains("is not a directory"), "{line}");
         assert!(
@@ -1165,26 +1117,12 @@ mod tests {
         );
     }
 
-    /// ISS-1191 F1, the boundary the fix must not swallow: what core could not supply is core's
-    /// answer, and stays a cross with no pane on this box.
-    #[test]
-    fn a_declared_server_this_box_cannot_supply_is_a_cross_with_no_pane_too() {
-        let (mark, line) = mcp_verdict(
-            &found(&[], &["epodsystem"]),
-            &a_path(),
-            &SessionFile::Absent,
-            Pane::None,
-        );
-        assert!(mark.failed(), "{line}");
-        assert!(line.contains("epodsystem"), "{line}");
-    }
-
     /// ISS-1191 F1 — and criterion 15 holds on that row: it still names the file, because naming
     /// where the servers land is the whole of what the row was widened for.
     #[test]
     fn the_no_pane_row_names_the_file_this_box_would_write() {
         let (_, line) = mcp_verdict(
-            &found(&["playwright"], &[]),
+            &found(&["playwright"]),
             &a_path(),
             &SessionFile::Absent,
             Pane::None,
@@ -1210,7 +1148,7 @@ mod tests {
     #[test]
     fn a_session_file_that_parses_as_nothing_is_not_the_mismatch_sentence() {
         let (mark, line) = mcp_verdict(
-            &found(&["playwright"], &[]),
+            &found(&["playwright"]),
             &a_path(),
             &SessionFile::Unparseable,
             Pane::Resident,
@@ -1265,22 +1203,6 @@ mod tests {
         ));
     }
 
-    /// ISS-1191 criterion 15 — the dropped-name branch is the diagnostic case, and it named no file
-    /// at all while the rest of the row did.
-    #[test]
-    fn the_dropped_name_row_names_the_file_too() {
-        let (_, line) = mcp_verdict(
-            &found(&["playwright"], &["epodsystem"]),
-            &a_path(),
-            &SessionFile::Differs,
-            Pane::Resident,
-        );
-        assert!(
-            line.contains("forge-master-mcp-mowment.json"),
-            "the diagnostic row must name the file as well: {line}"
-        );
-    }
-
     /// ISS-1191 — a read that never handed a row back is a cross naming the project, not a gap in
     /// the report where a row was due.
     #[test]
@@ -1307,14 +1229,13 @@ mod tests {
         );
     }
 
-    fn found(resolved: &[&str], dropped: &[&str]) -> mcp_servers::ProjectMcpServers {
+    fn found(resolved: &[&str]) -> mcp_servers::ProjectMcpServers {
         mcp_servers::ProjectMcpServers {
             mcp_servers: resolved
                 .iter()
                 .map(|n| ((*n).to_string(), serde_json::json!({ "type": "stdio" })))
                 .collect(),
             resolved_names: resolved.iter().map(|n| (*n).to_string()).collect(),
-            dropped_names: dropped.iter().map(|n| (*n).to_string()).collect(),
         }
     }
 
@@ -1324,40 +1245,9 @@ mod tests {
     }
 
     #[test]
-    fn a_declared_server_this_box_cannot_supply_is_a_problem_and_is_named() {
-        let (mark, line) = mcp_verdict(
-            &found(&[], &["epodsystem"]),
-            &a_path(),
-            &SessionFile::Matches,
-            Pane::Resident,
-        );
-        assert!(
-            mark.failed(),
-            "a server that cannot be supplied is not a pass: {line}"
-        );
-        assert!(line.contains("epodsystem"), "{line}");
-        assert!(line.contains("NOT available"), "{line}");
-    }
-
-    /// Partly-supplied is still a problem, and the row says both halves so the
-    /// operator can tell which work is possible here.
-    #[test]
-    fn a_project_with_one_server_supplied_and_one_not_reports_the_problem_and_both_names() {
-        let (mark, line) = mcp_verdict(
-            &found(&["playwright"], &["epodsystem"]),
-            &a_path(),
-            &SessionFile::Matches,
-            Pane::Resident,
-        );
-        assert!(mark.failed(), "{line}");
-        assert!(line.contains("epodsystem"), "{line}");
-        assert!(line.contains("playwright"), "{line}");
-    }
-
-    #[test]
     fn a_project_whose_declarations_all_resolved_reads_as_a_pass_naming_them() {
         let (mark, line) = mcp_verdict(
-            &found(&["playwright"], &[]),
+            &found(&["playwright"]),
             &a_path(),
             &SessionFile::Matches,
             Pane::Resident,
@@ -1371,7 +1261,7 @@ mod tests {
     #[test]
     fn a_resolved_set_the_session_file_does_not_hold_is_a_cross() {
         let (mark, line) = mcp_verdict(
-            &found(&["playwright"], &[]),
+            &found(&["playwright"]),
             &a_path(),
             &SessionFile::Differs,
             Pane::Resident,
@@ -1402,7 +1292,7 @@ mod tests {
     #[test]
     fn the_row_names_the_file_this_box_writes_those_servers_to() {
         let (_, line) = mcp_verdict(
-            &found(&["playwright"], &[]),
+            &found(&["playwright"]),
             &a_path(),
             &SessionFile::Matches,
             Pane::Resident,

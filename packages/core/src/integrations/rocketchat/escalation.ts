@@ -35,7 +35,7 @@ export const ESCALATION_FALLBACK_REPLY = (botName: string): string =>
 
 export interface StartEscalationArgs {
   projectId: string;
-  project: { id: string; slug: string; repoPath: string | null };
+  project: { id: string; slug: string };
   connectionId: string;
   rid: string;
   tmid?: string | undefined;

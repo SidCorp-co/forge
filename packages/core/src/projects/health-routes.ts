@@ -20,8 +20,6 @@ interface ProjectHealthRow {
   id: string;
   projectName: string;
   projectSlug: string;
-  /** Repo path/slug shown under the project name (nullable). */
-  repoPath: string | null;
   throughput: number;
   totalActive: number;
   statusDistribution: Record<string, number>;
@@ -85,7 +83,6 @@ projectHealthRoutes.get('/health', async (c) => {
       id: projects.id,
       slug: projects.slug,
       name: projects.name,
-      repoPath: projects.repoPath,
     })
     .from(projects)
     .where(inArray(projects.id, visibleIds));
@@ -152,7 +149,6 @@ projectHealthRoutes.get('/health', async (c) => {
       id: p.id,
       projectName: p.name,
       projectSlug: p.slug,
-      repoPath: p.repoPath ?? null,
       throughput: throughputByProject.get(p.id) ?? 0,
       totalActive,
       statusDistribution: dist,

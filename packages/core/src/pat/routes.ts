@@ -306,20 +306,14 @@ patRoutes.post(
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
+  zValidator('json', rotateBodySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
   async (c) => {
     const userId = c.get('userId');
     const { id } = c.req.valid('param');
-    let expiresAt: Date | null = null;
-    try {
-      const raw = await c.req.json().catch(() => null);
-      if (raw && typeof raw === 'object') {
-        const parsed = rotateBodySchema.safeParse(raw);
-        if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
-        if (parsed.data.expiresAt) expiresAt = new Date(parsed.data.expiresAt);
-      }
-    } catch (err) {
-      if (err instanceof HTTPException) throw err;
-    }
+    const body = c.req.valid('json');
+    const expiresAt = body.expiresAt ? new Date(body.expiresAt) : null;
     const minted = await rotatePat({ id, userId, expiresAt });
     if (!minted) throw notFound();
     forgetPatThrottle(id);

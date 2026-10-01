@@ -9,6 +9,7 @@ import { db } from '../db/client.js';
 import { users } from '../db/schema.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { readBearerToken } from './bearer.js';
+import { declareGate } from './declared-gate.js';
 import { beginPatRequest } from './pat-rest-surface.js';
 
 export type AuthVars = {
@@ -88,7 +89,7 @@ async function admitPat(
 }
 
 export function requireAuth(): MiddlewareHandler<{ Variables: AuthVars }> {
-  return async (c, next) => {
+  return declareGate('requireAuth', async (c, next) => {
     const token = readBearerToken(c);
 
     if (isPatLike(token)) return admitPat(c, token, next);
@@ -106,11 +107,11 @@ export function requireAuth(): MiddlewareHandler<{ Variables: AuthVars }> {
     }
 
     await next();
-  };
+  });
 }
 
 export function requireUserOrDevice(): MiddlewareHandler<{ Variables: AuthVars }> {
-  return async (c, next) => {
+  return declareGate('requireUserOrDevice', async (c, next) => {
     const token = readBearerToken(c);
 
     if (!isPatLike(token)) {
@@ -135,7 +136,7 @@ export function requireUserOrDevice(): MiddlewareHandler<{ Variables: AuthVars }
     c.set('principal', 'device');
     c.set('agency', 'agent');
     await next();
-  };
+  });
 }
 
 /** The columns of the caller's `users` row that an auth gate decides on. */
@@ -171,7 +172,7 @@ export async function authUserRow(c: Context, userId: string): Promise<AuthUserR
 }
 
 export function assertEmailVerified(): MiddlewareHandler<{ Variables: AuthVars }> {
-  return async (c, next) => {
+  return declareGate('assertEmailVerified', async (c, next) => {
     if (c.get('principal') === 'device') {
       await next();
       return;
@@ -186,5 +187,5 @@ export function assertEmailVerified(): MiddlewareHandler<{ Variables: AuthVars }
     }
 
     await next();
-  };
+  });
 }

@@ -418,28 +418,6 @@ export function useUnassignDeviceFromProject(projectId: string) {
 }
 
 /**
- * Set (or clear, with null) the project's primary/default device. Invalidates
- * the project detail (['project', id]) so the "Primary" badge reflects live.
- */
-export function useSetDefaultDevice(projectId: string) {
-  const qc = useQueryClient();
-  const { toast } = useToast();
-  return useMutation({
-    mutationFn: (deviceId: string | null) =>
-      runnersApi.setDefaultDevice(projectId, deviceId),
-    onSuccess: (_data, deviceId) => {
-      qc.invalidateQueries({ queryKey: ["project", projectId] });
-      toast({
-        title: deviceId ? "Primary device set" : "Primary device cleared",
-        tone: "success",
-      });
-    },
-    onError: (err) =>
-      toast({ title: "Couldn't set primary", description: formatApiError(err), tone: "error" }),
-  });
-}
-
-/**
  * Clear a runner's recorded faults (last error + limit + quarantine) and let
  * dispatch retry it. Invalidates the project runner list plus `['runners']` so
  * the dashboard health card drops the badge with the screen.

@@ -14,7 +14,7 @@
 
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { devices, issueLabels, issues, jobs, labels, projects, runners } from '../db/schema.js';
+import { devices, issueLabels, issues, jobs, labels, runners } from '../db/schema.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { buildPipelinePreambleStructured } from '../lib/chat-preamble.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -26,25 +26,34 @@ import { ensureAgentSessionForJob } from './agent-session-link.js';
 import { SKILL_MAINTENANCE_LABEL, withSkillMaintenanceCarveout } from './job-policy.js';
 import { loadPriorAttempts, renderPriorAttemptsBlock } from './prior-attempts.js';
 import { persistPromptSnapshot } from './prompt-snapshot.js';
-import { resolveJobMcpServers } from './resolve-job-mcp-servers.js';
 import { finalizeResumeForDevice, resolveResumePolicy } from './resume-policy.js';
 
 /**
- * The runner row that will actually host this job, refused by name when absent.
+ * The device binding that will actually host this job, refused by name when absent. Its checkout
+ * is the job's working directory: nothing else names one.
  */
 export async function resolveRunnerForDevice(
   projectId: string,
   deviceId: string,
-): Promise<{ id: string; type: string }> {
+): Promise<{ id: string; type: string; repoPath: string | null }> {
   const [runner] = await db
-    .select({ id: runners.id, type: runners.type })
+    .select({ id: runners.id, type: runners.type, repoPath: runners.repoPath })
     .from(runners)
     .where(and(eq(runners.projectId, projectId), eq(runners.deviceId, deviceId)))
     .limit(1);
   if (!runner) {
     throw new Error(`prepare: device ${deviceId} has no runner bound to project ${projectId}`);
   }
-  return runner;
+  const repoPath = runner.repoPath?.trim() ? runner.repoPath.trim() : null;
+  return { ...runner, repoPath };
+}
+
+export function checkoutUnboundMessage(
+  projectId: string,
+  deviceId: string,
+  runnerId: string,
+): string {
+  return `CHECKOUT_UNBOUND: device ${deviceId}'s binding to project ${projectId} (runner ${runnerId}) names no checkout, so no job runs there. The binding is the only place a checkout is named: set it with \`forge-runner bind <slug> --path <dir>\` on the box, or PATCH /api/projects/${projectId}/runners/${runnerId} { repoPath }.`;
 }
 
 export interface PreparedJob {
@@ -57,7 +66,8 @@ export interface PreparedJob {
   promptString: string | null;
   payload: Record<string, unknown>;
   model: string;
-  repoPath: string | null;
+  /** The device binding's checkout, where the job's pane is opened. */
+  repoPath: string;
   priorClaudeSessionId: string | null;
   runnerId: string;
   runnerType: string;
@@ -72,15 +82,6 @@ export interface PreparedJob {
     profile: string;
     qa: DispatchState['qa'];
   };
-}
-
-async function loadRepoPath(projectId: string): Promise<string | null> {
-  const [row] = await db
-    .select({ repoPath: projects.repoPath })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  return row?.repoPath ?? null;
 }
 
 /**
@@ -160,18 +161,19 @@ export async function prepareClaimedJob(args: {
   if (!job) throw new Error(`prepare: job ${args.jobId} not found`);
 
   const runner = await resolveRunnerForDevice(job.projectId, args.deviceId);
+  const repoPath = runner.repoPath;
+  if (!repoPath) {
+    throw new Error(checkoutUnboundMessage(job.projectId, args.deviceId, runner.id));
+  }
 
   const proposedResume = await resolveResumePolicy({ job });
   const resume = finalizeResumeForDevice(proposedResume, args.deviceId);
 
   const deniedTools = await applyCarveout(job, args.policy.deniedTools);
 
-  const resolvedMcp = await resolveJobMcpServers({ projectId: job.projectId });
-
   const { content: systemPrompt, blocks } = await buildPipelinePreambleStructured(job.projectId, {
     step: job.type,
     policy: { ...args.policy, deniedTools },
-    mcpDiagnostics: { resolved: resolvedMcp.resolvedNames, dropped: resolvedMcp.droppedNames },
   });
 
   const payloadIn = (job.payload ?? {}) as { promptString?: unknown } & Record<string, unknown>;
@@ -192,7 +194,6 @@ export async function prepareClaimedJob(args: {
       : resumedPromptString;
 
   const model = args.policy.model;
-  const repoPath = await loadRepoPath(job.projectId);
 
   const [issueRow, issuePrefix] = await Promise.all([
     job.issueId

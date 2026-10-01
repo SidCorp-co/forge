@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { assertUnfenced, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { assertPlatformAdmin } from '../middleware/require-admin.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import { checkSkillActivityChainIntegrity } from './activity-chain-integrity.js';
 import { listByDevice, listByPacket, listBySkill, summarizeByEventType } from './activity-views.js';
 
@@ -46,16 +47,12 @@ skillActivityRoutes.use('*', requireAuth(), assertEmailVerified());
  * `projectId` + `deviceId` -> by-device, `projectId` (+ optional `skillId`)
  * -> by-skill.
  */
-skillActivityRoutes.get('/', async (c) => {
-  const parsed = querySchema.safeParse({
-    projectId: c.req.query('projectId'),
-    skillId: c.req.query('skillId'),
-    deviceId: c.req.query('deviceId'),
-    packetId: c.req.query('packetId'),
-    limit: c.req.query('limit'),
-  });
-  if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
-  const { projectId, skillId, deviceId, packetId, limit } = parsed.data;
+const validQuery = zValidator('query', querySchema, (result) => {
+  if (!result.success) throw badRequest(z.flattenError(result.error));
+});
+
+skillActivityRoutes.get('/', validQuery, async (c) => {
+  const { projectId, skillId, deviceId, packetId, limit } = c.req.valid('query');
 
   if (packetId) {
     await assertPlatformAdmin(c);

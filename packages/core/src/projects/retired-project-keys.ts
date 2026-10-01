@@ -15,11 +15,33 @@ export function undeclaredFieldError(door: string, fields: readonly string[]) {
   };
 }
 
+/** ISS-14 — the project fields the device binding replaced, each with where its value lives now. */
+export const RETIRED_PROJECT_FIELDS: Record<string, string> = {
+  repoPath:
+    "`repoPath` is not a project field: a checkout is a path on one box, so it lives on that box's device binding. Set it with `forge-runner bind <slug> --path <dir>`, or PATCH /api/projects/:id/runners/:runnerId { repoPath }.",
+  defaultDeviceId:
+    "`defaultDeviceId` is not a project field: no box is a project's default. A job or turn goes to a device bound to the project (POST /api/projects/:id/runners), and only to one whose binding names a checkout.",
+};
+
+/** The retirement message for each of `keys` the device binding replaced, joined; `null` for none. */
+export function retiredProjectFieldsMessage(keys: readonly string[]): string | null {
+  const said = keys.flatMap((k) => (RETIRED_PROJECT_FIELDS[k] ? [RETIRED_PROJECT_FIELDS[k]] : []));
+  return said.length === 0 ? null : said.join(' ');
+}
+
+export function refuseRetiredProjectFields(raw: unknown, ctx: z.RefinementCtx): void {
+  if (!raw || typeof raw !== 'object') return;
+  for (const [field, message] of Object.entries(RETIRED_PROJECT_FIELDS)) {
+    if (field in raw) ctx.addIssue({ code: 'custom', path: [field], message });
+  }
+}
+
 export function refuseRetiredProjectKeys(raw: unknown, ctx: z.RefinementCtx): void {
   if (!raw || typeof raw !== 'object') return;
   const retired = (path: (string | number)[], message: string) =>
     ctx.addIssue({ code: 'custom', path, message });
   const body = raw as { stateContext?: unknown; agentConfig?: unknown };
+  refuseRetiredProjectFields(raw, ctx);
   if ('stateContext' in body) retired(['stateContext'], RETIRED_STATE_CONTEXT_MESSAGE);
   if (!('agentConfig' in body)) return;
   const ac = body.agentConfig as Record<string, unknown> | null | undefined;

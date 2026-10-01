@@ -198,3 +198,55 @@ describe('a type the ecosystem gates with approve waits for a person on the send
     expect(inbox.documents.some((d: Doc) => d.document.number === 'FP-RFI-1')).toBe(true);
   });
 });
+
+describe('the register lists what each side is party to, with who owes the next move', () => {
+  const register = (who: Speaker, query = '') =>
+    say(who, 'GET', `/api/ecosystems/${w.eco}/register${query}`);
+
+  it('shows both sides the same rows, open and owner derived', async () => {
+    const theirs = ok(await register('plugin'));
+    const ours = ok(await register('platform'));
+    const numbers = (r: Doc) => r.documents.map((d: Doc) => d.number).sort();
+    expect(numbers(theirs)).toEqual(['FP-CR-1', 'FP-DEC-1', 'FP-DEC-2', 'FP-RFI-1']);
+    expect(numbers(ours)).toEqual(numbers(theirs));
+    const byNumber = new Map(theirs.documents.map((d: Doc) => [d.number, d]));
+    expect(byNumber.get('FP-RFI-1')).toMatchObject({
+      open: true,
+      overdue: false,
+      owner: [w.project.plugin],
+      recipients: [{ project: w.project.plugin, status: 'awaiting', answeredBy: null }],
+    });
+    expect(byNumber.get('FP-CR-1')).toMatchObject({
+      open: false,
+      owner: [],
+      recipients: [{ project: w.project.forge, status: 'answered' }],
+    });
+  });
+
+  it('filters by status, type and party', async () => {
+    const open = ok(await register('plugin', '?status=open'));
+    expect(open.documents.map((d: Doc) => d.number)).toEqual(['FP-RFI-1']);
+    const decisions = ok(await register('plugin', '?type=decision&limit=1'));
+    expect(decisions).toMatchObject({ returned: 1, total: 2 });
+    ok(await say('plugin', 'POST', `${plugin()}/threads/FP-RFI-1/hold`, { reason: 'ask first' }));
+    const held = ok(await register('platform', '?status=held'));
+    expect(held.documents.map((d: Doc) => d.number)).toEqual(['FP-RFI-1']);
+    expect(held.documents[0].hold).toMatchObject({ side: w.project.plugin, reason: 'ask first' });
+    const none = ok(await register('plugin', `?party=${w.project.store}`));
+    expect(none.total).toBe(0);
+  });
+
+  it('shows a member that is party to nothing no other pair’s documents', async () => {
+    expect(ok(await register('store'))).toMatchObject({ returned: 0, total: 0 });
+  });
+
+  it('refuses a query it does not define, by name', async () => {
+    const res = await register('plugin', '?status=lost');
+    expect(res.status).toBe(400);
+    expect(res.json).toMatchObject({
+      code: 'BAD_REQUEST',
+      message: expect.stringMatching(/filtered by status/),
+    });
+    expect((await register('plugin', '?colour=red')).status).toBe(400);
+  });
+});
