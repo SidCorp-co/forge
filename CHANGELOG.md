@@ -6154,10 +6154,9 @@
   deploy. Shipped 2026-09-02; this line was owed then and is written now. (ISS-870)
 
 ### Changed
-- **`forge-runner top` opens on one table row per project.** Each row shows pane, runs, issue
-  lanes, a coloured verdict and what changed; arrow keys select, Enter opens the full detail, `s`
-  shows sources, and the legend says what every verdict means (`l` on a small screen). `--once`
-  still prints everything.
+- **`forge-runner top` opens on one table row per project.** Each row shows pane, runs, lanes, a
+  coloured verdict and change; Enter opens its detail, `s` shows sources, the legend explains each
+  verdict (`l` on small screens). `--once` is unchanged.
 - **Pull requests wait on the fast checks only.** The integration suite, image build, whole-repository
   tests and macOS/Windows runner builds now run after merging, on `main` and nightly; a red there no
   longer blocks anyone.
