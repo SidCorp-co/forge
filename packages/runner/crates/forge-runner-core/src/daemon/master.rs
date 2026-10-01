@@ -2463,29 +2463,42 @@ pub(crate) fn carried_across(
     };
     let mut moved = 0;
     let mut unattributed = Vec::new();
-    for run in runs.iter().filter(|r| {
-        r.ended_by.is_none()
-            && r.project_id.as_deref() == Some(project_id)
-            && r.master_session_id != successor
-    }) {
+    let mut unread = 0;
+    for run in runs
+        .iter()
+        .filter(|r| r.project_id.as_deref() == Some(project_id) && r.master_session_id != successor)
+    {
         let ours = match (run.host_pid, run.host_start.as_deref(), pane_pid) {
             (Some(pid), Some(start), Some(pane)) => hosts.beneath(pid, start, pane),
             _ => subagent_host::HostRead::Unreadable,
         };
-        match ours {
-            subagent_host::HostRead::Alive => match led.reparent_run(&run.run_id, successor) {
-                Ok(()) => moved += 1,
-                Err(e) => {
-                    tracing::warn!(
-                        "[master] {slug}: run {}: cannot record it under {successor}: {e} — it stays {}'s, which no pane on this box answers for",
-                        run.run_id,
-                        run.master_session_id
-                    );
-                    unattributed.push(run.run_id.clone());
+        let left = |why: &str| format!("{} ({why})", run.run_id);
+        match (ours, run.ended_by.is_some()) {
+            (subagent_host::HostRead::Gone, _) => {}
+            // Ended, so not recorded anew; its close loop is still this pane's
+            // to finish, under the session the row no longer names.
+            (subagent_host::HostRead::Alive, true) => unattributed.push(left(
+                "ended under the session before, its close not finished",
+            )),
+            (subagent_host::HostRead::Alive, false) => {
+                match led.reparent_run(&run.run_id, successor) {
+                    Ok(()) => moved += 1,
+                    Err(e) => {
+                        tracing::warn!(
+                            "[master] {slug}: run {}: cannot record it under {successor}: {e} — it stays {}'s, which no pane on this box answers for",
+                            run.run_id,
+                            run.master_session_id
+                        );
+                        unattributed.push(left(
+                            "could not be recorded under the session it is served as",
+                        ));
+                    }
                 }
-            },
-            subagent_host::HostRead::Gone => {}
-            subagent_host::HostRead::Unreadable => unattributed.push(run.run_id.clone()),
+            }
+            (subagent_host::HostRead::Unreadable, _) => {
+                unread += 1;
+                unattributed.push(left("whose process could not be read"));
+            }
         }
     }
     if moved > 0 {
@@ -2493,10 +2506,9 @@ pub(crate) fn carried_across(
             "[master] {slug}: {moved} open run(s) declared from a process still running in {pane} are now recorded under {successor}, the session core serves it as, so its close and its choice answer for them"
         );
     }
-    if !unattributed.is_empty() {
+    if unread > 0 {
         tracing::warn!(
-            "[master] {slug}: {} open run(s) of this project are under another session and whether their recorded process runs in {pane} could not be read, so they are left where they are",
-            unattributed.len()
+            "[master] {slug}: {unread} open run(s) of this project are under another session and whether their recorded process runs in {pane} could not be read, so they are left where they are"
         );
     }
     Carried {
@@ -2539,9 +2551,9 @@ pub(crate) fn carry_and_record(
     let carried = carried_across(led, project_id, pane, successor, pane_pid, hosts, slug);
     let left = (!carried.unattributed.is_empty()).then(|| {
         format!(
-            "{} open run(s) of this project are under another session and whether they run in {pane} could not be read: {}",
+            "{} run(s) of this project whose close has not finished stay under another session, which {pane} may still owe: {}",
             carried.unattributed.len(),
-            carried.unattributed.join(", ")
+            carried.unattributed.join("; ")
         )
     });
     if let Err(e) = led.note_master_session(project_id, successor, left.as_deref()) {
@@ -2552,8 +2564,9 @@ pub(crate) fn carry_and_record(
     carried
 }
 
-/// What one carry did: how many runs it moved, and the open runs of the
-/// project under another session it could not say were the pane's or not.
+/// What one carry did: how many runs it moved, and each run of the project
+/// under another session, its close not finished, that it left there while it
+/// is or may be the pane's, with why.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub(crate) struct Carried {
     pub moved: usize,
@@ -4605,8 +4618,11 @@ mod tests {
         assert_eq!(moved.moved, 1);
         assert_eq!(
             moved.unattributed,
-            vec!["never-read".to_string()],
-            "the one run no process was read for is named as unattributed"
+            vec![
+                "ended-mine (ended under the session before, its close not finished)".to_string(),
+                "never-read (whose process could not be read)".to_string(),
+            ],
+            "the pane's ended run and the one no process was read for are left, named"
         );
         let under = |id: &str| led.run(id).unwrap().unwrap().master_session_id;
         assert_eq!(under("open-mine"), "sess-now");
@@ -13004,10 +13020,18 @@ mod outdated_tests {
         assert!(why.contains("run-3"), "{why}");
 
         led.end_run("run-3", "master", "done").unwrap();
+        let OutdatedAct::Leave(reason) = sweep(&mut led) else {
+            panic!("criterion 42: replaced while run-3's close loop has not finished")
+        };
+        assert!(reason.contains("run-3"), "{reason}");
+        led.mark_session_terminal_observed("run-3").unwrap();
+        led.mark_checkout_returned_observed("run-3", crate::runner::ledger::CheckoutReturn::Gone)
+            .unwrap();
+        led.mark_lease_returned_observed("run-3", "ISS-3").unwrap();
         assert_eq!(
             sweep(&mut led),
             OutdatedAct::Replace,
-            "criterion 42: once the run it could not read has ended, the next sweep clears the mark and replaces it"
+            "criterion 42: once the run it could not read is closed, the next sweep clears the mark and replaces it"
         );
     }
 

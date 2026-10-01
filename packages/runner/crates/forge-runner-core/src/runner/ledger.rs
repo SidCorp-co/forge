@@ -539,6 +539,7 @@ const MASTER_COLUMNS: &[&str] = &[
     "placed_plugins",
     "placed_at",
     "outdated",
+    "unattributed",
 ];
 
 #[cfg(test)]
