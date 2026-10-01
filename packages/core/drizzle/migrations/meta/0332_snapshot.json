@@ -1,6 +1,6 @@
 {
-  "id": "fe3467bf-2be2-422a-9ce6-49ad01ca5e1e",
-  "prevId": "e313de9b-f802-4112-855d-0e6d2874999f",
+  "id": "85da44e9-6d6d-49fc-aec0-790ca9959bb1",
+  "prevId": "4bcfe4f7-af59-42df-aa9d-409cbddefc7f",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -4487,6 +4487,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "merged_target": {
+          "name": "merged_target",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "complexity": {
           "name": "complexity",
           "type": "text",
@@ -5004,6 +5010,22 @@
           ],
           "isUnique": false,
           "where": "kind = 'result'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "job_events_secret_resolve_idx": {
+          "name": "job_events_secret_resolve_idx",
+          "columns": [
+            {
+              "expression": "job_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "kind = 'secret_resolve'",
           "concurrently": false,
           "method": "btree",
           "with": {}

@@ -15,7 +15,6 @@ import type {
 	MemoryModel,
 	MemoryModelStatus,
 	PluginDesignation,
-	PolicyDocument,
 	ProjectUpdateInput,
 } from "./types";
 
@@ -78,31 +77,6 @@ export function useUnarchiveProject(id: string | undefined) {
 				description: formatApiError(err),
 				tone: "error",
 			}),
-	});
-}
-
-/** GET the policy dispatch reads. `declared: false` is an answer, not an error. */
-export function usePolicy(id: string | undefined) {
-	return useQuery({
-		queryKey: ["project", id, "policy"],
-		queryFn: () => projectSettingsApi.getPolicy(id as string),
-		enabled: !!id,
-		retry: false,
-	});
-}
-
-/** PUT the whole policy against the revision it was read at. A refusal is left on the
- *  mutation for the section to list; only a success is toasted. */
-export function useUpdatePolicy(id: string | undefined) {
-	const qc = useQueryClient();
-	const { toast } = useToast();
-	return useMutation({
-		mutationFn: (write: { baseRevision: number | null; document: PolicyDocument }) =>
-			projectSettingsApi.putPolicy(id as string, write.baseRevision, write.document),
-		onSuccess: (data) => {
-			qc.setQueryData(["project", id, "policy"], data);
-			toast({ title: "Policy saved", tone: "success" });
-		},
 	});
 }
 

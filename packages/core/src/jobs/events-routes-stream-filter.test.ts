@@ -73,6 +73,10 @@ const updateFrom = vi.fn(() => ({ where: updateWhere }));
 const updateSet = vi.fn((..._args: unknown[]) => ({ where: updateWhere, from: updateFrom }));
 const dbUpdate = vi.fn(() => ({ set: updateSet }));
 
+vi.mock('./job-secret-scrub.js', () => ({
+  scrubJobOutput: async (_jobIds: readonly string[], data: unknown) => data,
+}));
+
 vi.mock('../db/client.js', () => ({
   db: { select: dbSelect, transaction, update: dbUpdate, $with: dbWith },
 }));

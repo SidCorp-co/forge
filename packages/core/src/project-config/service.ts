@@ -198,7 +198,7 @@ export async function writePolicy(input: {
   return { ok: true, held: toHeld(result.stored, parsed.value), created: result.created };
 }
 
-function credentialRefs(profile: TestingProfile): { path: string; ref: string }[] {
+export function credentialRefs(profile: TestingProfile): { path: string; ref: string }[] {
   return [
     ...Object.entries(profile.actors).map(([name, actor]) => ({
       path: pointer(['actors', name, 'credential']),

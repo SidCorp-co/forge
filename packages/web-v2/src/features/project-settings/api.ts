@@ -5,8 +5,6 @@ import type {
 	ProjectInvitationRow,
 	LabelCreateInput,
 	LabelPatchInput,
-	PolicyDocument,
-	PolicyRead,
 	ProjectLabel,
 	ProjectMemberRow,
 	PluginDesignation,
@@ -31,17 +29,6 @@ export const projectSettingsApi = {
 	/** `POST /api/projects/:id/unarchive` — clear `archivedAt` (owner only). */
 	unarchive: (id: string) =>
 		apiClient<ProjectDetail>(`/projects/${id}/unarchive`, { method: "POST" }),
-
-	/** `GET /api/projects/:id/policy` — the policy dispatch reads, or `declared: false`. */
-	getPolicy: (id: string) => apiClient<PolicyRead>(`/projects/${id}/policy`),
-
-	/** `PUT /api/projects/:id/policy` — the whole document, against the revision it was read at
-	 *  (`null` when there is none). A 422 carries `error.refusals`, each naming its path. */
-	putPolicy: (id: string, baseRevision: number | null, document: PolicyDocument) =>
-		apiClient<PolicyRead & { created: boolean }>(`/projects/${id}/policy`, {
-			method: "PUT",
-			body: JSON.stringify({ baseRevision, document }),
-		}),
 
 	runAssistantWeekly: (id: string) =>
 		apiClient<

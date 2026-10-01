@@ -22,6 +22,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { canonicalUuidText, orgHandleText } from './column-checks.js';
 import { devicePlatforms, deviceStatuses } from './device-vocabulary.js';
+import { jobEventKinds } from './job-event-kinds.js';
 import {
   agentSessionFailureReasons,
   agentSessionKinds,
@@ -753,20 +754,12 @@ export const promptBlobs = pgTable('prompt_blobs', {
   refCount: integer('ref_count').notNull().default(0),
 });
 
-export const jobEventKinds = [
-  'stdout',
-  'stderr',
-  'tool_call',
-  'tool_result',
-  'progress',
-  'result',
-  // ISS-442 C0 — audited manual intervention (e.g. single-job cancel). `kind`
-  // is a plain text column, so this is additive with no migration; the
-  // interventions metric (C6) counts rows with this kind.
-  'intervention',
-  'kill_ack',
-] as const;
-export type JobEventKind = (typeof jobEventKinds)[number];
+export {
+  CORE_WRITTEN_JOB_EVENT_KINDS,
+  DEVICE_POSTED_JOB_EVENT_KINDS,
+  type JobEventKind,
+  jobEventKinds,
+} from './job-event-kinds.js';
 
 export const jobEvents = pgTable(
   'job_events',
@@ -785,6 +778,9 @@ export const jobEvents = pgTable(
     tsIdx: index('job_events_ts_idx').on(t.ts),
     jobIdTsIdx: index('job_events_job_id_ts_idx').on(t.jobId, t.ts),
     resultKindIdx: index('job_events_result_idx').on(t.jobId).where(sql`kind = 'result'`),
+    secretResolveIdx: index('job_events_secret_resolve_idx')
+      .on(t.jobId)
+      .where(sql`kind = 'secret_resolve'`),
   }),
 );
 
@@ -1025,6 +1021,7 @@ export const issues = pgTable(
     mergedAt: timestamp('merged_at', { withTimezone: true }),
     mergedCommitSha: text('merged_commit_sha'),
     mergedLanding: text('merged_landing'),
+    mergedTarget: text('merged_target'),
     // ISS-42 C2 — t-shirt sizing (xs/s/m/l/xl) for scoping. NULL = unsized.
     complexity: text('complexity', { enum: issueComplexities }),
     reopenCount: integer('reopen_count').notNull().default(0),

@@ -2,7 +2,7 @@
 
 // Project settings → Repository. baseBranch (where ISS-* branches are cut from),
 // persisted via PATCH /api/projects/:id. The checkout is each device binding's. Where a landed change goes is
-// the project document's, written through PUT /api/projects/:id/config.
+// the project document's, edited on the Configuration tab.
 import { useEffect, useState } from "react";
 import {
   Button,
@@ -54,10 +54,8 @@ export function RepoTab({ project, canEdit }: { project: ProjectDetail; canEdit:
             <SectionTitle className="fg-h4">Release path</SectionTitle>
             <p className="fg-caption text-subtle">
               Where work lands, the promotions it crosses and the environment production deploys
-              from are the project document&apos;s — read it with{" "}
-              <code className="fg-code">GET /api/projects/:id/config</code> and write it with{" "}
-              <code className="fg-code">PUT /api/projects/:id/config</code>. The Release card under
-              Pipeline shows what it declares.
+              from are the project document&apos;s, edited on the Configuration tab. The Release
+              card under Pipeline shows what it declares.
             </p>
           </div>
 

@@ -172,10 +172,29 @@ export async function clearIssueMerge(
 ): Promise<boolean> {
   const rows = await executor
     .update(issues)
-    .set({ mergedAt: null, mergedCommitSha: null, mergedLanding: null, updatedAt: sql`now()` })
+    .set({
+      mergedAt: null,
+      mergedCommitSha: null,
+      mergedLanding: null,
+      mergedTarget: null,
+      updatedAt: sql`now()`,
+    })
     .where(and(eq(issues.id, issueId), ne(issues.status, 'closed')))
     .returning({ id: issues.id });
   return rows.length > 0;
+}
+
+// cm:why the first target named on a standing mark is the branch the work landed on; a later mark
+// with another target does not move it, as a later stamp does not move merged_at.
+export async function recordMergeTarget(
+  executor: MergeRecordExecutor,
+  issueId: string,
+  target: string,
+): Promise<void> {
+  await executor
+    .update(issues)
+    .set({ mergedTarget: target })
+    .where(and(eq(issues.id, issueId), isNotNull(issues.mergedAt), isNull(issues.mergedTarget)));
 }
 
 export async function observedMergeForIssue(

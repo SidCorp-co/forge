@@ -453,8 +453,8 @@ function AddEpodsystemForm({
       {role === "deploy" && canDeploy && (
         <p className="fg-body-sm text-muted">
           Which environment this storefront deploys is the project document&apos;s: name the binding
-          in <code>environments.&lt;name&gt;.deployment.binding</code> and write the document with{" "}
-          <code>PUT /api/projects/:id/config</code>.
+          in <code>environments.&lt;name&gt;.deployment.binding</code> of the project document, on the
+          Configuration tab of project settings.
         </p>
       )}
 

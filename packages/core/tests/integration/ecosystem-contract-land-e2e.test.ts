@@ -166,7 +166,7 @@ const SPEC = JSON.stringify({
   info: { title: 's', version: '1' },
   paths: { '/api/a': { get: { responses: { default: { description: 'u' } } } } },
 });
-const ids: Record<string, string> = {};
+const ids = { c1: '', c2: '' };
 const names: Record<string, string> = {};
 
 describe('a land on a branch an environment deploys from records each changed contract', () => {
