@@ -388,11 +388,9 @@ export interface ServingNowArgs {
 }
 
 /**
- * Like {@link VerifyOutcome}, except that the probe readings survive a GREEN.
- *
- * `verifyDeployed` drops them on its ok arm because the deploy it watched is
- * its own evidence. A recorded release has no such act to point at: the
- * readings ARE the record, so they travel on both arms.
+ * Like {@link VerifyOutcome}, except that the probe readings survive a GREEN: `verifyDeployed`
+ * drops them because the deploy it watched is its own evidence, and a recorded release has no
+ * such act to point at, so the readings ARE the record.
  */
 export type ServingNowOutcome =
   | { ok: true; identity: string; health: 'up'; readings: string[] }
@@ -406,9 +404,7 @@ export type ServingNowOutcome =
     };
 
 /**
- * Whether the application is serving this commit RIGHT NOW, in one read.
- *
- * {@link verifyDeployed} polls for the commit a release named and holds the
+ * Whether the application is serving this commit RIGHT NOW, in one read. {@link verifyDeployed} polls for the commit a release named and holds the
  * reading still first. A release that already happened has nothing to wait
  * for: polling here turns a false claim into a five-minute wait and the same
  * refusal.
