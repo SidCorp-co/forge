@@ -4,8 +4,8 @@
  * already past it, so the old schema is rebuilt from every migration below it.
  */
 
-import { randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { readMigrationFiles } from 'drizzle-orm/migrator';
 import postgres, { type Sql } from 'postgres';
@@ -18,6 +18,7 @@ const SCRIPT = fileURLToPath(
 );
 const PASSWORD = 'hunter2-do-not-print';
 const MCP_TOKEN = 'ghp_mcp-token-do-not-print';
+const ROLLBACK_TEXT = 'Redeploy the previous image from the Coolify panel, then purge the CDN';
 
 type Exporter = typeof import('../../../../scripts/export-legacy-project-config.mjs');
 
@@ -26,7 +27,8 @@ function migrationParts() {
     (a, b) => a.folderMillis - b.folderMillis,
   );
   const drop = files.find((f) => f.sql.join('\n').includes('DROP COLUMN "workspace_setup"'));
-  if (!drop) throw new Error('the migration dropping the legacy project columns is not in the folder');
+  if (!drop)
+    throw new Error('the migration dropping the legacy project columns is not in the folder');
   return {
     below: files.filter((f) => f.folderMillis < drop.folderMillis).flatMap((f) => f.sql),
     drop: drop.sql,
@@ -72,7 +74,9 @@ beforeAll(async () => {
   });
   // cm:why beta's database is older than this tree's 0327 and 0329: it still holds the binding's
   // `stages` and the project's `repo_path`, which the export must read too.
-  await sql.unsafe(`ALTER TABLE integration_bindings ADD COLUMN stages text[] NOT NULL DEFAULT '{}'`);
+  await sql.unsafe(
+    `ALTER TABLE integration_bindings ADD COLUMN stages text[] NOT NULL DEFAULT '{}'`,
+  );
   await sql.unsafe(`ALTER TABLE projects ADD COLUMN repo_path text`);
 
   const owner = randomUUID();
@@ -116,13 +120,18 @@ beforeAll(async () => {
   const connection = randomUUID();
   await sql.unsafe(
     `INSERT INTO integration_connections (id, owner_type, owner_id, provider, config, active)
-     VALUES ($1, 'user', $2, 'coolify', '{}'::jsonb, true)`,
+     VALUES ($1, 'user', $2, 'coolify', '{"rollback":{"mode":"coolify-image"}}'::jsonb, true)`,
     [connection, owner],
   );
   await sql.unsafe(
     `INSERT INTO integration_bindings (id, connection_id, project_id, provider, role, label, active, config, stages)
      VALUES ($1, $2, $3, 'coolify', 'deploy', '', true, '{}'::jsonb, ARRAY['live'])`,
     [randomUUID(), connection, full],
+  );
+  await sql.unsafe(
+    `INSERT INTO integration_bindings (id, connection_id, project_id, provider, role, label, active, config, stages)
+     VALUES ($1, $2, $3, 'coolify', 'deploy', 'store-b', true, $4::text::jsonb, ARRAY['preview'])`,
+    [randomUUID(), connection, full, JSON.stringify({ rollback: ROLLBACK_TEXT })],
   );
 
   exporter = await import('../../../../scripts/export-legacy-project-config.mjs');
@@ -146,7 +155,12 @@ describe('the export on a database still at the old schema', () => {
       projects: Array<{
         slug: string;
         legacy: Record<string, unknown>;
-        bindings: Array<{ role: string; stages: string[] }>;
+        bindings: Array<{
+          role: string;
+          label: string;
+          stages: string[];
+          rollback: { from: string; value: unknown } | null;
+        }>;
       }>;
     };
 
@@ -191,7 +205,20 @@ describe('the export on a database still at the old schema', () => {
     expect(report.projects.find((p) => p.slug === 'bravo')?.legacy).not.toHaveProperty(
       'default_device_id',
     );
-    expect(alpha?.bindings).toEqual([expect.objectContaining({ role: 'deploy', stages: ['live'] })]);
+    expect(alpha?.bindings).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: '',
+          stages: ['live'],
+          rollback: { from: 'connection', value: { mode: 'coolify-image' } },
+        }),
+        expect.objectContaining({
+          label: 'store-b',
+          stages: ['preview'],
+          rollback: { from: 'binding', value: ROLLBACK_TEXT },
+        }),
+      ]),
+    );
 
     expect(out.stdout).not.toContain(PASSWORD);
     expect(out.stdout).not.toContain(MCP_TOKEN);
@@ -202,13 +229,18 @@ describe('the export on a database still at the old schema', () => {
   it('prints the same for a person, naming what each column is re-entered as and what is absent', () => {
     const out = run();
     expect(out.status).toBe(0);
-    expect(out.stdout).toMatch(/present {2}projects\.repo_url {2}→ re-enter as source\.git\.repository/);
+    expect(out.stdout).toMatch(
+      /present {2}projects\.repo_url {2}→ re-enter as source\.git\.repository/,
+    );
     expect(out.stdout).toMatch(
       /absent {3}projects\.default_device_id {2}\(this database does not hold it/,
     );
     expect(out.stdout).toContain('project alpha (');
     expect(out.stdout).toContain('repo_url: git@github.com:acme/alpha.git');
-    expect(out.stdout).toContain('stages=["live"]');
+    expect(out.stdout).toContain('label="" stages=["live"]');
+    expect(out.stdout).toContain(`label="store-b" stages=["preview"]`);
+    expect(out.stdout).toContain(`rollback (on the binding): ${ROLLBACK_TEXT}`);
+    expect(out.stdout).toContain('rollback (on the connection):');
     expect(out.stdout).toContain(exporter.SECRET_MARK);
     expect(out.stdout).not.toContain(PASSWORD);
     const db = new URL(url);
@@ -220,7 +252,10 @@ describe('the export on a database still at the old schema', () => {
   it('opens a session that refuses a planted write, inside the transaction and outside it', async () => {
     const before = await fingerprint();
     await expect(
-      exporter.withReadOnly(url, (tx: Sql) => tx`UPDATE projects SET name = 'planted' WHERE slug = 'alpha'`),
+      exporter.withReadOnly(
+        url,
+        (tx: Sql) => tx`UPDATE projects SET name = 'planted' WHERE slug = 'alpha'`,
+      ),
     ).rejects.toMatchObject({ code: '25006' });
     const settings = await exporter.withReadOnly(url, async (tx: Sql) => {
       const [session] = await tx`SHOW default_transaction_read_only`;
@@ -244,13 +279,20 @@ describe('the export on a database still at the old schema', () => {
       expect(after.stdout).toMatch(new RegExp(`absent {3}projects\\.${column} `));
     }
     expect(after.stdout).toMatch(/present {2}projects\.agent_config/);
+    expect(after.stdout).toContain(`rollback (on the binding): ${ROLLBACK_TEXT}`);
 
     await sql.unsafe('ALTER TABLE projects DROP COLUMN repo_path, DROP COLUMN agent_config');
     await sql.unsafe('ALTER TABLE integration_bindings DROP COLUMN stages');
+    const rollbackOnly = run();
+    expect(rollbackOnly.stdout).toContain(`rollback (on the binding): ${ROLLBACK_TEXT}`);
+    expect(rollbackOnly.stdout).not.toContain('stages=');
+
+    await sql.unsafe(`UPDATE integration_bindings SET config = '{}'::jsonb`);
+    await sql.unsafe(`UPDATE integration_connections SET config = '{}'::jsonb`);
     const none = run();
     expect(none.status).toBe(0);
     expect(none.stdout).toContain(
-      'No legacy column exists in this database, so there is no old config to export.',
+      'No legacy column exists in this database and no binding declares a rollback, so there is no old config to export.',
     );
   });
 

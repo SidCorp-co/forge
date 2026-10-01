@@ -72,7 +72,10 @@ describe('resolveLiveSource', () => {
   });
 
   it('tells a GitLab-hosted project with no key where to attach one, and never to bind GitHub', async () => {
-    const s = await resolveLiveSource('p', deps({ row: { repository: GITLAB, privateKeyEnc: null } }));
+    const s = await resolveLiveSource(
+      'p',
+      deps({ row: { repository: GITLAB, privateKeyEnc: null } }),
+    );
     expect(s.kind).toBe('refused');
     const reason = s.kind === 'refused' ? s.reason : '';
     expect(reason).toBe(

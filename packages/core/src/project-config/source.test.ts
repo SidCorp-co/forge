@@ -25,14 +25,18 @@ describe('setupOf', () => {
 
 describe('remoteOf', () => {
   it('derives the SSH and the HTTPS remote of one repository', () => {
-    expect(remoteOf('github.com/SidCorp-co/forge', 'ssh')).toBe('git@github.com:SidCorp-co/forge.git');
+    expect(remoteOf('github.com/SidCorp-co/forge', 'ssh')).toBe(
+      'git@github.com:SidCorp-co/forge.git',
+    );
     expect(remoteOf('github.com/SidCorp-co/forge', 'https')).toBe(
       'https://github.com/SidCorp-co/forge.git',
     );
   });
 
   it('keeps a host that is not GitHub', () => {
-    expect(remoteOf('gitlab.example.co/team/app', 'ssh')).toBe('git@gitlab.example.co:team/app.git');
+    expect(remoteOf('gitlab.example.co/team/app', 'ssh')).toBe(
+      'git@gitlab.example.co:team/app.git',
+    );
   });
 });
 

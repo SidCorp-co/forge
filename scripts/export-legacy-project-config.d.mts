@@ -18,7 +18,14 @@ export interface LegacyReport {
     name: string;
     archived: boolean;
     legacy: Record<string, unknown>;
-    bindings: Array<{ id: string; provider: string; role: string; stages: string[] }>;
+    bindings: Array<{
+      id: string;
+      provider: string;
+      role: string;
+      label: string | null;
+      stages: string[] | null;
+      rollback: { from: 'binding' | 'connection'; value: unknown } | null;
+    }>;
   }>;
 }
 

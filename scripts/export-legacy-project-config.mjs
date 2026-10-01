@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 
 /**
- * Prints each project's config as the legacy `projects` columns hold it, so the projects can be
- * re-entered by hand through the v1 API after the release that drops them (ISS-16, design D8).
+ * Prints each project's config as the legacy `projects` columns hold it, and every integration
+ * binding's label and free-text rollback, so the projects can be re-entered by hand through the v1
+ * API after the release that drops them (ISS-16, design D8).
  * Read-only: the session refuses writes (`default_transaction_read_only`) and the read is one
  * `READ ONLY` transaction. Secrets print as names only. It reads raw columns with SQL and imports
  * nothing from core, because it runs against a database whose schema core no longer describes.
@@ -63,7 +64,8 @@ export function redact(value, key = '') {
     return SECRET_KEY.test(key) && value !== null && value !== '' ? SECRET_MARK : value;
   }
   if (Array.isArray(value)) return value.map((v) => redact(v, key));
-  if (NAMES_ONLY.has(key)) return Object.fromEntries(Object.keys(value).map((k) => [k, SECRET_MARK]));
+  if (NAMES_ONLY.has(key))
+    return Object.fromEntries(Object.keys(value).map((k) => [k, SECRET_MARK]));
   return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, redact(v, k)]));
 }
 
@@ -75,6 +77,13 @@ export async function presentColumns(sql) {
   `;
   return new Set(rows.map((r) => `${r.table_name}.${r.column_name}`));
 }
+
+const rollbackOf = (b) =>
+  b.binding_rollback != null
+    ? { from: 'binding', value: b.binding_rollback }
+    : b.connection_rollback != null
+      ? { from: 'connection', value: b.connection_rollback }
+      : null;
 
 const ident = (s) => `"${s.replaceAll('"', '""')}"`;
 
@@ -91,16 +100,23 @@ export async function readLegacyConfig(sql) {
     .join(', ');
   const projects = await sql.unsafe(`SELECT ${select} FROM projects ORDER BY slug`);
 
-  const stages = columns.find((c) => c.table === 'integration_bindings')?.present ?? false;
-  const bindings = stages
-    ? await sql`
-        SELECT project_id, id, provider, role, stages FROM integration_bindings
-         ORDER BY project_id, provider, id
-      `
-    : [];
+  const stages = present.has('integration_bindings.stages') ? 'b.stages' : 'NULL::text[]';
+  const label = present.has('integration_bindings.label') ? 'b.label' : 'NULL::text';
+  const bindings = await sql.unsafe(`
+    SELECT b.project_id, b.id, b.provider, b.role, ${label} AS label, ${stages} AS stages,
+           b.config -> 'rollback' AS binding_rollback, c.config -> 'rollback' AS connection_rollback
+      FROM integration_bindings b
+      JOIN integration_connections c ON c.id = b.connection_id
+     ORDER BY b.project_id, b.provider, b.id
+  `);
 
   return {
-    columns: columns.map(({ table, column, present: p, v1 }) => ({ table, column, present: p, v1 })),
+    columns: columns.map(({ table, column, present: p, v1 }) => ({
+      table,
+      column,
+      present: p,
+      v1,
+    })),
     projects: projects.map((p) => ({
       id: p.id,
       slug: p.slug,
@@ -109,7 +125,14 @@ export async function readLegacyConfig(sql) {
       legacy: Object.fromEntries(projectCols.map((c) => [c.column, redact(p[c.column], c.column)])),
       bindings: bindings
         .filter((b) => b.project_id === p.id)
-        .map((b) => ({ id: b.id, provider: b.provider, role: b.role, stages: b.stages })),
+        .map((b) => ({
+          id: b.id,
+          provider: b.provider,
+          role: b.role,
+          label: b.label,
+          stages: b.stages,
+          rollback: rollbackOf(b),
+        })),
     })),
   };
 }
@@ -144,7 +167,8 @@ function where(url) {
 
 function show(value) {
   if (value === null || value === undefined) return ' null';
-  if (typeof value === 'string') return value.includes('\n') ? `\n${indent(value, 6)}` : ` ${value}`;
+  if (typeof value === 'string')
+    return value.includes('\n') ? `\n${indent(value, 6)}` : ` ${value}`;
   return `\n${indent(JSON.stringify(value, null, 2), 6)}`;
 }
 
@@ -165,10 +189,16 @@ export function render(report, url) {
     );
   }
   out.push('');
-  if (!report.columns.some((c) => c.present)) {
-    out.push('No legacy column exists in this database, so there is no old config to export.');
+  const rollbacks = report.projects.some((p) => p.bindings.some((b) => b.rollback !== null));
+  if (!report.columns.some((c) => c.present) && !rollbacks) {
+    out.push(
+      'No legacy column exists in this database and no binding declares a rollback, so there is no old config to export.',
+    );
     return out.join('\n');
   }
+  out.push(
+    'Every binding is listed with its label and the free-text rollback it carries; re-enter that text by hand.',
+  );
   out.push(`${report.projects.length} project(s)`);
   for (const p of report.projects) {
     out.push('', `project ${p.slug} (${p.id}) "${p.name}"${p.archived ? ' [archived]' : ''}`);
@@ -176,7 +206,15 @@ export function render(report, url) {
       out.push(`  ${column}:${show(value)}`);
     }
     for (const b of p.bindings) {
-      out.push(`  binding ${b.id} ${b.provider} role=${b.role} stages=${JSON.stringify(b.stages)}`);
+      const stages = b.stages === null ? '' : ` stages=${JSON.stringify(b.stages)}`;
+      out.push(
+        `  binding ${b.id} ${b.provider} role=${b.role} label=${JSON.stringify(b.label)}${stages}`,
+      );
+      out.push(
+        b.rollback === null
+          ? '    rollback: none declared'
+          : `    rollback (on the ${b.rollback.from}):${show(b.rollback.value)}`,
+      );
     }
   }
   return out.join('\n');

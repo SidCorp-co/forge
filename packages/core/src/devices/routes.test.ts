@@ -313,9 +313,7 @@ describe('GET /api/devices/me/runners (ISS-271)', () => {
     const lastCall = dbSelect.mock.calls.at(-1) as unknown[] | undefined;
     const projection = lastCall?.[0] as Record<string, unknown> | undefined;
     expect(projection).toBeDefined();
-    expect(Object.keys(projection ?? {})).toEqual(
-      expect.arrayContaining(['masterPolicy']),
-    );
+    expect(Object.keys(projection ?? {})).toEqual(expect.arrayContaining(['masterPolicy']));
     expect(Object.keys(projection ?? {})).not.toContain('kind');
     expect(Object.keys(projection ?? {})).not.toContain('workspaceSetup');
   });

@@ -36,7 +36,8 @@ export async function compareBoundRepository(args: {
       detail: `the project document declares no repository: set \`source.git.repository\` to "${bound}" with PUT /api/projects/:id/config. Binding a repository does not write the document.`,
     };
   }
-  if (declared.toLowerCase() === bound.toLowerCase()) return { kind: 'declared', repository: declared };
+  if (declared.toLowerCase() === bound.toLowerCase())
+    return { kind: 'declared', repository: declared };
   logger.warn(
     { projectId: args.projectId, declared, bound },
     'github bind: the bound repository is not the one the project document declares',
