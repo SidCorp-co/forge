@@ -32,7 +32,11 @@ const PROBES = {
     from: 'none',
     also: [
       { from: 'none', probe: ['node', 'scripts/check-injected-doc-modes.mjs'] },
-      { from: 'none', probe: ['node', 'scripts/check-pat-surface.mjs'] },
+      {
+        from: 'none',
+        needs: ['deps', 'observability-build', 'contracts-build'],
+        probe: ['node', 'scripts/check-pat-surface.mjs'],
+      },
       { from: 'none', probe: ['node', 'scripts/check-status-tuples.mjs', '--all'] },
       { from: 'none', probe: ['node', 'scripts/check-doc-citations.mjs', '--all'] },
       {

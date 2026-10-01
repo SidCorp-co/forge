@@ -2,20 +2,12 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { canonicalJson } from './canonical.js';
+import { enterHermeticEnv } from './hermetic-env.js';
 
 const GENERATOR = 'packages/core/src/api-contract/generate.ts';
 const DEFAULT_OUT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'contracts');
 export const API_ARTIFACT = 'forge-api.openapi.json';
 export const MCP_ARTIFACT = 'forge-mcp.tools.json';
-
-// cm:why the contract is the default build's: a feature flag or a variable in the caller's shell
-// would mount a different route set, so the environment is replaced rather than inherited.
-const HERMETIC_ENV: Record<string, string> = {
-  DATABASE_URL: 'postgres://contract:contract@127.0.0.1:1/contract',
-  JWT_SECRET: 'api-contract-generator-placeholder-secret',
-  DEVICE_TOKEN_PEPPER: 'api-contract-generator-placeholder-pepper',
-};
-const KEPT_ENV = new Set(['PATH', 'HOME', 'TMPDIR', 'NODE_OPTIONS']);
 
 function outDir(argv: string[]): string {
   const i = argv.indexOf('--out');
@@ -28,8 +20,7 @@ function outDir(argv: string[]): string {
   return resolve(dir);
 }
 
-for (const key of Object.keys(process.env)) if (!KEPT_ENV.has(key)) delete process.env[key];
-Object.assign(process.env, HERMETIC_ENV);
+enterHermeticEnv();
 
 const out = outDir(process.argv.slice(2));
 const { app } = await import('../index.js');
