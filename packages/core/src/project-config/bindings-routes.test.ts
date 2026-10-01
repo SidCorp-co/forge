@@ -308,9 +308,28 @@ describe('a binding holding keys the document has no field for', () => {
     expect(body.unrepresentable).toEqual([
       expect.objectContaining({
         id: BINDING,
+        revision: 2,
         reason: expect.stringContaining('`branch`, `resourceName`'),
       }),
     ]);
+  });
+
+  it('is switched off by its id and revision all the same, keeping every key it holds', async () => {
+    const res = await call('DELETE', `/bindings/${BINDING}`, { baseRevision: 2 });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ removed: true, bindingId: BINDING, revision: 3 });
+    expect(bindingMem.rows.get(BINDING)).toMatchObject({ active: false, revision: 3, config: held });
+    expect(effects.afterWrite).toHaveBeenCalledWith(
+      expect.objectContaining({ bindingId: BINDING, config: held, created: false }),
+    );
+  });
+
+  it('still refuses STALE_BASE for it, and leaves it on', async () => {
+    const res = await call('DELETE', `/bindings/${BINDING}`, { baseRevision: 1 });
+
+    expect(await refusalsOf(res)).toEqual([expect.objectContaining({ code: 'STALE_BASE' })]);
+    expect(bindingMem.rows.get(BINDING)).toMatchObject({ active: true, revision: 2 });
   });
 
   it('refuses a document write over it, and the row keeps every key', async () => {

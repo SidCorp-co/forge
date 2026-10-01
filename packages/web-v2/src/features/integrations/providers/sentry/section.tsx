@@ -474,7 +474,7 @@ export function SentrySection({ projectId }: { projectId: string }) {
                   variant="danger"
                   icon="trash"
                   loading={remove.isPending}
-                  onClick={() => remove.mutate(existing.id)}
+                  onClick={() => remove.mutate(existing)}
                 >
                   Remove
                 </Button>

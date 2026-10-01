@@ -115,6 +115,7 @@ function binding(over: Partial<IntegrationSummary> = {}): IntegrationSummary {
     integrationSecretSet: true,
     agentAccess: "none",
     agentPathKind: "core-mediated",
+    revision: 1,
     createdAt: "2026-09-01T00:00:00.000Z",
     updatedAt: "2026-09-20T00:00:00.000Z",
     ...over,
@@ -296,7 +297,7 @@ describe("the controls that belong to the binding row itself", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /disconnect from this project/i }));
 
-    expect(remove).toHaveBeenCalledWith(BINDING);
+    expect(remove).toHaveBeenCalledWith(expect.objectContaining({ id: BINDING, revision: 1 }));
   });
 
   it("keeps Disconnect on the picker when the repository list fails to load", () => {
@@ -306,7 +307,7 @@ describe("the controls that belong to the binding row itself", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /disconnect from this project/i }));
 
-    expect(remove).toHaveBeenCalledWith(BINDING);
+    expect(remove).toHaveBeenCalledWith(expect.objectContaining({ id: BINDING, revision: 1 }));
   });
 
   it("keeps the enable toggle on the picker, so a switched-off row has a way back either way", () => {

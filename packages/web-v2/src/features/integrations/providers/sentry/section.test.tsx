@@ -55,7 +55,7 @@ function binding(config: Record<string, unknown>): IntegrationSummary {
     breakerOpenedAt: null,
     hasSecrets: true,
     integrationSecretSet: false,
-    agentAccess: "closed",
+    agentAccess: "none",
     agentPathKind: "direct-mcp",
     revision: 1,
     createdAt: "2026-10-01T00:00:00Z",

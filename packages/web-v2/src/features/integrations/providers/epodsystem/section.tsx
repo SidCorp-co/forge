@@ -222,7 +222,7 @@ function EpodsystemBindingRow({
       )
     )
       return;
-    remove.mutate(binding.id);
+    remove.mutate(binding);
   }
 
   return (

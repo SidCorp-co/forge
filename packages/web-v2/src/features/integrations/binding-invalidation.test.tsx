@@ -52,7 +52,7 @@ const WRITES: Array<[string, () => { mutate: (v: never) => void; isSuccess: bool
 	["useBindConnection", () => hooks.useBindConnection(P), { connectionId: "c1" }],
 	["useCreateProviderIntegration", () => hooks.useCreateProviderIntegration(P), { provider: "coolify" }],
 	["useUpdateProviderIntegration", () => hooks.useUpdateProviderIntegration(P), { id: "b1", body: {} }],
-	["useDeleteProviderIntegration", () => hooks.useDeleteProviderIntegration(P), "b1"],
+	["useDeleteProviderIntegration", () => hooks.useDeleteProviderIntegration(P), { id: "b1", revision: 3 }],
 	["useWriteBinding (config tab)", () => useWriteBinding(P, "b1"), { base: 1, document: {} }],
 ];
 

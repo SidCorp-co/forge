@@ -144,7 +144,7 @@ function RocketchatBindingPanel({
 
   function handleDelete() {
     if (!window.confirm("Disconnect the Rocket.Chat bot from this project?")) return;
-    remove.mutate(binding.id);
+    remove.mutate(binding);
   }
 
   return (
