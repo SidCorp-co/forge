@@ -9,6 +9,7 @@
 
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { holdAdvisoryKey, untilAllBlockedOn } from '../helpers/advisory-hold.js';
 import {
   bindTestRunner,
   createTestDevice,
@@ -72,32 +73,6 @@ async function aBoxWithARun(issueKeys: string[]) {
 async function anotherBox() {
   const user = await createTestUser(harness.db);
   return createTestDevice(harness.db, user.id);
-}
-
-/** Wait until Postgres itself says both declarations are blocked on the box run key. */
-async function bothAreWaitingOn(deviceId: string, boxRunId: string): Promise<void> {
-  const key = `run-session:${deviceId}:${boxRunId}`;
-  const deadline = Date.now() + 10_000;
-  let seen = -1;
-  while (Date.now() < deadline) {
-    const rows = (await harness.db.execute(sql`
-      SELECT count(*)::int AS n
-        FROM pg_locks
-       WHERE locktype = 'advisory'
-         AND NOT granted
-         AND database = (SELECT oid FROM pg_database WHERE datname = current_database())
-         AND classid = ((hashtextextended(${key}, 0) >> 32) & 4294967295)::oid
-         AND objid = (hashtextextended(${key}, 0) & 4294967295)::oid
-    `)) as unknown as { n: number }[];
-    seen = rows[0]?.n ?? 0;
-    if (seen >= 2) return;
-    await new Promise((r) => setTimeout(r, 25));
-  }
-  throw new Error(
-    `both declarations should be BLOCKED on the box run key while the harness holds it; ` +
-      `Postgres reports ${seen} waiter(s) after 10s. A declaration that does not wait on this key ` +
-      `is reading around the claim rather than making it.`,
-  );
 }
 
 describe('a declaration retried after a lost answer', () => {
@@ -190,35 +165,18 @@ describe('a declaration retried after a lost answer', () => {
       boxRunId,
     };
 
-    let releaseTheLock = () => {};
-    const lockHeld = new Promise<void>((resolve) => {
-      releaseTheLock = resolve;
-    });
-    const holder = harness.db.transaction(async (tx) => {
-      await tx.execute(
-        sql`SELECT pg_advisory_xact_lock(hashtextextended(${`run-session:${device.id}:${boxRunId}`}, 0))`,
-      );
-      await lockHeld;
-    });
+    const lock = await holdAdvisoryKey(harness.db, `run-session:${device.id}:${boxRunId}`);
 
-    const settled: string[] = [];
-    const first = mods.openRunSession({ ...declaration }).then((r) => {
-      settled.push('first');
-      return r;
-    });
-    const second = mods.openRunSession({ ...declaration }).then((r) => {
-      settled.push('second');
-      return r;
-    });
-    await bothAreWaitingOn(device.id, boxRunId);
-
-    expect(
-      settled,
-      'a declaration that answers while another holds the box run key has not claimed it — it has read around it',
-    ).toEqual([]);
-
-    releaseTheLock();
-    await holder;
+    const first = mods.openRunSession({ ...declaration });
+    const second = mods.openRunSession({ ...declaration });
+    try {
+      await untilAllBlockedOn(harness.db, `run-session:${device.id}:${boxRunId}`, {
+        first,
+        second,
+      });
+    } finally {
+      await lock.release();
+    }
     const [a, b] = await Promise.all([first, second]);
 
     expect(
