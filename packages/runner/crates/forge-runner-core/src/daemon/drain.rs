@@ -436,7 +436,10 @@ impl Drain {
         if inner.attempt.is_none() {
             return;
         }
-        Self::defer(&mut inner, cause, vec![why.to_string()], next);
+        Self::defer(&mut inner, cause, Vec::new(), next);
+        if let Some(DrainState::Deferred { failed, .. }) = &mut inner.state {
+            *failed = Some(why.to_string());
+        }
         let state = inner.state.clone();
         drop(inner);
         self.socket.set_accepting(true);
@@ -455,6 +458,7 @@ impl Drain {
             outstanding,
             next_attempt: next.by.clone(),
             next_attempt_at_ms: now + due_in.as_millis() as i64,
+            failed: None,
         });
     }
 
@@ -1123,8 +1127,19 @@ mod tests {
         assert!(drain.admit().is_ok());
         assert!(*drain.socket().accepting().borrow());
         match serving::read(&dir).unwrap().unwrap().drain {
-            Some(DrainState::Deferred { outstanding, .. }) => {
-                assert_eq!(outstanding, ["could not exec /x/forge-runner: not found"])
+            Some(DrainState::Deferred {
+                outstanding,
+                failed,
+                ..
+            }) => {
+                assert!(
+                    outstanding.is_empty(),
+                    "a failed exec leaves nothing outstanding: {outstanding:?}"
+                );
+                assert_eq!(
+                    failed.as_deref(),
+                    Some("could not exec /x/forge-runner: not found")
+                );
             }
             other => panic!("{other:?}"),
         }

@@ -32,6 +32,7 @@ pub mod job_unheard;
 pub mod master;
 pub mod master_build;
 pub mod master_exit;
+pub mod master_handed;
 pub mod master_limit;
 pub mod master_skill;
 pub mod pane_exit;
@@ -182,11 +183,30 @@ const SESSION_LEDGER_INTERVAL: std::time::Duration = std::time::Duration::from_s
 /// How often the update loop asks whether a newer release exists.
 const UPDATE_CHECK_INTERVAL: std::time::Duration = std::time::Duration::from_secs(6 * 3600);
 
+/// What a handover carries across its exec besides the control listener.
+#[cfg_attr(not(unix), allow(dead_code))]
+struct HandOver<'a> {
+    /// The build this process serves, kept beside the install path once an
+    /// update installed another there, which a handover that does not happen
+    /// puts back.
+    served: &'a crate::update::ServedBuild,
+    /// The master panes declarations are checked against, which the next
+    /// image serves at once rather than after its first sweep.
+    masters: &'a master::Masters,
+}
+
 /// Replace this process's image with the build installed on disk, the control
 /// listener carried, once `drain_to_idle` has closed the window for it.
-/// Returns only where the exec did not happen: admission then opens again and
-/// this process goes on serving the build it started with, until `next`.
-fn hand_over(drain: &drain::Drain, what: &str, cause: &str, next: drain::NextAttempt) {
+/// Returns only where the exec did not happen: the build this process serves
+/// goes back on disk where an update had replaced it, admission opens again
+/// and this process goes on serving that build, until `next`.
+fn hand_over(
+    drain: &drain::Drain,
+    carry: &HandOver<'_>,
+    what: &str,
+    cause: &str,
+    next: drain::NextAttempt,
+) {
     #[cfg(unix)]
     {
         let why = match crate::exe::own() {
@@ -197,25 +217,93 @@ fn hand_over(drain: &drain::Drain, what: &str, cause: &str, next: drain::NextAtt
                     own.path.display(),
                     std::process::id()
                 );
+                let dir = control::config_dir();
+                if let Some(dir) = &dir {
+                    let (served, masters) = carry.masters.hand_on();
+                    let handed = master_handed::Handed {
+                        pid: std::process::id(),
+                        boot_id: crate::runner::inflight::boot_identity(),
+                        written_at_ms: agent_activity::now_ms(),
+                        served,
+                        masters,
+                    };
+                    if let Err(e) = master_handed::write(dir, &handed) {
+                        tracing::warn!(
+                            "[{what}] the master panes this process serves could not be written for the image that follows ({e}); it serves them from its first sweep, refusing their declarations until then"
+                        );
+                    }
+                }
                 let err = handover::replace_image(&own.path, &args, drain.socket().listener());
+                if let Some(dir) = &dir {
+                    master_handed::withdraw(dir);
+                }
                 format!("could not exec {}: {err}", own.path.display())
             }
             Err(e) => format!("could not name the build installed on disk: {e}"),
         };
-        tracing::error!(
-            "[{what}] the handover for {cause} did not happen — {why}. Admission is open again and this process goes on serving the build it started with; the next attempt is {}",
-            next.by
-        );
-        drain.handover_failed(&why, &next);
+        handover_did_not_happen(drain, carry.served, what, cause, why, &next);
     }
     #[cfg(not(unix))]
     {
-        let _ = (drain, next);
-        // No exec here: the service manager starts the new build in a
-        // process of its own, as it always did on this platform.
-        tracing::warn!("[{what}] handing over for {cause}: exiting for the service manager to start the build installed on disk");
-        std::process::exit(0);
+        let _ = (drain, carry, next);
+        handover::exit_for_service_manager(what, cause);
     }
+}
+
+/// Serve the master panes the image before this one handed on, where this
+/// process is that image's exec, and say what was found.
+fn take_handed_masters(masters: &master::Masters) {
+    let Some(dir) = control::config_dir() else {
+        return;
+    };
+    let boot = crate::runner::inflight::boot_identity();
+    match master_handed::take(
+        &dir,
+        std::process::id(),
+        boot.as_deref(),
+        agent_activity::now_ms(),
+    ) {
+        master_handed::Taken::Nothing => {}
+        master_handed::Taken::Handed(handed) => {
+            let n = masters.take_handed(handed);
+            tracing::info!(
+                "[master] serving the {n} master pane(s) the build before this one handed over, so their declarations are answered from now rather than from this image's first sweep"
+            );
+        }
+        master_handed::Taken::Refused(why) => tracing::warn!(
+            "[master] a handed-over masters registry was found and not taken: {why}. This image serves its master panes from its first sweep"
+        ),
+    }
+}
+
+/// The exec did not happen: put the build this process serves back on the path
+/// an update installed another at, so every hook and command on the box runs
+/// it again, then reopen admission naming why.
+#[cfg(unix)]
+fn handover_did_not_happen(
+    drain: &drain::Drain,
+    served: &crate::update::ServedBuild,
+    what: &str,
+    cause: &str,
+    mut why: String,
+    next: &drain::NextAttempt,
+) {
+    match served.restore() {
+        Ok(Some(kept)) => why.push_str(&format!(
+            "; the build this process serves is back at {} from {}, so every hook and command on this box runs it again",
+            kept.exe.display(),
+            kept.at.display()
+        )),
+        Ok(None) => {}
+        Err(e) => why.push_str(&format!(
+            "; {e}, so every hook and command on this box runs a build that did not start until one that runs is installed there"
+        )),
+    }
+    tracing::error!(
+        "[{what}] the handover for {cause} did not happen — {why}. Admission is open again and this process goes on serving the build it started with; the next attempt is {}",
+        next.by
+    );
+    drain.handover_failed(&why, next);
 }
 
 /// Run `check` now and then once every `every`, measured from the start of
@@ -554,6 +642,12 @@ pub async fn run(
     // it, and the record `forge-runner status` reads of the build it serves.
     let drain = Arc::new(drain::Drain::new(control::config_dir()));
 
+    // The build this process serves, kept where an update installs another,
+    // and the master panes it serves, both carried by a handover's exec.
+    let served = Arc::new(crate::update::ServedBuild::new());
+    let masters = Arc::new(master::Masters::new());
+    take_handed_masters(&masters);
+
     // Update check loop: warn when a newer release exists; auto-apply +
     // restart when `update.auto` is set. Checks ~30s after start, then every 6h.
     if let Some(url) =
@@ -565,17 +659,21 @@ pub async fn run(
         let runner = runner.clone();
         let bound = cfg.clone();
         let assignments = client.clone();
+        let served = served.clone();
+        let masters = masters.clone();
         let cancel_rx = cancel_rx.clone();
         tokio::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_secs(30)).await;
             update_checks(UPDATE_CHECK_INTERVAL, cancel_rx, move |checked_at| {
-                let (url, inflight, drain, runner, bound, assignments) = (
+                let (url, inflight, drain, runner, bound, assignments, served, masters) = (
                     url.clone(),
                     inflight.clone(),
                     drain.clone(),
                     runner.clone(),
                     bound.clone(),
                     assignments.clone(),
+                    served.clone(),
+                    masters.clone(),
                 );
                 async move {
                 match crate::update::fetch_manifest(&url).await {
@@ -588,7 +686,7 @@ pub async fn run(
                             m.version
                         );
                         if auto {
-                            match crate::update::apply(&m).await {
+                            match crate::update::apply(&m, Some(&served)).await {
                                 Ok(Some(o)) => {
                                     // The new binary is already swapped on disk;
                                     // this process hands over to it once its
@@ -640,7 +738,16 @@ pub async fn run(
                                         ),
                                         drain::Drained::GaveUp => {}
                                         drain::Drained::Idle => {
-                                            hand_over(&drain, "update", &cause, next());
+                                            hand_over(
+                                                &drain,
+                                                &HandOver {
+                                                    served: &served,
+                                                    masters: &masters,
+                                                },
+                                                "update",
+                                                &cause,
+                                                next(),
+                                            );
                                         }
                                     }
                                 }
@@ -671,6 +778,8 @@ pub async fn run(
         let inflight = inflight.clone();
         let drain = drain.clone();
         let runner = runner.clone();
+        let served = served.clone();
+        let masters = masters.clone();
         let mut cancel_rx = cancel_rx.clone();
         tokio::spawn(async move {
             let mut tick = tokio::time::interval(std::time::Duration::from_secs(30));
@@ -731,7 +840,16 @@ pub async fn run(
                                 continue;
                             }
                         }
-                        hand_over(&drain, "cred", "a new device token", next());
+                        hand_over(
+                            &drain,
+                            &HandOver {
+                                served: &served,
+                                masters: &masters,
+                            },
+                            "cred",
+                            "a new device token",
+                            next(),
+                        );
                         said = Some("handover failed".into());
                     }
                 }
@@ -971,8 +1089,6 @@ pub async fn run(
             }
         });
     }
-
-    let masters = Arc::new(master::Masters::new());
 
     let activity = Arc::new(agent_activity::Activities::new());
 
@@ -2034,7 +2150,85 @@ mod master_skill_sweep_tests {
         let applied = src
             .find("— handing over to it once this process's own work ends")
             .expect("the line the update writes once it has replaced the binary");
-        let arm = &src[applied..src[applied..].find("hand_over(&drain").unwrap() + applied];
+        let arm = &src[applied..src[applied..].find("hand_over(").unwrap() + applied];
         assert!(!arm.contains("install_master_skills("), "{arm}");
+    }
+}
+
+#[cfg(all(test, unix))]
+mod handover_failure_tests {
+    use super::*;
+
+    fn runs_as(exe: &std::path::Path) -> String {
+        let out = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(format!("'{}' --version", exe.display()))
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    }
+
+    /// Criterion 12 at the daemon: a handover whose exec did not happen puts
+    /// the build it serves back on the path every caller runs, and says so
+    /// where `forge-runner status` reads it.
+    #[tokio::test]
+    async fn a_handover_that_did_not_happen_puts_the_served_build_back_on_the_path() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = crate::test_scratch::Scratch::new("handover-restore");
+        let exe = dir.join("forge-runner");
+        std::fs::write(&exe, "#!/bin/sh\necho 'forge-runner 0.1.0 (served0)'\n").unwrap();
+        std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let served = crate::update::ServedBuild::new();
+        crate::update::install(
+            &exe,
+            b"#!/bin/sh\necho 'forge-runner 0.2.0 (good000)'\n",
+            &crate::update::Claim {
+                version: "0.2.0".into(),
+                commit: None,
+            },
+            Some(&served),
+        )
+        .await
+        .unwrap();
+        assert_eq!(runs_as(&exe), "forge-runner 0.2.0 (good000)");
+
+        let record = dir.join("record");
+        let drain = drain::Drain::new(Some(record.clone()));
+        let next = || drain::NextAttempt {
+            by: "the next update check".into(),
+            due_in: std::time::Duration::from_secs(60),
+        };
+        let inflight = Arc::new(AtomicUsize::new(0));
+        let out = drain::drain_to_idle(
+            &drain,
+            "update",
+            "update 0.1.0 → 0.2.0",
+            &inflight,
+            || async { 0 },
+            next,
+        )
+        .await;
+        assert_eq!(out, drain::Drained::Idle);
+        handover_did_not_happen(
+            &drain,
+            &served,
+            "update",
+            "update 0.1.0 → 0.2.0",
+            format!("could not exec {}: planted", exe.display()),
+            &next(),
+        );
+        assert_eq!(
+            runs_as(&exe),
+            "forge-runner 0.1.0 (served0)",
+            "every caller on the box runs the served build again"
+        );
+        assert!(drain.admit().is_ok(), "admission is open");
+        match serving::read(&record).unwrap().unwrap().drain {
+            Some(serving::DrainState::Deferred { failed, .. }) => {
+                let failed = failed.unwrap_or_default();
+                assert!(failed.contains("is back at"), "{failed}");
+            }
+            other => panic!("{other:?}"),
+        }
     }
 }

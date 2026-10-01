@@ -32,6 +32,7 @@ use crate::daemon::job_exit;
 use crate::daemon::job_unheard;
 use crate::daemon::master_build::{self, Judged};
 use crate::daemon::master_exit::{self, Holding, Verdict};
+use crate::daemon::master_handed;
 use crate::daemon::master_limit;
 use crate::daemon::pane_exit;
 use crate::daemon::pool_jobs::{self, JobPanes, Records};
@@ -947,6 +948,51 @@ impl Masters {
         reg.served = served;
     }
 
+    /// What this registry serves, for the image a handover's exec starts.
+    /// Unix only, where a handover is an exec.
+    #[cfg_attr(not(unix), allow(dead_code))]
+    pub(crate) fn hand_on(&self) -> (Option<Vec<String>>, Vec<master_handed::HandedMaster>) {
+        let reg = self.0.lock().expect("masters poisoned");
+        let served = match &reg.served {
+            Served::Read(ids) => Some(ids.clone()),
+            Served::Unread | Served::Unreadable(_) => None,
+        };
+        let mut masters: Vec<_> = reg
+            .live
+            .iter()
+            .map(|(project_id, m)| master_handed::HandedMaster {
+                project_id: project_id.clone(),
+                session_id: m.session_id.clone(),
+                pane: m.name.clone(),
+            })
+            .collect();
+        masters.sort_by(|a, b| a.project_id.cmp(&b.project_id));
+        (served, masters)
+    }
+
+    /// Serve the panes the image before this one served, as it served them,
+    /// until this image's first sweep reads them for itself. Answers how many.
+    pub(crate) fn take_handed(&self, handed: master_handed::Handed) -> usize {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        if let Some(ids) = handed.served {
+            reg.served = Served::Read(ids);
+        }
+        let n = handed.masters.len();
+        for m in handed.masters {
+            reg.live.insert(
+                m.project_id,
+                MasterState {
+                    session_id: m.session_id,
+                    name: m.pane,
+                    last_work: Instant::now(),
+                    last_nudge: None,
+                    mcp_stale_reported: false,
+                },
+            );
+        }
+        n
+    }
+
     pub(crate) fn note_unplaced(&self, project_id: &str, why: Unplaced) -> bool {
         let mut reg = self.0.lock().expect("masters poisoned");
         let changed = reg.unplaced.get(project_id) != Some(&why);
@@ -1622,12 +1668,13 @@ async fn sweep(
             continue;
         }
 
-        if masters.claim_nudge(
+        let claimed = masters.claim_nudge(
             &runner.project_id,
             work_digest(&admissible),
             reported.as_ref(),
             held.is_some(),
-        ) {
+        );
+        if types_nudge(pane, claimed) {
             nudge_master(masters, &runner.project_id, &resolved.slug, held.as_ref()).await;
         }
     }
@@ -2748,18 +2795,29 @@ pub(crate) fn conversation_transcript(
     cwd: &std::path::Path,
     conversation_id: &str,
 ) -> Option<std::path::PathBuf> {
+    Some(transcript_under(
+        &dirs_next::home_dir()?,
+        cwd,
+        conversation_id,
+    ))
+}
+
+/// Where Claude Code keeps the transcript of `conversation_id`, run in `cwd`,
+/// for a user whose home is `home`.
+pub(crate) fn transcript_under(
+    home: &std::path::Path,
+    cwd: &std::path::Path,
+    conversation_id: &str,
+) -> std::path::PathBuf {
     let encoded: String = cwd
         .to_string_lossy()
         .chars()
         .map(|c| if c == '/' || c == '.' { '-' } else { c })
         .collect();
-    Some(
-        dirs_next::home_dir()?
-            .join(".claude")
-            .join("projects")
-            .join(encoded)
-            .join(format!("{conversation_id}.jsonl")),
-    )
+    home.join(".claude")
+        .join("projects")
+        .join(encoded)
+        .join(format!("{conversation_id}.jsonl"))
 }
 
 pub(crate) fn resume_for(
@@ -4268,7 +4326,7 @@ async fn outdated_resident(
     }
     let Some(found) = ledger.as_ref().and_then(|led| {
         judge_resident(
-            led, masters, activity, pane_name, resolved, project_id, placement,
+            led, masters, activity, pane_name, resolved, project_id, placement, None,
         )
     }) else {
         return false;
@@ -4328,6 +4386,9 @@ struct Outdated {
 /// The judgement [`outdated_resident`] acts on, read off the ledger without
 /// awaiting anything. `None` for a pane that is current or cannot be judged;
 /// the ledger's `outdated` column is written to match either way.
+/// `home` is where the successor's `--resume` would look for the transcript,
+/// `None` for this user's own, which is where it looks in production.
+#[allow(clippy::too_many_arguments)]
 fn judge_resident(
     led: &Ledger,
     masters: &Masters,
@@ -4336,6 +4397,7 @@ fn judge_resident(
     resolved: &crate::daemon::dispatch::Resolved,
     project_id: &str,
     placement: Placement,
+    home: Option<&std::path::Path>,
 ) -> Option<Outdated> {
     let slug = &resolved.slug;
     let row = match led.master_for_project(project_id) {
@@ -4372,7 +4434,11 @@ fn judge_resident(
             "its ledger row names session {recorded} and this box serves it as {served}, so the runs either one names are not all it holds; the sweep writes the row before it judges again"
         )),
         _ => master_exit::holding(led, row.as_ref())
-            .unwrap_or_else(|e| Holding::Unknown(format!("the ledger could not be read ({e})"))),
+            .unwrap_or_else(|e| {
+                Holding::Unknown(format!(
+                    "the ledger could not be read ({e}), so which runs it holds is not known"
+                ))
+            }),
     };
     let session = served.or(recorded);
     let seen = session.as_deref().and_then(|s| activity.get(s));
@@ -4388,9 +4454,32 @@ fn judge_resident(
     let turn = turn_of(seen.as_ref(), transcript.as_deref());
     Some(Outdated {
         why,
-        act: outdated_act(placement, &holding, &turn),
+        act: outdated_act(
+            placement,
+            &holding,
+            &turn,
+            unresumable(
+                home,
+                &resolved.repo_path,
+                row.as_ref().and_then(|r| r.conversation_id.as_deref()),
+            )
+            .as_deref(),
+        ),
         session,
     })
+}
+
+/// Whether a nudge this sweep claimed is typed into the pane.
+///
+/// A pane this sweep placed was handed its brief moments before, and the brief
+/// is its nudge for this work: it is claimed as one, so the next nudge is
+/// judged against it, and is not typed. Typed as well, the nudge reached the
+/// composer some tens of milliseconds after the brief's Enter, before Claude
+/// Code had taken the pasted brief in, read the brief as unsent text and was
+/// refused — four of five panes re-placed on 2026-10-01, each of whose
+/// transcripts records the brief submitted just after the refusal.
+pub(crate) fn types_nudge(pane: PaneState, claimed: bool) -> bool {
+    claimed && !matches!(pane, PaneState::ColdStarted | PaneState::Resumed)
 }
 
 /// Where a lead's turn stands, as far as this box can tell.
@@ -4439,14 +4528,19 @@ pub(crate) enum OutdatedAct {
 }
 
 /// Replace only a pane that holds nothing, has affirmatively ended its turn,
-/// and has work waiting for its successor. Each other case leaves it, named.
+/// has work waiting for its successor, and has a conversation its successor
+/// can resume. Each other case leaves it, and every reason that holds is
+/// named, not only the first: a pane left for having no admissible work that
+/// also holds four runs is left for both (judge r2's wording note).
 pub(crate) fn outdated_act(
     placement: Placement,
     holding: &Holding,
     turn: &TurnRead,
+    unresumable: Option<&str>,
 ) -> OutdatedAct {
+    let mut left: Vec<String> = Vec::new();
     if placement == Placement::AdoptOnly {
-        return OutdatedAct::Leave(
+        left.push(
             "its project has no admissible work, so a successor would have nothing to take up"
                 .into(),
         );
@@ -4459,18 +4553,57 @@ pub(crate) fn outdated_act(
                 .map(|r| format!("{} ({})", r.run_id, r.issues.join(", ")))
                 .collect::<Vec<_>>()
                 .join("; ");
-            return OutdatedAct::Leave(format!("it holds {} open run(s): {names}", runs.len()));
+            left.push(format!("it holds {} open run(s): {names}", runs.len()));
         }
-        Holding::Unknown(why) => {
-            return OutdatedAct::Leave(format!("which runs it holds cannot be established: {why}"))
-        }
+        // Each one already says that which runs it holds is not known, and
+        // why; a prefix saying so again read the sentence twice.
+        Holding::Unknown(why) => left.push(why.clone()),
     }
     match turn {
-        TurnRead::Ended => OutdatedAct::Replace,
-        TurnRead::InTurn(what) => OutdatedAct::Leave((*what).to_string()),
-        TurnRead::Unknown => OutdatedAct::Leave(
-            "neither its hooks nor its transcript can say whether its turn is over".into(),
-        ),
+        TurnRead::Ended => {}
+        TurnRead::InTurn(what) => left.push((*what).to_string()),
+        TurnRead::Unknown => left
+            .push("neither its hooks nor its transcript can say whether its turn is over".into()),
+    }
+    if let Some(why) = unresumable {
+        left.push(why.to_string());
+    }
+    if left.is_empty() {
+        OutdatedAct::Replace
+    } else {
+        OutdatedAct::Leave(left.join("; "))
+    }
+}
+
+/// Why the successor of a pane placed again could not resume its
+/// conversation, or `None` where it could: the conversation its ledger row
+/// records has a transcript where Claude Code keeps one. Placed without it, a
+/// successor starts cold and the work its predecessor was in the middle of is
+/// lost to it, which no build is worth (judge r2, plant at 17:36:18Z).
+pub(crate) fn unresumable(
+    home: Option<&std::path::Path>,
+    repo: &std::path::Path,
+    conversation: Option<&str>,
+) -> Option<String> {
+    let Some(id) = conversation.filter(|c| !c.is_empty()) else {
+        return Some(
+            "this box has recorded no conversation for it, so a successor would start cold, without what it was doing"
+                .into(),
+        );
+    };
+    let found = match home {
+        Some(h) => Some(transcript_under(h, repo, id)),
+        None => conversation_transcript(repo, id),
+    };
+    match found {
+        Some(path) if path.is_file() => None,
+        Some(path) => Some(format!(
+            "its conversation {id} has no transcript at {}, so a successor could not resume it and would start cold, without what it was doing",
+            path.display()
+        )),
+        None => Some(format!(
+            "this box has no home directory to find conversation {id}'s transcript under, so a successor could not be shown to resume it"
+        )),
     }
 }
 
@@ -12650,6 +12783,14 @@ mod outdated_tests {
             .unwrap_or_else(|| panic!("the sweep no longer calls {needle}"))
     }
 
+    /// The transcript of `conv-1`, the conversation these rows record, where a
+    /// successor's `--resume` finds it with `dir` as both home and checkout.
+    fn resumable(dir: &std::path::Path) {
+        let at = transcript_under(dir, dir, "conv-1");
+        std::fs::create_dir_all(at.parent().unwrap()).unwrap();
+        std::fs::write(&at, "").unwrap();
+    }
+
     fn resolved(repo: &std::path::Path) -> crate::daemon::dispatch::Resolved {
         crate::daemon::dispatch::Resolved {
             slug: "proj".into(),
@@ -12670,7 +12811,12 @@ mod outdated_tests {
     #[test]
     fn an_outdated_pane_holding_nothing_at_its_prompt_with_work_waiting_is_replaced() {
         assert_eq!(
-            outdated_act(Placement::AdoptOrStart, &Holding::Nothing, &TurnRead::Ended),
+            outdated_act(
+                Placement::AdoptOrStart,
+                &Holding::Nothing,
+                &TurnRead::Ended,
+                None
+            ),
             OutdatedAct::Replace,
             "criterion 27"
         );
@@ -12680,7 +12826,12 @@ mod outdated_tests {
     fn an_outdated_pane_is_left_running_for_each_reason_and_names_it() {
         let cases = [
             (
-                outdated_act(Placement::AdoptOrStart, &held("run-7"), &TurnRead::Ended),
+                outdated_act(
+                    Placement::AdoptOrStart,
+                    &held("run-7"),
+                    &TurnRead::Ended,
+                    None,
+                ),
                 "run-7 (ISS-1)",
                 "criterion 29",
             ),
@@ -12689,6 +12840,7 @@ mod outdated_tests {
                     Placement::AdoptOrStart,
                     &Holding::Nothing,
                     &TurnRead::InTurn("its hooks say a turn is running"),
+                    None,
                 ),
                 "turn is running",
                 "criterion 30",
@@ -12698,12 +12850,18 @@ mod outdated_tests {
                     Placement::AdoptOrStart,
                     &Holding::Nothing,
                     &TurnRead::InTurn("it is stopped on a permission prompt"),
+                    None,
                 ),
                 "permission prompt",
                 "criterion 31",
             ),
             (
-                outdated_act(Placement::AdoptOnly, &Holding::Nothing, &TurnRead::Ended),
+                outdated_act(
+                    Placement::AdoptOnly,
+                    &Holding::Nothing,
+                    &TurnRead::Ended,
+                    None,
+                ),
                 "no admissible work",
                 "criterion 32",
             ),
@@ -12712,6 +12870,7 @@ mod outdated_tests {
                     Placement::AdoptOrStart,
                     &Holding::Nothing,
                     &TurnRead::Unknown,
+                    None,
                 ),
                 "can say whether its turn is over",
                 "criterion 33",
@@ -12721,9 +12880,20 @@ mod outdated_tests {
                     Placement::AdoptOrStart,
                     &Holding::Unknown("no session id".into()),
                     &TurnRead::Ended,
+                    None,
                 ),
                 "no session id",
                 "an unknown holding is never read as none",
+            ),
+            (
+                outdated_act(
+                    Placement::AdoptOrStart,
+                    &Holding::Nothing,
+                    &TurnRead::Ended,
+                    Some("its conversation c-1 has no transcript at /x/c-1.jsonl"),
+                ),
+                "no transcript at /x/c-1.jsonl",
+                "a successor that could not resume is not placed",
             ),
         ];
         for (act, names, criterion) in cases {
@@ -12732,6 +12902,82 @@ mod outdated_tests {
                 OutdatedAct::Replace => panic!("{criterion}: replaced"),
             }
         }
+    }
+
+    /// A pane left for more than one reason names each, and a holding the
+    /// ledger could not count is said once (judge r2's wording notes).
+    #[test]
+    fn an_outdated_pane_left_for_several_reasons_names_every_one_and_each_once() {
+        let OutdatedAct::Leave(why) = outdated_act(
+            Placement::AdoptOnly,
+            &held("run-7"),
+            &TurnRead::InTurn("its hooks say a turn is running"),
+            Some("its conversation c-1 has no transcript at /x/c-1.jsonl"),
+        ) else {
+            panic!("replaced");
+        };
+        for names in [
+            "no admissible work",
+            "run-7 (ISS-1)",
+            "turn is running",
+            "no transcript",
+        ] {
+            assert!(why.contains(names), "{names}: {why}");
+        }
+        let OutdatedAct::Leave(why) = outdated_act(
+            Placement::AdoptOrStart,
+            &Holding::Unknown(
+                "the mark stands, so which runs forge-master-x holds cannot be established on this box until each ends or is read".into(),
+            ),
+            &TurnRead::Ended,
+            None,
+        ) else {
+            panic!("replaced");
+        };
+        assert_eq!(
+            why.matches("cannot be established").count(),
+            1,
+            "said twice: {why}"
+        );
+    }
+
+    #[test]
+    fn a_pane_this_sweep_briefed_is_not_also_nudged_and_an_adopted_one_is() {
+        for pane in [PaneState::ColdStarted, PaneState::Resumed] {
+            assert!(!types_nudge(pane, true), "{pane:?}: its brief is its nudge");
+        }
+        assert!(types_nudge(PaneState::Adopted, true));
+        assert!(
+            !types_nudge(PaneState::Adopted, false),
+            "nothing claimed, nothing typed"
+        );
+        let sweep = sweep_source();
+        let claimed = sweep
+            .find("let claimed = masters.claim_nudge(")
+            .expect("claimed");
+        let typed = sweep[claimed..]
+            .find("if types_nudge(pane, claimed)")
+            .expect("the sweep asks types_nudge before typing the nudge");
+        assert!(
+            !sweep[claimed..claimed + typed].contains("nudge_master("),
+            "no nudge typed between the claim and the rule"
+        );
+    }
+
+    #[test]
+    fn a_conversation_with_no_transcript_or_none_recorded_cannot_be_resumed() {
+        let dir = Scratch::new("outdated-resume");
+        let repo = dir.join("repo");
+        let none = unresumable(Some(&dir), &repo, None).expect("none recorded");
+        assert!(none.contains("start cold"), "{none}");
+        let missing =
+            unresumable(Some(&dir), &repo, Some("conv-never-here")).expect("no transcript");
+        assert!(missing.contains("conv-never-here"), "{missing}");
+        assert!(missing.contains("start cold"), "{missing}");
+        let at = transcript_under(&dir, &repo, "conv-1");
+        std::fs::create_dir_all(at.parent().unwrap()).unwrap();
+        std::fs::write(&at, "").unwrap();
+        assert_eq!(unresumable(Some(&dir), &repo, Some("conv-1")), None);
     }
 
     fn heard(events: &[agent_activity::Event]) -> agent_activity::Activity {
@@ -12834,6 +13080,7 @@ mod outdated_tests {
     #[test]
     fn a_pane_the_previous_build_placed_is_left_while_it_holds_a_run_and_replaced_after() {
         let dir = Scratch::new("outdated-judge");
+        resumable(&dir);
         let mut led = Ledger::open_in_memory().unwrap();
         a_master_row(&led, Some("0.0.1 (old)"));
         led.create_run_group(NewRun {
@@ -12855,6 +13102,7 @@ mod outdated_tests {
             &resolved(&dir),
             "p",
             Placement::AdoptOrStart,
+            Some(&dir),
         )
         .expect("outdated");
         assert!(found.why.contains("0.0.1 (old)"), "{}", found.why);
@@ -12888,6 +13136,7 @@ mod outdated_tests {
             &resolved(&dir),
             "p",
             Placement::AdoptOrStart,
+            Some(&dir),
         )
         .expect("still outdated");
         assert!(
@@ -12914,6 +13163,7 @@ mod outdated_tests {
             &resolved(&dir),
             "p",
             Placement::AdoptOrStart,
+            Some(&dir),
         )
         .expect("still outdated");
         assert_eq!(
@@ -12931,6 +13181,7 @@ mod outdated_tests {
     #[test]
     fn a_pane_whose_runs_were_carried_to_the_session_this_box_serves_it_as_is_left_holding_them() {
         let dir = Scratch::new("outdated-carried");
+        resumable(&dir);
         let mut led = Ledger::open_in_memory().unwrap();
         a_master_row(&led, Some("0.0.1 (old)"));
         led.create_run_group(NewRun {
@@ -12975,6 +13226,7 @@ mod outdated_tests {
                 &resolved(&dir),
                 "p",
                 Placement::AdoptOrStart,
+                Some(&dir),
             )
             .expect("outdated")
             .act
@@ -13034,6 +13286,7 @@ mod outdated_tests {
     #[test]
     fn a_run_the_carry_could_not_read_holds_the_pane_until_it_ends() {
         let dir = Scratch::new("outdated-unread");
+        resumable(&dir);
         let mut led = Ledger::open_in_memory().unwrap();
         a_master_row(&led, Some("0.0.1 (old)"));
         led.create_run_group(NewRun {
@@ -13086,6 +13339,7 @@ mod outdated_tests {
                 &resolved(&dir),
                 "p",
                 Placement::AdoptOrStart,
+                Some(&dir),
             )
             .expect("outdated")
             .act
@@ -13168,6 +13422,7 @@ mod outdated_tests {
             &resolved(&dir),
             "p",
             Placement::AdoptOrStart,
+            Some(&dir),
         )
         .expect("outdated");
         let OutdatedAct::Leave(reason) = &found.act else {
@@ -13203,6 +13458,7 @@ mod outdated_tests {
             &resolved(&dir),
             "p",
             Placement::AdoptOrStart,
+            Some(&dir),
         );
         assert!(found.is_none(), "{:?}", found.map(|f| f.why));
         assert_eq!(led.master_for_project("p").unwrap().unwrap().outdated, None);
@@ -13221,6 +13477,7 @@ mod outdated_tests {
             &resolved(&dir),
             "p",
             Placement::AdoptOrStart,
+            Some(&dir),
         )
         .expect("criterion 23");
         assert!(found.why.contains("never recorded"), "{}", found.why);

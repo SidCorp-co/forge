@@ -3266,6 +3266,72 @@ mod tests {
             );
         }
 
+        /// Judge r2's note on the Outcome's "at once": the image an exec
+        /// starts refused every master's declaration until its first sweep
+        /// refilled the registry. Handed the registry the image before it
+        /// served, it answers the same declaration at once.
+        #[test]
+        fn a_declaration_right_after_a_handover_is_served_from_the_registry_handed_across() {
+            use crate::daemon::master_handed;
+            let dir = crate::test_scratch::Scratch::new("ct-handed");
+            let tokens = SessionTokens::at(dir.join("control-tokens.json"));
+            let token = tokens.mint("sess-a", "proj-1", "slug", "pane-1").unwrap();
+            let declare = |ctl: &Arc<Control>| {
+                served(
+                    ctl,
+                    serde_json::json!({
+                        "op": "run_declare", "token": token, "projectId": "proj-1",
+                        "issueKeys": ["ISS-1"], "worktreePath": "/w/one"
+                    }),
+                )
+            };
+
+            let fresh = control_over(
+                SessionTokens::at(dir.join("control-tokens.json")),
+                Arc::new(crate::daemon::master::Masters::new()),
+                &dir,
+            );
+            let unread = declare(&fresh);
+            assert!(!unread.ok);
+            assert!(
+                unread
+                    .reason
+                    .unwrap_or_default()
+                    .contains("has not yet read which projects it serves"),
+                "an image with nothing handed to it waits for its first sweep"
+            );
+
+            let old = crate::daemon::master::Masters::new();
+            old.remember_for_test("proj-1", "sess-a", "pane-1");
+            old.note_served(crate::daemon::master::Served::Read(vec!["proj-1".into()]));
+            let (served_ids, masters) = old.hand_on();
+            master_handed::write(
+                &dir,
+                &master_handed::Handed {
+                    pid: 4242,
+                    boot_id: Some("boot-a".into()),
+                    written_at_ms: 1_000,
+                    served: served_ids,
+                    masters,
+                },
+            )
+            .unwrap();
+            let master_handed::Taken::Handed(handed) =
+                master_handed::take(&dir, 4242, Some("boot-a"), 1_200)
+            else {
+                panic!("the registry its own pid wrote is taken");
+            };
+            let next = crate::daemon::master::Masters::new();
+            assert_eq!(next.take_handed(handed), 1);
+            let ctl = control_over(tokens, Arc::new(next), &dir);
+            let reply = declare(&ctl);
+            assert!(
+                reply.ok,
+                "declared at once, before any sweep: {:?}",
+                reply.reason
+            );
+        }
+
         #[test]
         fn no_refusal_for_an_unplaced_pane_promises_a_number_of_seconds() {
             let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");

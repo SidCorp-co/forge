@@ -193,7 +193,7 @@ fn outdated_master(s: &Snapshot, p: &Project, out: &mut Vec<String>) {
     match &m.outdated {
         ledger_ro::Outdated::No => {}
         ledger_ro::Outdated::Yes(why) => out.push(format!(
-            "{I3}   OUTDATED: {why}; the daemon does not nudge it, and places it again once it holds no run, its turn is over and its project has admissible work ← masters.outdated"
+            "{I3}   OUTDATED: {why}; the daemon does not nudge it, and places it again once it holds no run, its turn is over, its project has admissible work and its conversation can be resumed ← masters.outdated"
         )),
         ledger_ro::Outdated::Unsayable => out.push(format!(
             "{I3}   whether this master is outdated cannot be said here: the ledger has no `masters.outdated` column, which a daemon of the build that judges it adds ← masters"
@@ -1756,8 +1756,8 @@ pub(super) mod tests {
         );
         assert!(
             text[outdated..]
-                .contains("no run, its turn is over and its project has admissible work"),
-            "all three conditions of a re-placement are named: {text}"
+                .contains("no run, its turn is over, its project has admissible work and its conversation can be resumed"),
+            "every condition of a re-placement is named: {text}"
         );
         assert_eq!(unsourced(&lines), Vec::<String>::new(), "{text}");
 

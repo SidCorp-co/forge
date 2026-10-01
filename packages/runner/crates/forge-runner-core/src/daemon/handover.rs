@@ -21,6 +21,18 @@ use std::path::Path;
 /// The variable naming the control listener a replaced image hands on.
 pub const LISTENER_ENV: &str = "FORGE_RUNNER_CONTROL_FD";
 
+/// Where this platform has no exec to replace an image by: exit, so the
+/// service manager starts the build installed on disk in a process of its
+/// own, as an update always did here. The pid changes and the control socket
+/// is not carried, which on this platform hosts no hooks to refuse.
+#[cfg(not(unix))]
+pub fn exit_for_service_manager(what: &str, cause: &str) -> ! {
+    tracing::warn!(
+        "[{what}] handing over for {cause}: exiting for the service manager to start the build installed on disk"
+    );
+    std::process::exit(0)
+}
+
 /// Replace this process's image with `exe`, run with `args`, carrying
 /// `listener`. Returns only where the exec did not happen, with why, and with
 /// this process as it was before the call: the listener closed-on-exec again
