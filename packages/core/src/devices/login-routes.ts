@@ -22,6 +22,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { and, eq, gt, isNull, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import { z } from 'zod';
 import { RULES } from '../config/rate-limits.js';
 import { db } from '../db/client.js';
 import { deviceLoginCodes, organizationMembers, users } from '../db/schema.js';
@@ -31,6 +32,7 @@ import { logger } from '../logger.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { assertMayMintFullCredential, mintEpochFor } from '../middleware/pat-rest-surface.js';
 import { rateLimit } from '../middleware/rate-limit.js';
+import { zValidator } from '../middleware/zod-validator.js';
 import { Sentry } from '../observability/sentry.js';
 import { issueDeviceCredential } from './credential.js';
 import { registerDevice } from './register.js';
@@ -123,30 +125,42 @@ async function publishLoginEvent(
   }
 }
 
+const initBody = z.object({
+  device_label: z.string({ error: 'device_label is required (1..100 chars)' }),
+  device_platform: z.string({ error: 'device_platform must be one of windows|macos|linux' }),
+  device_hostname: z.string({ error: 'device_hostname must be a string' }).nullable().optional(),
+  machine_id: z.string({ error: 'machine_id must be a string' }).nullable().optional(),
+});
+
+const approveBody = z.object({
+  pairing_code: z.string({ error: 'invalid pairing_code' }),
+  agent_id: z.string({ error: 'agent_id must be a uuid' }).nullable().optional(),
+});
+
+const pollQuery = z.object({ pairing_code: z.string({ error: 'invalid pairing_code' }) });
+
+type Parsed = { success: true } | { success: false; error: z.core.$ZodError };
+
+const refuseLoginInput = (result: Parsed) => {
+  if (result.success) return;
+  const first = result.error.issues[0];
+  const pairing = first?.path[0] === 'pairing_code';
+  throw new HTTPException(400, {
+    message: first?.message ?? 'invalid body',
+    cause: { code: pairing ? 'INVALID_PAIRING_CODE' : 'INVALID_BODY' },
+  });
+};
+
 deviceLoginRoutes.post(
   '/login/init',
   rateLimit(() => RULES.deviceLoginInit, { name: 'deviceLoginInit' }),
+  zValidator('json', initBody, refuseLoginInput),
   async (c) => {
-    let body: {
-      device_label?: unknown;
-      device_platform?: unknown;
-      device_hostname?: unknown;
-      machine_id?: unknown;
-    };
-    try {
-      body = (await c.req.json()) as typeof body;
-    } catch {
-      throw new HTTPException(400, {
-        message: 'invalid JSON body',
-        cause: { code: 'INVALID_BODY' },
-      });
-    }
+    const body = c.req.valid('json');
 
-    const deviceLabel = typeof body.device_label === 'string' ? body.device_label.trim() : '';
-    const devicePlatform =
-      typeof body.device_platform === 'string' ? body.device_platform.trim().toLowerCase() : '';
-    const deviceHostnameRaw =
-      typeof body.device_hostname === 'string' ? body.device_hostname.trim() : '';
+    const deviceLabel = body.device_label.trim();
+    const devicePlatform = body.device_platform.trim().toLowerCase();
+    const deviceHostnameRaw = body.device_hostname?.trim() ?? '';
 
     if (!deviceLabel || deviceLabel.length > MAX_LABEL_LEN) {
       throw new HTTPException(400, {
@@ -167,10 +181,7 @@ deviceLoginRoutes.post(
       });
     }
     const deviceHostname = deviceHostnameRaw || null;
-    const machineId =
-      typeof body.machine_id === 'string' && body.machine_id.trim()
-        ? body.machine_id.trim().slice(0, 256)
-        : null;
+    const machineId = body.machine_id?.trim() ? body.machine_id.trim().slice(0, 256) : null;
 
     const createdIp = clientIp(c) ?? null;
     const uaRaw = c.req.header('user-agent') ?? '';
@@ -258,19 +269,14 @@ deviceLoginRoutes.post(
   '/login/approve',
   rateLimit(() => RULES.deviceLoginApprove, { name: 'deviceLoginApprove' }),
   requireAuth(),
+  async (c, next) => {
+    assertMayMintFullCredential(c);
+    await next();
+  },
+  zValidator('json', approveBody, refuseLoginInput),
   async (c) => {
     const userId = c.get('userId');
-
-    let body: { pairing_code?: unknown; agent_id?: unknown };
-    try {
-      body = (await c.req.json()) as { pairing_code?: unknown; agent_id?: unknown };
-    } catch {
-      throw new HTTPException(400, {
-        message: 'invalid JSON body',
-        cause: { code: 'INVALID_BODY' },
-      });
-    }
-    assertMayMintFullCredential(c);
+    const body = c.req.valid('json');
     const canonical = normalizeCode(body.pairing_code);
     const codeHash = sha256Hex(canonical);
     const agentUserId = await resolveApprovableAgent(body.agent_id, userId);
@@ -334,127 +340,131 @@ deviceLoginRoutes.post(
   },
 );
 
-deviceLoginRoutes.get('/login/poll', async (c) => {
-  const canonical = normalizeCode(c.req.query('pairing_code'));
-  const codeHash = sha256Hex(canonical);
+deviceLoginRoutes.get(
+  '/login/poll',
+  zValidator('query', pollQuery, refuseLoginInput),
+  async (c) => {
+    const canonical = normalizeCode(c.req.valid('query').pairing_code);
+    const codeHash = sha256Hex(canonical);
 
-  // Atomic single-use consumption. Two concurrent polls can't both win.
-  const consumed = await db
-    .update(deviceLoginCodes)
-    .set({ consumedAt: sql`now()` })
-    .where(
-      and(
-        eq(deviceLoginCodes.codeHash, codeHash),
-        sql`approved_user_id IS NOT NULL`,
-        isNull(deviceLoginCodes.consumedAt),
-        gt(deviceLoginCodes.expiresAt, sql`now()`),
-      ),
-    )
-    .returning({
-      id: deviceLoginCodes.id,
-      approvedUserId: deviceLoginCodes.approvedUserId,
-      agentUserId: deviceLoginCodes.agentUserId,
-      deviceLabel: deviceLoginCodes.deviceLabel,
-      devicePlatform: deviceLoginCodes.devicePlatform,
-      machineId: deviceLoginCodes.machineId,
-      grantEpoch: deviceLoginCodes.grantEpoch,
-    });
-
-  const [row] = consumed;
-  if (consumed.length === 1 && row) {
-    if (!row.approvedUserId) {
-      throw new HTTPException(500, {
-        message: 'pairing missing user',
-        cause: { code: 'PAIRING_NO_USER' },
+    // Atomic single-use consumption. Two concurrent polls can't both win.
+    const consumed = await db
+      .update(deviceLoginCodes)
+      .set({ consumedAt: sql`now()` })
+      .where(
+        and(
+          eq(deviceLoginCodes.codeHash, codeHash),
+          sql`approved_user_id IS NOT NULL`,
+          isNull(deviceLoginCodes.consumedAt),
+          gt(deviceLoginCodes.expiresAt, sql`now()`),
+        ),
+      )
+      .returning({
+        id: deviceLoginCodes.id,
+        approvedUserId: deviceLoginCodes.approvedUserId,
+        agentUserId: deviceLoginCodes.agentUserId,
+        deviceLabel: deviceLoginCodes.deviceLabel,
+        devicePlatform: deviceLoginCodes.devicePlatform,
+        machineId: deviceLoginCodes.machineId,
+        grantEpoch: deviceLoginCodes.grantEpoch,
       });
-    }
-    const [user] = await db
-      .select({ id: users.id })
-      .from(users)
-      .where(eq(users.id, row.approvedUserId))
-      .limit(1);
-    if (!user) {
-      throw new HTTPException(500, {
-        message: 'pairing user no longer exists',
-        cause: { code: 'PAIRING_USER_MISSING' },
+
+    const [row] = consumed;
+    if (consumed.length === 1 && row) {
+      if (!row.approvedUserId) {
+        throw new HTTPException(500, {
+          message: 'pairing missing user',
+          cause: { code: 'PAIRING_NO_USER' },
+        });
+      }
+      const [user] = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.id, row.approvedUserId))
+        .limit(1);
+      if (!user) {
+        throw new HTTPException(500, {
+          message: 'pairing user no longer exists',
+          cause: { code: 'PAIRING_USER_MISSING' },
+        });
+      }
+
+      const holderId = row.agentUserId ?? user.id;
+      const device = await registerDevice({
+        ownerId: holderId,
+        name: row.deviceLabel,
+        platform: row.devicePlatform as LoginPlatform,
+        machineId: row.machineId,
       });
-    }
+      const plaintext = await issueDeviceCredential({
+        deviceId: device.id,
+        holderUserId: holderId,
+        holderIsAgent: row.agentUserId != null,
+        grantEpoch: row.grantEpoch,
+      });
 
-    const holderId = row.agentUserId ?? user.id;
-    const device = await registerDevice({
-      ownerId: holderId,
-      name: row.deviceLabel,
-      platform: row.devicePlatform as LoginPlatform,
-      machineId: row.machineId,
-    });
-    const plaintext = await issueDeviceCredential({
-      deviceId: device.id,
-      holderUserId: holderId,
-      holderIsAgent: row.agentUserId != null,
-      grantEpoch: row.grantEpoch,
-    });
+      // Optional, flag-gated, best-effort git push-credential provisioning.
+      let gitCredential: Awaited<ReturnType<typeof provisionGitCredential>> = null;
+      try {
+        gitCredential = await provisionGitCredential(device.id);
+      } catch (err) {
+        logger.error(
+          { err, deviceId: device.id },
+          'device login: git-cred provisioning failed (login still succeeds)',
+        );
+        Sentry.captureException(err, {
+          level: 'error',
+          tags: { area: 'runner-login', phase: 'git-cred-provision' },
+          extra: { deviceId: device.id },
+        });
+      }
 
-    // Optional, flag-gated, best-effort git push-credential provisioning.
-    let gitCredential: Awaited<ReturnType<typeof provisionGitCredential>> = null;
-    try {
-      gitCredential = await provisionGitCredential(device.id);
-    } catch (err) {
-      logger.error(
-        { err, deviceId: device.id },
-        'device login: git-cred provisioning failed (login still succeeds)',
+      logger.info(
+        { approvedUserId: user.id, loginCodeId: row.id, deviceId: device.id },
+        'device login: consumed',
       );
-      Sentry.captureException(err, {
-        level: 'error',
-        tags: { area: 'runner-login', phase: 'git-cred-provision' },
-        extra: { deviceId: device.id },
+      // Refresh the owner's device list on the web Runners surface.
+      await publishLoginEvent(user.id, 'device.paired', { deviceId: device.id });
+
+      return c.json({
+        device_token: plaintext,
+        device_id: device.id,
+        ...(gitCredential ? { git_credential: gitCredential } : {}),
       });
     }
 
-    logger.info(
-      { approvedUserId: user.id, loginCodeId: row.id, deviceId: device.id },
-      'device login: consumed',
-    );
-    // Refresh the owner's device list on the web Runners surface.
-    await publishLoginEvent(user.id, 'device.paired', { deviceId: device.id });
+    // No row consumed — disambiguate so the CLI shows the right message.
+    const [existing] = await db
+      .select({
+        approvedUserId: deviceLoginCodes.approvedUserId,
+        consumedAt: deviceLoginCodes.consumedAt,
+        expiresAt: deviceLoginCodes.expiresAt,
+      })
+      .from(deviceLoginCodes)
+      .where(eq(deviceLoginCodes.codeHash, codeHash))
+      .limit(1);
 
-    return c.json({
-      device_token: plaintext,
-      device_id: device.id,
-      ...(gitCredential ? { git_credential: gitCredential } : {}),
-    });
-  }
-
-  // No row consumed — disambiguate so the CLI shows the right message.
-  const [existing] = await db
-    .select({
-      approvedUserId: deviceLoginCodes.approvedUserId,
-      consumedAt: deviceLoginCodes.consumedAt,
-      expiresAt: deviceLoginCodes.expiresAt,
-    })
-    .from(deviceLoginCodes)
-    .where(eq(deviceLoginCodes.codeHash, codeHash))
-    .limit(1);
-
-  if (!existing) {
-    throw new HTTPException(410, {
-      message: 'pairing code not found',
-      cause: { code: 'PAIRING_CODE_GONE' },
-    });
-  }
-  const expiresAt =
-    existing.expiresAt instanceof Date ? existing.expiresAt : new Date(existing.expiresAt);
-  if (existing.consumedAt) {
-    throw new HTTPException(410, {
-      message: 'pairing code already consumed',
-      cause: { code: 'PAIRING_CODE_CONSUMED' },
-    });
-  }
-  if (expiresAt.getTime() <= Date.now()) {
-    throw new HTTPException(410, {
-      message: 'pairing code expired',
-      cause: { code: 'PAIRING_CODE_EXPIRED' },
-    });
-  }
-  // Pending — the CLI keeps polling.
-  return c.body(null, 204);
-});
+    if (!existing) {
+      throw new HTTPException(410, {
+        message: 'pairing code not found',
+        cause: { code: 'PAIRING_CODE_GONE' },
+      });
+    }
+    const expiresAt =
+      existing.expiresAt instanceof Date ? existing.expiresAt : new Date(existing.expiresAt);
+    if (existing.consumedAt) {
+      throw new HTTPException(410, {
+        message: 'pairing code already consumed',
+        cause: { code: 'PAIRING_CODE_CONSUMED' },
+      });
+    }
+    if (expiresAt.getTime() <= Date.now()) {
+      throw new HTTPException(410, {
+        message: 'pairing code expired',
+        cause: { code: 'PAIRING_CODE_EXPIRED' },
+      });
+    }
+    // Pending — the CLI keeps polling.
+    return c.body(null, 204);
+  },
+);
