@@ -220,31 +220,84 @@ pub struct Tally {
     last: Option<Exit>,
 }
 
+/// Where one exit stands in its project's run of early exits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Counted {
+    /// Its place in a run of early exits for its reason: 0 where it was not
+    /// early.
+    pub in_a_row: u32,
+    /// The length of a run already named as a condition that this exit ended,
+    /// by being for another reason or by not being early.
+    pub ended: Option<u32>,
+}
+
 impl Tally {
-    /// Count an exit read gone `lived` after its placement, and answer the
-    /// place it takes in a run of early exits for one reason: 0 where it was
-    /// not early, which ends any run.
-    pub fn count(&mut self, lived: Option<Duration>, exit: &Exit) -> u32 {
+    /// The length of the run so far, where it has been named as a condition.
+    fn named(&self) -> Option<u32> {
+        (self.in_a_row >= NAMED_AFTER).then_some(self.in_a_row)
+    }
+
+    /// Count an exit read gone `lived` after its placement into the run of
+    /// early exits for one reason. An exit that is not early, or is for
+    /// another reason, ends the run, and a run that had been named answers its
+    /// length so that its end is said once.
+    pub fn count(&mut self, lived: Option<Duration>, exit: &Exit) -> Counted {
         if !lived.is_some_and(|l| l < EARLY_EXIT) {
+            let ended = self.named();
             *self = Self::default();
-            return 0;
+            return Counted { in_a_row: 0, ended };
         }
         if self.last.as_ref() == Some(exit) {
             self.in_a_row += 1;
-        } else {
-            self.in_a_row = 1;
-            self.last = Some(exit.clone());
+            return Counted {
+                in_a_row: self.in_a_row,
+                ended: None,
+            };
         }
-        self.in_a_row
+        let ended = self.named();
+        self.in_a_row = 1;
+        self.last = Some(exit.clone());
+        Counted { in_a_row: 1, ended }
     }
 
     /// A pane read up past the early window: ends the run, answering its
     /// length where it had been named as a condition.
     pub fn outlived(&mut self) -> Option<u32> {
-        let named = (self.in_a_row >= NAMED_AFTER).then_some(self.in_a_row);
+        let named = self.named();
         *self = Self::default();
         named
     }
+}
+
+/// What ended a run of early exits that had been named as one condition.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Ended {
+    /// The pane placed after it was read alive past the early window.
+    StayedUp,
+    /// The next pane exited early for a different reason.
+    OtherReason,
+    /// The next pane was read gone, but not within the early window of its
+    /// placement, or with no placement mark to measure from.
+    NotEarly(Option<Duration>),
+}
+
+/// The one line that says a named condition of `n` early exits has ended.
+pub fn ended(slug: &str, name: &str, n: u32, how: Ended) -> String {
+    let window = EARLY_EXIT.as_secs();
+    let because = match how {
+        Ended::StayedUp => format!("{name} has stayed up past {window}s of its placement"),
+        Ended::OtherReason => format!(
+            "{name} has exited early for a different reason, said next on its own"
+        ),
+        Ended::NotEarly(Some(l)) => format!(
+            "{name} was read gone {}s after its placement, outside the {window}s early window",
+            l.as_secs()
+        ),
+        Ended::NotEarly(None) => format!(
+            "{name} was read gone with no placement mark in this daemon to measure it from, so its exit cannot count as early"
+        ),
+    };
+    format!("[master] {slug}: {because}, so the condition of {n} early exits in a row has ended")
 }
 
 /// A journal line and the level it is said at.
@@ -545,7 +598,7 @@ mod tests {
         let mut tally = Tally::default();
         let said: Vec<Say> = (0..6)
             .map(|_| {
-                let n = tally.count(quick, &exit);
+                let n = tally.count(quick, &exit).in_a_row;
                 journal("p", "forge-master-p", quick, &exit, n)
             })
             .collect();
@@ -570,31 +623,123 @@ mod tests {
             last: "boom".into(),
         };
         let quick = Some(Duration::from_secs(25));
+        let at = |in_a_row, ended| Counted { in_a_row, ended };
         let mut tally = Tally::default();
         for _ in 0..3 {
             tally.count(quick, &boom);
         }
         assert_eq!(tally.outlived(), Some(3), "a named run ends, said once");
         assert_eq!(tally.outlived(), None, "and not twice");
-        assert_eq!(tally.count(quick, &boom), 1, "the next is a first again");
+        assert_eq!(
+            tally.count(quick, &boom),
+            at(1, None),
+            "the next is a first again"
+        );
 
-        assert_eq!(tally.count(quick, &boom), 2);
+        assert_eq!(tally.count(quick, &boom), at(2, None));
         assert_eq!(
             tally.count(quick, &Exit::Silent),
-            1,
-            "a new reason restarts it"
+            at(1, None),
+            "a new reason restarts it, and a run never named has nothing to end"
         );
         assert_eq!(
             tally.count(Some(EARLY_EXIT), &Exit::Silent),
-            0,
+            at(0, None),
             "an exit at the window's edge is not early"
         );
         assert_eq!(
             tally.count(None, &Exit::Silent),
-            0,
+            at(0, None),
             "nor one of unknown age"
         );
-        assert_eq!(tally.count(quick, &Exit::Silent), 1);
+        assert_eq!(tally.count(quick, &Exit::Silent), at(1, None));
+    }
+
+    /// ISS-1343 criterion 9: a run named as a condition is said to have ended
+    /// once, by whichever of the three ends it, and only by the exit that ends
+    /// it.
+    #[test]
+    fn a_named_condition_is_said_to_end_whichever_way_it_ends() {
+        let boom = Exit::Printed {
+            last: "boom".into(),
+        };
+        let other = Exit::Printed {
+            last: "other".into(),
+        };
+        let quick = Some(Duration::from_secs(25));
+        let named = |tally: &mut Tally, n: u32| {
+            for _ in 0..n {
+                tally.count(quick, &boom);
+            }
+        };
+
+        let mut tally = Tally::default();
+        named(&mut tally, 4);
+        assert_eq!(
+            tally.count(quick, &other),
+            Counted {
+                in_a_row: 1,
+                ended: Some(4)
+            },
+            "a new reason ends the named run and is a first itself"
+        );
+        assert_eq!(
+            tally.count(quick, &boom).ended,
+            None,
+            "the end is said once: the run the new reason began was never named"
+        );
+
+        let mut tally = Tally::default();
+        named(&mut tally, 3);
+        let late = Some(EARLY_EXIT + Duration::from_secs(5));
+        assert_eq!(
+            tally.count(late, &boom),
+            Counted {
+                in_a_row: 0,
+                ended: Some(3)
+            },
+            "an exit read outside the window, before any sweep saw the pane up past it, ends it"
+        );
+        assert_eq!(
+            tally.outlived(),
+            None,
+            "and a later stay-up says nothing more"
+        );
+
+        let mut tally = Tally::default();
+        named(&mut tally, 3);
+        assert_eq!(
+            tally.count(None, &boom).ended,
+            Some(3),
+            "so does an exit with no placement mark to measure"
+        );
+
+        let mut tally = Tally::default();
+        named(&mut tally, 2);
+        assert_eq!(
+            tally.count(quick, &other).ended,
+            None,
+            "a run below the named length was never a condition, so nothing ends"
+        );
+
+        let said = |how| ended("p", "forge-master-p", 4, how);
+        assert!(said(Ended::OtherReason).contains("different reason"));
+        assert!(said(Ended::NotEarly(late))
+            .contains("read gone 95s after its placement, outside the 90s early window"));
+        assert!(said(Ended::NotEarly(None)).contains("no placement mark"));
+        assert!(said(Ended::StayedUp).contains("stayed up past 90s"));
+        for how in [
+            Ended::StayedUp,
+            Ended::OtherReason,
+            Ended::NotEarly(late),
+            Ended::NotEarly(None),
+        ] {
+            assert!(
+                said(how).ends_with("so the condition of 4 early exits in a row has ended"),
+                "{}",
+                said(how)
+            );
+        }
     }
 
     fn proc_with(conv: Option<&str>) -> crate::test_scratch::Scratch {
