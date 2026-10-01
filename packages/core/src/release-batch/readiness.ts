@@ -58,8 +58,7 @@ export interface ReleaseReadiness {
   /**
    * Every reason a release would be refused RIGHT NOW, in the order the create
    * door refuses in — the declarations, and also the roster and the fleet, which
-   * `gaps` never looked at. Empty here means a create over this roster succeeds;
-   * that equivalence is the whole of ISS-1127.
+   * `gaps` never looked at. Empty here means a create over this roster succeeds (ISS-1127).
    */
   blockers: ReleaseBlocker[];
   /** What will change how the release runs without stopping it. */

@@ -1,7 +1,6 @@
 /**
- * ISS-16 — `scripts/export-legacy-project-config.mjs` against the database it exists for: one still
- * at the schema before migration `the_legacy_project_columns_are_dropped`, holding every legacy column. The harness database is
- * already past it, so the old schema is rebuilt from every migration below it.
+ * ISS-16 — `scripts/export-legacy-project-config.mjs` against the database it exists for: one whose
+ * schema still holds every legacy column, built from each migration below the one that drops them.
  */
 
 import { spawnSync } from 'node:child_process';
