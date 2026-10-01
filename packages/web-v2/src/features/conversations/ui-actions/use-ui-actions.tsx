@@ -17,6 +17,7 @@ import {
   uiSnapshotOf,
 } from "./actions";
 import { issueSelectionBridge, useSelectedIssueKeys } from "./selection-bridge";
+import { useBoard } from "../board/board-store";
 
 interface UiCallRecord {
   callId: string;
@@ -44,15 +45,17 @@ export function useUiSnapshot(slug: string | undefined) {
   const search = useLocationSearch();
   const { user } = useAuth();
   const selection = useSelectedIssueKeys();
+  const board = useBoard();
   return useMemo(() => {
     const snapshot = uiSnapshotOf({
       pathname,
       search,
       userId: user?.id ?? null,
       selection: selection ? selection.split(",") : [],
+      board,
     });
     return { snapshot, sees: slug ? describeUiSnapshot(snapshot) : null };
-  }, [pathname, search, user?.id, selection, slug]);
+  }, [pathname, search, user?.id, selection, slug, board]);
 }
 
 /**

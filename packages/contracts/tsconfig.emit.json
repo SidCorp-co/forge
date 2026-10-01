@@ -7,5 +7,5 @@
     "rootDir": "./src",
     "moduleResolution": "Bundler"
   },
-  "include": ["src/document-patch.ts", "src/attachments.ts", "src/ui-actions.ts", "src/pipeline-registry.ts"]
+  "include": ["src/document-patch.ts", "src/attachments.ts", "src/ui-actions.ts", "src/wireframe.ts", "src/pipeline-registry.ts"]
 }

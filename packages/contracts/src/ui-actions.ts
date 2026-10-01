@@ -1,10 +1,17 @@
 // cm:why the chat assistant drives the page beside it through a CLOSED registry: the model names an
 // action and core forwards it, the browser executes it as the signed-in person, and an action outside
 // this file, or one whose params do not parse, is refused by name — never guessed, never half applied.
-// Every action changes view state only (route, list filter, selection); none writes data.
+// Every action changes view state only (route, list filter, selection, the board in the dock); none
+// writes data — a board reaches an issue only when the person presses Attach.
 
 import { z } from 'zod';
 import { REGISTRY_ISSUE_PRIORITIES, REGISTRY_ISSUE_STATUSES } from './pipeline-registry.js';
+import {
+  parseWireframe,
+  type WireframeRefusalCode,
+  wireframeDocSchema,
+  wireframePatchSchema,
+} from './wireframe.js';
 
 export const UI_ACTION_VERSION = 1 as const;
 
@@ -60,6 +67,12 @@ const selectParams = z.strictObject({
 const openParams = z.strictObject({
   key: issueKey,
 });
+const boardDrawParams = z.strictObject({
+  doc: wireframeDocSchema,
+});
+const boardReviseParams = z.strictObject({
+  ops: wireframePatchSchema,
+});
 
 /** The registry: one entry per action, its wire name (OpenAI allows no dots), its version and its params. */
 export const UI_ACTIONS = {
@@ -88,6 +101,20 @@ export const UI_ACTIONS = {
     params: openParams,
     describe: 'Open one issue, by its key, in the page beside the chat.',
   },
+  'ui.board.draw': {
+    wire: 'ui_board_draw',
+    version: UI_ACTION_VERSION,
+    params: boardDrawParams,
+    describe:
+      'Draw a UI wireframe on the board inside the chat panel (it widens to make room), replacing the board shown. doc is a strict wireframe-v1 document: shapes from the closed set frame, text, button, input, list, image (placeholder), arrow, pen; every shape has a stable id; x, y, w, h lie inside a 0..4000 canvas; an arrow joins two shape ids ({id}) or bounded points ({x,y}). Use it when the conversation is about a screen or layout.',
+  },
+  'ui.board.revise': {
+    wire: 'ui_board_revise',
+    version: UI_ACTION_VERSION,
+    params: boardReviseParams,
+    describe:
+      'Revise the open board by shape id: ops add a shape, update fields of one ({op:"update", id, set:{x:...}}), or remove one. Read the board the person sees — including what they changed by hand — from the page snapshot\'s board before revising. The revised board must still be a valid wireframe-v1 document or nothing changes.',
+  },
 } as const;
 
 export type UiActionName = keyof typeof UI_ACTIONS;
@@ -97,9 +124,11 @@ export type UiAction =
   | { name: 'ui.navigate'; v: 1; params: z.infer<typeof navigateParams> }
   | { name: 'ui.issues.filter'; v: 1; params: z.infer<typeof filterParams> }
   | { name: 'ui.select'; v: 1; params: z.infer<typeof selectParams> }
-  | { name: 'ui.open'; v: 1; params: z.infer<typeof openParams> };
+  | { name: 'ui.open'; v: 1; params: z.infer<typeof openParams> }
+  | { name: 'ui.board.draw'; v: 1; params: z.infer<typeof boardDrawParams> }
+  | { name: 'ui.board.revise'; v: 1; params: z.infer<typeof boardReviseParams> };
 
-export type UiActionRefusalCode = 'UI_ACTION_UNKNOWN' | 'UI_ACTION_INVALID';
+export type UiActionRefusalCode = 'UI_ACTION_UNKNOWN' | 'UI_ACTION_INVALID' | WireframeRefusalCode;
 export type UiActionParse =
   | { ok: true; action: UiAction }
   | { ok: false; code: UiActionRefusalCode; name: string; message: string };
@@ -122,6 +151,8 @@ export function parseUiAction(name: string, params: unknown): UiActionParse {
       message: `UI_ACTION_UNKNOWN: "${name}" is not a UI action. Nothing was changed. The registry holds: ${UI_ACTION_NAMES.join(', ')}.`,
     };
   }
+  const board = boardRefusal(key, params);
+  if (board) return board;
   const parsed = UI_ACTIONS[key].params.safeParse(params ?? {});
   if (!parsed.success) {
     const where = parsed.error.issues
@@ -135,6 +166,26 @@ export function parseUiAction(name: string, params: unknown): UiActionParse {
     };
   }
   return { ok: true, action: { name: key, v: UI_ACTION_VERSION, params: parsed.data } as UiAction };
+}
+
+/** A board action's document judged by wireframe-v1 first, so its refusal carries the WIREFRAME_* code. */
+function boardRefusal(key: UiActionName, params: unknown): (UiActionParse & { ok: false }) | null {
+  if (key !== 'ui.board.draw' && key !== 'ui.board.revise') return null;
+  const p = typeof params === 'object' && params !== null ? (params as Record<string, unknown>) : {};
+  const no = (code: WireframeRefusalCode, message: string) => ({ ok: false as const, code, name: key, message });
+  if (key === 'ui.board.draw' && 'doc' in p) {
+    const r = parseWireframe(p.doc);
+    return r.ok ? null : no(r.code, r.message);
+  }
+  if (key === 'ui.board.revise' && Array.isArray(p.ops)) {
+    for (let i = 0; i < p.ops.length; i++) {
+      const op = p.ops[i] as Record<string, unknown> | null;
+      if (op?.op !== 'add') continue;
+      const r = parseWireframe({ v: 'wireframe-v1', shapes: [op.shape] });
+      if (!r.ok && r.code !== 'WIREFRAME_ARROW_DANGLING') return no(r.code, r.message.replace('shapes.0', `ops.${i}.shape`));
+    }
+  }
+  return null;
 }
 
 /** The JSON Schema each action's params are offered to the model as. */
@@ -157,6 +208,10 @@ export const uiSnapshotSchema = z.strictObject({
   issueKey: issueKey.optional(),
   filter: uiIssueFilterSchema.optional(),
   selection: z.array(issueKey).max(100).optional(),
+  /** The board open in the dock, as the person last left it (ISS-48). */
+  board: wireframeDocSchema.optional(),
+  /** Why the board the person drew is not sendable as wireframe-v1, when it is not. */
+  boardRefused: z.string().max(500).optional(),
 });
 export type UiSnapshot = z.infer<typeof uiSnapshotSchema>;
 
@@ -172,5 +227,7 @@ export function describeUiSnapshot(s: UiSnapshot): string {
     if (f.text) parts.push(`"${f.text}"`);
   }
   if (s.selection && s.selection.length > 0) parts.push(`${s.selection.length} selected`);
+  if (s.board) parts.push(`board of ${s.board.shapes.length} shape${s.board.shapes.length === 1 ? '' : 's'}`);
+  if (s.boardRefused) parts.push('board not readable');
   return parts.join(' · ');
 }

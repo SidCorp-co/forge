@@ -8,6 +8,9 @@ import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import type { ChatDockApi } from "../dock";
 import { DOCK_MAX_WIDTH, DOCK_MIN_WIDTH, clampDockWidth, targetConversationId } from "../dock-target";
+import { BOARD_DOCK_WIDTH, BoardPanel } from "../board/board-panel";
+import { boardStore, useBoard } from "../board/board-store";
+import { useUiSnapshot } from "../ui-actions/use-ui-actions";
 import { useConversation } from "../hooks";
 import { ContextPanel } from "./context-panel";
 import { ConversationChat } from "./conversation-chat";
@@ -49,6 +52,7 @@ function RoomScopeChip({ project, ecosystemId }: { project: { id: string; name: 
 
 export function ChatDockBody({ dock }: { dock: ChatDockApi }) {
   const [tab, setTab] = useState<DockTab>("chat");
+  const board = useBoard();
   const projectsQ = useProjects();
   const target = dock.target;
   const conversationId = targetConversationId(target);
@@ -94,7 +98,7 @@ export function ChatDockBody({ dock }: { dock: ChatDockApi }) {
         </p>
       );
     }
-    return (
+    const chat = (
       <>
         <RoomSub projectId={project.id} />
         <ConversationChat
@@ -108,6 +112,15 @@ export function ChatDockBody({ dock }: { dock: ChatDockApi }) {
         />
       </>
     );
+    if (!board.open) return chat;
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="min-h-0 flex-[3]">
+          <BoardForProject projectId={project.id} slug={project.slug} />
+        </div>
+        <div className="min-h-0 flex-[2] overflow-hidden">{chat}</div>
+      </div>
+    );
   };
 
   return (
@@ -115,11 +128,23 @@ export function ChatDockBody({ dock }: { dock: ChatDockApi }) {
       <header className="flex flex-none items-center gap-2 border-b border-line px-3 py-2">
         <SegmentedControl options={TABS} value={tab} onChange={setTab} />
         <span className="min-w-0 flex-1" />
+        <IconButton
+          icon="board"
+          size="sm"
+          aria-label={board.open ? "Close the board" : "Open a board"}
+          aria-pressed={board.open}
+          onClick={board.open ? boardStore.close : boardStore.openBlank}
+        />
         <IconButton icon="x" size="sm" aria-label="Close chat" onClick={dock.close} />
       </header>
       <div className="min-h-0 flex-1 overflow-hidden">{body()}</div>
     </div>
   );
+}
+
+function BoardForProject({ projectId, slug }: { projectId: string; slug: string }) {
+  const { snapshot } = useUiSnapshot(slug);
+  return <BoardPanel projectId={projectId} issueKey={snapshot.issueKey} />;
 }
 
 function ResizeHandle({
@@ -176,6 +201,7 @@ function ResizeHandle({
 export function ChatDock({ dock }: { dock: ChatDockApi }) {
   const docked = useMediaQuery("(min-width: 48rem)");
   const [live, setLive] = useState<number | null>(null);
+  const board = useBoard();
   if (!dock.open) return null;
   if (!docked) {
     return (
@@ -184,7 +210,7 @@ export function ChatDock({ dock }: { dock: ChatDockApi }) {
       </SlideOver>
     );
   }
-  const width = live ?? dock.width;
+  const width = live ?? (board.open ? Math.max(dock.width, clampDockWidth(BOARD_DOCK_WIDTH)) : dock.width);
   return (
     <aside
       aria-label="Chat"

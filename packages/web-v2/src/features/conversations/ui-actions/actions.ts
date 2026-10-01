@@ -14,6 +14,8 @@ import {
   uiActionNamed,
 } from "@forge/contracts/ui-actions";
 import { REGISTRY_ISSUE_PRIORITIES, REGISTRY_ISSUE_STATUSES } from "@forge/contracts/pipeline-registry";
+import { applyWireframePatch, describeWireframe } from "@forge/contracts/wireframe";
+import { boardStore } from "../board/board-store";
 import type { IssueSelectionBridge } from "./selection-bridge";
 
 /** The URL params each filter field lives in on the Issues list. */
@@ -58,8 +60,14 @@ export function uiSnapshotOf(args: {
   search: string;
   userId: string | null;
   selection: string[];
+  board?: { open: boolean; doc: UiSnapshot["board"] | null; refused: string | null };
 }): UiSnapshot {
-  const base = { v: UI_ACTION_VERSION, path: args.pathname.slice(0, 500) };
+  const b = args.board;
+  const base = {
+    v: UI_ACTION_VERSION,
+    path: args.pathname.slice(0, 500),
+    ...(b?.open && b.refused ? { boardRefused: b.refused.slice(0, 500) } : b?.open && b.doc ? { board: b.doc } : {}),
+  };
   const at = projectPath(args.pathname);
   if (!at) return { ...base, route: "other" };
   const issue = /^\/issues\/([A-Z][A-Z0-9]*-\d+)$/.exec(at.rest);
@@ -158,6 +166,40 @@ export function applyUiAction(action: UiAction, env: UiActionEnv): UiActionOutco
         summary: `${verb}${what ? `: ${what}` : ""}${clear.length ? ` (cleared ${clear.join(", ")})` : ""}`,
         undo: back,
         chips: fields.map((field) => ({ field, label: chipLabel(field, set) })),
+      };
+    }
+    case "ui.board.draw": {
+      const prior = boardStore.get();
+      boardStore.load(action.params.doc);
+      return {
+        ok: true,
+        summary: `Drew ${describeWireframe(action.params.doc)}`,
+        undo: () => (prior.open && prior.doc ? boardStore.load(prior.doc) : boardStore.close()),
+        chips: [],
+      };
+    }
+    case "ui.board.revise": {
+      const prior = boardStore.get();
+      if (!prior.open || !prior.doc)
+        return refuse(
+          "UI_ACTION_UNAVAILABLE",
+          "UI_ACTION_UNAVAILABLE: ui.board.revise needs a board open in the chat panel, and none is. Draw one with ui.board.draw. Nothing was changed.",
+        );
+      if (prior.refused)
+        return refuse(
+          "UI_ACTION_UNAVAILABLE",
+          `UI_ACTION_UNAVAILABLE: the board as the person left it is not wireframe-v1 (${prior.refused}), so it cannot be revised by id. Nothing was changed.`,
+        );
+      const was = prior.doc;
+      const next = applyWireframePatch(was, action.params.ops);
+      if (!next.ok) return refuse(next.code, next.message);
+      boardStore.load(next.doc);
+      const n = action.params.ops.length;
+      return {
+        ok: true,
+        summary: `Revised the board (${n} edit${n === 1 ? "" : "s"}: ${action.params.ops.map((o) => `${o.op} ${o.op === "add" ? o.shape.id : o.id}`).join(", ")})`,
+        undo: () => boardStore.load(was),
+        chips: [],
       };
     }
     case "ui.select": {
