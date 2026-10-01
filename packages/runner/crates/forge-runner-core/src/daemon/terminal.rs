@@ -262,14 +262,17 @@ pub async fn incarnation(name: &str) -> Option<String> {
 
 const SESSION_UNIT: &str = "forge-sessions";
 
+/// Whether `dir` is the config dir this box's user resolves with no override: the daemon that
+/// owns the box-wide names (the session unit, the OS data dir's ledger) rather than a second one.
+pub(crate) fn is_the_boxs_own_config_dir(dir: &std::path::Path) -> bool {
+    unoverridden_config_dir().is_none_or(|own| resolved(dir) == resolved(&own))
+}
+
 fn unit_for(dir: &std::path::Path) -> String {
-    let Some(own) = unoverridden_config_dir() else {
-        return SESSION_UNIT.to_string();
-    };
-    let dir = resolved(dir);
-    if dir == resolved(&own) {
+    if is_the_boxs_own_config_dir(dir) {
         return SESSION_UNIT.to_string();
     }
+    let dir = resolved(dir);
     use sha2::Digest as _;
     let digest = sha2::Sha256::digest(path_bytes(&dir));
     format!("{SESSION_UNIT}-{}", &hex::encode(digest)[..16])
