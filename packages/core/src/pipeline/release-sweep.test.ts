@@ -105,13 +105,13 @@ vi.mock('../release-batch/gate.js', () => ({
 type Unearned = { criterion: number; verdict: string | null; standing: string | null; why: string };
 const SERVED = [{ commit: 'c0ffee0', where: 'h' }];
 const READING = { kind: 'serving', served: SERVED, unread: [], readAt: 'T' };
-const none = { unearned: [] as Unearned[], serving: READING, runtimes: [], uncorroborated: [] };
+const OWED = { deployment: true, declared: [], unread: null };
+const none = { unearned: [] as Unearned[], serving: READING, owed: OWED, uncorroborated: [] };
 const noneUnearned = async (i: string[]) => i.map((id) => ({ issueId: id, ...none }));
 const unearnedCriteriaReportsMock = vi.fn<(i: string[]) => Promise<object[]>>(noneUnearned);
 vi.mock('../issues/criteria-verdicts.js', () => ({
   unearnedCriteriaReports: (ids: string[]) => unearnedCriteriaReportsMock(ids),
 }));
-
 const WHY = 'nothing could be read from the probes it declares — host is down';
 vi.mock('../release-batch/serving-reading.js', async (importActual) => ({
   ...(await importActual<object>()),

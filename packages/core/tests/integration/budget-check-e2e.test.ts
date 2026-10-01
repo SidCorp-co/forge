@@ -85,7 +85,7 @@ describe('W2.3.2 monthly budget gate E2E', () => {
   }) {
     const owner = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, owner.id);
-    const stage = opts.stage ?? 'approved';
+    const stage = opts.stage ?? 'in_progress';
     const action = opts.action ?? 'pause';
     await harness.db.execute(sql`
       UPDATE projects
@@ -203,7 +203,7 @@ describe('W2.3.2 monthly budget gate E2E', () => {
   ): Promise<string> {
     const id = randomUUID();
     const type = args.type ?? 'code';
-    const payload = JSON.stringify({ stageStatus: args.stageStatus ?? 'approved' });
+    const payload = JSON.stringify({ stageStatus: args.stageStatus ?? 'in_progress' });
     // jobs.pipeline_run_id is NOT NULL (migration 0054); the run is left
     // `running` so the job under test is treated as live by the dispatcher.
     // Reuse the issue's existing open run when one is present — a single issue
@@ -318,7 +318,7 @@ describe('W2.3.2 monthly budget gate E2E', () => {
     expect(warnPayloads).toHaveLength(1);
     expect(warnPayloads[0]).toMatchObject({
       projectId: project.id,
-      stageStatus: 'approved',
+      stageStatus: 'in_progress',
       jobType: 'code',
       budget: 1,
     });
@@ -348,13 +348,13 @@ describe('W2.3.2 monthly budget gate E2E', () => {
     const after = await getJob(jobId);
     expect(after?.status).toBe('failed');
     expect(after?.failureReason).toBe('monthly_budget_exhausted');
-    expect(after?.failureMeta).toMatchObject({ budget: 1, stageStatus: 'approved' });
+    expect(after?.failureMeta).toMatchObject({ budget: 1, stageStatus: 'in_progress' });
     expect((after?.failureMeta as { spent?: number } | null)?.spent).toBeGreaterThanOrEqual(1);
 
     expect(breachPayloads).toHaveLength(1);
     expect(breachPayloads[0]).toMatchObject({
       projectId: project.id,
-      stageStatus: 'approved',
+      stageStatus: 'in_progress',
       jobType: 'code',
       jobId,
       issueId,

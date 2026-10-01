@@ -45,8 +45,35 @@ describe('pipelineConfig.releaseRuntimes (ISS-1368)', () => {
     ['an empty segment', ['packages//runner']],
     ['a wildcard', ['packages/runner/**']],
     ['an empty path', ['']],
+    ['a leading space', [' packages/runner']],
+    ['a trailing space', ['packages/runner ']],
+    ['a space opening a segment', ['packages/ runner']],
+    ['a tab', ['packages/runner\t']],
+    ['a backslash', ['packages\\runner']],
   ])('refuses %s, naming the valid shape', (_shape, paths) => {
     expect(refusal([runner(paths)])).toContain('a path relative to the repository root');
+  });
+
+  it('names what is wrong with the path, spelled so a space shows', () => {
+    expect(refusal([runner([' packages/runner'])])).toContain(
+      '`" packages/runner"` has a segment that begins or ends with whitespace',
+    );
+    expect(refusal([runner(['packages\\runner'])])).toContain(
+      '`"packages\\\\runner"` holds a backslash',
+    );
+    expect(refusal([runner(['/packages/runner'])])).toContain(
+      '`"/packages/runner"` starts with `/`',
+    );
+  });
+
+  it('refuses a malformed path at the config door, naming its place in the declaration', () => {
+    const parsed = pipelineConfigSchema.safeParse({
+      releaseRuntimes: [runner([' packages/runner'])],
+    });
+    expect(parsed.success).toBe(false);
+    expect(parsed.success ? [] : parsed.error.issues.map((i) => i.path.join('.'))).toContain(
+      'releaseRuntimes.0.paths.0',
+    );
   });
 
   it('refuses two runtimes claiming one path, whichever spelling each uses', () => {

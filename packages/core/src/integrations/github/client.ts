@@ -209,9 +209,10 @@ export function buildRepoClient(args: {
         signal: AbortSignal.timeout(READ_TIMEOUT_MS),
       });
       if (!res.ok) {
+        const said = githubMessage(await bodyText(res));
         throw new GitHubReadError(
           res.status,
-          `GET ${path} on ${fullName} returned HTTP ${res.status}`,
+          `GET ${path} on ${fullName} returned HTTP ${res.status}${said ? `: ${said}` : ''}`,
         );
       }
       return (await res.json()) as T;
@@ -297,6 +298,19 @@ async function bodyText(res: Response): Promise<string | null> {
   try {
     const text = await res.text();
     return text.length > 0 ? text.slice(0, 2000) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The `message` GitHub writes into a refusal's JSON body, or null where it wrote none. */
+function githubMessage(body: string | null): string | null {
+  if (!body) return null;
+  try {
+    const message = (JSON.parse(body) as { message?: unknown }).message;
+    // Its closing stop is dropped: the words go inside a sentence that has its own.
+    const said = typeof message === 'string' ? message.trim().replace(/\.+$/, '') : '';
+    return said === '' ? null : said.slice(0, 300);
   } catch {
     return null;
   }

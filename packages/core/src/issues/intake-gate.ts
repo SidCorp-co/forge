@@ -3,6 +3,8 @@ import { db } from '../db/client.js';
 import { type IssueStatus, issueLabels, labels, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { emitNotification } from '../notifications/emit.js';
+import { PipelineConfigUnreadable } from '../pipeline/pipeline-config-unreadable.js';
+import { readableStoredPipelineConfig } from '../pipeline/stored-pipeline-config.js';
 
 export interface IntakeGateConfig {
   enabled: boolean;
@@ -29,8 +31,8 @@ async function readPipelineConfig(projectId: string): Promise<StoredPipelineConf
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1);
-  const ac = (row?.agentConfig ?? {}) as { pipelineConfig?: StoredPipelineConfig };
-  return ac.pipelineConfig ?? {};
+  const ac = (row?.agentConfig ?? {}) as { pipelineConfig?: unknown };
+  return readableStoredPipelineConfig(projectId, ac.pipelineConfig) as StoredPipelineConfig;
 }
 
 function intakeGateOf(cfg: StoredPipelineConfig): IntakeGateConfig {
@@ -138,6 +140,11 @@ export async function finalizeIntake(
       body: `"${issue.title}" was parked at draft by the intake gate — approve (draft → open) to let it enter the pipeline, or close to reject.`,
     });
   } catch (err) {
+    // The issue is already written, so a refused config is named here rather than thrown.
+    if (err instanceof PipelineConfigUnreadable) {
+      logger.error({ projectId, issueId: issue.id, refused: err.refused }, err.message);
+      return;
+    }
     logger.warn(
       { err: (err as Error).message, projectId, issueId: issue.id },
       'intake-gate: failed to notify owner',

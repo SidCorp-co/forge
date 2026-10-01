@@ -8,6 +8,8 @@ import type {
   StageConfig,
   SystemPromptOverrideConfig,
 } from '../pipeline/pipeline-config-schema.js';
+import { PipelineConfigUnreadable } from '../pipeline/pipeline-config-unreadable.js';
+import { readableStoredPipelineConfig } from '../pipeline/stored-pipeline-config.js';
 import { validateStagePolicy } from '../security/config-policy.js';
 
 export interface StageOverrides {
@@ -99,12 +101,11 @@ async function loadStageMap(projectId: string): Promise<Record<string, StageConf
       .limit(1);
     if (!row?.agentConfig) return null;
     const ac = row.agentConfig as Record<string, unknown>;
-    const pc = ac.pipelineConfig as Record<string, unknown> | undefined;
-    if (!pc || typeof pc !== 'object') return null;
-    const states = (pc as { states?: unknown }).states;
+    const states = readableStoredPipelineConfig(projectId, ac.pipelineConfig).states;
     if (!states || typeof states !== 'object') return null;
     return states as Record<string, StageConfig>;
   } catch (err) {
+    if (err instanceof PipelineConfigUnreadable) throw err;
     logger.warn(
       { err, projectId },
       'stage-overrides: failed to load pipelineConfig.states, dispatching with defaults',
@@ -149,14 +150,14 @@ export async function resolveProjectDefaultMcpServers(
       .where(eq(projects.id, projectId))
       .limit(1);
     const ac = (row?.agentConfig ?? null) as Record<string, unknown> | null;
-    const pc = ac?.pipelineConfig as Record<string, unknown> | undefined;
-    const raw = (pc as { mcpServers?: unknown } | undefined)?.mcpServers;
+    const raw = readableStoredPipelineConfig(projectId, ac?.pipelineConfig).mcpServers;
     if (!raw || typeof raw !== 'object') return { servers: {}, declaredNames: [] };
     return {
       servers: expandMcpServers(raw as Record<string, unknown>),
       declaredNames: [...collectDeclaredMcpNames({ mcpServers: raw as Record<string, unknown> })],
     };
   } catch (err) {
+    if (err instanceof PipelineConfigUnreadable) throw err;
     logger.warn(
       { err, projectId },
       'stage-overrides: failed to load pipelineConfig.mcpServers, dispatching without project defaults',

@@ -196,7 +196,7 @@ describe('ISS-959 C — declared entry criteria, checked for every client', () =
     expect((await transition(id, token, 'on_hold')).status).toBe(200);
   });
 
-  it('leaves a project whose stored config does not parse transitioning as before', async () => {
+  it('refuses, naming it, a transition on a project whose stored config does not parse (ISS-1368)', async () => {
     const { id, token, projectId } = await seed({});
     await harness.db.execute(sql`
       UPDATE projects SET agent_config = ${JSON.stringify({
@@ -204,6 +204,10 @@ describe('ISS-959 C — declared entry criteria, checked for every client', () =
       })}::jsonb WHERE id = ${projectId}
     `);
     const res = await transition(id, token, 'on_hold');
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { code: string; message: string };
+    expect(body.code).toBe('PIPELINE_CONFIG_UNREADABLE');
+    expect(body.message).toContain('pipelineConfig.statusEntryCriteria.on_hold.0');
+    expect(await storedStatus(id)).not.toBe('on_hold');
   });
 });

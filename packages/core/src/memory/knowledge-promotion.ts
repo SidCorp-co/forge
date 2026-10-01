@@ -10,6 +10,7 @@ import { and, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, memories, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
+import { readableStoredPipelineConfig } from '../pipeline/stored-pipeline-config.js';
 
 export const PROMOTION_RETRIEVAL_MIN = 3;
 export const PROMOTION_AGE_DAYS = 7;
@@ -31,8 +32,8 @@ export async function resolveKnowledgePromotion(
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1);
-  const ac = (row?.agentConfig ?? {}) as { pipelineConfig?: { knowledgePromotion?: unknown } };
-  const raw = ac.pipelineConfig?.knowledgePromotion as
+  const ac = (row?.agentConfig ?? {}) as { pipelineConfig?: unknown };
+  const raw = readableStoredPipelineConfig(projectId, ac.pipelineConfig).knowledgePromotion as
     | { enabled?: unknown; candidatesPerRun?: unknown; minRetrievals?: unknown }
     | undefined;
   return {

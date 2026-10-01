@@ -125,6 +125,35 @@ describe('a read as the installation', () => {
     });
   });
 
+  it('carries GitHub`s own words for a refused read beside its status', async () => {
+    mintOk();
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      text: async () => '{"message":"No common ancestor between these commits.","status":"404"}',
+    });
+    const client = buildRepoClient(args());
+    const err = await client.get('/repos/x/y/compare/a...b').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(GitHubReadError);
+    expect((err as GitHubReadError).message).toBe(
+      'GET /repos/x/y/compare/a...b on SidCorp-co/forge returned HTTP 404: No common ancestor between these commits',
+    );
+  });
+
+  it('says only the status where the refusal carries no message GitHub wrote', async () => {
+    mintOk();
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 502,
+      text: async () => '<html>bad gateway</html>',
+    });
+    const client = buildRepoClient(args());
+    const err = await client.get('/repos/x/y').catch((e: unknown) => e);
+    expect((err as GitHubReadError).message).toBe(
+      'GET /repos/x/y on SidCorp-co/forge returned HTTP 502',
+    );
+  });
+
   it('reports a rejected App credential as a read failure carrying GitHub`s own status', async () => {
     fetchMock.mockResolvedValueOnce({ ok: false, status: 401, json: async () => ({}) });
     const client = buildRepoClient(args());

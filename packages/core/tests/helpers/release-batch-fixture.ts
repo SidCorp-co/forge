@@ -40,6 +40,8 @@ export interface ReleaseBatchFixture {
   /** Announce the method a run loaded, as an agent would. */
   announceMethod(runId: string, over?: { skill?: string; loaded?: boolean }): Promise<void>;
   seedReleaseRunner(): Promise<void>;
+  /** A live binding through a provider whose deployments name no commit (ISS-1346). */
+  bindUnreporting(): Promise<void>;
   /** `merged` defaults to true: a roster issue is work that LANDED, which ISS-1108 made the
    *  precondition of the close, so a fixture leaving the claim off is asking for the refusal. */
   insertIssue(status?: string, note?: unknown, merged?: boolean): Promise<string>;
@@ -119,6 +121,25 @@ export function releaseBatchFixture(
         ${randomUUID()}, ${projectId}, 'claude-code', ${device.id}, 'release-runner',
         'online', now(), ${JSON.stringify([RELEASE_LABEL])}::jsonb
       )
+    `);
+  }
+
+  async function bindUnreporting(): Promise<void> {
+    const { projectId, ownerId } = ids();
+    const connectionId = randomUUID();
+    await harness().db.execute(sql`
+      UPDATE projects SET base_branch = 'main',
+             release_chain = '[{"branch": "main"}, {"branch": "production", "from": "merge-branch"}]'::jsonb
+       WHERE id = ${projectId}
+    `);
+    await harness().db.execute(sql`
+      INSERT INTO integration_connections (id, owner_type, owner_id, provider, active)
+      VALUES (${connectionId}, 'user', ${ownerId}, 'epodsystem', true)
+    `);
+    await harness().db.execute(sql`
+      INSERT INTO integration_bindings (connection_id, project_id, provider, role, stages, active, config)
+      VALUES (${connectionId}, ${projectId}, 'epodsystem', 'deploy', ARRAY['live']::text[], true,
+              ${JSON.stringify({ releaseRunnerLabel: RELEASE_LABEL })}::jsonb)
     `);
   }
 
@@ -270,6 +291,7 @@ export function releaseBatchFixture(
     },
     announceMethod: announceMethodFor,
     seedReleaseRunner,
+    bindUnreporting,
     insertIssue,
     stored,
     runStatus,

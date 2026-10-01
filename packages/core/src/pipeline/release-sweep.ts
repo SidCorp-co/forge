@@ -25,13 +25,12 @@ import {
 } from '../release-batch/serving-reading.js';
 import { loadCreatedBy } from '../schedules/release-batch-dispatch.js';
 import { cutWaitingRelease } from '../schedules/release-batch-run.js';
+import { PipelineConfigUnreadable } from './pipeline-config-unreadable.js';
 import { projectAutoProdDeploy } from './release-coolify.js';
 import {
   clearProjectReleaseHolds,
   clearReleaseHolds,
   clearStaleReleaseHolds,
-  criteriaHold,
-  criteriaUnreadableHold,
   cutFailedHold,
   gateUnreadableHold,
   NO_ACTOR_HOLD,
@@ -41,8 +40,11 @@ import {
   refusalHold,
   runtimeUnroutedHold,
   targetUndeclaredHold,
+  type UnreadableSubject,
+  unreadableHoldOf,
   writeReleaseHolds,
 } from './release-hold.js';
+import { criteriaHold } from './release-hold-criteria.js';
 import { advanceSweep, type SweepPosition, sweepWindow } from './sweep-cursor.js';
 
 const CANDIDATE_CURSOR_KEY = 'release-sweep';
@@ -247,7 +249,8 @@ async function holdAlike(
 
 /**
  * Each held row's criteria hold, commented on its own row — or, where nothing can read what the
- * project serves, the one project-level reason, said alike (ISS-1346).
+ * project serves, the one project-level reason, said alike (ISS-1346), on the rows that owe the
+ * deployment: a row owing only a declared runtime is held on that runtime (ISS-1368).
  */
 async function holdOnCriteria(
   write: Omit<HoldWrite, 'holdFor'>,
@@ -255,14 +258,18 @@ async function holdOnCriteria(
   heldById: ReadonlyMap<string, IssueCriteriaReport>,
 ): Promise<void> {
   const serving = heldById.values().next().value?.serving;
-  if (serving?.kind !== 'undeclared') {
-    await hold({
-      ...write,
-      holdFor: (id) => criteriaHold(heldById.get(id) as IssueCriteriaReport),
-    });
-    return;
+  const unrouted =
+    serving?.kind === 'undeclared'
+      ? write.issueIds.filter((id) => heldById.get(id)?.owed.deployment !== false)
+      : [];
+  const own = write.issueIds.filter((id) => !unrouted.includes(id));
+  if (own.length > 0) {
+    const holdFor = (id: string) => criteriaHold(heldById.get(id) as IssueCriteriaReport);
+    await hold({ ...write, issueIds: own, holdFor });
   }
-  await holdAlike(write, waiting, runtimeUnroutedHold(serving.missing, serving.route));
+  if (serving?.kind !== 'undeclared' || unrouted.length === 0) return;
+  const reason = runtimeUnroutedHold(serving.missing, serving.route);
+  await holdAlike({ ...write, issueIds: unrouted }, waiting, reason);
 }
 
 /** The gate, or the hold every waiting row gets because there is none to read. */
@@ -289,29 +296,39 @@ async function readGate(
 }
 
 /**
- * The criteria reports, or a hold naming why the verdicts could not be read.
+ * The criteria reports, or a hold naming which read failed: what the project serves, the weighing
+ * (its declaration, its runner devices, the verdicts it reads), or the verdicts themselves.
  *
  * One reading of what the project is serving is taken here and shared by every waiting issue: they
  * are one project's rows weighed against one answer about that project, at one moment (ISS-1286).
  * `readServingNow` answers rather than throwing for a host that will not talk — an unreachable
  * probe is a reading this gate has, not a criteria read that failed — so only a tracker or database
- * failure reaches the catch below. The weighing beside it (ISS-1368) answers a repository that will
- * not talk the same way, as a reason kept on each pair it could not read.
+ * failure reaches the catches below. The weighing beside it (ISS-1368) answers a repository that
+ * will not talk the same way, as a reason kept on each pair it could not read.
  */
 async function readCriteria(
   projectId: string,
   waiting: string[],
 ): Promise<{ ok: true; value: IssueCriteriaReport[] } | { ok: false; hold: ReleaseHold }> {
+  let stage: UnreadableSubject = 'serving';
   try {
     const serving = await readServingNow(projectId);
+    stage = 'verdicts';
     const weighing = await readWeighingNow(projectId, serving, waiting);
     return { ok: true, value: await unearnedCriteriaReports(waiting, serving, weighing) };
   } catch (err) {
     logger.error({ err, projectId }, 'release-sweep: the criteria could not be read');
-    return {
-      ok: false,
-      hold: criteriaUnreadableHold(err instanceof Error ? err.message : String(err)),
-    };
+    return { ok: false, hold: unreadableHoldOf(err, stage) };
+  }
+}
+
+/** Whether the project releases unattended, or the refusal of the stored config that says so. */
+async function autoReleaseOf(projectId: string): Promise<boolean | PipelineConfigUnreadable> {
+  try {
+    return await projectAutoProdDeploy(projectId);
+  } catch (err) {
+    if (err instanceof PipelineConfigUnreadable) return err;
+    throw err;
   }
 }
 
@@ -320,7 +337,8 @@ async function sweepProject(
   result: AutomaticReleaseSweepResult,
   now: Date,
 ): Promise<void> {
-  if (!(await projectAutoProdDeploy(projectId))) {
+  const auto = await autoReleaseOf(projectId);
+  if (auto === false) {
     await clearProjectReleaseHolds(projectId);
     return;
   }
@@ -329,6 +347,10 @@ async function sweepProject(
   if (waiting.length === 0) return;
   const owner = (await loadCreatedBy(projectId)) ?? null;
   const base = { projectId, authorId: owner, now, result };
+  if (auto !== true) {
+    await holdAlike({ ...base, issueIds: waiting }, waiting, unreadableHoldOf(auto, 'declaration'));
+    return;
+  }
 
   const gate = await readGate(projectId);
   if (!gate.ok) {

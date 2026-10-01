@@ -45,7 +45,7 @@ assistantWeeklyRoutes.post(
       .where(eq(projects.id, id))
       .limit(1);
     if (!row) return c.json({ code: 'NOT_FOUND', message: 'project not found' }, 404);
-    const config = readAssistantWeekly(row.agentConfig);
+    const config = readAssistantWeekly(id, row.agentConfig);
     if (!config)
       return c.json(
         {
