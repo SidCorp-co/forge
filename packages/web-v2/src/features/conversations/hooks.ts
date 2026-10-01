@@ -18,14 +18,6 @@ export interface ListedConversation extends ConversationRow {
   projectId: string;
 }
 
-export function useConversations(projectId: string | undefined, archived = false) {
-  return useQuery({
-    queryKey: ["conversations", "list", projectId, archived ? "archived" : "live"],
-    queryFn: () => conversationsApi.list(projectId as string, 50, archived),
-    enabled: !!projectId,
-  });
-}
-
 /**
  * Every project's rooms, in one list, newest first — the live set, or the archived one.
  */

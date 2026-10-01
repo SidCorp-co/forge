@@ -9,8 +9,6 @@ export const postman: ProviderModule = {
   secretPlaceholder: "PMAK-…",
   drillable: true,
   agentPathKind: "direct-mcp",
-  mcpServerName: "postman",
-  multiBinding: false,
   bindingKeys: [],
   target: (config) => text(config, "workspaceName"),
   section: () => import("./section").then((m) => ({ default: m.PostmanSection })),

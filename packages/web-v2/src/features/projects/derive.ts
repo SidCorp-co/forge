@@ -129,16 +129,6 @@ export function formatSpend(usd: number): string {
   return `$${usd.toFixed(2)}`;
 }
 
-export function formatCycleTime(days: number | null | undefined): string {
-  if (days == null || !Number.isFinite(days) || days <= 0) return "—";
-  if (days < 1) {
-    const hours = Math.max(1, Math.round(days * 24));
-    return `${hours}h`;
-  }
-  if (days < 10) return `${days.toFixed(1)}d`;
-  return `${Math.round(days)}d`;
-}
-
 /**
  * Compact relative time ("just now", "5m", "3h", "2d", "4w") from an ISO
  * string. `now` is injected so the function stays pure + testable.

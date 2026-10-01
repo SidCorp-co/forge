@@ -1,7 +1,5 @@
 export type V1Document = Record<string, unknown>;
 
-export type V1Kind = "project" | "policy" | "testing-profile" | "binding";
-
 export type V1Read =
 	| { declared: false; revision: null; document: null }
 	| {

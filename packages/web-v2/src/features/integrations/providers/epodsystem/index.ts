@@ -9,8 +9,6 @@ export const epodsystem: ProviderModule = {
   secretPlaceholder: "crmk_…",
   drillable: true,
   agentPathKind: "direct-mcp",
-  mcpServerName: "epodsystem",
-  multiBinding: true,
   bindingKeys: [],
   target: (config) => text(config, "storeSlug") ?? text(config, "storeName"),
   section: () => import("./section").then((m) => ({ default: m.EpodsystemSection })),

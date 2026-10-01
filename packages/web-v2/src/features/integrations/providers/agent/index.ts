@@ -8,8 +8,6 @@ export const agent: ProviderModule = {
   secretPlaceholder: null,
   drillable: false,
   agentPathKind: "none",
-  mcpServerName: null,
-  multiBinding: false,
   bindingKeys: [],
   target: () => null,
   section: null,

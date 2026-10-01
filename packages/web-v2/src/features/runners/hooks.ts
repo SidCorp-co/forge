@@ -138,56 +138,6 @@ export function useDeviceRunners(deviceId: string | null) {
 	});
 }
 
-export function useBindRunner(deviceId: string) {
-	const qc = useQueryClient();
-	const { toast } = useToast();
-	return useMutation({
-		mutationFn: ({
-			projectId,
-			repoPath,
-		}: { projectId: string; repoPath: string | null }) =>
-			runnersApi.bindRunner(projectId, deviceId, repoPath),
-		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: ["devices", deviceId, "runners"] });
-			toast({ title: "Project assigned", tone: "success" });
-		},
-		onError: (err) =>
-			toast({
-				title: "Assign failed",
-				description: formatApiError(err),
-				tone: "error",
-			}),
-	});
-}
-
-export function usePatchRunner(deviceId: string) {
-	const qc = useQueryClient();
-	const { toast } = useToast();
-	return useMutation({
-		mutationFn: ({
-			projectId,
-			runnerId,
-			repoPath,
-			branch,
-		}: {
-			projectId: string;
-			runnerId: string;
-			repoPath: string | null;
-			branch: string | null;
-		}) => runnersApi.patchRunner(projectId, runnerId, { repoPath, branch }),
-		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: ["devices", deviceId, "runners"] });
-			toast({ title: "Runner saved", tone: "success" });
-		},
-		onError: (err) =>
-			toast({
-				title: "Save failed",
-				description: formatApiError(err),
-				tone: "error",
-			}),
-	});
-}
-
 /** Take a runner out of the pool, or put it back. */
 export function useSetRunnerAdmission(projectId: string) {
 	const qc = useQueryClient();
@@ -232,29 +182,6 @@ export function useSetRunnerLabels(projectId: string) {
 			}),
 	});
 }
-
-export function useUnbindRunner(deviceId: string) {
-	const qc = useQueryClient();
-	const { toast } = useToast();
-	return useMutation({
-		mutationFn: ({
-			projectId,
-			runnerId,
-		}: { projectId: string; runnerId: string }) =>
-			runnersApi.unbindRunner(projectId, runnerId),
-		onSuccess: () => {
-			qc.invalidateQueries({ queryKey: ["devices", deviceId, "runners"] });
-			toast({ title: "Project unassigned", tone: "success" });
-		},
-		onError: (err) =>
-			toast({
-				title: "Unassign failed",
-				description: formatApiError(err),
-				tone: "error",
-			}),
-	});
-}
-
 
 /**
  * Device pools serving a project. Keyed `['projects', id, 'runners']`. The WS
