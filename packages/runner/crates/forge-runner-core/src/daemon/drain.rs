@@ -633,8 +633,13 @@ async fn closing_window(
     let bound = Duration::from_secs(HANDOVER_QUIET_SECS);
     let started = Instant::now();
     loop {
+        // The acknowledgement is read BEFORE the count. Every accept the
+        // server took has its guard by the time it acknowledges, so a count
+        // read after an acknowledgement sees them all; read the other way
+        // round, a request counted in between is missed (review F1, recheck).
+        let still = stop.is_some_and(|stop| !drain.socket.stood_for(stop));
         let mut holding = window_holders(drain, inflight);
-        if stop.is_some_and(|stop| !drain.socket.stood_for(stop)) {
+        if still {
             holding.push(
                 "the control server, which has not yet said it stopped accepting".to_string(),
             );
@@ -924,6 +929,23 @@ mod tests {
         );
         drop(late);
         assert_eq!(handing.await.unwrap(), Drained::Idle);
+    }
+
+    /// The interleaving no paused clock can stop at: the server counts a
+    /// request and acknowledges between two reads inside one loop turn of
+    /// `closing_window`. Only reading the acknowledgement first makes a count
+    /// read after it complete, so the order is asserted on the source itself.
+    #[test]
+    fn the_window_reads_the_acknowledgement_before_the_count() {
+        let source = crate::test_scratch::lf(include_str!("drain.rs"));
+        let production = source.split("#[cfg(test)]\nmod tests").next().unwrap();
+        let body = production
+            .split("async fn closing_window(")
+            .nth(1)
+            .expect("closing_window");
+        let ack = body.find("stood_for(").expect("reads the acknowledgement");
+        let count = body.find("window_holders(").expect("reads the count");
+        assert!(ack < count, "the count is read before the acknowledgement");
     }
 
     /// A server that never stands still holds the window only for its bound,
