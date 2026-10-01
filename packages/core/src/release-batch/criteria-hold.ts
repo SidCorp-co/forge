@@ -1,6 +1,6 @@
 import { type IssueCriteriaReport, unearnedCriteriaReports } from '../issues/criteria-verdicts.js';
 import { issueDisplayIds } from '../issues/display-ids.js';
-import { projectAutoProdDeploy } from '../pipeline/auto-prod-deploy.js';
+import { productionDeploysOnLand } from '../pipeline/production-trigger.js';
 import { attempt, blocker, evaluate } from './blocker-kit.js';
 import {
   type HeldIssueRef,
@@ -58,7 +58,7 @@ export async function criteriaHold(
   if (waiting.length === 0 || waiting.length > RELEASE_ROSTER_LIMIT) return;
   const auto = await evaluate(
     'auto-release',
-    async () => await projectAutoProdDeploy(projectId),
+    async () => await productionDeploysOnLand(projectId),
     out,
   );
   if (auto !== true) return;

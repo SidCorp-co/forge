@@ -11,7 +11,7 @@ import { estimateTokens } from '../lib/token-estimator.js';
 import { logger } from '../logger.js';
 import { NO_PROGRESS_ROUNDS } from '../pipeline/reopen-policy.js';
 import type { DispatchState } from '../project-config/dispatch-policy.js';
-import { chainLiveBranch, type ReleaseChain } from '../projects/release-chain.js';
+import { promotedBranch, readReleasePath } from '../project-config/release-path.js';
 import { mandatoryPreambleBlocks } from './facts/mandatory-blocks.js';
 import { OPERATING_AFFORDANCES_TEXT } from './facts/registry.js';
 import {
@@ -134,24 +134,25 @@ async function resolveMemberLenses(
 function formatProjectContext(projectId: string, step: JobType | null): string {
   const fetch =
     step === 'drive'
-      ? `Read repo paths, branches, staging URLs and test credentials with \`forge-runner api projects/${projectId}\`.`
-      : 'Call `forge_projects.get` with this id to retrieve repo paths, branches, staging URLs, and test credentials.';
+      ? `Read repo paths and branches with \`forge-runner api projects/${projectId}\`, and environments, promotions and the testing profile each environment names with \`forge-runner api projects/${projectId}/config\`.`
+      : 'Call `forge_projects.get` with this id for repo paths and branches, and `forge_config` (action `get`) for the project document: environments, promotions and the testing profile each environment names.';
   return `## Project Context
 - projectId: ${projectId}
 
-${fetch} Do NOT echo passwords in commits, PR descriptions, or tool output beyond the immediate authentication step.`;
+${fetch} A testing profile names \`secret://\` references, never values. Do NOT echo passwords in commits, PR descriptions, or tool output beyond the immediate authentication step.`;
 }
 
 export function formatProjectConfig(
   baseBranch: string | null,
-  releaseChain: ReleaseChain,
+  deploysFrom: string | null,
   step: JobType | null = null,
 ): string {
-  const liveBranch = chainLiveBranch(releaseChain);
-  const promotes = liveBranch !== null;
   const b = baseBranch ?? BRANCH_SENTINEL;
   const park = step === 'drive' ? 'needs_info' : 'waiting';
-  const liveLine = promotes ? `\n- liveBranch: ${liveBranch}` : '';
+  const liveLine =
+    deploysFrom !== null
+      ? `\n- production deploysFrom: ${deploysFrom} — a change landed on ${b} reaches it by the project document's promotions`
+      : '';
   let out = `## Project Config\n- baseBranch: ${b}${liveLine}\n- noProgressRounds: ${NO_PROGRESS_ROUNDS} — a stop signal, NOT a cap. Nothing limits how many times an issue may be reopened. If you have fixed the same problem this many times and NOTHING changed (same failure, same symptom, no new information), stop and set \`${park}\` with what you tried and what you need. Rounds that each move something forward are normal work.`;
   if (!baseBranch) {
     const ask =
@@ -187,20 +188,18 @@ export function formatPolicy(policy: DispatchState): string {
 
 async function loadProjectBranches(projectId: string): Promise<{
   baseBranch: string | null;
-  releaseChain: ReleaseChain;
+  deploysFrom: string | null;
   orgId: string | null;
 } | null> {
   try {
     const [project] = await db
-      .select({
-        baseBranch: projects.baseBranch,
-        releaseChain: projects.releaseChain,
-        orgId: projects.orgId,
-      })
+      .select({ baseBranch: projects.baseBranch, orgId: projects.orgId })
       .from(projects)
       .where(eq(projects.id, projectId))
       .limit(1);
-    return project ?? null;
+    if (!project) return null;
+    const read = await readReleasePath(projectId);
+    return { ...project, deploysFrom: read.ok ? promotedBranch(read.path) : null };
   } catch {
     return null;
   }
@@ -220,7 +219,7 @@ export async function buildChatPreamble(
     : await resolveMemberLenses(projectId, userId ?? null);
   const sections: string[] = [
     buildChatNudge(lenses),
-    formatProjectConfig(project.baseBranch, project.releaseChain),
+    formatProjectConfig(project.baseBranch, project.deploysFrom),
   ];
   const integrations = await renderChatIntegrations(projectId, project.orgId);
   if (integrations) sections.push(integrations);
@@ -272,7 +271,7 @@ export async function buildPipelinePreambleStructured(
   opts?: BuildPreambleOptions,
 ): Promise<BuiltPreamble> {
   // On a pipeline step the facts resolver reads the `projects` row anyway
-  // (branches + agentConfig + environments + integrations), so reuse its
+  // (branches + agentConfig + project document + integrations), so reuse its
   // branches for the Project Config block instead of reading `projects` a
   // second time. With no step (chat / generic preview) there is no facts
   // block, so just read the branches.
@@ -287,7 +286,7 @@ export async function buildPipelinePreambleStructured(
   if (project) {
     sections.push({
       id: 'project-config',
-      body: formatProjectConfig(project.baseBranch, project.releaseChain, step),
+      body: formatProjectConfig(project.baseBranch, project.deploysFrom, step),
     });
   }
   if (opts?.policy) sections.push({ id: 'policy', body: formatPolicy(opts.policy) });

@@ -58,8 +58,8 @@ vi.mock('../runners/ineligible.js', async (importActual) => {
 });
 
 const autoRelease = vi.fn(async () => false);
-vi.mock('../pipeline/auto-prod-deploy.js', () => ({
-  projectAutoProdDeploy: () => autoRelease(),
+vi.mock('../pipeline/production-trigger.js', () => ({
+  productionDeploysOnLand: () => autoRelease(),
 }));
 
 const unearned = vi.fn(async () => [] as unknown[]);

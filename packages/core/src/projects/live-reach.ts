@@ -9,12 +9,13 @@ import {
 } from './commit-owners.js';
 
 interface ReadingBranches {
-  /** Null only on a refusal: a project naming no base branch has nothing to compare. */
+  /** Null only on a refusal: a project naming no default branch has nothing to compare. */
   baseBranch: string | null;
-  liveBranch: string;
+  /** The branch production deploys from, which a promotion crosses into. */
+  deploysFrom: string;
 }
 
-/** One comparison of a `promote` project's base branch with its live branch, or why none was taken. */
+/** One comparison of the branch work lands on with the one production deploys from, or why none was taken. */
 export type LiveReading =
   | (ReadingBranches & {
       kind: 'measured';
@@ -46,7 +47,7 @@ type Measured = ReadingBranches & {
   liveSha: string;
 };
 
-/** Whether one merged issue's work is on the live branch, as far as one reading can say. */
+/** Whether one merged issue's work is on the branch production deploys from, as far as one reading can say. */
 export type LiveReach =
   | (Measured & { state: 'not_on_live'; evidence: LiveReachEvidence[] })
   | (Measured & {
@@ -99,8 +100,8 @@ function mergedAfter(issue: LiveReachIssue, startedAt: Date): boolean {
 }
 
 /**
- * One issue's verdict. `null` where there is nothing to place: no reading (the project is not
- * `promote`) or no merged mark. Absence of evidence is never read as "on live" — it is
+ * One issue's verdict. `null` where there is nothing to place: no reading (no promotion reaches
+ * production) or no merged mark. Absence of evidence is never read as "on live" — it is
  * `none_waiting` only from a complete reading taken after the merge, and `unmeasured` otherwise.
  * `records` are the project's issues whose merged commit or recorded head is a waiting commit.
  */
@@ -111,7 +112,7 @@ export function liveReachOf(
   records: readonly IssueWorkRecord[] = [],
 ): LiveReach | null {
   if (!reading || issue.mergedAt == null) return null;
-  const branches = { baseBranch: reading.baseBranch, liveBranch: reading.liveBranch };
+  const branches = { baseBranch: reading.baseBranch, deploysFrom: reading.deploysFrom };
   if (reading.kind === 'pending') {
     return { ...branches, state: 'unmeasured', measuredAt: null, reason: reading.reason };
   }
@@ -121,7 +122,7 @@ export function liveReachOf(
   }
   const measured = {
     baseBranch: reading.baseBranch,
-    liveBranch: reading.liveBranch,
+    deploysFrom: reading.deploysFrom,
     measuredAt,
     baseSha: reading.baseSha,
     liveSha: reading.liveSha,
@@ -134,7 +135,7 @@ export function liveReachOf(
       ...branches,
       state: 'unmeasured',
       measuredAt,
-      reason: `${reading.baseBranch} is ${reading.aheadBy} commits ahead of ${reading.liveBranch} and the reading listed only ${reading.commits.length}, so a commit of this issue may be among the ones it did not read`,
+      reason: `${reading.baseBranch} is ${reading.aheadBy} commits ahead of ${reading.deploysFrom} and the reading listed only ${reading.commits.length}, so a commit of this issue may be among the ones it did not read`,
     };
   }
   if (mergedAfter(issue, reading.startedAt)) {
@@ -142,7 +143,7 @@ export function liveReachOf(
       ...branches,
       state: 'unmeasured',
       measuredAt,
-      reason: `this issue merged after the last reading of ${reading.baseBranch} against ${reading.liveBranch}, which the next reading answers`,
+      reason: `this issue merged after the last reading of ${reading.baseBranch} against ${reading.deploysFrom}, which the next reading answers`,
     };
   }
   const unowned = ownership.ownerless.map((c) => ({ sha: c.sha, subject: subjectOf(c.message) }));

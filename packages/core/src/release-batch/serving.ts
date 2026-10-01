@@ -5,7 +5,7 @@ import type { VerifySource } from './plan.js';
 import { type LiveState, readLiveState } from './verify.js';
 
 export interface ServingDeployment {
-  /** False where no live binding declares a probe: nothing was read, and nothing is claimed. */
+  /** False where production declares no source probe: nothing was read, and nothing is claimed. */
   verified: boolean;
   identity: string | null;
   /** `unknown` only where nothing was read — never a quiet `up` (ISS-1321). */
@@ -42,7 +42,7 @@ export async function readServingDeployment(projectId: string): Promise<ServingR
     return {
       ok: false,
       code: 'PROBES_UNREADABLE',
-      detail: `the live deploy binding ${err.bindings.join(', ')} declares a \`verify\` Forge cannot read, and a declared \`verify\` takes no project default. Correct it, or remove it.`,
+      detail: `${err.bindings.join(', ')} declares only runtime probes that identify an artifact, and a release proves the commit it shipped. Declare a probe with \`identifies: "source"\` on the production environment, or remove them.`,
     };
   }
   if (verification.kind === 'unverified') {

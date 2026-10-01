@@ -1,9 +1,7 @@
 import { z } from 'zod';
 
-export const releaseVerifyProbeSchema = z.object({
-  url: z.string().url().max(500),
-  commitPath: z.string().min(1).max(200).optional(),
-});
+const VERIFY_MOVED =
+  '`verify` is no longer read off a binding or a connection: a release is proved by the production environment\'s runtime probes, `environments.<name>.verification.runtime` in the project document (`PUT /api/projects/:id/config`), each `{ type: "http", url, path, identifies: "source" }`. Send this config without `verify`.';
 
 export const releaseChannelFields = {
   /**
@@ -14,17 +12,11 @@ export const releaseChannelFields = {
    * NOT DECLARED, which `withdrawNulls` removes rather than stores.
    */
   releaseRunnerLabel: z.string().min(1).max(60).nullish(),
-  verify: z
-    .object({
-      probes: z.array(releaseVerifyProbeSchema).min(1).max(10),
-      timeoutSeconds: z.number().int().min(10).max(3600).optional(),
-      stableReads: z.number().int().min(1).max(10).optional(),
-    })
-    .nullish(),
+  verify: z.never({ error: VERIFY_MOVED }).optional(),
   rollback: z.string().max(4000).nullish(),
 };
 
-export const RELEASE_CHANNEL_KEYS = ['releaseRunnerLabel', 'verify', 'rollback'] as const;
+export const RELEASE_CHANNEL_KEYS = ['releaseRunnerLabel', 'rollback'] as const;
 
 /**
  * A key the caller sent as `null` is REMOVED, not stored as null. The

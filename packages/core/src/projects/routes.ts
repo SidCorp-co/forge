@@ -36,29 +36,14 @@ import {
   PERSONA_STYLE_MAX,
   SYSTEM_PROMPT_MAX,
 } from './agent-config-schema.js';
-import { ENVIRONMENTS_MOVED_MESSAGE } from './environments.js';
 import { applyIssuePrefixPatch } from './issue-prefix-patch.js';
 import { projectOnboardRoutes } from './onboard-routes.js';
 import { projectFactsRoutes } from './project-facts-routes.js';
 import { PATCHED_PROJECT, PROJECT_DETAIL } from './projections.js';
-import {
-  chainLiveBranch,
-  releaseChainGapFor,
-  releaseChainPatchFields,
-  withRetiredReleaseAxes,
-} from './release-chain.js';
 import { refuseRetiredProjectKeys } from './retired-project-keys.js';
-import {
-  badRequest,
-  flatten,
-  forbidden,
-  idParamSchema,
-  notFound,
-  refuseByName,
-} from './route-errors.js';
+import { badRequest, flatten, forbidden, idParamSchema, notFound } from './route-errors.js';
 import { projectRunnerRoutes } from './runners-routes.js';
 import { createProject, generateApiKey, ProjectSlugTakenError } from './service.js';
-import { projectSettingsWriteRoutes } from './settings-write-routes.js';
 
 export const createProjectSchema = z.object({
   slug: z
@@ -75,28 +60,37 @@ export const createProjectSchema = z.object({
 
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
 
+const UNDECLARED_PROJECT_KEY = {
+  error: (issue: { code?: string; keys?: string[] }) =>
+    issue.code === 'unrecognized_keys'
+      ? `PATCH /api/projects/:id does not take ${(issue.keys ?? []).map((k) => `\`${k}\``).join(', ')}. Where a project's work lands, its environments, promotions and deployments are its project document: read GET /api/projects/:id/config and write PUT /api/projects/:id/config.`
+      : undefined,
+};
+
 export const updateProjectSchema = z
-  .object({
-    name: z.string().trim().min(1).max(200).optional(),
-    description: z.string().trim().max(2000).nullable().optional(),
-    kind: z.enum(projectKinds).optional(),
-    repoPath: z.string().trim().max(500).nullable().optional(),
-    repoUrl: z.string().trim().max(500).nullable().optional(),
-    workspaceSetup: z.string().trim().max(8000).nullable().optional(),
-    baseBranch: z.string().trim().max(100).nullable().optional(),
-    ...releaseChainPatchFields,
-    issuePrefix: z.string().trim().max(16).nullable().optional(),
-    defaultDeviceId: z.uuid().nullable().optional(),
-    assistantWeekly: assistantWeeklySchema.nullable().optional(),
-    personaStyle: z.string().trim().max(PERSONA_STYLE_MAX).nullable().optional(),
-    rocketChatAnswerMode: z.enum(['fast', 'agent']).nullable().optional(),
-    systemPrompt: z.string().trim().max(SYSTEM_PROMPT_MAX).nullable().optional(),
-    categories: z.array(z.string().trim().min(1).max(100)).max(50).nullable().optional(),
-    webhookSecret: z.string().min(16).max(128).nullable().optional(),
-    // Move the project to another org. Requires org owner/admin on BOTH the
-    // current org (route gate) and the target org (checked in the handler).
-    orgId: z.uuid().optional(),
-  })
+  .strictObject(
+    {
+      name: z.string().trim().min(1).max(200).optional(),
+      description: z.string().trim().max(2000).nullable().optional(),
+      kind: z.enum(projectKinds).optional(),
+      repoPath: z.string().trim().max(500).nullable().optional(),
+      repoUrl: z.string().trim().max(500).nullable().optional(),
+      workspaceSetup: z.string().trim().max(8000).nullable().optional(),
+      baseBranch: z.string().trim().max(100).nullable().optional(),
+      issuePrefix: z.string().trim().max(16).nullable().optional(),
+      defaultDeviceId: z.uuid().nullable().optional(),
+      assistantWeekly: assistantWeeklySchema.nullable().optional(),
+      personaStyle: z.string().trim().max(PERSONA_STYLE_MAX).nullable().optional(),
+      rocketChatAnswerMode: z.enum(['fast', 'agent']).nullable().optional(),
+      systemPrompt: z.string().trim().max(SYSTEM_PROMPT_MAX).nullable().optional(),
+      categories: z.array(z.string().trim().min(1).max(100)).max(50).nullable().optional(),
+      webhookSecret: z.string().min(16).max(128).nullable().optional(),
+      // Move the project to another org. Requires org owner/admin on BOTH the
+      // current org (route gate) and the target org (checked in the handler).
+      orgId: z.uuid().optional(),
+    },
+    UNDECLARED_PROJECT_KEY,
+  )
   .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' });
 
 export const updateProjectPatchSchema = z
@@ -267,7 +261,7 @@ projectRoutes.get(
     // apiKey is returned for member+ (ADR 0013); the viewer tier is read-only
     // and the key is execution-grade (MCP pairing / widget), so it's withheld.
     return c.json({
-      ...withRetiredReleaseAxes(project),
+      ...project,
       apiKey: access.role === 'viewer' ? null : project.apiKey,
       role: access.role,
       orgRole: access.orgRole,
@@ -334,7 +328,6 @@ projectRoutes.patch(
   }),
   zValidator('json', updateProjectPatchSchema, (result) => {
     if (result.success) return;
-    refuseByName(result.error, ENVIRONMENTS_MOVED_MESSAGE, 'ENVIRONMENTS_MOVED');
     throw badRequest(flatten(result.error));
   }),
   async (c) => {
@@ -359,9 +352,6 @@ projectRoutes.patch(
     if (patch.repoUrl !== undefined) updates.repoUrl = patch.repoUrl;
     if (patch.baseBranch !== undefined) updates.baseBranch = patch.baseBranch;
     if (patch.workspaceSetup !== undefined) updates.workspaceSetup = patch.workspaceSetup;
-    if (patch.releaseChain !== undefined) updates.releaseChain = patch.releaseChain;
-    const gap = await releaseChainGapFor(id, patch);
-    if (gap) throw new HTTPException(400, { message: gap.message, cause: { code: gap.code } });
     if (patch.defaultDeviceId !== undefined) updates.defaultDeviceId = patch.defaultDeviceId;
 
     const agentConfigPatch: AgentConfigKeyPatch = {};
@@ -393,7 +383,7 @@ projectRoutes.patch(
     });
     if (!updated) throw notFound();
 
-    return c.json(withRetiredReleaseAxes(updated));
+    return c.json(updated);
   },
 );
 
@@ -532,16 +522,12 @@ projectRoutes.get(
     const access = await loadProjectAccess(id, userId);
     if (!access.role) throw forbidden('not a project member');
 
-    const [row] = await db
-      .select({
-        baseBranch: projects.baseBranch,
-        releaseChain: projects.releaseChain,
-      })
+    const [project] = await db
+      .select({ baseBranch: projects.baseBranch })
       .from(projects)
       .where(eq(projects.id, id))
       .limit(1);
-    if (!row) throw notFound();
-    const project = { baseBranch: row.baseBranch, liveBranch: chainLiveBranch(row.releaseChain) };
+    if (!project) throw notFound();
 
     const [issueRow] = await db
       .select({
@@ -591,4 +577,3 @@ projectRoutes.get(
 // ISS-733 — POST /:id/onboard. The "Build Project Brain" trigger; the thin
 // HTTP delegate lives in ./onboard-routes.ts.
 projectRoutes.route('/', projectOnboardRoutes);
-projectRoutes.route('/', projectSettingsWriteRoutes);

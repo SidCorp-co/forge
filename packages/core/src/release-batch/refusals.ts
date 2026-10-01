@@ -20,7 +20,6 @@ import {
   type ReleaseBlockerCode,
   releaseBlockerSentence,
 } from './blocker-sentences.js';
-import { ReleaseRunnerAmbiguousError } from './channel.js';
 import {
   ClaimConflictError,
   NoReleaseGateError,
@@ -32,7 +31,6 @@ import {
   ReleaseVersionMissingError,
 } from './errors.js';
 import { ReleaseTargetUndeclaredError } from './gate.js';
-import { ReleaseMultiChannelUnsupportedError } from './service.js';
 import type { ReleaseRunHoldingError } from './state.js';
 
 export const badRequest = (details: unknown) =>
@@ -97,21 +95,7 @@ export function declarationRefusal(err: unknown): HTTPException | null {
     return carrying(
       err,
       'RELEASE_TARGET_UNDECLARED',
-      releaseBlockerSentence('RELEASE_TARGET_UNDECLARED', { releaseChain: err.releaseChain }),
-    );
-  }
-  if (err instanceof ReleaseRunnerAmbiguousError) {
-    return carrying(
-      err,
-      'RELEASE_RUNNER_AMBIGUOUS',
-      releaseBlockerSentence('RELEASE_RUNNER_AMBIGUOUS', { labels: err.labels }),
-    );
-  }
-  if (err instanceof ReleaseMultiChannelUnsupportedError) {
-    return carrying(
-      err,
-      'RELEASE_MULTI_CHANNEL_UNSUPPORTED',
-      releaseBlockerSentence('RELEASE_MULTI_CHANNEL_UNSUPPORTED', { count: err.count }),
+      releaseBlockerSentence('RELEASE_TARGET_UNDECLARED', { reason: err.reason }),
     );
   }
   return null;

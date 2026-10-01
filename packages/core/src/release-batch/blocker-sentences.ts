@@ -22,11 +22,9 @@ export type ReleaseBlockerCode =
   | 'RELEASE_ROSTER_OVERSIZE'
   | 'RELEASE_RECORD_MISSING'
   | 'RELEASE_WORK_UNMERGED'
-  | 'RELEASE_RUNNER_AMBIGUOUS'
   | 'RELEASE_PROBES_UNREADABLE'
   | 'RELEASE_POOL_EMPTY'
   | 'NO_RUNNER_ONLINE'
-  | 'RELEASE_MULTI_CHANNEL_UNSUPPORTED'
   | 'BATCH_IN_FLIGHT'
   | 'RELEASE_CRITERIA_UNEARNED'
   | 'RELEASE_RUNTIME_UNROUTED'
@@ -104,9 +102,9 @@ export function alsoBlocking(err: unknown, thrown: ReleaseBlockerCode): ReleaseB
 
 const REMEDY: Record<ReleaseBlockerCode, string> = {
   NO_RELEASE_GATE:
-    'This project has no release step, so Forge has no release to start or record: here, closing an issue is what ships it. Close these issues to ship them. To release through Forge instead, declare a release chain under Settings → Repository and give it a live deploy binding under Settings → Integrations.',
+    'This project has no release step, so Forge has no release to start or record: here, closing an issue is what ships it. Close these issues to ship them. To release through Forge instead, declare an environment with `tier: "production"` and a deploy binding in the project document (`PUT /api/projects/:id/config`).',
   RELEASE_TARGET_UNDECLARED:
-    'This project declares a release chain and has no active deploy binding carrying the `live` stage, so there is nowhere for a release to land. Add one on the integrations screen, or declare an empty release chain.',
+    'Nothing says where a release of this project lands: the project document is missing, or its production environment has no active deploy binding, or no promotion reaches the branch it deploys from. Correct the project document (`PUT /api/projects/:id/config`), or declare no production environment if Forge ships nothing here.',
   CLAIM_CONFLICT:
     '{n} issue(s) named here are not at the release gate, are not on this project, or are already claimed by a batch. Read the roster and send the issues it lists.',
   RELEASE_ROSTER_EMPTY:
@@ -117,16 +115,12 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
     `nobody wrote anything about. ${RELEASE_RECORD_REMEDY}`,
   RELEASE_WORK_UNMERGED:
     '{n} issue(s) named here have no merge Forge watched land, so nothing says their work is on the branch this release deployed. Mark the merge on each of them first — a release records what shipped, and an issue nobody merged did not.',
-  RELEASE_RUNNER_AMBIGUOUS:
-    'Two live deploy bindings name different release runners, so there is no one box the release job may be offered to. Make the labels agree, or clear all but one.',
   RELEASE_PROBES_UNREADABLE:
     'A declared verification probe holds a url that is not a url, so no request could ever be made to it and the release would fail while reading what production is serving. Correct the probe, including its scheme.',
   RELEASE_POOL_EMPTY:
     'This project has no runner registered, so there is no box a release could run on. Pair a box to this project first.',
   NO_RUNNER_ONLINE:
     'This project has runners registered and none of them could be handed a release, and the reading of why could not be taken. Open Settings \u2192 Runners and check each box\'s "Takes jobs from the pool" switch and when it was last seen.',
-  RELEASE_MULTI_CHANNEL_UNSUPPORTED:
-    'This project declares more than one live deploy binding, and a release run records ONE reading used to close the whole roster. Leave exactly one binding carrying the `live` stage active, or release them as separate projects.',
   BATCH_IN_FLIGHT:
     'A release is already running for this project, and a second one would claim the same issues. Let it finish, or abort it with what you found.',
   RELEASE_CRITERIA_UNEARNED:
@@ -159,11 +153,9 @@ export const REMEDY_COST: Record<ReleaseReasonCode, readonly RemedyAct[]> = {
   RELEASE_ROSTER_OVERSIZE: [],
   RELEASE_RECORD_MISSING: [],
   RELEASE_WORK_UNMERGED: [],
-  RELEASE_RUNNER_AMBIGUOUS: [],
   RELEASE_PROBES_UNREADABLE: [],
   RELEASE_POOL_EMPTY: [],
   NO_RUNNER_ONLINE: [],
-  RELEASE_MULTI_CHANNEL_UNSUPPORTED: [],
   BATCH_IN_FLIGHT: [],
   RELEASE_CRITERIA_UNEARNED: [],
   RELEASE_RUNTIME_UNROUTED: [],
@@ -316,17 +308,8 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
   if (code === 'RELEASE_WORK_UNMERGED' && details?.shape === 'outside_git') {
     return `${namedHere(details)} have no mark saying where their work landed. This project's work lands outside git, so mark each one merged with its \`landing\` — the live URL, CMS entry or storefront resource the work now is — first: a release records what shipped, and a mark naming nothing does not say that anything did.`;
   }
-  if (code === 'RELEASE_TARGET_UNDECLARED' && Array.isArray(details?.releaseChain)) {
-    const chain = details.releaseChain as { branch?: unknown }[];
-    const last = chain[chain.length - 1]?.branch;
-    return `This project's release chain ends at \`${String(last)}\` and it has no active deploy binding carrying the \`live\` stage, so there is nowhere for a release to land. Add one on the integrations screen, or declare an empty release chain.`;
-  }
-  if (code === 'RELEASE_RUNNER_AMBIGUOUS' && Array.isArray(details?.labels)) {
-    const labels = details.labels as string[];
-    return `Two live deploy bindings name different release runners (${labels.join(', ')}), so there is no one box the release job may be offered to. Make the labels agree, or clear all but one.`;
-  }
-  if (code === 'RELEASE_MULTI_CHANNEL_UNSUPPORTED' && typeof details?.count === 'number') {
-    return `This project declares ${details.count} live deploy bindings, and a release run records ONE reading used to close the whole roster. Leave exactly one binding carrying the \`live\` stage active, or release them as separate projects.`;
+  if (code === 'RELEASE_TARGET_UNDECLARED' && typeof details?.reason === 'string') {
+    return `Nowhere is declared for a release to land: ${details.reason}.`;
   }
   const standings = code === 'CLAIM_CONFLICT' ? readClaimConflictDetails(details) : null;
   if (standings) {
@@ -366,9 +349,9 @@ function unroutedSentence(
   return held.length === 0 ? lead : heldIssuesSentence(lead, held);
 }
 
-/** A `verify` Forge refused takes no project default, so removing it is a repair and not silence. */
+/** A probe identifying the artifact cannot prove a commit, so removing it is a repair and not silence. */
 const REFUSED_DECLARATION_SENTENCE =
-  'declares a `verify` Forge cannot read — it names no probe with a url — and a declared `verify` takes NO project default, so no release can be proved there and none closes past it. Correct it to `{"probes":[{"url":"https://<host>/api/health","commitPath":"commit"}]}`, or remove it: the project\'s `environments.live.commitUrl` then answers, and with neither the release is recorded unverified.';
+  'declares runtime probes that all identify the artifact, and a release proves the commit it shipped, so no release can be proved there and none closes past it. Add a probe with `"identifies": "source"` to its `verification.runtime`, or remove the probes and the release is recorded unverified.';
 
 function unreadableSentence(remedy: string, details?: Record<string, unknown>): string {
   const urls = Array.isArray(details?.urls) ? (details.urls as string[]) : [];
@@ -376,10 +359,7 @@ function unreadableSentence(remedy: string, details?: Record<string, unknown>): 
   const parts: string[] = [];
   if (urls.length > 0) parts.push(`${urls.join(', ')} — ${remedy}`);
   if (bindings.length > 0) {
-    const which = bindings.map((b) => `\`${b}\``).join(', ');
-    parts.push(
-      `The live deploy binding${bindings.length === 1 ? '' : 's'} ${which} ${REFUSED_DECLARATION_SENTENCE}`,
-    );
+    parts.push(`Production ${bindings.join(', ')} ${REFUSED_DECLARATION_SENTENCE}`);
   }
   return parts.length > 0 ? parts.join(' ') : remedy;
 }
@@ -415,6 +395,6 @@ export function heldBackWarningSentence(held: HeldIssueRef[], serving: ServingRe
 export function runnerPreferenceUnmetSentence(label: string): string {
   return withCosts(
     'RELEASE_RUNNER_PREFERENCE_UNMET',
-    `No box on this project carries the declared release label \`${label}\`, so this release goes to the pool this project has. Two ways out, either one complete. Label the box you want this project's releases to run on with \`${label}\` under ${RUNNERS_TAB}. Or clear \`releaseRunnerLabel\` from the live deploy binding under ${INTEGRATIONS_TAB} AND from the connection behind it under ${CONNECTIONS_DIRECTORY}, which asks for no box and stops nothing: a project declaring no release runner releases on the pool it has, and this warning goes with the label. Clearing it from the binding alone falls back to the connection's label rather than to none.`,
+    `No box on this project carries the declared release label \`${label}\`, so this release goes to the pool this project has. Two ways out, either one complete. Label the box you want this project's releases to run on with \`${label}\` under ${RUNNERS_TAB}. Or clear \`releaseRunnerLabel\` from the production deploy binding under ${INTEGRATIONS_TAB} AND from the connection behind it under ${CONNECTIONS_DIRECTORY}, which asks for no box and stops nothing: a project declaring no release runner releases on the pool it has, and this warning goes with the label. Clearing it from the binding alone falls back to the connection's label rather than to none.`,
   );
 }

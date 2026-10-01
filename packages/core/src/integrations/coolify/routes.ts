@@ -264,14 +264,16 @@ export function registerCoolifyDeployRoutes(routes: Hono<{ Variables: AuthVars }
 
     const existing = await findBindingWithConnectionById(id);
     if (!existing || existing.binding.projectId !== projectId) throw notFound();
-    if (!(existing.binding.stages ?? []).includes('live')) {
+    const { bindingReachesProduction, confirmPendingProdDeploy } = await import(
+      '../../pipeline/release-coolify.js'
+    );
+    if (!(await bindingReachesProduction(projectId, existing.binding))) {
       throw new HTTPException(400, {
         message:
-          'confirm-prod-deploy is only valid on a deploy binding carrying the `live` stage — this binding serves no live environment, so there is no production deploy for a human to confirm',
+          "confirm-prod-deploy is only valid on a deploy binding that reaches the project document's production environment — this one does not, so there is no production deploy for a human to confirm",
         cause: { code: 'NOT_LIVE_BINDING' },
       });
     }
-    const { confirmPendingProdDeploy } = await import('../../pipeline/release-coolify.js');
     const result = await confirmPendingProdDeploy(id).catch(lockedAsHttp);
     broadcastIntegrationChanged(projectId, {
       bindingId: id,

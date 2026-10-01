@@ -211,7 +211,7 @@ function headOf(r: IssueWorkRecord, branches: readonly string[]): string | null 
 export function readingOwnership(
   commits: readonly WaitingCommit[],
   pattern: RegExp,
-  branches: { baseBranch: string; liveBranch: string },
+  branches: { baseBranch: string; deploysFrom: string },
   records: readonly IssueWorkRecord[],
 ): ReadingOwnership {
   const byRule = commitOwners(commits, pattern, branches.baseBranch);
@@ -219,7 +219,7 @@ export function readingOwnership(
     records.map((r) => r.mergedCommitSha?.trim().toLowerCase()).filter((s): s is string => !!s),
   );
   const heads = new Map<string, number[]>();
-  const refs = [branches.baseBranch, branches.liveBranch];
+  const refs = [branches.baseBranch, branches.deploysFrom];
   for (const r of records) {
     const head = headOf(r, refs);
     if (head) heads.set(head, [...(heads.get(head) ?? []), r.issSeq]);

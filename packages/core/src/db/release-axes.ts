@@ -10,14 +10,9 @@ export type ReleaseCrossing = (typeof releaseCrossings)[number];
 export const bindingRoles = ['deploy', 'service', 'source'] as const;
 export type BindingRole = (typeof bindingRoles)[number];
 
-export const deployStages = ['preview', 'live'] as const;
-export type DeployStage = (typeof deployStages)[number];
-
 const RELEASE_CHAIN_CHK = sql`projects_release_chain_ok(release_chain)`;
 
 const BINDING_ROLE_CHK = sql`role IN ('deploy', 'service', 'source')`;
-
-const ROLE_STAGES_CHK = sql`(role IN ('service', 'source') AND cardinality(stages) = 0) OR (role = 'deploy' AND array_ndims(stages) = 1 AND cardinality(stages) BETWEEN 1 AND 2 AND stages <@ ARRAY['preview', 'live'] AND (cardinality(stages) = 1 OR stages[1] <> stages[2]))`;
 
 export const SERVICE_ROLE_PRED = sql`role = 'service'`;
 
@@ -34,7 +29,6 @@ const AGENT_ACCESS_CHK = sql`agent_access IN ('none', 'all')`;
 /** Spread into `integrationBindings`' extras in `schema.ts`. */
 export const bindingShapeChecks = {
   roleChk: check('integration_bindings_role_chk', BINDING_ROLE_CHK),
-  roleStagesChk: check('integration_bindings_role_stages_chk', ROLE_STAGES_CHK),
   agentAccessChk: check('integration_bindings_agent_access_chk', AGENT_ACCESS_CHK),
 } as const;
 

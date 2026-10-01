@@ -1,24 +1,17 @@
 import type { z } from 'zod';
 import { RETIRED_STATE_CONTEXT_MESSAGE } from './agent-config.js';
 import { refuseAgentConfigRecord } from './agent-config-schema.js';
-import { ENVIRONMENTS_MOVED_MESSAGE, RETIRED_PREVIEW_DEPLOY_MESSAGE } from './environments.js';
 import {
   RETIRED_PROJECT_FACTS_CONFIG_MESSAGE,
   RETIRED_PROJECT_FACTS_MESSAGE,
 } from './project-facts.js';
-import { RETIRED_RELEASE_AXIS_MESSAGE } from './release-chain.js';
 
 export function refuseRetiredProjectKeys(raw: unknown, ctx: z.RefinementCtx): void {
   if (!raw || typeof raw !== 'object') return;
   const retired = (path: (string | number)[], message: string) =>
     ctx.addIssue({ code: 'custom', path, message });
-  const body = raw as { stateContext?: unknown; agentConfig?: unknown; environments?: unknown };
+  const body = raw as { stateContext?: unknown; agentConfig?: unknown };
   if ('stateContext' in body) retired(['stateContext'], RETIRED_STATE_CONTEXT_MESSAGE);
-  for (const [key, message] of Object.entries(RETIRED_RELEASE_AXIS_MESSAGE)) {
-    if (key in body) retired([key], message);
-  }
-  if ('previewDeploy' in body) retired(['previewDeploy'], RETIRED_PREVIEW_DEPLOY_MESSAGE);
-  if ('environments' in body) retired(['environments'], ENVIRONMENTS_MOVED_MESSAGE);
   if (!('agentConfig' in body)) return;
   const ac = body.agentConfig as Record<string, unknown> | null | undefined;
   if (!ac || typeof ac !== 'object') {

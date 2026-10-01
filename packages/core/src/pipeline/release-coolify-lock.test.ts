@@ -232,7 +232,7 @@ describe('tryDispatchCoolifyRelease — the environment hold', () => {
   it('gives the hold back when every binding parks for a human', async () => {
     listBindingsSpy.mockResolvedValueOnce([prodPair]);
     selectQueue.push([{ status: 'running' }]);
-    selectQueue.push([]); // projectAutoProdDeploy: the gate stays on
+    selectQueue.push([]); // productionDeploysOnLand: the gate stays on
     selectQueue.push([]); // getProdGateStateForRun: unconfirmed
     selectQueue.push([{ metadata: {} }]); // markPendingHumanConfirm
 
@@ -255,7 +255,7 @@ describe('tryDispatchCoolifyRelease — the environment hold', () => {
   it('gives back the environment of a binding that parked, and keeps the one it dispatched', async () => {
     listBindingsSpy.mockResolvedValueOnce([stagingPair, prodPair]);
     selectQueue.push([{ status: 'running' }]);
-    selectQueue.push([]); // projectAutoProdDeploy: the gate stays on
+    selectQueue.push([]); // productionDeploysOnLand: the gate stays on
     selectQueue.push([]); // getProdGateStateForRun: unconfirmed
     selectQueue.push([{ metadata: {} }]); // markPendingHumanConfirm
     heldNow = { 'target:del-a': { status: 'pending', locks: PREVIEW_ONLY } };
@@ -278,7 +278,7 @@ describe('tryDispatchCoolifyRelease — the environment hold', () => {
   it('parks a binding against its own environments, not the whole fan-out\u2019s', async () => {
     listBindingsSpy.mockResolvedValueOnce([stagingPair, prodPair]);
     selectQueue.push([{ status: 'running' }]);
-    selectQueue.push([]); // projectAutoProdDeploy: the gate stays on
+    selectQueue.push([]); // productionDeploysOnLand: the gate stays on
     selectQueue.push([]); // getProdGateStateForRun: unconfirmed
     selectQueue.push([{ metadata: {} }]); // markPendingHumanConfirm
 

@@ -170,7 +170,7 @@ export async function attemptReading(
       identity: null,
       readings: null,
       verdict: 'failed' as const,
-      verdictReason: `the live deploy binding ${err.bindings.join(', ')} declares a \`verify\` Forge cannot read, so nothing could be read`,
+      verdictReason: `${err.bindings.join(', ')} declares no runtime probe that identifies the source, so nothing could be read`,
     };
   }
   if (verification.kind === 'unverified') {

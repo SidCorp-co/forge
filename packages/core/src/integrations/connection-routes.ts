@@ -16,12 +16,7 @@ import {
   agentAccessTier,
   noAgentPathMessage,
 } from './agent-access.js';
-import {
-  cannotDeployMessage,
-  checkRoleStagesPairing,
-  roleSchema,
-  stagesSchema,
-} from './binding-shape.js';
+import { cannotDeployMessage, retiredStagesField, roleSchema } from './binding-shape.js';
 import { raceWithTimeout } from './probe.js';
 import {
   applySecretsPatch,
@@ -146,23 +141,19 @@ integrationConnectionsRoutes.post(
 // already holds the credential). Owner-only on the connection + admin on the
 // TARGET project. Contrast the create path (POST /:projectId/integrations) which
 // always mints a NEW connection from the request body's secrets.
-const bindExistingSchema = z
-  .object({
-    projectId: z.string().min(1),
-    role: roleSchema,
-    stages: stagesSchema.optional(),
-    // Binding-tier overrides (coolify resourceUuid/branch) so a shared connection
-    // can target a different Coolify resource per project. Connection-tier keys
-    // are validated then dropped — a bind must not shadow the shared baseUrl.
-    config: z.record(z.string(), z.unknown()).optional(),
-    // ISS-1071 — the third door onto `integration_bindings`, so it takes the same field. Sharing an
-    // existing credential into a project is still a connect, and whether agents there may use it is
-    // still a property of the binding it creates rather than of a map somewhere else.
-    agentAccess: z.enum(AGENT_ACCESS_VALUES).optional(),
-  })
-  .superRefine((body, ctx) => {
-    checkRoleStagesPairing(body, ctx);
-  });
+const bindExistingSchema = z.object({
+  projectId: z.string().min(1),
+  role: roleSchema,
+  stages: retiredStagesField,
+  // Binding-tier overrides (coolify resourceUuid/branch) so a shared connection
+  // can target a different Coolify resource per project. Connection-tier keys
+  // are validated then dropped — a bind must not shadow the shared baseUrl.
+  config: z.record(z.string(), z.unknown()).optional(),
+  // ISS-1071 — the third door onto `integration_bindings`, so it takes the same field. Sharing an
+  // existing credential into a project is still a connect, and whether agents there may use it is
+  // still a property of the binding it creates rather than of a map somewhere else.
+  agentAccess: z.enum(AGENT_ACCESS_VALUES).optional(),
+});
 
 integrationConnectionsRoutes.post(
   '/:id/bindings',
@@ -234,7 +225,6 @@ integrationConnectionsRoutes.post(
         projectId: body.projectId,
         provider,
         role: body.role,
-        ...(body.role === 'deploy' && body.stages ? { stages: body.stages } : {}),
         config: bindingConfig,
         integrationSecret,
         agentAccess: bindingAgentAccess,

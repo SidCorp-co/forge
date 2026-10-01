@@ -84,7 +84,7 @@ describe('what a job is told about a github binding it may not use', () => {
       {
         provider: 'github',
         role: 'service',
-        stages: [],
+        environment: null,
         lastHealthStatus: 'ok',
         instructions: null,
         hasOrgGuide: false,
@@ -102,7 +102,7 @@ describe('what a job is told about a github binding it may not use', () => {
       {
         provider: 'github',
         role: 'service',
-        stages: [],
+        environment: null,
         lastHealthStatus: 'ok',
         instructions: null,
         hasOrgGuide: false,

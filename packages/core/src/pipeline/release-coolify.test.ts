@@ -82,8 +82,8 @@ vi.mock('../logger.js', () => ({
 }));
 
 const autoProd = vi.fn(async (_projectId: string) => false);
-vi.mock('./auto-prod-deploy.js', () => ({
-  projectAutoProdDeploy: (projectId: string) => autoProd(projectId),
+vi.mock('./production-trigger.js', () => ({
+  productionDeploysOnLand: (projectId: string) => autoProd(projectId),
 }));
 
 const { logger } = await import('../logger.js');

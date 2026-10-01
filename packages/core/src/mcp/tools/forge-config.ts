@@ -6,6 +6,7 @@ import {
   readPluginDesignations,
 } from '../../plugins/designation.js';
 import { readEffectivePolicy } from '../../project-config/effective.js';
+import { readProjectDocument } from '../../project-config/service.js';
 import {
   patchAgentConfigKeys,
   RETIRED_STATE_CONTEXT_MESSAGE,
@@ -16,7 +17,6 @@ import {
   RETIRED_PROJECT_FACTS_CONFIG_MESSAGE,
   RETIRED_PROJECT_FACTS_MESSAGE,
 } from '../../projects/project-facts.js';
-import { chainLiveBranch, retiredReleaseAxes } from '../../projects/release-chain.js';
 import { readIssueBranchInputs, readProjectWithConfig } from '../../projects/service.js';
 import {
   assertPrincipalIsAdmin,
@@ -50,7 +50,10 @@ async function readProjectConfig(projectId: string) {
 
 async function formatBaseResponse(row: Awaited<ReturnType<typeof readProjectConfig>>) {
   const ac = (row.agentConfig as Record<string, unknown> | null) ?? {};
-  const policy = await readEffectivePolicy(row.id);
+  const [policy, document] = await Promise.all([
+    readEffectivePolicy(row.id),
+    readProjectDocument(row.id),
+  ]);
   return {
     project: {
       id: row.id,
@@ -60,11 +63,12 @@ async function formatBaseResponse(row: Awaited<ReturnType<typeof readProjectConf
     config: {
       repoPath: row.repoPath,
       baseBranch: row.baseBranch,
-      releaseChain: row.releaseChain,
-      ...retiredReleaseAxes(row.releaseChain),
       categories: (ac.categories as string[] | undefined) ?? [],
       policy: policy
         ? { declared: true, revision: policy.revision, document: policy.document }
+        : { declared: false, revision: null, document: null },
+      projectDocument: document
+        ? { declared: true, revision: document.revision, document: document.document }
         : { declared: false, revision: null, document: null },
       plugins: readPluginDesignations(ac),
     },
@@ -74,7 +78,7 @@ async function formatBaseResponse(row: Awaited<ReturnType<typeof readProjectConf
 export const forgeConfigTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_config',
   description:
-    "Read or write project configuration. Action `get` returns `config` with `repoPath`, `baseBranch` and `releaseChain` read DIRECTLY from the `projects` table columns. `releaseChain` is the project's release shape: an ordered list of `{branch, from?}` whose FIRST entry is where work merges and whose LAST is live, each entry after the first carrying the crossing into it (`merge-branch` or `cherry-pick`). An empty list means this project ships nothing — `closed` means closed. A one-entry chain means the release is an act on a live deploy binding and no ref moves. Two or more entries mean the release crosses each adjacent pair by that pair's own strategy and then deploys the last branch. `baseBranch` is where an ISS-* branch is cut from and is NOT part of the release shape; it may be `null` when not configured and callers MUST NOT silently default it to 'main'. `releaseModel`, `liveBranch` and `releaseStrategy` are also answered, DERIVED from the chain and never stored (ISS-1311 / ADR 0003): they exist for readers that have not moved yet, they cannot be written, and they go when those readers have; plus `categories` and `plugins` from `agent_config` JSON, and `policy` — the project's policy-v1 document (`qa`, `intake`, `permissions`, `states`) with its `revision`, or `declared: false` where the project has none, in which case nothing dispatches there. The policy is read-only here; write it with `PUT /api/projects/:id/policy` ({ baseRevision, document }). When `issueId` is supplied, also returns a resolved `branchConfig` layering the issue override on top of the project defaults. This tool NO LONGER carries project prose: `projectFacts` and `projectFactsConfig` were removed in ISS-1048 and a request naming either is refused by name. A project's guides, rules and overviews are `knowledge_entries` rows — read and write them with `forge_knowledge`, whose `injection` field (`always`, `on_demand`, `none`) is what the always-inject flag became. Action `update` (admin-gated) takes a `plugins` list designating the Claude Code plugins this project's runners must install (`[{marketplace, name, pinnedRef?, autoUpdate?}]`; marketplace is an `owner/repo`, name is kebab-case, pinnedRef is a commit SHA). UNLIKE a patch, `plugins` REPLACES the whole list — GET first, send the complete list, `null` clears it. Designation is per-project but install is per-DEVICE: a device resolves the union of every project it is bound to via `GET /api/devices/me/plugins`, so a plugin designated by one project is installed for all of them; per-project opt-out belongs in that repo's own `.claude/settings.json` `enabledPlugins`. Errors surface as `BAD_REQUEST: <code>: <message>`. An always-inject knowledge entry is injected verbatim into every agent system prompt for this project, under a char budget that warns on overflow rather than truncating. " +
+    "Read or write project configuration. Action `get` returns `config` with `repoPath` and `baseBranch` read DIRECTLY from the `projects` table columns. `baseBranch` is where an ISS-* branch is cut from and is NOT a release fact; it may be `null` when not configured and callers MUST NOT silently default it to 'main'. Where a landed change goes is `config.projectDocument` — the project-v1 document with its `revision`, or `declared: false`: its `source.git.defaultBranch` is where work lands, its `environments` each name a `tier`, the branch they deploy from (`deploysFrom`), their deployment (a binding and a `trigger` of `on-land`, `on-request` or `provider`, or `mode: external`) and their runtime probes, the one `tier: production` environment is where a release lands, and its `promotions` are the branch crossings (`merge` or `cherry-pick`) a change takes to reach it. No production environment means this project ships nothing — `closed` means closed. The document is read-only here; write it with `PUT /api/projects/:id/config` ({ baseRevision, document }), and read what an environment runs now with `GET /api/projects/:id/environments/state`. Also `categories` and `plugins` from `agent_config` JSON, and `policy` — the project's policy-v1 document (`qa`, `intake`, `permissions`, `states`) with its `revision`, or `declared: false` where the project has none, in which case nothing dispatches there. The policy is read-only here; write it with `PUT /api/projects/:id/policy` ({ baseRevision, document }). When `issueId` is supplied, also returns a resolved `branchConfig` layering the issue override on top of the project defaults. This tool NO LONGER carries project prose: `projectFacts` and `projectFactsConfig` were removed in ISS-1048 and a request naming either is refused by name. A project's guides, rules and overviews are `knowledge_entries` rows — read and write them with `forge_knowledge`, whose `injection` field (`always`, `on_demand`, `none`) is what the always-inject flag became. Action `update` (admin-gated) takes a `plugins` list designating the Claude Code plugins this project's runners must install (`[{marketplace, name, pinnedRef?, autoUpdate?}]`; marketplace is an `owner/repo`, name is kebab-case, pinnedRef is a commit SHA). UNLIKE a patch, `plugins` REPLACES the whole list — GET first, send the complete list, `null` clears it. Designation is per-project but install is per-DEVICE: a device resolves the union of every project it is bound to via `GET /api/devices/me/plugins`, so a plugin designated by one project is installed for all of them; per-project opt-out belongs in that repo's own `.claude/settings.json` `enabledPlugins`. Errors surface as `BAD_REQUEST: <code>: <message>`. An always-inject knowledge entry is injected verbatim into every agent system prompt for this project, under a char budget that warns on overflow rather than truncating. " +
     ALWAYS_INJECT_GUARANTEE_NOTE +
     ' ' +
     ALWAYS_INJECT_ENFORCEMENT_NOTE,
@@ -130,7 +134,7 @@ export const forgeConfigTool: ContextScopedMcpToolFactory = (ctx) => ({
 
     const branchConfig = resolveIssueBranches(
       { metadata: { branchConfig: branchConfigOverride } },
-      { baseBranch: row.baseBranch, liveBranch: chainLiveBranch(row.releaseChain) },
+      { baseBranch: row.baseBranch },
     );
 
     return {

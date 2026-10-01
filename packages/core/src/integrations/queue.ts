@@ -135,7 +135,7 @@ async function runOutboundDispatch(data: OutboundDispatchJob): Promise<void> {
   try {
     await dispatchThrough(binding.provider, ctx, {
       eventName: data.eventName,
-      payload: data.payload ?? { runId: data.runId, issueId: data.issueId, stages: ctx.stages },
+      payload: data.payload ?? { runId: data.runId, issueId: data.issueId },
       ...(data.requestId ? { requestId: data.requestId } : {}),
       runId: data.runId,
     });

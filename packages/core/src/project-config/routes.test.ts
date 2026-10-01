@@ -163,9 +163,7 @@ beforeEach(() => {
   mem.profiles.clear();
   mem.secrets.clear();
   mem.checkouts.length = 0;
-  mem.bindings = [
-    { id: DEPLOY_BINDING, role: 'deploy', provider: 'coolify', stages: ['live'], label: '' },
-  ];
+  mem.bindings = [{ id: DEPLOY_BINDING, role: 'deploy', provider: 'coolify', label: '' }];
   mem.roles.clear();
   mem.roles.set(ADMIN, 'admin');
   mem.roles.set(VIEWER, 'viewer');

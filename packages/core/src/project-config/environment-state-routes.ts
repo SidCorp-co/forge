@@ -4,12 +4,8 @@ import { z } from 'zod';
 import { assertProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { deployAdapterForBinding } from './deploy-adapters/index.js';
-import { type EnvironmentStateDeps, resolveEnvironmentState } from './environment-state.js';
+import { readEnvironmentState } from './environment-state-read.js';
 import { readProjectDocument } from './service.js';
-
-const PLATFORM_TIMEOUT_MS = 10_000;
-const PROBE_TIMEOUT_MS = 5_000;
 
 const projectParam = z.object({ id: z.uuid() });
 const environmentParam = z.object({
@@ -25,13 +21,6 @@ const refuseParam = (r: { success: boolean }) => {
     });
   }
 };
-
-const depsFor = (projectId: string): EnvironmentStateDeps => ({
-  deployAdapterFor: (bindingId) =>
-    deployAdapterForBinding(projectId, bindingId, PLATFORM_TIMEOUT_MS),
-  fetch,
-  probeTimeoutMs: PROBE_TIMEOUT_MS,
-});
 
 async function storedDocument(projectId: string) {
   const stored = await readProjectDocument(projectId);
@@ -54,10 +43,9 @@ environmentStateRoutes.get(
     const { id } = c.req.valid('param');
     await assertProjectAccess(id, c.get('userId'), 'viewer');
     const { revision, document } = await storedDocument(id);
-    const ctx = { sourceType: document.source.type };
     const environments = await Promise.all(
-      Object.entries(document.environments).map(([name, decl]) =>
-        resolveEnvironmentState(name, decl, ctx, depsFor(id)),
+      Object.entries(document.environments).map(([name, declaration]) =>
+        readEnvironmentState(id, document, { name, declaration }),
       ),
     );
     return c.json({ revision, environments });
@@ -81,8 +69,6 @@ environmentStateRoutes.get(
         cause: { code: 'ENVIRONMENT_NOT_FOUND' },
       });
     }
-    return c.json(
-      await resolveEnvironmentState(name, decl, { sourceType: document.source.type }, depsFor(id)),
-    );
+    return c.json(await readEnvironmentState(id, document, { name, declaration: decl }));
   },
 );

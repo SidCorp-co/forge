@@ -3,7 +3,6 @@ import { alias } from 'drizzle-orm/pg-core';
 import { db } from '../../db/client.js';
 import {
   type BindingRole,
-  type DeployStage,
   type IssueStatus,
   type JobType,
   labels,
@@ -19,18 +18,19 @@ import {
   selectOnDemandSlugsFromKnowledge,
 } from '../../knowledge/service.js';
 import { logger } from '../../logger.js';
+import { promotedBranch, readDeployMap, releasePathOf } from '../../project-config/release-path.js';
+import type { ProjectDocument, TestingProfile } from '../../project-config/schema.js';
+import { listTestingProfiles, readProjectDocument } from '../../project-config/service.js';
 import {
   type KnowledgeObligation,
   missingProjectKnowledge,
 } from '../../projects/autonomous-contract.js';
-import { type NormalizedEnvironments, normalizeEnvironments } from '../../projects/environments.js';
 import {
   ALWAYS_INJECT_MAX_CHARS,
   type RESERVED_PROJECT_FACT_KEYS,
   unreservedProjectKeyRefusal,
 } from '../../projects/project-facts.js';
-import { chainLiveBranch, type ReleaseChain } from '../../projects/release-chain.js';
-import { renderTestUrls, TEST_CREDS_POINTER } from './environment-keys.js';
+import { renderTestCreds, renderTestNotes, renderTestUrls } from './environment-keys.js';
 import {
   CANONICAL_LADDER,
   type FactRenderContext,
@@ -62,7 +62,7 @@ export interface ProjectFactInputs {
   /** Raw project branch columns — lets a caller that already needs this read
    *  (e.g. the system-prompt builder) reuse it instead of reading `projects`
    *  a second time for the `## Project Config` block. */
-  branches: { baseBranch: string | null; releaseChain: ReleaseChain };
+  branches: { baseBranch: string | null; deploysFrom: string | null };
   /** Resolver for `{{project:<key>}}`. */
   project: ProjectVarResolver;
   /** Slugs of this project's `injection: 'on_demand'` knowledge entries — the
@@ -89,7 +89,8 @@ export interface ProjectFactInputs {
 interface IntegrationRow {
   provider: string;
   role: BindingRole;
-  stages: DeployStage[];
+  /** The environment of the project document whose deployment names this binding. */
+  environment: string | null;
   lastHealthStatus: string | null;
   /** The provider's own extra line, built from its declaration — see `IntegrationUsage.renderExtra`. */
   extraLine?: string | null;
@@ -105,7 +106,10 @@ export async function loadActiveIntegrationRows(
   projectId: string,
   orgId?: string | null,
 ): Promise<IntegrationRow[]> {
-  const pairs = await listBindingsForProject(projectId);
+  const [pairs, deployMap] = await Promise.all([
+    listBindingsForProject(projectId),
+    readDeployMap(projectId),
+  ]);
   const active = pairs.filter((p) => p.binding.active && p.connection.active);
   if (active.length === 0) return [];
 
@@ -114,7 +118,7 @@ export async function loadActiveIntegrationRows(
   return active.map((p) => ({
     provider: p.binding.provider,
     role: p.binding.role,
-    stages: (p.binding.stages ?? []) as DeployStage[],
+    environment: deployMap.environments.get(p.binding.id)?.name ?? null,
     lastHealthStatus: p.connection.lastHealthStatus,
     instructions: p.binding.instructions ?? null,
     hasOrgGuide: orgGuides.has(p.binding.provider),
@@ -148,7 +152,7 @@ export function renderIntegrations(rows: IntegrationRow[]): string {
     const health = r.lastHealthStatus ? ` (health: ${r.lastHealthStatus})` : '';
     const guideSlug = r.hasOrgGuide ? integrationGuideSlug(r.provider) : decl?.usage?.guideSlug;
     const guidePointer = guideSlug ? ` Full guide: \`forge_guide get ${guideSlug}\`.` : '';
-    const scope = r.role === 'deploy' ? r.stages.join('+') || 'deploy' : r.role;
+    const scope = r.role === 'deploy' ? (r.environment ?? 'deploy') : r.role;
     const body = r.agentGranted === false ? ungrantedNote(r.provider) : `${hint}${guidePointer}`;
     const bullet = `- **${r.provider}** [${scope}]${health} — ${body}`;
     const extra: string[] = [];
@@ -165,21 +169,23 @@ export function renderIntegrations(rows: IntegrationRow[]): string {
 }
 
 export function makeProjectResolver(src: {
+  projectId: string;
   baseBranch: string | null;
-  releaseChain: ReleaseChain;
+  deploysFrom: string | null;
   repoPath: string | null;
-  environments: NormalizedEnvironments;
+  document: ProjectDocument | null;
+  profiles: ReadonlyMap<string, TestingProfile>;
   integrations: IntegrationRow[];
 }): ProjectVarResolver {
   const reserved: Record<(typeof RESERVED_PROJECT_FACT_KEYS)[number], () => string | undefined> = {
     'base-branch': () => src.baseBranch ?? undefined,
-    'live-branch': () => chainLiveBranch(src.releaseChain) ?? undefined,
+    'live-branch': () => src.deploysFrom ?? undefined,
     'production-branch': () =>
-      '⚠️ `{{project:production-branch}}` was retired when a project gained a declared release model (ISS-1046). Use `{{project:live-branch}}`, which resolves only where this project declares a release chain of two or more branches. Update this skill body.',
+      '⚠️ `{{project:production-branch}}` was retired when a project gained a declared release model (ISS-1046). Use `{{project:live-branch}}`, which resolves only where the promotions of the project document carry a landed change on to the branch its production environment deploys from. Update this skill body.',
     'repo-path': () => src.repoPath ?? undefined,
-    'test-urls': () => renderTestUrls(src.environments),
-    'test-creds': () => TEST_CREDS_POINTER,
-    'test-notes': () => src.environments.limits ?? undefined,
+    'test-urls': () => renderTestUrls(src.document),
+    'test-creds': () => renderTestCreds(src.projectId, src.document),
+    'test-notes': () => renderTestNotes(src.document, src.profiles),
     integrations: () => renderIntegrations(src.integrations),
   };
   return (key) =>
@@ -204,13 +210,15 @@ export async function loadProjectModules(projectId: string): Promise<ProjectModu
 }
 
 /** Load the per-project inputs for fact resolution: the status ladder, the
- *  `{{project:}}` resolver (project columns + environments + connected
+ *  `{{project:}}` resolver (project columns + project document + connected
  *  integrations) and this project's knowledge entries. */
 export async function loadProjectFactInputs(projectId: string): Promise<ProjectFactInputs> {
   let baseBranch: string | null = null;
-  let releaseChain: ReleaseChain = [];
+  let deploysFrom: string | null = null;
+  let production: string | null = null;
   let repoPath: string | null = null;
-  let environments: NormalizedEnvironments = normalizeEnvironments(null);
+  let document: ProjectDocument | null = null;
+  let profiles = new Map<string, TestingProfile>();
   let integrations: IntegrationRow[] = [];
   let modules: ProjectModuleFact[] = [];
   let alwaysInjectFacts: Array<{ key: string; text: string }> = [];
@@ -221,22 +229,27 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
   try {
     const [row] = await db
       .select({
-        environments: projects.environments,
         repoPath: projects.repoPath,
         repoUrl: projects.repoUrl,
         baseBranch: projects.baseBranch,
-        releaseChain: projects.releaseChain,
         orgId: projects.orgId,
       })
       .from(projects)
       .where(eq(projects.id, projectId))
       .limit(1);
-    environments = normalizeEnvironments(row?.environments);
     baseBranch = row?.baseBranch ?? null;
-    releaseChain = row?.releaseChain ?? [];
     repoPath = row?.repoPath ?? null;
     repoUrl = row?.repoUrl ?? null;
 
+    const held = await readProjectDocument(projectId);
+    document = held?.document ?? null;
+    if (held) {
+      const read = releasePathOf(held.revision, held.document);
+      deploysFrom = read.ok ? promotedBranch(read.path) : null;
+      production = read.ok ? (read.path.production?.name ?? null) : null;
+      const named = await listTestingProfiles(projectId);
+      profiles = new Map(named.map((p) => [p.profileId, p.document]));
+    }
     integrations = await loadActiveIntegrationRows(projectId, row?.orgId ?? null);
     modules = await loadProjectModules(projectId);
   } catch {
@@ -250,7 +263,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
       selectOnDemandSlugsFromKnowledge(projectId),
       selectAllSlugsFromKnowledge(projectId),
     ]);
-    missingObligations = missingProjectKnowledge({ repoPath, repoUrl, releaseChain }, heldSlugs);
+    missingObligations = missingProjectKnowledge({ repoPath, repoUrl, production }, heldSlugs);
   } catch (err) {
     factsUnavailable = true;
     alwaysInjectFacts = [];
@@ -264,12 +277,14 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
 
   return {
     ladder: [...CANONICAL_LADDER],
-    branches: { baseBranch, releaseChain },
+    branches: { baseBranch, deploysFrom },
     project: makeProjectResolver({
+      projectId,
       baseBranch,
-      releaseChain,
+      deploysFrom,
       repoPath,
-      environments,
+      document,
+      profiles,
       integrations,
     }),
     projectFactKeys,

@@ -1,5 +1,3 @@
-import { chainShipsNothing, type ReleaseChain } from './release-chain.js';
-
 export interface KnowledgeObligation {
   /** `knowledge_entries.slug`, fetched by the driver with `forge_knowledge`. */
   slug: string;
@@ -9,11 +7,12 @@ export interface KnowledgeObligation {
   because: string;
 }
 
-/** What the contract is a function of. Every field is a project column. */
+/** What the contract is a function of: two project columns and the project document's production. */
 export interface ProjectDeclarations {
   repoPath: string | null;
   repoUrl: string | null;
-  releaseChain: ReleaseChain;
+  /** The production environment's name, or null where the project document declares none. */
+  production: string | null;
 }
 
 export function declaresRepository(p: ProjectDeclarations): boolean {
@@ -34,11 +33,11 @@ export function requiredProjectKnowledge(p: ProjectDeclarations): KnowledgeOblig
       because: 'this project declares a repository',
     });
   }
-  if (!chainShipsNothing(p.releaseChain)) {
+  if (p.production !== null) {
     owed.push({
       slug: 'release-procedure',
       role: 'how a release is performed here, so the release agent does not invent one',
-      because: `this project declares a release chain of ${p.releaseChain.length} branch(es), ending at ${p.releaseChain[p.releaseChain.length - 1]?.branch}`,
+      because: `this project's document declares production environment \`${p.production}\``,
     });
   }
   return owed;

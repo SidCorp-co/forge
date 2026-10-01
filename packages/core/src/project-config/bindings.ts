@@ -7,11 +7,6 @@ import { readProjectConfig } from './service.js';
 
 const store: BindingStore = drizzleBindingStore;
 
-// cm:why one deploy binding serves one environment (BINDING_IN_USE), so the environment's tier
-// says where it ships; the row still owes the stage column its check demands, and live is the
-// stage whose flows run only on an explicit release.
-const DEPLOY_STAGES = ['live'];
-
 export type HeldBinding = { revision: number; document: BindingDocument };
 
 export type BindingRead = { ok: true; held: HeldBinding } | { ok: false; unrepresentable: string };
@@ -174,7 +169,6 @@ export async function writeBinding(input: {
     connectionId: doc.connection,
     provider: encoded.provider,
     role: doc.role,
-    stages: doc.role === 'deploy' ? DEPLOY_STAGES : [],
     config: encoded.config,
     baseRevision,
   });

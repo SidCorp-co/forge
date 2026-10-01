@@ -249,13 +249,7 @@ export async function runCoolifyRollback(input: {
 }): Promise<CoolifyControlOutcome> {
   const row = await requireIntegration(input);
   const target = requireTarget(row, input.resourceUuid);
-  if (
-    await liveActionNeedsHumanConfirm(
-      input.projectId,
-      row.stages,
-      targetsOf(row).map((t) => t.resourceUuid),
-    )
-  ) {
+  if (await liveActionNeedsHumanConfirm(input.projectId, row.pair.binding)) {
     return pendingProd(row.id, 'rollback');
   }
 
@@ -303,13 +297,7 @@ export async function runCoolifyCancel(input: {
   deploymentUuid?: string | undefined;
 }): Promise<CoolifyControlOutcome> {
   const row = await requireIntegration(input);
-  if (
-    await liveActionNeedsHumanConfirm(
-      input.projectId,
-      row.stages,
-      targetsOf(row).map((t) => t.resourceUuid),
-    )
-  ) {
+  if (await liveActionNeedsHumanConfirm(input.projectId, row.pair.binding)) {
     return pendingProd(row.id, 'cancel');
   }
 
@@ -344,7 +332,7 @@ function pendingProd(integrationId: string, action: string): CoolifyControlOutco
     performed: false,
     pendingHumanConfirm: true,
     deploymentUuid: null,
-    detail: `${action} against a binding that serves the \`live\` stage is not dispatched without a human — confirm it, or give the project document's production environment \`deployment.trigger: "on-land"\``,
+    detail: `${action} against a binding that reaches the production environment is not dispatched without a human — confirm it, or give the project document's production environment \`deployment.trigger: "on-land"\``,
   };
 }
 
@@ -366,7 +354,7 @@ async function performControl(args: {
     bindingId: row.id,
     direction: 'outbound',
     eventName: args.eventName,
-    payload: { ...args.payload, runId: null, stages: row.stages },
+    payload: { ...args.payload, runId: null, environment: row.environment },
     requestId: `control:${row.id}:${Date.now()}-${randomUUID().slice(0, 8)}`,
     status: 'pending',
   });

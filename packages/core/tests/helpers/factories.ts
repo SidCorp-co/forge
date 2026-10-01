@@ -282,7 +282,7 @@ export async function bindTestRunner(
 
 /**
  * A project document at revision 1 whose one environment is production and deploys by `trigger`,
- * which is what `pipeline/auto-prod-deploy.ts:projectAutoProdDeploy` reads: `on-land` makes the
+ * which is what `pipeline/auto-prod-deploy.ts:productionDeploysOnLand` reads: `on-land` makes the
  * release sweep the only thing that cuts a release there.
  */
 export async function seedProductionDeployTrigger(

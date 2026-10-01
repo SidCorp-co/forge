@@ -24,7 +24,6 @@ import { projectPolicies } from '../db/schema-project-config.js';
 import { visibleProjectsWhere } from '../lib/authz.js';
 import { isUniqueViolation, uniqueViolationConstraint } from '../lib/db-errors.js';
 import { DEFAULT_POLICY } from '../project-config/default-policy.js';
-import type { ReleaseChain } from './release-chain.js';
 
 /** The project's id, or `null` when no project carries that slug. */
 export async function findProjectIdBySlug(slug: string): Promise<string | null> {
@@ -49,16 +48,12 @@ export async function findProjectOrgId(projectId: string): Promise<string | null
 export type ProjectBranches = {
   /** Where an ISS-* branch is cut from. NOT a release fact. */
   baseBranch: string | null;
-  releaseChain: ReleaseChain;
 };
 
-/** The branches a project's pipeline works against, or `null` when it is gone. */
+/** The branch a project's pipeline cuts work from, or `null` when the project is gone. */
 export async function readProjectBranches(projectId: string): Promise<ProjectBranches | null> {
   const [row] = await db
-    .select({
-      baseBranch: projects.baseBranch,
-      releaseChain: projects.releaseChain,
-    })
+    .select({ baseBranch: projects.baseBranch })
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1);
@@ -82,7 +77,6 @@ export type NewProject = {
   kind?: (typeof projects.$inferInsert)['kind'] | undefined;
   repoPath?: string | undefined;
   baseBranch?: string | undefined;
-  releaseChain?: ReleaseChain | undefined;
 };
 
 /** A freshly generated project API key: `fk_` + 192 bits, the shape every validator accepts. */
@@ -102,7 +96,6 @@ export async function createProject(input: NewProject) {
           createdBy: input.createdBy,
           apiKey: generateApiKey(),
           baseBranch: input.baseBranch ?? 'main',
-          ...(input.releaseChain !== undefined ? { releaseChain: input.releaseChain } : {}),
           ...(input.description !== undefined ? { description: input.description } : {}),
           ...(input.kind !== undefined ? { kind: input.kind } : {}),
           ...(input.repoPath !== undefined ? { repoPath: input.repoPath } : {}),
@@ -197,9 +190,7 @@ export async function readProjectSummary(projectId: string) {
       repoPath: projects.repoPath,
       workspaceSetup: projects.workspaceSetup,
       baseBranch: projects.baseBranch,
-      releaseChain: projects.releaseChain,
       defaultDeviceId: projects.defaultDeviceId,
-      environments: projects.environments,
       createdAt: projects.createdAt,
     })
     .from(projects)
@@ -218,7 +209,6 @@ export async function updateProject(projectId: string, updates: Record<string, u
     repoPath: projects.repoPath,
     workspaceSetup: projects.workspaceSetup,
     baseBranch: projects.baseBranch,
-    releaseChain: projects.releaseChain,
     kind: projects.kind,
   });
   return row ?? null;
@@ -247,7 +237,6 @@ export async function readProjectWithConfig(projectId: string) {
       name: projects.name,
       repoPath: projects.repoPath,
       baseBranch: projects.baseBranch,
-      releaseChain: projects.releaseChain,
       agentConfig: projects.agentConfig,
     })
     .from(projects)

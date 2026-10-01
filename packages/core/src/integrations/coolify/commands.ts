@@ -11,7 +11,6 @@
  * Nothing here checks membership.
  */
 
-import type { DeployStage } from '../../db/schema.js';
 import { effectiveConfig, listActiveDeployBindingsForProvider } from '../../integrations/store.js';
 import { DeployEnvironmentLockedError } from '../../pipeline/deploy-lock.js';
 import {
@@ -21,6 +20,7 @@ import {
   resolveLatestIssueRunId,
   tryDispatchCoolifyRelease,
 } from '../../pipeline/release-coolify.js';
+import { readDeployMap } from '../../project-config/release-path.js';
 import { readRunMethod } from '../../release-batch/method.js';
 import { isOpenReleaseBatchRun } from '../../release-batch/service.js';
 import { grantHolds, notGrantedMessage } from '../agent-access.js';
@@ -43,10 +43,14 @@ export class CoolifyCommandError extends Error {
  * connection⊕binding overlay. `pair` is retained for the log commands.
  */
 export async function activeCoolifyIntegrations(projectId: string) {
-  const pairs = await listActiveDeployBindingsForProvider(projectId, 'coolify');
+  const [pairs, map] = await Promise.all([
+    listActiveDeployBindingsForProvider(projectId, 'coolify'),
+    readDeployMap(projectId),
+  ]);
   return pairs.map((pair) => ({
     id: pair.binding.id,
-    stages: (pair.binding.stages ?? []) as DeployStage[],
+    /** The project-document environment this binding deploys; null where none names it. */
+    environment: map.environments.get(pair.binding.id)?.name ?? null,
     config: effectiveConfig<CoolifyConfig>(pair),
     lastHealthStatus: pair.connection.lastHealthStatus,
     breakerOpenedAt: pair.connection.breakerOpenedAt,
@@ -103,7 +107,7 @@ export async function listCoolifyIntegrations(projectId: string) {
   return {
     integrations: rows.map((row) => ({
       id: row.id,
-      stages: row.stages,
+      environment: row.environment,
       targets: ((row.config as CoolifyConfig | null)?.targets ?? []).map((t) => ({
         id: t.id,
         label: t.label,
@@ -222,7 +226,7 @@ export async function coolifyDeliveryStatus(input: {
     await Promise.all(
       scoped.map(async (row) => {
         const targets = (row.config as CoolifyConfig | null)?.targets ?? [];
-        const base = { integrationId: row.id, stages: row.stages };
+        const base = { integrationId: row.id, environment: row.environment };
         const breakerOpen = row.breakerOpenedAt !== null;
         if (targets.length === 0) {
           const last = await findLastOutbound(row.id);

@@ -7,8 +7,8 @@ export const idParamSchema = z.object({
 
 /**
  * `z.flattenError`, with the path a nested field is actually at: `flattenError` buckets every
- * issue under its TOP-LEVEL key and drops the rest, so a bad `live.commitPath` and a missing
- * `testCredentials[0].username` answer alike with `environments: Invalid input` (ISS-1069).
+ * issue under its TOP-LEVEL key and drops the rest, so two different bad leaves of one nested
+ * field answer alike with `<field>: Invalid input` (ISS-1069).
  * The SHAPE is `{ formErrors, fieldErrors }` keyed on the top-level field, which web-v2 renders
  * and every project route answers with; only the message carries the path.
  */

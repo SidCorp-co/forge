@@ -3,7 +3,7 @@ import { type Db, db } from '../db/client.js';
 import { issueDependencies, issueStepContexts, issues, jobs, projects } from '../db/schema.js';
 import { WORK_EVIDENCE_WAIVER_KIND } from '../issues/dependency-effects.js';
 import { logger } from '../logger.js';
-import { chainLiveBranch } from '../projects/release-chain.js';
+import { promotedBranch, readReleasePath } from '../project-config/release-path.js';
 
 const IMPLEMENTATION_STEPS = ['code', 'fix', 'drive'] as const;
 
@@ -48,7 +48,7 @@ export async function collectWorkEvidence(
         mergedAt: issues.mergedAt,
         mergedCommitSha: issues.mergedCommitSha,
         baseBranch: projects.baseBranch,
-        releaseChain: projects.releaseChain,
+        projectId: issues.projectId,
       })
       .from(issues)
       .innerJoin(projects, eq(projects.id, issues.projectId))
@@ -79,7 +79,8 @@ export async function collectWorkEvidence(
     (v): v is string => typeof v === 'string' && v.length > 0,
   );
   const projectRow = issueRows[0];
-  const excludedLive = projectRow ? chainLiveBranch(projectRow.releaseChain) : null;
+  const path = projectRow ? await readReleasePath(projectRow.projectId) : null;
+  const excludedLive = path?.ok ? promotedBranch(path.path) : null;
   const branch =
     named && named !== issueRows[0]?.baseBranch && named !== excludedLive ? named : null;
 

@@ -2,7 +2,6 @@ import type { HTTPException } from 'hono/http-exception';
 import { describe, expect, it } from 'vitest';
 import { releaseBlockerSentence } from './blocker-sentences.js';
 import { blocker, releaseBlockerError } from './blockers.js';
-import { ReleaseRunnerAmbiguousError } from './channel.js';
 import {
   type AbortAccount,
   NoReleaseGateError,
@@ -21,59 +20,32 @@ import {
   reportedRefusal,
   unreadableProbes,
 } from './refusals.js';
-import { ReleaseMultiChannelUnsupportedError } from './service.js';
 
 function body(err: HTTPException): string {
   return JSON.stringify(err.cause) + err.message;
 }
 
 /**
- * `declarationRefusal` answers these three codes with `releaseBlockerSentence`'s
+ * `declarationRefusal` answers its code with `releaseBlockerSentence`'s
  * own text, the same function `GET /release-readiness` composes its entry
  * from — asserted as an equality, not a substring: a `toContain` would still
  * pass on a second literal that happened to overlap (ISS-1127 criterion 9).
  */
 describe('declarationRefusal — one sentence, whichever door', () => {
   it("answers RELEASE_TARGET_UNDECLARED with releaseBlockerSentence's own text", () => {
-    const err = new ReleaseTargetUndeclaredError('proj-1', [
-      { branch: 'main' },
-      { branch: 'live', from: 'merge-branch' },
-    ]);
+    const reason = 'production environment `beta` is deployed outside Forge';
+    const err = new ReleaseTargetUndeclaredError('proj-1', reason);
 
     const refusal = declarationRefusal(err);
 
     expect(refusal).not.toBeNull();
-    expect(refusal?.message).toBe(
-      releaseBlockerSentence('RELEASE_TARGET_UNDECLARED', {
-        releaseChain: [{ branch: 'main' }, { branch: 'live', from: 'merge-branch' }],
-      }),
-    );
+    expect(refusal?.message).toBe(releaseBlockerSentence('RELEASE_TARGET_UNDECLARED', { reason }));
     // The bypassed literal named the project id; the shared sentence does not,
     // because every door that reads it is already scoped to one project.
     expect(refusal?.message).not.toContain('proj-1');
   });
 
-  it("answers RELEASE_RUNNER_AMBIGUOUS with releaseBlockerSentence's own text", () => {
-    const err = new ReleaseRunnerAmbiguousError('proj-1', ['box-a', 'box-b']);
-
-    const refusal = declarationRefusal(err);
-
-    expect(refusal?.message).toBe(
-      releaseBlockerSentence('RELEASE_RUNNER_AMBIGUOUS', { labels: ['box-a', 'box-b'] }),
-    );
-  });
-
-  it("answers RELEASE_MULTI_CHANNEL_UNSUPPORTED with releaseBlockerSentence's own text", () => {
-    const err = new ReleaseMultiChannelUnsupportedError(2);
-
-    const refusal = declarationRefusal(err);
-
-    expect(refusal?.message).toBe(
-      releaseBlockerSentence('RELEASE_MULTI_CHANNEL_UNSUPPORTED', { count: 2 }),
-    );
-  });
-
-  it('answers null for an error none of the three codes names', () => {
+  it('answers null for an error the code does not name', () => {
     expect(declarationRefusal(new Error('unrelated'))).toBeNull();
   });
 });
@@ -88,17 +60,17 @@ describe('unreadableProbes', () => {
       code: 'RELEASE_PROBES_UNREADABLE',
       details: { urls: [], bindings: ['coolify b-1'] },
     });
-    expect(err.message).toContain('`coolify b-1`');
+    expect(err.message).toContain('Production coolify b-1 declares');
   });
 
-  it('says a binding declaring an unreadable verify takes no project default', () => {
-    expect(body(unreadableProbes(refused))).toMatch(/takes NO project default/);
+  it('says production declaring only artifact probes proves no release', () => {
+    expect(body(unreadableProbes(refused))).toMatch(/all identify the artifact/);
   });
 
-  it('names the shape a readable verify takes, and what removing it leaves', () => {
+  it('names the probe a release can read, and what removing them leaves', () => {
     const text = body(unreadableProbes(refused));
-    expect(text).toContain('"probes"');
-    expect(text).toContain('environments.live.commitUrl');
+    expect(text).toContain('`"identifies": "source"`');
+    expect(text).toContain('verification.runtime');
     expect(text).toContain('recorded unverified');
   });
 

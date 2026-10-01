@@ -15,7 +15,7 @@ import { db } from '../db/client.js';
 import { type IssueStatus, issues, jobs, pipelineRuns, schedules } from '../db/schema.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { readProjectBranches } from '../projects/service.js';
+import { readReleasePath } from '../project-config/release-path.js';
 import { nextRunFor } from '../schedules/cron.js';
 import { releaseRunnerLabelOf, resolveReleaseChannels } from './channel.js';
 import { RELEASE_GATE_STATUS, resolveReleaseGate } from './gate.js';
@@ -36,10 +36,10 @@ export interface ReleaseRosterEntry {
 export interface ReleaseRoster {
   /** `null` when the project has no gate — the UI hides the whole surface. */
   gateStatus: IssueStatus | null;
-  /** Every live deploy binding's provider. Core hands the SET to the release agent. */
+  /** The production deploy binding's provider, where there is one. */
   channels: string[];
   releaseRunnerLabel: string | null;
-  /** The branch these issues merged into — what "merged" means to a reader. */
+  /** The branch these issues merged into (`source.git.defaultBranch`) — what "merged" means to a reader. */
   baseBranch: string | null;
   /** When the next scheduled cut fires. `null` = nobody scheduled one. */
   nextCutAt: string | null;
@@ -95,7 +95,7 @@ export async function loadReleaseRoster(projectId: string): Promise<ReleaseRoste
   }
   const nextCutAt = await nextScheduledCutAt(projectId);
   const currentVersion = await currentReleaseVersion(projectId);
-  const branches = await readProjectBranches(projectId);
+  const read = await readReleasePath(projectId);
 
   const rows = await db
     .select({
@@ -114,8 +114,8 @@ export async function loadReleaseRoster(projectId: string): Promise<ReleaseRoste
   return {
     gateStatus,
     channels: channels.map((c) => c.provider),
-    releaseRunnerLabel: releaseRunnerLabelOf(projectId, channels),
-    baseBranch: branches?.baseBranch ?? null,
+    releaseRunnerLabel: releaseRunnerLabelOf(channels),
+    baseBranch: read.ok ? read.path.defaultBranch : null,
     nextCutAt,
     currentVersion,
     issues: rows.map((r) => ({
@@ -227,7 +227,7 @@ export interface ReleaseBatchIssue {
  * `preferenceMet: false` there would claim a reading nobody took.
  */
 export interface ReleaseRunnerAccount {
-  /** The declared preference, as the live deploy bindings resolved it. */
+  /** The declared preference, as the production deploy binding resolved it. */
   label: string | null;
   /** False where no box eligible to release carried the label. */
   preferenceMet: boolean;
@@ -241,10 +241,12 @@ export interface ReleaseBatchContext {
   gateStatus: IssueStatus;
   /** The version this release cut, which the release agent writes into the tag it pushes. */
   version: string | null;
-  /** `null` where the project declares none; the release reads its branches from its own method. */
-  baseBranch: string | null;
-  /** Where a `promote` release lands; equals `baseBranch` under every other model. */
-  liveBranch: string | null;
+  /** Where work lands; `null` with no git source or where the project document cannot be read. */
+  defaultBranch: string | null;
+  /** The branch production deploys from; equals `defaultBranch` where no promotion crosses. */
+  deploysFrom: string | null;
+  /** Why the project document gave no branches, where it gave none. */
+  releasePathUnreadable: string | null;
   deployPlanned: boolean;
   promotePlanned: boolean;
   releaseRunner: ReleaseRunnerAccount | null;
@@ -292,11 +294,10 @@ export async function loadReleaseBatchContext(runId: string): Promise<ReleaseBat
   const deployPlanned = (meta.deployPlanned as boolean | undefined) ?? false;
   const promotePlanned = (meta.promotePlanned as boolean | undefined) ?? false;
 
-  const project = (await readProjectBranches(run.projectId)) ?? {
-    baseBranch: null,
-    releaseChain: [],
-  };
-  const { baseBranch, liveBranch } = releaseBranches(project);
+  const read = await readReleasePath(run.projectId);
+  const branches = read.ok
+    ? releaseBranches(read.path)
+    : { defaultBranch: null, deploysFrom: null, promotePlanned: false };
 
   const claimedIssues = await db
     .select({
@@ -315,8 +316,9 @@ export async function loadReleaseBatchContext(runId: string): Promise<ReleaseBat
     projectId: run.projectId,
     gateStatus,
     version: run.releaseVersion,
-    baseBranch,
-    liveBranch,
+    defaultBranch: branches.defaultBranch,
+    deploysFrom: branches.deploysFrom,
+    releasePathUnreadable: read.ok ? null : read.reason,
     deployPlanned,
     promotePlanned,
     releaseRunner: await releaseRunnerAccount(runId, meta),

@@ -21,8 +21,6 @@ export type AgentAccess = (typeof AGENT_ACCESS_VALUES)[number];
 export type IntegrationOwnerType = schema.IntegrationOwnerType;
 /** `'deploy' | 'service' | 'source'` — what a binding is FOR. */
 export type BindingRole = schema.BindingRole;
-/** `'preview' | 'live'` — the two environments, named for who is looking at them. */
-export type DeployStage = schema.DeployStage;
 /** `'outbound' | 'inbound'` — delivery direction. */
 export type IntegrationDeliveryDirection = schema.IntegrationDeliveryDirection;
 /** `'pending' | 'ok' | 'failed'` — delivery status. */
@@ -62,8 +60,6 @@ export interface BindingSummary {
   projectId: string;
   provider: IntegrationProvider;
   role: BindingRole;
-  /** Empty for `service`; one or both stages for `deploy`. */
-  stages: DeployStage[];
   config: Record<string, unknown>;
   /** Raw binding-tier overrides (e.g. coolify resourceUuid/branch) — `config`
    *  is the merged connection+binding view; this distinguishes a per-project
@@ -288,12 +284,9 @@ export type GoogleSecretsInput = {
 };
 
 /**
- * What a binding is FOR, and — for a `deploy` one — which stages it serves.
- *
- * Discriminated on `role`, so the three shapes the server refuses are not expressible here
- * either: a `service` binding carrying stages, a `deploy` binding carrying none, and a `deploy`
- * binding carrying an empty array. `stages?: never` is what makes the first one a compile error
- * rather than a 400 the caller discovers at runtime.
+ * What a binding is FOR. Which environment a `deploy` binding serves is the project document's
+ * `environments.<name>.deployment.binding`, never the binding's own; `stages?: never` makes the
+ * retired key a compile error rather than the 400 the server answers it with.
  *
  * The provider-capability rule — `role: 'deploy'` only where Forge has a deploy adapter — is NOT
  * expressed here and is not meant to be. It is a list that changes (`DEPLOY_CAPABLE_PROVIDERS` in
@@ -302,7 +295,7 @@ export type GoogleSecretsInput = {
  */
 export type BindingShapeInput =
   | { role: 'service'; stages?: never }
-  | { role: 'deploy'; stages: [DeployStage, ...DeployStage[]] };
+  | { role: 'deploy'; stages?: never };
 
 /**
  * Body for `POST /:projectId/integrations` — discriminated on `provider`, and on `role` through
@@ -355,18 +348,12 @@ export interface ConnectionUpdateInput {
 /**
  * Body for `POST /integration-connections/:id/bindings` — bind an EXISTING
  * connection to a project+env. Carries NO secrets (the connection already holds
- * the credential); only the target project + role/stages. Caller must own the
+ * the credential); only the target project + role. Caller must own the
  * connection and be an admin of the target project.
  */
 export interface BindExistingConnectionRequest {
   projectId: string;
   role: BindingRole;
-  /**
-   * One or both stages for `deploy`; ABSENT for `service`. Not an empty array —
-   * the server refuses a `stages` key on a service binding by name rather than
-   * ignoring it, so a caller cannot believe it declared a stage that was dropped.
-   */
-  stages?: DeployStage[];
   /** Optional binding-tier overrides (coolify `targets[]`) so the shared
    *  connection deploys different apps in this project. Connection-tier keys
    *  (baseUrl) are dropped server-side. */
@@ -405,7 +392,6 @@ export interface ConnectionUsage {
     id: string;
     projectId: string;
     role: BindingRole;
-    stages: DeployStage[];
     label: string;
     active: boolean;
   }>;
@@ -461,7 +447,6 @@ export interface McpServerPreviewEntry {
   /** Binding id backing this entry — null for a project row and the synthetic not_configured one. */
   bindingId: string | null;
   role: BindingRole | null;
-  stages: DeployStage[];
   configured: boolean;
   active: boolean;
   willInject: boolean;

@@ -5,7 +5,7 @@ import { relations, sql } from 'drizzle-orm';
 import { check, index, pgTable, primaryKey, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { pipelineRuns, projects } from './schema.js';
 
-const ENVIRONMENT_CHK = sql`environment IN ('preview', 'live')`;
+const ENVIRONMENT_CHK = sql`environment ~ '^[a-z][a-z0-9-]{0,62}$'`;
 
 export const deployLocks = pgTable(
   'deploy_locks',
@@ -13,7 +13,7 @@ export const deployLocks = pgTable(
     projectId: uuid('project_id')
       .notNull()
       .references(() => projects.id, { onDelete: 'cascade' }),
-    /** A `DeployStage`: the box reached, not the label a binding wears. */
+    /** A project-document environment name: the box reached, not the binding that reaches it. */
     environment: text('environment').notNull(),
     runId: uuid('run_id')
       .notNull()

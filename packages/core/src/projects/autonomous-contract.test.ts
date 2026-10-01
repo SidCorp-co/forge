@@ -6,12 +6,8 @@ import {
 } from './autonomous-contract.js';
 import { RESERVED_PROJECT_FACT_KEYS } from './project-facts.js';
 
-const SHIPS_NOTHING: { branch: string; from?: 'merge-branch' | 'cherry-pick' }[] = [];
-const CROSSES = [{ branch: 'main' }, { branch: 'live', from: 'merge-branch' as const }];
-const PUBLISHES = [{ branch: 'main' }];
-
-const REPO = { repoPath: '/srv/app', repoUrl: null, releaseChain: SHIPS_NOTHING } as const;
-const NOTHING = { repoPath: null, repoUrl: null, releaseChain: SHIPS_NOTHING } as const;
+const REPO = { repoPath: '/srv/app', repoUrl: null, production: null };
+const NOTHING = { repoPath: null, repoUrl: null, production: null };
 
 describe('declaresRepository', () => {
   it('accepts either column on its own', () => {
@@ -41,27 +37,23 @@ describe('requiredProjectKnowledge', () => {
     ]);
   });
 
-  it('owes a release procedure for every release model except none', () => {
-    expect(requiredProjectKnowledge({ ...NOTHING, releaseChain: CROSSES }).map((o) => o.slug)) //
+  it('owes a release procedure wherever the project document declares a production environment', () => {
+    expect(requiredProjectKnowledge({ ...NOTHING, production: 'beta' }).map((o) => o.slug)) //
       .toEqual(['release-procedure']);
-    expect(
-      requiredProjectKnowledge({ ...NOTHING, releaseChain: PUBLISHES }).map((o) => o.slug),
-    ).toEqual(['release-procedure']);
-    expect(requiredProjectKnowledge({ ...REPO, releaseChain: CROSSES }).map((o) => o.slug)) //
+    expect(requiredProjectKnowledge({ ...REPO, production: 'beta' }).map((o) => o.slug)) //
       .toEqual(['build-commands', 'test-commands', 'release-procedure']);
   });
 
   it('names the declaration that made each entry owed, since a gap has to say why', () => {
-    const owed = requiredProjectKnowledge({ ...REPO, releaseChain: CROSSES });
+    const owed = requiredProjectKnowledge({ ...REPO, production: 'beta' });
     expect(owed.every((o) => o.role.trim().length > 0)).toBe(true);
     expect(owed[0]?.because).toContain('repository');
-    expect(owed[2]?.because).toContain('release chain');
-    expect(owed[2]?.because).toContain('live');
+    expect(owed[2]?.because).toContain('production environment `beta`');
   });
 
   it('owes no slug that the reserved project keys already resolve', () => {
     const reserved = new Set<string>(RESERVED_PROJECT_FACT_KEYS);
-    const everyOwed = requiredProjectKnowledge({ ...REPO, releaseChain: CROSSES });
+    const everyOwed = requiredProjectKnowledge({ ...REPO, production: 'beta' });
     expect(everyOwed.filter((o) => reserved.has(o.slug))).toEqual([]);
   });
 });

@@ -1,4 +1,4 @@
-import type { BindingRole, DeployStage } from '../db/schema.js';
+import type { BindingRole } from '../db/schema.js';
 import { resolveSessionMcpServers } from '../jobs/resolve-job-mcp-servers.js';
 import { grantHolds } from './agent-access.js';
 import { listAgentGrantedBindings } from './agent-access-store.js';
@@ -27,7 +27,6 @@ export interface McpServerPreviewEntry {
   /** Binding id backing this entry — null for a project row and the synthetic not_configured one. */
   bindingId: string | null;
   role: BindingRole | null;
-  stages: DeployStage[];
   configured: boolean;
   active: boolean;
   willInject: boolean;
@@ -59,7 +58,6 @@ function notConfiguredRow(decl: IntegrationDeclaration): McpServerPreviewEntry {
     serverName: mcpServerNameFor(decl, '') ?? decl.provider,
     bindingId: null,
     role: null,
-    stages: [],
     configured: false,
     active: false,
     willInject: false,
@@ -82,7 +80,6 @@ function projectRow(serverName: string): McpServerPreviewEntry {
     serverName,
     bindingId: null,
     role: null,
-    stages: [],
     configured: true,
     active: true,
     willInject: true,
@@ -161,7 +158,6 @@ async function integrationRows(
         serverName,
         bindingId: pair.binding.id,
         role: pair.binding.role as BindingRole,
-        stages: (pair.binding.stages ?? []) as DeployStage[],
         configured: true,
         active: pair.binding.active && pair.connection.active,
         willInject,

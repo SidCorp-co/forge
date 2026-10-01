@@ -7,9 +7,9 @@ import {
   type GitHubRepoClient,
   githubRepoClient,
 } from '../integrations/github/client.js';
+import { promotedBranch, readReleasePath } from '../project-config/release-path.js';
 import { declaredIssueSeqs, subjectOf } from '../projects/commit-owners.js';
 import { issueRefPattern } from '../projects/live-reach.js';
-import { chainLiveBranch } from '../projects/release-chain.js';
 import { heldIssuePrefixes, issueRefFormatter } from './issue-prefix-read.js';
 
 export type CommitLandingRefusalCode =
@@ -61,7 +61,7 @@ function unreadable(commit: string, why: string): CommitLanding {
 /**
  * Whether `commit` is this issue's landing, read from the project's own repository: the repository
  * resolves it, its subject declares the issue by the rule `commitOwners` places commits with, and
- * the base branch or the release chain's live branch contains it. Every other answer is a refusal
+ * the base branch or the branch production deploys from contains it. Every other answer is a refusal
  * by name, and a read that could not be taken is one of them.
  */
 export async function readCommitLanding(
@@ -74,7 +74,6 @@ export async function readCommitLanding(
       projectId: issues.projectId,
       issSeq: issues.issSeq,
       baseBranch: projects.baseBranch,
-      releaseChain: projects.releaseChain,
     })
     .from(issues)
     .innerJoin(projects, eq(projects.id, issues.projectId))
@@ -84,7 +83,8 @@ export async function readCommitLanding(
   const { projectId, issSeq } = row;
   const baseBranch = row.baseBranch?.trim() || null;
   if (!baseBranch) return unreadable(commit, 'the project names no base branch to look for it on');
-  const live = chainLiveBranch(row.releaseChain);
+  const path = await readReleasePath(projectId);
+  const live = path.ok ? promotedBranch(path.path) : null;
   const branches = live && live !== baseBranch ? [baseBranch, live] : [baseBranch];
 
   let client: GitHubRepoClient;

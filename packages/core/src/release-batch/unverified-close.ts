@@ -21,9 +21,9 @@ export function unverifiedCloseNote(runId: string, commit: string | null): strin
   return [
     '**This issue is being closed by a release that was not verified.**',
     '',
-    `This project declares no verify probe, so nothing read the live deployment. ${reported}`,
+    `This project's production environment declares no runtime probe identifying the source, so nothing read the production deployment. ${reported}`,
     '',
-    'Look at the live deployment for this change, and reopen this issue if it is not there. If your live deployment can report the commit it serves, declaring `environments.live.commitUrl` (with `commitPath`), or a `verify` on the live deploy binding, makes the releases after that verified.',
+    'Look at the production deployment for this change, and reopen this issue if it is not there. If it can report the commit it serves, declaring that endpoint under the production environment\'s `verification.runtime` (with `identifies: "source"`) in the project document makes the releases after that verified.',
     '',
     `\`${unverifiedMarker(runId)}\``,
   ].join('\n');

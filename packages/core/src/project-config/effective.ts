@@ -115,7 +115,6 @@ export async function buildEffectiveConfig(input: {
         id: binding.id,
         role: binding.role,
         provider: binding.provider,
-        stages: binding.stages,
         label: binding.label,
       },
       from: 'binding',

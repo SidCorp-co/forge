@@ -1,18 +1,15 @@
-import type { ReleaseChain } from '../projects/release-chain.js';
 import type {
   HeldIssueRef,
   ReleaseBlockedError,
   ReleaseBlocker,
   ReleaseBlockerReport,
 } from './blocker-sentences.js';
-import { ReleaseRunnerAmbiguousError } from './channel.js';
 import { readClaimConflictDetails } from './claim-conflicts.js';
 import {
   BatchInFlightError,
   ClaimConflictError,
   NoReleaseGateError,
   NoRunnerOnlineError,
-  ReleaseMultiChannelUnsupportedError,
   ReleasePoolEmptyError,
   ReleaseProbesUnreadableError,
   ReleaseRecordMissingError,
@@ -82,9 +79,7 @@ function errorFor(
     case 'RELEASE_TARGET_UNDECLARED':
       return new ReleaseTargetUndeclaredError(
         report.projectId,
-        Array.isArray(first.details?.releaseChain)
-          ? (first.details.releaseChain as ReleaseChain)
-          : [],
+        typeof first.details?.reason === 'string' ? first.details.reason : first.message,
       );
     case 'CLAIM_CONFLICT':
       return new ClaimConflictError(ids, readClaimConflictDetails(first.details));
@@ -95,11 +90,6 @@ function errorFor(
       return new ReleaseRecordMissingError(ids);
     case 'RELEASE_WORK_UNMERGED':
       return new ReleaseWorkUnmergedError(ids);
-    case 'RELEASE_RUNNER_AMBIGUOUS':
-      return new ReleaseRunnerAmbiguousError(
-        report.projectId,
-        (first.details?.labels as string[]) ?? [],
-      );
     case 'RELEASE_PROBES_UNREADABLE':
       return new ReleaseProbesUnreadableError(
         (first.details?.urls as string[] | undefined) ?? [],
@@ -109,8 +99,6 @@ function errorFor(
       return new ReleasePoolEmptyError();
     case 'NO_RUNNER_ONLINE':
       return new NoRunnerOnlineError();
-    case 'RELEASE_MULTI_CHANNEL_UNSUPPORTED':
-      return new ReleaseMultiChannelUnsupportedError(Number(first.details?.count ?? 0));
     case 'BATCH_IN_FLIGHT':
       return new BatchInFlightError(null);
     case 'RELEASE_CRITERIA_UNEARNED':

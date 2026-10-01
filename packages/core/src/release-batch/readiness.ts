@@ -1,11 +1,10 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import type { ReleaseCrossing } from '../db/schema.js';
 import { projects } from '../db/schema.js';
 import { selectAllSlugsFromKnowledge } from '../knowledge/service.js';
+import type { Promotion } from '../project-config/release-path.js';
+import type { DeploymentTrigger } from '../project-config/schema.js';
 import { missingProjectKnowledge } from '../projects/autonomous-contract.js';
-import { normalizeEnvironments } from '../projects/environments.js';
-import { type ReleaseChain, retiredReleaseAxes } from '../projects/release-chain.js';
 import {
   collectReleaseBlockers,
   type ReleaseBlocker,
@@ -25,22 +24,29 @@ type ReleaseChannelRead = NonNullable<
 interface ProjectRow {
   repoPath: string | null;
   repoUrl: string | null;
-  releaseChain: ReleaseChain;
-  environments: unknown;
+}
+
+/** The production environment as the project document declares it. */
+export interface ReleaseProduction {
+  environment: string;
+  /** The branch it deploys from where a promotion crosses into it; null where none does. */
+  deploysFrom: string | null;
+  bindingId: string;
+  trigger: DeploymentTrigger;
 }
 
 export interface ReleaseReadiness {
   hasReleaseGate: boolean;
-  /** The ordered release path. Empty means this project ships nothing. */
-  releaseChain: ReleaseChain;
-  /** ISS-1311 — derived from `releaseChain` for `forge-plugin`; see `retiredReleaseAxes`. */
-  releaseModel: 'none' | 'promote' | 'publish';
-  releaseStrategy: ReleaseCrossing | null;
-  baseBranch: string;
-  /** Non-null only where the chain has two or more entries. */
-  liveBranch: string | null;
+  /** Where work lands (`source.git.defaultBranch`); null with no git source or no reading. */
+  defaultBranch: string | null;
+  /** Null where the project is not gated. */
+  production: ReleaseProduction | null;
+  /** The promotions a landed change crosses to reach production, in order. */
+  promotions: Promotion[];
   targetUndeclared: boolean;
-  /** Providers of every live deploy binding. Empty when the project declares none. */
+  /** Why nothing says where a release lands, where that is the case. */
+  targetUndeclaredReason: string | null;
+  /** The production deploy binding's provider; empty when the project is not gated. */
   providers: string[];
   releaseRunnerLabel: string | null;
   /** Verbatim rollback declaration; `null` when the channel performs it or none is declared. */
@@ -48,9 +54,9 @@ export interface ReleaseReadiness {
   /** How the declaration was read. `null` means abort-and-comment on failure. */
   rollbackMode: ReleaseRollback['kind'] | null;
   hasVerify: boolean;
-  /** Where each live channel's probes came from, in the same order as `providers`. */
+  /** Where the production environment's probes came from, in the same order as `providers`. */
   verifySources: VerifySource[];
-  /** False where the declaration could not be READ: the chain is then a fallback, not a reading. */
+  /** False where the declaration could not be READ: nothing here is then a reading. */
   declarationRead: boolean;
   /** The same, for `providers`, the rollback, `hasVerify` and the label. */
   channelsRead: boolean;
@@ -79,12 +85,7 @@ export async function loadReleaseReadiness(projectId: string): Promise<ReleaseRe
 
   const row = await guarded('project', blockers, async () => {
     const [found] = await db
-      .select({
-        repoPath: projects.repoPath,
-        repoUrl: projects.repoUrl,
-        releaseChain: projects.releaseChain,
-        environments: projects.environments,
-      })
+      .select({ repoPath: projects.repoPath, repoUrl: projects.repoUrl })
       .from(projects)
       .where(eq(projects.id, projectId))
       .limit(1);
@@ -94,21 +95,27 @@ export async function loadReleaseReadiness(projectId: string): Promise<ReleaseRe
 
   const gaps = declarationGaps({ decl, channels: report.channels, row, held });
   const first = channels[0] ?? null;
-  let releaseRunnerLabel: string | null = null;
-  try {
-    releaseRunnerLabel = releaseRunnerLabelOf(projectId, channels);
-  } catch {
-    releaseRunnerLabel = null;
-  }
+  const releaseRunnerLabel = releaseRunnerLabelOf(channels);
 
+  const gated = decl?.kind === 'gated' ? decl : null;
+  const deployment = gated?.production.declaration.deployment;
   return {
     declarationRead: decl !== null,
     channelsRead: report.channels !== null,
-    hasReleaseGate: decl?.kind === 'gated',
-    releaseChain: decl?.releaseChain ?? [],
-    ...retiredReleaseAxes(decl?.releaseChain ?? []),
-    baseBranch: !decl || decl.kind === 'undeclared-target' ? '' : decl.baseBranch,
+    hasReleaseGate: gated !== null,
+    defaultBranch: decl && decl.kind !== 'undeclared-target' ? decl.defaultBranch : null,
+    production:
+      gated && deployment && 'trigger' in deployment
+        ? {
+            environment: gated.production.name,
+            deploysFrom: gated.deploysFrom,
+            bindingId: gated.binding.binding.id,
+            trigger: deployment.trigger,
+          }
+        : null,
+    promotions: gated?.path.crossings ?? [],
     targetUndeclared: decl?.kind === 'undeclared-target',
+    targetUndeclaredReason: decl?.kind === 'undeclared-target' ? decl.reason : null,
     providers: channels.map((c) => c.provider),
     releaseRunnerLabel,
     rollback: first?.rollback && 'text' in first.rollback ? first.rollback.text : null,
@@ -160,22 +167,14 @@ function declarationGaps(input: GapInput): ReleaseGapKey[] {
     const declarations = {
       repoPath: row?.repoPath ?? null,
       repoUrl: row?.repoUrl ?? null,
-      releaseChain: row?.releaseChain ?? [],
+      production: decl?.kind === 'gated' ? decl.production.name : null,
     };
     gaps.push(...missingProjectKnowledge(declarations, held).map((o) => o.slug));
   }
   if (decl?.kind === 'undeclared-target') gaps.push('release-target');
-  if (decl?.kind !== 'gated') return gaps;
+  if (decl?.kind !== 'gated' || channels === null) return gaps;
 
-  if (row !== undefined && normalizeEnvironments(row?.environments).live.commitUrl === null) {
-    gaps.push('live-commit-endpoint');
-  }
-  if (channels === null) return gaps;
-
-  const labels = [...new Set(channels.map((c) => c.releaseRunnerLabel).filter((l) => l !== null))];
-  if (labels.length > 1) gaps.push('release-runner-ambiguous');
   if (channels.some((c) => !c.verify)) gaps.push('verify-probes');
-  if (channels.length > 1) gaps.push('release-multi-channel');
   if (channels.some((c) => !c.rollback)) gaps.push('rollback');
   else if (channels.some((c) => c.rollback?.kind === 'unrepresentable'))
     gaps.push('rollback-prose');

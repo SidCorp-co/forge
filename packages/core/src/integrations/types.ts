@@ -1,5 +1,5 @@
 import type { z } from 'zod';
-import type { BindingRole, DeployStage } from '../db/schema.js';
+import type { BindingRole } from '../db/schema.js';
 import type { TargetedDeployAdapter } from '../project-config/deploy-adapters/types.js';
 
 export type IntegrationProvider =
@@ -38,8 +38,6 @@ export interface AdapterContext<
   projectId: string;
   provider: IntegrationProvider;
   role: BindingRole;
-  /** Empty for a `service` binding; one or both stages for a `deploy` one. */
-  stages: DeployStage[];
   config: TConfig;
   /** Decrypted secrets, lazily decrypted by the dispatch path. */
   secrets: TSecrets;
@@ -235,6 +233,8 @@ export interface IntegrationSchemas {
   independentSecretFields: readonly string[];
   /** Config keys that live on the BINDING rather than the shared connection. */
   bindingConfigKeys: readonly string[];
+  /** The subset no binding inherits from its connection: one stored there is never read. */
+  bindingOnlyConfigKeys?: readonly string[];
 }
 
 /**
@@ -251,7 +251,7 @@ export interface IntegrationPresentation {
   /** Key every card by stage even where there is one binding, because the provider is stage-split
    *  by design. Others keep the bare key until a second binding appears, which keeps an existing
    *  drill-in's bookmark working. */
-  alwaysStageKeyed: boolean;
+  alwaysEnvironmentKeyed: boolean;
   /** What the card says when the connection has never been health-checked. */
   neverCheckedDetail: string;
   /** Non-secret config fields this provider's card surfaces. Never a credential. */
@@ -324,16 +324,6 @@ export interface IntegrationAdapterMethods<
     config: Record<string, unknown>;
   }): Promise<Record<string, unknown>>;
   healthcheck(ctx: AdapterContext<TConfig, TSecrets>): Promise<HealthCheckResult>;
-  /**
-   * The commit one deployment this provider ran reports having built, read off its own record of
-   * that deployment; null where the record names none. Absent on a provider whose deployments name
-   * no commit, which is how the release gate learns it cannot read what such a project serves.
-   */
-  deployedCommit?(
-    ctx: AdapterContext<TConfig, TSecrets>,
-    deploymentId: string,
-    timeoutMs: number,
-  ): Promise<string | null>;
   deploymentRecords?(
     ctx: AdapterContext<TConfig, TSecrets>,
     timeoutMs: number,

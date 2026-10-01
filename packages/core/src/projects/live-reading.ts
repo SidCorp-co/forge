@@ -1,12 +1,13 @@
-import { inArray } from 'drizzle-orm';
-import { db } from '../db/client.js';
-import { projects } from '../db/schema.js';
 import type { BranchRefs } from '../git/remote-divergence.js';
 import type { LiveDivergence } from '../integrations/github/live-divergence.js';
 import { logger } from '../logger.js';
+import {
+  crossesByCherryPick,
+  promotedBranch,
+  readReleasePath,
+} from '../project-config/release-path.js';
 import type { LiveReading } from './live-reach.js';
 import { readProjectDivergence } from './live-source.js';
-import { chainCrossesByCherryPick, chainLiveBranch, type ReleaseChain } from './release-chain.js';
 
 /** How long one reading answers for a project before the next read takes another. */
 export const LIVE_READING_HOLD_MS = 5 * 60_000;
@@ -24,10 +25,14 @@ const defaultDeps: LiveReadingDeps = {
   now: () => new Date(),
 };
 
+/** What the project document says a landed change crosses to reach production. */
 export interface ProjectReleaseRow {
   id: string;
+  /** Where work lands (`source.git.defaultBranch`). */
   baseBranch: string | null;
-  releaseChain: ReleaseChain;
+  /** The branch production deploys from where a promotion crosses into it; null where none does. */
+  deploysFrom: string | null;
+  crossesByCherryPick: boolean;
 }
 
 interface Held {
@@ -41,7 +46,7 @@ const held = new Map<string, Held>();
 const inFlight = new Map<string, { key: string; reading: Promise<LiveReading>; stale: boolean }>();
 
 function keyOf(row: ProjectReleaseRow): string {
-  return [row.baseBranch, JSON.stringify(row.releaseChain)].join('\0');
+  return [row.baseBranch, row.deploysFrom, String(row.crossesByCherryPick)].join('\0');
 }
 
 /** Drop what is held for a project, so the next read compares the branches again. */
@@ -59,13 +64,13 @@ export function forgetAllLiveReadings(): void {
 
 /** Take one reading now. Never throws: a failure is a `refused` reading carrying its reason. */
 export async function takeLiveReading(
-  row: ProjectReleaseRow & { liveBranch: string },
+  row: ProjectReleaseRow & { deploysFrom: string },
   deps: LiveReadingDeps = defaultDeps,
 ): Promise<LiveReading> {
   const startedAt = deps.now();
   const refused = (reason: string): LiveReading => ({
     baseBranch: row.baseBranch,
-    liveBranch: row.liveBranch,
+    deploysFrom: row.deploysFrom,
     kind: 'refused',
     reason,
     startedAt,
@@ -73,22 +78,21 @@ export async function takeLiveReading(
   const baseBranch = row.baseBranch;
   if (!baseBranch) {
     return refused(
-      `this project names no base branch, so there is nothing to compare ${row.liveBranch} against — set one in its settings`,
+      `this project's document names no default branch, so there is nothing to compare ${row.deploysFrom} against`,
     );
   }
-  if (chainCrossesByCherryPick(row.releaseChain)) {
+  if (row.crossesByCherryPick) {
     return refused(
-      `this project's release chain crosses at least one edge by cherry-pick, which gives every commit a new sha further down, so whether ${row.baseBranch}'s commits reached ${row.liveBranch} cannot be read from the branches`,
+      `this project's promotions cross at least one branch by cherry-pick, which gives every commit a new sha further down, so whether ${row.baseBranch}'s commits reached ${row.deploysFrom} cannot be read from the branches`,
     );
   }
   try {
-    const d = await deps.divergenceFor(row.id, { baseRef: baseBranch, liveRef: row.liveBranch });
+    const d = await deps.divergenceFor(row.id, { baseRef: baseBranch, liveRef: row.deploysFrom });
     if (!d.ok) return refused(d.reason);
     const { baseSha, liveSha, aheadBy, commits, complete } = d;
-    const liveBranch = row.liveBranch;
     return {
       baseBranch,
-      liveBranch,
+      deploysFrom: row.deploysFrom,
       kind: 'measured',
       baseSha,
       liveSha,
@@ -105,7 +109,7 @@ export async function takeLiveReading(
 
 /** One comparison in flight per project: a stale or differently keyed one is waited out, not raced. */
 function start(
-  row: ProjectReleaseRow & { liveBranch: string },
+  row: ProjectReleaseRow & { deploysFrom: string },
   deps: LiveReadingDeps,
 ): Promise<LiveReading> {
   const key = keyOf(row);
@@ -144,7 +148,7 @@ function waitAtMost(reading: Promise<LiveReading>, fallback: LiveReading): Promi
 }
 
 /**
- * The reading for a project from its release row, or `null` where the project is not `promote`.
+ * The reading for a project from its release row, or `null` where no promotion reaches production.
  * A held reading is answered as it is; an expired one is answered only if the new one does not
  * arrive within the wait, still carrying the time it was taken.
  */
@@ -152,32 +156,38 @@ export async function liveReadingForRow(
   row: ProjectReleaseRow,
   deps: LiveReadingDeps = defaultDeps,
 ): Promise<LiveReading | null> {
-  const liveBranch = chainLiveBranch(row.releaseChain);
-  if (!liveBranch) {
+  const deploysFrom = row.deploysFrom;
+  if (!deploysFrom) {
     forgetLiveReading(row.id);
     return null;
   }
-  const promote = { ...row, liveBranch };
+  const promote = { ...row, deploysFrom };
   const key = keyOf(promote);
   const h = held.get(row.id);
   const current = h && h.key === key ? h : null;
   if (current && current.expiresAt > deps.now().getTime()) return current.reading;
   const fallback: LiveReading = current?.reading ?? {
     baseBranch: row.baseBranch,
-    liveBranch,
+    deploysFrom,
     kind: 'pending',
-    reason: `the first comparison of ${row.baseBranch ?? 'the base branch'} against ${liveBranch} is still being taken; read again in a moment`,
+    reason: `the first comparison of ${row.baseBranch ?? 'the default branch'} against ${deploysFrom} is still being taken; read again in a moment`,
   };
   return waitAtMost(start(promote, deps), fallback);
 }
 
-export const releaseColumns = {
-  id: projects.id,
-  baseBranch: projects.baseBranch,
-  releaseChain: projects.releaseChain,
-};
+/** A project's release row, or `null` where its project document cannot say one. */
+export async function projectReleaseRow(projectId: string): Promise<ProjectReleaseRow | null> {
+  const read = await readReleasePath(projectId);
+  if (!read.ok) return null;
+  return {
+    id: projectId,
+    baseBranch: read.path.defaultBranch,
+    deploysFrom: promotedBranch(read.path),
+    crossesByCherryPick: crossesByCherryPick(read.path),
+  };
+}
 
 export async function projectReleaseRows(projectIds: string[]): Promise<ProjectReleaseRow[]> {
-  if (projectIds.length === 0) return [];
-  return db.select(releaseColumns).from(projects).where(inArray(projects.id, projectIds));
+  const rows = await Promise.all(projectIds.map(projectReleaseRow));
+  return rows.filter((r): r is ProjectReleaseRow => r !== null);
 }

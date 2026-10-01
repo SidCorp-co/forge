@@ -1,7 +1,7 @@
 /**
  * ISS-1215 — why the automatic release is not taking an issue, written on the issue.
  *
- * On an `autoProdDeploy` project `awaiting_release` is a transit state that `release-sweep.ts`
+ * Where production deploys `on-land`, `awaiting_release` is a transit state that `release-sweep.ts`
  * moves a row out of, so every way that sweep declines a row is written here rather than logged
  * alone: a held row must not read like one nobody looked at. This module is the one writer of
  * `session_context.releaseHold`, its comment, and the clearers that take it off a row.
@@ -171,7 +171,8 @@ export function runtimeUnroutedHold(missing: string, route: string): ReleaseHold
     reason:
       `The automatic release carries only an issue whose every acceptance criterion is earned at ` +
       `what this project is serving, and nothing here can read what it is serving: ${missing}, ` +
-      'and no live binding declares `verify.probes`. No verdict a run records can be weighed until ' +
+      "and the production environment's runtime probes cannot say either. No verdict a run " +
+      'records can be weighed until ' +
       `that changes, so this is the project's to answer and not this issue's: ${route}, and the ` +
       'next sweep weighs every waiting issue again.',
     owes: 'human',
@@ -184,7 +185,7 @@ export function targetUndeclaredHold(message: string): ReleaseHold {
     code: 'RELEASE_TARGET_UNDECLARED',
     reason: message,
     owes: 'human',
-    waitingFor: 'a live deploy binding for the release to land on',
+    waitingFor: 'a production environment with a deploy binding for the release to land on',
   };
 }
 
@@ -226,10 +227,10 @@ export function queuedBehindHold(carried: number): ReleaseHold {
 export const NO_RELEASE_GATE_HOLD: ReleaseHold = {
   code: 'NO_RELEASE_GATE',
   reason:
-    'This project declares no release (its `releaseChain` is empty), so there is no release for ' +
-    'the automatic sweep to carry this issue into, and nothing will move it from ' +
-    '`awaiting_release`. Either declare a release chain with a live deploy binding, or close the ' +
-    'issue.',
+    'This project declares no release (its project document has no production environment), so ' +
+    'there is no release for the automatic sweep to carry this issue into, and nothing will move ' +
+    'it from `awaiting_release`. Either declare a production environment with a deploy binding, ' +
+    'or close the issue.',
   owes: 'human',
   waitingFor: 'a person to declare a release or close the issue',
 };

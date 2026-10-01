@@ -66,7 +66,7 @@ export const RETIRED_STRATEGY_INPUTS = {
       'When forge-release encounters a merge conflict on the base branch: ' +
       '(1) git merge --abort to restore a clean base-branch worktree. ' +
       '(2) Check out the ISS-* branch and attempt ' +
-      'git rebase origin/<liveBranch> — this resolves straightforward ' +
+      'git rebase origin/<the branch production deploys from> — this resolves straightforward ' +
       'divergence when the branch was cut before recent release merges. ' +
       '(3) If rebase succeeds without conflict, push the rebased ISS-* ' +
       'branch then retry the base-branch merge. ' +
@@ -75,11 +75,12 @@ export const RETIRED_STRATEGY_INPUTS = {
       'so forge-fix can resolve it. Never leave the issue at awaiting_release after ' +
       'a conflict — silent waiting blocks the release indefinitely.',
     appliesWhen:
-      'The project declares a releaseChain of two or more branches in its project config, ' +
+      "The project document's production environment deploys from a branch its promotions reach, " +
       'meaning the release crosses from one branch to the next and ISS-* branches must track the ' +
-      'last one to avoid divergence at merge time. It does NOT apply to a chain of one (the ' +
-      'release is an act on a live binding and no ref moves) or an empty chain (there is no ' +
-      'release step), whatever branches those projects happen to have stored.',
+      'last one to avoid divergence at merge time. It does NOT apply where production deploys from ' +
+      'the branch work lands on (the release is an act on its binding and no ref moves) or where ' +
+      'there is no production environment (there is no release step), whatever branches those ' +
+      'projects happen to have.',
     appliesToSkills: ['forge-release'],
   },
   QA_QUALITY_BAR: {

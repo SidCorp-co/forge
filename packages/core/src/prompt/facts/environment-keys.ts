@@ -1,20 +1,45 @@
-import type { NormalizedEnvironments } from '../../projects/environments.js';
+import { environmentsOf } from '../../project-config/release-path.js';
+import type { ProjectDocument, TestingProfile } from '../../project-config/schema.js';
 
-/** Both sides of the deployment, each line saying which side it is on. */
-export function renderTestUrls(env: NormalizedEnvironments): string | undefined {
+/** Every environment's address, each line naming the environment and its tier. */
+export function renderTestUrls(document: ProjectDocument | null): string | undefined {
+  if (!document) return undefined;
   const lines: string[] = [];
-  if (env.preview) {
-    if (env.preview.url) lines.push(`- Preview: ${env.preview.url}`);
-    if (env.preview.apiUrl) lines.push(`- Preview API: ${env.preview.apiUrl}`);
-    for (const u of env.preview.urls) {
-      lines.push(`- Preview${u.label ? ` (${u.label})` : ''}: ${u.url}`);
+  for (const { name, declaration } of environmentsOf(document)) {
+    if (declaration.url) lines.push(`- ${name} (${declaration.tier}): ${declaration.url}`);
+    for (const [service, url] of Object.entries(declaration.services ?? {})) {
+      lines.push(`- ${name} (${declaration.tier}) ${service}: ${url}`);
     }
   }
-  if (env.live.url) lines.push(`- Live: ${env.live.url}`);
-  if (env.live.apiUrl) lines.push(`- Live API: ${env.live.apiUrl}`);
   return lines.length > 0 ? lines.join('\n') : undefined;
 }
 
-/** Where to fetch the credentials, and never a credential. */
-export const TEST_CREDS_POINTER =
-  'Fetch test credentials at runtime via `forge_projects.get` → `environments.testCredentials` (never hardcode secrets).';
+/** Where each environment's testers get in: the profile it names, and never a credential. */
+export function renderTestCreds(
+  projectId: string,
+  document: ProjectDocument | null,
+): string | undefined {
+  if (!document) return undefined;
+  const lines = environmentsOf(document).flatMap(({ name, declaration }) =>
+    declaration.testing
+      ? [
+          `- ${name}: testing profile \`${declaration.testing}\` — its actors and services name \`secret://\` references, never values; read it with \`GET /api/projects/${projectId}/testing-profiles/${declaration.testing}\`. Never write a credential into a comment, a commit or a prompt.`,
+        ]
+      : [],
+  );
+  return lines.length > 0 ? lines.join('\n') : undefined;
+}
+
+/** What each named testing profile says its environment does NOT have. */
+export function renderTestNotes(
+  document: ProjectDocument | null,
+  profiles: ReadonlyMap<string, TestingProfile>,
+): string | undefined {
+  if (!document) return undefined;
+  const lines: string[] = [];
+  for (const { name, declaration } of environmentsOf(document)) {
+    const profile = declaration.testing ? profiles.get(declaration.testing) : undefined;
+    for (const limit of profile?.limits ?? []) lines.push(`- ${name}: ${limit.note}`);
+  }
+  return lines.length > 0 ? lines.join('\n') : undefined;
+}
