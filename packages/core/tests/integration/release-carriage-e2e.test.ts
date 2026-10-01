@@ -348,14 +348,14 @@ describe('a runner-only change is weighed against the runner it runs in', () => 
 
     const hold = await fx.holdOf(id);
     expect(hold?.code).toBe('RELEASE_CRITERIA_UNREADABLE');
-    expect(String(hold?.reason)).toContain('releaseRuntimes is not a valid declaration');
+    expect(String(hold?.reason)).toContain('pipelineConfig.releaseRuntimes.0.paths.0');
 
     const { loadReleaseReadiness } = await import('../../src/release-batch/readiness.js');
     const readiness = await loadReleaseReadiness(projectId);
     const unevaluated = readiness?.blockers.find((b) => b.code === 'RELEASE_CHECK_UNEVALUATED');
     expect(unevaluated?.details).toMatchObject({ check: 'criteria' });
     expect(JSON.stringify(unevaluated?.details)).toContain(
-      'releaseRuntimes is not a valid declaration',
+      'pipelineConfig.releaseRuntimes.0.paths.0',
     );
   }, 30_000);
 });

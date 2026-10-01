@@ -46,9 +46,14 @@ export class PipelineConfigUnreadable extends HTTPException {
   }
 }
 
+/** Only an absent key is no configuration; a stored `null` is a value, and the schema refuses it. */
+function parseStored(stored: unknown) {
+  return pipelineConfigSchema.safeParse(stored === undefined ? {} : stored);
+}
+
 /** The keys the schema refuses in a stored document, or an empty list where it reads. */
 export function refusedPipelineKeys(stored: unknown): RefusedPipelineKey[] {
-  const parsed = pipelineConfigSchema.safeParse(stored ?? {});
+  const parsed = parseStored(stored);
   if (parsed.success) return [];
   const doc = (stored ?? {}) as Record<string, unknown>;
   return parsed.error.issues.map((issue) => {
@@ -64,7 +69,7 @@ export function refusedPipelineKeys(stored: unknown): RefusedPipelineKey[] {
 
 /** The project's configuration, or the refusal naming every key the schema refuses. */
 export function readStoredPipelineConfig(projectId: string, stored: unknown): PipelineConfig {
-  const parsed = pipelineConfigSchema.safeParse(stored ?? {});
+  const parsed = parseStored(stored);
   if (parsed.success) return parsed.data;
   throw new PipelineConfigUnreadable(projectId, refusedPipelineKeys(stored));
 }

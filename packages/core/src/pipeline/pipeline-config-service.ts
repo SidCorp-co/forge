@@ -246,10 +246,9 @@ export async function updatePipelineConfig(
     .limit(1);
   if (!row) throw new PipelineConfigError('PROJECT_NOT_FOUND', 'project not found');
   const ac = (row.agentConfig ?? {}) as Record<string, unknown>;
-  const stored = (ac.pipelineConfig ?? {}) as Record<string, unknown>;
   const pipelineConfig: PipelineConfig = {
     ...PIPELINE_CONFIG_DEFAULTS,
-    ...readBack(projectId, stored, Object.keys(pipelinePatch).length > 0),
+    ...readBack(projectId, ac.pipelineConfig, Object.keys(pipelinePatch).length > 0),
   };
 
   const warnings: string[] = [];

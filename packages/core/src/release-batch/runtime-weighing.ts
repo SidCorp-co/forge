@@ -20,10 +20,11 @@ import {
 import { latestCriterionVerdicts } from '../issues/criteria-verdicts.js';
 import { issueIdentities } from '../issues/verdict-standing.js';
 import { recognisableIdentity, sameIdentity } from '../messaging/verdict-identity.js';
+import type { ReleaseRuntimesConfig } from '../pipeline/pipeline-config-schema.js';
 import {
-  type ReleaseRuntimesConfig,
-  releaseRuntimesSchema,
-} from '../pipeline/pipeline-config-schema.js';
+  PipelineConfigUnreadable,
+  readStoredPipelineConfig,
+} from '../pipeline/stored-pipeline-config.js';
 import { hostOf } from '../projects/live-source.js';
 import { type Carriage, type ChangedPaths, carriageOf, changedPathsOf } from './carriage.js';
 import { type ServingReading, servedCommits } from './serving-reading.js';
@@ -51,22 +52,15 @@ async function declaredRuntimes(projectId: string): Promise<ReleaseRuntimesConfi
         `this project's pipelineConfig.releaseRuntimes could not be read: ${why(err)}`,
       );
     });
-  const pc = (row?.agentConfig as Record<string, unknown> | null)?.pipelineConfig as
-    | Record<string, unknown>
-    | undefined;
-  if (pc?.releaseRuntimes === undefined) return [];
-  // The patch door refuses a malformed one; one stored past it is a defect to stop on, not skip.
-  const parsed = releaseRuntimesSchema.safeParse(pc.releaseRuntimes);
-  if (!parsed.success) {
-    const refused = parsed.error.issues.map(
-      (i) => `${['releaseRuntimes', ...i.path].join('.')}: ${i.message}`,
-    );
-    throw new WeighingUnreadable(
-      'declaration',
-      `this project's stored pipelineConfig.releaseRuntimes is not a valid declaration: ${refused.join('; ')}`,
-    );
+  const stored = (row?.agentConfig as { pipelineConfig?: unknown } | null)?.pipelineConfig;
+  try {
+    return readStoredPipelineConfig(projectId, stored).releaseRuntimes ?? [];
+  } catch (err) {
+    // The patch door refuses a malformed document; one stored past it is a defect to stop on.
+    if (err instanceof PipelineConfigUnreadable)
+      throw new WeighingUnreadable('declaration', err.message);
+    throw err;
   }
-  return parsed.data;
 }
 
 function why(err: unknown): string {

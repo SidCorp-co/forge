@@ -513,11 +513,10 @@ projectRoutes.get(
     const ac = await readAgentConfig(id);
     if (ac === null) throw notFound();
 
-    const stored = (ac.pipelineConfig ?? {}) as Record<string, unknown>;
     // Parse through schema — drops legacy keys (clarified, pipelineSteps,
     // etc.) so the response is the typed surface the FE expects. Defaults
     // fill blanks.
-    const parsed = readStoredPipelineConfig(id, stored);
+    const parsed = readStoredPipelineConfig(id, ac.pipelineConfig);
     const pipelineConfig: PipelineConfig = {
       ...PIPELINE_CONFIG_DEFAULTS,
       ...parsed,
