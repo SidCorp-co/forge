@@ -185,6 +185,19 @@ export const ecosystemConsumptions = pgTable(
   }),
 );
 
+export const contractArtifacts = pgTable(
+  'contract_artifacts',
+  {
+    sha256: text('sha256').primaryKey(),
+    content: text('content').notNull(),
+    byteLength: integer('byte_length').notNull(),
+    storedAt: timestamp('stored_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    shaChk: check('contract_artifacts_sha256_chk', sql`${t.sha256} ~ '^[0-9a-f]{64}$'`),
+  }),
+);
+
 export const contractVersions = pgTable(
   'contract_versions',
   {
@@ -194,9 +207,68 @@ export const contractVersions = pgTable(
     contractSlug: text('contract_slug').notNull(),
     version: text('version').notNull(),
     recordedAt: timestamp('recorded_at', { withTimezone: true }).notNull().defaultNow(),
+    contractType: text('contract_type').notNull(),
+    document: jsonb('document').notNull(),
+    classification: text('classification').notNull(),
+    artifactSha256: text('artifact_sha256').references(() => contractArtifacts.sha256, {
+      onDelete: 'restrict',
+    }),
+    elements: text('elements').array(),
   },
   (t) => ({
     pk: primaryKey({ columns: [t.providerProjectId, t.contractSlug, t.version] }),
+    latestIdx: index('contract_versions_latest_idx').on(
+      t.providerProjectId,
+      t.contractSlug,
+      t.recordedAt,
+    ),
+    classificationChk: check(
+      'contract_versions_classification_chk',
+      sql`${t.classification} IN ('breaking', 'non-breaking', 'unknown', 'initial')`,
+    ),
+  }),
+);
+
+export const contractMeasurements = pgTable(
+  'contract_measurements',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    providerProjectId: uuid('provider_project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    contractSlug: text('contract_slug').notNull(),
+    commitSha: text('commit_sha').notNull(),
+    branch: text('branch').notNull(),
+    environments: text('environments').array().notNull(),
+    outcome: text('outcome').notNull(),
+    version: text('version'),
+    reason: text('reason'),
+    observedAt: timestamp('observed_at', { withTimezone: true }).notNull().defaultNow(),
+    settledAt: timestamp('settled_at', { withTimezone: true }),
+  },
+  (t) => ({
+    landUq: uniqueIndex('contract_measurements_land_uq').on(
+      t.providerProjectId,
+      t.contractSlug,
+      t.commitSha,
+    ),
+    outcomeChk: check(
+      'contract_measurements_outcome_chk',
+      sql`${t.outcome} IN ('pending', 'recorded', 'unchanged', 'stale', 'refused')`,
+    ),
+    commitChk: check('contract_measurements_commit_chk', sql`${t.commitSha} ~ '^[0-9a-f]{40}$'`),
+    settledChk: check(
+      'contract_measurements_settled_chk',
+      sql`(${t.outcome} = 'pending') = (${t.settledAt} IS NULL)`,
+    ),
+    reasonChk: check(
+      'contract_measurements_reason_chk',
+      sql`${t.outcome} NOT IN ('refused', 'stale') OR ${t.reason} IS NOT NULL`,
+    ),
+    versionChk: check(
+      'contract_measurements_version_chk',
+      sql`(${t.outcome} = 'recorded') = (${t.version} IS NOT NULL)`,
+    ),
   }),
 );
 

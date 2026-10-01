@@ -1,6 +1,6 @@
 {
-  "id": "00be3d7c-821b-40f4-a151-1dc4711d1803",
-  "prevId": "3999ca3b-35ea-40dc-80eb-c1695a8b220f",
+  "id": "eda7699f-92ee-4858-a929-d06ea80b60d6",
+  "prevId": "00be3d7c-821b-40f4-a151-1dc4711d1803",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -8929,52 +8929,14 @@
           "primaryKey": false,
           "notNull": true
         },
-        "description": {
-          "name": "description",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'standard'"
-        },
         "base_branch": {
           "name": "base_branch",
           "type": "text",
           "primaryKey": false,
           "notNull": false
         },
-        "release_chain": {
-          "name": "release_chain",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'[]'::jsonb"
-        },
-        "repo_url": {
-          "name": "repo_url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "workspace_setup": {
-          "name": "workspace_setup",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "agent_config": {
           "name": "agent_config",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "environments": {
-          "name": "environments",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false
@@ -9128,12 +9090,7 @@
         }
       },
       "policies": {},
-      "checkConstraints": {
-        "projects_release_chain_chk": {
-          "name": "projects_release_chain_chk",
-          "value": "projects_release_chain_ok(release_chain)"
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.prompt_blobs": {

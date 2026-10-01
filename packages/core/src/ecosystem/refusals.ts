@@ -1,4 +1,5 @@
 import type { ApiRefusal } from '../project-config/documents.js';
+import type { ContractRefusalCode } from './contract/refusal-codes.js';
 
 export type EcosystemRefusalCode =
   | 'STALE_BASE'
@@ -23,7 +24,8 @@ export type EcosystemRefusalCode =
   | 'MEMBERSHIP_TRANSITION_NOT_ALLOWED'
   | 'MEMBERSHIP_REASON_REQUIRED'
   | 'MEMBERSHIP_IN_USE'
-  | ChannelRefusalCode;
+  | ChannelRefusalCode
+  | ContractRefusalCode;
 
 export type ChannelRefusalCode =
   | 'DOCUMENT_TYPE_UNKNOWN'

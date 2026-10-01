@@ -8,6 +8,9 @@ import {
   type ThreadHold,
   TYPE_CODES,
 } from './channel-schema.js';
+import type { ContractFacts } from './contract/citations.js';
+import { elementRefusals } from './contract/element-rules.js';
+import { compareVersions } from './contract/naming.js';
 import { splitContractRef, versionKey } from './interface-rules.js';
 import {
   type Checked,
@@ -18,10 +21,7 @@ import {
 import type { DocumentType, EcosystemDocument, InterfaceDocument } from './schema.js';
 import type { EdgeRow } from './store.js';
 
-export interface MeasuredVersion {
-  classification: Classification;
-  changes: readonly { element: string; level: 'breaking' | 'non-breaking' }[];
-}
+export type { MeasuredVersion } from './contract/citations.js';
 
 export interface ChannelWorld {
   today: string;
@@ -32,7 +32,7 @@ export interface ChannelWorld {
   interfaces: ReadonlyMap<string, InterfaceDocument>;
   edges: readonly EdgeRow[];
   versions: ReadonlyMap<string, ReadonlySet<string>>;
-  measured: ReadonlyMap<string, MeasuredVersion>;
+  contracts: ContractFacts;
   documents: ReadonlyMap<string, ChannelDocument>;
   holds: readonly ThreadHold[];
 }
@@ -73,15 +73,7 @@ const addDays = (day: string, n: number) =>
   new Date(Date.parse(`${day}T00:00:00Z`) + n * 864e5).toISOString().slice(0, 10);
 
 export function olderThan(versioning: 'dated' | 'semver', a: string, b: string): boolean {
-  if (versioning === 'dated') return a < b;
-  const parts = (v: string) => v.split(/[.+-]/).slice(0, 3).map(Number);
-  const [x, y] = [parts(a), parts(b)];
-  for (let i = 0; i < 3; i++) {
-    const [p, q] = [x[i] ?? 0, y[i] ?? 0];
-    if (Number.isNaN(p) || Number.isNaN(q)) return a < b;
-    if (p !== q) return p < q;
-  }
-  return false;
+  return compareVersions(versioning, a, b) < 0;
 }
 
 const isCounterparty = (w: ChannelWorld, a: string, b: string) =>
@@ -260,10 +252,10 @@ function changeNoticeRefusals(d: ChannelDocument, w: ChannelWorld): EcosystemRef
       detail: `${b.contract} has no recorded version "${b.contractVersion}"; a notice cites a version core has recorded.`,
     });
   }
-  const m = w.measured.get(`${b.contract}@${b.contractVersion}`);
+  const m = w.contracts.measured.get(`${b.contract}@${b.contractVersion}`);
   if (m) {
     const rank: Record<Classification, number> = { 'non-breaking': 0, unknown: 1, breaking: 2 };
-    if (rank[b.classification] < rank[m.classification]) {
+    if (m.classification !== 'initial' && rank[b.classification] < rank[m.classification]) {
       out.push({
         code: 'CLASSIFICATION_BELOW_MEASURED',
         path: '/body/classification',
@@ -366,6 +358,7 @@ export function documentRefusals(d: ChannelDocument, w: ChannelWorld): Ecosystem
     ...holdRefusalsFor(d, w),
     ...replyRefusals(d, w),
     ...changeNoticeRefusals(d, w),
+    ...elementRefusals(d, w.documents, w.contracts),
     ...dueRefusals(d, w),
     ...content,
   ];

@@ -1,4 +1,5 @@
 import { pointer } from '../project-config/documents.js';
+import { missingElements } from './contract/upload-rules.js';
 import type { EcosystemRefusal } from './refusals.js';
 import { CONTRACT_REF, type EcosystemDocument, type InterfaceDocument } from './schema.js';
 
@@ -19,6 +20,7 @@ export interface InterfaceWorld {
   activeEcosystems: ReadonlyMap<string, EcosystemDocument>;
   providers: ReadonlyMap<string, ProviderView>;
   versions: ReadonlyMap<string, ReadonlySet<string>>;
+  elements: ReadonlyMap<string, ReadonlySet<string> | null>;
   consumersOfMine: readonly ConsumerEdge[];
 }
 
@@ -121,7 +123,17 @@ function consumptionRefusals(doc: InterfaceDocument, world: InterfaceWorld): Eco
         path: at('builtAgainst'),
         detail: `${c.contract} has no recorded version "${c.builtAgainst}" (recorded: ${known}); builtAgainst names a version core has recorded for that contract.`,
       });
+      return;
     }
+    const known = world.elements.get(`${versionKey(view.projectId, contract)}@${c.builtAgainst}`);
+    out.push(
+      ...missingElements(
+        c.elements ?? [],
+        known ?? null,
+        (j) => at('elements', j),
+        `${c.contract}@${c.builtAgainst}`,
+      ),
+    );
   });
   return out;
 }
