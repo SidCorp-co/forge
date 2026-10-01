@@ -15410,7 +15410,11 @@
         "requestBody": {
           "content": {
             "application/json": {
-              "schema": {}
+              "schema": {
+                "x-forge-refinements": [
+                  "a refinement with no fixed message, whose rule this contract cannot state"
+                ]
+              }
             }
           },
           "required": true
@@ -16293,6 +16297,10 @@
             "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
           }
         },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
         "x-forge-validated": [
           "json",
           "param"
@@ -16356,6 +16364,10 @@
             "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
           }
         },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
         "x-forge-validated": [
           "json",
           "param"
@@ -16391,6 +16403,10 @@
             "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
           }
         },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
         "x-forge-validated": [
           "param"
         ]
@@ -16451,6 +16467,10 @@
             "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
           }
         },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
         "x-forge-validated": [
           "json",
           "param"
@@ -16507,6 +16527,10 @@
             "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
           }
         },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
         "x-forge-validated": [
           "json",
           "param"
@@ -16550,6 +16574,10 @@
             "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
           }
         },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
         "x-forge-validated": [
           "param"
         ]
@@ -16604,6 +16632,10 @@
             "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
           }
         },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
         "x-forge-validated": [
           "json",
           "param"
@@ -16629,6 +16661,10 @@
             "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
           }
         },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
         "x-forge-validated": [
           "param"
         ]
@@ -16653,6 +16689,10 @@
             "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
           }
         },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
         "x-forge-validated": [
           "param"
         ]
@@ -16686,6 +16726,10 @@
             "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
           }
         },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
         "x-forge-validated": [
           "param"
         ]
@@ -16735,6 +16779,10 @@
             "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
           }
         },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
         "x-forge-validated": [
           "json",
           "param"
@@ -16785,6 +16833,10 @@
             "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
           }
         },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
         "x-forge-validated": [
           "json",
           "param"
