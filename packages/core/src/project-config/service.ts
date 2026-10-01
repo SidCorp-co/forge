@@ -1,3 +1,4 @@
+import type { z } from 'zod';
 import { getAdapter, providerCanDeploy } from '../integrations/registry.js';
 import { encryptSecret, isVaultConfigured } from '../integrations/vault.js';
 import {
@@ -18,6 +19,7 @@ import {
   testingProfileSchema,
 } from './schema.js';
 import {
+  type CasResult,
   type ConfigStore,
   drizzleConfigStore,
   type SecretName,
@@ -48,12 +50,43 @@ function reread<T>(
       `project-config: the stored ${what} at revision ${stored.revision} no longer parses as version 1; the store holds a shape this core cannot read and it is not guessed at.`,
     );
   }
+  return toHeld(stored, parsed.data);
+}
+
+function toHeld<T>(stored: StoredDocument, document: T): Held<T> {
   return {
     revision: stored.revision,
-    document: parsed.data,
+    document,
     updatedBy: stored.updatedBy,
     updatedAt: stored.updatedAt,
   };
+}
+
+async function writeDocument<T>(input: {
+  current: StoredDocument | null;
+  baseRevision: number | null;
+  raw: unknown;
+  schema: z.ZodType<T>;
+  what: string;
+  before?: ApiRefusal[];
+  check(document: T): Promise<ApiRefusal[]> | ApiRefusal[];
+  cas(document: T): Promise<CasResult>;
+}): Promise<WriteOutcome<T>> {
+  const { baseRevision } = input;
+  const storedRevision = input.current?.revision ?? null;
+  if (storedRevision !== baseRevision) {
+    return { ok: false, refusals: [staleBase(baseRevision, storedRevision)] };
+  }
+  const before = input.before ?? [];
+  const parsed = parseVersionedDocument(input.schema, input.raw, input.what);
+  if (!parsed.ok) return { ok: false, refusals: [...before, ...parsed.refusals] };
+  if (before.length > 0) return { ok: false, refusals: before };
+  const document = parsed.value;
+  const refusals = await input.check(document);
+  if (refusals.length > 0) return { ok: false, refusals };
+  const result = await input.cas(document);
+  if (!result.ok) return { ok: false, refusals: [staleBase(baseRevision, result.storedRevision)] };
+  return { ok: true, held: toHeld(result.stored, document), created: result.created };
 }
 
 export async function readProjectDocument(
@@ -124,15 +157,6 @@ export async function buildProjectConfigContext(projectId: string): Promise<Proj
   };
 }
 
-function toHeld<T>(stored: StoredDocument, document: T): Held<T> {
-  return {
-    revision: stored.revision,
-    document,
-    updatedBy: stored.updatedBy,
-    updatedAt: stored.updatedAt,
-  };
-}
-
 export async function writeProjectConfig(input: {
   projectId: string;
   userId: string;
@@ -140,40 +164,38 @@ export async function writeProjectConfig(input: {
   raw: unknown;
 }): Promise<WriteOutcome<ProjectDocument>> {
   const { projectId, userId, baseRevision, raw } = input;
-  const current = await store.readProject(projectId);
-  const storedRevision = current?.revision ?? null;
-  if (storedRevision !== baseRevision) {
-    return { ok: false, refusals: [staleBase(baseRevision, storedRevision)] };
-  }
-
-  const refusals: ApiRefusal[] = [];
   const claimedId = isRecord(raw) && isRecord(raw.project) ? raw.project.id : undefined;
-  if (typeof claimedId === 'string' && claimedId !== projectId) {
-    refusals.push({
-      code: 'PROJECT_ID_IMMUTABLE',
-      path: '/project/id',
-      detail: `project.id "${claimedId}" is not this project; the document at /api/projects/${projectId}/config names ${projectId}, which core assigned and never changes.`,
-    });
-  }
-  const parsed = parseVersionedDocument(projectDocumentSchema, raw, 'project');
-  if (!parsed.ok) return { ok: false, refusals: [...refusals, ...parsed.refusals] };
-  if (refusals.length > 0) return { ok: false, refusals };
-
-  const document = parsed.value;
-  const takenBy = await store.slugTakenBy(projectId, document.project.slug);
-  if (takenBy) {
-    refusals.push({
-      code: 'SLUG_TAKEN',
-      path: '/project/slug',
-      detail: `slug "${document.project.slug}" is already project ${takenBy}'s; a slug is unique across the deployment.`,
-    });
-  }
-  refusals.push(...checkProjectConfig(document, await buildProjectConfigContext(projectId)));
-  if (refusals.length > 0) return { ok: false, refusals };
-
-  const result = await store.casProject({ projectId, baseRevision, document, userId });
-  if (!result.ok) return { ok: false, refusals: [staleBase(baseRevision, result.storedRevision)] };
-  return { ok: true, held: toHeld(result.stored, document), created: result.created };
+  return writeDocument({
+    current: await store.readProject(projectId),
+    baseRevision,
+    raw,
+    schema: projectDocumentSchema,
+    what: 'project',
+    before:
+      typeof claimedId === 'string' && claimedId !== projectId
+        ? [
+            {
+              code: 'PROJECT_ID_IMMUTABLE',
+              path: '/project/id',
+              detail: `project.id "${claimedId}" is not this project; the document at /api/projects/${projectId}/config names ${projectId}, which core assigned and never changes.`,
+            },
+          ]
+        : [],
+    async check(document) {
+      const refusals: ApiRefusal[] = [];
+      const takenBy = await store.slugTakenBy(projectId, document.project.slug);
+      if (takenBy) {
+        refusals.push({
+          code: 'SLUG_TAKEN',
+          path: '/project/slug',
+          detail: `slug "${document.project.slug}" is already project ${takenBy}'s; a slug is unique across the deployment.`,
+        });
+      }
+      refusals.push(...checkProjectConfig(document, await buildProjectConfigContext(projectId)));
+      return refusals;
+    },
+    cas: (document) => store.casProject({ projectId, baseRevision, document, userId }),
+  });
 }
 
 export async function writePolicy(input: {
@@ -183,19 +205,15 @@ export async function writePolicy(input: {
   raw: unknown;
 }): Promise<WriteOutcome<PolicyDocument>> {
   const { projectId, userId, baseRevision, raw } = input;
-  const current = await store.readPolicy(projectId);
-  const storedRevision = current?.revision ?? null;
-  if (storedRevision !== baseRevision) {
-    return { ok: false, refusals: [staleBase(baseRevision, storedRevision)] };
-  }
-  const parsed = parseVersionedDocument(policyDocumentSchema, raw, 'policy');
-  if (!parsed.ok) return parsed;
-  const refusals = checkPolicy(parsed.value);
-  if (refusals.length > 0) return { ok: false, refusals };
-
-  const result = await store.casPolicy({ projectId, baseRevision, document: parsed.value, userId });
-  if (!result.ok) return { ok: false, refusals: [staleBase(baseRevision, result.storedRevision)] };
-  return { ok: true, held: toHeld(result.stored, parsed.value), created: result.created };
+  return writeDocument({
+    current: await store.readPolicy(projectId),
+    baseRevision,
+    raw,
+    schema: policyDocumentSchema,
+    what: 'policy',
+    check: checkPolicy,
+    cas: (document) => store.casPolicy({ projectId, baseRevision, document, userId }),
+  });
 }
 
 export function credentialRefs(profile: TestingProfile): { path: string; ref: string }[] {
@@ -219,48 +237,40 @@ export async function writeTestingProfile(input: {
   raw: unknown;
 }): Promise<WriteOutcome<TestingProfile>> {
   const { projectId, profileId, userId, baseRevision, raw } = input;
-  const current = await store.readTestingProfile(projectId, profileId);
-  const storedRevision = current?.revision ?? null;
-  if (storedRevision !== baseRevision) {
-    return { ok: false, refusals: [staleBase(baseRevision, storedRevision)] };
-  }
-  const parsed = parseVersionedDocument(testingProfileSchema, raw, 'testing profile');
-  if (!parsed.ok) return parsed;
-  const profile = parsed.value;
-
-  const refusals: ApiRefusal[] = [];
-  if (profile.id !== profileId) {
-    refusals.push({
-      code: 'TESTING_PROFILE_ID_MISMATCH',
-      path: '/id',
-      detail: `id "${profile.id}" is not the profile this URL writes ("${profileId}"); the document is stored under its URL id.`,
-    });
-  }
-  const refs = credentialRefs(profile);
-  const present = await store.existingSecretRefs(
-    projectId,
-    refs.map((r) => r.ref),
-  );
-  for (const { path, ref } of refs) {
-    if (!present.has(ref)) {
-      refusals.push({
-        code: 'SECRET_NOT_FOUND',
-        path,
-        detail: `${ref} is not a secret of this project; PUT /api/projects/${projectId}/secrets/<scope>/<name> first.`,
-      });
-    }
-  }
-  if (refusals.length > 0) return { ok: false, refusals };
-
-  const result = await store.casTestingProfile({
-    projectId,
-    profileId,
+  return writeDocument({
+    current: await store.readTestingProfile(projectId, profileId),
     baseRevision,
-    document: profile,
-    userId,
+    raw,
+    schema: testingProfileSchema,
+    what: 'testing profile',
+    async check(profile) {
+      const refusals: ApiRefusal[] = [];
+      if (profile.id !== profileId) {
+        refusals.push({
+          code: 'TESTING_PROFILE_ID_MISMATCH',
+          path: '/id',
+          detail: `id "${profile.id}" is not the profile this URL writes ("${profileId}"); the document is stored under its URL id.`,
+        });
+      }
+      const refs = credentialRefs(profile);
+      const present = await store.existingSecretRefs(
+        projectId,
+        refs.map((r) => r.ref),
+      );
+      for (const { path, ref } of refs) {
+        if (!present.has(ref)) {
+          refusals.push({
+            code: 'SECRET_NOT_FOUND',
+            path,
+            detail: `${ref} is not a secret of this project; PUT /api/projects/${projectId}/secrets/<scope>/<name> first.`,
+          });
+        }
+      }
+      return refusals;
+    },
+    cas: (document) =>
+      store.casTestingProfile({ projectId, profileId, baseRevision, document, userId }),
   });
-  if (!result.ok) return { ok: false, refusals: [staleBase(baseRevision, result.storedRevision)] };
-  return { ok: true, held: toHeld(result.stored, profile), created: result.created };
 }
 
 export type DeleteOutcome =
