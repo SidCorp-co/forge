@@ -124,8 +124,7 @@ export async function readRegister(
   query: RegisterQuery,
 ): Promise<{ rows: RegisterRow[]; total: number }> {
   await readableEcosystem(userId, ecosystemId);
-  const visible = await readerProjects(userId);
-  const mine = query.fence ? new Set(query.fence.filter((p) => visible.has(p))) : visible;
+  const mine = await readerProjects(userId, query.fence);
   const stored = await documentsWhere(db, { ecosystem: ecosystemId, published: true });
   const listed = (await registerRowsOver(stored))
     .filter((r) => mine.has(r.from) || r.to.some((t) => mine.has(t)))
