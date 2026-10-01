@@ -99,18 +99,35 @@ pub fn take(dir: &Path, pid: u32, boot: Option<&str>, now_ms: i64) -> Taken {
             handed.pid
         ));
     }
-    if handed.boot_id.as_deref() != boot {
-        return Taken::Refused(format!(
-            "{} was written in another boot of this machine",
-            at.display()
-        ));
+    // Both named, and the same: a pid is reused across a reboot, so a boot
+    // neither side can name proves nothing about which process wrote it.
+    match (handed.boot_id.as_deref(), boot) {
+        (Some(was), Some(now)) if was == now => {}
+        (Some(_), Some(_)) => {
+            return Taken::Refused(format!(
+                "{} was written in another boot of this machine",
+                at.display()
+            ))
+        }
+        _ => {
+            return Taken::Refused(format!(
+                "{} names no boot both it and this process can read, and a pid alone is reused across a reboot",
+                at.display()
+            ))
+        }
     }
-    let age = now_ms - handed.written_at_ms;
-    if !(0..=FRESH_FOR_MS).contains(&age) {
+    let age = now_ms.checked_sub(handed.written_at_ms);
+    if let Some(age) = age.filter(|a| !(0..=FRESH_FOR_MS).contains(a)) {
         return Taken::Refused(format!(
             "{} was written {}s before this image read it, and a handover's exec takes under a second",
             at.display(),
             age / 1000
+        ));
+    }
+    if age.is_none() {
+        return Taken::Refused(format!(
+            "{} names a write time no clock reading can be measured against",
+            at.display()
         ));
     }
     Taken::Handed(handed)
@@ -153,7 +170,7 @@ mod tests {
         for (pid, boot, now, names) in [
             (43, Some("boot-a"), 1_500, "pid 42"),
             (42, Some("boot-b"), 1_500, "another boot"),
-            (42, None, 1_500, "another boot"),
+            (42, None, 1_500, "no boot both"),
             (
                 42,
                 Some("boot-a"),
@@ -168,6 +185,34 @@ mod tests {
                 other => panic!("{pid} {boot:?} {now}: {other:?}"),
             }
             assert!(!path(&dir).exists(), "removed unread");
+        }
+    }
+
+    /// Consult F1: a pid is reused across a reboot, so a registry neither side
+    /// can name the boot of is never believed on the pid alone.
+    #[test]
+    fn a_registry_naming_no_boot_is_refused_even_where_this_process_names_none() {
+        let dir = Scratch::new("handed-noboot");
+        let mut unbooted = handed(42, 1_000);
+        unbooted.boot_id = None;
+        write(&dir, &unbooted).unwrap();
+        match take(&dir, 42, None, 1_500) {
+            Taken::Refused(why) => assert!(why.contains("reused across a reboot"), "{why}"),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    /// Consult F2: a write time at either end of the range is refused rather
+    /// than overflowing the age.
+    #[test]
+    fn a_write_time_at_either_extreme_is_refused_without_overflow() {
+        let dir = Scratch::new("handed-extreme");
+        for at in [i64::MIN, i64::MAX] {
+            write(&dir, &handed(42, at)).unwrap();
+            assert!(
+                matches!(take(&dir, 42, Some("boot-a"), 1_500), Taken::Refused(_)),
+                "{at}"
+            );
         }
     }
 
