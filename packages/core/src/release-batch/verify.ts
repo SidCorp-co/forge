@@ -8,9 +8,8 @@ export interface VerifyProbe {
 
 export interface VerifyConfig {
   probes: VerifyProbe[];
-  /** Give up after this long. Default 300s. */
+  /** Give up after this long (300s), and believe a reading only `stableReads` (2) times running. */
   timeoutSeconds?: number;
-  /** Consecutive identical reads required before believing it. Default 2. */
   stableReads?: number;
 }
 
