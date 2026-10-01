@@ -5,9 +5,9 @@ import { verifyDeviceCredential } from '../auth/device-credential.js';
 import { assertProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { readBearerToken } from '../middleware/bearer.js';
+import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { badRequest } from '../projects/route-errors.js';
-import { listBindings, readBinding, writeBinding } from './bindings.js';
+import { listBindings, readBinding, removeBinding, writeBinding } from './bindings.js';
 import { buildEffectiveConfig } from './effective.js';
 import { envelopeOf, refused } from './respond.js';
 import {
@@ -292,5 +292,39 @@ projectConfigRoutes.put(
       created: outcome.created,
       effects: outcome.effects,
     });
+  },
+);
+
+const removeBody = z.strictObject({ baseRevision: z.number().int().positive() });
+
+projectConfigRoutes.delete(
+  '/:id/bindings/:bindingId',
+  paramOf(bindingParam),
+  zValidator('json', z.unknown()),
+  async (c) => {
+    const { id, bindingId } = c.req.valid('param');
+    await assertProjectAccess(id, c.get('userId'), 'admin');
+    const body = removeBody.safeParse(c.req.valid('json'));
+    if (!body.success) {
+      throw new HTTPException(400, {
+        message:
+          'a binding is switched off with { "baseRevision": <the revision it was read at> }, and nothing else',
+        cause: { code: 'CONFIG_WRITE_SHAPE' },
+      });
+    }
+    const outcome = await removeBinding({
+      projectId: id,
+      bindingId,
+      baseRevision: body.data.baseRevision,
+    });
+    if (outcome.ok)
+      return c.json({ removed: true as const, bindingId, revision: outcome.revision });
+    if ('notFound' in outcome) {
+      throw new HTTPException(404, {
+        message: `binding ${bindingId} is not a binding of this project`,
+        cause: { code: 'NOT_FOUND' },
+      });
+    }
+    return refused(c, outcome.refusals);
   },
 );

@@ -8,12 +8,12 @@ import { residentMasterSql } from '../devices/master-session.js';
 import { readRunnerPoolRead } from '../devices/pool-read-report.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import type { AuthVars } from '../middleware/auth.js';
+import { badRequest, idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { hooks } from '../pipeline/hooks.js';
 import { clearRunnerFaultFlags } from '../runners/clear-fault-flags.js';
 import { insertRunnerEvent } from '../runners/runner-events.js';
 import { defaultRunnerCapabilities } from '../runners/select.js';
-import { badRequest, idParamSchema } from './route-errors.js';
 
 // ISS-172 Slice A — runner-shaped binding endpoints. `POST /:id/runners`
 // upserts a (project, device, 'claude-code') runner row; `DELETE

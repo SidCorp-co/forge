@@ -9,9 +9,9 @@ import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import { restActor } from '../middleware/auth.js';
 import { type AnyAuthVars, requireAnyAuth } from '../middleware/require-any-auth.js';
+import { forbidden, notFound } from '../middleware/route-errors.js';
 import { rawBody, zValidator } from '../middleware/zod-validator.js';
 import { safeRecordActivity } from '../pipeline/activity.js';
-import { forbidden, notFound } from '../projects/route-errors.js';
 import { getStorage, isEnoent } from '../storage/index.js';
 import { AttachmentError, persistIssueAttachment } from './attachment-service.js';
 import {

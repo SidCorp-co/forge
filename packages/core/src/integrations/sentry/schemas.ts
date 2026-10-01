@@ -9,11 +9,14 @@ const sentryTargetSchema = z.object({
   notes: z.string().max(2000).optional(),
 });
 
+export const SENTRY_TARGET_OLD_SHAPE =
+  'a top-level `organizationSlug` or `projectSlug` is the Sentry config shape ISS-526 retired; name each Sentry project as an entry of `targets`, as { label, organizationSlug, projectSlug }.';
+
 export const sentryConfigBase = z.object({
   host: z.string().min(1).max(255),
   targets: z.array(sentryTargetSchema).max(50).optional(),
-  organizationSlug: z.string().min(1).max(200).optional(),
-  projectSlug: z.string().min(1).max(200).optional(),
+  organizationSlug: z.never({ error: SENTRY_TARGET_OLD_SHAPE }).optional(),
+  projectSlug: z.never({ error: SENTRY_TARGET_OLD_SHAPE }).optional(),
   ...releaseChannelFields,
 });
 

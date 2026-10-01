@@ -17,6 +17,7 @@ export const SENTRY_REFUSAL_REASONS = [
   'target_ambiguous',
   'target_unknown',
   'target_no_org',
+  'target_old_shape',
   'confined_out',
   'bad_argument',
 ] as const;

@@ -9,7 +9,9 @@ import {
   projectSecrets,
   projectTestingProfiles,
 } from '../db/schema-project-config.js';
-import { parseSecretRef, secretRefOf } from './documents.js';
+import { isUniqueViolation, uniqueViolationConstraint } from '../lib/db-errors.js';
+import { type ApiRefusal, parseSecretRef, secretRefOf } from './documents.js';
+import type { ProjectDocument } from './schema.js';
 
 export interface StoredDocument {
   revision: number;
@@ -50,7 +52,8 @@ export interface DeviceCheckout {
 
 export type CasResult =
   | { ok: true; stored: StoredDocument; created: boolean }
-  | { ok: false; storedRevision: number | null };
+  | { ok: false; storedRevision: number | null }
+  | { ok: false; refusal: ApiRefusal };
 
 export interface CasInput {
   projectId: string;
@@ -110,35 +113,61 @@ export const drizzleConfigStore: ConfigStore = {
       .orderBy(desc(projectConfigRevisions.revision));
   },
 
+  // cm:why the document is the slug's one source; `projects.slug` is its projection, written in the document's transaction so a lookup by slug and the document never disagree
   async casProject({ projectId, baseRevision, document, userId }) {
-    return db.transaction(async (tx) => {
-      await tx.execute(lockKey('project', projectId));
-      const [current] = await tx
-        .select()
-        .from(projectConfigDocuments)
-        .where(eq(projectConfigDocuments.projectId, projectId))
-        .limit(1);
-      const storedRevision = current?.revision ?? null;
-      if (storedRevision !== baseRevision) return { ok: false, storedRevision };
-      if (current && sameJson(current.document, document)) {
-        return { ok: true, stored: current, created: false };
+    const slug = (document as ProjectDocument).project.slug;
+    try {
+      return await db.transaction(async (tx) => {
+        await tx.execute(lockKey('project', projectId));
+        const [current] = await tx
+          .select()
+          .from(projectConfigDocuments)
+          .where(eq(projectConfigDocuments.projectId, projectId))
+          .limit(1);
+        const storedRevision = current?.revision ?? null;
+        if (storedRevision !== baseRevision) return { ok: false as const, storedRevision };
+        if (current && sameJson(current.document, document)) {
+          return { ok: true as const, stored: current, created: false };
+        }
+        const revision = (storedRevision ?? 0) + 1;
+        const now = new Date();
+        const [row] = await tx
+          .insert(projectConfigDocuments)
+          .values({ projectId, revision, document, updatedBy: userId, updatedAt: now })
+          .onConflictDoUpdate({
+            target: projectConfigDocuments.projectId,
+            set: { revision, document, updatedBy: userId, updatedAt: now },
+          })
+          .returning();
+        await tx
+          .insert(projectConfigRevisions)
+          .values({ projectId, revision, document, writtenBy: userId, writtenAt: now });
+        if (!row) throw new Error('project-config: document upsert returned no row');
+        const projected = await tx
+          .update(projects)
+          .set({ slug })
+          .where(eq(projects.id, projectId))
+          .returning({ id: projects.id });
+        if (projected.length === 0) {
+          throw new Error(
+            `project-config: project ${projectId} has a document and no projects row`,
+          );
+        }
+        return { ok: true as const, stored: row, created: true };
+      });
+    } catch (err) {
+      if (isUniqueViolation(err) && uniqueViolationConstraint(err) === 'projects_slug_unique') {
+        return {
+          ok: false,
+          refusal: {
+            code: 'SLUG_TAKEN',
+            path: '/project/slug',
+            detail: `slug "${slug}" is already another project's; a slug is unique across the deployment.`,
+          },
+        };
       }
-      const revision = (storedRevision ?? 0) + 1;
-      const now = new Date();
-      const [row] = await tx
-        .insert(projectConfigDocuments)
-        .values({ projectId, revision, document, updatedBy: userId, updatedAt: now })
-        .onConflictDoUpdate({
-          target: projectConfigDocuments.projectId,
-          set: { revision, document, updatedBy: userId, updatedAt: now },
-        })
-        .returning();
-      await tx
-        .insert(projectConfigRevisions)
-        .values({ projectId, revision, document, writtenBy: userId, writtenAt: now });
-      if (!row) throw new Error('project-config: document upsert returned no row');
-      return { ok: true, stored: row, created: true };
-    });
+      throw err;
+    }
   },
 
   async readPolicy(projectId) {
@@ -256,23 +285,12 @@ export const drizzleConfigStore: ConfigStore = {
   },
 
   async slugTakenBy(projectId, slug) {
-    const [byColumn] = await db
+    const [holder] = await db
       .select({ id: projects.id })
       .from(projects)
       .where(and(eq(projects.slug, slug), ne(projects.id, projectId)))
       .limit(1);
-    if (byColumn) return byColumn.id;
-    const [byDocument] = await db
-      .select({ id: projectConfigDocuments.projectId })
-      .from(projectConfigDocuments)
-      .where(
-        and(
-          sql`${projectConfigDocuments.document} #>> '{project,slug}' = ${slug}`,
-          ne(projectConfigDocuments.projectId, projectId),
-        ),
-      )
-      .limit(1);
-    return byDocument?.id ?? null;
+    return holder?.id ?? null;
   },
 
   async listSecretNames(projectId) {

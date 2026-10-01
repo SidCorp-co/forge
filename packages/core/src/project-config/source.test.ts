@@ -1,6 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { projectDoc } from './release-path.fixture.js';
-import { defaultBranchOf, remoteOf, repositoryOf, setupOf, webUrlOf } from './source.js';
+
+const documents = vi.fn();
+vi.mock('./service.js', () => ({ readProjectDocument: documents }));
+
+const { defaultBranchOf, remoteOf, repositoryOf, setupOf, webUrlOf, withDeclaredSource } =
+  await import('./source.js');
 
 describe('repositoryOf', () => {
   it('is source.git.repository on a git project', () => {
@@ -51,5 +56,27 @@ describe('remoteOf', () => {
 describe('webUrlOf', () => {
   it('is the page a person opens', () => {
     expect(webUrlOf('github.com/acme/app')).toBe('https://github.com/acme/app');
+  });
+});
+
+describe('withDeclaredSource', () => {
+  it("answers each row's baseBranch and workspaceSetup from its project document, read once per project", async () => {
+    const doc = projectDoc({ defaultBranch: 'dev' });
+    documents.mockImplementation(async (projectId: string) =>
+      projectId === 'p-1'
+        ? { document: { ...doc, workspace: { isolation: 'worktree', setup: 'pnpm install' } } }
+        : null,
+    );
+    const out = await withDeclaredSource([
+      { projectId: 'p-1', runnerId: 'r-1' },
+      { projectId: 'p-1', runnerId: 'r-2' },
+      { projectId: 'p-2', runnerId: 'r-3' },
+    ]);
+    expect(out.map((r) => [r.runnerId, r.workspaceSetup, r.baseBranch])).toEqual([
+      ['r-1', 'pnpm install', 'dev'],
+      ['r-2', 'pnpm install', 'dev'],
+      ['r-3', null, null],
+    ]);
+    expect(documents.mock.calls.map(([id]) => id)).toEqual(['p-1', 'p-2']);
   });
 });

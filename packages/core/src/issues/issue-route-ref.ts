@@ -5,7 +5,7 @@
 import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
 import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
-import { badRequest, forbidden, notFound } from '../projects/route-errors.js';
+import { badRequest, forbidden, notFound } from '../middleware/route-errors.js';
 import { heldIssuePrefixes } from './issue-prefix-read.js';
 import { findIssueByDisplaySeq, findIssueById, type IssueRow } from './read-service.js';
 

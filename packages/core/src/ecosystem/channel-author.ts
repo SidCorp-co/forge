@@ -7,7 +7,7 @@ import type { ActorAgency } from '../issues/actor-agency.js';
 import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
 import type { AuthVars } from '../middleware/auth.js';
 import type { McpPrincipal } from '../middleware/require-pat.js';
-import type { Author } from './channel-schema.js';
+import type { Author, PersonVia } from './channel-schema.js';
 import type { EcosystemRefusal } from './refusals.js';
 
 export interface Writer {
@@ -22,23 +22,33 @@ export interface ChannelCredential {
   tokenId: string | null;
 }
 
+/** The door a person's act came through, read off the credential: a session is web, a turn token assistant, any other personal token cli. */
+export async function doorOf(tokenId: string | null): Promise<PersonVia> {
+  if (tokenId === null) return 'web';
+  const [row] = await db
+    .select({ name: personalAccessTokens.name })
+    .from(personalAccessTokens)
+    .where(eq(personalAccessTokens.id, tokenId))
+    .limit(1);
+  if (!row) throw new Error(`channel: token ${tokenId} admitted this act and is not stored`);
+  return isTurnTokenName(row.name) ? 'assistant' : 'cli';
+}
+
 // cm:why the credential decides the author, never the body: an agent's token writes via master, a session via web, a turn token via assistant, any other personal token via cli
 export async function writerFor(cred: ChannelCredential): Promise<Writer> {
   const { userId } = cred;
   if (cred.agency === 'agent') {
     return { userId, author: { kind: 'agent', id: userId, via: 'master' } };
   }
-  if (cred.tokenId === null) return { userId, author: { kind: 'person', id: userId, via: 'web' } };
-  const [row] = await db
-    .select({ name: personalAccessTokens.name })
-    .from(personalAccessTokens)
-    .where(eq(personalAccessTokens.id, cred.tokenId))
-    .limit(1);
-  if (!row) throw new Error(`channel: token ${cred.tokenId} admitted this act and is not stored`);
-  return {
-    userId,
-    author: { kind: 'person', id: userId, via: isTurnTokenName(row.name) ? 'assistant' : 'cli' },
-  };
+  return { userId, author: { kind: 'person', id: userId, via: await doorOf(cred.tokenId) } };
+}
+
+/** The token a request was admitted on, or null for a session. */
+export function tokenIdOf(c: Context<{ Variables: AuthVars }>): string | null {
+  if (c.get('principal') !== 'pat') return null;
+  const tokenId = c.get('patTokenId');
+  if (!tokenId) throw new Error('channel: a token request carries no token id');
+  return tokenId;
 }
 
 export async function writerOf(c: Context<{ Variables: AuthVars }>): Promise<Writer> {
@@ -48,12 +58,7 @@ export async function writerOf(c: Context<{ Variables: AuthVars }>): Promise<Wri
       'channel: no agency on this request; the route was reached without an auth gate',
     );
   }
-  if (c.get('principal') !== 'pat') {
-    return writerFor({ userId: c.get('userId'), agency, tokenId: null });
-  }
-  const tokenId = c.get('patTokenId');
-  if (!tokenId) throw new Error('channel: a token request carries no token id');
-  return writerFor({ userId: c.get('userId'), agency, tokenId });
+  return writerFor({ userId: c.get('userId'), agency, tokenId: tokenIdOf(c) });
 }
 
 /** A chat turn's tools hold a token principal; it is the same derivation the REST door makes. */

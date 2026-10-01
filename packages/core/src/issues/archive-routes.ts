@@ -9,8 +9,8 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
+import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { badRequest } from '../projects/route-errors.js';
 import {
   type ArchiveDirection,
   IssueArchiveRefusedError,

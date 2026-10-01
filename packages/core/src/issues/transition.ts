@@ -13,8 +13,8 @@ import {
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
+import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { badRequest, idParamSchema, notFound } from '../projects/route-errors.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import {

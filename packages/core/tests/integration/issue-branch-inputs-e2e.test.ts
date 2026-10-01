@@ -12,6 +12,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
+import { Hono } from 'hono';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   createTestProject,
@@ -21,12 +22,16 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
+type AppVars = { Variables: import('../../src/middleware/request-id.js').RequestIdVars };
+
 describe('readIssueBranchInputs (ISS-936)', () => {
   let harness: TestDatabase;
   let readIssueBranchInputs: typeof import('../../src/projects/service.js')['readIssueBranchInputs'];
   let extractIssueBranchOverride: typeof import('../../src/branches/resolve.js')['extractIssueBranchOverride'];
   let projectId: string;
   let userId: string;
+  let app: Hono<AppVars>;
+  let signUserToken: typeof import('../../src/auth/jwt.js')['signUserToken'];
 
   beforeAll(async () => {
     harness = await setupTestDatabase();
@@ -48,6 +53,14 @@ describe('readIssueBranchInputs (ISS-936)', () => {
     ]);
     readIssueBranchInputs = serviceMod.readIssueBranchInputs;
     extractIssueBranchOverride = resolveMod.extractIssueBranchOverride;
+    signUserToken = (await import('../../src/auth/jwt.js')).signUserToken;
+    const { projectRoutes } = await import('../../src/projects/routes.js');
+    const { errorHandler } = await import('../../src/middleware/error.js');
+    const { requestId } = await import('../../src/middleware/request-id.js');
+    app = new Hono<AppVars>();
+    app.use('*', requestId());
+    app.route('/api/projects', projectRoutes);
+    app.onError(errorHandler);
   }, 60_000);
 
   afterAll(async () => {
@@ -56,7 +69,7 @@ describe('readIssueBranchInputs (ISS-936)', () => {
 
   beforeEach(async () => {
     await truncateAll(harness.db);
-    userId = (await createTestUser(harness.db)).id;
+    userId = (await createTestUser(harness.db, { emailVerifiedAt: new Date() })).id;
     projectId = (await createTestProject(harness.db, userId)).id;
   });
 
@@ -120,5 +133,26 @@ describe('readIssueBranchInputs (ISS-936)', () => {
     const other = await createTestProject(harness.db, userId, { slug: 'other-proj' });
 
     expect(await readIssueBranchInputs(issueId, other.id)).toBeNull();
+  });
+
+  it('resolves one override over REST and over MCP: GET .../branch-config reads metadata.branchConfig', async () => {
+    const issueId = await insertIssue({
+      metadata: { branchConfig: { baseBranch: 'feat/from-metadata' } },
+    });
+    const overMcp = extractIssueBranchOverride(
+      (await readIssueBranchInputs(issueId, projectId)) as Parameters<
+        typeof extractIssueBranchOverride
+      >[0],
+    );
+    expect(overMcp).toEqual({ baseBranch: 'feat/from-metadata' });
+
+    const res = await app.request(`/api/projects/${projectId}/issues/${issueId}/branch-config`, {
+      headers: { Authorization: `Bearer ${await signUserToken(userId)}` },
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      baseBranch: 'feat/from-metadata',
+      targetBranch: 'feat/from-metadata',
+    });
   });
 });

@@ -42,11 +42,16 @@ export const integrationsApi = {
       method: "POST",
     }),
 
-  /** `DELETE /api/projects/:projectId/integrations/:id` — soft-delete (active=false). */
-  remove: (projectId: string, id: string) =>
-    apiClient<{ ok: boolean }>(`/projects/${projectId}/integrations/${id}`, {
+  /** `DELETE /api/projects/:projectId/bindings/:bindingId { baseRevision }` — switch the binding
+   *  off through its binding-v1 document, at the revision read just before. */
+  remove: async (projectId: string, id: string) => {
+    const path = `/projects/${projectId}/bindings/${encodeURIComponent(id)}`;
+    const read = await apiClient<{ revision: number | null }>(path);
+    return apiClient<{ removed: true; bindingId: string; revision: number }>(path, {
       method: "DELETE",
-    }),
+      body: JSON.stringify({ baseRevision: read.revision }),
+    });
+  },
 
   /** `PATCH .../integrations/:id` — update config/secrets/active. */
   update: (projectId: string, id: string, body: UpdateIntegrationInput) =>

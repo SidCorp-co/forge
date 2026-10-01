@@ -12,8 +12,8 @@ import {
 } from '../integrations/store.js';
 import type { IntegrationProvider } from '../integrations/types.js';
 import { logger } from '../logger.js';
+import { badRequest, notFound } from '../middleware/route-errors.js';
 import { rawBody } from '../middleware/zod-validator.js';
-import { badRequest, notFound } from '../projects/route-errors.js';
 import { verifyHmacSignature } from './hmac.js';
 
 const unauthorized = (code: string) =>
@@ -165,11 +165,8 @@ webhookInboundRoutes.post(
           ...(result.refusal ? { refusal: result.refusal } : {}),
         });
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'unknown error';
-        if (/signature/i.test(message)) {
-          await noteTurnedAway([pair], 'INVALID_SIGNATURE', { slug, provider: map.provider });
-          throw unauthorized('INVALID_SIGNATURE');
-        }
+        // The signature was this router's to refuse, above; an adapter's own refusal keeps its status.
+        if (err instanceof HTTPException) throw err;
         logger.error(
           { err, slug, provider: map.provider, bindingId: pair.binding.id },
           'integration adapter: handler threw',

@@ -18,11 +18,11 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { mintEpochFor } from '../middleware/pat-rest-surface.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
+import { badRequest, forbidden, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { hooks } from '../pipeline/hooks.js';
 import { readPluginDesignations, unionPluginDesignations } from '../plugins/designation.js';
-import { withDefaultBranch } from '../project-config/source.js';
-import { badRequest, forbidden, notFound } from '../projects/route-errors.js';
+import { withDeclaredSource } from '../project-config/source.js';
 import { insertRunnerEvent } from '../runners/runner-events.js';
 import { annotateDeviceBuilds } from './build-state.js';
 import { revokeDeviceCredentials } from './credential.js';
@@ -304,7 +304,7 @@ deviceOwnerRoutes.get(
       .innerJoin(projects, eq(projects.id, runners.projectId))
       .where(and(eq(runners.deviceId, id), eq(runners.type, 'claude-code')));
 
-    return c.json(await withDefaultBranch(rows));
+    return c.json(await withDeclaredSource(rows));
   },
 );
 

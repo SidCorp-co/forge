@@ -320,7 +320,7 @@ describe('the Apps an install-completion may probe', () => {
  * rule, and the half that only started biting once a project's App became
  * org-owned.
  *
- * DELETE on a binding asks for project admin and throws `binding.active` off.
+ * DELETE on a binding's document asks for project admin and throws `binding.active` off.
  * The PATCH that threw it back on carried an org-admin bar, because `active`
  * was gated beside the connection-tier config and secrets although it writes
  * the binding. A project admin who is only an org member could therefore
@@ -357,9 +357,10 @@ describe('putting back a binding this admin was allowed to disconnect', () => {
   });
 
   const disconnect = async (userId: string) =>
-    app.request(`/api/projects/${projectId}/integrations/${bindingId}`, {
+    app.request(`/api/projects/${projectId}/bindings/${bindingId}`, {
       method: 'DELETE',
       headers: await asUser(userId),
+      body: JSON.stringify({ baseRevision: await storedRevision() }),
     });
 
   const repick = async (userId: string, body: Record<string, unknown>) =>
@@ -407,13 +408,28 @@ describe('putting back a binding this admin was allowed to disconnect', () => {
   };
 
   it('lets the project admin who disconnected it switch it back on', async () => {
+    const before = await storedRevision();
     expect((await disconnect(clicker.id)).status).toBe(200);
     expect(await bindingActive()).toBe(false);
+    expect(await storedRevision()).toBe((before ?? 0) + 1);
 
     const res = await rebind(clicker.id);
 
     expect(res.status).toBe(200);
     expect(await bindingActive()).toBe(true);
+  });
+
+  // ISS-34 — the integrations route soft-deleted the row past the document: no revision, no refusal.
+  it('refuses the integrations DELETE by name, leaving the row on at its revision', async () => {
+    const before = await storedRevision();
+    const res = await app.request(`/api/projects/${projectId}/integrations/${bindingId}`, {
+      method: 'DELETE',
+      headers: await asUser(clicker.id),
+    });
+    expect(res.status).toBe(410);
+    expect(((await res.json()) as { code: string }).code).toBe('BINDING_WRITE_MOVED');
+    expect(await bindingActive()).toBe(true);
+    expect(await storedRevision()).toBe(before);
   });
 
   it('still refuses that admin the connection-tier write an org owns', async () => {

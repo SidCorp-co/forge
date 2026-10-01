@@ -295,29 +295,38 @@ describe('the binding writes binding-v1 retired', () => {
     expect(rows[0]).toEqual({ active: true, instructions: null });
   });
 
-  it('switches the binding off and sets its instructions through its document', async () => {
+  // ISS-34 — switching off a binding the project document deploys through is BINDING_IN_USE,
+  // as removing it is: the document would name a binding nothing can deploy with.
+  it('sets its instructions through its document, and refuses switching it off while production deploys through it', async () => {
     const w = await seed({});
     const path = `/api/projects/${w.projectId}/bindings/${w.bindingId}`;
     const read = (await (await request('GET', path, w.token)).json()) as {
       revision: number;
       document: Record<string, unknown>;
     };
+    const off = await request('PUT', path, w.token, {
+      baseRevision: read.revision,
+      document: { ...read.document, active: false },
+    });
+    expect(off.status).toBe(422);
+    expect(((await off.json()) as { error: { code: string } }).error.code).toBe('BINDING_IN_USE');
+
     const done = await request('PUT', path, w.token, {
       baseRevision: read.revision,
-      document: { ...read.document, active: false, instructions: 'deploy at night' },
+      document: { ...read.document, instructions: 'deploy at night' },
     });
     expect(done.status).toBe(200);
     const rows = await harness.db.execute<{ active: boolean; instructions: string | null }>(
       sql`SELECT active, instructions FROM integration_bindings WHERE id = ${w.bindingId}`,
     );
-    expect(rows[0]).toEqual({ active: false, instructions: 'deploy at night' });
+    expect(rows[0]).toEqual({ active: true, instructions: 'deploy at night' });
     const again = (await (await request('GET', path, w.token)).json()) as {
       declared: boolean;
       document: Record<string, unknown>;
     };
     expect(again).toMatchObject({
       declared: true,
-      document: { active: false, instructions: 'deploy at night' },
+      document: { active: true, instructions: 'deploy at night' },
     });
   });
 

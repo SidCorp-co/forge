@@ -18,8 +18,8 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { assertProjectRole, loadProjectAccess } from '../../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
+import { badRequest, notFound } from '../../middleware/route-errors.js';
 import { zValidator } from '../../middleware/zod-validator.js';
-import { badRequest, notFound } from '../../projects/route-errors.js';
 import { startRunnerRelease } from './runner-release.js';
 import { findById, listForProject } from './runner-release-store.js';
 

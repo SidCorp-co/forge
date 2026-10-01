@@ -1,4 +1,10 @@
-import { logger } from '../logger.js';
+import {
+  describeProbeReading,
+  PROBE_TIMEOUT_MS,
+  probeAnswered,
+  type RuntimeProbeTarget,
+  readRuntimeProbe,
+} from '../lib/runtime-probe.js';
 
 export interface VerifyProbe {
   url: string;
@@ -11,83 +17,6 @@ export interface VerifyConfig {
   /** Give up after this long (300s), and believe a reading only `stableReads` (2) times running. */
   timeoutSeconds?: number;
   stableReads?: number;
-}
-
-function pluck(body: unknown, path: string | undefined): string | null {
-  if (path === undefined) return typeof body === 'string' ? body.trim() : null;
-  let cur: unknown = body;
-  for (const key of path.split('.')) {
-    if (typeof cur !== 'object' || cur === null) return null;
-    cur = (cur as Record<string, unknown>)[key];
-  }
-  return typeof cur === 'string' && cur.length > 0 ? cur : null;
-}
-
-/**
- * One probe's answer, kept as the shape it had: `unreachable` and `http-error`
- * are a failure to answer, `unparseable` and `no-commit` are an answer with no
- * commit. The four stay apart so a `commitPath` typo is not read as an outage.
- */
-export type ProbeReading =
-  | { kind: 'commit'; commit: string }
-  | { kind: 'no-commit' }
-  | { kind: 'unparseable' }
-  | { kind: 'http-error'; status: number }
-  | { kind: 'unreachable'; detail: string };
-
-/** Whether this reading says the application answered at all. */
-export function probeIsHealthy(r: ProbeReading): boolean {
-  return r.kind !== 'unreachable' && r.kind !== 'http-error';
-}
-
-export function describeProbeReading(probe: VerifyProbe, r: ProbeReading): string {
-  switch (r.kind) {
-    case 'commit':
-      return `${probe.url} -> ${r.commit}`;
-    case 'no-commit':
-      return `${probe.url} answered 200 and \`${probe.commitPath ?? '(whole body)'}\` held no commit`;
-    case 'unparseable':
-      return `${probe.url} answered 200 with a body that is not JSON`;
-    case 'http-error':
-      return `${probe.url} answered http ${r.status}`;
-    case 'unreachable':
-      return `${probe.url} is unreachable (${r.detail})`;
-  }
-}
-
-export const PROBE_REQUEST_CAP_MS = 10_000;
-
-/** One probe, read as `unreachable` once `timeoutMs` (never more than the cap) runs out. */
-export async function readProbe(
-  probe: VerifyProbe,
-  timeoutMs: number = PROBE_REQUEST_CAP_MS,
-): Promise<ProbeReading> {
-  const url = new URL(probe.url);
-  url.searchParams.set('_forge_cb', String(Math.random()).slice(2));
-  try {
-    const res = await fetch(url, {
-      headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' },
-      redirect: 'follow',
-      signal: AbortSignal.timeout(Math.max(1, Math.min(timeoutMs, PROBE_REQUEST_CAP_MS))),
-    });
-    if (!res.ok) return { kind: 'http-error', status: res.status };
-    const text = await res.text();
-    if (probe.commitPath === undefined) {
-      const trimmed = text.trim();
-      return trimmed ? { kind: 'commit', commit: trimmed } : { kind: 'no-commit' };
-    }
-    let body: unknown;
-    try {
-      body = JSON.parse(text);
-    } catch {
-      return { kind: 'unparseable' };
-    }
-    const commit = pluck(body, probe.commitPath);
-    return commit == null ? { kind: 'no-commit' } : { kind: 'commit', commit };
-  } catch (err) {
-    logger.debug({ err, url: probe.url }, 'release-verify: probe unreachable');
-    return { kind: 'unreachable', detail: err instanceof Error ? err.message : 'unknown error' };
-  }
 }
 
 /** Whether the application is alive, and the identity it reports if it is. */
@@ -113,19 +42,20 @@ export interface LiveState {
  */
 export async function readLiveState(
   cfg: VerifyConfig,
-  timeoutMs: number = PROBE_REQUEST_CAP_MS,
+  timeoutMs: number = PROBE_TIMEOUT_MS,
 ): Promise<LiveState> {
-  const reads = await Promise.all(cfg.probes.map((p) => readProbe(p, timeoutMs)));
-  const readings = reads.map((r, i) => describeProbeReading(cfg.probes[i] as VerifyProbe, r));
+  const targets = cfg.probes.map((p) => ({ url: p.url, path: p.commitPath }));
+  const reads = await Promise.all(targets.map((t) => readRuntimeProbe(t, { timeoutMs })));
+  const readings = reads.map((r, i) => describeProbeReading(targets[i] as RuntimeProbeTarget, r));
   const unhealthy = reads
-    .map((r, i) => (probeIsHealthy(r) ? null : (readings[i] ?? null)))
+    .map((r, i) => (probeAnswered(r) ? null : (readings[i] ?? null)))
     .filter((s): s is string => s !== null);
   const unidentified = reads
-    .map((r, i) => (probeIsHealthy(r) && r.kind !== 'commit' ? (readings[i] ?? null) : null))
+    .map((r, i) => (probeAnswered(r) && r.kind !== 'value' ? (readings[i] ?? null) : null))
     .filter((s): s is string => s !== null);
 
   const answeredBy = reads.flatMap((r, i) =>
-    r.kind === 'commit' ? [{ url: (cfg.probes[i] as VerifyProbe).url, commit: r.commit }] : [],
+    r.kind === 'value' ? [{ url: (cfg.probes[i] as VerifyProbe).url, commit: r.value }] : [],
   );
   const agreed =
     answeredBy.length === reads.length && answeredBy.length > 0
@@ -152,7 +82,7 @@ export async function readLiveState(
 /**
  * pass-through: keep — `createReleaseBatch` wants this one answer and nothing
  * else, the commit serving before anything moved, and reads it once. It throws
- * rather than reading: `readProbe` builds its `URL` above the `try`, so an
+ * rather than reading: `readRuntimeProbe` builds its `URL` above the `try`, so an
  * unparseable probe url rejects out of here instead of becoming a reading.
  * `verifyDeployed` and `verifyServingNow` throw the same way. Two doors screen
  * ahead of them — `createReleaseBatch` and `recordPerformedRelease`, both

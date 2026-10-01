@@ -16,10 +16,10 @@ import { db } from '../db/client.js';
 import { issueDependencies, issueDependencyKinds, issues } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
+import { badRequest, conflict, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { safeRecordActivity } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
-import { badRequest, conflict, idParamSchema, notFound } from '../projects/route-errors.js';
 import { loadIssueDependencyEdges } from './dependency-read.js';
 import {
   IssueDependencyError,

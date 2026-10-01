@@ -151,7 +151,9 @@ describe('evidence and the probe outcome', () => {
       },
     });
     const split: typeof fetch = async (url) =>
-      new Response(JSON.stringify({ sourceCommit: String(url).endsWith('2') ? OTHER : SHA }));
+      new Response(
+        JSON.stringify({ sourceCommit: new URL(String(url)).pathname.endsWith('2') ? OTHER : SHA }),
+      );
     const state = recorded(await resolve(two, deps(record(), split)));
     expect(state.evidence).toBe('runtime-mismatch');
     expect(state.probes?.map((p) => p.status)).toEqual(['confirmed', 'mismatch']);
@@ -167,7 +169,7 @@ describe('evidence and the probe outcome', () => {
       },
     });
     const split: typeof fetch = async (url) =>
-      String(url).endsWith('2')
+      new URL(String(url)).pathname.endsWith('2')
         ? new Response('', { status: 503 })
         : new Response(JSON.stringify({ sourceCommit: SHA }));
     const state = recorded(await resolve(two, deps(record(), split)));
@@ -206,6 +208,24 @@ describe('a probe that does not answer is unreachable, never deployment-record',
       ]);
     },
   );
+});
+
+describe('the probe is read past a cache', () => {
+  // ISS-34 — one reader with release verification's: a cache in front of the application must
+  // not answer for it.
+  it('asks with a cache-busting parameter and no-cache headers', async () => {
+    const seen: Array<{ url: string; headers: Headers }> = [];
+    const spy: typeof fetch = async (url, init) => {
+      seen.push({ url: String(url), headers: new Headers(init?.headers) });
+      return new Response(JSON.stringify({ sourceCommit: SHA }));
+    };
+    await resolve(declared(), deps(record(), spy));
+    expect(seen).toHaveLength(1);
+    const asked = new URL(seen[0]?.url ?? '');
+    expect(`${asked.origin}${asked.pathname}`).toBe(VERSION_URL);
+    expect(asked.searchParams.get('_forge_cb')).toMatch(/^\d+$/);
+    expect(seen[0]?.headers.get('cache-control')).toBe('no-cache');
+  });
 });
 
 describe('artifact identity', () => {

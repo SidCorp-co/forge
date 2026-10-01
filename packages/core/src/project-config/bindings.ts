@@ -114,6 +114,15 @@ async function connectionRefusals(
   return [];
 }
 
+/** A binding the project document names cannot be switched off under it: the document would name an inactive one. */
+function inUse(at: string, path: string): ApiRefusal {
+  return {
+    code: 'BINDING_IN_USE',
+    path,
+    detail: `the project document names this binding at ${at}; remove it from the project document before switching the binding off.`,
+  };
+}
+
 export type BindingWriteOutcome =
   | { ok: true; held: HeldBinding; created: boolean; effects: Record<string, unknown> }
   | { ok: false; refusals: ApiRefusal[] };
@@ -191,6 +200,7 @@ export async function writeBinding(input: {
         detail: `the project document names this binding at ${ref.path}, which needs role "${ref.role}"; change the project document before the role.`,
       });
     }
+    if (!active) refusals.push(inUse(ref.path, '/active'));
   }
   if (refusals.length > 0) return { ok: false, refusals };
   const unverified = await bindEffects.targetRefusals({
@@ -254,4 +264,65 @@ export async function writeBinding(input: {
     created: result.created,
     effects,
   };
+}
+
+export type BindingRemoveOutcome =
+  | { ok: true; revision: number }
+  | { ok: false; refusals: ApiRefusal[] }
+  | { ok: false; notFound: true };
+
+/**
+ * Switch a binding off — the one removal there is, since a binding row is kept for the deliveries
+ * that name it. The same path as {@link writeBinding}: the revision it was read at, `BINDING_IN_USE`
+ * while the project document names it, the revision bump of a write and its effects after.
+ */
+export async function removeBinding(input: {
+  projectId: string;
+  bindingId: string;
+  baseRevision: number;
+}): Promise<BindingRemoveOutcome> {
+  const { projectId, bindingId, baseRevision } = input;
+  const current = await store.readBinding(bindingId);
+  if (!current || current.projectId !== projectId) return { ok: false, notFound: true };
+  if (current.revision !== baseRevision) {
+    return { ok: false, refusals: [staleBase(baseRevision, current.revision)] };
+  }
+  const refs = await referencedAs(projectId, bindingId);
+  if (refs.length > 0) return { ok: false, refusals: refs.map((r) => inUse(r.path, r.path)) };
+  const config = current.config as Record<string, unknown>;
+  const result = await store.casBinding({
+    id: bindingId,
+    projectId,
+    connectionId: current.connectionId,
+    provider: current.provider,
+    role: current.role,
+    config,
+    label: current.label,
+    agentAccess: current.agentAccess,
+    active: false,
+    instructions: current.instructions,
+    baseRevision,
+    integrationSecret: () => {
+      throw new Error(`project-config: removing binding ${bindingId} tried to create it`);
+    },
+  });
+  if (!result.ok) {
+    if (result.reason === 'stale') {
+      return { ok: false, refusals: [staleBase(baseRevision, result.storedRevision)] };
+    }
+    if (result.reason === 'foreign') return { ok: false, notFound: true };
+    throw new Error(`project-config: switching binding ${bindingId} off clashed with another row`);
+  }
+  if (result.changed) {
+    await bindEffects.afterWrite({
+      bindingId,
+      projectId,
+      connectionId: current.connectionId,
+      provider: current.provider,
+      role: current.role,
+      config,
+      created: false,
+    });
+  }
+  return { ok: true, revision: result.stored.revision };
 }

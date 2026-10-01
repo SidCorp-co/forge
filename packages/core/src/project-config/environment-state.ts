@@ -1,3 +1,4 @@
+import { describeProbeReading, readRuntimeProbe } from '../lib/runtime-probe.js';
 import type {
   DeploymentRecord,
   DeploymentStatus,
@@ -50,51 +51,6 @@ const STATE_OF: Readonly<Record<DeploymentStatus, RecordedEnvironmentState['stat
 const clip = (text: string, max: number) =>
   text.length <= max ? text : `${text.slice(0, max - 1)}…`;
 
-type Observation = { ok: true; value: string } | { ok: false; error: string };
-
-function readPath(body: unknown, path: string): unknown {
-  let at: unknown = body;
-  for (const key of path.split('.')) {
-    if (at === null || typeof at !== 'object' || !Object.hasOwn(at, key)) return undefined;
-    at = (at as Record<string, unknown>)[key];
-  }
-  return at;
-}
-
-async function observe(probe: RuntimeProbe, deps: EnvironmentStateDeps): Promise<Observation> {
-  let res: Response;
-  try {
-    res = await deps.fetch(probe.url, {
-      headers: { Accept: 'application/json' },
-      signal: AbortSignal.timeout(deps.probeTimeoutMs),
-    });
-  } catch (err) {
-    const why = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
-    return { ok: false, error: `GET ${probe.url} did not answer (${why})` };
-  }
-  if (res.status !== 200) {
-    return { ok: false, error: `GET ${probe.url} answered HTTP ${res.status}` };
-  }
-  let body: unknown;
-  try {
-    body = await res.json();
-  } catch {
-    return { ok: false, error: `GET ${probe.url} answered a body that is not JSON` };
-  }
-  const value = readPath(body, probe.path);
-  if (typeof value !== 'string' || value.trim() === '') {
-    return { ok: false, error: `GET ${probe.url} carries no string at \`${probe.path}\`` };
-  }
-  const read = value.trim();
-  if (read.length > 200) {
-    return {
-      ok: false,
-      error: `GET ${probe.url} carries ${read.length} characters at \`${probe.path}\`, over the 200 an identity may hold`,
-    };
-  }
-  return { ok: true, value: read };
-}
-
 function sameIdentity(identifies: RuntimeProbe['identifies'], recorded: string, read: string) {
   if (identifies === 'artifact') return recorded === read;
   const a = recorded.toLowerCase();
@@ -108,8 +64,10 @@ async function runProbe(
   deps: EnvironmentStateDeps,
 ): Promise<ProbeOutcomeState> {
   const where = { url: probe.url, identifies: probe.identifies };
-  const seen = await observe(probe, deps);
-  if (!seen.ok) return { ...where, status: 'unreachable', error: clip(seen.error, 500) };
+  const seen = await readRuntimeProbe(probe, { timeoutMs: deps.probeTimeoutMs, fetch: deps.fetch });
+  if (seen.kind !== 'value') {
+    return { ...where, status: 'unreachable', error: clip(describeProbeReading(probe, seen), 500) };
+  }
   const recorded = probe.identifies === 'source' ? record.sourceRevision : record.artifact?.id;
   if (!recorded) {
     const what = probe.identifies === 'source' ? 'source revision' : 'artifact';

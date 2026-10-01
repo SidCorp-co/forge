@@ -76,7 +76,8 @@ export async function resolveProjectHandle(
     return { userId: existing.userId, handle: existing.handle, minted: false };
   }
   if (existing) {
-    throw new HTTPException(500, {
+    // A misconfigured handle is a state of this project, named and answered, not a crash (ISS-34).
+    throw new HTTPException(409, {
       message: `project ${projectId} has agent ${existing.userId} as its handle but that agent carries no handle on its org membership, so it has no address to be reached at`,
       cause: { code: 'HANDLE_HAS_NO_NAME' },
     });

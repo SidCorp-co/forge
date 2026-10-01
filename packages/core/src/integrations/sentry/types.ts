@@ -9,9 +9,6 @@ export interface SentryTarget {
 export interface SentryConfig extends Record<string, unknown> {
   host: string;
   targets?: SentryTarget[];
-  /** @deprecated ISS-526 — superseded by `targets[]`; read-only back-compat. */
-  organizationSlug?: string;
-  projectSlug?: string;
 }
 
 /** Secret material — encrypted into `integration_connections.secretsEnc`. */

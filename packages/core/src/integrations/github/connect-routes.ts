@@ -19,8 +19,8 @@ import { organizations, projects } from '../../db/schema.js';
 import { loadOrgRole, orgRoleAtLeast } from '../../lib/authz.js';
 import { logger } from '../../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
+import { badRequest } from '../../middleware/route-errors.js';
 import { zValidator } from '../../middleware/zod-validator.js';
-import { badRequest } from '../../projects/route-errors.js';
 import {
   assertAdmin,
   assertProjectMember,

@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import { expect } from 'vitest';
 import { seedContractVersion } from './contract-versions.js';
 import {
@@ -41,15 +42,20 @@ export async function openChannelWorld(): Promise<ChannelWorld> {
     version: '2026-10-01',
   });
   const { mintPat } = await import('../../src/auth/pat.js');
-  const agentOn = async (projectId: string) => {
+  // A project's agent is its handle, so it carries one on its org membership, as a minted one does.
+  const agentOn = async (projectId: string, orgId: string, handle: string) => {
     const agent = (await createTestUser(w.harness.db, { kind: 'agent' })).id;
+    await w.harness.db.execute(sql`
+      INSERT INTO organization_members (org_id, user_id, role, handle)
+      VALUES (${orgId}, ${agent}, 'member', ${handle})
+    `);
     await createTestProjectMember(w.harness.db, { userId: agent, projectId, role: 'member' });
     const token = (await mintPat({ userId: agent, name: 'master', projectIds: [projectId] }))
       .plaintext;
     return { agent, token };
   };
-  const forge = await agentOn(w.project.forge);
-  const plugin = await agentOn(w.project.plugin);
+  const forge = await agentOn(w.project.forge, w.org.platform, 'forge-master');
+  const plugin = await agentOn(w.project.plugin, w.org.plugin, 'forge-plugin-master');
   const cli = await mintPat({ userId: w.user.platform, name: 'laptop' });
   const { signUserToken } = await import('../../src/auth/jwt.js');
   const forgeMember = (await createTestUser(w.harness.db, { emailVerifiedAt: new Date() })).id;

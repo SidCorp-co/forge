@@ -71,7 +71,7 @@ vi.mock('./release-hold.js', async () => {
       authorId: string | null;
     }) => {
       for (const id of args.issueIds) holds[id] = { ...args.holdFor(id), authorId: args.authorId };
-      return { written: args.issueIds.length, unchanged: 0, skipped: 0 };
+      return { written: args.issueIds.length, unchanged: 0, skipped: 0, refused: [] };
     },
     clearReleaseHolds: async (ids: string[]) => {
       clearedHolds.push([...ids]);

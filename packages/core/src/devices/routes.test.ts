@@ -113,7 +113,8 @@ vi.mock('../middleware/require-fresh-auth.js', () => ({
 const publishMock = vi.fn(() => 0);
 const source = {
   readDeclaredSource: async () => ({ repository: null, defaultBranch: 'main', setup: null }),
-  withDefaultBranch: async (rows: object[]) => rows.map((r) => ({ ...r, baseBranch: 'main' })),
+  withDeclaredSource: async (rows: object[]) =>
+    rows.map((r) => ({ ...r, baseBranch: 'main', workspaceSetup: null })),
 };
 vi.mock('../project-config/source.js', () => source);
 vi.mock('../ws/server.js', () => ({

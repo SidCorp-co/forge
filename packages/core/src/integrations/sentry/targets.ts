@@ -1,18 +1,31 @@
 import { SentryRefusal } from './refusals.js';
+import { SENTRY_TARGET_OLD_SHAPE } from './schemas.js';
 import type { SentryConfig, SentryTarget } from './types.js';
 
+/** A binding's Sentry targets; a config still in the shape ISS-526 retired is refused by name, never read. */
 export function resolveSentryTargets(config: SentryConfig | null | undefined): SentryTarget[] {
   if (!config) return [];
-  if (Array.isArray(config.targets) && config.targets.length > 0) {
-    return config.targets;
+  const retired = (['organizationSlug', 'projectSlug'] as const).filter((k) => config[k] != null);
+  if (retired.length > 0) {
+    throw new SentryRefusal(
+      'target_old_shape',
+      `sentry: this binding's config carries ${retired.map((k) => `\`${k}\``).join(' and ')} at its top level — ${SENTRY_TARGET_OLD_SHAPE}`,
+    );
   }
-  if (config.organizationSlug || config.projectSlug) {
-    const legacy: SentryTarget = { label: 'default' };
-    if (config.organizationSlug) legacy.organizationSlug = config.organizationSlug;
-    if (config.projectSlug) legacy.projectSlug = config.projectSlug;
-    return [legacy];
+  return Array.isArray(config.targets) ? config.targets : [];
+}
+
+/** The targets, or the refusal that stands in for them, for a reader that shows rather than throws. */
+export function readTargets(
+  config: SentryConfig | null | undefined,
+): { targets: SentryTarget[] } | { refusal: { reason: SentryRefusal['reason']; message: string } } {
+  try {
+    return { targets: resolveSentryTargets(config) };
+  } catch (err) {
+    if (err instanceof SentryRefusal)
+      return { refusal: { reason: err.reason, message: err.message } };
+    throw err;
   }
-  return [];
 }
 
 /**

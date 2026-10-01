@@ -16,8 +16,8 @@ import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
+import { idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { idParamSchema } from '../projects/route-errors.js';
 
 const steerBodySchema = z
   .object({

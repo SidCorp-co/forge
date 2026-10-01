@@ -11,8 +11,8 @@ import { db } from '../db/client.js';
 import { devices, projects, runners } from '../db/schema.js';
 import { assertOrgAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import type { AuthVars } from '../middleware/auth.js';
+import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { badRequest } from '../projects/route-errors.js';
 import { annotateDeviceBuilds } from './build-state.js';
 
 const orgIdParamSchema = z.object({ orgId: z.uuid() });

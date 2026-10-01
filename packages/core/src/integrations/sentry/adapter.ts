@@ -10,7 +10,7 @@ import { sentryRestBase } from './endpoints.js';
 import { dispatchSentryOutbound } from './issues.js';
 import { buildSentryMcpEntry } from './resolver.js';
 import { SENTRY_BINDING_CONFIG_KEYS, sentryConfigBase, sentrySecretsSchema } from './schemas.js';
-import { renderSentryTargetsLine, resolveSentryTargets } from './targets.js';
+import { readTargets, renderSentryTargetsLine } from './targets.js';
 import type { SentryConfig, SentrySecrets } from './types.js';
 import { handleSentryWebhook, SENTRY_RESOURCE_HEADER, SENTRY_SIGNATURE_HEADER } from './webhook.js';
 
@@ -194,23 +194,26 @@ export const sentryIntegration = declareIntegration<SentryConfig, SentrySecrets>
   usage: {
     hint: '`forge_sentry` reads this error stream on demand — `list` narrowed by release, window, path or request id, `get` for one issue. It changes nothing in Sentry and files nothing; the scheduled pull is what files.',
     renderExtra: (config) => {
-      const targets = resolveSentryTargets(config as SentryConfig);
-      return targets.length > 0 ? renderSentryTargetsLine(targets) : null;
+      const read = readTargets(config as SentryConfig);
+      if ('refusal' in read) return `  - refused (${read.refusal.reason}): ${read.refusal.message}`;
+      return read.targets.length > 0 ? renderSentryTargetsLine(read.targets) : null;
     },
   },
   presentation: {
     label: 'Sentry',
     alwaysEnvironmentKeyed: false,
     neverCheckedDetail: 'never test-connected',
-    // ISS-526 — the multi-target shape: count plus the first target's org for the card subtitle,
-    // with a back-compat read of the legacy single-slug connection.
+    // ISS-526 — the multi-target shape: count plus the first target's org for the card subtitle;
+    // a config in the retired shape is shown as its refusal, never as zero targets.
     cardMeta: (config) => {
       const cfg = config as SentryConfig;
-      const targets = resolveSentryTargets(cfg);
+      const read = readTargets(cfg);
+      const targets = 'refusal' in read ? [] : read.targets;
       return {
         host: cfg.host ?? null,
-        organizationSlug: targets[0]?.organizationSlug ?? cfg.organizationSlug ?? null,
+        organizationSlug: targets[0]?.organizationSlug ?? null,
         targetCount: targets.length,
+        ...('refusal' in read ? { refusal: read.refusal } : {}),
       };
     },
   },

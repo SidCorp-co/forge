@@ -2,12 +2,11 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { type IssueBranchOverride, resolveIssueBranches } from '../branches/resolve.js';
+import { extractIssueBranchOverride, resolveIssueBranches } from '../branches/resolve.js';
 import { db } from '../db/client.js';
 import { withKernelMarker } from '../db/kernel-marker.js';
 import {
   devices,
-  issues,
   labels,
   organizationMembers,
   organizations,
@@ -26,6 +25,13 @@ import {
   visibleProjectsWhere,
 } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import {
+  badRequest,
+  flatten,
+  forbidden,
+  idParamSchema,
+  notFound,
+} from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { pluginDesignationsPatchSchema } from '../plugins/designation.js';
 import { readDeclaredSource } from '../project-config/source.js';
@@ -40,9 +46,13 @@ import {
   refuseRetiredProjectKeys,
   undeclaredFieldError,
 } from './retired-project-keys.js';
-import { badRequest, flatten, forbidden, idParamSchema, notFound } from './route-errors.js';
 import { projectRunnerRoutes } from './runners-routes.js';
-import { createProject, ProjectSlugTakenError, readProjectBranches } from './service.js';
+import {
+  createProject,
+  ProjectSlugTakenError,
+  readIssueBranchInputs,
+  readProjectBranches,
+} from './service.js';
 
 const createProjectFields = {
   slug: z
@@ -428,11 +438,9 @@ projectRoutes.route('/', projectFactsRoutes);
 
 // ─── Branch config (ISS-135 PR-A) ───────────────────────────────────────────
 //
-// Resolved branch config for one issue. Layers per-issue override (currently
-// read from `issues.sessionContext.branchConfig` — PR-C will add a dedicated
-// `issues.metadata` column) on top of the project defaults. The endpoint
-// returns the *resolved* shape only; the override source is an internal
-// detail callers should not depend on.
+// Resolved branch config for one issue: the per-issue override, read by
+// `extractIssueBranchOverride` as `forge_config` reads it, layered on the
+// project defaults. The endpoint returns the *resolved* shape only.
 
 const branchConfigParamSchema = z.object({
   id: z.uuid(),
@@ -454,14 +462,7 @@ projectRoutes.get(
     const project = await readProjectBranches(id);
     if (!project) throw notFound();
 
-    const [issueRow] = await db
-      .select({
-        id: issues.id,
-        sessionContext: issues.sessionContext,
-      })
-      .from(issues)
-      .where(and(eq(issues.id, issueId), eq(issues.projectId, id)))
-      .limit(1);
+    const issueRow = await readIssueBranchInputs(issueId, id);
     if (!issueRow) {
       throw new HTTPException(404, {
         message: 'issue not found',
@@ -469,29 +470,14 @@ projectRoutes.get(
       });
     }
 
-    // PR-C will add a real `issues.metadata` jsonb column. Until then accept
-    // either shape; sessionContext.branchConfig is the forward-compat probe.
-    const issueLike = issueRow as {
-      metadata?: { branchConfig?: IssueBranchOverride | null } | null;
-      sessionContext: unknown;
-    };
-    const metadataOverride =
-      (
-        issueLike.metadata as {
-          branchConfig?: IssueBranchOverride | null;
-        } | null
-      )?.branchConfig ?? null;
-    const sessionContextOverride =
-      (
-        issueLike.sessionContext as {
-          branchConfig?: IssueBranchOverride | null;
-        } | null
-      )?.branchConfig ?? null;
-    const branchConfigOverride: IssueBranchOverride | null =
-      metadataOverride ?? sessionContextOverride;
-
     const resolved = resolveIssueBranches(
-      { metadata: { branchConfig: branchConfigOverride } },
+      {
+        metadata: {
+          branchConfig: extractIssueBranchOverride(
+            issueRow as Parameters<typeof extractIssueBranchOverride>[0],
+          ),
+        },
+      },
       project,
     );
 

@@ -39,8 +39,8 @@ import {
 import { openPullRequestsForIssue } from '../integrations/repo-projection.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
+import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { badRequest, idParamSchema, notFound } from '../projects/route-errors.js';
 import { mergedLandingSchema } from './landing-evidence.js';
 import { applyMergeMarker, MergeMarkerError, mergedCommitShaSchema } from './merge-marker.js';
 

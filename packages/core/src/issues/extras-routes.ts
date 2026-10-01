@@ -16,11 +16,11 @@ import { noPromptMessage, POOL_JOB_NO_PROMPT } from '../jobs/pool-served.js';
 import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
+import { badRequest, forbidden, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { hooks } from '../pipeline/hooks.js';
 import { StartRefusedError, triggerPipelineStepManual } from '../pipeline/orchestrator.js';
 import { PolicyRefusedError } from '../project-config/dispatch-policy.js';
-import { badRequest, forbidden, idParamSchema, notFound } from '../projects/route-errors.js';
 import {
   EMPTY_USAGE_TOTALS,
   usageSessionMatch,

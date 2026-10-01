@@ -17,8 +17,8 @@ import { db } from '../db/client.js';
 import { integrationDeliveries } from '../db/schema.js';
 import { effectiveProjectRole, orgRoleAtLeast } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { badRequest } from '../projects/route-errors.js';
 import { registerCoolifyDeployRoutes } from './coolify/routes.js';
 import { findDeliveryById } from './deliveries.js';
 import { buildMcpPreview } from './mcp-preview-service.js';
@@ -50,7 +50,6 @@ import {
   findBindingWithConnectionById,
   listBindingsForProject,
   setBindingInboundSecret,
-  softDeleteBinding,
   updateConnection,
 } from './store.js';
 
@@ -170,21 +169,8 @@ integrationsRoutes.patch(
   },
 );
 
-integrationsRoutes.delete('/:projectId/integrations/:id', async (c) => {
-  const projectId = c.req.param('projectId');
-  const id = c.req.param('id');
-  const existing = await projectBinding(projectId, id, c.get('userId'), 'admin');
-
-  // Soft-delete the binding (stops resolution for this project). The connection
-  // is left intact — it may be shared by other projects, and credential removal
-  // is an owner-scoped action on the connection itself.
-  await softDeleteBinding(id);
-  broadcastIntegrationChanged(projectId, {
-    bindingId: id,
-    connectionId: existing.connection.id,
-  });
-  notifyConnectionChanged(existing.binding.provider, existing.connection.id);
-  return c.json({ ok: true });
+integrationsRoutes.delete('/:projectId/integrations/:id', () => {
+  throw bindingWriteMoved('DELETE /api/projects/:projectId/integrations/:id');
 });
 
 integrationsRoutes.post('/:projectId/integrations/:id/test', async (c) => {

@@ -1,10 +1,9 @@
 import { logger } from '../../logger.js';
-import { verifyHmacSignature } from '../../webhooks/hmac.js';
 import { recordDelivery, updateDelivery } from '../deliveries.js';
 import type { AdapterContext, InboundDispatchInput, InboundDispatchResult } from '../types.js';
 import { intakeSentryIssue, projectCreatedById, readSentryThresholds } from './intake-issue.js';
 import { projectIssue } from './issues.js';
-import { resolveSentryTarget, resolveSentryTargets } from './targets.js';
+import { readTargets, resolveSentryTarget } from './targets.js';
 import type { SentryConfig, SentrySecrets } from './types.js';
 
 /** The header Sentry names the delivered object in. Declared on the adapter's capabilities. */
@@ -57,7 +56,9 @@ export function selectSentryTarget(
   config: SentryConfig | null | undefined,
   projectSlug: string | null,
 ): { label: string } | { refusal: string } {
-  const targets = resolveSentryTargets(config);
+  const read = readTargets(config);
+  if ('refusal' in read) return { refusal: read.refusal.message };
+  const { targets } = read;
   const declared = targets.map((t) => t.label).join(', ');
   if (targets.length === 0) {
     return {
@@ -113,23 +114,12 @@ function unservedReason(envelope: SentryDeliveryEnvelope): string | null {
  *
  * Answers rather than throws for anything permanent: a refusal is recorded and returned with
  * `actions: 0`, because a throw becomes a 500 and Sentry retries a delivery whose outcome cannot
- * change. A signature that does not verify still throws — that one is not a delivery this binding
- * has any business answering.
+ * change. The signature is verified before this is reached, by `POST /api/webhooks/in/:slug`.
  */
 export async function handleSentryWebhook(
   ctx: AdapterContext<SentryConfig, SentrySecrets>,
   input: InboundDispatchInput,
 ): Promise<InboundDispatchResult> {
-  if (!ctx.integrationSecret) {
-    throw new Error(
-      'sentry: this binding has no integration secret, so no delivery can be verified',
-    );
-  }
-  const signature = input.headers[SENTRY_SIGNATURE_HEADER] ?? null;
-  if (!verifyHmacSignature(ctx.integrationSecret, input.rawBody, signature)) {
-    throw new Error('sentry: signature verification failed');
-  }
-
   const envelope = readEnvelope(input);
   const deliveryId = await recordDelivery({
     bindingId: ctx.bindingId,

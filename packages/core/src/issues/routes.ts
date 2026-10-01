@@ -73,7 +73,7 @@ export {
 } from './metadata.js';
 
 import { withKernelMarker } from '../db/kernel-marker.js';
-import { badRequest, forbidden, notFound } from '../projects/route-errors.js';
+import { badRequest, forbidden, notFound } from '../middleware/route-errors.js';
 import { ReleaseNotesSchema } from './release-notes.js';
 
 export const issueCreateSchema = z

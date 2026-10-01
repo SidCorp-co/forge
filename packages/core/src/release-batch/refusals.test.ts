@@ -8,6 +8,7 @@ import {
   ReleaseBatchAbortedError,
   ReleaseFinishedForOtherCommitError,
   ReleaseFinishInFlightError,
+  ReleaseNotVerifiedError,
   ReleaseProbesUnreadableError,
   ReleaseVersionMissingError,
 } from './errors.js';
@@ -320,5 +321,17 @@ describe('recordRefusal — a project with no release step', () => {
     expect(refused.status).toBe(409);
     expect(refused.message).toBe(releaseBlockerSentence('NO_RELEASE_GATE'));
     expect((refused.cause as { code?: string }).code).toBe('NO_RELEASE_GATE');
+  });
+});
+
+describe('RELEASE_NOT_VERIFIED', () => {
+  it('carries reason and live under details on the record door and the finish door alike', () => {
+    const err = new ReleaseNotVerifiedError('live is abc1234, the release pushed def', 'abc1234');
+    const want = {
+      code: 'RELEASE_NOT_VERIFIED',
+      details: { reason: 'live is abc1234, the release pushed def', live: 'abc1234' },
+    };
+    expect(recordRefusal(err).cause).toEqual(want);
+    expect(finishRefusal(err)?.cause).toEqual(want);
   });
 });

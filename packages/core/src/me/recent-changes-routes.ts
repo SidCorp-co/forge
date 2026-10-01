@@ -6,8 +6,8 @@ import { issues, projects } from '../db/schema.js';
 import { issueArchiveSide } from '../issues/archive.js';
 import { loadVisibleProjectIds } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { badRequest } from '../projects/route-errors.js';
 
 interface RecentChangeItem {
   id: string;

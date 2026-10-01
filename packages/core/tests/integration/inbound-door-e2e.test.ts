@@ -231,3 +231,43 @@ describe('what the door reading counts', () => {
     });
   });
 });
+
+describe('an adapter error past a verified signature', () => {
+  // ISS-34 — the router verified the signature; an adapter's own error is never re-read as one.
+  it('keeps its own status when its message mentions a signature, and records no turn-away', async () => {
+    const { getAdapter } = await import('../../src/integrations/registry.js');
+    const adapter = getAdapter('github');
+    if (!adapter) throw new Error('github adapter not registered');
+    const spy = vi
+      .spyOn(adapter, 'handleInbound')
+      .mockRejectedValueOnce(new Error('github: the commit signature on head is not trusted'));
+    try {
+      const res = await knock({ 'x-hub-signature-256': sign(SECRET) });
+      expect(res.status).toBe(500);
+      expect(((await res.json()) as { code: string }).code).toBe('HANDLER_FAILED');
+      expect((await deliveries()).map((d) => d.error_message)).not.toContain('INVALID_SIGNATURE');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('answers an adapter refusal that carries a status with that status', async () => {
+    const { HTTPException } = await import('hono/http-exception');
+    const { getAdapter } = await import('../../src/integrations/registry.js');
+    const adapter = getAdapter('github');
+    if (!adapter) throw new Error('github adapter not registered');
+    const spy = vi.spyOn(adapter, 'handleInbound').mockRejectedValueOnce(
+      new HTTPException(422, {
+        message: 'signature-shaped words in a refusal of its own',
+        cause: { code: 'ADAPTER_OWN_REFUSAL' },
+      }),
+    );
+    try {
+      const res = await knock({ 'x-hub-signature-256': sign(SECRET) });
+      expect(res.status).toBe(422);
+      expect(((await res.json()) as { code: string }).code).toBe('ADAPTER_OWN_REFUSAL');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});

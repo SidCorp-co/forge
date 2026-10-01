@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { badRequest } from '../projects/route-errors.js';
+import { badRequest } from '../middleware/route-errors.js';
 import { AGENT_ACCESS_VALUES } from './agent-access.js';
 import { retiredStagesField } from './binding-shape.js';
 import { getIntegration, providerNames } from './registry.js';

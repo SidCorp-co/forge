@@ -3,8 +3,8 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { resolveSessionMcpServers } from '../jobs/resolve-job-mcp-servers.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
+import { badRequest } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { badRequest } from '../projects/route-errors.js';
 import { assertDeviceBoundToProject } from './device-project.js';
 
 const unauth = () =>

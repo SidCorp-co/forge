@@ -8,6 +8,7 @@ import {
   requireAuth,
   restAuthored,
 } from '../middleware/auth.js';
+import { badRequest, idParamSchema } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { MASTER_CHARTER_IS_A_PERSONS_WRITE, parseMasterCharterWrite } from './master-charter.js';
 import {
@@ -16,7 +17,6 @@ import {
   readCharterVersions,
   readCurrentCharter,
 } from './master-charter-service.js';
-import { badRequest, idParamSchema } from './route-errors.js';
 
 /**
  * What a project's master is for, and the rules that bind it (ISS-1313).

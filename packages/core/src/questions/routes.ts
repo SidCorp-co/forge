@@ -17,6 +17,7 @@ import {
   questionStatuses,
 } from '../db/schema-questions.js';
 import { Refused } from '../ecosystem/channel-act.js';
+import { doorOf, tokenIdOf } from '../ecosystem/channel-author.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { refused as refusedByName } from '../project-config/respond.js';
@@ -273,7 +274,7 @@ questionRoutes.post(
             : { kind: 'text', text: body.text as string },
           round: body.round,
           userId: c.get('userId'),
-          via: 'web',
+          via: await doorOf(tokenIdOf(c)),
           ...(body.note === undefined ? {} : { note: body.note }),
         }),
       );

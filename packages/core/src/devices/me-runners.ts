@@ -1,7 +1,7 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { knowledgeEntries, projects, runners } from '../db/schema.js';
-import { readDeclaredSource } from '../project-config/source.js';
+import { withDeclaredSource } from '../project-config/source.js';
 
 /** Seconds left on this runner's rate limit: `null` unlimited, `0` expired. */
 function rateLimitedForSecondsSql() {
@@ -39,13 +39,5 @@ export async function listDeviceAssignments(deviceId: string) {
     .from(runners)
     .innerJoin(projects, eq(projects.id, runners.projectId))
     .where(and(eq(runners.deviceId, deviceId), eq(runners.type, 'claude-code')));
-  const sources = new Map<string, Awaited<ReturnType<typeof readDeclaredSource>>>();
-  for (const projectId of new Set(rows.map((r) => r.projectId))) {
-    sources.set(projectId, await readDeclaredSource(projectId));
-  }
-  return rows.map((r) => ({
-    ...r,
-    baseBranch: sources.get(r.projectId)?.defaultBranch ?? null,
-    workspaceSetup: sources.get(r.projectId)?.setup ?? null,
-  }));
+  return withDeclaredSource(rows);
 }

@@ -2,7 +2,6 @@ import { and, eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { type BindingRole, integrationBindings } from '../../db/schema.js';
 import { handleGitHubEvent } from '../../webhooks/github-adapter.js';
-import { verifyHmacSignature } from '../../webhooks/hmac.js';
 import { recordDelivery } from '../deliveries.js';
 import { type IntegrationConnectionRow, updateConnection } from '../store.js';
 import {
@@ -245,14 +244,6 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
   ): Promise<InboundDispatchResult> {
     const eventType = input.headers['x-github-event'];
     if (!eventType) throw new Error('github webhook: x-github-event missing');
-
-    if (!ctx.integrationSecret) {
-      throw new Error('github: integration has no signing secret configured');
-    }
-    const signature = input.headers['x-hub-signature-256'] ?? null;
-    if (!verifyHmacSignature(ctx.integrationSecret, input.rawBody, signature)) {
-      throw new Error('github: signature verification failed');
-    }
 
     const payload = input.payload as Parameters<typeof handleGitHubEvent>[2] & {
       action?: string;

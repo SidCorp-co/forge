@@ -96,7 +96,9 @@ export const forgeSentryTool: ContextScopedMcpToolFactory = (ctx) => ({
     'binding_disabled, connection_disabled, not_granted (an org owner or admin turns agent access ' +
     'on under Settings → Integrations), no_credential, credential_rejected, scope_missing, ' +
     'sentry_http_error, sentry_unreachable, no_targets, target_ambiguous (the binding declares ' +
-    'several — pass `target`, the message lists them), target_unknown, target_no_org, confined_out, ' +
+    'several — pass `target`, the message lists them), target_unknown, target_no_org, ' +
+    'target_old_shape (the binding still carries the top-level slugs ISS-526 retired — name each ' +
+    'Sentry project under `targets`), confined_out, ' +
     'bad_argument. The envelope covers reaching Sentry for a project you may ask about; everything ' +
     'BEFORE that is an ordinary MCP error and not this shape — a call the input schema rejects (a ' +
     'wrong type, an unknown key), a call naming no project, and a caller who holds no role on the ' +

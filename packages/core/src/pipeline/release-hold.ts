@@ -8,7 +8,7 @@
  */
 
 import { createHash } from 'node:crypto';
-import { and, eq, inArray, like, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { comments, issues } from '../db/schema.js';
 import type { IssueCriteriaReport } from '../issues/criteria-verdicts.js';
@@ -51,6 +51,14 @@ export function saidOf(value: unknown): string[] {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return [];
   const said = (value as Record<string, unknown>).said;
   return Array.isArray(said) ? said.filter((k): k is string => typeof k === 'string') : [];
+}
+
+/** A hold stored before `said` existed (ISS-1346): refused by name, never read as having said nothing. */
+export const HOLD_WITHOUT_SAID = 'HOLD_WITHOUT_SAID';
+
+function storedWithoutSaid(held: unknown): boolean {
+  if (held === null || held === undefined) return false;
+  return !Array.isArray((held as Record<string, unknown>).said);
 }
 
 function withSaid(said: readonly string[], key: string): string[] {
@@ -283,8 +291,6 @@ export function cutFailedHold(reasons: readonly string[]): ReleaseHold {
   };
 }
 
-const COVERS_LINE = /^When this was written it held \d+ issues? of this project.*$/m;
-
 function coversLine(covers: readonly string[]): string[] {
   if (covers.length === 0) return [];
   const n = `${covers.length} issue${covers.length === 1 ? '' : 's'}`;
@@ -316,15 +322,10 @@ export function releaseHoldComment(
   ].join('\n');
 }
 
-/** A comment's words as they are compared: the covered rows, a reading time and a reset set aside. */
-function saidInComment(body: string): string {
-  return comparable(body.replace(COVERS_LINE, '').replace(/\n{3,}/g, '\n\n'));
-}
-
 /**
  * A named row carries its hold's comment even where it was stored before one could be written, or
- * the row only now oldest (38d791 F1); a comment of the per-row wording already says it (834824 F1),
- * and so does one naming another set of covered rows (ISS-1346). Its reason joins what the row said.
+ * the row only now oldest (38d791 F1); a reason its `said` already holds is not said again
+ * (ISS-1346). Its reason joins what the row said.
  */
 export async function commentOnce(
   row: { id: string; held: unknown },
@@ -336,8 +337,6 @@ export async function commentOnce(
   const said = saidOf(row.held);
   if (said.includes(key)) return;
   const body = releaseHoldComment(hold, true, covers);
-  const legacy = !Array.isArray((row.held as Record<string, unknown> | null)?.said);
-  const posted = legacy ? await saidBefore(row.id, hold, body) : false;
   await db.transaction(async (tx) => {
     // Guarded on the hold read, as `writeReleaseHolds` is: a hold replaced since keeps its own `said`.
     const updated = (await tx.execute(sql`
@@ -351,20 +350,10 @@ export async function commentOnce(
          AND i.session_context -> ${RELEASE_HOLD_KEY} = ${JSON.stringify(row.held)}::jsonb
       RETURNING i.id
     `)) as unknown as Array<{ id: string }>;
-    if (updated.length > 0 && !posted) {
+    if (updated.length > 0) {
       await tx.insert(comments).values({ issueId: row.id, authorId, body });
     }
   });
-}
-
-/** Only a hold stored before `said` existed is looked up in the thread; any other says itself. */
-async function saidBefore(issueId: string, hold: ReleaseHold, body: string): Promise<boolean> {
-  const wanted = new Set([saidInComment(body), saidInComment(releaseHoldComment(hold))]);
-  const posted = await db
-    .select({ body: comments.body })
-    .from(comments)
-    .where(and(eq(comments.issueId, issueId), like(comments.body, `%release-hold: ${hold.code}%`)));
-  return posted.some((c) => wanted.has(saidInComment(c.body)));
 }
 
 /** `ISS-nn` for each row a shared hold is written onto, in the order given; a failed read names
@@ -386,6 +375,8 @@ export interface ReleaseHoldTally {
   unchanged: number;
   /** Rows that had left the gate, or whose hold another writer moved, between read and write. */
   skipped: number;
+  /** Rows whose stored hold this build refuses to read, each under its code; nothing written. */
+  refused: Array<{ issueId: string; code: typeof HOLD_WITHOUT_SAID }>;
 }
 
 /**
@@ -409,7 +400,7 @@ export async function writeReleaseHolds(args: {
   /** The rows a hold shared by every row named is commented on; absent, each row's own. */
   commentOn?: ReadonlySet<string>;
 }): Promise<ReleaseHoldTally> {
-  const tally: ReleaseHoldTally = { written: 0, unchanged: 0, skipped: 0 };
+  const tally: ReleaseHoldTally = { written: 0, unchanged: 0, skipped: 0, refused: [] };
   if (args.issueIds.length === 0) return tally;
   const rows = (await db
     .select({ id: issues.id, held: sql<unknown>`${issues.sessionContext} -> ${RELEASE_HOLD_KEY}` })
@@ -419,6 +410,15 @@ export async function writeReleaseHolds(args: {
   const covers = shared && args.commentOn?.size ? await coveredRows(args.issueIds) : [];
 
   for (const row of rows) {
+    if (storedWithoutSaid(row.held)) {
+      tally.refused.push({ issueId: row.id, code: HOLD_WITHOUT_SAID });
+      logger.error(
+        { issueId: row.id, code: HOLD_WITHOUT_SAID },
+        'release-hold: this row carries a hold stored before `said` existed; it is neither ' +
+          'replaced nor commented, and what it said is not guessed from the thread',
+      );
+      continue;
+    }
     const hold = args.holdFor(row.id);
     const carried = readReleaseHold(row.held);
     if (carried && sameReleaseHold(carried, hold)) {

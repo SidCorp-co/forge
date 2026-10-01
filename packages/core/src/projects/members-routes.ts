@@ -14,11 +14,11 @@ import {
 import { assertProjectRole, loadOrgRole, loadProjectAccess } from '../lib/authz.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { badRequest, forbidden } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { emitNotification } from '../notifications/emit.js';
 import { sendInvitationEmail } from './invitation-email.js';
 import { issueInvitationToken } from './invitation-token.js';
-import { badRequest, forbidden } from './route-errors.js';
 
 // Every project role is assignable (admin|member|viewer) — there is no
 // project 'owner' anymore; the org tier carries ownership.

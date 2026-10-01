@@ -227,9 +227,6 @@ export interface SentryTargetInput {
 export type SentryConfigInput = {
   host: string;
   targets?: SentryTargetInput[];
-  /** @deprecated ISS-526 — superseded by `targets[]`; read-only back-compat. */
-  organizationSlug?: string;
-  projectSlug?: string;
 };
 export type SentrySecretsInput = {
   authToken: string;

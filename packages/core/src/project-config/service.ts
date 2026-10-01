@@ -85,7 +85,11 @@ async function writeDocument<T>(input: {
   const refusals = await input.check(document);
   if (refusals.length > 0) return { ok: false, refusals };
   const result = await input.cas(document);
-  if (!result.ok) return { ok: false, refusals: [staleBase(baseRevision, result.storedRevision)] };
+  if (!result.ok) {
+    const refusal =
+      'refusal' in result ? result.refusal : staleBase(baseRevision, result.storedRevision);
+    return { ok: false, refusals: [refusal] };
+  }
   return { ok: true, held: toHeld(result.stored, document), created: result.created };
 }
 

@@ -8,7 +8,11 @@ import {
   speaker,
 } from '../helpers/channel-world.js';
 import { type Doc, example } from '../helpers/ecosystem-world.js';
-import { createTestProjectMember } from '../helpers/factories.js';
+import {
+  createTestProject,
+  createTestProjectMember,
+  createTestUser,
+} from '../helpers/factories.js';
 
 let w: ChannelWorld;
 let say: ReturnType<typeof speaker>;
@@ -201,5 +205,27 @@ describe('a home project outside the ecosystem', () => {
     });
     expect(changed.status).toBe(409);
     expect(changed.json.code).toBe('CONVERSATION_SCOPE_FIXED');
+  });
+});
+
+// ISS-34 — a project whose handle agent carries no handle is a named state of that project, not a
+// server crash: the conversation door refuses it 409 under its own code.
+describe('a project whose handle agent has no name', () => {
+  it('refuses opening its chat 409 HANDLE_HAS_NO_NAME', async () => {
+    const db = w.harness.db;
+    const project = await createTestProject(db, w.user.platform, { orgId: w.org.platform });
+    await createTestProjectMember(db, {
+      userId: w.user.platform,
+      projectId: project.id,
+      role: 'admin',
+    });
+    const nameless = (await createTestUser(db, { kind: 'agent' })).id;
+    await createTestProjectMember(db, { userId: nameless, projectId: project.id, role: 'member' });
+
+    const res = await say('platform', 'POST', '/api/conversations', { projectId: project.id });
+
+    expect(res.status, JSON.stringify(res.json)).toBe(409);
+    expect(res.json.code).toBe('HANDLE_HAS_NO_NAME');
+    expect(res.json.message).toContain(nameless);
   });
 });

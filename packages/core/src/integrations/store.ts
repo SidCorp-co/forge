@@ -210,13 +210,6 @@ export async function softDeleteConnection(id: string): Promise<void> {
     .where(eq(integrationConnections.id, id));
 }
 
-export async function softDeleteBinding(id: string): Promise<void> {
-  await db
-    .update(integrationBindings)
-    .set({ active: false, updatedAt: new Date() })
-    .where(eq(integrationBindings.id, id));
-}
-
 export async function setBindingInboundSecret(
   id: string,
   integrationSecret: string,

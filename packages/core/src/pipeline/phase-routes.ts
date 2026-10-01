@@ -3,8 +3,8 @@ import { z } from 'zod';
 import { phaseJournalOutcomes } from '../db/schema-journal.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { badRequest, idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
-import { badRequest, idParamSchema, notFound } from '../projects/route-errors.js';
 import { endPhase, listPhases, resumePoint, startPhase } from './phase-journal.js';
 import { readPipelineRun } from './runs.js';
 

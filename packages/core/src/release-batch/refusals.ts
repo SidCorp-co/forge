@@ -7,7 +7,7 @@
  */
 
 import { HTTPException } from 'hono/http-exception';
-import { conflict } from '../projects/route-errors.js';
+import { conflict } from '../middleware/route-errors.js';
 import { ABORTED_CODE, abortedSentence } from './abort-stamp.js';
 import {
   alsoBlocking,
@@ -128,6 +128,14 @@ export function holding(err: ReleaseRunHoldingError): HTTPException {
   );
 }
 
+/** The one shape `RELEASE_NOT_VERIFIED` takes on every door: the sentence, and `details.{reason,live}`. */
+function notVerified(err: ReleaseNotVerifiedError): HTTPException {
+  return new HTTPException(409, {
+    message: err.reason,
+    cause: { code: 'RELEASE_NOT_VERIFIED', details: { reason: err.reason, live: err.live } },
+  });
+}
+
 /**
  * Each refusal under the name the batch route already gives it: a caller that learns
  * `RELEASE_PROBES_UNREADABLE` from a batch must not meet a second name for the same fact here.
@@ -140,12 +148,7 @@ export function recordRefusal(err: unknown): HTTPException {
 
   if (err instanceof NoReleaseGateError) return releaseBlockerHttp(err, 'NO_RELEASE_GATE');
   if (err instanceof ReleaseProbesUnreadableError) return unreadableProbes(err);
-  if (err instanceof ReleaseNotVerifiedError) {
-    return new HTTPException(409, {
-      message: err.reason,
-      cause: { code: 'RELEASE_NOT_VERIFIED', reason: err.reason, live: err.live },
-    });
-  }
+  if (err instanceof ReleaseNotVerifiedError) return notVerified(err);
   if (err instanceof ClaimConflictError) {
     return releaseBlockerHttp(err, 'CLAIM_CONFLICT', err.details ?? { issueIds: err.issueIds });
   }
@@ -157,12 +160,7 @@ export function recordRefusal(err: unknown): HTTPException {
  * set of names. The job writes the code and the sentence onto the batch; the door answers them.
  */
 export function finishRefusal(err: unknown): HTTPException | null {
-  if (err instanceof ReleaseNotVerifiedError) {
-    return new HTTPException(409, {
-      message: err.reason,
-      cause: { code: 'RELEASE_NOT_VERIFIED', details: { live: err.live } },
-    });
-  }
+  if (err instanceof ReleaseNotVerifiedError) return notVerified(err);
   if (err instanceof ReleaseProbesUnreadableError) return unreadableProbes(err);
   if (err instanceof ReleaseVersionMissingError) {
     return conflict('RELEASE_VERSION_MISSING', err.message);

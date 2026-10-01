@@ -269,7 +269,7 @@ describe('verifyDeployed', () => {
 
     expect(out.ok).toBe(false);
     expect(out.ok === false && out.health).toBe('down');
-    expect(out.ok === false && out.reason).toContain('http 503');
+    expect(out.ok === false && out.reason).toContain('answered HTTP 503');
   });
 
   it('requires the reads to hold still before believing them', async () => {
@@ -303,7 +303,7 @@ describe('readLiveState', () => {
 
     expect(state.health).toBe('down');
     expect(state.identity).toBeNull();
-    expect(state.unhealthy.join()).toContain('http 502');
+    expect(state.unhealthy.join()).toContain('answered HTTP 502');
   });
 
   it('reads an unreachable host as the application not answering, naming the transport error', async () => {
@@ -327,7 +327,7 @@ describe('readLiveState', () => {
     expect(state.health).toBe('up');
     expect(state.identity).toBeNull();
     expect(state.unhealthy).toEqual([]);
-    expect(state.unidentified.join()).toContain('held no commit');
+    expect(state.unidentified.join()).toContain('carries no string at `commit`');
   });
 
   it('reads a 200 with an unparseable body as healthy and unidentified', async () => {
@@ -338,6 +338,45 @@ describe('readLiveState', () => {
     expect(state.health).toBe('up');
     expect(state.identity).toBeNull();
     expect(state.unidentified.join()).toContain('not JSON');
+  });
+
+  // ISS-34 — one reader with environment-state's stricter rules: 200 alone, a trimmed string at the
+  // path, at most 200 characters.
+  it('reads a 2xx that is not 200 as the application not answering', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 203,
+      text: async () => JSON.stringify({ commit: NEW }),
+    });
+
+    const state = await readLiveState(CFG);
+
+    expect(state.health).toBe('down');
+    expect(state.unhealthy.join()).toContain('answered HTTP 203');
+  });
+
+  it('reads a value over 200 characters as healthy and unidentified, never as a commit', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ commit: 'a'.repeat(201) }),
+    });
+
+    const state = await readLiveState(CFG);
+
+    expect(state.health).toBe('up');
+    expect(state.identity).toBeNull();
+    expect(state.unidentified.join()).toContain('over the 200');
+  });
+
+  it('trims the value at the path', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ commit: `  ${NEW}\n` }),
+    });
+
+    expect((await readLiveState(CFG)).identity).toBe(NEW);
   });
 
   it('separates a disagreeing fleet from a fleet that answered nothing', async () => {
@@ -428,10 +467,10 @@ describe('a probe that never answers', () => {
 
   it('is read as unreachable once its budget runs out', async () => {
     vi.unstubAllGlobals();
-    const { readProbe } = await import('./verify.js');
+    const { readRuntimeProbe } = await import('../lib/runtime-probe.js');
     const host = await silentHost();
     const started = Date.now();
-    const reading = await readProbe({ url: host.url }, 300);
+    const reading = await readRuntimeProbe({ url: host.url }, { timeoutMs: 300 });
     await host.close();
     expect(reading.kind).toBe('unreachable');
     expect(Date.now() - started).toBeLessThan(2_000);

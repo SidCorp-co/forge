@@ -219,10 +219,10 @@ async function loadHandle(
     );
   }
   if (!row.handle) {
-    throw badRequest(
-      `agent ${handleUserId} carries no handle on its org membership, so there is no address to put in a room`,
-      'HANDLE_HAS_NO_NAME',
-    );
+    throw new HTTPException(409, {
+      message: `agent ${handleUserId} carries no handle on its org membership, so there is no address to put in a room`,
+      cause: { code: 'HANDLE_HAS_NO_NAME' },
+    });
   }
   return { id: row.id, handle: row.handle };
 }
