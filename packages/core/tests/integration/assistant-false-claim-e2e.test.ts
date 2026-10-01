@@ -5,6 +5,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createTestProject,
@@ -21,29 +22,72 @@ process.env.INTEGRATION_MASTER_KEY ??= 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwd
 
 const DRAFT = '0b6f3c1e-2a4d-4e8f-9a1b-3c5d7e9f1a2b';
 const CORRECTION = `Correction: the submit of ${DRAFT} was refused (CHANNEL_WRITE_NOT_AUTHORISED); nothing was written.`;
-const said = { reply: '' };
+const said = { reply: '', retry: null as string | null, turns: 0 };
+const REFUSED_SUBMIT = {
+  name: 'forge_channel',
+  arguments: JSON.stringify({ action: 'submit', ref: DRAFT }),
+  isError: true,
+  refusalCode: 'CHANNEL_WRITE_NOT_AUTHORISED',
+};
+const posted: string[] = [];
+type ModelTools = {
+  tools: { function: { name: string } }[];
+  execute: (n: string, a: string) => Promise<unknown>;
+};
 
 vi.mock('../../src/assistant/external-chat.js', async (orig) => {
   const actual = await orig<typeof import('../../src/assistant/external-chat.js')>();
   return {
     ...actual,
-    runExternalChatTurn: vi.fn(async () => ({
-      conversationId: null,
-      assistantMessageId: null,
-      reply: said.reply,
-      terminal: 'done',
-      error: null,
-      iterations: 2,
-      toolCalls: [
-        {
-          name: 'forge_channel',
-          arguments: JSON.stringify({ action: 'submit', ref: DRAFT }),
-          isError: true,
-          refusalCode: 'CHANNEL_WRITE_NOT_AUTHORISED',
-        },
-      ],
-      progress: null,
-    })),
+    runExternalChatTurn: vi.fn(async (args: { tools?: ModelTools }) => {
+      said.turns += 1;
+      const first = said.turns === 1;
+      const reply = first ? said.reply : (said.retry ?? said.reply);
+      if (args.tools?.tools.some((t) => t.function.name === 'room_send')) {
+        await args.tools.execute('room_send', JSON.stringify({ text: reply }));
+      }
+      return {
+        conversationId: null,
+        assistantMessageId: null,
+        reply,
+        terminal: 'done',
+        error: null,
+        iterations: 2,
+        toolCalls: first ? [REFUSED_SUBMIT] : [],
+        progress: null,
+      };
+    }),
+  };
+});
+
+vi.mock('../../src/integrations/rocketchat/outbound.js', async (orig) => ({
+  ...(await orig<typeof import('../../src/integrations/rocketchat/outbound.js')>()),
+  sendFixedReply: vi.fn(async (_transport: unknown, text: string) => {
+    posted.push(text);
+    return { messageId: `rc-${posted.length}` };
+  }),
+}));
+
+vi.mock('../../src/messaging/reply-screen.js', async (orig) => {
+  const actual = await orig<typeof import('../../src/messaging/reply-screen.js')>();
+  return {
+    ...actual,
+    screenReplyAtDoor: vi.fn(async (door: never, input: { segments: string[] }) =>
+      input.segments.some((t) => t.includes('[needs a rewrite]'))
+        ? {
+            ok: false,
+            refusals: [
+              {
+                rule: 'forced',
+                why: 'this reply is made to fail once, so the retry is the one delivered',
+                quote: null,
+                shape: 'a reply without the marker',
+                example: 'It went out.',
+              },
+            ],
+          }
+        : actual.screenReplyAtDoor(door, input as never),
+    ),
   };
 });
 
@@ -67,6 +111,9 @@ let m: {
   rcPort: typeof import('../../src/integrations/rocketchat/conversation-port.js');
   rcDrain: typeof import('../../src/integrations/rocketchat/window-drain.js');
   links: typeof import('../../src/db/schema-speaker-links.js');
+  selves: typeof import('../../src/db/schema-agent-selves.js');
+  bridge: typeof import('../../src/integrations/rocketchat/escalation-bridge.js');
+  schema: typeof import('../../src/db/schema.js');
 };
 let ownerId: string;
 let projectId: string;
@@ -93,6 +140,9 @@ beforeAll(async () => {
     rcPort: await import('../../src/integrations/rocketchat/conversation-port.js'),
     rcDrain: await import('../../src/integrations/rocketchat/window-drain.js'),
     links: await import('../../src/db/schema-speaker-links.js'),
+    selves: await import('../../src/db/schema-agent-selves.js'),
+    bridge: await import('../../src/integrations/rocketchat/escalation-bridge.js'),
+    schema: await import('../../src/db/schema.js'),
   };
 }, 180_000);
 
@@ -102,6 +152,9 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await truncateAll(harness.db);
+  said.turns = 0;
+  said.retry = null;
+  posted.length = 0;
   m.ports.registerConversationTransport(m.web.webConversationPorts);
   ownerId = (await createTestUser(harness.db, { emailVerifiedAt: new Date() })).id;
   const org = await seedOrg(harness.db, ownerId);
@@ -237,5 +290,105 @@ describe('an honest reply after the same refused submit', () => {
   it('reaches both rooms as the model wrote it, with no correction', async () => {
     expect(await webReply()).toBe(said.reply);
     expect(await roomReply()).toEqual([said.reply]);
+  });
+});
+
+describe('a group room that answers through room_send', () => {
+  it('posts the correction under a refused submit told as sent', async () => {
+    said.reply = 'The change notice has been sent to the plugin team.';
+    await harness.db
+      .insert(m.selves.agentSelves)
+      .values({ userId: handle.userId, presence: { answerInGroup: 'tool' } });
+    const other = (await createTestUser(harness.db, { emailVerifiedAt: new Date() })).id;
+    await createTestProjectMember(harness.db, { userId: other, projectId, role: 'member' });
+    const room = await m.store.openConversation({
+      adapter: 'web',
+      externalId: `web ${randomUUID()}`,
+      shape: 'group',
+      projectId,
+    });
+    await m.participants.addPerson({ conversationId: room.id, userId: ownerId });
+    await m.participants.addPerson({ conversationId: room.id, userId: other });
+    await m.collect.collectInboundMessage({
+      ports: m.web.webConversationPorts,
+      frame: {
+        conversation: { id: room.id, externalId: room.externalId, shape: 'group' },
+        projectId,
+        userId: ownerId,
+      },
+      message: `@${handle.handle} please send the change notice`,
+      speakerKey: ownerId,
+      speakerLabel: 'Owner',
+    } as never);
+    const window = await claimOne(room.externalId, 'web');
+    await m.send.routeWebWindow(window, m.windows.claimOf(window) as never);
+    const reply = (await m.store.readMessages(room.id, 10))
+      .filter((x) => x.role === 'assistant')
+      .at(-1)?.content;
+    expect(reply).toContain('has been sent');
+    expect(reply).toContain(CORRECTION);
+  });
+});
+
+describe('the Rocket.Chat escalation reply', () => {
+  async function escalate(): Promise<void> {
+    const connection = await m.rcStore.createConnection({
+      ownerType: 'user',
+      ownerId,
+      provider: 'rocketchat',
+      config: { serverUrl: 'https://chat.example.com' },
+      secrets: { authToken: 'tok', userId: 'bot' },
+    });
+    await m.rcStore.createBinding({
+      connectionId: connection.id,
+      projectId,
+      provider: 'rocketchat',
+      role: 'service',
+      config: { rids: ['room-1'] },
+    });
+    const run = randomUUID();
+    const id = randomUUID();
+    const metadata = {
+      escalation: {
+        connectionId: connection.id,
+        rid: 'room-1',
+        botName: handle.handle,
+        askedByUsername: 'owner',
+        question: 'Did the change notice go out?',
+        shape: 'group',
+        principalUserId: ownerId,
+      },
+    };
+    const messages = [{ type: 'assistant', content: 'The notice is ready to send.' }];
+    await harness.db.execute(sql`
+      INSERT INTO pipeline_runs (id, project_id, kind, status)
+      VALUES (${run}, ${projectId}, 'system', 'running')`);
+    await harness.db.execute(sql`
+      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, kind, status, metadata, messages)
+      VALUES (${id}, ${projectId}, ${run}, 'pm', 'completed', ${JSON.stringify(metadata)}::jsonb,
+              ${JSON.stringify(messages)}::jsonb)`);
+    const [row] = await harness.db
+      .select()
+      .from(m.schema.agentSessions)
+      .where(eq(m.schema.agentSessions.id, id));
+    await m.bridge.deliverEscalationReplyOnce(row as never);
+  }
+
+  it('posts the correction under its first answer', async () => {
+    said.reply = 'The change notice has been sent to the plugin team.';
+    await escalate();
+    expect(said.turns).toBe(1);
+    expect(posted).toHaveLength(1);
+    expect(posted[0]).toContain(CORRECTION);
+  });
+
+  it('posts the correction under its retry, carried from the first answer', async () => {
+    said.reply = 'The change notice has been sent [needs a rewrite].';
+    said.retry = 'The change notice has been sent to the plugin team.';
+    await escalate();
+    expect(said.turns).toBe(2);
+    expect(posted).toHaveLength(1);
+    expect(posted[0]).not.toContain('[needs a rewrite]');
+    expect(posted[0]).toContain(CORRECTION);
   });
 });
