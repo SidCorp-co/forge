@@ -82,7 +82,7 @@ function MergeMarkBadge({
   mark?: MergeMarkKind;
   commitSha?: string | null;
   landing?: string | null;
-  landingShape?: LandingShape;
+  landingShape?: LandingShape | null;
 }) {
   if (mark === "landed") {
     // ISS-1327 — the landing is the evidence, so it is shown as text rather than kept on a hover

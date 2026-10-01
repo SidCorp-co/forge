@@ -4,7 +4,7 @@
 import { type FormEvent, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Banner, Button, Field, Input, Select, SlideOver, Textarea } from '@/design';
+import { Banner, Button, Field, Input, Select, SlideOver } from '@/design';
 import { useActiveOrg } from '@/features/orgs/active-org';
 import { useOrgs } from '@/features/orgs/hooks';
 import { useUpdateProject } from '@/features/project-settings/hooks';
@@ -31,7 +31,6 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
   const [slugEdited, setSlugEdited] = useState(false);
-  const [description, setDescription] = useState('');
   // Target org — '' = the caller's personal org (server default). Defaults to
   // the active org (ISS-470): a team org preselects its id, Personal → ''.
   const [orgId, setOrgId] = useState('');
@@ -58,7 +57,6 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
       setName('');
       setSlug('');
       setSlugEdited(false);
-      setDescription('');
       setOrgId(defaultOrgId);
       setErrors({});
       setCreated(null);
@@ -105,12 +103,10 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
     }
     setErrors({});
 
-    const trimmedDesc = description.trim();
     try {
       const row = await create.mutateAsync({
         slug: trimmedSlug,
         name: trimmedName,
-        ...(trimmedDesc ? { description: trimmedDesc } : {}),
         ...(orgId ? { orgId } : {}),
       });
       toast({ title: 'Project created', description: row.name, tone: 'success' });
@@ -318,16 +314,6 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
               />
             </Field>
           )}
-
-          <Field label="Description" hint="Optional — a short line about this project.">
-            <Textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="What this project is for…"
-              maxLength={2000}
-              rows={3}
-            />
-          </Field>
 
           <div className="mt-auto flex items-center justify-end gap-2.5 pt-2">
             <Button type="button" variant="ghost" onClick={onClose} disabled={create.isPending}>
