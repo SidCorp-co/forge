@@ -59,7 +59,6 @@ function keep<V>(held: Map<string, V>, key: string, value: V): void {
 const carried = new Map<string, Carriage>();
 const changed = new Map<string, ChangedPaths>();
 
-/** Empties both caches; a test's commits are not another test's. */
 export function forgetCarriage(): void {
   carried.clear();
   changed.clear();
@@ -79,10 +78,17 @@ function filesOf(read: CompareRead): string[] | string {
   );
 }
 
-function compare(client: GitHubRepoClient, base: string, head: string): Promise<CompareRead> {
-  return client.get<CompareRead>(
+type Compared = { readonly status: string; readonly files: string[] } | { readonly why: string };
+
+/** One compare, taken only whole: a status and the full file list, or the reason it is not. */
+async function compare(client: GitHubRepoClient, base: string, head: string): Promise<Compared> {
+  const read = await client.get<CompareRead>(
     `/repos/${client.fullName}/compare/${encodeURIComponent(base)}...${encodeURIComponent(head)}`,
   );
+  if (!read.status) return { why: `${client.fullName} answered no compare status` };
+  const files = filesOf(read);
+  if (typeof files === 'string') return { why: files };
+  return { status: read.status, files };
 }
 
 async function readCarriage(
@@ -91,15 +97,11 @@ async function readCarriage(
   served: string,
 ): Promise<Carriage> {
   const forward = await compare(client, judged, served);
-  if (forward.status && DESCENDS.has(forward.status)) return { kind: 'descends' };
-  if (!forward.status)
-    return { kind: 'unread', why: `${client.fullName} answered no compare status` };
+  if ('why' in forward) return { kind: 'unread', why: forward.why };
+  if (DESCENDS.has(forward.status)) return { kind: 'descends' };
   const back = await compare(client, served, judged);
-  const ours = filesOf(forward);
-  const theirs = filesOf(back);
-  if (typeof ours === 'string') return { kind: 'unread', why: ours };
-  if (typeof theirs === 'string') return { kind: 'unread', why: theirs };
-  return { kind: 'differs', paths: [...new Set([...ours, ...theirs])].sort() };
+  if ('why' in back) return { kind: 'unread', why: back.why };
+  return { kind: 'differs', paths: [...new Set([...forward.files, ...back.files])].sort() };
 }
 
 /** What `served` holds of `judged`, from the repository `client` reads. */
@@ -129,9 +131,9 @@ async function readChanged(client: GitHubRepoClient, landing: string): Promise<C
   );
   const parent = commit.parents?.[0]?.sha;
   if (!parent) return { kind: 'unread', why: `${landing} has no parent to diff it against` };
-  const paths = filesOf(await compare(client, parent, landing));
-  if (typeof paths === 'string') return { kind: 'unread', why: paths };
-  return { kind: 'read', paths: [...new Set(paths)].sort() };
+  const read = await compare(client, parent, landing);
+  if ('why' in read) return { kind: 'unread', why: read.why };
+  return { kind: 'read', paths: [...new Set(read.files)].sort() };
 }
 
 export async function changedPathsOf(

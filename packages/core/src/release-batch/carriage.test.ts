@@ -73,6 +73,14 @@ describe('carriageOf', () => {
     ['a failed request (no common ancestor)', {}, 'returned HTTP 404'],
     ['a compare answering no status', { [cmp(J, S)]: { files: [] } }, 'answered no compare status'],
     [
+      'a reverse compare answering files and no status',
+      {
+        [cmp(J, S)]: { status: 'behind', files: [] },
+        [cmp(S, J)]: { files: files('outside-the-runtime.md') },
+      },
+      'answered no compare status',
+    ],
+    [
       'a compare answering no file list',
       { [cmp(J, S)]: { status: 'behind' }, [cmp(S, J)]: { status: 'ahead', files: [] } },
       'answered no file list',
@@ -137,6 +145,16 @@ describe('changedPathsOf', () => {
     expect(read.kind === 'unread' && read.why).toContain(`could not read what ${J} changed`);
     await changedPathsOf(c, J);
     expect(c.asked).toHaveLength(2);
+  });
+
+  it('is unread where the landing compare answers files and no status', async () => {
+    const c = client({
+      [`/repos/o/r/commits/${J}`]: { sha: J, parents: [{ sha: P }] },
+      [cmp(P, J)]: { files: files('packages/runner/a.rs') },
+    });
+    const read = await changedPathsOf(c, J);
+    expect(read.kind).toBe('unread');
+    expect(read.kind === 'unread' && read.why).toContain('answered no compare status');
   });
 
   it('is unread for a root commit, which has no parent to diff against', async () => {
