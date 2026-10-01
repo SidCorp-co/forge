@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
+import { baseRevision } from './lib/baseline-ratchet.mjs';
 
 const SCRIPTS = dirname(fileURLToPath(import.meta.url));
 
@@ -109,6 +110,13 @@ function run(root, reader, env = {}) {
   return { status: r.status, stderr: r.stderr };
 }
 
+/** The reader printed the whole refusal `baseRevision` returns for the same checkout, not a part. */
+function expectWholeRefusal(r, root, env = {}) {
+  const { refusal } = baseRevision(root, { ...SEALED_ENV, ...env });
+  expect(refusal).toBeTruthy();
+  expect(r.stderr).toContain(refusal);
+}
+
 /** What a reader says when it has only the revision and has lost the reason. */
 const SHALLOW = /shallow|single-commit/;
 
@@ -116,6 +124,7 @@ describe.each(READERS)('%s prints the refusal baseRevision returns', (reader) =>
   it('names both branches and set-head for a recorded default the remote contradicts', () => {
     const w = staleClone();
     const r = run(w.root, reader);
+    expectWholeRefusal(r, w.root);
     expect(r.stderr).toContain('records `main` as the remote');
     expect(r.stderr).toContain('now names `dev`');
     expect(r.stderr).toContain('git remote set-head origin -a');
@@ -127,6 +136,7 @@ describe.each(READERS)('%s prints the refusal baseRevision returns', (reader) =>
     const w = staleClone();
     git(w.root, 'symbolic-ref', '-d', 'refs/remotes/origin/HEAD');
     const r = run(w.root, reader);
+    expectWholeRefusal(r, w.root);
     expect(r.stderr).toContain('no merge target could be derived');
     expect(r.stderr).toContain('$GITHUB_BASE_REF');
     expect(r.stderr).not.toMatch(SHALLOW);
@@ -136,6 +146,7 @@ describe.each(READERS)('%s prints the refusal baseRevision returns', (reader) =>
   it('names the fetch for a merge target that resolves to no ref here', () => {
     const w = staleClone();
     const r = run(w.root, reader, { GITHUB_BASE_REF: 'release/9' });
+    expectWholeRefusal(r, w.root, { GITHUB_BASE_REF: 'release/9' });
     expect(r.stderr).toContain('`release/9` (from GITHUB_BASE_REF) resolves to no ref here');
     expect(r.stderr).toContain('git fetch origin release/9');
     expect(r.stderr).not.toMatch(SHALLOW);
@@ -145,6 +156,7 @@ describe.each(READERS)('%s prints the refusal baseRevision returns', (reader) =>
   it("names the payload's path when a push payload cannot be read", () => {
     const w = pushedToDev();
     const r = run(w.root, reader, w.event(undefined));
+    expectWholeRefusal(r, w.root, w.event(undefined));
     expect(r.stderr).toContain(`${join(w.box, 'event.json')} could not be read`);
     expect(r.stderr).not.toMatch(SHALLOW);
     expect(r.status).toBe(2);
@@ -153,6 +165,7 @@ describe.each(READERS)('%s prints the refusal baseRevision returns', (reader) =>
   it('names the field when a push payload names no before', () => {
     const w = pushedToDev();
     const r = run(w.root, reader, w.event({}));
+    expectWholeRefusal(r, w.root, w.event({}));
     expect(r.stderr).toContain('names no commit as `before`');
     expect(r.stderr).not.toMatch(SHALLOW);
     expect(r.status).toBe(2);
@@ -161,6 +174,7 @@ describe.each(READERS)('%s prints the refusal baseRevision returns', (reader) =>
   it('names the tip when a push moved its branch from one that is not an ancestor', () => {
     const w = pushedToDev();
     const r = run(w.root, reader, w.event({ before: w.stranger }));
+    expectWholeRefusal(r, w.root, w.event({ before: w.stranger }));
     expect(r.stderr).toContain(`moved its branch from ${w.stranger}, which is not an ancestor`);
     expect(r.stderr).toContain('the next ordinary push to this branch carries a `before`');
     expect(r.stderr).not.toContain('single-commit');
