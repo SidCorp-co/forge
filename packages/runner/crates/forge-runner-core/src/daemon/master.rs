@@ -971,8 +971,13 @@ impl Masters {
     }
 
     /// Count an exit into this project's run of early exits, answering its
-    /// place in it (0 where it was not early).
-    fn count_exit(&self, project_id: &str, lived: Option<Duration>, exit: &pane_exit::Exit) -> u32 {
+    /// place in it and the named run it ended, if any.
+    fn count_exit(
+        &self,
+        project_id: &str,
+        lived: Option<Duration>,
+        exit: &pane_exit::Exit,
+    ) -> pane_exit::Counted {
         let mut reg = self.0.lock().expect("masters poisoned");
         reg.exits
             .entry(project_id.to_string())
@@ -3611,6 +3616,16 @@ surface it reads",
             let order = std::sync::atomic::Ordering::Relaxed;
             carry.stood_down_told.store(carried, order);
         }
+        // A pane that exited before its brief reached it is reported by the
+        // sweep that reads it gone, with why, as a failed nudge is: a warning
+        // here too was the line sid-desk's journal carried once per placement
+        // beside the exit (ISS-1343 criterion 8).
+        Err(e) if recovery_ports::pane_presence(&name).await == recovery::MasterPresence::Gone => {
+            tracing::debug!(
+                "[master] {}: {name} exited before its brief reached it ({e}); the sweep that reads it gone says why",
+                resolved.slug
+            );
+        }
         Err(e) => tracing::warn!("[master] {}: could not brief {name}: {e}", resolved.slug),
     }
     match resume {
@@ -4094,10 +4109,8 @@ async fn supervise(
     }
     if read == recovery::MasterPresence::Alive {
         if let Some(n) = masters.outlived(project_id) {
-            tracing::info!(
-                "[master] {slug}: {name} has stayed up past {}s of its placement, so the condition of {n} early exits in a row has ended",
-                pane_exit::EARLY_EXIT.as_secs()
-            );
+            let line = pane_exit::ended(slug, &name, n, pane_exit::Ended::StayedUp);
+            tracing::info!("{line}");
         }
     }
     if read == recovery::MasterPresence::Gone {
@@ -4115,7 +4128,16 @@ async fn supervise(
                 ..
             }) => pane_exit::classify(path, *from),
         };
-        let in_a_row = masters.count_exit(project_id, lived, &exit);
+        let counted = masters.count_exit(project_id, lived, &exit);
+        if let Some(n) = counted.ended {
+            let how = match counted.in_a_row {
+                0 => pane_exit::Ended::NotEarly(lived),
+                _ => pane_exit::Ended::OtherReason,
+            };
+            let line = pane_exit::ended(slug, &name, n, how);
+            tracing::info!("{line}");
+        }
+        let in_a_row = counted.in_a_row;
         match pane_exit::journal(slug, &name, lived, &exit, in_a_row) {
             pane_exit::Say::Warn(line) => tracing::warn!("{line}"),
             pane_exit::Say::Error(line) => tracing::error!("{line}"),
@@ -11075,9 +11097,13 @@ mod servers_refusal_walk_tests {
         let _trust = ScopedVar::set("CLAUDE_CONFIG_DIR", claude_home.path());
         let stub_dir = crate::test_scratch::Scratch::new("sweepex-stub");
         let stub = stub_dir.join("claude");
+        let other = stub_dir.join("other");
         std::fs::write(
             &stub,
-            "#!/bin/sh\n[ \"$1\" = --probe ] && exit 0\nsleep 1\nprintf '\\033[31mError:\\033[8Gsettings\\033[17Gunreadable\\033[39m\\r\\r\\n'\n",
+            format!(
+                "#!/bin/sh\n[ \"$1\" = --probe ] && exit 0\nsleep 1\nif [ -e '{}' ]; then printf 'Error: other\\r\\n'; exit 1; fi\nprintf '\\033[31mError:\\033[8Gsettings\\033[17Gunreadable\\033[39m\\r\\r\\n'\n",
+                other.display()
+            ),
         )
         .expect("the stub is written");
         let mut perms = std::fs::metadata(&stub).expect("stub mode").permissions();
@@ -11099,6 +11125,13 @@ mod servers_refusal_walk_tests {
         );
         let _claude = crate::runner::process::testing::StubClaude::installed(&stub);
         let repo = crate::test_scratch::Scratch::new("sweepex-repo");
+        // The checkout declares `forge`, and core answers the close, so a
+        // warning per placement can only be one this change is about.
+        std::fs::write(
+            repo.join(".mcp.json"),
+            r#"{"mcpServers":{"forge":{"type":"http","url":"http://127.0.0.1:9/mcp"}}}"#,
+        )
+        .expect("the checkout's .mcp.json is written");
         let map = crate::test_scratch::Scratch::new("sweepex-map").at("control-tokens.json");
         let store = session_tokens::SessionTokens::at(map.to_path_buf());
         let runners: &'static str = Box::leak(
@@ -11122,6 +11155,7 @@ mod servers_refusal_walk_tests {
                     r#"{"sessionId":"sess-ex","name":"forge-master-sweepex","created":true}"#,
                 ),
                 (SERVERS, "200 OK", DECLARES),
+                ("/api/devices/me/master-session/close", "200 OK", "{}"),
             ]
             .into_boxed_slice(),
         );
@@ -11240,6 +11274,17 @@ mod servers_refusal_walk_tests {
             "criterion 12: a nudge to a pane already gone adds no warning of its own: {}",
             logged()
         );
+        let warned: Vec<String> = logged()
+            .lines()
+            .filter(|l| l.contains("WARN") && l.contains("[master]"))
+            .map(str::to_string)
+            .collect();
+        assert_eq!(
+            warned.len(),
+            1,
+            "criterion 8: over five placements of a pane that exits before its brief, the one master warning is the first exit's — not the brief, the nudge or anything else typed at a pane already gone: {warned:#?}"
+        );
+        assert!(warned[0].contains(why), "criterion 8: {warned:#?}");
         let dir = pane_exit::master_dir("sweepex").expect("the isolated config dir");
         match pane_exit::read(&dir) {
             pane_exit::Found::Record(r) => {
@@ -11256,6 +11301,47 @@ mod servers_refusal_walk_tests {
             }
             other => panic!("criterion 2: the exit is kept for `master status`: {other:?}"),
         }
+
+        // Criterion 9 through the sweep itself: the named condition is ended
+        // by an exit for another reason, and that is said once, before the new
+        // reason's own first warning.
+        let ended = "so the condition of 5 early exits in a row has ended";
+        assert_eq!(logged().matches("has ended").count(), 0, "{}", logged());
+        std::fs::write(&other, "").expect("the stub is told to fail another way");
+        a_sweep!();
+        assert!(until_gone().await, "the pane placed next exits another way");
+        a_sweep!();
+        assert_eq!(
+            lines_with("INFO", ended),
+            1,
+            "criterion 9: a named condition ended by a new reason is said to have ended: {}",
+            logged()
+        );
+        assert!(
+            logged().contains("has exited early for a different reason"),
+            "criterion 9: {}",
+            logged()
+        );
+        let other_why = "it exited having printed last: \"Error: other\"";
+        let at = |said: &str| logged().find(said);
+        assert!(
+            at(ended) < at(other_why) && at(other_why).is_some(),
+            "criterion 9: the end is said before the new reason's own first warning: {}",
+            logged()
+        );
+        assert_eq!(
+            lines_with("WARN", other_why),
+            1,
+            "criteria 8 and 9: the new reason starts a count of its own: {}",
+            logged()
+        );
+        a_sweep!();
+        assert_eq!(
+            logged().matches("has ended").count(),
+            1,
+            "criterion 9: and the end is said once: {}",
+            logged()
+        );
         let _ = terminal::kill(&pane).await;
     }
 
