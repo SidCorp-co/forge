@@ -147,92 +147,92 @@ export function RegisterScreen({
 
   return (
     <PeopleNames projectId={projectId}>
-    <div className="space-y-4">
-      <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="max-w-full overflow-x-auto">
-          <SegmentedControl
-            options={REGISTER_FILTERS.map((f) => ({ value: f, label: FILTER_LABEL[f] }))}
-            value={filter}
-            onChange={onFilter}
-          />
+      <div className="space-y-4">
+        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="max-w-full overflow-x-auto">
+            <SegmentedControl
+              options={REGISTER_FILTERS.map((f) => ({ value: f, label: FILTER_LABEL[f] }))}
+              value={filter}
+              onChange={onFilter}
+            />
+          </div>
+          {active.length > 1 ? (
+            <NativeSelect
+              aria-label="Ecosystem"
+              value={chosen?.ecosystem?.id ?? ""}
+              onChange={(e) => onEcosystem(e.target.value)}
+              options={active.map((m) => ({ value: m.ecosystem?.id ?? "", label: m.ecosystem?.name ?? "" }))}
+            />
+          ) : null}
         </div>
-        {active.length > 1 ? (
-          <NativeSelect
-            aria-label="Ecosystem"
-            value={chosen?.ecosystem?.id ?? ""}
-            onChange={(e) => onEcosystem(e.target.value)}
-            options={active.map((m) => ({ value: m.ecosystem?.id ?? "", label: m.ecosystem?.name ?? "" }))}
+
+        {"unknown" in parsed ? (
+          <RefusalNotice
+            title="Not a register filter"
+            refusals={[
+              {
+                code: "REGISTER_FILTER_UNKNOWN",
+                path: "?status",
+                detail: `“${parsed.unknown}” is not one of ${REGISTER_FILTERS.join(", ")}; pick one above.`,
+              },
+            ]}
           />
         ) : null}
+        {unknownEcosystem ? (
+          <RefusalNotice
+            title="Not one of this project's ecosystems"
+            refusals={[
+              {
+                code: "ECOSYSTEM_NOT_MEMBER",
+                path: "?ecosystem",
+                detail: `${slug} is not an active member of ecosystem ${rawEcosystem}.`,
+              },
+            ]}
+          />
+        ) : null}
+
+        {ecos.kind === "loading" ? <Loading what="this project's ecosystems" /> : null}
+        {ecos.kind === "unread" ? (
+          <UnreadNotice what="This project's ecosystems" refusals={ecos.refusals} />
+        ) : null}
+        {ecos.kind === "read" && active.length === 0 ? (
+          <p className="fg-caption">
+            {slug} is an active member of no ecosystem, so it has no channel. A steward invites it, and an admin of {slug} accepts.
+          </p>
+        ) : null}
+
+        {chosen && "filter" in parsed && !unknownEcosystem ? (
+          <section aria-label="Register" className="space-y-2">
+            <h2 className="fg-label text-fg">
+              {chosen.ecosystem?.name} · channel {chosen.ecosystem?.channel}
+            </h2>
+            {register.kind === "loading" ? <Loading what="the register" /> : null}
+            {register.kind === "unread" ? <UnreadNotice what="The register" refusals={register.refusals} /> : null}
+            {register.kind === "read" ? (
+              register.value.documents.length === 0 ? (
+                <p className="fg-caption">
+                  No {filter === "all" ? "" : `${FILTER_LABEL[filter].toLowerCase()} `}documents that {slug} sent or received.
+                </p>
+              ) : (
+                <>
+                  <ul className="space-y-2">
+                    {register.value.documents.map((row) => (
+                      <RegisterRowCard key={row.number} row={row} slug={slug} names={names} />
+                    ))}
+                  </ul>
+                  {register.value.total > register.value.returned ? (
+                    <p className="fg-caption">
+                      Showing {register.value.returned} of {register.value.total}; narrow the filter to see the rest.
+                    </p>
+                  ) : null}
+                </>
+              )
+            ) : null}
+          </section>
+        ) : null}
+
+        <Drafts projectId={projectId} slug={slug} />
       </div>
-
-      {"unknown" in parsed ? (
-        <RefusalNotice
-          title="Not a register filter"
-          refusals={[
-            {
-              code: "REGISTER_FILTER_UNKNOWN",
-              path: "?status",
-              detail: `“${parsed.unknown}” is not one of ${REGISTER_FILTERS.join(", ")}; pick one above.`,
-            },
-          ]}
-        />
-      ) : null}
-      {unknownEcosystem ? (
-        <RefusalNotice
-          title="Not one of this project's ecosystems"
-          refusals={[
-            {
-              code: "ECOSYSTEM_NOT_MEMBER",
-              path: "?ecosystem",
-              detail: `${slug} is not an active member of ecosystem ${rawEcosystem}.`,
-            },
-          ]}
-        />
-      ) : null}
-
-      {ecos.kind === "loading" ? <Loading what="this project's ecosystems" /> : null}
-      {ecos.kind === "unread" ? (
-        <UnreadNotice what="This project's ecosystems" refusals={ecos.refusals} />
-      ) : null}
-      {ecos.kind === "read" && active.length === 0 ? (
-        <p className="fg-caption">
-          {slug} is an active member of no ecosystem, so it has no channel. A steward invites it, and an admin of {slug} accepts.
-        </p>
-      ) : null}
-
-      {chosen && "filter" in parsed && !unknownEcosystem ? (
-        <section aria-label="Register" className="space-y-2">
-          <h2 className="fg-label text-fg">
-            {chosen.ecosystem?.name} · channel {chosen.ecosystem?.channel}
-          </h2>
-          {register.kind === "loading" ? <Loading what="the register" /> : null}
-          {register.kind === "unread" ? <UnreadNotice what="The register" refusals={register.refusals} /> : null}
-          {register.kind === "read" ? (
-            register.value.documents.length === 0 ? (
-              <p className="fg-caption">
-                No {filter === "all" ? "" : `${FILTER_LABEL[filter].toLowerCase()} `}documents that {slug} sent or received.
-              </p>
-            ) : (
-              <>
-                <ul className="space-y-2">
-                  {register.value.documents.map((row) => (
-                    <RegisterRowCard key={row.number} row={row} slug={slug} names={names} />
-                  ))}
-                </ul>
-                {register.value.total > register.value.returned ? (
-                  <p className="fg-caption">
-                    Showing {register.value.returned} of {register.value.total}; narrow the filter to see the rest.
-                  </p>
-                ) : null}
-              </>
-            )
-          ) : null}
-        </section>
-      ) : null}
-
-      <Drafts projectId={projectId} slug={slug} />
-    </div>
     </PeopleNames>
   );
 }
