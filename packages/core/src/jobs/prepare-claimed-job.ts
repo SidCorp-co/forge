@@ -15,9 +15,19 @@
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { devices, issueLabels, issues, jobs, labels, runners } from '../db/schema.js';
+import {
+  type LoadedContract,
+  pathsNamedIn,
+  renderContractContext,
+} from '../ecosystem/contract/run-context.js';
+import {
+  loadContractContext,
+  recordContractContext,
+} from '../ecosystem/contract/run-context-service.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
-import { buildPipelinePreambleStructured } from '../lib/chat-preamble.js';
+import { buildPipelinePreambleStructured, type PreambleBlock } from '../lib/chat-preamble.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import { estimateTokens } from '../lib/token-estimator.js';
 import { logger } from '../logger.js';
 import type { DispatchState, PolicyStateSource } from '../project-config/dispatch-policy.js';
 import { injectAfterInvocation, injectTurnLevelRules } from '../prompt/user.js';
@@ -151,6 +161,46 @@ export async function canNameItsAgent(deviceId: string): Promise<boolean> {
   return atLeastVersion(device?.v ?? null, AGENT_NAMING_MIN_RUNNER);
 }
 
+// cm:why a run is given the contracts its issue's named paths reach before it starts, since the paths it will change are not known yet; it asks forge_ecosystem action=context for paths it finds later
+async function contractsNamedBy(
+  job: typeof jobs.$inferSelect,
+  issue:
+    | { description: string | null; plan: string | null; acceptanceCriteria: string | null }
+    | undefined,
+): Promise<LoadedContract[]> {
+  if (!issue) return [];
+  const text = [issue.description, issue.plan, issue.acceptanceCriteria].filter(Boolean).join('\n');
+  try {
+    return await loadContractContext(job.projectId, pathsNamedIn(text));
+  } catch (err) {
+    logger.warn(
+      { err, jobId: job.id },
+      'prepare: contract context load failed, preparing without it',
+    );
+    return [];
+  }
+}
+
+function withContractContext(
+  preamble: { content: string; blocks: PreambleBlock[] },
+  contracts: readonly LoadedContract[],
+): { systemPrompt: string; blocks: PreambleBlock[] } {
+  const body = renderContractContext(contracts);
+  if (!body) return { systemPrompt: preamble.content, blocks: preamble.blocks };
+  return {
+    systemPrompt: `${preamble.content}\n\n${body}`,
+    blocks: [
+      ...preamble.blocks,
+      {
+        id: 'contract-context',
+        kind: 'system',
+        chars: body.length,
+        estTokens: estimateTokens(body),
+      },
+    ],
+  };
+}
+
 export async function prepareClaimedJob(args: {
   jobId: string;
   deviceId: string;
@@ -171,10 +221,28 @@ export async function prepareClaimedJob(args: {
 
   const deniedTools = await applyCarveout(job, args.policy.deniedTools);
 
-  const { content: systemPrompt, blocks } = await buildPipelinePreambleStructured(job.projectId, {
+  const preamble = await buildPipelinePreambleStructured(job.projectId, {
     step: job.type,
     policy: { ...args.policy, deniedTools },
   });
+
+  const [issueRow, issuePrefix] = await Promise.all([
+    job.issueId
+      ? db
+          .select({
+            issSeq: issues.issSeq,
+            description: issues.description,
+            plan: issues.plan,
+            acceptanceCriteria: issues.acceptanceCriteria,
+          })
+          .from(issues)
+          .where(eq(issues.id, job.issueId))
+          .limit(1)
+      : Promise.resolve([]),
+    activeIssuePrefix(job.projectId),
+  ]);
+  const contracts = await contractsNamedBy(job, issueRow[0]);
+  const { systemPrompt, blocks } = withContractContext(preamble, contracts);
 
   const payloadIn = (job.payload ?? {}) as { promptString?: unknown } & Record<string, unknown>;
   const basePromptString =
@@ -195,12 +263,6 @@ export async function prepareClaimedJob(args: {
 
   const model = args.policy.model;
 
-  const [issueRow, issuePrefix] = await Promise.all([
-    job.issueId
-      ? db.select({ issSeq: issues.issSeq }).from(issues).where(eq(issues.id, job.issueId)).limit(1)
-      : Promise.resolve([]),
-    activeIssuePrefix(job.projectId),
-  ]);
   const issueKey =
     issueRow[0]?.issSeq == null ? null : formatIssueRef(issuePrefix, issueRow[0].issSeq);
   await persistPromptSnapshot({
@@ -218,6 +280,7 @@ export async function prepareClaimedJob(args: {
   if (!agentSessionId) {
     throw new Error(`prepare: no agent session could be created for job ${job.id}`);
   }
+  if (contracts.length) await recordContractContext(agentSessionId, contracts, 'issue-paths');
 
   return {
     jobId: job.id,

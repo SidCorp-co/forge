@@ -1,5 +1,12 @@
+import { and, eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { db } from '../../db/client.js';
+import { agentSessions } from '../../db/schema.js';
+import {
+  loadContractContext,
+  recordContractContext,
+} from '../../ecosystem/contract/run-context-service.js';
 import { loadInterface, writeInterface } from '../../ecosystem/interface-service.js';
 import {
   listBuilderRunsAs,
@@ -9,6 +16,7 @@ import {
   readLinkAs,
   recordView,
 } from '../../ecosystem/link-read.js';
+import { repoPath } from '../../ecosystem/link-schema.js';
 import {
   createBuilderRun,
   createLink,
@@ -21,7 +29,15 @@ import { assertProjectAccess } from '../../lib/authz.js';
 import { namedRefusals, type SideCodes, sideOf } from './ecosystem-side.js';
 import type { ContextScopedMcpToolFactory, McpContext } from './lib.js';
 
-const READS = ['interface', 'links', 'link', 'builder_runs', 'builder_run', 'bus'] as const;
+const READS = [
+  'interface',
+  'links',
+  'link',
+  'builder_runs',
+  'builder_run',
+  'bus',
+  'context',
+] as const;
 const WRITES = [
   'interface_write',
   'link_create',
@@ -45,6 +61,10 @@ const BY_ACTION = {
   builder_runs: z.strictObject({}),
   builder_run: z.strictObject({ run: z.uuid() }),
   bus: z.strictObject({ ecosystem: z.uuid() }),
+  context: z.strictObject({
+    paths: z.array(repoPath()).min(1).max(200),
+    session: z.uuid().optional(),
+  }),
   interface_write: z.strictObject(envelope),
   link_create: z.strictObject(envelope),
   link_update: z.strictObject({ link: z.uuid(), ...envelope }),
@@ -59,6 +79,8 @@ const SHAPES: Record<Action, string> = {
   builder_runs: '{}',
   builder_run: '{ run: a builder run uuid }',
   bus: '{ ecosystem: an ecosystem uuid }',
+  context:
+    '{ paths: the repository paths this run touches, session?: the agent session to record the load on }',
   interface_write: '{ baseRevision: the revision read, or null for a first write, document }',
   link_create: '{ baseRevision: null, document: a link-v1 document }',
   link_update: '{ link, baseRevision, document: a link-v1 document }',
@@ -129,6 +151,15 @@ function recorded<W extends object>(outcome: RecordOutcome<W>): Answer {
   return { ...recordView(outcome.held), created: outcome.created, ...report };
 }
 
+async function sessionOf(projectId: string, id: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: agentSessions.id })
+    .from(agentSessions)
+    .where(and(eq(agentSessions.id, id), eq(agentSessions.projectId, projectId)))
+    .limit(1);
+  return Boolean(row);
+}
+
 type Args = Record<string, unknown> & { baseRevision?: number | null; document?: unknown };
 
 // cm:why every service here is the one its REST route calls, so the door changes and the rule does not: the writer is the token's own user and agency, never a field of the document
@@ -153,6 +184,20 @@ const HANDLERS: Record<
     return { runs, returned: runs.length };
   },
   builder_run: async (ctx, side, a) => readBuilderRunAs(ctx.principal.userId, side, String(a.run)),
+  context: async (ctx, side, a) => {
+    await assertProjectAccess(side, ctx.principal.userId, 'viewer');
+    const session = typeof a.session === 'string' ? a.session : null;
+    if (session && !(await sessionOf(side, session))) {
+      return one(
+        'ECOSYSTEM_RECORD_NOT_FOUND',
+        '/session',
+        `project ${side} holds no agent session ${session}`,
+      );
+    }
+    const loaded = await loadContractContext(side, a.paths as string[]);
+    if (session && loaded.length) await recordContractContext(session, loaded, 'agent');
+    return { loaded, returned: loaded.length, recorded: Boolean(session && loaded.length) };
+  },
   interface_write: async (ctx, side, a) => {
     await assertProjectAccess(side, ctx.principal.userId, 'admin');
     const outcome = await writeInterface({
@@ -191,6 +236,7 @@ const PATH_OF: Partial<Record<Action, string>> = {
   link_update: '/link',
   builder_run: '/run',
   builder_run_update: '/run',
+  context: '/session',
   bus: '/ecosystem',
 };
 
@@ -241,7 +287,7 @@ async function run(ctx: McpContext, raw: Record<string, unknown>): Promise<Answe
 
 const DESCRIPTION = [
   "Read and write a project's ecosystem records: its interface, the links its own code holds to the contracts it consumes, its builder runs, and an ecosystem's bus.",
-  'Reads: interface, links, link, builder_runs, builder_run, bus (an ecosystem as this token may see it; each link carries impact: whether the latest version of its contract version passes or breaks it, naming the fields, call sites and outside-contract surface it breaks).',
+  'Reads: interface, links, link, builder_runs, builder_run, context (the contracts a run touching { paths } calls: per link with a call site under a path, its guide notes and the measured diff from its pinned version to the latest; recorded on { session } when named), bus (an ecosystem as this token may see it; each link carries impact: whether the latest version of its contract version passes or breaks it, naming the fields, call sites and outside-contract surface it breaks).',
   "Writes take { baseRevision, document } as their REST route does: interface_write (an admin), link_create and link_update (link-v1, only by the consuming project's own agent), builder_run_create and builder_run_update (builder-run-v1; a join or a push opens the run itself, so a master updates the open one, and a finished run's answer carries report.declaredWithoutCallSite).",
   "The writer is the token, never a field of the document. A refusal comes back as { code, path, detail } under the service's own code, nothing written.",
   'For the channel, use forge_channel.',
@@ -262,6 +308,11 @@ const INPUT_SCHEMA: Record<string, unknown> = {
     link: prop('link, link_update: the link uuid.'),
     run: prop('builder_run, builder_run_update: the builder run uuid.'),
     ecosystem: prop('bus: the ecosystem uuid.'),
+    paths: prop('context: repository-relative paths the run touches.', {
+      type: 'array',
+      items: { type: 'string' },
+    }),
+    session: prop('context: the agent session uuid to record what was loaded on.'),
     baseRevision: prop('A write: the revision this was read at, or null for a first write.', {
       type: ['integer', 'null'],
     }),

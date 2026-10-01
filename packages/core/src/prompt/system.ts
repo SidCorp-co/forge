@@ -29,7 +29,8 @@ export type PreambleBlockId =
   | 'policy'
   | 'project-context'
   | 'forge-facts'
-  | 'state-block';
+  | 'state-block'
+  | 'contract-context';
 
 export interface PreambleBlock {
   id: PreambleBlockId;
