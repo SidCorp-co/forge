@@ -25,19 +25,29 @@ const badRequest = (details: unknown) =>
 export const issueArchiveRoutes = new Hono<{ Variables: AuthVars }>();
 issueArchiveRoutes.use('*', requireAuth(), assertEmailVerified());
 
+type ArchiveInput = {
+  in: {
+    param: z.input<typeof projectIdParamSchema>;
+    json: z.input<typeof issueArchiveRequestSchema>;
+  };
+  out: {
+    param: z.output<typeof projectIdParamSchema>;
+    json: z.output<typeof issueArchiveRequestSchema>;
+  };
+};
+
 function archiveHandler(direction: ArchiveDirection) {
-  return async (c: Context<{ Variables: AuthVars }>) => {
-    const { id: projectId } = projectIdParamSchema.parse(c.req.param());
-    const parsed = issueArchiveRequestSchema.safeParse(await c.req.json().catch(() => null));
-    if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
+  return async (c: Context<{ Variables: AuthVars }, string, ArchiveInput>) => {
+    const { id: projectId } = c.req.valid('param');
+    const body = c.req.valid('json');
     const access = await loadProjectAccess(projectId, c.get('userId'));
     assertProjectRole(access, 'admin', `${direction} requires project admin access`);
     try {
       const report = await runIssueArchive({
         projectId,
         direction,
-        filter: parsed.data.filter,
-        dryRun: parsed.data.dryRun === true,
+        filter: body.filter,
+        dryRun: body.dryRun === true,
         actor: restActor(c),
       });
       return c.json(report);
@@ -57,5 +67,19 @@ const validProjectId = zValidator('param', projectIdParamSchema, (r) => {
   if (!r.success) throw badRequest(z.flattenError(r.error));
 });
 
-issueArchiveRoutes.post('/:id/issues/archive', validProjectId, archiveHandler('archive'));
-issueArchiveRoutes.post('/:id/issues/unarchive', validProjectId, archiveHandler('unarchive'));
+const validRequest = zValidator('json', issueArchiveRequestSchema, (r) => {
+  if (!r.success) throw badRequest(z.flattenError(r.error));
+});
+
+issueArchiveRoutes.post(
+  '/:id/issues/archive',
+  validProjectId,
+  validRequest,
+  archiveHandler('archive'),
+);
+issueArchiveRoutes.post(
+  '/:id/issues/unarchive',
+  validProjectId,
+  validRequest,
+  archiveHandler('unarchive'),
+);
