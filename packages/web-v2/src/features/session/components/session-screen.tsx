@@ -107,17 +107,19 @@ export function SessionScreen({
   // Skip in embedded mode (ISS-664 plan Q3): a session glanced at inline from
   // the workspace reply panel should not rewrite the owner's last-visited /
   // ⌘K recents state.
+  const loadedId = session?.id;
+  const sessionTitle = session?.title;
   useEffect(() => {
     if (embedded) return;
-    if (!session || !projectSlug) return;
+    if (!loadedId || !projectSlug) return;
     pushRecent({
       kind: "session",
-      id: session.id,
-      label: session.title ?? `Session ${session.id.slice(0, 8)}`,
-      href: `/projects/${projectSlug}/agents/${session.id}`,
+      id: loadedId,
+      label: sessionTitle ?? `Session ${loadedId.slice(0, 8)}`,
+      href: `/projects/${projectSlug}/agents/${loadedId}`,
       icon: "agent",
     });
-  }, [embedded, session?.id, session?.title, projectSlug, pushRecent]);
+  }, [embedded, loadedId, sessionTitle, projectSlug, pushRecent]);
 
   function copyLink() {
     if (!projectSlug) return;

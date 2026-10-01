@@ -516,9 +516,6 @@
     "packages/web-v2/src/features/session/components/runner-picker.tsx": {
       "lint/style/noNonNullAssertion": 1
     },
-    "packages/web-v2/src/features/session/components/session-screen.tsx": {
-      "lint/correctness/useExhaustiveDependencies": 2
-    },
     "packages/web-v2/src/features/session/components/tool-card.tsx": {
       "lint/correctness/noUnusedFunctionParameters": 1,
       "lint/suspicious/noArrayIndexKey": 4

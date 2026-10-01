@@ -162,21 +162,56 @@ describe('the binding rules, read file by file', () => {
     ['packages/core/src/x.ts', 'await bindExisting(projectId, connId);', 'binding-write-doors'],
     ['packages/core/src/x.ts', 'type I = IntegrationBindingCreateInput;', 'binding-write-doors'],
     ['packages/web-v2/src/x.ts', 'useBindExistingConnection(projectId);', 'binding-write-doors'],
-    ['packages/core/src/x.ts', 'await db.insert(integrationBindings).values(row);', 'binding-row-inserts'],
-    ['packages/core/src/x.ts', 'sql`INSERT INTO integration_bindings (id) VALUES ($1)`', 'binding-row-inserts'],
-    ['packages/core/src/integrations/store.ts', 'await db.insert(integrationBindings).values(row);', 'binding-row-inserts'],
-    ['packages/core/src/x.ts', 'await db.update(integrationBindings).set({ active: false });', 'binding-row-updates'],
-    ['packages/core/src/x.ts', 'sql`UPDATE integration_bindings SET active = false`', 'binding-row-updates'],
+    [
+      'packages/core/src/x.ts',
+      'await db.insert(integrationBindings).values(row);',
+      'binding-row-inserts',
+    ],
+    [
+      'packages/core/src/x.ts',
+      'sql`INSERT INTO integration_bindings (id) VALUES ($1)`',
+      'binding-row-inserts',
+    ],
+    [
+      'packages/core/src/integrations/store.ts',
+      'await db.insert(integrationBindings).values(row);',
+      'binding-row-inserts',
+    ],
+    [
+      'packages/core/src/x.ts',
+      'await db.update(integrationBindings).set({ active: false });',
+      'binding-row-updates',
+    ],
+    [
+      'packages/core/src/x.ts',
+      'sql`UPDATE integration_bindings SET active = false`',
+      'binding-row-updates',
+    ],
   ])('%s: %s → %s', (file, source, rule) => {
     expect(rulesIn(file, source)).toContain(rule);
   });
 
   it.each([
-    ['packages/core/src/project-config/binding-store.ts', 'await db.insert(integrationBindings).values(row);'],
-    ['packages/core/tests/helpers/seed-binding.ts', 'sql`INSERT INTO integration_bindings (id) VALUES ($1)`'],
-    ['packages/core/src/project-config/binding-store.ts', 'await db.update(integrationBindings).set(next);'],
-    ['packages/core/src/integrations/store.ts', 'await db.update(integrationBindings).set({ active: false });'],
-    ['packages/core/tests/integration/x.test.ts', 'sql`UPDATE integration_bindings SET active = false`'],
+    [
+      'packages/core/src/project-config/binding-store.ts',
+      'await db.insert(integrationBindings).values(row);',
+    ],
+    [
+      'packages/core/tests/helpers/seed-binding.ts',
+      'sql`INSERT INTO integration_bindings (id) VALUES ($1)`',
+    ],
+    [
+      'packages/core/src/project-config/binding-store.ts',
+      'await db.update(integrationBindings).set(next);',
+    ],
+    [
+      'packages/core/src/integrations/store.ts',
+      'await db.update(integrationBindings).set({ active: false });',
+    ],
+    [
+      'packages/core/tests/integration/x.test.ts',
+      'sql`UPDATE integration_bindings SET active = false`',
+    ],
     ['packages/core/src/x.ts', 'await writeBinding(projectId, bindingId, doc);'],
   ])('%s: %s stays green', (file, source) => {
     expect(rulesIn(file, source)).toEqual([]);
