@@ -90,6 +90,18 @@ export async function inbox(projectId: string): Promise<InboxEntry[]> {
   });
 }
 
+// cm:why unanswered is the work a side's master owes: published to it, owing a reply, not yet answered by a published one, on no thread a person holds, and with no reply of its own already waiting at the approve gate, where the next act is a person's
+export async function unanswered(projectId: string): Promise<InboxEntry[]> {
+  const owed = (await inbox(projectId)).filter((e) => e.owesReply && !e.answered && !e.hold);
+  if (owed.length === 0) return [];
+  const atGate = new Set(
+    (await documentsWhere(db, { from: projectId }))
+      .filter((r) => r.state === 'submitted' && r.inReplyTo)
+      .map((r) => r.inReplyTo),
+  );
+  return owed.filter((e) => !atGate.has(e.document.number ?? null));
+}
+
 export async function threadAs(
   projectId: string,
   number: string,

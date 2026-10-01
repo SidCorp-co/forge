@@ -30,6 +30,7 @@ pub mod job_exit;
 pub mod job_unheard;
 pub mod master;
 pub mod master_exit;
+pub mod master_inbox;
 pub mod master_limit;
 pub mod master_skill;
 pub mod pane_exit;
@@ -1269,16 +1270,19 @@ pub async fn run(
                             }
                         });
                     }
-                    "master.wake" => {
-                        let project_id = frame
-                            .data
-                            .get("projectId")
-                            .and_then(|v| v.as_str())
-                            .map(str::to_string);
-                        if wake_tx.try_send(master::Wake::Core { project_id }).is_err() {
-                            tracing::debug!("[ws] master.wake coalesced — a sweep is already pending");
+                    "master.wake" => match master::Wake::of_frame(&frame.data) {
+                        Ok(wake) => {
+                            if wake_tx.try_send(wake).is_err() {
+                                tracing::debug!("[ws] master.wake coalesced — a sweep is already pending");
+                            }
                         }
-                    }
+                        // A source this box cannot read is said, never folded into a sweep it
+                        // did not ask for; the next poll reads the same state either way.
+                        Err(why) => tracing::warn!(
+                            "[ws] master.wake refused: {why} — no sweep is started for it (frame: {})",
+                            frame.data
+                        ),
+                    },
                     "ws.connected" => {
                         if wake_tx.try_send(master::Wake::Reconnect).is_err() {
                             tracing::debug!("[ws] catch-up read coalesced — a sweep is already pending");

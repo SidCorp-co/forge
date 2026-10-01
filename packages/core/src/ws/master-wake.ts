@@ -14,6 +14,10 @@ export const MASTER_WAKE_STATUSES: readonly IssueStatus[] = [
   'awaiting_release',
 ] as const;
 
+// cm:why a wake names what fired it, and the runner (`daemon/master.rs:WakeSource`) refuses one it does not know by name, so a source added here without its reader is a loud line on the box, never a dropped signal
+export const MASTER_WAKE_SOURCES = ['issue', 'answer', 'channel'] as const;
+export type MasterWakeSource = (typeof MASTER_WAKE_SOURCES)[number];
+
 export function isMasterWakeStatus(status: IssueStatus): boolean {
   return MASTER_WAKE_STATUSES.includes(status);
 }
@@ -40,6 +44,7 @@ export async function wakeMastersForProject(args: {
 }): Promise<{ boxes: number; delivered: number }> {
   return publishWake(args.projectId, {
     projectId: args.projectId,
+    source: 'issue',
     issueId: args.issueId,
     status: args.status,
     // A pointer, not the charter itself (ISS-1313) — a reader taking only `projectId` is unaffected.
@@ -57,6 +62,7 @@ export async function wakeMastersForAnswer(args: {
 }): Promise<{ boxes: number; delivered: number }> {
   return publishWake(args.projectId, {
     projectId: args.projectId,
+    source: 'answer',
     issueId: null,
     questionId: args.questionId,
   });
@@ -70,7 +76,7 @@ export async function wakeMastersForChannel(
 
 async function publishWake(
   projectId: string,
-  data: Record<string, unknown>,
+  data: { projectId: string; source: MasterWakeSource } & Record<string, unknown>,
 ): Promise<{ boxes: number; delivered: number }> {
   try {
     const deviceIds = await devicesServing(projectId);

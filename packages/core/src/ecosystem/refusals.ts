@@ -25,6 +25,7 @@ export type EcosystemRefusalCode =
   | 'MEMBERSHIP_REASON_REQUIRED'
   | 'MEMBERSHIP_IN_USE'
   | ChannelRefusalCode
+  | EcosystemToolRefusalCode
   | ContractRefusalCode
   | LinkRefusalCode;
 
@@ -86,7 +87,19 @@ export type ChannelRefusalCode =
   | 'CHANNEL_NOT_A_PARTY'
   | 'CHANNEL_TURN_UNBOUND'
   | 'CHANNEL_ARGUMENT_INVALID'
-  | 'CHANNEL_ECOSYSTEM_AMBIGUOUS';
+  | 'CHANNEL_ECOSYSTEM_AMBIGUOUS'
+  | 'CHANNEL_PROJECT_UNNAMED'
+  | 'CHANNEL_PROJECT_OUTSIDE_TOKEN';
+
+/** What `forge_ecosystem` refuses before a service is asked; everything after is the service's own code. */
+export type EcosystemToolRefusalCode =
+  | 'ECOSYSTEM_ARGUMENT_INVALID'
+  | 'ECOSYSTEM_TURN_UNBOUND'
+  | 'ECOSYSTEM_PROJECT_UNNAMED'
+  | 'ECOSYSTEM_PROJECT_OUTSIDE_TOKEN'
+  | 'ECOSYSTEM_WRITE_NOT_AUTHORISED'
+  | 'ECOSYSTEM_NOT_AUTHORISED'
+  | 'ECOSYSTEM_RECORD_NOT_FOUND';
 
 export interface EcosystemRefusal {
   code: EcosystemRefusalCode | ApiRefusal['code'];

@@ -7,6 +7,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { HTTPException } from 'hono/http-exception';
 import pkg from '../../package.json' with { type: 'json' };
+import { forgeChannelTool } from '../assistant/tools/forge-channel-tool.js';
 import { type AuditResultCode, digestArgs, writeMcpAudit } from '../auth/mcp-audit.js';
 import { runWithPatScope } from '../auth/pat-scope.js';
 import { assertUnfenced } from '../lib/authz.js';
@@ -28,6 +29,7 @@ import { forgeCollaboratorsTool } from './tools/forge-collaborators.js';
 import { forgeCommentsTool } from './tools/forge-comments.js';
 import { forgeConfigTool } from './tools/forge-config.js';
 import { forgeCoolifyDeployTool } from './tools/forge-coolify-deploy.js';
+import { forgeEcosystemTool } from './tools/forge-ecosystem.js';
 import { forgeFeedbackTool } from './tools/forge-feedback.js';
 import { forgeGithubTool } from './tools/forge-github.js';
 import { forgeGoogleSheetsTool } from './tools/forge-google-sheets.js';
@@ -195,6 +197,10 @@ export function mcpTools(ctx: McpContext): McpTool[] {
     // ISS-1247 — `forge_sentry` is the read side of the Sentry integration, on demand.
     forgeSentryTool(ctx),
     forgeGuideTool(ctx),
+    // ISS-38 — the ecosystem channel, interface and links reach a master and its runs, through the
+    // one channel implementation chat already serves.
+    forgeChannelTool(ctx),
+    forgeEcosystemTool(ctx),
   ];
   for (const tool of tools) {
     assertToolDeclaresGrant(tool);

@@ -95,6 +95,7 @@ describe('master.wake — who it reaches', () => {
         event: 'master.wake',
         data: {
           projectId: 'p1',
+          source: 'issue',
           issueId: 'i1',
           status: 'open',
           charter: '/api/projects/p1/master-charter',
@@ -104,7 +105,7 @@ describe('master.wake — who it reaches', () => {
     expect(result).toEqual({ boxes: 2, delivered: 2 });
   });
 
-  it('carries the three keys it carried before, plus exactly one new key, charter (ISS-1313 criterion 15)', async () => {
+  it('carries the three keys it carried before, plus charter (ISS-1313 criterion 15) and the source that fired it (ISS-38)', async () => {
     servedBy(['dev-a']);
     for (const status of ['open', 'draft', 'awaiting_release'] as const) {
       publish.mockClear();
@@ -113,6 +114,7 @@ describe('master.wake — who it reaches', () => {
         'charter',
         'issueId',
         'projectId',
+        'source',
         'status',
       ]);
     }
@@ -215,6 +217,7 @@ describe('an answer as a wake trigger', () => {
       publishedData(0).issueId,
       'an answer has no issue behind it, and the frame carries the null through rather than inventing one',
     ).toBeNull();
+    expect(publishedData(0).source).toBe('answer');
   });
 
   it('is silent rather than throwing when the lookup fails', async () => {

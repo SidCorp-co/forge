@@ -8,6 +8,7 @@ export const CHANNEL_READS = [
   'register',
   'inbox',
   'outbox',
+  'unanswered',
   'read',
   'thread',
   'contracts',
@@ -46,6 +47,7 @@ const BY_ACTION = {
   }),
   inbox: z.strictObject({}),
   outbox: z.strictObject({}),
+  unanswered: z.strictObject({}),
   read: z.strictObject({ ref }),
   thread: z.strictObject({ thread: number }),
   contracts: z.strictObject({ project: z.uuid().optional() }),
@@ -90,6 +92,7 @@ const SHAPES: Record<ChannelAction, string> = {
   register: '{ ecosystem?, status?, type?, limit? }',
   inbox: '{}',
   outbox: '{}',
+  unanswered: '{}',
   read: '{ ref: a document uuid or number }',
   thread: '{ thread: the number that opened it }',
   contracts: '{ project?: a project uuid, this one when omitted }',
@@ -135,6 +138,9 @@ export const CHANNEL_INPUT_SCHEMA: Record<string, unknown> = {
   type: 'object',
   properties: {
     action: { type: 'string', enum: [...CHANNEL_ACTIONS] },
+    projectId: prop(
+      'The side to act for; a token bound to one project, or the X-Forge-Project-Slug header, names it when omitted.',
+    ),
     ecosystem: prop('Ecosystem uuid; omit when this project is in one.'),
     ref: prop('A document uuid, or its number such as FP-CN-3.'),
     thread: prop('The number of the document that opened the conversation.'),
