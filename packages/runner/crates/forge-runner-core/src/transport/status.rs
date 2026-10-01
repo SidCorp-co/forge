@@ -315,11 +315,15 @@ mod tests {
     /// `status` is the implementation of the rule and `fake_core` is a test
     /// double that writes wire responses, where `HTTP/1.1 {status}` is the
     /// protocol rather than a refusal a person reads.
-    static SOURCES: std::sync::LazyLock<[(&str, &str); 21]> = std::sync::LazyLock::new(|| {
+    static SOURCES: std::sync::LazyLock<[(&str, &str); 22]> = std::sync::LazyLock::new(|| {
         [
             (
                 "admissible.rs",
                 crate::test_scratch::lf(include_str!("admissible.rs")),
+            ),
+            (
+                "channel_inbox.rs",
+                crate::test_scratch::lf(include_str!("channel_inbox.rs")),
             ),
             (
                 "agent_sessions.rs",

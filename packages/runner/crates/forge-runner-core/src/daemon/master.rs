@@ -31,6 +31,7 @@ use crate::daemon::held_report;
 use crate::daemon::job_exit;
 use crate::daemon::job_unheard;
 use crate::daemon::master_exit::{self, Verdict};
+use crate::daemon::master_inbox::{self, WakeSource};
 use crate::daemon::master_limit;
 use crate::daemon::pane_exit;
 use crate::daemon::pool_jobs::{self, JobPanes, Records};
@@ -46,6 +47,7 @@ use crate::runner::close_loop;
 use crate::runner::ledger::{Ledger, MasterAuthority, MasterStanding, Run};
 use crate::runner::terminate;
 use crate::transport::admissible::{self, AdmissibleIssue, DISPATCH_GATING_KIND};
+use crate::transport::channel_inbox::{self, UnansweredDocument};
 use crate::transport::{master as master_api, mcp_servers, runners, CoreClient};
 use tokio::sync::mpsc;
 
@@ -149,6 +151,9 @@ struct Registry {
     /// Consecutive early exits of each project's pane for one reason, which
     /// decide only what the journal says (ISS-1343).
     exits: HashMap<String, pane_exit::Tally>,
+    /// Why each project's channel inbox could not be read on the last sweep,
+    /// so a core that does not answer it is said once and not every pass.
+    inbox_unread: HashMap<String, String>,
 }
 
 /// One pane this box placed: when, and where its output begins.
@@ -711,8 +716,12 @@ fn held_by_limit(
 /// A pass the account refused is one the master still owes itself, and the
 /// runs that pass dispatched hold their issues out of the admissible set while
 /// they stand — so an empty set is no reason to leave a refused master unasked.
-fn asked_this_sweep(admissible: &[AdmissibleIssue], held: Option<&master_limit::Refusal>) -> bool {
-    !admissible.is_empty() || held.is_some()
+fn asked_this_sweep(
+    admissible: &[AdmissibleIssue],
+    inbox: &[UnansweredDocument],
+    held: Option<&master_limit::Refusal>,
+) -> bool {
+    !admissible.is_empty() || !inbox.is_empty() || held.is_some()
 }
 
 impl Masters {
@@ -838,6 +847,16 @@ impl Masters {
             reg.unanswered.insert(project_id.to_string())
         } else {
             reg.unanswered.remove(project_id)
+        }
+    }
+
+    /// Remember why the inbox read failed (`None`: it succeeded), answering
+    /// whether that is news since the last sweep.
+    fn note_inbox_read(&self, project_id: &str, failed: Option<String>) -> bool {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        match failed {
+            Some(why) => reg.inbox_unread.insert(project_id.to_string(), why.clone()) != Some(why),
+            None => reg.inbox_unread.remove(project_id).is_some(),
         }
     }
 
@@ -1037,20 +1056,38 @@ impl Masters {
 
 #[derive(Debug, Clone)]
 pub enum Wake {
-    /// Core published `master.wake` on this box's device room (ISS-933).
-    Core { project_id: Option<String> },
+    /// Core published `master.wake` on this box's device room (ISS-933), for
+    /// the reason `source` names (ISS-38).
+    Core {
+        project_id: Option<String>,
+        source: WakeSource,
+    },
     /// This box's websocket came back up, so anything published while it was
     /// down is gone — `rooms.ts:publish` has no buffer and no replay.
     Reconnect,
 }
 
 impl Wake {
+    /// The wake a `master.wake` frame's data is, or why it is refused.
+    pub fn of_frame(data: &serde_json::Value) -> Result<Self, String> {
+        let source = WakeSource::of_frame(data)?;
+        let project_id = data
+            .get("projectId")
+            .and_then(|v| v.as_str())
+            .map(str::to_string);
+        Ok(Wake::Core { project_id, source })
+    }
+
     fn describe(&self) -> String {
         match self {
             Wake::Core {
                 project_id: Some(p),
-            } => format!("core, project {p}"),
-            Wake::Core { project_id: None } => "core".into(),
+                source,
+            } => format!("core, {}, project {p}", source.label()),
+            Wake::Core {
+                project_id: None,
+                source,
+            } => format!("core, {}", source.label()),
             Wake::Reconnect => "websocket reconnected — catch-up read".into(),
         }
     }
@@ -1303,7 +1340,8 @@ async fn sweep(
         let admissible = admissible::admissible(client, Some(&runner.project_id))
             .await
             .unwrap_or_default();
-        let placement = placement_for(&admissible);
+        let inbox = read_inbox(client, masters, &runner.project_id, &runner.slug).await;
+        let placement = placement_for(&admissible, &inbox);
         if placement == Placement::AdoptOnly {
             if retire_if_idle(
                 client,
@@ -1324,7 +1362,7 @@ async fn sweep(
         let resolved = match resolve_repo(&served, cfg, &runner.project_id) {
             Ok(r) => r,
             Err(slug) => {
-                if !admissible.is_empty() {
+                if !admissible.is_empty() || !inbox.is_empty() {
                     tracing::error!(
                         "[master] {slug} has claimable work but no repo path on this box — no master will run for it; bind it or set the runner's repo_path"
                     );
@@ -1552,7 +1590,7 @@ async fn sweep(
             reported.as_ref(),
         );
 
-        if !asked_this_sweep(&admissible, held.as_ref()) {
+        if !asked_this_sweep(&admissible, &inbox, held.as_ref()) {
             continue;
         }
 
@@ -1564,13 +1602,15 @@ async fn sweep(
             continue;
         }
 
+        let digest = work_digest(&admissible).wrapping_add(master_inbox::inbox_digest(&inbox));
         if masters.claim_nudge(
             &runner.project_id,
-            work_digest(&admissible),
+            digest,
             reported.as_ref(),
             held.is_some(),
         ) {
-            nudge_master(masters, &runner.project_id, &resolved.slug, held.as_ref()).await;
+            let slug = &resolved.slug;
+            nudge_master(masters, &runner.project_id, slug, held.as_ref(), &inbox).await;
         }
     }
 
@@ -2775,8 +2815,11 @@ pub(crate) enum Placement {
     AdoptOnly,
 }
 
-pub(crate) fn placement_for(admissible: &[AdmissibleIssue]) -> Placement {
-    if admissible.is_empty() {
+pub(crate) fn placement_for(
+    admissible: &[AdmissibleIssue],
+    inbox: &[UnansweredDocument],
+) -> Placement {
+    if admissible.is_empty() && inbox.is_empty() {
         Placement::AdoptOnly
     } else {
         Placement::AdoptOrStart
@@ -3897,8 +3940,41 @@ fn remember(masters: &Arc<Masters>, project_id: &str, session: &master_api::Mast
     );
 }
 
-fn nudge() -> String {
-    "Pass. Hand it to the dispatch skill, and say what you dispatched and why you did not dispatch the rest.".into()
+fn nudge(inbox: &[UnansweredDocument]) -> String {
+    format!(
+        "Pass. Hand it to the dispatch skill, and say what you dispatched and why you did not dispatch the rest.{}",
+        master_inbox::inbox_line(inbox)
+    )
+}
+
+/// What this project's channel owes, as core answers it this sweep.
+///
+/// A read that fails is said once per cause and counts as nothing owed for this
+/// pass only: the issues the sweep already read still decide it, and the next
+/// sweep reads again. A failure is never cached as an empty inbox.
+async fn read_inbox(
+    client: &CoreClient,
+    masters: &Arc<Masters>,
+    project_id: &str,
+    slug: &str,
+) -> Vec<UnansweredDocument> {
+    match channel_inbox::unanswered(client, project_id).await {
+        Ok(owed) => {
+            if masters.note_inbox_read(project_id, None) {
+                tracing::info!("[master] {slug}: the channel inbox reads again");
+            }
+            owed
+        }
+        Err(e) => {
+            let why = e.to_string();
+            if masters.note_inbox_read(project_id, Some(why.clone())) {
+                tracing::warn!(
+                    "[master] {slug}: cannot read what the ecosystem channel owes ({why}) — this pass is decided by its issues alone, and a document waiting for a reply is not seen until the read succeeds"
+                );
+            }
+            Vec::new()
+        }
+    }
 }
 
 /// Paste one nudge into this project's master. `held` is the capacity refusal
@@ -3911,15 +3987,22 @@ async fn nudge_master(
     project_id: &str,
     slug: &str,
     held: Option<&master_limit::Refusal>,
+    inbox: &[UnansweredDocument],
 ) {
     let Some((_, name)) = masters.get(project_id) else {
         return;
     };
     match held {
         Some(refusal) => tracing::warn!("{}", limit_reask_line(slug, &name, refusal)),
-        None => tracing::info!("[master] {slug}: admissible work — nudging {name}"),
+        None if inbox.is_empty() => {
+            tracing::info!("[master] {slug}: admissible work — nudging {name}")
+        }
+        None => tracing::info!(
+            "[master] {slug}: admissible work, {} channel document(s) owed a reply — nudging {name}",
+            inbox.len()
+        ),
     }
-    if let Err(e) = terminal::send_line(&name, &nudge()).await {
+    if let Err(e) = terminal::send_line(&name, &nudge(inbox)).await {
         // A pane that exited before the nudge reached it is reported by the
         // sweep that reads it gone, with why; a warning here too would be the
         // second line per placement ISS-1343 counted on sid-desk.
@@ -4741,12 +4824,14 @@ mod tests {
 
         assert!(tx
             .try_send(Wake::Core {
-                project_id: Some("p1".into())
+                project_id: Some("p1".into()),
+                source: WakeSource::Issue,
             })
             .is_ok());
         assert!(
             tx.try_send(Wake::Core {
-                project_id: Some("p2".into())
+                project_id: Some("p2".into()),
+                source: WakeSource::Channel,
             })
             .is_err(),
             "a second wake while one is pending must be dropped, not queued"
@@ -4765,11 +4850,15 @@ mod tests {
 
     #[test]
     fn a_wake_says_which_trigger_fired() {
-        assert!(Wake::Core {
-            project_id: Some("forge-dev".into())
+        let channel = Wake::Core {
+            project_id: Some("forge-dev".into()),
+            source: WakeSource::Channel,
         }
-        .describe()
-        .contains("forge-dev"));
+        .describe();
+        assert!(
+            channel.contains("forge-dev") && channel.contains("channel"),
+            "{channel}"
+        );
         assert!(Wake::Reconnect.describe().contains("catch-up"));
     }
 
@@ -7404,9 +7493,67 @@ mod give_back_tests {
             None,
             None,
         );
-        assert!(asked_this_sweep(&[], held.as_ref()));
-        assert!(!asked_this_sweep(&[], None));
-        assert!(asked_this_sweep(&[admiss("i1")], None));
+        assert!(asked_this_sweep(&[], &[], held.as_ref()));
+        assert!(!asked_this_sweep(&[], &[], None));
+        assert!(asked_this_sweep(&[admiss("i1")], &[], None));
+    }
+
+    fn owed(id: &str) -> UnansweredDocument {
+        serde_json::from_value(serde_json::json!({ "id": id, "number": "FP-CR-1" }))
+            .expect("inbox fixture")
+    }
+
+    #[test]
+    fn a_channel_document_is_work_with_an_empty_backlog() {
+        assert!(
+            asked_this_sweep(&[], &[owed("d1")], None),
+            "a document owed a reply asks the master even when no issue is admissible (ISS-38)"
+        );
+        assert_eq!(
+            placement_for(&[], &[owed("d1")]),
+            Placement::AdoptOrStart,
+            "a project whose channel owes a reply may have a master started for it"
+        );
+    }
+
+    #[test]
+    fn a_channel_document_moves_the_digest_so_the_master_is_told_of_it() {
+        let issues = work_digest(&[admiss("i1")]);
+        let with_doc = issues.wrapping_add(master_inbox::inbox_digest(&[owed("d1")]));
+        assert_ne!(issues, with_doc);
+        assert_eq!(issues, issues.wrapping_add(master_inbox::inbox_digest(&[])));
+    }
+
+    #[test]
+    fn the_sweep_reads_the_inbox_before_it_decides_placement_or_the_nudge() {
+        let body = THIS_SOURCE
+            .split("\n#[cfg(test)]")
+            .next()
+            .and_then(|p| p.split("\nasync fn sweep(").nth(1))
+            .and_then(|r| r.split("\nasync fn ").next())
+            .expect("sweep must be findable");
+        let read = body
+            .find("read_inbox(client,")
+            .expect("the sweep reads the inbox");
+        let place = body.find("placement_for(&admissible, &inbox)").unwrap();
+        let ask = body.find("asked_this_sweep(&admissible, &inbox,").unwrap();
+        let nudge = body.find("nudge_master(masters,").unwrap();
+        assert!(read < place && place < ask && ask < nudge);
+        assert!(body[ask..nudge].contains("inbox_digest(&inbox)"));
+    }
+
+    #[test]
+    fn a_wake_keeps_the_source_core_named_and_refuses_one_it_does_not_know() {
+        let wake = Wake::of_frame(&serde_json::json!({ "projectId": "p1", "source": "channel" }))
+            .expect("a channel wake is read");
+        assert!(matches!(
+            wake,
+            Wake::Core { project_id: Some(ref p), source: WakeSource::Channel } if p == "p1"
+        ));
+        let refused =
+            Wake::of_frame(&serde_json::json!({ "projectId": "p1", "source": "mystery" }))
+                .expect_err("an unknown source is refused, not read as a backlog wake");
+        assert!(refused.contains("mystery"), "{refused}");
     }
 
     #[test]
@@ -7421,7 +7568,7 @@ mod give_back_tests {
             .find("held_by_limit(")
             .expect("the sweep reads the hold");
         let gate = body
-            .find("if !asked_this_sweep(&admissible, held.as_ref()) {")
+            .find("if !asked_this_sweep(&admissible, &inbox, held.as_ref()) {")
             .expect("the empty-set skip is the one that also reads the hold");
         let nudge = body.find("nudge_master(masters,").unwrap();
         assert!(read < gate && gate < nudge);
@@ -7492,7 +7639,7 @@ mod give_back_tests {
         assert_eq!(held.reason, master_limit::Reason::UsageLimit);
         assert!(nudge_due(last_nudge, 7, Instant::now(), since, true));
         assert!(
-            asked_this_sweep(&[], Some(&held)),
+            asked_this_sweep(&[], &[], Some(&held)),
             "its two runs still held ISS-254 and ISS-297 out of the set"
         );
 
@@ -8608,12 +8755,12 @@ mod unplaced_tests {
     #[test]
     fn an_empty_pool_still_places_a_pane_that_already_exists() {
         assert_eq!(
-            placement_for(&[]),
+            placement_for(&[], &[]),
             Placement::AdoptOnly,
             "a project with nothing claimable still has its live pane adopted and re-registered, or core reaps the row that pane's capability names"
         );
         assert_eq!(
-            placement_for(&[issue("a")]),
+            placement_for(&[issue("a")], &[]),
             Placement::AdoptOrStart,
             "a project with work may have a master started for it"
         );
@@ -8623,7 +8770,7 @@ mod unplaced_tests {
     fn the_empty_pool_branch_no_longer_skips_the_registration() {
         let body = sweep_body();
         assert!(
-            body.contains("placement_for(&admissible)"),
+            body.contains("placement_for(&admissible, &inbox)"),
             "the sweep decides placement from the pool through the named function, so the decision is a thing a test can call"
         );
         assert!(
