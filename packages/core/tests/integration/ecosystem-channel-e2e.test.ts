@@ -294,14 +294,19 @@ describe('every document records who wrote it, and through what', () => {
     expect(made.document.authoredBy).toEqual({ kind: 'person', id: w.user.platform, via });
   });
 
-  it('refuses a viewer, and a master writing for a project it is fenced from', async () => {
-    expect(
-      (await say('viewer', 'POST', `${plugin()}/drafts`, acknowledgement(w, 'FP-CN-1'))).status,
-    ).toBe(403);
-    expect(
-      (await say('masterForge', 'POST', `${plugin()}/drafts`, acknowledgement(w, 'FP-CN-1')))
-        .status,
-    ).toBe(403);
+  it('refuses a viewer, and a master writing for a project it is fenced from, each by name', async () => {
+    const viewer = await say('viewer', 'POST', `${plugin()}/drafts`, acknowledgement(w, 'FP-CN-1'));
+    expect([viewer.status, viewer.json.code]).toEqual([403, 'CHANNEL_WRITE_NOT_AUTHORISED']);
+    expect(viewer.json.details.refusals).toEqual([
+      expect.objectContaining({ code: 'CHANNEL_WRITE_NOT_AUTHORISED', path: '/from' }),
+    ]);
+    const fenced = await say(
+      'masterForge',
+      'POST',
+      `${plugin()}/drafts`,
+      acknowledgement(w, 'FP-CN-1'),
+    );
+    expect([fenced.status, fenced.json.code]).toEqual([403, 'CHANNEL_NO_ROLE']);
   });
 });
 

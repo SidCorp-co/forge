@@ -1,5 +1,6 @@
 import { db } from '../db/client.js';
 import { notFound } from './access.js';
+import { type RegisterRow, rowsOf } from './channel-register.js';
 import { heldThreads, REPLIES } from './channel-rules.js';
 import { NUMBER_PATTERN, type ThreadHold } from './channel-schema.js';
 import {
@@ -14,6 +15,7 @@ import { holdOf, type ServedDocument, serveAll } from './channel-world.js';
 
 export interface PartyView extends ServedDocument {
   side: 'sender' | 'recipient';
+  thread: string | null;
   hold: ThreadHold | null;
 }
 
@@ -40,7 +42,12 @@ async function viewsOf(projectId: string, rows: readonly DocumentRow[]): Promise
   return mine.map((m, i) => {
     const s = served[i];
     if (!s) throw new Error(`channel: ${m.row.id} served nothing`);
-    return { ...s, side: m.side, hold: (m.row.thread && held.get(m.row.thread)) || null };
+    return {
+      ...s,
+      side: m.side,
+      thread: m.row.thread,
+      hold: (m.row.thread && held.get(m.row.thread)) || null,
+    };
   });
 }
 
@@ -97,4 +104,17 @@ export async function threadAs(
   }
   const documents = await viewsOf(projectId, await documentsWhere(db, { thread: number }));
   return { thread: number, documents, holds: (await holdsOn(db, [number])).map(holdOf) };
+}
+
+// cm:why a document's standing is the register's own row for it, derived by `rowsOf` over its conversation, so the document page and the register can never disagree about overdue
+export async function standingOf(view: PartyView): Promise<RegisterRow | null> {
+  const number = view.document.number;
+  if (!number || !view.thread) return null;
+  const rows = await documentsWhere(db, { thread: view.thread });
+  const served = await serveAll(db, rows);
+  const threadOf = new Map(rows.map((r) => [r.id, r.thread]));
+  const docs = served.map((s) => ({ ...s.document, thread: threadOf.get(s.id) ?? null }));
+  const held = heldThreads((await holdsOn(db, [view.thread])).map(holdOf));
+  const today = new Date().toISOString().slice(0, 10);
+  return rowsOf(docs, held, today).find((r) => r.number === number) ?? null;
 }

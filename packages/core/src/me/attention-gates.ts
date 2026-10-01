@@ -1,0 +1,73 @@
+import { and, desc, eq, sql } from 'drizzle-orm';
+import { db } from '../db/client.js';
+import { organizationMembers, projectMembers, projects } from '../db/schema.js';
+import { agentQuestions, isChoiceStep } from '../db/schema-questions.js';
+import { effectiveProjectRole, visibleProjectsWhere } from '../lib/authz.js';
+import { mayChoose } from '../questions/write.js';
+
+export const CHANNEL_GATES_CAP = 20;
+
+export interface AttentionGateRow {
+  questionId: string;
+  number: string;
+  documentId: string;
+  prompt: string;
+  createdAt: Date;
+  projectSlug: string;
+  projectName: string;
+}
+
+// cm:why a gate question is listed only for a person whose role on the sending project may choose one of its options, which is the rule `answerQuestion` applies, so the list never offers a decision the answer would refuse
+export async function selectChannelGates(userId: string): Promise<AttentionGateRow[]> {
+  const rows = await db
+    .select({
+      questionId: agentQuestions.id,
+      projectId: agentQuestions.projectId,
+      origin: agentQuestions.origin,
+      steps: agentQuestions.steps,
+      createdAt: agentQuestions.createdAt,
+      projectSlug: projects.slug,
+      projectName: projects.name,
+    })
+    .from(agentQuestions)
+    .innerJoin(projects, eq(projects.id, agentQuestions.projectId))
+    .leftJoin(
+      projectMembers,
+      and(eq(projectMembers.projectId, projects.id), eq(projectMembers.userId, userId)),
+    )
+    .leftJoin(
+      organizationMembers,
+      and(eq(organizationMembers.orgId, projects.orgId), eq(organizationMembers.userId, userId)),
+    )
+    .where(
+      and(
+        eq(agentQuestions.status, 'open'),
+        sql`${agentQuestions.origin}->>'kind' = 'channel_gate'`,
+        ...visibleProjectsWhere(),
+      ),
+    )
+    .orderBy(desc(agentQuestions.createdAt));
+  const roles = new Map<string, Awaited<ReturnType<typeof effectiveProjectRole>>>();
+  for (const projectId of new Set(rows.map((r) => r.projectId))) {
+    roles.set(projectId, await effectiveProjectRole(userId, projectId));
+  }
+  return rows
+    .flatMap((r) => {
+      const current = r.steps.at(-1);
+      if (r.origin?.kind !== 'channel_gate' || !current || !isChoiceStep(current)) return [];
+      const role = roles.get(r.projectId)?.role ?? null;
+      if (!current.options.some((o) => mayChoose(o, role))) return [];
+      return [
+        {
+          questionId: r.questionId,
+          number: r.origin.number,
+          documentId: r.origin.documentId,
+          prompt: current.prompt,
+          createdAt: r.createdAt,
+          projectSlug: r.projectSlug,
+          projectName: r.projectName,
+        },
+      ];
+    })
+    .slice(0, CHANNEL_GATES_CAP);
+}
