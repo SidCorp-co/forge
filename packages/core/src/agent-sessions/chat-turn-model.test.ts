@@ -36,18 +36,14 @@ vi.mock('../db/client.js', () => {
 vi.mock('../lib/device-pool.js', () => ({
   findAvailableDeviceForProject: vi.fn(async () => null),
   findChatCapableDeviceForProject: vi.fn(async () => null),
-  resolveSessionRepoPathForDevice: vi.fn(
-    async (_projectId: string, _deviceId: string | null, repo: string | null) => repo ?? null,
+  resolveSessionRepoPathForDevice: vi.fn(async (_projectId: string, deviceId: string | null) =>
+    deviceId ? '/repo' : null,
   ),
 }));
 
 vi.mock('../lib/chat-preamble.js', () => ({
   buildChatPreamble: vi.fn(async () => '[Preamble]\n'),
   TOOL_REFERENCE: '<tool-reference>',
-}));
-
-vi.mock('../jobs/stage-overrides.js', () => ({
-  resolveProjectDefaultMcpServers: vi.fn(async () => ({ servers: {}, declaredNames: [] })),
 }));
 
 const publishSpy = vi.fn((..._args: unknown[]) => 1);
@@ -74,7 +70,7 @@ const { dispatchChatTurn } = await import('./chat-turn.js');
 const { registerAllIntegrations } = await import('../integrations/register-all.js');
 registerAllIntegrations();
 
-const PROJECT = { id: 'proj-1', slug: 'apiflow', repoPath: '/repo' };
+const PROJECT = { id: 'proj-1', slug: 'apiflow' };
 const DEVICE = 'dev-1';
 
 function baseSession(over: Record<string, unknown> = {}) {

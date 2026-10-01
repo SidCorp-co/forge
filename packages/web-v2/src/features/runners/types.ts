@@ -83,7 +83,6 @@ export interface DeviceRunnerAssignment {
 	branch: string | null;
 	status: string;
 	lastSeenAt: string | null;
-	projectDefaultRepoPath: string | null;
 	baseBranch: string | null;
 }
 

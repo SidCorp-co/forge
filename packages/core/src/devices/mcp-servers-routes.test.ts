@@ -36,7 +36,6 @@ vi.mock('../db/client.js', () => ({
 const resolveSessionMcpServers = vi.fn(async () => ({
   mcpServers: { playwright: { type: 'stdio', command: 'npx' } } as Record<string, unknown> | null,
   resolvedNames: ['playwright'],
-  droppedNames: ['epodsystem'],
 }));
 vi.mock('../jobs/resolve-job-mcp-servers.js', () => ({
   resolveSessionMcpServers: () => resolveSessionMcpServers(),
@@ -60,7 +59,6 @@ const PATH = `/api/devices/me/mcp-servers?projectId=${PROJECT_ID}`;
 type Body = {
   mcpServers: Record<string, unknown>;
   resolvedNames: string[];
-  droppedNames: string[];
 };
 
 beforeEach(() => {
@@ -107,12 +105,10 @@ describe('GET /api/devices/me/mcp-servers (ISS-1043)', () => {
     expect(body.resolvedNames).toEqual(['playwright']);
   });
 
-  it('carries a declared name that could not be supplied instead of dropping it silently', async () => {
+  it('answers exactly two fields, the resolved map and its names', async () => {
     selectLimit.mockResolvedValueOnce([{ id: 'run-1' }]);
     const res = await buildApp().request(PATH, { headers: { authorization: 'Bearer good' } });
-    const body = (await res.json()) as Body;
-    expect(body.droppedNames).toEqual(['epodsystem']);
-    expect(body.mcpServers.epodsystem).toBeUndefined();
+    expect(Object.keys((await res.json()) as Body).sort()).toEqual(['mcpServers', 'resolvedNames']);
   });
 
   it('answers a project with no servers as an empty map rather than null', async () => {
@@ -120,7 +116,6 @@ describe('GET /api/devices/me/mcp-servers (ISS-1043)', () => {
     resolveSessionMcpServers.mockResolvedValueOnce({
       mcpServers: null,
       resolvedNames: [],
-      droppedNames: [],
     });
     const res = await buildApp().request(PATH, { headers: { authorization: 'Bearer good' } });
     expect(res.status).toBe(200);

@@ -77,8 +77,6 @@ vi.mock('../auth/device-credential.js', () => ({
 const findAvailableDeviceMock = vi.fn(async (_projectId: string) => null as string | null);
 vi.mock('../lib/device-pool.js', () => ({
   findAvailableDeviceForProject: (projectId: string) => findAvailableDeviceMock(projectId),
-  resolveRepoPath: (override: string | null | undefined, projectRepoPath: string | null) =>
-    (override ?? projectRepoPath ?? '').trim() || null,
 }));
 
 const safeRecordActivitySpy = vi.fn(async (..._args: unknown[]) => {});
@@ -268,8 +266,6 @@ describe('POST /api/agent-sessions/start — no-online-client guard (ISS-321)', 
         id: PROJECT_ID,
         slug: 'app',
         ownerId: USER_ID,
-        repoPath: '/repo',
-        defaultDeviceId: null,
       },
     ]);
     projectAccessAsMember();

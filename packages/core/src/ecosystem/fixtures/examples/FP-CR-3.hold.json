@@ -1,0 +1,16 @@
+{
+  "$schema": "https://forge.sidcorp.co/schemas/hold-v1.json",
+  "version": 1,
+  "id": "d0000000-0000-4000-8000-000000000001",
+  "ecosystem": "5c1f0a3e-7b2d-4e8a-9f10-2a3b4c5d6e70",
+  "thread": "FP-CR-3",
+  "action": "hold",
+  "by": {
+    "kind": "person",
+    "id": "bc7f6a9e-d18d-4e40-b576-8091a2b3c4d6",
+    "via": "assistant"
+  },
+  "side": "da368b0a-8e21-4763-9d90-8f7b9d0c7115",
+  "at": "2026-10-01T12:00:00Z",
+  "reason": "I want to talk the change scope through with the plugin side before either master answers."
+}

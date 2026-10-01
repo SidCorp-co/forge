@@ -3,17 +3,15 @@
 // Fleet-runner rollup strip (ISS-378 A/B). Turns the flat counters into a
 // per-runner operator view: one chip per device in the project pool showing
 // online/offline/stale health, busy/free slot (runner cap = 1), queue depth,
-// and the current step · ISS-x it is running. Primary (defaultDeviceId) vs
-// cold-spare devices are visually distinguished so an idle spare doesn't read
-// as broken. A "dispatch stalled — no runner online" banner appears only when
+// and the current step · ISS-x it is running. A "dispatch stalled — no runner online" banner appears only when
 // work is queued AND zero runners are online (the silent no_worker_online mode)
 // — never when runners are merely all-busy (healthy backpressure).
 //
-// Data: useProject(projectId).devicePool + defaultDeviceId (project-scoped) ×
+// Data: useProject(projectId).devicePool (project-scoped) ×
 // useQueueStats(projectId) (per-device queued/running). Liveness is the shared
 // deriveLiveness threshold so the strip, list, and detail never diverge.
 import { useMemo } from "react";
-import { Banner, HealthDot, Icon, MonoTag, Tooltip } from "@/design";
+import { Banner, HealthDot, Icon, MonoTag } from "@/design";
 import { useProject } from "@/features/projects/hooks";
 import { deviceHealth } from "@/features/runners/types";
 import { useQueueStats } from "../hooks";
@@ -52,7 +50,6 @@ export function FleetStrip({ projectId, rows, displays, now }: FleetStripProps) 
   const queueQ = useQueueStats(projectId);
 
   const devicePool = projectQ.data?.devicePool ?? [];
-  const defaultDeviceId = projectQ.data?.defaultDeviceId ?? null;
 
   // Per-device queue depth from queue-stats (queued sessions waiting on that
   // device). Sessions with no device assigned bucket under the null key.
@@ -99,7 +96,6 @@ export function FleetStrip({ projectId, rows, displays, now }: FleetStripProps) 
             const liveness = bound ? deriveLiveness(bound.row, now) : null;
             const stale = liveness?.state === "stale" || liveness?.state === "reaping";
             const health = busy && stale ? "attention" : deviceHealth(d.status as never);
-            const isPrimary = d.id === defaultDeviceId;
             const queued = queuedByDevice.get(d.id) ?? 0;
             const step = bound ? sessionStep(bound.row.metadata) : null;
             const issueRef = bound ? issueRefFromTitle(bound.row.title) : null;
@@ -107,10 +103,7 @@ export function FleetStrip({ projectId, rows, displays, now }: FleetStripProps) 
             return (
               <div
                 key={d.id}
-                className="min-w-[200px] flex-none rounded-lg border bg-surface px-3 py-2.5"
-                style={{
-                  borderColor: isPrimary ? "var(--cobalt-100)" : "var(--color-line)",
-                }}
+                className="min-w-[200px] flex-none rounded-lg border border-line bg-surface px-3 py-2.5"
               >
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex min-w-0 items-center gap-1.5">
@@ -123,11 +116,6 @@ export function FleetStrip({ projectId, rows, displays, now }: FleetStripProps) 
                 </div>
 
                 <div className="mt-1.5 flex items-center gap-1.5">
-                  <Tooltip label={isPrimary ? "Primary runner (pinned default)" : "Cold spare — idle is normal"}>
-                    <MonoTag hue={isPrimary ? "cobalt" : "neutral"}>
-                      {isPrimary ? "Primary" : "Spare"}
-                    </MonoTag>
-                  </Tooltip>
                   <span className="fg-caption text-subtle">
                     {PLATFORM_LABEL[d.platform] ?? d.platform}
                   </span>

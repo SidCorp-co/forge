@@ -64,7 +64,7 @@ export interface ConversationAgentTurnArgs {
   conversationId: string;
   windowId: string;
   deliveryKey: string;
-  project: { id: string; slug: string; repoPath: string | null };
+  project: { id: string; slug: string };
   /** The handle answering here — whose voice the code-authored sentences speak in. */
   handleName: string;
   /** Everything the window collected, as one body. */

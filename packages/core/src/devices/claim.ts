@@ -24,6 +24,7 @@ import { resolveJobPolicy } from '../jobs/job-policy.js';
 import { poolPrompt, settleNoPromptJob } from '../jobs/pool-served.js';
 import {
   canNameItsAgent,
+  checkoutUnboundMessage,
   type PreparedJob,
   prepareClaimedJob,
   resolveRunnerForDevice,
@@ -59,7 +60,8 @@ export type PrepareResult =
         | 'release_label_missing'
         | 'no_prompt';
     }
-  | { ok: false; reason: 'policy_refused'; code: PolicyRefusalCode; detail: string };
+  | { ok: false; reason: 'policy_refused'; code: PolicyRefusalCode; detail: string }
+  | { ok: false; reason: 'checkout_unbound'; detail: string };
 
 export type StartResult = { ok: true } | { ok: false; reason: 'hold_lost' | 'runner_too_old' };
 
@@ -99,6 +101,9 @@ export async function prepareJobForMaster(args: {
       'claim: release job taken by a box that does not carry the declared release label, because no eligible box does',
     );
   }
+
+  const unbound = await checkoutUnbound(args.jobId, args.deviceId);
+  if (unbound) return { ok: false, reason: 'checkout_unbound', detail: unbound };
 
   if (await refusedForNoPrompt(args.jobId)) return { ok: false, reason: 'no_prompt' };
 
@@ -201,6 +206,21 @@ async function policyStateFor(
       refusal: { ok: false, reason: 'policy_refused', code: err.code, detail: err.message },
     };
   }
+}
+
+/**
+ * The device binding is where a job runs: a binding that names no checkout is refused by name
+ * before the job is held, so the box is told to bind one rather than handed work with no cwd.
+ */
+async function checkoutUnbound(jobId: string, deviceId: string): Promise<string | null> {
+  const [job] = await db
+    .select({ projectId: jobs.projectId })
+    .from(jobs)
+    .where(eq(jobs.id, jobId))
+    .limit(1);
+  if (!job) return null;
+  const binding = await resolveRunnerForDevice(job.projectId, deviceId);
+  return binding.repoPath ? null : checkoutUnboundMessage(job.projectId, deviceId, binding.id);
 }
 
 /**

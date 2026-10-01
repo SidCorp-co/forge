@@ -1,6 +1,6 @@
-import { and, eq, isNull, type SQL, sql } from 'drizzle-orm';
+import { and, eq, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { devices, projects, runners } from '../db/schema.js';
+import { runners } from '../db/schema.js';
 import { dispatchLivenessMs } from './dispatch-liveness.js';
 
 export async function findAvailableDeviceForProject(
@@ -47,32 +47,7 @@ export async function findAvailableDeviceForProject(
       r.last_seen_at DESC
     LIMIT 1
   `);
-  if (rows[0]) return rows[0].device_id;
-
-  const [project] = await db
-    .select({ defaultDeviceId: projects.defaultDeviceId })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-
-  if (!project?.defaultDeviceId || exclude.includes(project.defaultDeviceId)) return null;
-
-  const [defaultDevice] = await db
-    .select({ id: devices.id })
-    .from(devices)
-    .where(
-      and(
-        eq(devices.id, project.defaultDeviceId),
-        eq(devices.status, 'online'),
-        isNull(devices.disabledAt),
-        ...(opts.requireCapability
-          ? [sql`${devices.capabilities} ->> ${opts.requireCapability} = 'true'`]
-          : []),
-      ),
-    )
-    .limit(1);
-
-  return defaultDevice?.id ?? null;
+  return rows[0]?.device_id ?? null;
 }
 
 export async function findChatCapableDeviceForProject(
@@ -107,14 +82,6 @@ export async function findChatCapableDeviceForProject(
   return rows[0]?.device_id ?? null;
 }
 
-export function resolveRepoPath(
-  override: string | null | undefined,
-  projectRepoPath: string | null,
-): string | null {
-  const v = (override ?? projectRepoPath ?? '').trim();
-  return v.length === 0 ? null : v;
-}
-
 export async function resolveRunnerRepoPath(
   projectId: string,
   deviceId: string,
@@ -129,15 +96,12 @@ export async function resolveRunnerRepoPath(
 }
 
 /**
- * Single cwd resolver for a chat/schedule turn dispatched to `deviceId` (or
- * `null` for the desktop/local path). Combines the runner binding lookup with
- * the project-default fallback so callers never hand-roll the chain.
+ * The checkout a chat/schedule turn on `deviceId` runs in: that device's binding to the project,
+ * and nothing else. `null` for the desktop/local path, and for a binding that names none.
  */
 export async function resolveSessionRepoPathForDevice(
   projectId: string,
   deviceId: string | null,
-  projectRepoPath: string | null,
 ): Promise<string | null> {
-  const bindingRepo = deviceId ? await resolveRunnerRepoPath(projectId, deviceId) : null;
-  return resolveRepoPath(null, bindingRepo ?? projectRepoPath ?? null);
+  return deviceId ? resolveRunnerRepoPath(projectId, deviceId) : null;
 }

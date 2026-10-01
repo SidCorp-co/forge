@@ -61,3 +61,22 @@ const TURN_TOKEN_NAME_PREFIX = 'turn:';
  * (`agent-sessions/session-credential.ts`), found by this name to be revoked when the session ends.
  */
 export const turnTokenNameFor = (sessionId: string) => `${TURN_TOKEN_NAME_PREFIX}${sessionId}`;
+
+const TURN_DEFAULT_NAME_PREFIX = 'turn ';
+
+export const turnTokenDefaultName = (at: Date, nonce: string) =>
+  `${TURN_DEFAULT_NAME_PREFIX}${at.toISOString()} ${nonce}`;
+
+export const isTurnTokenName = (name: string) =>
+  name.startsWith(TURN_TOKEN_NAME_PREFIX) || name.startsWith(TURN_DEFAULT_NAME_PREFIX);
+
+const CORE_NAME_PREFIXES = [
+  DEVICE_TOKEN_NAME_PREFIX,
+  WORKSPACE_TOKEN_NAME_PREFIX,
+  TURN_TOKEN_NAME_PREFIX,
+  TURN_DEFAULT_NAME_PREFIX,
+];
+
+// cm:why a person's token named like a turn token would make their CLI writes read as written through the assistant
+export const coreTokenNamePrefixOf = (name: string): string | null =>
+  CORE_NAME_PREFIXES.find((p) => name.startsWith(p)) ?? null;

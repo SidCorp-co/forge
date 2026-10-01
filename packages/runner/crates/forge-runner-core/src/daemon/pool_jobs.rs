@@ -501,7 +501,6 @@ pub async fn take_one(
     registry: &JobPanes,
     project: ServedProject<'_>,
     session_id: &str,
-    fallback_cwd: Option<&Path>,
     bound: usize,
     tokens: Option<&session_tokens::SessionTokens>,
 ) -> Took {
@@ -545,22 +544,27 @@ pub async fn take_one(
     };
 
     let pane = pane_name(&prepared.job_id);
-    let cwd_candidates: Vec<PathBuf> = prepared
-        .repo_path
-        .as_deref()
-        .map(PathBuf::from)
-        .into_iter()
-        .chain(fallback_cwd.map(Path::to_path_buf))
-        .collect();
-    let Some(cwd) = cwd_candidates.iter().find(|p| p.is_dir()).cloned() else {
+    let Some(cwd) = prepared.repo_path.as_deref().map(PathBuf::from) else {
         give_back(pool_ports, &prepared.job_id, session_id).await;
         tracing::error!(
-            "[pool] {project_id}: job {} has no checkout THIS BOX can stand in — tried {:?}; given back. Core's project repo_path may belong to another box; bind it here or set the runner's repo_path",
+            "[pool] {project_id}: job {} given back — core prepared it with no checkout, so this device's binding to {} names none; bind one with `forge-runner bind {} --path <dir>`",
             prepared.job_id,
-            cwd_candidates
+            project.slug,
+            project.slug
         );
         return Took::GaveBack(prepared.job_id);
     };
+    if !cwd.is_dir() {
+        give_back(pool_ports, &prepared.job_id, session_id).await;
+        tracing::error!(
+            "[pool] {project_id}: job {} given back — this box's device binding to {} names {}, which is not a directory here; rebind with `forge-runner bind {} --path <dir>`",
+            prepared.job_id,
+            project.slug,
+            cwd.display(),
+            project.slug
+        );
+        return Took::GaveBack(prepared.job_id);
+    }
 
     let Some(prompt) = prepared
         .prompt_string
@@ -586,13 +590,6 @@ pub async fn take_one(
             return Took::GaveBack(prepared.job_id);
         }
     };
-    if !declared.dropped_names.is_empty() {
-        tracing::warn!(
-            "[pool] {project_id}: job {} starts without {}, which the project declares and core could not supply",
-            prepared.job_id,
-            declared.dropped_names.join(", ")
-        );
-    }
 
     let (env, channel) = open_channel(
         &cwd,
@@ -1241,7 +1238,7 @@ mod tests {
             prompt_string: prompt.map(str::to_string),
             model: "claude".into(),
             denied_tools: Vec::new(),
-            repo_path: Some(core_repo().to_string_lossy().into_owned()),
+            repo_path: Some(binding_repo().to_string_lossy().into_owned()),
             prior_claude_session_id: None,
             runner_id: "r1".into(),
         }))
@@ -1308,14 +1305,9 @@ mod tests {
         })
     }
 
-    /// A directory that exists, standing in for what core believes the checkout is.
-    fn core_repo() -> PathBuf {
-        repo_of_this_test("core")
-    }
-
-    /// A directory that exists, standing in for THIS box's own binding.
-    fn box_repo() -> PathBuf {
-        repo_of_this_test("box")
+    /// A directory that exists, standing in for the checkout this device's binding names.
+    fn binding_repo() -> PathBuf {
+        repo_of_this_test("binding")
     }
 
     struct FakePanes {
@@ -1588,7 +1580,6 @@ mod tests {
                 slug: "p1-slug",
             },
             "master-session",
-            Some(&box_repo()),
             bound,
             Some(&w.tokens),
         )
@@ -1645,7 +1636,6 @@ mod tests {
         ProjectMcpServers {
             mcp_servers: servers,
             resolved_names: names.iter().map(|n| (*n).to_string()).collect(),
-            dropped_names: Vec::new(),
         }
     }
 
@@ -2027,7 +2017,6 @@ mod tests {
                         slug: "slug",
                     },
                     "master-session",
-                    Some(&box_repo()),
                     2,
                     Some(tokens),
                 )
@@ -2117,7 +2106,6 @@ mod tests {
                         slug: "slug",
                     },
                     "master-session",
-                    Some(&box_repo()),
                     2,
                     Some(tokens),
                 )
@@ -3183,23 +3171,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_core_path_this_box_does_not_have_loses_to_the_boxs_own_binding() {
-        let w = world(
-            vec![entry("j1", None)],
-            Some(prepared("j1", Some("go"))),
-            None,
-        );
-        if let Some(Prepared::Took(p)) = w.pool.prepare.lock().unwrap().as_mut() {
-            p.repo_path = Some("/home/somebody-else/services/sid-desk".into());
-        }
-
-        assert_eq!(take(&w, 2).await, Took::Started("j1".into()));
-        assert_eq!(w.rec.cwds.lock().unwrap().clone(), vec![box_repo()]);
-    }
-
-    /// And when core's path IS present here, it still wins — the order is unchanged.
-    #[tokio::test]
-    async fn a_core_path_that_exists_here_is_still_preferred() {
+    async fn the_pane_opens_in_the_checkout_the_device_binding_names() {
         let w = world(
             vec![entry("j1", None)],
             Some(prepared("j1", Some("go"))),
@@ -3207,12 +3179,13 @@ mod tests {
         );
 
         assert_eq!(take(&w, 2).await, Took::Started("j1".into()));
-        assert_eq!(w.rec.cwds.lock().unwrap().clone(), vec![core_repo()]);
+        assert_eq!(w.rec.cwds.lock().unwrap().clone(), vec![binding_repo()]);
     }
 
-    /// Neither candidate is present: the hold goes back rather than a pane opening in the daemon's home.
+    /// The binding is the only place a checkout comes from: one this box does not have is a
+    /// give-back, never a pane opened in some other directory the box happens to know.
     #[tokio::test]
-    async fn no_candidate_exists_on_this_box_so_the_hold_goes_back() {
+    async fn a_binding_checkout_this_box_does_not_have_gives_the_hold_back() {
         let w = world(
             vec![entry("j1", None)],
             Some(prepared("j1", Some("go"))),
@@ -3222,26 +3195,7 @@ mod tests {
             p.repo_path = Some("/nowhere/on/this/box".into());
         }
 
-        let took = take_one(
-            &JobPorts {
-                pool: &w.pool,
-                panes: &w.panes,
-                report: &w.report,
-                records: &w.records,
-            },
-            &w.registry,
-            ServedProject {
-                id: "p1",
-                slug: "p1-slug",
-            },
-            "master-session",
-            Some(Path::new("/also/nowhere")),
-            2,
-            Some(&w.tokens),
-        )
-        .await;
-
-        assert_eq!(took, Took::GaveBack("j1".into()));
+        assert_eq!(take(&w, 2).await, Took::GaveBack("j1".into()));
         assert!(w.rec.opened.lock().unwrap().is_empty(), "no pane may open");
         assert_eq!(
             w.rec.released.lock().unwrap().clone(),
@@ -3249,9 +3203,8 @@ mod tests {
         );
     }
 
-    // this is a refusal and not a fallback to the daemon's own working directory.
     #[tokio::test]
-    async fn a_job_with_no_checkout_anywhere_gives_the_hold_back() {
+    async fn a_preparation_naming_no_binding_checkout_gives_the_hold_back() {
         let w = world(
             vec![entry("j1", None)],
             Some(prepared("j1", Some("go"))),
@@ -3261,31 +3214,12 @@ mod tests {
             p.repo_path = None;
         }
 
-        let took = take_one(
-            &JobPorts {
-                pool: &w.pool,
-                panes: &w.panes,
-                report: &w.report,
-                records: &w.records,
-            },
-            &w.registry,
-            ServedProject {
-                id: "p1",
-                slug: "p1-slug",
-            },
-            "master-session",
-            None,
-            2,
-            Some(&w.tokens),
-        )
-        .await;
-
-        assert_eq!(took, Took::GaveBack("j1".into()));
+        assert_eq!(take(&w, 2).await, Took::GaveBack("j1".into()));
+        assert!(w.rec.opened.lock().unwrap().is_empty(), "no pane may open");
         assert_eq!(
             w.rec.released.lock().unwrap().clone(),
             vec!["j1".to_string()]
         );
-        assert!(w.rec.opened.lock().unwrap().is_empty());
     }
 
     #[tokio::test]

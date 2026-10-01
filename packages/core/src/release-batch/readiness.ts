@@ -22,7 +22,6 @@ type ReleaseChannelRead = NonNullable<
   Awaited<ReturnType<typeof collectReleaseBlockers>>['channels']
 >[number];
 interface ProjectRow {
-  repoPath: string | null;
   repoUrl: string | null;
 }
 
@@ -81,7 +80,7 @@ export async function loadReleaseReadiness(projectId: string): Promise<ReleaseRe
 
   const row = await guarded('project', blockers, async () => {
     const [found] = await db
-      .select({ repoPath: projects.repoPath, repoUrl: projects.repoUrl })
+      .select({ repoUrl: projects.repoUrl })
       .from(projects)
       .where(eq(projects.id, projectId))
       .limit(1);
@@ -161,7 +160,6 @@ function declarationGaps(input: GapInput): ReleaseGapKey[] {
   // make (ISS-1127).
   if (row !== undefined && held !== undefined) {
     const declarations = {
-      repoPath: row?.repoPath ?? null,
       repoUrl: row?.repoUrl ?? null,
       production: decl?.kind === 'gated' ? decl.production.name : null,
     };

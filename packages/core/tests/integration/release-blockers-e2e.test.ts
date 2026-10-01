@@ -103,7 +103,7 @@ async function seed(
   // Everything `gaps` reports, declared — so a non-empty `blockers` beside an
   // empty `gaps` is the reproduction and not a half-configured fixture.
   await harness.db.execute(sql`
-    UPDATE projects SET base_branch = 'main', repo_path = '/srv/app' WHERE id = ${project.id}
+    UPDATE projects SET base_branch = 'main', repo_url = 'git@github.com:acme/app.git' WHERE id = ${project.id}
   `);
   for (const slug of ['build-commands', 'test-commands', 'release-procedure']) {
     await harness.db.execute(sql`

@@ -40,10 +40,6 @@ vi.mock('../pipeline/wedge.js', () => ({ resolvePipelineWedge: async () => 0 }))
 vi.mock('./retry.js', () => ({ AUTO_RETRY_PAYLOAD_KEY: '_autoRetry' }));
 vi.mock('./budget-check.js', () => ({ checkMonthlyBudget: async () => ({ action: 'allow' }) }));
 vi.mock('../runners/select.js', () => ({ onlineCapableDeviceIds: async () => [] }));
-vi.mock('./stage-overrides.js', () => ({
-  resolveStageOverrides: async () => ({ deviceIds: null }),
-}));
-
 const dispatchMock = vi.fn(async (..._args: unknown[]) => undefined);
 vi.mock('./hold.js', async () => {
   const real = await vi.importActual<typeof import('./hold.js')>('./hold.js');

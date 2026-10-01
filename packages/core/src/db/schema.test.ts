@@ -100,13 +100,10 @@ describe('db/schema — projects', () => {
     expect(fk.onDelete).toBe('restrict');
   });
 
-  it('default_device_id references devices.id with onDelete set null', () => {
-    const cfg = getTableConfig(projects);
-    const fk = cfg.foreignKeys.find((f) => f.reference().columns[0]?.name === 'default_device_id');
-    if (!fk) throw new Error('expected default_device_id FK');
-    const ref = fk.reference();
-    expect(ref.foreignColumns[0]?.name).toBe('id');
-    expect(fk.onDelete).toBe('set null');
+  it('names no checkout and no default device: those are the device binding', () => {
+    const names = getTableConfig(projects).columns.map((c) => c.name);
+    expect(names).not.toContain('repo_path');
+    expect(names).not.toContain('default_device_id');
   });
 
   it('projectsRelations targets the projects table', () => {

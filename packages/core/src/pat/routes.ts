@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { countActivePatsForUser, mintPat, revokePat, rotatePat } from '../auth/pat.js';
+import { coreTokenNamePrefixOf } from '../auth/pat-format.js';
 import {
   PAT_ACCOUNT_ONLY_PERMISSIONS,
   PAT_GRANT_EPOCH,
@@ -181,6 +182,14 @@ patRoutes.post(
       throw new HTTPException(409, {
         message: 'a personal access token with this name already exists',
         cause: { code: 'PAT_NAME_CONFLICT' },
+      });
+    }
+
+    const reserved = coreTokenNamePrefixOf(body.name);
+    if (reserved) {
+      throw new HTTPException(422, {
+        message: `a token name beginning "${reserved}" is one core gives the tokens it mints for a device, a workspace or an assistant turn; name a personal token otherwise`,
+        cause: { code: 'PAT_NAME_RESERVED' },
       });
     }
 

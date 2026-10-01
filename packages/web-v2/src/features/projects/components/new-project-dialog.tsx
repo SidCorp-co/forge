@@ -42,7 +42,6 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
 
   // Step 2 — "Set up pipeline" (ISS-453). `created` non-null flips the wizard.
   const [created, setCreated] = useState<CreatedProject | null>(null);
-  const [repoPath, setRepoPath] = useState('');
   const [baseBranch, setBaseBranch] = useState('main');
   const [repoSaved, setRepoSaved] = useState(false);
   const [seedError, setSeedError] = useState<string | null>(null);
@@ -60,7 +59,6 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
       setOrgId(defaultOrgId);
       setErrors({});
       setCreated(null);
-      setRepoPath('');
       setBaseBranch('main');
       setRepoSaved(false);
       setSeedError(null);
@@ -140,7 +138,6 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
       // Empty string → omit (keep the column's default/null); a set value trims.
       const norm = (v: string) => v.trim();
       const patch: ProjectUpdateInput = {};
-      if (norm(repoPath)) patch.repoPath = norm(repoPath);
       if (norm(baseBranch)) patch.baseBranch = norm(baseBranch);
       if (Object.keys(patch).length > 0) await update.mutateAsync(patch);
 
@@ -182,24 +179,13 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
           {seedError && <Banner tone="danger">{seedError}</Banner>}
           {repoSaved && <Banner tone="success">Repository settings saved.</Banner>}
 
-          <Field
-            label="Repository path"
-            hint="Absolute path on the runner host where the repo is checked out."
-          >
-            <Input
-              value={repoPath}
-              onChange={(e) => setRepoPath(e.target.value)}
-              placeholder="/home/runner/projects/my-repo"
-              maxLength={500}
-              autoFocus
-            />
-          </Field>
           <Field label="Base branch" hint="Where ISS-* branches are cut from (e.g. main).">
             <Input
               value={baseBranch}
               onChange={(e) => setBaseBranch(e.target.value)}
               placeholder="main"
               maxLength={100}
+              autoFocus
             />
           </Field>
 

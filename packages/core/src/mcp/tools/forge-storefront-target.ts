@@ -49,8 +49,12 @@ async function resolveInjectionStatus(
     const row = preview.servers.find((r) => r.bindingId === bindingId);
     if (!row) return null;
     return { willInject: row.willInject, reason: row.reason, serverName: row.serverName };
-  } catch {
-    return null;
+  } catch (err) {
+    return {
+      willInject: false,
+      reason: `preview_unreadable: ${err instanceof Error ? err.message : String(err)}`,
+      serverName: null,
+    };
   }
 }
 
@@ -83,7 +87,7 @@ export const forgeStorefrontTargetTool: ContextScopedMcpToolFactory = (ctx) => (
     '`configured: true` is NOT a promise that you have `mcp__epodsystem__*` tools — it only means ' +
     'an active binding with a usable credential exists. `mcpInjection` is the real gate: ' +
     '{ willInject, reason, serverName }, where reason is ok | not_configured | disabled | ' +
-    'no_credential | shadowed | not_granted. `not_granted` means nobody has turned on agent access ' +
+    'no_credential | shadowed | not_granted | preview_unreadable: <why>. `not_granted` means nobody has turned on agent access ' +
     'for that binding: the integration is healthy and the switch is off, so do NOT read absent ' +
     'tools as an auth/reauth problem and do NOT retry. Report the reason and say where the switch ' +
     'is — beside the integration under Settings → Integrations, on the binding itself. ' +

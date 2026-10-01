@@ -209,7 +209,6 @@ describe('GET /api/jobs/:id/prompt (W2.1.2)', () => {
       blocks: unknown[];
       estTokens: { input: number | null };
       actualUsage: unknown;
-      mcpConfig: unknown;
       model: string;
       payloadExtras: Record<string, unknown>;
     };
@@ -222,12 +221,11 @@ describe('GET /api/jobs/:id/prompt (W2.1.2)', () => {
     expect(body.blocks.length).toBe(2);
     expect(body.estTokens.input).toBe(256);
     expect(body.model).toBe('claude-opus-4-7');
-    expect(body.mcpConfig).toBeNull();
+    expect(Object.keys(body)).not.toContain('mcpConfig');
     expect(body.actualUsage).toBeNull();
     expect(body.payloadExtras).toEqual({ preventiveContext: { hint: 'see ISS-42' } });
     expect(Object.keys(body.payloadExtras)).not.toContain('promptString');
     expect(Object.keys(body.payloadExtras)).not.toContain('skillName');
-    expect(Object.keys(body.payloadExtras)).not.toContain('mcpServers');
   });
 
   it('returns 403 when the caller is not a project member', async () => {
@@ -280,7 +278,7 @@ describe('GET /api/jobs/:id/prompt (W2.1.2)', () => {
     expect(body.path).toBe('s3://forge-archive/jobs/abc');
   });
 
-  it('redacts Authorization / X-Device-Token / Cookie headers in mcpServers', async () => {
+  it('redacts Authorization / X-Device-Token / Cookie headers anywhere in the payload extras', async () => {
     const { user, project } = await seedUserProject('admin');
     const systemHash = await seedPromptBlob('preamble');
     const auth = 'Bearer secret-token-123';
@@ -292,7 +290,7 @@ describe('GET /api/jobs/:id/prompt (W2.1.2)', () => {
       systemPromptHash: systemHash,
       userPromptSnapshot: 'body',
       payload: {
-        mcpServers: [
+        servers: [
           {
             url: 'https://x',
             headers: {
@@ -314,8 +312,9 @@ describe('GET /api/jobs/:id/prompt (W2.1.2)', () => {
     expect(raw).not.toContain('dt-456');
     expect(raw).not.toContain('session=foo');
 
-    const headers = (body as { mcpConfig: Array<{ headers: Record<string, string> }> })
-      .mcpConfig[0]!.headers;
+    const headers = (
+      body as { payloadExtras: { servers: Array<{ headers: Record<string, string> }> } }
+    ).payloadExtras.servers[0]!.headers;
     expect(headers.Authorization).toBe(`[REDACTED ${auth.length} chars]`);
     expect(headers['X-Device-Token']).toBe(`[REDACTED ${deviceTok.length} chars]`);
     expect(headers.Cookie).toBe(`[REDACTED ${cookie.length} chars]`);

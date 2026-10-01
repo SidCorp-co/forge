@@ -30,8 +30,8 @@ vi.mock('../db/client.js', () => {
 const findAvailableDeviceForProject = vi.fn();
 const findChatCapableDeviceForProject = vi.fn();
 const resolveSessionRepoPathForDevice = vi.fn(
-  async (_projectId: string, _deviceId: string | null, projectRepoPath: string | null) =>
-    projectRepoPath ?? null,
+  async (_projectId: string, deviceId: string | null): Promise<string | null> =>
+    deviceId ? '/repo' : null,
 );
 vi.mock('../lib/device-pool.js', () => ({
   findAvailableDeviceForProject: (id: string) => findAvailableDeviceForProject(id),
@@ -40,11 +40,8 @@ vi.mock('../lib/device-pool.js', () => ({
     deviceId: string,
     opts?: { allowLimited?: boolean },
   ) => findChatCapableDeviceForProject(projectId, deviceId, opts),
-  resolveSessionRepoPathForDevice: (
-    projectId: string,
-    deviceId: string | null,
-    repo: string | null,
-  ) => resolveSessionRepoPathForDevice(projectId, deviceId, repo),
+  resolveSessionRepoPathForDevice: (projectId: string, deviceId: string | null) =>
+    resolveSessionRepoPathForDevice(projectId, deviceId),
 }));
 
 vi.mock('../lib/chat-preamble.js', () => ({
@@ -56,7 +53,6 @@ vi.mock('../jobs/resolve-job-mcp-servers.js', () => ({
   resolveSessionMcpServers: async () => ({
     mcpServers: { playwright: { type: 'stdio' } },
     resolvedNames: ['playwright'],
-    droppedNames: [],
     integrationServers: [{ name: 'playwright', bindingId: 'b-1' }],
   }),
 }));
@@ -87,7 +83,7 @@ vi.mock('../pipeline/runs.js', () => ({
 
 const { resolveChatDevice, dispatchChatTurn } = await import('./chat-turn.js');
 
-const PROJECT = { id: 'proj-1', slug: 'apiflow', repoPath: '/repo' };
+const PROJECT = { id: 'proj-1', slug: 'apiflow' };
 const DEVICE = 'dev-1';
 
 function baseSession(over: Record<string, unknown> = {}) {
@@ -321,53 +317,6 @@ describe('dispatchChatTurn', () => {
     // The stale Claude session id (file lives on the dead box) is cleared.
     const updates = updateSet.mock.calls[0]?.[0] as { claudeSessionId?: string | null };
     expect(updates.claudeSessionId).toBeNull();
-  });
-
-  it("migration recomputes repoPath for the NEW device instead of reusing the old box's stale path (ISS-755 bug guard)", async () => {
-    updateReturning.mockResolvedValueOnce([
-      baseSession({ status: 'running', deviceId: 'dev-2', claudeSessionId: null }),
-    ]);
-    resolveSessionRepoPathForDevice.mockResolvedValueOnce('/repo/on/dev-2');
-    await dispatchChatTurn({
-      session: baseSession({
-        claudeSessionId: 'c-1',
-        deviceId: DEVICE,
-        metadata: { deviceId: DEVICE },
-        repoPath: '/repo/on/dev-1',
-        messages: [{ type: 'user', content: 'hi' }],
-      }),
-      project: PROJECT,
-      client: { deviceId: 'dev-2', isLocal: false, migrated: true },
-      message: 'again on the new box',
-    });
-    expect(resolveSessionRepoPathForDevice).toHaveBeenCalledWith(
-      PROJECT.id,
-      'dev-2',
-      PROJECT.repoPath,
-    );
-    const updates = updateSet.mock.calls[0]?.[0] as { repoPath?: string | null };
-    expect(updates.repoPath).toBe('/repo/on/dev-2');
-    expect(updates.repoPath).not.toBe('/repo/on/dev-1');
-  });
-
-  it('no device change + session.repoPath already set → NOT re-resolved (no extra query)', async () => {
-    updateReturning.mockResolvedValueOnce([
-      baseSession({ status: 'running', deviceId: DEVICE, claudeSessionId: 'c-1' }),
-    ]);
-    await dispatchChatTurn({
-      session: baseSession({
-        claudeSessionId: 'c-1',
-        deviceId: DEVICE,
-        repoPath: '/repo/on/dev-1',
-        messages: [{ type: 'user', content: 'a' }],
-      }),
-      project: PROJECT,
-      client: { deviceId: DEVICE, isLocal: false, migrated: false },
-      message: 'again',
-    });
-    expect(resolveSessionRepoPathForDevice).not.toHaveBeenCalled();
-    const updates = updateSet.mock.calls[0]?.[0] as { repoPath?: string | null };
-    expect(updates.repoPath).toBe('/repo/on/dev-1');
   });
 
   it('explicit re-pin already applied (migrated=false, no claudeSessionId, prior history) still cold-starts WITH rehydration', async () => {

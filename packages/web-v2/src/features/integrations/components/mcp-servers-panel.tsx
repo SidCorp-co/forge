@@ -2,9 +2,8 @@
 
 // Agent MCP servers panel (ISS-429, ISS-1191). `GET .../integrations/mcp-preview`
 // composes its answer from the one resolver the dispatch itself uses, so neither
-// the set nor the URL here can drift from what an agent receives, and each row
-// says which of the two sources supplied that server. Authorization is redacted
-// server-side BY CONSTRUCTION.
+// the set nor the URL here can drift from what an agent receives. Authorization
+// is redacted server-side BY CONSTRUCTION.
 
 import { useState } from "react";
 import {
@@ -65,11 +64,6 @@ const REASON_META: Record<
   },
 };
 
-const SOURCE_LABEL: Record<McpServerPreviewEntry["source"], string> = {
-  integration: "from an integration",
-  project: "from this project's pipeline config",
-};
-
 function ReasonPill({ reason }: { reason: McpServerPreviewEntry["reason"] }) {
   const meta = REASON_META[reason];
   return <Pill label={meta.label} fg={meta.fg} bg={meta.bg} icon={meta.icon} />;
@@ -125,9 +119,6 @@ function McpServerRow({
             {scopeLabel(entry.role)}
           </span>
         )}
-        <span className="fg-body-sm rounded-pill bg-sunken px-2 py-0.5 text-subtle">
-          {SOURCE_LABEL[entry.source]}
-        </span>
         <span className="ml-auto">
           <ReasonPill reason={entry.reason} />
         </span>
@@ -137,11 +128,11 @@ function McpServerRow({
         <p className="truncate font-mono text-12-5 text-muted" title={entry.url}>
           {entry.url}
         </p>
-      ) : entry.provider ? (
+      ) : (
         <p className="fg-body-sm text-subtle">
           Configure the {providerLabel(entry.provider)} integration below to inject its MCP server.
         </p>
-      ) : null}
+      )}
 
       {REASON_META[entry.reason].hint && (
         <p className="fg-body-sm text-[var(--amberw-600)]">{REASON_META[entry.reason].hint}</p>
@@ -186,7 +177,6 @@ export function McpServersPanel({
   const preview = useMcpPreview(projectId);
   const bindings = useIntegrationsList(projectId);
   const byBindingId = new Map((bindings.data?.bindings ?? []).map((b) => [b.id, b]));
-  const dropped = preview.data?.droppedNames ?? [];
 
   return (
     <Card>
@@ -209,7 +199,7 @@ export function McpServersPanel({
           <ul className="flex flex-col gap-2">
             {(preview.data?.servers ?? []).map((entry) => (
               <McpServerRow
-                key={`${entry.source}:${entry.provider ?? entry.serverName}:${entry.bindingId ?? entry.serverName}`}
+                key={`${entry.provider}:${entry.bindingId ?? entry.serverName}`}
                 entry={entry}
                 projectId={projectId}
                 binding={entry.bindingId ? byBindingId.get(entry.bindingId) : undefined}
@@ -217,12 +207,6 @@ export function McpServersPanel({
               />
             ))}
           </ul>
-        )}
-        {dropped.length > 0 && (
-          <p className="fg-body-sm mt-3 text-[var(--amberw-600)]">
-            Declared for this project and not supplied, so the list above does not carry them:{" "}
-            {dropped.join(", ")}.
-          </p>
         )}
       </CardContent>
     </Card>

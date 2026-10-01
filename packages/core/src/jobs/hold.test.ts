@@ -45,10 +45,6 @@ vi.mock('../runners/select.js', () => ({
   onlineCapableDeviceIds: () => capableMock(),
 }));
 
-vi.mock('./stage-overrides.js', () => ({
-  resolveStageOverrides: async () => ({ deviceIds: null }),
-}));
-
 vi.mock('./retry.js', () => ({ AUTO_RETRY_PAYLOAD_KEY: '_autoRetry' }));
 
 const resolveWedgeMock = vi.fn(async (..._args: unknown[]) => 0);

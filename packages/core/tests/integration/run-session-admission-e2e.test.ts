@@ -70,8 +70,8 @@ async function boxThat(state: Planted) {
             ? 'offline'
             : 'online';
     await harness.db.execute(sql`
-      INSERT INTO runners (id, project_id, device_id, name, type, status)
-      VALUES (gen_random_uuid(), ${project.id}, ${box.id}, 'r1', 'claude-code', ${status})
+      INSERT INTO runners (id, project_id, device_id, name, type, status, repo_path)
+      VALUES (gen_random_uuid(), ${project.id}, ${box.id}, 'r1', 'claude-code', ${status}, '/srv/r1')
     `);
   }
   if (state === 'device_disabled') {

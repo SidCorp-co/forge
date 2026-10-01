@@ -34,7 +34,6 @@ export interface PromptEnvelope {
   blocks: unknown[];
   estTokens: { input: number | null };
   actualUsage: ActualUsage | null;
-  mcpConfig: unknown;
   model: string | null;
   payloadExtras: Record<string, unknown>;
   resolvedFlags: ResolvedFlags;
@@ -44,9 +43,9 @@ export interface PromptEnvelope {
 // a scrub-header name (case-insensitive). String values become `"[REDACTED <N>
 // chars]"`; non-string values collapse to `"[REDACTED]"`. Pure — returns a new
 // value, never mutates the input.
-export function redactMcpSecrets(value: unknown, depth = 0): unknown {
+export function redactSecretHeaders(value: unknown, depth = 0): unknown {
   if (depth > 8 || value == null) return value;
-  if (Array.isArray(value)) return value.map((v) => redactMcpSecrets(v, depth + 1));
+  if (Array.isArray(value)) return value.map((v) => redactSecretHeaders(v, depth + 1));
   if (typeof value !== 'object') return value;
   const src = value as Record<string, unknown>;
   const out: Record<string, unknown> = {};
@@ -55,7 +54,7 @@ export function redactMcpSecrets(value: unknown, depth = 0): unknown {
     if (SCRUB_HEADER_KEYS.has(k.toLowerCase())) {
       out[k] = typeof v === 'string' ? `[REDACTED ${v.length} chars]` : '[REDACTED]';
     } else {
-      out[k] = redactMcpSecrets(v, depth + 1);
+      out[k] = redactSecretHeaders(v, depth + 1);
     }
   }
   return out;
@@ -64,7 +63,6 @@ export function redactMcpSecrets(value: unknown, depth = 0): unknown {
 const KEYS_SURFACED_ELSEWHERE = new Set([
   'promptString',
   'skillName',
-  'mcpServers',
   // PR-7a — dispatcher-stamped flags surfaced under `resolvedFlags` so
   // `payloadExtras` doesn't double-render them in the Inspector UI.
   'model',
@@ -73,7 +71,6 @@ const KEYS_SURFACED_ELSEWHERE = new Set([
   'timeoutSeconds',
   'stageStatus',
   'claudeSessionId',
-  'mcpServersOverride',
 ]);
 
 /**
@@ -130,7 +127,7 @@ export function extractPayloadExtras(
   if (!payload) return {};
   const out: Record<string, unknown> = {};
   for (const k of Object.keys(payload)) {
-    if (!KEYS_SURFACED_ELSEWHERE.has(k)) out[k] = payload[k];
+    if (!KEYS_SURFACED_ELSEWHERE.has(k)) out[k] = redactSecretHeaders(payload[k]);
   }
   return out;
 }

@@ -87,7 +87,7 @@ async function seed(tiers: {
     role: 'admin',
   });
   await harness.db.execute(
-    sql`UPDATE projects SET repo_path = '/srv/app' WHERE id = ${project.id}`,
+    sql`UPDATE projects SET repo_url = 'git@github.com:acme/app.git' WHERE id = ${project.id}`,
   );
   const { bindingId, connectionId } = await seedProduction(harness.db, {
     projectId: project.id,
