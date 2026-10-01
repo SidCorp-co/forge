@@ -200,7 +200,6 @@ describe('GET /api/projects/health', () => {
         slug: 'alpha',
         name: 'Alpha',
         agentConfig: null,
-        description: 'Alpha project',
         repoPath: 'org/alpha',
       },
       {
@@ -208,7 +207,6 @@ describe('GET /api/projects/health', () => {
         slug: 'beta',
         name: 'Beta',
         agentConfig: null,
-        description: null,
         repoPath: null,
       },
     ]); // visibleProjects
@@ -234,7 +232,6 @@ describe('GET /api/projects/health', () => {
     const body = (await res.json()) as Array<{
       id: string;
       projectSlug: string;
-      description: string | null;
       repoPath: string | null;
       liveRuns: number;
       runnerCount: number;
@@ -247,7 +244,7 @@ describe('GET /api/projects/health', () => {
     const alpha = body.find((p) => p.projectSlug === 'alpha');
     const beta = body.find((p) => p.projectSlug === 'beta');
     expect(alpha?.id).toBe(PROJECT_A_ID);
-    expect(alpha?.description).toBe('Alpha project');
+    expect(alpha).not.toHaveProperty('description');
     expect(alpha?.repoPath).toBe('org/alpha');
     expect(alpha?.liveRuns).toBe(3);
     expect(alpha?.runnerCount).toBe(2);
@@ -262,7 +259,6 @@ describe('GET /api/projects/health', () => {
     expect(beta?.memberCount).toBe(0);
     expect(beta?.members).toEqual([]);
     expect(beta?.lastActivityAt).toBeNull();
-    expect(beta?.description).toBeNull();
   });
 
   it('spend query uses IN (...) not ANY(::uuid[]) (regression: array binding 500s on live twice)', async () => {

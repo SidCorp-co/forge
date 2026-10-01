@@ -2528,6 +2528,11 @@
   (ISS-1313)
 
 ### Removed
+- **A project no longer has a description, kind, categories, bot personality, prompt addition or
+  Rocket.Chat answer mode.** Their settings are gone, stored values removed, and a request sending
+  one is refused by name. The assistant replies in your language.
+- **A designated plugin has no auto-update switch.** One with a pinned commit stays there; one
+  without follows its marketplace, which is what the settings screen already said.
 - **The pipeline configuration is gone.** Model, permissions, QA and intake come from the policy
   alone; the old route, `forge_config` door and settings sections are removed. Re-enter the weekly
   assistant setting, which moved to the project.
@@ -6177,6 +6182,9 @@
   deploy. Shipped 2026-09-02; this line was owed then and is written now. (ISS-870)
 
 ### Changed
+- **Whether a project's work lands in git comes from its project document's `source.type`.** A
+  project with no project document closes an issue only on a merge Forge saw; any other mark is
+  refused until `source.type` is declared.
 - **Each job runs under its project's policy: that status's model and deny list.** A project with
   no policy, or a status it leaves out, is refused by name. New projects get a default policy.
 - **A deny list is written as tool patterns, such as `Bash(git push:*)`.** One the runner could

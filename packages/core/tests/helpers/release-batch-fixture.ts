@@ -11,7 +11,7 @@ import type { AddressInfo } from 'node:net';
 import { sql } from 'drizzle-orm';
 import { afterAll } from 'vitest';
 import type { CreateReleaseBatchResult } from '../../src/release-batch/service.js';
-import { createTestDevice, type TestDatabase } from './index.js';
+import { createTestDevice, seedProjectSource, type TestDatabase } from './index.js';
 
 export const RELEASE_LABEL = 'release-box';
 export const SKIP_NOTE = { section: 'Skip', userFacing: '-' };
@@ -97,6 +97,10 @@ export function releaseBatchFixture(
              release_chain = '[{"branch": "main"}, {"branch": "production", "from": "merge-branch"}]'::jsonb
        WHERE id = ${projectId}
     `);
+    const declared = await harness().db.execute(
+      sql`SELECT 1 FROM project_config_documents WHERE project_id = ${projectId}`,
+    );
+    if (declared.length === 0) await seedProjectSource(harness().db, projectId, ownerId, 'git');
     await harness().db.execute(sql`
       INSERT INTO integration_connections (id, owner_type, owner_id, provider, active)
       VALUES (${connectionId}, 'user', ${ownerId}, 'coolify', true)

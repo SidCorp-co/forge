@@ -13658,25 +13658,8 @@
           "content": {
             "application/json": {
               "schema": {
+                "additionalProperties": false,
                 "properties": {
-                  "description": {
-                    "anyOf": [
-                      {
-                        "maxLength": 2000,
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "kind": {
-                    "enum": [
-                      "standard",
-                      "website"
-                    ],
-                    "type": "string"
-                  },
                   "name": {
                     "maxLength": 200,
                     "minLength": 1,
@@ -17002,9 +16985,6 @@
                         "items": {
                           "additionalProperties": false,
                           "properties": {
-                            "autoUpdate": {
-                              "type": "boolean"
-                            },
                             "marketplace": {
                               "maxLength": 200,
                               "minLength": 1,

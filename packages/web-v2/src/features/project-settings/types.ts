@@ -22,7 +22,6 @@ export function sectionWrite(before: unknown, after: unknown): DocumentWrite {
  *  current and the destination org (403/404 otherwise). */
 export interface ProjectUpdateInput {
 	name?: string;
-	description?: string | null;
 	repoPath?: string | null;
 	repoUrl?: string | null;
 	/** Prose: how to bring this repo's workspace to a buildable state. Read by
@@ -36,12 +35,6 @@ export interface ProjectUpdateInput {
 	/** NOT `environments`: that document is written through
 	 *  `PATCH /api/projects/:id/environments`, which refuses it here by name. */
 	orgId?: string;
-	/** ISS-609 — chat/RC-bot reply-style knob; scoped server-side write into
-	 *  `agentConfig.personaStyle`. null/'' clears it. */
-	personaStyle?: string | null;
-	rocketChatAnswerMode?: "fast" | "agent" | null;
-	systemPrompt?: string | null;
-	categories?: string[] | null;
 	/** `agentConfig.assistantWeekly`, replaced whole; null clears it. */
 	assistantWeekly?: AssistantWeekly | null;
 }
@@ -151,7 +144,6 @@ export interface PluginDesignation {
 	marketplace: string;
 	name: string;
 	pinnedRef?: string | null;
-	autoUpdate?: boolean;
 }
 
 /** One reason a release will not start, and what to do about it — mirrors
@@ -261,10 +253,6 @@ export interface PolicyRefusal {
 export interface ProjectAgentConfig {
 	assistantWeekly?: AssistantWeekly;
 	plugins?: PluginDesignation[];
-	personaStyle?: string;
-	systemPrompt?: string;
-	rocketChatAnswerMode?: "fast" | "agent";
-	categories?: string[];
 }
 
 

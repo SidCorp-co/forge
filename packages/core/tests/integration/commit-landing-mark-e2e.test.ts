@@ -15,6 +15,7 @@ process.env.DEVICE_TOKEN_PEPPER ??= 'integration-test-pepper-padded-to-32-chars-
 import {
   createTestProject,
   createTestUser,
+  seedProjectSource,
   setupTestDatabase,
   type TestDatabase,
   truncateAll,
@@ -138,19 +139,18 @@ beforeEach(async () => {
   userId = (await createTestUser(harness.db)).id;
   projectId = (await createTestProject(harness.db, userId)).id;
   await harness.db.execute(sql`UPDATE projects SET base_branch = 'main' WHERE id = ${projectId}`);
+  await seedProjectSource(harness.db, projectId, userId, 'git');
 });
 
 async function seed(
   opts: {
     status?: string;
     sessionContext?: Record<string, unknown>;
-    kind?: string;
+    source?: 'storefront';
     seq?: number;
   } = {},
 ) {
-  if (opts.kind) {
-    await harness.db.execute(sql`UPDATE projects SET kind = ${opts.kind} WHERE id = ${projectId}`);
-  }
+  if (opts.source) await seedProjectSource(harness.db, projectId, userId, opts.source);
   const id = randomUUID();
   await harness.db.execute(sql`
       INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, session_context)
@@ -354,7 +354,7 @@ describe('ISS-1318 — a base-branch landing marked by its commit (real Postgres
   });
 
   it('takes no commit route on an outside_git project (criterion 15)', async () => {
-    const issue = await seed({ kind: 'website' });
+    const issue = await seed({ source: 'storefront' });
     const refused = await refusal(() => mark(issue, OWN));
     expect(refused.code).toBe('NO_WORK_EVIDENCE');
     expect(repo.reads).toEqual([]);

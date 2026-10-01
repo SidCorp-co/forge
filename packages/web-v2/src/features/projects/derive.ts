@@ -56,7 +56,6 @@ export function mergeProjects(
       orgIsPersonal: p.orgIsPersonal,
       role: p.role,
       createdAt: p.createdAt,
-      description: h?.description ?? null,
       repoPath: h?.repoPath ?? null,
       health: h ? deriveHealth(h) : 'idle',
       liveRuns: h?.liveRuns ?? 0,
@@ -109,7 +108,7 @@ export function sortProjects(
   return out;
 }
 
-/** Free-text (name/repo/description) + needs-attention filter. */
+/** Free-text (name/org/repo) + needs-attention filter. */
 export function filterProjects(
   items: ProjectConsoleItem[],
   query: string,
@@ -122,8 +121,7 @@ export function filterProjects(
       !q ||
       p.name.toLowerCase().includes(q) ||
       p.orgName.toLowerCase().includes(q) ||
-      (p.repoPath?.toLowerCase().includes(q) ?? false) ||
-      (p.description?.toLowerCase().includes(q) ?? false);
+      (p.repoPath?.toLowerCase().includes(q) ?? false);
     return matches && (!attentionOnly || isAttention(p)) && (!orgId || p.orgId === orgId);
   });
 }

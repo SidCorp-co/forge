@@ -1,6 +1,6 @@
 /**
  * ISS-1327 — the one answer to "what counts as evidence that this landed", as pure functions. The
- * doors that call it are held at their own runtimes: `merged-at.test.ts`, `entry-criteria.test.ts`,
+ * doors that call it are held at their own runtimes: `merged-at.test.ts`,
  * `merge-mark-route.test.ts`, and against Postgres in `tests/integration/landing-evidence-e2e.test.ts`.
  */
 
@@ -13,6 +13,8 @@ import {
   landingShortfall,
   markTargetRequired,
   mergedLandingSchema,
+  requireLandingShape,
+  SOURCE_UNDECLARED,
   standingMarkRefusal,
 } from './landing-evidence.js';
 
@@ -22,15 +24,39 @@ const ASSERTED = { ...UNMARKED, mergedAt: AT };
 const OBSERVED = { ...ASSERTED, mergedCommitSha: '07f73960b2ce7ea1dfa1f050ec64d9bd0c80fe67' };
 const LANDED = { ...ASSERTED, mergedLanding: 'https://mowmentbrand.com/products/tee' };
 
-describe('the shape is read off the project kind, and nothing else', () => {
-  it('reads website as landing outside git and standard as landing in git', () => {
-    expect(landingShapeOf('website')).toBe('outside_git');
-    expect(landingShapeOf('standard')).toBe('git');
+describe("the shape is read off the project document's source.type, and nothing else", () => {
+  it('reads git as landing in git, and storefront and none as landing outside it', () => {
+    expect(landingShapeOf('git')).toBe('git');
+    expect(landingShapeOf('storefront')).toBe('outside_git');
+    expect(landingShapeOf('none')).toBe('outside_git');
   });
 
-  it('refuses a kind no route writes by name, rather than defaulting it to either shape', () => {
-    expect(() => landingShapeOf('publish')).toThrow('project kind `publish` is not one of');
-    expect(() => landingShapeOf('')).toThrow('`standard`, `website`');
+  it('answers no shape for a project with no document, rather than defaulting it to git', () => {
+    expect(landingShapeOf(null)).toBeNull();
+    expect(() => requireLandingShape(null)).toThrow(SOURCE_UNDECLARED);
+  });
+
+  it('refuses a stored type no schema admits by name, rather than defaulting it to either shape', () => {
+    expect(() => landingShapeOf('standard')).toThrow('source.type `standard` is not one of');
+    expect(() => landingShapeOf('')).toThrow('`git`, `storefront`, `none`');
+  });
+});
+
+describe('a project that declares no source.type', () => {
+  it('accepts only the mark every shape accepts: a merge Forge observed', () => {
+    expect(landingShortfall(OBSERVED, null)).toBeNull();
+  });
+
+  it.each([
+    ['no mark', UNMARKED],
+    ['a bare claim', ASSERTED],
+    ['a named landing', LANDED],
+  ])('refuses %s, naming the document that would decide it', (_what, row) => {
+    expect(landingShortfall(row, null)).toContain('PUT /api/projects/:id/config');
+  });
+
+  it('routes a close through declaring the source first', () => {
+    expect(landingRoute(null)).toContain('`source.type`');
   });
 });
 

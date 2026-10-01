@@ -12,7 +12,7 @@ function buildMockExecutor(row: Record<string, unknown> | undefined): {
     readCall(...args);
     const limited = { limit: async () => (row ? [row] : []) };
     return {
-      from: () => ({ innerJoin: () => ({ where: () => limited }), where: () => limited }),
+      from: () => ({ leftJoin: () => ({ where: () => limited }), where: () => limited }),
     };
   });
   const update = vi.fn().mockImplementation(() => {
@@ -25,15 +25,15 @@ function buildMockExecutor(row: Record<string, unknown> | undefined): {
 }
 
 const AT = new Date('2026-09-18T00:00:00Z');
-const mark = (kind: string, over: Record<string, unknown> = {}) => ({
+const mark = (sourceType: string | null, over: Record<string, unknown> = {}) => ({
   mergedAt: null,
   mergedCommitSha: null,
   mergedLanding: null,
-  kind,
+  sourceType,
   ...over,
 });
-const SHIPPED = mark('standard', { mergedAt: AT });
-const UNSHIPPED = mark('standard');
+const SHIPPED = mark('git', { mergedAt: AT });
+const UNSHIPPED = mark('git');
 
 describe('refuseUnshippedClose — the statuses it does not judge', () => {
   it.each([
@@ -91,7 +91,7 @@ describe('refuseUnshippedClose — a close on a project that lands in git', () =
 describe('refuseUnshippedClose — a close on a project whose work lands outside git', () => {
   it('permits a close on a mark naming where the work landed', async () => {
     const { executor } = buildMockExecutor(
-      mark('website', { mergedAt: AT, mergedLanding: 'https://shop.example/products/a' }),
+      mark('storefront', { mergedAt: AT, mergedLanding: 'https://shop.example/products/a' }),
     );
     expect(
       await refuseUnshippedClose(executor, { issueId: 'iss-1', toStatus: 'closed' }),
@@ -100,7 +100,7 @@ describe('refuseUnshippedClose — a close on a project whose work lands outside
 
   it('permits a close on a merge Forge observed', async () => {
     const { executor } = buildMockExecutor(
-      mark('website', { mergedAt: AT, mergedCommitSha: 'abc1234' }),
+      mark('storefront', { mergedAt: AT, mergedCommitSha: 'abc1234' }),
     );
     expect(
       await refuseUnshippedClose(executor, { issueId: 'iss-1', toStatus: 'closed' }),
@@ -108,7 +108,7 @@ describe('refuseUnshippedClose — a close on a project whose work lands outside
   });
 
   it('refuses a bare timestamp, naming data.landing as the route', async () => {
-    const { executor } = buildMockExecutor(mark('website', { mergedAt: AT }));
+    const { executor } = buildMockExecutor(mark('storefront', { mergedAt: AT }));
     const refusal = await refuseUnshippedClose(executor, { issueId: 'iss-1', toStatus: 'closed' });
     expect(refusal?.detail).toContain('names no landing');
     expect(refusal?.detail).not.toMatch(
@@ -124,17 +124,40 @@ describe('refuseUnshippedClose — a close on a project whose work lands outside
   });
 
   it('refuses no mark at all with the same route', async () => {
-    const { executor } = buildMockExecutor(mark('website'));
+    const { executor } = buildMockExecutor(mark('storefront'));
     const refusal = await refuseUnshippedClose(executor, { issueId: 'iss-1', toStatus: 'closed' });
     expect(refusal?.detail).toContain('no merged mark');
     expect(refusal?.detail).toContain('`data.landing`');
     expect(refusal?.details).toMatchObject({ requires: 'mergedLanding', held: 'unmarked' });
   });
 
-  it('refuses by name a project kind nothing writes, rather than guessing its shape', async () => {
-    const { executor } = buildMockExecutor(mark('storefront', { mergedAt: AT }));
+  it('refuses by name a source type no schema admits, rather than guessing its shape', async () => {
+    const { executor } = buildMockExecutor(mark('website', { mergedAt: AT }));
     await expect(
       refuseUnshippedClose(executor, { issueId: 'iss-1', toStatus: 'closed' }),
-    ).rejects.toThrow('project kind `storefront` is not one of');
+    ).rejects.toThrow('source.type `website` is not one of');
+  });
+});
+
+describe('refuseUnshippedClose — a close on a project with no project document', () => {
+  it('permits a close on a merge Forge observed, which every shape accepts', async () => {
+    const { executor } = buildMockExecutor(
+      mark(null, { mergedAt: AT, mergedCommitSha: 'abc1234' }),
+    );
+    expect(
+      await refuseUnshippedClose(executor, { issueId: 'iss-1', toStatus: 'closed' }),
+    ).toBeNull();
+  });
+
+  it('refuses a bare claim by naming the source.type it cannot judge it without', async () => {
+    const { executor } = buildMockExecutor(mark(null, { mergedAt: AT }));
+    const refusal = await refuseUnshippedClose(executor, { issueId: 'iss-1', toStatus: 'closed' });
+    expect(refusal?.detail).toContain('declares no project document');
+    expect(refusal?.detail).toContain('PUT /api/projects/:id/config');
+    expect(refusal?.details).toEqual({
+      requires: 'sourceType',
+      held: 'asserted',
+      useInstead: 'dropped',
+    });
   });
 });

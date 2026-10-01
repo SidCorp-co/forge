@@ -78,8 +78,6 @@ export type NewProject = {
   name: string;
   orgId: string;
   createdBy: string;
-  description?: string | null | undefined;
-  kind?: (typeof projects.$inferInsert)['kind'] | undefined;
   repoPath?: string | undefined;
   baseBranch?: string | undefined;
   releaseChain?: ReleaseChain | undefined;
@@ -103,8 +101,6 @@ export async function createProject(input: NewProject) {
           apiKey: generateApiKey(),
           baseBranch: input.baseBranch ?? 'main',
           ...(input.releaseChain !== undefined ? { releaseChain: input.releaseChain } : {}),
-          ...(input.description !== undefined ? { description: input.description } : {}),
-          ...(input.kind !== undefined ? { kind: input.kind } : {}),
           ...(input.repoPath !== undefined ? { repoPath: input.repoPath } : {}),
         })
         .returning({
@@ -191,7 +187,6 @@ export async function readProjectSummary(projectId: string) {
       id: projects.id,
       slug: projects.slug,
       name: projects.name,
-      description: projects.description,
       orgId: projects.orgId,
       createdBy: projects.createdBy,
       repoPath: projects.repoPath,
@@ -214,12 +209,10 @@ export async function updateProject(projectId: string, updates: Record<string, u
     slug: projects.slug,
     name: projects.name,
     orgId: projects.orgId,
-    description: projects.description,
     repoPath: projects.repoPath,
     workspaceSetup: projects.workspaceSetup,
     baseBranch: projects.baseBranch,
     releaseChain: projects.releaseChain,
-    kind: projects.kind,
   });
   return row ?? null;
 }

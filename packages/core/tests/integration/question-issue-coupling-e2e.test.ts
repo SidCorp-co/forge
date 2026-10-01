@@ -17,6 +17,7 @@ import {
   createTestProject,
   createTestProjectMember,
   createTestUser,
+  seedProjectSource,
   setupTestDatabase,
   type TestDatabase,
   truncateAll,
@@ -54,6 +55,7 @@ beforeEach(async () => {
   const owner = await createTestUser(harness.db);
   ownerId = owner.id;
   projectId = (await createTestProject(harness.db, owner.id)).id;
+  await seedProjectSource(harness.db, projectId, owner.id, 'git');
 });
 
 async function insertIssue(status: string, merged = true): Promise<string> {

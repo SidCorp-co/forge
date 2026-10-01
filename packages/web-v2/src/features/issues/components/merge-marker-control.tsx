@@ -39,7 +39,7 @@ interface MergeMarkerControlProps {
   /** Default `target`, offered because the repo's branch convention is `ISS-<seq>`. */
   suggestedTarget: string;
   /** Core's answer for this issue's project; an older server that sends none reads as `git`. */
-  landingShape?: LandingShape | undefined;
+  landingShape?: LandingShape | null | undefined;
 }
 
 export function MergeMarkerControl({

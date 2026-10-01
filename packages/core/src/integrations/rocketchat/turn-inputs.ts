@@ -1,7 +1,7 @@
 /**
  * What Rocket.Chat contributes to a conversation turn: the seed context, the
- * toolset, the images, and the two points at which this transport hands a turn
- * to a slower path instead of answering it here.
+ * toolset, the images, and the point after it at which this transport hands a
+ * turn to a slower path instead of answering it here.
  *
  * The turn itself belongs to `conversations/turn-runner.ts`. Everything in this
  * file is an input to it or a diversion from it — which is the whole of what an
@@ -21,12 +21,6 @@ import type { WindowCut, WindowTurnInputs } from '../../conversations/route-wind
 import type { TurnInputs, TurnReply } from '../../conversations/turn-runner.js';
 import { db } from '../../db/client.js';
 import { projects } from '../../db/schema.js';
-import {
-  AGENT_CHAT_DEDUP_REPLY,
-  AGENT_CHAT_NO_DEVICE_REPLY,
-  startAgentChat,
-} from './agent-chat.js';
-import { readRocketChatAnswerMode } from './answer-mode.js';
 import { buildConversationContext } from './context.js';
 import {
   ESCALATION_ACK,
@@ -92,7 +86,6 @@ export type RocketChatTurn = WindowTurnInputs;
 interface Seed {
   persona: string;
   conversationContext: string | null;
-  agentConfig: unknown;
   repoPath: string | null;
 }
 
@@ -118,14 +111,13 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
         triggerText: subject.text,
       }),
       db
-        .select({ agentConfig: projects.agentConfig, repoPath: projects.repoPath })
+        .select({ repoPath: projects.repoPath })
         .from(projects)
         .where(eq(projects.id, route.projectId))
         .limit(1),
     ]);
     seed = {
       conversationContext,
-      agentConfig: projectRow[0]?.agentConfig ?? null,
       repoPath: projectRow[0]?.repoPath ?? null,
       persona: rocketChatPersona(route.projectName, subject.username, {
         projectSlug: route.projectSlug,
@@ -147,48 +139,6 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
       rid: subject.rid,
       msgIds: subject.messageIds,
       projectId: route.projectId,
-    },
-
-    divertBeforeTurn: async ({ setPhase, authority }): Promise<TurnReply | null> => {
-      setPhase('context');
-      const s = await readSeed();
-      if (readRocketChatAnswerMode(s.agentConfig) !== 'agent') return null;
-      setPhase('agent-chat');
-      if (args.beforeDivert && !(await args.beforeDivert()))
-        return { send: false, reason: 'superseded-before-agent-chat' };
-      const started = await startAgentChat({
-        venue: args.window.venue,
-        conversationId: args.window.conversationId,
-        windowId: args.window.windowId,
-        deliveryKey: args.window.deliveryKey,
-        project: { ...project, repoPath: s.repoPath },
-        botName: bot.botName,
-        message: subject.text,
-        askedByUsername: subject.username,
-        asker: authority,
-        persona: s.persona,
-        conversationContext: s.conversationContext,
-      });
-      if (started.started) return { send: false, reason: 'agent-chat-dispatched' };
-      if (started.reason === 'deduped')
-        return {
-          send: true,
-          message: codeAuthored(AGENT_CHAT_DEDUP_REPLY(bot.botName)),
-          screenReplaced: false,
-        };
-      if (started.reason === 'no-device')
-        return {
-          send: true,
-          message: codeAuthored(AGENT_CHAT_NO_DEVICE_REPLY(bot.botName)),
-          screenReplaced: false,
-        };
-      if (started.reason === 'runner-outdated' || started.reason === 'authority-refused')
-        return {
-          send: true,
-          message: codeAuthored(agentRefusalText(started)),
-          screenReplaced: false,
-        };
-      return { send: false, reason: 'agent-chat-dispatch-failed' };
     },
 
     prepare: async ({

@@ -42,8 +42,6 @@ export interface MeRunnerAssignment {
   repoPath: string | null;
   branch: string | null;
   status: string;
-  /** `standard` (code repo) or `website` (storefront, git optional). */
-  kind: string;
   /** Prose: how to bring this repo's workspace to a usable state. */
   workspaceSetup: string | null;
   /** The `master-policy` projectFact: the owner's standing instruction for this

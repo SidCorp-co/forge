@@ -142,7 +142,6 @@ export async function runExternalChatTurn(
       id: projects.id,
       slug: projects.slug,
       name: projects.name,
-      agentConfig: projects.agentConfig,
     })
     .from(projects)
     .where(eq(projects.id, args.projectId))
@@ -197,7 +196,7 @@ export async function runExternalChatTurn(
   });
 
   const systemPrompt = buildSystemPrompt({
-    project: { name: project.name, agentConfig: project.agentConfig },
+    project: { name: project.name },
     self,
     appConfig: appCfg ?? null,
     persona: args.persona ?? null,

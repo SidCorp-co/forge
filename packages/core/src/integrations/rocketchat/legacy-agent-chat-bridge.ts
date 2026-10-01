@@ -18,7 +18,6 @@ import type { ProgressFacts } from '../../messaging/facts.js';
 import { proven, wholeAgentText } from '../../messaging/proven.js';
 import { withRepairs } from '../../messaging/repairs.js';
 import { screenReplyAtDoor } from '../../messaging/reply-screen.js';
-import { AGENT_CHAT_FALLBACK_REPLY } from './agent-chat.js';
 import { FIXED_REPLY_CONSTANT, type ReplySendProof, sendFixedReply } from './outbound.js';
 import {
   claimRoomReplyDelivery,
@@ -29,6 +28,9 @@ import {
 } from './room-delivery.js';
 
 type SessionRow = typeof agentSessionsTable.$inferSelect;
+
+const AGENT_CHAT_FALLBACK_REPLY = (botName: string): string =>
+  `Xin lỗi, ${botName} chưa đối chiếu được số liệu dự án nên không dám gửi câu trả lời chưa chắc chắn — không phải do câu hỏi của bạn, bạn hỏi lại sau ít phút nhé.`; // i18n-allow: user-facing channel reply
 
 function readProgressFacts(metadata: unknown): ProgressFacts | null | 'legacy-session' {
   const m = metadata as Record<string, unknown> | null;

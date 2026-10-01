@@ -18,8 +18,6 @@ pub struct DesignatedPlugin {
     pub name: String,
     #[serde(default)]
     pub pinned_ref: Option<String>,
-    #[serde(default = "default_true")]
-    pub auto_update: bool,
     /// Slugs of the bound projects that asked for it — logged, so an operator can see why a
     /// plugin appeared on this device without reading the server's DB.
     #[serde(default)]
@@ -28,10 +26,6 @@ pub struct DesignatedPlugin {
     /// than silently picking one.
     #[serde(default)]
     pub pinned_ref_conflict: Option<Vec<String>>,
-}
-
-fn default_true() -> bool {
-    true
 }
 
 #[derive(Debug, Deserialize)]

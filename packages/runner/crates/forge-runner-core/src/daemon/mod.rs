@@ -1336,7 +1336,7 @@ async fn sweep_plugins(client: &CoreClient, cfg: &Config) {
                 marketplace: d.marketplace.clone(),
                 name: d.name.clone(),
                 pinned_ref: d.pinned_ref.clone(),
-                auto_update: d.auto_update,
+                auto_update: true,
             }
         })
         .collect();

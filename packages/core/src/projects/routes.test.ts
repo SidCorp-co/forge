@@ -248,6 +248,19 @@ describe('POST /api/projects', () => {
     });
   });
 
+  it.each([
+    ['kind', 'website'],
+    ['description', 'a project'],
+  ])('400 BAD_REQUEST naming the deleted field %s, and creates nothing', async (field, value) => {
+    const token = await signUserToken('uuid-owner');
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+
+    const res = await post({ slug: 'my-proj', name: 'My Project', [field]: value }, token);
+    expect(res.status).toBe(400);
+    expect(await res.text()).toContain(`\`${field}\` is not a field of POST /api/projects`);
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
   it('500 PERSONAL_ORG_MISSING when the user has no personal org', async () => {
     const token = await signUserToken('uuid-owner');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
@@ -373,7 +386,6 @@ describe('GET /api/projects/:id', () => {
         name: 'P One',
         orgId: ORG_ID,
         createdBy: 'uuid-user',
-        description: 'desc',
         repoPath: '/repo',
         baseBranch: 'main',
         releaseChain: [{ branch: 'main' }, { branch: 'master', from: 'merge-branch' }],
@@ -405,7 +417,6 @@ describe('GET /api/projects/:id', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       id: string;
-      description: string;
       repoPath: string;
       role: string;
       orgRole: string;
@@ -414,7 +425,7 @@ describe('GET /api/projects/:id', () => {
       devicePool: Array<{ id: string; runnerId: string }>;
     };
     expect(body.id).toBe('p1');
-    expect(body.description).toBe('desc');
+    expect(body).not.toHaveProperty('description');
     expect(body.repoPath).toBe('/repo');
     expect(body.role).toBe('admin');
     expect(body.orgRole).toBe('owner');
@@ -435,7 +446,6 @@ describe('GET /api/projects/:id', () => {
         name: 'P One',
         orgId: ORG_ID,
         createdBy: 'uuid-user',
-        description: null,
         repoPath: null,
         baseBranch: null,
         releaseChain: [],
@@ -551,13 +561,12 @@ describe('PATCH /api/projects/:id', () => {
     });
   });
 
-  it('200 updates new settings fields (description, repoPath, branches, defaultDeviceId)', async () => {
+  it('200 updates new settings fields (repoPath, branches, defaultDeviceId)', async () => {
     const token = await signUserToken('uuid-owner');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
     projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
     updateReturning.mockResolvedValueOnce([
       patchedRow({
-        description: 'a project',
         repoPath: '/home/user/repo',
         baseBranch: 'staging',
         releaseChain: [{ branch: 'staging' }, { branch: 'main', from: 'merge-branch' }],
@@ -574,7 +583,6 @@ describe('PATCH /api/projects/:id', () => {
     const res = await req('/11111111-1111-4111-8111-111111111111', {
       method: 'PATCH',
       body: JSON.stringify({
-        description: 'a project',
         repoPath: '/home/user/repo',
         baseBranch: 'staging',
         releaseChain: [{ branch: 'staging' }, { branch: 'main', from: 'merge-branch' }],
@@ -584,7 +592,6 @@ describe('PATCH /api/projects/:id', () => {
     });
     expect(res.status).toBe(200);
     expect(updateSet).toHaveBeenCalledWith({
-      description: 'a project',
       repoPath: '/home/user/repo',
       baseBranch: 'staging',
       releaseChain: [{ branch: 'staging' }, { branch: 'main', from: 'merge-branch' }],
@@ -592,39 +599,28 @@ describe('PATCH /api/projects/:id', () => {
     });
   });
 
-  it('200 kind: reaches the UPDATE, so an existing project can be re-shaped as a storefront', async () => {
+  it.each([
+    ['kind', 'website'],
+    ['description', 'a project'],
+    ['personaStyle', 'be terse'],
+    ['systemPrompt', 'answer in Vietnamese'],
+    ['rocketChatAnswerMode', 'agent'],
+    ['categories', ['bug']],
+  ])('400 BAD_REQUEST naming the deleted field %s, and writes nothing', async (field, value) => {
     const token = await signUserToken('uuid-owner');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
-    updateReturning.mockResolvedValueOnce([
-      patchedRow({
-        kind: 'website',
-        agentConfig: null,
-        webhookSecret: null,
-      }),
-    ]);
 
     const res = await req('/11111111-1111-4111-8111-111111111111', {
       method: 'PATCH',
-      body: JSON.stringify({ kind: 'website' }),
-      token,
-    });
-    expect(res.status).toBe(200);
-    expect(updateSet).toHaveBeenCalledWith({ kind: 'website' });
-  });
-
-  it('400 BAD_REQUEST on an unknown kind, so a typo never turns the git preflight off', async () => {
-    const token = await signUserToken('uuid-owner');
-    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
-
-    const res = await req('/11111111-1111-4111-8111-111111111111', {
-      method: 'PATCH',
-      body: JSON.stringify({ kind: 'storefront' }),
+      body: JSON.stringify({ name: 'kept', [field]: value }),
       token,
     });
     expect(res.status).toBe(400);
+    const text = await res.text();
+    expect(text).toContain(`\`${field}\` is not a field of PATCH /api/projects/:id`);
+    expect(text).toContain('refused rather than answered 200 and dropped');
     expect(updateSet).not.toHaveBeenCalled();
+    expect(dbExecute).not.toHaveBeenCalled();
   });
 
   it('200 accepts null defaultDeviceId to clear the assignment', async () => {
@@ -633,7 +629,6 @@ describe('PATCH /api/projects/:id', () => {
     projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
     updateReturning.mockResolvedValueOnce([
       patchedRow({
-        description: null,
         repoPath: null,
         baseBranch: null,
         releaseChain: [],
@@ -817,7 +812,7 @@ describe('PATCH /api/projects/:id · retired keys and the agentConfig doors', ()
 
   it.each([
     ['a declared key', { plugins: [] }, '`PATCH /api/projects/:id/plugins`'],
-    ['a declared key with a scoped field', { personaStyle: 'terse' }, '`personaStyle` field'],
+    ['a declared key with a scoped field', { assistantWeekly: null }, '`assistantWeekly` field'],
     ['a key nothing declares', { whatIsThis: 1 }, 'is not a key this project'],
   ])(
     '400: a wholesale agentConfig carrying %s is refused naming its door, and writes nothing',
@@ -838,17 +833,16 @@ describe('PATCH /api/projects/:id · retired keys and the agentConfig doors', ()
     },
   );
 
+  const WEEKLY = {
+    enabled: true,
+    pinnedIssue: 'ISS-1',
+    judgeProviderId: 'p-1',
+    judgeModel: 'sonnet',
+  };
+
   it.each([
-    ['rocketChatAnswerMode', 'agent', { rocketChatAnswerMode: 'agent' }, []],
-    ['rocketChatAnswerMode', null, {}, ['rocketChatAnswerMode']],
-    ['personaStyle', 'be terse', { personaStyle: 'be terse' }, []],
-    ['personaStyle', '', {}, ['personaStyle']],
-    ['personaStyle', null, {}, ['personaStyle']],
-    ['systemPrompt', 'answer in Vietnamese', { systemPrompt: 'answer in Vietnamese' }, []],
-    ['systemPrompt', null, {}, ['systemPrompt']],
-    ['categories', ['bug'], { categories: ['bug'] }, []],
-    ['categories', [], { categories: [] }, []],
-    ['categories', null, {}, ['categories']],
+    ['assistantWeekly', WEEKLY, { assistantWeekly: WEEKLY }, []],
+    ['assistantWeekly', null, {}, ['assistantWeekly']],
   ] as Array<[string, unknown, Record<string, unknown>, string[]]>)(
     '200 %s=%j writes that key alone, adding %j and removing %j',
     async (field, value, added, removed) => {
@@ -870,24 +864,6 @@ describe('PATCH /api/projects/:id · retired keys and the agentConfig doors', ()
     },
   );
 
-  it('names no key it was not asked to write', async () => {
-    const token = await signUserToken('uuid-owner');
-    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
-    selectLimit
-      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([patchedRow({})]);
-
-    const res = await req('/11111111-1111-4111-8111-111111111111', {
-      method: 'PATCH',
-      body: JSON.stringify({ personaStyle: 'terse', categories: null }),
-      token,
-    });
-    expect(res.status).toBe(200);
-    expect(agentConfigWrites()).toEqual([
-      { added: { personaStyle: 'terse' }, removed: ['categories'] },
-    ]);
-  });
-
   it('writes the scoped key through the transaction handle and not the bare db', async () => {
     const token = await signUserToken('uuid-owner');
     projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
@@ -897,23 +873,11 @@ describe('PATCH /api/projects/:id · retired keys and the agentConfig doors', ()
 
     await req('/11111111-1111-4111-8111-111111111111', {
       method: 'PATCH',
-      body: JSON.stringify({ systemPrompt: 'hello' }),
+      body: JSON.stringify({ assistantWeekly: null }),
       token,
     });
     expect(transaction).toHaveBeenCalledTimes(1);
     expect(dbExecute).toHaveBeenCalledTimes(1);
-  });
-
-  it("400 BAD_REQUEST when rocketChatAnswerMode is not 'fast'|'agent'", async () => {
-    const token = await signUserToken('uuid-owner');
-    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-
-    const res = await req('/11111111-1111-4111-8111-111111111111', {
-      method: 'PATCH',
-      body: JSON.stringify({ rocketChatAnswerMode: 'slow' }),
-      token,
-    });
-    expect(res.status).toBe(400);
   });
 });
 

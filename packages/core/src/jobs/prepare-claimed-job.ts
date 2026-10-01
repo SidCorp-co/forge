@@ -76,14 +76,11 @@ export interface PreparedJob {
 
 async function loadRepoPath(projectId: string): Promise<string | null> {
   const [row] = await db
-    .select({ repoPath: projects.repoPath, agentConfig: projects.agentConfig })
+    .select({ repoPath: projects.repoPath })
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1);
-  if (!row) return null;
-  if (row.repoPath) return row.repoPath;
-  const ac = (row.agentConfig ?? {}) as Record<string, unknown>;
-  return typeof ac.repoPath === 'string' ? ac.repoPath : null;
+  return row?.repoPath ?? null;
 }
 
 /**

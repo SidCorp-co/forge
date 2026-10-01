@@ -10,6 +10,7 @@ import {
   landingMarkRefusal,
   markTargetRequired,
   readLandingShape,
+  SOURCE_UNDECLARED,
   standingMarkRefusal,
 } from './landing-evidence.js';
 import {
@@ -80,6 +81,7 @@ export class MergeMarkerError extends Error {
       | 'LANDING_NOT_THIS_SHAPE'
       | 'MARK_ALREADY_STANDS'
       | 'TARGET_REQUIRED'
+      | 'PROJECT_DOCUMENT_NOT_FOUND'
       | Exclude<CommitLanding, { ok: true }>['code'],
     message: string,
     readonly details?: Record<string, unknown>,
@@ -133,6 +135,7 @@ export async function applyMergeMarker(args: {
   let readFrom: Extract<CommitLanding, { ok: true }> | null = null;
   if (args.op === 'mark') {
     const shape = await readLandingShape(db, before.projectId);
+    if (shape === null) throw new MergeMarkerError('PROJECT_DOCUMENT_NOT_FOUND', SOURCE_UNDECLARED);
     // A landing on a git project is refused below whatever the target, and that refusal names the
     // real fault, so the missing target is not reported ahead of it.
     if (markTargetRequired(shape) && !args.target && !args.landing) {

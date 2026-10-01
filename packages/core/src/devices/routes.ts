@@ -445,7 +445,10 @@ deviceAuthRoutes.get('/me/plugins', requireDevice(), async (c) => {
     .where(and(eq(runners.deviceId, device.id), eq(runners.type, 'claude-code')));
 
   const plugins = unionPluginDesignations(
-    rows.map((r) => ({ slug: r.slug, designations: readPluginDesignations(r.agentConfig) })),
+    rows.map((r) => ({
+      slug: r.slug,
+      designations: readPluginDesignations(r.agentConfig, r.slug),
+    })),
   );
 
   return c.json({ plugins });
