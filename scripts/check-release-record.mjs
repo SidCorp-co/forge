@@ -105,7 +105,13 @@ function main() {
     return 2;
   }
 
-  const rev = baseRev(ROOT);
+  let rev;
+  try {
+    rev = baseRev(ROOT);
+  } catch (err) {
+    console.error(`release-record: could not run — ${err.message}`);
+    return 2;
+  }
   const verdict = judge({
     head,
     base: rev === null ? null : readAt(rev, RECORD),

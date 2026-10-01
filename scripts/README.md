@@ -910,9 +910,12 @@ of the published record one change may replace without declaring it; the meaning
 the diff review's, which sees it as two lines.
 
 Base revision comes from `baseRev()` in `lib/baseline-ratchet.mjs` — merge-base against the merge
-target `lib/base-branch.mjs` derives, with the `HEAD~1` fallback, because a commit pushed straight to
-that branch has its tip equal to `HEAD` and a rule whose base can equal its subject passes
-everything. **No base revision is exit 2**, which is
+target `lib/base-branch.mjs` derives. A push straight to that branch has its tip equal to `HEAD`,
+and a rule whose base can equal its subject passes everything, so a push event is judged from the
+tip it moved the branch from (`pushedFrom`, the payload's `before`): the whole push is one change,
+where `HEAD~1` saw only its last commit. `HEAD~1` remains for a local commit on the branch. A push
+whose `before` is unreadable or not an ancestor of `HEAD` refuses by name. **No base revision is
+exit 2**, which is
 why `lang-check` carries `fetch-depth: 0`.
 
 ### Removing an entry is legal, and it is declared
