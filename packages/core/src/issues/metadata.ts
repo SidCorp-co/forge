@@ -13,7 +13,6 @@ export const branchConfigOverrideSchema = z
   .object({
     baseBranch: branchNameSchema.nullable().optional(),
     targetBranch: branchNameSchema.nullable().optional(),
-    liveBranch: branchNameSchema.nullable().optional(),
   })
   .strict();
 

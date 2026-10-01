@@ -7,13 +7,14 @@ import { enqueueOutboundDispatch } from '../integrations/queue.js';
 import { listActiveDeployBindingsForProvider } from '../integrations/store.js';
 import { logger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
-import { projectAutoProdDeploy } from './auto-prod-deploy.js';
+import { type DeployMap, readDeployMap } from '../project-config/release-path.js';
 import { abandonDeployDispatchHold, openDeployDispatchHold } from './deploy-confirmations.js';
 import {
   acquireDeployLocks,
   type DeployLockHeld,
   releaseDeployLocksForRun,
 } from './deploy-lock.js';
+import { productionDeploysOnLand } from './production-trigger.js';
 import {
   type DeployLockIntent,
   deployLockIntent,
@@ -31,7 +32,7 @@ import { RELEASE_DEPLOY_IN_FLIGHT_STEP, setCurrentStep } from './runs.js';
  * writes it; these two are dispatch-side only.
  */
 /** Re-exported so this module's existing callers and their mocks keep one path. */
-export { projectAutoProdDeploy };
+export { productionDeploysOnLand };
 
 export const RELEASE_DEPLOY_PENDING = 'release.deploy.pending_human';
 export const RELEASE_DEPLOY_SKIPPED = 'release.deploy.skipped';
@@ -44,72 +45,59 @@ export interface DispatchOutcome {
 }
 
 /**
- * Whether a run-less action against a `prod` binding must park for a human.
+ * Whether a run-less action against this binding must park for a human.
  *
- * A prod binding with no run behind it never dispatches, because confirming a
- * prod deploy is run-keyed and a run-less action has no gate to release. The
- * project opts out when production deploys `on-land` (`projectAutoProdDeploy`).
- * `tryDispatchCoolifyRelease` applies the same rule through `reachesLiveOf`,
- * which it needs anyway to answer for a whole binding set at once.
+ * A binding reaching production with no run behind it never dispatches, because confirming a
+ * production deploy is run-keyed and a run-less action has no gate to release. The project opts
+ * out when production deploys `on-land` (`productionDeploysOnLand`).
  */
 export async function liveActionNeedsHumanConfirm(
   projectId: string,
-  stages: readonly string[],
-  targets: readonly string[] = [],
+  binding: { id: string; config: unknown },
 ): Promise<boolean> {
-  const reachesLive =
-    stages.includes('live') || (await sharesAResourceWithLive(projectId, targets));
-  if (!reachesLive) return false;
-  return !(await projectAutoProdDeploy(projectId));
-}
-
-/**
- * Whether these resources are also served by a binding that carries `live`.
- *
- * A stage is a label on a binding; the production box is a fact about what the
- * binding deploys to. Where one branch and one application serve both stages,
- * asking only the label lets a `preview` deploy reach production with no human
- * in front of it — measured on forge-dev, whose two deploy bindings both target
- * `y8w4c4kss8ogo8gc44ow44kc`. A project whose stages are separate boxes shares
- * no resource here, so this answers `false` and the gate is what it was.
- */
-async function sharesAResourceWithLive(
-  projectId: string,
-  targets: readonly string[],
-): Promise<boolean> {
-  if (targets.length === 0) return false;
+  let reaches: boolean;
   try {
-    const pairs = await listActiveDeployBindingsForProvider(projectId, 'coolify');
-    const live = new Set(
-      pairs
-        .filter((p) => (p.binding.stages ?? []).includes('live'))
-        .flatMap((p) => resourceUuidsOf(p.binding.config)),
-    );
-    return targets.some((t) => live.has(t));
+    reaches = await bindingReachesProduction(projectId, binding);
   } catch (err) {
-    logger.warn({ err, projectId }, 'coolify: could not read sibling bindings — keeping prod gate');
+    logger.warn(
+      { err, projectId },
+      'coolify: could not read what reaches production — keeping prod gate',
+    );
     return true;
   }
+  if (!reaches) return false;
+  return !(await productionDeploysOnLand(projectId));
+}
+
+/** Whether this binding deploys the production environment's box. */
+export async function bindingReachesProduction(
+  projectId: string,
+  binding: { id: string; config: unknown },
+): Promise<boolean> {
+  const pairs = await listActiveDeployBindingsForProvider(projectId, 'coolify');
+  return reachesProductionOf(await readDeployMap(projectId), pairs)(binding);
 }
 
 /**
- * Which of these bindings reach the production box — by carrying `live`, or by
- * deploying to an application a `live` binding also deploys to.
+ * Which of these bindings reach the production box — by being the production environment's
+ * binding, or by deploying to an application that binding also deploys to.
  *
- * Built from the WHOLE binding set before any filter, because the shared
- * resource is only visible while the `live` binding is still in the list: drop
- * it first and the one beside it stops looking like production.
+ * Built from the WHOLE binding set before any filter, because the shared resource is only
+ * visible while the production binding is still in the list: drop it first and the one beside
+ * it stops looking like production — measured on forge-dev, whose two deploy bindings both
+ * target `y8w4c4kss8ogo8gc44ow44kc`.
  */
-function reachesLiveOf(
-  pairs: ReadonlyArray<{ binding: { stages: string[] | null; config: unknown } }>,
-): (binding: { stages: string[] | null; config: unknown }) => boolean {
+function reachesProductionOf(
+  map: DeployMap,
+  pairs: ReadonlyArray<{ binding: { id: string; config: unknown } }>,
+): (binding: { id: string; config: unknown }) => boolean {
   const live = new Set(
     pairs
-      .filter((p) => (p.binding.stages ?? []).includes('live'))
+      .filter((p) => p.binding.id === map.productionBinding)
       .flatMap((p) => resourceUuidsOf(p.binding.config)),
   );
   return (binding) =>
-    (binding.stages ?? []).includes('live') ||
+    binding.id === map.productionBinding ||
     resourceUuidsOf(binding.config).some((u) => live.has(u));
 }
 
@@ -140,12 +128,11 @@ async function warnIfRunAlreadyTerminal(runId: string, issueId: string | null): 
 }
 
 /**
- * Enqueue a Coolify deploy for each active binding of this project, called
- * after a release-type job completes. A prod binding is parked for a human
- * unless the project opted into `autoProdDeploy`; a project with no binding
- * at all returns `reason: 'no-integration'` and stamps the skipped substep.
+ * Enqueue a Coolify deploy for each active binding an environment of the project document names,
+ * except one whose environment deploys itself (`trigger: provider`); a project with nothing to
+ * dispatch returns `reason: 'no-integration'` and stamps the skipped substep.
  */
-// cm:flow release/deploy after:stamp — the landing is what dispatches the deploy: an issue arriving at `developed` calls this, which is why a change is judgeable before anything reaches the release gate; a prod binding parks for a human unless the project document's production environment deploys on-land
+// cm:flow release/deploy after:stamp — the deploy is a caller's act on a landed change (`forge_coolify_deploy`): the issue path reaches every environment but production before the release stage, and the release run reaches production; a binding reaching production parks for a human unless the project document's production environment deploys on-land
 export async function tryDispatchCoolifyRelease(args: {
   projectId: string;
   issueId: string | null;
@@ -160,8 +147,21 @@ export async function tryDispatchCoolifyRelease(args: {
   const takeEnvironmentLock = args.takeEnvironmentLock === true;
   await warnIfRunAlreadyTerminal(runId, issueId);
   const allPairs = await listActiveDeployBindingsForProvider(projectId, 'coolify');
-  const reachesLive = reachesLiveOf(allPairs);
-  let pairs = allPairs;
+  const map = await readDeployMap(projectId);
+  const reachesLive = reachesProductionOf(map, allPairs);
+  const envOf = (binding: { id: string }) => map.environments.get(binding.id)?.name ?? null;
+  const production = map.productionBinding
+    ? (map.environments.get(map.productionBinding)?.name ?? null)
+    : null;
+  const reachedBy = (binding: { id: string; config: unknown }): string[] => {
+    const own = envOf(binding);
+    const reached = production !== null && reachesLive(binding) ? [production] : [];
+    return [...new Set([...(own ? [own] : []), ...reached])];
+  };
+  let pairs = allPairs.filter((p) => {
+    const env = map.environments.get(p.binding.id);
+    return env !== undefined && env.trigger !== 'provider';
+  });
   if (integrationId) pairs = pairs.filter((p) => p.binding.id === integrationId);
   if (!allowLive) pairs = pairs.filter((p) => !reachesLive(p.binding));
   if (pairs.length === 0) {
@@ -174,7 +174,7 @@ export async function tryDispatchCoolifyRelease(args: {
     };
   }
 
-  const lock = takeEnvironmentLock ? deployLockIntent(projectId, pairs, reachesLive) : null;
+  const lock = takeEnvironmentLock ? deployLockIntent(projectId, pairs, reachedBy) : null;
   // Each placeholder records the rows its own binding needs (ISS-1279).
   const takenLocks: DeployLockHeld[] = lock
     ? await acquireDeployLocks({ projectId, runId, subject: lock.subject }, lock.environments)
@@ -182,7 +182,7 @@ export async function tryDispatchCoolifyRelease(args: {
 
   const dispatched: string[] = [];
   let pendingHumanConfirm = false;
-  const autoProd = await projectAutoProdDeploy(projectId);
+  const autoProd = await productionDeploysOnLand(projectId);
 
   // EVERY hold before the FIRST enqueue: opened beside its own enqueue, the holds registered so
   // far read as the whole set, and a target settling there closes the run and frees the
@@ -194,7 +194,7 @@ export async function tryDispatchCoolifyRelease(args: {
       if (reachesLive(binding) && !autoProd) {
         // Manual approval gate — never auto-dispatch prod. The UI sticky
         // banner calls /integrations/:id/confirm-prod-deploy to release the gate.
-        // Skipped entirely when the project opted into autoProdDeploy.
+        // Skipped entirely where production deploys on-land.
         const gateState = await getProdGateStateForRun(binding.id, runId);
         if (!gateState || gateState.confirmedAt === null) {
           await markPendingHumanConfirm({
@@ -202,7 +202,7 @@ export async function tryDispatchCoolifyRelease(args: {
             issueId,
             bindingId: binding.id,
             // THIS binding's, never the fan-out's: a sibling's would refuse its own press.
-            ...(lock ? { lock: deployLockIntent(projectId, [{ binding }], reachesLive) } : {}),
+            ...(lock ? { lock: deployLockIntent(projectId, [{ binding }], reachedBy) } : {}),
           });
           pendingHumanConfirm = true;
           continue;
@@ -215,10 +215,10 @@ export async function tryDispatchCoolifyRelease(args: {
         runId,
         bindingId: binding.id,
         requestId,
-        targetLabel: targetLabelOf(binding),
+        targetLabel: targetLabelOf(envOf(binding), binding),
         // One this fan-out WROTE, never one it attempted (ISS-1279).
         authorisedBySibling: witnessed > 0,
-        locks: locksOf(takenLocks, deployLockIntent(projectId, [{ binding }], reachesLive)),
+        locks: locksOf(takenLocks, deployLockIntent(projectId, [{ binding }], reachedBy)),
       });
       if (held) witnessed += 1;
       else reportUnwitnessedDeploy(runId, issueId, binding.id);
@@ -241,7 +241,7 @@ export async function tryDispatchCoolifyRelease(args: {
           category: 'integration.coolify.dispatch',
           level: 'info',
           message: 'enqueued coolify dispatch',
-          data: { bindingId: binding.id, stages: binding.stages, runId },
+          data: { bindingId: binding.id, environment: envOf(binding), runId },
         });
       }
     }
@@ -259,7 +259,7 @@ export async function tryDispatchCoolifyRelease(args: {
       runId,
       takenLocks,
       armed.flatMap(
-        ({ binding }) => deployLockIntent(projectId, [{ binding }], reachesLive).environments,
+        ({ binding }) => deployLockIntent(projectId, [{ binding }], reachedBy).environments,
       ),
     );
   }
@@ -269,9 +269,7 @@ export async function tryDispatchCoolifyRelease(args: {
     return {
       dispatched: false,
       pendingHumanConfirm: true,
-      integrationIds: pairs
-        .filter((p) => (p.binding.stages ?? []).includes('live'))
-        .map((p) => p.binding.id),
+      integrationIds: pairs.filter((p) => reachesLive(p.binding)).map((p) => p.binding.id),
       reason: 'awaiting-prod-confirm',
     };
   }
@@ -295,13 +293,7 @@ export async function dispatchCoolifyDeployDirect(args: {
   }
   const { binding } = pair;
 
-  if (
-    await liveActionNeedsHumanConfirm(
-      projectId,
-      binding.stages ?? [],
-      resourceUuidsOf(binding.config),
-    )
-  ) {
+  if (await liveActionNeedsHumanConfirm(projectId, binding)) {
     return {
       dispatched: false,
       pendingHumanConfirm: true,
@@ -325,7 +317,7 @@ export async function dispatchCoolifyDeployDirect(args: {
       category: 'integration.coolify.dispatch',
       level: 'info',
       message: 'enqueued run-less coolify dispatch',
-      data: { bindingId: binding.id, stages: binding.stages, runId: null },
+      data: { bindingId: binding.id, runId: null },
     });
   }
 

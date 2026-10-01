@@ -3,85 +3,96 @@ import { db } from '../db/client.js';
 import { type IssueStatus, projects } from '../db/schema.js';
 import {
   type BindingWithConnection,
-  listActiveDeployBindingsForStage,
+  findBindingWithConnectionById,
 } from '../integrations/store.js';
 import {
-  chainLiveBranch,
-  chainShipsNothing,
-  chainStartBranch,
-  type ReleaseChain,
-} from '../projects/release-chain.js';
+  bindingOf,
+  type NamedEnvironment,
+  promotedBranch,
+  type ReleasePath,
+  readReleasePath,
+} from '../project-config/release-path.js';
 
 /** The one status an issue waits at for release. */
 export const RELEASE_GATE_STATUS: IssueStatus = 'awaiting_release';
 
-/** Thrown where a project declares a release chain and nothing to release onto. */
+/** Thrown where nothing says where a release lands, so an issue cannot be parked for one. */
 export class ReleaseTargetUndeclaredError extends Error {
   readonly code = 'RELEASE_TARGET_UNDECLARED';
   constructor(
     readonly projectId: string,
-    readonly releaseChain: ReleaseChain,
+    readonly reason: string,
   ) {
-    super(
-      `RELEASE_TARGET_UNDECLARED: project ${projectId} declares a release chain ending at '${chainLiveBranch(releaseChain) ?? chainStartBranch(releaseChain)}' but has no active deploy binding carrying the 'live' stage, so there is nowhere for a release to land. Either add one on the integrations screen, or declare an empty release chain if this project ships nothing.`,
-    );
+    super(`RELEASE_TARGET_UNDECLARED: ${reason}`);
     this.name = 'ReleaseTargetUndeclaredError';
   }
 }
 
 export type ReleaseDeclaration =
-  | { kind: 'no-release'; releaseChain: ReleaseChain; baseBranch: string }
-  | { kind: 'undeclared-target'; releaseChain: ReleaseChain }
+  | { kind: 'no-release'; defaultBranch: string | null }
+  | { kind: 'undeclared-target'; reason: string }
   | {
       kind: 'gated';
-      /** The WHOLE ordered path: a crossing is a fact about one edge, so no field reduces it. */
-      releaseChain: ReleaseChain;
-      baseBranch: string;
-      /** Non-null exactly where the chain has two or more entries. */
-      liveBranch: string | null;
-      /** EVERY active live deploy binding. Core does not choose among them. */
-      liveBindings: BindingWithConnection[];
+      path: ReleasePath;
+      defaultBranch: string | null;
+      production: NamedEnvironment;
+      /** The branch production deploys from where a promotion crosses into it; null where none does. */
+      deploysFrom: string | null;
+      binding: BindingWithConnection;
     };
 
-/**
- * The declaration, read rather than inferred.
- */
+async function productionBinding(
+  projectId: string,
+  production: NamedEnvironment,
+): Promise<{ ok: true; pair: BindingWithConnection } | { ok: false; reason: string }> {
+  const id = bindingOf(production);
+  if (id === null) {
+    return {
+      ok: false,
+      reason: `production environment \`${production.name}\` is deployed outside Forge (deployment mode external), so there is nowhere Forge can land a release — give it a deploy binding, or declare no production environment if Forge ships nothing`,
+    };
+  }
+  const pair = await findBindingWithConnectionById(id);
+  const live =
+    pair?.binding.projectId === projectId && pair.binding.active && pair.connection.active;
+  if (!pair || !live) {
+    return {
+      ok: false,
+      reason: `production environment \`${production.name}\` deploys through binding ${id}, which is not an active binding of this project with an active connection — rebind it, or change the project document`,
+    };
+  }
+  return { ok: true, pair };
+}
+
+/** The declaration, read from the project document rather than inferred. `null`: no such project. */
 export async function resolveReleaseDeclaration(
   projectId: string,
 ): Promise<ReleaseDeclaration | null> {
   const [row] = await db
-    .select({
-      baseBranch: projects.baseBranch,
-      releaseChain: projects.releaseChain,
-    })
+    .select({ id: projects.id })
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1);
   if (!row) return null;
-
-  const baseBranch = row.baseBranch ?? 'main';
-  const releaseChain = row.releaseChain;
-  if (chainShipsNothing(releaseChain)) {
-    return { kind: 'no-release', releaseChain, baseBranch };
-  }
-
-  const liveBindings = await listActiveDeployBindingsForStage(projectId, 'live');
-  if (liveBindings.length === 0) {
-    return { kind: 'undeclared-target', releaseChain };
-  }
-
+  const read = await readReleasePath(projectId);
+  if (!read.ok) return { kind: 'undeclared-target', reason: read.reason };
+  const { path } = read;
+  if (!path.production) return { kind: 'no-release', defaultBranch: path.defaultBranch };
+  const bound = await productionBinding(projectId, path.production);
+  if (!bound.ok) return { kind: 'undeclared-target', reason: bound.reason };
   return {
     kind: 'gated',
-    releaseChain,
-    baseBranch,
-    liveBranch: chainLiveBranch(releaseChain),
-    liveBindings,
+    path,
+    defaultBranch: path.defaultBranch,
+    production: path.production,
+    deploysFrom: promotedBranch(path),
+    binding: bound.pair,
   };
 }
 
 /**
  * The status issues must be at to join a batch release, or `null` when the project
- * ships nowhere else and the driver's `closed` means what it says.
+ * declares no production environment and the driver's `closed` means what it says.
  *
  * THROWS on `undeclared-target`. The caller 409s with `RELEASE_TARGET_UNDECLARED`; answering
  * `null` there reads to every caller as a project that declared it ships nothing.
@@ -90,7 +101,7 @@ export async function resolveReleaseGate(projectId: string): Promise<IssueStatus
   const decl = await resolveReleaseDeclaration(projectId);
   if (!decl) return null;
   if (decl.kind === 'undeclared-target') {
-    throw new ReleaseTargetUndeclaredError(projectId, decl.releaseChain);
+    throw new ReleaseTargetUndeclaredError(projectId, decl.reason);
   }
   return decl.kind === 'gated' ? RELEASE_GATE_STATUS : null;
 }

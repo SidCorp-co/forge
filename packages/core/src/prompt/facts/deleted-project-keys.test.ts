@@ -14,8 +14,8 @@ const { jobTypes } = await import('../../db/schema.js');
  */
 const CHANGED: ReadonlyArray<{ before: string; after: string }> = [
   {
-    before: 'releaseChain (the ordered release path), categories, plugins, and reads back',
-    after: 'releaseChain (the ordered release path), plugins, and reads back',
+    before: '/config`), categories, plugins, and reads back',
+    after: '/config`), plugins, and reads back',
   },
   {
     before: 'On a project of kind `website` the stamp carries `landing`',

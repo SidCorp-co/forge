@@ -6,7 +6,6 @@ import {
 } from '../branches/resolve.js';
 import { db } from '../db/client.js';
 import { issues, jobs, projects } from '../db/schema.js';
-import { chainLiveBranch } from '../projects/release-chain.js';
 import type { IssueSnapshot, SessionContextSnapshot } from './user.js';
 
 export type LoadedIssueSnapshot = IssueSnapshot & {
@@ -31,7 +30,6 @@ export async function loadIssueSnapshot(
       sessionContext: issues.sessionContext,
       metadata: issues.metadata,
       baseBranch: projects.baseBranch,
-      releaseChain: projects.releaseChain,
     })
     .from(issues)
     .innerJoin(projects, eq(projects.id, issues.projectId))
@@ -52,7 +50,7 @@ export async function loadIssueSnapshot(
         ),
       },
     },
-    { baseBranch: row.baseBranch, liveBranch: chainLiveBranch(row.releaseChain) },
+    { baseBranch: row.baseBranch },
   );
   return {
     branchConfig,

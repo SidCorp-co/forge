@@ -13,7 +13,8 @@ import {
 const row: ProjectReleaseRow = {
   id: 'p1',
   baseBranch: 'staging',
-  releaseChain: [{ branch: 'staging' }, { branch: 'master', from: 'merge-branch' }],
+  deploysFrom: 'master',
+  crossesByCherryPick: false,
 };
 
 let clock = new Date('2026-09-23T14:00:00Z').getTime();
@@ -40,11 +41,9 @@ afterEach(() => {
 });
 
 describe('liveReadingForRow', () => {
-  it('gives nothing for a project whose chain crosses nothing', async () => {
+  it('gives nothing for a project whose release path crosses no promotion', async () => {
     const d = deps(async () => fakeDivergence());
-    const publish = { ...row, releaseChain: [{ branch: 'staging' }] };
-    await expect(liveReadingForRow(publish, d)).resolves.toBeNull();
-    await expect(liveReadingForRow({ ...row, releaseChain: [] }, d)).resolves.toBeNull();
+    await expect(liveReadingForRow({ ...row, deploysFrom: null }, d)).resolves.toBeNull();
     expect(compares).toBe(0);
   });
 
@@ -116,13 +115,7 @@ describe('liveReadingForRow', () => {
   it('takes a new reading when the branches it was taken for changed', async () => {
     const d = deps(async () => fakeDivergence());
     await liveReadingForRow(row, d);
-    await liveReadingForRow(
-      {
-        ...row,
-        releaseChain: [{ branch: 'staging' }, { branch: 'production', from: 'merge-branch' }],
-      },
-      d,
-    );
+    await liveReadingForRow({ ...row, deploysFrom: 'production' }, d);
     expect(compares).toBe(2);
   });
 
@@ -132,41 +125,15 @@ describe('liveReadingForRow', () => {
     const read = liveReadingForRow(row, d);
     await vi.advanceTimersByTimeAsync(LIVE_READING_FIRST_WAIT_MS);
     const r = await read;
-    expect(r).toMatchObject({ kind: 'pending', baseBranch: 'staging', liveBranch: 'master' });
+    expect(r).toMatchObject({ kind: 'pending', baseBranch: 'staging', deploysFrom: 'master' });
     expect(r?.kind === 'pending' && r.reason).toMatch(/still being taken/);
     await vi.advanceTimersByTimeAsync(LIVE_READING_FIRST_WAIT_MS * 10);
     expect((await liveReadingForRow(row, d))?.kind).toBe('measured');
   });
 
-  it('refuses a chain whose last edge is a cherry-pick, without reading the repository', async () => {
+  it('refuses a path any promotion of which cherry-picks, without reading the repository', async () => {
     const divergence = vi.fn(async () => fakeDivergence());
-    const r = await liveReadingForRow(
-      {
-        ...row,
-        releaseChain: [{ branch: 'staging' }, { branch: 'master', from: 'cherry-pick' }],
-      },
-      deps(divergence),
-    );
-    expect(r?.kind === 'refused' && r.reason).toMatch(/cherry-pick/);
-    expect(divergence).not.toHaveBeenCalled();
-  });
-
-  // ISS-1311 — the enum carried ONE strategy per project, so a cherry-pick anywhere on the path
-  // was the only cherry-pick there was. A chain can cross by cherry-pick early and merge later,
-  // and the shas are new from that edge down, so the reading is refused on the whole chain.
-  it('refuses a chain whose FIRST edge is a cherry-pick, although its last merges', async () => {
-    const divergence = vi.fn(async () => fakeDivergence());
-    const r = await liveReadingForRow(
-      {
-        ...row,
-        releaseChain: [
-          { branch: 'staging' },
-          { branch: 'stg2', from: 'cherry-pick' },
-          { branch: 'master', from: 'merge-branch' },
-        ],
-      },
-      deps(divergence),
-    );
+    const r = await liveReadingForRow({ ...row, crossesByCherryPick: true }, deps(divergence));
     expect(r?.kind === 'refused' && r.reason).toMatch(/cherry-pick/);
     expect(divergence).not.toHaveBeenCalled();
   });
@@ -176,8 +143,8 @@ describe('liveReadingForRow', () => {
       { ...row, baseBranch: null },
       deps(async () => fakeDivergence()),
     );
-    expect(r).toMatchObject({ kind: 'refused', baseBranch: null, liveBranch: 'master' });
-    expect(r?.kind === 'refused' && r.reason).toMatch(/names no base branch/);
+    expect(r).toMatchObject({ kind: 'refused', baseBranch: null, deploysFrom: 'master' });
+    expect(r?.kind === 'refused' && r.reason).toMatch(/names no default branch/);
   });
 
   it('carries the source sentence when the branches could not be read', async () => {

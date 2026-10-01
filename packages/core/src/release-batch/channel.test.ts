@@ -1,4 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  DOC_PROJECT,
+  PROD_BINDING,
+  production,
+  projectDoc,
+  sourceProbe,
+} from '../project-config/release-path.fixture.js';
+import type { EnvironmentDeclaration, ProjectDocument } from '../project-config/schema.js';
 
 // Since ISS-1048 the release procedure is a knowledge entry rather than an `agentConfig` key, so
 // the fixture is a row from that store and the mock sits at the service seam.
@@ -8,9 +16,12 @@ vi.mock('../knowledge/service.js', () => ({
   getKnowledgeEntry: (id: string, slug: string) => knowledgeEntry(id, slug),
 }));
 
-const listBindings = vi.fn(async () => [] as unknown[]);
 const dbExecute = vi.fn(async (..._a: unknown[]) => [] as unknown[]);
-const selectLimit = vi.fn(async () => [] as unknown[]);
+const selectLimit = vi.fn(async () => [{ id: DOC_PROJECT }] as unknown[]);
+const readDocument = vi.fn(
+  async (): Promise<{ revision: number; document: ProjectDocument } | null> => null,
+);
+const findBinding = vi.fn(async (_id: string) => null as unknown);
 
 vi.mock('../db/client.js', () => ({
   db: {
@@ -19,16 +30,18 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
+vi.mock('../project-config/service.js', () => ({
+  readProjectDocument: () => readDocument(),
+}));
+
 vi.mock('../integrations/store.js', async (importActual) => {
   const actual = await importActual<typeof import('../integrations/store.js')>();
-  return { ...actual, listActiveDeployBindingsForStage: () => listBindings() };
+  return { ...actual, findBindingWithConnectionById: (id: string) => findBinding(id) };
 });
 
 const {
   classifyRollback,
   closeVerification,
-  finishVerification,
-  ReleaseRunnerAmbiguousError,
   releaseRunnerLabelOf,
   resolveReleaseChannels,
   projectRunnerDeviceIds,
@@ -44,7 +57,7 @@ const { ReleaseProbesUnreadableError } = await import('./errors.js');
 const { registerAllIntegrations } = await import('../integrations/register-all.js');
 registerAllIntegrations();
 
-const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
+const PROJECT_ID = DOC_PROJECT;
 
 function binding(over: {
   provider?: string;
@@ -55,176 +68,137 @@ function binding(over: {
 }) {
   return {
     binding: {
-      id: over.provider === 'epodsystem' ? 'b-epod' : 'b-coolify',
+      id: PROD_BINDING,
+      projectId: DOC_PROJECT,
+      active: true,
       provider: over.provider ?? 'coolify',
       instructions: over.instructions ?? null,
       config: over.bindingConfig ?? {},
       label: over.label ?? '',
       role: 'deploy' as const,
-      stages: ['live'] as const,
     },
-    connection: { config: over.connectionConfig ?? {} },
+    connection: { active: true, config: over.connectionConfig ?? {} },
   };
 }
 
+const gatedOn = (env: EnvironmentDeclaration = production()) =>
+  readDocument.mockResolvedValue({
+    revision: 2,
+    document: projectDoc({ environments: { beta: env } }),
+  });
+
 beforeEach(() => {
   vi.clearAllMocks();
-  listBindings.mockResolvedValue([]);
-  selectLimit.mockResolvedValue([]);
+  selectLimit.mockResolvedValue([{ id: DOC_PROJECT }]);
+  readDocument.mockResolvedValue(null);
+  findBinding.mockResolvedValue(binding({}));
   dbExecute.mockResolvedValue([]);
 });
 
 describe('resolveReleaseChannels', () => {
-  it('reports an empty set when the project declares no live deploy binding', async () => {
+  it('reports an empty set where the project document declares no production environment', async () => {
+    readDocument.mockResolvedValue({ revision: 1, document: projectDoc({}) });
     expect(await resolveReleaseChannels(PROJECT_ID)).toEqual([]);
   });
 
-  it('carries the operator text through verbatim', async () => {
-    listBindings.mockResolvedValue([
-      binding({ provider: 'coolify', instructions: 'ship the frontend WITH varnish' }),
-    ]);
+  it("is the production environment's binding, with the operator text carried verbatim", async () => {
+    gatedOn();
+    findBinding.mockResolvedValue(binding({ instructions: 'ship the frontend WITH varnish' }));
 
     const channels = await resolveReleaseChannels(PROJECT_ID);
 
     expect(channels).toHaveLength(1);
-    expect(channels[0]?.provider).toBe('coolify');
-    expect(channels[0]?.instructions).toBe('ship the frontend WITH varnish');
-  });
-
-  it('returns every live deploy binding with its own instructions, in order', async () => {
-    listBindings.mockResolvedValue([
-      binding({ provider: 'coolify', instructions: 'deploy the app' }),
-      binding({ provider: 'epodsystem', instructions: 'publish the theme' }),
-    ]);
-
-    const channels = await resolveReleaseChannels(PROJECT_ID);
-
-    expect(channels.map((c) => c.provider)).toEqual(['coolify', 'epodsystem']);
-    expect(channels.map((c) => c.instructions)).toEqual(['deploy the app', 'publish the theme']);
+    expect(channels[0]).toMatchObject({
+      environment: 'beta',
+      bindingId: PROD_BINDING,
+      provider: 'coolify',
+      instructions: 'ship the frontend WITH varnish',
+    });
   });
 
   it('never reads the pool out of the multi-store label column', async () => {
-    listBindings.mockResolvedValue([binding({ label: 'aurelle' })]);
+    gatedOn();
+    findBinding.mockResolvedValue(binding({ label: 'aurelle' }));
 
     expect((await resolveReleaseChannels(PROJECT_ID))[0]?.releaseRunnerLabel).toBeNull();
   });
 
   it('takes the pool label from config, with the binding overriding the connection', async () => {
-    listBindings.mockResolvedValue([
+    gatedOn();
+    findBinding.mockResolvedValue(
       binding({
         connectionConfig: { releaseRunnerLabel: 'org-wide' },
         bindingConfig: { releaseRunnerLabel: 'epod-prod' },
       }),
-    ]);
+    );
 
     expect((await resolveReleaseChannels(PROJECT_ID))[0]?.releaseRunnerLabel).toBe('epod-prod');
   });
 
   it('treats an empty label as no pool rather than as a pool nothing is in', async () => {
-    listBindings.mockResolvedValue([binding({ bindingConfig: { releaseRunnerLabel: '' } })]);
+    gatedOn();
+    findBinding.mockResolvedValue(binding({ bindingConfig: { releaseRunnerLabel: '' } }));
 
     expect((await resolveReleaseChannels(PROJECT_ID))[0]?.releaseRunnerLabel).toBeNull();
   });
 });
 
 /**
- * ISS-1069 — a project's own live address becomes the probe a binding that declares none gets.
- *
- * Before this, declaring `verify.probes` needed the one thing Forge did not hold: the project's
- * production hostname. 0 of 32 projects filled it and `sidpeak` could not cut a release at all.
- * The rule that matters here is WHEN the default fires — on absence, never on a declaration
- * `parseVerifyConfig` refused — because filling in for a broken declaration would verify somewhere
- * the operator never named and wear a green verdict doing it.
+ * ISS-12 — a release is proved by the production environment's runtime probes, and only those
+ * that identify the SOURCE: a release ships a commit, and an artifact digest cannot be compared
+ * with one. A binding's own `verify` is no longer read.
  */
-describe('resolveReleaseChannels — the probe a live address earns', () => {
-  const LIVE = {
-    live: { url: 'https://app.x', commitUrl: 'https://api.x/health', commitPath: 'data.commit' },
-  };
-
-  it.each([
-    ['no verify key at all', {}],
-    ['a JSON-null verify', { verify: null }],
-  ])('defaults the probe from environments.live for a binding with %s', async (_l, cfg) => {
-    listBindings.mockResolvedValue([binding({ bindingConfig: cfg })]);
-    selectLimit.mockResolvedValue([{ environments: LIVE }]);
+describe('resolveReleaseChannels — the probes production declares', () => {
+  it('proves a release with each source probe of the production environment', async () => {
+    gatedOn(
+      production({
+        verification: {
+          runtime: [
+            sourceProbe('https://api.x/version', 'data.commit'),
+            { type: 'http', url: 'https://cdn.x/build', path: 'digest', identifies: 'artifact' },
+          ],
+        },
+      }),
+    );
 
     const [channel] = await resolveReleaseChannels(PROJECT_ID);
     expect(channel?.verify?.probes).toEqual([
-      { url: 'https://api.x/health', commitPath: 'data.commit' },
+      { url: 'https://api.x/version', commitPath: 'data.commit' },
     ]);
-    expect(channel?.verifySource).toBe('environments-live');
+    expect(channel?.verifySource).toBe('environment');
   });
 
-  /**
-   * ISS-1286 — a declaration this repo refused still takes no fallback, and now says so under its
-   * own word. Reported as `none` it was the same answer as "nothing was declared", so a reader
-   * could not tell a configuration defect from an absent configuration.
-   */
-  it.each([
-    ['an empty verify object', { verify: {} }],
-    ['a verify with an empty probe list', { verify: { probes: [] } }],
-    ['probes with no url', { verify: { probes: [{ commitPath: 'commit' }] } }],
-    ['a probe whose url is empty', { verify: { probes: [{ url: '' }] } }],
-  ])(
-    'takes NO default for a binding declaring %s, and calls it declared-unusable',
-    async (_l, cfg) => {
-      listBindings.mockResolvedValue([binding({ bindingConfig: cfg })]);
-      selectLimit.mockResolvedValue([{ environments: LIVE }]);
-
-      const [channel] = await resolveReleaseChannels(PROJECT_ID);
-      expect(channel?.verify).toBeNull();
-      expect(channel?.verifySource).toBe('declared-unusable');
-    },
-  );
-
-  it('keeps a usable binding declaration whatever environments.live holds', async () => {
-    listBindings.mockResolvedValue([
-      binding({
-        bindingConfig: { verify: { probes: [{ url: 'https://own.x/health', commitPath: 'c' }] } },
+  it('calls a production declaring only artifact probes declared-unusable, with no fallback', async () => {
+    gatedOn(
+      production({
+        verification: {
+          runtime: [
+            { type: 'http', url: 'https://cdn.x/build', path: 'digest', identifies: 'artifact' },
+          ],
+        },
       }),
-    ]);
-    selectLimit.mockResolvedValue([{ environments: LIVE }]);
+    );
 
     const [channel] = await resolveReleaseChannels(PROJECT_ID);
-    expect(channel?.verify?.probes).toEqual([{ url: 'https://own.x/health', commitPath: 'c' }]);
-    expect(channel?.verifySource).toBe('binding');
+    expect(channel).toMatchObject({ verify: null, verifySource: 'declared-unusable' });
+    expect(() => closeVerification([channel as NonNullable<typeof channel>])).toThrow(
+      ReleaseProbesUnreadableError,
+    );
   });
 
-  it('reports `none` where the binding declares nothing and the project holds no live commit endpoint', async () => {
-    listBindings.mockResolvedValue([binding({})]);
-    selectLimit.mockResolvedValue([{ environments: { live: { url: 'https://app.x' } } }]);
-
+  it('reports `none` where production declares no runtime probe', async () => {
+    gatedOn();
     const [channel] = await resolveReleaseChannels(PROJECT_ID);
-    expect(channel?.verify).toBeNull();
-    expect(channel?.verifySource).toBe('none');
+    expect(channel).toMatchObject({ verify: null, verifySource: 'none' });
   });
 
-  it('omits commitPath entirely where the project declares none', async () => {
-    listBindings.mockResolvedValue([binding({})]);
-    selectLimit.mockResolvedValue([
-      { environments: { live: { commitUrl: 'https://api.x/health', commitPath: null } } },
-    ]);
-
+  it('never reads a verify the binding still carries from before ISS-12', async () => {
+    gatedOn();
+    findBinding.mockResolvedValue(
+      binding({ bindingConfig: { verify: { probes: [{ url: 'https://own.x/health' }] } } }),
+    );
     const [channel] = await resolveReleaseChannels(PROJECT_ID);
-    expect(channel?.verify?.probes[0]).toEqual({ url: 'https://api.x/health' });
-  });
-
-  it('reads the project row once for any number of bindings', async () => {
-    listBindings.mockResolvedValue([
-      binding({ provider: 'coolify' }),
-      binding({ provider: 'epodsystem' }),
-    ]);
-    selectLimit.mockResolvedValue([{ environments: LIVE }]);
-
-    const channels = await resolveReleaseChannels(PROJECT_ID);
-    expect(channels.map((c) => c.verifySource)).toEqual(['environments-live', 'environments-live']);
-    expect(selectLimit).toHaveBeenCalledTimes(1);
-  });
-
-  it('reads no project row at all where the project declares no live binding', async () => {
-    listBindings.mockResolvedValue([]);
-    expect(await resolveReleaseChannels(PROJECT_ID)).toEqual([]);
-    expect(selectLimit).not.toHaveBeenCalled();
+    expect(channel).toMatchObject({ verify: null, verifySource: 'none' });
   });
 });
 
@@ -232,13 +206,15 @@ describe('closeVerification (ISS-1321)', () => {
   type Channels = Parameters<typeof closeVerification>[0];
   const readable = { probes: [{ url: 'https://api.example.test/version' }] };
   const probed = {
+    environment: 'beta',
     bindingId: 'b-a',
     provider: 'coolify',
     label: '',
     verify: readable,
-    verifySource: 'binding',
+    verifySource: 'environment',
   };
   const none = {
+    environment: 'beta',
     bindingId: 'b-b',
     provider: 'coolify',
     label: 'eu',
@@ -246,6 +222,7 @@ describe('closeVerification (ISS-1321)', () => {
     verifySource: 'none',
   };
   const refused = {
+    environment: 'beta',
     bindingId: 'b-c',
     provider: 'coolify',
     label: '',
@@ -253,14 +230,14 @@ describe('closeVerification (ISS-1321)', () => {
     verifySource: 'declared-unusable',
   };
 
-  it('answers probed with the channel probes where a binding declares them', () => {
+  it('answers probed with the channel probes where production declares them', () => {
     expect(closeVerification([probed] as unknown as Channels)).toEqual({
       kind: 'probed',
       cfg: readable,
     });
   });
 
-  it('answers unverified where no live binding declares a probe, and where there is none', () => {
+  it('answers unverified where production declares no probe, and where there is no channel', () => {
     expect(closeVerification([none] as unknown as Channels)).toEqual({ kind: 'unverified' });
     expect(closeVerification([])).toEqual({ kind: 'unverified' });
   });
@@ -275,7 +252,7 @@ describe('closeVerification (ISS-1321)', () => {
   it('throws RELEASE_PROBES_UNREADABLE naming a binding whose verify was refused', () => {
     const run = () => closeVerification([probed, refused] as unknown as Channels);
     expect(run).toThrow(ReleaseProbesUnreadableError);
-    expect(run).toThrow(/RELEASE_PROBES_UNREADABLE: binding coolify b-c/);
+    expect(run).toThrow(/RELEASE_PROBES_UNREADABLE: .*environment `beta` \(coolify b-c\)/);
   });
 
   it('names the store slug where the binding carries one', () => {
@@ -284,83 +261,16 @@ describe('closeVerification (ISS-1321)', () => {
   });
 });
 
-describe('finishVerification (ISS-1321)', () => {
-  type Channels = Parameters<typeof finishVerification>[0];
-  const good = { verify: { probes: [{ url: 'https://a.test/v' }] }, verifySource: 'binding' };
-  const bad = { verify: { probes: [{ url: 'api/version' }] }, verifySource: 'binding' };
-
-  it('refuses a probe url that is not a url on any channel, whichever sorts first', () => {
-    for (const order of [
-      [good, bad],
-      [bad, good],
-    ]) {
-      expect(() => finishVerification(order as unknown as Channels)).toThrow(
-        /RELEASE_PROBES_UNREADABLE: api\/version/,
-      );
-    }
-  });
-
-  it('answers the readable probes where every url is one', () => {
-    expect(finishVerification([good] as unknown as Channels)).toEqual({
-      kind: 'probed',
-      cfg: good.verify,
-    });
-  });
-});
-
-describe('resolveReleaseChannels — a refused verify takes no project default', () => {
-  it('reads a `verify` naming no probe as declared-unusable, with no fallback probe', async () => {
-    selectLimit.mockResolvedValue([
-      { environments: { live: { commitUrl: 'https://api.example.test/version' } } },
-    ]);
-    listBindings.mockResolvedValue([binding({ bindingConfig: { verify: { probes: [] } } })]);
-
-    const [channel] = await resolveReleaseChannels(PROJECT_ID);
-
-    expect(channel).toMatchObject({ verify: null, verifySource: 'declared-unusable' });
-    expect(() => closeVerification([channel as NonNullable<typeof channel>])).toThrow(
-      ReleaseProbesUnreadableError,
-    );
-  });
-});
-
 describe('releaseRunnerLabelOf', () => {
-  it('refuses by name when two live bindings declare different labels', () => {
-    const channels = [
-      { releaseRunnerLabel: 'release' },
-      { releaseRunnerLabel: 'epod-prod' },
-    ] as Parameters<typeof releaseRunnerLabelOf>[1];
-    expect(() => releaseRunnerLabelOf(PROJECT_ID, channels)).toThrow(ReleaseRunnerAmbiguousError);
-    expect(() => releaseRunnerLabelOf(PROJECT_ID, channels)).toThrow(/RELEASE_RUNNER_AMBIGUOUS/);
-  });
-
-  it('names both labels in the message, so an operator can see which two disagree', () => {
-    const channels = [
-      { releaseRunnerLabel: 'release' },
-      { releaseRunnerLabel: 'epod-prod' },
-    ] as Parameters<typeof releaseRunnerLabelOf>[1];
-    expect(() => releaseRunnerLabelOf(PROJECT_ID, channels)).toThrow(/release[\s\S]*epod-prod/);
-  });
-
-  it('accepts one label beside any number of unlabelled bindings', () => {
-    const channels = [
-      { releaseRunnerLabel: null },
-      { releaseRunnerLabel: 'release' },
-      { releaseRunnerLabel: null },
-    ] as Parameters<typeof releaseRunnerLabelOf>[1];
-    expect(releaseRunnerLabelOf(PROJECT_ID, channels)).toBe('release');
+  it("answers the production channel's label", () => {
+    const channels = [{ releaseRunnerLabel: 'release' }] as unknown as Parameters<
+      typeof releaseRunnerLabelOf
+    >[0];
+    expect(releaseRunnerLabelOf(channels)).toBe('release');
   });
 
   it('answers null where nothing declares a label', () => {
-    expect(releaseRunnerLabelOf(PROJECT_ID, [])).toBeNull();
-  });
-
-  it('accepts the same label declared twice', () => {
-    const channels = [
-      { releaseRunnerLabel: 'release' },
-      { releaseRunnerLabel: 'release' },
-    ] as Parameters<typeof releaseRunnerLabelOf>[1];
-    expect(releaseRunnerLabelOf(PROJECT_ID, channels)).toBe('release');
+    expect(releaseRunnerLabelOf([])).toBeNull();
   });
 });
 
@@ -449,10 +359,11 @@ describe('classifyRollback', () => {
     expect(classifyRollback('coolify', undefined)).toBeNull();
   });
 
-  it('is what resolveReleaseChannels returns for each live binding', async () => {
-    listBindings.mockResolvedValue([
+  it('is what resolveReleaseChannels returns for the production binding', async () => {
+    gatedOn();
+    findBinding.mockResolvedValue(
       binding({ provider: 'coolify', bindingConfig: { rollback: 'redeploy by hand' } }),
-    ]);
+    );
     expect((await resolveReleaseChannels(PROJECT_ID))[0]?.rollback).toEqual({
       kind: 'unrepresentable',
       text: 'redeploy by hand',

@@ -230,7 +230,7 @@ export const googleIntegration = declareIntegration<GoogleConfig, GoogleSecrets>
   },
   presentation: {
     label: 'Google Sheets',
-    alwaysStageKeyed: false,
+    alwaysEnvironmentKeyed: false,
     neverCheckedDetail: 'never test-connected',
     cardMeta: (config) => {
       const cfg = config as { clientEmail?: string; defaultSpreadsheetId?: string };

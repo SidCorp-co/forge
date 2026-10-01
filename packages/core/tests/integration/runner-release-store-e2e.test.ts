@@ -61,8 +61,8 @@ beforeEach(async () => {
     VALUES ('user', ${user.id}, 'github') RETURNING id
   `);
   const [binding] = await harness.db.execute<{ id: string }>(sql`
-    INSERT INTO integration_bindings (connection_id, project_id, provider, role, stages)
-    VALUES (${connection?.id}, ${projectId}, 'github', 'service', '{}'::text[]) RETURNING id
+    INSERT INTO integration_bindings (connection_id, project_id, provider, role)
+    VALUES (${connection?.id}, ${projectId}, 'github', 'service') RETURNING id
   `);
   bindingId = String(binding?.id);
 });

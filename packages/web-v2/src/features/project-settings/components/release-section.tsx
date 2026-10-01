@@ -19,27 +19,19 @@ const GAP_TEXT: Record<ReleaseReadiness["gaps"][number], string> = {
   "test-commands": "No test-commands fact — a session has nothing to prove its work with.",
   "release-procedure":
     "No release-procedure fact — the release runs a generic fallback written for another repo.",
-  "release-runner-ambiguous":
-    "Two live bindings name different release runners — a release is refused rather than sent to whichever was created first. Give them the same label, or retire one.",
-  "release-multi-channel":
-    "Two live deploy bindings are declared, and a release run records ONE check of ONE address — so closing the batch on it would claim a delivery nobody looked at. Cutting a release is refused by name until then. Retire one of the two, or keep both and cut this project's releases by hand.",
   "release-target":
-    "This project declares a release but has no live deploy binding to send it to — every issue would wait for a release nobody can cut. Add one, or declare an empty release chain.",
+    "The project document does not say where a release lands — every issue would wait for a release nobody can cut. Give its production environment an active deploy binding, or declare no production environment.",
   rollback:
     "No rollback declared — a failed release aborts and comments, and rolls back nothing.",
   "rollback-prose":
-    "A live Coolify binding declares its rollback as free text, which Forge no longer executes — convert it to the Coolify rollback action, or a failed release aborts and comments.",
+    "The production Coolify binding declares its rollback as free text, which Forge no longer executes — convert it to the Coolify rollback action, or a failed release aborts and comments.",
   "verify-probes":
-    "A live binding declares no verify probe — a release still runs, but nothing reads the deployment, so it closes unverified and each issue it closes says so.",
-  "live-commit-endpoint":
-    "This project records no live commit endpoint — nothing holds the address a release ships to, so every live binding has to declare its own probe. Set it under Settings → Testing → Live.",
+    "The production environment declares no runtime probe that identifies its source — a release still runs, but nothing reads the deployment, so it closes unverified and each issue it closes says so. Declare one in `environments.<name>.verification.runtime` of the project document.",
 };
 
-const INTEGRATION_GAP_LINK: Partial<Record<ReleaseReadiness["gaps"][number], string>> = {
-  "release-target": "Add a live deploy binding",
-  "release-runner-ambiguous": "Reconcile the release runner labels",
-  "release-multi-channel": "Review the live deploy bindings",
-};
+const DOCUMENT_GAPS = new Set(["release-target", "verify-probes"]);
+
+const PROJECT_DOCUMENT_DOOR = "Written in the project document: `PUT /api/projects/:id/config`.";
 
 const ROLLBACK_TEXT: Record<NonNullable<ReleaseReadiness["rollbackMode"]>, string> = {
   manual: "declared — the release agent follows it",
@@ -59,21 +51,25 @@ const NO_RELEASE_RUNNER_LABEL = "none — a release goes to any box in this proj
 
 const FACT_GAPS = new Set(["build-commands", "test-commands", "release-procedure"]);
 
-/** What the badge says about the declared chain — the words a reader of the screen uses. */
-function chainText(r: ReleaseReadiness): string {
-  const n = r.releaseChain.length;
-  if (n === 0) return "none — this project ships nothing";
-  if (n === 1) return "one branch — an act on a live target, no branch moves";
-  return `${n} branches — code crosses to a live branch`;
+/** What the badge says about where a landed change goes — the words a reader of the screen uses. */
+function pathText(r: ReleaseReadiness): string {
+  if (!r.production) return "none — this project ships nothing";
+  if (r.promotions.length === 0) return "production deploys where work lands — no branch moves";
+  return `${r.promotions.length} promotion${r.promotions.length === 1 ? "" : "s"} — code crosses to production's branch`;
 }
 
-/** The chain as its ordered branches, each named with the crossing that reaches it. */
-function chainBranches(r: ReleaseReadiness): string {
-  if (r.releaseChain.length === 0) return "— none declared —";
-  return r.releaseChain
-    .map((e, i) => (i === 0 ? e.branch : `${e.from} → ${e.branch}`))
-    .join("  ");
+/** The path as its branches, each named with the promotion that reaches it. */
+function pathBranches(r: ReleaseReadiness): string {
+  const start = r.defaultBranch ?? "no git source";
+  if (r.promotions.length === 0) return start;
+  return [start, ...r.promotions.map((p) => `${p.via} → ${p.to}`)].join("  ");
 }
+
+const TRIGGER_TEXT: Record<NonNullable<ReleaseReadiness["production"]>["trigger"], string> = {
+  "on-land": "deploys on land — no human confirm",
+  "on-request": "deploys on request — a human confirms",
+  provider: "the provider deploys it itself",
+};
 
 function stateLine(r: ReleaseReadiness) {
   // An unreadable declaration is not a project that declares nothing. Saying so
@@ -88,14 +84,14 @@ function stateLine(r: ReleaseReadiness) {
   if (r.hasReleaseGate)
     return (
       <>
-        This one declares both, so its issues wait at <b>Awaiting release</b>.
+        This one does, so its issues wait at <b>Awaiting release</b>.
       </>
     );
   if (r.targetUndeclared)
     return (
       <>
-        This one declares what releasing means and has <i>no</i> live target, so nothing can be
-        released and a release is refused by name until a live deploy binding is declared.
+        This one&apos;s project document does not say where a release lands, so nothing can be
+        released and a release is refused by name until it does.
       </>
     );
   return <>This one declares no release, so a session closes its issues directly.</>;
@@ -114,8 +110,8 @@ export function ReleaseSection({
     <div>
       <CardTitle className="fg-label text-fg">Release</CardTitle>
       <p className="fg-caption mt-0.5 text-muted">
-        An issue reaches <b>Awaiting release</b> only when this project declares what releasing it
-        means <i>and</i> has a live target to send it to. {r ? stateLine(r) : null}
+        An issue reaches <b>Awaiting release</b> only when the project document declares a
+        production environment with an active deploy binding. {r ? stateLine(r) : null}
       </p>
     </div>
   );
@@ -148,7 +144,6 @@ export function ReleaseSection({
   if (!r) return null;
   const knowledgeHref = slug ? `/projects/${slug}/library?tab=knowledge&sub=rules` : undefined;
   const integrationsHref = slug ? `/projects/${slug}/settings?tab=integrations` : undefined;
-  const testingHref = slug ? `/projects/${slug}/settings?tab=testing` : undefined;
 
   return (
     <div className="mt-6 border-t border-line pt-5">
@@ -160,18 +155,26 @@ export function ReleaseSection({
           <dt className="fg-caption text-subtle">Release</dt>
           <dd className="fg-body-sm text-fg">
             <Badge tone={r.hasReleaseGate ? "accent" : "neutral"}>
-              {chainText(r)}
+              {pathText(r)}
             </Badge>
           </dd>
         </div>
         <div>
-          <dt className="fg-caption text-subtle">Release chain</dt>
-          <dd className="fg-body-sm font-mono text-fg">{chainBranches(r)}</dd>
+          <dt className="fg-caption text-subtle">Release path</dt>
+          <dd className="fg-body-sm font-mono text-fg">{pathBranches(r)}</dd>
         </div>
         <div>
-          <dt className="fg-caption text-subtle">Live targets</dt>
+          <dt className="fg-caption text-subtle">Production</dt>
           <dd className="fg-body-sm text-fg">
-            {!r.channelsRead ? UNREAD : r.providers.length > 0 ? r.providers.join(", ") : "—"}
+            {r.production ? (
+              <>
+                <span className="font-mono">{r.production.environment}</span>
+                {" — "}
+                {!r.channelsRead ? UNREAD : r.providers.join(", ")}, {TRIGGER_TEXT[r.production.trigger]}
+              </>
+            ) : (
+              "—"
+            )}
           </dd>
         </div>
         <div>
@@ -207,20 +210,16 @@ export function ReleaseSection({
 
       {r.declarationRead && !r.hasReleaseGate && (
         <p className="fg-caption mt-3 text-muted">
-          {r.targetUndeclared ? (
-            <>
-              This project declares a release but has no active <b>live</b> deploy binding to send
-              it to, so a release cannot be cut and nothing will say why at the moment it is
-              needed.
-            </>
+          {r.targetUndeclared && r.targetUndeclaredReason ? (
+            inlineCode(r.targetUndeclaredReason)
           ) : (
             <>
-              A project has a release gate when it declares a release chain — the ordered path its
-              code takes to live — <i>and</i> has an active <b>live</b> deploy binding. This
-              one&apos;s chain is empty, so sessions close their issues rather than parking them for
-              a release nobody would cut.
+              A project has a release gate when its project document declares a production
+              environment with an active deploy binding. This one declares none, so sessions close
+              their issues rather than parking them for a release nobody would cut.
             </>
-          )}
+          )}{" "}
+          {inlineCode(PROJECT_DOCUMENT_DOOR)}
         </p>
       )}
 
@@ -255,18 +254,16 @@ export function ReleaseSection({
           <h4 className="fg-caption text-subtle">What this project has not declared</h4>
           {r.gaps.map((g) => (
             <Banner key={g} tone="attention">
-              {GAP_TEXT[g]}{" "}
+              {inlineCode(GAP_TEXT[g])}{" "}
               {FACT_GAPS.has(g) && knowledgeHref ? (
                 <Link href={knowledgeHref} className="underline">
                   Write it in Knowledge rules
                 </Link>
-              ) : g === "live-commit-endpoint" && testingHref ? (
-                <Link href={testingHref} className="underline">
-                  Record the live commit endpoint
-                </Link>
+              ) : DOCUMENT_GAPS.has(g) ? (
+                inlineCode(PROJECT_DOCUMENT_DOOR)
               ) : integrationsHref ? (
                 <Link href={integrationsHref} className="underline">
-                  {INTEGRATION_GAP_LINK[g] ?? "Set it on the live binding"}
+                  Set it on the production binding
                 </Link>
               ) : null}
             </Banner>

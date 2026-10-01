@@ -26,10 +26,16 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
-const listBindings = vi.fn(async () => [] as unknown[]);
+const findBinding = vi.fn(async () => null as unknown);
 vi.mock('../integrations/store.js', async (importActual) => {
   const actual = await importActual<typeof import('../integrations/store.js')>();
-  return { ...actual, listActiveDeployBindingsForStage: () => listBindings() };
+  return { ...actual, findBindingWithConnectionById: () => findBinding() };
+});
+
+const readDocument = vi.fn(async () => null as unknown);
+vi.mock('../project-config/service.js', async (importActual) => {
+  const actual = await importActual<typeof import('../project-config/service.js')>();
+  return { ...actual, readProjectDocument: () => readDocument() };
 });
 
 const onlineIds = vi.fn(async () => [] as string[]);
@@ -56,28 +62,40 @@ registerAllIntegrations();
 const PROJECT_ID = '55555555-5555-4555-8555-555555555555';
 const ISSUE_A = '66666666-6666-4666-8666-666666666666';
 
-const PROBES = { probes: [{ url: 'https://example.test/api/health', commitPath: 'commit' }] };
-const DECLARED = {
-  releaseRunnerLabel: 'prod-box',
-  verify: PROBES,
-  rollback: { mode: 'coolify-image' },
-};
+const BINDING_ID = '77777777-7777-4777-8777-777777777777';
+const DECLARED = { releaseRunnerLabel: 'prod-box', rollback: { mode: 'coolify-image' } };
 
-function liveBinding(config: Record<string, unknown>) {
-  listBindings.mockResolvedValue([
-    {
-      binding: {
-        id: 'b-1',
-        provider: 'coolify',
-        config,
-        instructions: null,
-        label: '',
-        role: 'deploy',
-        stages: ['live'],
+function production(identifies: 'source' | 'artifact') {
+  const document = {
+    source: { type: 'git', git: { defaultBranch: 'main', branches: ['main'] } },
+    environments: {
+      live: {
+        tier: 'production',
+        deploysFrom: 'main',
+        deployment: { binding: BINDING_ID, trigger: 'on-request' },
+        verification: {
+          runtime: [
+            { type: 'http', url: 'https://example.test/api/health', path: 'commit', identifies },
+          ],
+        },
       },
-      connection: { config: {} },
     },
-  ]);
+    promotions: [],
+  };
+  readDocument.mockResolvedValue({ revision: 1, document });
+  findBinding.mockResolvedValue({
+    binding: {
+      id: BINDING_ID,
+      projectId: PROJECT_ID,
+      provider: 'coolify',
+      config: DECLARED,
+      instructions: null,
+      label: '',
+      role: 'deploy',
+      active: true,
+    },
+    connection: { config: {}, active: true },
+  });
 }
 
 function roster(mergedAt: Date | null) {
@@ -93,13 +111,9 @@ function ready() {
       repoPath: '/srv/app',
       repoUrl: null,
       baseBranch: 'main',
-      releaseChain: [{ branch: 'main' }],
-      environments: {
-        live: { url: 'https://app.example.test', commitUrl: 'https://example.test/api/health' },
-      },
     },
   ]);
-  liveBinding(DECLARED);
+  production('source');
   roster(new Date());
   execRows.mockResolvedValue([{ device_id: 'dev-1' }]);
   onlineIds.mockResolvedValue(['dev-1']);
@@ -108,9 +122,9 @@ function ready() {
 /** Each state is a different set of checks reaching a different read. */
 const STATES: Record<string, () => void> = {
   'a project that can release': ready,
-  'a probe url no request could be made to': () => {
+  'a production environment whose probes all identify an artifact': () => {
     ready();
-    liveBinding({ ...DECLARED, verify: { probes: [{ url: 'example.test/version' }] } });
+    production('artifact');
   },
   'a roster whose work never merged': () => {
     ready();
@@ -118,7 +132,11 @@ const STATES: Record<string, () => void> = {
   },
   'a binding store the declaration cannot read': () => {
     ready();
-    listBindings.mockRejectedValue(new Error('binding store unreachable'));
+    findBinding.mockRejectedValue(new Error('binding store unreachable'));
+  },
+  'a project document the declaration cannot read': () => {
+    ready();
+    readDocument.mockRejectedValue(new Error('project document unreadable'));
   },
   'a project row the declaration cannot read': () => {
     ready();
@@ -132,7 +150,8 @@ const STATES: Record<string, () => void> = {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  listBindings.mockResolvedValue([]);
+  findBinding.mockResolvedValue(null);
+  readDocument.mockResolvedValue(null);
   selectLimit.mockResolvedValue([]);
   selectRows.mockResolvedValue([]);
   execRows.mockResolvedValue([]);
@@ -163,4 +182,12 @@ describe('collectReleaseBlockers — no unreachable probe can withhold the answe
       expect(dialled).not.toHaveBeenCalled();
     });
   }
+});
+
+describe('the states above reach the probe declaration', () => {
+  it('reads a project that can release as one production channel with its probe', async () => {
+    ready();
+    const report = await collectReleaseBlockers(PROJECT_ID);
+    expect(report.channels?.map((c) => c.verifySource)).toEqual(['environment']);
+  });
 });

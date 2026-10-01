@@ -61,10 +61,7 @@ vi.mock('../lib/authz.js', async (importOriginal) => ({
 
 const { releaseBatchRoutes } = await import('./routes.js');
 const { ReleaseTargetUndeclaredError } = await import('./gate.js');
-const { ReleaseRunnerAmbiguousError } = await import('./channel.js');
-const { ReleaseMultiChannelUnsupportedError, ReleaseRecordMissingError } = await import(
-  './service.js'
-);
+const { ReleaseRecordMissingError } = await import('./service.js');
 const { blocker, releaseBlockerError } = await import('./blockers.js');
 const { releaseBlockerSentence } = await import('./blocker-sentences.js');
 const { signUserToken } = await import('../auth/jwt.js');
@@ -118,16 +115,16 @@ beforeEach(() => {
 describe('POST /:projectId/release-batches — the declaration refusals', () => {
   // ISS-1127 criterion 9: this text is `releaseBlockerSentence`'s, the same
   // function `GET /release-readiness` composes its own `RELEASE_TARGET_UNDECLARED`
-  // entry from (`blockers.ts`'s `blocker('RELEASE_TARGET_UNDECLARED', { releaseChain })`)
+  // entry from (`blockers.ts`'s `blocker('RELEASE_TARGET_UNDECLARED', { reason })`)
   // — not the error class's own `.message`, which named the project id this
   // call is already scoped to and neither door needed.
-  it('answers 409 RELEASE_TARGET_UNDECLARED, naming the declared chain and the remedy', async () => {
+  it('answers 409 RELEASE_TARGET_UNDECLARED, naming the reason and the remedy', async () => {
     mockAdmin();
     createReleaseBatchMock.mockRejectedValueOnce(
-      new ReleaseTargetUndeclaredError(PROJECT_ID, [
-        { branch: 'main' },
-        { branch: 'live', from: 'merge-branch' },
-      ]),
+      new ReleaseTargetUndeclaredError(
+        PROJECT_ID,
+        'production environment `beta` is deployed outside Forge',
+      ),
     );
 
     const res = await createReq();
@@ -135,37 +132,9 @@ describe('POST /:projectId/release-batches — the declaration refusals', () => 
 
     expect(res.status).toBe(409);
     expect(body.code).toBe('RELEASE_TARGET_UNDECLARED');
-    expect(body.message).toContain('release chain ends at `live`');
-    expect(body.message).toContain('no active deploy binding carrying the `live` stage');
-  });
-
-  it('answers 409 RELEASE_RUNNER_AMBIGUOUS, naming both labels', async () => {
-    mockAdmin();
-    createReleaseBatchMock.mockRejectedValueOnce(
-      new ReleaseRunnerAmbiguousError(PROJECT_ID, ['box-a', 'box-b']),
+    expect(body.message).toBe(
+      'Nowhere is declared for a release to land: production environment `beta` is deployed outside Forge.',
     );
-
-    const res = await createReq();
-    const body = (await res.json()) as { code?: string; message?: string };
-
-    expect(res.status).toBe(409);
-    expect(body.code).toBe('RELEASE_RUNNER_AMBIGUOUS');
-    expect(body.message).toContain('box-a');
-    expect(body.message).toContain('box-b');
-  });
-
-  it('answers 409 RELEASE_MULTI_CHANNEL_UNSUPPORTED, saying how many were declared', async () => {
-    mockAdmin();
-    createReleaseBatchMock.mockRejectedValueOnce(new ReleaseMultiChannelUnsupportedError(2));
-
-    const res = await createReq();
-    const body = (await res.json()) as { code?: string; message?: string };
-
-    expect(res.status).toBe(409);
-    expect(body.code).toBe('RELEASE_MULTI_CHANNEL_UNSUPPORTED');
-    expect(body.message).toContain('2 live deploy bindings');
-    // The way out is carried in the refusal.
-    expect(body.message).toContain('Leave exactly one binding');
   });
 
   it('still passes an unrelated failure through as a 500 rather than a 409', async () => {
@@ -178,11 +147,11 @@ describe('POST /:projectId/release-batches — the declaration refusals', () => 
   });
 });
 
-describe('GET /:projectId/release-batches/roster — the same two refusals', () => {
+describe('GET /:projectId/release-batches/roster — the same refusal', () => {
   it('answers 409 RELEASE_TARGET_UNDECLARED rather than 500', async () => {
     mockAdmin();
     loadReleaseRosterMock.mockRejectedValueOnce(
-      new ReleaseTargetUndeclaredError(PROJECT_ID, [{ branch: 'main' }]),
+      new ReleaseTargetUndeclaredError(PROJECT_ID, 'no production binding'),
     );
 
     const res = await rosterReq();
@@ -190,19 +159,6 @@ describe('GET /:projectId/release-batches/roster — the same two refusals', () 
 
     expect(res.status).toBe(409);
     expect(body.code).toBe('RELEASE_TARGET_UNDECLARED');
-  });
-
-  it('answers 409 RELEASE_RUNNER_AMBIGUOUS rather than 500', async () => {
-    mockAdmin();
-    loadReleaseRosterMock.mockRejectedValueOnce(
-      new ReleaseRunnerAmbiguousError(PROJECT_ID, ['east', 'west']),
-    );
-
-    const res = await rosterReq();
-    const body = (await res.json()) as { code?: string };
-
-    expect(res.status).toBe(409);
-    expect(body.code).toBe('RELEASE_RUNNER_AMBIGUOUS');
   });
 });
 
@@ -335,7 +291,7 @@ describe('POST /:projectId/release-batches — the refusals that go through thei
   it('still answers 409 for an undeclared target, rather than the 500 an unmapped class gets', async () => {
     mockAdmin();
     createReleaseBatchMock.mockRejectedValueOnce(
-      new ReleaseTargetUndeclaredError(PROJECT_ID, [{ branch: 'main' }]),
+      new ReleaseTargetUndeclaredError(PROJECT_ID, 'no production binding'),
     );
 
     const res = await createReq();
@@ -345,7 +301,7 @@ describe('POST /:projectId/release-batches — the refusals that go through thei
 
   it('carries the rest of the list on a declaration refusal too', async () => {
     mockAdmin();
-    const err = new ReleaseTargetUndeclaredError(PROJECT_ID, [{ branch: 'main' }]);
+    const err = new ReleaseTargetUndeclaredError(PROJECT_ID, 'no production binding');
     Object.assign(err, {
       releaseBlockers: [
         { code: 'RELEASE_TARGET_UNDECLARED', message: 'thrown', evaluated: true, httpStatus: 409 },

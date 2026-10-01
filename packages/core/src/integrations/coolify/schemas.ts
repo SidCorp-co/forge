@@ -57,8 +57,23 @@ const coolifyRollbackSchema = z
   .transform((value) => value as { mode: typeof COOLIFY_ROLLBACK_MODE } | undefined)
   .optional();
 
+const TARGETS_ON_CONNECTION =
+  "a Coolify connection carries no deploy target: the application a project deploys is its binding's (`PUT /api/projects/:id/bindings/:bindingId` with `target.applicationUuid`). Send this connection config without `targets`.";
+
+const coolifyBaseUrl = z.string().url().max(500);
+
+/** The owner-scoped credential tier: where Coolify is, and nothing a project deploys to. */
+export const coolifyConnectionConfigSchema = z.object({
+  baseUrl: coolifyBaseUrl,
+  targets: z.never({ error: TARGETS_ON_CONNECTION }).optional(),
+  ...releaseChannelFields,
+  rollback: coolifyRollbackSchema,
+});
+
+export const coolifyConnectionPatchConfigSchema = coolifyConnectionConfigSchema.partial();
+
 export const coolifyConfigSchema = z.object({
-  baseUrl: z.string().url().max(500),
+  baseUrl: coolifyBaseUrl,
   targets: z
     .array(coolifyTargetSchema)
     .min(1)
@@ -85,3 +100,5 @@ export const coolifySecretsSchema = z.object({
 });
 
 export const COOLIFY_BINDING_CONFIG_KEYS = ['targets', ...RELEASE_CHANNEL_KEYS] as const;
+
+export const COOLIFY_BINDING_ONLY_CONFIG_KEYS = ['targets'] as const;

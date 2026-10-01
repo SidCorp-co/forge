@@ -113,7 +113,7 @@ export const rocketchatIntegration = declareIntegration<RocketChatConfig, Rocket
   usage: null,
   presentation: {
     label: 'Rocket.Chat',
-    alwaysStageKeyed: false,
+    alwaysEnvironmentKeyed: false,
     neverCheckedDetail: 'never test-connected',
     cardMeta: (config) => {
       const cfg = config as { serverUrl?: string; rids?: string[] };

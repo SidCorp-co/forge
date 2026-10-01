@@ -23,6 +23,7 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
+import { seedProduction } from '../helpers/production.js';
 
 describe('release deploy dispatch and job finalize E2E', () => {
   let harness: TestDatabase;
@@ -58,17 +59,7 @@ describe('release deploy dispatch and job finalize E2E', () => {
   }
 
   async function seedProdBinding(): Promise<string> {
-    const connectionId = randomUUID();
-    const bindingId = randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO integration_connections (id, owner_type, owner_id, provider, active)
-      VALUES (${connectionId}, 'user', ${ownerId}, 'coolify', true)
-    `);
-    await harness.db.execute(sql`
-      INSERT INTO integration_bindings (id, connection_id, project_id, provider, role, stages, active)
-      VALUES (${bindingId}, ${connectionId}, ${projectId}, 'coolify', 'deploy', ARRAY['live'], true)
-    `);
-    return bindingId;
+    return (await seedProduction(harness.db, { projectId, ownerId, probes: 'none' })).bindingId;
   }
 
   async function currentStep(runId: string): Promise<string | null> {

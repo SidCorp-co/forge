@@ -6,41 +6,25 @@ export const RELEASE_BATCH_SKILL = 'release-flow';
 /** The MCP tool a release run reads and records its batch through, on the credential its pane holds. */
 export const RELEASE_BATCH_TOOL = 'forge_release_batch';
 
-import { resolveIssueBranches } from '../branches/resolve.js';
-import type { ReleaseCrossing } from '../db/schema.js';
-import { chainLiveBranch, type ReleaseChain } from '../projects/release-chain.js';
+import { promotedBranch, type ReleasePath } from '../project-config/release-path.js';
 import type { VerifyConfig } from './verify.js';
 
 export interface ReleaseBranches {
-  /** `null` where the project declares none. A release reads its branches from its own method. */
-  baseBranch: string | null;
-  /** Where the last edge of the chain lands. Equals `baseBranch` where the chain crosses nothing. */
-  liveBranch: string | null;
-  /** True where the chain has an edge to cross before it deploys. */
+  /** Where work lands; `null` on a project with no git source. */
+  defaultBranch: string | null;
+  /** The branch production deploys from. Equals `defaultBranch` where no promotion crosses. */
+  deploysFrom: string | null;
+  /** True where a promotion has to be crossed before production deploys. */
   promotePlanned: boolean;
 }
 
-/**
- * The branches this project declares, as FACTS about the project.
- *
- * ISS-1276 — no branch here is an argument to a step Forge writes, because Forge writes none. An
- * undeclared base branch was `RELEASE_BRANCHES_UNDECLARED` until then, which refused a release on
- * behalf of a merge step that no longer exists; `resolveReleaseDeclaration` read the same column and
- * defaulted it to `main`, so the two readings disagreed about the same project.
- */
-export function releaseBranches(project: {
-  baseBranch: string | null;
-  releaseChain: ReleaseChain;
-}): ReleaseBranches {
-  const resolved = resolveIssueBranches(
-    {},
-    { ...project, liveBranch: chainLiveBranch(project.releaseChain) },
-  );
-  const promotePlanned = resolved.liveBranch !== null;
+/** The branches the project document declares, as FACTS about the project. */
+export function releaseBranches(path: ReleasePath): ReleaseBranches {
+  const promoted = promotedBranch(path);
   return {
-    baseBranch: resolved.baseBranch,
-    liveBranch: promotePlanned ? resolved.liveBranch : resolved.baseBranch,
-    promotePlanned,
+    defaultBranch: path.defaultBranch,
+    deploysFrom: promoted ?? path.defaultBranch,
+    promotePlanned: promoted !== null,
   };
 }
 
@@ -49,13 +33,15 @@ export type ReleaseRollback =
   | { kind: 'coolify-image' }
   | { kind: 'unrepresentable'; text: string };
 
-/** Where a channel's probes came from. `declared-unusable` is a `verify` block
- *  `parseVerifyConfig` refused, which `none` would make indistinguishable from
- *  declaring nothing — and the two need different repairs (ISS-1286). */
-export type VerifySource = 'binding' | 'environments-live' | 'declared-unusable' | 'none';
+/** Where a channel's probes came from: the production environment's `verification.runtime`.
+ *  `declared-unusable` is a declared probe a release cannot compare with the commit it ships,
+ *  which `none` would make indistinguishable from declaring nothing (ISS-1286). */
+export type VerifySource = 'environment' | 'declared-unusable' | 'none';
 
-/** ONE live deploy binding. A project's release works the whole set of these. */
+/** The production environment's deploy binding: where a release lands. */
 export interface ReleaseChannel {
+  /** The production environment's name in the project document. */
+  environment: string;
   bindingId: string;
   provider: string;
   /** ISS-558 multi-store slug; `''` for the default binding. NOT the runner label. */
@@ -79,12 +65,10 @@ export type CloseVerification = { kind: 'probed'; cfg: VerifyConfig } | { kind: 
 export type ReleaseVerification = CloseVerification['kind'];
 
 export interface ReleasePlan {
-  /** EVERY live deploy binding. Empty means Forge reaches no deploy this project declared. */
+  /** The production environment's deploy binding, or empty where Forge reaches no production. */
   channels: ReleaseChannel[];
-  /** The one label across the set, or `null`. Two disagreeing labels throw instead. */
+  /** The production binding's label, or `null`. */
   releaseRunnerLabel: string | null;
   /** The `release-procedure` knowledge entry's body, verbatim. */
   procedure: string | null;
 }
-
-export type { ReleaseCrossing };

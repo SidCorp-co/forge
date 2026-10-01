@@ -17,7 +17,8 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
-import { releaseBatchFixture } from '../helpers/release-batch-fixture.js';
+import { stubProbe } from '../helpers/production.js';
+import { PROBE_URL, releaseBatchFixture } from '../helpers/release-batch-fixture.js';
 
 const PUSHED = '2222222222222222222222222222222222222222';
 
@@ -27,6 +28,7 @@ let ownerId: string;
 let serving = '1111111111111111111111111111111111111111';
 let probe: Server;
 let probeUrl: string;
+let forwarded = false;
 let job: typeof import('../../src/release-batch/finish-job.js');
 let service: typeof import('../../src/release-batch/service.js');
 let refusals: typeof import('../../src/release-batch/refusals.js');
@@ -44,7 +46,7 @@ beforeAll(async () => {
   process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
   process.env.NODE_ENV ??= 'test';
   await registerIntegrationsForTest();
-  probe = createServer((_req, res) => res.end(serving));
+  probe = createServer((_req, res) => res.end(JSON.stringify({ commit: serving })));
   await new Promise<void>((done) => probe.listen(0, '127.0.0.1', done));
   probeUrl = `http://127.0.0.1:${(probe.address() as AddressInfo).port}/version`;
   job = await import('../../src/release-batch/finish-job.js');
@@ -67,13 +69,8 @@ beforeEach(async () => {
   projectId = (await createTestProject(harness.db, owner.id)).id;
   await fx.declareProduction();
   await fx.seedReleaseRunner();
-  await harness.db.execute(sql`
-    UPDATE integration_bindings
-    SET config = config || ${JSON.stringify({
-      verify: { probes: [{ url: probeUrl }], timeoutSeconds: 12, stableReads: 1 },
-    })}::jsonb
-    WHERE project_id = ${projectId} AND provider = 'coolify'
-  `);
+  if (!forwarded) stubProbe({ [PROBE_URL]: probeUrl });
+  forwarded = true;
 });
 
 async function batchOf(n: number) {

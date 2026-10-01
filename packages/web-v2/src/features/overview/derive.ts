@@ -186,7 +186,7 @@ const notOnLiveRecord = (i: PulseNotOnLiveIdentity): ActionRecord => {
   const first = i.evidence[0];
   return {
     ...issueRecord(i),
-    detail: first ? `${i.title} · ${first.sha.slice(0, 8)} not on ${i.liveBranch}` : i.title,
+    detail: first ? `${i.title} · ${first.sha.slice(0, 8)} not on ${i.deploysFrom}` : i.title,
   };
 };
 

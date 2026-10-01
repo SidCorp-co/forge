@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import { production, projectDoc } from '../project-config/release-path.fixture.js';
+import { type ReleasePath, releasePathOf } from '../project-config/release-path.js';
+import type { ProjectDocument } from '../project-config/schema.js';
 import { releaseBatchStatePrompt } from '../prompt/state-prompts/release-batch.js';
 import {
   RELEASE_BATCH_SKILL,
@@ -8,16 +11,35 @@ import {
 } from './plan.js';
 import { buildReleaseBatchPrompt } from './prompt.js';
 
+function pathOf(document: ProjectDocument): ReleasePath {
+  const read = releasePathOf(1, document);
+  if (!read.ok) throw new Error(read.reason);
+  return read.path;
+}
+
+const PROMOTES = pathOf(
+  projectDoc({
+    defaultBranch: 'dev',
+    promotions: [{ from: 'dev', to: 'master', via: 'merge' }],
+    environments: { beta: production({ deploysFrom: 'master' }) },
+  }),
+);
+const IN_PLACE = pathOf(
+  projectDoc({ defaultBranch: 'dev', environments: { beta: production({ deploysFrom: 'dev' }) } }),
+);
+const SHIPS_NOTHING = pathOf(projectDoc({ defaultBranch: 'dev' }));
+
 const BASE = {
   runId: 'run-1',
   projectId: 'proj-1',
-  baseBranch: 'dev',
-  releaseChain: [{ branch: 'dev' }, { branch: 'master', from: 'merge-branch' as const }],
+  defaultBranch: 'dev',
+  path: PROMOTES,
   issues: [{ id: 'i1', displayId: 'ISS-9', title: 'checkout 500s' }],
   releaseRunnerPreferenceMet: true,
 };
 
 const channel = (over: Partial<ReleaseChannel> = {}): ReleaseChannel => ({
+  environment: 'beta',
   bindingId: 'b-1',
   provider: 'coolify',
   label: '',
@@ -106,48 +128,26 @@ describe('buildReleaseBatchPrompt', () => {
     expect(out).toContain('frontend ships WITH varnish');
   });
 
-  it('renders one notes block per live binding rather than folding them together', () => {
-    const out = buildReleaseBatchPrompt({
-      ...BASE,
-      plan: plan({
-        channels: [
-          channel({ provider: 'coolify', instructions: 'deploy the app' }),
-          channel({ provider: 'epodsystem', label: 'aurelle', instructions: 'publish the theme' }),
-        ],
-      }),
-    });
-
-    expect(out).toContain('Deploy channel notes (coolify)');
-    expect(out).toContain('deploy the app');
-    expect(out).toContain('Deploy channel notes (epodsystem [aurelle])');
-    expect(out).toContain('publish the theme');
-    expect(out).toMatch(/deploy channels \(2, work ALL of them\)/);
-  });
-
   it('says out loud when nothing deploys, rather than leaving it blank', () => {
     const out = buildReleaseBatchPrompt({ ...BASE, plan: plan() });
 
-    expect(out).toMatch(/deploy channels: none/);
+    expect(out).toMatch(/deploy channel: none/);
   });
 
-  it('names the live branch for a chain that crosses, and none for a chain of one', () => {
+  it('names each promotion a landed change crosses, and none where production deploys in place', () => {
     const crossingOut = buildReleaseBatchPrompt({ ...BASE, plan: plan() });
-    expect(crossingOut).toContain('liveBranch: master');
-    expect(crossingOut).toContain('releaseChain: dev, then merge-branch → master');
+    expect(crossingOut).toContain('promotions: dev merge → master');
+    expect(crossingOut).toContain('production: environment `beta`, deploys from `master`');
 
-    const oneBranchOut = buildReleaseBatchPrompt({
-      ...BASE,
-      releaseChain: [{ branch: 'dev' }],
-      plan: plan(),
-    });
-    expect(oneBranchOut).not.toContain('liveBranch');
-    expect(oneBranchOut).toContain('releaseChain: dev');
+    const inPlaceOut = buildReleaseBatchPrompt({ ...BASE, path: IN_PLACE, plan: plan() });
+    expect(inPlaceOut).toContain('promotions: dev\n');
+    expect(inPlaceOut).toContain('production: environment `beta`, deploys from `dev`');
   });
 
-  it('says out loud that an empty chain ships nothing, rather than printing a blank list', () => {
-    const out = buildReleaseBatchPrompt({ ...BASE, releaseChain: [], plan: plan() });
+  it('prints no production line where the project document declares none', () => {
+    const out = buildReleaseBatchPrompt({ ...BASE, path: SHIPS_NOTHING, plan: plan() });
 
-    expect(out).toContain('releaseChain: empty — this project ships nothing');
+    expect(out).not.toContain('production:');
   });
 
   it('still frames the issue title as untrusted data', () => {
@@ -243,7 +243,7 @@ describe('where a release run reads its verdict (ISS-1190)', () => {
     channels: [
       channel({
         verify: { probes: [{ url: 'https://example.test/version' }] },
-        verifySource: 'binding',
+        verifySource: 'environment',
       }),
     ],
   });
@@ -347,7 +347,7 @@ describe('the procedure a project that declared none is handed (ISS-1276)', () =
       plan: plan({ channels: [channel()] }),
     });
 
-    expect(out).not.toContain('Merge baseBranch → liveBranch');
+    expect(out).not.toContain('Merge baseBranch →');
     expect(out).not.toContain("forge_coolify_deploy { action:'deploy'");
     expect(out).not.toContain('CHANGELOG.md');
     expect(out).not.toContain('Forge default');
@@ -378,21 +378,10 @@ describe('the procedure a project that declared none is handed (ISS-1276)', () =
     expect(out).toContain('epodsystem [aurelle]');
   });
 
-  it('refuses nothing over a mixed channel set either', () => {
-    const out = buildReleaseBatchPrompt({
-      ...BASE,
-      plan: plan({ channels: [channel(), channel({ provider: 'epodsystem' })] }),
-    });
-
-    expect(out).not.toContain('NO default deploy step');
-    expect(out).not.toContain('a release that can only be half-finished is not started');
-    expect(out).toContain('work ALL of them');
-  });
-
   it('states an absent deploy channel as a fact', () => {
     const out = buildReleaseBatchPrompt({ ...BASE, plan: plan({ channels: [] }) });
 
-    expect(out).toContain('deploy channels: none declared to Forge');
+    expect(out).toContain('deploy channel: none declared to Forge');
   });
 
   it('tells the agent nothing to do about an absent deploy channel', () => {
@@ -405,33 +394,23 @@ describe('the procedure a project that declared none is handed (ISS-1276)', () =
 });
 
 describe('the branches a release prompt carries (ISS-1276)', () => {
-  it('names a declared base branch as a fact', () => {
+  it('names a declared default branch as a fact', () => {
     const out = buildReleaseBatchPrompt({ ...BASE, plan: plan() });
 
-    expect(out).toContain('baseBranch: dev');
+    expect(out).toContain('defaultBranch: dev');
   });
 
-  it('names no base branch line where the project declares none', () => {
-    const out = buildReleaseBatchPrompt({ ...BASE, baseBranch: null, plan: plan() });
+  it('names no default branch line where the project declares none', () => {
+    const out = buildReleaseBatchPrompt({ ...BASE, defaultBranch: null, plan: plan() });
 
-    expect(out).not.toContain('baseBranch:');
-  });
-
-  it('names no live branch line where the chain crosses nothing', () => {
-    const out = buildReleaseBatchPrompt({
-      ...BASE,
-      releaseChain: [{ branch: 'dev' }],
-      plan: plan(),
-    });
-
-    expect(out).not.toContain('liveBranch:');
+    expect(out).not.toContain('defaultBranch:');
   });
 });
 
 describe('the proof a release run is told about (ISS-1321)', () => {
   const probed = channel({
     verify: { probes: [{ url: 'https://api.example.test/version' }] },
-    verifySource: 'binding',
+    verifySource: 'environment',
   });
 
   it('says a project with no probe is read by nothing and closed unverified', () => {

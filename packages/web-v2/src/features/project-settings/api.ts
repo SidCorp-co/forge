@@ -2,8 +2,6 @@
 import type { ProjectDetail } from "@/features/projects/types";
 import { apiClient } from "@/lib/api/client";
 import type {
-	DocumentWrite,
-	EnvironmentsConfig,
 	ProjectInvitationRow,
 	LabelCreateInput,
 	LabelPatchInput,
@@ -51,19 +49,6 @@ export const projectSettingsApi = {
 			| { outcome: "skipped"; windowId: string; reason: string }
 			| { outcome: "failed"; windowId: string; error: string }
 		>(`/projects/${id}/assistant-weekly/run`, { method: "POST" }),
-
-	/** `GET /api/projects/:id/environments` — the document a write's `base` comes from. */
-	getEnvironments: (id: string) =>
-		apiClient<{ environments: EnvironmentsConfig }>(`/projects/${id}/environments`),
-
-	/** `PATCH /api/projects/:id/environments` — same contract over the environments
-	 *  document, which left `PATCH /api/projects/:id` because a column assignment there
-	 *  replaced the whole blob. */
-	updateEnvironments: (id: string, write: DocumentWrite) =>
-		apiClient<{ environments: EnvironmentsConfig }>(`/projects/${id}/environments`, {
-			method: "PATCH",
-			body: JSON.stringify(write),
-		}),
 
 	/** `PATCH /api/projects/:id/plugins` — replaces `agentConfig.plugins` whole. */
 	updatePlugins: (id: string, plugins: PluginDesignation[]) =>

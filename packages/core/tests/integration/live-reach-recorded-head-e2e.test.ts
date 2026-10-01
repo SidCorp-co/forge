@@ -23,6 +23,7 @@ import {
   createTestProject,
   createTestProjectMember,
   createTestUser,
+  seedProjectDocument,
   setupTestDatabase,
   type TestDatabase,
   truncateAll,
@@ -92,11 +93,18 @@ function buildPortalRepository(): void {
 async function portalProject(userId: string) {
   const p = await createTestProject(harness.db, userId);
   await createTestProjectMember(harness.db, { userId, projectId: p.id, role: 'admin' });
-  await harness.db.execute(sql`
-    UPDATE projects SET base_branch = 'staging', repo_url = ${GITLAB},
-      release_chain = '[{"branch": "staging"}, {"branch": "master", "from": "merge-branch"}]'::jsonb
-    WHERE id = ${p.id}
-  `);
+  await harness.db.execute(sql`UPDATE projects SET repo_url = ${GITLAB} WHERE id = ${p.id}`);
+  await seedProjectDocument(harness.db, p.id, userId, {
+    defaultBranch: 'staging',
+    promotions: [{ from: 'staging', to: 'master', via: 'merge' }],
+    environments: {
+      live: {
+        tier: 'production',
+        deploysFrom: 'master',
+        deployment: { binding: randomUUID(), trigger: 'on-request' },
+      },
+    },
+  });
   const keyId = randomUUID();
   await harness.db.execute(sql`
     INSERT INTO workspace_ssh_keys (id, org_id, name, source, public_key, private_key_enc)

@@ -20,11 +20,12 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   createTestProject,
   createTestUser,
-  seedProjectSource,
+  seedProjectDocument,
   setupTestDatabase,
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
+import { seedProduction } from '../helpers/production.js';
 
 type IssueRow = import('../../src/issues/apply-transition.js').TransitionIssueRow;
 
@@ -51,25 +52,11 @@ describe('release record required E2E', () => {
     const owner = await createTestUser(harness.db);
     ownerId = owner.id;
     projectId = (await createTestProject(harness.db, owner.id)).id;
-    await seedProjectSource(harness.db, projectId, owner.id, 'git');
+    await seedProjectDocument(harness.db, projectId, ownerId, { environments: {} });
   });
 
   async function declareProduction(): Promise<void> {
-    const connectionId = randomUUID();
-    await harness.db.execute(sql`
-      UPDATE projects
-         SET base_branch = 'main',
-             release_chain = '[{"branch": "main"}, {"branch": "production", "from": "merge-branch"}]'::jsonb
-       WHERE id = ${projectId}
-    `);
-    await harness.db.execute(sql`
-      INSERT INTO integration_connections (id, owner_type, owner_id, provider, active)
-      VALUES (${connectionId}, 'user', ${ownerId}, 'coolify', true)
-    `);
-    await harness.db.execute(sql`
-      INSERT INTO integration_bindings (connection_id, project_id, provider, role, stages, active)
-      VALUES (${connectionId}, ${projectId}, 'coolify', 'deploy', ARRAY['live']::text[], true)
-    `);
+    await seedProduction(harness.db, { projectId, ownerId, deploysFrom: 'production' });
   }
 
   /**

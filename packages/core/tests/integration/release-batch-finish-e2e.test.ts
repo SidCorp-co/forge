@@ -17,7 +17,7 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createTestProject,
   createTestUser,
@@ -46,13 +46,6 @@ describe('release batch finish E2E', () => {
     if (harness) await harness.cleanup();
   });
 
-  beforeEach(async () => {
-    await truncateAll(harness.db);
-    const owner = await createTestUser(harness.db);
-    ownerId = owner.id;
-    projectId = (await createTestProject(harness.db, owner.id)).id;
-  });
-
   const fx = releaseBatchFixture(
     () => harness,
     () => ({ projectId, ownerId }),
@@ -60,14 +53,19 @@ describe('release batch finish E2E', () => {
   const { declareProduction, seedReleaseRunner, insertIssue, stored } = fx;
   const { runStatus, commentCount, claim } = fx;
 
+  const freshProject = async () => {
+    await truncateAll(harness.db);
+    const owner = await createTestUser(harness.db);
+    ownerId = owner.id;
+    projectId = (await createTestProject(harness.db, owner.id)).id;
+    await declareProduction();
+    await seedReleaseRunner();
+  };
+  beforeEach(freshProject);
+
   const actor = () => ({ type: 'user', id: ownerId }) as const;
 
   describe('finish', () => {
-    beforeEach(async () => {
-      await declareProduction();
-      await seedReleaseRunner();
-    });
-
     it('closes every claimed issue out of the gate status, on the claim it already carried', async () => {
       const { finishReleaseBatch } = await import('../../src/release-batch/service.js');
       const a = await insertIssue();
@@ -150,14 +148,7 @@ describe('release batch finish E2E', () => {
     });
 
     it('refuses the whole batch when the probes cannot confirm the deploy, and closes nothing', async () => {
-      await truncateAll(harness.db);
-      const owner = await createTestUser(harness.db);
-      ownerId = owner.id;
-      projectId = (await createTestProject(harness.db, owner.id)).id;
-      await declareProduction({
-        verify: { probes: [{ url: 'http://127.0.0.1:9/never' }], timeoutSeconds: 0 },
-      });
-      await seedReleaseRunner();
+      await freshProject();
       const { ReleaseNotVerifiedError, finishReleaseBatch } = await import(
         '../../src/release-batch/service.js'
       );
@@ -170,9 +161,20 @@ describe('release batch finish E2E', () => {
         [b, (await stored(b)).mergedAt],
       ]);
       expect(before.get(b)).toBeNull();
+      const servedBefore = fx.serving();
       const { runId } = await claim([a, b]);
+      fx.serve(servedBefore);
 
-      const err = await finishReleaseBatch(runId, actor()).catch((e: unknown) => e);
+      // cm:why project-v1 declares no probe window, so the clock moves past it instead of waiting.
+      const realNow = Date.now.bind(Date);
+      let reads = 0;
+      const clock = vi.spyOn(Date, 'now').mockImplementation(() => {
+        reads += 1;
+        return realNow() + (reads > 2 ? 3_600_000 : 0);
+      });
+      const err = await finishReleaseBatch(runId, actor())
+        .catch((e: unknown) => e)
+        .finally(() => clock.mockRestore());
 
       expect(err).toBeInstanceOf(ReleaseNotVerifiedError);
       expect(await runStatus(runId)).toBe('running');
@@ -200,11 +202,6 @@ describe('release batch finish E2E', () => {
   });
 
   describe('abort', () => {
-    beforeEach(async () => {
-      await declareProduction();
-      await seedReleaseRunner();
-    });
-
     it('releases every claim, closes nothing, and comments once on each issue', async () => {
       const { abortReleaseBatch } = await import('../../src/release-batch/service.js');
       const a = await insertIssue();

@@ -1,6 +1,6 @@
 # 0003 — A release chain replaces the release model enum
 
-**Status:** accepted · **Date:** 2026-09-27 · **Supersedes:** none
+**Status:** superseded by [0004](0004-the-project-document-declares-where-a-release-goes.md) · **Date:** 2026-09-27 · **Supersedes:** none
 
 ## Context
 

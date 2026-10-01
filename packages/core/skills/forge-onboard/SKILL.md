@@ -86,13 +86,13 @@ Summarize what you plan to write, grouped by target, then ask "Write this?" (rul
   instead.** Search (`forge_memory` action=search) before writing so you upsert an existing slug
   instead of duplicating a topic.
 - **Policy** (`PUT /api/projects/:id/policy`, the whole document with the `baseRevision` read) and the **release shape**
-  (`forge_projects` action=update, `baseBranch`/`releaseChain`) — propose ONLY when the survey
-  found real evidence contradicting the current default (e.g. the branch work merges into differs
-  from what bootstrap assumed, or the project promotes to a second branch and nothing says so).
-  `releaseChain` is the ordered release path and REPLACES the whole list: `[]` ships nothing,
-  `[{branch}]` deploys that branch, and each entry after the first carries the crossing into it.
-  Do not propose a change with nothing behind it — and an empty chain is a declaration, not a gap
-  to fill in.
+  (the project document, `PUT /api/projects/:id/config` with the `baseRevision` read) — propose
+  ONLY when the survey found real evidence contradicting the current default (e.g. the branch work
+  merges into differs from what bootstrap assumed, or the project promotes to a second branch and
+  nothing says so). Work lands on `source.git.defaultBranch`; the production environment's
+  `deploysFrom` is where a release goes, and `promotions` say how a change crosses to it. Do not
+  propose a change with nothing behind it — and a document with no production environment is a
+  declaration that Forge ships nothing, not a gap to fill in.
 
 If the human confirms, write each group and acknowledge it (rule 3). If they decline a group,
 skip it and move on — do not re-propose it later in the same conversation unless asked.

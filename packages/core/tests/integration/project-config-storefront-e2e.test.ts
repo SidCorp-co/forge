@@ -88,20 +88,19 @@ const profile = (id: string) => ({
 });
 
 describe('a storefront project with a source binding and a deploy binding', () => {
-  it('writes the source binding through the binding API, with no stage', async () => {
+  it('writes the source binding through the binding API, and a binding holds no stage', async () => {
     const res = await putBinding('store-source.binding.json');
     expect(res.status).toBe(200);
     expect(res.json).toMatchObject({ revision: 1, document: { role: 'source' } });
     const [row] = (await harness.db.execute(
-      sql`SELECT role, stages FROM integration_bindings WHERE id = ${SOURCE_BINDING}`,
-    )) as unknown as { role: string; stages: string[] }[];
-    expect(row).toEqual({ role: 'source', stages: [] });
-    await expect(
-      harness.db.execute(sql`
-        INSERT INTO integration_bindings (connection_id, project_id, provider, role, stages, active)
-        VALUES (${CONNECTION}, ${projectId}, 'shopify', 'source', ARRAY['live'], true)
-      `),
-    ).rejects.toThrow();
+      sql`SELECT role FROM integration_bindings WHERE id = ${SOURCE_BINDING}`,
+    )) as unknown as { role: string }[];
+    expect(row).toEqual({ role: 'source' });
+    const columns = (await harness.db.execute(sql`
+      SELECT column_name FROM information_schema.columns
+       WHERE table_name = 'integration_bindings' AND column_name = 'stages'
+    `)) as unknown as unknown[];
+    expect(columns).toEqual([]);
   });
 
   it('refuses CONNECTION_PROVIDER_MISMATCH against the stored connection', async () => {

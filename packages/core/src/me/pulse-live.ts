@@ -11,7 +11,6 @@ import {
 import { issueWorkRecordsAt } from '../projects/issue-work-records.js';
 import { evidenceFor, issueRefPattern, type LiveReading } from '../projects/live-reach.js';
 import { liveReadingForRow, projectReleaseRows } from '../projects/live-reading.js';
-import { chainPromotes } from '../projects/release-chain.js';
 import { ageSeconds } from './pulse-folds.js';
 import type {
   PulseCapped,
@@ -80,7 +79,7 @@ async function closedNotOnLive(
       status: r.status,
       projectSlug: project.slug,
       ageSeconds: ageSeconds(r.mergedAt, now) ?? 0,
-      liveBranch: reading.liveBranch,
+      deploysFrom: reading.deploysFrom,
       evidence,
     });
   }
@@ -101,7 +100,7 @@ async function measuredGap(
   const reasons: string[] = [];
   if (!reading.complete) {
     reasons.push(
-      `${reading.baseBranch} is ${reading.aheadBy} commits ahead of ${reading.liveBranch} and the reading listed only ${reading.commits.length}, so a closed issue it does not name is unplaced`,
+      `${reading.baseBranch} is ${reading.aheadBy} commits ahead of ${reading.deploysFrom} and the reading listed only ${reading.commits.length}, so a closed issue it does not name is unplaced`,
     );
   }
   const [late] = await db
@@ -138,9 +137,7 @@ export async function readPulseLive(
   thresholds: PulseThresholds,
   now: Date,
 ): Promise<PulseLive> {
-  const releaseRows = (await projectReleaseRows(projectIds)).filter((r) =>
-    chainPromotes(r.releaseChain),
-  );
+  const releaseRows = (await projectReleaseRows(projectIds)).filter((r) => r.deploysFrom !== null);
   if (releaseRows.length === 0) {
     return { notOnLive: { total: 0, shown: [] }, liveUnmeasured: { total: 0, shown: [] } };
   }
@@ -186,7 +183,7 @@ export async function readPulseLive(
       slug: project.slug,
       name: project.name,
       baseBranch: reading.baseBranch,
-      liveBranch: reading.liveBranch,
+      deploysFrom: reading.deploysFrom,
       reason,
     });
   }

@@ -2,7 +2,6 @@ import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   type BindingRole,
-  type DeployStage,
   type IntegrationOwnerType,
   integrationBindings,
   integrationConnections,
@@ -10,6 +9,7 @@ import {
   organizationMembers,
 } from '../db/schema.js';
 import { AGENT_ACCESS_CLOSED, type AgentAccess } from './agent-access.js';
+import { getIntegration } from './registry.js';
 import type { AdapterContext, IntegrationProvider } from './types.js';
 import { decryptJson, encryptJson } from './vault.js';
 
@@ -185,29 +185,6 @@ export async function listActiveBindingsForProjectProvider(
     .orderBy(asc(integrationBindings.createdAt));
 }
 
-export async function listActiveDeployBindingsForStage(
-  projectId: string,
-  stage: DeployStage,
-): Promise<BindingWithConnection[]> {
-  return db
-    .select({ binding: integrationBindings, connection: integrationConnections })
-    .from(integrationBindings)
-    .innerJoin(
-      integrationConnections,
-      eq(integrationBindings.connectionId, integrationConnections.id),
-    )
-    .where(
-      and(
-        eq(integrationBindings.projectId, projectId),
-        eq(integrationBindings.role, 'deploy'),
-        sql`${stage} = ANY(${integrationBindings.stages})`,
-        eq(integrationBindings.active, true),
-        eq(integrationConnections.active, true),
-      ),
-    )
-    .orderBy(asc(integrationBindings.createdAt));
-}
-
 /** Decrypt a connection's secrets blob, or `{}` when it has none. */
 export function decryptConnectionSecrets<
   TSecrets extends Record<string, unknown> = Record<string, unknown>,
@@ -216,16 +193,22 @@ export function decryptConnectionSecrets<
 }
 
 /**
- * Effective config for a dispatch = connection.config overlaid with
- * binding.config (binding wins on key collisions).
+ * Effective config for a dispatch = connection.config overlaid with binding.config. A key the
+ * provider declares the binding's alone (Coolify's deploy `targets`) is never read off the
+ * connection: one stored there from before the split is not every project's target.
  */
 export function effectiveConfig<TConfig extends Record<string, unknown> = Record<string, unknown>>(
   pair: BindingWithConnection,
 ): TConfig {
-  return {
-    ...((pair.connection.config ?? {}) as object),
-    ...((pair.binding.config ?? {}) as object),
-  } as TConfig;
+  const bindingOnly = new Set<string>(
+    getIntegration(pair.binding.provider)?.schemas.bindingOnlyConfigKeys ?? [],
+  );
+  const shared = Object.fromEntries(
+    Object.entries((pair.connection.config ?? {}) as Record<string, unknown>).filter(
+      ([key]) => !bindingOnly.has(key),
+    ),
+  );
+  return { ...shared, ...((pair.binding.config ?? {}) as object) } as TConfig;
 }
 
 /**
@@ -245,7 +228,6 @@ export function buildContextFromBinding<
     projectId: pair.binding.projectId,
     provider: pair.binding.provider as IntegrationProvider,
     role: pair.binding.role as BindingRole,
-    stages: (pair.binding.stages ?? []) as DeployStage[],
     config: effectiveConfig<TConfig>(pair),
     secrets: decryptConnectionSecrets<TSecrets>(pair.connection),
     integrationSecret: pair.binding.integrationSecret,
@@ -323,8 +305,6 @@ export interface CreateBindingInput {
   projectId: string;
   provider: IntegrationProvider;
   role: BindingRole;
-  /** Empty for `service`; one or both stages for `deploy`. */
-  stages?: DeployStage[];
   config?: Record<string, unknown>;
   integrationSecret?: string | null;
   /** ISS-558 — empty string (default) = unlabeled/default binding;
@@ -342,7 +322,6 @@ export async function createBinding(input: CreateBindingInput): Promise<Integrat
       projectId: input.projectId,
       provider: input.provider,
       role: input.role,
-      stages: input.role === 'deploy' ? (input.stages ?? []) : [],
       config: input.config ?? {},
       integrationSecret: input.integrationSecret ?? null,
       label: input.label ?? '',
@@ -375,8 +354,6 @@ export interface UpdateBindingPatch {
   label?: string;
   instructions?: string | null;
   agentAccess?: AgentAccess;
-  /** `deploy` only, and never empty there — the DB check refuses the other shapes. */
-  stages?: DeployStage[];
 }
 
 export async function updateBinding(
@@ -390,7 +367,6 @@ export async function updateBinding(
   if (patch.label !== undefined) set.label = patch.label;
   if (patch.instructions !== undefined) set.instructions = patch.instructions;
   if (patch.agentAccess !== undefined) set.agentAccess = patch.agentAccess;
-  if (patch.stages !== undefined) set.stages = patch.stages;
   const [row] = await db
     .update(integrationBindings)
     .set(set)

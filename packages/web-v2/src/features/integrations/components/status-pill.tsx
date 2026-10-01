@@ -3,14 +3,7 @@
 
 import { Icon, type IconName } from "@/design";
 import { DIRECTORY_STATUS_META, type DirectoryStatus, deriveDirectoryStatus } from "../derive";
-import type { BindingRole, DeployStage, StatusCard } from "../types";
-
-export const STAGE_LABEL: Record<string, string> = { preview: "Preview", live: "Live" };
-
-export const STAGE_OPTIONS: { value: DeployStage; label: string; hint: string }[] = [
-  { value: "preview", label: "Preview", hint: "where a change is seen before it ships" },
-  { value: "live", label: "Live", hint: "where the people using this product are" },
-];
+import type { BindingRole, StatusCard } from "../types";
 
 export const ROLE_OPTIONS: { value: BindingRole; label: string; hint: string }[] = [
   { value: "deploy", label: "Deploy target", hint: "somewhere Forge deploys this project to" },
@@ -21,10 +14,11 @@ export const ROLE_OPTIONS: { value: BindingRole; label: string; hint: string }[]
   },
 ];
 
-export function scopeLabel(role: BindingRole, stages: DeployStage[]): string {
+/** A deploy binding reads as the project-document environment that names it, where one does. */
+export function scopeLabel(role: BindingRole, environment?: string | null): string {
   if (role === "service") return "Service";
   if (role === "source") return "Source";
-  return stages.length > 0 ? stages.map((s) => STAGE_LABEL[s] ?? s).join(" + ") : "Deploy";
+  return environment ?? "Deploy";
 }
 
 /** The bare icon + text + tinted pill; feed it any `{icon,label,fg,bg}` meta. */

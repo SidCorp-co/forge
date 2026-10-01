@@ -148,7 +148,6 @@ webhookInboundRoutes.post('/in/:slug', async (c) => {
         accepted: true,
         handler: map.provider,
         role: pair.binding.role,
-        stages: pair.binding.stages,
         deliveryId: result.deliveryId,
         actions: result.actions,
         ...(result.refusal ? { refusal: result.refusal } : {}),

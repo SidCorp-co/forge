@@ -22,6 +22,7 @@ import {
   createTestProject,
   createTestProjectMember,
   createTestUser,
+  seedProjectDocument,
   setupTestDatabase,
   type TestDatabase,
   truncateAll,
@@ -189,15 +190,17 @@ async function gitlabDesk(userId: string, withKey = true) {
 async function project(userId: string, release: 'promote' | 'publish') {
   const p = await createTestProject(harness.db, userId);
   await createTestProjectMember(harness.db, { userId, projectId: p.id, role: 'admin' });
-  await harness.db.execute(sql`
-    UPDATE projects SET base_branch = 'staging',
-      release_chain = ${
-        release === 'promote'
-          ? '[{"branch": "staging"}, {"branch": "master", "from": "merge-branch"}]'
-          : '[{"branch": "staging"}]'
-      }::jsonb
-    WHERE id = ${p.id}
-  `);
+  await seedProjectDocument(harness.db, p.id, userId, {
+    defaultBranch: 'staging',
+    promotions: release === 'promote' ? [{ from: 'staging', to: 'master', via: 'merge' }] : [],
+    environments: {
+      live: {
+        tier: 'production',
+        deploysFrom: release === 'promote' ? 'master' : 'staging',
+        deployment: { binding: randomUUID(), trigger: 'on-request' },
+      },
+    },
+  });
   return p;
 }
 
@@ -318,7 +321,7 @@ describe('a closed issue whose work never reached the live branch (ISS-1217)', (
     expect(clear.liveReach).toMatchObject({
       state: 'none_waiting',
       baseBranch: 'staging',
-      liveBranch: 'master',
+      deploysFrom: 'master',
       baseSha: STAGING,
       liveSha: MASTER,
     });
@@ -364,7 +367,7 @@ describe('a closed issue whose work never reached the live branch (ISS-1217)', (
     expect(reach).toMatchObject({ state: 'unmeasured', reason });
     const pulse = await get<PulseResponse>('/api/me/pulse', token);
     expect(pulse.work.liveUnmeasured.shown).toEqual([
-      expect.objectContaining({ id: desk.id, liveBranch: 'master', reason }),
+      expect.objectContaining({ id: desk.id, deploysFrom: 'master', reason }),
     ]);
     expect(pulse.work.notOnLive.total).toBe(0);
     expect(gitReads).toEqual([]);
@@ -455,7 +458,7 @@ describe('a GitLab-hosted promote project read through its deploy key (ISS-1217 
     ]);
     expect(
       (await get<{ liveReach: Reach }>(`/api/issues/${shipped}`, token)).liveReach,
-    ).toMatchObject({ state: 'none_waiting', baseBranch: 'staging', liveBranch: 'master' });
+    ).toMatchObject({ state: 'none_waiting', baseBranch: 'staging', deploysFrom: 'master' });
 
     const pulse = await get<PulseResponse>('/api/me/pulse', token);
     expect(pulse.work.notOnLive.total).toBe(8);

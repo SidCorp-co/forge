@@ -1,23 +1,6 @@
-import { buildDocumentPatch } from "@forge/contracts/document-patch";
 import { MEMORY_REINDEX_STATES, type MemoryReindexState } from "@forge/contracts/status-sets";
 
-/** A settings write: the keys being changed, and the values they were read against.
- *  `patch` is sparse — a key it does not name is untouched at any depth, `null` deletes
- *  one — and `base` is compared at the paths `patch` writes and nowhere else. */
-export interface DocumentWrite {
-	base: Record<string, unknown>;
-	patch: Record<string, unknown>;
-}
-
-/** The write one section sends, from the slice it seeded with and the slice it holds now.
- *  A section names its own keys and no others, so two sections of one page load overlap at
- *  no path and both land (ISS-1170). */
-export function sectionWrite(before: unknown, after: unknown): DocumentWrite {
-	const { patch, base } = buildDocumentPatch(before, after);
-	return { base, patch };
-}
-
-/** Patch body accepted by `PATCH /api/projects/:id` (basics + repo + testing).
+/** Patch body accepted by `PATCH /api/projects/:id` (basics + repo).
  *  `orgId` moves the project to another org — requires org admin on BOTH the
  *  current and the destination org (403/404 otherwise). */
 export interface ProjectUpdateInput {
@@ -29,60 +12,11 @@ export interface ProjectUpdateInput {
 	workspaceSetup?: string | null;
 	/** Where an ISS-* branch is cut from. NOT a release fact. */
 	baseBranch?: string | null;
-	/** The ordered release path. Sent WHOLE — it replaces the stored list rather
-	 *  than patching it — and its first entry must name `baseBranch`. */
-	releaseChain?: ReleaseChainEntry[];
-	/** NOT `environments`: that document is written through
-	 *  `PATCH /api/projects/:id/environments`, which refuses it here by name. */
+	/** NOT where work lands, its environments or promotions: those are the project document,
+	 *  written through `PUT /api/projects/:id/config`, and this patch refuses them by name. */
 	orgId?: string;
 	/** `agentConfig.assistantWeekly`, replaced whole; null clears it. */
 	assistantWeekly?: AssistantWeekly | null;
-}
-
-/** One `environments.preview.urls` row — mirrors `testingUrlSchema` in core. */
-export interface TestingUrl {
-	label: string;
-	url: string;
-}
-
-/** One `environments.testCredentials` row — mirrors `testCredentialSchema`. */
-export interface TestCredential {
-	label: string;
-	username: string;
-	password: string;
-}
-
-/** The preview side — `null` on the column means this project HAS no preview side. */
-export interface PreviewEnvironmentConfig {
-	url?: string | null;
-	apiUrl?: string | null;
-	urls?: TestingUrl[];
-	[key: string]: unknown;
-}
-
-/**
- * The live side — the address a release ships to.
- *
- * `commitUrl` is a SEPARATE address from `url`: it is the endpoint that reports the running
- * commit, and `commitPath` is the dot path to it inside that endpoint's JSON body. Neither is
- * derivable from `url`, which is why all three are stored (ISS-1069).
- */
-export interface LiveEnvironmentConfig {
-	url?: string | null;
-	apiUrl?: string | null;
-	commitUrl?: string | null;
-	commitPath?: string | null;
-	[key: string]: unknown;
-}
-
-export interface EnvironmentsConfig {
-	preview?: PreviewEnvironmentConfig | null;
-	live?: LiveEnvironmentConfig | null;
-	testCredentials?: TestCredential[];
-	/** ISS-1069 — what this environment does NOT have. Read by agents before they plan a live
-	 *  walk. Never a secret. Replaced `notes`, which invited anything and was set on 4 of 32. */
-	limits?: string | null;
-	[key: string]: unknown;
 }
 
 /** One row of `GET /api/projects/:id/members` — includes the member email. */
@@ -164,35 +98,39 @@ export interface ReleaseWarning {
 	details?: Record<string, unknown>;
 }
 
-/** How a release crosses ONE edge of the chain, declared on the entry it enters. */
-export type ReleaseCrossing = "merge-branch" | "cherry-pick";
+/** One promotion of the project document — mirrors `promotions[]` in core `project-config/schema.ts`. */
+export interface ReleasePromotion {
+	from: string;
+	to: string;
+	via: "merge" | "cherry-pick";
+}
 
-/** One branch on the release path. The first entry crosses from nothing. */
-export interface ReleaseChainEntry {
-	branch: string;
-	from?: ReleaseCrossing;
+export interface ReleaseProduction {
+	environment: string;
+	/** The branch it deploys from where a promotion crosses into it; null where none does. */
+	deploysFrom: string | null;
+	bindingId: string;
+	trigger: "on-land" | "on-request" | "provider";
 }
 
 /** What a project still has to declare — mirrors `ReleaseReadiness` in core
  *  `release-batch/readiness.ts`. `gaps` is what settings says out loud. */
 export interface ReleaseReadiness {
-	/** The project declares a release chain AND has an active live deploy binding. */
+	/** The project document declares a production environment with an active deploy binding. */
 	hasReleaseGate: boolean;
-	/** The ordered release path. Empty means this project ships nothing. */
-	releaseChain: ReleaseChainEntry[];
-	/** Derived from the chain by core, not stored. ISS-1311 / ADR 0003. */
-	releaseModel: "none" | "promote" | "publish";
-	releaseStrategy: ReleaseCrossing | null;
-	baseBranch: string;
-	/** Non-null only where the chain names two or more branches. */
-	liveBranch: string | null;
+	/** Where work lands (`source.git.defaultBranch`); null with no git source or no reading. */
+	defaultBranch: string | null;
+	production: ReleaseProduction | null;
+	promotions: ReleasePromotion[];
 	targetUndeclared: boolean;
-	/** Providers of EVERY live deploy binding; core never picks one. */
+	targetUndeclaredReason: string | null;
+	/** The production deploy binding's provider; empty when the project is not gated. */
 	providers: string[];
 	releaseRunnerLabel: string | null;
 	rollback: string | null;
 	rollbackMode: "manual" | "coolify-image" | "unrepresentable" | null;
 	hasVerify: boolean;
+	verifySources: ("environment" | "declared-unusable" | "none")[];
 	/** False where the declaration could not be READ, which makes every field
 	 *  below a fallback rather than a reading (ISS-1127). */
 	declarationRead: boolean;
@@ -209,13 +147,10 @@ export interface ReleaseReadiness {
 		| "build-commands"
 		| "test-commands"
 		| "release-procedure"
-		| "release-runner-ambiguous"
-		| "release-multi-channel"
 		| "release-target"
 		| "rollback"
 		| "rollback-prose"
 		| "verify-probes"
-		| "live-commit-endpoint"
 	)[];
 }
 

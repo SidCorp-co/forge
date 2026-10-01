@@ -2115,6 +2115,13 @@
       "when": 1811203200000,
       "tag": "0326_a_schedule_runs_as_its_owner",
       "breakpoints": true
+    },
+    {
+      "idx": 327,
+      "version": "7",
+      "when": 1811289600000,
+      "tag": "0327_bindings_carry_no_stage_and_locks_name_an_environment",
+      "breakpoints": true
     }
   ]
 }

@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { devices, projects, runners } from '../db/schema.js';
 import { classifyGitRemote } from '../git/provision-credential.js';
+import { readDeployMap } from '../project-config/release-path.js';
 import { getIntegration, listIntegrations } from './registry.js';
 import { notFound, toIso } from './route-helpers.js';
 import { effectiveConfig, listBindingsForProject } from './store.js';
@@ -61,14 +62,9 @@ function providerCapabilities(provider: IntegrationProvider): IntegrationCapabil
   return getIntegration(provider)?.capabilities ?? null;
 }
 
-function stageKey(row: { role: string; stages: string[] }): string {
+function stageKey(row: { role: string; environment: string | null }): string {
   if (row.role === 'service' || row.role === 'source') return row.role;
-  return row.stages.join('+') || 'deploy';
-}
-
-function stageLabel(row: { role: string; stages: string[] }): string {
-  if (row.role === 'service' || row.role === 'source') return row.role;
-  return row.stages.map((s) => (s === 'live' ? 'Live' : 'Preview')).join(' + ') || 'deploy';
+  return row.environment ?? 'deploy';
 }
 
 /** Flattened binding+connection row the status cards render from. */
@@ -78,7 +74,8 @@ interface ProviderRow {
   id: string;
   provider: string;
   role: string;
-  stages: string[];
+  /** The project-document environment a deploy binding serves; null where none names it. */
+  environment: string | null;
   config: Record<string, unknown>;
   active: boolean;
   lastHealthStatus: string | null;
@@ -122,7 +119,7 @@ export function buildProviderCards(opts: {
   const collides = new Set(opts.rows.map(base).filter((k, i, all) => all.indexOf(k) !== i));
   return opts.rows.map((row) => ({
     key: collides.has(base(row)) ? `${base(row)}:${row.id}` : base(row),
-    label: envKeyed ? `${opts.label} (${stageLabel(row)})` : opts.label,
+    label: envKeyed ? `${opts.label} (${stageKey(row)})` : opts.label,
     status: healthToStatus(row.lastHealthStatus, row.active),
     detail: !row.active
       ? 'integration disabled'
@@ -134,7 +131,7 @@ export function buildProviderCards(opts: {
     meta: {
       bindingId: row.id,
       role: row.role,
-      stages: row.stages,
+      environment: row.environment,
       breakerOpen: row.breakerOpenedAt !== null,
       lastHealthStatus: row.lastHealthStatus,
       capabilities: caps,
@@ -154,12 +151,15 @@ export async function buildIntegrationsStatusCards(projectId: string): Promise<S
 
   // One row per active binding, joined to its connection (health/breaker live on
   // the connection). Flattened to the shape the cards below already consume.
-  const pairs = await listBindingsForProject(projectId);
+  const [pairs, deployMap] = await Promise.all([
+    listBindingsForProject(projectId),
+    readDeployMap(projectId),
+  ]);
   const integrationRows = pairs.map((pair) => ({
     id: pair.binding.id,
     provider: pair.binding.provider,
     role: pair.binding.role,
-    stages: (pair.binding.stages ?? []) as string[],
+    environment: deployMap.environments.get(pair.binding.id)?.name ?? null,
     config: effectiveConfig(pair),
     active: pair.binding.active && pair.connection.active,
     lastHealthStatus: pair.connection.lastHealthStatus,
@@ -215,7 +215,7 @@ export async function buildIntegrationsStatusCards(projectId: string): Promise<S
         rows: integrationRows.filter((r) => r.provider === decl.provider),
         provider: decl.provider,
         label: presentation.label,
-        alwaysEnvKeyed: presentation.alwaysStageKeyed,
+        alwaysEnvKeyed: presentation.alwaysEnvironmentKeyed,
         neverCheckedDetail: presentation.neverCheckedDetail,
         ...(presentation.cardMeta
           ? { extraMeta: (row: ProviderRow) => presentation.cardMeta?.(row.config ?? {}) ?? {} }

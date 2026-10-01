@@ -36,7 +36,8 @@ export const FORGE_GUIDES: readonly ForgeGuide[] = [
 
 Two tools, two different jobs — mixing them up is the single most common Forge discoverability miss.
 
-- **\`forge_projects.get\`** — deployment-shaped facts: repo path, base/production branch, \`workspaceSetup\` (how to bring this repo's workspace to a buildable state), and \`environments\` — both sides of the deployment: \`preview\` (\`{url, apiUrl, urls[]}\`, or null where the project has no preview side), \`live\` (\`{url, apiUrl, commitUrl, commitPath}\` — the address a release ships to), \`testCredentials\` for logging in as a test user, and \`limits\`, which says what this environment does NOT have. This is the ONLY place test credentials live.
+- **\`forge_projects.get\`** — repo path, base branch and \`workspaceSetup\` (how to bring this repo's workspace to a buildable state).
+- **\`forge_config\` → \`projectDocument\`** — the project document: each environment's tier, address, the branch it deploys from and the testing profile its testers get in through, and the promotions a landed change crosses. A testing profile names \`secret://\` references, never values, and its \`limits\` say what that environment does NOT have.
 - **\`forge_config\`** — process-shaped facts: \`config.policy\` (the project's policy-v1 document: \`qa\`, intake, and each status's model and permission profile), \`plugins\`. It carries no project PROSE — \`projectFacts\` and \`projectFactsConfig\` were retired in ISS-1048 and a call naming either is refused by name; the prose is \`forge_knowledge\`. It deliberately does **not** return credentials or preview URLs — don't go looking for them there, and don't add them there either.
 
   ${ALWAYS_INJECT_GUARANTEE_NOTE} ${ALWAYS_INJECT_ENFORCEMENT_NOTE}

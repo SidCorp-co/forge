@@ -39,7 +39,7 @@ function UsageLine({
           title={b.active ? undefined : "this project has the integration switched off"}
         >
           <span className="max-w-[14ch] truncate">{projectName(b.projectId)}</span>
-          <span className="text-subtle">{scopeLabel(b.role, b.stages)}</span>
+          <span className="text-subtle">{scopeLabel(b.role)}</span>
           {!b.active && <span className="text-subtle">· off</span>}
         </span>
       ))}
@@ -66,7 +66,7 @@ export function connectionRowLabel(
   // a target.
   if (connection.usage.bindings.length > 0) {
     const used = connection.usage.bindings.map((b) => {
-      const scope = scopeLabel(b.role, b.stages);
+      const scope = scopeLabel(b.role);
       return `${projectName(b.projectId)} ${scope}${b.active ? "" : " (off)"}`;
     });
     parts.push(`used by ${used.join(", ")}`);

@@ -5,6 +5,8 @@
 // or the gate trades a false "shipped" for a stalled dependency graph.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { PROD_BINDING, production, projectDoc } from '../project-config/release-path.fixture.js';
+import type { ProjectDocument } from '../project-config/schema.js';
 
 const updateReturning = vi.fn();
 const updateWhere = vi.fn(() => ({ returning: updateReturning }));
@@ -51,11 +53,18 @@ vi.mock('../db/client.js', () => {
 
 vi.mock('../ws/server.js', () => ({ roomManager: { publish: vi.fn() } }));
 
-const listBindings = vi.fn(async () => [] as unknown[]);
+const productionPair = vi.fn(async () => null as unknown);
 vi.mock('../integrations/store.js', async (importActual) => {
   const actual = await importActual<typeof import('../integrations/store.js')>();
-  return { ...actual, listActiveDeployBindingsForStage: () => listBindings() };
+  return { ...actual, findBindingWithConnectionById: () => productionPair() };
 });
+
+const readDocument = vi.fn(
+  async (): Promise<{ revision: number; document: ProjectDocument } | null> => null,
+);
+vi.mock('../project-config/service.js', () => ({
+  readProjectDocument: () => readDocument(),
+}));
 
 const closeRunMock = vi.fn(async (..._a: unknown[]) => undefined);
 vi.mock('../pipeline/runs.js', () => ({
@@ -85,35 +94,39 @@ const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
 const AGENT = { type: 'device', id: 'dev-1', ownerId: 'owner-1' } as const;
 const HUMAN = { type: 'user', id: '33333333-3333-4333-8333-333333333333' } as const;
 
-/** A project that DECLARES a release and has somewhere for it to land. */
+const PROMOTES = projectDoc({
+  defaultBranch: 'dev',
+  promotions: [{ from: 'dev', to: 'master', via: 'merge' }],
+  environments: { live: production({ deploysFrom: 'master' }) },
+});
+
+/** A project that DECLARES a production environment and has somewhere for it to land. */
 function gated() {
-  projectSelectLimit.mockResolvedValueOnce([
-    {
-      baseBranch: 'dev',
-      releaseChain: [{ branch: 'dev' }, { branch: 'master', from: 'merge-branch' }],
-    },
-  ]);
-  listBindings.mockResolvedValueOnce([{ binding: { provider: 'coolify' }, connection: {} }]);
+  projectSelectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+  readDocument.mockResolvedValueOnce({ revision: 1, document: PROMOTES });
+  productionPair.mockResolvedValueOnce({
+    binding: { projectId: PROJECT_ID, provider: 'coolify', active: true, config: {} },
+    connection: { active: true },
+  });
 }
 
 /**
- * A project that declares it ships nowhere. Since ISS-1046 this is the ONLY ungated shape:
- * the gate reads `releaseChain` and does not infer from branch names or provider identity, so
- * a trunk project and a storefront are ungated for the same declared reason or not at all.
+ * A project whose document declares no production environment: the ONLY ungated shape. The
+ * gate does not infer from branch names or provider identity.
  */
 function ungated() {
-  projectSelectLimit.mockResolvedValueOnce([{ baseBranch: 'main', releaseChain: [] }]);
+  projectSelectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+  readDocument.mockResolvedValueOnce({
+    revision: 1,
+    document: projectDoc({ defaultBranch: 'main' }),
+  });
 }
 
-/** A project that declares a release but has no live deploy binding to land it on. */
+/** A project whose production environment has no active binding to land a release on. */
 function undeclaredTarget() {
-  projectSelectLimit.mockResolvedValueOnce([
-    {
-      baseBranch: 'dev',
-      releaseChain: [{ branch: 'dev' }, { branch: 'master', from: 'merge-branch' }],
-    },
-  ]);
-  listBindings.mockResolvedValueOnce([]);
+  projectSelectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
+  readDocument.mockResolvedValueOnce({ revision: 1, document: PROMOTES });
+  productionPair.mockResolvedValueOnce(null);
 }
 
 function queueUpdate(status: string) {
@@ -132,8 +145,10 @@ const AT_WORK = {
 beforeEach(() => {
   vi.clearAllMocks();
   projectSelectLimit.mockReset();
-  listBindings.mockReset();
-  listBindings.mockResolvedValue([]);
+  productionPair.mockReset();
+  productionPair.mockResolvedValue(null);
+  readDocument.mockReset();
+  readDocument.mockResolvedValue(null);
   projectSelectLimit.mockResolvedValue([{ id: ISSUE_ID, releaseNotes: { section: 'Skip' } }]);
   updateReturning.mockReset();
   updateReturning.mockResolvedValue([]);
@@ -188,7 +203,7 @@ describe('an agent closing on a project that declared a release gate', () => {
     const result = await transitionIssueStatus(AT_WORK, 'dropped', AGENT);
 
     expect(result.status).toBe('dropped');
-    expect(listBindings).not.toHaveBeenCalled();
+    expect(productionPair).not.toHaveBeenCalled();
     expect(dbSelect).not.toHaveBeenCalled();
   });
 });
@@ -200,7 +215,7 @@ describe('who may still write `closed`', () => {
     const result = await transitionIssueStatus(AT_WORK, 'closed', HUMAN);
 
     expect(result.status).toBe('closed');
-    expect(listBindings).not.toHaveBeenCalled();
+    expect(productionPair).not.toHaveBeenCalled();
     expect(dbSelect).not.toHaveBeenCalled();
   });
 
@@ -215,16 +230,16 @@ describe('who may still write `closed`', () => {
     expect(result.status).toBe('closed');
   });
 
-  it('an agent on a project whose release chain is empty', async () => {
+  it('an agent on a project whose document declares no production environment', async () => {
     ungated();
     queueUpdate('closed');
 
     const result = await transitionIssueStatus(AT_WORK, 'closed', AGENT);
 
     expect(result.status).toBe('closed');
-    // `none` short-circuits before the binding query: nothing about the bindings
+    // No production short-circuits before the binding read: nothing about the bindings
     // can make a declared non-releasing project release.
-    expect(listBindings).not.toHaveBeenCalled();
+    expect(productionPair).not.toHaveBeenCalled();
   });
 
   /**
@@ -251,14 +266,15 @@ describe('a project that declares a release it cannot land', () => {
     );
   });
 
-  it('names the project and the two ways out', async () => {
+  it('names the binding and the two ways out', async () => {
     undeclaredTarget();
     queueUpdate('closed');
 
     const err = await transitionIssueStatus(AT_WORK, 'closed', AGENT).catch((e: Error) => e);
 
-    expect(String(err)).toContain(PROJECT_ID);
-    expect(String(err)).toContain("no active deploy binding carrying the 'live' stage");
-    expect(String(err)).toContain('declare an empty release chain');
+    expect(String(err)).toContain(
+      `production environment \`live\` deploys through binding ${PROD_BINDING}, which is not an active binding`,
+    );
+    expect(String(err)).toContain('rebind it, or change the project document');
   });
 });

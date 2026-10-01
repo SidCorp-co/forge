@@ -10,11 +10,9 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { createServer, type Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createTestDevice,
   createTestProject,
@@ -24,13 +22,12 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
+import { PRODUCTION_PROBE, seedProduction, stubProbe } from '../helpers/production.js';
 
 let harness: TestDatabase;
 // biome-ignore lint/suspicious/noExplicitAny: test-only mount
 let app: any;
 let signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
-let probe: Server;
-let probeUrl = '';
 
 beforeAll(async () => {
   harness = await setupTestDatabase();
@@ -54,19 +51,19 @@ beforeAll(async () => {
   app.route('/api/projects', bindings.integrationsRoutes);
   app.route('/api/integration-connections', connections.integrationConnectionsRoutes);
   app.onError(err.errorHandler);
-
-  probe = createServer((_req, res) => res.end('commit-live'));
-  await new Promise<void>((done) => probe.listen(0, '127.0.0.1', done));
-  probeUrl = `http://127.0.0.1:${(probe.address() as AddressInfo).port}/version`;
 }, 60_000);
 
 afterAll(async () => {
-  if (probe) await new Promise<void>((done) => probe.close(() => done()));
   if (harness) await harness.cleanup();
 });
 
 beforeEach(async () => {
   await truncateAll(harness.db);
+  stubProbe({ [PRODUCTION_PROBE]: () => Response.json({ commit: 'commit-live' }) });
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 interface World {
@@ -89,34 +86,19 @@ async function seed(tiers: {
     projectId: project.id,
     role: 'admin',
   });
-  await harness.db.execute(sql`
-    UPDATE projects
-       SET base_branch = 'main', release_chain = '[{"branch": "main"}, {"branch": "production", "from": "merge-branch"}]'::jsonb, repo_path = '/srv/app',
-           environments = ${JSON.stringify({
-             live: { url: 'https://app.example.test', commitUrl: probeUrl },
-           })}::jsonb
-     WHERE id = ${project.id}
-  `);
-  const connectionId = randomUUID();
-  await harness.db.execute(sql`
-    INSERT INTO integration_connections (id, owner_type, owner_id, provider, active, config)
-    VALUES (${connectionId}, 'user', ${user.id}, 'coolify', true,
-            ${JSON.stringify(
-              tiers.connection ? { releaseRunnerLabel: tiers.connection } : {},
-            )}::jsonb)
-  `);
-  const bindingConfig: Record<string, unknown> = {
-    rollback: { mode: 'coolify-image' },
-    verify: { probes: [{ url: probeUrl }], timeoutSeconds: 5, stableReads: 1 },
-  };
-  if (tiers.binding) bindingConfig.releaseRunnerLabel = tiers.binding;
-  const [row] = await harness.db.execute<{ id: string }>(sql`
-    INSERT INTO integration_bindings
-      (connection_id, project_id, provider, role, stages, active, config)
-    VALUES (${connectionId}, ${project.id}, 'coolify', 'deploy', ARRAY['live'], true,
-            ${JSON.stringify(bindingConfig)}::jsonb)
-    RETURNING id
-  `);
+  await harness.db.execute(
+    sql`UPDATE projects SET repo_path = '/srv/app' WHERE id = ${project.id}`,
+  );
+  const { bindingId, connectionId } = await seedProduction(harness.db, {
+    projectId: project.id,
+    ownerId: user.id,
+    connectionConfig: tiers.connection ? { releaseRunnerLabel: tiers.connection } : {},
+    config: {
+      rollback: { mode: 'coolify-image' },
+      ...(tiers.binding ? { releaseRunnerLabel: tiers.binding } : {}),
+    },
+    deploysFrom: 'production',
+  });
   const device = await createTestDevice(harness.db, user.id, { status: 'online' });
   await harness.db.execute(sql`
     INSERT INTO runners (id, project_id, type, device_id, name, status, last_seen_at, labels)
@@ -127,7 +109,7 @@ async function seed(tiers: {
     projectId: project.id,
     userId: user.id,
     connectionId,
-    bindingId: String(row?.id),
+    bindingId,
     token: await signUserToken(user.id),
   };
 }

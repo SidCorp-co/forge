@@ -286,7 +286,7 @@ export const epodsystemIntegration = declareIntegration<EpodsystemConfig, Epodsy
   },
   presentation: {
     label: 'Epodsystem',
-    alwaysStageKeyed: false,
+    alwaysEnvironmentKeyed: false,
     neverCheckedDetail: 'never test-connected',
     cardMeta: (config) => {
       const cfg = config as { storeSlug?: string; storeName?: string };

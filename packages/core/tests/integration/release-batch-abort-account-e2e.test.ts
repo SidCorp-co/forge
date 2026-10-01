@@ -16,7 +16,8 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
-import { releaseBatchFixture } from '../helpers/release-batch-fixture.js';
+import { stubProbe } from '../helpers/production.js';
+import { PROBE_URL, releaseBatchFixture } from '../helpers/release-batch-fixture.js';
 
 const BEFORE = '1111111111111111111111111111111111111111';
 const PUSHED = '2222222222222222222222222222222222222222';
@@ -28,6 +29,7 @@ let serving = BEFORE;
 let hang = false;
 let probe: Server;
 let probeUrl: string;
+let forwarded = false;
 let job: typeof import('../../src/release-batch/finish-job.js');
 let service: typeof import('../../src/release-batch/service.js');
 let refusals: typeof import('../../src/release-batch/refusals.js');
@@ -45,7 +47,7 @@ beforeAll(async () => {
   process.env.NODE_ENV ??= 'test';
   await registerIntegrationsForTest();
   probe = createServer((_req, res) => {
-    if (!hang) res.end(serving);
+    if (!hang) res.end(JSON.stringify(serving ? { commit: serving } : {}));
   });
   await new Promise<void>((done) => probe.listen(0, '127.0.0.1', done));
   probeUrl = `http://127.0.0.1:${(probe.address() as AddressInfo).port}/version`;
@@ -69,13 +71,8 @@ beforeEach(async () => {
   projectId = (await createTestProject(harness.db, owner.id)).id;
   await fx.declareProduction();
   await fx.seedReleaseRunner();
-  await harness.db.execute(sql`
-    UPDATE integration_bindings
-    SET config = config || ${JSON.stringify({
-      verify: { probes: [{ url: probeUrl }], timeoutSeconds: 12, stableReads: 1 },
-    })}::jsonb
-    WHERE project_id = ${projectId} AND provider = 'coolify'
-  `);
+  if (!forwarded) stubProbe({ [PROBE_URL]: probeUrl });
+  forwarded = true;
 });
 
 const actor = () => ({ type: 'user' as const, id: ownerId });

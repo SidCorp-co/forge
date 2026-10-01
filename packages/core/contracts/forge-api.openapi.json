@@ -6883,16 +6883,7 @@
                     "type": "string"
                   },
                   "stages": {
-                    "items": {
-                      "enum": [
-                        "preview",
-                        "live"
-                      ],
-                      "type": "string"
-                    },
-                    "maxItems": 2,
-                    "minItems": 1,
-                    "type": "array"
+                    "not": {}
                   }
                 },
                 "required": [
@@ -8090,19 +8081,6 @@
                                 "additionalProperties": false,
                                 "properties": {
                                   "baseBranch": {
-                                    "anyOf": [
-                                      {
-                                        "maxLength": 100,
-                                        "minLength": 1,
-                                        "pattern": "^[a-zA-Z0-9._/-]{1,100}$",
-                                        "type": "string"
-                                      },
-                                      {
-                                        "type": "null"
-                                      }
-                                    ]
-                                  },
-                                  "liveBranch": {
                                     "anyOf": [
                                       {
                                         "maxLength": 100,
@@ -14685,61 +14663,6 @@
         ]
       }
     },
-    "/api/projects/{id}/environments": {
-      "get": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "default": {
-            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
-          }
-        },
-        "x-forge-validated": [
-          "param"
-        ]
-      },
-      "patch": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {}
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "default": {
-            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
-          }
-        },
-        "x-forge-validated": [
-          "json",
-          "param"
-        ]
-      }
-    },
     "/api/projects/{id}/environments/state": {
       "get": {
         "parameters": [
@@ -18004,16 +17927,7 @@
                     "type": "object"
                   },
                   "stages": {
-                    "items": {
-                      "enum": [
-                        "preview",
-                        "live"
-                      ],
-                      "type": "string"
-                    },
-                    "maxItems": 2,
-                    "minItems": 1,
-                    "type": "array"
+                    "not": {}
                   }
                 },
                 "required": [
@@ -18437,16 +18351,7 @@
                     "type": "object"
                   },
                   "stages": {
-                    "items": {
-                      "enum": [
-                        "preview",
-                        "live"
-                      ],
-                      "type": "string"
-                    },
-                    "maxItems": 2,
-                    "minItems": 1,
-                    "type": "array"
+                    "not": {}
                   }
                 },
                 "type": "object"

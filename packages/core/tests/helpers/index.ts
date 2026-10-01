@@ -18,6 +18,7 @@ export {
   type SeedOrgOverrides,
   seedOrg,
   seedProductionDeployTrigger,
+  seedProjectDocument,
   seedProjectSource,
   type TestDevice,
   type TestOrg,

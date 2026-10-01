@@ -121,16 +121,16 @@ describe('binding documents', () => {
     expect(await res.json()).toMatchObject({ declared: true, revision: 1, created: true });
     expect(bindingMem.rows.get(BINDING)).toMatchObject({
       role: 'deploy',
-      stages: ['live'],
       config: { targets: [{ resourceUuid: 'y8w4c4kss8ogo8gc44ow44kc' }] },
     });
+    expect(bindingMem.rows.get(BINDING)).not.toHaveProperty('stages');
     const read = (await (await call('GET', `/bindings/${BINDING}`, undefined, VIEWER)).json()) as {
       document: unknown;
     };
     expect(read.document).toEqual(coolifyDoc());
   });
 
-  it('writes a source binding with no stage', async () => {
+  it('writes a source binding', async () => {
     const doc = coolifyDoc({
       id: SOURCE,
       role: 'source',
@@ -139,7 +139,8 @@ describe('binding documents', () => {
     });
     const res = await call('PUT', `/bindings/${SOURCE}`, { baseRevision: null, document: doc });
     expect(res.status).toBe(200);
-    expect(bindingMem.rows.get(SOURCE)).toMatchObject({ role: 'source', stages: [] });
+    expect(bindingMem.rows.get(SOURCE)).toMatchObject({ role: 'source' });
+    expect(bindingMem.rows.get(SOURCE)).not.toHaveProperty('stages');
   });
 
   it('refuses CONNECTION_NOT_FOUND for a connection that does not exist, and writes nothing', async () => {
@@ -203,7 +204,6 @@ describe('binding documents', () => {
       connectionId: COOLIFY_CONNECTION,
       provider: 'coolify',
       role: 'deploy',
-      stages: ['live'],
       config: {},
       active: true,
       revision: 1,
@@ -248,7 +248,6 @@ describe('binding documents', () => {
       connectionId: COOLIFY_CONNECTION,
       provider: 'coolify',
       role: 'deploy',
-      stages: ['preview', 'live'],
       config: { targets: [] },
       active: true,
       revision: 3,

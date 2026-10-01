@@ -1,6 +1,6 @@
 // ISS-1117 — an issue at `awaiting_release` releases without a person acting, on a project
-// whose release policy already leaves nobody an act (`autoProdDeploy` + a resolvable release
-// gate) and whose waiting issue has every numbered acceptance criterion earned
+// whose release policy already leaves nobody an act (production deploying `on-land` + a resolvable
+// release gate) and whose waiting issue has every numbered acceptance criterion earned
 // (`criteria-verdicts.ts`). Precedent: `runs-concluded.ts`'s own-tick noticing. The manual
 // doors (`collectReleaseBlockers`, `forge advance`) are untouched; this only filters the
 // unattended path. ISS-1215: every way it declines a waiting row is written on that row
@@ -24,7 +24,7 @@ import {
 } from '../release-batch/serving-reading.js';
 import { loadCreatedBy } from '../schedules/release-batch-dispatch.js';
 import { cutWaitingRelease } from '../schedules/release-batch-run.js';
-import { projectAutoProdDeploy } from './release-coolify.js';
+import { productionDeploysOnLand } from './release-coolify.js';
 import {
   clearProjectReleaseHolds,
   clearReleaseHolds,
@@ -274,9 +274,7 @@ async function readGate(
   } catch (err) {
     if (err instanceof ReleaseTargetUndeclaredError) {
       // The card's sentence, not the error's: a person reads this, and a uuid is on no screen.
-      const said = releaseBlockerSentence('RELEASE_TARGET_UNDECLARED', {
-        releaseChain: err.releaseChain,
-      });
+      const said = releaseBlockerSentence('RELEASE_TARGET_UNDECLARED', { reason: err.reason });
       return { ok: false, hold: targetUndeclaredHold(said) };
     }
     logger.error({ err, projectId }, 'release-sweep: the release gate could not be read');
@@ -317,7 +315,7 @@ async function sweepProject(
   result: AutomaticReleaseSweepResult,
   now: Date,
 ): Promise<void> {
-  if (!(await projectAutoProdDeploy(projectId))) {
+  if (!(await productionDeploysOnLand(projectId))) {
     await clearProjectReleaseHolds(projectId);
     return;
   }

@@ -210,7 +210,7 @@ describe('commitOwners', () => {
   });
 });
 
-const branches = { baseBranch: 'stg', liveBranch: 'master' };
+const branches = { baseBranch: 'stg', deploysFrom: 'master' };
 const rec = (over: Partial<IssueWorkRecord> & { issSeq: number }): IssueWorkRecord => ({
   mergedCommitSha: null,
   head: null,

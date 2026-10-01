@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { DeployStage } from '../../src/db/schema.js';
 import type { CoolifyConfig, CoolifySecrets } from '../../src/integrations/coolify/types.js';
 import {
   createTestProject,
@@ -42,6 +41,7 @@ beforeAll(async () => {
   process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
   process.env.NODE_ENV ??= 'test';
 
+  (await import('../../src/integrations/register-all.js')).registerAllIntegrations();
   const adapterMod = await import('../../src/integrations/coolify/adapter.js');
   const vaultMod = await import('../../src/integrations/vault.js');
   const storeMod = await import('../../src/integrations/store.js');
@@ -68,11 +68,7 @@ beforeEach(async () => {
   vi.restoreAllMocks();
 });
 
-async function seedIntegration(opts: {
-  stages: DeployStage[];
-  secret?: string;
-  runStatus?: 'running' | 'completed';
-}) {
+async function seedIntegration(opts: { secret?: string; runStatus?: 'running' | 'completed' }) {
   const owner = await createTestUser(harness.db);
   const project = await createTestProject(harness.db, owner.id);
 
@@ -98,14 +94,13 @@ async function seedIntegration(opts: {
   const integrationSecret = opts.secret ?? `whsec_test_${bindingId.slice(0, 12)}`;
   await harness.db.execute(sql`
     INSERT INTO integration_bindings
-      (id, connection_id, project_id, provider, role, stages, config, integration_secret, active)
+      (id, connection_id, project_id, provider, role, config, integration_secret, active)
     VALUES (
       ${bindingId},
       ${connectionId},
       ${project.id},
       'coolify',
       'deploy',
-      ${`{${opts.stages.join(',')}}`}::text[],
       ${JSON.stringify({
         // ISS-558 multi-target shape: the adapter fans out one deploy per
         // targets[] entry; a binding without targets refuses to dispatch.
@@ -155,7 +150,7 @@ async function readHolds(runId: string) {
 
 describe('ISS-234 — coolify deploy dispatch and its breaker', () => {
   it('outbound dispatch → records delivery with deployment_uuid', async () => {
-    const seed = await seedIntegration({ stages: ['preview'] });
+    const seed = await seedIntegration({});
 
     // Coolify v4 deploy returns a `deployments[]` array.
     const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValue(
@@ -194,7 +189,7 @@ describe('ISS-234 — coolify deploy dispatch and its breaker', () => {
   });
 
   it('three consecutive outbound failures trip the breaker (active=false)', async () => {
-    const seed = await seedIntegration({ stages: ['preview'] });
+    const seed = await seedIntegration({});
 
     vi.spyOn(global, 'fetch').mockResolvedValue(new Response('boom', { status: 500 }));
 
@@ -219,7 +214,7 @@ describe('ISS-234 — coolify deploy dispatch and its breaker', () => {
   });
 
   it('a tripped breaker blocks further outbound dispatch', async () => {
-    const seed = await seedIntegration({ stages: ['preview'] });
+    const seed = await seedIntegration({});
     await harness.db.execute(sql`
       UPDATE integration_connections SET active = false WHERE id = ${seed.connectionId}
     `);
@@ -238,7 +233,7 @@ describe('ISS-234 — coolify deploy dispatch and its breaker', () => {
 
 describe('ISS-922 — the deploy a run has to prove before it may close', () => {
   it('records one confirmation hold per target on the run, against real jsonb', async () => {
-    const seed = await seedIntegration({ stages: ['preview'], runStatus: 'running' });
+    const seed = await seedIntegration({ runStatus: 'running' });
     await dispatchOnce(seed, 'deploy-uuid-B');
 
     const holds = await readHolds(seed.runId);
@@ -249,14 +244,14 @@ describe('ISS-922 — the deploy a run has to prove before it may close', () => 
   });
 
   it('refuses the hold on a run that already went terminal — a closed run cannot witness a deploy', async () => {
-    const seed = await seedIntegration({ stages: ['preview'], runStatus: 'completed' });
+    const seed = await seedIntegration({ runStatus: 'completed' });
     await dispatchOnce(seed, 'deploy-uuid-C');
 
     expect(await readHolds(seed.runId)).toBeUndefined();
   });
 
   it('a settled hold and a deferred close survive a real jsonb round trip', async () => {
-    const seed = await seedIntegration({ stages: ['preview'], runStatus: 'running' });
+    const seed = await seedIntegration({ runStatus: 'running' });
     const res = await dispatchOnce(seed, 'deploy-uuid-D');
 
     await mods.markCloseDeferred(seed.runId);

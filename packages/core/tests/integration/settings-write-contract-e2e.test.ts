@@ -18,8 +18,6 @@ let harness: TestDatabase;
 let server: TestServer;
 let mods: {
   signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
-  readEnvironments: typeof import('../../src/projects/environments-service.js').readEnvironments;
-  writeEnvironmentsLimits: typeof import('../../src/projects/environments-service.js').writeEnvironmentsLimits;
 };
 let ownerId: string;
 let projectId: string;
@@ -62,26 +60,13 @@ const denying = (deny: string[]): PolicyDocument => ({
   permissions: { ...DEFAULT_POLICY.permissions, driver: { deny } },
 });
 
-const SEED_ENVIRONMENTS = {
-  live: { url: 'https://live.example', commitPath: 'commit' },
-  preview: { url: 'https://preview.example', shownNowhere: 'a key the form does not render' },
-  testCredentials: [{ label: 'qa', username: 'qa@example.com', password: 'secret' }],
-};
-
 beforeAll(async () => {
   harness = await setupTestDatabase();
   process.env.DATABASE_URL = harness.url;
   process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
   process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
-  const [jwt, environments] = await Promise.all([
-    import('../../src/auth/jwt.js'),
-    import('../../src/projects/environments-service.js'),
-  ]);
-  mods = {
-    signUserToken: jwt.signUserToken,
-    readEnvironments: environments.readEnvironments,
-    writeEnvironmentsLimits: environments.writeEnvironmentsLimits,
-  };
+  const jwt = await import('../../src/auth/jwt.js');
+  mods = { signUserToken: jwt.signUserToken };
   server = await startTestServer();
 }, 180_000);
 
@@ -94,10 +79,7 @@ beforeEach(async () => {
   await truncateAll(harness.db);
   ownerId = (await createTestUser(harness.db, { emailVerifiedAt: new Date() })).id;
   const org = await seedOrg(harness.db, ownerId);
-  const project = await createTestProject(harness.db, ownerId, {
-    orgId: org.id,
-    environments: SEED_ENVIRONMENTS,
-  });
+  const project = await createTestProject(harness.db, ownerId, { orgId: org.id });
   projectId = project.id;
   await createTestProjectMember(harness.db, { userId: ownerId, projectId, role: 'admin' });
 });
@@ -156,68 +138,20 @@ describe('the policy document', () => {
   });
 });
 
-describe('the environments document', () => {
-  async function readEnv(): Promise<Record<string, unknown>> {
-    const res = await call('GET', `/api/projects/${projectId}/environments`);
-    return res.json.environments as Record<string, unknown>;
-  }
-
-  it('refuses environments on the project route by name, naming the door it moved to', async () => {
+describe('the environments a project declares', () => {
+  it('refuses environments on the project route by name, naming the project document', async () => {
     const res = await call('PATCH', `/api/projects/${projectId}`, {
       environments: { live: { url: 'https://elsewhere.example' } },
     });
     expect(res.status).toBe(400);
-    expect(res.json.code).toBe('ENVIRONMENTS_MOVED');
-    expect(String(res.json.message)).toContain('PATCH /api/projects/:id/environments');
-    expect((await mods.readEnvironments(projectId)).live).toEqual(SEED_ENVIRONMENTS.live);
-  });
-
-  it('leaves the keys the form never showed when every rendered field is cleared', async () => {
-    const base = await readEnv();
-    const res = await call('PATCH', `/api/projects/${projectId}/environments`, {
-      base,
-      patch: { preview: { url: null, apiUrl: null, urls: [] } },
-    });
-    expect(res.status).toBe(200);
-
-    const preview = (await mods.readEnvironments(projectId)).preview as Record<string, unknown>;
-    expect(preview.shownNowhere).toBe('a key the form does not render');
-    expect('url' in preview).toBe(false);
-    expect((await mods.readEnvironments(projectId)).testCredentials).toEqual(
-      SEED_ENVIRONMENTS.testCredentials,
+    expect(JSON.stringify(res.json)).toContain(
+      '`environments` is not a field of PATCH /api/projects/:id',
     );
+    expect(JSON.stringify(res.json)).toContain('PUT /api/projects/:id/config');
   });
 
-  it('refuses a write whose ground moved and leaves the first writer standing', async () => {
-    const base = await readEnv();
-    const first = await call('PATCH', `/api/projects/${projectId}/environments`, {
-      base,
-      patch: { limits: 'no outbound email' },
-    });
-    expect(first.status).toBe(200);
-
-    const second = await call('PATCH', `/api/projects/${projectId}/environments`, {
-      base,
-      patch: { limits: 'something else' },
-    });
-    expect(second.status).toBe(409);
-    expect(second.json.code).toBe('ENVIRONMENTS_STALE');
-    expect((await mods.readEnvironments(projectId)).limits).toBe('no outbound email');
-  });
-
-  it('refuses a bare document by name', async () => {
-    const res = await call('PATCH', `/api/projects/${projectId}/environments`, {
-      live: { url: 'https://elsewhere.example' },
-    });
-    expect(res.status).toBe(400);
-    expect(res.json.code).toBe('ENVIRONMENTS_WRITE_SHAPE');
-  });
-
-  it('refuses a scoped limits write whose stored value moved under it', async () => {
-    await mods.writeEnvironmentsLimits({ projectId, base: null, value: 'no outbound email' });
-    await expect(
-      mods.writeEnvironmentsLimits({ projectId, base: null, value: 'written blind' }),
-    ).rejects.toMatchObject({ name: 'EnvironmentsError', code: 'ENVIRONMENTS_STALE' });
-    expect((await mods.readEnvironments(projectId)).limits).toBe('no outbound email');
+  it('answers no environments route any more', async () => {
+    expect((await call('GET', `/api/projects/${projectId}/environments`)).status).toBe(404);
+    expect((await call('PATCH', `/api/projects/${projectId}/environments`, {})).status).toBe(404);
   });
 });

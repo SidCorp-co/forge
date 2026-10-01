@@ -28,6 +28,7 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
+import { declareProductionDocument, seedProduction } from '../helpers/production.js';
 
 const LABEL = 'prod-credential-box';
 
@@ -62,8 +63,10 @@ beforeEach(async () => {
 
 interface World {
   projectId: string;
+  ownerId: string;
   deviceId: string;
   jobId: string;
+  bindingId: string | null;
 }
 
 /**
@@ -84,7 +87,7 @@ async function seed(opts: {
   const runner = randomUUID();
   const run = randomUUID();
   const job = randomUUID();
-  const connection = randomUUID();
+  let bindingId: string | null = null;
 
   await harness.db.execute(sql`
     UPDATE devices SET agent_version = '0.11.0', last_seen_at = now() WHERE id = ${device.id}
@@ -100,20 +103,13 @@ async function seed(opts: {
     )
   `);
   if (opts.bindingConfig !== null) {
-    await harness.db.execute(sql`
-      INSERT INTO integration_connections (id, owner_type, owner_id, provider, active, config)
-      VALUES (
-        ${connection}, 'user', ${owner.id}, 'coolify', true,
-        ${JSON.stringify(opts.connectionConfig ?? {})}::jsonb
-      )
-    `);
-    await harness.db.execute(sql`
-      INSERT INTO integration_bindings (connection_id, project_id, provider, role, stages, active, config)
-      VALUES (
-        ${connection}, ${project.id}, 'coolify', 'deploy', ARRAY['live'], true,
-        ${JSON.stringify(opts.bindingConfig ?? {})}::jsonb
-      )
-    `);
+    ({ bindingId } = await seedProduction(harness.db, {
+      projectId: project.id,
+      ownerId: owner.id,
+      config: opts.bindingConfig ?? {},
+      connectionConfig: opts.connectionConfig ?? {},
+      probes: 'none',
+    }));
   }
   await harness.db.execute(sql`
     INSERT INTO pipeline_runs (id, project_id, kind, status)
@@ -123,7 +119,7 @@ async function seed(opts: {
     INSERT INTO jobs (id, project_id, pipeline_run_id, type, status, created_by, queued_at, payload)
     VALUES (${job}, ${project.id}, ${run}, ${opts.type}, 'queued', ${owner.id}, now(), '{"promptString":"do the step"}'::jsonb)
   `);
-  return { projectId: project.id, deviceId: device.id, jobId: job };
+  return { projectId: project.id, ownerId: owner.id, deviceId: device.id, jobId: job, bindingId };
 }
 
 const poolIds = async (w: World) =>
@@ -240,9 +236,9 @@ describe('a release job is offered only to the release pool', () => {
   });
 
   // The predicate answers about the LABEL and nothing else. A project with no
-  // live binding has no release target either, which is `RELEASE_TARGET_UNDECLARED`
+  // production binding has no release target either, which is `RELEASE_TARGET_UNDECLARED`
   // at the door that cuts batches — a reason of its own, raised where it belongs.
-  it('offers a release job to an unlabelled box when the project has no live deploy binding', async () => {
+  it('offers a release job to an unlabelled box when the project declares no production', async () => {
     const w = await seed({ type: 'release_batch', labels: [], bindingConfig: null });
 
     expect(await poolIds(w)).toEqual([w.jobId]);
@@ -335,38 +331,6 @@ describe('the claim answers the same question by name', () => {
     expect(res).toEqual({ ok: false, reason: 'not_found' });
   });
 
-  // ISS-1275 — the claim door answers the same question as the pool, and it
-  // answers it for the ambiguous case too: two live bindings naming different
-  // labels resolve to no single box, which is a person's to reconcile.
-  it('refuses a release job while two live bindings name different labels', async () => {
-    const w = await seed({
-      type: 'release_batch',
-      labels: [LABEL],
-      bindingConfig: { releaseRunnerLabel: LABEL },
-    });
-    const otherConnection = randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO integration_connections (id, owner_type, owner_id, provider, active, config)
-      SELECT ${otherConnection}, 'user', p.created_by, 'coolify', true, '{}'::jsonb
-      FROM projects p WHERE p.id = ${w.projectId}
-    `);
-    await harness.db.execute(sql`
-      INSERT INTO integration_bindings (connection_id, project_id, provider, role, stages, active, config)
-      VALUES (
-        ${otherConnection}, ${w.projectId}, 'coolify', 'deploy', ARRAY['live'], true,
-        ${JSON.stringify({ releaseRunnerLabel: 'some-other-box' })}::jsonb
-      )
-    `);
-
-    const res = await mods.prepareJobForMaster({
-      jobId: w.jobId,
-      deviceId: w.deviceId,
-      sessionId: session(),
-    });
-
-    expect(res).toEqual({ ok: false, reason: 'release_label_missing' });
-  });
-
   it('admits a release job on an unlabelled box when the project declares no label', async () => {
     const w = await seed({ type: 'release_batch', labels: [], bindingConfig: {} });
 
@@ -409,32 +373,6 @@ describe('the pool reads the label the release path reads', () => {
     expect(await poolIds(w)).toEqual([w.jobId]);
   });
 
-  it('offers a release job to nobody when two live bindings name different labels', async () => {
-    const w = await seed({
-      type: 'release_batch',
-      labels: [LABEL],
-      bindingConfig: { releaseRunnerLabel: LABEL },
-    });
-    const otherConnection = randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO integration_connections (id, owner_type, owner_id, provider, active, config)
-      SELECT ${otherConnection}, 'user', p.created_by, 'coolify', true, '{}'::jsonb
-      FROM projects p WHERE p.id = ${w.projectId}
-    `);
-    await harness.db.execute(sql`
-      INSERT INTO integration_bindings (connection_id, project_id, provider, role, stages, active, config)
-      VALUES (
-        ${otherConnection}, ${w.projectId}, 'coolify', 'deploy', ARRAY['live'], true,
-        ${JSON.stringify({ releaseRunnerLabel: 'some-other-box' })}::jsonb
-      )
-    `);
-
-    // The plan resolver refuses outright…
-    await expect(mods.resolveReleasePlan(w.projectId)).rejects.toThrow(/RELEASE_RUNNER_AMBIGUOUS/);
-    // …and the pool answers with nobody rather than picking one of the two.
-    expect(await poolIds(w)).toEqual([]);
-  });
-
   // ISS-1275 — this is the whole of what withdrawing the preference costs.
   it('lets a binding null out the connection-level label, for the pool as for the release', async () => {
     const w = await seed({
@@ -448,28 +386,38 @@ describe('the pool reads the label the release path reads', () => {
     expect(await poolIds(w)).toEqual([w.jobId]);
   });
 
-  // The distinction the fix turns on: two bindings AGREEING resolve to that one
-  // label. An implementation counting declarations rather than distinct values
-  // would read this as ambiguous and refuse a project that said one thing twice.
-  it('resolves the one label where two live bindings name the same one', async () => {
+  it("reads production's label alone, whatever another environment's binding declares", async () => {
     const w = await seed({
       type: 'release_batch',
       labels: [LABEL],
       bindingConfig: { releaseRunnerLabel: LABEL },
     });
-    const second = randomUUID();
+    const connection = randomUUID();
+    const staging = randomUUID();
     await harness.db.execute(sql`
       INSERT INTO integration_connections (id, owner_type, owner_id, provider, active, config)
-      SELECT ${second}, 'user', p.created_by, 'coolify', true, '{}'::jsonb
-      FROM projects p WHERE p.id = ${w.projectId}
+      VALUES (${connection}, 'user', ${w.ownerId}, 'coolify', true, '{}'::jsonb)
     `);
     await harness.db.execute(sql`
-      INSERT INTO integration_bindings (connection_id, project_id, provider, role, stages, active, config)
+      INSERT INTO integration_bindings (id, connection_id, project_id, provider, role, active, config)
       VALUES (
-        ${second}, ${w.projectId}, 'coolify', 'deploy', ARRAY['live'], true,
-        ${JSON.stringify({ releaseRunnerLabel: LABEL })}::jsonb
+        ${staging}, ${connection}, ${w.projectId}, 'coolify', 'deploy', true,
+        ${JSON.stringify({ releaseRunnerLabel: 'some-other-box' })}::jsonb
       )
     `);
+    await declareProductionDocument(harness.db, {
+      projectId: w.projectId,
+      ownerId: w.ownerId,
+      bindingId: String(w.bindingId),
+      probes: 'none',
+      others: {
+        staging: {
+          tier: 'staging',
+          deploysFrom: 'main',
+          deployment: { binding: staging, trigger: 'on-land' },
+        },
+      },
+    });
 
     expect((await mods.resolveReleasePlan(w.projectId)).releaseRunnerLabel).toBe(LABEL);
     expect(await poolIds(w)).toEqual([w.jobId]);

@@ -1,6 +1,6 @@
 /**
  * ISS-1321 — a project that declares no verify probe releases, and every door says the release
- * was not verified. A `verify` Forge cannot parse is still refused, and takes no project default.
+ * was not verified. Probes that cannot prove a commit are still refused, and take no project default.
  */
 
 import { sql } from 'drizzle-orm';
@@ -15,7 +15,8 @@ import {
   type TestServer,
   truncateAll,
 } from '../helpers/index.js';
-import { releaseBatchFixture } from '../helpers/release-batch-fixture.js';
+import { type DeclaredProbes, declareProductionDocument } from '../helpers/production.js';
+import { PROBE_URL, releaseBatchFixture } from '../helpers/release-batch-fixture.js';
 
 const RELEASED = 'b853f813d0e4b2a1c9f8e7d6c5b4a39281706f5e';
 const ACCOUNT =
@@ -104,16 +105,21 @@ async function finished(runId: string): Promise<Body['finish']> {
   throw new Error('the finish never settled');
 }
 
-async function breakVerify(): Promise<void> {
-  await harness.db.execute(sql`
-    UPDATE integration_bindings SET config = config || '{"verify": {"probes": []}}'::jsonb
-    WHERE project_id = ${projectId} AND provider = 'coolify'
-  `);
+/** Production, deploying through `bindingId` as before, now declaring `probes`. */
+async function redeclare(bindingId: string, probes: DeclaredProbes): Promise<void> {
+  await declareProductionDocument(harness.db, {
+    projectId,
+    ownerId,
+    bindingId,
+    deploysFrom: 'production',
+    probes,
+    probeUrl: PROBE_URL,
+  });
 }
 
 describe('a project with no verify probe releases unverified', () => {
   beforeEach(async () => {
-    await fx.declareProduction({ verify: null });
+    await fx.declareProduction({}, 'none');
   });
 
   it('opens the batch, claims the roster, and says the release is unverified', async () => {
@@ -254,7 +260,7 @@ describe('the unverified note, once per issue per release run', () => {
 
 describe('a recorded release whose not-verified note cannot be written', () => {
   it('closes none of the issues it could not note', async () => {
-    await fx.declareProduction({ verify: null });
+    await fx.declareProduction({}, 'none');
     const a = await fx.insertIssue();
     await harness.db.execute(sql`
       CREATE OR REPLACE FUNCTION refuse_unverified_note() RETURNS trigger AS $$
@@ -280,9 +286,9 @@ describe('a recorded release whose not-verified note cannot be written', () => {
   });
 });
 
-describe('a verify Forge cannot parse is still refused, by name', () => {
+describe('probes that identify only an artifact are still refused, by name', () => {
   beforeEach(async () => {
-    await fx.declareProduction({ verify: { probes: [] } });
+    await fx.declareProduction({}, 'artifact-only');
     // A project default that must NOT stand in for the refused declaration.
     await harness.db.execute(sql`
       UPDATE projects SET environments = ${JSON.stringify({
@@ -326,13 +332,11 @@ describe('a verify Forge cannot parse is still refused, by name', () => {
 
 describe('a batch whose probes changed after it opened', () => {
   it('records the close as it was proved, on the finish and on the run alike', async () => {
-    await fx.declareProduction();
+    const bindingId = await fx.declareProduction();
     const a = await fx.insertIssue();
     const { runId, verification } = await fx.claim([a]);
     expect(verification).toBe('probed');
-    await harness.db.execute(sql`
-      UPDATE integration_bindings SET config = config - 'verify' WHERE project_id = ${projectId}
-    `);
+    await redeclare(bindingId, 'none');
 
     await call('POST', `/release-batches/${runId}/finish`, {});
     const settled = await finished(runId);
@@ -342,43 +346,24 @@ describe('a batch whose probes changed after it opened', () => {
     expect(await markedComments(a, runId)).toBe(1);
   }, 40_000);
 
-  it('reads, in the run state, the probes a later binding declared, as the close does', async () => {
-    await fx.declareProduction({ verify: null });
+  it('reads, in the run state, the probes production came to declare, as the close does', async () => {
+    const bindingId = await fx.declareProduction({}, 'none');
     const a = await fx.insertIssue();
     const { runId } = await fx.claim([a]);
-    // A second live binding, created after the first, declaring the probes the first does not.
-    await fx.declareProduction();
+    await redeclare(bindingId, 'source');
 
     const { body } = await call('GET', `/release-batches/${runId}/state`);
 
     expect(body.live).toMatchObject({ health: 'up', identity: fx.serving() });
   });
-
-  it('refuses a probe url that is not a url by name, before any close', async () => {
-    await fx.declareProduction();
-    const a = await fx.insertIssue();
-    const { runId } = await fx.claim([a]);
-    await harness.db.execute(sql`
-      UPDATE integration_bindings
-      SET config = config || '{"verify": {"probes": [{"url": "api/version"}]}}'::jsonb
-      WHERE project_id = ${projectId}
-    `);
-
-    const res = await call('POST', `/release-batches/${runId}/finish`, { commit: RELEASED });
-
-    expect(res.status).toBe(409);
-    expect(res.body.code).toBe('RELEASE_PROBES_UNREADABLE');
-    expect(res.body.details).toMatchObject({ urls: ['api/version'] });
-    expect((await fx.stored(a)).status).toBe('releasing');
-  });
 });
 
-describe('a batch whose verify became unparseable after it opened', () => {
+describe('a batch whose production came to declare only artifact probes after it opened', () => {
   it('refuses the finish by name and closes nothing', async () => {
-    await fx.declareProduction();
+    const bindingId = await fx.declareProduction();
     const a = await fx.insertIssue();
     const { runId } = await fx.claim([a]);
-    await breakVerify();
+    await redeclare(bindingId, 'artifact-only');
 
     const res = await call('POST', `/release-batches/${runId}/finish`, { commit: RELEASED });
 

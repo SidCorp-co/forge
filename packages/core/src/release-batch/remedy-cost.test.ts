@@ -28,10 +28,20 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
-const listBindings = vi.fn(async () => [] as unknown[]);
+const productionPair = vi.fn(async () => null as unknown);
 vi.mock('../integrations/store.js', async (importActual) => {
   const actual = await importActual<typeof import('../integrations/store.js')>();
-  return { ...actual, listActiveDeployBindingsForStage: () => listBindings() };
+  return { ...actual, findBindingWithConnectionById: () => productionPair() };
+});
+
+vi.mock('../project-config/service.js', async () => {
+  const { production, projectDoc } = await import('../project-config/release-path.fixture.js');
+  return {
+    readProjectDocument: async () => ({
+      revision: 1,
+      document: projectDoc({ environments: { beta: production() } }),
+    }),
+  };
 });
 
 const onlineIds = vi.fn(async () => [] as string[]);
@@ -62,11 +72,9 @@ const BLOCKER_CODES = [
   'RELEASE_ROSTER_OVERSIZE',
   'RELEASE_RECORD_MISSING',
   'RELEASE_WORK_UNMERGED',
-  'RELEASE_RUNNER_AMBIGUOUS',
   'RELEASE_PROBES_UNREADABLE',
   'RELEASE_POOL_EMPTY',
   'NO_RUNNER_ONLINE',
-  'RELEASE_MULTI_CHANNEL_UNSUPPORTED',
   'BATCH_IN_FLIGHT',
   'RELEASE_CRITERIA_UNEARNED',
   'RELEASE_RUNTIME_UNROUTED',
@@ -83,8 +91,8 @@ const HELD = [{ issueId: 'u-9', displayId: 'ISS-9', criteria: [1, 2] }];
 const SERVED: ServingReading = { kind: 'serving', served: [], unread: [], readAt: 'now' };
 const UNROUTED: ServingReading = {
   kind: 'undeclared',
-  missing: 'this project has no active deploy binding',
-  route: 'declare `verify.probes` on the live deploy binding',
+  missing: 'the project document declares no production environment',
+  route: 'declare an environment with `tier: "production"`',
 };
 
 /** Every message this project can print, code by code, composed as its door composes it. */
@@ -101,17 +109,12 @@ function everyMessage(): Array<{ code: ReasonCode; message: string }> {
     {
       code: 'RELEASE_PROBES_UNREADABLE' as ReasonCode,
       message: releaseBlockerSentence('RELEASE_PROBES_UNREADABLE', {
-        urls: ['not a url'],
         bindings: ['coolify b-1'],
       }),
     },
     {
       code: 'RELEASE_CRITERIA_UNEARNED' as ReasonCode,
       message: releaseBlockerSentence('RELEASE_CRITERIA_UNEARNED', { held: HELD }),
-    },
-    {
-      code: 'RELEASE_RUNNER_AMBIGUOUS' as ReasonCode,
-      message: releaseBlockerSentence('RELEASE_RUNNER_AMBIGUOUS', { labels: ['a', 'b'] }),
     },
     {
       code: 'RELEASE_RUNNER_PREFERENCE_UNMET' as ReasonCode,
@@ -227,20 +230,14 @@ describe('REMEDY_COST', () => {
 });
 
 const PROJECT_ID = '55555555-5555-4555-8555-555555555555';
-const PROBES = { probes: [{ url: 'https://example.test/api/health', commitPath: 'commit' }] };
 
 function projectRow() {
   selectLimit.mockResolvedValue([
     {
       repoPath: '/srv/app',
       repoUrl: null,
+      id: PROJECT_ID,
       baseBranch: 'main',
-      liveBranch: null,
-      releaseModel: 'publish',
-      releaseStrategy: null,
-      environments: {
-        live: { url: 'https://app.test', commitUrl: 'https://example.test/api/health' },
-      },
     },
   ]);
 }
@@ -249,18 +246,19 @@ function binding(id: string, config: Record<string, unknown>, connection: Record
   return {
     binding: {
       id,
+      projectId: PROJECT_ID,
+      active: true,
       provider: 'coolify',
       config,
       instructions: null,
       label: '',
       role: 'deploy',
-      stages: ['live'],
     },
-    connection: { config: connection },
+    connection: { active: true, config: connection },
   };
 }
 
-const REST = { verify: PROBES, rollback: { mode: 'coolify-image' } };
+const REST = { rollback: { mode: 'coolify-image' } };
 
 type Declared = ReturnType<typeof binding>;
 
@@ -276,9 +274,8 @@ function withdrawReleaseRunnerLabel(declared: Declared[]): Declared[] {
 }
 
 /**
- * Every way `resolveReleaseChannels` can arrive at a label: the binding's own
- * key, the connection's where the binding has none, both at once, and two live
- * bindings disagreeing. Read by hand off `effectiveConfig` and
+ * Every way `resolveReleaseChannels` can arrive at a label: the production
+ * binding's own key, the connection's where the binding has none, and both at once. Read by hand off `effectiveConfig` and
  * `releaseRunnerLabelOf` in `channel.ts`, and NOT derived from them — a branch
  * added there leaves this table short in silence, and re-deriving it belongs to
  * that change. Priced rather than guarded: a structural check would have to
@@ -299,24 +296,17 @@ const LABEL_BRANCHES = [
       binding('b-1', { ...REST, releaseRunnerLabel: 'release' }, { releaseRunnerLabel: 'other' }),
     ],
   },
-  {
-    branch: 'two live bindings disagree',
-    declared: [
-      binding('b-1', { ...REST, releaseRunnerLabel: 'release' }, {}),
-      binding('b-2', { ...REST, releaseRunnerLabel: 'other' }, {}),
-    ],
-  },
 ];
 
 async function codesFor(bindings: unknown[]): Promise<string[]> {
-  listBindings.mockResolvedValue(bindings);
+  productionPair.mockResolvedValue(bindings[0] ?? null);
   const report = await collectReleaseBlockers(PROJECT_ID);
   return report.blockers.map((b) => b.code);
 }
 
 /** The label each unmet-preference reading names, which is what a clearing moves. */
 async function preferenceLabelsFor(bindings: unknown[]): Promise<Array<string | null>> {
-  listBindings.mockResolvedValue(bindings);
+  productionPair.mockResolvedValue(bindings[0] ?? null);
   const report = await collectReleaseBlockers(PROJECT_ID);
   return report.warnings
     .filter((w) => w.code === 'RELEASE_RUNNER_PREFERENCE_UNMET')

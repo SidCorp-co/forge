@@ -1,17 +1,11 @@
-/** What a project is serving, read when asked and never stored — a commit on a row is wrong the
- *  moment the next deploy lands (ISS-1286). Declared probes answer first; where none is declared,
- *  what Forge itself deployed through the project's bindings does (ISS-1346). This shares
- *  `readLiveState` with `serving.ts` and neither calls the other, nor is either called from
- *  `collectReleaseBlockers`, which promises no outbound request. */
+/** The production environment's state (`project-config/environment-state.ts`), read when asked and
+ *  never stored: a commit on a row is wrong the moment the next deploy lands (ISS-1286). Neither
+ *  this nor `collectReleaseBlockers`, which promises no outbound request, calls the other. */
 
-import { eq } from 'drizzle-orm';
-import { db } from '../db/client.js';
-import { projects } from '../db/schema.js';
 import { longestSpelling } from '../messaging/verdict-identity.js';
-import { liveProbeFrom, resolveReleaseChannels } from './channel.js';
-import { readForgeDeployments } from './deployed-reading.js';
-import type { ReleaseChannel } from './plan.js';
-import { invalidProbeUrls, readLiveState, type VerifyConfig, type VerifyProbe } from './verify.js';
+import { readEnvironmentState } from '../project-config/environment-state-read.js';
+import { readReleasePath } from '../project-config/release-path.js';
+import type { EnvironmentState } from '../project-config/schema.js';
 
 export interface ServedAt {
   readonly commit: string;
@@ -62,55 +56,9 @@ export function servingClause(serving: Extract<ServingReading, { kind: 'serving'
   return `${servedClause(serving.served)}, read at ${serving.readAt}${unread}`;
 }
 
-/** The probes the live channels declare, and how many declared a block `parseVerifyConfig` refused
- *  — which decides anything only where `cfg` is null. */
-export interface DeclaredProbes {
-  readonly cfg: VerifyConfig | null;
-  readonly refused: number;
-}
-
-function probeKey(probe: VerifyProbe): string {
-  return `${probe.url}\u0000${probe.commitPath ?? ''}`;
-}
-
-export function declaredProbesOf(channels: readonly ReleaseChannel[]): DeclaredProbes {
-  const probes: VerifyProbe[] = [];
-  const seen = new Set<string>();
-  let refused = 0;
-  for (const channel of channels) {
-    if (channel.verifySource === 'declared-unusable') refused += 1;
-    for (const probe of channel.verify?.probes ?? []) {
-      if (seen.has(probeKey(probe))) continue;
-      seen.add(probeKey(probe));
-      probes.push(probe);
-    }
-  }
-  return { cfg: probes.length === 0 ? null : { probes }, refused };
-}
-
-/** `resolveReleaseChannels` reads no project row with no live binding, so a commit url declared
- *  there with no binding is not undeclared. */
-async function liveEnvironmentProbe(projectId: string): Promise<VerifyConfig | null> {
-  const [row] = await db
-    .select({ environments: projects.environments })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  return liveProbeFrom(row?.environments);
-}
-
-const REFUSED_DECLARATION =
-  'every declared verification probe was refused as a declaration: a `verify` block is there and ' +
-  'nothing in it names a url to ask. Correct the declaration on the live deploy binding.';
-
-function invalidUrlLines(invalid: readonly string[]): string[] {
-  const why = 'is not a url, so no request could be made to it — correct it, scheme included';
-  return invalid.map((url) => `${url} ${why}`);
-}
-
 export function whyUncorroborated(serving: ServingReading): string {
   if (serving.kind === 'undeclared') {
-    return `nothing here can read what this project is serving: ${serving.missing}, and no live binding declares \`verify.probes\`.`;
+    return `nothing here can read what this project is serving: ${serving.missing}.`;
   }
   if (serving.kind === 'unreadable') {
     return `nothing could be read from what this project answers through — ${serving.why}`;
@@ -118,55 +66,56 @@ export function whyUncorroborated(serving: ServingReading): string {
   return 'a reading answered, so nothing was uncorroborated.';
 }
 
-/** Where no probe is declared, the latest deployment Forge saw finish through each bound target. */
-async function fromDeployments(projectId: string, now: () => Date): Promise<ServingReading> {
-  const deployed = await readForgeDeployments(projectId);
-  if (deployed.kind === 'unrouted') {
-    return { kind: 'undeclared', missing: deployed.missing, route: deployed.route };
+const NO_ROUTE =
+  'declare a runtime probe on the production environment (`verification.runtime`, `"identifies": "source"`), or deploy it through a binding whose platform records the commit it built';
+
+/** A recorded state, read into what it says is served: each probe that answered an identity, and
+ *  the record's own commit once the deployment has finished. */
+function fromState(
+  state: Exclude<EnvironmentState, { state: 'unknown' }>,
+  readAt: string,
+): ServingReading {
+  const served: ServedAt[] = [];
+  const unread: string[] = [];
+  for (const probe of state.probes ?? []) {
+    if (probe.status === 'unreachable') unread.push(probe.error);
+    else served.push({ commit: probe.observed, where: probe.url });
   }
-  const readAt = now().toISOString();
-  if (deployed.kind === 'unanswered') {
-    return {
-      kind: 'unreadable',
-      why: deployed.unread.join('; '),
-      hosts: deployed.readFrom,
-      readAt,
-    };
+  const record = `${state.deployment.provider} deployment ${state.deployment.id} of environment \`${state.environment}\` (${state.deployment.status}, ${state.deployment.at})`;
+  if (state.state === 'deployed' && state.source.kind === 'revision') {
+    served.push({ commit: state.source.revision, where: record });
+  } else if (state.state !== 'deployed') {
+    unread.push(`${record} is not a finished deployment, so it names nothing served`);
+  } else {
+    unread.push(`${record} records no commit`);
   }
-  return { kind: 'serving', served: deployed.served, unread: deployed.unread, readAt };
+  if (served.length === 0) {
+    return { kind: 'unreadable', why: unread.join('; '), hosts: [record], readAt };
+  }
+  return { kind: 'serving', served, unread, readAt };
 }
 
-/** What this project is serving, now. The read is the server's: a caller's claim about what is
- *  deployed is not admissible here, for the reason it is not admissible in a release. */
+/** The read is the server's: a caller's claim about what is deployed is not admissible here, for
+ *  the reason it is not admissible in a release. */
 export async function readServingNow(
   projectId: string,
   now: () => Date = () => new Date(),
 ): Promise<ServingReading> {
-  const channels = await resolveReleaseChannels(projectId);
-  const declared =
-    channels.length > 0
-      ? declaredProbesOf(channels)
-      : { cfg: await liveEnvironmentProbe(projectId), refused: 0 };
-
-  if (declared.cfg === null) {
-    if (declared.refused === 0) return fromDeployments(projectId, now);
-    return { kind: 'unreadable', why: REFUSED_DECLARATION, hosts: [], readAt: now().toISOString() };
+  const read = await readReleasePath(projectId);
+  if (!read.ok) return { kind: 'undeclared', missing: read.reason, route: NO_ROUTE };
+  const { production, document } = read.path;
+  if (!production) {
+    return {
+      kind: 'undeclared',
+      missing: 'the project document declares no production environment',
+      route: 'declare an environment with `tier: "production"`',
+    };
   }
-
-  const hosts = declared.cfg.probes.map((probe) => probe.url);
-  // A probe nobody can ask does not silence one somebody can: the defect travels in `unread`.
-  const defects = invalidUrlLines(invalidProbeUrls(declared.cfg));
-  const usable = declared.cfg.probes.filter((probe) => URL.canParse(probe.url));
-  if (usable.length === 0) {
-    return { kind: 'unreadable', why: defects.join('; '), hosts, readAt: now().toISOString() };
-  }
-
-  const state = await readLiveState({ ...declared.cfg, probes: usable });
+  const state = await readEnvironmentState(projectId, document, production);
   const readAt = now().toISOString();
-  const unread = [...defects, ...state.unhealthy, ...state.unidentified];
-  if (state.answeredBy.length === 0) {
-    return { kind: 'unreadable', why: [...defects, ...state.readings].join('; '), hosts, readAt };
+  if (state.state !== 'unknown') return fromState(state, readAt);
+  if (state.reason.cause === 'adapter-error' || state.reason.cause === 'no-record') {
+    return { kind: 'unreadable', why: state.reason.message, hosts: [], readAt };
   }
-  const served = state.answeredBy.map((a) => ({ commit: a.commit, where: a.url }));
-  return { kind: 'serving', served, unread, readAt };
+  return { kind: 'undeclared', missing: state.reason.message, route: NO_ROUTE };
 }

@@ -28,7 +28,6 @@ import {
 } from "../../hooks";
 import type {
   BindingRole,
-  DeployStage,
   IntegrationSummary,
   IntegrationTestResult,
 } from "../../types";
@@ -51,11 +50,6 @@ const LABEL_REGEX = /^[a-z0-9][a-z0-9-]*$/;
 const ROLE_SELECT_OPTIONS: SelectOption[] = [
   { value: "service", label: "Service — a project-wide facility" },
   { value: "deploy", label: "Deploy target — somewhere Forge deploys to" },
-];
-
-const STAGE_CHOICES: { value: DeployStage; label: string; hint: string }[] = [
-  { value: "preview", label: "Preview", hint: "the draft theme, seen before it counts" },
-  { value: "live", label: "Live", hint: "the published theme real customers are on" },
 ];
 
 interface BadgeView {
@@ -360,7 +354,6 @@ function AddEpodsystemForm({
   const [label, setLabel] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [role, setRole] = useState<BindingRole>("service");
-  const [stages, setStages] = useState<DeployStage[]>([]);
   const [agentAccess, setAgentAccess] = useState<AgentAccess>(AGENT_ACCESS_CLOSED);
   const [error, setError] = useState<string | null>(null);
 
@@ -379,24 +372,10 @@ function AddEpodsystemForm({
   function chooseRole(next: BindingRole) {
     setRole(next);
     setError(null);
-    if (next === "service") setStages([]);
-  }
-
-  function toggleStage(stage: DeployStage) {
-    setError(null);
-    setStages((cur) =>
-      cur.includes(stage) ? cur.filter((s) => s !== stage) : [...cur, stage],
-    );
   }
 
   async function handleCreate() {
     setError(null);
-    if (role === "deploy" && stages.length === 0) {
-      setError(
-        "Choose at least one stage — a deploy target has to serve Preview, Live or both.",
-      );
-      return;
-    }
     try {
       const common = {
         provider: "epodsystem",
@@ -408,7 +387,7 @@ function AddEpodsystemForm({
       } as const;
       await create.mutateAsync(
         role === "deploy"
-          ? { ...common, role: "deploy", stages: stages as [DeployStage, ...DeployStage[]] }
+          ? { ...common, role: "deploy" }
           : { ...common, role: "service" },
       );
       onCreated();
@@ -472,25 +451,11 @@ function AddEpodsystemForm({
       </Field>
 
       {role === "deploy" && canDeploy && (
-        <Field label="Which stages" required>
-          <div className="flex flex-col gap-2">
-            {STAGE_CHOICES.map((choice) => (
-              <label key={choice.value} className="flex items-start gap-2">
-                <input
-                  type="checkbox"
-                  className="mt-1"
-                  checked={stages.includes(choice.value)}
-                  onChange={() => toggleStage(choice.value)}
-                  disabled={create.isPending}
-                />
-                <span className="fg-body-sm">
-                  {choice.label}
-                  <span className="text-muted"> — {choice.hint}</span>
-                </span>
-              </label>
-            ))}
-          </div>
-        </Field>
+        <p className="fg-body-sm text-muted">
+          Which environment this storefront deploys is the project document&apos;s: name the binding
+          in <code>environments.&lt;name&gt;.deployment.binding</code> and write the document with{" "}
+          <code>PUT /api/projects/:id/config</code>.
+        </p>
       )}
 
       {role === "deploy" && !canDeploy && (

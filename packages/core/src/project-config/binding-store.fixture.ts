@@ -18,7 +18,6 @@ function syncActive(row: StoredBinding) {
       id: row.id,
       role: row.role,
       provider: row.provider,
-      stages: row.stages,
       label: '',
     });
   }

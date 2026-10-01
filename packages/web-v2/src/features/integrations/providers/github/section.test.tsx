@@ -102,7 +102,6 @@ function binding(over: Partial<IntegrationSummary> = {}): IntegrationSummary {
     projectId: PROJECT,
     provider: "github",
     role: "service",
-    stages: [],
     config: {},
     bindingConfig: {},
     label: "",

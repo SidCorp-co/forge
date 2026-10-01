@@ -1,4 +1,3 @@
-import type { DeployStage } from '../../db/schema.js';
 import { logger } from '../../logger.js';
 import { isSentryEnabled, Sentry } from '../../observability/sentry.js';
 import {
@@ -28,7 +27,10 @@ import { coolifyDeploymentRecords } from './deployment-records.js';
 import { buildClient } from './log-fetch.js';
 import {
   COOLIFY_BINDING_CONFIG_KEYS,
+  COOLIFY_BINDING_ONLY_CONFIG_KEYS,
   coolifyConfigSchema,
+  coolifyConnectionConfigSchema,
+  coolifyConnectionPatchConfigSchema,
   coolifySecretsSchema,
 } from './schemas.js';
 import type { CoolifyConfig, CoolifySecrets } from './types.js';
@@ -39,7 +41,6 @@ interface DeployPayload extends Record<string, unknown> {
   /** `null` for a run-less resource redeploy (no pipeline run to advance). */
   runId: string | null;
   issueId: string | null;
-  stages: DeployStage[];
   /** The specific target deployed by this delivery (one delivery per target). */
   targetId: string;
   targetLabel: string;
@@ -265,7 +266,6 @@ const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySec
           payload: {
             ...payload,
             runId,
-            stages: ctx.stages,
             targetId: target.id,
             targetLabel: target.label,
             resourceUuid: target.resourceUuid,
@@ -283,7 +283,6 @@ const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySec
             data: {
               connectionId: ctx.connectionId,
               bindingId: ctx.bindingId,
-              stages: ctx.stages,
               deliveryId,
               runId,
               targetId: target.id,
@@ -397,7 +396,6 @@ const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySec
           {
             connectionId: ctx.connectionId,
             bindingId: ctx.bindingId,
-            stages: ctx.stages,
           },
           'coolify: circuit breaker tripped — ops follow-up required',
         );
@@ -421,11 +419,6 @@ const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySec
       ...(firstDeploymentUuid ? { externalId: firstDeploymentUuid } : {}),
       durationMs: totalDurationMs,
     };
-  },
-
-  async deployedCommit(ctx, deploymentId, timeoutMs) {
-    const commit = (await buildClient(ctx, timeoutMs).getDeployment(deploymentId)).commit;
-    return typeof commit === 'string' && commit.trim() !== '' ? commit.trim() : null;
   },
 
   deploymentRecords: coolifyDeploymentRecords,
@@ -458,8 +451,8 @@ export const coolifyIntegration = declareIntegration<CoolifyConfig, CoolifySecre
     agentPath: { kind: 'core-mediated', tools: ['forge_coolify_deploy'] },
   },
   schemas: {
-    connectionConfig: coolifyConfigSchema,
-    connectionPatchConfig: coolifyConfigSchema.partial(),
+    connectionConfig: coolifyConnectionConfigSchema,
+    connectionPatchConfig: coolifyConnectionPatchConfigSchema,
     bindingConfig: coolifyConfigSchema,
     patchConfig: coolifyConfigSchema.partial(),
     secrets: coolifySecretsSchema,
@@ -468,6 +461,7 @@ export const coolifyIntegration = declareIntegration<CoolifyConfig, CoolifySecre
     previousCredentialField: 'previousApiToken',
     independentSecretFields: [],
     bindingConfigKeys: COOLIFY_BINDING_CONFIG_KEYS,
+    bindingOnlyConfigKeys: COOLIFY_BINDING_ONLY_CONFIG_KEYS,
   },
   usage: {
     hint: 'Deploy / redeploy and poll deployment status via the `forge_coolify_deploy` tool.',
@@ -475,8 +469,8 @@ export const coolifyIntegration = declareIntegration<CoolifyConfig, CoolifySecre
   },
   presentation: {
     label: 'Coolify',
-    // Coolify is stage-split by design, so even a single binding keys by stage.
-    alwaysStageKeyed: true,
+    // Coolify is environment-split by design, so even a single binding keys by environment.
+    alwaysEnvironmentKeyed: true,
     neverCheckedDetail: 'never health-checked',
   },
   adapter: coolifyAdapterMethods,

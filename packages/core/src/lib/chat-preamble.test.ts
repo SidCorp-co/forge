@@ -11,6 +11,8 @@ vi.mock('../db/client.js', () => {
   return { db: { select } };
 });
 
+vi.mock('../project-config/service.js', () => ({ readProjectDocument: async () => null }));
+
 const { db } = await import('../db/client.js');
 const { buildPipelinePreamble, buildPipelinePreambleStructured } = await import(
   './chat-preamble.js'
@@ -58,7 +60,7 @@ describe('buildPipelinePreambleStructured', () => {
   });
 
   it('adds project-config + project-context (4 blocks) when branches resolve', async () => {
-    mockBranchSelect([{ baseBranch: 'main', releaseChain: [] }]);
+    mockBranchSelect([{ baseBranch: 'main' }]);
 
     const built = await buildPipelinePreambleStructured('p1');
     expect(built.blocks).toHaveLength(4);
@@ -71,7 +73,7 @@ describe('buildPipelinePreambleStructured', () => {
   });
 
   it('each block has { id, kind: "system", chars, estTokens } with chars === body.length', async () => {
-    mockBranchSelect([{ baseBranch: 'main', releaseChain: [] }]);
+    mockBranchSelect([{ baseBranch: 'main' }]);
 
     const built = await buildPipelinePreambleStructured('p1');
     for (const block of built.blocks) {
@@ -89,7 +91,7 @@ describe('buildPipelinePreambleStructured', () => {
   });
 
   it('inserts a state-block (after project-context) when a step is supplied', async () => {
-    mockBranchSelect([{ baseBranch: 'main', releaseChain: [] }]);
+    mockBranchSelect([{ baseBranch: 'main' }]);
 
     const built = await buildPipelinePreambleStructured('p1', { step: 'release_batch' });
     expect(built.blocks.map((b) => b.id)).toEqual([
@@ -104,7 +106,7 @@ describe('buildPipelinePreambleStructured', () => {
   });
 
   it('omits the state-block for a claimable step with no default, and when no step given', async () => {
-    mockBranchSelect([{ baseBranch: 'main', releaseChain: [] }]);
+    mockBranchSelect([{ baseBranch: 'main' }]);
 
     const noStep = await buildPipelinePreambleStructured('p1');
     expect(noStep.blocks.some((b) => b.id === 'state-block')).toBe(false);
@@ -117,7 +119,7 @@ describe('buildPipelinePreambleStructured', () => {
   });
 
   it('renders the policy state a job runs under after project-config', async () => {
-    mockBranchSelect([{ baseBranch: 'main', releaseChain: [] }]);
+    mockBranchSelect([{ baseBranch: 'main' }]);
 
     const built = await buildPipelinePreambleStructured('p1', {
       step: 'release_batch',
@@ -141,7 +143,7 @@ describe('buildPipelinePreambleStructured', () => {
   });
 
   it('renders no policy block for a preamble no job runs', async () => {
-    mockBranchSelect([{ baseBranch: 'main', releaseChain: [] }]);
+    mockBranchSelect([{ baseBranch: 'main' }]);
     const built = await buildPipelinePreambleStructured('p1', { step: 'release_batch' });
     expect(built.blocks.map((b) => b.id)).not.toContain('policy');
   });
@@ -149,7 +151,7 @@ describe('buildPipelinePreambleStructured', () => {
   it('content matches the unstructured buildPipelinePreamble for the same project', async () => {
     // Both functions independently call loadProjectBranches; give both calls
     // the same row so they take the same code path.
-    mockBranchSelect([{ baseBranch: 'main', releaseChain: [] }]);
+    mockBranchSelect([{ baseBranch: 'main' }]);
 
     const structured = await buildPipelinePreambleStructured('p1');
     const plain = await buildPipelinePreamble('p1');

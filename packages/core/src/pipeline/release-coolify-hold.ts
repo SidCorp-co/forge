@@ -8,33 +8,35 @@ import {
   releaseDeployLocksForRun,
 } from './deploy-lock.js';
 
-/** Each binding's stages, plus `live` for one `reachesLive` says reaches production. */
+/** The project-document environments each binding's deploy reaches, which is what it holds. */
 export interface DeployLockIntent {
   projectId: string;
   environments: string[];
   subject: string;
 }
 
-type LockableBinding = { id: string; stages: string[] | null; role: string; config: unknown };
+type LockableBinding = { id: string; role: string };
 
-export function deployLockIntent(
+export function deployLockIntent<B extends LockableBinding>(
   projectId: string,
-  pairs: ReadonlyArray<{ binding: LockableBinding }>,
-  reachesLive: (binding: { stages: string[] | null; config: unknown }) => boolean,
+  pairs: ReadonlyArray<{ binding: B }>,
+  environmentsOf: (binding: B) => readonly string[],
 ): DeployLockIntent {
   const environments = new Set<string>();
   for (const { binding } of pairs) {
-    for (const stage of binding.stages ?? []) environments.add(stage);
-    if (reachesLive(binding)) environments.add('live');
+    for (const env of environmentsOf(binding)) environments.add(env);
   }
   const subject = pairs
-    .map(({ binding }) => `${targetLabelOf(binding)} (binding ${binding.id})`)
+    .map(
+      ({ binding }) =>
+        `${targetLabelOf(environmentsOf(binding)[0] ?? null, binding)} (binding ${binding.id})`,
+    )
     .join(', ');
   return { projectId, environments: [...environments].sort(), subject };
 }
 
-export const targetLabelOf = (binding: { stages: string[] | null; role: string }): string =>
-  `${(binding.stages ?? []).join('+') || binding.role} deploy`;
+export const targetLabelOf = (environment: string | null, binding: { role: string }): string =>
+  `${environment ?? binding.role} deploy`;
 
 /** Nothing queued is all a count answers; past that the holds record what reaches the
  *  environment, and an empty one behind a dispatch that DID queue is a deploy no hold tracks. */

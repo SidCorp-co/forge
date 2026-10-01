@@ -3,7 +3,7 @@ import { readProjectDocument } from '../project-config/service.js';
 
 /** Whether the release sweep alone cuts releases here: production deploys `on-land`. */
 // cm:edge naming -> packages/core/src/project-config/schema.ts:DEPLOYMENT_TRIGGERS
-export async function projectAutoProdDeploy(projectId: string): Promise<boolean> {
+export async function productionDeploysOnLand(projectId: string): Promise<boolean> {
   try {
     const held = await readProjectDocument(projectId);
     if (!held) return false;

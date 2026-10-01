@@ -12,7 +12,7 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { sql } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, onTestFinished } from 'vitest';
 import {
   createTestProject,
   createTestUser,
@@ -23,12 +23,14 @@ import {
   type TestServer,
   truncateAll,
 } from '../helpers/index.js';
-import { releaseBatchFixture } from '../helpers/release-batch-fixture.js';
+import { collapseProbeWaits } from '../helpers/probe-window.js';
+import { declareProductionDocument, stubProbe } from '../helpers/production.js';
+import { PROBE_URL, releaseBatchFixture } from '../helpers/release-batch-fixture.js';
 
 const BEFORE = '1111111111111111111111111111111111111111';
 const PUSHED = '2222222222222222222222222222222222222222';
 const OTHER = '3333333333333333333333333333333333333333';
-/** The door's bound. The verify windows below are four and more times it. */
+/** The door's bound. The verify window, 300 s, is many times it. */
 const DOOR_MS = 2_000;
 
 let harness: TestDatabase;
@@ -39,6 +41,8 @@ let jwt: string;
 let serving = BEFORE;
 let probe: Server;
 let probeUrl: string;
+let forwarded = false;
+let bindingId: string;
 
 const fx = releaseBatchFixture(
   () => harness,
@@ -54,7 +58,7 @@ beforeAll(async () => {
   process.env.APP_BASE_URL ??= 'http://localhost:3000';
   process.env.NODE_ENV ??= 'test';
   await registerIntegrationsForTest();
-  probe = createServer((_req, res) => res.end(serving));
+  probe = createServer((_req, res) => res.end(JSON.stringify({ commit: serving })));
   await new Promise<void>((done) => probe.listen(0, '127.0.0.1', done));
   probeUrl = `http://127.0.0.1:${(probe.address() as AddressInfo).port}/version`;
   server = await startTestServer();
@@ -78,23 +82,14 @@ beforeEach(async () => {
   projectId = (await createTestProject(harness.db, owner.id)).id;
   const { signUserToken } = await import('../../src/auth/jwt.js');
   jwt = await signUserToken(owner.id);
-  await fx.declareProduction();
+  bindingId = await fx.declareProduction();
   await fx.seedReleaseRunner();
+  if (!forwarded) stubProbe({ [PROBE_URL]: probeUrl });
+  forwarded = true;
 });
 
-async function window(timeoutSeconds: number): Promise<void> {
-  await harness.db.execute(sql`
-    UPDATE integration_bindings
-    SET config = config || ${JSON.stringify({
-      verify: { probes: [{ url: probeUrl }], timeoutSeconds, stableReads: 1 },
-    })}::jsonb
-    WHERE project_id = ${projectId} AND provider = 'coolify'
-  `);
-}
-
 /** A batch of `n` issues, opened while the probe serves `BEFORE`. */
-async function batch(n: number, seconds: number) {
-  await window(seconds);
+async function batch(n: number) {
   const ids: string[] = [];
   for (let i = 0; i < n; i += 1) ids.push(await fx.insertIssue());
   const { runId } = await fx.claim(ids);
@@ -115,7 +110,7 @@ interface FinishBody {
 }
 
 async function finish(runId: string, body: Record<string, unknown> = {}) {
-  const started = Date.now();
+  const started = performance.now();
   const res = await fetch(
     `${server.baseUrl}/api/projects/${projectId}/release-batches/${runId}/finish`,
     {
@@ -124,7 +119,11 @@ async function finish(runId: string, body: Record<string, unknown> = {}) {
       body: JSON.stringify(body),
     },
   );
-  return { status: res.status, ms: Date.now() - started, body: (await res.json()) as FinishBody };
+  return {
+    status: res.status,
+    ms: performance.now() - started,
+    body: (await res.json()) as FinishBody,
+  };
 }
 
 async function state(runId: string) {
@@ -136,10 +135,10 @@ async function state(runId: string) {
 }
 
 async function until<T>(read: () => Promise<T>, done: (v: T) => boolean, ms: number): Promise<T> {
-  const deadline = Date.now() + ms;
+  const deadline = performance.now() + ms;
   for (;;) {
     const v = await read();
-    if (done(v) || Date.now() > deadline) return v;
+    if (done(v) || performance.now() > deadline) return v;
     await new Promise((r) => setTimeout(r, 250));
   }
 }
@@ -164,7 +163,8 @@ async function closesOf(issueId: string): Promise<number> {
 
 describe('the door answers inside its own bound (the reproduction)', () => {
   it('answers 202 at `accepted` while a verify window that cannot settle is still open', async () => {
-    const { runId } = await batch(1, 8);
+    const { runId } = await batch(1);
+    onTestFinished(collapseProbeWaits());
 
     const res = await finish(runId, { commit: PUSHED });
 
@@ -183,7 +183,8 @@ describe('the door answers inside its own bound (the reproduction)', () => {
   }, 40_000);
 
   it('answers a roster of twenty inside the same bound as a roster of one', async () => {
-    const { runId } = await batch(20, 8);
+    const { runId } = await batch(20);
+    onTestFinished(collapseProbeWaits());
 
     const res = await finish(runId, { commit: PUSHED });
 
@@ -195,7 +196,7 @@ describe('the door answers inside its own bound (the reproduction)', () => {
 
 describe('the job reaches terminal without the caller', () => {
   it('closes every claimed issue and completes the run once the probes confirm the commit', async () => {
-    const { runId, ids } = await batch(2, 20);
+    const { runId, ids } = await batch(2);
     serving = PUSHED;
 
     const res = await finish(runId, { commit: PUSHED });
@@ -212,7 +213,7 @@ describe('the job reaches terminal without the caller', () => {
   }, 40_000);
 
   it('answers the attempt in flight, refuses a second commit, then answers the finished record', async () => {
-    const { runId, ids } = await batch(1, 20);
+    const { runId, ids } = await batch(1);
 
     const first = await finish(runId, { commit: PUSHED });
     const again = await finish(runId, { commit: PUSHED });
@@ -235,7 +236,8 @@ describe('the job reaches terminal without the caller', () => {
   }, 60_000);
 
   it('takes a new attempt after a failed one, and that one can finish the batch', async () => {
-    const { runId, ids } = await batch(1, 2);
+    const { runId, ids } = await batch(1);
+    onTestFinished(collapseProbeWaits());
     const first = await finish(runId, { commit: PUSHED });
     const failed = await until(() => state(runId), settled, 15_000);
     expect(failed.finish?.state).toBe('failed');
@@ -253,7 +255,7 @@ describe('the job reaches terminal without the caller', () => {
 
 describe('a finished batch is not asked about another commit in silence', () => {
   it('refuses a finish naming another commit than the one the batch finished for', async () => {
-    const { runId, ids } = await batch(1, 20);
+    const { runId, ids } = await batch(1);
     serving = PUSHED;
     await finish(runId, { commit: PUSHED });
     const done = await until(() => state(runId), settled, 20_000);
@@ -275,7 +277,7 @@ describe('a finished batch is not asked about another commit in silence', () => 
   }, 45_000);
 
   it('refuses a finish naming a commit on a batch that finished with none named', async () => {
-    const { runId } = await batch(1, 20);
+    const { runId } = await batch(1);
     serving = PUSHED;
     await finish(runId);
     const done = await until(() => state(runId), settled, 20_000);
@@ -292,7 +294,7 @@ describe('a finished batch is not asked about another commit in silence', () => 
 
 describe('the door refuses what the database can refuse, and records nothing', () => {
   it('refuses a commit that is not a whole sha with the whole-commit sentence', async () => {
-    const { runId } = await batch(1, 20);
+    const { runId } = await batch(1);
 
     const res = await finish(runId, { commit: 'abc1234' });
 
@@ -306,7 +308,7 @@ describe('the door refuses what the database can refuse, and records nothing', (
   // because an accepted finish opens an attempt that answers the next call, and a second batch on
   // one project is BATCH_IN_FLIGHT.
   it('accepts a run that announced no method', async () => {
-    const unannounced = await batch(1, 20);
+    const unannounced = await batch(1);
     await harness.db.execute(sql`
       UPDATE pipeline_runs SET metadata = metadata - 'method' WHERE id = ${unannounced.runId}
     `);
@@ -315,7 +317,7 @@ describe('the door refuses what the database can refuse, and records nothing', (
   });
 
   it('refuses a run with no version, recording nothing', async () => {
-    const versionless = await batch(1, 20);
+    const versionless = await batch(1);
     await harness.db.execute(sql`
       UPDATE pipeline_runs SET release_version = NULL WHERE id = ${versionless.runId}
     `);
@@ -325,7 +327,7 @@ describe('the door refuses what the database can refuse, and records nothing', (
   });
 
   it('refuses an aborted run, recording nothing', async () => {
-    const aborted = await batch(1, 20);
+    const aborted = await batch(1);
     await harness.db.execute(sql`
       UPDATE pipeline_runs SET status = 'cancelled' WHERE id = ${aborted.runId}
     `);
@@ -334,12 +336,16 @@ describe('the door refuses what the database can refuse, and records nothing', (
     expect(await rawFinish(aborted.runId)).toBeNull();
   });
 
-  it('refuses a project whose verify became one Forge cannot parse, recording nothing', async () => {
-    const { runId } = await batch(1, 20);
-    await harness.db.execute(sql`
-      UPDATE integration_bindings SET config = config || '{"verify": {"probes": []}}'::jsonb
-      WHERE project_id = ${projectId}
-    `);
+  it('refuses a project whose production came to declare only artifact probes, recording nothing', async () => {
+    const { runId } = await batch(1);
+    await declareProductionDocument(harness.db, {
+      projectId,
+      ownerId,
+      bindingId,
+      deploysFrom: 'production',
+      probes: 'artifact-only',
+      probeUrl: PROBE_URL,
+    });
 
     const res = await finish(runId, { commit: PUSHED });
 

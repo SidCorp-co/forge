@@ -6,12 +6,10 @@
 // one of them ends up proving its own SQL instead of the batch's.
 
 import { randomUUID } from 'node:crypto';
-import { createServer, type Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
 import { sql } from 'drizzle-orm';
-import { afterAll } from 'vitest';
+import { afterAll, vi } from 'vitest';
 import type { CreateReleaseBatchResult } from '../../src/release-batch/service.js';
-import { createTestDevice, seedProjectSource, type TestDatabase } from './index.js';
+import { createTestDevice, seedProjectDocument, type TestDatabase } from './index.js';
 
 export const RELEASE_LABEL = 'release-box';
 export const SKIP_NOTE = { section: 'Skip', userFacing: '-' };
@@ -27,8 +25,17 @@ export interface StoredJob {
   exitCode: number | null;
 }
 
+/** What production's `verification.runtime` declares: a source probe, nothing, or only an
+ *  artifact probe, which no release can be proved by. */
+export type DeclaredProbes = 'source' | 'none' | 'artifact-only';
+
+/** The probe production declares, answered by the fixture's own `fetch` stub. */
+export const PROBE_URL = 'https://release-fixture.example.test/version';
+
 export interface ReleaseBatchFixture {
-  declareProduction(config?: Record<string, unknown>): Promise<void>;
+  /** Production `live` deploys from `production`, which `main` reaches by merge, through a coolify
+   *  binding carrying `config`; the binding id is what it answers. */
+  declareProduction(config?: Record<string, unknown>, probes?: DeclaredProbes): Promise<string>;
   /** What the default probe server is serving right now. */
   serving(): string;
   /**
@@ -70,48 +77,75 @@ export function releaseBatchFixture(
 ): ReleaseBatchFixture {
   let seq = 0;
 
-  let probe: Server | null = null;
   let served = 'commit-before-any-release';
+  let stubbed = false;
 
-  async function probeUrl(): Promise<string> {
-    if (!probe) {
-      const server = createServer((_req, res) => res.end(served));
-      await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
-      probe = server;
-    }
-    return `http://127.0.0.1:${(probe.address() as AddressInfo).port}/version`;
+  function answerTheProbe(): void {
+    if (stubbed) return;
+    stubbed = true;
+    const passThrough = globalThis.fetch;
+    vi.stubGlobal('fetch', async (input: URL | string | Request, init?: RequestInit) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.split('?')[0] === PROBE_URL) return Response.json({ commit: served });
+      return passThrough(input, init);
+    });
   }
 
-  afterAll(async () => {
-    if (probe) await new Promise<void>((done) => probe?.close(() => done()));
-    probe = null;
+  afterAll(() => {
+    if (stubbed) vi.unstubAllGlobals();
+    stubbed = false;
   });
 
-  async function declareProduction(config: Record<string, unknown> = {}): Promise<void> {
+  const PROBES: Record<DeclaredProbes, object | undefined> = {
+    source: { runtime: [{ type: 'http', url: PROBE_URL, path: 'commit', identifies: 'source' }] },
+    none: undefined,
+    'artifact-only': {
+      runtime: [{ type: 'http', url: PROBE_URL, path: 'commit', identifies: 'artifact' }],
+    },
+  };
+
+  async function declareProduction(
+    config: Record<string, unknown> = {},
+    probes: DeclaredProbes = 'source',
+  ): Promise<string> {
     const { projectId, ownerId } = ids();
     const connectionId = randomUUID();
-    const verify = { probes: [{ url: await probeUrl() }], timeoutSeconds: 20, stableReads: 1 };
+    const bindingId = randomUUID();
     await harness().db.execute(sql`
-      UPDATE projects
-         SET base_branch = 'main',
-             release_chain = '[{"branch": "main"}, {"branch": "production", "from": "merge-branch"}]'::jsonb
-       WHERE id = ${projectId}
+      UPDATE projects SET base_branch = 'main' WHERE id = ${projectId}
     `);
-    const declared = await harness().db.execute(
-      sql`SELECT 1 FROM project_config_documents WHERE project_id = ${projectId}`,
-    );
-    if (declared.length === 0) await seedProjectSource(harness().db, projectId, ownerId, 'git');
     await harness().db.execute(sql`
       INSERT INTO integration_connections (id, owner_type, owner_id, provider, active)
       VALUES (${connectionId}, 'user', ${ownerId}, 'coolify', true)
     `);
     await harness().db.execute(sql`
-      INSERT INTO integration_bindings (connection_id, project_id, provider, role, stages, active, config)
+      INSERT INTO integration_bindings (id, connection_id, project_id, provider, role, active, config)
       VALUES (
-        ${connectionId}, ${projectId}, 'coolify', 'deploy', ARRAY['live']::text[], true,
-        ${JSON.stringify({ releaseRunnerLabel: RELEASE_LABEL, verify, ...config })}::jsonb
+        ${bindingId}, ${connectionId}, ${projectId}, 'coolify', 'deploy', true,
+        ${JSON.stringify({ releaseRunnerLabel: RELEASE_LABEL, ...config })}::jsonb
       )
     `);
+    const verification = PROBES[probes];
+    const [held] = await harness().db.execute<{ type: string | null }>(sql`
+      SELECT document #>> '{source,type}' AS type FROM project_config_documents
+      WHERE project_id = ${projectId}
+    `);
+    const storefront = held?.type === 'storefront';
+    await seedProjectDocument(harness().db, projectId, ownerId, {
+      ...(storefront ? { sourceType: 'storefront' as const } : {}),
+      defaultBranch: 'main',
+      promotions: storefront ? [] : [{ from: 'main', to: 'production', via: 'merge' }],
+      environments: {
+        live: {
+          tier: 'production',
+          deploysFrom: 'production',
+          deployment: { binding: bindingId, trigger: 'on-request' },
+          ...(verification ? { verification } : {}),
+        },
+      },
+    } as Parameters<typeof seedProjectDocument>[3]);
+    if (probes !== 'none') answerTheProbe();
+    return bindingId;
   }
 
   async function seedReleaseRunner(): Promise<void> {

@@ -85,16 +85,16 @@ vi.mock('./release-hold.js', async () => {
   };
 });
 
-const projectAutoProdDeployMock = vi.fn(async (_projectId: string) => true);
+const productionDeploysOnLandMock = vi.fn(async (_projectId: string) => true);
 vi.mock('./release-coolify.js', () => ({
-  projectAutoProdDeploy: (projectId: string) => projectAutoProdDeployMock(projectId),
+  productionDeploysOnLand: (projectId: string) => productionDeploysOnLandMock(projectId),
 }));
 
 const resolveReleaseGateMock = vi.fn(
   async (_projectId: string) => 'awaiting_release' as string | null,
 );
 class ReleaseTargetUndeclaredError extends Error {
-  releaseChain = [{ branch: 'production' }];
+  reason = 'production environment `beta` is deployed outside Forge';
 }
 vi.mock('../release-batch/gate.js', () => ({
   RELEASE_GATE_STATUS: 'awaiting_release',
@@ -185,8 +185,8 @@ beforeEach(() => {
   issueStateByIssue = { 'iss-1': { status: 'awaiting_release', releaseBatchRunId: null } };
   selectFrom.mockClear();
   insertValues.mockClear();
-  projectAutoProdDeployMock.mockReset();
-  projectAutoProdDeployMock.mockResolvedValue(true);
+  productionDeploysOnLandMock.mockReset();
+  productionDeploysOnLandMock.mockResolvedValue(true);
   resolveReleaseGateMock.mockReset();
   resolveReleaseGateMock.mockResolvedValue('awaiting_release');
   waitingIds = [];
@@ -213,7 +213,7 @@ describe('sweepAutomaticReleases — policy gate', () => {
   it('cuts nothing, writes no hold and clears the project on a project that is not automatic', async () => {
     candidateRows = [candidateRow('proj-1', 'iss-1', '2026-09-22T00:00:00Z')];
     waitingIds = ['iss-1'];
-    projectAutoProdDeployMock.mockResolvedValueOnce(false);
+    productionDeploysOnLandMock.mockResolvedValueOnce(false);
 
     const result = await sweepAutomaticReleases();
 
@@ -240,14 +240,13 @@ describe('sweepAutomaticReleases — policy gate', () => {
   it('writes RELEASE_TARGET_UNDECLARED, in the words the card gives it, when there is nowhere to release onto', async () => {
     candidateRows = [candidateRow('proj-1', 'iss-1', '2026-09-22T00:00:00Z')];
     waitingIds = ['iss-1'];
-    resolveReleaseGateMock.mockRejectedValueOnce(
-      new ReleaseTargetUndeclaredError('RELEASE_TARGET_UNDECLARED: no live binding'),
-    );
+    resolveReleaseGateMock.mockRejectedValueOnce(new ReleaseTargetUndeclaredError());
 
     await sweepAutomaticReleases();
 
     expect(holds['iss-1']).toMatchObject({ code: 'RELEASE_TARGET_UNDECLARED', owes: 'human' });
-    expect(holds['iss-1']?.reason).toMatch(/^This project's release chain ends at `production`/);
+    const { reason } = new ReleaseTargetUndeclaredError();
+    expect(holds['iss-1']?.reason).toBe(`Nowhere is declared for a release to land: ${reason}.`);
     expect(cutWaitingReleaseMock).not.toHaveBeenCalled();
   });
 
@@ -482,7 +481,7 @@ describe('sweepAutomaticReleases — per-project fault isolation', () => {
       candidateRow('proj-good', 'iss-good', '2026-09-22T00:00:01Z'),
     ];
     waitingIds = ['iss-good'];
-    projectAutoProdDeployMock.mockImplementation(async (projectId: string) => {
+    productionDeploysOnLandMock.mockImplementation(async (projectId: string) => {
       if (projectId === 'proj-bad') throw new Error('boom');
       return true;
     });

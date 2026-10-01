@@ -1,7 +1,5 @@
-import { createServer, type Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
 import { sql } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import {
   createTestProject,
   createTestUser,
@@ -10,7 +8,8 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
-import { releaseBatchFixture } from '../helpers/release-batch-fixture.js';
+import { collapseProbeWaits } from '../helpers/probe-window.js';
+import { PROBE_URL, releaseBatchFixture } from '../helpers/release-batch-fixture.js';
 
 let harness: TestDatabase;
 let projectId: string;
@@ -163,30 +162,17 @@ const NEVER_SHIPPED = '3333333333333333333333333333333333333333';
 describe('a finish already run answers from the record', () => {
   it('raises nothing on a re-finish whose probes have stopped confirming', async () => {
     const { finishReleaseBatch } = await import('../../src/release-batch/service.js');
-    let serving = BEFORE;
-    const probe: Server = createServer((_req, res) => res.end(serving));
-    await new Promise<void>((done) => probe.listen(0, '127.0.0.1', done));
-    const { port } = probe.address() as AddressInfo;
-    await harness.db.execute(sql`
-      UPDATE integration_bindings
-      SET config = config || ${JSON.stringify({
-        verify: {
-          probes: [{ url: `http://127.0.0.1:${port}/version` }],
-          timeoutSeconds: 20,
-          stableReads: 1,
-        },
-      })}::jsonb
-      WHERE project_id = ${projectId} AND provider = 'coolify' AND 'live' = ANY(stages)
-    `);
+    fx.serve(BEFORE);
     const a = await insertIssue();
-    const { runId, jobId } = await claim([a]);
-    serving = PUSHED;
+    const { runId, jobId } = await claim([a], { deploy: false });
+    fx.serve(PUSHED);
 
-    const first = await finishReleaseBatch(runId, actor(), { commit: serving });
+    const first = await finishReleaseBatch(runId, actor(), { commit: PUSHED });
     expect(first.closed).toEqual([a]);
-    await new Promise<void>((done) => probe.close(() => done()));
+    const gone = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('fetch failed'));
+    onTestFinished(() => gone.mockRestore());
 
-    const second = await finishReleaseBatch(runId, actor(), { commit: serving }).catch(
+    const second = await finishReleaseBatch(runId, actor(), { commit: PUSHED }).catch(
       (e: unknown) => e,
     );
 
@@ -263,38 +249,24 @@ describe('a finish racing an abort', () => {
     const held = new Promise<void>((done) => {
       releaseProbe = done;
     });
-    let holding = false;
-    const probe: Server = createServer((_req, res) => {
-      if (!holding) {
-        res.end(BEFORE);
-        return;
-      }
-      probeArrived();
-      void held.then(() => res.end(PUSHED));
-    });
-    await new Promise<void>((done) => probe.listen(0, '127.0.0.1', done));
-    const { port } = probe.address() as AddressInfo;
-    await harness.db.execute(sql`
-      UPDATE integration_bindings
-      SET config = config || ${JSON.stringify({
-        verify: {
-          probes: [{ url: `http://127.0.0.1:${port}/version` }],
-          timeoutSeconds: 20,
-          stableReads: 1,
-        },
-      })}::jsonb
-      WHERE project_id = ${projectId} AND provider = 'coolify' AND 'live' = ANY(stages)
-    `);
+    fx.serve(BEFORE);
     const a = await insertIssue();
-    const { runId } = await claim([a]);
+    const { runId } = await claim([a], { deploy: false });
 
-    holding = true;
+    const passThrough = globalThis.fetch;
+    const holding = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.split('?')[0] !== PROBE_URL) return passThrough(input, init);
+      probeArrived();
+      await held;
+      return Response.json({ commit: PUSHED });
+    });
+    onTestFinished(() => holding.mockRestore());
     const finishing = finishReleaseBatch(runId, actor(), { commit: PUSHED });
     await arrived;
     await abortReleaseBatch(runId, 'the deploy never landed', ownerId);
     releaseProbe();
     const result = await finishing;
-    await new Promise<void>((done) => probe.close(() => done()));
 
     expect(result.closed).toEqual([]);
     expect(result.failed.map((f) => f.id)).toEqual([a]);
@@ -311,22 +283,10 @@ describe('a finish after an abort of a reaped run', () => {
     const { abortReleaseBatch, finishReleaseBatch } = await import(
       '../../src/release-batch/service.js'
     );
-    const probe: Server = createServer((_req, res) => res.end(NEVER_SHIPPED));
-    await new Promise<void>((done) => probe.listen(0, '127.0.0.1', done));
-    const { port } = probe.address() as AddressInfo;
-    await harness.db.execute(sql`
-      UPDATE integration_bindings
-      SET config = config || ${JSON.stringify({
-        verify: {
-          probes: [{ url: `http://127.0.0.1:${port}/version` }],
-          timeoutSeconds: 5,
-          stableReads: 1,
-        },
-      })}::jsonb
-      WHERE project_id = ${projectId} AND provider = 'coolify' AND 'live' = ANY(stages)
-    `);
     const a = await insertIssue();
     const { runId } = await claim([a]);
+    fx.serve(NEVER_SHIPPED);
+    onTestFinished(collapseProbeWaits());
     await harness.db.execute(sql`
       UPDATE pipeline_runs SET status = 'completed' WHERE id = ${runId}
     `);
@@ -335,7 +295,6 @@ describe('a finish after an abort of a reaped run', () => {
     const result = await finishReleaseBatch(runId, actor(), { commit: PUSHED }).catch(
       (e: unknown) => e,
     );
-    await new Promise<void>((done) => probe.close(() => done()));
 
     expect(result).toBeInstanceOf(Error);
     expect((result as Error).message).toBe('RELEASE_BATCH_ABORTED');

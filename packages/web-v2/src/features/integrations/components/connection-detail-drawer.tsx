@@ -4,7 +4,6 @@ import { Suspense, lazy, useMemo, useState } from "react";
 import {
   CardTitle,
   ErrorState,
-  SegmentedControl,
   Skeleton,
   SlideOver,
   Tabs,
@@ -14,17 +13,17 @@ import { useProjectsIncludingArchived } from "@/features/projects/hooks";
 import { useConnectionBindings, useConnections, useIntegrationsList } from "../hooks";
 import { cardProvider, getCapabilities } from "../derive";
 import { PROVIDER_MODULES, providerLabel } from "../providers/registry";
-import type { BindingSummary, DeployStage, StatusCard } from "../types";
+import type { BindingSummary, StatusCard } from "../types";
 import { AgentAccessControl } from "./agent-access-control";
 import { DeliveryLogViewer } from "./delivery-log-viewer";
 import { BindingReleaseRunnerField } from "./release-runner-field";
-import { STAGE_OPTIONS, StatusPill, scopeLabel } from "./status-pill";
+import { StatusPill, scopeLabel } from "./status-pill";
 
 /** Adaptive connection detail (ISS-402). Opened from a directory provider card;
  *  renders the provider's existing config+actions section (Test / Rotate /
  *  Disconnect) and — ONLY when the adapter declares `hasDeliveryLog` — a
- *  read-only delivery-log tab. The stage split (preview/live) shows only when
- *  the adapter declares `canDeploy`. MCP-injection providers therefore get a
+ *  read-only delivery-log tab, scoped to the binding the card stands for.
+ *  MCP-injection providers therefore get a
  *  single config pane with no empty delivery-log box.
  *
  *  ISS-408/F3: the Configuration tab now also renders a `BindingsSection`
@@ -55,30 +54,27 @@ function ProviderSection({ provider, projectId }: { provider: string; projectId:
 }
 
 /** Resolve the binding (and therefore the owning connection) the drawer is
- *  currently scoped to. For `canDeploy` providers (Coolify) the card key
- *  carries the env suffix (`coolify:staging`); for the others a single binding
- *  per project covers the provider. */
+ *  scoped to: the one the card's `meta.bindingId` names, and the provider's
+ *  only binding where the card names none. */
 function useBindingForCard(
   projectId: string,
   provider: string,
-  stageHint: DeployStage | null,
+  bindingId: string | null,
 ): BindingSummary | undefined {
   const list = useIntegrationsList(projectId);
   return useMemo(() => {
     const rows = (list.data?.items ?? []).filter((i) => i.provider === provider);
-    if (stageHint) return rows.find((r) => r.stages.includes(stageHint));
+    if (bindingId) return rows.find((r) => r.id === bindingId);
     return rows[0];
-  }, [list.data, provider, stageHint]);
+  }, [list.data, provider, bindingId]);
 }
 
 function BindingsSection({
   connectionId,
   currentProjectId,
-  currentStage,
 }: {
   connectionId: string;
   currentProjectId: string;
-  currentStage: DeployStage | null;
 }) {
   const bindingsQ = useConnectionBindings(connectionId);
   const projectsQ = useProjectsIncludingArchived();
@@ -121,7 +117,6 @@ function BindingsSection({
           items={bindingsQ.data?.items ?? []}
           projectNames={projectNames}
           currentProjectId={currentProjectId}
-          currentStage={currentStage}
         />
       )}
     </section>
@@ -132,12 +127,10 @@ function BindingsList({
   items,
   projectNames,
   currentProjectId,
-  currentStage,
 }: {
   items: BindingSummary[];
   projectNames: Map<string, string>;
   currentProjectId: string;
-  currentStage: DeployStage | null;
 }) {
   if (items.length === 0) {
     return (
@@ -149,9 +142,7 @@ function BindingsList({
   return (
     <ul className="flex flex-col gap-1.5">
       {items.map((b) => {
-        const isCurrent =
-          b.projectId === currentProjectId &&
-          (currentStage === null || b.stages.includes(currentStage));
+        const isCurrent = b.projectId === currentProjectId;
         const name = projectNames.get(b.projectId) ?? b.projectId;
         return (
           <li
@@ -159,7 +150,7 @@ function BindingsList({
             className="flex items-center gap-3 rounded-md border border-line bg-surface px-3 py-2"
           >
             <span className="truncate text-fg">{name}</span>
-            <span className="fg-body-sm text-muted">{scopeLabel(b.role, b.stages)}</span>
+            <span className="fg-body-sm text-muted">{scopeLabel(b.role)}</span>
             {isCurrent && (
               <span className="fg-body-sm ml-auto rounded-pill bg-sunken px-2 py-0.5 text-subtle">
                 this project
@@ -175,25 +166,15 @@ function BindingsList({
 function DeliveryLogPane({
   provider,
   projectId,
-  canDeploy,
+  bindingId,
 }: {
   provider: string;
   projectId: string;
-  canDeploy: boolean;
+  bindingId: string | null;
 }) {
-  const [stage, setStage] = useState<DeployStage>("preview");
-  const list = useIntegrationsList(projectId);
-  const rows = useMemo(
-    () => (list.data?.items ?? []).filter((i) => i.provider === provider),
-    [list.data, provider],
-  );
-  const binding = canDeploy ? rows.find((r) => r.stages.includes(stage)) : rows[0];
-
+  const binding = useBindingForCard(projectId, provider, bindingId);
   return (
     <div className="flex flex-col gap-3">
-      {canDeploy && (
-        <SegmentedControl<DeployStage> value={stage} onChange={setStage} options={STAGE_OPTIONS} />
-      )}
       <DeliveryLogViewer projectId={projectId} bindingId={binding?.id ?? null} />
     </div>
   );
@@ -202,15 +183,15 @@ function DeliveryLogPane({
 function ConfigPane({
   provider,
   projectId,
-  stageFromCardKey,
+  bindingId,
   canEdit,
 }: {
   provider: string;
   projectId: string;
-  stageFromCardKey: DeployStage | null;
+  bindingId: string | null;
   canEdit: boolean;
 }) {
-  const binding = useBindingForCard(projectId, provider, stageFromCardKey);
+  const binding = useBindingForCard(projectId, provider, bindingId);
   return (
     <>
       <ProviderSection provider={provider} projectId={projectId} />
@@ -221,7 +202,7 @@ function ConfigPane({
       )}
       {/* ISS-1275 — the binding tier of the release runner label, beside the other
           binding-scoped control on this pane. It renders itself away for a binding
-          that carries no live stage. */}
+          no environment can name. */}
       {binding && (
         <section className="mt-4">
           <BindingReleaseRunnerField
@@ -235,7 +216,6 @@ function ConfigPane({
         <BindingsSection
           connectionId={binding.connectionId}
           currentProjectId={projectId}
-          currentStage={stageFromCardKey}
         />
       )}
     </>
@@ -259,13 +239,7 @@ export function ConnectionDetailDrawer({
 
   if (!card || !provider) return null;
 
-  // Scope suffix on the card key (`coolify:live`, `coolify:preview+live`,
-  // `sentry:service`) → the stage to scope the drawer to. A card whose suffix
-  // names no single stage — a service binding, or one serving both — collapses
-  // to `null`, which reads as "every binding of this provider".
-  const scopeSuffix = card.key.includes(":") ? card.key.split(":")[1] : undefined;
-  const stageFromCardKey: DeployStage | null =
-    caps.canDeploy && (scopeSuffix === "preview" || scopeSuffix === "live") ? scopeSuffix : null;
+  const bindingId = typeof card.meta?.bindingId === "string" ? card.meta.bindingId : null;
 
   const title = (
     <span className="flex items-center gap-2.5">
@@ -291,14 +265,14 @@ export function ConnectionDetailDrawer({
               <ConfigPane
                 provider={provider}
                 projectId={projectId}
-                stageFromCardKey={stageFromCardKey}
+                bindingId={bindingId}
                 canEdit={canEdit}
               />
             ) : (
               <DeliveryLogPane
                 provider={provider}
                 projectId={projectId}
-                canDeploy={caps.canDeploy}
+                bindingId={bindingId}
               />
             )}
           </>
@@ -306,7 +280,7 @@ export function ConnectionDetailDrawer({
           <ConfigPane
             provider={provider}
             projectId={projectId}
-            stageFromCardKey={stageFromCardKey}
+            bindingId={bindingId}
             canEdit={canEdit}
           />
         )}

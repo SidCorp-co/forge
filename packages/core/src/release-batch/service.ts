@@ -28,7 +28,6 @@ import {
   insertOneShotRun,
   type OneShotRunSpec,
 } from '../pipeline/runs.js';
-import { readProjectBranches } from '../projects/service.js';
 import {
   abortedError,
   batchAborted,
@@ -40,7 +39,6 @@ import { collectReleaseBlockers, releaseBlockerError } from './blockers.js';
 import {
   type CloseVerification,
   closeVerification,
-  finishVerification,
   type ReleaseVerification,
   resolveReleaseChannels,
   resolveReleasePlan,
@@ -93,7 +91,7 @@ export interface CreateReleaseBatchResult {
    * identity rather than by a transition. Said here and not at the fifth finish (ISS-1199).
    */
   openedAfterRelease: boolean;
-  /** `unverified` where no live binding declares a probe, which every issue it closes says. */
+  /** `unverified` where production declares no source probe, which every issue it closes says. */
   verification: ReleaseVerification;
 }
 
@@ -130,11 +128,9 @@ export async function createReleaseBatch(
     );
   }
 
-  const project = (await readProjectBranches(projectId)) ?? {
-    baseBranch: null,
-    releaseChain: [],
-  };
-  const { baseBranch, promotePlanned } = releaseBranches(project);
+  const decl = report.declaration;
+  if (decl?.kind !== 'gated') throw new NoReleaseGateError();
+  const { defaultBranch, promotePlanned } = releaseBranches(decl.path);
   const deployPlanned = plan.channels.length > 0;
   const verification = closeVerification(plan.channels);
   const commitBefore =
@@ -217,8 +213,8 @@ export async function createReleaseBatch(
   const promptString = buildReleaseBatchPrompt({
     runId: run.id,
     projectId,
-    baseBranch,
-    releaseChain: project.releaseChain,
+    defaultBranch,
+    path: decl.path,
     plan,
     releaseRunnerPreferenceMet: preferenceMet,
     issues: issueRows.map((r) => ({
@@ -336,7 +332,7 @@ export async function assertFinishable(
   // opened by it.
   if (!run.releaseVersion) throw new ReleaseVersionMissingError(runId);
 
-  return finishVerification(await resolveReleaseChannels(run.projectId));
+  return closeVerification(await resolveReleaseChannels(run.projectId));
 }
 
 export async function finishReleaseBatch(

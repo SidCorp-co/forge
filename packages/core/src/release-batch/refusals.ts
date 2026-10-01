@@ -1,10 +1,6 @@
 /**
  * Every refusal `releaseBatchRoutes` makes, in one place.
  *
- * Split out of `routes.ts` when the two declaration refusals pushed that file past its
- * 500-line budget (ISS-1046). The seam is the one the router already had: these are the
- * sentences an operator reads, and none of them is about routing.
- *
  * The messages carry the remedy, because a refusal an operator cannot act on is a 500 with
  * better manners — `middleware/error.ts` `extractCause` copies only `code`, `details` and
  * `wwwAuthenticate`, so anything the caller needs has to be in one of those three.
@@ -20,7 +16,6 @@ import {
   type ReleaseBlockerCode,
   releaseBlockerSentence,
 } from './blocker-sentences.js';
-import { ReleaseRunnerAmbiguousError } from './channel.js';
 import {
   ClaimConflictError,
   NoReleaseGateError,
@@ -32,7 +27,6 @@ import {
   ReleaseVersionMissingError,
 } from './errors.js';
 import { ReleaseTargetUndeclaredError } from './gate.js';
-import { ReleaseMultiChannelUnsupportedError } from './service.js';
 import type { ReleaseRunHoldingError } from './state.js';
 
 export const badRequest = (details: unknown) =>
@@ -97,21 +91,7 @@ export function declarationRefusal(err: unknown): HTTPException | null {
     return carrying(
       err,
       'RELEASE_TARGET_UNDECLARED',
-      releaseBlockerSentence('RELEASE_TARGET_UNDECLARED', { releaseChain: err.releaseChain }),
-    );
-  }
-  if (err instanceof ReleaseRunnerAmbiguousError) {
-    return carrying(
-      err,
-      'RELEASE_RUNNER_AMBIGUOUS',
-      releaseBlockerSentence('RELEASE_RUNNER_AMBIGUOUS', { labels: err.labels }),
-    );
-  }
-  if (err instanceof ReleaseMultiChannelUnsupportedError) {
-    return carrying(
-      err,
-      'RELEASE_MULTI_CHANNEL_UNSUPPORTED',
-      releaseBlockerSentence('RELEASE_MULTI_CHANNEL_UNSUPPORTED', { count: err.count }),
+      releaseBlockerSentence('RELEASE_TARGET_UNDECLARED', { reason: err.reason }),
     );
   }
   return null;
@@ -127,9 +107,7 @@ function carrying(err: unknown, code: ReleaseBlockerCode, message: string): HTTP
 }
 
 export function unreadableProbes(err: ReleaseProbesUnreadableError): HTTPException {
-  const details: Record<string, unknown> =
-    err.bindings.length > 0 ? { urls: err.urls, bindings: err.bindings } : { urls: err.urls };
-  return releaseBlockerHttp(err, 'RELEASE_PROBES_UNREADABLE', details);
+  return releaseBlockerHttp(err, 'RELEASE_PROBES_UNREADABLE', { bindings: err.bindings });
 }
 
 export function issuesUnnamed(projectId: string): HTTPException {

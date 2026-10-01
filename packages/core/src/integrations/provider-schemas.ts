@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { AGENT_ACCESS_VALUES } from './agent-access.js';
-import { bindingShapeFields, checkBindingShape, stagesSchema } from './binding-shape.js';
+import { bindingShapeFields, checkBindingShape, retiredStagesField } from './binding-shape.js';
 import { getIntegration, providerNames } from './registry.js';
 import { mergeRotatedSecrets } from './rotation.js';
 import { assertVaultConfigured, badRequest } from './route-helpers.js';
@@ -109,10 +109,7 @@ export const createSchema = z
 
 export const updateSchema = z.object({
   config: z.record(z.string(), z.unknown()).optional(),
-  /** A deploy binding's stages, correctable after the fact: a project that finds
-   *  its stage topology wrong should not have to delete the binding, and its
-   *  credential with it, to say so. */
-  stages: stagesSchema.optional(),
+  stages: retiredStagesField,
   secrets: z.record(z.string(), z.unknown()).optional(),
   active: z.boolean().optional(),
   instructions: z.string().max(4000).nullable().optional(),

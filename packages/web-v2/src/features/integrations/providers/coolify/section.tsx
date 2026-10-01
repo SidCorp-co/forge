@@ -23,7 +23,6 @@ import type { AgentAccess } from "../../types";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
 import { coolify } from "./index";
 import { CoolifyTargetsField } from "./targets-field";
-import { STAGE_OPTIONS } from "../../components/status-pill";
 import {
   useConfirmProdDeploy,
   useCreateProviderIntegration,
@@ -35,7 +34,6 @@ import {
 } from "../../hooks";
 import type {
   CoolifyTargetInput,
-  DeployStage,
   IntegrationSummary,
   IntegrationTestResult,
 } from "../../types";
@@ -56,17 +54,25 @@ function badgeFor(existing: IntegrationSummary | undefined): BadgeView {
   return { label: "Untested", tone: "neutral" };
 }
 
+const NEW_BINDING = "new";
+
+function bindingName(row: IntegrationSummary): string {
+  return row.label || `binding ${row.id.slice(0, 8)}`;
+}
+
 export function CoolifySection({ projectId }: { projectId: string }) {
-  const [stage, setStage] = useState<DeployStage>("preview");
   const list = useIntegrationsList(projectId);
   const rows = useMemo(
     () => (list.data?.items ?? []).filter((i) => i.provider === "coolify"),
     [list.data],
   );
-  // Every coolify binding serving this stage — a stage may hold more than one
-  // and core never picks among them (ISS-1046 rule 3). This panel edits the
-  // first; the connection drawer lists them all.
-  const existing = useMemo(() => rows.find((i) => i.stages.includes(stage)), [rows, stage]);
+  const [picked, setPicked] = useState<string | null>(null);
+  const selected = picked ?? rows[0]?.id ?? NEW_BINDING;
+  const existing = useMemo(() => rows.find((i) => i.id === selected), [rows, selected]);
+  const options = [
+    ...rows.map((r) => ({ value: r.id, label: bindingName(r) })),
+    { value: NEW_BINDING, label: "New binding" },
+  ];
 
   return (
     <Card>
@@ -80,16 +86,13 @@ export function CoolifySection({ projectId }: { projectId: string }) {
       </CardHeader>
       <CardContent>
         <div className="flex flex-col gap-4">
-          <SegmentedControl<DeployStage>
-            value={stage}
-            onChange={setStage}
-            options={STAGE_OPTIONS}
-          />
-          {/* Remount the panel per stage so its form state re-seeds. */}
-          <StagePanel
-            key={stage}
+          {rows.length > 0 && (
+            <SegmentedControl<string> value={selected} onChange={setPicked} options={options} />
+          )}
+          {/* Remount the panel per binding so its form state re-seeds. */}
+          <BindingPanel
+            key={selected}
             projectId={projectId}
-            stage={stage}
             existing={existing}
             onRefetch={() => list.refetch()}
           />
@@ -99,19 +102,17 @@ export function CoolifySection({ projectId }: { projectId: string }) {
   );
 }
 
-interface EnvPanelProps {
+interface BindingPanelProps {
   projectId: string;
-  stage: DeployStage;
   existing: IntegrationSummary | undefined;
   onRefetch: () => void;
 }
 
-function StagePanel({
+function BindingPanel({
   projectId,
-  stage,
   existing,
   onRefetch,
-}: EnvPanelProps) {
+}: BindingPanelProps) {
   const create = useCreateProviderIntegration(projectId);
   const [ownerOrgId, setOwnerOrgId] = useState<string | undefined>(undefined);
   const update = useUpdateProviderIntegration(projectId);
@@ -148,7 +149,6 @@ function StagePanel({
   const [error, setError] = useState<string | null>(null);
   const [agentAccess, setAgentAccess] = useState<AgentAccess>(AGENT_ACCESS_CLOSED);
 
-  const isLive = stage === "live";
   const saving = create.isPending || update.isPending;
   // Org-shared credential: only an org owner/admin may change the CONNECTION
   // tier (base URL + token). The deploy target (resourceUuid/branch) is
@@ -197,7 +197,6 @@ function StagePanel({
         await create.mutateAsync({
           provider: "coolify",
           role: "deploy",
-          stages: [stage],
           config: { baseUrl, targets: cleanTargets },
           secrets: { apiToken: apiToken.trim() },
           ...agentAccessBody(coolify.agentPathKind, agentAccess),
@@ -224,19 +223,23 @@ function StagePanel({
 
   function handleDelete() {
     if (!existing) return;
-    if (!window.confirm(`Delete the ${stage} Coolify integration?`))
+    if (!window.confirm(`Delete the Coolify integration ${bindingName(existing)}?`))
       return;
     remove.mutate(existing.id);
   }
 
   return (
-    <div
-      className={`flex flex-col gap-4 rounded-lg border p-4 ${isLive ? "border-red" : "border-subtle"}`}
-    >
+    <div className="flex flex-col gap-4 rounded-lg border border-subtle p-4">
       <p className="fg-body-sm text-muted">
-        {isLive
-          ? "⚠ Live — manual confirmation gate before every deploy."
-          : "Preview — auto-dispatch on release."}
+        Which environment this binding deploys is the project document&apos;s: name it in{" "}
+        <code>environments.&lt;name&gt;.deployment.binding</code>
+        {existing ? (
+          <>
+            {" "}as <code>{existing.id}</code>
+          </>
+        ) : null}{" "}
+        and write the document with <code>PUT /api/projects/:id/config</code>. A binding no
+        environment names is never dispatched.
       </p>
 
       <fieldset className="flex flex-col gap-3 rounded-md border border-subtle bg-sunken/40 p-3">
@@ -292,7 +295,6 @@ function StagePanel({
 
       <CoolifyTargetsField
         projectId={projectId}
-        stage={stage}
         integrationId={existing?.id}
         baseUrl={baseUrl}
         apiToken={apiToken}
@@ -357,7 +359,7 @@ function StagePanel({
 
       {existing && <DeployConfirmationHint />}
 
-      {isLive && existing && (
+      {existing && (
         <ProdGateSection
           integrationId={existing.id}
           confirmPending={confirmProd.isPending}
@@ -386,8 +388,11 @@ function ProdGateSection({
       <div className="flex flex-col gap-1 rounded-lg border border-subtle bg-sunken p-3">
         <span className="fg-label text-subtle">Live approval gate</span>
         <span className="fg-body-sm text-muted">
-          A production deploy waits for the confirmation below unless the project document&apos;s
-          production environment deploys on land (<code>deployment.trigger: &quot;on-land&quot;</code>).
+          Where this binding reaches production — it is the binding the production environment
+          names, or deploys to an application that one does — a production deploy waits for the
+          confirmation below unless that environment deploys on land
+          (<code>deployment.trigger: &quot;on-land&quot;</code>). Confirming any other binding is
+          refused.
         </span>
       </div>
       <ProdConfirmBanner

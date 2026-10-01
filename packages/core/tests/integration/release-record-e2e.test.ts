@@ -15,11 +15,9 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { createServer, type Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createTestProject,
   createTestProjectMember,
@@ -29,15 +27,19 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
+import {
+  PRODUCTION_PROBE,
+  pastTheProbeWindow,
+  seedProduction,
+  stubProbe,
+} from '../helpers/production.js';
 
 let harness: TestDatabase;
 // biome-ignore lint/suspicious/noExplicitAny: test-only mount
 let app: any;
 let signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
 
-let probe: Server;
 let served = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
-let probeUrl = '';
 
 /** What production is serving in the happy case, and what a record claims. */
 const RELEASED = 'b853f813d0e4b2a1c9f8e7d6c5b4a39281706f5e';
@@ -60,17 +62,16 @@ beforeAll(async () => {
     import('../../src/middleware/error.js'),
   ]);
   signUserToken = jwt.signUserToken;
+  (await import('../../src/integrations/register-all.js')).registerAllIntegrations();
   app = new Hono();
   app.route('/api/projects', batch.releaseBatchRoutes);
   app.onError(err.errorHandler);
 
-  probe = createServer((_req, res) => res.end(served));
-  await new Promise<void>((done) => probe.listen(0, '127.0.0.1', done));
-  probeUrl = `http://127.0.0.1:${(probe.address() as AddressInfo).port}/version`;
+  stubProbe({ [PRODUCTION_PROBE]: () => Response.json({ commit: served }) });
 }, 60_000);
 
 afterAll(async () => {
-  if (probe) await new Promise<void>((done) => probe.close(() => done()));
+  vi.unstubAllGlobals();
   if (harness) await harness.cleanup();
 });
 
@@ -99,24 +100,13 @@ async function seed(opts: { probes?: boolean; label?: string } = {}): Promise<Wo
     projectId: project.id,
     role: 'admin',
   });
-  await harness.db.execute(sql`
-    UPDATE projects SET base_branch = 'main', release_chain = '[{"branch": "main"}]'::jsonb WHERE id = ${project.id}
-  `);
-  const connection = randomUUID();
-  await harness.db.execute(sql`
-    INSERT INTO integration_connections (id, owner_type, owner_id, provider, active)
-    VALUES (${connection}, 'user', ${user.id}, 'coolify', true)
-  `);
-  const config: Record<string, unknown> = {};
-  if (opts.label) config.releaseRunnerLabel = opts.label;
-  if (opts.probes !== false) {
-    config.verify = { probes: [{ url: probeUrl }], timeoutSeconds: 5, stableReads: 1 };
-  }
-  await harness.db.execute(sql`
-    INSERT INTO integration_bindings (connection_id, project_id, provider, role, stages, active, config)
-    VALUES (${connection}, ${project.id}, 'coolify', 'deploy', ARRAY['live'], true,
-            ${JSON.stringify(config)}::jsonb)
-  `);
+  await harness.db.execute(sql`UPDATE projects SET base_branch = 'main' WHERE id = ${project.id}`);
+  await seedProduction(harness.db, {
+    projectId: project.id,
+    ownerId: user.id,
+    config: opts.label ? { releaseRunnerLabel: opts.label } : {},
+    probes: opts.probes === false ? 'none' : 'source',
+  });
   return { projectId: project.id, userId: user.id, token: await signUserToken(user.id) };
 }
 
@@ -314,7 +304,9 @@ describe('a release that did not happen is refused by name', () => {
     const w = await seed();
     const a = await insertIssue(w);
 
-    const res = await record(w, { issueIds: [a], commit: NEVER_DEPLOYED, account: ACCOUNT });
+    const res = await pastTheProbeWindow(() =>
+      record(w, { issueIds: [a], commit: NEVER_DEPLOYED, account: ACCOUNT }),
+    );
 
     expect(res.status).toBe(409);
     const cause = await causeOf(res);
@@ -328,7 +320,9 @@ describe('a release that did not happen is refused by name', () => {
     const a = await insertIssue(w);
     const b = await insertIssue(w);
 
-    await record(w, { issueIds: [a, b], commit: NEVER_DEPLOYED, account: ACCOUNT });
+    await pastTheProbeWindow(() =>
+      record(w, { issueIds: [a, b], commit: NEVER_DEPLOYED, account: ACCOUNT }),
+    );
 
     expect(await stored(a)).toEqual({ status: 'awaiting_release', claim: null });
     expect(await stored(b)).toEqual({ status: 'awaiting_release', claim: null });

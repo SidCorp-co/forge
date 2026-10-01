@@ -33,7 +33,6 @@ export interface BindingRow {
   id: string;
   role: BindingRole;
   provider: string;
-  stages: string[];
   label: string;
 }
 
@@ -248,7 +247,6 @@ export const drizzleConfigStore: ConfigStore = {
         id: integrationBindings.id,
         role: integrationBindings.role,
         provider: integrationBindings.provider,
-        stages: integrationBindings.stages,
         label: integrationBindings.label,
       })
       .from(integrationBindings)

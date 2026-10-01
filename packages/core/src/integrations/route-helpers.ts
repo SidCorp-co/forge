@@ -1,5 +1,5 @@
 import { HTTPException } from 'hono/http-exception';
-import type { BindingRole, DeployStage } from '../db/schema.js';
+import type { BindingRole } from '../db/schema.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
@@ -92,7 +92,6 @@ export function summarizeBinding(pair: BindingWithConnection) {
     projectId: binding.projectId,
     provider: binding.provider as IntegrationProvider,
     role: binding.role as BindingRole,
-    stages: (binding.stages ?? []) as DeployStage[],
     config: effectiveConfig(pair),
     bindingConfig: (binding.config ?? {}) as Record<string, unknown>,
     label: binding.label ?? '',
@@ -147,7 +146,6 @@ export function summarizeConnectionWithUsage(
         id: b.id,
         projectId: b.projectId,
         role: b.role as BindingRole,
-        stages: (b.stages ?? []) as DeployStage[],
         label: b.label,
         active: b.active,
       })),

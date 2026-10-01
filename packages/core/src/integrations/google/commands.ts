@@ -153,7 +153,6 @@ export async function listGoogleIntegrations(projectId: string) {
       return {
         id: r.binding.id,
         role: r.binding.role,
-        stages: r.binding.stages ?? [],
         active: r.binding.active && r.connection.active,
         clientEmail: config.clientEmail ?? null,
         defaultSpreadsheetId: config.defaultSpreadsheetId ?? null,

@@ -11,7 +11,6 @@ export interface StoredBinding {
   connectionId: string;
   provider: string;
   role: BindingRole;
-  stages: string[];
   config: unknown;
   active: boolean;
   revision: number;
@@ -31,7 +30,6 @@ export interface BindingWrite {
   connectionId: string;
   provider: string;
   role: BindingRole;
-  stages: string[];
   config: Record<string, unknown>;
 }
 
@@ -56,7 +54,6 @@ const bindingColumns = {
   connectionId: integrationBindings.connectionId,
   provider: integrationBindings.provider,
   role: integrationBindings.role,
-  stages: integrationBindings.stages,
   config: integrationBindings.config,
   active: integrationBindings.active,
   revision: integrationBindings.revision,
@@ -130,7 +127,6 @@ export const drizzleBindingStore: BindingStore = {
           connectionId: write.connectionId,
           provider: write.provider,
           role: write.role,
-          stages: write.stages,
           config: write.config,
           active: true,
         };
@@ -139,7 +135,6 @@ export const drizzleBindingStore: BindingStore = {
           current.connectionId === values.connectionId &&
           current.provider === values.provider &&
           current.role === values.role &&
-          JSON.stringify(current.stages) === JSON.stringify(values.stages) &&
           JSON.stringify(current.config) === JSON.stringify(values.config)
         ) {
           return { ok: true as const, stored: current, created: false };

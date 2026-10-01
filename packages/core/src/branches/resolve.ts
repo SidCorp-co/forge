@@ -1,20 +1,11 @@
 export interface BranchConfig {
   baseBranch: string | null;
   targetBranch: string | null;
-  /**
-   * Where the last edge of the project's `releaseChain` lands, or `null` where it crosses none.
-   *
-   * Read it from `chainLiveBranch`, never from a stored column: ISS-1311 removed `live_branch`,
-   * whose value on 25 of 32 fleet projects was a leftover from the era when it defaulted to `main`
-   * and nothing promoted to it.
-   */
-  liveBranch: string | null;
 }
 
 export interface IssueBranchOverride {
   baseBranch?: string | null;
   targetBranch?: string | null;
-  liveBranch?: string | null;
 }
 
 export interface IssueLike {
@@ -23,7 +14,6 @@ export interface IssueLike {
 
 export interface ProjectLike {
   baseBranch: string | null;
-  liveBranch: string | null;
 }
 
 function pick(value: string | null | undefined): string | null {
@@ -36,10 +26,9 @@ export function resolveIssueBranches(issue: IssueLike, project: ProjectLike): Br
   const override = issue.metadata?.branchConfig ?? null;
 
   const baseBranch = pick(override?.baseBranch) ?? pick(project.baseBranch);
-  const liveBranch = pick(override?.liveBranch) ?? pick(project.liveBranch);
   const targetBranch = pick(override?.targetBranch) ?? baseBranch;
 
-  return { baseBranch, targetBranch, liveBranch };
+  return { baseBranch, targetBranch };
 }
 
 export function extractIssueBranchOverride(issue: {

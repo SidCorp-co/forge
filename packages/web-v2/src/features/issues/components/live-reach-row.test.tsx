@@ -28,7 +28,7 @@ afterEach(cleanup);
 
 const measured = {
   baseBranch: "staging",
-  liveBranch: "master",
+  deploysFrom: "master",
   measuredAt: "2026-09-23T14:00:00.000Z",
   baseSha: "f".repeat(40),
   liveSha: "52c66950".padEnd(40, "0"),
@@ -80,7 +80,7 @@ describe("the Production row", () => {
       rail({
         state: "unmeasured",
         baseBranch: "staging",
-        liveBranch: "master",
+        deploysFrom: "master",
         measuredAt: null,
         reason: "this project has no active GitHub binding",
       }),

@@ -1,11 +1,11 @@
-import { eq, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { projects } from '../db/schema.js';
 import { getIntegration } from '../integrations/registry.js';
-import { effectiveConfig, listActiveDeployBindingsForStage } from '../integrations/store.js';
+import { effectiveConfig } from '../integrations/store.js';
 import { getKnowledgeEntry } from '../knowledge/service.js';
-import { normalizeEnvironments } from '../projects/environments.js';
+import type { NamedEnvironment } from '../project-config/release-path.js';
 import { ReleaseProbesUnreadableError } from './errors.js';
+import { type ReleaseDeclaration, resolveReleaseDeclaration } from './gate.js';
 import {
   type CloseVerification,
   RELEASE_PROCEDURE_FACT,
@@ -13,7 +13,7 @@ import {
   type ReleasePlan,
   type ReleaseRollback,
 } from './plan.js';
-import { invalidProbeUrls, parseVerifyConfig, type VerifyConfig } from './verify.js';
+import type { VerifyConfig } from './verify.js';
 
 export type {
   CloseVerification,
@@ -52,57 +52,50 @@ export function classifyRollback(provider: string, raw: unknown): ReleaseRollbac
   return null;
 }
 
-export function liveProbeFrom(environments: unknown): VerifyConfig | null {
-  const live = normalizeEnvironments(environments).live;
-  if (live.commitUrl === null) return null;
-  return parseVerifyConfig({
-    probes: [{ url: live.commitUrl, commitPath: live.commitPath ?? undefined }],
-  });
-}
-
-export async function resolveReleaseChannels(projectId: string): Promise<ReleaseChannel[]> {
-  const pairs = await listActiveDeployBindingsForStage(projectId, 'live');
-  if (pairs.length === 0) return [];
-  const [row] = await db
-    .select({ environments: projects.environments })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  const fallback = liveProbeFrom(row?.environments);
-  return pairs.map((pair) => {
-    const cfg = effectiveConfig(pair);
-    const label = cfg.releaseRunnerLabel;
-    const declared = parseVerifyConfig(cfg.verify);
-    const absent = cfg.verify === undefined || cfg.verify === null;
-    const verify = declared ?? (absent ? fallback : null);
-    // A declaration this repo refused takes no fallback (ISS-1069) and is not silence (ISS-1286).
-    const unusable = !declared && !absent;
+/** A release proves the commit it shipped, so only a probe identifying the source can prove it. */
+export function releaseProbesOf(production: NamedEnvironment): {
+  verify: VerifyConfig | null;
+  verifySource: ReleaseChannel['verifySource'];
+} {
+  const declared = production.declaration.verification?.runtime ?? [];
+  const source = declared.filter((p) => p.identifies === 'source');
+  if (source.length > 0) {
     return {
-      bindingId: pair.binding.id,
-      provider: pair.binding.provider,
-      label: pair.binding.label,
-      instructions: pair.binding.instructions ?? null,
-      verify,
-      verifySource: declared
-        ? ('binding' as const)
-        : verify
-          ? ('environments-live' as const)
-          : unusable
-            ? ('declared-unusable' as const)
-            : ('none' as const),
-      rollback: classifyRollback(pair.binding.provider, cfg.rollback),
-      releaseRunnerLabel: typeof label === 'string' && label.length > 0 ? label : null,
+      verify: { probes: source.map((p) => ({ url: p.url, commitPath: p.path })) },
+      verifySource: 'environment',
     };
-  });
+  }
+  return { verify: null, verifySource: declared.length > 0 ? 'declared-unusable' : 'none' };
 }
 
-/** How the binding is named where a person has to find it: provider, store slug, id. */
+function channelOf(decl: Extract<ReleaseDeclaration, { kind: 'gated' }>): ReleaseChannel {
+  const pair = decl.binding;
+  const label = effectiveConfig(pair).releaseRunnerLabel;
+  return {
+    environment: decl.production.name,
+    bindingId: pair.binding.id,
+    provider: pair.binding.provider,
+    label: pair.binding.label,
+    instructions: pair.binding.instructions ?? null,
+    ...releaseProbesOf(decl.production),
+    rollback: classifyRollback(pair.binding.provider, effectiveConfig(pair).rollback),
+    releaseRunnerLabel: typeof label === 'string' && label.length > 0 ? label : null,
+  };
+}
+
+/** The production environment's deploy binding, or none where the project is not gated. */
+export async function resolveReleaseChannels(projectId: string): Promise<ReleaseChannel[]> {
+  const decl = await resolveReleaseDeclaration(projectId);
+  return decl?.kind === 'gated' ? [channelOf(decl)] : [];
+}
+
+/** How the binding is named where a person has to find it: environment, provider, store slug, id. */
 export function bindingName(channel: ReleaseChannel): string {
   const named = channel.label ? `${channel.provider} [${channel.label}]` : channel.provider;
-  return `${named} ${channel.bindingId}`;
+  return `environment \`${channel.environment}\` (${named} ${channel.bindingId})`;
 }
 
-/** The live bindings whose `verify` Forge refused as a declaration. */
+/** The production environments whose probes a release cannot compare with a commit. */
 export function refusedVerifyBindings(channels: readonly ReleaseChannel[]): string[] {
   return channels.filter((c) => c.verifySource === 'declared-unusable').map(bindingName);
 }
@@ -115,45 +108,14 @@ export function refusedVerifyBindings(channels: readonly ReleaseChannel[]): stri
  */
 export function closeVerification(channels: readonly ReleaseChannel[]): CloseVerification {
   const refused = refusedVerifyBindings(channels);
-  if (refused.length > 0) throw new ReleaseProbesUnreadableError([], refused);
+  if (refused.length > 0) throw new ReleaseProbesUnreadableError(refused);
   const cfg = channels.find((c) => c.verify !== null)?.verify ?? null;
   return cfg ? { kind: 'probed', cfg } : { kind: 'unverified' };
 }
 
-/** `closeVerification` for a finish, where a probe url no request can be made to is named rather
- *  than met as a thrown `new URL` mid-verify. */
-export function finishVerification(channels: readonly ReleaseChannel[]): CloseVerification {
-  const verification = closeVerification(channels);
-  const urls = channels.flatMap((c) => (c.verify ? invalidProbeUrls(c.verify) : []));
-  if (urls.length > 0) throw new ReleaseProbesUnreadableError(urls);
-  return verification;
-}
-
-/** Thrown where the live deploy bindings disagree about which box may ship the project. */
-export class ReleaseRunnerAmbiguousError extends Error {
-  readonly code = 'RELEASE_RUNNER_AMBIGUOUS';
-  constructor(
-    readonly projectId: string,
-    readonly labels: string[],
-  ) {
-    super(
-      `RELEASE_RUNNER_AMBIGUOUS: project ${projectId} has live deploy bindings declaring different releaseRunnerLabel values (${labels.join(', ')}), so there is no one box the release job may be offered to. Core returns the whole deploy SET and never picks among it — but the runner label selects a machine, and two answers is an undeclared pool rather than a set to work. Make the labels agree, or clear all but one.`,
-    );
-    this.name = 'ReleaseRunnerAmbiguousError';
-  }
-}
-
-/**
- * The one release runner label for a project, or `null` where none is declared.
- *
- * THROWS where two live bindings disagree. This is the one axis on which the set still collapses to
- * a single answer, because it names a machine: sending the job to whichever row sorted first is the
- * same silent pick `resolveReleaseChannels` exists to remove.
- */
-export function releaseRunnerLabelOf(projectId: string, channels: ReleaseChannel[]): string | null {
-  const labels = [...new Set(channels.map((c) => c.releaseRunnerLabel).filter((l) => l !== null))];
-  if (labels.length > 1) throw new ReleaseRunnerAmbiguousError(projectId, labels);
-  return labels[0] ?? null;
+/** The production binding's release runner label, or `null` where none is declared. */
+export function releaseRunnerLabelOf(channels: readonly ReleaseChannel[]): string | null {
+  return channels[0]?.releaseRunnerLabel ?? null;
 }
 
 export async function resolveReleasePlan(projectId: string): Promise<ReleasePlan> {
@@ -162,7 +124,7 @@ export async function resolveReleasePlan(projectId: string): Promise<ReleasePlan
   const raw = entry && entry.archivedAt === null ? entry.body : null;
   return {
     channels,
-    releaseRunnerLabel: releaseRunnerLabelOf(projectId, channels),
+    releaseRunnerLabel: releaseRunnerLabelOf(channels),
     procedure: raw !== null && raw.trim().length > 0 ? raw : null,
   };
 }

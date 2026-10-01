@@ -323,11 +323,20 @@ describe('a hold whose owner is gone reads as free', () => {
     expect(inFlight?.message).toContain('A release is already running for this project');
   });
 
-  it('refuses an environment the deploy stages do not name', async () => {
+  it('takes a lock on any environment name the project document can declare', async () => {
     const { acquireDeployLocks } = await lockModule();
     const run = await makeRun();
 
-    const err = await acquireDeployLocks(request(run), ['staging']).catch((e: unknown) => e);
+    await acquireDeployLocks(request(run), ['staging']);
+
+    expect((await lockRow('staging'))?.run_id).toBe(run);
+  });
+
+  it('refuses an environment name no project document could declare', async () => {
+    const { acquireDeployLocks } = await lockModule();
+    const run = await makeRun();
+
+    const err = await acquireDeployLocks(request(run), ['Not A Slug']).catch((e: unknown) => e);
 
     expect((err as { cause?: { constraint_name?: string } }).cause?.constraint_name).toBe(
       'deploy_locks_environment_chk',

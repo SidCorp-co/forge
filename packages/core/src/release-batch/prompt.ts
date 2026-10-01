@@ -2,7 +2,7 @@
 // Pattern: buildSmokeCanaryPrompt (skills/smoke-verify.ts:429).
 // Untrusted issue text is wrapped via markUntrusted (same as every state prompt).
 
-import { chainLiveBranch, type ReleaseChain } from '../projects/release-chain.js';
+import { describeCrossings, type ReleasePath } from '../project-config/release-path.js';
 import { markUntrusted } from '../prompt/sanitize.js';
 import { RELEASE_BATCH_SKILL, RELEASE_BATCH_TOOL, type ReleasePlan } from './plan.js';
 
@@ -15,9 +15,9 @@ interface IssueSummary {
 interface BuildReleaseBatchPromptArgs {
   runId: string;
   projectId: string;
-  /** `null` where the project declares none, which is a fact about the project and not a refusal. */
-  baseBranch: string | null;
-  releaseChain: ReleaseChain;
+  /** `null` on a project with no git source, which is a fact about the project and not a refusal. */
+  defaultBranch: string | null;
+  path: ReleasePath;
   issues: IssueSummary[];
   plan: ReleasePlan;
   /** False where no box eligible to release carries the declared label. */
@@ -25,13 +25,14 @@ interface BuildReleaseBatchPromptArgs {
 }
 
 export function buildReleaseBatchPrompt(args: BuildReleaseBatchPromptArgs): string {
-  const { runId, projectId, baseBranch, releaseChain, issues, plan } = args;
+  const { runId, projectId, defaultBranch, path, issues, plan } = args;
   const roster = issues
     .map((i) => `- ${i.displayId} — ${markUntrusted(i.title, { source: 'issue.title' })}`)
     .join('\n');
-  const baseLine = baseBranch ? `\nbaseBranch: ${baseBranch}` : '';
-  const liveBranch = chainLiveBranch(releaseChain);
-  const liveLine = liveBranch ? `\nliveBranch: ${liveBranch}` : '';
+  const baseLine = defaultBranch ? `\ndefaultBranch: ${defaultBranch}` : '';
+  const production = path.production
+    ? `\nproduction: environment \`${path.production.name}\`${path.production.declaration.deploysFrom ? `, deploys from \`${path.production.declaration.deploysFrom}\`` : ''}`
+    : '';
   // What was true when the batch was CUT, never where it ended up running: the
   // job is claimed after this string is built, and a box carrying the label can
   // come online in between. The box that took it is in the batch context.
@@ -44,16 +45,16 @@ export function buildReleaseBatchPrompt(args: BuildReleaseBatchPromptArgs): stri
     : '';
   const channelLines =
     plan.channels.length === 0
-      ? 'deploy channels: none declared to Forge'
-      : `deploy channels (${plan.channels.length}, work ALL of them):\n${plan.channels
-          .map((c) => `- ${c.provider}${c.label ? ` [${c.label}]` : ''}`)
+      ? 'deploy channel: none declared to Forge'
+      : `deploy channel:\n${plan.channels
+          .map((c) => `- ${c.provider}${c.label ? ` [${c.label}]` : ''}, binding ${c.bindingId}`)
           .join('\n')}`;
 
   return `## Batch Release
 
 projectId: ${projectId}
 runId: ${runId}
-releaseChain: ${releaseChain.length === 0 ? 'empty — this project ships nothing' : releaseChain.map((e) => (e.from ? `${e.from} → ${e.branch}` : e.branch)).join(', then ')}${baseLine}${liveLine}${runnerLine}
+promotions: ${describeCrossings(path)}${baseLine}${production}${runnerLine}
 ${channelLines}
 
 ### Issues in this batch (${issues.length})
@@ -131,7 +132,7 @@ function renderProcedure(plan: ReleasePlan): string {
 }
 
 const UNVERIFIED_PROOF = `### Proof (this project declares none)
-No live deploy binding on this project declares a verify probe, so the server reads nothing when you call \`finish\`: it closes the roster on your call alone, and every issue it closes carries a note that this release was NOT verified. That makes your own check the only one there is. Call \`finish\` only once you have seen the deploy come up serving what you pushed, pass \`commit\` — the SHA you pushed — so the record names it, and say in what you record how you saw it. Read the outcome with \`${RELEASE_BATCH_TOOL}\` action \`state\`: \`finish.verification\` reads \`unverified\`.`;
+The production environment declares no runtime probe identifying the source, so the server reads nothing when you call \`finish\`: it closes the roster on your call alone, and every issue it closes carries a note that this release was NOT verified. That makes your own check the only one there is. Call \`finish\` only once you have seen the deploy come up serving what you pushed, pass \`commit\` — the SHA you pushed — so the record names it, and say in what you record how you saw it. Read the outcome with \`${RELEASE_BATCH_TOOL}\` action \`state\`: \`finish.verification\` reads \`unverified\`.`;
 
 const UNDECLARED_PROCEDURE = `### This project's release procedure
 This project has declared none to Forge.

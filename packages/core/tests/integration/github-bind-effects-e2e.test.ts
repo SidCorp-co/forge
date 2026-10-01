@@ -232,7 +232,7 @@ describe('POST /integration-connections/:id/bindings', () => {
     });
     const res = await app.request(`/api/integration-connections/${connection.id}/bindings`, {
       method: 'POST',
-      body: JSON.stringify({ projectId, role: 'deploy', stages: ['live'] }),
+      body: JSON.stringify({ projectId, role: 'deploy' }),
       headers: {
         authorization: `Bearer ${await mods.signUserToken(ownerId)}`,
         'content-type': 'application/json',

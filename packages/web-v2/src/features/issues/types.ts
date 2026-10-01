@@ -456,7 +456,7 @@ export interface LiveReachEvidence extends LiveReachCommit {
 
 interface LiveReachMeasured {
   baseBranch: string;
-  liveBranch: string;
+  deploysFrom: string;
   measuredAt: string;
   baseSha: string;
   liveSha: string;
@@ -468,7 +468,7 @@ export type LiveReach =
   | {
       state: "unmeasured";
       baseBranch: string | null;
-      liveBranch: string;
+      deploysFrom: string;
       measuredAt: string | null;
       reason: string;
     };

@@ -29,10 +29,16 @@ const ALLOW = [
   /^CHANGELOG\.md$/,
   // This checker names what it hunts.
   /^scripts\/check-retired-model\.mjs$/,
-  // ISS-1311 — the ONE projection allowed to spell the retired axes, and its own test.
-  /^packages\/core\/src\/projects\/release-chain\.ts$/,
-  /^packages\/core\/src\/projects\/release-chain\.test\.ts$/,
   /^packages\/core\/tests\/integration\/release-chain-migration-ground\.ts$/,
+  // ISS-12 — the columns stand, unread, until ISS-16 drops them.
+  /^packages\/core\/src\/db\/schema\.ts$/,
+  /^packages\/core\/src\/db\/release-axes\.ts$/,
+  /^packages\/core\/tests\/integration\/environments-migration-e2e\.test\.ts$/,
+  /^packages\/core\/tests\/integration\/landing-deploy-key-removed-e2e\.test\.ts$/,
+  // ISS-12 — each spells a deleted key to prove the door refuses it by name.
+  /^packages\/core\/src\/projects\/routes\.test\.ts$/,
+  /^packages\/core\/src\/issues\/metadata-schema\.test\.ts$/,
+  /^packages\/core\/src\/project-config\/(?:routes|schema|schema-plants)\.test\.ts$/,
   /^packages\/core\/tests\/integration\/release-chain-migration-e2e\.test\.ts$/,
   /^packages\/core\/tests\/integration\/release-chain-constraints-e2e\.test\.ts$/,
 ];
@@ -42,30 +48,36 @@ export const RULES = [
     id: 'binding-environment-sql',
     // `b.environment`, `integration_bindings.environment`, `"environment" text` in a sql template
     re: /\b(?:integration_bindings|\bb)\.environment\b/g,
-    why: "raw SQL still reads `integration_bindings.environment`, a column ISS-1046 dropped. Nothing type-checks a `sql` template, so this matches no row rather than failing: select on `role = 'deploy' AND 'live' = ANY(stages)` instead.",
+    why: "raw SQL still reads `integration_bindings.environment`, a column ISS-1046 dropped. Nothing type-checks a `sql` template, so this matches no row rather than failing. The environment a deploy binding serves is the project document's `environments.<name>.deployment.binding` (ISS-8): read it with `project-config/release-path.ts:readDeployMap`.",
   },
   {
     id: 'binding-environment-ts',
     // `binding.environment`, `pair.binding.environment`, `row.environment` beside a provider read
     re: /\bbinding\.environment\b|\bctx\.environment\b/g,
-    why: 'a binding still exposes `environment`, which ISS-1046 replaced with `role` and `stages`. Read the one the value actually meant: `role` for what the binding is FOR, `stages` for which environments a deploy binding serves.',
+    why: 'a binding still exposes `environment`, which ISS-1046 retired. Read the one the value actually meant: `role` for what the binding is FOR, and the project document (`project-config/release-path.ts:readDeployMap`) for which environment a deploy binding serves.',
   },
   {
     id: 'production-branch-column',
     re: /\bproduction_branch\b|\bproductionBranch\b/g,
-    why: '`production_branch` / `productionBranch` was renamed to `live_branch` / `liveBranch` by ISS-1046, and it is read ONLY under `releaseModel: "promote"` — 25 of 32 fleet projects carry a value there that nothing promotes to.',
+    why: "`production_branch` / `productionBranch` names a column that does not exist: the branch production deploys from is the project document's production environment `deploysFrom` (ISS-12).",
   },
   {
     id: 'inline-environment-union',
     re: /["'](?:staging|prod)["']\s*\|\s*["'](?:staging|prod)["']/g,
-    why: 'an inline `"staging" | "prod"` union is a private copy of an enum that no longer exists. web-v2 held seven of these importing nothing from contracts, so the contracts change alone broke none of them. Use `BindingRole` and `DeployStage`.',
+    why: 'an inline `"staging" | "prod"` union is a private copy of an enum that no longer exists. web-v2 held seven of these importing nothing from contracts, so the contracts change alone broke none of them. Use `BindingRole`, and the project document\'s environment names.',
   },
   {
     id: 'release-model-columns',
     // `projects.releaseModel`, `row.releaseStrategy`, `release_model` / `live_branch` /
     // `release_strategy` in a sql template, and the helper the columns were gated by.
     re: /\bprojects\.(?:releaseModel|liveBranch|releaseStrategy)\b|\brelease_model\b|\blive_branch\b|\brelease_strategy\b|\breadableLiveBranch\b|\breleaseModelGap\b|\bLIVE_BRANCH_REQUIRED\b/g,
-    why: '`release_model`, `live_branch` and `release_strategy` were replaced by the single `projects.release_chain` column in ISS-1311 (ADR 0003): an ordered list whose first entry is where work merges and whose last is live. Nothing type-checks a `sql` template, so a read of one of these matches no row rather than failing. Read the chain — `chainShipsNothing`, `chainPromotes`, `chainLiveBranch`, `chainCrossesByCherryPick` in `projects/release-chain.ts`. The API still ANSWERS `releaseModel`/`liveBranch`/`releaseStrategy`, derived by `retiredReleaseAxes`; that projection is the one place allowed to spell them, and it expires with the forge-plugin issue.',
+    why: '`release_model`, `live_branch` and `release_strategy` were retired by ISS-1311, and the chain that replaced them by ISS-12 (ADR 0004). Nothing type-checks a `sql` template, so a read of one of these matches no row rather than failing. Read the project document: `project-config/release-path.ts:readReleasePath`.',
+  },
+  {
+    id: 'release-path-keys',
+    // ISS-12 / design D8 — the keys the project document replaced, read or written anywhere.
+    re: /\b(?:releaseChain|release_chain|liveBranch|releaseModel|releaseStrategy|autoProdDeploy|testCredentials|chainLiveBranch|retiredReleaseAxes|DeployStage|deployStages)\b|\bprojects\.environments\b|\bbinding\.stages\b/g,
+    why: "ISS-12 deleted this key with every reader and writer: where a release goes, what an environment is and how it is tested are the project document (`PUT /api/projects/:id/config`, ADR 0004), and which environment a deploy binding serves is the document's `deployment.binding`. Read `project-config/release-path.ts`. The `projects` columns stand unread until ISS-16 drops them; that file is the one allowed to spell them.",
   },
   {
     id: 'tag-mr-strategy',
@@ -75,7 +87,7 @@ export const RULES = [
   {
     id: 'prod-binding-literal',
     re: /listActiveBindingsForEnvironment|resolveProductionDeclaration\b|\bresolveReleaseChannel\b(?!s)/g,
-    why: 'this function was replaced by ISS-1046: `listActiveDeployBindingsForStage`, `resolveReleaseDeclaration` and `resolveReleaseChannels` (plural — it returns the whole live set and core never picks among it).',
+    why: 'this function was replaced by ISS-1046 and then by the project document (ISS-12): `resolveReleaseDeclaration` and `resolveReleaseChannels`, which read the production environment of `project-config/release-path.ts`.',
   },
 ];
 

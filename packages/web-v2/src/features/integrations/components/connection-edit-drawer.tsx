@@ -300,7 +300,7 @@ function ProjectsSection({
               <>
                 <span className="truncate text-fg">{project?.name ?? b.projectId}</span>
                 <span className="fg-body-sm text-muted">
-                  {scopeLabel(b.role, b.stages)}
+                  {scopeLabel(b.role)}
                 </span>
                 {archived && (
                   <span className="fg-body-sm rounded-pill bg-sunken px-2 py-0.5 text-subtle">

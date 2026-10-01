@@ -32,7 +32,6 @@ import {
 import {
   projectRunnerDeviceIds,
   type ReleaseChannel,
-  ReleaseRunnerAmbiguousError,
   refusedVerifyBindings,
   releaseRunnerLabelOf,
   resolveReleaseChannels,
@@ -42,7 +41,6 @@ import { claimConflictDetails, readClaimConflicts } from './claim-conflicts.js';
 import { criteriaHold } from './criteria-hold.js';
 import { RELEASE_GATE_STATUS, resolveReleaseDeclaration } from './gate.js';
 import { getActiveReleaseBatch } from './queries.js';
-import { invalidProbeUrls } from './verify.js';
 
 export * from './blocker-sentences.js';
 
@@ -204,30 +202,6 @@ async function rosterBlockers(
   }
 }
 
-/** The label, and how many live bindings one reading would answer for. A channel declaring no
- *  probe is no reason here: its release is recorded unverified (ISS-1321). */
-function channelBlockers(
-  projectId: string,
-  channels: ReleaseChannel[],
-  door: ReleaseDoor,
-  out: ReleaseBlocker[],
-): string | null {
-  let label: string | null = null;
-  // The record door checks the channel COUNT first; the batch path checks it
-  // last. Each door keeps its own order (ISS-1127).
-  if (door === 'record' && channels.length > 1) {
-    out.push(blocker('RELEASE_MULTI_CHANNEL_UNSUPPORTED', { count: channels.length }));
-  }
-  try {
-    // ISS-1275 — no label is no preference, which admits the pool it has.
-    label = releaseRunnerLabelOf(projectId, channels);
-  } catch (err) {
-    const labels = err instanceof ReleaseRunnerAmbiguousError ? err.labels : [];
-    out.push(blocker('RELEASE_RUNNER_AMBIGUOUS', { labels }));
-  }
-  return label;
-}
-
 /** Which boxes could take this release, and whether the declared one is among them. */
 async function poolBlockers(
   projectId: string,
@@ -288,19 +262,16 @@ async function heldFleetBlocker(projectId: string, out: ReleaseBlocker[]): Promi
 }
 
 /**
- * A probe url no request could be made to, or a `verify` Forge refused as a declaration.
+ * A production environment whose runtime probes all identify an artifact.
  *
  * Reported where the LIVE READ stands — last on a batch, after the roster on a
  * record — because that read is where this state fails. Any earlier and it
  * displaces a refusal the caller already gets for the same project.
  */
 function unreadableProbeBlockers(channels: ReleaseChannel[], out: ReleaseBlocker[]): void {
-  const urls = channels.flatMap((c) => (c.verify ? invalidProbeUrls(c.verify) : []));
   const bindings = refusedVerifyBindings(channels);
-  if (urls.length === 0 && bindings.length === 0) return;
-  out.push(
-    blocker('RELEASE_PROBES_UNREADABLE', bindings.length > 0 ? { urls, bindings } : { urls }),
-  );
+  if (bindings.length === 0) return;
+  out.push(blocker('RELEASE_PROBES_UNREADABLE', { bindings }));
 }
 
 /**
@@ -331,7 +302,7 @@ export async function collectReleaseBlockers(
   if (read) {
     if (read.kind === 'no-release') blockers.push(blocker('NO_RELEASE_GATE'));
     if (read.kind === 'undeclared-target') {
-      blockers.push(blocker('RELEASE_TARGET_UNDECLARED', { releaseChain: read.releaseChain }));
+      blockers.push(blocker('RELEASE_TARGET_UNDECLARED', { reason: read.reason }));
     }
     if (read.kind !== 'gated') {
       return {
@@ -387,12 +358,8 @@ async function gatedBlockers(
   const machinery: ReleaseBlocker[] = [];
   if (ch.failure) machinery.push(ch.failure);
   if (channels) {
-    const label = channelBlockers(projectId, channels, door, machinery);
     if (door === 'batch') {
-      await poolBlockers(projectId, label, machinery, warnings);
-      if (channels.length > 1) {
-        machinery.push(blocker('RELEASE_MULTI_CHANNEL_UNSUPPORTED', { count: channels.length }));
-      }
+      await poolBlockers(projectId, releaseRunnerLabelOf(channels), machinery, warnings);
       unreadableProbeBlockers(channels, machinery);
     }
   } else if (door === 'batch') {

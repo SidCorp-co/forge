@@ -5,7 +5,6 @@
  * pins is the sentence surviving to the caller as an HTTP body.
  */
 
-import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -16,6 +15,7 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
+import { seedProduction } from '../helpers/production.js';
 
 let harness: TestDatabase;
 // biome-ignore lint/suspicious/noExplicitAny: test-only mount
@@ -56,7 +56,7 @@ beforeEach(async () => {
   await truncateAll(harness.db);
 });
 
-/** A project that is GATED: a release model, and a live deploy binding to carry it. */
+/** A project that is GATED: a production environment, and a deploy binding to carry it. */
 async function seedGatedProject() {
   const user = await createTestUser(harness.db);
   const project = await createTestProject(harness.db, user.id);
@@ -67,20 +67,9 @@ async function seedGatedProject() {
     sql`UPDATE users SET email_verified_at = now(), kind = 'agent' WHERE id = ${user.id}::uuid`,
   );
   await harness.db.execute(
-    sql`UPDATE projects SET release_chain = '[{"branch": "main"}]'::jsonb, base_branch = 'main' WHERE id = ${project.id}::uuid`,
+    sql`UPDATE projects SET base_branch = 'main' WHERE id = ${project.id}::uuid`,
   );
-
-  const connectionId = randomUUID();
-  await harness.db.execute(sql`
-    INSERT INTO integration_connections (id, owner_type, owner_id, provider, config, secrets_enc, active)
-    VALUES (${connectionId}, 'user', ${user.id}::uuid, 'coolify', '{}'::jsonb, NULL, true)
-  `);
-  await harness.db.execute(sql`
-    INSERT INTO integration_bindings
-      (id, connection_id, project_id, provider, role, stages, config, active)
-    VALUES (${randomUUID()}, ${connectionId}, ${project.id}::uuid, 'coolify', 'deploy',
-            '{live}'::text[], '{}'::jsonb, true)
-  `);
+  await seedProduction(harness.db, { projectId: project.id, ownerId: user.id, probes: 'none' });
 
   const { plaintext } = await mintPat({
     userId: user.id,

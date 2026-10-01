@@ -34,29 +34,15 @@ export class ReleasePoolEmptyError extends Error {
   }
 }
 
-export class ReleaseMultiChannelUnsupportedError extends Error {
-  readonly code = 'RELEASE_MULTI_CHANNEL_UNSUPPORTED';
-  constructor(readonly count: number) {
-    super(
-      `RELEASE_MULTI_CHANNEL_UNSUPPORTED: this project declares ${count} live deploy bindings, and a release run records ONE reading — one \`commitBefore\`, one set of probes, one verdict — which would be taken at one of them and used to close the whole roster. Core will not claim a release it verified at one endpoint of two. Leave exactly one binding carrying the \`live\` stage active, or release them as separate projects.`,
-    );
-    this.name = 'ReleaseMultiChannelUnsupportedError';
-  }
-}
-
 /**
- * A declared probe no request could be made to: a url that is not a url, or a live binding's
- * `verify` Forge refused as a declaration. Either is a defect in what was declared, never an
- * absence, so it takes no project default and no release closes past it (ISS-1286, ISS-1321).
+ * A production environment whose every runtime probe identifies an artifact rather than the
+ * source: a defect in what was declared, never an absence, so it takes no project default and no
+ * release closes past it (ISS-1286, ISS-1321). A probe url that is not a url cannot reach here:
+ * the project-v1 schema refuses it on write and again when the stored document is read.
  */
 export class ReleaseProbesUnreadableError extends Error {
-  constructor(
-    public readonly urls: string[],
-    public readonly bindings: string[] = [],
-  ) {
-    super(
-      `RELEASE_PROBES_UNREADABLE: ${[...urls, ...bindings.map((b) => `binding ${b}`)].join(', ')}`,
-    );
+  constructor(public readonly bindings: string[]) {
+    super(`RELEASE_PROBES_UNREADABLE: ${bindings.map((b) => `binding ${b}`).join(', ')}`);
     this.name = 'ReleaseProbesUnreadableError';
   }
 }

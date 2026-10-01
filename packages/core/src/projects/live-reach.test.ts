@@ -12,7 +12,7 @@ function measured(over: Partial<Extract<LiveReading, { kind: 'measured' }>> = {}
   return {
     kind: 'measured',
     baseBranch: 'staging',
-    liveBranch: 'master',
+    deploysFrom: 'master',
     baseSha: 'b'.repeat(40),
     liveSha: '52c66950'.padEnd(40, '0'),
     aheadBy: 2,
@@ -45,7 +45,7 @@ describe('liveReachOf', () => {
     expect(r).toMatchObject({
       state: 'not_on_live',
       baseBranch: 'staging',
-      liveBranch: 'master',
+      deploysFrom: 'master',
       evidence: [
         { sha: OWN, subject: 'Merge pull request #88 from sid/feature-x', via: 'merged_commit' },
       ],
@@ -143,7 +143,7 @@ describe('liveReachOf', () => {
     expect(liveReachOf(issue(), measured(), pattern)).toEqual({
       state: 'none_waiting',
       baseBranch: 'staging',
-      liveBranch: 'master',
+      deploysFrom: 'master',
       measuredAt: STARTED.toISOString(),
       baseSha: 'b'.repeat(40),
       liveSha: '52c66950'.padEnd(40, '0'),
@@ -155,14 +155,14 @@ describe('liveReachOf', () => {
     const refused: LiveReading = {
       kind: 'refused',
       baseBranch: 'staging',
-      liveBranch: 'master',
+      deploysFrom: 'master',
       reason: 'this project has no active GitHub binding',
       startedAt: STARTED,
     };
     expect(liveReachOf(issue(), refused, pattern)).toEqual({
       state: 'unmeasured',
       baseBranch: 'staging',
-      liveBranch: 'master',
+      deploysFrom: 'master',
       measuredAt: STARTED.toISOString(),
       reason: 'this project has no active GitHub binding',
     });
@@ -192,7 +192,7 @@ describe('liveReachOf', () => {
     const pending: LiveReading = {
       kind: 'pending',
       baseBranch: 'staging',
-      liveBranch: 'master',
+      deploysFrom: 'master',
       reason: 'still being taken',
     };
     expect(liveReachOf(issue(), pending, pattern)).toMatchObject({

@@ -59,18 +59,20 @@ const { CoolifyCommandError } = await import('./commands.js');
 
 const PROJECT_ID = '33333333-3333-4333-8333-333333333333';
 
-function integration(over: { stages?: string[]; targets?: unknown[] } = {}) {
+const PROD_BINDING_ROW = { id: 'binding-prod', config: { targets: [{ resourceUuid: 'app-1' }] } };
+
+function integration(over: { targets?: unknown[]; binding?: unknown } = {}) {
   return {
     id: 'binding-1',
     role: 'deploy',
-    stages: over.stages ?? ['preview'],
+    environment: 'staging',
     config: {
       baseUrl: 'https://coolify.example',
       targets: over.targets ?? [{ id: 't1', label: 'Backend', resourceUuid: 'app-1' }],
     },
     lastHealthStatus: 'ok',
     breakerOpenedAt: null,
-    pair: {},
+    pair: { binding: over.binding ?? { id: 'binding-1', config: {} } },
   };
 }
 
@@ -123,18 +125,17 @@ describe('runCoolifyCancel', () => {
     );
   });
 
-  it('parks a live cancel for a human instead of dispatching it', async () => {
-    activeCoolifyIntegrations.mockResolvedValue([integration({ stages: ['live'] })]);
+  it('parks a production cancel for a human instead of dispatching it', async () => {
+    activeCoolifyIntegrations.mockResolvedValue([integration({ binding: PROD_BINDING_ROW })]);
     liveActionNeedsHumanConfirm.mockResolvedValue(true);
 
     const out = await runCoolifyCancel({ projectId: PROJECT_ID, deploymentUuid: 'dep-7' });
 
     expect(out).toMatchObject({ performed: false, pendingHumanConfirm: true });
     expect(client.cancelDeployment).not.toHaveBeenCalled();
-    // The gate is asked about THIS binding's stages, not about nothing.
-    // The third argument is what the binding actually deploys to: the gate asks
-    // whether those applications are production, not what the stage is called.
-    expect(liveActionNeedsHumanConfirm).toHaveBeenCalledWith(PROJECT_ID, ['live'], ['app-1']);
+    // The gate is asked about THIS binding, whose config says what it deploys to: the gate asks
+    // whether that reaches production, not what the environment is called.
+    expect(liveActionNeedsHumanConfirm).toHaveBeenCalledWith(PROJECT_ID, PROD_BINDING_ROW);
   });
 });
 
@@ -217,8 +218,8 @@ describe('runCoolifyRollback', () => {
     expect(enqueueCoolifyConfirm).not.toHaveBeenCalled();
   });
 
-  it('parks a live rollback for a human before it reads anything', async () => {
-    activeCoolifyIntegrations.mockResolvedValue([integration({ stages: ['live'] })]);
+  it('parks a production rollback for a human before it reads anything', async () => {
+    activeCoolifyIntegrations.mockResolvedValue([integration({ binding: PROD_BINDING_ROW })]);
     liveActionNeedsHumanConfirm.mockResolvedValue(true);
 
     const out = await runCoolifyRollback({ projectId: PROJECT_ID, commit: 'sha-a' });
@@ -226,7 +227,7 @@ describe('runCoolifyRollback', () => {
     expect(out).toMatchObject({ performed: false, pendingHumanConfirm: true });
     expect(client.listRollbackImages).not.toHaveBeenCalled();
     expect(client.rollbackApplication).not.toHaveBeenCalled();
-    expect(liveActionNeedsHumanConfirm).toHaveBeenCalledWith(PROJECT_ID, ['live'], ['app-1']);
+    expect(liveActionNeedsHumanConfirm).toHaveBeenCalledWith(PROJECT_ID, PROD_BINDING_ROW);
   });
 
   it('refuses to pick a target for the caller when the binding has several', async () => {

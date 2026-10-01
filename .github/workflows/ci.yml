@@ -18,9 +18,9 @@ name: CI
 
 # The branch set this workflow gates is written three times — twice here and once in the `proved`
 # step below — because `on:` cannot read a variable. `conformance-audit` R11 holds the three to one
-# answer. `dev` is here for the base branch this repository is moving to under `releaseModel:
-# promote`; `main` stays, because under that model it is the branch a promotion lands on and every
-# check a promotion owes is one a pull request into `dev` already ran (ISS-1304).
+# answer. `dev` is here for the branch work lands on; `main` stays, because it is the branch the
+# promotion from `dev` lands on and every check a promotion owes is one a pull request into `dev`
+# already ran (ISS-1304).
 on:
   push:
     branches: [main, dev]

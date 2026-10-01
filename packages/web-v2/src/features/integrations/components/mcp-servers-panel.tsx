@@ -122,7 +122,7 @@ function McpServerRow({
         <span className="font-mono text-13 font-semibold text-fg">{entry.serverName}</span>
         {entry.role !== null && (
           <span className="fg-body-sm rounded-pill bg-sunken px-2 py-0.5 text-subtle">
-            {scopeLabel(entry.role, entry.stages)}
+            {scopeLabel(entry.role)}
           </span>
         )}
         <span className="fg-body-sm rounded-pill bg-sunken px-2 py-0.5 text-subtle">

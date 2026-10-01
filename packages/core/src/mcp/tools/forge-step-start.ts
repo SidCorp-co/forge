@@ -5,7 +5,6 @@ import { listIssueComments } from '../../comments/service.js';
 import type { JobType } from '../../db/schema.js';
 import { jobTypes } from '../../db/schema.js';
 import { getIssueContexts } from '../../pipeline/issue-context-store.js';
-import { chainLiveBranch } from '../../projects/release-chain.js';
 import { readProjectBranches } from '../../projects/service.js';
 import {
   heavyFieldChars,
@@ -85,10 +84,7 @@ export const forgeStepStartTool: ContextScopedMcpToolFactory = (ctx) => ({
     );
     const branchConfig = resolveIssueBranches(
       { metadata: { branchConfig: branchOverride } },
-      {
-        baseBranch: projectRow?.baseBranch ?? null,
-        liveBranch: projectRow ? chainLiveBranch(projectRow.releaseChain) : null,
-      },
+      { baseBranch: projectRow?.baseBranch ?? null },
     );
 
     const allComments = commentRows.map(

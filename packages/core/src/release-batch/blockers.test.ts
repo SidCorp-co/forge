@@ -10,6 +10,13 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  PROD_BINDING,
+  production,
+  projectDoc,
+  sourceProbe,
+} from '../project-config/release-path.fixture.js';
+import type { EnvironmentDeclaration, ProjectDocument } from '../project-config/schema.js';
 
 const selectRows = vi.fn(async () => [] as unknown[]);
 const selectLimit = vi.fn(async () => [] as unknown[]);
@@ -26,10 +33,17 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
-const listBindings = vi.fn(async () => [] as unknown[]);
+const readDocument = vi.fn(
+  async (): Promise<{ revision: number; document: ProjectDocument } | null> => null,
+);
+vi.mock('../project-config/service.js', () => ({
+  readProjectDocument: () => readDocument(),
+}));
+
+const productionPair = vi.fn(async () => null as unknown);
 vi.mock('../integrations/store.js', async (importActual) => {
   const actual = await importActual<typeof import('../integrations/store.js')>();
-  return { ...actual, listActiveDeployBindingsForStage: () => listBindings() };
+  return { ...actual, findBindingWithConnectionById: () => productionPair() };
 });
 
 const onlineIds = vi.fn(async () => [] as string[]);
@@ -59,49 +73,60 @@ const ISSUE_B = '77777777-7777-4777-8777-777777777777';
 /** The mark's other columns and the project's source.type, on a project that lands in git. */
 const GIT = { mergedCommitSha: null, mergedLanding: null, sourceType: 'git' };
 
-const PROBES = { probes: [{ url: 'https://example.test/api/health', commitPath: 'commit' }] };
+const SOURCE_PROBED = production({
+  verification: { runtime: [sourceProbe('https://example.test/api/health', 'commit')] },
+});
+const ARTIFACT_ONLY = production({
+  verification: {
+    runtime: [
+      { type: 'http', url: 'https://example.test/build', path: 'digest', identifies: 'artifact' },
+    ],
+  },
+});
+const REFUSED_NAME = `environment \`beta\` (coolify ${PROD_BINDING})`;
 
 function projectRow(over: Record<string, unknown> = {}) {
   selectLimit.mockResolvedValue([
-    {
-      repoPath: '/srv/app',
-      repoUrl: null,
-      baseBranch: 'main',
-      releaseChain: [{ branch: 'main' }],
-      environments: {
-        live: { url: 'https://app.example.test', commitUrl: 'https://example.test/api/health' },
-      },
-      ...over,
-    },
+    { id: PROJECT_ID, repoPath: '/srv/app', repoUrl: null, baseBranch: 'main', ...over },
   ]);
 }
 
-function liveBinding(config: Record<string, unknown>) {
-  listBindings.mockResolvedValue([
-    {
-      binding: {
-        id: 'b-1',
-        provider: 'coolify',
-        config,
-        instructions: null,
-        label: '',
-        role: 'deploy',
-        stages: ['live'],
-      },
-      connection: { config: {} },
+function documentWith(env: EnvironmentDeclaration, over: { source?: 'none' } = {}) {
+  readDocument.mockResolvedValue({
+    revision: 1,
+    document: projectDoc({ environments: { beta: env }, ...over }),
+  });
+}
+
+function pairOf(config: Record<string, unknown>) {
+  return {
+    binding: {
+      id: PROD_BINDING,
+      projectId: PROJECT_ID,
+      active: true,
+      provider: 'coolify',
+      config,
+      instructions: null,
+      label: '',
+      role: 'deploy',
     },
-  ]);
+    connection: { active: true, config: {} },
+  };
+}
+
+function liveBinding(config: Record<string, unknown>) {
+  productionPair.mockResolvedValue(pairOf(config));
 }
 
 const DECLARED = {
   releaseRunnerLabel: 'prod-box',
-  verify: PROBES,
   rollback: { mode: 'coolify-image' },
 };
 
 /** A project with nothing wrong with it, and one issue waiting. */
 function ready() {
   projectRow();
+  documentWith(SOURCE_PROBED);
   liveBinding(DECLARED);
   selectRows.mockResolvedValue([
     { id: ISSUE_A, status: 'awaiting_release', claimed: null, mergedAt: new Date(), ...GIT },
@@ -112,7 +137,8 @@ function ready() {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  listBindings.mockResolvedValue([]);
+  readDocument.mockResolvedValue(null);
+  productionPair.mockResolvedValue(null);
   selectLimit.mockResolvedValue([]);
   selectRows.mockResolvedValue([]);
   execRows.mockResolvedValue([]);
@@ -233,15 +259,15 @@ describe('collectReleaseBlockers', () => {
     expect(missingNotes).not.toHaveBeenCalled();
   });
 
-  it('names a probe url that is not a url, without making a request', async () => {
+  it('names a production declaring only artifact probes, without making a request', async () => {
     ready();
-    liveBinding({ ...DECLARED, verify: { probes: [{ url: 'example.test/version' }] } });
+    documentWith(ARTIFACT_ONLY);
 
     const bad = (await collectReleaseBlockers(PROJECT_ID)).blockers.find(
       (b) => b.code === 'RELEASE_PROBES_UNREADABLE',
     );
 
-    expect(bad?.details).toMatchObject({ urls: ['example.test/version'] });
+    expect(bad?.details).toEqual({ bindings: [REFUSED_NAME] });
   });
 
   it('answers with the check it could not run, and still runs the checks after it', async () => {
@@ -363,55 +389,31 @@ describe('collectReleaseBlockers', () => {
  */
 describe('collectReleaseBlockers — nothing a caller already got may move', () => {
   it('throws the target refusal under its own class, which is what keeps it a 409', async () => {
-    projectRow({ releaseChain: [{ branch: 'main' }] });
-    listBindings.mockResolvedValue([]);
+    projectRow();
+    documentWith(SOURCE_PROBED);
 
     const err = releaseBlockerError(await collectReleaseBlockers(PROJECT_ID));
 
     expect(err?.name).toBe('ReleaseTargetUndeclaredError');
   });
 
-  // ISS-1276 — the branch blocker is gone, so this is refused by the binding alone.
-  it('refuses a project missing BOTH a branch and one binding by the binding alone', async () => {
+  // ISS-1276 — the branch blocker is gone: a project with no git default branch is refused
+  // nothing about branches.
+  it('refuses nothing about branches on a project whose document names no default branch', async () => {
     ready();
-    projectRow({ baseBranch: null, releaseChain: [{ branch: 'main' }] });
-    listBindings.mockResolvedValue([
-      {
-        binding: {
-          id: 'b-1',
-          provider: 'coolify',
-          config: DECLARED,
-          instructions: null,
-          label: '',
-          role: 'deploy',
-          stages: ['live'],
-        },
-        connection: { config: {} },
-      },
-      {
-        binding: {
-          id: 'b-2',
-          provider: 'coolify',
-          config: DECLARED,
-          instructions: null,
-          label: 'two',
-          role: 'deploy',
-          stages: ['live'],
-        },
-        connection: { config: {} },
-      },
-    ]);
-    selectRows.mockResolvedValue([{ id: ISSUE_A, status: 'awaiting_release', claimed: null }]);
+    projectRow({ baseBranch: null });
+    documentWith(SOURCE_PROBED, { source: 'none' });
 
     const codes = (await collectReleaseBlockers(PROJECT_ID)).blockers.map((b) => b.code);
 
     expect(codes).not.toContain('RELEASE_BRANCHES_UNDECLARED');
-    expect(codes).toContain('RELEASE_MULTI_CHANNEL_UNSUPPORTED');
+    expect(codes).toEqual([]);
   });
 
   it('says the channels were not read, rather than answering as though none were declared', async () => {
     projectRow();
-    listBindings.mockRejectedValue(new Error('binding store unreachable'));
+    documentWith(SOURCE_PROBED);
+    productionPair.mockRejectedValue(new Error('binding store unreachable'));
 
     const report = await collectReleaseBlockers(PROJECT_ID);
 
@@ -428,12 +430,11 @@ describe('collectReleaseBlockers — each door in its own refusal order', () => 
   it('does not let a failed channel read outrank a roster reason the batch door reached first', async () => {
     ready();
     missingNotes.mockResolvedValue([ISSUE_A]);
-    // The declaration reads the bindings too, so only the SECOND read fails —
+    // The declaration reads the binding too, so only the SECOND read fails —
     // a channel resolution that broke under a declaration that answered.
-    const bindings = await listBindings();
-    listBindings.mockReset();
-    listBindings.mockResolvedValueOnce(bindings);
-    listBindings.mockRejectedValue(new Error('binding store unreachable'));
+    productionPair.mockReset();
+    productionPair.mockResolvedValueOnce(pairOf(DECLARED));
+    productionPair.mockRejectedValue(new Error('binding store unreachable'));
 
     const report = await collectReleaseBlockers(PROJECT_ID);
 
@@ -443,10 +444,7 @@ describe('collectReleaseBlockers — each door in its own refusal order', () => 
 
   it('refuses neither door for a project that declares no probe (ISS-1321)', async () => {
     ready();
-    // No binding probe AND no project-level live endpoint, or the channel takes
-    // the project's fallback and declares probes after all.
-    projectRow({ environments: {} });
-    liveBinding({ releaseRunnerLabel: 'prod-box', rollback: { mode: 'coolify-image' } });
+    documentWith(production());
 
     const batch = await collectReleaseBlockers(PROJECT_ID);
     const record = await collectReleaseBlockers(PROJECT_ID, {
@@ -473,21 +471,14 @@ describe('collectReleaseBlockers — each door in its own refusal order', () => 
 });
 
 /**
- * `RELEASE_PROBES_UNREADABLE` is a reason this change ADDS, so it belongs where
+ * `RELEASE_PROBES_UNREADABLE` is a reason ISS-1321 ADDED, so it belongs where
  * the live read stands — the last thing either door does before it acts. Added
  * any earlier, it displaces a refusal the caller already gets for that project.
  */
 describe('collectReleaseBlockers — a new reason may not displace an old one', () => {
-  const MALFORMED = {
-    releaseRunnerLabel: 'prod-box',
-    rollback: { mode: 'coolify-image' },
-    verify: { probes: [{ url: 'example.test/version' }] },
-  };
-
-  it('refuses a batch by the empty fleet, and carries the malformed probe with it', async () => {
+  it('refuses a batch by the empty fleet, and carries the artifact-only probes with it', async () => {
     ready();
-    projectRow({ environments: {} });
-    liveBinding(MALFORMED);
+    documentWith(ARTIFACT_ONLY);
     execRows.mockResolvedValue([]);
     onlineIds.mockResolvedValue([]);
 
@@ -498,10 +489,9 @@ describe('collectReleaseBlockers — a new reason may not displace an old one', 
     expect(codes).toContain('RELEASE_PROBES_UNREADABLE');
   });
 
-  it('refuses a record by the missing note, and carries the malformed probe with it', async () => {
+  it('refuses a record by the missing note, and carries the artifact-only probes with it', async () => {
     ready();
-    projectRow({ environments: {} });
-    liveBinding(MALFORMED);
+    documentWith(ARTIFACT_ONLY);
     missingNotes.mockResolvedValue([ISSUE_A]);
 
     const report = await collectReleaseBlockers(PROJECT_ID, {

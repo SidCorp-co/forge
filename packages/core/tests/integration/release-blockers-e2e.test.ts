@@ -15,11 +15,9 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { createServer, type Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createTestDevice,
   createTestProject,
@@ -30,14 +28,17 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
+import {
+  type DeclaredProbes,
+  PRODUCTION_PROBE,
+  seedProduction,
+  stubProbe,
+} from '../helpers/production.js';
 
 let harness: TestDatabase;
 // biome-ignore lint/suspicious/noExplicitAny: test-only mount
 let app: any;
 let signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
-
-let probe: Server;
-let probeUrl = '';
 
 beforeAll(async () => {
   harness = await setupTestDatabase();
@@ -67,13 +68,11 @@ beforeAll(async () => {
   app.route('/api/projects', runnersTab);
   app.onError(err.errorHandler);
 
-  probe = createServer((_req, res) => res.end('commit-live'));
-  await new Promise<void>((done) => probe.listen(0, '127.0.0.1', done));
-  probeUrl = `http://127.0.0.1:${(probe.address() as AddressInfo).port}/version`;
+  stubProbe({ [PRODUCTION_PROBE]: () => Response.json({ commit: 'commit-live' }) });
 }, 60_000);
 
 afterAll(async () => {
-  if (probe) await new Promise<void>((done) => probe.close(() => done()));
+  vi.unstubAllGlobals();
   if (harness) await harness.cleanup();
 });
 
@@ -90,7 +89,9 @@ interface World {
   token: string;
 }
 
-async function seed(over: { bindingConfig?: Record<string, unknown> } = {}): Promise<World> {
+async function seed(
+  over: { bindingConfig?: Record<string, unknown>; probes?: DeclaredProbes } = {},
+): Promise<World> {
   const user = await createTestUser(harness.db);
   await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`);
   const project = await createTestProject(harness.db, user.id);
@@ -102,13 +103,7 @@ async function seed(over: { bindingConfig?: Record<string, unknown> } = {}): Pro
   // Everything `gaps` reports, declared — so a non-empty `blockers` beside an
   // empty `gaps` is the reproduction and not a half-configured fixture.
   await harness.db.execute(sql`
-    UPDATE projects
-       SET base_branch = 'main', release_chain = '[{"branch": "main"}, {"branch": "production", "from": "merge-branch"}]'::jsonb,
-           repo_path = '/srv/app',
-           environments = ${JSON.stringify({
-             live: { url: 'https://app.example.test', commitUrl: probeUrl },
-           })}::jsonb
-     WHERE id = ${project.id}
+    UPDATE projects SET base_branch = 'main', repo_path = '/srv/app' WHERE id = ${project.id}
   `);
   for (const slug of ['build-commands', 'test-commands', 'release-procedure']) {
     await harness.db.execute(sql`
@@ -116,21 +111,16 @@ async function seed(over: { bindingConfig?: Record<string, unknown> } = {}): Pro
       VALUES (${randomUUID()}, ${project.id}, ${slug}, ${slug}, 'declared', 'rule')
     `);
   }
-  const connection = randomUUID();
-  await harness.db.execute(sql`
-    INSERT INTO integration_connections (id, owner_type, owner_id, provider, active)
-    VALUES (${connection}, 'user', ${user.id}, 'coolify', true)
-  `);
-  await harness.db.execute(sql`
-    INSERT INTO integration_bindings (connection_id, project_id, provider, role, stages, active, config)
-    VALUES (${connection}, ${project.id}, 'coolify', 'deploy', ARRAY['live'], true, ${JSON.stringify(
-      over.bindingConfig ?? {
-        releaseRunnerLabel: LABEL,
-        rollback: { mode: 'coolify-image' },
-        verify: { probes: [{ url: probeUrl }], timeoutSeconds: 5, stableReads: 1 },
-      },
-    )}::jsonb)
-  `);
+  await seedProduction(harness.db, {
+    projectId: project.id,
+    ownerId: user.id,
+    config: over.bindingConfig ?? {
+      releaseRunnerLabel: LABEL,
+      rollback: { mode: 'coolify-image' },
+    },
+    deploysFrom: 'production',
+    probes: over.probes ?? 'source',
+  });
   return { projectId: project.id, userId: user.id, token: await signUserToken(user.id) };
 }
 
@@ -304,14 +294,8 @@ describe('release-readiness and the create door answer the same question', () =>
     expect(codes).toContain('RELEASE_ROSTER_EMPTY');
   });
 
-  it('names a probe url that is not a url, where the create used to throw a 500', async () => {
-    const w = await seed({
-      bindingConfig: {
-        releaseRunnerLabel: LABEL,
-        rollback: { mode: 'coolify-image' },
-        verify: { probes: [{ url: 'forge-beta-api.example/version' }] },
-      },
-    });
+  it('names a production whose probes identify only an artifact, where the create used to throw a 500', async () => {
+    const w = await seed({ probes: 'artifact-only' });
     await seedRunner(w);
     const issue = await seedIssue(w);
 
@@ -368,7 +352,7 @@ describe('release-readiness and the create door answer the same question', () =>
     expect(warned?.message).toContain("Label the box you want this project's releases to run on");
     expect(warned?.message).toContain('Settings \u2192 Runners');
     expect(warned?.message).toContain(
-      'clear `releaseRunnerLabel` from the live deploy binding under Settings \u2192 Integrations ' +
+      'clear `releaseRunnerLabel` from the production deploy binding under Settings \u2192 Integrations ' +
         'AND from the connection behind it under Integrations in the workspace rail',
     );
     expect(warned?.message).toContain(

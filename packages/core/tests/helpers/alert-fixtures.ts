@@ -136,8 +136,8 @@ export function alertFixtures(harness: TestDatabase): AlertFixtures {
       `);
       const bindingId = randomUUID();
       await db.execute(sql`
-        INSERT INTO integration_bindings (id, connection_id, project_id, provider, role, stages)
-        VALUES (${bindingId}, ${connectionId}, ${projectId}, 'coolify', 'deploy', ARRAY['live']::text[])
+        INSERT INTO integration_bindings (id, connection_id, project_id, provider, role)
+        VALUES (${bindingId}, ${connectionId}, ${projectId}, 'coolify', 'deploy')
       `);
       return bindingId;
     },

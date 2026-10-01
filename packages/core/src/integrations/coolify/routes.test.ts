@@ -22,8 +22,10 @@ vi.mock('../../config/env.js', () => ({
 vi.mock('../../db/client.js', () => ({ db: {} }));
 
 const confirmMock = vi.fn();
+const reachesProduction = vi.fn(async (..._a: unknown[]) => true);
 vi.mock('../../pipeline/release-coolify.js', () => ({
   confirmPendingProdDeploy: (...a: unknown[]) => confirmMock(...(a as [])),
+  bindingReachesProduction: (...a: unknown[]) => reachesProduction(...a),
 }));
 
 vi.mock('../route-helpers.js', () => ({
@@ -38,7 +40,7 @@ const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 
 vi.mock('../store.js', () => ({
   findBindingWithConnectionById: async () => ({
-    binding: { id: BINDING_ID, projectId: PROJECT_ID, stages: ['live'] },
+    binding: { id: BINDING_ID, projectId: PROJECT_ID, config: {} },
     connection: { id: 'conn-1' },
   }),
   buildContextFromBinding: () => ({ config: {}, secrets: {} }),
@@ -81,24 +83,45 @@ const confirm = () =>
 
 const holder = {
   projectId: PROJECT_ID,
-  environment: 'live',
+  environment: 'beta',
   runId: 'run-holding',
-  subject: 'live deploy (binding b-7)',
+  subject: 'beta deploy (binding b-7)',
   acquiredAt: '2026-09-26T10:00:00.000Z',
   expiresAt: '2026-09-26T10:30:00.000Z',
 };
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  reachesProduction.mockResolvedValue(true);
+});
+
+describe('POST confirm-prod-deploy, on a binding that does not reach production', () => {
+  it('answers 400 NOT_LIVE_BINDING by name and confirms nothing', async () => {
+    reachesProduction.mockResolvedValueOnce(false);
+
+    const res = await confirm();
+    const body = (await res.json()) as { code: string; message: string };
+
+    expect(res.status).toBe(400);
+    expect(body.code).toBe('NOT_LIVE_BINDING');
+    expect(body.message).toContain("project document's production environment");
+    expect(confirmMock).not.toHaveBeenCalled();
+    expect(reachesProduction).toHaveBeenCalledWith(
+      PROJECT_ID,
+      expect.objectContaining({ id: BINDING_ID }),
+    );
+  });
+});
 
 describe('POST confirm-prod-deploy, when the environment is held', () => {
   it('answers 409 and not the 500 an unmapped refusal would give', async () => {
-    confirmMock.mockRejectedValueOnce(new DeployEnvironmentLockedError('live', holder));
+    confirmMock.mockRejectedValueOnce(new DeployEnvironmentLockedError('beta', holder));
 
     expect((await confirm()).status).toBe(409);
   });
 
   it('answers with the refusal code rather than INTERNAL_ERROR', async () => {
-    confirmMock.mockRejectedValueOnce(new DeployEnvironmentLockedError('live', holder));
+    confirmMock.mockRejectedValueOnce(new DeployEnvironmentLockedError('beta', holder));
 
     const body = (await (await confirm()).json()) as { code: string };
 
@@ -106,12 +129,12 @@ describe('POST confirm-prod-deploy, when the environment is held', () => {
   });
 
   it('carries the holder, the subject and what ends the hold through to the body', async () => {
-    confirmMock.mockRejectedValueOnce(new DeployEnvironmentLockedError('live', holder));
+    confirmMock.mockRejectedValueOnce(new DeployEnvironmentLockedError('beta', holder));
 
     const body = (await (await confirm()).json()) as { message: string };
 
     expect(body.message).toContain('run-holding');
-    expect(body.message).toContain('live deploy (binding b-7)');
+    expect(body.message).toContain('beta deploy (binding b-7)');
     expect(body.message).toContain('2026-09-26T10:30:00.000Z');
   });
 
