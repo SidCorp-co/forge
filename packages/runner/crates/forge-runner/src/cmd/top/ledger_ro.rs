@@ -73,7 +73,26 @@ pub struct Master {
     pub boot_id: String,
     pub cold_started_at: i64,
     pub last_seen_at: i64,
+    pub outdated: Outdated,
 }
+
+/// What the daemon last judged about a master pane's build (ISS-1379).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Outdated {
+    /// The ledger has no `masters.outdated` column: a daemon older than the
+    /// judgement wrote it, so whether the pane is outdated cannot be said.
+    Unsayable,
+    /// Not judged outdated, or not judged yet.
+    No,
+    /// Outdated, in the daemon's words, naming what it was placed under and
+    /// what stands now.
+    Yes(String),
+}
+
+/// Columns read only where the ledger has them. A ledger an earlier daemon
+/// wrote lacks them and is still read whole, with what they would say
+/// reported as unsayable rather than refused.
+pub const OPTIONAL: &[(&str, &str)] = &[("masters", "outdated")];
 
 #[derive(Debug, Clone, Default)]
 pub struct View {
@@ -209,9 +228,12 @@ fn read_runs(conn: &Connection) -> rusqlite::Result<Vec<Run>> {
 }
 
 fn read_masters(conn: &Connection) -> rusqlite::Result<HashMap<String, Master>> {
-    let mut stmt = conn.prepare(
-        "SELECT project_id, pane_name, session_id, boot_id, cold_started_at, last_seen_at FROM masters",
-    )?;
+    let judged = has_column(conn, "masters", "outdated")?;
+    let mut stmt = conn.prepare(if judged {
+        "SELECT project_id, pane_name, session_id, boot_id, cold_started_at, last_seen_at, outdated FROM masters"
+    } else {
+        "SELECT project_id, pane_name, session_id, boot_id, cold_started_at, last_seen_at, NULL FROM masters"
+    })?;
     let rows = stmt.query_map([], |r| {
         Ok(Master {
             project_id: r.get(0)?,
@@ -220,9 +242,22 @@ fn read_masters(conn: &Connection) -> rusqlite::Result<HashMap<String, Master>> 
             boot_id: r.get(3)?,
             cold_started_at: r.get(4)?,
             last_seen_at: r.get(5)?,
+            outdated: match (judged, r.get::<_, Option<String>>(6)?) {
+                (false, _) => Outdated::Unsayable,
+                (true, None) => Outdated::No,
+                (true, Some(why)) => Outdated::Yes(why),
+            },
         })
     })?;
     rows.map(|m| m.map(|m| (m.project_id.clone(), m))).collect()
+}
+
+fn has_column(conn: &Connection, table: &str, column: &str) -> rusqlite::Result<bool> {
+    debug_assert!(OPTIONAL.contains(&(table, column)));
+    conn.prepare(&format!(
+        "SELECT 1 FROM pragma_table_info('{table}') WHERE name = ?1"
+    ))?
+    .exists([column])
 }
 
 /// Why a run holding a lease answers to nobody on this box: its declaring
@@ -445,5 +480,41 @@ mod tests {
             .find(|r| r.run_id == "run-held")
             .expect("held");
         assert!(!held.parked_on_a_person(), "{held:?}");
+    }
+
+    /// Criteria 37, 38: a ledger an earlier daemon wrote, with no `outdated`
+    /// column, is read whole and says the verdict cannot be given.
+    #[test]
+    fn a_ledger_without_the_outdated_column_is_read_and_says_so() {
+        let s = Scratch::new("top-ledger-unjudged");
+        let path = planted(s.path());
+        let raw = Connection::open(&path).unwrap();
+        raw.execute_batch("ALTER TABLE masters DROP COLUMN outdated;")
+            .unwrap();
+        drop(raw);
+        let v = read(&path).expect("criterion 37: read");
+        assert_eq!(
+            v.masters["p-1"].outdated,
+            Outdated::Unsayable,
+            "criterion 38"
+        );
+    }
+
+    #[test]
+    fn the_daemons_verdict_is_read_off_the_master_row() {
+        let s = Scratch::new("top-ledger-outdated");
+        let path = planted(s.path());
+        assert_eq!(read(&path).unwrap().masters["p-1"].outdated, Outdated::No);
+        let led = Ledger::open(&path).unwrap();
+        led.note_master_outdated(
+            "p-1",
+            Some("placed under runner 0.9.1 (a), and this box runs 0.9.2 (b) now"),
+        )
+        .unwrap();
+        drop(led);
+        assert_eq!(
+            read(&path).unwrap().masters["p-1"].outdated,
+            Outdated::Yes("placed under runner 0.9.1 (a), and this box runs 0.9.2 (b) now".into())
+        );
     }
 }
