@@ -236,27 +236,47 @@ export type TestingProfile = z.infer<typeof testingProfileSchema>;
 export const BINDING_ROLES = ['deploy', 'source', 'service'] as const;
 export type BindingRole = (typeof BINDING_ROLES)[number];
 
+const BINDING_TARGETS = [
+  z.strictObject({
+    provider: z.literal('coolify'),
+    applicationUuid: z.string().regex(/^[a-z0-9]{20,40}$/),
+  }),
+  z.strictObject({
+    provider: z.literal('shopify'),
+    store: z.string().regex(/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/),
+    themeRole: z.enum(['main', 'unpublished']).optional(),
+  }),
+  z.strictObject({
+    provider: z.literal('epodsystem'),
+    store: z.string().min(1).max(100),
+  }),
+] as const;
+
+export const BINDING_TARGET_PROVIDERS: readonly string[] = BINDING_TARGETS.map(
+  (target) => target.shape.provider.value,
+);
+
+function providerNamed(input: unknown): string {
+  const provider =
+    typeof input === 'object' && input !== null
+      ? (input as { provider?: unknown }).provider
+      : input;
+  if (provider === undefined) return 'a target with no provider';
+  return `provider ${JSON.stringify(provider)}`;
+}
+
 export const bindingDocumentSchema = z.strictObject({
   $schema: z.literal(`${SCHEMA_BASE}/binding-v1.json`),
   version: z.literal(1),
   id: uuid(),
   role: z.enum(BINDING_ROLES),
   connection: uuid(),
-  target: z.discriminatedUnion('provider', [
-    z.strictObject({
-      provider: z.literal('coolify'),
-      applicationUuid: z.string().regex(/^[a-z0-9]{20,40}$/),
-    }),
-    z.strictObject({
-      provider: z.literal('shopify'),
-      store: z.string().regex(/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/),
-      themeRole: z.enum(['main', 'unpublished']).optional(),
-    }),
-    z.strictObject({
-      provider: z.literal('epodsystem'),
-      store: z.string().min(1).max(100),
-    }),
-  ]),
+  target: z.discriminatedUnion('provider', BINDING_TARGETS, {
+    error: (issue) =>
+      issue.code === 'invalid_union'
+        ? `${providerNamed(issue.input)} is not a binding target; target.provider is one of ${BINDING_TARGET_PROVIDERS.join(', ')}, each with the fields binding-v1.json names for it.`
+        : undefined,
+  }),
 });
 
 export type BindingDocument = z.infer<typeof bindingDocumentSchema>;

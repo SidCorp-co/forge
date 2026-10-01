@@ -285,3 +285,31 @@ describe('binding documents', () => {
     ]);
   });
 });
+
+describe('a target provider the binding document does not define', () => {
+  for (const provider of ['', 'github']) {
+    it(`refuses provider ${JSON.stringify(provider)} naming every provider it does define`, async () => {
+      const doc = coolifyDoc({ target: { provider } });
+      const res = await call('PUT', `/bindings/${BINDING}`, { baseRevision: null, document: doc });
+      expect(res.status).toBe(422);
+      expect(await refusalsOf(res)).toEqual([
+        {
+          code: 'SCHEMA_VIOLATION',
+          path: '/target/provider',
+          detail: `provider ${JSON.stringify(provider)} is not a binding target; target.provider is one of coolify, shopify, epodsystem, each with the fields binding-v1.json names for it.`,
+        },
+      ]);
+      expect(bindingMem.rows.size).toBe(0);
+    });
+  }
+
+  it('refuses a target with no provider at all, by the same name', async () => {
+    const res = await call('PUT', `/bindings/${BINDING}`, {
+      baseRevision: null,
+      document: coolifyDoc({ target: {} }),
+    });
+    expect((await refusalsOf(res))[0]?.detail).toMatch(
+      /^a target with no provider is not a binding target; target\.provider is one of coolify, shopify, epodsystem,/,
+    );
+  });
+});
