@@ -2103,20 +2103,52 @@ fn the_legend_fits_the_screen_and_l_switches_it() {
         lines.len() <= rows && lines.iter().all(|l| l.chars().count() <= cols)
     };
 
+    // Every column and verdict word, written here rather than read off the
+    // view, each the start of an item of a legend row.
+    let columns = [
+        "!", "PANE", "RUNS", "MOV", "HAND", "QUE", "BLK", "DRF", "VERDICT", "NOW", "CHANGE",
+    ];
+    let words = [
+        "STALL", "ASKS", "DRIFT", "ORPHAN", "NOPATH", "GATE", "DAEMON", "AGEING", "DOWN", "WAITS",
+    ];
+    let items = |s: &str| -> Vec<String> {
+        s.split("\r\n")
+            .flat_map(|l| {
+                l.trim()
+                    .split(" · ")
+                    .map(str::to_string)
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    };
+    let names_every_column = |s: &str| {
+        let items = items(s);
+        columns
+            .iter()
+            .all(|c| items.iter().any(|i| i.starts_with(&format!("{c} "))))
+    };
+    let full = |s: &str| {
+        let items = items(s);
+        names_every_column(s)
+            && words
+                .iter()
+                .chain(&["ok", "idle"])
+                .all(|w| items.iter().any(|i| i.starts_with(&format!("{w} "))))
+            && s.contains("l shortens the legend")
+    };
+
     let mut pty = on_a_terminal_reading(&b, 80, 24, &["--interval", "5"], true);
-    let f = pty.first_table().join("\n");
+    let f = pty.first_table().join("\r\n");
     assert!(
-        f.contains("VERDICT worst: STALL ASKS DRIFT ORPHAN NOPATH GATE DAEMON AGEING DOWN WAITS")
+        names_every_column(&f)
+            && f.contains(
+                "VERDICT worst: STALL ASKS DRIFT ORPHAN NOPATH GATE DAEMON AGEING DOWN WAITS"
+            )
             && f.contains("ok or idle no finding")
             && f.contains("l explains words")
             && !f.contains("STALL a runnable run"),
         "{f}"
     );
-    let full = |s: &str| {
-        s.contains("STALL a runnable run unwritten 30m")
-            && s.contains("NOPATH awaiting_release with no release path")
-            && s.contains("l shortens the legend")
-    };
     let at = pty.screens_drawn();
     pty.type_keys("l");
     assert!(
@@ -2163,6 +2195,6 @@ fn the_legend_fits_the_screen_and_l_switches_it() {
     assert!(st.is_some_and(|s| s.success()), "q: {st:?}");
 
     let pty = on_a_terminal_reading(&b, 170, 50, &["--interval", "5"], true);
-    let f = pty.first_table().join("\n");
-    assert!(full(&f), "{f}");
+    let f = pty.first_table().join("\r\n");
+    assert!(full(&f) && fits(&f, 170, 50), "{f}");
 }
