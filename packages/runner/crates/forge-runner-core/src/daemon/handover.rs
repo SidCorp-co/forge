@@ -22,33 +22,104 @@ use std::path::Path;
 pub const LISTENER_ENV: &str = "FORGE_RUNNER_CONTROL_FD";
 
 /// Replace this process's image with `exe`, run with `args`, carrying
-/// `listener`. Returns only where the exec did not happen, with why; the
-/// listener is then closed-on-exec again, as it was.
+/// `listener`. Returns only where the exec did not happen, with why, and with
+/// this process as it was before the call: the listener closed-on-exec again
+/// and the thread's signal mask restored.
+///
+/// `execve` on the path itself, never `execvp`, which `std`'s
+/// `Command::exec` is: on a file the kernel refuses to run (`ENOEXEC`) that
+/// one runs it under `/bin/sh` in place of returning, so a build on disk that
+/// is no executable of this platform ended the daemon and never reached the
+/// line saying the handover did not happen. `Command::exec` also leaves
+/// SIGPIPE at its default when the exec fails, and this daemon lives by
+/// ignoring it; nothing here touches a disposition, and the image that starts
+/// sets its own as the Rust runtime always does.
 #[cfg(unix)]
 pub fn replace_image(exe: &Path, args: &[OsString], listener: Option<i64>) -> std::io::Error {
-    use std::os::unix::process::CommandExt;
+    use nix::sys::signal::{pthread_sigmask, SigSet, SigmaskHow};
 
-    let mut cmd = std::process::Command::new(exe);
-    cmd.args(args);
     let fd = listener.and_then(|fd| i32::try_from(fd).ok());
-    match fd {
-        Some(fd) => {
-            if let Err(e) = set_close_on_exec(fd, false) {
-                return std::io::Error::other(format!(
-                    "the control listener (descriptor {fd}) could not be left open across the exec: {e}"
-                ));
-            }
-            cmd.env(LISTENER_ENV, fd.to_string());
+    let (path, argv, mut envp) = match exec_vectors(exe, args) {
+        Ok(v) => v,
+        Err(e) => return e,
+    };
+    if let Some(fd) = fd {
+        if let Err(e) = set_close_on_exec(fd, false) {
+            return std::io::Error::other(format!(
+                "the control listener (descriptor {fd}) could not be left open across the exec: {e}"
+            ));
         }
-        None => {
-            cmd.env_remove(LISTENER_ENV);
-        }
+        envp.push(
+            std::ffi::CString::new(format!("{LISTENER_ENV}={fd}"))
+                .expect("a variable name and a number hold no NUL"),
+        );
     }
-    let err = cmd.exec();
+    // The image starts with no signal blocked, as one a service manager
+    // starts does; the mask this thread had is put back if it never starts.
+    let mut held = SigSet::empty();
+    let cleared = pthread_sigmask(
+        SigmaskHow::SIG_SETMASK,
+        Some(&SigSet::empty()),
+        Some(&mut held),
+    )
+    .is_ok();
+    let err = match nix::unistd::execve(&path, &argv, &envp) {
+        Err(errno) => std::io::Error::from(errno),
+        Ok(never) => match never {},
+    };
+    if cleared {
+        let _ = pthread_sigmask(SigmaskHow::SIG_SETMASK, Some(&held), None);
+    }
     if let Some(fd) = fd {
         let _ = set_close_on_exec(fd, true);
     }
     err
+}
+
+/// The path, the arguments and this process's environment as `execve` takes
+/// them — the arguments after the path itself, as `argv[0]`, and the
+/// environment without any [`LISTENER_ENV`] this process was handed, which
+/// names only what the caller passes on.
+#[cfg(unix)]
+#[allow(clippy::type_complexity)]
+fn exec_vectors(
+    exe: &Path,
+    args: &[OsString],
+) -> std::io::Result<(
+    std::ffi::CString,
+    Vec<std::ffi::CString>,
+    Vec<std::ffi::CString>,
+)> {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+
+    let c = |bytes: &[u8], what: &str| {
+        CString::new(bytes).map_err(|_| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("{what} holds a NUL byte, which no exec can pass"),
+            )
+        })
+    };
+    let path = c(exe.as_os_str().as_bytes(), "the path of the build on disk")?;
+    let mut argv = vec![path.clone()];
+    for a in args {
+        argv.push(c(
+            a.as_bytes(),
+            "an argument this process was started with",
+        )?);
+    }
+    let mut envp = Vec::new();
+    for (k, v) in std::env::vars_os() {
+        if k == LISTENER_ENV {
+            continue;
+        }
+        let mut kv = k.as_bytes().to_vec();
+        kv.push(b'=');
+        kv.extend_from_slice(v.as_bytes());
+        envp.push(c(&kv, "a variable of this process's environment")?);
+    }
+    Ok((path, argv, envp))
 }
 
 #[cfg(unix)]
@@ -204,6 +275,23 @@ mod tests {
         assert!(bound.accept().is_ok(), "and still accepting");
     }
 
+    /// The thread's signal mask, which the exec clears for the image it
+    /// starts, is this thread's again when that image never starts.
+    #[test]
+    fn an_exec_that_cannot_happen_gives_the_thread_its_signal_mask_back() {
+        use nix::sys::signal::{pthread_sigmask, SigSet, SigmaskHow, Signal};
+        let dir = crate::test_scratch::Scratch::short("handover-mask");
+        let mut blocked = SigSet::empty();
+        blocked.add(Signal::SIGUSR2);
+        let mut before = SigSet::empty();
+        pthread_sigmask(SigmaskHow::SIG_BLOCK, Some(&blocked), Some(&mut before)).unwrap();
+        let err = replace_image(&dir.join("no-such-build"), &[], None);
+        let mut after = SigSet::empty();
+        pthread_sigmask(SigmaskHow::SIG_SETMASK, Some(&before), Some(&mut after)).unwrap();
+        assert_eq!(err.kind(), std::io::ErrorKind::NotFound, "{err}");
+        assert!(after.contains(Signal::SIGUSR2), "the mask was left cleared");
+    }
+
     /// The disposition `signal` has in this process now.
     fn disposition(signal: nix::libc::c_int) -> nix::libc::sighandler_t {
         // SAFETY: a query: no handler is installed, the old one is only read.
@@ -221,7 +309,11 @@ mod tests {
     #[test]
     fn an_exec_that_cannot_happen_leaves_this_process_ignoring_sigpipe() {
         let dir = crate::test_scratch::Scratch::short("handover-pipe");
-        assert_eq!(disposition(nix::libc::SIGPIPE), nix::libc::SIG_IGN, "as the runtime set it");
+        assert_eq!(
+            disposition(nix::libc::SIGPIPE),
+            nix::libc::SIG_IGN,
+            "as the runtime set it"
+        );
         let err = replace_image(&dir.join("no-such-build"), &[], None);
         assert_eq!(err.kind(), std::io::ErrorKind::NotFound, "{err}");
         assert_eq!(

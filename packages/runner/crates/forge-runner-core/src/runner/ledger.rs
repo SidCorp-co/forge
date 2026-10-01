@@ -1661,6 +1661,21 @@ impl Ledger {
         Ok(())
     }
 
+    /// Name `session_id` on the project's `masters` row as the session its
+    /// pane answers to — the one this box serves it as, which its runs are
+    /// recorded under. Answers whether the row moved; a project with no row
+    /// gets none, since nothing here knows when its pane was started.
+    pub fn note_master_session(&self, project_id: &str, session_id: &str) -> Result<bool> {
+        let changed = self
+            .conn
+            .execute(
+                "UPDATE masters SET session_id = ?2 WHERE project_id = ?1 AND session_id IS NOT ?2",
+                params![project_id, session_id],
+            )
+            .map_err(sql_err)?;
+        Ok(changed == 1)
+    }
+
     /// Record the daemon's verdict on whether a project's resident pane is
     /// outdated: why it is, or `None` for current.
     pub fn note_master_outdated(&self, project_id: &str, why: Option<&str>) -> Result<()> {
@@ -3585,6 +3600,45 @@ mod tests {
         assert_eq!(row.conversation_id.as_deref(), Some("conv-abc"));
         assert!(led.master_for_project("proj-2").unwrap().is_none());
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// ISS-1379: the session a box serves a pane as moves the row it reads
+    /// that pane's runs off, once, and invents no row for a pane it never
+    /// recorded.
+    #[test]
+    fn the_session_a_pane_is_served_as_is_named_on_its_row_and_on_no_other() {
+        let led = Ledger::open_in_memory().unwrap();
+        assert!(!led.note_master_session("proj-1", "sess-2").unwrap());
+        assert!(
+            led.master_for_project("proj-1").unwrap().is_none(),
+            "no row is made"
+        );
+        led.note_master(
+            "proj-1",
+            "forge-proj-1",
+            Some("conv"),
+            Some("sess-1"),
+            "boot-a",
+        )
+        .unwrap();
+        led.note_master("proj-2", "forge-proj-2", None, Some("sess-9"), "boot-a")
+            .unwrap();
+        assert!(led.note_master_session("proj-1", "sess-2").unwrap());
+        assert!(
+            !led.note_master_session("proj-1", "sess-2").unwrap(),
+            "already named"
+        );
+        let row = led.master_for_project("proj-1").unwrap().unwrap();
+        assert_eq!(row.session_id.as_deref(), Some("sess-2"));
+        assert_eq!(row.conversation_id.as_deref(), Some("conv"));
+        assert_eq!(
+            led.master_for_project("proj-2")
+                .unwrap()
+                .unwrap()
+                .session_id
+                .as_deref(),
+            Some("sess-9")
+        );
     }
 
     #[test]

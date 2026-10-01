@@ -125,7 +125,9 @@ fn hand_over_from(dir: &Path, into: Option<&Path>) -> (u32, String, String) {
     let failed = std::fs::read_to_string(dir.join("failed")).unwrap_or_default();
     let _ = child.kill();
     let status = child.wait().unwrap();
-    read.unwrap_or_else(|e| panic!("no answer ({e}); the child said: {failed:?}, ended {status:?}"));
+    read.unwrap_or_else(|e| {
+        panic!("no answer ({e}); the child said: {failed:?}, ended {status:?}")
+    });
     assert!(
         status.success() || status.code().is_none(),
         "the image ended {status:?}; it said: {failed:?}"

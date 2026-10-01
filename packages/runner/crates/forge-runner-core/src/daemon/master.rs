@@ -1441,17 +1441,18 @@ async fn sweep(
         if let Some(found) = deaf.take() {
             deaf_found.push(found);
         }
-        if let (true, Some((successor, name))) = (
-            pane == PaneState::Adopted && heard,
-            masters.get(&runner.project_id),
-        ) {
+        let serving = masters.get(&runner.project_id);
+        if let (Some(led), Some((session, _))) = (ledger.as_ref(), serving.as_ref()) {
+            name_the_session_served(led, &runner.project_id, session, &resolved.slug);
+        }
+        if let (true, Some((successor, name))) = (pane == PaneState::Adopted && heard, serving) {
             let pane_pid = terminal::pane_pid(&name).await;
             if let Some(led) = ledger.as_mut() {
-                let _ = &successor;
-                answer_for_adopted(
+                carried_across(
                     led,
-                    masters,
                     &runner.project_id,
+                    &name,
+                    &successor,
                     pane_pid,
                     &hosts,
                     &resolved.slug,
@@ -2495,18 +2496,25 @@ pub(crate) fn carried_across(
     moved
 }
 
-pub(crate) fn answer_for_adopted(
-    led: &mut Ledger,
-    masters: &Masters,
-    project_id: &str,
-    pane_pid: Option<u32>,
-    hosts: &dyn subagent_host::Hosts,
-    slug: &str,
-) -> usize {
-    let Some((successor, name)) = masters.get(project_id) else {
-        return 0;
-    };
-    carried_across(led, project_id, &name, &successor, pane_pid, hosts, slug)
+/// Write onto the project's `masters` row the session this box serves its
+/// pane as, before any run is carried there (ISS-1379).
+///
+/// Declarations, the carry and every control call the pane makes key on the
+/// registry's session; the row is what `master_exit::holding` reads, for the
+/// sweep and for `master stand-down` alike, and the pane's own hooks write it
+/// only when they next fire. A pane idle at its prompt fires none, so a pane a
+/// handover adopted under a session core re-minted read as holding nothing
+/// while its runs sat under the other, and was ended with them open.
+fn name_the_session_served(led: &Ledger, project_id: &str, session: &str, slug: &str) {
+    match led.note_master_session(project_id, session) {
+        Ok(true) => tracing::info!(
+            "[master] {slug}: its ledger row now names session {session}, the one this box serves its pane as, which is where its runs are recorded"
+        ),
+        Ok(false) => {}
+        Err(e) => tracing::warn!(
+            "[master] {slug}: cannot record session {session} on its ledger row ({e}); until it is, the pane is not judged by the runs that row names"
+        ),
+    }
 }
 
 /// What [`placed_again`] says it did. A run is called ended with the pane only
@@ -4279,12 +4287,16 @@ fn judge_resident(
             );
         }
     }
-    let holding = master_exit::holding(led, row.as_ref())
-        .unwrap_or_else(|e| Holding::Unknown(format!("the ledger could not be read ({e})")));
-    let session = masters
-        .get(project_id)
-        .map(|(session, _)| session)
-        .or_else(|| row.as_ref().and_then(|r| r.session_id.clone()));
+    let served = masters.get(project_id).map(|(session, _)| session);
+    let recorded = row.as_ref().and_then(|r| r.session_id.clone());
+    let holding = match (served.as_deref(), recorded.as_deref()) {
+        (Some(served), Some(recorded)) if served != recorded => Holding::Unknown(format!(
+            "its ledger row names session {recorded} and this box serves it as {served}, so the runs either one names are not all it holds; the sweep writes the row before it judges again"
+        )),
+        _ => master_exit::holding(led, row.as_ref())
+            .unwrap_or_else(|e| Holding::Unknown(format!("the ledger could not be read ({e})"))),
+    };
+    let session = served.or(recorded);
     let seen = session.as_deref().and_then(|s| activity.get(s));
     let transcript = seen
         .as_ref()
@@ -12766,8 +12778,7 @@ mod outdated_tests {
     /// that would move its ledger row. Its runs are under the session this box
     /// serves it as, and its row still names the one before.
     #[test]
-    fn a_pane_whose_runs_were_carried_to_the_session_this_box_serves_it_as_is_left_holding_them()
-    {
+    fn a_pane_whose_runs_were_carried_to_the_session_this_box_serves_it_as_is_left_holding_them() {
         let dir = Scratch::new("outdated-carried");
         let mut led = Ledger::open_in_memory().unwrap();
         a_master_row(&led, Some("0.0.1 (old)"));
@@ -12818,17 +12829,26 @@ mod outdated_tests {
             .act
         };
 
-        answer_for_adopted(
+        name_the_session_served(&led, "p", "sess-new", "proj");
+        carried_across(
             &mut led,
-            &masters,
             "p",
+            "forge-master-proj",
+            "sess-new",
             Some(41_100),
             &hosts,
             "proj",
         );
-        assert_eq!(led.run("run-1").unwrap().unwrap().master_session_id, "sess-new");
         assert_eq!(
-            led.master_for_project("p").unwrap().unwrap().session_id.as_deref(),
+            led.run("run-1").unwrap().unwrap().master_session_id,
+            "sess-new"
+        );
+        assert_eq!(
+            led.master_for_project("p")
+                .unwrap()
+                .unwrap()
+                .session_id
+                .as_deref(),
             Some("sess-new"),
             "the row names the session the runs were carried to"
         );
@@ -12985,6 +13005,11 @@ mod outdated_tests {
         assert!(
             at("note_placement(led, &runner.project_id") > at("ensure_master("),
             "a placement records the build it was placed under"
+        );
+        assert!(
+            at("ensure_master(") < at("name_the_session_served(")
+                && at("name_the_session_served(") < at("carried_across("),
+            "criterion 29: the row names the session the registry serves before any run is carried there"
         );
     }
 }
