@@ -2546,9 +2546,9 @@
 - **A project's repository and setup steps live only in its configuration.** A repo URL or
   workspace setup sent to settings is refused by name. The old columns are dropped;
   `scripts/export-legacy-project-config.mjs` prints them, read-only, before the release.
-- **A project's base branch and webhook secret live only in its configuration.** The branch is
-  its default branch there; the secret is a project secret, re-entered on the secrets screen.
-  Settings refuse both, and the unused API key, by name.
+- **A project's base branch lives only in its configuration.** The branch is its default branch
+  there; the webhook secret is gone with the generic webhook, which did nothing. Settings refuse
+  both, and the unused API key, by name.
 - **A checkout is the device binding's alone.** Projects have no repo path or default device,
   and settings refuse both by name. Jobs and chat turns run in the box's bound folder; a binding
   naming none is refused.

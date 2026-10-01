@@ -40,8 +40,8 @@ The release path is read from the project document and nowhere else
 used to take one refuses it by name and points at `PUT /api/projects/:id/config`. ISS-16 dropped
 the `projects` columns, `base_branch` among them: the default work branch 0003 kept as a column is
 `source.git.defaultBranch`, the one place both facts are now read from. It also dropped
-`webhook_secret`, now the project secret `secret://project/webhook-secret`, and `api_key`, which no
-route read. `scripts/check-retired-model.mjs` (rules `release-path-keys` and
+`webhook_secret` and `api_key`, which nothing consumed: the generic inbound webhook that read the
+secret verified a delivery and then did nothing, and answers 410 `WEBHOOK_ROUTE_REMOVED` now. `scripts/check-retired-model.mjs` (rules `release-path-keys` and
 `legacy-project-columns`) names any of them that reappears in source.
 
 There is no data migration (design D8). An operator re-enters by hand what the old columns held,

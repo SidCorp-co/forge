@@ -19,7 +19,7 @@ export const RETIRED_PROJECT_FIELDS: Record<string, string> = {
   baseBranch:
     "`baseBranch` is not a project field: the branch work is cut from and lands on is the project document's `source.git.defaultBranch`. Read it with GET /api/projects/:id/config and write it with PUT /api/projects/:id/config { baseRevision, document }.",
   webhookSecret:
-    '`webhookSecret` is not a project field: it is the project secret `secret://project/webhook-secret`, written and rotated with PUT /api/projects/:id/secrets/project/webhook-secret { value } and never read back.',
+    "`webhookSecret` is not a project field: no route reads a project webhook secret. A provider's webhook to POST /api/webhooks/in/:slug is verified with the secret of the integration binding it is for, and a delivery naming no provider is refused with WEBHOOK_ROUTE_REMOVED.",
   apiKey:
     '`apiKey` is not a project field: no route authenticated a project API key, so there is none to set or rotate. A box authenticates with its device credential and a person or agent with an access token.',
   repoUrl:
