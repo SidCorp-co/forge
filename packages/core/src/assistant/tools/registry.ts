@@ -9,6 +9,7 @@ import { forgePipelineRunsGetTool } from '../../mcp/tools/forge-pipeline-runs.js
 import { forgeProjectPipelineRunsTool } from '../../mcp/tools/forge-project-pipeline-runs.js';
 import { forgeProjectsGetTool } from '../../mcp/tools/forge-projects.js';
 import type { McpContext } from '../../mcp/tools/lib.js';
+import { forgeChannelTool } from './forge-channel-tool.js';
 import { forgeCliTool } from './forge-cli-tool.js';
 import { forgeMemoryNoteTool } from './forge-memory-note-tool.js';
 import { forgePreferencesTool } from './forge-preferences-tool.js';
@@ -30,6 +31,7 @@ export const CHAT_TOOL_ALLOWLIST: ChatToolSpec[] = [
   { factory: forgeMetricsProjectTimeseriesTool },
   { factory: forgePreferencesTool },
   { factory: forgeMemoryNoteTool },
+  { factory: forgeChannelTool },
 ];
 
 /** Build the OpenAI toolset for a project-scoped chat context. */

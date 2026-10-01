@@ -204,7 +204,7 @@ export function buildRocketChatHistoryToolset(auth: RocketChatRestAuth, rid: str
     return { content: [{ type: 'text', text: JSON.stringify(page) }] };
   }
 
-  return { tools: [tool], execute };
+  return { tools: [tool], execute, ranAs: () => null };
 }
 
 /** The quote-neighbour tool's bounds, every one enforced here and none by the model (ISS-1087). */
@@ -414,5 +414,5 @@ export function buildRocketChatQuoteContextToolset(
     };
   }
 
-  return { tools: [tool], execute };
+  return { tools: [tool], execute, ranAs: () => null };
 }

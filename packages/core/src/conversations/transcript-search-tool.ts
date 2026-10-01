@@ -83,6 +83,7 @@ export function buildTranscriptSearchToolset(opts: TranscriptSearchToolOptions):
   };
 
   return {
+    ranAs: () => opts.principalUserId ?? null,
     tools: [
       {
         type: 'function',

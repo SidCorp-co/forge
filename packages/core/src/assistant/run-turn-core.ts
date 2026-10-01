@@ -83,6 +83,8 @@ export interface ToolCallRecord {
   /** First {@link RESULT_PREVIEW_CHARS} of the text the model read. */
   resultPreview: string;
   resultIssueRefs: string[];
+  /** The user the call ran as, from the toolset that owns it; null for a tool that acts as nobody. */
+  ranAs: string | null;
 }
 
 export interface TurnCoreResult {
@@ -165,6 +167,7 @@ async function executeToolRound(
             durationMs: Date.now() - startedAt,
             resultPreview: text.slice(0, RESULT_PREVIEW_CHARS),
             resultIssueRefs: issueRefsIn(text),
+            ranAs: toolset.ranAs(call.name),
           },
         };
       }
