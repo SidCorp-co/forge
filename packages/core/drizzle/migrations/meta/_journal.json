@@ -2101,13 +2101,6 @@
       "when": 1811030400000,
       "tag": "0324_a_session_that_stops_revokes_its_turn_token",
       "breakpoints": true
-    },
-    {
-      "idx": 325,
-      "version": "7",
-      "when": 1811116800000,
-      "tag": "0325_bindings_carry_no_stage_and_locks_name_an_environment",
-      "breakpoints": true
     }
   ]
 }
