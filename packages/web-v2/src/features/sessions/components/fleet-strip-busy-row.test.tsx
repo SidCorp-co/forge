@@ -17,7 +17,7 @@ expect.extend(matchers);
 const DEVICE = { id: "dev-1", name: "forge-vm", platform: "linux", status: "online" };
 
 vi.mock("@/features/projects/hooks", () => ({
-  useProject: () => ({ data: { devicePool: [DEVICE], defaultDeviceId: "dev-1" } }),
+  useProject: () => ({ data: { devicePool: [DEVICE] } }),
 }));
 vi.mock("../hooks", () => ({
   useQueueStats: () => ({ data: { perDevice: [] } }),

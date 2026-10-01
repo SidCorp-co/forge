@@ -1,11 +1,10 @@
 import { MEMORY_REINDEX_STATES, type MemoryReindexState } from "@forge/contracts/status-sets";
 
-/** Patch body accepted by `PATCH /api/projects/:id` (basics + repo).
+/** Patch body accepted by `PATCH /api/projects/:id`.
  *  `orgId` moves the project to another org — requires org admin on BOTH the
  *  current and the destination org (403/404 otherwise). */
 export interface ProjectUpdateInput {
 	name?: string;
-	repoPath?: string | null;
 	repoUrl?: string | null;
 	/** Prose: how to bring this repo's workspace to a buildable state. Read by
 	 *  the runner's setup agent; blank means it derives the procedure per job. */

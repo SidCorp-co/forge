@@ -55,7 +55,6 @@ import {
 	useProjectRunners,
 	useReprovision,
 	useRunnerActivity,
-	useSetDefaultDevice,
 	useSetDeviceDisabled,
 	useSetGitCredential,
 	useTestGitCredential,
@@ -498,9 +497,6 @@ function RunnerRow({
 	current,
 	projectId,
 	canEdit,
-	isPrimary,
-	onSetPrimary,
-	settingPrimary,
 	slug,
 }: {
 	runner: ProjectRunner;
@@ -508,11 +504,6 @@ function RunnerRow({
 	current: ActiveRunnerJob | null;
 	projectId: string;
 	canEdit: boolean;
-	/** True when this device is the project's primary (defaultDeviceId). */
-	isPrimary: boolean;
-	/** Set this device as primary (deviceId), or clear (null). */
-	onSetPrimary: (deviceId: string | null) => void;
-	settingPrimary: boolean;
 	/** The project slug, as `forge-runner master stand-down` takes it. */
 	slug: string | undefined;
 }) {
@@ -564,14 +555,6 @@ function RunnerRow({
 								<Icon name="alert" size={11} />
 								{limit.label}
 								{limit.active && limit.resetText ? ` · ${limit.resetText}` : ""}
-							</span>
-						</Badge>
-					)}
-					{isPrimary && (
-						<Badge tone="accent">
-							<span className="inline-flex items-center gap-1">
-								<Icon name="star" size={11} />
-								Primary
 							</span>
 						</Badge>
 					)}
@@ -629,28 +612,6 @@ function RunnerRow({
 									Turn on
 								</Button>
 							)}
-							{runner.deviceId &&
-								(isPrimary ? (
-									<Button
-										variant="ghost"
-										size="sm"
-										icon="star"
-										loading={settingPrimary}
-										onClick={() => onSetPrimary(null)}
-									>
-										Unset primary
-									</Button>
-								) : (
-									<Button
-										variant="ghost"
-										size="sm"
-										icon="star"
-										loading={settingPrimary}
-										onClick={() => onSetPrimary(runner.deviceId as string)}
-									>
-										Set primary
-									</Button>
-								))}
 							{runner.deviceId && (
 								<Button
 									variant="ghost"
@@ -793,12 +754,10 @@ function RunnerRow({
 /** Assign an already-paired device, or pair one inline (it then appears here). */
 function AssignDevice({
 	projectId,
-	defaultRepoPath,
 	assignedDeviceIds,
 	hasRepoUrl,
 }: {
 	projectId: string;
-	defaultRepoPath: string | null;
 	assignedDeviceIds: Set<string>;
 	hasRepoUrl: boolean;
 }) {
@@ -806,7 +765,7 @@ function AssignDevice({
 	const assign = useAssignDeviceToProject(projectId);
 	const initPairing = useInitPairing();
 	const [deviceId, setDeviceId] = useState("");
-	const [repoPath, setRepoPath] = useState(defaultRepoPath ?? "");
+	const [repoPath, setRepoPath] = useState("");
 
 	const available = useMemo(
 		() =>
@@ -849,7 +808,7 @@ function AssignDevice({
 							<Input
 								value={repoPath}
 								onChange={(e) => setRepoPath(e.target.value)}
-								placeholder={defaultRepoPath ?? "/abs/path/on/the/device"}
+								placeholder="/abs/path/on/the/device"
 								spellCheck={false}
 							/>
 						</Field>
@@ -948,8 +907,6 @@ export function ProjectRunnersScreen({
 	const project = useProject(projectId);
 	const runners = useProjectRunners(projectId);
 	const active = useActiveRunners(projectId);
-	const setDefault = useSetDefaultDevice(projectId);
-	const defaultDeviceId = project.data?.defaultDeviceId ?? null;
 
 	const rows = runners.data ?? [];
 	const assignedDeviceIds = useMemo(
@@ -998,7 +955,6 @@ export function ProjectRunnersScreen({
 			{canEdit && (
 				<AssignDevice
 					projectId={projectId}
-					defaultRepoPath={project.data?.repoPath ?? null}
 					assignedDeviceIds={assignedDeviceIds}
 					hasRepoUrl={!!project.data?.repoUrl}
 				/>
@@ -1034,9 +990,6 @@ export function ProjectRunnersScreen({
 									current={currentByRunner.get(r.runnerId) ?? null}
 									projectId={projectId}
 									canEdit={!!canEdit}
-									isPrimary={!!r.deviceId && r.deviceId === defaultDeviceId}
-									onSetPrimary={(id) => setDefault.mutate(id)}
-									settingPrimary={setDefault.isPending}
 									slug={project.data?.slug}
 								/>
 							))}

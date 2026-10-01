@@ -40,7 +40,6 @@ export interface ProjectHealthRow {
   id: string;
   projectName: string;
   projectSlug: string;
-  repoPath: string | null;
   throughput: number;
   totalActive: number;
   statusDistribution: Record<string, number>;
@@ -101,7 +100,6 @@ export interface ProjectConsoleItem {
   orgIsPersonal: boolean;
   role: ProjectListItem['role'];
   createdAt: string;
-  repoPath: string | null;
   health: HealthKey;
   liveRuns: number;
   openIssues: number;

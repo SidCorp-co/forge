@@ -56,12 +56,9 @@ export function ProjectCard({ project, now, onTogglePin }: ProjectCardProps) {
             {!project.orgIsPersonal && (
               <>
                 <Icon name="users" size={12} />
-                <span className="max-w-[40%] truncate text-11-5">{project.orgName}</span>
-                <span aria-hidden>·</span>
+                <span className="truncate text-11-5">{project.orgName}</span>
               </>
             )}
-            <Icon name="github" size={12} />
-            <span className="truncate font-mono text-11-5">{project.repoPath ?? '—'}</span>
           </div>
         </div>
         <HealthDot health={project.health} withLabel={false} />
