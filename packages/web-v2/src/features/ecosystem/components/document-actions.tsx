@@ -124,13 +124,18 @@ export function DocumentActions({
           >
             Edit draft
           </Link>
-          <ReasonAction
-            label="Submit"
-            confirmLabel="Submit"
-            reason="none"
-            variant="primary"
-            run={() => ecosystemApi.submit(projectId, view.id)}
-          />
+          {d.state === "draft" ? (
+            <ReasonAction
+              label="Submit"
+              confirmLabel="Submit"
+              reason="none"
+              variant="primary"
+              run={() => ecosystemApi.submit(projectId, view.id)}
+            />
+          ) : (
+            // Core submits only a draft, and an edit is what turns a returned document back into one.
+            <p className="self-center text-13 text-muted">Edit it to submit it again.</p>
+          )}
         </>
       ) : null}
       {owesReply(view) && d.number ? (
