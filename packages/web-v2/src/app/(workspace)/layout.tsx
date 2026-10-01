@@ -42,8 +42,9 @@ import {
   useRailProjectData,
   CurrentProjectProvider,
 } from "@/features/shell";
-import { CHAT_ROOT, type ShellMode, chatConversationId, chatSlug, modeOf, routeSlug, switchTarget } from "@/features/shell/mode";
-import { useModeMemory } from "@/features/shell/use-mode-memory";
+import { ChatDock } from "@/features/conversations/components/chat-dock";
+import { ChatDockProvider, useChatDockState } from "@/features/conversations/dock";
+import { useAwaitingApprovalCount } from "@/features/releases/versions-hooks";
 import { WorkspaceSidebar } from "@/features/shell/components/workspace-sidebar";
 import { SidebarSearch } from "@/features/shell/components/sidebar-search";
 import { SidebarBell } from "@/features/shell/components/sidebar-bell";
@@ -60,10 +61,10 @@ export default function WorkspaceLayout({ children }: { children: React.ReactNod
   );
 }
 
-function useShellProject(pathname: string, mode: ShellMode) {
+function useShellProject(pathname: string) {
   const { data: projects } = useProjects();
   const { pinnedIds } = usePinnedProjects();
-  const selected = routeSlug(pathname);
+  const selected = activeSlug(pathname);
   const selectedProject = useMemo(
     () => (selected ? (projects?.find((p) => p.slug === selected) ?? null) : null),
     [projects, selected],
@@ -71,7 +72,7 @@ function useShellProject(pathname: string, mode: ShellMode) {
   const { activeOrgId, lastSlug } = useProjectOrgScopeSync({
     slug: selected,
     activeProject: selectedProject,
-    exitTo: mode === "chat" ? CHAT_ROOT : "/projects",
+    exitTo: "/projects",
   });
   const scopedProjects = useMemo(
     () => (projects ?? []).filter((p) => inActiveOrg(p, activeOrgId)),
@@ -116,10 +117,10 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     if (!isLoading && !user) router.replace("/login");
   }, [isLoading, user, router]);
 
-  const mode = modeOf(pathname);
-  const modeRoutes = useModeMemory(`${pathname}${locationSearch}`);
   const { selectedProject, activeOrgId, scopedProjects, pinnedIds, railSlug, railProject } =
-    useShellProject(pathname, mode);
+    useShellProject(pathname);
+  const dock = useChatDockState(railProject?.id ?? null);
+  const awaitingApproval = useAwaitingApprovalCount(railProject?.id);
   const slug = activeSlug(pathname);
 
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -146,11 +147,6 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
-
-  const switchMode = useCallback(
-    (to: ShellMode) => router.push(switchTarget(to, modeRoutes[to], railSlug)),
-    [router, modeRoutes, railSlug],
-  );
 
   const activeKey = useMemo(
     () => buildActiveKey(pathname, slug, locationSearch),
@@ -181,8 +177,17 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     [router, railSlug],
   );
 
+  const newChat = useCallback(() => {
+    if (!dock.projectId) {
+      toast({ title: "New chat", description: "Open a project to chat in it.", tone: "info" });
+      return;
+    }
+    dock.show({ kind: "draft", projectId: dock.projectId });
+  }, [dock, toast]);
+
   function onBottomSelect(key: string) {
-    if (key === "activity" || key === "chat") switchMode(key);
+    if (key === "home") router.push("/");
+    else if (key === "chat") dock.toggle();
     else if (key === "attention") router.push("/attention");
     else if (key === "more") setMoreOpen(true);
   }
@@ -192,16 +197,15 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
       buildWorkspaceCommands({
         router,
         slug,
-        railSlug,
         activeProjectName: selectedProject?.name,
         scopedProjects,
         pinnedIds,
         pinnedViews: pinnedViews.views,
         recents,
         toast,
-        onSwitchMode: switchMode,
+        onNewChat: newChat,
       }),
-    [router, slug, railSlug, selectedProject, scopedProjects, recents, pinnedViews.views, pinnedIds, toast, switchMode],
+    [router, slug, selectedProject, scopedProjects, recents, pinnedViews.views, pinnedIds, toast, newChat],
   );
 
   const openPalette = () => setPaletteOpen(true);
@@ -213,11 +217,10 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const userInitials = user?.email ? user.email.slice(0, 2).toUpperCase() : undefined;
 
   return (
+    <ChatDockProvider value={dock}>
     <div className="flex h-dvh overflow-hidden bg-app">
       <div className="hidden h-full md:block" data-testid="desktop-sidebar">
         <WorkspaceSidebar
-          mode={mode}
-          onSwitchMode={switchMode}
           collapsed={sidebar.collapsed}
           onToggleCollapsed={sidebar.toggleCollapsed}
           groupOpen={sidebar.groupOpen}
@@ -226,7 +229,9 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
           attentionCount={attentionCount}
           railSlug={railSlug}
           rail={rail}
-          chat={{ slug: chatSlug(pathname), conversationId: chatConversationId(pathname) }}
+          badges={{ openIssues: rail.railConsole?.openIssues, awaitingApproval }}
+          chatOpen={dock.open}
+          onToggleChat={dock.toggle}
           onNavigate={navigate}
           onRoute={(href) => router.push(href)}
           onSignOut={logout}
@@ -244,7 +249,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
         railProjectName={railProject?.name}
         activeKey={activeKey}
         attentionCount={attentionCount}
-        openIssuesBadge={rail.railConsole?.openIssues}
+        badges={{ openIssues: rail.railConsole?.openIssues, awaitingApproval }}
         scopedProjects={scopedProjects}
         onNavigate={navigate}
         onOpenProject={(s) => router.push(`/projects/${s}`)}
@@ -262,29 +267,29 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
       <NotificationsBell open={notificationsOpen} onClose={closeNotifications} anchor={bellAnchor} />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        {mode === "activity" && (
-          <PinnedTabBar
-            tabs={pinnedViews.views}
-            activeHref={`${pathname}${locationSearch}`}
-            onSelect={(href) => router.push(href)}
-            onRemove={pinnedViews.remove}
-          />
-        )}
+        <PinnedTabBar
+          tabs={pinnedViews.views}
+          activeHref={`${pathname}${locationSearch}`}
+          onSelect={(href) => router.push(href)}
+          onRemove={pinnedViews.remove}
+        />
 
         <main className="min-h-0 flex-1 overflow-y-auto pb-[calc(56px+env(safe-area-inset-bottom))] md:pb-0">
-          {mode === "activity" && <PageCrumbs crumbs={crumbs} onNavigate={(href) => router.push(href)} />}
+          <PageCrumbs crumbs={crumbs} onNavigate={(href) => router.push(href)} />
           <CurrentProjectProvider project={railProject}>{children}</CurrentProjectProvider>
         </main>
-
       </div>
+
+      <ChatDock dock={dock} />
 
       <BottomTabBar
         items={bottomTabItems(attentionCount)}
-        activeKey={buildBottomActiveKey(pathname, moreOpen)}
+        activeKey={buildBottomActiveKey(pathname, moreOpen, dock.open)}
         onSelect={onBottomSelect}
       />
 
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={commands} />
     </div>
+    </ChatDockProvider>
   );
 }

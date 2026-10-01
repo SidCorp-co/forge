@@ -1,0 +1,73 @@
+{
+  "$schema": "https://forge.sidcorp.co/schemas/workflow-v1.json",
+  "version": 1,
+  "project": "da368b0a-8e21-4763-9d90-8f7b9d0c7115",
+  "flow": "issue-status",
+  "kind": "state",
+  "title": "Issue status",
+  "summary": "The statuses an issue moves through and the moves between them.",
+  "status": "current",
+  "steps": [
+    {
+      "id": "draft",
+      "does": "Parked work; nothing dispatches it.",
+      "status": "current",
+      "after": [],
+      "evidence": null
+    },
+    {
+      "id": "open",
+      "does": "Admissible: a master may claim it.",
+      "status": "current",
+      "after": ["draft"],
+      "evidence": null
+    },
+    {
+      "id": "in_progress",
+      "does": "A run holds it.",
+      "status": "current",
+      "after": ["open"],
+      "evidence": null
+    },
+    {
+      "id": "needs_info",
+      "does": "A person owes an answer; a question is attached.",
+      "status": "current",
+      "after": ["in_progress"],
+      "evidence": null
+    },
+    {
+      "id": "developed",
+      "does": "Built; waits for the judge.",
+      "status": "current",
+      "after": ["in_progress"],
+      "evidence": null
+    },
+    {
+      "id": "awaiting_release",
+      "does": "Merged; waits for a release that is not automatic.",
+      "status": "current",
+      "after": ["developed"],
+      "evidence": null
+    },
+    {
+      "id": "closed",
+      "does": "Shipped: refused without a merge mark.",
+      "status": "current",
+      "after": ["developed", "awaiting_release"],
+      "evidence": null
+    },
+    {
+      "id": "dropped",
+      "does": "Not work.",
+      "status": "current",
+      "after": ["open", "needs_info"],
+      "evidence": null
+    }
+  ],
+  "drift": null,
+  "writtenBy": {
+    "sha": "e7af41887a0e90ed541bb0dbfb34d4f9cb4f8510"
+  },
+  "refreshedAtSha": "e7af41887a0e90ed541bb0dbfb34d4f9cb4f8510"
+}

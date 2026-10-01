@@ -3,40 +3,38 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { NavRail } from "@/design";
-import { ChatSidebar } from "@/features/conversations/components/chat-sidebar";
 import { OrgSwitcher } from "@/features/orgs/components/org-switcher";
 import { ProjectFlyout } from "@/features/projects/components/project-flyout";
 import { ForgeVersion } from "@/features/version";
 import { useWhatsNewStatus } from "@/features/whats-new/hooks";
-import type { ShellMode } from "../mode";
 import { NavRailCompact } from "../nav-rail-compact";
 import {
   ECOSYSTEM_ITEMS,
   ECOSYSTEM_RAIL_KEYS,
-  PROJECT_ITEMS,
+  type ProjectBadges,
   compactWorkspaceRailItems,
+  projectMenu,
   projectRailItems,
   workspaceNavItems,
 } from "../nav-model";
 import type { useRailProjectData } from "../use-rail-project-data";
-import { ModeSwitch } from "./mode-switch";
 
 const ECOSYSTEM_FILTER_KEYS = new Set(
   ECOSYSTEM_ITEMS.filter((it) => it.status).map((it) => it.key),
 );
 
 export interface WorkspaceSidebarProps {
-  mode: ShellMode;
-  onSwitchMode: (to: ShellMode) => void;
   collapsed: boolean;
   onToggleCollapsed: () => void;
   groupOpen: Record<string, boolean>;
-  onToggleGroup: (key: string) => void;
+  onToggleGroup: (key: string, open?: boolean) => void;
   activeKey: string;
   attentionCount: number;
   railSlug: string | null;
   rail: ReturnType<typeof useRailProjectData>;
-  chat: { slug: string | null; conversationId: string | null };
+  badges: ProjectBadges;
+  chatOpen: boolean;
+  onToggleChat: () => void;
   onNavigate: (key: string) => void;
   onRoute: (href: string) => void;
   onSignOut: () => void;
@@ -66,7 +64,7 @@ function useFlyoutHover() {
 }
 
 export function WorkspaceSidebar(props: WorkspaceSidebarProps) {
-  const { mode, onSwitchMode, collapsed, activeKey, attentionCount, rail, onRoute } = props;
+  const { collapsed, activeKey, attentionCount, rail, onRoute, badges } = props;
   const { hasUnseen } = useWhatsNewStatus();
   const flyout = useFlyoutHover();
   const workspaceItems = useMemo(() => workspaceNavItems(attentionCount), [attentionCount]);
@@ -76,33 +74,15 @@ export function WorkspaceSidebar(props: WorkspaceSidebarProps) {
     whatsNewBadge: hasUnseen ? 1 : 0,
     onAccount: () => onRoute("/settings"),
     onSignOut: props.onSignOut,
+    onChat: props.onToggleChat,
+    chatOpen: props.chatOpen,
   };
-
-  if (mode === "chat" && !collapsed) {
-    return (
-      <NavRail
-        workspaceItems={[]}
-        activeKey=""
-        modeSwitch={<ModeSwitch mode={mode} onSwitch={onSwitchMode} />}
-        brandSearch={props.search("icon")}
-        orgSwitcher={<OrgSwitcher variant="expanded" />}
-        onToggleCollapsed={props.onToggleCollapsed}
-        bell={props.bell}
-        body={
-          <ChatSidebar slug={props.chat.slug} conversationId={props.chat.conversationId} onNavigate={onRoute} />
-        }
-        user={props.userInitials ? { initials: props.userInitials } : undefined}
-        version={<ForgeVersion className="fg-caption truncate" />}
-        {...footer}
-      />
-    );
-  }
 
   if (collapsed) {
     return (
       <NavRailCompact
         workspaceItems={compactWorkspaceRailItems(attentionCount)}
-        projectItems={rail.compactActiveProject ? projectRailItems(rail.railConsole?.openIssues) : null}
+        projectItems={rail.compactActiveProject ? projectRailItems(badges) : null}
         ecosystemItems={ECOSYSTEM_ITEMS.filter((it) => ECOSYSTEM_RAIL_KEYS.has(it.key))}
         activeKey={ECOSYSTEM_FILTER_KEYS.has(activeKey) ? "eco-channel" : activeKey}
         activeSlug={props.railSlug}
@@ -117,7 +97,6 @@ export function WorkspaceSidebar(props: WorkspaceSidebarProps) {
         orgSwitcher={<OrgSwitcher variant="compact" />}
         onExpand={props.onToggleCollapsed}
         version={<ForgeVersion className="text-9-5 leading-tight" />}
-        modeSwitch={<ModeSwitch mode={mode} onSwitch={onSwitchMode} compact />}
         search={props.search("compact")}
         bell={props.bell}
         {...footer}
@@ -130,7 +109,7 @@ export function WorkspaceSidebar(props: WorkspaceSidebarProps) {
       <NavRail
         workspaceItems={workspaceItems}
         project={rail.projectMark}
-        projectClusters={rail.projectMark ? [{ key: "project", kicker: "Project", items: PROJECT_ITEMS }] : undefined}
+        projectClusters={rail.projectMark ? [{ key: "project", kicker: "Project", items: projectMenu(badges) }] : undefined}
         workspaceClusters={
           rail.projectMark ? [{ key: "ecosystem", kicker: "Ecosystem", items: ECOSYSTEM_ITEMS, collapsible: true }] : undefined
         }
@@ -142,10 +121,9 @@ export function WorkspaceSidebar(props: WorkspaceSidebarProps) {
         activeKey={activeKey}
         onNavigate={props.onNavigate}
         user={props.userInitials ? { initials: props.userInitials } : undefined}
-        orgSwitcher={<OrgSwitcher variant="expanded" />}
+        orgSwitcher={<OrgSwitcher variant="brand" />}
         onToggleCollapsed={props.onToggleCollapsed}
         version={<ForgeVersion className="fg-caption truncate" />}
-        modeSwitch={<ModeSwitch mode={mode} onSwitch={onSwitchMode} />}
         brandSearch={props.search("icon")}
         bell={props.bell}
         {...footer}

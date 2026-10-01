@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { ecosystemJsonSchemas } from '../ecosystem/json-schema.js';
+import { workflowJsonSchemas } from '../workflows/json-schema.js';
 import { type ProjectConfigSchemaName, projectConfigJsonSchemas, schemaId } from './json-schema.js';
 
 export const projectConfigSchemaRoutes = new Hono();
@@ -14,6 +15,7 @@ const SERVED = new Map<string, object>([
       ] as const,
   ),
   ...Object.entries(ecosystemJsonSchemas),
+  ...Object.entries(workflowJsonSchemas),
 ]);
 
 projectConfigSchemaRoutes.get('/schemas/:file', (c) => {

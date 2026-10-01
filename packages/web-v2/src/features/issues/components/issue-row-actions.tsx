@@ -303,8 +303,8 @@ export function IssueTableRow({
           </span>
         </TD>
       )}
-      <TD>
-        <span className="inline-flex items-center gap-1.5">
+      <TD className="w-px whitespace-nowrap" data-testid="issue-id-cell">
+        <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
           <button
             type="button"
             onClick={open}

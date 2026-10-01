@@ -62,13 +62,6 @@ export type LabelKind = "label" | "module";
 
 export type { IssuePark, IssueParkResponse, ParkOwes, ParkResume } from "@forge/contracts";
 
-export type {
-  ModuleAttributionCounts,
-  ModuleCounts,
-  ModuleRollupResponse,
-  ModuleRollupRow,
-} from "@forge/contracts";
-
 /** One module attributed to an issue. Primary first in every array core sends. */
 export interface ModuleAttribution {
   labelId: string;

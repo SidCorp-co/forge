@@ -50,6 +50,7 @@ const UNREAD = "could not be read";
 const NO_RELEASE_RUNNER_LABEL = "none — a release goes to any box in this project's pool";
 
 const FACT_GAPS = new Set(["build-commands", "test-commands", "release-procedure"]);
+const KNOWLEDGE_DOOR = "Write it as a project knowledge entry with `forge_knowledge` (action `write`).";
 
 /** What the badge says about where a landed change goes — the words a reader of the screen uses. */
 function pathText(r: ReleaseReadiness): string {
@@ -142,7 +143,6 @@ export function ReleaseSection({
 
   const r = q.data;
   if (!r) return null;
-  const knowledgeHref = slug ? `/projects/${slug}/library?tab=knowledge&sub=rules` : undefined;
   const integrationsHref = slug ? `/projects/${slug}/settings?tab=integrations` : undefined;
 
   return (
@@ -255,10 +255,8 @@ export function ReleaseSection({
           {r.gaps.map((g) => (
             <Banner key={g} tone="attention">
               {inlineCode(GAP_TEXT[g])}{" "}
-              {FACT_GAPS.has(g) && knowledgeHref ? (
-                <Link href={knowledgeHref} className="underline">
-                  Write it in Knowledge rules
-                </Link>
+              {FACT_GAPS.has(g) ? (
+                inlineCode(KNOWLEDGE_DOOR)
               ) : DOCUMENT_GAPS.has(g) ? (
                 inlineCode(PROJECT_DOCUMENT_DOOR)
               ) : integrationsHref ? (

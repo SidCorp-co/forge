@@ -68,7 +68,8 @@ export interface NavRailCompactProps {
    *  layout supplies the wired node, and only one rail is on screen at a time
    *  so it is never rendered twice (ISS-1119). */
   version?: React.ReactNode;
-  modeSwitch?: React.ReactNode;
+  onChat?: () => void;
+  chatOpen?: boolean;
   search?: React.ReactNode;
   bell?: React.ReactNode;
   ecosystemItems?: RailItem[];
@@ -162,7 +163,8 @@ export function NavRailCompact({
   whatsNewBadge,
   onDocs,
   version,
-  modeSwitch,
+  onChat,
+  chatOpen,
   search,
   bell,
   ecosystemItems,
@@ -221,8 +223,6 @@ export function NavRailCompact({
           <Icon name="panelLeft" size={18} className="absolute hidden text-subtle group-hover:block" />
         )}
       </button>
-
-      {modeSwitch && <div className="mb-3">{modeSwitch}</div>}
 
       {orgSwitcher && <div className="mb-3">{orgSwitcher}</div>}
 
@@ -420,6 +420,20 @@ export function NavRailCompact({
       {/* Footer — What's New + Docs, then the account menu, then the version. */}
       <div className="mt-auto flex flex-col items-center gap-1.5">
         {bell}
+        {onChat && (
+          <button
+            type="button"
+            onClick={onChat}
+            aria-label="Chat"
+            aria-pressed={chatOpen === true}
+            className={cn(
+              "inline-flex size-8 items-center justify-center rounded-md transition-colors hover:bg-hover hover:text-fg",
+              chatOpen ? "bg-accent-tint text-accent-text" : "text-subtle",
+            )}
+          >
+            <Icon name="chat" size={18} />
+          </button>
+        )}
         {onWhatsNew && (
           <button
             type="button"

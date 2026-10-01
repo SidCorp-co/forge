@@ -1,0 +1,113 @@
+import { Hono } from 'hono';
+import { z } from 'zod';
+import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { badRequest, notFound } from '../middleware/route-errors.js';
+import { zValidator } from '../middleware/zod-validator.js';
+import {
+  approvalRefusal,
+  approvalRequestSchema,
+  decideApproval,
+  parseDecision,
+  requestApproval,
+} from './approvals.js';
+import { findReleaseBatchRun } from './service.js';
+import { listReleaseVersions, readReleaseVersion } from './versions.js';
+
+export const releaseVersionRoutes = new Hono<{ Variables: AuthVars }>();
+releaseVersionRoutes.use('/:projectId/releases', requireAuth(), assertEmailVerified());
+releaseVersionRoutes.use('/:projectId/releases/*', requireAuth(), assertEmailVerified());
+releaseVersionRoutes.use(
+  '/:projectId/release-batches/:runId/approvals',
+  requireAuth(),
+  assertEmailVerified(),
+);
+releaseVersionRoutes.use(
+  '/:projectId/release-batches/:runId/approvals/*',
+  requireAuth(),
+  assertEmailVerified(),
+);
+
+const projectParam = zValidator('param', z.object({ projectId: z.uuid() }), (r) => {
+  if (!r.success) throw badRequest(z.flattenError(r.error));
+});
+const versionParam = zValidator(
+  'param',
+  z.object({ projectId: z.uuid(), version: z.string().min(1).max(40) }),
+  (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  },
+);
+const runParam = zValidator('param', z.object({ projectId: z.uuid(), runId: z.uuid() }), (r) => {
+  if (!r.success) throw badRequest(z.flattenError(r.error));
+});
+const approvalParam = zValidator(
+  'param',
+  z.object({ projectId: z.uuid(), runId: z.uuid(), approvalId: z.uuid() }),
+  (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  },
+);
+const requestBody = zValidator('json', approvalRequestSchema, (r) => {
+  if (!r.success) {
+    throw approvalRefusal(
+      422,
+      'RELEASE_APPROVAL_SHAPE',
+      'the request is { evidence: { environment, commit, reading }, note? }',
+      {
+        issues: z.flattenError(r.error),
+      },
+    );
+  }
+});
+const decisionBody = zValidator('json', z.unknown());
+
+async function assertRunOfProject(runId: string, projectId: string): Promise<void> {
+  const run = await findReleaseBatchRun(runId);
+  if (!run || run.projectId !== projectId) throw notFound('release batch not found');
+}
+
+releaseVersionRoutes.get('/:projectId/releases', projectParam, async (c) => {
+  const { projectId } = c.req.valid('param');
+  assertProjectRole(await loadProjectAccess(projectId, c.get('userId')), 'viewer');
+  return c.json(await listReleaseVersions(projectId));
+});
+
+releaseVersionRoutes.get('/:projectId/releases/:version', versionParam, async (c) => {
+  const { projectId, version } = c.req.valid('param');
+  assertProjectRole(await loadProjectAccess(projectId, c.get('userId')), 'viewer');
+  return c.json(await readReleaseVersion(projectId, version));
+});
+
+releaseVersionRoutes.post(
+  '/:projectId/release-batches/:runId/approvals',
+  runParam,
+  requestBody,
+  async (c) => {
+    const { projectId, runId } = c.req.valid('param');
+    const userId = c.get('userId');
+    assertProjectRole(await loadProjectAccess(projectId, userId), 'member');
+    await assertRunOfProject(runId, projectId);
+    return c.json(
+      await requestApproval({ projectId, runId, userId, body: c.req.valid('json') }),
+      201,
+    );
+  },
+);
+
+releaseVersionRoutes.post(
+  '/:projectId/release-batches/:runId/approvals/:approvalId/decision',
+  approvalParam,
+  decisionBody,
+  async (c) => {
+    const { projectId, runId, approvalId } = c.req.valid('param');
+    const userId = c.get('userId');
+    const agency = c.get('agency');
+    if (!agency)
+      throw new Error('release-batch: a decision reached its handler without an auth gate');
+    await loadProjectAccess(projectId, userId);
+    await assertRunOfProject(runId, projectId);
+    const decision = parseDecision(c.req.valid('json'));
+    return c.json(await decideApproval({ projectId, runId, approvalId, userId, agency, decision }));
+  },
+);

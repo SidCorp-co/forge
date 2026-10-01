@@ -714,7 +714,13 @@ export function IssuesListView({
                         <SortableTH
                           key={header.id}
                           header={header}
-                          className={header.id === "cost" ? "text-right" : undefined}
+                          className={
+                            header.id === "cost"
+                              ? "text-right"
+                              : header.id === "createdAt"
+                                ? "w-px whitespace-nowrap"
+                                : undefined
+                          }
                         />
                       ))}
                       <TH className="sr-only">Actions</TH>

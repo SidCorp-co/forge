@@ -9,6 +9,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ChatDockProvider, type ChatDockApi } from "@/features/conversations/dock";
 import { ApiError } from "@/lib/api/client";
 import type { DocumentView, RegisterRow } from "./types";
 
@@ -302,12 +303,18 @@ describe("the document page shows standing, holds and who wrote it", () => {
     expect(await screen.findByText(/Nobody has held|Held by person 55555555/)).toBeInTheDocument();
   });
 
-  it("offers Ask about this, opening Chat in the project about the document's number", async () => {
-    documentScreen(view());
+  it("offers Ask about this, opening the chat dock about the document's number", async () => {
+    const askAbout = vi.fn();
+    const dock = { projectId: FORGE, askAbout } as unknown as ChatDockApi;
+    api.document.mockResolvedValue(view());
+    wrap(
+      <ChatDockProvider value={dock}>
+        <DocumentScreen projectId={FORGE} slug="forge" role="member" docRef="FP-RFI-1" />
+      </ChatDockProvider>,
+    );
     await screen.findByText("Does the skill read the phase field?");
-    const ask = screen.getByRole("link", { name: /Ask about this/ });
-    const number = view().document.number as string;
-    expect(ask).toHaveAttribute("href", `/chat/forge?${new URLSearchParams({ about: `document:${number}` })}`);
+    fireEvent.click(screen.getByRole("button", { name: /Ask about this/ }));
+    expect(askAbout).toHaveBeenCalledWith("document", view().document.number);
   });
 
   it("says the conversation could not be read when its thread fails", async () => {

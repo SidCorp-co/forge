@@ -407,7 +407,7 @@ export function IssueDetailScreen({
           >
             Open session
           </Button>
-          <AskAboutThis slug={slug} kind="issue" refId={issue.displayId} />
+          <AskAboutThis kind="issue" refId={issue.displayId} />
           <Menu
             align="right"
             items={moreItems}

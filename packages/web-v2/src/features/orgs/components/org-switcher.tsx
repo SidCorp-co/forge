@@ -22,7 +22,7 @@ function orgLabel(o: OrgListItem): string {
   return o.isPersonal ? "Personal" : o.name;
 }
 
-export function OrgSwitcher({ variant }: { variant: "compact" | "expanded" }) {
+export function OrgSwitcher({ variant }: { variant: "compact" | "expanded" | "brand" }) {
   const router = useRouter();
   const { orgs, activeOrg, setActiveOrg, isSingle } = useActiveOrg();
 
@@ -41,6 +41,32 @@ export function OrgSwitcher({ variant }: { variant: "compact" | "expanded" }) {
     { label: "Organization home", icon: "grid", onSelect: () => router.push("/org") },
     { label: "Manage organizations", icon: "settings", onSelect: () => router.push("/settings?tab=orgs") },
   ];
+
+  if (variant === "brand") {
+    return (
+      <Menu
+        side="bottom"
+        align="left"
+        className="min-w-0 flex-1"
+        triggerClassName="block w-full min-w-0"
+        items={items}
+        trigger={
+          <button
+            type="button"
+            data-testid="brand-org-switcher"
+            aria-haspopup="menu"
+            aria-label={`Organization: ${label}`}
+            className="flex w-full min-w-0 items-center gap-1.5 rounded-md px-1.5 py-1 text-left transition-colors hover:bg-hover focus-visible:shadow-[var(--shadow-focus)] focus-visible:outline-none"
+          >
+            <span className="fg-h3 min-w-0 flex-1 truncate" style={{ fontSize: "var(--text-16)" }}>
+              {label}
+            </span>
+            <Icon name="chevronDown" size={14} className="flex-none text-subtle" />
+          </button>
+        }
+      />
+    );
+  }
 
   if (variant === "compact") {
     const glyph = (

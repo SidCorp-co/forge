@@ -7,7 +7,15 @@ import { OrgSwitcher } from "@/features/orgs/components/org-switcher";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
 import type { ProjectListItem } from "@/features/projects/types";
 import { cn } from "@/lib/utils/cn";
-import { ECOSYSTEM_ITEMS, PROJECT_ITEMS, SECONDARY_DESTINATIONS, WORKSPACE_ITEMS } from "../nav-model";
+import {
+  ECOSYSTEM_ITEMS,
+  type ProjItem,
+  type ProjectBadges,
+  SECONDARY_DESTINATIONS,
+  WORKSPACE_ITEMS,
+  isProjGroup,
+  projectMenu,
+} from "../nav-model";
 
 // Workspace destinations for the mobile drawer: the rail rows plus the two
 // most-wanted secondary destinations (Attention, Settings), so the workspace
@@ -62,8 +70,7 @@ export interface MobileNavDrawerProps {
   railProjectName: string | null | undefined;
   activeKey: string;
   attentionCount: number;
-  /** Open-issue count for the rail project (badges the Issues row). */
-  openIssuesBadge: number | undefined;
+  badges: ProjectBadges;
   /** Projects scoped to the active org (ISS-480). */
   scopedProjects: ProjectListItem[];
   /** Shared key-router from the layout (workspace + proj-* keys). */
@@ -87,7 +94,7 @@ export function MobileNavDrawer({
   railProjectName,
   activeKey,
   attentionCount,
-  openIssuesBadge,
+  badges,
   scopedProjects,
   onNavigate,
   onOpenProject,
@@ -109,6 +116,20 @@ export function MobileNavDrawer({
 
   if (!open) return null;
 
+  const projectRow = (it: ProjItem) => (
+    <DrawerNavButton
+      key={it.key}
+      active={it.key === activeKey}
+      onClick={() => {
+        onNavigate(it.key);
+        onClose();
+      }}
+      leading={<Icon name={it.icon} size={18} />}
+      label={it.label}
+      badge={it.badge}
+    />
+  );
+
   // This project — the project tier from the desktop rail. Shown for the rail
   // project (the one you're in, else last-visited) so Issues & co. are always
   // reachable on mobile.
@@ -117,19 +138,21 @@ export function MobileNavDrawer({
       <span className="fg-label px-1.5 pb-1 pt-0.5 text-fg">
         {railProjectName ?? "This project"}
       </span>
-      {PROJECT_ITEMS.map((it) => (
-        <DrawerNavButton
-          key={it.key}
-          active={it.key === activeKey}
-          onClick={() => {
-            onNavigate(it.key);
-            onClose();
-          }}
-          leading={<Icon name={it.icon} size={18} />}
-          label={it.label}
-          badge={it.key === "proj-issues" ? openIssuesBadge : undefined}
-        />
-      ))}
+      {projectMenu(badges).map((e) =>
+        isProjGroup(e) ? (
+          <div key={e.key} className="flex flex-col">
+            <span className="flex items-center gap-2.5 px-2.5 py-2 text-13-5 font-semibold text-muted">
+              <Icon name={e.icon} size={18} />
+              {e.label}
+            </span>
+            <div className="ml-[19px] flex flex-col border-l border-line-subtle pl-2">
+              {e.items.map((it) => projectRow(it))}
+            </div>
+          </div>
+        ) : (
+          projectRow(e)
+        ),
+      )}
       <span className="fg-label px-1.5 pb-1 pt-2 text-fg">Ecosystem</span>
       {ECOSYSTEM_ITEMS.map((it) => (
         <DrawerNavButton

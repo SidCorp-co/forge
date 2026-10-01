@@ -154,7 +154,7 @@ export function NotificationsBell({ open, onClose, anchor }: NotificationsBellPr
       const target = projects?.find((p) => p.id === row.projectId);
       if (!target) return;
       if (row.type === "reconcile_gate_pending") {
-        router.push(`/projects/${target.slug}/library?tab=updates`);
+        router.push(`/projects/${target.slug}/skill-updates`);
         return;
       }
       if (!row.issueId) return;
@@ -205,7 +205,7 @@ export function NotificationsBell({ open, onClose, anchor }: NotificationsBellPr
       const target = projects?.find((p) => p.id === n.projectId);
       if (!target) return;
       if (n.type === "reconcile_gate_pending") {
-        router.push(`/projects/${target.slug}/library?tab=updates`);
+        router.push(`/projects/${target.slug}/skill-updates`);
         return;
       }
       if (!n.issueId) return;

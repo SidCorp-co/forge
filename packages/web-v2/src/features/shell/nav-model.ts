@@ -1,6 +1,5 @@
 import type { BottomTabItem, Crumb, NavItem } from "@/design";
 import { ecosystemRoutes } from "@/features/ecosystem/routes";
-import { modeOf } from "./mode";
 import type { RailItem } from "./nav-rail-compact";
 
 export const WORKSPACE_ITEMS: Array<NavItem & { href: string }> = [
@@ -29,13 +28,50 @@ export interface ProjItem extends NavItem {
   sub: string;
 }
 
-export const PROJECT_ITEMS: ProjItem[] = [
+export interface ProjGroup {
+  key: string;
+  label: string;
+  icon: NavItem["icon"];
+  items: ProjItem[];
+}
+
+export type ProjEntry = ProjItem | ProjGroup;
+
+export const isProjGroup = (e: ProjEntry): e is ProjGroup => "items" in e;
+
+export const AUTOMATION_GROUP_KEY = "automation";
+
+export const PROJECT_MENU: ProjEntry[] = [
   { key: "proj-overview", label: "Dashboard", icon: "grid", sub: "" },
   { key: "proj-issues", label: "Issues", icon: "list", sub: "/issues" },
   { key: "proj-agents", label: "Agents", icon: "agent", sub: "/agents" },
-  { key: "proj-library", label: "Library", icon: "book", sub: "/library" },
-  { key: "proj-automation", label: "Automation", icon: "calendar", sub: "/automation" },
+  { key: "proj-workflows", label: "Workflows", icon: "flow", sub: "/workflows" },
+  {
+    key: AUTOMATION_GROUP_KEY,
+    label: "Automation",
+    icon: "calendar",
+    items: [
+      { key: "proj-schedules", label: "Schedules", icon: "clock", sub: "/automation/schedules" },
+      { key: "proj-improvements", label: "Improvements", icon: "star", sub: "/automation/improvements" },
+    ],
+  },
+  { key: "proj-releases", label: "Releases", icon: "rocket", sub: "/releases" },
 ];
+
+export const PROJECT_ITEMS: ProjItem[] = PROJECT_MENU.flatMap((e) => (isProjGroup(e) ? e.items : [e]));
+
+export interface ProjectBadges {
+  openIssues?: number | undefined;
+  awaitingApproval?: number | undefined;
+}
+
+const badgeOf = (key: string, badges: ProjectBadges) =>
+  key === "proj-issues" ? badges.openIssues : key === "proj-releases" ? badges.awaitingApproval : undefined;
+
+export function projectMenu(badges: ProjectBadges): ProjEntry[] {
+  const withBadge = (it: ProjItem): ProjItem => ({ ...it, badge: badgeOf(it.key, badges) });
+  return PROJECT_MENU.map((e) => (isProjGroup(e) ? { ...e, items: e.items.map(withBadge) } : withBadge(e)));
+}
 
 export interface EcosystemItem extends NavItem {
   sub: string;
@@ -137,12 +173,12 @@ export function buildActiveKey(pathname: string, slug: string | null, search = "
   return ws?.key ?? "overview";
 }
 
-// cm:why the bottom tabs follow the route like the sidebar's mode switch does; only More is lit by state, because it opens a drawer and is no route of its own
-export function buildBottomActiveKey(pathname: string, moreOpen: boolean): string {
+// cm:why More and Chat are lit by state because each opens a sheet over the page and is no route of its own; the other tabs follow the route
+export function buildBottomActiveKey(pathname: string, moreOpen: boolean, chatOpen: boolean): string {
   if (moreOpen) return "more";
-  if (modeOf(pathname) === "chat") return "chat";
+  if (chatOpen) return "chat";
   if (pathname.startsWith("/attention")) return "attention";
-  return "activity";
+  return "home";
 }
 
 export function workspaceNavItems(attentionCount: number): NavItem[] {
@@ -163,21 +199,18 @@ export function compactWorkspaceRailItems(attentionCount: number): RailItem[] {
   }));
 }
 
-/** Project tier with the Issues queue badge (= open issues). Agents would carry
- *  an active-sessions count, but the console rollup has no per-project session
- *  total yet, so it stays unbadged until that field ships. */
-export function projectRailItems(openIssues: number | undefined): RailItem[] {
+export function projectRailItems(badges: ProjectBadges): RailItem[] {
   return PROJECT_ITEMS.map((it) => ({
     key: it.key,
     label: it.label,
     icon: it.icon,
-    badge: it.key === "proj-issues" ? openIssues : undefined,
+    badge: badgeOf(it.key, badges),
   }));
 }
 
 export function bottomTabItems(attentionCount: number): BottomTabItem[] {
   return [
-    { key: "activity", label: "Activity", icon: "activity" },
+    { key: "home", label: "Home", icon: "grid" },
     { key: "chat", label: "Chat", icon: "chat" },
     { key: "attention", label: "Attention", icon: "inbox", badge: attentionCount },
     { key: "more", label: "More", icon: "menu" },
@@ -188,7 +221,7 @@ export function bottomTabItems(attentionCount: number): BottomTabItem[] {
 const PROJECT_PAGES_OFF_RAIL = [
   { sub: "/settings", label: "Settings" },
   { sub: "/pipeline", label: "Pipeline" },
-  { sub: "/releases", label: "Release run" },
+  { sub: "/skill-updates", label: "Skill updates" },
 ];
 
 export function buildCrumbs(opts: {

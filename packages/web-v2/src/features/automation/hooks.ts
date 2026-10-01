@@ -36,3 +36,18 @@ export function useUpdatePmConfig(projectId: string | undefined) {
     },
   });
 }
+
+export function useRunPm(projectId: string | undefined) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: () => pmApi.run(projectId as string),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["pm", projectId] });
+      toast({ title: "PM sweep queued", tone: "success" });
+    },
+    onError: (err) => {
+      toast({ title: "Couldn't run the PM sweep", description: formatApiError(err), tone: "error" });
+    },
+  });
+}
