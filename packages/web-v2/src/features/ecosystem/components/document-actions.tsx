@@ -8,27 +8,19 @@ import { ecosystemApi } from "../api";
 import { useChannelWrite } from "../hooks";
 import { refusalsOf } from "@/lib/api/refusals";
 import { ecosystemRoutes } from "../routes";
-import type { DocumentView } from "../types";
-import { RefusalNotice } from "./notices";
+import { type DocumentView, REPLY_TYPES } from "../types";
+import { ReadOnlyNotice, RefusalNotice } from "./notices";
 
 export type Role = ProjectListItem["role"];
 
 /** What core lets each role do on a side: any role reads, member or above writes and holds. */
 export const writes = (role: Role) => role === "member" || role === "admin";
 
-const REPLIES: Record<string, string[]> = {
-  "change-notice": ["acknowledgement"],
-  rfi: ["decision"],
-  "change-request": ["decision"],
-  acknowledgement: [],
-  decision: [],
-};
-
 /** Whether the reader's side owes this document a reply it can write. */
 export function owesReply(view: DocumentView): boolean {
   const d = view.document;
   if (view.side !== "recipient" || d.state !== "published") return false;
-  if ((REPLIES[d.type] ?? []).length === 0) return false;
+  if ((REPLY_TYPES[d.type] ?? []).length === 0) return false;
   return !(d.type === "change-notice" && d.body.binding === false);
 }
 
@@ -118,11 +110,7 @@ export function DocumentActions({
 }) {
   const d = view.document;
   if (!writes(role)) {
-    return (
-      <p className="fg-caption">
-        You are {role ? `a ${role}` : "not a member"} on {slug}, so you read its channel and write nothing in it; a member or admin drafts, replies and holds.
-      </p>
-    );
+    return <ReadOnlyNotice role={role} slug={slug} writes="drafts, replies and holds" />;
   }
   const sender = view.side === "sender";
   const editable = sender && (d.state === "draft" || d.state === "returned");

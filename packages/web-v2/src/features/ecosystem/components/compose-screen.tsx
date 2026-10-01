@@ -5,9 +5,9 @@ import { Button, Checkbox, Field, Input, NativeSelect, Textarea } from "@/design
 import { ecosystemApi } from "../api";
 import { useApiPage, useChannelWrite, useDocument, useProjectEcosystems } from "../hooks";
 import { type Refusal, readingOf, refusalsOf } from "@/lib/api/refusals";
-import type { DocumentType, DocumentView } from "../types";
+import { type DocumentType, type DocumentView, REPLY_TYPES } from "../types";
 import { type Role, writes } from "./document-actions";
-import { Loading, RefusalNotice, UnreadNotice } from "./notices";
+import { Loading, ReadOnlyNotice, RefusalNotice, UnreadNotice } from "./notices";
 import { useProjectNames } from "./people";
 import { TYPE_LABEL } from "./register-screen";
 
@@ -40,11 +40,6 @@ export const BODY_TEMPLATES: Record<DocumentType, Record<string, unknown>> = {
 };
 
 const OPENERS: DocumentType[] = ["change-notice", "rfi", "change-request"];
-const REPLY_TYPES: Record<string, DocumentType[]> = {
-  "change-notice": ["acknowledgement"],
-  rfi: ["decision"],
-  "change-request": ["decision"],
-};
 const OWES_DUE: DocumentType[] = ["rfi", "change-request"];
 
 interface Form {
@@ -220,11 +215,7 @@ export function ComposeScreen({
   const pageR = readingOf(useApiPage(projectId));
 
   if (!writes(role)) {
-    return (
-      <p className="fg-caption">
-        You are {role ? `a ${role}` : "not a member"} on {slug}, so you read its channel and write nothing in it; a member or admin drafts and replies.
-      </p>
-    );
+    return <ReadOnlyNotice role={role} slug={slug} writes="drafts and replies" />;
   }
   for (const [what, r, wanted] of [
     [`Document ${params.inReplyTo}`, parentR, params.inReplyTo],

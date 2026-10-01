@@ -4,9 +4,8 @@ import { useState } from "react";
 import { Badge, Banner, Button, CardTitle, Field, Input, Table, TBody, TD, TH, THead, TR } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useSecretNames, useTestingProfiles, useWriteSecret } from "../config-hooks";
-import { type SecretStanding, secretUsesIn, standingOf } from "../secret-refs";
+import { NAME, type SecretStanding, secretUsesIn, standingOf } from "../secret-refs";
 
-const NAME = /^[a-z][a-z0-9-]{0,62}$/;
 
 const STANDING: Record<SecretStanding, { tone: "green" | "red" | "amber"; text: string }> = {
 	stored: { tone: "green", text: "value stored" },

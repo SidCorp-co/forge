@@ -46,6 +46,14 @@ export function UnreadNotice({ what, refusals }: { what: string; refusals: Refus
   );
 }
 
+export function ReadOnlyNotice({ role, slug, writes }: { role: string | null; slug: string; writes: string }) {
+  return (
+    <p className="fg-caption">
+      You are {role ? `a ${role}` : "not a member"} on {slug}, so you read its channel and write nothing in it; a member or admin {writes}.
+    </p>
+  );
+}
+
 export function Loading({ what }: { what: string }) {
   return <p className="fg-caption py-2">Reading {what}…</p>;
 }

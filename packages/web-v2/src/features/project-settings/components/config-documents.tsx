@@ -17,6 +17,7 @@ import {
 } from "../config-hooks";
 import { bindingTemplate, policyTemplate, projectTemplate, testingProfileTemplate } from "../config-templates";
 import type { V1Read } from "../config-types";
+import { NAME } from "../secret-refs";
 import { DocumentEditor } from "./document-editor";
 
 const UNDECLARED: V1Read = { declared: false, revision: null, document: null };
@@ -109,8 +110,6 @@ function RefusedBanner({ err }: { err: unknown }) {
 		</Banner>
 	);
 }
-
-const NAME = /^[a-z][a-z0-9-]{0,62}$/;
 
 export function TestingProfilesSection({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
 	const q = useTestingProfiles(projectId);
