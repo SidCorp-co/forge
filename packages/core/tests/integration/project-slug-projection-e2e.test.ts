@@ -157,7 +157,10 @@ describe('a name changed through the project document', () => {
       baseRevision: 7,
       raw: doc(id, slug, 'Never written'),
     });
-    expect(refused).toMatchObject({ ok: false, refusals: [expect.objectContaining({ code: 'STALE_BASE' })] });
+    expect(refused).toMatchObject({
+      ok: false,
+      refusals: [expect.objectContaining({ code: 'STALE_BASE' })],
+    });
     expect(await nameColumn(id)).toBe('Kept');
   });
 });

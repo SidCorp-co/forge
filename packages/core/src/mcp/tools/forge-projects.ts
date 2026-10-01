@@ -10,7 +10,11 @@ import {
 } from '../../lib/authz.js';
 import { readProjectConfig, writeProjectConfig } from '../../project-config/service.js';
 import { retiredProjectFieldsMessage } from '../../projects/retired-project-keys.js';
-import { createProject, ProjectSlugTakenError, readProjectSummary } from '../../projects/service.js';
+import {
+  createProject,
+  ProjectSlugTakenError,
+  readProjectSummary,
+} from '../../projects/service.js';
 import {
   type ContextScopedMcpToolFactory,
   loadVisibleProjectsWithRoleForPrincipal,

@@ -22,7 +22,6 @@ vi.mock('../../lib/authz.js', async (importOriginal) => ({
 
 const { forgeProjectsCreateTool, forgeProjectsUpdateTool } = await import('./forge-projects.js');
 
-
 function update(patch: Record<string, unknown>) {
   const tool = forgeProjectsUpdateTool({ principal: { kind: 'user', userId: 'u-1' } } as never);
   return tool.handler({ projectId: PROJECT, patch } as never);
