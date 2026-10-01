@@ -11,11 +11,8 @@ import {
 } from './autonomous-dispatch.js';
 import type { HooksBus } from './hooks.js';
 import type { PipelineConfig } from './pipeline-config-schema.js';
-import {
-  PipelineConfigUnreadable,
-  readStoredPipelineConfig,
-  refusedPipelineKeys,
-} from './stored-pipeline-config.js';
+import { PipelineConfigUnreadable } from './pipeline-config-unreadable.js';
+import { readStoredPipelineConfig, refusedPipelineKeys } from './stored-pipeline-config.js';
 
 export { ActiveJobConflictError } from './enqueue-helper.js';
 

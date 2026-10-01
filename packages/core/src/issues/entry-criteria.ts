@@ -3,7 +3,7 @@ import { type Db, db } from '../db/client.js';
 import { type IssueStatus, issues, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { readPipelineConfig } from '../pipeline/autonomous-project.js';
-import { PipelineConfigUnreadable } from '../pipeline/stored-pipeline-config.js';
+import { PipelineConfigUnreadable } from '../pipeline/pipeline-config-unreadable.js';
 import { findMissingWorkEvidence, missingWorkEvidenceStrict } from '../pipeline/work-evidence.js';
 import type { EntryCriterionKey } from './entry-criteria-keys.js';
 import { landingShapeOf, landingShortfall } from './landing-evidence.js';

@@ -17,8 +17,9 @@ import {
   type PipelineConfigPatchInput,
   pipelineConfigSchema,
 } from './pipeline-config-schema.js';
+import { PipelineConfigUnreadable } from './pipeline-config-unreadable.js';
 import type { StagesConfig } from './state-machine.js';
-import { PipelineConfigUnreadable, readStoredPipelineConfig } from './stored-pipeline-config.js';
+import { readStoredPipelineConfig } from './stored-pipeline-config.js';
 
 /**
  * Typed errors thrown by {@link updatePipelineConfig}. REST and MCP callers

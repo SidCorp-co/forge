@@ -90,7 +90,7 @@ describe('resolveDeclaredEntryCriteria', () => {
   });
 
   it('refuses, naming it, a stored config the schema refuses, rather than declaring nothing (ISS-1368)', async () => {
-    const { PipelineConfigUnreadable } = await import('../pipeline/stored-pipeline-config.js');
+    const { PipelineConfigUnreadable } = await import('../pipeline/pipeline-config-unreadable.js');
     const refused = [{ path: 'pipelineConfig.enabled', message: 'bad', key: 'enabled', stored: 1 }];
     readPipelineConfigMock.mockRejectedValue(new PipelineConfigUnreadable(PROJECT_ID, refused));
     await expect(resolveDeclaredEntryCriteria(PROJECT_ID, 'closed')).rejects.toThrow(

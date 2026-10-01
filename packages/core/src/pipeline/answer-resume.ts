@@ -21,7 +21,7 @@ import {
 } from './autonomous-mode.js';
 import { readPipelineConfig } from './autonomous-project.js';
 import type { HooksBus } from './hooks.js';
-import { PipelineConfigUnreadable } from './stored-pipeline-config.js';
+import { PipelineConfigUnreadable } from './pipeline-config-unreadable.js';
 
 async function resumableIssue(issueId: string) {
   const [issue] = await db

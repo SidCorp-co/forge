@@ -9,6 +9,7 @@ import { db } from '../db/client.js';
 import { type IssueStatus, projects, skillRegistrations, skills } from '../db/schema.js';
 import { AUTONOMOUS_ENTRY_STATUS } from '../pipeline/autonomous-mode.js';
 import { hooks } from '../pipeline/hooks.js';
+import { readableStoredPipelineConfig } from '../pipeline/stored-pipeline-config.js';
 import { recordSkillActivityEvent } from './activity.js';
 
 export interface RegisterSkillInput {
@@ -144,7 +145,7 @@ export async function listSkillRegistrations(projectId: string): Promise<SkillRe
     .limit(1);
   if (!project) return [];
   const ac = (project.agentConfig ?? {}) as Record<string, unknown>;
-  const pipeline = (ac.pipelineConfig ?? {}) as Record<string, unknown>;
+  const pipeline = readableStoredPipelineConfig(projectId, ac.pipelineConfig);
   const states = (pipeline.states ?? {}) as Record<
     string,
     { enabled?: boolean; mode?: 'auto' | 'manual' } | undefined

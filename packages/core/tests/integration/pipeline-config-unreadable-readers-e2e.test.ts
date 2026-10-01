@@ -148,4 +148,9 @@ describe('every reader refuses a stored pipelineConfig the schema refuses, by na
     expect(said).toContain(refusedId);
     expect(said).toContain('pipelineConfig.lockedSkills');
   });
+
+  it("a project's skill registrations are refused naming it", async () => {
+    const { listSkillRegistrations } = await import('../../src/skills/registration-service.js');
+    named(await refusalOf(() => listSkillRegistrations(refusedId)));
+  });
 });

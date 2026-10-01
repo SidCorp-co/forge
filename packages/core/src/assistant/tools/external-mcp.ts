@@ -11,6 +11,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { logger } from '../../logger.js';
 import type { CallToolResult } from '../../mcp/tool-result.js';
+import { readStoredPipelineConfig } from '../../pipeline/stored-pipeline-config.js';
 import type { ChatTool } from '../providers/types.js';
 import { type ChatToolset, DESCRIPTION_CAP, toolError, truncate } from './mcp-adapter.js';
 
@@ -81,7 +82,14 @@ export interface ExternalMcpToolsets {
  * Connect the project's configured external MCP servers and adapt their tools.
  * Tool names are exposed as `<serverKey>__<toolName>` (sanitized, 64-char cap).
  */
-export async function buildExternalMcpToolsets(agentConfig: unknown): Promise<ExternalMcpToolsets> {
+export async function buildExternalMcpToolsets(
+  projectId: string,
+  agentConfig: unknown,
+): Promise<ExternalMcpToolsets> {
+  readStoredPipelineConfig(
+    projectId,
+    (agentConfig as { pipelineConfig?: unknown } | null)?.pipelineConfig,
+  );
   const servers = readProjectMcpServers(agentConfig);
   const toolsets: ChatToolset[] = [];
   const clients: Client[] = [];

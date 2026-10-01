@@ -116,16 +116,21 @@ describe('resolveStageOverrides', () => {
     expect(r.model).toBe('haiku');
   });
 
-  it('applies the default policy model when states[status].model is null (ISS-535)', async () => {
+  it('applies the default policy model when states[status] names no model (ISS-535)', async () => {
     limitResults.push([
-      {
-        agentConfig: {
-          pipelineConfig: { states: { in_progress: { skillName: 'issue-flow', model: null } } },
-        },
-      },
+      { agentConfig: { pipelineConfig: { states: { in_progress: { skillName: 'issue-flow' } } } } },
     ]);
     const r = await resolveStageOverrides('p-1', { stageStatus: 'in_progress' });
     expect(r.model).toBe('sonnet');
+  });
+
+  it('refuses a stored null model by name rather than routing the default (ISS-1368)', async () => {
+    limitResults.push([
+      { agentConfig: { pipelineConfig: { states: { in_progress: { model: null } } } } },
+    ]);
+    await expect(resolveStageOverrides('p-1', { stageStatus: 'in_progress' })).rejects.toThrow(
+      /pipelineConfig\.states\.in_progress\.model: Invalid input: expected string, received null/,
+    );
   });
 
   it('falls through to no default for statuses absent from the policy table (ISS-535)', async () => {

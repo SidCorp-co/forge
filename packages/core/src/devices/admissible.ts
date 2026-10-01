@@ -28,10 +28,8 @@ import {
   isAutonomous,
   isEntryGateClosed,
 } from '../pipeline/autonomous-mode.js';
-import {
-  PipelineConfigUnreadable,
-  readStoredPipelineConfig,
-} from '../pipeline/stored-pipeline-config.js';
+import { PipelineConfigUnreadable } from '../pipeline/pipeline-config-unreadable.js';
+import { readStoredPipelineConfig } from '../pipeline/stored-pipeline-config.js';
 import type { PoolRelation } from './pool.js';
 
 const DEFAULT_ADMISSIBLE_LIMIT = 20;

@@ -25,6 +25,7 @@ import {
 } from '../release-batch/serving-reading.js';
 import { loadCreatedBy } from '../schedules/release-batch-dispatch.js';
 import { cutWaitingRelease } from '../schedules/release-batch-run.js';
+import { PipelineConfigUnreadable } from './pipeline-config-unreadable.js';
 import { projectAutoProdDeploy } from './release-coolify.js';
 import {
   clearProjectReleaseHolds,
@@ -321,12 +322,23 @@ async function readCriteria(
   }
 }
 
+/** Whether the project releases unattended, or the refusal of the stored config that says so. */
+async function autoReleaseOf(projectId: string): Promise<boolean | PipelineConfigUnreadable> {
+  try {
+    return await projectAutoProdDeploy(projectId);
+  } catch (err) {
+    if (err instanceof PipelineConfigUnreadable) return err;
+    throw err;
+  }
+}
+
 async function sweepProject(
   projectId: string,
   result: AutomaticReleaseSweepResult,
   now: Date,
 ): Promise<void> {
-  if (!(await projectAutoProdDeploy(projectId))) {
+  const auto = await autoReleaseOf(projectId);
+  if (auto === false) {
     await clearProjectReleaseHolds(projectId);
     return;
   }
@@ -335,6 +347,10 @@ async function sweepProject(
   if (waiting.length === 0) return;
   const owner = (await loadCreatedBy(projectId)) ?? null;
   const base = { projectId, authorId: owner, now, result };
+  if (auto !== true) {
+    await holdAlike({ ...base, issueIds: waiting }, waiting, unreadableHoldOf(auto, 'declaration'));
+    return;
+  }
 
   const gate = await readGate(projectId);
   if (!gate.ok) {

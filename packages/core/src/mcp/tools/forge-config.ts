@@ -11,8 +11,8 @@ import {
 import {
   PIPELINE_CONFIG_UNREADABLE,
   PipelineConfigUnreadable,
-  readStoredPipelineConfig,
-} from '../../pipeline/stored-pipeline-config.js';
+} from '../../pipeline/pipeline-config-unreadable.js';
+import { readStoredPipelineConfig } from '../../pipeline/stored-pipeline-config.js';
 import {
   mergePluginDesignations,
   pluginDesignationsPatchSchema,

@@ -353,7 +353,7 @@ describe('a runner-only change is weighed against the runner it runs in', () => 
     const { loadReleaseReadiness } = await import('../../src/release-batch/readiness.js');
     const readiness = await loadReleaseReadiness(projectId);
     const unevaluated = readiness?.blockers.find((b) => b.code === 'RELEASE_CHECK_UNEVALUATED');
-    expect(unevaluated?.details).toMatchObject({ check: 'criteria' });
+    expect(unevaluated?.details).toMatchObject({ check: 'auto-release' });
     expect(JSON.stringify(unevaluated?.details)).toContain(
       'pipelineConfig.releaseRuntimes.0.paths.0',
     );

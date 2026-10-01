@@ -3,6 +3,7 @@ import { db } from '../db/client.js';
 import { type IssueStatus, issueLabels, labels, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { emitNotification } from '../notifications/emit.js';
+import { readableStoredPipelineConfig } from '../pipeline/stored-pipeline-config.js';
 
 export interface IntakeGateConfig {
   enabled: boolean;
@@ -29,8 +30,8 @@ async function readPipelineConfig(projectId: string): Promise<StoredPipelineConf
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1);
-  const ac = (row?.agentConfig ?? {}) as { pipelineConfig?: StoredPipelineConfig };
-  return ac.pipelineConfig ?? {};
+  const ac = (row?.agentConfig ?? {}) as { pipelineConfig?: unknown };
+  return readableStoredPipelineConfig(projectId, ac.pipelineConfig) as StoredPipelineConfig;
 }
 
 function intakeGateOf(cfg: StoredPipelineConfig): IntakeGateConfig {
