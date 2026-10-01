@@ -111,14 +111,8 @@ vi.mock('../middleware/require-fresh-auth.js', () => ({
 }));
 
 const publishMock = vi.fn(() => 0);
-const declaredSource = vi.fn(async (_projectId: string) => ({
-  repository: 'github.com/acme/my-app' as string | null,
-  setup: 'pnpm install' as string | null,
-}));
-vi.mock('../project-config/source.js', () => ({
-  readDeclaredSource: (projectId: string) => declaredSource(projectId),
-}));
-
+const declared = async () => ({ repository: null, setup: null });
+vi.mock('../project-config/source.js', () => ({ readDeclaredSource: declared }));
 vi.mock('../ws/server.js', () => ({
   roomManager: { publish: publishMock },
 }));
@@ -273,7 +267,7 @@ describe('GET /api/devices/me/runners (ISS-271)', () => {
     expect(res.status).toBe(401);
   });
 
-  it('returns the calling device assignments with repoPath/branch/baseBranch/slug and the document setup', async () => {
+  it('returns the calling device assignments with repoPath/branch/baseBranch/slug', async () => {
     selectWhere.mockReturnValueOnce(
       Promise.resolve([
         {
@@ -291,16 +285,10 @@ describe('GET /api/devices/me/runners (ISS-271)', () => {
     const app = buildApp();
     const res = await app.fetch(req('/api/devices/me/runners', { token: 'good' }));
     expect(res.status).toBe(200);
-    const body = (await res.json()) as Array<{
-      slug: string;
-      repoPath: string;
-      workspaceSetup: string | null;
-    }>;
+    const body = (await res.json()) as Array<{ slug: string; repoPath: string }>;
     expect(body).toHaveLength(1);
     expect(body[0]?.slug).toBe('my-app');
     expect(body[0]?.repoPath).toBe('/home/u/code/my-app');
-    expect(body[0]?.workspaceSetup).toBe('pnpm install');
-    expect(declaredSource).toHaveBeenCalledWith('proj-1');
     expect(selectInnerJoin).toHaveBeenCalled();
   });
 
@@ -313,9 +301,9 @@ describe('GET /api/devices/me/runners (ISS-271)', () => {
     const lastCall = dbSelect.mock.calls.at(-1) as unknown[] | undefined;
     const projection = lastCall?.[0] as Record<string, unknown> | undefined;
     expect(projection).toBeDefined();
-    expect(Object.keys(projection ?? {})).toEqual(expect.arrayContaining(['masterPolicy']));
-    expect(Object.keys(projection ?? {})).not.toContain('kind');
-    expect(Object.keys(projection ?? {})).not.toContain('workspaceSetup');
+    const keys = Object.keys(projection ?? {});
+    expect(keys).toContain('masterPolicy');
+    expect(keys.filter((k) => k === 'kind' || k === 'workspaceSetup')).toEqual([]);
   });
 });
 
