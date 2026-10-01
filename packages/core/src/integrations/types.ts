@@ -287,6 +287,21 @@ export interface IntegrationUsage {
   renderExtra?: (config: Record<string, unknown>) => string | null;
 }
 
+/** A binding target the provider refused, at a path inside `target`. */
+export interface BindingTargetRefusal {
+  code: 'COOLIFY_APPLICATION_UNKNOWN' | 'COOLIFY_UNREACHABLE';
+  path: string;
+  detail: string;
+}
+
+export interface VerifyBindingTargetArgs {
+  connection: IntegrationConnectionLike & { config: unknown };
+  /** The binding-tier config the document encodes to. */
+  config: Record<string, unknown>;
+  /** What the row already holds on this same connection, which was verified when written. */
+  held: Record<string, unknown> | null;
+}
+
 /** What an adapter DOES. Absent on a provider that integrates nothing (`agent`). */
 export interface IntegrationAdapterMethods<
   TConfig extends Record<string, unknown> = Record<string, unknown>,
@@ -323,6 +338,12 @@ export interface IntegrationAdapterMethods<
     role: string;
     config: Record<string, unknown>;
   }): Promise<Record<string, unknown>>;
+  /**
+   * Asks the provider, through the connection's own credential, whether the target a binding
+   * document names exists. Coolify is the only one: a typed application uuid is otherwise stored
+   * unverified and fails at the first deploy.
+   */
+  verifyBindingTarget?(args: VerifyBindingTargetArgs): Promise<BindingTargetRefusal[]>;
   healthcheck(ctx: AdapterContext<TConfig, TSecrets>): Promise<HealthCheckResult>;
   deploymentRecords?(
     ctx: AdapterContext<TConfig, TSecrets>,

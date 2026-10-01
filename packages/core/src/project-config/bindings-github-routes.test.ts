@@ -42,6 +42,7 @@ vi.mock('../middleware/auth.js', () => ({
 const effects = vi.hoisted(() => ({
   refusals: vi.fn(async () => [] as { code: string; path: string; detail: string }[]),
   inboundSecret: vi.fn(async () => 'whsec_minted'),
+  targetRefusals: vi.fn(async () => [] as { code: string; path: string; detail: string }[]),
   afterWrite: vi.fn(async () => ({}) as Record<string, unknown>),
 }));
 vi.mock('./bind-effects.js', () => ({ bindEffects: effects }));
@@ -53,6 +54,7 @@ const { BINDING, call, coolifyDoc, refusalsOf, resetBindingWorld } = await impor
 beforeEach(() => {
   effects.refusals.mockClear();
   effects.inboundSecret.mockClear();
+  effects.targetRefusals.mockClear();
   effects.afterWrite.mockClear();
   resetBindingWorld();
 });

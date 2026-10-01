@@ -7,6 +7,13 @@ const h = vi.hoisted(() => ({
   onCreated: vi.fn(async () => ({ repoUrl: 'https://github.com/acme/shop' })),
   notified: vi.fn(),
   broadcast: vi.fn(),
+  verify: vi.fn(async () => [
+    {
+      code: 'COOLIFY_APPLICATION_UNKNOWN',
+      path: '/applications/0/resourceUuid',
+      detail: 'unknown',
+    },
+  ]),
 }));
 
 vi.mock('../integrations/registry.js', () => ({
@@ -22,6 +29,7 @@ vi.mock('../integrations/registry.js', () => ({
   getAdapter: (provider: string) => ({
     inboundSecret: h.inbound.has(provider) ? () => h.inbound.get(provider) : undefined,
     onBindingCreated: provider === 'github' ? h.onCreated : undefined,
+    verifyBindingTarget: provider === 'coolify' ? h.verify : undefined,
   }),
 }));
 vi.mock('../integrations/store.js', () => ({
@@ -111,5 +119,22 @@ describe('the effects of a write', () => {
     expect(h.onCreated).toHaveBeenCalledTimes(1);
     expect(h.notified).toHaveBeenCalledTimes(2);
     expect(h.broadcast).toHaveBeenCalledWith('p', { bindingId: 'b1', connectionId: 'github:1' });
+  });
+});
+
+describe('asking the provider about a target', () => {
+  it("prefixes the provider's refusal with the target, and asks a provider with no check nothing", async () => {
+    const ask = (provider: string) =>
+      bindEffects.targetRefusals({
+        connectionId: `${provider}:1`,
+        provider,
+        config: { targets: [] },
+        held: null,
+      });
+    expect(await ask('coolify')).toEqual([
+      expect.objectContaining({ path: '/target/applications/0/resourceUuid' }),
+    ]);
+    expect(await ask('sentry')).toEqual([]);
+    expect(h.verify).toHaveBeenCalledTimes(1);
   });
 });

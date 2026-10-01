@@ -2,7 +2,7 @@ import type { BindingRole as RowRole } from '../db/release-axes.js';
 import { bindEffects } from './bind-effects.js';
 import { type BindingStore, drizzleBindingStore, type StoredBinding } from './binding-store.js';
 import { decodeTarget, encodeTarget } from './binding-target-codec.js';
-import { type ApiRefusal, parseVersionedDocument, staleBase } from './documents.js';
+import { type ApiRefusal, isRecord, parseVersionedDocument, staleBase } from './documents.js';
 import { type BindingDocument, bindingDocumentSchema, SCHEMA_BASE } from './schema.js';
 import { readProjectConfig } from './service.js';
 
@@ -193,6 +193,14 @@ export async function writeBinding(input: {
     }
   }
   if (refusals.length > 0) return { ok: false, refusals };
+  const unverified = await bindEffects.targetRefusals({
+    connectionId: doc.connection,
+    provider: encoded.provider,
+    config: encoded.config,
+    held:
+      current?.connectionId === doc.connection && isRecord(current.config) ? current.config : null,
+  });
+  if (unverified.length > 0) return { ok: false, refusals: unverified };
 
   const result = await store.casBinding({
     id: bindingId,
