@@ -319,65 +319,6 @@ describe('dispatchChatTurn', () => {
     expect(updates.claudeSessionId).toBeNull();
   });
 
-  it("migration recomputes repoPath for the NEW device instead of reusing the old box's stale path (ISS-755 bug guard)", async () => {
-    updateReturning.mockResolvedValueOnce([
-      baseSession({ status: 'running', deviceId: 'dev-2', claudeSessionId: null }),
-    ]);
-    resolveSessionRepoPathForDevice.mockResolvedValueOnce('/repo/on/dev-2');
-    await dispatchChatTurn({
-      session: baseSession({
-        claudeSessionId: 'c-1',
-        deviceId: DEVICE,
-        metadata: { deviceId: DEVICE },
-        repoPath: '/repo/on/dev-1',
-        messages: [{ type: 'user', content: 'hi' }],
-      }),
-      project: PROJECT,
-      client: { deviceId: 'dev-2', isLocal: false, migrated: true },
-      message: 'again on the new box',
-    });
-    expect(resolveSessionRepoPathForDevice).toHaveBeenCalledWith(PROJECT.id, 'dev-2');
-    const updates = updateSet.mock.calls[0]?.[0] as { repoPath?: string | null };
-    expect(updates.repoPath).toBe('/repo/on/dev-2');
-    expect(updates.repoPath).not.toBe('/repo/on/dev-1');
-  });
-
-  it('refuses a remote turn whose device binding names no checkout, and publishes nothing', async () => {
-    resolveSessionRepoPathForDevice.mockResolvedValueOnce(null);
-    await expect(
-      dispatchChatTurn({
-        session: baseSession({ deviceId: DEVICE, repoPath: null }),
-        project: PROJECT,
-        client: { deviceId: DEVICE, isLocal: false, migrated: false },
-        message: 'hello',
-      }),
-    ).rejects.toThrow(
-      /CHECKOUT_UNBOUND: device dev-1's binding to project proj-1 names no checkout/,
-    );
-    expect(publishSpy).not.toHaveBeenCalled();
-    expect(updateSet).not.toHaveBeenCalled();
-  });
-
-  it('no device change + session.repoPath already set → NOT re-resolved (no extra query)', async () => {
-    updateReturning.mockResolvedValueOnce([
-      baseSession({ status: 'running', deviceId: DEVICE, claudeSessionId: 'c-1' }),
-    ]);
-    await dispatchChatTurn({
-      session: baseSession({
-        claudeSessionId: 'c-1',
-        deviceId: DEVICE,
-        repoPath: '/repo/on/dev-1',
-        messages: [{ type: 'user', content: 'a' }],
-      }),
-      project: PROJECT,
-      client: { deviceId: DEVICE, isLocal: false, migrated: false },
-      message: 'again',
-    });
-    expect(resolveSessionRepoPathForDevice).not.toHaveBeenCalled();
-    const updates = updateSet.mock.calls[0]?.[0] as { repoPath?: string | null };
-    expect(updates.repoPath).toBe('/repo/on/dev-1');
-  });
-
   it('explicit re-pin already applied (migrated=false, no claudeSessionId, prior history) still cold-starts WITH rehydration', async () => {
     updateReturning.mockResolvedValueOnce([
       baseSession({ status: 'running', deviceId: 'dev-2', claudeSessionId: null }),

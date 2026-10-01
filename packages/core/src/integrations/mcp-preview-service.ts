@@ -86,7 +86,6 @@ function reasonFor(args: {
 interface Delivered {
   /** Bindings the resolver actually built an entry for. */
   bindings: ReadonlySet<string>;
-  /** Names that survived into the final map. */
   names: ReadonlySet<string>;
   /** Which binding holds each produced name; one another holds is shadowed, not unresolved. */
   heldBy: ReadonlyMap<string, string>;

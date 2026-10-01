@@ -42,8 +42,6 @@ const ALLOW = [
   /^packages\/core\/src\/project-config\/(?:routes|schema|schema-plants)\.test\.ts$/,
   /^packages\/core\/tests\/integration\/release-chain-migration-e2e\.test\.ts$/,
   /^packages\/core\/tests\/integration\/release-chain-constraints-e2e\.test\.ts$/,
-  // ISS-14 — the door that refuses the deleted project fields by name, and the test that the
-  // columns are gone.
   /^packages\/core\/src\/projects\/retired-project-keys\.ts$/,
   /^packages\/core\/src\/db\/schema\.test\.ts$/,
 ];

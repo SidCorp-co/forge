@@ -2,7 +2,6 @@ export interface RetiredModelRule {
   id: string;
   re: RegExp;
   why: string;
-  /** The file extensions the rule reads; absent means the TypeScript and JavaScript ones. */
   exts?: string[];
 }
 
