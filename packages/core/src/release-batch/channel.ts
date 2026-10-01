@@ -25,7 +25,7 @@ export type {
 export { RELEASE_PROCEDURE_FACT } from './plan.js';
 
 /**
- * Read one binding's stored `rollback` into what a release agent may act on.
+ * Read the production connection's stored `rollback` into what a release agent may act on.
  *
  * Prose on a COOLIFY binding is `unrepresentable`, not `manual`: Coolify
  * exposes a rollback API and Forge performs it, so a paragraph there is a
@@ -78,7 +78,10 @@ function channelOf(decl: Extract<ReleaseDeclaration, { kind: 'gated' }>): Releas
     label: pair.binding.label,
     instructions: pair.binding.instructions ?? null,
     ...releaseProbesOf(decl.production),
-    rollback: classifyRollback(pair.binding.provider, effectiveConfig(pair).rollback),
+    rollback: classifyRollback(
+      pair.binding.provider,
+      (pair.connection.config as Record<string, unknown> | null)?.rollback,
+    ),
     releaseRunnerLabel: typeof label === 'string' && label.length > 0 ? label : null,
   };
 }

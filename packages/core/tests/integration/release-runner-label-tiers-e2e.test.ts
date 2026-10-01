@@ -3,10 +3,11 @@
  * the routes the screens use, and read back as what the project's readiness says
  * rather than as what the request carried.
  *
- * Both PATCHes merge and then withdraw nulls, so a key sent as null is REMOVED rather
- * than stored. The connection route stored one until ISS-1275, which left a withdrawn
- * label on the row for ever; the stored shape is asserted below rather than inferred
- * from the readiness the case reads back.
+ * The binding tier is written by its binding-v1 document (ISS-15), so a label left out
+ * of the document is gone from the row. The connection PATCH merges and then withdraws
+ * nulls; it stored a null until ISS-1275, which left a withdrawn label on the row for
+ * ever. The stored shape is asserted below rather than inferred from the readiness the
+ * case reads back.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -44,12 +45,14 @@ beforeAll(async () => {
     import('../../src/integrations/connection-routes.js'),
     import('../../src/integrations/routes.js'),
   ]);
+  const { mountProjectConfig } = await import('../../src/project-config/mount.js');
   registry.registerAllIntegrations();
   signUserToken = jwt.signUserToken;
   app = new Hono();
   app.route('/api/projects', batch.releaseBatchRoutes);
   app.route('/api/projects', bindings.integrationsRoutes);
   app.route('/api/integration-connections', connections.integrationConnectionsRoutes);
+  mountProjectConfig(app);
   app.onError(err.errorHandler);
 }, 60_000);
 
@@ -89,9 +92,12 @@ async function seed(tiers: {
   const { bindingId, connectionId } = await seedProduction(harness.db, {
     projectId: project.id,
     ownerId: user.id,
-    connectionConfig: tiers.connection ? { releaseRunnerLabel: tiers.connection } : {},
-    config: {
+    connectionConfig: {
       rollback: { mode: 'coolify-image' },
+      ...(tiers.connection ? { releaseRunnerLabel: tiers.connection } : {}),
+    },
+    config: {
+      targets: [{ id: 'primary', label: 'primary', resourceUuid: 'y8w4c4kss8ogo8gc44ow44kc' }],
       ...(tiers.binding ? { releaseRunnerLabel: tiers.binding } : {}),
     },
     deploysFrom: 'production',
@@ -131,6 +137,31 @@ function patch(path: string, token: string, body: unknown) {
   });
 }
 
+function request(method: string, path: string, token: string, body?: unknown) {
+  return app.request(path, {
+    method,
+    headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+}
+
+/** Reads the binding's document and writes it back without its release runner label. */
+async function clearBindingLabel(w: World) {
+  const path = `/api/projects/${w.projectId}/bindings/${w.bindingId}`;
+  const read = (await (await request('GET', path, w.token)).json()) as {
+    declared: boolean;
+    revision: number;
+    document: { target: Record<string, unknown> };
+  };
+  expect(read.declared).toBe(true);
+  expect(read.document.target.releaseRunnerLabel).toBeDefined();
+  const { releaseRunnerLabel: _cleared, ...target } = read.document.target;
+  return request('PUT', path, w.token, {
+    baseRevision: read.revision,
+    document: { ...read.document, target },
+  });
+}
+
 async function storedConfig(
   w: World,
   tier: 'binding' | 'connection',
@@ -151,14 +182,16 @@ describe('clearing the release runner label through the route each tier is edite
     const w = await seed({ binding: 'release' });
     const before = await preferredLabel(w);
 
-    const done = await patch(`/api/projects/${w.projectId}/integrations/${w.bindingId}`, w.token, {
-      config: { releaseRunnerLabel: null },
-    });
+    const done = await clearBindingLabel(w);
 
     expect(before).toBe('release');
     expect(done.status).toBe(200);
     expect(await preferredLabel(w)).toBeNull();
-    expect('releaseRunnerLabel' in (await storedConfig(w, 'binding'))).toBe(false);
+    const stored = await storedConfig(w, 'binding');
+    expect('releaseRunnerLabel' in stored).toBe(false);
+    expect(stored.targets).toEqual([
+      { id: 'primary', label: 'primary', resourceUuid: 'y8w4c4kss8ogo8gc44ow44kc' },
+    ]);
   });
 
   // The caveat the sentence carries, reproduced: the binding's key goes and the
@@ -167,9 +200,7 @@ describe('clearing the release runner label through the route each tier is edite
     const w = await seed({ binding: 'release', connection: 'other' });
     const before = await preferredLabel(w);
 
-    await patch(`/api/projects/${w.projectId}/integrations/${w.bindingId}`, w.token, {
-      config: { releaseRunnerLabel: null },
-    });
+    expect((await clearBindingLabel(w)).status).toBe(200);
 
     expect(before).toBe('release');
     expect(await preferredLabel(w)).toBe('other');
@@ -217,5 +248,63 @@ describe('clearing the release runner label through the route each tier is edite
     expect(refused.status).toBe(400);
     expect(JSON.stringify(await refused.json())).toContain('baseUrl');
     expect(await preferredLabel(w)).toBe('other');
+  });
+});
+
+describe('the binding writes binding-v1 retired', () => {
+  async function refusedByName(res: Response, door: string) {
+    expect(res.status).toBe(410);
+    const body = (await res.json()) as { code?: string; message?: string };
+    expect(body.code).toBe('BINDING_WRITE_MOVED');
+    expect(body.message).toContain(door);
+    expect(body.message).toContain('PUT /api/projects/:projectId/bindings/:bindingId');
+  }
+
+  it('refuses a binding-tier key on the integrations PATCH, and leaves the row as it was', async () => {
+    const w = await seed({ binding: 'release' });
+    const res = await patch(`/api/projects/${w.projectId}/integrations/${w.bindingId}`, w.token, {
+      config: { releaseRunnerLabel: null },
+    });
+    await refusedByName(res, '`releaseRunnerLabel` on PATCH');
+    expect((await storedConfig(w, 'binding')).releaseRunnerLabel).toBe('release');
+    expect(await preferredLabel(w)).toBe('release');
+  });
+
+  it('refuses an agent grant on the integrations PATCH', async () => {
+    const w = await seed({});
+    const res = await patch(`/api/projects/${w.projectId}/integrations/${w.bindingId}`, w.token, {
+      agentAccess: 'all',
+    });
+    await refusedByName(res, 'agentAccess on PATCH');
+    const rows = await harness.db.execute<{ agent_access: string }>(
+      sql`SELECT agent_access FROM integration_bindings WHERE id = ${w.bindingId}`,
+    );
+    expect(rows[0]?.agent_access).toBe('none');
+  });
+
+  it('refuses a binding created through the project integrations route or the connection route', async () => {
+    const w = await seed({});
+    const count = async () =>
+      (
+        await harness.db.execute<{ n: number }>(
+          sql`SELECT count(*)::int AS n FROM integration_bindings WHERE project_id = ${w.projectId}`,
+        )
+      )[0]?.n;
+    await refusedByName(
+      await request('POST', `/api/projects/${w.projectId}/integrations`, w.token, {
+        provider: 'sentry',
+        role: 'service',
+        config: {},
+      }),
+      'POST /api/projects/:projectId/integrations',
+    );
+    await refusedByName(
+      await request('POST', `/api/integration-connections/${w.connectionId}/bindings`, w.token, {
+        projectId: w.projectId,
+        role: 'deploy',
+      }),
+      'POST /api/integration-connections/:id/bindings',
+    );
+    expect(await count()).toBe(1);
   });
 });

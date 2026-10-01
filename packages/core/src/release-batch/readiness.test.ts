@@ -92,7 +92,7 @@ function project(over: {
   // out otherwise — so the fixture declares one too. Since ISS-1048 the build/test obligations are
   // conditioned on that declaration, and a fixture silently missing it would make the contract
   // tests below pass by owing nothing at all. The repo-less case gets its own test.
-  selectLimit.mockResolvedValue([{ id: PROJECT_ID, baseBranch: 'main' }]);
+  selectLimit.mockResolvedValue([{ id: PROJECT_ID }]);
   heldSlugs.mockResolvedValue(Object.keys(over.facts ?? CONTRACT_KNOWLEDGE));
   const environments = {
     ...(over.others ?? {}),
@@ -109,18 +109,19 @@ function project(over: {
 }
 
 function liveBinding(config: Record<string, unknown> = {}) {
+  const { rollback, ...bindingConfig } = config;
   productionPair.mockResolvedValue({
     binding: {
       id: PROD_BINDING,
       projectId: PROJECT_ID,
       active: true,
       provider: 'coolify',
-      config,
+      config: bindingConfig,
       instructions: null,
       label: '',
       role: 'deploy',
     },
-    connection: { active: true, config: {} },
+    connection: { active: true, config: rollback === undefined ? {} : { rollback } },
   });
 }
 

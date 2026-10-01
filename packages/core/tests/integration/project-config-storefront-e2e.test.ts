@@ -105,7 +105,10 @@ describe('a storefront project with a source binding and a deploy binding', () =
 
   it('refuses CONNECTION_PROVIDER_MISMATCH against the stored connection', async () => {
     const doc = example('store-deploy.binding.json');
-    doc.target = { provider: 'coolify', applicationUuid: 'y8w4c4kss8ogo8gc44ow44kc' };
+    doc.target = {
+      provider: 'coolify',
+      applications: [{ label: 'primary', resourceUuid: 'y8w4c4kss8ogo8gc44ow44kc' }],
+    };
     const res = await send('PUT', at(`/bindings/${DEPLOY_BINDING}`), {
       baseRevision: null,
       document: doc,

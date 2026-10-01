@@ -17,6 +17,7 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
+import { seedBinding as insertBinding } from '../helpers/seed-binding.js';
 
 process.env.INTEGRATION_MASTER_KEY ??= 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=';
 
@@ -28,7 +29,6 @@ type Mods = {
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
   createConnection: typeof import('../../src/integrations/store.js').createConnection;
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
-  createBinding: typeof import('../../src/integrations/store.js').createBinding;
 };
 
 const INSTALLATION_ID = 159473037;
@@ -67,7 +67,6 @@ beforeAll(async () => {
     mintGitCredentialForDevice: credential.mintGitCredentialForDevice,
     projectsWithGitHubAppCredential: credential.projectsWithGitHubAppCredential,
     createConnection: store.createConnection,
-    createBinding: store.createBinding,
   };
 }, 60_000);
 
@@ -110,7 +109,7 @@ async function seedBinding(
       webhookSecret: 'whs-app',
     },
   });
-  return mods.createBinding({
+  return insertBinding({
     connectionId: connection.id,
     projectId: forProjectId,
     provider: 'github',

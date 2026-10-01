@@ -91,30 +91,26 @@ describe('ISS-1070 — 0285 deletes the shadow keys and reconciles nothing', () 
       async (tx, { projectId }) => {
         await tx`
           UPDATE projects
-             SET base_branch = 'release/stg',
-                 agent_config = ${JSON.stringify({
-                   repoPath: '/home/kieutrung/tools/forge/jarvis-agents',
-                   baseBranch: 'main',
-                   productionBranch: 'main',
-                   activeDeviceId: '85644100-e4f5-455a-9754-6af76c19e50a',
-                   runnerFallback: { type: 'claude-code' },
-                   pipelineConfig: { enabled: true },
-                   personaStyle: 'keep me',
-                 })}::jsonb
+             SET agent_config = ${JSON.stringify({
+               repoPath: '/home/kieutrung/tools/forge/jarvis-agents',
+               baseBranch: 'main',
+               productionBranch: 'main',
+               activeDeviceId: '85644100-e4f5-455a-9754-6af76c19e50a',
+               runnerFallback: { type: 'claude-code' },
+               pipelineConfig: { enabled: true },
+               personaStyle: 'keep me',
+             })}::jsonb
            WHERE id = ${projectId}`;
       },
       async (tx, { projectId, error }) => {
         expect(error).toBeNull();
 
-        const [row] = await tx`
-          SELECT base_branch, agent_config
-            FROM projects WHERE id = ${projectId}`;
+        const [row] = await tx`SELECT agent_config FROM projects WHERE id = ${projectId}`;
 
         expect(row?.agent_config).toEqual({
           pipelineConfig: { enabled: true },
           personaStyle: 'keep me',
         });
-        expect(row?.base_branch).toBe('release/stg');
       },
     );
   });
@@ -124,16 +120,13 @@ describe('ISS-1070 — 0285 deletes the shadow keys and reconciles nothing', () 
       async (tx, { projectId }) => {
         await tx`
           UPDATE projects
-             SET base_branch = 'main',
-                 agent_config = ${JSON.stringify({ baseBranch: 'main', plugins: [] })}::jsonb
+             SET agent_config = ${JSON.stringify({ baseBranch: 'main', plugins: [] })}::jsonb
            WHERE id = ${projectId}`;
       },
       async (tx, { projectId, error }) => {
         expect(error).toBeNull();
-        const [row] =
-          await tx`SELECT base_branch, agent_config FROM projects WHERE id = ${projectId}`;
+        const [row] = await tx`SELECT agent_config FROM projects WHERE id = ${projectId}`;
         expect(row?.agent_config).toEqual({ plugins: [] });
-        expect(row?.base_branch).toBe('main');
       },
     );
   });

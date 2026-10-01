@@ -289,6 +289,11 @@ projectConfigRoutes.put(
       raw: document,
     });
     if (!outcome.ok) return refused(c, outcome.refusals);
-    return c.json({ declared: true as const, ...outcome.held, created: outcome.created });
+    return c.json({
+      declared: true as const,
+      ...outcome.held,
+      created: outcome.created,
+      effects: outcome.effects,
+    });
   },
 );

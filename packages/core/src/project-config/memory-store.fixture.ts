@@ -118,6 +118,9 @@ export const memoryStore: ConfigStore = {
     mem.secrets.set(`${projectId}|${scope}|${name}`, row);
     return { scope, name, updatedAt: row.updatedAt };
   },
+  async readSecret(projectId, scope, name) {
+    return mem.secrets.get(`${projectId}|${scope}|${name}`)?.valueEnc ?? null;
+  },
   async deviceCheckout(projectId, deviceId) {
     return mem.checkouts.find((c) => c.projectId === projectId && c.deviceId === deviceId) ?? null;
   },

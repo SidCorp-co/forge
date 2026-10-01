@@ -139,7 +139,6 @@ beforeEach(async () => {
   ]);
   userId = (await createTestUser(harness.db)).id;
   projectId = (await createTestProject(harness.db, userId)).id;
-  await harness.db.execute(sql`UPDATE projects SET base_branch = 'main' WHERE id = ${projectId}`);
   await seedProjectSource(harness.db, projectId, userId, 'git');
 });
 
@@ -356,7 +355,7 @@ describe('ISS-1318 — a base-branch landing marked by its commit (real Postgres
   });
 
   it('takes no commit route on an outside_git project (criterion 15)', async () => {
-    const issue = await seed({ source: 'storefront' });
+    const issue = await seed({ source: 'storefront', sessionContext: {} });
     const refused = await refusal(() => mark(issue, OWN));
     expect(refused.code).toBe('NO_WORK_EVIDENCE');
     expect(repo.reads).toEqual([]);

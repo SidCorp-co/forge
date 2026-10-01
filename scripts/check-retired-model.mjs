@@ -35,6 +35,7 @@ const ALLOW = [
   // ISS-16 — the read-only export reads the dropped columns of a database that still has them.
   /^scripts\/export-legacy-project-config\.mjs$/,
   /^packages\/core\/tests\/integration\/legacy-config-export-e2e\.test\.ts$/,
+  /^packages\/core\/tests\/integration\/base-branch-drop-migration-e2e\.test\.ts$/,
   // ISS-12 — each spells a deleted key to prove the door refuses it by name.
   /^packages\/core\/src\/projects\/routes\.test\.ts$/,
   /^packages\/core\/src\/issues\/metadata-schema\.test\.ts$/,
@@ -89,11 +90,38 @@ export const RULES = [
     exts: ['.ts', '.tsx', '.mjs', '.js', '.rs'],
   },
   {
+    id: 'binding-write-doors',
+    // ISS-15 — the doors that wrote a binding beside the binding-v1 document, and their callers.
+    re: /\bcreateBinding\b|\bbindExisting\b|\bBindExistingConnection\w*|\bIntegrationBindingCreateInput\b/g,
+    why: 'ISS-15 deleted every binding write but one: a binding is a binding-v1 document, written by `PUT /api/projects/:projectId/bindings/:bindingId` through `project-config/bindings.ts:writeBinding`, whose `bind-effects.ts` mints the inbound secret, authorises `agentAccess` and runs `onBindingCreated`. A connection is created with `POST /api/integration-connections` and named in the document. A suite seeds a row with `tests/helpers/seed-binding.ts:seedBinding`.',
+    exts: ['.ts', '.tsx', '.mjs', '.js'],
+  },
+  {
+    id: 'binding-row-inserts',
+    // ISS-15 — a binding row is inserted by the document's store alone; a suite may seed one.
+    re: /\.insert\(integrationBindings\)|\bINSERT INTO integration_bindings\b/g,
+    allow: [/^packages\/core\/src\/project-config\/binding-store\.ts$/, /^packages\/core\/tests\//],
+    why: 'ISS-15: a binding row is inserted only by `project-config/binding-store.ts:casBinding`, under the binding-v1 document that `PUT /api/projects/:projectId/bindings/:bindingId` writes. Write the document; do not add a second door onto `integration_bindings`.',
+    exts: ['.ts', '.tsx', '.mjs', '.js'],
+  },
+  {
+    id: 'binding-row-updates',
+    // ISS-15 — the switch, the instructions and the inbound secret stay row updates; nothing else does.
+    re: /\.update\(integrationBindings\)|\bUPDATE integration_bindings\b/g,
+    allow: [
+      /^packages\/core\/src\/project-config\/binding-store\.ts$/,
+      /^packages\/core\/src\/integrations\/store\.ts$/,
+      /^packages\/core\/tests\//,
+    ],
+    why: "ISS-15: what a binding declares is changed only by a binding-v1 document (`project-config/binding-store.ts:casBinding`). `integrations/store.ts:updateBinding` keeps the binding's switch, instructions and inbound secret, and takes nothing else. Write the document instead of updating the row.",
+    exts: ['.ts', '.tsx', '.mjs', '.js'],
+  },
+  {
     id: 'legacy-project-columns',
     // ISS-16 / design D8 — the `projects` columns the project document replaced, and the helpers
     // that wrote or checked them.
-    re: /\bprojects\.(?:description|kind|repoUrl|workspaceSetup)\b|\bprojects\s+SET\s+(?:description|kind|environments)\b|\brepo_url\b|\bworkspace_setup\b|\bprojects_release_chain_(?:ok|chk)\b|\breleaseProjectChecks\b|\breleaseCrossings\b|\bsyncRepoUrlFromGitHubBinding\b|\bRepoUrlOutcome\b/g,
-    why: "ISS-16 dropped this `projects` column (migration `the_legacy_project_columns_are_dropped`) with every reader and writer, and moved nothing into another column: a project's repository is its document's `source.git.repository` and its setup procedure is `workspace.setup` (`project-config/source.ts:readDeclaredSource`), whether its work lands in git is `source.type`, and a project carries no description. `PATCH /api/projects/:id` and `forge_projects.update` refuse `repoUrl` and `workspaceSetup` by name. To read what an old database still holds, run `scripts/export-legacy-project-config.mjs` against it.",
+    re: /\bprojects\.(?:description|kind|repoUrl|workspaceSetup|baseBranch|webhookSecret|apiKey|webhook_secret|api_key)\b|\bprojects\s+SET\s+(?:description|kind|environments|base_branch|webhook_secret|api_key)\b|\brepo_url\b|\bworkspace_setup\b|\bbase_branch\b|\bprojects_api_key_uq\b|\brequireProjectApiKey\b|\bgenerateApiKey\b|\/api-key\/rotate\b|\bprojects_release_chain_(?:ok|chk)\b|\breleaseProjectChecks\b|\breleaseCrossings\b|\bsyncRepoUrlFromGitHubBinding\b|\bRepoUrlOutcome\b/g,
+    why: "ISS-16 dropped this `projects` column (migrations `the_legacy_project_columns_are_dropped` and `the_branch_and_the_project_secrets_leave_the_row`) with every reader and writer, and moved nothing into another column: a project's repository is its document's `source.git.repository`, the branch work is cut from is `source.git.defaultBranch` and its setup procedure is `workspace.setup` (`project-config/source.ts:readDeclaredSource`), whether its work lands in git is `source.type`, and a project carries no description. The webhook secret is the project secret `secret://project/webhook-secret` (`project-config/service.ts:resolveProjectSecret`), and no project API key exists. `PATCH /api/projects/:id`, `POST /api/projects` and `forge_projects` refuse `repoUrl`, `workspaceSetup`, `baseBranch`, `webhookSecret` and `apiKey` by name. To read what an old database still holds, run `scripts/export-legacy-project-config.mjs` against it.",
   },
   {
     id: 'tag-mr-strategy',
@@ -243,6 +271,7 @@ function main() {
       : stripComments(src).split('\n');
     for (const rule of RULES) {
       if (!(rule.exts ? rule.exts.includes(ext) : TS_EXT.has(ext))) continue;
+      if (rule.allow?.some((re) => re.test(rel))) continue;
       lines.forEach((line, i) => {
         rule.re.lastIndex = 0;
         if (!rule.re.test(line)) return;

@@ -7,8 +7,6 @@ import { useRouter } from 'next/navigation';
 import { Banner, Button, Field, Input, Select, SlideOver } from '@/design';
 import { useActiveOrg } from '@/features/orgs/active-org';
 import { useOrgs } from '@/features/orgs/hooks';
-import { useUpdateProject } from '@/features/project-settings/hooks';
-import type { ProjectUpdateInput } from '@/features/project-settings/types';
 import { ApiError } from '@/lib/api/client';
 import { formatApiError } from '@/lib/api/error';
 import { useToast } from '@/providers/toast-provider';
@@ -42,11 +40,7 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
 
   // Step 2 — "Set up pipeline" (ISS-453). `created` non-null flips the wizard.
   const [created, setCreated] = useState<CreatedProject | null>(null);
-  const [baseBranch, setBaseBranch] = useState('main');
-  const [repoSaved, setRepoSaved] = useState(false);
-  const [seedError, setSeedError] = useState<string | null>(null);
   const [onboardError, setOnboardError] = useState<string | null>(null);
-  const update = useUpdateProject(created?.id);
   const onboard = useOnboardProject(created?.id);
 
   // Reset the whole form each time the dialog opens — never leak a prior draft
@@ -59,9 +53,6 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
       setOrgId(defaultOrgId);
       setErrors({});
       setCreated(null);
-      setBaseBranch('main');
-      setRepoSaved(false);
-      setSeedError(null);
       setOnboardError(null);
       create.reset();
     }
@@ -128,28 +119,6 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
   }
 
   /**
-   * Save the repo fields through the existing project PATCH. Nothing else is
-   * provisioned here.
-   */
-  async function onSeed() {
-    if (!created) return;
-    setSeedError(null);
-    try {
-      // Empty string → omit (keep the column's default/null); a set value trims.
-      const norm = (v: string) => v.trim();
-      const patch: ProjectUpdateInput = {};
-      if (norm(baseBranch)) patch.baseBranch = norm(baseBranch);
-      if (Object.keys(patch).length > 0) await update.mutateAsync(patch);
-
-      setRepoSaved(true);
-    } catch (err) {
-      setSeedError(formatApiError(err));
-    }
-  }
-
-  const seeding = update.isPending;
-
-  /**
    * ISS-733 — "Build Project Brain": open a fresh chat session that runs
    * `forge-onboard` as turn 1, then jump straight to it (same detail route a
    * chat notification/history entry would open — no new UI surface).
@@ -176,32 +145,10 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
     >
       {created ? (
         <div className="flex h-full flex-col gap-4">
-          {seedError && <Banner tone="danger">{seedError}</Banner>}
-          {repoSaved && <Banner tone="success">Repository settings saved.</Banner>}
-
-          <Field label="Base branch" hint="Where ISS-* branches are cut from (e.g. main).">
-            <Input
-              value={baseBranch}
-              onChange={(e) => setBaseBranch(e.target.value)}
-              placeholder="main"
-              maxLength={100}
-              autoFocus
-            />
-          </Field>
-
-          <div>
-            <Button
-              variant="primary"
-              loading={seeding}
-              onClick={onSeed}
-              className="min-h-11"
-            >
-              Save repository settings
-            </Button>
-            <p className="fg-body-sm mt-1.5 text-subtle">
-              Safe to re-run; everything stays editable in Settings.
-            </p>
-          </div>
+          <p className="fg-body-sm text-subtle">
+            The repository, the branch work is cut from and where it lands are the project
+            document&apos;s: declare them under Settings → Configuration.
+          </p>
 
           <div className="border-t border-line-subtle pt-4">
             <span className="fg-label">Connect a runner</span>
@@ -222,42 +169,34 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
             </ol>
           </div>
 
-          {repoSaved && (
-            <div className="border-t border-line-subtle pt-4">
-              <span className="fg-label">Build the Project Brain</span>
-              {onboardError && (
-                <div className="mt-2">
-                  <Banner tone="danger">{onboardError}</Banner>
-                </div>
-              )}
+          <div className="border-t border-line-subtle pt-4">
+            <span className="fg-label">Build the Project Brain</span>
+            {onboardError && (
               <div className="mt-2">
-                <Button
-                  variant="secondary"
-                  loading={onboard.isPending}
-                  onClick={onBuildBrain}
-                  className="min-h-11"
-                >
-                  Build Project Brain
-                </Button>
-                <p className="fg-body-sm mt-1.5 text-subtle">
-                  Opens a chat that surveys the repo and asks you a few questions to seed
-                  knowledge, memory, and pipeline config. Needs a runner bound to this project —
-                  connect one above first if this fails.
-                </p>
+                <Banner tone="danger">{onboardError}</Banner>
               </div>
+            )}
+            <div className="mt-2">
+              <Button
+                variant="secondary"
+                loading={onboard.isPending}
+                onClick={onBuildBrain}
+                className="min-h-11"
+              >
+                Build Project Brain
+              </Button>
+              <p className="fg-body-sm mt-1.5 text-subtle">
+                Opens a chat that surveys the repo and asks you a few questions to seed
+                knowledge, memory, and pipeline config. Needs a runner bound to this project —
+                connect one above first if this fails.
+              </p>
             </div>
-          )}
+          </div>
 
           <div className="mt-auto flex items-center justify-end gap-2.5 pt-2">
-            {repoSaved ? (
-              <Button type="button" variant="primary" onClick={finish}>
-                Go to project
-              </Button>
-            ) : (
-              <Button type="button" variant="ghost" onClick={finish} disabled={seeding}>
-                Skip for now
-              </Button>
-            )}
+            <Button type="button" variant="primary" onClick={finish}>
+              Go to project
+            </Button>
           </div>
         </div>
       ) : (

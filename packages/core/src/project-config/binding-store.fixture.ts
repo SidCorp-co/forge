@@ -9,6 +9,7 @@ export const bindingMem = {
   rows: new Map<string, StoredBinding>(),
   connections: new Map<string, ConnectionFacts>(),
   orgAdmins: new Set<string>(),
+  secrets: new Map<string, string>(),
 };
 
 function syncActive(row: StoredBinding) {
@@ -18,7 +19,7 @@ function syncActive(row: StoredBinding) {
       id: row.id,
       role: row.role,
       provider: row.provider,
-      label: '',
+      label: row.label,
     });
   }
 }
@@ -32,6 +33,7 @@ export function resetBindingMem() {
   bindingMem.rows.clear();
   bindingMem.connections.clear();
   bindingMem.orgAdmins.clear();
+  bindingMem.secrets.clear();
   mem.bindings = [];
 }
 
@@ -51,13 +53,18 @@ export const memoryBindingStore: BindingStore = {
   async isOrgAdmin(_orgId, userId) {
     return bindingMem.orgAdmins.has(userId);
   },
-  async casBinding({ baseRevision, ...write }) {
+  async casBinding({ baseRevision, integrationSecret, ...write }) {
     const current = bindingMem.rows.get(write.id);
     if (current && current.projectId !== write.projectId) return { ok: false, reason: 'foreign' };
-    const storedRevision = current?.revision ?? null;
+    const storedRevision = current?.active ? current.revision : null;
     if (storedRevision !== baseRevision) return { ok: false, reason: 'stale', storedRevision };
-    const stored: StoredBinding = { ...write, active: true, revision: (storedRevision ?? 0) + 1 };
+    if (!current) bindingMem.secrets.set(write.id, await integrationSecret());
+    const stored: StoredBinding = {
+      ...write,
+      active: true,
+      revision: (current?.revision ?? 0) + 1,
+    };
     seedBindingRow(stored);
-    return { ok: true, stored, created: true };
+    return { ok: true, stored, created: !current, changed: true };
   },
 };

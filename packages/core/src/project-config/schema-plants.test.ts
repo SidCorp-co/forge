@@ -95,7 +95,7 @@ const plants: [
     'coolify target without app uuid',
     'binding',
     () => ({ ...clone(b), target: { provider: 'coolify' } }),
-    { path: '/target/applicationUuid', code: 'invalid_type' },
+    { path: '/target/applications', code: 'invalid_type' },
   ],
   [
     'credential inside binding',

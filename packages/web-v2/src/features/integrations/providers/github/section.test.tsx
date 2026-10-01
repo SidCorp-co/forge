@@ -67,7 +67,7 @@ vi.mock("../../hooks", () => ({
   useIntegrationsList: () => ({ data: { items } }),
   useConnections: () => ({ data: { items: connections } }),
   useGitHubRepositories: () => repos,
-  useBindExistingConnection: () => ({ mutate: bind, isPending: false, isError: false, error: null }),
+  useBindConnection: () => ({ mutate: bind, isPending: false, isError: false, error: null }),
   useUpdateProviderIntegration: () => ({
     mutate: update,
     isPending: false,
@@ -327,7 +327,7 @@ describe("a project with no github binding row at all", () => {
     expect(picker()).not.toBeNull();
   });
 
-  it("still creates the binding through the bind-existing route, with the body it sent before", () => {
+  it("binds the connection as a github binding document naming the chosen repository", () => {
     items = [];
     mount();
 
@@ -337,13 +337,11 @@ describe("a project with no github binding row at all", () => {
     expect(update).not.toHaveBeenCalled();
     expect(bind).toHaveBeenCalledTimes(1);
     expect(bind.mock.calls[0][0]).toEqual({
-      id: CONNECTION,
-      body: {
-        projectId: PROJECT,
-        role: "service",
-        config: { owner: "SidCorp-co", repo: "forge", installationId: 159473037 },
-        agentAccess: "none",
-      },
+      connectionId: CONNECTION,
+      provider: "github",
+      role: "service",
+      binding: { owner: "SidCorp-co", repo: "forge", installationId: 159473037 },
+      agentAccess: "none",
     });
   });
 });

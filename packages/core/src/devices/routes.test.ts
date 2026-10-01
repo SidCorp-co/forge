@@ -111,8 +111,11 @@ vi.mock('../middleware/require-fresh-auth.js', () => ({
 }));
 
 const publishMock = vi.fn(() => 0);
-const declared = async () => ({ repository: null, setup: null });
-vi.mock('../project-config/source.js', () => ({ readDeclaredSource: declared }));
+const source = {
+  readDeclaredSource: async () => ({ repository: null, defaultBranch: 'main', setup: null }),
+  withDefaultBranch: async (rows: object[]) => rows.map((r) => ({ ...r, baseBranch: 'main' })),
+};
+vi.mock('../project-config/source.js', () => source);
 vi.mock('../ws/server.js', () => ({
   roomManager: { publish: publishMock },
 }));
@@ -274,7 +277,6 @@ describe('GET /api/devices/me/runners (ISS-271)', () => {
           projectId: 'proj-1',
           runnerId: 'run-1',
           slug: 'my-app',
-          baseBranch: 'main',
           repoPath: '/home/u/code/my-app',
           branch: 'dev',
           status: 'online',
@@ -344,11 +346,9 @@ describe('GET /api/devices/:id/runners (ISS-273)', () => {
             branch: 'dev',
             status: 'online',
             lastSeenAt: new Date('2026-05-30T00:00:00Z'),
-            baseBranch: 'main',
           },
         ]),
       );
-
     const app = buildApp();
     const res = await app.fetch(req(`/api/devices/${ID}/runners`, { token: 'user-jwt' }));
     expect(res.status).toBe(200);

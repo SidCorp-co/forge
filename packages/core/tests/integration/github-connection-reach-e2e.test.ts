@@ -30,6 +30,7 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
+import { seedBinding } from '../helpers/seed-binding.js';
 
 process.env.INTEGRATION_MASTER_KEY ??= 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=';
 
@@ -37,7 +38,6 @@ type Mods = {
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
   createConnection: typeof import('../../src/integrations/store.js').createConnection;
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
-  createBinding: typeof import('../../src/integrations/store.js').createBinding;
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
   signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
@@ -76,7 +76,6 @@ beforeAll(async () => {
   const store = await import('../../src/integrations/store.js');
   mods = {
     createConnection: store.createConnection,
-    createBinding: store.createBinding,
     signUserToken: (await import('../../src/auth/jwt.js')).signUserToken,
     listGithubAppsReachableBy: (await import('../../src/integrations/github/install-candidates.js'))
       .listGithubAppsReachableBy,
@@ -84,12 +83,14 @@ beforeAll(async () => {
 
   const { githubConnectRoutes } = await import('../../src/integrations/github/connect-routes.js');
   const { integrationsRoutes } = await import('../../src/integrations/routes.js');
+  const { mountProjectConfig } = await import('../../src/project-config/mount.js');
   const { errorHandler } = await import('../../src/middleware/error.js');
   const { requestId } = await import('../../src/middleware/request-id.js');
   app = new Hono<AppVars>();
   app.use('*', requestId());
   app.route('/api/projects', githubConnectRoutes);
   app.route('/api/projects', integrationsRoutes);
+  mountProjectConfig(app);
   app.onError(errorHandler);
 }, 60_000);
 
@@ -124,7 +125,7 @@ async function appOwnedBy(userId: string, boundTo: string | null = projectId) {
     secrets: {},
   });
   if (boundTo) {
-    await mods.createBinding({
+    await seedBinding({
       connectionId: connection.id,
       projectId: boundTo,
       provider: 'github',
@@ -320,10 +321,12 @@ describe('the Apps an install-completion may probe', () => {
  * org-owned.
  *
  * DELETE on a binding asks for project admin and throws `binding.active` off.
- * The PATCH that throws it back on carried an org-admin bar, because `active`
+ * The PATCH that threw it back on carried an org-admin bar, because `active`
  * was gated beside the connection-tier config and secrets although it writes
  * the binding. A project admin who is only an org member could therefore
- * disconnect and could not undo it.
+ * disconnect and could not undo it. Since ISS-15 the repick is the binding's
+ * document, written from a null base because a switched-off binding declares
+ * nothing.
  */
 describe('putting back a binding this admin was allowed to disconnect', () => {
   let connectionId: string;
@@ -339,7 +342,7 @@ describe('putting back a binding this admin was allowed to disconnect', () => {
       secrets: { appId: '1', privateKey: 'pem' },
     });
     connectionId = connection.id;
-    const binding = await mods.createBinding({
+    const binding = await seedBinding({
       connectionId,
       projectId,
       provider: 'github',
@@ -367,6 +370,28 @@ describe('putting back a binding this admin was allowed to disconnect', () => {
       body: JSON.stringify(body),
     });
 
+  const rebind = async (userId: string) =>
+    app.request(`/api/projects/${projectId}/bindings/${bindingId}`, {
+      method: 'PUT',
+      headers: await asUser(userId),
+      body: JSON.stringify({
+        baseRevision: null,
+        document: {
+          $schema: 'https://forge.sidcorp.co/schemas/binding-v1.json',
+          version: 1,
+          id: bindingId,
+          role: 'service',
+          connection: connectionId,
+          target: {
+            provider: 'github',
+            owner: 'SidCorp-co',
+            repo: 'forge',
+            installationId: 159473037,
+          },
+        },
+      }),
+    });
+
   const bindingActive = async () => {
     const rows = (await harness.db.execute(
       sql`SELECT active FROM integration_bindings WHERE id = ${bindingId}`,
@@ -378,10 +403,7 @@ describe('putting back a binding this admin was allowed to disconnect', () => {
     expect((await disconnect(clicker.id)).status).toBe(200);
     expect(await bindingActive()).toBe(false);
 
-    const res = await repick(clicker.id, {
-      config: { owner: 'SidCorp-co', repo: 'forge', installationId: 159473037 },
-      active: true,
-    });
+    const res = await rebind(clicker.id);
 
     expect(res.status).toBe(200);
     expect(await bindingActive()).toBe(true);
@@ -397,10 +419,7 @@ describe('putting back a binding this admin was allowed to disconnect', () => {
   it('lets an org admin switch it back on too, and is not barred from the credential', async () => {
     await disconnect(orgOwner.id);
 
-    const back = await repick(orgOwner.id, {
-      config: { owner: 'SidCorp-co', repo: 'forge', installationId: 159473037 },
-      active: true,
-    });
+    const back = await rebind(orgOwner.id);
     expect(back.status).toBe(200);
     expect(await bindingActive()).toBe(true);
 
@@ -416,5 +435,6 @@ describe('putting back a binding this admin was allowed to disconnect', () => {
 
     expect((await disconnect(plain.id)).status).toBe(403);
     expect((await repick(plain.id, { active: false })).status).toBe(403);
+    expect((await rebind(plain.id)).status).toBe(403);
   });
 });

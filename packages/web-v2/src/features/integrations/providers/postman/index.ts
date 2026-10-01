@@ -11,6 +11,7 @@ export const postman: ProviderModule = {
   agentPathKind: "direct-mcp",
   mcpServerName: "postman",
   multiBinding: false,
+  bindingKeys: [],
   target: (config) => text(config, "workspaceName"),
   section: () => import("./section").then((m) => ({ default: m.PostmanSection })),
   connectionSection: () =>

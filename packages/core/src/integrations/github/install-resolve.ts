@@ -9,19 +9,19 @@
  */
 
 import {
-  type BindingWithConnection,
   decryptConnectionSecrets,
+  type IntegrationConnectionRow,
   listBindingsForConnection,
 } from '../store.js';
 import { buildAppJwt } from './app-auth.js';
 import { listGithubAppsReachableBy } from './install-candidates.js';
 import { GITHUB_API_BASE } from './types.js';
 
-export async function findBindingOwningInstallation(args: {
+export async function findConnectionOwningInstallation(args: {
   userId: string;
   installationId: number;
   fetchImpl?: typeof fetch;
-}): Promise<BindingWithConnection | null> {
+}): Promise<{ connection: IntegrationConnectionRow; projectId: string | null } | null> {
   const doFetch = args.fetchImpl ?? fetch;
   const connections = await listGithubAppsReachableBy(args.userId);
 
@@ -49,7 +49,7 @@ export async function findBindingOwningInstallation(args: {
     const pair = (await listBindingsForConnection(connection.id)).find(
       (p) => p.binding.provider === 'github',
     );
-    if (pair) return pair;
+    return { connection, projectId: pair?.binding.projectId ?? null };
   }
 
   return null;

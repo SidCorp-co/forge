@@ -18,6 +18,9 @@ const SCRIPT = fileURLToPath(
 const PASSWORD = 'hunter2-do-not-print';
 const MCP_TOKEN = 'ghp_mcp-token-do-not-print';
 const ROLLBACK_TEXT = 'Redeploy the previous image from the Coolify panel, then purge the CDN';
+const WEBHOOK_SECRET = 'whs-webhook-secret-do-not-print';
+const API_KEY = 'fk_api-key-do-not-print';
+const SECRETS = [PASSWORD, MCP_TOKEN, WEBHOOK_SECRET, API_KEY];
 
 type Exporter = typeof import('../../../../scripts/export-legacy-project-config.mjs');
 
@@ -28,13 +31,17 @@ function migrationParts() {
   const drop = files.find((f) => f.sql.join('\n').includes('DROP COLUMN "workspace_setup"'));
   if (!drop)
     throw new Error('the migration dropping the legacy project columns is not in the folder');
+  const secrets = files.find((f) => f.sql.join('\n').includes('DROP COLUMN "webhook_secret"'));
+  if (!secrets)
+    throw new Error('the migration dropping the project secret columns is not in the folder');
   return {
     below: files.filter((f) => f.folderMillis < drop.folderMillis).flatMap((f) => f.sql),
     drop: drop.sql,
+    secretsDrop: secrets.sql,
   };
 }
 
-const { below, drop } = migrationParts();
+const { below, drop, secretsDrop } = migrationParts();
 
 let admin: Sql;
 let adminUrl: string;
@@ -91,10 +98,11 @@ beforeAll(async () => {
   );
   await sql.unsafe(
     `INSERT INTO projects (id, slug, name, org_id, created_by, description, kind, repo_url,
-                           workspace_setup, release_chain, environments, agent_config, repo_path)
+                           workspace_setup, release_chain, environments, agent_config, repo_path,
+                           base_branch, webhook_secret, api_key)
      VALUES ($1, 'alpha', 'Alpha', $2, $3, 'the storefront', 'website',
              'git@github.com:acme/alpha.git', 'pnpm install', $4::text::jsonb, $5::text::jsonb,
-             $6::text::jsonb, '/srv/alpha')`,
+             $6::text::jsonb, '/srv/alpha', 'trunk', $7, $8)`,
     [
       full,
       org,
@@ -110,6 +118,8 @@ beforeAll(async () => {
         plugins: [{ marketplace: 'acme/market', name: 'kit' }],
         mcpServers: { github: { command: 'gh-mcp', env: { GITHUB_TOKEN: MCP_TOKEN } } },
       }),
+      WEBHOOK_SECRET,
+      API_KEY,
     ],
   );
   await sql.unsafe(
@@ -173,6 +183,9 @@ describe('the export on a database still at the old schema', () => {
         'projects.release_chain',
         'projects.environments',
         'projects.agent_config',
+        'projects.base_branch',
+        'projects.webhook_secret',
+        'projects.api_key',
       ]),
     );
     expect(report.columns.find((c) => c.column === 'default_device_id')?.present).toBe(false);
@@ -184,6 +197,9 @@ describe('the export on a database still at the old schema', () => {
       repo_url: 'git@github.com:acme/alpha.git',
       workspace_setup: 'pnpm install',
       repo_path: '/srv/alpha',
+      base_branch: 'trunk',
+      webhook_secret: exporter.SECRET_MARK,
+      api_key: exporter.SECRET_MARK,
       release_chain: [{ branch: 'staging' }, { branch: 'main', from: 'merge-branch' }],
       environments: {
         live: {
@@ -200,6 +216,8 @@ describe('the export on a database still at the old schema', () => {
       description: null,
       kind: 'standard',
       repo_url: null,
+      webhook_secret: null,
+      api_key: null,
     });
     expect(report.projects.find((p) => p.slug === 'bravo')?.legacy).not.toHaveProperty(
       'default_device_id',
@@ -219,9 +237,7 @@ describe('the export on a database still at the old schema', () => {
       ]),
     );
 
-    expect(out.stdout).not.toContain(PASSWORD);
-    expect(out.stdout).not.toContain(MCP_TOKEN);
-    expect(out.stdout).not.toContain('ops@acme');
+    for (const held of [...SECRETS, 'ops@acme']) expect(out.stdout).not.toContain(held);
     expect(await fingerprint()).toBe(before);
   });
 
@@ -240,8 +256,15 @@ describe('the export on a database still at the old schema', () => {
     expect(out.stdout).toContain(`label="store-b" stages=["preview"]`);
     expect(out.stdout).toContain(`rollback (on the binding): ${ROLLBACK_TEXT}`);
     expect(out.stdout).toContain('rollback (on the connection):');
-    expect(out.stdout).toContain(exporter.SECRET_MARK);
-    expect(out.stdout).not.toContain(PASSWORD);
+    expect(out.stdout).toMatch(
+      /present {2}projects\.base_branch {2}→ re-enter as source\.git\.defaultBranch/,
+    );
+    expect(out.stdout).toMatch(
+      /present {2}projects\.webhook_secret {2}→ re-enter as the project secret secret:\/\/project\/webhook-secret/,
+    );
+    expect(out.stdout).toContain(`webhook_secret: ${exporter.SECRET_MARK}`);
+    expect(out.stdout).toContain(`api_key: ${exporter.SECRET_MARK}`);
+    for (const held of SECRETS) expect(out.stdout).not.toContain(held);
     const db = new URL(url);
     expect(out.stdout.split('\n')[0]).toBe(
       `export-legacy-project-config: ${db.hostname}:${db.port}${db.pathname} (read-only)`,
@@ -282,6 +305,10 @@ describe('the export on a database still at the old schema', () => {
 
     await sql.unsafe('ALTER TABLE projects DROP COLUMN repo_path, DROP COLUMN agent_config');
     await sql.unsafe('ALTER TABLE integration_bindings DROP COLUMN stages');
+    await sql.unsafe('UPDATE projects SET base_branch = NULL');
+    await sql.begin(async (tx) => {
+      for (const stmt of secretsDrop) await tx.unsafe(stmt, []);
+    });
     const rollbackOnly = run();
     expect(rollbackOnly.stdout).toContain(`rollback (on the binding): ${ROLLBACK_TEXT}`);
     expect(rollbackOnly.stdout).not.toContain('stages=');

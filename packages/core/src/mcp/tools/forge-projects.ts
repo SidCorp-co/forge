@@ -84,11 +84,10 @@ const createInputSchema = z.strictObject(
   {
     slug: slugField,
     name: z.string().trim().min(1).max(200),
-    baseBranch: z.string().trim().max(100).optional(),
     // Org tier — omitted = the caller's personal org.
     orgId: z.uuid().optional(),
   },
-  undeclaredOrRetired('forge_projects.create', 'slug, name, baseBranch and orgId'),
+  undeclaredOrRetired('forge_projects.create', 'slug, name and orgId'),
 );
 
 export const forgeProjectsCreateTool: ContextScopedMcpToolFactory = (ctx) => ({
@@ -96,7 +95,7 @@ export const forgeProjectsCreateTool: ContextScopedMcpToolFactory = (ctx) => ({
   reach: { account: 'creating a project' },
   grant: 'projects:write',
   description:
-    "Create a new project in an org (orgId optional — defaults to the caller's personal org; the caller becomes a project admin). Accepts slug+name plus an optional initial baseBranch. A checkout is not a project setting: it is the device binding's (`forge-runner bind <slug> --path <dir>`). Where its work lands, its environments, promotions and deployments are its project document, written with PUT /api/projects/:id/config. PAT principals must carry the `write` scope and reach no narrower than their owner: a token fenced to projects, by a project list or a bound project, is refused with PAT_ACCOUNT_ROUTE. Returns id/slug/name/orgId/createdBy/apiKey/createdAt — the apiKey is needed for widget install and device pairing.",
+    "Create a new project in an org (orgId optional — defaults to the caller's personal org; the caller becomes a project admin). Accepts slug and name; the branch work is cut from is the project document's `source.git.defaultBranch`, and `baseBranch` is refused by name. A checkout is not a project setting: it is the device binding's (`forge-runner bind <slug> --path <dir>`). Where its work lands, its environments, promotions and deployments are its project document, written with PUT /api/projects/:id/config. PAT principals must carry the `write` scope and reach no narrower than their owner: a token fenced to projects, by a project list or a bound project, is refused with PAT_ACCOUNT_ROUTE. Returns id/slug/name/orgId/createdBy/createdAt.",
   inputSchema: zodToMcpSchema(createInputSchema),
   handler: async (args) => {
     const input = createInputSchema.parse(args);
@@ -127,7 +126,6 @@ export const forgeProjectsCreateTool: ContextScopedMcpToolFactory = (ctx) => ({
         name: input.name,
         orgId,
         createdBy: creatorId,
-        baseBranch: input.baseBranch,
       });
       return { project: created };
     } catch (err) {
@@ -144,7 +142,7 @@ const UNDECLARED_PATCH_KEY = {
     if (issue.code !== 'unrecognized_keys') return undefined;
     const keys = issue.keys ?? [];
     const retired = retiredProjectFieldsMessage(keys);
-    return `forge_projects.update does not take ${keys.map((k) => `\`${k}\``).join(', ')}; its fields are name and baseBranch.${retired ? ` ${retired}` : ''} Whether a project's work lands in git (\`source.type\`), its environments, promotions, deployments and testing profiles are its project document: read it with forge_config (action \`get\`, field \`projectDocument\`) and write it with PUT /api/projects/:id/config.`;
+    return `forge_projects.update does not take ${keys.map((k) => `\`${k}\``).join(', ')}; its only field is name.${retired ? ` ${retired}` : ''} Whether a project's work lands in git (\`source.type\`), its environments, promotions, deployments and testing profiles are its project document: read it with forge_config (action \`get\`, field \`projectDocument\`) and write it with PUT /api/projects/:id/config.`;
   },
 };
 
@@ -155,7 +153,6 @@ const updateInputSchema = z
       .strictObject(
         {
           name: z.string().trim().min(1).max(200).optional(),
-          baseBranch: z.string().trim().max(100).nullable().optional(),
         },
         UNDECLARED_PATCH_KEY,
       )
@@ -166,8 +163,8 @@ const updateInputSchema = z
   .strict();
 
 /**
- * Update a project's settings (name/baseBranch) — the subset of `updateProjectSchema` that's safe to
- * expose to MCP. Sensitive fields (webhookSecret, apiKey, agentConfig) intentionally stay on the REST handler.
+ * Update a project's settings (name) — the subset of `updateProjectSchema` that's safe to
+ * expose to MCP.
  *
  * Authorization is OWNER-ONLY, matching REST PATCH /api/projects/:id
  * (projects/routes.ts:349-351 — `project.ownerId === userId || role === 'owner'`).
@@ -181,7 +178,7 @@ export const forgeProjectsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
   reach: 'project',
   grant: 'projects:write',
   description:
-    "Update project settings (name, baseBranch). A checkout is not a project setting: it is the device binding's (`forge-runner bind <slug> --path <dir>`). Whether the project's work lands in git (`source.type`), its environments, promotions, deployments and testing profiles are NOT settings here: they are its project document, read with forge_config (action `get`, field `projectDocument`) and written with PUT /api/projects/:id/config, and a patch naming any other key is refused by name. Caller must be org owner/admin on the project's org (a merely-invited project admin cannot mutate settings — matches REST PATCH /api/projects/:id). PAT principals must additionally carry the `write` scope. The repository and the workspace setup procedure are the project document's `source.git.repository` and `workspace.setup`: a patch naming `repoUrl` or `workspaceSetup` is refused by name. Sensitive fields (webhookSecret, apiKey, agentConfig) stay on REST.",
+    "Update project settings (name). A checkout is not a project setting: it is the device binding's (`forge-runner bind <slug> --path <dir>`). Whether the project's work lands in git (`source.type`), its environments, promotions, deployments and testing profiles are NOT settings here: they are its project document, read with forge_config (action `get`, field `projectDocument`) and written with PUT /api/projects/:id/config, and a patch naming any other key is refused by name. Caller must be org owner/admin on the project's org (a merely-invited project admin cannot mutate settings — matches REST PATCH /api/projects/:id). PAT principals must additionally carry the `write` scope. The repository and the workspace setup procedure are the project document's `source.git.repository` and `workspace.setup`: a patch naming `repoUrl`, `workspaceSetup` or `baseBranch` is refused by name. The webhook secret is the project secret `secret://project/webhook-secret`.",
   inputSchema: zodToMcpSchema(updateInputSchema),
   handler: async (args) => {
     const input = updateInputSchema.parse(args);
@@ -214,7 +211,6 @@ export const forgeProjectsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
 
     const updates: Record<string, unknown> = {};
     if (input.patch.name !== undefined) updates.name = input.patch.name;
-    if (input.patch.baseBranch !== undefined) updates.baseBranch = input.patch.baseBranch;
 
     if (Object.keys(updates).length === 0) {
       const summary = await readProjectSummary(input.projectId);
@@ -234,7 +230,7 @@ export const forgeProjectsGetTool: ContextScopedMcpToolFactory = (ctx) => ({
   reach: 'project',
   grant: 'projects:read',
   description:
-    'Fetch project detail visible to the principal — id, slug, name, orgId, createdBy, role (effective: admin|member|viewer), baseBranch (where an ISS-* branch is cut from, NOT a release fact), createdAt. A checkout path is not a project fact: every device binding names its own. Where work lands, what each environment is and deploys from, its address and the testing profile its testers get in through are the project document — forge_config (action `get`, field `projectDocument`) — and what an environment runs now is GET /api/projects/:id/environments/:name/state. The repository and the setup procedure a checkout follows when it will not build are `source.git.repository` and `workspace.setup` in that document. Any effective project role can read. PAT principals must carry the `read` scope. Sensitive fields (agentConfig, webhookSecret, apiKey) stay on REST.',
+    'Fetch project detail visible to the principal — id, slug, name, orgId, createdBy, role (effective: admin|member|viewer), baseBranch (`source.git.defaultBranch` of the project document, where an ISS-* branch is cut from; null where the document declares none), createdAt. A checkout path is not a project fact: every device binding names its own. Where work lands, what each environment is and deploys from, its address and the testing profile its testers get in through are the project document — forge_config (action `get`, field `projectDocument`) — and what an environment runs now is GET /api/projects/:id/environments/:name/state. The repository and the setup procedure a checkout follows when it will not build are `source.git.repository` and `workspace.setup` in that document. Any effective project role can read. PAT principals must carry the `read` scope. agentConfig stays on REST.',
   inputSchema: zodToMcpSchema(getInputSchema),
   handler: async (args) => {
     const input = getInputSchema.parse(args);

@@ -22,6 +22,17 @@ export const LEGACY_COLUMNS = [
   { table: 'projects', column: 'kind', v1: 'source.type (website → storefront, standard → git)' },
   { table: 'projects', column: 'repo_url', v1: 'source.git.repository (host/owner/repo)' },
   { table: 'projects', column: 'workspace_setup', v1: 'workspace.setup' },
+  { table: 'projects', column: 'base_branch', v1: 'source.git.defaultBranch' },
+  {
+    table: 'projects',
+    column: 'webhook_secret',
+    v1: 'the project secret secret://project/webhook-secret (PUT /api/projects/:id/secrets/project/webhook-secret)',
+  },
+  {
+    table: 'projects',
+    column: 'api_key',
+    v1: 'nothing: no route authenticated a project API key',
+  },
   {
     table: 'projects',
     column: 'release_chain',

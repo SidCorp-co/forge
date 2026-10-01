@@ -22,7 +22,7 @@ import { formatApiError } from "@/lib/api/error";
 import { useProjects } from "@/features/projects/hooks";
 import { useMemo, useState } from "react";
 import {
-  useBindExistingConnection,
+  useBindConnection,
   useConnections,
   useDeleteProviderIntegration,
   useGitHubConnect,
@@ -297,7 +297,7 @@ function UseExistingApp({
   onNeedNewApp: () => void;
 }) {
   const repos = useGitHubRepositories(projectId, connectionId);
-  const bind = useBindExistingConnection();
+  const bind = useBindConnection(projectId);
   const [fullName, setFullName] = useState("");
   const [agentAccess, setAgentAccess] = useState<AgentAccess>(AGENT_ACCESS_CLOSED);
 
@@ -306,19 +306,15 @@ function UseExistingApp({
   const submit = () => {
     if (!chosen) return;
     bind.mutate({
-      id: connectionId,
-      body: {
-        projectId,
-        // github is never a deploy target — `providerCanDeploy('github')` is
-        // false, so a repo host can only be a project-wide service.
-        role: "service",
-        config: {
-          owner: chosen.owner,
-          repo: chosen.repo,
-          installationId: chosen.installationId,
-        },
-        ...agentAccessBody(github.agentPathKind, agentAccess),
+      connectionId,
+      provider: github.provider,
+      role: "service",
+      binding: {
+        owner: chosen.owner,
+        repo: chosen.repo,
+        installationId: chosen.installationId,
       },
+      ...agentAccessBody(github.agentPathKind, agentAccess),
     });
   };
 
