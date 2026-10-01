@@ -27,6 +27,7 @@ const dependentsInnerJoin = vi.fn(() => ({ where: dependentsWhere }));
 const selectFrom = vi.fn(() => ({
   where: selectWhere,
   innerJoin: dependentsInnerJoin,
+  leftJoin: dependentsInnerJoin,
 }));
 
 const updateReturning = vi.fn(async () => [] as unknown[]);

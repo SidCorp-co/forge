@@ -2,15 +2,17 @@
  * What counts as evidence that an issue's work landed, per project shape — the ONE answer.
  *
  * Every door that decides whether a mark is enough reads it here: the close gate
- * (`merged-at.ts`), the `merged_mark` entry criterion, the release-record blocker and the mark
- * writer. A second place deciding it is how a project gets asked for the sha of a branch it never
- * moves (ISS-1327): docs/modules/issues/merge-mark.md.
+ * (`merged-at.ts`), the release-record blocker and the mark writer. A second place deciding it is
+ * how a project gets asked for the sha of a branch it never moves (ISS-1327):
+ * docs/modules/issues/merge-mark.md.
  */
 
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { Db } from '../db/client.js';
-import { issues, type ProjectKind, projectKinds, projects } from '../db/schema.js';
+import { issues } from '../db/schema.js';
+import { projectConfigDocuments } from '../db/schema-project-config.js';
+import type { ProjectDocument } from '../project-config/schema.js';
 import {
   describeMergeMark,
   type MergeMarkColumns,
@@ -22,21 +24,36 @@ import {
  *  storefront change — the repository, where there is one, holds none of it. */
 export type LandingShape = 'git' | 'outside_git';
 
-const SHAPE_OF_KIND: Readonly<Record<ProjectKind, LandingShape>> = {
-  standard: 'git',
-  // The store is the source of truth and the repo is optional (`projectKinds` in schema.ts).
-  website: 'outside_git',
+type SourceType = ProjectDocument['source']['type'];
+
+const SHAPE_OF_SOURCE: Readonly<Record<SourceType, LandingShape>> = {
+  git: 'git',
+  storefront: 'outside_git',
+  none: 'outside_git',
 };
 
-/** `projects.kind` is plain text in the table, so a value no route writes is refused by name. */
-export function landingShapeOf(kind: string): LandingShape {
-  const shape = (SHAPE_OF_KIND as Record<string, LandingShape | undefined>)[kind];
+/** Why no shape-dependent mark can be judged on a project that has no project document. */
+export const SOURCE_UNDECLARED =
+  'this project declares no project document, so its `source.type` — whether its work lands in git — is unknown and only a merge Forge observed can be judged. Declare it with PUT /api/projects/:id/config (`source.type` `git`, `storefront` or `none`)';
+
+/** `null` where the project declares no document. A stored type no schema admits is refused by name. */
+export function landingShapeOf(sourceType: string | null): LandingShape | null {
+  if (sourceType === null) return null;
+  const shape = (SHAPE_OF_SOURCE as Record<string, LandingShape | undefined>)[sourceType];
   if (!shape) {
     throw new Error(
-      `project kind \`${kind}\` is not one of ${projectKinds.map((k) => `\`${k}\``).join(', ')}, ` +
+      `source.type \`${sourceType}\` is not one of ${Object.keys(SHAPE_OF_SOURCE)
+        .map((k) => `\`${k}\``)
+        .join(', ')}, ` +
         'so whether its work lands in git is unknown and no mark can be judged against it',
     );
   }
+  return shape;
+}
+
+/** The shape, where a door cannot proceed without one. */
+export function requireLandingShape(shape: LandingShape | null): LandingShape {
+  if (shape === null) throw new Error(SOURCE_UNDECLARED);
   return shape;
 }
 
@@ -46,6 +63,11 @@ export const LANDINGS_ACCEPTED: Readonly<Record<LandingShape, readonly MergeMark
   git: ['asserted', 'observed'],
   outside_git: ['landed', 'observed'],
 };
+
+/** What every shape accepts, which is all an undeclared project's mark can be judged by. */
+const ACCEPTED_UNDER_EVERY_SHAPE: readonly MergeMarkKind[] = LANDINGS_ACCEPTED.git.filter((k) =>
+  LANDINGS_ACCEPTED.outside_git.includes(k),
+);
 
 export const MERGED_LANDING_MAX = 2000;
 
@@ -58,7 +80,10 @@ export const mergedLandingSchema = z
 
 /** How work that did land is claimed on this shape, written once for every refusal naming it.
  *  `held` is the mark already on the row: the first stamp wins, so a bare one is cleared first. */
-export function landingRoute(shape: LandingShape, held: MergeMarkKind = 'unmarked'): string {
+export function landingRoute(shape: LandingShape | null, held: MergeMarkKind = 'unmarked'): string {
+  if (shape === null) {
+    return `Declare the project's \`source.type\` first with PUT /api/projects/:id/config, then mark it merged where the work landed and close.`;
+  }
   if (shape === 'git') {
     return (
       'Where the work DID land outside the pipeline, claim it first with `forge_issues` ' +
@@ -72,7 +97,7 @@ export function landingRoute(shape: LandingShape, held: MergeMarkKind = 'unmarke
       : '';
   return (
     clear +
-    "This project's work lands outside git (kind `website`), so claim it with `forge_issues` " +
+    "This project's work lands outside git (`source.type` is not `git`), so claim it with `forge_issues` " +
     '`mark_merged` carrying `data.landing` — the live URL, CMS entry or storefront resource the ' +
     'work now is (`landing` on `POST /api/issues/:id/merge`, or "Where it landed" on the issue\'s ' +
     'Mark merged rail) — then close. A mark naming no landing is not evidence here, and a commit ' +
@@ -81,8 +106,17 @@ export function landingRoute(shape: LandingShape, held: MergeMarkKind = 'unmarke
 }
 
 /** Why this mark is not evidence of a landing on this shape, or `null` where it is. */
-export function landingShortfall(row: MergeMarkColumns, shape: LandingShape): string | null {
+export function landingShortfall(row: MergeMarkColumns, shape: LandingShape | null): string | null {
   const kind = mergeMarkKindOf(row);
+  if (shape === null) {
+    if (ACCEPTED_UNDER_EVERY_SHAPE.includes(kind)) return null;
+    const held = describeMergeMark({
+      kind,
+      commitSha: row.mergedCommitSha,
+      landing: row.mergedLanding,
+    });
+    return `${held}, and ${SOURCE_UNDECLARED}`;
+  }
   const accepted = LANDINGS_ACCEPTED[shape];
   if (accepted.includes(kind)) return null;
   const wanted = accepted.map((k) => `\`${k}\``).join(' or ');
@@ -105,7 +139,7 @@ export function landingMarkRefusal(args: {
       code: 'LANDING_NOT_THIS_SHAPE',
       detail:
         '`landing` names where work landed OUTSIDE git, and this project lands its work in git ' +
-        '(kind is not `website`), so nothing was marked. Send the mark without `landing`, naming ' +
+        '(`source.type` is `git`), so nothing was marked. Send the mark without `landing`, naming ' +
         'the commit with `commit` where you have one.',
     };
   }
@@ -113,7 +147,7 @@ export function landingMarkRefusal(args: {
     return {
       code: 'LANDING_REQUIRED',
       detail:
-        "this project's work lands outside git (kind `website`) and Forge holds no merged pull " +
+        "this project's work lands outside git (`source.type` is not `git`) and Forge holds no merged pull " +
         'request for this issue, so a mark must name where the work landed and nothing was ' +
         'marked. Send `landing` — the live URL, CMS entry or storefront resource the work now is.',
     };
@@ -153,36 +187,38 @@ export function standingMarkRefusal(args: {
 
 type ShapeExecutor = Pick<Db, 'select'>;
 
+const sourceTypeOf = sql<string | null>`${projectConfigDocuments.document} -> 'source' ->> 'type'`;
+
 /** The shape of the project an issue belongs to, read in one statement with the mark. */
 export async function readLandingEvidence(
   executor: ShapeExecutor,
   issueId: string,
-): Promise<{ columns: MergeMarkColumns; shape: LandingShape } | null> {
+): Promise<{ columns: MergeMarkColumns; shape: LandingShape | null } | null> {
   const [row] = await executor
     .select({
       mergedAt: issues.mergedAt,
       mergedCommitSha: issues.mergedCommitSha,
       mergedLanding: issues.mergedLanding,
-      kind: projects.kind,
+      sourceType: sourceTypeOf,
     })
     .from(issues)
-    .innerJoin(projects, eq(projects.id, issues.projectId))
+    .leftJoin(projectConfigDocuments, eq(projectConfigDocuments.projectId, issues.projectId))
     .where(eq(issues.id, issueId))
     .limit(1);
   if (!row) return null;
-  const { kind, ...columns } = row;
-  return { columns, shape: landingShapeOf(kind) };
+  const { sourceType, ...columns } = row;
+  return { columns, shape: landingShapeOf(sourceType) };
 }
 
+/** `null` where the project declares no project document. */
 export async function readLandingShape(
   executor: ShapeExecutor,
   projectId: string,
-): Promise<LandingShape> {
+): Promise<LandingShape | null> {
   const [row] = await executor
-    .select({ kind: projects.kind })
-    .from(projects)
-    .where(eq(projects.id, projectId))
+    .select({ sourceType: sourceTypeOf })
+    .from(projectConfigDocuments)
+    .where(eq(projectConfigDocuments.projectId, projectId))
     .limit(1);
-  if (!row) throw new Error(`no project row for ${projectId}, so its landing shape is unknown`);
-  return landingShapeOf(row.kind);
+  return landingShapeOf(row?.sourceType ?? null);
 }

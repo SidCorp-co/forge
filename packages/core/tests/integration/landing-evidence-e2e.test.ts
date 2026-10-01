@@ -7,9 +7,9 @@
  * release-record blocker. What each of them decides is `landing-evidence.ts`'s answer, and the
  * point of running them all is that none of them decides it a second time.
  *
- * The field this was measured on: a storefront project (kind `website`) whose checkout is a
- * control folder of one commit, where three issues were refused `CLOSE_REQUIRES_SHIPPED` because
- * the only mark there was a git one.
+ * The field this was measured on: a storefront project (`source.type` `storefront`) whose
+ * checkout is a control folder of one commit, where three issues were refused
+ * `CLOSE_REQUIRES_SHIPPED` because the only mark there was a git one.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -31,9 +31,9 @@ import {
 
 useLandingHarness();
 
-describe('a project whose work lands outside git (kind website)', () => {
+describe('a project whose work lands outside git (source.type storefront)', () => {
   it('closes an issue marked through forge_issues with data.landing', async () => {
-    const w = await world('website');
+    const w = await world('storefront');
     const id = await seedIssue(w);
     const marked = await tool(w.pat, {
       action: 'mark_merged',
@@ -47,7 +47,7 @@ describe('a project whose work lands outside git (kind website)', () => {
   });
 
   it('answers forge_issues get with mergeMark landed and the landing itself', async () => {
-    const w = await world('website');
+    const w = await world('storefront');
     const id = await seedIssue(w, { landing: LANDING });
     const got = (await tool(w.pat, { action: 'get', documentId: id })).json();
     expect(got.mergeMark).toBe('landed');
@@ -55,7 +55,7 @@ describe('a project whose work lands outside git (kind website)', () => {
   });
 
   it('closes an issue marked at the REST door with landing, whose detail names the shape', async () => {
-    const w = await world('website');
+    const w = await world('storefront');
     const id = await seedIssue(w);
     const res = await rest('POST', `/api/issues/${id}/merge`, w.token, {
       target: 'ISS-38',
@@ -76,7 +76,7 @@ describe('a project whose work lands outside git (kind website)', () => {
   });
 
   it('refuses the close of a mark naming no landing, naming data.landing and never a commit', async () => {
-    const w = await world('website');
+    const w = await world('storefront');
     const id = await seedIssue(w, { mergedAt: true });
     const refusal = await refusalOf(() => close(w, id));
     expect(refusal.code).toBe('CLOSE_REQUIRES_SHIPPED');
@@ -101,7 +101,7 @@ describe('a project whose work lands outside git (kind website)', () => {
   });
 
   it('refuses the close of an issue with no mark at all, naming the same route', async () => {
-    const w = await world('website');
+    const w = await world('storefront');
     const id = await seedIssue(w);
     const refusal = await refusalOf(() => close(w, id));
     expect(refusal.code).toBe('CLOSE_REQUIRES_SHIPPED');
@@ -110,7 +110,7 @@ describe('a project whose work lands outside git (kind website)', () => {
   });
 
   it('refuses a mark naming no landing at both doors, and writes no merged_at', async () => {
-    const w = await world('website');
+    const w = await world('storefront');
     const id = await seedIssue(w);
 
     const res = await rest('POST', `/api/issues/${id}/merge`, w.token, {
@@ -131,7 +131,7 @@ describe('a project whose work lands outside git (kind website)', () => {
   });
 
   it('lists an issue whose mark names no landing under RELEASE_WORK_UNMERGED at the record door', async () => {
-    const w = await world('website');
+    const w = await world('storefront');
     // A one-entry chain and a live deploy binding are a release gate at all; with no probe the
     // release is recorded unverified (ISS-1321), so the only reason left is the roster's own.
     await harness.db.execute(sql`
@@ -172,7 +172,7 @@ describe('a project whose work lands outside git (kind website)', () => {
   });
 
   it('clears the landing with unmark, so the next mark records the landing it is sent', async () => {
-    const w = await world('website');
+    const w = await world('storefront');
     const id = await seedIssue(w);
     await rest('POST', `/api/issues/${id}/merge`, w.token, { target: 'ISS-38', landing: LANDING });
     expect((await rest('DELETE', `/api/issues/${id}/merge`, w.token, {})).status).toBe(200);
@@ -187,23 +187,23 @@ describe('a project whose work lands outside git (kind website)', () => {
   });
 });
 
-describe('a project that lands in git (kind standard) closes exactly as before', () => {
+describe('a project that lands in git (source.type git) closes exactly as before', () => {
   it('closes on an asserted mark', async () => {
-    const w = await world('standard');
+    const w = await world('git');
     const id = await seedIssue(w, { mergedAt: true });
     await close(w, id);
     expect((await stored(id)).status).toBe('closed');
   });
 
   it('closes on an observed mark', async () => {
-    const w = await world('standard');
+    const w = await world('git');
     const id = await seedIssue(w, { sha: CONTROL_FOLDER_COMMIT });
     await close(w, id);
     expect((await stored(id)).status).toBe('closed');
   });
 
   it("refuses a close with no mark in today's words, naming mark_merged and no landing", async () => {
-    const w = await world('standard');
+    const w = await world('git');
     const id = await seedIssue(w);
     const refusal = await refusalOf(() => close(w, id));
     expect(refusal.code).toBe('CLOSE_REQUIRES_SHIPPED');
@@ -213,7 +213,7 @@ describe('a project that lands in git (kind standard) closes exactly as before',
   });
 
   it('refuses a landing at both doors by name, and writes no merged_at', async () => {
-    const w = await world('standard');
+    const w = await world('git');
     const id = await seedIssue(w);
     const res = await rest('POST', `/api/issues/${id}/merge`, w.token, {
       target: 'main',
@@ -231,7 +231,7 @@ describe('a project that lands in git (kind standard) closes exactly as before',
   });
 
   it('serves landingShape git on the detail answer', async () => {
-    const w = await world('standard');
+    const w = await world('git');
     const id = await seedIssue(w);
     const detail = await (await rest('GET', `/api/issues/${id}`, w.token)).json();
     expect(detail.landingShape).toBe('git');
@@ -243,7 +243,7 @@ describe('the landing field is refused malformed, at both doors and in the colum
     ['blank', '   '],
     ['past 2000 characters', 'x'.repeat(2001)],
   ])('refuses a %s landing naming the field', async (_what, landing) => {
-    const w = await world('website');
+    const w = await world('storefront');
     const id = await seedIssue(w);
     const res = await rest('POST', `/api/issues/${id}/merge`, w.token, {
       target: 'ISS-38',
@@ -265,7 +265,7 @@ describe('the landing field is refused malformed, at both doors and in the colum
     ['a tab', '\t'],
     ['a newline', '\n'],
   ])('refuses a landing of only %s in the table itself', async (_what, landing) => {
-    const w = await world('website');
+    const w = await world('storefront');
     const id = await seedIssue(w);
     const refusal = await refusalOf(() =>
       harness.db.execute(
@@ -279,7 +279,7 @@ describe('the landing field is refused malformed, at both doors and in the colum
   });
 
   it('refuses a landing with no merged_at in the table itself, whatever wrote it', async () => {
-    const w = await world('website');
+    const w = await world('storefront');
     const id = await seedIssue(w);
     const refusal = await refusalOf(() =>
       harness.db.execute(sql`UPDATE issues SET merged_landing = ${LANDING} WHERE id = ${id}`),
@@ -288,5 +288,47 @@ describe('the landing field is refused malformed, at both doors and in the colum
       '\n',
     );
     expect(chain).toContain('issues_merged_landing_chk');
+  });
+});
+
+describe('a project that declares no project document has no landing shape', () => {
+  it('answers landingShape null on the issue detail rather than defaulting it to git', async () => {
+    const w = await world(null);
+    const id = await seedIssue(w);
+    const detail = await (await rest('GET', `/api/issues/${id}`, w.token)).json();
+    expect(detail.landingShape).toBeNull();
+  });
+
+  it('refuses a mark by name at both doors, and writes nothing', async () => {
+    const w = await world(null);
+    const id = await seedIssue(w);
+    const res = await rest('POST', `/api/issues/${id}/merge`, w.token, { target: 'main' });
+    expect(res.status).toBe(422);
+    const body = await res.json();
+    expect(body.code).toBe('PROJECT_DOCUMENT_NOT_FOUND');
+    expect(JSON.stringify(body)).toContain('PUT /api/projects/:id/config');
+    const marked = await tool(w.pat, {
+      action: 'mark_merged',
+      data: { issueId: id, target: 'base' },
+    });
+    expect(marked.isError).toBe(true);
+    expect(marked.text).toContain('PROJECT_DOCUMENT_NOT_FOUND');
+    expect((await stored(id)).merged_at).toBeNull();
+  });
+
+  it('closes on a merge Forge observed, which every shape accepts', async () => {
+    const w = await world(null);
+    const id = await seedIssue(w, { sha: CONTROL_FOLDER_COMMIT });
+    await close(w, id);
+    expect((await stored(id)).status).toBe('closed');
+  });
+
+  it('refuses the close of a bare claim, naming the source.type it cannot be judged without', async () => {
+    const w = await world(null);
+    const id = await seedIssue(w, { mergedAt: true });
+    const refused = await refusalOf(() => close(w, id));
+    expect(refused.code).toBe('CLOSE_REQUIRES_SHIPPED');
+    expect(refused.message).toContain('declares no project document');
+    expect((await stored(id)).status).toBe('awaiting_release');
   });
 });

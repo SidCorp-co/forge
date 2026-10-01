@@ -13,16 +13,16 @@ export interface IssueBodyColumns {
 }
 
 /** `landingShape` is `landing-evidence.ts`'s answer for the issue's project, so a client offering
- *  a mark asks for what this project's close will accept rather than re-deriving it from `kind`. */
+ *  a mark asks for what this project's close will accept; `null` where it declares no document. */
 export function serializeIssue<T extends { issSeq: number } & IssueBodyColumns & MergeMarkColumns>(
   row: T,
   prefix: string | null,
-  landingShape: LandingShape,
+  landingShape: LandingShape | null,
 ): T & {
   displayId: string;
   descriptionNodes: BodyNode[] | null;
   mergeMark: MergeMarkKind;
-  landingShape: LandingShape;
+  landingShape: LandingShape | null;
 } {
   return {
     ...row,

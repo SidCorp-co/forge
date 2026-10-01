@@ -24,6 +24,7 @@ import {
   createTestProject,
   createTestProjectMember,
   createTestUser,
+  seedProjectSource,
   setupTestDatabase,
   type TestDatabase,
   truncateAll,
@@ -92,6 +93,7 @@ async function seed(opts: { probes?: boolean; label?: string } = {}): Promise<Wo
   const user = await createTestUser(harness.db);
   await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`);
   const project = await createTestProject(harness.db, user.id);
+  await seedProjectSource(harness.db, project.id, user.id, 'git');
   await createTestProjectMember(harness.db, {
     userId: user.id,
     projectId: project.id,

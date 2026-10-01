@@ -315,3 +315,40 @@ export async function seedProductionDeployTrigger(
                                            revision = project_config_documents.revision + 1
   `);
 }
+
+const SOURCE_EXAMPLE = {
+  git: 'forge-dev.project.json',
+  storefront: 'store.project.json',
+} as const;
+
+/**
+ * A project document at revision 1 declaring `source.type` — what `issues/landing-evidence.ts`
+ * reads to decide whether the project's work lands in git. Built from the shipped example of that
+ * source type, under this project's own identity.
+ */
+export async function seedProjectSource(
+  db: TestDb,
+  projectId: string,
+  updatedBy: string,
+  type: keyof typeof SOURCE_EXAMPLE,
+): Promise<void> {
+  const example = JSON.parse(
+    readFileSync(
+      new URL(
+        `../../src/project-config/fixtures/examples/${SOURCE_EXAMPLE[type]}`,
+        import.meta.url,
+      ),
+      'utf8',
+    ),
+  );
+  const document = projectDocumentSchema.parse({
+    ...example,
+    project: { id: projectId, slug: `test-${projectId.slice(0, 8)}`, name: 'Test Project' },
+  });
+  await db.execute(sql`
+    INSERT INTO project_config_documents (project_id, revision, document, updated_by)
+    VALUES (${projectId}, 1, ${JSON.stringify(document)}::jsonb, ${updatedBy})
+    ON CONFLICT (project_id) DO UPDATE SET document = EXCLUDED.document,
+                                           revision = project_config_documents.revision + 1
+  `);
+}

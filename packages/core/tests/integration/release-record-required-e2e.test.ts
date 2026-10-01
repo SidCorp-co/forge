@@ -20,6 +20,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   createTestProject,
   createTestUser,
+  seedProjectSource,
   setupTestDatabase,
   type TestDatabase,
   truncateAll,
@@ -50,6 +51,7 @@ describe('release record required E2E', () => {
     const owner = await createTestUser(harness.db);
     ownerId = owner.id;
     projectId = (await createTestProject(harness.db, owner.id)).id;
+    await seedProjectSource(harness.db, projectId, owner.id, 'git');
   });
 
   async function declareProduction(): Promise<void> {

@@ -17,7 +17,7 @@ export interface ShippedRuleRefusal {
 }
 
 /** The sentence every close refusal carries, naming the route this project's shape has. */
-export function closedMeansShipped(shape: LandingShape, held?: MergeMarkKind): string {
+export function closedMeansShipped(shape: LandingShape | null, held?: MergeMarkKind): string {
   return (
     '`closed` means the work shipped. Use `dropped` for work that turned out not to be work — ' +
     'a note, a question, a duplicate, something already done — which is terminal without the claim ' +
@@ -40,6 +40,12 @@ export async function refuseUnshippedClose(
     };
   }
   const { columns, shape } = evidence;
+  if (shape === null) {
+    return {
+      detail: `${landingShortfall(columns, shape)}. ${closedMeansShipped(shape)}`,
+      details: { requires: 'sourceType', held: mergeMarkKindOf(columns), useInstead: 'dropped' },
+    };
+  }
   return {
     detail: `${landingShortfall(columns, shape)}, so nothing on it shows where the work landed. ${closedMeansShipped(shape, mergeMarkKindOf(columns))}`,
     details: {
