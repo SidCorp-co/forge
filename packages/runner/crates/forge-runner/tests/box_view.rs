@@ -2087,3 +2087,116 @@ fn keys_select_open_return_show_sources_and_quit() {
         "the terminal was not given back its modes"
     );
 }
+
+/// ISS-1369 criterion 28 and judge findings 2 and 5 at e3617a0, on a
+/// terminal: at 80x24 the legend is the short one, naming every column and
+/// verdict word, so the table keeps its rows; `l` gives every word's meaning
+/// and takes it back; at 170x50 the full legend has room from the start. A
+/// project's detail opens held, and space lets it turn.
+#[test]
+fn the_legend_fits_the_screen_and_l_switches_it() {
+    let core = fake_core("200 OK");
+    let b = plant(&core.url);
+    let second = std::time::Duration::from_secs(2);
+    let fits = |s: &str, cols: usize, rows: usize| {
+        let lines: Vec<&str> = s.trim_end_matches("\r\n").split("\r\n").collect();
+        lines.len() <= rows && lines.iter().all(|l| l.chars().count() <= cols)
+    };
+
+    // Every column and verdict word, written here rather than read off the
+    // view, each the start of an item of a legend row.
+    // The cells' own marks are read the same way: `?`, `·` and `—`.
+    let columns = [
+        "!", "PANE", "RUNS", "MOV", "HAND", "QUE", "BLK", "DRF", "VERDICT", "NOW", "CHANGE", "?",
+        "·", "—",
+    ];
+    let words = [
+        "STALL", "ASKS", "DRIFT", "ORPHAN", "NOPATH", "GATE", "DAEMON", "AGEING", "DOWN", "WAITS",
+    ];
+    let items = |s: &str| -> Vec<String> {
+        s.split("\r\n")
+            .flat_map(|l| {
+                l.trim()
+                    .split(" · ")
+                    .map(str::to_string)
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    };
+    let names_every_column = |s: &str| {
+        let items = items(s);
+        columns
+            .iter()
+            .all(|c| items.iter().any(|i| i.starts_with(&format!("{c} "))))
+    };
+    let full = |s: &str| {
+        let items = items(s);
+        names_every_column(s)
+            && words
+                .iter()
+                .chain(&["ok", "idle"])
+                .all(|w| items.iter().any(|i| i.starts_with(&format!("{w} "))))
+            && s.contains("l shortens the legend")
+    };
+
+    let mut pty = on_a_terminal_reading(&b, 80, 24, &["--interval", "5"], true);
+    let f = pty.first_table().join("\r\n");
+    assert!(
+        names_every_column(&f)
+            && f.contains(
+                "VERDICT worst: STALL ASKS DRIFT ORPHAN NOPATH GATE DAEMON AGEING DOWN WAITS"
+            )
+            && f.contains("ok or idle no finding")
+            && f.contains("l explains words")
+            && !f.contains("STALL a runnable run"),
+        "{f}"
+    );
+    let at = pty.screens_drawn();
+    pty.type_keys("l");
+    assert!(
+        pty.draws(at, |s| full(s) && fits(s, 80, 24), second),
+        "l: {:?}",
+        pty.screens_after(at)
+    );
+    let at = pty.screens_drawn();
+    pty.type_keys("l");
+    assert!(
+        pty.draws(
+            at,
+            |s| s.contains("l explains words") && !full(s) && fits(s, 80, 24),
+            second
+        ),
+        "l again: {:?}",
+        pty.screens_after(at)
+    );
+
+    let at = pty.screens_drawn();
+    pty.type_keys("j\r");
+    assert!(
+        pty.draws(
+            at,
+            |s| s.contains("DETAIL alpha") && s.contains("HELD until space"),
+            second
+        ),
+        "a project's detail opens held: {:?}",
+        pty.screens_after(at)
+    );
+    let at = pty.screens_drawn();
+    pty.type_keys(" ");
+    assert!(
+        pty.draws(
+            at,
+            |s| s.contains("DETAIL alpha") && s.contains("space holds, n and p turn"),
+            second
+        ),
+        "space lets it turn: {:?}",
+        pty.screens_after(at)
+    );
+    pty.type_keys("q");
+    let st = pty.exited_within(std::time::Duration::from_secs(8));
+    assert!(st.is_some_and(|s| s.success()), "q: {st:?}");
+
+    let pty = on_a_terminal_reading(&b, 170, 50, &["--interval", "5"], true);
+    let f = pty.first_table().join("\r\n");
+    assert!(full(&f) && fits(&f, 170, 50), "{f}");
+}

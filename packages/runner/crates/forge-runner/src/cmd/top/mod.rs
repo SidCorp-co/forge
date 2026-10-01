@@ -257,6 +257,7 @@ impl Paging {
             | keys::Key::Open
             | keys::Key::Back
             | keys::Key::Sources
+            | keys::Key::Legend
             | keys::Key::Quit => {}
         }
     }
