@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { baseRef } from './base-branch.mjs';
 
 const DIRECTIONS = ['down', 'shrink', 'tighten'];
@@ -13,16 +14,49 @@ function git(args, cwd) {
   }).trim();
 }
 
+const NO_COMMIT = /^0+$/;
+
+/**
+ * The tip a push event moved its branch from, read from `$GITHUB_EVENT_PATH`. A push carrying
+ * several commits is judged as one change against it: `HEAD~1` would see only the last commit, so
+ * an entry withdrawn earlier in the push passed, and one rewritten inside it read as withdrawn.
+ * Null for any other event and for a push that created its branch.
+ */
+export function pushedFrom(root, env, head) {
+  if (env.GITHUB_EVENT_NAME !== 'push') return null;
+  let before;
+  try {
+    before = String(JSON.parse(readFileSync(String(env.GITHUB_EVENT_PATH), 'utf8')).before ?? '');
+  } catch (err) {
+    throw new Error(
+      `baseRev: a push event's payload at $GITHUB_EVENT_PATH could not be read (${err.message}), ` +
+        'so the tip this push moved from is unknown and no base can be taken from it.',
+    );
+  }
+  if (!before || NO_COMMIT.test(before) || before === head) return null;
+  try {
+    git(['merge-base', '--is-ancestor', before, 'HEAD'], root);
+  } catch {
+    throw new Error(
+      `baseRev: this push moved its branch from ${before}, which is not an ancestor of HEAD ` +
+        `${head} or is absent from this clone. A rewritten gated branch has no base to measure ` +
+        'against; fetch with depth 0, and never force-push a gated branch.',
+    );
+  }
+  return before;
+}
+
 /**
  * The revision this baseline is judged against: the merge-base with the branch this work will land
  * on.
  *
  * Not that branch's tip directly: on a feature branch the merge-base is what the diff is measured
  * from, but a commit pushed STRAIGHT to the base branch has the tip equal to HEAD, and comparing a
- * file to itself passes everything. `HEAD~1` is the answer for that push, and for a checkout whose
- * merge target no ref here names.
+ * file to itself passes everything. A push event is judged from the tip it moved its branch from
+ * (`pushedFrom`); `HEAD~1` is the answer for a local commit on that branch, and for a checkout
+ * whose merge target no ref here names.
  */
-export function baseRev(root) {
+export function baseRev(root, env = process.env) {
   let head;
   try {
     head = git(['rev-parse', 'HEAD'], root);
@@ -36,6 +70,8 @@ export function baseRev(root) {
       if (mb && mb !== head) return mb;
     } catch {}
   }
+  const pushed = pushedFrom(root, env, head);
+  if (pushed) return pushed;
   try {
     return git(['rev-parse', 'HEAD~1'], root);
   } catch {
