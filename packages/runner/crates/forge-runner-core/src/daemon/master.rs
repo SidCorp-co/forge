@@ -12966,7 +12966,7 @@ mod outdated_tests {
                 transcript: None,
             },
         );
-        let mut sweep = |led: &mut Ledger| {
+        let sweep = |led: &mut Ledger| {
             carry_and_record(
                 led,
                 "p",
