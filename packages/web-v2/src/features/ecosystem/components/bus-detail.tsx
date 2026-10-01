@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { Badge, Tooltip } from "@/design";
 import { readingOf } from "@/lib/api/refusals";
@@ -20,6 +21,7 @@ import {
   VERDICT_TONE,
 } from "../bus";
 import { useBuilderRun, useLink } from "../hooks";
+import { ecosystemRoutes } from "../routes";
 import { ProjectMark, type Selection } from "./bus-diagram";
 import { Loading, UnreadNotice } from "./notices";
 
@@ -33,7 +35,7 @@ const BADGE: Record<Tone, "green" | "amber" | "red" | "neutral" | "cobalt"> = {
 
 function Group({ title, aside, children }: { title: string; aside?: ReactNode; children: ReactNode }) {
   return (
-    <section className="grid min-w-0 content-start gap-1.5 border-line-subtle px-4 pb-4 pt-1 sm:border-r sm:last:border-r-0">
+    <section className="grid min-w-0 content-start gap-1.5 border-line-subtle px-4 pb-4 pt-1 sm:border-r sm:pl-7 sm:pr-[22px] sm:last:border-r-0">
       <h3 className="flex items-center gap-2 pt-2 text-11 font-semibold uppercase tracking-[0.07em] text-subtle">
         {title}
         {aside ? <span className="ml-auto normal-case tracking-normal">{aside}</span> : null}
@@ -44,7 +46,7 @@ function Group({ title, aside, children }: { title: string; aside?: ReactNode; c
 }
 
 function Head({ children }: { children: ReactNode }) {
-  return <div className="col-span-full flex min-w-0 flex-wrap items-center gap-2 px-4 pb-1 pt-3">{children}</div>;
+  return <div className="col-span-full flex min-w-0 flex-wrap items-center gap-2 px-4 pb-1 pt-3 sm:px-7">{children}</div>;
 }
 
 const Caption = ({ children }: { children: ReactNode }) => <p className="fg-caption break-words">{children}</p>;
@@ -112,7 +114,23 @@ function BuilderSummary({ builder }: { builder: BusBuilder }) {
   );
 }
 
-function ProjectDetail({ bus, id, onSelect }: { bus: Bus; id: string; onSelect: (s: Selection) => void }) {
+const PageLink = ({ href, children }: { href: string; children: ReactNode }) => (
+  <Link href={href} className="text-12 font-semibold text-[var(--accent-text)] hover:underline">
+    {children}
+  </Link>
+);
+
+function ProjectDetail({
+  bus,
+  id,
+  mine,
+  onSelect,
+}: {
+  bus: Bus;
+  id: string;
+  mine: ReadonlyMap<string, string>;
+  onSelect: (s: Selection) => void;
+}) {
   const p = bus.projects.find((x) => x.id === id);
   if (!p) return <Caption>That project is no longer on this ecosystem&apos;s bus.</Caption>;
   const out = bus.links.filter((l) => l.consumer === p.id);
@@ -127,6 +145,12 @@ function ProjectDetail({ bus, id, onSelect }: { bus: Bus; id: string; onSelect: 
         <Tooltip label={`${p.name} · a member of ${bus.ecosystem.name}`}>
           <span className="fg-caption">{p.name}</span>
         </Tooltip>
+        {mine.has(p.id) ? (
+          <span className="ml-auto flex gap-3">
+            <PageLink href={ecosystemRoutes.contracts(p.slug)}>Contracts</PageLink>
+            <PageLink href={ecosystemRoutes.apiPage(p.slug)}>Project API</PageLink>
+          </span>
+        ) : null}
       </Head>
       <Group title="Ecosystem builder">
         {p.builder ? (
@@ -293,7 +317,26 @@ function Guide({ record }: { record: NonNullable<ReturnType<typeof useLink>["dat
   );
 }
 
-function ContractDetail({ bus, rows, k, onSelect }: { bus: Bus; rows: BusRow[]; k: string; onSelect: (s: Selection) => void }) {
+function contractPage(row: BusRow, mine: ReadonlyMap<string, string>): string | null {
+  const own = mine.get(row.ref.provider);
+  if (own) return ecosystemRoutes.contract(own, row.ref.slug);
+  const reader = row.links.map((l) => mine.get(l.consumer)).find(Boolean);
+  return reader ? ecosystemRoutes.contract(reader, row.ref.slug, row.ref.provider) : null;
+}
+
+function ContractDetail({
+  bus,
+  rows,
+  k,
+  mine,
+  onSelect,
+}: {
+  bus: Bus;
+  rows: BusRow[];
+  k: string;
+  mine: ReadonlyMap<string, string>;
+  onSelect: (s: Selection) => void;
+}) {
   const row = rows.find((r) => r.key === k);
   if (!row) return <Caption>That contract is no longer on this ecosystem&apos;s bus.</Caption>;
   const names = new Map(bus.projects.map((x) => [x.id, x.slug]));
@@ -315,6 +358,11 @@ function ContractDetail({ bus, rows, k, onSelect }: { bus: Bus; rows: BusRow[]; 
         ) : (
           <Badge tone="amber">not published here</Badge>
         )}
+        {contractPage(row, mine) ? (
+          <span className="ml-auto">
+            <PageLink href={contractPage(row, mine) as string}>Versions and measurements</PageLink>
+          </span>
+        ) : null}
       </Head>
       <Group title="Used by" aside={row.links.length || undefined}>
         {row.links.length === 0 ? (
@@ -427,21 +475,24 @@ export function BusDetail({
   bus,
   rows,
   sel,
+  mine,
   onSelect,
 }: {
   bus: Bus;
   rows: BusRow[];
   sel: Selection;
+  /** The reader's own projects in this ecosystem, id to slug: the ones whose pages it can open. */
+  mine: ReadonlyMap<string, string>;
   onSelect: (s: Selection) => void;
 }) {
   return (
     <section
       aria-label="Detail"
-      className="grid min-w-0 rounded-lg border border-line-subtle bg-surface sm:grid-cols-[repeat(auto-fit,minmax(220px,1fr))]"
+      className="grid min-h-0 min-w-0 flex-1 content-start border-t border-line-subtle bg-app sm:grid-cols-[repeat(auto-fit,minmax(200px,1fr))]"
     >
-      {sel.kind === "project" ? <ProjectDetail bus={bus} id={sel.id} onSelect={onSelect} /> : null}
+      {sel.kind === "project" ? <ProjectDetail bus={bus} id={sel.id} mine={mine} onSelect={onSelect} /> : null}
       {sel.kind === "link" ? <LinkDetail bus={bus} id={sel.id} /> : null}
-      {sel.kind === "contract" ? <ContractDetail bus={bus} rows={rows} k={sel.key} onSelect={onSelect} /> : null}
+      {sel.kind === "contract" ? <ContractDetail bus={bus} rows={rows} k={sel.key} mine={mine} onSelect={onSelect} /> : null}
       {sel.kind === "builder" ? <BuilderDetail bus={bus} id={sel.id} /> : null}
     </section>
   );

@@ -2,11 +2,12 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  ECOSYSTEM_ITEMS,
   PROJECT_ITEMS,
   PROJECT_MENU,
   buildActiveKey,
   buildBottomActiveKey,
+  ecosystemHref,
+  ecosystemMenu,
   isProjGroup,
   projectMenu,
   projectRailItems,
@@ -14,31 +15,40 @@ import {
 
 const PROJECT_ROUTES = join(__dirname, "../../app/(workspace)/projects/[slug]");
 
-describe("the Activity sidebar's Ecosystem group", () => {
-  it.each(ECOSYSTEM_ITEMS.map((it) => [it.label, it] as const))("links %s to a page that exists", (_, it) => {
-    const href = it.href("forge-dev");
-    const path = href.split("?")[0] as string;
-    const sub = path.replace("/projects/forge-dev", "");
-    expect(existsSync(join(PROJECT_ROUTES, sub, "page.tsx"))).toBe(true);
-  });
+const WORKSPACE_ROUTES = join(__dirname, "../../app/(workspace)");
 
-  it("offers the register filtered to awaiting, overdue and held", () => {
-    expect(ECOSYSTEM_ITEMS.flatMap((it) => (it.status ? [it.href("forge-dev")] : []))).toEqual([
-      "/projects/forge-dev/ecosystem/channel?status=awaiting",
-      "/projects/forge-dev/ecosystem/channel?status=overdue",
-      "/projects/forge-dev/ecosystem/channel?status=held",
+describe("the Ecosystem group", () => {
+  const read = {
+    ecosystems: [
+      { id: "e1", name: "QA Eco", code: "QE", members: ["p1"], steward: { id: "o1", name: "SidCorp", mine: false } },
+      { id: "e2", name: "Invited", code: "IN", members: [], steward: { id: "o2", name: "Other", mine: false } },
+    ],
+    threads: [],
+    drafts: [],
+    invitations: [],
+    projects: [],
+    mine: ["p1"],
+  } as unknown as Parameters<typeof ecosystemMenu>[0];
+
+  it("is Threads, one row per ecosystem the person belongs to, and New ecosystem — nothing else", () => {
+    expect(ecosystemMenu(read).map((i) => [i.label, i.mark])).toEqual([
+      ["Threads", undefined],
+      ["QA Eco", "QE"],
+      ["New ecosystem", undefined],
     ]);
   });
 
-  it("lights the row the route is on, filter included", () => {
-    const at = (path: string, search = "") => buildActiveKey(path, "forge-dev", search);
-    expect(at("/projects/forge-dev/ecosystem")).toBe("eco-bus");
-    expect(at("/projects/forge-dev/ecosystem/channel")).toBe("eco-channel");
-    expect(at("/projects/forge-dev/ecosystem/channel", "?status=held")).toBe("eco-held");
-    expect(at("/projects/forge-dev/ecosystem/channel/FP-CN-12")).toBe("eco-channel");
-    expect(at("/projects/forge-dev/ecosystem/contracts/orders")).toBe("eco-contracts");
-    expect(at("/projects/forge-dev/ecosystem/api")).toBe("eco-api");
-    expect(at("/projects/forge-dev/issues")).toBe("proj-issues");
+  it.each(["eco-threads", "eco-new", "eco:e1"])("links %s to a page that exists", (key) => {
+    const href = ecosystemHref(key) as string;
+    const path = href.replace("/e1", "/[id]");
+    expect(existsSync(join(WORKSPACE_ROUTES, path, "page.tsx"))).toBe(true);
+  });
+
+  it("lights the row the route is on", () => {
+    expect(buildActiveKey("/ecosystems/threads", null)).toBe("eco-threads");
+    expect(buildActiveKey("/ecosystems/new", null)).toBe("eco-new");
+    expect(buildActiveKey("/ecosystems/e1", "forge-dev")).toBe("eco:e1");
+    expect(buildActiveKey("/projects/forge-dev/issues", "forge-dev")).toBe("proj-issues");
   });
 });
 

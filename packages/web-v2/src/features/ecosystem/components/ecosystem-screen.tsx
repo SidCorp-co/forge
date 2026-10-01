@@ -2,19 +2,18 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { Button, Input, Tooltip } from "@/design";
+import { Button, Icon, Input, PageTitle, Tooltip } from "@/design";
 import { useProjects } from "@/features/projects/hooks";
-import type { ProjectListItem } from "@/features/projects/types";
-import { canWriteProject } from "@/features/projects/write-access";
 import { readingOf, refusalsOf } from "@/lib/api/refusals";
 import { cn } from "@/lib/utils/cn";
 import { ecosystemApi } from "../api";
 import { type Bus, busRows, type Tone } from "../bus";
-import { useBus, useChannelWrite, useProjectEcosystems } from "../hooks";
+import { useBus, useChannelWrite, useMyEcosystems } from "../hooks";
 import { ecosystemRoutes } from "../routes";
 import { BusDiagram, type Lens, type Selection } from "./bus-diagram";
 import { BusDetail } from "./bus-detail";
 import { Loading, RefusalNotice, UnreadNotice } from "./notices";
+import type { WorkspaceEcosystem } from "../types";
 
 const LEGEND: { tone: Tone; label: string; tip: string }[] = [
   { tone: "ok", label: "current", tip: "The link pins the contract's current version" },
@@ -124,21 +123,58 @@ function Legend() {
   );
 }
 
-function defaultSelection(bus: Bus, readerId: string): Selection | null {
-  const p = bus.projects.find((x) => x.id === readerId) ?? bus.projects[0];
+function defaultSelection(bus: Bus, readers: ReadonlySet<string>): Selection | null {
+  const p = bus.projects.find((x) => readers.has(x.id)) ?? bus.projects[0];
   return p ? { kind: "project", id: p.id } : null;
 }
 
-function BusView({ ecosystemId, project }: { ecosystemId: string; project: ProjectListItem }) {
+const GUTTER = "px-4 sm:px-7";
+
+function EcosystemHeader({ eco, bus }: { eco: WorkspaceEcosystem | undefined; bus: Bus | null }) {
+  const name = eco?.name ?? bus?.ecosystem.name ?? "Ecosystem";
+  return (
+    <div className={cn("flex min-w-0 flex-wrap items-center gap-3 pt-5", GUTTER)}>
+      <PageTitle className="truncate text-[22px] font-bold">{name}</PageTitle>
+      {eco ? (
+        <Tooltip label={`Document code: every document in ${name} is numbered ${eco.code}-…`}>
+          <span className="rounded-[5px] px-[7px] py-px font-mono text-12" style={{ background: "var(--cobalt-50)", color: "var(--cobalt-700)" }}>
+            {eco.code}
+          </span>
+        </Tooltip>
+      ) : null}
+      {eco?.steward.name ? (
+        <Tooltip label={`${eco.steward.name} stewards ${name}: it invites members and sets the reply windows and the approve gates`} multiline>
+          <span className="rounded-pill px-2 py-px text-11-5 font-semibold" style={{ background: "var(--cobalt-50)", color: "var(--cobalt-700)" }}>
+            Steward · {eco.steward.name}
+          </span>
+        </Tooltip>
+      ) : null}
+      {eco?.steward.mine && bus ? (
+        <span className="ml-auto flex gap-2">
+          <AddProject ecosystemId={eco.id} bus={bus} />
+          <Link
+            href={ecosystemRoutes.settings(eco.id)}
+            className="inline-flex items-center gap-1.5 rounded-md border border-line bg-surface px-3 py-1 text-13 font-semibold text-fg hover:bg-hover"
+          >
+            <Icon name="settings" size={14} />
+            Settings
+          </Link>
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+export function EcosystemScreen({ ecosystemId }: { ecosystemId: string }) {
   const [lens, setLens] = useState<Lens>("live");
   const [picked, setPicked] = useState<Selection | null>(null);
+  const mine = useMyEcosystems().data;
+  const eco = mine?.ecosystems.find((e) => e.id === ecosystemId);
+  const readers = useMemo(() => new Set(eco?.members ?? []), [eco]);
   const reading = readingOf(useBus(ecosystemId, lens === "live"));
   const bus = reading.kind === "read" ? reading.value : null;
   const rows = useMemo(() => (bus ? busRows(bus) : []), [bus]);
-  if (reading.kind === "loading") return <Loading what="the ecosystem's bus" />;
-  if (reading.kind === "unread") return <UnreadNotice what="The ecosystem's bus" refusals={reading.refusals} />;
-  const b = reading.value;
-  const sel = picked ?? defaultSelection(b, project.id);
+  const sel = picked ?? (bus ? defaultSelection(bus, readers) : null);
   const onSelect = (s: Selection) => {
     if (s.kind === "contract") setLens("impact");
     setPicked(s);
@@ -150,81 +186,36 @@ function BusView({ ecosystemId, project }: { ecosystemId: string; project: Proje
       if (first) setPicked({ kind: "contract", key: first.key });
     }
   };
+  const slugs = new Map((mine?.projects ?? []).filter((p) => readers.has(p.id)).map((p) => [p.id, p.slug]));
   return (
-    <div className="grid min-w-0 gap-3">
-      <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <h2 className="fg-h3 truncate">{b.ecosystem.name}</h2>
-          <Tooltip label={`Ecosystem ${b.ecosystem.slug} · ${b.projects.length} members on the bus you can see`}>
-            <span className="rounded-[5px] bg-[var(--cobalt-50)] px-1.5 font-mono text-12" style={{ color: "var(--cobalt-700)" }}>
-              {b.ecosystem.slug}
-            </span>
-          </Tooltip>
+    <div className="flex min-h-full min-w-0 flex-col">
+      <EcosystemHeader eco={eco} bus={bus} />
+      {reading.kind === "loading" ? (
+        <div className={cn("py-4", GUTTER)}>
+          <Loading what="the ecosystem's bus" />
         </div>
-        {canWriteProject(project.role) ? <AddProject ecosystemId={ecosystemId} bus={b} /> : null}
-      </div>
-      <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
-        <Legend />
-        <LensBar lens={lens} onLens={onLens} />
-      </div>
-      {sel ? (
-        <>
-          <BusDiagram bus={b} rows={rows} lens={lens} sel={sel} readerId={project.id} onSelect={onSelect} />
-          <BusDetail bus={b} rows={rows} sel={sel} onSelect={onSelect} />
-        </>
-      ) : (
-        <p className="fg-caption">No member of {b.ecosystem.name} is visible to you yet.</p>
-      )}
-    </div>
-  );
-}
-
-export function BusScreen({ project, rawEcosystem }: { project: ProjectListItem; rawEcosystem: string | null }) {
-  const ecos = readingOf(useProjectEcosystems(project.id));
-  if (ecos.kind === "loading") return <Loading what="this project's ecosystems" />;
-  if (ecos.kind === "unread") return <UnreadNotice what="This project's ecosystems" refusals={ecos.refusals} />;
-  const active = ecos.value.memberships.filter((m) => m.document.state === "active" && m.ecosystem);
-  if (active.length === 0) {
-    return (
-      <p className="fg-caption">
-        {project.slug} is an active member of no ecosystem, so there is no bus to draw. A steward invites it, and an admin of {project.slug} accepts.
-      </p>
-    );
-  }
-  const chosen = active.find((m) => m.ecosystem?.id === rawEcosystem) ?? (rawEcosystem ? null : active[0]);
-  return (
-    <div className="grid min-w-0 gap-3">
-      {active.length > 1 ? (
-        <nav aria-label="Ecosystems" className="flex flex-wrap gap-1.5">
-          {active.map((m) => (
-            <Link
-              key={m.id}
-              href={ecosystemRoutes.bus(project.slug, { ecosystem: m.ecosystem?.id })}
-              aria-current={m.ecosystem?.id === chosen?.ecosystem?.id ? "page" : undefined}
-              className={cn(
-                "rounded-pill border px-3 py-0.5 text-12-5 font-semibold",
-                m.ecosystem?.id === chosen?.ecosystem?.id ? "border-[var(--fg-default)] bg-[var(--fg-default)] text-[var(--bg-surface)]" : "border-line text-muted",
-              )}
-            >
-              {m.ecosystem?.name}
-            </Link>
-          ))}
-        </nav>
       ) : null}
-      {chosen?.ecosystem ? (
-        <BusView key={chosen.ecosystem.id} ecosystemId={chosen.ecosystem.id} project={project} />
-      ) : (
-        <RefusalNotice
-          title="Not one of this project's ecosystems"
-          refusals={[
-            {
-              code: "ECOSYSTEM_NOT_MEMBER",
-              path: "?ecosystem",
-              detail: `${project.slug} is not an active member of ecosystem ${rawEcosystem}.`,
-            },
-          ]}
-        />
-      )}
+      {reading.kind === "unread" ? (
+        <div className={cn("py-4", GUTTER)}>
+          <UnreadNotice what="The ecosystem's bus" refusals={reading.refusals} />
+        </div>
+      ) : null}
+      {bus ? (
+        <>
+          <div className={cn("flex min-w-0 flex-wrap items-center justify-between gap-4 pb-1 pt-2", GUTTER)}>
+            <Legend />
+            <LensBar lens={lens} onLens={onLens} />
+          </div>
+          {sel ? (
+            <>
+              <BusDiagram bus={bus} rows={rows} lens={lens} sel={sel} readers={readers} onSelect={onSelect} />
+              <BusDetail bus={bus} rows={rows} sel={sel} mine={slugs} onSelect={onSelect} />
+            </>
+          ) : (
+            <p className={cn("fg-caption py-4", GUTTER)}>No member of {bus.ecosystem.name} is visible to you yet.</p>
+          )}
+        </>
+      ) : null}
     </div>
   );
 }

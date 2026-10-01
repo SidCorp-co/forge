@@ -119,12 +119,6 @@ export interface RegisterRow {
   hold: ThreadHold | null;
 }
 
-export interface RegisterResponse {
-  documents: RegisterRow[];
-  returned: number;
-  total: number;
-}
-
 export interface EcosystemMembership {
   id: string;
   document: { ecosystem: string; project: string; state: string };
@@ -204,4 +198,73 @@ export interface ContractReading {
   provider?: NamedProject;
   versions: ContractVersion[];
   measurements: Measurement[];
+}
+
+/** The full name of each document type, as rows and filters print it. */
+export const TYPE_LABEL: Record<string, string> = {
+  "change-notice": "Change notice",
+  acknowledgement: "Acknowledgement",
+  rfi: "Question",
+  "change-request": "Change request",
+  decision: "Decision",
+};
+
+export type GateMode = "publish" | "approve";
+export type ReplyWindowType = "change-notice" | "rfi" | "change-request";
+
+// cm:edge contract -> packages/core/src/ecosystem/workspace-read.ts:readWorkspace — `GET /api/ecosystems/mine`, the person's ecosystems, invitations and threads across them
+export interface WorkspaceEcosystem {
+  id: string;
+  slug: string;
+  name: string;
+  purpose: string | null;
+  code: string;
+  steward: { id: string; name: string | null; mine: boolean };
+  visibility: "counterparties" | "all";
+  responseDays: Record<ReplyWindowType, number>;
+  gate: Record<DocumentType, GateMode>;
+  members: string[];
+}
+
+export interface WorkspaceInvitation {
+  membership: string;
+  ecosystem: string;
+  project: string;
+  invitedAt: string;
+}
+
+export interface WorkspaceDraft {
+  id: string;
+  ecosystem: string;
+  from: string;
+  inReplyTo: string;
+  type: DocumentType;
+  state: DocumentState;
+  authoredBy: Author;
+  gate: Gate | null;
+}
+
+export interface WorkspaceRead {
+  ecosystems: WorkspaceEcosystem[];
+  invitations: WorkspaceInvitation[];
+  threads: (RegisterRow & { ecosystem: string })[];
+  drafts: WorkspaceDraft[];
+  projects: NamedProject[];
+  mine: string[];
+}
+
+/** The ecosystem document core stores (`ecosystem-v1`), as create and settings write it. */
+export interface EcosystemDocument {
+  $schema: string;
+  version: 1;
+  ecosystem: { id?: string; slug: string; name: string; purpose?: string; steward: string };
+  channel: { code: string; responseDays: Record<ReplyWindowType, number> };
+  gate: Record<DocumentType, GateMode>;
+  visibility: { members: "counterparties" | "all" };
+}
+
+export interface HeldEcosystem {
+  id: string;
+  revision: number;
+  document: EcosystemDocument;
 }

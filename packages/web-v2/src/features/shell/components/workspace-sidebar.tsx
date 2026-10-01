@@ -8,9 +8,10 @@ import { ProjectFlyout } from "@/features/projects/components/project-flyout";
 import { useWhatsNewStatus } from "@/features/whats-new/hooks";
 import { NavRailCompact } from "../nav-rail-compact";
 import { SidebarVersion } from "./sidebar-version";
+import { useMyEcosystems } from "@/features/ecosystem/hooks";
+import { needsMe } from "@/features/ecosystem/inbox";
 import {
-  ECOSYSTEM_ITEMS,
-  ECOSYSTEM_RAIL_KEYS,
+  ecosystemMenu,
   type ProjectBadges,
   compactWorkspaceRailItems,
   projectMenu,
@@ -18,10 +19,6 @@ import {
   workspaceNavItems,
 } from "../nav-model";
 import type { useRailProjectData } from "../use-rail-project-data";
-
-const ECOSYSTEM_FILTER_KEYS = new Set(
-  ECOSYSTEM_ITEMS.filter((it) => it.status).map((it) => it.key),
-);
 
 export interface WorkspaceSidebarProps {
   collapsed: boolean;
@@ -66,6 +63,8 @@ export function WorkspaceSidebar(props: WorkspaceSidebarProps) {
   const { hasUnseen } = useWhatsNewStatus();
   const flyout = useFlyoutHover();
   const workspaceItems = useMemo(() => workspaceNavItems(attentionCount), [attentionCount]);
+  const ecosystems = useMyEcosystems().data;
+  const ecosystemItems = useMemo(() => ecosystemMenu(ecosystems), [ecosystems]);
   const footer = {
     onAccount: () => onRoute("/settings"),
     onSignOut: props.onSignOut,
@@ -85,8 +84,8 @@ export function WorkspaceSidebar(props: WorkspaceSidebarProps) {
       <NavRailCompact
         workspaceItems={compactWorkspaceRailItems(attentionCount)}
         projectItems={rail.compactActiveProject ? projectRailItems(badges) : null}
-        ecosystemItems={ECOSYSTEM_ITEMS.filter((it) => ECOSYSTEM_RAIL_KEYS.has(it.key))}
-        activeKey={ECOSYSTEM_FILTER_KEYS.has(activeKey) ? "eco-channel" : activeKey}
+        ecosystemItems={ecosystemItems}
+        activeKey={activeKey}
         activeSlug={props.railSlug}
         activeProject={rail.compactActiveProject}
         switcherProjects={rail.switcherProjects}
@@ -112,9 +111,9 @@ export function WorkspaceSidebar(props: WorkspaceSidebarProps) {
         workspaceItems={workspaceItems}
         project={rail.projectMark}
         projectClusters={rail.projectMark ? [{ key: "project", kicker: "Project", items: projectMenu(badges) }] : undefined}
-        workspaceClusters={
-          rail.projectMark ? [{ key: "ecosystem", kicker: "Ecosystem", items: ECOSYSTEM_ITEMS, collapsible: true }] : undefined
-        }
+        workspaceClusters={[
+          { key: "ecosystem", kicker: "Ecosystem", icon: "ecosystem", items: ecosystemItems, badge: ecosystems ? needsMe(ecosystems) : undefined },
+        ]}
         groupOpen={props.groupOpen}
         onToggleGroup={props.onToggleGroup}
         onProjectSwitch={() => flyout.setOpen((o) => !o)}

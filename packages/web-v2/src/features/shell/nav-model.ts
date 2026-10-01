@@ -1,5 +1,7 @@
 import type { BottomTabItem, NavItem } from "@/design";
+import { joinedEcosystems, needsMe } from "@/features/ecosystem/inbox";
 import { ecosystemRoutes } from "@/features/ecosystem/routes";
+import type { WorkspaceRead } from "@/features/ecosystem/types";
 import type { RailItem } from "./nav-rail-compact";
 
 export const WORKSPACE_ITEMS: Array<NavItem & { href: string }> = [
@@ -73,51 +75,37 @@ export function projectMenu(badges: ProjectBadges): ProjEntry[] {
   return PROJECT_MENU.map((e) => (isProjGroup(e) ? { ...e, items: e.items.map(withBadge) } : withBadge(e)));
 }
 
-export interface EcosystemItem extends NavItem {
-  sub: string;
-  status?: "awaiting" | "overdue" | "held";
-  href: (slug: string) => string;
+export const ECO_THREADS_KEY = "eco-threads";
+export const ECO_NEW_KEY = "eco-new";
+const ECO_PREFIX = "eco:";
+
+// cm:why the Ecosystem group is the workspace's: Threads, one row per ecosystem the person belongs to, and New ecosystem — nothing project-scoped, so it shows whichever project is open
+export function ecosystemMenu(read: WorkspaceRead | undefined): NavItem[] {
+  return [
+    { key: ECO_THREADS_KEY, label: "Threads", icon: "mail", badge: read ? needsMe(read) : undefined },
+    ...(read ? joinedEcosystems(read) : []).map((e) => ({
+      key: `${ECO_PREFIX}${e.id}`,
+      label: e.name,
+      icon: "ecosystem" as const,
+      mark: e.code,
+      badge: needsMe(read as WorkspaceRead, e.id),
+    })),
+    { key: ECO_NEW_KEY, label: "New ecosystem", icon: "plus" },
+  ];
 }
 
-export const ECOSYSTEM_ITEMS: EcosystemItem[] = [
-  { key: "eco-bus", label: "Map", icon: "ecosystem", sub: "/ecosystem", href: (s) => ecosystemRoutes.bus(s) },
-  { key: "eco-channel", label: "Threads", icon: "mail", sub: "/ecosystem/channel", href: (s) => ecosystemRoutes.register(s) },
-  {
-    key: "eco-awaiting",
-    label: "Awaiting",
-    icon: "inbox",
-    sub: "/ecosystem/channel",
-    status: "awaiting",
-    href: (s) => ecosystemRoutes.register(s, { filter: "awaiting" }),
-  },
-  {
-    key: "eco-overdue",
-    label: "Overdue",
-    icon: "alert",
-    sub: "/ecosystem/channel",
-    status: "overdue",
-    href: (s) => ecosystemRoutes.register(s, { filter: "overdue" }),
-  },
-  {
-    key: "eco-held",
-    label: "Held",
-    icon: "pause",
-    sub: "/ecosystem/channel",
-    status: "held",
-    href: (s) => ecosystemRoutes.register(s, { filter: "held" }),
-  },
-  { key: "eco-contracts", label: "Contracts", icon: "shield", sub: "/ecosystem/contracts", href: (s) => ecosystemRoutes.contracts(s) },
-  { key: "eco-api", label: "Project API", icon: "code", sub: "/ecosystem/api", href: (s) => ecosystemRoutes.apiPage(s) },
-];
+/** Where an Ecosystem-group key leads, or null when the key is not one of the group's. */
+export function ecosystemHref(key: string): string | null {
+  if (key === ECO_THREADS_KEY) return ecosystemRoutes.threads();
+  if (key === ECO_NEW_KEY) return ecosystemRoutes.create();
+  return key.startsWith(ECO_PREFIX) ? ecosystemRoutes.ecosystem(key.slice(ECO_PREFIX.length)) : null;
+}
 
-export const ECOSYSTEM_RAIL_KEYS = new Set(ECOSYSTEM_ITEMS.filter((it) => !it.status).map((it) => it.key));
-
-function ecosystemKey(rest: string, search: string): string | null {
-  const status = new URLSearchParams(search).get("status");
-  const longest = Math.max(0, ...ECOSYSTEM_ITEMS.filter((it) => matchesSub(rest, it.sub)).map((it) => it.sub.length));
-  const hits = ECOSYSTEM_ITEMS.filter((it) => matchesSub(rest, it.sub) && it.sub.length === longest);
-  if (hits.length === 0) return null;
-  return (hits.find((it) => it.status && it.status === status) ?? hits.find((it) => !it.status))?.key ?? null;
+function ecosystemKey(pathname: string): string | null {
+  if (pathname === "/ecosystems/threads" || pathname.startsWith("/ecosystems/threads/")) return ECO_THREADS_KEY;
+  if (pathname === "/ecosystems/new") return ECO_NEW_KEY;
+  const m = pathname.match(/^\/ecosystems\/([^/]+)/);
+  return m ? `${ECO_PREFIX}${decodeURIComponent(m[1])}` : null;
 }
 
 /** Parse the active project slug out of the (basePath-stripped) pathname. */
@@ -158,14 +146,14 @@ export function matchesSub(rest: string, sub: string): boolean {
  *  project tier, so we light the matching `proj-*` key by matching the
  *  project-relative remainder (mirrors the old tab bar's matchesSub). Docs is
  *  lit on its own route. */
-export function buildActiveKey(pathname: string, slug: string | null, search = ""): string {
+export function buildActiveKey(pathname: string, slug: string | null): string {
   if (pathname.startsWith("/whats-new")) return "whats-new";
   if (pathname.startsWith("/docs")) return "docs";
+  const eco = ecosystemKey(pathname);
+  if (eco) return eco;
   if (slug) {
     const base = `/projects/${slug}`;
     const rest = pathname.startsWith(base) ? pathname.slice(base.length) : "";
-    const eco = ecosystemKey(rest, search);
-    if (eco) return eco;
     const hit = PROJECT_ITEMS_BY_SPECIFICITY.find((it) => matchesSub(rest, it.sub));
     return hit?.key ?? "proj-overview";
   }

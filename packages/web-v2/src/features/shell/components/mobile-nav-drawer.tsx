@@ -7,8 +7,9 @@ import { OrgSwitcher } from "@/features/orgs/components/org-switcher";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
 import type { ProjectListItem } from "@/features/projects/types";
 import { cn } from "@/lib/utils/cn";
+import { useMyEcosystems } from "@/features/ecosystem/hooks";
 import {
-  ECOSYSTEM_ITEMS,
+  ecosystemMenu,
   type ProjItem,
   type ProjectBadges,
   SECONDARY_DESTINATIONS,
@@ -108,6 +109,7 @@ export function MobileNavDrawer({
   footer,
 }: MobileNavDrawerProps) {
   // Esc closes the mobile drawer.
+  const ecosystemItems = ecosystemMenu(useMyEcosystems().data);
   useEffect(() => {
     if (!open) return;
     function onKey(e: KeyboardEvent) {
@@ -156,19 +158,6 @@ export function MobileNavDrawer({
           projectRow(e)
         ),
       )}
-      <span className="fg-label px-1.5 pb-1 pt-2 text-fg">Ecosystem</span>
-      {ECOSYSTEM_ITEMS.map((it) => (
-        <DrawerNavButton
-          key={it.key}
-          active={it.key === activeKey}
-          onClick={() => {
-            onNavigate(it.key);
-            onClose();
-          }}
-          leading={<Icon name={it.icon} size={18} />}
-          label={it.label}
-        />
-      ))}
     </>
   );
 
@@ -186,6 +175,20 @@ export function MobileNavDrawer({
           leading={<Icon name={it.icon} size={18} />}
           label={it.label}
           badge={it.key === "attention" ? attentionCount : undefined}
+        />
+      ))}
+      <span className="fg-label px-1.5 pb-1 pt-2 text-fg">Ecosystem</span>
+      {ecosystemItems.map((it) => (
+        <DrawerNavButton
+          key={it.key}
+          active={it.key === activeKey}
+          onClick={() => {
+            onNavigate(it.key);
+            onClose();
+          }}
+          leading={<Icon name={it.icon} size={18} />}
+          label={it.label}
+          badge={it.badge}
         />
       ))}
     </>
