@@ -331,3 +331,5 @@ jobRoutes.get(
     return c.json(envelope);
   },
 );
+
+export { jobTestingSecretsRoutes } from './testing-secrets-routes.js';

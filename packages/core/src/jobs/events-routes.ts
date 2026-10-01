@@ -7,7 +7,7 @@ import { withKernelMarker } from '../db/kernel-marker.js';
 import type { JobStatus } from '../db/schema.js';
 import {
   agentSessions,
-  jobEventKinds,
+  DEVICE_POSTED_JOB_EVENT_KINDS,
   jobEvents,
   jobs,
   type SessionRuntimeState,
@@ -23,6 +23,7 @@ import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { broadcastSessionEvent } from './agent-session-link.js';
 import { readJobGate } from './job-queries.js';
+import { scrubJobOutput } from './job-secret-scrub.js';
 import { maybeDeriveIncremental } from './session-transcript.js';
 import { TERMINAL_JOB_STATUSES } from './status-sets.js';
 
@@ -41,7 +42,7 @@ const conflict = (message: string, code: string) =>
 const jobIdParamSchema = z.object({ id: z.uuid() });
 
 const eventInputSchema = z.object({
-  kind: z.enum(jobEventKinds),
+  kind: z.enum(DEVICE_POSTED_JOB_EVENT_KINDS),
   data: z.record(z.string(), z.unknown()).default({}),
   ts: z.iso.datetime().optional(),
 });
@@ -169,7 +170,10 @@ jobEventsRoutes.post(
       throw conflict('job is in a terminal state', 'JOB_TERMINATED');
     }
 
-    const persisted = events.filter((e) => !isPartialStreamEvent(e));
+    const persisted = await scrubJobOutput(
+      [jobId],
+      events.filter((e) => !isPartialStreamEvent(e)),
+    );
 
     const inserted =
       persisted.length === 0

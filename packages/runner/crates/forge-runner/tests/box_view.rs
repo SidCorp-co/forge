@@ -313,8 +313,9 @@ fn plant_launching(core_url: &str, launch: Launch) -> PlantedBox {
     use std::os::unix::fs::PermissionsExt;
     std::fs::set_permissions(&tmux, std::fs::Permissions::from_mode(0o755)).unwrap();
 
-    // The ledger, written by the ledger itself.
-    let data = root.join("d/forge-runner");
+    // cm:edge contract -> packages/runner/crates/forge-runner-core/src/runner/ledger.rs — a daemon
+    // under a config dir of its own keeps its ledger there, not in the per-user data dir (ISS-10)
+    let data = root.join("c/forge-runner");
     std::fs::create_dir_all(&data).unwrap();
     let ledger = data.join("ledger.sqlite");
     let boot = forge_runner_core::runner::inflight::boot_identity().unwrap_or_default();

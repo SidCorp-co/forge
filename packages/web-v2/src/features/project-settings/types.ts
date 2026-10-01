@@ -12,7 +12,7 @@ export interface ProjectUpdateInput {
 	/** Where an ISS-* branch is cut from. NOT a release fact. */
 	baseBranch?: string | null;
 	/** NOT where work lands, its environments or promotions: those are the project document,
-	 *  written through `PUT /api/projects/:id/config`, and this patch refuses them by name. */
+	 *  edited on the Configuration tab, and this patch refuses them by name. */
 	orgId?: string;
 	/** `agentConfig.assistantWeekly`, replaced whole; null clears it. */
 	assistantWeekly?: AssistantWeekly | null;
@@ -161,27 +161,6 @@ export interface AssistantWeekly {
 	judgeProviderId: string;
 	judgeModel: string;
 	source?: string;
-}
-
-/** A project's policy-v1 document as `GET /api/projects/:id/policy` returns it. The editor
- *  holds it as JSON text; core's schema is what refuses a wrong shape. */
-export type PolicyDocument = Record<string, unknown>;
-
-export type PolicyRead =
-	| { declared: false; revision: null; document: null }
-	| {
-			declared: true;
-			revision: number;
-			document: PolicyDocument;
-			updatedBy: string;
-			updatedAt: string;
-	  };
-
-/** One reason core refused a policy write, at the JSON pointer it names. */
-export interface PolicyRefusal {
-	code: string;
-	path: string;
-	detail: string;
 }
 
 export interface ProjectAgentConfig {

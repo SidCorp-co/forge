@@ -147,6 +147,32 @@ describe('ISS-940 re-marking an already-merged issue (real Postgres)', () => {
     expect(await mergedAtOf(issue.id)).not.toBe(first);
   });
 
+  it('records the first target a mark names, and unmark clears it', async () => {
+    const issue = await insertIssue();
+    const targetOf = async () =>
+      (
+        await harness.db.execute<{ merged_target: string | null }>(
+          sql`SELECT merged_target FROM issues WHERE id = ${issue.id}`,
+        )
+      )[0]?.merged_target ?? null;
+    const { applyMergeMarker } = await import('../../src/issues/merge-marker.js');
+    await mark(issue, 'landed');
+    expect(await targetOf()).toBe('main');
+    await applyMergeMarker({
+      issue: { ...issue, mergedAt: new Date() },
+      op: 'mark',
+      target: 'dev',
+      actor: actor(),
+    });
+    expect(await targetOf()).toBe('main');
+    await applyMergeMarker({
+      issue: { ...issue, mergedAt: new Date() },
+      op: 'unmark',
+      actor: actor(),
+    });
+    expect(await targetOf()).toBeNull();
+  });
+
   it('honours an explicit mergedAt on the first stamp', async () => {
     const issue = await insertIssue();
     const when = new Date('2026-09-01T12:00:00.000Z');

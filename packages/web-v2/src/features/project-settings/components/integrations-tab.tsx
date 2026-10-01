@@ -157,7 +157,7 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
               <p className="fg-body-sm text-muted">
                 Which environment this binding deploys is the project document&apos;s: name the
                 binding in <code>environments.&lt;name&gt;.deployment.binding</code> and write the
-                document with <code>PUT /api/projects/:id/config</code>.
+                document on the Configuration tab.
               </p>
             )}
             <AgentAccessChoice

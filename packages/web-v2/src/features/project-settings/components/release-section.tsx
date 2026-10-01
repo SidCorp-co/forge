@@ -31,7 +31,7 @@ const GAP_TEXT: Record<ReleaseReadiness["gaps"][number], string> = {
 
 const DOCUMENT_GAPS = new Set(["release-target", "verify-probes"]);
 
-const PROJECT_DOCUMENT_DOOR = "Written in the project document: `PUT /api/projects/:id/config`.";
+const PROJECT_DOCUMENT_DOOR = "Written in the project document, on the Configuration tab.";
 
 const ROLLBACK_TEXT: Record<NonNullable<ReleaseReadiness["rollbackMode"]>, string> = {
   manual: "declared — the release agent follows it",

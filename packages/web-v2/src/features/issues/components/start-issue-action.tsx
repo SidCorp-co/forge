@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/design";
-import type { PolicyRead } from "@/features/project-settings/types";
+import type { V1Read } from "@/features/project-settings/config-types";
 import type { ProjectMember } from "@/features/projects/types";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { useRunPipelineStep } from "../hooks";
@@ -19,7 +19,7 @@ export type StartReading =
 /** The role `POST /api/issues/:id/run-pipeline-step` requires (core `START_ROLE`). */
 const START_ROLES: readonly NonNullable<Role>[] = ["member", "admin"];
 
-export function intakeIsManual(policy: PolicyRead | undefined): boolean {
+export function intakeIsManual(policy: V1Read | undefined): boolean {
   if (!policy?.declared) return false;
   const intake = policy.document.intake as { mode?: unknown } | undefined;
   return intake?.mode === "manual";
@@ -33,7 +33,7 @@ function startedAtOf(sessionContext: Record<string, unknown> | null | undefined)
 /** What the header offers for an issue waiting at Open on a project whose intake is manual. */
 export function readStart(args: {
   status: IssueStatus;
-  policy: PolicyRead | undefined;
+  policy: V1Read | undefined;
   policyError?: Error | null;
   role: Role;
   sessionContext: Record<string, unknown> | null | undefined;

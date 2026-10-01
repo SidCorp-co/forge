@@ -4,7 +4,6 @@ import Link from "next/link";
 import { Card, CardContent, SectionTitle } from "@/design";
 import { AssistantWeeklySection } from "./assistant-weekly-section";
 import { PluginsSection } from "./plugins-section";
-import { PolicySection } from "./policy-section";
 import { ReleaseSection } from "./release-section";
 
 export function PipelineTab({
@@ -26,6 +25,8 @@ export function PipelineTab({
           An issue is picked up at <b>Queued</b>, runs as one session, and ends either at{" "}
           <b>Needs a human</b>, <b>Awaiting release</b> or closed. The session is driven by the{" "}
           <code>issue-flow</code> skill, which this project gets from a plugin — see Plugins below.
+          Which model runs each status, with which tools denied, is the policy on the Configuration
+          tab.
         </p>
         {libraryHref && (
           <p className="fg-caption mb-4">
@@ -34,8 +35,6 @@ export function PipelineTab({
             </Link>
           </p>
         )}
-
-        <PolicySection projectId={projectId} canEdit={canEdit} />
 
         <ReleaseSection projectId={projectId} slug={slug} />
 
