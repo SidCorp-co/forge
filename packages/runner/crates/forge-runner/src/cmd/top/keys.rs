@@ -1,6 +1,7 @@
 //! The keys a live view reads: the arrows, `j` and `k` move the table's
 //! selection, Enter opens the selected row's detail and Esc leaves it, `s`
-//! shows each row's sources, `q` ends the view; in a detail, space holds the
+//! shows each row's sources, `l` switches the legend between its full and
+//! short forms, `q` ends the view; in a detail, space holds the
 //! page shown or lets pages turn again, `n` and `p` turn it at once.
 //!
 //! A frame taller than the screen is shown a page per redraw, and at 80x24 the
@@ -33,11 +34,13 @@ pub enum Key {
     Back,
     /// Show or hide each row's sources.
     Sources,
+    /// The legend's other form: the full one, or the short one.
+    Legend,
     Quit,
 }
 
 /// Keys out of the bytes a terminal sends, read by read. Space, `n`, `p`,
-/// `j`, `k`, `s`, `q` and Enter are keys, and so are the up and down arrows
+/// `j`, `k`, `s`, `l`, `q` and Enter are keys, and so are the up and down arrows
 /// (`ESC [ A`, `ESC O A` and their modified forms); every other byte asks
 /// nothing, and so does every other byte of an escape sequence, since a
 /// function key's ends in a letter (F1 is `ESC O P`) and a sequence can be
@@ -77,6 +80,7 @@ impl Parser {
                         b'j' | b'J' => Some(Key::Down),
                         b'\r' | b'\n' => Some(Key::Open),
                         b's' | b'S' => Some(Key::Sources),
+                        b'l' | b'L' => Some(Key::Legend),
                         b'q' | b'Q' => Some(Key::Quit),
                         _ => None,
                     });

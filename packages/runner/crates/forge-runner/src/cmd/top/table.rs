@@ -10,7 +10,7 @@ use unicode_width::UnicodeWidthChar;
 
 use super::attention::{self, Assessment, PaneCell, Tone};
 use super::fit::{cells, printable, wrap};
-use super::gather::{CoreAnswer, Project, Snapshot};
+use super::gather::{Project, Snapshot};
 use super::lanes::{self, Counts};
 use super::ledger_ro::Run;
 use super::people::lanes_route;
@@ -51,12 +51,23 @@ pub enum KeysSaid {
     Unread(String),
 }
 
+/// Which form the legend under the table takes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Legend {
+    /// Every column, lane and verdict word, each with what it means.
+    Full,
+    /// Every column in a word or two and every verdict word by name, for a
+    /// screen the full one would leave too few rows.
+    Short,
+}
+
 pub struct Opts {
     pub cols: usize,
     pub selected: usize,
     pub sources: bool,
     pub keys: KeysSaid,
     pub interval: Option<u64>,
+    pub legend: Legend,
 }
 
 /// The screen above, within and below the scrolling rows.
@@ -64,6 +75,8 @@ pub struct Table {
     pub head: Vec<Line>,
     pub body: Vec<Line>,
     pub foot: Vec<Line>,
+    /// The legend `foot` carries.
+    pub legend: Legend,
 }
 
 /// How many selectable rows the table has: the box and every project.
@@ -98,7 +111,29 @@ struct Cells {
     verdict: &'static str,
     now: String,
     change: String,
+    /// Some projects' lanes were not read, so `change` is only part of what
+    /// moved: the cell ends ` ?`, which eliding it never cuts.
+    change_partial: bool,
     tone: Tone,
+}
+
+impl Cells {
+    fn change_text(&self) -> String {
+        match (self.change_partial, self.change.is_empty()) {
+            (false, _) => self.change.clone(),
+            (true, true) => "?".into(),
+            (true, false) => format!("{} ?", self.change),
+        }
+    }
+
+    /// CHANGE in exactly `w` cells, keeping a partial change's ` ?`.
+    fn change_cell(&self, w: usize) -> String {
+        if self.change_partial && !self.change.is_empty() && cells(&self.change_text()) > w {
+            let kept = format!("{} ?", elide(&self.change, w.saturating_sub(2)));
+            return pad(&kept, w, false);
+        }
+        pad(&self.change_text(), w, false)
+    }
 }
 
 pub fn build(s: &Snapshot, o: &Opts) -> Table {
@@ -152,12 +187,13 @@ pub fn build(s: &Snapshot, o: &Opts) -> Table {
     }
 
     let mut foot = Vec::new();
-    for r in wrap(&legend(), o.cols) {
+    for r in pack(&legend(o.legend), o.cols) {
         foot.push(Line::plain(r, Tone::Dim));
     }
-    let keys = match &o.keys {
-        KeysSaid::Read => "↑↓ or j k select · Enter opens the selected row's detail · s shows each row's sources · q quits".to_string(),
-        KeysSaid::Unread(why) => format!(
+    let keys = match (&o.keys, o.legend) {
+        (KeysSaid::Read, Legend::Full) => "↑↓ or j k select · Enter opens the selected row's detail · s shows each row's sources · l shortens the legend · q quits".to_string(),
+        (KeysSaid::Read, Legend::Short) => "↑↓ j k select · Enter opens its detail · s sources · l explains words · q quits".to_string(),
+        (KeysSaid::Unread(why), _) => format!(
             "keys are not read ({why}), so no row can be opened; the table redraws{}",
             o.interval.map(|n| format!(" every {n}s")).unwrap_or_default()
         ),
@@ -166,10 +202,15 @@ pub fn build(s: &Snapshot, o: &Opts) -> Table {
         foot.push(Line::plain(r, Tone::Plain));
     }
     let attention_total = boxed.1.count() + rows.iter().map(|(_, a)| a.count()).sum::<usize>();
-    for r in wrap(&footer(s, attention_total), o.cols) {
+    for r in wrap(&footer(s, attention_total, o.legend), o.cols) {
         foot.push(Line::plain(r, Tone::Plain));
     }
-    Table { head, body, foot }
+    Table {
+        head,
+        body,
+        foot,
+        legend: o.legend,
+    }
 }
 
 fn widths<'a>(cols: usize, all: impl Iterator<Item = &'a Cells> + Clone) -> Widths {
@@ -184,11 +225,33 @@ fn widths<'a>(cols: usize, all: impl Iterator<Item = &'a Cells> + Clone) -> Widt
     let name = longest(|c| &c.name, "PROJECT".len())
         .min(24)
         .min((avail / 3).max(8));
-    let change = longest(|c| &c.change, "CHANGE".len()).min((avail / 4).max(6));
+    let rest = avail.saturating_sub(name);
+    let now_needs = longest(|c| &c.now, "NOW".len());
+    let change_needs = all
+        .clone()
+        .map(|c| cells(&c.change_text()))
+        .max()
+        .unwrap_or(0)
+        .max("CHANGE".len());
+    let change = shared(rest, now_needs, change_needs).max("CHANGE".len().min(rest));
     Widths {
         name,
         change,
-        now: avail.saturating_sub(name + change),
+        now: rest.saturating_sub(change),
+    }
+}
+
+/// CHANGE's share of `rest` cells beside NOW: each its need where both fit,
+/// else the one needing half or less its need and the other the remainder,
+/// else half each.
+fn shared(rest: usize, now: usize, change: usize) -> usize {
+    let half = rest / 2;
+    if now + change <= rest || change <= half {
+        change
+    } else if now <= rest - half {
+        rest - now
+    } else {
+        half
     }
 }
 
@@ -222,7 +285,7 @@ fn laid_out(c: &Cells, w: &Widths, selected: bool) -> String {
         lanes.join(" "),
         pad(c.verdict, VERDICT_W, false),
         pad(&c.now, w.now, false),
-        pad(&c.change, w.change, false),
+        c.change_cell(w.change),
     )
 }
 
@@ -248,10 +311,11 @@ pub fn lanes_of<'a>(s: &'a Snapshot, p: &Project) -> Read<&'a Counts> {
     core.lanes.as_ref().map_err(Clone::clone)
 }
 
-/// The same project's lanes in core's previous reading, where there is one.
-fn lanes_before<'a>(before: &'a Option<CoreAnswer>, p: &Project) -> Option<&'a Counts> {
-    let (_, all) = before.as_ref()?.as_ref().ok()?;
-    render::core_of(p, all).ok()?.lanes.as_ref().ok()
+/// The project's lanes in the last earlier reading that answered them, and
+/// when it was asked, where there is one.
+pub fn lanes_before<'a>(s: &'a Snapshot, p: &Project) -> Option<(i64, &'a Counts)> {
+    let (at, c) = s.lanes_before.get(p.project_id.as_deref()?)?;
+    Some((*at, c))
 }
 
 fn project_cells(s: &Snapshot, p: &Project) -> (Cells, Assessment) {
@@ -291,10 +355,10 @@ fn project_cells(s: &Snapshot, p: &Project) -> (Cells, Assessment) {
             _ => "—".into(),
         },
     };
-    let change = match (&now_lanes, lanes_before(&s.core_before, p)) {
+    let change = match (&now_lanes, lanes_before(s, p)) {
         (Err(_), _) => "?".into(),
         (Ok(_), None) => "—".into(),
-        (Ok(n), Some(b)) => lanes::change(b, n),
+        (Ok(n), Some((_, b))) => lanes::change(b, n),
     };
     let runs_cell = match &s.ledger {
         Err(_) => "?".into(),
@@ -309,6 +373,7 @@ fn project_cells(s: &Snapshot, p: &Project) -> (Cells, Assessment) {
         verdict: a.verdict(idle),
         now,
         change,
+        change_partial: false,
         tone: a.tone(idle),
     };
     (cells, a)
@@ -356,24 +421,7 @@ fn box_cells(s: &Snapshot) -> (Cells, Assessment) {
             l.cell()
         }
     });
-    let change = if s.core.is_err() {
-        "?".to_string()
-    } else {
-        let pairs: Vec<(Counts, Counts)> = s
-            .projects
-            .iter()
-            .filter_map(|p| {
-                let now = lanes_of(s, p).ok()?;
-                Some((lanes_before(&s.core_before, p)?.clone(), now.clone()))
-            })
-            .collect();
-        if pairs.is_empty() {
-            "—".into()
-        } else {
-            let (b, n) = lanes::added(pairs);
-            lanes::change(&b, &n)
-        }
-    };
+    let (change, change_partial) = box_change(s);
     let now = match (a.worst(), s.daemon_pid) {
         (Some(f), _) => f.text.clone(),
         (None, Some(pid)) => format!("daemon pid {pid}"),
@@ -388,9 +436,41 @@ fn box_cells(s: &Snapshot) -> (Cells, Assessment) {
         verdict: a.verdict(false),
         now: printable(&now),
         change,
+        change_partial,
         tone: a.tone(false),
     };
     (cells, a)
+}
+
+/// What moved over every project whose lanes were read in both readings, and
+/// whether some project's current lanes were not read, so that sum is only a
+/// part: `?` alone where nothing at all could be read.
+fn box_change(s: &Snapshot) -> (String, bool) {
+    if s.core.is_err() {
+        return ("?".into(), false);
+    }
+    let (mut pairs, mut read, mut unread) = (Vec::new(), 0, 0);
+    for p in &s.projects {
+        match lanes_of(s, p) {
+            Err(_) => unread += 1,
+            Ok(now) => {
+                read += 1;
+                if let Some((_, b)) = lanes_before(s, p) {
+                    pairs.push((b.clone(), now.clone()));
+                }
+            }
+        }
+    }
+    match (read, unread, pairs.is_empty()) {
+        (0, 0, _) => ("—".into(), false),
+        (0, _, _) => ("?".into(), false),
+        (_, 0, true) => ("—".into(), false),
+        (_, _, true) => (String::new(), true),
+        (_, unread, false) => {
+            let (b, n) = lanes::added(pairs);
+            (lanes::change(&b, &n), unread > 0)
+        }
+    }
 }
 
 /// One line under a project for each run holding a lease, and each parked on a person.
@@ -487,9 +567,9 @@ fn project_sources(s: &Snapshot, p: &Project, a: &Assessment) -> String {
         Some(id) => format!("GET {}{core_read}", lanes_route(id)),
         None => "not asked: the binding names no project id".into(),
     };
-    let before = match &s.core_before {
-        Some(Ok((at, _))) => format!("core's reading of {}", ago(s.now_ms, *at)),
-        Some(Err(_)) | None => "no earlier reading of core".into(),
+    let before = match lanes_before(s, p) {
+        Some((at, _)) => format!("core's reading of {}", ago(s.now_ms, at)),
+        None => "no earlier reading of its lanes".into(),
     };
     let mut parts = vec![
         "← PANE tmux list-sessions".to_string(),
@@ -521,18 +601,99 @@ fn box_sources(s: &Snapshot, a: &Assessment) -> String {
     parts.join(" · ")
 }
 
-fn legend() -> String {
-    let lanes: Vec<String> = lanes::LANES
-        .iter()
-        .map(|(n, statuses)| format!("{n} {}", statuses.join(" ")))
-        .collect();
-    format!(
-        "! wanting attention · PANE master pane · RUNS holding a lease · {} · CHANGE since core's previous reading · ? could not be read · · none",
-        lanes.join(" · ")
-    )
+/// The legend's items, each a column, mark or verdict word and what it means.
+fn legend(form: Legend) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    match form {
+        Legend::Full => {
+            out.extend(
+                [
+                    "! findings wanting attention",
+                    "PANE master pane up, down, none",
+                    "RUNS runs holding a lease",
+                ]
+                .map(String::from),
+            );
+            out.extend(
+                lanes::LANES
+                    .iter()
+                    .map(|(n, statuses)| format!("{n} {}", statuses.join(" "))),
+            );
+            out.push("VERDICT the row's worst finding:".into());
+            out.extend(
+                attention::WORDS
+                    .iter()
+                    .map(|(word, means)| format!("{word} {means}")),
+            );
+            out.extend(
+                [
+                    "NOW what is running, or the box's worst finding",
+                    "CHANGE status counts moved since core's previous reading",
+                    "? could not be read",
+                    "· none",
+                    "— no earlier reading, or nothing running",
+                ]
+                .map(String::from),
+            );
+        }
+        Legend::Short => {
+            out.extend(
+                [
+                    "! attention",
+                    "PANE master pane",
+                    "RUNS leased",
+                    "MOV moving",
+                    "HAND handed off",
+                    "QUE queued",
+                    "BLK blocked",
+                    "DRF draft",
+                    "NOW running now",
+                    "? unread",
+                    "· none",
+                ]
+                .map(String::from),
+            );
+            let words: Vec<&str> = attention::WORDS.iter().map(|(w, _)| *w).collect();
+            out.push(format!("VERDICT: {}", words.join(" ")));
+            out.extend(
+                ["CHANGE since core's last reading", "— no earlier reading"].map(String::from),
+            );
+        }
+    }
+    out
 }
 
-fn footer(s: &Snapshot, attention_total: usize) -> String {
+/// Items joined by ` · ` into rows no wider than `cols`, an item never split
+/// across two rows unless it is wider than a row by itself.
+fn pack(items: &[String], cols: usize) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut row = String::new();
+    for item in items {
+        let joined = if row.is_empty() {
+            item.clone()
+        } else {
+            format!("{row} · {item}")
+        };
+        if cells(&joined) <= cols {
+            row = joined;
+            continue;
+        }
+        if !row.is_empty() {
+            out.push(std::mem::take(&mut row));
+        }
+        if cells(item) <= cols {
+            row = item.clone();
+        } else {
+            out.extend(wrap(item, cols));
+        }
+    }
+    if !row.is_empty() {
+        out.push(row);
+    }
+    out
+}
+
+fn footer(s: &Snapshot, attention_total: usize, form: Legend) -> String {
     let panes: Vec<PaneCell> = s.projects.iter().map(|p| attention::pane(s, p)).collect();
     let up = panes
         .iter()
@@ -542,15 +703,21 @@ fn footer(s: &Snapshot, attention_total: usize) -> String {
         .iter()
         .filter(|p| matches!(p, PaneCell::Up { .. } | PaneCell::Down { .. }))
         .count();
-    let panes = if s.sessions.is_err() {
-        "master panes ?".to_string()
-    } else {
-        format!("{up} of {named} master pane(s) up")
+    let short = form == Legend::Short;
+    let panes = match (s.sessions.is_err(), short) {
+        (true, _) => "master panes ?".to_string(),
+        (false, false) => format!("{up} of {named} master pane(s) up"),
+        (false, true) => format!("{up}/{named} panes up"),
     };
     let runs = match &s.ledger {
         Ok(v) => format!(
-            "{} run(s) holding a lease",
-            v.runs.iter().filter(|r| !r.held_keys().is_empty()).count()
+            "{} {}",
+            v.runs.iter().filter(|r| !r.held_keys().is_empty()).count(),
+            if short {
+                "leased"
+            } else {
+                "run(s) holding a lease"
+            }
         ),
         Err(_) => "runs ?".into(),
     };
@@ -561,11 +728,15 @@ fn footer(s: &Snapshot, attention_total: usize) -> String {
             Err(_) => unread += 1,
         }
     }
-    let live = match unread {
-        0 => format!("{live} issue(s) live"),
-        n => format!("{live} issue(s) live in the projects read, {n} not read"),
+    let live = match (unread, short) {
+        (0, _) => format!("{live} issue(s) live"),
+        (n, false) => format!("{live} issue(s) live in the projects read, {n} not read"),
+        (n, true) => format!("{live}? issue(s) live, {n} unread"),
     };
-    format!("{panes} · {runs} · {live} · {attention_total} thing(s) wanting attention — the ! column says whose")
+    match form {
+        Legend::Full => format!("{panes} · {runs} · {live} · {attention_total} thing(s) wanting attention — the ! column says whose"),
+        Legend::Short => format!("{panes} · {runs} · {live} · {attention_total} wanting attention"),
+    }
 }
 
 /// `s` in exactly `w` cells: padded, or cut with `…` where it is longer.
@@ -620,6 +791,7 @@ mod tests {
             sources: false,
             keys: KeysSaid::Read,
             interval: Some(5),
+            legend: Legend::Full,
         }
     }
 
@@ -661,10 +833,56 @@ mod tests {
             if let Ok((_, all)) = &mut s.core {
                 all.insert(id.clone(), core(counts));
             }
-            before.insert(id, core(prev));
+            before.insert(id, (NOW - 60_000, prev));
         }
-        s.core_before = Some(Ok((NOW - 60_000, before)));
+        s.lanes_before = before;
         s
+    }
+
+    /// Every project's earlier reading made the same as its current one.
+    fn nothing_moved(s: &mut Snapshot) {
+        if let Ok((_, all)) = &s.core {
+            s.lanes_before = all
+                .iter()
+                .filter_map(|(id, c)| Some((id.clone(), (NOW - 60_000, c.lanes.clone().ok()?))))
+                .collect();
+        }
+    }
+
+    /// Judge finding 1 at e3617a0: NOW and CHANGE share the free width by
+    /// need, so a long CHANGE beside a short NOW is shown whole.
+    #[test]
+    fn now_and_change_share_the_free_width_by_need() {
+        // Both fit: each its need.
+        assert_eq!(shared(100, 20, 40), 40);
+        // NOW short, CHANGE long: CHANGE the remainder.
+        assert_eq!(shared(100, 10, 200), 90);
+        // CHANGE short, NOW long: CHANGE its need.
+        assert_eq!(shared(100, 200, 30), 30);
+        // Both long: half each.
+        assert_eq!(shared(100, 200, 200), 50);
+        // A quiet box, and alpha with ten statuses moved: a CHANGE of about
+        // seventy cells, which the old quarter-width cap cut at 170.
+        let mut s = a_fine_box(false);
+        s.daemon_pid = Some(1);
+        let counts = |n: u64| -> Counts {
+            lanes::LABELS[..10]
+                .iter()
+                .map(|(k, _)| (k.to_string(), n))
+                .collect()
+        };
+        if let Ok((_, all)) = &mut s.core {
+            all.get_mut("aaaaaaaa-1111").unwrap().lanes = Ok(counts(2));
+        }
+        s.lanes_before = [("aaaaaaaa-1111".to_string(), (NOW - 60_000, counts(1)))].into();
+        let t = build(&s, &opts(170));
+        let at = cells(&t.head[1].text[..t.head[1].text.find("CHANGE").unwrap()]);
+        let row = &t.body.iter().filter(|l| l.row).nth(1).unwrap().text;
+        let change: String = row.chars().skip(at).collect();
+        assert!(
+            !change.contains('…') && change.trim_end().ends_with("appr+1"),
+            "{row}"
+        );
     }
 
     /// Criteria 7 and 8: at 80 and at 170 columns no row is wider than the
@@ -822,8 +1040,7 @@ mod tests {
             change(&t, 0)
         );
         let mut s = a_crowded_box();
-        let same = s.core.clone().unwrap();
-        s.core_before = Some(Ok(same));
+        nothing_moved(&mut s);
         let t = build(&s, &opts(170));
         assert_eq!(change(&t, 6), "", "nothing moved is blank");
         let mut s = a_crowded_box();
@@ -903,7 +1120,7 @@ mod tests {
         };
         let foot = words(&t);
         for said in [
-            "! wanting attention",
+            "! findings wanting attention",
             "MOV in_progress testing releasing",
             "HAND developed tested awaiting_release",
             "QUE open confirmed clarified approved",
@@ -954,13 +1171,20 @@ mod tests {
         unread(&mut s, true);
         assert_eq!(change(&build(&s, &opts(170)), 0), "?", "none read");
         let mut s = a_crowded_box();
-        let same = s.core.clone().unwrap();
-        s.core_before = Some(Ok(same));
+        nothing_moved(&mut s);
         unread(&mut s, false);
         assert_eq!(
             change(&build(&s, &opts(170)), 0),
             "?",
             "nothing moved among those read, one unread"
+        );
+        let mut s = a_crowded_box();
+        s.lanes_before.clear();
+        unread(&mut s, false);
+        assert_eq!(
+            change(&build(&s, &opts(170)), 0),
+            "?",
+            "no earlier reading among those read, one unread"
         );
         let mut s = a_crowded_box();
         unread(&mut s, false);
@@ -976,33 +1200,65 @@ mod tests {
     #[test]
     fn the_legend_names_every_column_and_every_verdict_word() {
         let s = a_fine_box(false);
-        let t = build(&s, &opts(170));
-        let foot = t
-            .foot
-            .iter()
-            .map(|l| l.text.as_str())
-            .collect::<Vec<_>>()
-            .join(" ");
-        let foot = foot.split_whitespace().collect::<Vec<_>>().join(" ");
-        // Every heading but the project's own name.
-        for col in t.head[1]
-            .text
-            .split_whitespace()
-            .filter(|c| *c != "PROJECT")
-        {
-            assert!(
-                foot.contains(&format!("{col} ")),
-                "column {col} unexplained: {foot}"
-            );
-        }
-        for word in [
+        let columns = [
+            "!", "PANE", "RUNS", "MOV", "HAND", "QUE", "BLK", "DRF", "VERDICT", "NOW", "CHANGE",
+        ];
+        let words = [
             "STALL", "ASKS", "DRIFT", "ORPHAN", "NOPATH", "AGEING", "DOWN", "WAITS", "GATE",
             "DAEMON", "idle", "ok",
-        ] {
-            assert!(
-                foot.contains(&format!("{word} ")),
-                "verdict {word} unexplained: {foot}"
+        ];
+        let keys = ["↑↓", "j k", "Enter", "s s", "l ", "q quits"];
+        for (legend, cols) in [(Legend::Full, 170), (Legend::Full, 80), (Legend::Short, 80)] {
+            let t = build(
+                &s,
+                &Opts {
+                    legend,
+                    ..opts(cols)
+                },
             );
+            let foot = t
+                .foot
+                .iter()
+                .map(|l| l.text.as_str())
+                .collect::<Vec<_>>()
+                .join(" ");
+            let foot = foot.split_whitespace().collect::<Vec<_>>().join(" ");
+            // A packed row's items, each read from the row it was packed on.
+            let items: Vec<&str> = t
+                .foot
+                .iter()
+                .flat_map(|l| l.text.trim().split(" · "))
+                .collect();
+            let heading: Vec<&str> = t.head[1]
+                .text
+                .split_whitespace()
+                .filter(|c| *c != "PROJECT")
+                .collect();
+            assert_eq!(heading, columns, "the table draws the columns listed here");
+            for col in columns {
+                let said = items.iter().any(|item| {
+                    item.starts_with(&format!("{col} ")) || item.starts_with(&format!("{col}: "))
+                });
+                assert!(said, "{legend:?} {cols}: column {col} unexplained: {foot}");
+            }
+            for word in words {
+                let named = foot.split_whitespace().any(|w| w == word);
+                assert!(named, "{legend:?} {cols}: verdict {word} unnamed: {foot}");
+                if legend == Legend::Full {
+                    assert!(
+                        items
+                            .iter()
+                            .any(|item| item.starts_with(&format!("{word} "))),
+                        "{legend:?} {cols}: verdict {word} unexplained: {foot}"
+                    );
+                }
+            }
+            for key in keys {
+                assert!(foot.contains(key), "{legend:?} {cols}: key {key:?}: {foot}");
+            }
+            if legend == Legend::Short {
+                assert!(foot.contains("l explains words"), "{foot}");
+            }
         }
     }
 }

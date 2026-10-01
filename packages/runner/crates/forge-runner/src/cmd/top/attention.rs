@@ -18,6 +18,30 @@ pub const AGEING_MS: i64 = 10 * 60_000;
 /// And this long, stalled.
 pub const STALL_MS: i64 = 30 * 60_000;
 
+/// Every verdict word a row can show and what it means, red first, then
+/// yellow, then the two a row with no finding reads: the legend says each.
+/// `?` is not here, being the legend's own mark for a source not read.
+pub const WORDS: [(&str, &str); 12] = [
+    (
+        "STALL",
+        "a runnable run unwritten 30m, or its worktree gone",
+    ),
+    ("ASKS", "a run or job pane waits on a person"),
+    (
+        "DRIFT",
+        "the master skill or CLI slug is not what the box serves",
+    ),
+    ("ORPHAN", "a run abandoned, or naming no project"),
+    ("NOPATH", "awaiting_release with no release path"),
+    ("GATE", "the dispatch gate degraded"),
+    ("DAEMON", "no running daemon named"),
+    ("AGEING", "a runnable run unwritten 10m"),
+    ("DOWN", "a served master pane not running"),
+    ("WAITS", "a question open on core"),
+    ("ok", "nothing wanting attention"),
+    ("idle", "ok, with nothing leased or moving"),
+];
+
 /// How loudly a row speaks, quietest first, so the loudest is the greatest.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Tone {
@@ -405,10 +429,15 @@ pub fn project(s: &Snapshot, p: &Project) -> Assessment {
                     Tone::Red,
                     "NOPATH",
                     format!(
-                        "{} at awaiting_release ({}) with no release path: {}",
+                        "{} at awaiting_release ({}) with no release path: {} — {}{}",
                         a.total,
                         a.keys.join(", "),
-                        b[0].code
+                        b[0].code,
+                        b[0].message,
+                        match b.len() - 1 {
+                            0 => String::new(),
+                            n => format!(", and {n} more blocker(s)"),
+                        }
                     ),
                     format!("GET /api/projects/{id}/release-readiness"),
                 ),
@@ -481,7 +510,7 @@ pub fn boxwide(s: &Snapshot) -> Assessment {
         );
     }
     if !s.gate.is_empty() {
-        a.add(Tone::Red, "GATE", s.gate.join(" "), s.gate_source.clone());
+        a.add(Tone::Red, "GATE", gate_said(&s.gate), s.gate_source.clone());
     }
     if let Ok(jobs) = &s.jobs {
         for j in &jobs.records {
@@ -554,6 +583,17 @@ pub fn boxwide(s: &Snapshot) -> Assessment {
         a.unread(e, "GET /api/devices/me/runners");
     }
     a
+}
+
+/// HEALTH's gate lines as one sentence: each line's column padding closed
+/// up, the bare `gate` heading dropped, and the lines joined by `; `.
+fn gate_said(lines: &[String]) -> String {
+    lines
+        .iter()
+        .map(|l| l.split_whitespace().collect::<Vec<_>>().join(" "))
+        .filter(|l| !l.is_empty() && l != "gate")
+        .collect::<Vec<_>>()
+        .join("; ")
 }
 
 /// What a run's line says of its worktree.
@@ -826,6 +866,73 @@ mod tests {
         let a = alpha(&s);
         assert_eq!(words(&a), vec!["NOPATH", "?"]);
         assert_eq!(a.verdict(false), "NOPATH");
+        // Judge finding 6 at e3617a0: the finding says why, not core's code alone.
+        assert!(
+            a.findings[0]
+                .text
+                .ends_with("no release path: NO_RELEASE_GATE — m"),
+            "{}",
+            a.findings[0].text
+        );
+    }
+
+    /// Criterion 28: the words the legend explains are exactly the words a
+    /// row can show, written here apart from `WORDS` so one dropped from it
+    /// goes red, and every word a finding is made with is among them.
+    #[test]
+    fn every_verdict_word_a_row_can_show_is_in_the_legend_list() {
+        let mut listed: Vec<&str> = WORDS.iter().map(|(w, _)| *w).collect();
+        listed.sort_unstable();
+        let mut want = vec![
+            "AGEING", "ASKS", "DAEMON", "DOWN", "DRIFT", "GATE", "NOPATH", "ORPHAN", "STALL",
+            "WAITS", "idle", "ok",
+        ];
+        want.sort_unstable();
+        assert_eq!(listed, want);
+        assert!(WORDS.iter().all(|(_, means)| !means.is_empty()));
+        let source = include_str!("attention.rs");
+        let code = &source[..source.find("#[cfg(test)]").unwrap()];
+        let mut made = Vec::new();
+        for tone in ["Tone::Red,", "Tone::Yellow,"] {
+            for (at, _) in code.match_indices(tone) {
+                // A finding's tone is followed by its word; a tone a match
+                // arm returns is followed by the next arm.
+                let rest = code[at + tone.len()..].trim_start();
+                if let Some(rest) = rest.strip_prefix('"') {
+                    made.push(&rest[..rest.find('"').unwrap()]);
+                }
+            }
+        }
+        assert!(made.len() >= 11, "{made:?}");
+        for word in made {
+            assert!(
+                WORDS.iter().any(|(w, _)| *w == word),
+                "{word} is not in WORDS"
+            );
+        }
+        let fine = Assessment::default();
+        for word in [fine.verdict(true), fine.verdict(false)] {
+            assert!(WORDS.iter().any(|(w, _)| *w == word), "{word}");
+        }
+    }
+
+    /// Judge finding 3 at e3617a0: the box's GATE says HEALTH's gate block as
+    /// one sentence, with none of the padding that aligns its columns.
+    #[test]
+    fn the_gate_finding_is_a_sentence_without_column_padding() {
+        let said = gate_said(&[
+            "gate".into(),
+            "  degraded   409 dispatch(es) went through because the gate could not decide".into(),
+            "             newest 31h 21m ago, nothing since".into(),
+        ]);
+        assert_eq!(
+            said,
+            "degraded 409 dispatch(es) went through because the gate could not decide; newest 31h 21m ago, nothing since"
+        );
+        assert_eq!(
+            gate_said(&["gate       UNREADABLE — no directory".into()]),
+            "gate UNREADABLE — no directory"
+        );
     }
 
     /// Criterion 6: the box's verdict is its first finding in the criterion's

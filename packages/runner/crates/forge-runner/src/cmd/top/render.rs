@@ -949,7 +949,7 @@ pub(super) mod tests {
             trees: Default::default(),
             jobs: Err(no()),
             core: Err(no()),
-            core_before: None,
+            lanes_before: Default::default(),
             daemon_pid: None,
             gate: Vec::new(),
             gate_source: "/c/gate-marks.jsonl".into(),

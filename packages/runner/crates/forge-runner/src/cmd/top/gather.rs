@@ -17,6 +17,7 @@ use forge_runner_core::transport::CoreClient;
 
 use super::binary::{self, Daemon};
 use super::cli_slug::{self, Slug};
+use super::lanes::Counts;
 use super::ledger_ro;
 use super::panes::{self, Sessions};
 use super::people::{self, Jobs, ProjectCore};
@@ -27,6 +28,10 @@ use crate::cmd::Ctx;
 
 /// Core's answers for every project, keyed by project id, and when they were asked.
 pub type CoreAnswer = Read<(i64, BTreeMap<String, ProjectCore>)>;
+
+/// Each project's lane counts from one of core's readings that answered
+/// them, keyed by project id, with the moment that reading was asked.
+pub type LanesRead = BTreeMap<String, (i64, Counts)>;
 
 /// How long core's answers are shown before they are asked again.
 pub const CORE_EVERY_MS: i64 = 60_000;
@@ -64,9 +69,11 @@ pub struct Snapshot {
     pub jobs: Read<Jobs>,
     /// Keyed by project id, and the moment they were asked.
     pub core: CoreAnswer,
-    /// The answer `core` replaced when it was last asked afresh, which the
-    /// table's CHANGE compares against; `None` until a second ask.
-    pub core_before: Option<CoreAnswer>,
+    /// Each project's lanes in the reading before the last one that answered
+    /// them, which the table's CHANGE compares against. A reading that could
+    /// not answer a project's lanes is not one: the next that can is compared
+    /// with the last that did.
+    pub lanes_before: LanesRead,
     /// The daemon this configuration is served by, where one could be named.
     pub daemon_pid: Option<u32>,
     pub gate: Vec<String>,
@@ -82,7 +89,9 @@ type HeldExe = ((u32, String), Read<Arc<Vec<u8>>>);
 pub struct Carry {
     discovery: Option<(i64, Read<Vec<MeRunner>>)>,
     core: Option<CoreAnswer>,
-    core_before: Option<CoreAnswer>,
+    /// Each project's lanes as the newest reading that answered them read them.
+    lanes_last: LanesRead,
+    lanes_before: LanesRead,
     core_at: i64,
     /// The project ids `core` was asked about: an answer is kept for these
     /// alone, so a project listed since is asked, never shown as unanswered.
@@ -193,7 +202,7 @@ pub async fn frame(ctx: &Ctx, carry: &mut Carry) -> Snapshot {
         trees: carry.trees.clone(),
         jobs,
         core,
-        core_before: carry.core_before.clone(),
+        lanes_before: carry.lanes_before.clone(),
         daemon_pid: daemon.as_ref().map(|d| d.pid),
         gate,
         gate_source,
@@ -358,12 +367,24 @@ async fn core_reads(
         return held;
     }
     let got = ask_core(ctx, cfg, projects, now_ms).await;
-    if let Some(replaced) = carry.core.replace(got.clone()) {
-        carry.core_before = Some(replaced);
-    }
+    remember(&mut carry.lanes_last, &mut carry.lanes_before, &got);
+    carry.core = Some(got.clone());
     carry.core_at = now_ms;
     carry.core_ids = ids;
     got
+}
+
+/// A fresh reading's lanes become each project's last, and the last they
+/// replace its earlier; a project the reading could not answer keeps both.
+fn remember(last: &mut LanesRead, before: &mut LanesRead, got: &CoreAnswer) {
+    let Ok((at, all)) = got else { return };
+    for (id, core) in all {
+        if let Ok(counts) = &core.lanes {
+            if let Some(was) = last.insert(id.clone(), (*at, counts.clone())) {
+                before.insert(id.clone(), was);
+            }
+        }
+    }
 }
 
 fn project_ids(projects: &[Project]) -> Vec<String> {
@@ -465,5 +486,47 @@ mod tests {
             "old"
         );
         assert_eq!(both, vec!["alpha".to_string(), "beta".to_string()]);
+    }
+
+    fn reading(at: i64, lanes: Read<u64>) -> CoreAnswer {
+        let core = ProjectCore {
+            questions: Ok(people::Questions {
+                total: 0,
+                listed: vec![],
+            }),
+            awaiting: Ok(people::AwaitingRelease {
+                total: 0,
+                keys: vec![],
+                blockers: Ok(vec![]),
+            }),
+            lanes: lanes.map(|n| Counts::from([("open".to_string(), n)])),
+        };
+        Ok((at, BTreeMap::from([("alpha".to_string(), core)])))
+    }
+
+    /// Criteria 4 and 9, judge finding 4 at e3617a0: a reading that could not
+    /// answer a project's lanes is not the reading CHANGE compares with, so
+    /// the next that can is compared with the last that did.
+    #[test]
+    fn an_unread_reading_leaves_the_last_good_one_to_compare_with() {
+        let (mut last, mut before) = (LanesRead::new(), LanesRead::new());
+        remember(&mut last, &mut before, &reading(1, Ok(5)));
+        assert!(before.is_empty(), "one reading has nothing before it");
+        remember(&mut last, &mut before, &Err(Unreadable::new("core", "503")));
+        remember(
+            &mut last,
+            &mut before,
+            &reading(3, Err(Unreadable::new("lanes", "500"))),
+        );
+        assert!(
+            before.is_empty(),
+            "no unread reading takes the place of one"
+        );
+        remember(&mut last, &mut before, &reading(4, Ok(7)));
+        let open = |r: &LanesRead| r.get("alpha").map(|(at, c)| (*at, c["open"]));
+        assert_eq!(open(&before), Some((1, 5)), "against the last good reading");
+        assert_eq!(open(&last), Some((4, 7)));
+        remember(&mut last, &mut before, &reading(5, Ok(7)));
+        assert_eq!(open(&before), Some((4, 7)));
     }
 }

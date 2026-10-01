@@ -13,7 +13,7 @@ use super::keys::{Key, Keys};
 use super::lanes;
 use super::render;
 use super::source::ago;
-use super::table::{self, KeysSaid, Line, Opts};
+use super::table::{self, KeysSaid, Legend, Line, Opts, Table};
 use super::Paging;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,6 +34,11 @@ pub struct View {
     pub mode: Mode,
     pub selected: usize,
     pub sources: bool,
+    /// The legend `l` asked for, where it was pressed; else the one the
+    /// screen has room for.
+    legend: Option<Legend>,
+    /// The legend last drawn, which `l` asks for the other of.
+    legend_shown: Legend,
     /// The first body row of the table on screen.
     scroll: usize,
     pub paging: Paging,
@@ -52,6 +57,8 @@ impl View {
             mode: Mode::Table,
             selected: 0,
             sources: false,
+            legend: None,
+            legend_shown: Legend::Full,
             scroll: 0,
             paging: Paging::default(),
             shown: None,
@@ -67,11 +74,23 @@ impl View {
             (Mode::Table, Key::Up) => self.selected = self.selected.saturating_sub(1),
             (Mode::Table, Key::Down) => self.selected = (self.selected + 1).min(last),
             (Mode::Table, Key::Open) => {
-                self.mode = Mode::Detail(self.selected.min(last));
-                self.paging = Paging::default();
+                let i = self.selected.min(last);
+                self.mode = Mode::Detail(i);
+                // The box's detail turns as the whole frame always did; a
+                // project's is opened to be read, so it holds until space.
+                self.paging = Paging {
+                    page: 0,
+                    held: i != 0,
+                };
                 self.shown = None;
             }
             (Mode::Table, Key::Sources) => self.sources = !self.sources,
+            (Mode::Table, Key::Legend) => {
+                self.legend = Some(match self.legend_shown {
+                    Legend::Full => Legend::Short,
+                    Legend::Short => Legend::Full,
+                })
+            }
             (Mode::Detail(_), Key::Back) => self.mode = Mode::Table,
             (Mode::Detail(_), k @ (Key::Hold | Key::Next | Key::Previous)) => {
                 if let Some(shown) = &self.shown {
@@ -118,19 +137,28 @@ impl View {
         keys: &Result<Keys, String>,
     ) -> Vec<String> {
         let cols = size.map_or(UNSIZED_COLS, |z| z.cols);
-        let t = table::build(
-            s,
-            &Opts {
-                cols,
-                selected: self.selected,
-                sources: self.sources,
-                keys: match keys {
-                    Ok(_) => KeysSaid::Read,
-                    Err(why) => KeysSaid::Unread(why.clone()),
+        let build = |legend: Legend| {
+            table::build(
+                s,
+                &Opts {
+                    cols,
+                    selected: self.selected,
+                    sources: self.sources,
+                    keys: match keys {
+                        Ok(_) => KeysSaid::Read,
+                        Err(why) => KeysSaid::Unread(why.clone()),
+                    },
+                    interval: Some(self.interval),
+                    legend,
                 },
-                interval: Some(self.interval),
-            },
-        );
+            )
+        };
+        let full = build(Legend::Full);
+        let t = match legend_for(self.legend, &full, size, keys.is_ok()) {
+            Legend::Full => full,
+            Legend::Short => build(Legend::Short),
+        };
+        self.legend_shown = t.legend;
         let (head, mut body, mut foot) = (t.head, t.body, t.foot);
         match size {
             None => foot.push(Line {
@@ -231,6 +259,41 @@ impl View {
     }
 }
 
+/// Whether the full legend has room on a screen `rows` tall: `Whole` where it
+/// leaves the table all its body or half the screen, `Cramped` where it
+/// leaves at least one body row, `No` where it would itself be cut.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Fits {
+    Whole,
+    Cramped,
+    No,
+}
+
+/// The legend drawn under `full`'s rows: the one `l` asked for, or the full
+/// one where it has room; never a full one it would cut, and always the full
+/// one where no key could switch it or no screen bounds it.
+fn legend_for(asked: Option<Legend>, full: &Table, size: Option<Screen>, keys: bool) -> Legend {
+    let Some(z) = size.filter(|_| keys) else {
+        return Legend::Full;
+    };
+    match (asked, legend_fits(full, z.rows)) {
+        (Some(Legend::Full), Fits::Whole | Fits::Cramped) | (None, Fits::Whole) => Legend::Full,
+        _ => Legend::Short,
+    }
+}
+
+fn legend_fits(full: &Table, rows: usize) -> Fits {
+    let room = rows.saturating_sub(full.head.len() + full.foot.len());
+    if room >= full.body.len().min(rows / 2).max(1) {
+        Fits::Whole
+    } else if room >= 2 {
+        // One body row, and the row saying which rows are shown.
+        Fits::Cramped
+    } else {
+        Fits::No
+    }
+}
+
 fn foot_line() -> Line {
     Line {
         text: String::new(),
@@ -298,15 +361,8 @@ pub fn detail(s: &Snapshot, i: usize, interval: u64) -> Vec<String> {
                     "  {st} {n} — a status in no lane{read} ← GET {route}"
                 ));
             }
-            let before = s
-                .core_before
-                .as_ref()
-                .and_then(|b| b.as_ref().ok())
-                .and_then(|(at, all)| {
-                    Some((at, render::core_of(p, all).ok()?.lanes.as_ref().ok()?))
-                });
-            out.push(match before {
-                None => "  CHANGE —, no earlier reading of core to compare against".into(),
+            out.push(match table::lanes_before(s, p) {
+                None => "  CHANGE —, no earlier reading of its lanes to compare against".into(),
                 Some((at, b)) => {
                     let moved = lanes::change(b, counts);
                     format!(
@@ -316,7 +372,7 @@ pub fn detail(s: &Snapshot, i: usize, interval: u64) -> Vec<String> {
                         } else {
                             &moved
                         },
-                        ago(s.now_ms, *at)
+                        ago(s.now_ms, at)
                     )
                 }
             });
@@ -506,6 +562,94 @@ mod tests {
         );
     }
 
+    /// Judge finding 5 at e3617a0, and criterion 28: at 80x24 the full legend
+    /// would leave the table under half the screen, so the short one is
+    /// drawn and `l` asks for the full one; at 170x50 the full one has room.
+    /// A full legend is never drawn where it would itself be cut.
+    #[test]
+    fn the_legend_is_full_where_it_has_room_and_short_where_not() {
+        let s = a_fine_box(true);
+        let full = |cols| {
+            table::build(
+                &s,
+                &Opts {
+                    cols,
+                    selected: 0,
+                    sources: false,
+                    keys: KeysSaid::Read,
+                    interval: Some(5),
+                    legend: Legend::Full,
+                },
+            )
+        };
+        let (wide, narrow) = (full(170), full(80));
+        assert_eq!(legend_for(None, &wide, screen(170, 50), true), Legend::Full);
+        assert_eq!(
+            legend_for(None, &narrow, screen(80, 24), true),
+            Legend::Short
+        );
+        assert_eq!(
+            legend_for(Some(Legend::Full), &narrow, screen(80, 24), true),
+            Legend::Full,
+            "l asks for it"
+        );
+        assert_eq!(
+            legend_for(Some(Legend::Short), &wide, screen(170, 50), true),
+            Legend::Short
+        );
+        let cut = narrow.head.len() + narrow.foot.len();
+        assert_eq!(
+            legend_for(Some(Legend::Full), &narrow, screen(80, cut), true),
+            Legend::Short,
+            "a full legend that would be cut is not drawn"
+        );
+        assert_eq!(
+            legend_for(None, &narrow, screen(80, 24), false),
+            Legend::Full,
+            "nothing could switch it"
+        );
+        assert_eq!(legend_for(None, &narrow, None, true), Legend::Full);
+        // The short form costs fewer rows than the full one at 80, and fewer
+        // than the 9 the legend, keys and footer took at e3617a0.
+        let short = table::build(
+            &s,
+            &Opts {
+                cols: 80,
+                selected: 0,
+                sources: false,
+                keys: KeysSaid::Read,
+                interval: Some(5),
+                legend: Legend::Short,
+            },
+        );
+        assert!(
+            short.foot.len() <= 6 && short.foot.len() < narrow.foot.len(),
+            "{} short rows, {} full",
+            short.foot.len(),
+            narrow.foot.len()
+        );
+    }
+
+    /// Judge finding 2 at e3617a0: a project's detail opens held, so it is not
+    /// turned while it is read, and the box's turns as the frame always did.
+    #[test]
+    fn a_project_detail_opens_held_and_the_box_detail_turning() {
+        let s = a_fine_box(true);
+        let mut v = View::new(5, false);
+        v.pressed(Key::Open, &s);
+        assert!(!v.paging.held, "the box's detail turns (criterion 22)");
+        v.pressed(Key::Back, &s);
+        v.pressed(Key::Down, &s);
+        v.pressed(Key::Open, &s);
+        assert!(v.paging.held, "a project's detail holds");
+        let keys = keys_unread();
+        v.draw(&s, screen(80, 10), &keys);
+        v.turned();
+        assert_eq!(v.paging.page, 0, "held across an interval");
+        v.pressed(Key::Next, &s);
+        assert_eq!(v.paging.page, 1, "n still turns it");
+    }
+
     /// Criterion 23: a project's detail holds its block of the frame, its
     /// lanes by status with their route, its questions and release rows, and
     /// each finding with its source.
@@ -515,7 +659,7 @@ mod tests {
         let d = detail(&s, 1, 5).join("\n");
         for said in [
             "ASKS   ISS-4 run run-park is parked on a person, waiting on the owner ←",
-            "NOPATH 1 at awaiting_release (ISS-7) with no release path: NO_RELEASE_GATE ← GET /api/projects/aaaaaaaa-1111/release-readiness",
+            "NOPATH 1 at awaiting_release (ISS-7) with no release path: NO_RELEASE_GATE — none declared, and 1 more blocker(s) ← GET /api/projects/aaaaaaaa-1111/release-readiness",
             "MOV   1 — in_progress 1, testing 0, releasing 0 ← GET /api/projects/aaaaaaaa-1111/issues/search?limit=1&withBuckets=true",
             "closed 5 — in no lane",
             "CHANGE —, no earlier reading",
