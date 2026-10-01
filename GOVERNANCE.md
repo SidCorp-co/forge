@@ -47,9 +47,9 @@ dispatcher's own act. No code path fires a deployment, and none cuts a release t
 release burning its number — see
 [`docs/adr/0001-a-release-version-is-a-counter.md`](docs/adr/0001-a-release-version-is-a-counter.md).
 
-**What a release moves is declared by the project's release chain**, an ordered list of branches
-whose last entry is live — see
-[`docs/adr/0003-a-release-chain-replaces-the-release-model-enum.md`](docs/adr/0003-a-release-chain-replaces-the-release-model-enum.md).
+**Where a release goes is declared by the project document**: the production environment, the
+branch it deploys from, and the promotions that reach it — see
+[`docs/adr/0004-the-project-document-declares-where-a-release-goes.md`](docs/adr/0004-the-project-document-declares-where-a-release-goes.md).
 
 ### Release notes
 
