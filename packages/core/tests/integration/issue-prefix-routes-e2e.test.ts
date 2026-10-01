@@ -11,6 +11,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   createTestProject,
   createTestUser,
+  seedOrg,
   setupTestDatabase,
   type TestDatabase,
   truncateAll,
@@ -156,7 +157,7 @@ describe('the project PATCH that sets a prefix', () => {
     await harness.db.execute(sql`
       CREATE FUNCTION iss14_refuse_name() RETURNS trigger LANGUAGE plpgsql AS $$
       BEGIN
-        IF NEW.name = 'refused-by-trigger' THEN RAISE EXCEPTION 'iss14: the row write fails'; END IF;
+        IF NEW.org_id <> OLD.org_id THEN RAISE EXCEPTION 'iss14: the row write fails'; END IF;
         RETURN NEW;
       END $$
     `);
@@ -165,7 +166,9 @@ describe('the project PATCH that sets a prefix', () => {
       FOR EACH ROW EXECUTE FUNCTION iss14_refuse_name()
     `);
     try {
-      const out = await patch(a.id, { issuePrefix: 'FD', name: 'refused-by-trigger' });
+      // The project's move to another org is the row write that lands after the prefix.
+      const elsewhere = await seedOrg(harness.db, userId);
+      const out = await patch(a.id, { issuePrefix: 'FD', orgId: elsewhere.id });
       expect(out.status).toBeGreaterThanOrEqual(500);
       expect(await activePrefixOf(a.id)).toBeNull();
       expect(await heldIssuePrefixes(a.id)).toEqual([]);

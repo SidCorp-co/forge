@@ -113,9 +113,9 @@ export const drizzleConfigStore: ConfigStore = {
       .orderBy(desc(projectConfigRevisions.revision));
   },
 
-  // cm:why the document is the slug's one source; `projects.slug` is its projection, written in the document's transaction so a lookup by slug and the document never disagree
+  // cm:why the document is the slug's and the name's one source; `projects.slug` and `projects.name` are its projection, written in the document's transaction so a lookup by slug, a listing by name and the document never disagree
   async casProject({ projectId, baseRevision, document, userId }) {
-    const slug = (document as ProjectDocument).project.slug;
+    const { slug, name } = (document as ProjectDocument).project;
     try {
       return await db.transaction(async (tx) => {
         await tx.execute(lockKey('project', projectId));
@@ -145,7 +145,7 @@ export const drizzleConfigStore: ConfigStore = {
         if (!row) throw new Error('project-config: document upsert returned no row');
         const projected = await tx
           .update(projects)
-          .set({ slug })
+          .set({ slug, name })
           .where(eq(projects.id, projectId))
           .returning({ id: projects.id });
         if (projected.length === 0) {

@@ -77,7 +77,6 @@ export const createProjectBodySchema = z
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
 
 const updateProjectFields = {
-  name: z.string().trim().min(1).max(200).optional(),
   issuePrefix: z.string().trim().max(16).nullable().optional(),
   assistantWeekly: assistantWeeklySchema.nullable().optional(),
   // Move the project to another org. Requires org owner/admin on BOTH the
@@ -305,7 +304,6 @@ projectRoutes.patch(
       await assertOrgAccess(patch.orgId, userId, 'admin');
       updates.orgId = patch.orgId;
     }
-    if (patch.name !== undefined) updates.name = patch.name;
 
     const agentConfigPatch: AgentConfigKeyPatch = {};
     if (patch.assistantWeekly !== undefined)

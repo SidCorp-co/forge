@@ -32,6 +32,10 @@ export const RETIRED_PROJECT_FIELDS: Record<string, string> = {
     "`defaultDeviceId` is not a project field: no box is a project's default. A job or turn goes to a device bound to the project (POST /api/projects/:id/runners), and only to one whose binding names a checkout.",
 };
 
+/** PATCH /api/projects/:id does not rename: the name has one source, the project document. */
+export const PROJECT_NAME_MOVED =
+  "`name` is not written by PATCH /api/projects/:id: a project's name is its project document's `project.name`, and the `projects` row carries it only as that document's projection. Read the document with GET /api/projects/:id/config and write it with PUT /api/projects/:id/config { baseRevision, document }.";
+
 /** The retirement message for each of `keys` the device binding replaced, joined; `null` for none. */
 export function retiredProjectFieldsMessage(keys: readonly string[]): string | null {
   const said = keys.flatMap((k) => (RETIRED_PROJECT_FIELDS[k] ? [RETIRED_PROJECT_FIELDS[k]] : []));
@@ -51,6 +55,7 @@ export function refuseRetiredProjectKeys(raw: unknown, ctx: z.RefinementCtx): vo
     ctx.addIssue({ code: 'custom', path, message });
   const body = raw as { stateContext?: unknown; agentConfig?: unknown };
   refuseRetiredProjectFields(raw, ctx);
+  if ('name' in body) retired(['name'], PROJECT_NAME_MOVED);
   if ('stateContext' in body) retired(['stateContext'], RETIRED_STATE_CONTEXT_MESSAGE);
   if (!('agentConfig' in body)) return;
   const ac = body.agentConfig as Record<string, unknown> | null | undefined;

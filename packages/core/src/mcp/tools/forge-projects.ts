@@ -8,13 +8,9 @@ import {
   orgDerivedProjectRole,
   orgRoleAtLeast,
 } from '../../lib/authz.js';
+import { readProjectConfig, writeProjectConfig } from '../../project-config/service.js';
 import { retiredProjectFieldsMessage } from '../../projects/retired-project-keys.js';
-import {
-  createProject,
-  ProjectSlugTakenError,
-  readProjectSummary,
-  updateProject,
-} from '../../projects/service.js';
+import { createProject, ProjectSlugTakenError, readProjectSummary } from '../../projects/service.js';
 import {
   type ContextScopedMcpToolFactory,
   loadVisibleProjectsWithRoleForPrincipal,
@@ -163,8 +159,9 @@ const updateInputSchema = z
   .strict();
 
 /**
- * Update a project's settings (name) — the subset of `updateProjectSchema` that's safe to
- * expose to MCP.
+ * Rename a project. The name's one source is the project document's `project.name`, so this is a
+ * project document write — the revision it read, every check a PUT /api/projects/:id/config makes,
+ * and the `projects.name` projection in the same transaction — never a write to the column.
  *
  * Authorization is OWNER-ONLY, matching REST PATCH /api/projects/:id
  * (projects/routes.ts:349-351 — `project.ownerId === userId || role === 'owner'`).
@@ -178,7 +175,7 @@ export const forgeProjectsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
   reach: 'project',
   grant: 'projects:write',
   description:
-    "Update project settings (name). A checkout is not a project setting: it is the device binding's (`forge-runner bind <slug> --path <dir>`). Whether the project's work lands in git (`source.type`), its environments, promotions, deployments and testing profiles are NOT settings here: they are its project document, read with forge_config (action `get`, field `projectDocument`) and written with PUT /api/projects/:id/config, and a patch naming any other key is refused by name. Caller must be org owner/admin on the project's org (a merely-invited project admin cannot mutate settings — matches REST PATCH /api/projects/:id). PAT principals must additionally carry the `write` scope. The repository and the workspace setup procedure are the project document's `source.git.repository` and `workspace.setup`: a patch naming `repoUrl`, `workspaceSetup` or `baseBranch` is refused by name. A project holds no webhook secret: each provider's webhook is verified with its integration binding's own.",
+    "Update project settings (name). The name is the project document's `project.name`: this writes that document at the revision it reads, with every check PUT /api/projects/:id/config makes, and a project with no document yet is refused PROJECT_NOT_DECLARED (declare one with PUT /api/projects/:id/config). A checkout is not a project setting: it is the device binding's (`forge-runner bind <slug> --path <dir>`). Whether the project's work lands in git (`source.type`), its environments, promotions, deployments and testing profiles are NOT settings here: they are its project document, read with forge_config (action `get`, field `projectDocument`) and written with PUT /api/projects/:id/config, and a patch naming any other key is refused by name. Caller must be org owner/admin on the project's org (a merely-invited project admin cannot mutate settings — matches REST PATCH /api/projects/:id). PAT principals must additionally carry the `write` scope. The repository and the workspace setup procedure are the project document's `source.git.repository` and `workspace.setup`: a patch naming `repoUrl`, `workspaceSetup` or `baseBranch` is refused by name. A project holds no webhook secret: each provider's webhook is verified with its integration binding's own.",
   inputSchema: zodToMcpSchema(updateInputSchema),
   handler: async (args) => {
     const input = updateInputSchema.parse(args);
@@ -209,17 +206,30 @@ export const forgeProjectsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
       throw new Error('FORBIDDEN: requires org admin (project admin role is insufficient)');
     }
 
-    const updates: Record<string, unknown> = {};
-    if (input.patch.name !== undefined) updates.name = input.patch.name;
-
-    if (Object.keys(updates).length === 0) {
-      const summary = await readProjectSummary(input.projectId);
-      if (!summary) throw new Error('NOT_FOUND: project not found');
-      return { project: summary };
+    const name = input.patch.name;
+    const held = name === undefined ? null : await readProjectConfig(input.projectId);
+    if (name !== undefined) {
+      if (!held) {
+        throw new Error(
+          `BAD_REQUEST: PROJECT_NOT_DECLARED: project ${input.projectId} has no project document, and its name is that document's \`project.name\`; declare it with PUT /api/projects/:id/config { baseRevision: null, document }.`,
+        );
+      }
+      const outcome = await writeProjectConfig({
+        projectId: input.projectId,
+        userId,
+        baseRevision: held.revision,
+        raw: { ...held.document, project: { ...held.document.project, name } },
+      });
+      if (!outcome.ok) {
+        const codes = [...new Set(outcome.refusals.map((r) => r.code))].join(', ');
+        throw new Error(
+          `BAD_REQUEST: ${codes}: ${outcome.refusals.map((r) => `${r.code} at ${r.path || '/'}: ${r.detail}`).join('; ')}`,
+        );
+      }
     }
-    const project = await updateProject(input.projectId, updates);
-    if (!project) throw new Error('NOT_FOUND: project not found');
-    return { project };
+    const summary = await readProjectSummary(input.projectId);
+    if (!summary) throw new Error('NOT_FOUND: project not found');
+    return { project: summary };
   },
 });
 

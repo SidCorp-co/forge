@@ -1,6 +1,7 @@
 /**
- * ISS-34 — a project's slug is the document's `project.slug`; `projects.slug` is its projection,
- * written by `casProject` in the document's own transaction. Against real Postgres, because the
+ * ISS-34 — a project's slug and name are the document's `project.slug` and `project.name`;
+ * `projects.slug` and `projects.name` are their projection, written by `casProject` in the
+ * document's own transaction. Against real Postgres, because the
  * defect was a column nothing wrote, and a mocked store holds whatever it is handed.
  */
 
@@ -41,10 +42,10 @@ beforeEach(async () => {
   userId = (await createTestUser(harness.db)).id;
 });
 
-const doc = (projectId: string, slug: string) => ({
+const doc = (projectId: string, slug: string, name = 'Slugged') => ({
   $schema: 'https://forge.sidcorp.co/schemas/project-v1.json',
   version: 1,
-  project: { id: projectId, slug, name: 'Slugged' },
+  project: { id: projectId, slug, name },
   source: { type: 'none' },
   workspace: { isolation: 'none' },
   validation: { gate: { type: 'none' } },
@@ -115,5 +116,48 @@ describe('a slug changed through the project document', () => {
     const { id } = await createTestProject(harness.db, userId, { id: other, slug: 'col-slug' });
     expect(await store.drizzleConfigStore.slugTakenBy(randomUUID(), 'col-slug')).toBe(id);
     expect(await store.drizzleConfigStore.slugTakenBy(id, 'col-slug')).toBeNull();
+  });
+});
+
+async function nameColumn(projectId: string): Promise<string | undefined> {
+  const rows = (await harness.db.execute(
+    sql`SELECT name FROM projects WHERE id = ${projectId}`,
+  )) as unknown as Array<{ name: string }>;
+  return rows[0]?.name;
+}
+
+describe('a name changed through the project document', () => {
+  it('is the column in the same write, at its first revision and at every one after', async () => {
+    const { id, slug } = await createTestProject(harness.db, userId, { name: 'Before' });
+    const first = await service.writeProjectConfig({
+      projectId: id,
+      userId,
+      baseRevision: null,
+      raw: doc(id, slug, 'Named by the document'),
+    });
+    expect(first.ok, JSON.stringify(first)).toBe(true);
+    expect(await nameColumn(id)).toBe('Named by the document');
+
+    const second = await service.writeProjectConfig({
+      projectId: id,
+      userId,
+      baseRevision: 1,
+      raw: doc(id, slug, 'Renamed again'),
+    });
+    expect(second.ok, JSON.stringify(second)).toBe(true);
+    expect(await nameColumn(id)).toBe('Renamed again');
+    expect((await projects.readProjectSummary(id))?.name).toBe('Renamed again');
+  });
+
+  it('leaves the column as it was when the write is refused', async () => {
+    const { id, slug } = await createTestProject(harness.db, userId, { name: 'Kept' });
+    const refused = await service.writeProjectConfig({
+      projectId: id,
+      userId,
+      baseRevision: 7,
+      raw: doc(id, slug, 'Never written'),
+    });
+    expect(refused).toMatchObject({ ok: false, refusals: [expect.objectContaining({ code: 'STALE_BASE' })] });
+    expect(await nameColumn(id)).toBe('Kept');
   });
 });

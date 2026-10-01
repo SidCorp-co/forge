@@ -119,18 +119,18 @@ describe('the named doors write one key each', () => {
   ])('refuses the deleted field %s by name and writes nothing', async (field, value) => {
     const before = await storedConfig();
     const res = await call('PATCH', `/api/projects/${projectId}`, {
-      name: 'A New Name',
+      issuePrefix: 'ANN',
       [field as string]: value,
     });
     expect(res.status).toBe(400);
     expect(res.text).toContain(`\`${field}\` is not a field of PATCH /api/projects/:id`);
     expect(await storedConfig()).toEqual(before);
     const [row] = await harness.db
-      .select({ name: mods.projects.name })
+      .select({ issuePrefix: mods.projects.issuePrefix })
       .from(mods.projects)
       .where(eq(mods.projects.id, projectId))
       .limit(1);
-    expect(row?.name).not.toBe('A New Name');
+    expect(row?.issuePrefix).not.toBe('ANN');
   });
 });
 
@@ -162,7 +162,7 @@ describe('the raw agentConfig record is refused by name', () => {
     async (_label, agentConfig) => {
       const before = await storedConfig();
       const res = await call('PATCH', `/api/projects/${projectId}`, {
-        name: 'A New Name',
+        issuePrefix: 'ANN',
         agentConfig,
       });
       expect(res.status).toBe(400);
@@ -170,11 +170,11 @@ describe('the raw agentConfig record is refused by name', () => {
       expect(await storedConfig()).toEqual(before);
 
       const [row] = await harness.db
-        .select({ name: mods.projects.name })
+        .select({ issuePrefix: mods.projects.issuePrefix })
         .from(mods.projects)
         .where(eq(mods.projects.id, projectId))
         .limit(1);
-      expect(row?.name).not.toBe('A New Name');
+      expect(row?.issuePrefix).not.toBe('ANN');
     },
   );
 });

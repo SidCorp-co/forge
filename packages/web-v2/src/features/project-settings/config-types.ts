@@ -40,7 +40,7 @@ export interface SecretNameList {
 
 export interface BindingList {
 	bindings: Extract<V1Read, { declared: true }>[];
-	unrepresentable: { id: string; provider: string; role: string; reason: string }[];
+	unrepresentable: { id: string; provider: string; role: string; revision: number; reason: string }[];
 	returned: number;
 }
 

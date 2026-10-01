@@ -77,20 +77,27 @@ function useDocumentWrite(
 	owner: readonly unknown[],
 	what: string,
 	send: (id: string, write: V1Write) => Promise<V1Written>,
+	alsoChanges: readonly (readonly unknown[])[] = [],
 ) {
 	const qc = useQueryClient();
 	const { toast } = useToast();
 	return useMutation({
 		mutationFn: (write: V1Write) => send(id as string, write),
 		onSuccess: (saved) => {
-			for (const key of documentWrittenKeys(id, owner)) qc.invalidateQueries({ queryKey: key });
+			for (const key of [...documentWrittenKeys(id, owner), ...alsoChanges])
+				qc.invalidateQueries({ queryKey: key });
 			toast({ title: `${what} saved at revision ${saved.revision}`, tone: "success" });
 		},
 	});
 }
 
+/** The project's slug and name are projected from this document, so every read of the project
+ *  row — its detail and the console list — changes with it. */
 export const useWriteProjectDocument = (id: string | undefined) =>
-	useDocumentWrite(id, keys.project(id), "Project document", configApi.putProjectDocument);
+	useDocumentWrite(id, keys.project(id), "Project document", configApi.putProjectDocument, [
+		["project", id],
+		["projects"],
+	]);
 
 export const useWritePolicy = (id: string | undefined) =>
 	useDocumentWrite(id, keys.policy(id), "Policy", configApi.putPolicy);

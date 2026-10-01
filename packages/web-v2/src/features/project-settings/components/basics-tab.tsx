@@ -1,9 +1,10 @@
 "use client";
 
-// Project settings → Basics. The name, persisted via PATCH
-// /api/projects/:id. Mirrors the account-tab dirty/save pattern.
+// Project settings → Basics. The name is the project document's `project.name`, so a rename is a
+// project document write at the revision read here; PATCH /api/projects/:id refuses `name`.
 import { useEffect, useState } from "react";
 import {
+  Banner,
   Button,
   Card,
   CardContent,
@@ -13,10 +14,19 @@ import {
   SectionTitle,
 } from "@/design";
 import type { ProjectDetail } from "@/features/projects/types";
-import { useUpdateProject } from "../hooks";
+import { formatApiError } from "@/lib/api/error";
+import { useProjectDocument, useWriteProjectDocument } from "../config-hooks";
+
+/** The document a rename writes: the one read, with only `project.name` changed. */
+export function renamedDocument(document: Record<string, unknown>, name: string) {
+  const project = (document.project ?? {}) as Record<string, unknown>;
+  return { ...document, project: { ...project, name } };
+}
 
 export function BasicsTab({ project, canEdit }: { project: ProjectDetail; canEdit: boolean }) {
-  const update = useUpdateProject(project.id);
+  const read = useProjectDocument(project.id);
+  const write = useWriteProjectDocument(project.id);
+  const held = read.data;
 
   const [name, setName] = useState(project.name);
 
@@ -26,9 +36,14 @@ export function BasicsTab({ project, canEdit }: { project: ProjectDetail; canEdi
   }, [project.name]);
 
   const dirty = name.trim() !== project.name;
+  const undeclared = held?.declared === false;
 
   function save() {
-    if (dirty) update.mutate({ name: name.trim() });
+    if (!dirty || !held?.declared) return;
+    write.mutate({
+      baseRevision: held.revision,
+      document: renamedDocument(held.document, name.trim()),
+    });
   }
 
   return (
@@ -39,20 +54,27 @@ export function BasicsTab({ project, canEdit }: { project: ProjectDetail; canEdi
           <Field label="Slug" hint="The project's URL identifier (read-only).">
             <MonoTag>{project.slug}</MonoTag>
           </Field>
-          <Field label="Name">
+          <Field label="Name" hint="The project document's project.name.">
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              disabled={!canEdit}
-              maxLength={200}
+              disabled={!canEdit || undeclared}
+              maxLength={120}
             />
           </Field>
+          {undeclared && (
+            <Banner tone="attention">
+              This project has no project document yet, and its name is that document&apos;s
+              project.name. Declare the document on the Configuration tab to rename it.
+            </Banner>
+          )}
+          {write.error && <Banner tone="danger">{formatApiError(write.error)}</Banner>}
           {canEdit && (
             <div>
               <Button
                 variant="primary"
-                loading={update.isPending}
-                disabled={!dirty || name.trim() === ""}
+                loading={write.isPending}
+                disabled={!dirty || name.trim() === "" || !held?.declared}
                 onClick={save}
                 className="min-h-11"
               >
