@@ -439,15 +439,37 @@ the caller's shell cannot mount a different route set.
 **What the contract does not say, it says it does not say.** No route declares a response schema,
 so every operation carries one `default` response whose description reads *Undeclared* — the same
 text everywhere, so a differ sees a response being declared as the change it is. `x-forge-validated`
-on each operation lists the request parts (`json`, `param`, `query`) a validator holds; a part not
-listed is undescribed, which is not the same as absent — a handler reading `c.req.json()` itself is
-invisible here. Zod refinements are not JSON Schema and do not appear. A coerced date is described
-as a `date-time` string, the convention zod uses for every coerced input.
+on each operation lists the request parts (`json`, `param`, `query`) a validator holds. A body no
+zod schema can hold — multipart, raw bytes, a payload kept raw for its signature, the MCP transport's
+JSON-RPC — is declared with `rawBody(contentType, description)` from the same module, and the
+contract carries its media type and description and nothing else. A path parameter with no
+validator is described as any string, which is what its handler accepts. `x-forge-input: none`
+marks an operation that reads no input. A zod refinement is not JSON Schema: each `refine()` is
+named under `x-forge-refinements` by the message it refuses with, and its predicate is not
+described. `x-forge-auth` lists the gate middlewares the route runs before it answers, in order,
+each defined under the document's `x-forge-auth-gates`; they are read off the gate itself
+(`packages/core/src/middleware/declared-gate.ts`), so an empty list means no gate middleware, not
+that no handler checks a credential of its own. A coerced date is described as a `date-time`
+string, the convention zod uses for every coerced input.
+
+**A read no validator declares is refused, so the gap cannot regrow.** The generator reads each
+handler's own source and refuses `METHOD /path` when it reads a body (`c.req.json()`,
+`parseBody()`, `arrayBuffer()`, `c.req.raw`, …) with no json validator and no `rawBody()`, a query
+(`c.req.query()`, `new URL(c.req.url).searchParams`) with no query validator, or `c.req.valid(part)`
+for a part nothing validates. A read inside a helper is not in the handler's text, so it also
+refuses, by file and line, any `c.req.json()` or `c.req.query()` anywhere under
+`packages/core/src` outside a test.
 
 **A route the generator cannot describe is refused by name**: a wildcard or optional path segment,
 two routes reaching one OpenAPI path, a `use()`/`all()` entry covering no route, a query validator
 that is not an object, a param validator naming a param the path lacks, and any schema holding a
 type JSON Schema cannot represent. Each is red here, naming `METHOD /path` and the reason.
+
+**One generation per tree in CI.** Generating imports the whole app, about 14 s. With
+`FORGE_API_CONTRACTS_DIR` set, this checker keeps the generator's result there stamped with a hash
+of `HEAD`, the working-tree diff and the untracked files, and a later run whose tree hashes the same
+reads it instead of generating; any other stamp is regenerated over. The conformance job sets it on
+this step and on `conformance-status`, whose probe runs this checker again.
 
 Canonical form: keys sorted recursively, arrays kept in order, two-space JSON with a trailing
 newline, paths sorted by code unit and methods in OpenAPI's order. `info.version` is `unversioned`

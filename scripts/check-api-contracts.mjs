@@ -14,7 +14,16 @@
 // Exit codes: 0 committed = generated, 1 drift or a refusal, 2 could not run.
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { API, artifactDrift, MCP, memberCount } from './lib/api-contracts.mjs';
@@ -41,24 +50,82 @@ const missing = absentPrerequisites(ROOT, ['deps', 'observability-build', 'contr
 if (missing.length > 0) die(`could not run — ${remedyLines(missing)[0]}`);
 if (!existsSync(GENERATOR)) die('packages/core/src/api-contract/generate.ts not found');
 
-// cm:why under node_modules because verify runs checks concurrently, and it is the one place in
-// the package every other checker's tree walk skips.
-const out = mkdtempSync(join(CORE, 'node_modules', '.forge-api-contracts-'));
-let result;
-const generated = {};
-try {
-  result = spawnSync(TSX, [GENERATOR, '--out', out], {
-    cwd: CORE,
-    encoding: 'utf8',
-    maxBuffer: 64 * 1024 * 1024,
-  });
-  for (const { file } of ARTIFACTS) {
-    const path = join(out, file);
-    generated[file] = existsSync(path) ? readFileSync(path, 'utf8') : null;
-  }
-} finally {
-  rmSync(out, { recursive: true, force: true });
+function git(args) {
+  const r = spawnSync('git', args, { cwd: ROOT, maxBuffer: 256 * 1024 * 1024 });
+  return r.status === 0 ? r.stdout : null;
 }
+
+function treeStamp() {
+  const head = git(['rev-parse', 'HEAD']);
+  const diff = git(['diff', 'HEAD', '--binary']);
+  const untracked = git(['ls-files', '--others', '--exclude-standard', '-z']);
+  if (head === null || diff === null || untracked === null) return null;
+  const hash = createHash('sha256').update(head).update(diff);
+  for (const file of untracked.toString('utf8').split('\0').filter(Boolean).sort()) {
+    hash.update(file).update(existsSync(join(ROOT, file)) ? readFileSync(join(ROOT, file)) : '');
+  }
+  return hash.digest('hex');
+}
+
+// cm:why generating imports the whole app (~14 s) and CI's conformance job asks twice, this step
+// then conformance-status probing it; a kept run is read only by a run on the tree it was made from
+function keptDir(env = process.env) {
+  const dir = env.FORGE_API_CONTRACTS_DIR;
+  return dir ? resolve(dir) : null;
+}
+
+const KEPT = keptDir();
+const STAMP = KEPT === null ? null : treeStamp();
+
+function keptRun() {
+  if (KEPT === null || STAMP === null || !existsSync(join(KEPT, 'run.json'))) return null;
+  const run = JSON.parse(readFileSync(join(KEPT, 'run.json'), 'utf8'));
+  if (run.tree !== STAMP) return null;
+  return run;
+}
+
+function keep(run) {
+  if (KEPT === null || STAMP === null) return;
+  const staging = `${KEPT}.${process.pid}`;
+  mkdirSync(staging, { recursive: true });
+  writeFileSync(join(staging, 'run.json'), JSON.stringify({ ...run, tree: STAMP }));
+  rmSync(KEPT, { recursive: true, force: true });
+  renameSync(staging, KEPT);
+}
+
+function generate() {
+  // cm:why under node_modules because verify runs checks concurrently, and it is the one place in
+  // the package every other checker's tree walk skips.
+  const out = mkdtempSync(join(CORE, 'node_modules', '.forge-api-contracts-'));
+  try {
+    const r = spawnSync(TSX, [GENERATOR, '--out', out], {
+      cwd: CORE,
+      encoding: 'utf8',
+      maxBuffer: 64 * 1024 * 1024,
+    });
+    const generated = {};
+    for (const { file } of ARTIFACTS) {
+      const path = join(out, file);
+      generated[file] = existsSync(path) ? readFileSync(path, 'utf8') : null;
+    }
+    return { result: r, generated };
+  } finally {
+    rmSync(out, { recursive: true, force: true });
+  }
+}
+
+function freshRun() {
+  const fresh = generate();
+  if (!fresh.result.error && fresh.result.status !== null) {
+    const { status, stdout, stderr } = fresh.result;
+    keep({ result: { status, stdout, stderr }, generated: fresh.generated });
+  }
+  return fresh;
+}
+
+const reused = keptRun();
+const { result, generated } = reused ?? freshRun();
+if (reused) console.log(`api-contracts: read the generator's output for this tree from ${KEPT}`);
 
 if (couldNotStart(result))
   die(`${TSX} is not executable here — run: pnpm install --frozen-lockfile`);
