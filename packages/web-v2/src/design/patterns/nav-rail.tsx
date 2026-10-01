@@ -196,6 +196,81 @@ function Cluster({
   );
 }
 
+function NavGroup({
+  cluster,
+  activeKey,
+  collapsed,
+  open,
+  onToggle,
+  onNavigate,
+}: {
+  cluster: NavCluster & { icon?: NavItem["icon"] };
+  activeKey: string;
+  collapsed?: boolean;
+  open: boolean;
+  onToggle?: () => void;
+  onNavigate?: (key: string) => void;
+}) {
+  const within = cluster.items.some((it) => it.key === activeKey);
+  if (collapsed) {
+    return (
+      <>
+        {cluster.items.map((it) => (
+          <NavRow key={it.key} item={it} active={it.key === activeKey} collapsed onClick={() => onNavigate?.(it.key)} />
+        ))}
+      </>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-0.5">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className={cn(
+          "flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-13-5 font-semibold transition-colors duration-[120ms] focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] max-md:min-h-[44px]",
+          within ? "text-fg" : "text-muted hover:bg-hover hover:text-fg",
+        )}
+      >
+        <Icon name={cluster.icon ?? "ecosystem"} size={17} style={within ? { color: "var(--accent)" } : undefined} />
+        <span className="flex-1 text-left">{cluster.kicker}</span>
+        <Icon name={open ? "chevronDown" : "chevronRight"} size={14} className="text-subtle" />
+      </button>
+      {open && (
+        <div className="ml-[19px] flex flex-col gap-0.5 border-l border-line-subtle pl-2">
+          {cluster.items.map((it) => {
+            const active = it.key === activeKey;
+            const count = it.badge && it.badge > 0 ? it.badge : 0;
+            return (
+              <button
+                key={it.key}
+                type="button"
+                onClick={() => onNavigate?.(it.key)}
+                aria-current={active ? "page" : undefined}
+                className={cn(
+                  "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-13 font-medium transition-colors duration-[120ms] focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] max-md:min-h-[44px]",
+                  active ? "bg-accent-tint text-accent-text" : "text-muted hover:bg-hover hover:text-fg",
+                )}
+              >
+                <Icon name={it.icon} size={15} style={active ? { color: "var(--accent)" } : undefined} />
+                <span className="flex-1 text-left">{it.label}</span>
+                {count > 0 && (
+                  <span
+                    className="inline-flex min-w-[18px] items-center justify-center rounded-pill px-1.5 font-semibold"
+                    style={{ fontSize: "var(--text-11)", lineHeight: "16px", color: "var(--flame-700)", background: "var(--flame-50)" }}
+                  >
+                    {count > 99 ? "99+" : count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Two-tier left nav: Workspace links + a project switcher + clustered project
  *  sub-nav. Presentational — collapse / cluster state is owned by the caller. */
 export function NavRail({
@@ -391,16 +466,15 @@ export function NavRail({
             <NavRow key={it.key} item={it} active={it.key === activeKey} collapsed={collapsed} onClick={() => onNavigate?.(it.key)} />
           ))}
           {workspaceClusters?.map((c) => (
-            <div key={c.key} className={collapsed ? "" : "pt-2"}>
-              <Cluster
-                cluster={c}
-                activeKey={activeKey}
-                collapsed={collapsed}
-                open={groupOpen?.[c.key] !== false}
-                onToggle={() => onToggleGroup?.(c.key)}
-                onNavigate={onNavigate}
-              />
-            </div>
+            <NavGroup
+              key={c.key}
+              cluster={c}
+              activeKey={activeKey}
+              collapsed={collapsed}
+              open={groupOpen?.[c.key] !== false || c.items.some((it) => it.key === activeKey)}
+              onToggle={() => onToggleGroup?.(c.key)}
+              onNavigate={onNavigate}
+            />
           ))}
         </div>
       </div>

@@ -3,7 +3,7 @@ import {
   ChevronLeft, ChevronRight, ChevronsUpDown, Circle, CircleHelp, Clock, Command,
   Cpu, DollarSign, Filter, Folder, GitBranch, GitFork, Inbox, Keyboard,
   LayoutGrid, Link as LinkIcon, List, Lock, LogOut, type LucideIcon, Mail,
-  Menu as MenuIcon, MessageSquare, Monitor, MoreHorizontal, PanelLeftClose, Pause, Pin, Play,
+  Menu as MenuIcon, MessageSquare, Network, Monitor, MoreHorizontal, PanelLeftClose, Pause, Pin, Play,
   Pencil, Plus, RotateCw, Rows3, Search, Server, Settings, Shield, Sparkles, Square,
   Star, Trash2, TriangleAlert, Users, Workflow, X,
   Bold, Code, Heading, Italic, ListOrdered, Quote, SquareCode,
@@ -13,6 +13,7 @@ import {
    the production Lucide set. Screens stay readable — `<Icon name="pipeline" />`
    — and the icon set is swappable in one place. */
 const ICONS = {
+  ecosystem: Network,
   board: LayoutGrid,
   grid: LayoutGrid,
   list: List,
