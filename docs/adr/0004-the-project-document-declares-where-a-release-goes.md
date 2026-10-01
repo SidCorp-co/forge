@@ -37,10 +37,12 @@ The release path is read from the project document and nowhere else
 
 `release_chain`, `live_branch`, `release_model`, `release_strategy`, `autoProdDeploy`,
 `projects.environments` and a binding's `stages` have no reader and no writer. Every door that
-used to take one refuses it by name and points at `PUT /api/projects/:id/config`. The `projects`
-columns stay in the schema, unread, until ISS-16 drops them.
+used to take one refuses it by name and points at `PUT /api/projects/:id/config`. ISS-16 dropped
+the `projects` columns, and `scripts/check-retired-model.mjs` (rules `release-path-keys` and
+`legacy-project-columns`) names any of them that reappears in source.
 
-There is no data migration (design D8). An operator re-enters by hand what the old columns held.
+There is no data migration (design D8). An operator re-enters by hand what the old columns held,
+read from `scripts/export-legacy-project-config.mjs` run against the database before the release.
 
 ## Consequences
 

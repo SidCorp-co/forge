@@ -2534,6 +2534,11 @@
   (ISS-1313)
 
 ### Removed
+- **A project's repository and setup steps live only in its configuration.** Settings and
+  `forge_projects` refuse a repo URL or workspace setup by name; set `source.git.repository` and
+  `workspace.setup` in the project configuration. A box clones over SSH with a deploy key, else
+  HTTPS. The old project columns are dropped; `scripts/export-legacy-project-config.mjs` prints
+  them, read-only, from a database that still has them.
 - **A checkout is the device binding's alone.** Projects have no repo path or default device,
   and settings refuse both by name. Jobs and chat turns run in the box's bound folder; a binding
   naming none is refused.
