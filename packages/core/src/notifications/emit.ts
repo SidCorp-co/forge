@@ -13,6 +13,9 @@ const DEFAULT_SEVERITY_BY_TYPE: Record<NotificationType, string> = {
   issue_stranded: 'warning',
   retry_rescue_threshold: 'warning',
   ops_alert: 'warning',
+  channel_document_published: 'info',
+  channel_thread_held: 'warning',
+  channel_gate_pending: 'warning',
 };
 
 function defaultSeverityForType(type: NotificationType): string {

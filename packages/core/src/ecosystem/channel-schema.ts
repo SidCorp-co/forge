@@ -306,7 +306,7 @@ export const holdSchema = z
     by: authorSchema,
     side: uuid(),
     at: timestamp(),
-    reason: z.string().min(1).max(1000).optional(),
+    reason: z.string().max(1000).regex(/\S/).optional(),
   })
   .refine((h) => h.action !== 'hold' || h.reason !== undefined, {
     path: ['reason'],

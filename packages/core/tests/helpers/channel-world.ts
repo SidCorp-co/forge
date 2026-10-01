@@ -17,11 +17,13 @@ export type Speaker =
   | 'masterForge'
   | 'masterPlugin'
   | 'platformCli'
-  | 'platformTurn';
+  | 'platformTurn'
+  | 'forgeMember';
 
 export interface ChannelWorld extends EcosystemWorld {
   tokens: Record<Speaker, string>;
   agent: { forge: string; plugin: string };
+  forgeMember: string;
 }
 
 export type Reply = { status: number; json: Doc };
@@ -48,6 +50,13 @@ export async function openChannelWorld(): Promise<ChannelWorld> {
   const forge = await agentOn(w.project.forge);
   const plugin = await agentOn(w.project.plugin);
   const cli = await mintPat({ userId: w.user.platform, name: 'laptop' });
+  const { signUserToken } = await import('../../src/auth/jwt.js');
+  const forgeMember = (await createTestUser(w.harness.db, { emailVerifiedAt: new Date() })).id;
+  await createTestProjectMember(w.harness.db, {
+    userId: forgeMember,
+    projectId: w.project.forge,
+    role: 'member',
+  });
   const turn = await mintPat({
     userId: w.user.platform,
     name: 'turn:session-1',
@@ -57,12 +66,14 @@ export async function openChannelWorld(): Promise<ChannelWorld> {
   return {
     ...w,
     agent: { forge: forge.agent, plugin: plugin.agent },
+    forgeMember,
     tokens: {
       ...w.token,
       masterForge: forge.token,
       masterPlugin: plugin.token,
       platformCli: cli.plaintext,
       platformTurn: turn.plaintext,
+      forgeMember: await signUserToken(forgeMember),
     },
   };
 }

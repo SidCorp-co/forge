@@ -57,6 +57,9 @@ describe('a person holds a conversation, and no agent adds to it until it is rel
     expect(refusal(await hold('platform', forge(), { reason: '' }))).toEqual([
       'HOLD_WITHOUT_REASON /reason',
     ]);
+    expect(refusal(await hold('platform', forge(), { reason: '   ' }))).toEqual([
+      'HOLD_WITHOUT_REASON /reason',
+    ]);
   });
 
   it('refuses a hold on a reply or on a number nobody published', async () => {
@@ -129,7 +132,7 @@ describe('a person holds a conversation, and no agent adds to it until it is rel
   });
 });
 
-describe('a type the ecosystem gates with approve waits for a person on the sending side', () => {
+describe('a type the ecosystem gates with approve waits on a question to the sending side', () => {
   const setGate = async (mode: 'approve' | 'publish') => {
     const now = ok(await say('platform', 'GET', `/api/ecosystems/${w.eco}`));
     now.document.gate.rfi = mode;
@@ -140,11 +143,22 @@ describe('a type the ecosystem gates with approve waits for a person on the send
       }),
     );
   };
-  const gate = (who: Speaker, id: string, body: Doc) =>
-    say(who, 'POST', `${forge()}/documents/${id}/gate`, body);
+  const gateQuestion = async (documentId: string, status = 'open') => {
+    const page = ok(
+      await say(
+        'platform',
+        'GET',
+        `/api/questions?projectId=${w.project.forge}&issue=none&status=${status}`,
+      ),
+    );
+    return page.questions.filter((q: Doc) => q.origin?.documentId === documentId);
+  };
+  const answer = (who: Speaker, questionId: string, body: Doc) =>
+    say(who, 'POST', `/api/questions/${questionId}/answer`, { round: 1, ...body });
   let id = '';
+  let question = '';
 
-  it('stops a submitted RFI at the gate, numbered, out of the inbox', async () => {
+  it('stops a submitted RFI at the gate, numbered, out of the inbox, with one open question', async () => {
     await setGate('approve');
     id = await draft('masterForge', forge(), rfi(w));
     const res = ok(await submit('masterForge', forge(), id));
@@ -156,20 +170,52 @@ describe('a type the ecosystem gates with approve waits for a person on the send
     const inbox = ok(await say('masterPlugin', 'GET', `${plugin()}/inbox`));
     expect(inbox.documents.some((d: Doc) => d.document.number === 'FP-RFI-1')).toBe(false);
     expect((await say('plugin', 'GET', `${plugin()}/documents/FP-RFI-1`)).status).toBe(404);
+    const open = await gateQuestion(id);
+    expect(open).toHaveLength(1);
+    expect(open[0]).toMatchObject({
+      issueId: null,
+      agentSessionId: null,
+      blockerKind: 'human',
+      origin: { kind: 'channel_gate', documentId: id, number: 'FP-RFI-1' },
+    });
+    question = open[0].id;
   });
 
-  it('refuses an agent at the gate, and a return without a note', async () => {
-    expect(refusal(await gate('masterForge', id, { decision: 'approved' }))).toEqual([
-      'GATE_NOT_AUTHORISED /gate/decidedBy',
-    ]);
-    expect(refusal(await gate('platform', id, { decision: 'returned' }))).toEqual([
+  it('refuses the master, a member who is not an admin, and a return without a note', async () => {
+    const master = await answer('masterForge', question, { optionId: 'approve' });
+    expect([master.status, master.json.code]).toEqual([403, 'QUESTION_NEEDS_SESSION']);
+    const member = await answer('forgeMember', question, { optionId: 'approve' });
+    expect([member.status, member.json.code]).toEqual([403, 'QUESTION_AUTHORITY_REQUIRED']);
+    expect(refusal(await answer('platform', question, { optionId: 'return' }))).toEqual([
       'GATE_RETURN_WITHOUT_NOTE /gate/note',
     ]);
+    expect(await gateQuestion(id)).toHaveLength(1);
   });
 
-  it('returns it with a note, keeps the number through the edit, and resubmits', async () => {
-    const back = ok(await gate('platform', id, { decision: 'returned', note: 'name the version' }));
-    expect(back.document).toMatchObject({ state: 'returned', gate: { decision: 'returned' } });
+  it('holds one open gate question per document in the database', async () => {
+    await refusedByDb(
+      w.harness.db.execute(sql`
+        INSERT INTO agent_questions (id, project_id, blocker_kind, steps, origin)
+        SELECT gen_random_uuid(), project_id, blocker_kind, steps, origin FROM agent_questions WHERE id = ${question}`),
+      /agent_questions_channel_gate_open_uq/,
+    );
+    await refusedByDb(
+      w.harness.db.execute(sql`
+        UPDATE agent_questions SET agent_session_id = gen_random_uuid() WHERE id = ${question}`),
+      /agent_questions_origin_shape_chk|agent_questions_agent_session_id/,
+    );
+  });
+
+  it('returns it with a note, keeps the number through the edit, and asks again on resubmit', async () => {
+    const back = ok(
+      await answer('platform', question, { optionId: 'return', note: 'name the version' }),
+    );
+    expect(back.status).toBe('answered');
+    const doc = ok(await say('masterForge', 'GET', `${forge()}/documents/${id}`));
+    expect(doc.document).toMatchObject({
+      state: 'returned',
+      gate: { decision: 'returned', note: 'name the version', decidedBy: w.user.platform },
+    });
     const { ecosystem: _e, ...input } = rfi(w);
     input.body.references[0].contractVersion = '2026-09-28';
     const edited = ok(await say('masterForge', 'PUT', `${forge()}/documents/${id}`, input));
@@ -178,24 +224,39 @@ describe('a type the ecosystem gates with approve waits for a person on the send
       state: 'submitted',
       number: 'FP-RFI-1',
     });
+    const again = await gateQuestion(id);
+    expect(again).toHaveLength(1);
+    expect(again[0].id).not.toBe(question);
+    question = again[0].id;
   });
 
-  it('refuses approval once the ecosystem gates the type with publish', async () => {
+  it('refuses approval once the ecosystem gates the type with publish, and leaves the question open', async () => {
     await setGate('publish');
-    expect(refusal(await gate('platform', id, { decision: 'approved' }))).toEqual([
+    expect(refusal(await answer('platform', question, { optionId: 'approve' }))).toEqual([
       'GATE_MODE_MISMATCH /gate/mode',
     ]);
+    expect(await gateQuestion(id)).toHaveLength(1);
     await setGate('approve');
   });
 
   it('publishes on approval, and the recipient sees it', async () => {
-    const res = ok(await gate('platform', id, { decision: 'approved' }));
+    ok(await answer('platform', question, { optionId: 'approve' }));
+    const res = ok(await say('masterForge', 'GET', `${forge()}/documents/${id}`));
     expect(res.document).toMatchObject({
       state: 'published',
       gate: { mode: 'approve', decision: 'approved', decidedBy: w.user.platform },
     });
     const inbox = ok(await say('masterPlugin', 'GET', `${plugin()}/inbox`));
     expect(inbox.documents.some((d: Doc) => d.document.number === 'FP-RFI-1')).toBe(true);
+    const twice = await answer('platform', question, { optionId: 'approve' });
+    expect([twice.status, twice.json.code]).toEqual([409, 'QUESTION_NOT_OPEN']);
+  });
+
+  it('keeps the minimal gate route gone: the question is the only door', async () => {
+    const res = await say('platform', 'POST', `${forge()}/documents/${id}/gate`, {
+      decision: 'approved',
+    });
+    expect(res.status).toBe(404);
   });
 });
 

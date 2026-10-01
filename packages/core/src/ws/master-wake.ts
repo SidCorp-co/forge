@@ -62,6 +62,12 @@ export async function wakeMastersForAnswer(args: {
   });
 }
 
+export async function wakeMastersForChannel(
+  projectId: string,
+): Promise<{ boxes: number; delivered: number }> {
+  return publishWake(projectId, { projectId, source: 'channel' });
+}
+
 async function publishWake(
   projectId: string,
   data: Record<string, unknown>,

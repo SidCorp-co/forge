@@ -688,9 +688,10 @@ mod tests {
         };
         let p = provision(None);
         let chosen = resolve_path(&cfg, &p).unwrap();
+        let expected = Path::new("/srv/projects").join("butlocs");
         assert_eq!(
             binding_to_report(&p, &chosen).as_deref(),
-            Some("/srv/projects/butlocs")
+            Some(expected.to_string_lossy().as_ref())
         );
         assert_eq!(
             binding_to_report(&provision(Some("  ")), &chosen).as_deref(),
