@@ -2,7 +2,7 @@
 
 // Project-centric Runners screen. Rendered as the Project Settings → Runners
 // tab (`/projects/[slug]/settings?tab=runners`, `embedded`). The project is the
-// primary control surface: configure the repo URL + deploy key, assign devices,
+// primary control surface: attach a deploy key, assign devices,
 // and watch each device's workspace provision (clone → skills → mcp) as a live
 // stepper. Workspace-level `/runners` is the device-global roll-up (pair /
 // rename / revoke); project membership (admin) gates the writes here.
@@ -28,10 +28,9 @@ import {
   PageTitle,
   Select,
   Skeleton,
-  Textarea,
   useNow,
 } from "@/design";
-import { useUpdateProject } from "@/features/project-settings/hooks";
+import { useProjectDocument } from "@/features/project-settings/config-hooks";
 import { useProject } from "@/features/projects/hooks";
 import { PrivateKeyCreateSlideOver } from "@/features/resources/components/private-key-create-slideover";
 import { useOrgSshKeys } from "@/features/resources/hooks";
@@ -39,6 +38,7 @@ import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { PoolAdmission } from "./pool-admission";
 import { PoolReadBanner } from "./pool-read";
@@ -93,38 +93,39 @@ function CopyButton({
 	);
 }
 
+function repositoryOf(document: Record<string, unknown> | null | undefined): string | null {
+	const source = document?.source as { type?: unknown; git?: { repository?: unknown } } | undefined;
+	return source?.type === "git" && typeof source.git?.repository === "string"
+		? source.git.repository
+		: null;
+}
+
 /**
- * Repo URL + Git-access card (ISS-628). The deploy key is picked from the
- * project's org-scoped Private Keys pool (Resources → Private Keys) rather
- * than generated/pasted inline — a key created here or there is the same
- * pool entry, reusable across every project in the org.
+ * Git-access card (ISS-628). The repository is the project document's
+ * `source.git.repository`, edited on the Configuration tab; the deploy key is
+ * picked from the project's org-scoped Private Keys pool.
  */
 function GitConfigCard({
 	projectId,
 	orgId,
-	repoUrl,
-	workspaceSetup,
+	repository,
+	configHref,
 	canEdit,
 }: {
 	projectId: string;
 	orgId: string | null;
-	repoUrl: string | null;
-	workspaceSetup: string | null;
+	repository: string | null;
+	configHref: string | null;
 	canEdit: boolean;
 }) {
-	const update = useUpdateProject(projectId);
 	const cred = useGitCredential(projectId);
 	const setCred = useSetGitCredential(projectId);
 	const delCred = useDeleteGitCredential(projectId);
 	const testCred = useTestGitCredential(projectId);
 	const pool = useOrgSshKeys(orgId);
-	const [url, setUrl] = useState(repoUrl ?? "");
-	const [setup, setSetup] = useState(workspaceSetup ?? "");
 	const [createOpen, setCreateOpen] = useState(false);
 	const [detachConfirmOpen, setDetachConfirmOpen] = useState(false);
 
-	const urlDirty = url.trim() !== (repoUrl ?? "");
-	const setupDirty = setup.trim() !== (workspaceSetup ?? "");
 	const credData = cred.data;
 	const poolKeys = pool.data ?? [];
 
@@ -138,71 +139,38 @@ function GitConfigCard({
 			<CardHeader>
 				<CardTitle>Git access</CardTitle>
 				<HelpButton
-					summary="Optional. Set the repo URL + pick a deploy key from this org's Private Keys pool so any device assigned to this project auto-clones and pushes — one key, reusable across every project. Leave blank to set folders up by hand."
+					summary="Optional. Pick a deploy key from this org's Private Keys pool so any device assigned to this project clones the repository its configuration declares over SSH and pushes — one key, reusable across every project. Without a key, devices clone over HTTPS with whatever git auth they already have."
 					actions={[
-						"Set the SSH clone URL (git@host:org/repo.git)",
+						"Declare the repository and the workspace setup on the Configuration tab",
 						"Pick a key from the org pool, or create a new one",
 						"Manage the pool from Resources → Private Keys",
-						"Write the workspace setup steps so agents do not have to guess them",
 					]}
 				/>
 			</CardHeader>
 			<CardContent>
 				<div className="flex flex-col gap-5">
-					<div className="flex items-end gap-2">
-						<div className="flex-1">
-							<Field
-								label="Repo URL"
-								hint="SSH clone URL. A newly-assigned device clones from here when its folder is missing."
-							>
-								<Input
-									value={url}
-									onChange={(e) => setUrl(e.target.value)}
-									placeholder="git@github.com:org/repo.git"
-									disabled={!canEdit}
-									spellCheck={false}
-									maxLength={500}
-								/>
-							</Field>
+					<Field
+						label="Repository"
+						hint="The project configuration's source.git.repository. A newly-assigned device clones it when its folder is missing."
+					>
+						<div className="flex items-center justify-between gap-2">
+							{repository ? (
+								<MonoTag>{repository}</MonoTag>
+							) : (
+								<span className="fg-body-sm text-subtle">
+									This project&apos;s configuration declares no repository.
+								</span>
+							)}
+							{configHref && (
+								<Link
+									href={configHref}
+									className="text-13 font-semibold text-accent hover:underline"
+								>
+									Edit in Configuration
+								</Link>
+							)}
 						</div>
-						<Button
-							variant="secondary"
-							icon="check"
-							loading={update.isPending}
-							disabled={!canEdit || !urlDirty}
-							onClick={() => update.mutate({ repoUrl: url.trim() || null })}
-						>
-							Save
-						</Button>
-					</div>
-
-					<div className="border-t border-line-subtle pt-4">
-						<Field
-							label="Workspace setup"
-							hint="How to bring a fresh or broken checkout of this repo to a state that can build, test and commit — install commands, hook setup, toolchain quirks. Leave blank and an agent works it out each time, then records what it found here."
-						>
-							<Textarea
-								value={setup}
-								onChange={(e) => setSetup(e.target.value)}
-								placeholder={"pnpm install --frozen-lockfile\npnpm prepare   # writes .husky, without it every commit refuses"}
-								disabled={!canEdit}
-								spellCheck={false}
-								maxLength={8000}
-								rows={5}
-							/>
-						</Field>
-						<div className="mt-2 flex justify-end">
-							<Button
-								variant="secondary"
-								icon="check"
-								loading={update.isPending}
-								disabled={!canEdit || !setupDirty}
-								onClick={() => update.mutate({ workspaceSetup: setup.trim() || null })}
-							>
-								Save
-							</Button>
-						</div>
-					</div>
+					</Field>
 
 					<div className="border-t border-line-subtle pt-4">
 						<span className="fg-label">Deploy key</span>
@@ -755,11 +723,11 @@ function RunnerRow({
 function AssignDevice({
 	projectId,
 	assignedDeviceIds,
-	hasRepoUrl,
+	hasRepository,
 }: {
 	projectId: string;
 	assignedDeviceIds: Set<string>;
-	hasRepoUrl: boolean;
+	hasRepository: boolean;
 }) {
 	const devices = useDevices();
 	const assign = useAssignDeviceToProject(projectId);
@@ -817,11 +785,12 @@ function AssignDevice({
 					{/* Both conditions are decided elsewhere (the card above, and
 					    the device itself), and both change what "Assign &
 					    provision" actually does. */}
-					{!hasRepoUrl && (
+					{!hasRepository && (
 						<Banner tone="info">
-							This project has no repo URL, so a device assigned now gets an empty
-							workspace instead of a checkout. Set Git access above first, or point
-							Repo path at a checkout that already exists on the device.
+							This project&apos;s configuration declares no repository, so a device
+							assigned now gets an empty workspace instead of a checkout. Declare it on
+							the Configuration tab first, or point Repo path at a checkout that
+							already exists on the device.
 						</Banner>
 					)}
 					{picked && picked.status !== "online" && (
@@ -905,6 +874,8 @@ export function ProjectRunnersScreen({
 }) {
 	useRoom(projectRoom(projectId));
 	const project = useProject(projectId);
+	const projectDocument = useProjectDocument(projectId);
+	const repository = repositoryOf(projectDocument.data?.document);
 	const runners = useProjectRunners(projectId);
 	const active = useActiveRunners(projectId);
 
@@ -934,9 +905,9 @@ export function ProjectRunnersScreen({
 						</p>
 					</div>
 					<HelpButton
-						summary="Assign paired devices to this project. Each gets its own checkout; with a repo URL + deploy key, a freshly-assigned device auto-clones, syncs skills, and writes its MCP config."
+						summary="Assign paired devices to this project. Each gets its own checkout; with a declared repository, a freshly-assigned device auto-clones, syncs skills, and writes its MCP config."
 						actions={[
-							"Set Git access (repo URL + deploy key) for hands-off provisioning",
+							"Declare the repository on the Configuration tab, and attach a deploy key for SSH",
 							"Assign a device — watch it clone → sync skills → ready",
 							"Manage devices account-wide on the Runners page",
 						]}
@@ -947,8 +918,8 @@ export function ProjectRunnersScreen({
 			<GitConfigCard
 				projectId={projectId}
 				orgId={project.data?.orgId ?? null}
-				repoUrl={project.data?.repoUrl ?? null}
-				workspaceSetup={project.data?.workspaceSetup ?? null}
+				repository={repository}
+				configHref={project.data?.slug ? `/projects/${project.data.slug}/settings?tab=config` : null}
 				canEdit={!!canEdit}
 			/>
 
@@ -956,7 +927,7 @@ export function ProjectRunnersScreen({
 				<AssignDevice
 					projectId={projectId}
 					assignedDeviceIds={assignedDeviceIds}
-					hasRepoUrl={!!project.data?.repoUrl}
+					hasRepository={repository !== null}
 				/>
 			)}
 

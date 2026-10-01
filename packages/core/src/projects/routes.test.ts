@@ -273,6 +273,25 @@ describe('POST /api/projects', () => {
     },
   );
 
+  it.each([
+    ['repoUrl', 'git@github.com:acme/app.git', '`source.git.repository`'],
+    ['workspaceSetup', 'pnpm install', '`workspace.setup`'],
+  ])(
+    '400 BAD_REQUEST naming the field %s the project document replaced, and creates nothing',
+    async (field, value, owner) => {
+      const token = await signUserToken('uuid-owner');
+      selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+
+      const res = await post({ slug: 'my-proj', name: 'My Project', [field]: value }, token);
+      expect(res.status).toBe(400);
+      const text = await res.text();
+      expect(text).toContain(`\`${field}\` is not a project field`);
+      expect(text).toContain(owner);
+      expect(text).toContain('PUT /api/projects/:id/config');
+      expect(transaction).not.toHaveBeenCalled();
+    },
+  );
+
   it('500 PERSONAL_ORG_MISSING when the user has no personal org', async () => {
     const token = await signUserToken('uuid-owner');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
@@ -601,6 +620,32 @@ describe('PATCH /api/projects/:id', () => {
       const text = await res.text();
       expect(text).toContain(`\`${field}\` is not a project field`);
       expect(text).toContain(owner);
+      expect(updateSet).not.toHaveBeenCalled();
+      expect(dbExecute).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ['repoUrl', 'git@github.com:acme/app.git', '`source.git.repository`'],
+    ['repoUrl', null, '`source.git.repository`'],
+    ['workspaceSetup', 'pnpm install', '`workspace.setup`'],
+    ['workspaceSetup', null, '`workspace.setup`'],
+  ])(
+    '400 BAD_REQUEST naming the field %s (%s) the project document replaced, and writes nothing',
+    async (field, value, owner) => {
+      const token = await signUserToken('uuid-owner');
+      selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+
+      const res = await req('/11111111-1111-4111-8111-111111111111', {
+        method: 'PATCH',
+        body: JSON.stringify({ name: 'kept', [field]: value }),
+        token,
+      });
+      expect(res.status).toBe(400);
+      const text = await res.text();
+      expect(text).toContain(`\`${field}\` is not a project field`);
+      expect(text).toContain(owner);
+      expect(text).toContain('PUT /api/projects/:id/config');
       expect(updateSet).not.toHaveBeenCalled();
       expect(dbExecute).not.toHaveBeenCalled();
     },

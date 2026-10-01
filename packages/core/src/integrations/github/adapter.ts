@@ -17,7 +17,7 @@ import {
   type OutboundDispatchResult,
 } from '../types.js';
 import { GitHubAuthError, installationToken } from './app-auth.js';
-import { githubInboundSecret, syncRepoUrlFromGitHubBinding } from './bind-effects.js';
+import { compareBoundRepository, githubInboundSecret } from './bind-effects.js';
 import { readAppHookConfig } from './hook-config.js';
 import { checkInstallationGrant } from './installation-permissions.js';
 import { MERGE_EVENT, MERGE_METHODS, type MergeMethod, mergeStoredPullRequest } from './merge.js';
@@ -130,7 +130,7 @@ async function observeInboundEndpoint(
 const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecrets> = {
   inboundSecret: (connection) => githubInboundSecret(connection as IntegrationConnectionRow),
   onBindingCreated: async ({ projectId, role, config }) => ({
-    repoUrl: await syncRepoUrlFromGitHubBinding({
+    repository: await compareBoundRepository({
       projectId,
       role: role as BindingRole,
       config: config as GitHubConfig,

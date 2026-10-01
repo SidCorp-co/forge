@@ -1,4 +1,5 @@
 import { db } from '../../db/client.js';
+import { observeLand } from '../../ecosystem/contract/land.js';
 import { recordIssueMerge } from '../../issues/merge-record.js';
 import { logger } from '../../logger.js';
 import { forgetLiveReading } from '../../projects/live-reading.js';
@@ -125,11 +126,12 @@ async function onPush(ctx: DeliveryContext, payload: PushPayload): Promise<numbe
   forgetLiveReading(ctx.projectId);
   const branch = branchOfPush(payload);
   if (!branch) return 0;
+  const lands = await observeLand({ ...ctx, branch, commit: payload.after });
   const rows = await openPullRequestsOnBase(ctx, branch);
-  if (rows.length === 0) return 0;
+  if (rows.length === 0) return lands;
   const got = clientFor(ctx);
-  if (!got.client) return storeRefreshRefusal(rows, got.reason);
-  let touched = 0;
+  if (!got.client) return lands + (await storeRefreshRefusal(rows, got.reason));
+  let touched = lands;
   for (const row of rows.slice(0, BASE_PUSH_REFRESH_CAP)) {
     if (await refreshStoredPullRequest(got.client, row.id)) touched += 1;
   }

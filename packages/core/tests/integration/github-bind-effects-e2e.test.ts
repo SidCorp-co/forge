@@ -1,7 +1,7 @@
 /**
  * What binding a GitHub repository settles for the project, against real
- * Postgres: the webhook secret the binding must carry, and the clone URL the
- * operator should not have to type twice.
+ * Postgres: the webhook secret the binding must carry, and the repository the
+ * project document declares, which the binding compares against and never writes.
  *
  * The secret assertion is a regression: the retired `POST /integration-
  * connections/:id/bindings` minted a `whsec_` of its own, which GitHub never
@@ -19,6 +19,7 @@ import {
   createTestProjectMember,
   createTestUser,
   registerIntegrationsForTest,
+  seedProjectDocument,
   setupTestDatabase,
   type TestDatabase,
   truncateAll,
@@ -30,9 +31,7 @@ type Mods = {
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
   githubInboundSecret: typeof import('../../src/integrations/github/bind-effects.js').githubInboundSecret;
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
-  syncRepoUrlFromGitHubBinding: typeof import('../../src/integrations/github/bind-effects.js').syncRepoUrlFromGitHubBinding;
-  // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
-  repoSlugFromGitUrl: typeof import('../../src/integrations/github/bind-effects.js').repoSlugFromGitUrl;
+  compareBoundRepository: typeof import('../../src/integrations/github/bind-effects.js').compareBoundRepository;
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
   createConnection: typeof import('../../src/integrations/store.js').createConnection;
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
@@ -43,7 +42,7 @@ type AppVars = { Variables: import('../../src/middleware/request-id.js').Request
 
 const OWNER = 'SidCorp-co';
 const REPO = 'epodsystem_cli';
-const HTTPS = `https://github.com/${OWNER}/${REPO}.git`;
+const BOUND = `github.com/${OWNER}/${REPO}`;
 
 let harness: TestDatabase;
 let mods: Mods;
@@ -70,8 +69,7 @@ beforeAll(async () => {
   const store = await import('../../src/integrations/store.js');
   mods = {
     githubInboundSecret: effects.githubInboundSecret,
-    syncRepoUrlFromGitHubBinding: effects.syncRepoUrlFromGitHubBinding,
-    repoSlugFromGitUrl: effects.repoSlugFromGitUrl,
+    compareBoundRepository: effects.compareBoundRepository,
     createConnection: store.createConnection,
     signUserToken: (await import('../../src/auth/jwt.js')).signUserToken,
   };
@@ -103,17 +101,15 @@ beforeEach(async () => {
   await createTestProjectMember(harness.db, { userId: ownerId, projectId, role: 'admin' });
 });
 
-async function storedRepoUrl(): Promise<string | null> {
-  const rows = (await harness.db.execute(sql`
-    SELECT repo_url FROM projects WHERE id = ${projectId}
-  `)) as unknown as Array<{ repo_url: string | null }>;
-  return rows[0]?.repo_url ?? null;
+async function declare(repository: string) {
+  await seedProjectDocument(harness.db, projectId, ownerId, { environments: {}, repository });
 }
 
-async function setRepoUrl(url: string) {
-  await harness.db.execute(sql`
-    UPDATE projects SET repo_url = ${url} WHERE id = ${projectId}
-  `);
+async function documentRevision(): Promise<number | null> {
+  const rows = (await harness.db.execute(sql`
+    SELECT revision FROM project_config_documents WHERE project_id = ${projectId}
+  `)) as unknown as Array<{ revision: number }>;
+  return rows[0]?.revision ?? null;
 }
 
 describe('githubInboundSecret', () => {
@@ -138,67 +134,72 @@ describe('githubInboundSecret', () => {
   });
 });
 
-describe('syncRepoUrlFromGitHubBinding', () => {
-  it('fills an empty repo URL from the repository just bound', async () => {
-    const out = await mods.syncRepoUrlFromGitHubBinding({
+describe('compareBoundRepository', () => {
+  it('confirms a binding that reaches the repository the document declares, in any case', async () => {
+    await declare(`github.com/${OWNER.toLowerCase()}/${REPO}`);
+    const out = await mods.compareBoundRepository({
       projectId,
       role: 'service',
       config: { owner: OWNER, repo: REPO },
     });
-    expect(out).toEqual({ kind: 'set', repoUrl: HTTPS });
-    expect(await storedRepoUrl()).toBe(HTTPS);
+    expect(out).toEqual({ kind: 'declared', repository: `github.com/sidcorp-co/${REPO}` });
+    expect(await documentRevision()).toBe(1);
   });
 
-  it('leaves an SSH remote for the same repository exactly as it was', async () => {
-    const ssh = `git@github.com:${OWNER}/${REPO}.git`;
-    await setRepoUrl(ssh);
-    const out = await mods.syncRepoUrlFromGitHubBinding({
+  it('names the key to set where the document declares no repository, and writes nothing', async () => {
+    const out = await mods.compareBoundRepository({
       projectId,
       role: 'service',
       config: { owner: OWNER, repo: REPO },
     });
-    expect(out).toEqual({ kind: 'unchanged' });
-    expect(await storedRepoUrl()).toBe(ssh);
+    expect(out).toMatchObject({ kind: 'undeclared', bound: BOUND });
+    expect(out.kind === 'undeclared' && out.detail).toMatch(/`source\.git\.repository`/);
+    expect(await documentRevision()).toBeNull();
   });
 
   it('reports a conflict rather than repointing a project at a different repository', async () => {
-    const other = 'git@gitlab.com:sidcorp-internal/webauto.git';
-    await setRepoUrl(other);
-    const out = await mods.syncRepoUrlFromGitHubBinding({
+    await declare('gitlab.com/sidcorp-internal/webauto');
+    const out = await mods.compareBoundRepository({
       projectId,
       role: 'service',
       config: { owner: OWNER, repo: REPO },
     });
-    expect(out).toEqual({ kind: 'conflict', existing: other, bound: HTTPS });
-    expect(await storedRepoUrl()).toBe(other);
+    expect(out).toMatchObject({
+      kind: 'conflict',
+      declared: 'gitlab.com/sidcorp-internal/webauto',
+      bound: BOUND,
+    });
+    expect(await documentRevision()).toBe(1);
   });
 
-  it('never lets a deploy binding drive the project-tier URL', async () => {
-    const out = await mods.syncRepoUrlFromGitHubBinding({
+  it('never reads a deploy binding as the project repository', async () => {
+    const out = await mods.compareBoundRepository({
       projectId,
       role: 'deploy',
       config: { owner: OWNER, repo: 'a-fork' },
     });
-    expect(out).toEqual({ kind: 'unchanged' });
-    expect(await storedRepoUrl()).toBeNull();
+    expect(out).toEqual({ kind: 'not-a-repository' });
   });
 
-  it('does nothing when the binding names no repository yet', async () => {
-    const out = await mods.syncRepoUrlFromGitHubBinding({
+  it('says nothing about a binding that names no repository yet', async () => {
+    const out = await mods.compareBoundRepository({
       projectId,
       role: 'service',
       config: { installationId: 1 },
     });
-    expect(out).toEqual({ kind: 'unchanged' });
-    expect(await storedRepoUrl()).toBeNull();
+    expect(out).toEqual({ kind: 'not-a-repository' });
   });
 });
 
-async function putBinding(bindingId: string, document: Record<string, unknown>) {
+async function putBinding(
+  bindingId: string,
+  document: Record<string, unknown>,
+  baseRevision: number | null = null,
+) {
   return app.request(`/api/projects/${projectId}/bindings/${bindingId}`, {
     method: 'PUT',
     body: JSON.stringify({
-      baseRevision: null,
+      baseRevision,
       document: {
         $schema: 'https://forge.sidcorp.co/schemas/binding-v1.json',
         version: 1,
@@ -220,68 +221,52 @@ async function storedSecrets(): Promise<string[]> {
   return rows.map((r) => r.integration_secret);
 }
 
-describe('PUT /projects/:projectId/bindings/:bindingId', () => {
-  it('carries the App webhook secret onto the binding and fills the repo URL', async () => {
-    const connection = await mods.createConnection({
-      ownerType: 'user',
-      ownerId,
-      provider: 'github',
-      secrets: { appId: '1', privateKey: 'pem', webhookSecret: 'whs-from-the-app' },
-    });
+async function appConnection() {
+  return mods.createConnection({
+    ownerType: 'user',
+    ownerId,
+    provider: 'github',
+    secrets: { appId: '1', privateKey: 'pem', webhookSecret: 'whs-from-the-app' },
+  });
+}
 
+describe('PUT /projects/:projectId/bindings/:bindingId', () => {
+  it('carries the App webhook secret onto the binding and says the document declares no repository', async () => {
+    const connection = await appConnection();
     const res = await putBinding('6f1d2c3b-4a5e-4f60-8a7b-9c0d1e2f3a4b', {
       role: 'service',
       connection: connection.id,
       target: { provider: 'github', installationId: 42, owner: OWNER, repo: REPO },
     });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { created?: boolean; effects?: { repoUrl?: unknown } };
+    const body = (await res.json()) as { created?: boolean; effects?: { repository?: unknown } };
     expect(body.created).toBe(true);
-    expect(body.effects?.repoUrl).toEqual({ kind: 'set', repoUrl: HTTPS });
+    expect(body.effects?.repository).toMatchObject({ kind: 'undeclared', bound: BOUND });
     expect(await storedSecrets()).toEqual(['whs-from-the-app']);
-    expect(await storedRepoUrl()).toBe(HTTPS);
+    expect(await documentRevision()).toBeNull();
   });
 
   it('mints no second secret and runs no second bind effect when the document is rewritten', async () => {
-    const connection = await mods.createConnection({
-      ownerType: 'user',
-      ownerId,
-      provider: 'github',
-      secrets: { appId: '1', privateKey: 'pem', webhookSecret: 'whs-from-the-app' },
-    });
+    const connection = await appConnection();
     const id = '7a2e3d4c-5b6f-4071-9b8c-0d1e2f3a4b5c';
-    const first = await putBinding(id, {
+    const document = {
       role: 'service',
       connection: connection.id,
       target: { provider: 'github', installationId: 42, owner: OWNER, repo: REPO },
-    });
+    };
+    const first = await putBinding(id, document);
     const { revision } = (await first.json()) as { revision: number };
-    await setRepoUrl('https://github.com/acme/elsewhere.git');
 
-    const res = await app.request(`/api/projects/${projectId}/bindings/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify({
-        baseRevision: revision,
-        document: {
-          $schema: 'https://forge.sidcorp.co/schemas/binding-v1.json',
-          version: 1,
-          id,
-          role: 'service',
-          connection: connection.id,
-          target: { provider: 'github', installationId: 42, owner: OWNER, repo: 'renamed' },
-        },
-      }),
-      headers: {
-        authorization: `Bearer ${await mods.signUserToken(ownerId)}`,
-        'content-type': 'application/json',
-      },
-    });
+    const res = await putBinding(
+      id,
+      { ...document, target: { ...document.target, repo: 'renamed' } },
+      revision,
+    );
     expect(res.status).toBe(200);
     const body = (await res.json()) as { created?: boolean; effects?: Record<string, unknown> };
     expect(body.created).toBe(false);
     expect(body.effects).toEqual({});
     expect(await storedSecrets()).toEqual(['whs-from-the-app']);
-    expect(await storedRepoUrl()).toBe('https://github.com/acme/elsewhere.git');
   });
 
   it('still mints a secret for a provider that signs with one of ours', async () => {
@@ -290,7 +275,7 @@ describe('PUT /projects/:projectId/bindings/:bindingId', () => {
       ownerId,
       provider: 'sentry',
       config: { orgSlug: 'acme' },
-      secrets: { authToken: 'tok' },
+      secrets: { authToken: 'tok-12345678' },
     });
     const res = await putBinding('8b3f4e5d-6c7a-4182-8c9d-1e2f3a4b5c6d', {
       role: 'service',
@@ -300,18 +285,12 @@ describe('PUT /projects/:projectId/bindings/:bindingId', () => {
     expect(res.status).toBe(200);
     const [secret] = await storedSecrets();
     expect(secret).toMatch(/^whsec_[0-9a-f]{48}$/);
-    expect(await storedRepoUrl()).toBeNull();
   });
 });
 
 describe('the retired binding door', () => {
   it('refuses by name and points at the binding document, writing no row', async () => {
-    const connection = await mods.createConnection({
-      ownerType: 'user',
-      ownerId,
-      provider: 'github',
-      secrets: { appId: '1', privateKey: 'pem', webhookSecret: 'whs-from-the-app' },
-    });
+    const connection = await appConnection();
     const res = await app.request(`/api/integration-connections/${connection.id}/bindings`, {
       method: 'POST',
       body: JSON.stringify({ projectId, role: 'service', config: { owner: OWNER, repo: REPO } }),
@@ -325,18 +304,5 @@ describe('the retired binding door', () => {
     expect(body.code).toBe('BINDING_WRITE_MOVED');
     expect(body.message).toContain('PUT /api/projects/:projectId/bindings/:bindingId');
     expect(await storedSecrets()).toEqual([]);
-  });
-});
-
-describe('repoSlugFromGitUrl', () => {
-  it('reads both transports and neither of the other hosts', () => {
-    expect(mods.repoSlugFromGitUrl(HTTPS)).toBe('sidcorp-co/epodsystem_cli');
-    expect(mods.repoSlugFromGitUrl(`git@github.com:${OWNER}/${REPO}`)).toBe(
-      'sidcorp-co/epodsystem_cli',
-    );
-    expect(mods.repoSlugFromGitUrl(`ssh://git@github.com/${OWNER}/${REPO}.git`)).toBe(
-      'sidcorp-co/epodsystem_cli',
-    );
-    expect(mods.repoSlugFromGitUrl('git@gitlab.com:sidcorp-internal/webauto.git')).toBeNull();
   });
 });

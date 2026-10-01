@@ -31,17 +31,15 @@ const ALLOW = [
   // This checker names what it hunts.
   /^scripts\/check-retired-model\.mjs$/,
   /^packages\/core\/tests\/integration\/release-chain-migration-ground\.ts$/,
-  // ISS-12 — the columns stand, unread, until ISS-16 drops them.
-  /^packages\/core\/src\/db\/schema\.ts$/,
-  /^packages\/core\/src\/db\/release-axes\.ts$/,
-  /^packages\/core\/tests\/integration\/environments-migration-e2e\.test\.ts$/,
   /^packages\/core\/tests\/integration\/landing-deploy-key-removed-e2e\.test\.ts$/,
+  // ISS-16 — the read-only export reads the dropped columns of a database that still has them.
+  /^scripts\/export-legacy-project-config\.mjs$/,
+  /^packages\/core\/tests\/integration\/legacy-config-export-e2e\.test\.ts$/,
   // ISS-12 — each spells a deleted key to prove the door refuses it by name.
   /^packages\/core\/src\/projects\/routes\.test\.ts$/,
   /^packages\/core\/src\/issues\/metadata-schema\.test\.ts$/,
   /^packages\/core\/src\/project-config\/(?:routes|schema|schema-plants)\.test\.ts$/,
   /^packages\/core\/tests\/integration\/release-chain-migration-e2e\.test\.ts$/,
-  /^packages\/core\/tests\/integration\/release-chain-constraints-e2e\.test\.ts$/,
   /^packages\/core\/src\/projects\/retired-project-keys\.ts$/,
   /^packages\/core\/src\/db\/schema\.test\.ts$/,
 ];
@@ -80,7 +78,7 @@ export const RULES = [
     id: 'release-path-keys',
     // ISS-12 / design D8 — the keys the project document replaced, read or written anywhere.
     re: /\b(?:releaseChain|release_chain|liveBranch|releaseModel|releaseStrategy|autoProdDeploy|testCredentials|chainLiveBranch|retiredReleaseAxes|DeployStage|deployStages)\b|\bprojects\.environments\b|\bbinding\.stages\b/g,
-    why: "ISS-12 deleted this key with every reader and writer: where a release goes, what an environment is and how it is tested are the project document (`PUT /api/projects/:id/config`, ADR 0004), and which environment a deploy binding serves is the document's `deployment.binding`. Read `project-config/release-path.ts`. The `projects` columns stand unread until ISS-16 drops them; that file is the one allowed to spell them.",
+    why: "ISS-12 deleted this key with every reader and writer, and ISS-16 dropped its columns: where a release goes, what an environment is and how it is tested are the project document (`PUT /api/projects/:id/config`, ADR 0004), and which environment a deploy binding serves is the document's `deployment.binding`. Read `project-config/release-path.ts`.",
   },
   {
     id: 'device-binding-keys',
@@ -93,9 +91,16 @@ export const RULES = [
   {
     id: 'binding-write-doors',
     // ISS-15 — the doors that wrote a binding beside the binding-v1 document, and their callers.
-    re: /\bcreateBinding\b|\bbindExisting\b|\bBindExistingConnection\w*|\bIntegrationBindingCreateInput\b|\.insert\(integrationBindings\)|\bINSERT INTO integration_bindings\b/g,
+    re: /\bcreateBinding\b|\bbindExisting\b|\bBindExistingConnection\w*|\bIntegrationBindingCreateInput\b/g,
+    why: 'ISS-15 deleted every binding write but one: a binding is a binding-v1 document, written by `PUT /api/projects/:projectId/bindings/:bindingId` through `project-config/bindings.ts:writeBinding`, whose `bind-effects.ts` mints the inbound secret, authorises `agentAccess` and runs `onBindingCreated`. A connection is created with `POST /api/integration-connections` and named in the document. A suite seeds a row with `tests/helpers/seed-binding.ts:seedBinding`.',
+    exts: ['.ts', '.tsx', '.mjs', '.js'],
+  },
+  {
+    id: 'binding-row-inserts',
+    // ISS-15 — a binding row is inserted by the document's store alone; a suite may seed one.
+    re: /\.insert\(integrationBindings\)|\bINSERT INTO integration_bindings\b/g,
     allow: [/^packages\/core\/src\/project-config\/binding-store\.ts$/, /^packages\/core\/tests\//],
-    why: 'ISS-15 deleted every binding write but one: a binding is a binding-v1 document, written by `PUT /api/projects/:projectId/bindings/:bindingId` through `project-config/bindings.ts:writeBinding`, whose `bind-effects.ts` mints the inbound secret, authorises `agentAccess` and runs `onBindingCreated`. A connection is created with `POST /api/integration-connections` and named in the document. Write the document; do not add a second door onto `integration_bindings`.',
+    why: 'ISS-15: a binding row is inserted only by `project-config/binding-store.ts:casBinding`, under the binding-v1 document that `PUT /api/projects/:projectId/bindings/:bindingId` writes. Write the document; do not add a second door onto `integration_bindings`.',
     exts: ['.ts', '.tsx', '.mjs', '.js'],
   },
   {
@@ -109,6 +114,13 @@ export const RULES = [
     ],
     why: "ISS-15: what a binding declares is changed only by a binding-v1 document (`project-config/binding-store.ts:casBinding`). `integrations/store.ts:updateBinding` keeps the binding's switch, instructions and inbound secret, and takes nothing else. Write the document instead of updating the row.",
     exts: ['.ts', '.tsx', '.mjs', '.js'],
+  },
+  {
+    id: 'legacy-project-columns',
+    // ISS-16 / design D8 — the `projects` columns the project document replaced, and the helpers
+    // that wrote or checked them.
+    re: /\bprojects\.(?:description|kind|repoUrl|workspaceSetup)\b|\bprojects\s+SET\s+(?:description|kind|environments)\b|\brepo_url\b|\bworkspace_setup\b|\bprojects_release_chain_(?:ok|chk)\b|\breleaseProjectChecks\b|\breleaseCrossings\b|\bsyncRepoUrlFromGitHubBinding\b|\bRepoUrlOutcome\b/g,
+    why: "ISS-16 dropped this `projects` column (migration `the_legacy_project_columns_are_dropped`) with every reader and writer, and moved nothing into another column: a project's repository is its document's `source.git.repository` and its setup procedure is `workspace.setup` (`project-config/source.ts:readDeclaredSource`), whether its work lands in git is `source.type`, and a project carries no description. `PATCH /api/projects/:id` and `forge_projects.update` refuse `repoUrl` and `workspaceSetup` by name. To read what an old database still holds, run `scripts/export-legacy-project-config.mjs` against it.",
   },
   {
     id: 'tag-mr-strategy',

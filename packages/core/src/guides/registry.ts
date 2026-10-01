@@ -31,13 +31,13 @@ export const FORGE_GUIDES: readonly ForgeGuide[] = [
     title: 'Project settings & test credentials',
     summary:
       'Where to fetch repo paths, branches, workspace setup, preview URLs, and test credentials — and why forge_config never returns them.',
-    version: 3,
+    version: 4,
     body: `## Project settings & test credentials
 
 Two tools, two different jobs — mixing them up is the single most common Forge discoverability miss.
 
-- **\`forge_projects.get\`** — repo path, base branch and \`workspaceSetup\` (how to bring this repo's workspace to a buildable state).
-- **\`forge_config\` → \`projectDocument\`** — the project document: each environment's tier, address, the branch it deploys from and the testing profile its testers get in through, and the promotions a landed change crosses. A testing profile names \`secret://\` references, never values, and its \`limits\` say what that environment does NOT have.
+- **\`forge_projects.get\`** — name, slug and base branch. A checkout path is not here: each device binding names its own.
+- **\`forge_config\` → \`projectDocument\`** — the project document: its repository (\`source.git.repository\`), its setup procedure (\`workspace.setup\`), each environment's tier, address, the branch it deploys from and the testing profile its testers get in through, and the promotions a landed change crosses. A testing profile names \`secret://\` references, never values, and its \`limits\` say what that environment does NOT have.
 - **\`forge_config\`** — process-shaped facts: \`config.policy\` (the project's policy-v1 document: \`qa\`, intake, and each status's model and permission profile), \`plugins\`. It carries no project PROSE — \`projectFacts\` and \`projectFactsConfig\` were retired in ISS-1048 and a call naming either is refused by name; the prose is \`forge_knowledge\`. It deliberately does **not** return credentials or preview URLs — don't go looking for them there, and don't add them there either.
 
   ${ALWAYS_INJECT_GUARANTEE_NOTE} ${ALWAYS_INJECT_ENFORCEMENT_NOTE}
@@ -47,12 +47,12 @@ Two tools, two different jobs — mixing them up is the single most common Forge
 2. Never echo a fetched credential past the immediate authentication step (into a commit message, a PR description, or tool output) — treat it as a secret even though it's a test account.
 3. When you need to change the policy, **GET it first, then send the whole document with the revision you read** — \`PUT /api/projects/:id/policy\` with \`{ baseRevision, document }\`. A write against a revision that moved is refused by name, never merged. A knowledge entry is not one of them: \`forge_knowledge\` writes one slug whole, so there are no siblings to clobber.
 4. \`environments.preview: null\` means this project HAS no preview side — a one-box project saying so, not a setting somebody forgot. Test against \`environments.live\` and don't invent a staging host. Equally, an empty \`environments.live.url\` is not permission to guess one: nothing in Forge derives a hostname from another.
-5. \`workspaceSetup\` is the project's own setup procedure — install commands, hook setup, toolchain quirks — and it is prose, not a script anything executes. It is what a stage follows instead of guessing when it lands in a broken checkout. **If it is empty and you worked the procedure out, write it back** with \`forge_projects.update\` (\`workspaceSetup\`), recording only steps you ran and saw succeed. Set it while onboarding a project, next to the repo URL — Settings → Runners → Git access in the UI.
+5. \`workspace.setup\` is the project's own setup procedure — install commands, hook setup, toolchain quirks — and it is prose, not a script anything executes. It is what a stage follows instead of guessing when it lands in a broken checkout. **If it is empty and you worked the procedure out, write it back** into the project document (\`PUT /api/projects/:id/config\` with the \`baseRevision\` you read), recording only steps you ran and saw succeed.
 
 ### Common mistake this guide exists to prevent
-An agent hits a login wall on a preview deploy, can't find credentials in \`forge_config\`, and either asks a human or gives up. The credentials were one tool call away, on \`forge_projects.get\`.
+An agent hits a login wall on a preview deploy, can't find credentials in \`forge_config\`, and either asks a human or gives up. The environment's \`testing\` profile named them, as \`secret://\` references the job resolves.
 
-The same shape costs tokens rather than a stall: a stage lands in a checkout whose hooks are missing, works out the install procedure from the lockfile, fixes it, and says nothing. The next job on that project pays for the same derivation, and the one after that. \`workspaceSetup\` exists so that happens once.`,
+The same shape costs tokens rather than a stall: a stage lands in a checkout whose hooks are missing, works out the install procedure from the lockfile, fixes it, and says nothing. The next job on that project pays for the same derivation, and the one after that. \`workspace.setup\` exists so that happens once.`,
   },
   {
     slug: 'issue-dependencies',

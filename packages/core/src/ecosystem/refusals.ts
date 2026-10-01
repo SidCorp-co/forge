@@ -1,4 +1,5 @@
 import type { ApiRefusal } from '../project-config/documents.js';
+import type { ContractRefusalCode } from './contract/refusal-codes.js';
 
 export type EcosystemRefusalCode =
   | 'STALE_BASE'
@@ -23,7 +24,8 @@ export type EcosystemRefusalCode =
   | 'MEMBERSHIP_TRANSITION_NOT_ALLOWED'
   | 'MEMBERSHIP_REASON_REQUIRED'
   | 'MEMBERSHIP_IN_USE'
-  | ChannelRefusalCode;
+  | ChannelRefusalCode
+  | ContractRefusalCode;
 
 export type ChannelRefusalCode =
   | 'DOCUMENT_TYPE_UNKNOWN'
@@ -60,7 +62,13 @@ export type ChannelRefusalCode =
   | 'HOLD_WITHOUT_REASON'
   | 'WITHDRAW_WITHOUT_REASON'
   | 'SUPERSEDE_WITHOUT_REASON'
-  | 'SUPERSEDE_NOT_A_REPLACEMENT';
+  | 'SUPERSEDE_NOT_A_REPLACEMENT'
+  | 'CHANNEL_NO_ROLE'
+  | 'CHANNEL_WRITE_NOT_AUTHORISED'
+  | 'CHANNEL_NOT_A_PARTY'
+  | 'CHANNEL_TURN_UNBOUND'
+  | 'CHANNEL_ARGUMENT_INVALID'
+  | 'CHANNEL_ECOSYSTEM_AMBIGUOUS';
 
 export interface EcosystemRefusal {
   code: EcosystemRefusalCode | ApiRefusal['code'];

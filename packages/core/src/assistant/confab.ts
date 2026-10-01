@@ -1,13 +1,21 @@
-import type { ToolCallRecord } from './run-turn-core.js';
+import { CHANNEL_WRITES } from './tools/forge-channel-args.js';
+
+/** What the claim check reads of an audited call; a `ToolCallRecord` is one. */
+export interface ClaimCall {
+  name: string;
+  arguments: string;
+  isError?: boolean | undefined;
+  refusalCode?: string | null | undefined;
+}
 
 /** A display ref as the model writes one, in the arguments and in the prose. */
-const SUBJECT_RE = /\b([A-Z][A-Z0-9]*-\d+)\b/gu;
+const SUBJECT_RE = /\b([A-Z][A-Z0-9]*-(?:(?:CN|ACK|RFI|CR|DEC)-)?\d+)\b/gu;
 
 /** `action` values that change a row. A refused read is not a claim about state. */
 const WRITE_ACTIONS: ReadonlySet<string> = new Set(['create', 'update', 'mark', 'unmark']);
 
 const LANDED_RE =
-  /\b(?:has|have|was|were|is|are)\s+(?:now\s+)?(?:been\s+)?(?:set|updated?|created?|moved?|changed?|marked?|closed?|opened?|filed?)\b|\bi(?:'ve|\s+have)?\s+(?:set|updated?|created?|moved?|marked?|changed?|closed?|filed?)\b|\b(?:successfully|done)\b/iu;
+  /\b(?:has|have|was|were|is|are)\s+(?:now\s+)?(?:been\s+)?(?:set|updated?|created?|moved?|changed?|marked?|closed?|opened?|filed?|sent|published|submitted|held|released|withdrawn|superseded|approved|returned|drafted)\b|\bi(?:'ve|\s+have)?\s+(?:set|updated?|created?|moved?|marked?|changed?|closed?|filed?|sent|published|submitted|held|released|withdrew|superseded|approved|returned|drafted)\b|\b(?:successfully|done)\b/iu;
 
 const DENIED_RE =
   /\b(?:not|never|cannot|unable|fail(?:ed|s|ure)?|refus(?:ed|es|al)|reject(?:ed|s)?|declin(?:ed|es))\b|\bno\s+(?:way|longer)\b|n['\u2019]t\b/iu;
@@ -16,7 +24,8 @@ const DENIED_RE =
 // the directive below must sit on the literal's own line: `check-source-language.mjs` reads `i18n-allow` same-line only.
 const DENIED_VI_RE = /không|chưa|thất\s*bại|từ\s*chối/iu; // i18n-allow: the phrases this matches are the ones that door's own replies are written in
 
-const CREATED_RE = /\b(?:created|filed|raised|logged|opened)\b/iu;
+const CREATED_RE =
+  /\b(?:created|filed|raised|logged|opened|sent|published|submitted|held|released|withdr[ae]wn?|superseded|approved|returned|drafted)\b/iu;
 
 const CREATED_VI_RE = /đã\s+(?:được\s+)?tạo/iu; // i18n-allow: the phrases this matches are the ones that door's own replies are written in
 
@@ -30,6 +39,12 @@ export interface ConfabClaim {
   subject: string | null;
   /** The sentence carrying the claim, trimmed. */
   sentence: string;
+  /** The refused call, in the words the correction names it by. */
+  action: string;
+  /** What the refused call named as its target, or null where it named none. */
+  target: string | null;
+  /** The code the refusal carried, or null where its result named none. */
+  refusalCode: string | null;
 }
 
 export interface ConfabProbe {
@@ -40,9 +55,13 @@ export interface ConfabProbe {
 const NOTHING: ConfabProbe = { suspected: false, claims: [] };
 
 const CLI_TOOL = 'forge';
+const CHANNEL_TOOL = 'forge_channel';
+const CHANNEL_WRITE_SET: ReadonlySet<string> = new Set(CHANNEL_WRITES);
+/** The fields a channel call names a document or conversation by. */
+const CHANNEL_TARGET_FIELDS = ['ref', 'thread', 'inReplyTo'] as const;
 const CLI_SET_FLAGS: ReadonlySet<string> = new Set(['--set', '--blocks', '--relates', '--unlink']);
 
-function cliArgvOf(record: ToolCallRecord): string[] | null {
+function cliArgvOf(record: ClaimCall): string[] | null {
   if (record.name !== CLI_TOOL) return null;
   try {
     const parsed = JSON.parse(record.arguments || '{}') as { argv?: unknown };
@@ -66,9 +85,26 @@ function cliWriteOf(argv: readonly string[]): { action: string; target: string |
   return null;
 }
 
-function actionOf(record: ToolCallRecord): string | null {
+function argsOf(record: ClaimCall): Record<string, unknown> {
+  try {
+    const parsed: unknown = JSON.parse(record.arguments || '{}');
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+// cm:why a channel write is a write whatever its verb, and one that names no published number (a draft, a reply, a submit by uuid) is claimed like a create: the reply can only invent the number
+function channelActionOf(record: ClaimCall): string | null {
+  const action = argsOf(record).action;
+  if (typeof action !== 'string' || !CHANNEL_WRITE_SET.has(action)) return null;
+  return targetRefsOf(record).length > 0 ? 'update' : 'create';
+}
+
+function actionOf(record: ClaimCall): string | null {
   const argv = cliArgvOf(record);
   if (argv) return cliWriteOf(argv)?.action ?? null;
+  if (record.name === CHANNEL_TOOL) return channelActionOf(record);
   try {
     const parsed = JSON.parse(record.arguments || '{}') as { action?: unknown };
     return typeof parsed.action === 'string' ? parsed.action : null;
@@ -85,7 +121,7 @@ function refsIn(text: string): string[] {
 /** The fields a chat tool addresses a row BY; `registry.ts` documents `documentId` as the one that also takes the short `ISS-<n>`. */
 const TARGET_FIELDS = ['documentId', 'issueId'] as const;
 
-function targetRefsOf(record: ToolCallRecord): string[] {
+function targetRefsOf(record: ClaimCall): string[] {
   const argv = cliArgvOf(record);
   if (argv) {
     const target = cliWriteOf(argv)?.target;
@@ -94,7 +130,8 @@ function targetRefsOf(record: ToolCallRecord): string[] {
   try {
     const parsed = JSON.parse(record.arguments || '{}') as Record<string, unknown>;
     const refs: string[] = [];
-    for (const field of TARGET_FIELDS) {
+    const fields = record.name === CHANNEL_TOOL ? CHANNEL_TARGET_FIELDS : TARGET_FIELDS;
+    for (const field of fields) {
       const value = parsed[field];
       if (typeof value === 'string') refs.push(...refsIn(value));
     }
@@ -126,12 +163,12 @@ function claimsLanded(sentence: string): boolean {
  * `landed` is the half that wins over prose: a ref this turn wrote successfully
  * cannot also have been refused, whatever a sentence says about it.
  */
-function partitionWrites(calls: readonly ToolCallRecord[]): {
-  refused: ToolCallRecord[];
+function partitionWrites(calls: readonly ClaimCall[]): {
+  refused: ClaimCall[];
   landedRefs: Set<string>;
   landedCreate: boolean;
 } {
-  const refused: ToolCallRecord[] = [];
+  const refused: ClaimCall[] = [];
   const landedRefs = new Set<string>();
   let landedCreate = false;
   for (const call of calls) {
@@ -147,16 +184,44 @@ function partitionWrites(calls: readonly ToolCallRecord[]): {
   return { refused, landedRefs, landedCreate };
 }
 
+function namedCall(call: ClaimCall): Pick<ConfabClaim, 'action' | 'target' | 'refusalCode'> {
+  const argv = cliArgvOf(call);
+  const args = argsOf(call);
+  const verb = argv ? `forge ${argv[0] ?? ''}`.trim() : String(args.action ?? call.name);
+  const named =
+    typeof args.ref === 'string' ? args.ref : typeof args.thread === 'string' ? args.thread : null;
+  return {
+    action: verb,
+    target: targetRefsOf(call)[0] ?? (argv ? (cliWriteOf(argv)?.target ?? null) : named),
+    refusalCode: call.refusalCode ?? null,
+  };
+}
+
+/** The line a reader is shown for one refused write the reply told as done. */
+export function correctionLine(claim: ConfabClaim): string {
+  const of = claim.target ? ` of ${claim.target}` : '';
+  const code = claim.refusalCode ?? 'no refusal code was given';
+  return `Correction: the ${claim.action}${of} was refused (${code}); nothing was written.`;
+}
+
+// cm:why a caught claim is corrected in the text the person reads, not only logged: the false sentence stays, and a code-written line under it names the refused call, its code, and that nothing was written
+export function correctFalseClaims(
+  text: string,
+  calls: readonly ClaimCall[],
+): { text: string; probe: ConfabProbe } {
+  const probe = detectStateConfab(text, calls);
+  const lines = [...new Set(probe.claims.map(correctionLine))].filter((l) => !text.includes(l));
+  if (lines.length === 0) return { text, probe };
+  return { text: `${text.trimEnd()}\n\n${lines.join('\n')}`, probe };
+}
+
 /**
  * The probe. A verdict only — nothing here rewrites, refuses or blocks.
  *
  * @param finalText the reply as delivered
  * @param calls     every audited call of the turn, refused and landed alike
  */
-export function detectStateConfab(
-  finalText: string,
-  calls: readonly ToolCallRecord[],
-): ConfabProbe {
+export function detectStateConfab(finalText: string, calls: readonly ClaimCall[]): ConfabProbe {
   const text = (finalText ?? '').trim();
   if (text.length === 0 || calls.length === 0) return NOTHING;
 
@@ -172,12 +237,12 @@ export function detectStateConfab(
     for (const call of refused) {
       for (const ref of targetRefsOf(call)) {
         if (said.has(ref) && !landedRefs.has(ref))
-          claims.push({ tool: call.name, subject: ref, sentence });
+          claims.push({ tool: call.name, subject: ref, sentence, ...namedCall(call) });
       }
     }
     if (claims.length > before) continue;
     if (!refusedCreate || landedCreate || !claimsCreated(sentence)) continue;
-    claims.push({ tool: refusedCreate.name, subject: null, sentence });
+    claims.push({ tool: refusedCreate.name, subject: null, sentence, ...namedCall(refusedCreate) });
   }
   return { suspected: claims.length > 0, claims };
 }

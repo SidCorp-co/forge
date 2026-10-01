@@ -18,6 +18,7 @@ import {
   type QuestionStep,
   questionWaiters,
 } from '../db/schema-questions.js';
+import type { PersonVia } from '../ecosystem/channel-schema.js';
 import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
 import {
   type AskAnswer,
@@ -256,6 +257,7 @@ export async function answerAs(args: {
   round: number;
   userId: string;
   note?: string;
+  via: PersonVia;
 }) {
   const [row] = await db
     .select({ projectId: agentQuestions.projectId })
@@ -272,6 +274,7 @@ export async function answerAs(args: {
     answer: args.answer,
     round: args.round,
     by: args.userId,
+    via: args.via,
     role,
     ...(args.note === undefined ? {} : { note: args.note }),
   });

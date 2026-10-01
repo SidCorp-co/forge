@@ -16,6 +16,7 @@ import {
   holdsOn,
   readNumbered,
 } from './channel-store.js';
+import { loadContractFacts } from './contract/element-rules.js';
 import { heldEcosystem, storedAs } from './ecosystem-service.js';
 import { versionKey } from './interface-rules.js';
 import { heldInterface } from './interface-service.js';
@@ -100,6 +101,7 @@ export async function loadWorld(
     from: string;
     documents: ReadonlyMap<string, ChannelDocument>;
     threads: readonly string[];
+    cites?: ChannelDocument;
   },
 ): Promise<ChannelWorld> {
   const ecoRow = await readEcosystem(tx, input.ecosystemId);
@@ -127,6 +129,12 @@ export async function loadWorld(
   const interfaces = new Map<string, InterfaceDocument>(
     [...stored].map(([id, row]) => [id, heldInterface(row, id).document]),
   );
+  const slugOf = new Map(projects.map((p) => [p.id, p.slug]));
+  const contracts = await loadContractFacts(
+    tx,
+    slugOf,
+    input.cites ? { doc: input.cites, documents: input.documents } : null,
+  );
   const versionSets = new Map<string, Set<string>>();
   for (const v of versions) {
     const key = versionKey(v.providerProjectId, v.contractSlug);
@@ -137,12 +145,11 @@ export async function loadWorld(
     ecosystemId: input.ecosystemId,
     ecosystem: heldEcosystem(ecoRow).document,
     active,
-    slugOf: new Map(projects.map((p) => [p.id, p.slug])),
+    slugOf,
     interfaces,
     edges: live,
     versions: versionSets,
-    // cm:why contract_versions records no measured diff until slice E2 does, so the two measured rules have nothing to compare against and stay silent rather than guess
-    measured: new Map(),
+    contracts,
     documents: input.documents,
     holds: holds.map(holdOf),
   };

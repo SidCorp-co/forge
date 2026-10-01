@@ -18,6 +18,7 @@ import {
   type QuestionStep,
 } from '../db/schema-questions.js';
 import { decideChannelGate } from '../ecosystem/channel-gate.js';
+import type { PersonVia } from '../ecosystem/channel-schema.js';
 import type { IssueDependencyExecutor } from '../issues/dependency-executor.js';
 import { ISSUE_TERMINAL_STATUSES } from '../issues/status-sets.js';
 import { hooks } from '../pipeline/hooks.js';
@@ -275,6 +276,8 @@ export type AnswerInput = {
   by: string;
   role: ProjectMemberRole | null;
   note?: string;
+  /** The door the answerer came through, which a channel gate records as the decider's via. */
+  via: PersonVia;
 };
 
 export function mayAnswerFreeText(role: ProjectMemberRole | null): boolean {
@@ -361,6 +364,7 @@ export async function answerQuestion(args: AnswerInput) {
           optionId: option.id,
           note,
           by: args.by,
+          via: args.via,
         });
       }
     } else if (!isChoiceStep(current) && args.answer.kind === 'text') {

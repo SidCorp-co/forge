@@ -2150,6 +2150,20 @@
       "when": 1811635200000,
       "tag": "0331_a_channel_gate_is_a_question",
       "breakpoints": true
+    },
+    {
+      "idx": 333,
+      "version": "7",
+      "when": 1811808000000,
+      "tag": "0333_a_land_on_a_deployed_branch_records_a_contract_version",
+      "breakpoints": true
+    },
+    {
+      "idx": 334,
+      "version": "7",
+      "when": 1811894400000,
+      "tag": "0334_the_legacy_project_columns_are_dropped",
+      "breakpoints": true
     }
   ]
 }

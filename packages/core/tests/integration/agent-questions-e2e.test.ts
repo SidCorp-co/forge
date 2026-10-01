@@ -125,6 +125,7 @@ describe('a question has one shape', () => {
       round: 1,
       by: ctx.userId,
       role: 'admin',
+      via: 'web',
     });
 
     await expect(
@@ -146,6 +147,7 @@ describe('a chain is one thread', () => {
       round: 1,
       by: ctx.userId,
       role: 'admin',
+      via: 'web',
     });
     const again = await mods.askFollowUp({
       questionId: q.id,
@@ -170,6 +172,7 @@ describe('a chain is one thread', () => {
         round: q.steps.length,
         by: ctx.userId,
         role: 'admin',
+        via: 'web',
       });
       q = await mods.askFollowUp({
         questionId: q.id,
@@ -183,6 +186,7 @@ describe('a chain is one thread', () => {
       round: q.steps.length,
       by: ctx.userId,
       role: 'admin',
+      via: 'web',
     });
 
     await expect(

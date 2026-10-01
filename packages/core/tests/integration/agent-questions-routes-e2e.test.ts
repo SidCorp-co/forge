@@ -132,6 +132,7 @@ describe('who may see a question, and which of its options', () => {
         answer: { kind: 'option', optionId: adminOption.id },
         round: 1,
         userId: ctx.memberId,
+        via: 'web',
       }),
       'a locked option that answers anyway is a lock drawn on the screen and nowhere else (ISS-964 criterion 15)',
     ).rejects.toThrow(/authority|not allowed/i);
@@ -146,6 +147,7 @@ describe('an answer belongs to the question, not to the waiter', () => {
       answer: { kind: 'option', optionId: writerOption.id },
       round: 1,
       userId: ctx.memberId,
+      via: 'web',
     });
 
     const after = await write.getQuestion(q.id);
@@ -169,6 +171,7 @@ describe('an answer belongs to the question, not to the waiter', () => {
       answer: { kind: 'option', optionId: writerOption.id },
       round: 1,
       userId: ctx.memberId,
+      via: 'web',
     });
 
     expect(
@@ -186,6 +189,7 @@ describe('the connection is a doorbell', () => {
       answer: { kind: 'option', optionId: writerOption.id },
       round: 1,
       userId: ctx.memberId,
+      via: 'web',
     });
 
     expect(
@@ -264,6 +268,7 @@ describe('a master reading its own question', () => {
       round: 1,
       by: ctx.memberId,
       role: 'member',
+      via: 'web',
     });
 
     expect(

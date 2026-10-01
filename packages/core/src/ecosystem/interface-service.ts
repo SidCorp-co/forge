@@ -1,6 +1,7 @@
 import { db, type Tx } from '../db/client.js';
 import { isRecord, parseVersionedDocument, staleBase } from '../project-config/documents.js';
 import { notFound } from './access.js';
+import { versionsOf } from './contract/store.js';
 import { heldEcosystem, storedAs } from './ecosystem-service.js';
 import {
   checkInterface,
@@ -59,7 +60,7 @@ async function buildWorld(
   providers: readonly ProjectRow[],
 ): Promise<InterfaceWorld> {
   const ids = [self.id, ...providers.map((p) => p.id)];
-  const [active, interfaces, versions, consumers] = await Promise.all([
+  const [active, interfaces, versions, consumers, indexed] = await Promise.all([
     activeEcosystemIdsOf(tx, ids),
     readInterfaces(
       tx,
@@ -70,6 +71,10 @@ async function buildWorld(
       providers.map((p) => p.id),
     ),
     consumersOf(tx, self.id),
+    versionsOf(
+      tx,
+      providers.map((p) => p.id),
+    ),
   ]);
   const activeIn = (projectId: string) =>
     new Set(active.filter((a) => a.projectId === projectId).map((a) => a.ecosystemId));
@@ -98,6 +103,12 @@ async function buildWorld(
       }),
     ),
     versions: versionSets,
+    elements: new Map(
+      indexed.map((v) => [
+        `${versionKey(v.providerProjectId, v.contractSlug)}@${v.version}`,
+        v.elements ? new Set(v.elements) : null,
+      ]),
+    ),
     consumersOfMine: consumers
       .filter((c) => c.consumerId !== self.id)
       .map((c) => ({

@@ -32,7 +32,12 @@ export type SshKeyCreateInput =
 /** `GET /api/projects/:id/git-credential` — the project's resolved pool reference. */
 export type ProjectGitAccessView =
   | { configured: false }
-  | { configured: true; repoUrl: string | null; key: WorkspaceSshKeyView };
+  | {
+      configured: true;
+      repository: string | null;
+      remote: string | null;
+      key: WorkspaceSshKeyView;
+    };
 
 /** `PUT /api/projects/:id/git-credential` request body. */
 export interface ProjectGitAccessInput {

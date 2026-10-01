@@ -1,0 +1,79 @@
+export const DIFF_TOOLS = [
+  'oasdiff',
+  'buf-breaking',
+  'json-schema-diff',
+  'graphql-inspector',
+  'none',
+] as const;
+export type DiffTool = (typeof DIFF_TOOLS)[number];
+
+export const MEASURED_CLASSIFICATIONS = ['breaking', 'non-breaking', 'unknown', 'initial'] as const;
+export type MeasuredClassification = (typeof MEASURED_CLASSIFICATIONS)[number];
+
+export const CHANGE_KINDS = ['added', 'removed', 'changed', 'deprecated'] as const;
+export type ChangeKind = (typeof CHANGE_KINDS)[number];
+
+export const CHANGE_LEVELS = ['breaking', 'warning', 'info'] as const;
+export type ChangeLevel = (typeof CHANGE_LEVELS)[number];
+
+export interface MeasuredChange {
+  element: string;
+  kind: ChangeKind;
+  level: ChangeLevel;
+  text: string;
+  check?: string;
+}
+
+export interface MeasuredDiff {
+  tool: DiffTool;
+  toolVersion?: string;
+  classification: MeasuredClassification;
+  changes: MeasuredChange[];
+}
+
+export const MAX_CHANGES = 500;
+
+const RANK: Record<ChangeLevel, number> = { breaking: 0, warning: 1, info: 2 };
+
+export function classify(
+  changes: readonly MeasuredChange[],
+): 'breaking' | 'unknown' | 'non-breaking' {
+  if (changes.some((c) => c.level === 'breaking')) return 'breaking';
+  if (changes.some((c) => c.level === 'warning')) return 'unknown';
+  return 'non-breaking';
+}
+
+const clip = (s: string, n: number) => (s.length <= n ? s : `${s.slice(0, n - 1)}…`);
+
+export function change(c: MeasuredChange): MeasuredChange {
+  return {
+    ...c,
+    element: clip(c.element, 200),
+    text: clip(c.text.length > 0 ? c.text : c.kind, 1000),
+    ...(c.check === undefined ? {} : { check: clip(c.check, 120) }),
+  };
+}
+
+// cm:why the schema holds 500 changes; the classification is taken over all of them first, and the cut keeps breaking before warning before info and says how many it dropped
+export function measured(
+  tool: DiffTool,
+  toolVersion: string,
+  all: readonly MeasuredChange[],
+): MeasuredDiff {
+  const classification = classify(all);
+  const sorted = [...all].sort((a, b) => RANK[a.level] - RANK[b.level]);
+  const changes =
+    sorted.length <= MAX_CHANGES
+      ? sorted
+      : [
+          ...sorted.slice(0, MAX_CHANGES - 1),
+          change({
+            element: 'document',
+            kind: 'changed',
+            level: sorted[MAX_CHANGES - 1]?.level ?? 'info',
+            text: `${sorted.length - (MAX_CHANGES - 1)} further change(s) measured and not listed; the list holds ${MAX_CHANGES}.`,
+            check: 'changes-truncated',
+          }),
+        ];
+  return { tool, toolVersion, classification, changes: changes.map(change) };
+}

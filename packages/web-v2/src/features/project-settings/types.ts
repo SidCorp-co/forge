@@ -5,10 +5,6 @@ import { MEMORY_REINDEX_STATES, type MemoryReindexState } from "@forge/contracts
  *  current and the destination org (403/404 otherwise). */
 export interface ProjectUpdateInput {
 	name?: string;
-	repoUrl?: string | null;
-	/** Prose: how to bring this repo's workspace to a buildable state. Read by
-	 *  the runner's setup agent; blank means it derives the procedure per job. */
-	workspaceSetup?: string | null;
 	/** Where an ISS-* branch is cut from. NOT a release fact. */
 	baseBranch?: string | null;
 	/** NOT where work lands, its environments or promotions: those are the project document,

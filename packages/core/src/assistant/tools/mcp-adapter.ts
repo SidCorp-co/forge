@@ -29,6 +29,8 @@ export interface ChatToolset {
   tools: ChatTool[];
   /** Execute a tool call by (sanitized) name. The result is MCP's own `CallToolResult` — content blocks plus `isError` — so an external server's reply passes through untouched and an internal handler's is wrapped by the same `toToolCallContent` the `/mcp` transport uses; `toolResultText` flattens it for the model. */
   execute(name: string, argsJson: string): Promise<CallToolResult>;
+  /** The user a call to this tool runs as, recorded on its audit row; null for a tool that acts as nobody. */
+  ranAs(name: string): string | null;
 }
 
 /** OpenAI function names: `[A-Za-z0-9_-]{1,64}`. MCP names may contain dots. */
@@ -175,7 +177,7 @@ export function buildToolset(ctx: McpContext, specs: ChatToolSpec[]): ChatToolse
     }
   }
 
-  return { tools, execute };
+  return { tools, execute, ranAs: () => ctx.principal.userId };
 }
 
 /** Compose toolsets; dispatch routes by tool name, the first owner of a name wins. */
@@ -195,5 +197,6 @@ export function mergeToolsets(...sets: ChatToolset[]): ChatToolset {
       const set = owner.get(name);
       return set ? set.execute(name, argsJson) : toolError(`unknown tool "${name}"`);
     },
+    ranAs: (name) => owner.get(name)?.ranAs(name) ?? null,
   };
 }

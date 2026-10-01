@@ -1,0 +1,1437 @@
+{
+  "measuredBreaking": [
+    {
+      "change": "the projectFacts patch fields are retired",
+      "coreCommit": "fcddeed25d6f27591e7cdf7daa7f6742567e4f63",
+      "landedAt": "fcddeed25d6f27591e7cdf7daa7f6742567e4f63",
+      "pluginFollowedIn": "81c2e7e412be10368873753ebd36397224edbc14",
+      "tool": "forge_config",
+      "before": {
+        "name": "forge_config",
+        "description": "replayed",
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "projectFacts": {
+              "anyOf": [
+                {
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "maxLength": 8000,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "propertyNames": {
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "pattern": "^[a-z0-9][a-z0-9-]*$",
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "projectFactsConfig": {
+              "anyOf": [
+                {
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "alwaysInject": {
+                            "type": "boolean"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "propertyNames": {
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "pattern": "^[a-z0-9][a-z0-9-]*$",
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": []
+        }
+      },
+      "after": {
+        "name": "forge_config",
+        "description": "replayed",
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {},
+          "required": []
+        }
+      },
+      "breaking": [
+        "/properties/projectFacts: property projectFacts was removed from a closed object, which now refuses it (BACKWARD)",
+        "/properties/projectFactsConfig: property projectFactsConfig was removed from a closed object, which now refuses it (BACKWARD)"
+      ]
+    },
+    {
+      "change": "the released status becomes awaiting_release",
+      "coreCommit": "7e33bbae83fb41a762d35dc4a662af83771a59d3",
+      "landedAt": "7e33bbae83fb41a762d35dc4a662af83771a59d3",
+      "pluginFollowedIn": "fb72c9403e74d12fd69c32ee135c545f92457aba",
+      "tool": "forge_issues",
+      "before": {
+        "name": "forge_issues",
+        "description": "replayed",
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "data": {
+              "additionalProperties": false,
+              "properties": {
+                "acceptanceCriteria": {
+                  "anyOf": [
+                    {
+                      "maxLength": 100000,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "attachments": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "dataBase64": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "mime": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "name": {
+                        "maxLength": 200,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": ["name", "mime", "dataBase64"],
+                    "type": "object"
+                  },
+                  "maxItems": 10,
+                  "type": "array"
+                },
+                "category": {
+                  "anyOf": [
+                    {
+                      "maxLength": 100,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "commit": {
+                  "pattern": "^[0-9a-f]{7,64}$",
+                  "type": "string"
+                },
+                "complexity": {
+                  "anyOf": [
+                    {
+                      "enum": ["xs", "s", "m", "l", "xl"],
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "description": {
+                  "anyOf": [
+                    {
+                      "maxLength": 100000,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "descriptionFormat": {
+                  "enum": ["markdown", "html"],
+                  "type": "string"
+                },
+                "detectorKey": {
+                  "maxLength": 120,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "expect": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "sessionContext": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": {},
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "type": "object"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": ["sessionContext"],
+                  "type": "object"
+                },
+                "isAgentTask": {
+                  "type": "boolean"
+                },
+                "issueId": {
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "type": "string"
+                },
+                "labels": {
+                  "items": {
+                    "anyOf": [
+                      {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "isPrimary": {
+                            "type": "boolean"
+                          },
+                          "labelId": {
+                            "minLength": 1,
+                            "type": "string"
+                          }
+                        },
+                        "required": ["labelId"],
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "maxItems": 50,
+                  "type": "array"
+                },
+                "mergedAt": {
+                  "type": "string"
+                },
+                "note": {
+                  "maxLength": 10000,
+                  "type": "string"
+                },
+                "plan": {
+                  "anyOf": [
+                    {
+                      "maxLength": 200000,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "priority": {
+                  "enum": ["critical", "high", "medium", "low", "none"],
+                  "type": "string"
+                },
+                "reason": {
+                  "maxLength": 10000,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "relations": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "blocksId": {
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                        "type": "string"
+                      },
+                      "dependsOnId": {
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                        "type": "string"
+                      },
+                      "kind": {
+                        "default": "blocks",
+                        "enum": ["blocks", "relates"],
+                        "type": "string"
+                      },
+                      "reason": {
+                        "maxLength": 2000,
+                        "type": "string"
+                      },
+                      "validUntil": {
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+                        "type": "string"
+                      }
+                    },
+                    "required": ["kind"],
+                    "type": "object"
+                  },
+                  "maxItems": 20,
+                  "type": "array"
+                },
+                "releaseNotes": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "section": {
+                          "enum": ["Added", "Changed", "Fixed", "Removed", "Security", "Skip"],
+                          "type": "string"
+                        },
+                        "technical": {
+                          "anyOf": [
+                            {
+                              "maxLength": 500,
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "userFacing": {
+                          "maxLength": 500,
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": ["section", "userFacing"],
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "sessionContext": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": {},
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "status": {
+                  "enum": [
+                    "open",
+                    "confirmed",
+                    "clarified",
+                    "waiting",
+                    "approved",
+                    "in_progress",
+                    "developed",
+                    "testing",
+                    "tested",
+                    "released",
+                    "releasing",
+                    "closed",
+                    "reopen",
+                    "on_hold",
+                    "needs_info",
+                    "draft",
+                    "dropped"
+                  ],
+                  "type": "string"
+                },
+                "target": {
+                  "enum": ["feature", "base", "prod"],
+                  "type": "string"
+                },
+                "taskAcceptanceCriteria": {
+                  "anyOf": [
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "taskDescription": {
+                  "anyOf": [
+                    {
+                      "maxLength": 50000,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "taskPriority": {
+                  "enum": ["critical", "high", "medium", "low", "none"],
+                  "type": "string"
+                },
+                "taskStatus": {
+                  "enum": ["backlog", "todo", "in_progress", "in_review", "done"],
+                  "type": "string"
+                },
+                "taskTitle": {
+                  "maxLength": 500,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "title": {
+                  "maxLength": 500,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "waitingKind": {
+                  "enum": ["needs_decision", "needs_resource"],
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "filters": {
+              "additionalProperties": false,
+              "properties": {
+                "category": {
+                  "type": "string"
+                },
+                "complexity": {
+                  "enum": ["xs", "s", "m", "l", "xl"],
+                  "type": "string"
+                },
+                "createdAfter": {
+                  "type": "string"
+                },
+                "createdBefore": {
+                  "type": "string"
+                },
+                "issue": {
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "type": "string"
+                },
+                "label": {
+                  "anyOf": [
+                    {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    {
+                      "items": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "maxItems": 50,
+                      "type": "array"
+                    }
+                  ]
+                },
+                "module": {
+                  "anyOf": [
+                    {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    {
+                      "items": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "maxItems": 50,
+                      "type": "array"
+                    }
+                  ]
+                },
+                "priority": {
+                  "enum": ["critical", "high", "medium", "low", "none"],
+                  "type": "string"
+                },
+                "search": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "status": {
+                  "enum": [
+                    "open",
+                    "confirmed",
+                    "clarified",
+                    "waiting",
+                    "approved",
+                    "in_progress",
+                    "developed",
+                    "testing",
+                    "tested",
+                    "released",
+                    "releasing",
+                    "closed",
+                    "reopen",
+                    "on_hold",
+                    "needs_info",
+                    "draft",
+                    "dropped"
+                  ],
+                  "type": "string"
+                },
+                "statusNot": {
+                  "enum": [
+                    "open",
+                    "confirmed",
+                    "clarified",
+                    "waiting",
+                    "approved",
+                    "in_progress",
+                    "developed",
+                    "testing",
+                    "tested",
+                    "released",
+                    "releasing",
+                    "closed",
+                    "reopen",
+                    "on_hold",
+                    "needs_info",
+                    "draft",
+                    "dropped"
+                  ],
+                  "type": "string"
+                },
+                "taskStatus": {
+                  "enum": ["backlog", "todo", "in_progress", "in_review", "done"],
+                  "type": "string"
+                },
+                "updatedAfter": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "required": []
+        }
+      },
+      "after": {
+        "name": "forge_issues",
+        "description": "replayed",
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "data": {
+              "additionalProperties": false,
+              "properties": {
+                "acceptanceCriteria": {
+                  "anyOf": [
+                    {
+                      "maxLength": 100000,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "attachments": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "dataBase64": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "mime": {
+                        "maxLength": 255,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "name": {
+                        "maxLength": 200,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": ["name", "mime", "dataBase64"],
+                    "type": "object"
+                  },
+                  "maxItems": 10,
+                  "type": "array"
+                },
+                "category": {
+                  "anyOf": [
+                    {
+                      "maxLength": 100,
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "commit": {
+                  "pattern": "^[0-9a-f]{7,64}$",
+                  "type": "string"
+                },
+                "complexity": {
+                  "anyOf": [
+                    {
+                      "enum": ["xs", "s", "m", "l", "xl"],
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "description": {
+                  "anyOf": [
+                    {
+                      "maxLength": 100000,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "descriptionFormat": {
+                  "enum": ["markdown", "html"],
+                  "type": "string"
+                },
+                "detectorKey": {
+                  "maxLength": 120,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "expect": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "sessionContext": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": {},
+                          "propertyNames": {
+                            "type": "string"
+                          },
+                          "type": "object"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": ["sessionContext"],
+                  "type": "object"
+                },
+                "isAgentTask": {
+                  "type": "boolean"
+                },
+                "issueId": {
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "type": "string"
+                },
+                "labels": {
+                  "items": {
+                    "anyOf": [
+                      {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "isPrimary": {
+                            "type": "boolean"
+                          },
+                          "labelId": {
+                            "minLength": 1,
+                            "type": "string"
+                          }
+                        },
+                        "required": ["labelId"],
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "maxItems": 50,
+                  "type": "array"
+                },
+                "mergedAt": {
+                  "type": "string"
+                },
+                "note": {
+                  "maxLength": 10000,
+                  "type": "string"
+                },
+                "plan": {
+                  "anyOf": [
+                    {
+                      "maxLength": 200000,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "priority": {
+                  "enum": ["critical", "high", "medium", "low", "none"],
+                  "type": "string"
+                },
+                "reason": {
+                  "maxLength": 10000,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "relations": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "blocksId": {
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                        "type": "string"
+                      },
+                      "dependsOnId": {
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                        "type": "string"
+                      },
+                      "kind": {
+                        "default": "blocks",
+                        "enum": ["blocks", "relates"],
+                        "type": "string"
+                      },
+                      "reason": {
+                        "maxLength": 2000,
+                        "type": "string"
+                      },
+                      "validUntil": {
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$",
+                        "type": "string"
+                      }
+                    },
+                    "required": ["kind"],
+                    "type": "object"
+                  },
+                  "maxItems": 20,
+                  "type": "array"
+                },
+                "releaseNotes": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "section": {
+                          "enum": ["Added", "Changed", "Fixed", "Removed", "Security", "Skip"],
+                          "type": "string"
+                        },
+                        "technical": {
+                          "anyOf": [
+                            {
+                              "maxLength": 500,
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "userFacing": {
+                          "maxLength": 500,
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": ["section", "userFacing"],
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "sessionContext": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": {},
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "status": {
+                  "enum": [
+                    "open",
+                    "confirmed",
+                    "clarified",
+                    "waiting",
+                    "approved",
+                    "in_progress",
+                    "developed",
+                    "testing",
+                    "tested",
+                    "awaiting_release",
+                    "releasing",
+                    "closed",
+                    "reopen",
+                    "on_hold",
+                    "needs_info",
+                    "draft",
+                    "dropped"
+                  ],
+                  "type": "string"
+                },
+                "target": {
+                  "enum": ["feature", "base", "prod"],
+                  "type": "string"
+                },
+                "taskAcceptanceCriteria": {
+                  "anyOf": [
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "taskDescription": {
+                  "anyOf": [
+                    {
+                      "maxLength": 50000,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "taskPriority": {
+                  "enum": ["critical", "high", "medium", "low", "none"],
+                  "type": "string"
+                },
+                "taskStatus": {
+                  "enum": ["backlog", "todo", "in_progress", "in_review", "done"],
+                  "type": "string"
+                },
+                "taskTitle": {
+                  "maxLength": 500,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "title": {
+                  "maxLength": 500,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "waitingKind": {
+                  "enum": ["needs_decision", "needs_resource"],
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "filters": {
+              "additionalProperties": false,
+              "properties": {
+                "category": {
+                  "type": "string"
+                },
+                "complexity": {
+                  "enum": ["xs", "s", "m", "l", "xl"],
+                  "type": "string"
+                },
+                "createdAfter": {
+                  "type": "string"
+                },
+                "createdBefore": {
+                  "type": "string"
+                },
+                "issue": {
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "type": "string"
+                },
+                "label": {
+                  "anyOf": [
+                    {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    {
+                      "items": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "maxItems": 50,
+                      "type": "array"
+                    }
+                  ]
+                },
+                "module": {
+                  "anyOf": [
+                    {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    {
+                      "items": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "maxItems": 50,
+                      "type": "array"
+                    }
+                  ]
+                },
+                "priority": {
+                  "enum": ["critical", "high", "medium", "low", "none"],
+                  "type": "string"
+                },
+                "search": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "status": {
+                  "enum": [
+                    "open",
+                    "confirmed",
+                    "clarified",
+                    "waiting",
+                    "approved",
+                    "in_progress",
+                    "developed",
+                    "testing",
+                    "tested",
+                    "awaiting_release",
+                    "releasing",
+                    "closed",
+                    "reopen",
+                    "on_hold",
+                    "needs_info",
+                    "draft",
+                    "dropped"
+                  ],
+                  "type": "string"
+                },
+                "statusNot": {
+                  "enum": [
+                    "open",
+                    "confirmed",
+                    "clarified",
+                    "waiting",
+                    "approved",
+                    "in_progress",
+                    "developed",
+                    "testing",
+                    "tested",
+                    "awaiting_release",
+                    "releasing",
+                    "closed",
+                    "reopen",
+                    "on_hold",
+                    "needs_info",
+                    "draft",
+                    "dropped"
+                  ],
+                  "type": "string"
+                },
+                "taskStatus": {
+                  "enum": ["backlog", "todo", "in_progress", "in_review", "done"],
+                  "type": "string"
+                },
+                "updatedAfter": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            }
+          },
+          "required": []
+        }
+      },
+      "breaking": [
+        "/properties/data/properties/status: enum value \"released\" was removed (BACKWARD)",
+        "/properties/filters/properties/status: enum value \"released\" was removed (BACKWARD)",
+        "/properties/filters/properties/statusNot: enum value \"released\" was removed (BACKWARD)"
+      ]
+    },
+    {
+      "change": "productionBranch gives way to liveBranch",
+      "coreCommit": "2fd3446f7a278d51707caba5d81afa33ffe8e11d",
+      "landedAt": "e779e4a779bc82e1f9b5173d558a7dca56f0ec3e",
+      "pluginFollowedIn": "330f22d3b50ecdc88044e53639a0c1b110e6c24a",
+      "tool": "forge_projects.update",
+      "before": {
+        "name": "forge_projects.update",
+        "description": "replayed",
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "patch": {
+              "additionalProperties": false,
+              "properties": {
+                "baseBranch": {
+                  "anyOf": [
+                    {
+                      "maxLength": 100,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "description": {
+                  "anyOf": [
+                    {
+                      "maxLength": 2000,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "kind": {
+                  "enum": ["standard", "website"],
+                  "type": "string"
+                },
+                "name": {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "previewDeployNotes": {
+                  "anyOf": [
+                    {
+                      "maxLength": 8000,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "productionBranch": {
+                  "anyOf": [
+                    {
+                      "maxLength": 100,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "repoPath": {
+                  "anyOf": [
+                    {
+                      "maxLength": 500,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "workspaceSetup": {
+                  "anyOf": [
+                    {
+                      "maxLength": 8000,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "type": "object"
+            }
+          },
+          "required": ["patch"]
+        }
+      },
+      "after": {
+        "name": "forge_projects.update",
+        "description": "replayed",
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "patch": {
+              "additionalProperties": false,
+              "properties": {
+                "baseBranch": {
+                  "anyOf": [
+                    {
+                      "maxLength": 100,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "description": {
+                  "anyOf": [
+                    {
+                      "maxLength": 2000,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "kind": {
+                  "enum": ["standard", "website"],
+                  "type": "string"
+                },
+                "liveBranch": {
+                  "anyOf": [
+                    {
+                      "maxLength": 100,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "name": {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "previewDeployNotes": {
+                  "anyOf": [
+                    {
+                      "maxLength": 8000,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "repoPath": {
+                  "anyOf": [
+                    {
+                      "maxLength": 500,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "workspaceSetup": {
+                  "anyOf": [
+                    {
+                      "maxLength": 8000,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "type": "object"
+            }
+          },
+          "required": ["patch"]
+        }
+      },
+      "breaking": [
+        "/properties/patch/properties/productionBranch: property productionBranch was removed from a closed object, which now refuses it (BACKWARD)"
+      ]
+    },
+    {
+      "change": "previewDeploy becomes environments",
+      "coreCommit": "34d8996712b2ae61fb2e6eebef312df39abf4467",
+      "landedAt": "f67823352486d3bdc119837ee56714162d15856a",
+      "pluginFollowedIn": "4cb54f2ac47abd6e33421945fef5eb760ac534d4",
+      "tool": "forge_projects.update",
+      "before": {
+        "name": "forge_projects.update",
+        "description": "replayed",
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "patch": {
+              "additionalProperties": false,
+              "properties": {
+                "baseBranch": {
+                  "anyOf": [
+                    {
+                      "maxLength": 100,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "description": {
+                  "anyOf": [
+                    {
+                      "maxLength": 2000,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "kind": {
+                  "enum": ["standard", "website"],
+                  "type": "string"
+                },
+                "liveBranch": {
+                  "anyOf": [
+                    {
+                      "maxLength": 100,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "name": {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "previewDeployNotes": {
+                  "anyOf": [
+                    {
+                      "maxLength": 8000,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "repoPath": {
+                  "anyOf": [
+                    {
+                      "maxLength": 500,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "workspaceSetup": {
+                  "anyOf": [
+                    {
+                      "maxLength": 8000,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "type": "object"
+            }
+          },
+          "required": ["patch"]
+        }
+      },
+      "after": {
+        "name": "forge_projects.update",
+        "description": "replayed",
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "patch": {
+              "additionalProperties": false,
+              "properties": {
+                "baseBranch": {
+                  "anyOf": [
+                    {
+                      "maxLength": 100,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "description": {
+                  "anyOf": [
+                    {
+                      "maxLength": 2000,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "environmentsLimits": {
+                  "anyOf": [
+                    {
+                      "maxLength": 8000,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "kind": {
+                  "enum": ["standard", "website"],
+                  "type": "string"
+                },
+                "liveBranch": {
+                  "anyOf": [
+                    {
+                      "maxLength": 100,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "name": {
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "repoPath": {
+                  "anyOf": [
+                    {
+                      "maxLength": 500,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "workspaceSetup": {
+                  "anyOf": [
+                    {
+                      "maxLength": 8000,
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "type": "object"
+            }
+          },
+          "required": ["patch"]
+        }
+      },
+      "breaking": [
+        "/properties/patch/properties/previewDeployNotes: property previewDeployNotes was removed from a closed object, which now refuses it (BACKWARD)"
+      ]
+    }
+  ],
+  "notMeasuredBreaking": [
+    {
+      "change": "developed and testing become rungs, and the jumps past them are refused",
+      "landedAt": "2d0c82a8be35f4f56195923c3f692cab494f483f",
+      "measured": "artifact unchanged",
+      "why": "which transition is legal is the state machine, not the status enum the schema holds"
+    },
+    {
+      "change": "a close owes releaseNotes",
+      "landedAt": "2e28aebee898b4710b9933303a4b403c5545df7b",
+      "measured": "artifact unchanged",
+      "why": "a gate that refuses a close is behaviour; the field was optional before and after"
+    },
+    {
+      "change": "a correcting merge mark is refused by name",
+      "landedAt": "c1e19479f26d8f6fa7599c7ce8a17f5d0b779f6a",
+      "measured": "non-breaking (a tool description changed)",
+      "why": "the refusal is behaviour of the same request shape"
+    },
+    {
+      "change": "the guide issue-dependencies-and-decompose is renamed issue-dependencies",
+      "landedAt": "cb7a82cbb16a1611953199f9bc565ae004a8ad79",
+      "measured": "breaking, on the removed decompose route and decomposeOpts, not on the slug",
+      "why": "a guide slug is a value of a path parameter that takes any string, not an element"
+    },
+    {
+      "change": "the merged mark moves to POST /api/issues/{id}/merge with a 2000-character note",
+      "landedAt": "168116f2789947a304c936da742aee1cca1bc7bb",
+      "measured": "non-breaking (two routes added)",
+      "why": "the plugin followed by moving to a new route; no element it used changed"
+    },
+    {
+      "change": "PATCH /api/projects/{id}/pipeline-config takes { base, patch }",
+      "landedAt": "31a3d9f55697b3e811cab72fc8d3cbc062efac59",
+      "measured": "openapi non-breaking, mcp-tools unknown",
+      "why": "the route read its body with no validator then, so no artifact described it; every JSON body has been declared since ISS-25 and the generator refuses one that is not"
+    }
+  ]
+}

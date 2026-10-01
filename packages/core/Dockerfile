@@ -30,6 +30,11 @@ RUN pnpm --filter @forge/observability build && pnpm --filter @forge/contracts b
 # where the workspace deps have to be present, and @forge/observability shipping
 # as raw .ts under node_modules is what the third dot prevents there.
 RUN pnpm --filter @forge/core build
+# The contract differ (ISS-20): the oasdiff release core is pinned to, its sha256
+# checked against the pin in src/ecosystem/contract/oasdiff.ts. A land on a
+# deployed branch is refused by name, never measured by something else, when the
+# runtime finds no binary of that version at /usr/local/bin/oasdiff.
+RUN node packages/core/dist/ecosystem/contract/oasdiff-fetch.js /oasdiff
 # `pnpm deploy` materialises a self-contained app at /prod/core with
 # zero workspace symlinks — every dependency is a real install. The
 # runtime stage just copies that directory and runs node. Honors the
@@ -53,6 +58,7 @@ ENV NODE_ENV=production
 RUN apk add --no-cache openssh-keygen openssh-client git
 
 COPY --from=build /prod/core ./
+COPY --from=build /oasdiff/oasdiff /usr/local/bin/oasdiff
 # NOTE: the repo `docs/` tree is INTERNAL engineering documentation and is
 # deliberately NOT shipped here or served to users. End-user product docs live
 # in packages/web-v2/content/help and are bundled into the WEB build — the core

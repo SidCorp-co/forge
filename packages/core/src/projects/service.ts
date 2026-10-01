@@ -180,7 +180,6 @@ export async function readProjectSummary(projectId: string) {
       name: projects.name,
       orgId: projects.orgId,
       createdBy: projects.createdBy,
-      workspaceSetup: projects.workspaceSetup,
       baseBranch: projects.baseBranch,
       createdAt: projects.createdAt,
     })
@@ -196,7 +195,6 @@ export async function updateProject(projectId: string, updates: Record<string, u
     slug: projects.slug,
     name: projects.name,
     orgId: projects.orgId,
-    workspaceSetup: projects.workspaceSetup,
     baseBranch: projects.baseBranch,
   });
   return row ?? null;

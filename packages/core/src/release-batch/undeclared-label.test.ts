@@ -71,9 +71,7 @@ const ISSUE_A = '77777777-7777-4777-8777-777777777777';
 
 /** Everything a release needs, and no `releaseRunnerLabel` on either side. */
 function unlabelled() {
-  selectLimit.mockResolvedValue([
-    { id: PROJECT_ID, repoPath: '/srv/app', repoUrl: null, baseBranch: 'main' },
-  ]);
+  selectLimit.mockResolvedValue([{ id: PROJECT_ID, repoPath: '/srv/app', baseBranch: 'main' }]);
   readDocument.mockResolvedValue({
     revision: 1,
     document: projectDoc({

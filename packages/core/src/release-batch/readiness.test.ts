@@ -83,7 +83,7 @@ const SOURCE_PROBED = production({
 
 function project(over: {
   facts?: Record<string, unknown>;
-  repoUrl?: string | null;
+  source?: 'git' | 'none';
   production?: EnvironmentDeclaration | null;
   others?: Record<string, EnvironmentDeclaration>;
   promotions?: Promotion[];
@@ -92,13 +92,7 @@ function project(over: {
   // out otherwise — so the fixture declares one too. Since ISS-1048 the build/test obligations are
   // conditioned on that declaration, and a fixture silently missing it would make the contract
   // tests below pass by owing nothing at all. The repo-less case gets its own test.
-  selectLimit.mockResolvedValue([
-    {
-      id: PROJECT_ID,
-      repoUrl: over.repoUrl === undefined ? 'git@github.com:acme/app.git' : over.repoUrl,
-      baseBranch: 'main',
-    },
-  ]);
+  selectLimit.mockResolvedValue([{ id: PROJECT_ID, baseBranch: 'main' }]);
   heldSlugs.mockResolvedValue(Object.keys(over.facts ?? CONTRACT_KNOWLEDGE));
   const environments = {
     ...(over.others ?? {}),
@@ -106,7 +100,11 @@ function project(over: {
   };
   readDocument.mockResolvedValue({
     revision: 1,
-    document: projectDoc({ environments, promotions: over.promotions ?? [] }),
+    document: projectDoc({
+      environments,
+      promotions: over.promotions ?? [],
+      source: over.source ?? 'git',
+    }),
   });
 }
 
@@ -154,7 +152,7 @@ describe('loadReleaseReadiness', () => {
   });
 
   it('owes no build or test commands to a project that declares no repository', async () => {
-    project({ facts: {}, repoUrl: null });
+    project({ facts: {}, source: 'none' });
 
     const out = await loadReleaseReadiness(PROJECT_ID);
 

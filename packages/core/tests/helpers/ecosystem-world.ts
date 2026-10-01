@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
-import { sql } from 'drizzle-orm';
 import type { Hono } from 'hono';
 import { expect } from 'vitest';
+import { seedContractVersion } from './contract-versions.js';
 import { setupTestDatabase, type TestDatabase } from './db.js';
 import {
   createTestProject,
@@ -134,12 +134,24 @@ export function pluginInterface(w: EcosystemWorld): Doc {
 }
 
 export async function recordVersions(w: EcosystemWorld): Promise<void> {
-  await w.harness.db.execute(sql`
-    INSERT INTO contract_versions (provider_project_id, contract_slug, version) VALUES
-      (${w.project.forge}, 'forge-api', '2026-09-20'),
-      (${w.project.forge}, 'forge-mcp', '2026-09-20'),
-      (${w.project.plugin}, 'driver-skill', '2026-09-28')
-  `);
+  const db = w.harness.db;
+  await seedContractVersion(db, {
+    providerId: w.project.forge,
+    ref: 'forge/forge-api',
+    version: '2026-09-20',
+  });
+  await seedContractVersion(db, {
+    providerId: w.project.forge,
+    ref: 'forge/forge-mcp',
+    version: '2026-09-20',
+    type: 'mcp-tools',
+  });
+  await seedContractVersion(db, {
+    providerId: w.project.plugin,
+    ref: 'forge-plugin/driver-skill',
+    version: '2026-09-28',
+    type: 'json-schema',
+  });
 }
 
 async function ok(res: Promise<{ status: number; json: Doc }>): Promise<Doc> {

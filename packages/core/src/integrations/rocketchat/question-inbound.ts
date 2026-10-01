@@ -159,6 +159,7 @@ export async function handleQuestionThreadReply(args: {
   }
 
   try {
+    // cm:why a room reply comes through the assistant's chat door, so a channel gate it decides records via assistant, never web
     await answerAs({
       questionId: args.questionId,
       answer: chosenOptionId
@@ -166,6 +167,7 @@ export async function handleQuestionThreadReply(args: {
         : { kind: 'text', text: m.text },
       round: current.round,
       userId: resolution.userId,
+      via: 'assistant',
     });
   } catch (err) {
     if (err instanceof QuestionRefused) {
