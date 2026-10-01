@@ -19,6 +19,8 @@ import { loadContractFacts } from './contract/element-rules.js';
 import { heldEcosystem, storedAs } from './ecosystem-service.js';
 import { versionKey } from './interface-rules.js';
 import { heldInterface } from './interface-service.js';
+import { impactLink } from './link-service.js';
+import { linksWhere } from './link-store.js';
 import type { InterfaceDocument } from './schema.js';
 import {
   activeMembersOf,
@@ -106,11 +108,12 @@ export async function loadWorld(
 ): Promise<ChannelWorld> {
   const ecoRow = await readEcosystem(tx, input.ecosystemId);
   if (!ecoRow) throw new Error(`channel: ecosystem ${input.ecosystemId} vanished under its lock`);
-  const [members, edges, versions, holds] = await Promise.all([
+  const [members, edges, versions, holds, links] = await Promise.all([
     activeMembersOf(tx, input.ecosystemId),
     edgesIn(tx, [input.ecosystemId]),
     recordedVersions(tx, [input.from]),
     holdsOn(tx, input.threads),
+    linksWhere(tx, { ecosystemIds: [input.ecosystemId] }),
   ]);
   const active = new Set(members);
   const live = edges.filter(
@@ -149,6 +152,7 @@ export async function loadWorld(
     slugOf,
     interfaces,
     edges: live,
+    links: links.filter((l) => l.providerProjectId === input.from).map(impactLink),
     versions: versionSets,
     contracts,
     documents: input.documents,

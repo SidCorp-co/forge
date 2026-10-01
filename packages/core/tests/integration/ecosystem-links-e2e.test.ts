@@ -216,6 +216,7 @@ describe('the read shapes', () => {
         state: 'behind',
         pinnedVersion: '2026-10-01',
         outsideContract: linkDoc().outsideContract.length,
+        impact: expect.objectContaining({ version: expect.any(String) }),
         updatedAt: expect.any(String),
       },
     ]);

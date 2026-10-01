@@ -1,3 +1,4 @@
+import type { ImpactLink } from './contract/impact.js';
 import { db, type Tx } from '../db/client.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { effectiveProjectRole } from '../lib/authz.js';
@@ -38,6 +39,7 @@ import {
   readLink,
   replaceBuilderRun,
   replaceLink,
+  type StoredLink,
   type StoredRecord,
 } from './link-store.js';
 import type { Checked, EcosystemRefusal } from './refusals.js';
@@ -296,9 +298,7 @@ export async function finishedRunReport(
 }
 
 /** Every builder run this project still owes, oldest first: the work its box nudges its master for. */
-export async function openRunsOf(
-  projectId: string,
-): Promise<
+export async function openRunsOf(projectId: string): Promise<
   {
     id: string;
     ecosystem: string;
@@ -319,4 +319,21 @@ export async function openRunsOf(
       steps: doc.steps.length,
       done: doc.steps.filter((s) => !['pending', 'running'].includes(s.status)).length,
     }));
+}
+
+export function impactLink(
+  row: StoredLink,
+): ImpactLink & { provider: string; contractSlug: string } {
+  const doc = storedLink(row);
+  return {
+    id: row.id,
+    consumer: row.projectId,
+    module: row.modulePath,
+    pinnedVersion: row.pinnedVersion,
+    callSites: doc.callSites,
+    fieldsUsed: doc.fieldsUsed,
+    outsideContract: doc.outsideContract,
+    provider: row.providerProjectId,
+    contractSlug: row.contractSlug,
+  };
 }

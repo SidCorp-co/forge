@@ -2,10 +2,11 @@ import { fencedProjectIds } from '../auth/pat-scope.js';
 import { db } from '../db/client.js';
 import { assertProjectAccess, effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
 import { forbidden, notFound, readerProjects } from './access.js';
-import { latestVersion } from './contract/store.js';
+import { type LinkImpact, linkImpact } from './contract/impact.js';
+import { latestVersion, type StoredVersion, versionsOf } from './contract/store.js';
 import { loadGraph } from './graph.js';
 import { heldInterface } from './interface-service.js';
-import { type Held, storedBuilderRun, storedLink } from './link-service.js';
+import { type Held, impactLink, storedBuilderRun, storedLink } from './link-service.js';
 import {
   builderRunsIn,
   builderRunsOf,
@@ -114,6 +115,29 @@ function currentVersions(rows: Awaited<ReturnType<typeof recordedVersions>>) {
   return latest;
 }
 
+// cm:why each link is checked against its contract's latest recorded version, so the bus says which consumers that version breaks and by which fields and call sites
+function impactsAgainstLatest(
+  links: readonly StoredLink[],
+  versions: readonly StoredVersion[],
+  versioningOf: (provider: string) => 'dated' | 'semver',
+): Map<string, LinkImpact & { version: string }> {
+  const latest = new Map<string, StoredVersion>();
+  for (const v of versions) {
+    const key = `${v.providerProjectId}/${v.contractSlug}`;
+    if (!latest.has(key)) latest.set(key, v);
+  }
+  const out = new Map<string, LinkImpact & { version: string }>();
+  for (const l of links) {
+    const v = latest.get(`${l.providerProjectId}/${l.contractSlug}`);
+    if (!v) continue;
+    out.set(l.id, {
+      ...linkImpact(versioningOf(l.providerProjectId), v.version, v.document.diff, impactLink(l)),
+      version: v.version,
+    });
+  }
+  return out;
+}
+
 // cm:why the bus is the ecosystem as the reader may see it: the steward sees every active member, a member sees what its visibility mode shows, and a link shows where its consumer or provider is the reader's or the mode is all
 export async function readBus(userId: string, ecosystemId: string) {
   const { eco, steward } = await readableEcosystem(userId, ecosystemId);
@@ -130,12 +154,21 @@ export async function readBus(userId: string, ecosystemId: string) {
   const shown = [
     ...new Set([...seen, ...links.flatMap((l) => [l.projectId, l.providerProjectId])]),
   ];
-  const [projects, interfaces, versions, runs] = await Promise.all([
+  const [projects, interfaces, versions, runs, linked] = await Promise.all([
     projectsWhere(db, { ids: shown }),
     readInterfaces(db, shown),
     recordedVersions(db, shown),
     builderRunsIn(db, ecosystemId),
+    versionsOf(db, [...new Set(links.map((l) => l.providerProjectId))]),
   ]);
+  const impacts = impactsAgainstLatest(
+    links,
+    linked,
+    (p) => {
+      const i = interfaces.get(p);
+      return i ? heldInterface(i, p).document.commitments.versioning : 'dated';
+    },
+  );
   const latest = currentVersions(versions);
   const builders = latestBuilderRuns(runs, new Set(shown));
   const contracts = [...interfaces].flatMap(([provider, stored]) =>
@@ -167,6 +200,7 @@ export async function readBus(userId: string, ecosystemId: string) {
       state: l.state,
       pinnedVersion: l.pinnedVersion,
       outsideContract: storedLink(l).outsideContract.length,
+      impact: impacts.get(l.id) ?? null,
       updatedAt: l.updatedAt.toISOString(),
     })),
   };

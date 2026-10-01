@@ -50,7 +50,25 @@ export interface BusLink {
   state: LinkState;
   pinnedVersion: string;
   outsideContract: number;
+  impact: LinkImpact | null;
   updatedAt: string;
+}
+
+export interface ImpactBreak {
+  element: string;
+  check: string | null;
+  text: string;
+  fields: string[];
+  callSites: CallSite[];
+  outsideContract: string[];
+}
+
+export interface LinkImpact {
+  link: string;
+  version: string;
+  verdict: "passes" | "breaks";
+  reason: "no-breaking-change-touches" | "built-against" | "touched" | "unmeasured";
+  breaks: ImpactBreak[];
 }
 
 export interface Bus {
@@ -160,21 +178,33 @@ export function busRows(bus: Bus): BusRow[] {
   return [...rows.values()];
 }
 
-export type Verdict = "breaks" | "older" | "current" | "unknown";
+export type Verdict = "breaks" | "passes" | "unchecked";
 
-// cm:why Impact reads the version each link pins and the state its master recorded; a field-level check against the next version does not exist yet (ISS-40), so nothing here claims one
-export function impactOf(link: BusLink, contract: BusContract | null): Verdict {
-  if (link.state === "breaking") return "breaks";
-  if (!contract?.currentVersion) return "unknown";
-  return link.pinnedVersion === contract.currentVersion ? "current" : "older";
+// cm:why Impact is core's check of the contract's latest version against each link's fields used, call sites and outside-contract surface; a link core has no version to check against is unchecked, never passed
+export function impactOf(link: BusLink): Verdict {
+  return link.impact?.verdict ?? "unchecked";
 }
 
 export const VERDICT_TONE: Record<Verdict, Tone> = {
   breaks: "bad",
-  older: "warn",
-  current: "ok",
-  unknown: "pend",
+  passes: "ok",
+  unchecked: "pend",
 };
+
+export function impactLine(link: BusLink): string {
+  const i = link.impact;
+  if (!i) return "No recorded version to check this link against";
+  if (i.reason === "built-against") return `Built against ${i.version}, so it passes`;
+  if (i.reason === "unmeasured") return `${i.version} has no measured diff, so it is owed the notice`;
+  if (i.verdict === "passes") return `No breaking change in ${i.version} touches what it reads`;
+  return i.breaks
+    .map((b) => {
+      const what = [...b.fields, ...b.outsideContract.map((o) => `${o} (outside the contract)`)];
+      const at = b.callSites.map((s) => `${s.path}:${s.line}`);
+      return `${b.element}${what.length ? ` · ${what.join(", ")}` : ""}${at.length ? ` at ${at.join(", ")}` : ""}`;
+    })
+    .join("; ");
+}
 
 export interface BuilderProgress {
   done: number;
