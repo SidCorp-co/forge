@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { olderThan } from '../channel-rules.js';
 import type { MeasuredChange } from './diff.js';
 import { compareVersions, namingProblem, proposeVersion } from './naming.js';
 
@@ -36,7 +35,7 @@ describe('core proposes the next version from the measured diff', () => {
   it('orders a dated suffix by number, not by text', () => {
     expect(compareVersions('dated', '2026-10-01.10', '2026-10-01.9')).toBeGreaterThan(0);
     expect(compareVersions('semver', '1.10.0', '1.9.0')).toBeGreaterThan(0);
-    expect(olderThan('dated', '2026-10-01.9', '2026-10-01.10')).toBe(true);
+    expect(compareVersions('dated', '2026-10-01.9', '2026-10-01.10')).toBeLessThan(0);
   });
 });
 

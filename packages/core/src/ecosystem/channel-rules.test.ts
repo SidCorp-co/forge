@@ -14,7 +14,6 @@ import {
   type ChannelWorld,
   documentRefusals,
   holdRefusals,
-  olderThan,
   parseChannelDocument,
   parseHold,
 } from './channel-rules.js';
@@ -477,14 +476,7 @@ describe('a hold that breaks a rule is refused naming that rule', () => {
   });
 });
 
-describe('a notice is owed to consumers built against an older version', () => {
-  it('compares dated versions as dates and semver as numbers', () => {
-    expect(olderThan('dated', '2026-09-20', '2026-10-01')).toBe(true);
-    expect(olderThan('semver', '9.0.0', '10.0.0')).toBe(true);
-    expect(olderThan('semver', '10.0.0', '9.1.0')).toBe(false);
-    expect(olderThan('semver', '3.2.0', '3.2.0')).toBe(false);
-  });
-
+describe('a notice is owed to the consumers its version breaks', () => {
   it('owes no notice to a consumer in another ecosystem', () => {
     const world = channelWorld();
     const edges = world.edges.map((e) => ({ ...e, ecosystemId: EPS }));

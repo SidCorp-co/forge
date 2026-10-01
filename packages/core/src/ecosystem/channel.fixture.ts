@@ -22,8 +22,13 @@ const MEASURED: Record<string, MeasuredVersion> = {
   'forge/forge-api@2026-10-01': {
     classification: 'breaking',
     changes: [
-      { element: 'POST /api/devices/me/run-sessions', level: 'breaking' },
-      { element: 'GET /api/issues/{id}', level: 'info' },
+      {
+        element: 'POST /api/devices/me/run-sessions',
+        level: 'breaking',
+        kind: 'changed',
+        text: 'added the new required request property `policyVersion`',
+      },
+      { element: 'GET /api/issues/{id}', level: 'info', kind: 'added', text: 'added the optional property `changeScope`' },
     ],
   },
 };
@@ -58,7 +63,11 @@ export function contractFacts(): ContractFacts {
   const versions = new Map<string, VersionFacts>(
     Object.entries(ELEMENTS).map(([key, es]) => [
       key,
-      { elements: new Set(es), previous: key.endsWith('2026-10-01') ? '2026-09-20' : null },
+      {
+        elements: new Set(es),
+        previous: key.endsWith('2026-10-01') ? '2026-09-20' : null,
+        recordedOn: key.endsWith('2026-10-01') ? '2026-09-01' : '2026-08-01',
+      },
     ]),
   );
   return {
@@ -123,6 +132,7 @@ export function channelWorld(overrides: Partial<ChannelWorld> = {}): ChannelWorl
       }),
     ),
     contracts: contractFacts(),
+    links: [],
     documents: publishedByNumber(),
     holds: holdFiles().map((f) => example(f) as ThreadHold),
     ...overrides,
