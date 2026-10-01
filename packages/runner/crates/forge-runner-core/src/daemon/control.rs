@@ -230,6 +230,12 @@ pub async fn serve(
 
     loop {
         let open = *accepting.borrow_and_update();
+        if !open {
+            // Every accept before this read has its guard, and nothing is
+            // accepted until the next read finds it open: say so, so the
+            // handover's window may count what is in flight.
+            ctl.drain.socket().stand_still();
+        }
         tokio::select! {
             accepted = listener.accept(), if open => {
                 match accepted {
@@ -250,6 +256,7 @@ pub async fn serve(
             }
         }
     }
+    ctl.drain.socket().withdraw_listener();
     let _ = std::fs::remove_file(&path);
     Ok(())
 }

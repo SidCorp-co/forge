@@ -21,7 +21,7 @@
 //! instead, and each lasts a turn.
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicI64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicI64, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -126,6 +126,13 @@ pub struct Socket {
     listener: AtomicI64,
     accepting: tokio::sync::watch::Sender<bool>,
     serving: Arc<AtomicUsize>,
+    /// How many times accepting has been stopped, and the latest of those the
+    /// server has acknowledged standing still for. A stop is a notification
+    /// and not a fact: the server can be between an accept and the guard that
+    /// counts it when the stop is sent, so the window reads the count only
+    /// once the server says it has stopped (ISS-1379, review F1).
+    stops: AtomicU64,
+    stood: AtomicU64,
 }
 
 /// One control request between its accept and its reply.
@@ -144,6 +151,8 @@ impl Socket {
             listener: AtomicI64::new(-1),
             accepting: tokio::sync::watch::channel(true).0,
             serving: Arc::new(AtomicUsize::new(0)),
+            stops: AtomicU64::new(0),
+            stood: AtomicU64::new(0),
         }
     }
 
@@ -174,8 +183,36 @@ impl Socket {
         self.serving.load(Ordering::Acquire)
     }
 
-    fn set_accepting(&self, open: bool) {
+    /// The server read `accepting` as stopped and will accept nothing until
+    /// it reads it open: every connection it accepted before has its guard.
+    /// Called with nothing between the read and this call but registering
+    /// what the last accept took.
+    pub fn stand_still(&self) {
+        let stops = self.stops.load(Ordering::Acquire);
+        self.stood.fetch_max(stops, Ordering::AcqRel);
+    }
+
+    /// The server is gone, so nothing will accept and nothing will answer.
+    pub fn withdraw_listener(&self) {
+        self.listener.store(-1, Ordering::Release);
+    }
+
+    /// Whether stop `stop` has been acknowledged, or there is no server to
+    /// acknowledge it.
+    fn stood_for(&self, stop: u64) -> bool {
+        self.listener().is_none() || self.stood.load(Ordering::Acquire) >= stop
+    }
+
+    /// Stop or resume accepting. A stop answers its number, which the window
+    /// waits to see acknowledged.
+    fn set_accepting(&self, open: bool) -> u64 {
+        let stop = if open {
+            self.stops.load(Ordering::Acquire)
+        } else {
+            self.stops.fetch_add(1, Ordering::AcqRel) + 1
+        };
         self.accepting.send_replace(open);
+        stop
     }
 }
 
@@ -278,10 +315,10 @@ impl Drain {
 
     /// Close admission and stop the control server accepting, for the window
     /// in which the requests in flight are answered.
-    fn close_window(&self, attempt: &Attempt) {
+    fn close_window(&self, attempt: &Attempt) -> Option<u64> {
         let mut inner = self.lock();
         if inner.attempt != Some(attempt.id) {
-            return;
+            return None;
         }
         inner.closed = true;
         let state = DrainState::Draining {
@@ -292,8 +329,9 @@ impl Drain {
         };
         inner.state = Some(state.clone());
         drop(inner);
-        self.socket.set_accepting(false);
+        let stop = self.socket.set_accepting(false);
         self.publish(Some(state));
+        Some(stop)
     }
 
     /// Open admission again and go back to waiting, keeping the attempt.
@@ -591,11 +629,16 @@ async fn closing_window(
     attempt: &Attempt,
     inflight: &Arc<AtomicUsize>,
 ) -> Result<(), Vec<String>> {
-    drain.close_window(attempt);
+    let stop = drain.close_window(attempt);
     let bound = Duration::from_secs(HANDOVER_QUIET_SECS);
     let started = Instant::now();
     loop {
-        let holding = window_holders(drain, inflight);
+        let mut holding = window_holders(drain, inflight);
+        if stop.is_some_and(|stop| !drain.socket.stood_for(stop)) {
+            holding.push(
+                "the control server, which has not yet said it stopped accepting".to_string(),
+            );
+        }
         if holding.is_empty() {
             return Ok(());
         }
@@ -852,6 +895,60 @@ mod tests {
         );
         drop(request);
         assert_eq!(handing.await.unwrap(), Drained::Idle);
+    }
+
+    /// Criterion 10, the race review F1 named: the stop reaches a server that
+    /// has accepted a connection and not yet counted it. The window counts
+    /// nothing until the server says it stands still, so that connection is
+    /// answered before the image is replaced.
+    #[tokio::test(start_paused = true)]
+    async fn the_window_counts_requests_only_once_the_server_stands_still() {
+        let drain = Arc::new(Drain::unrecorded());
+        drain.socket().publish_listener(3);
+        let inflight = Arc::new(AtomicUsize::new(0));
+        let d = drain.clone();
+        let handing = tokio::spawn(async move { drain_with(&d, &inflight).await });
+        let mut accepting = drain.socket().accepting();
+        accepting.wait_for(|open| !open).await.unwrap();
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        assert!(
+            !handing.is_finished(),
+            "the window read zero requests before the server stood still"
+        );
+        let late = drain.socket().serving();
+        drain.socket().stand_still();
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        assert!(
+            !handing.is_finished(),
+            "handed over with the connection accepted before the stop unanswered"
+        );
+        drop(late);
+        assert_eq!(handing.await.unwrap(), Drained::Idle);
+    }
+
+    /// A server that never stands still holds the window only for its bound,
+    /// and is named as what held it.
+    #[tokio::test(start_paused = true)]
+    async fn a_server_that_never_stands_still_releases_the_window_at_its_bound() {
+        let drain = Arc::new(Drain::unrecorded());
+        drain.socket().publish_listener(3);
+        let attempt = drain.begin("update 0.1.0 → 0.1.1").unwrap();
+        let inflight = Arc::new(AtomicUsize::new(0));
+        let held = closing_window(&drain, &attempt, &inflight)
+            .await
+            .expect_err("released at the bound");
+        assert!(
+            held.iter()
+                .any(|h| h.contains("has not yet said it stopped accepting")),
+            "{held:?}"
+        );
+        assert!(drain.refusal().is_none());
+        assert!(*drain.socket().accepting().borrow());
+        drain.socket().withdraw_listener();
+        assert!(
+            closing_window(&drain, &attempt, &inflight).await.is_ok(),
+            "with no server there is nothing to wait for"
+        );
     }
 
     /// Criteria 4 and 14: a line once there is something to wait on and one at
