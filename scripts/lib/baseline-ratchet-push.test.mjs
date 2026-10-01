@@ -1,4 +1,3 @@
-// @gate-input whole-tree — it drives git in a scratch repository, which the root-walk guard reads as listing this one.
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
