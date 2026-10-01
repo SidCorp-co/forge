@@ -5,23 +5,26 @@ import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { pushedFrom } from './baseline-ratchet.mjs';
 
-const root = mkdtempSync(join(tmpdir(), 'push-base-'));
-const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim();
-git('init', '-q', '-b', 'dev');
-git('config', 'user.email', 't@example.invalid');
-git('config', 'user.name', 't');
-const commit = (msg) => {
-  writeFileSync(join(root, 'f'), msg);
-  git('add', 'f');
-  git('commit', '-q', '-m', msg);
-  return git('rev-parse', 'HEAD');
+const git = (cwd, ...args) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
+const repoAt = (prefix) => {
+  const dir = mkdtempSync(join(tmpdir(), prefix));
+  execFileSync('git', ['init', '-q', '-b', 'dev', dir]);
+  git(dir, 'config', 'user.email', 't@example.invalid');
+  git(dir, 'config', 'user.name', 't');
+  return dir;
 };
-const before = commit('published');
-commit('first of the push');
-const head = commit('last of the push');
-git('checkout', '-q', '--orphan', 'other');
-const stranger = commit('rewritten');
-git('checkout', '-q', 'dev');
+const commit = (dir, msg) => {
+  writeFileSync(join(dir, 'f'), msg);
+  git(dir, 'add', 'f');
+  git(dir, 'commit', '-q', '-m', msg);
+  return git(dir, 'rev-parse', 'HEAD');
+};
+const root = repoAt('push-base-');
+const elsewhere = repoAt('push-base-other-');
+const before = commit(root, 'published');
+commit(root, 'first of the push');
+const head = commit(root, 'last of the push');
+const stranger = commit(elsewhere, 'rewritten');
 
 const event = (payload) => {
   const path = join(root, `event-${Math.random()}.json`);
@@ -29,12 +32,14 @@ const event = (payload) => {
   return { GITHUB_EVENT_NAME: 'push', GITHUB_EVENT_PATH: path };
 };
 
-afterAll(() => rmSync(root, { recursive: true, force: true }));
+afterAll(() => {
+  for (const dir of [root, elsewhere]) rmSync(dir, { recursive: true, force: true });
+});
 
 describe('pushedFrom: a push is judged from the tip it moved its branch from', () => {
   it('returns the pre-push tip, not HEAD~1, for a push of several commits', () => {
     expect(pushedFrom(root, event({ before }), head)).toBe(before);
-    expect(pushedFrom(root, event({ before }), head)).not.toBe(git('rev-parse', 'HEAD~1'));
+    expect(pushedFrom(root, event({ before }), head)).not.toBe(git(root, 'rev-parse', 'HEAD~1'));
   });
 
   it('is null for an event that is not a push', () => {
