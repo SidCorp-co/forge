@@ -22,6 +22,7 @@ pub mod dispatch;
 pub mod dispatch_gate;
 pub mod drain;
 pub mod git_exclude;
+pub mod handover;
 pub mod headroom;
 pub mod held_report;
 pub mod hook_install;
@@ -180,125 +181,40 @@ const SESSION_LEDGER_INTERVAL: std::time::Duration = std::time::Duration::from_s
 /// How often the update loop asks whether a newer release exists.
 const UPDATE_CHECK_INTERVAL: std::time::Duration = std::time::Duration::from_secs(6 * 3600);
 
-/// Every run session the drain must assume is live, each by name.
-fn live_run_sessions() -> Vec<String> {
-    let boot = crate::runner::inflight::boot_identity().unwrap_or_default();
-    let led = match crate::runner::ledger::Ledger::default_path()
-        .and_then(|p| crate::runner::ledger::Ledger::open(&p))
+/// Replace this process's image with the build installed on disk, the control
+/// listener carried, once `drain_to_idle` has closed the window for it.
+/// Returns only where the exec did not happen: admission then opens again and
+/// this process goes on serving the build it started with, until `next`.
+fn hand_over(drain: &drain::Drain, what: &str, cause: &str, next: drain::NextAttempt) {
+    #[cfg(unix)]
     {
-        Ok(led) => led,
-        Err(err) => return vec![unreadable_ledger(&err)],
-    };
-    live_sessions_from(led.unclosed_runs(), &boot, pid_alive, |run_id| {
-        led.issues(run_id)
-            .map(|m| m.into_iter().map(|i| i.issue_key).collect())
-            .unwrap_or_default()
-    })
-}
-
-/// Whether a subagent run reads quiet on its own evidence: its last turn ended
-/// an hour or more ago and nothing but that turn-end's own records, or an
-/// entry left an hour unanswered, was written after it; or the master pane its
-/// subagent lived in has ended since anything was heard from it. A restart
-/// touches neither the subagent, which lives in its master's process, nor its
-/// tree, so a quiet run does not hold one. One still working, or one whose
-/// transcript this box cannot read, still does (ISS-1246, ISS-1312).
-///
-/// A run declared and never bound is its declaring pane's, so that pane
-/// ending is the end of it too: nothing that pane would have started can bind
-/// it now.
-fn reads_quiet(run: &crate::runner::ledger::Run, now: i64) -> bool {
-    if run.pid.is_some() {
-        return false;
+        let why = match crate::exe::own() {
+            Ok(own) => {
+                let args: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
+                tracing::warn!(
+                    "[{what}] handing over for {cause}: replacing this process's image with {} — pid {} stays, and every pane, run and job stays where it is",
+                    own.path.display(),
+                    std::process::id()
+                );
+                let err = handover::replace_image(&own.path, &args, drain.socket().listener());
+                format!("could not exec {}: {err}", own.path.display())
+            }
+            Err(e) => format!("could not name the build installed on disk: {e}"),
+        };
+        tracing::error!(
+            "[{what}] the handover for {cause} did not happen — {why}. Admission is open again and this process goes on serving the build it started with; the next attempt is {}",
+            next.by
+        );
+        drain.handover_failed(&why, &next);
     }
-    let evidence = subagent_end::of_run(run, now);
-    match run.agent_id {
-        Some(_) => subagent_end::is_quiet(evidence),
-        None => matches!(evidence, subagent_end::Evidence::HostEnded { .. }),
+    #[cfg(not(unix))]
+    {
+        let _ = (drain, next);
+        // No exec here: the service manager starts the new build in a
+        // process of its own, as it always did on this platform.
+        tracing::warn!("[{what}] handing over for {cause}: exiting for the service manager to start the build installed on disk");
+        std::process::exit(0);
     }
-}
-
-/// Why the drain counts `run` as work a restart would stop, in its own line.
-fn why_held(run: &crate::runner::ledger::Run, now: i64) -> String {
-    match (run.pid, run.agent_id.as_deref()) {
-        (Some(pid), _) => format!("its process {pid} is alive"),
-        (None, Some(_)) => subagent_end::held_because(
-            subagent_end::of_run(run, now),
-            run.agent_transcript.as_deref(),
-        ),
-        (None, None) => "declared, and no subagent or process is bound to it yet".to_string(),
-    }
-}
-
-/// The holder a ledger that will not answer stands for.
-///
-/// A ledger this cannot read is not an empty one. Answering nought there told
-/// the drain the box was idle, and the drain's whole job is to decide whether a
-/// restart would kill work — so the one reply it could not check became the one
-/// that restarts over every run in flight. The path that reaches it is the
-/// first start after an upgrade, which is exactly where the ledger was
-/// unreadable in the first place (ISS-1201). So it holds the drain like any
-/// other holder, and is named like one.
-fn unreadable_ledger(err: &crate::error::Error) -> String {
-    tracing::error!(
-        "[drain] the run ledger will not answer ({err}) — this box counts as busy rather than idle, so a restart is deferred instead of taken over work nothing can see"
-    );
-    format!("the run ledger, which will not answer ({err})")
-}
-
-/// The live runs among `runs`, each named by id and the issues it was given.
-fn live_sessions_from(
-    runs: Result<Vec<crate::runner::ledger::Run>>,
-    this_boot: &str,
-    alive: impl Fn(u32) -> bool,
-    issue_keys: impl Fn(&str) -> Vec<String>,
-) -> Vec<String> {
-    match runs {
-        Ok(runs) => {
-            let now = agent_activity::now_ms();
-            live_runs(&runs, this_boot, alive, |r| reads_quiet(r, now))
-                .into_iter()
-                .map(|r| {
-                    let keys = issue_keys(&r.run_id);
-                    let keys = if keys.is_empty() {
-                        "no issue recorded".to_string()
-                    } else {
-                        keys.join(", ")
-                    };
-                    format!("run {} ({keys}): {}", r.run_id, why_held(r, now))
-                })
-                .collect()
-        }
-        Err(err) => vec![unreadable_ledger(&err)],
-    }
-}
-
-fn live_runs<'a>(
-    runs: &'a [crate::runner::ledger::Run],
-    this_boot: &str,
-    alive: impl Fn(u32) -> bool,
-    quiet: impl Fn(&crate::runner::ledger::Run) -> bool,
-) -> Vec<&'a crate::runner::ledger::Run> {
-    use crate::runner::ledger::{Ledger, Liveness};
-    runs.iter()
-        .filter(|r| !r.is_parked_on_human())
-        .filter(|r| r.boot_id == this_boot)
-        .filter(|r| !quiet(r))
-        .filter(|r| {
-            let pid_refuted = r.pid.is_some_and(|p| !alive(p));
-            !matches!(Ledger::liveness(r, this_boot, pid_refuted), Liveness::Dead)
-        })
-        .collect()
-}
-
-#[cfg(unix)]
-fn pid_alive(pid: u32) -> bool {
-    serving::pid_alive(pid)
-}
-
-#[cfg(not(unix))]
-fn pid_alive(_pid: u32) -> bool {
-    false
 }
 
 /// Run `check` now and then once every `every`, measured from the start of
@@ -674,17 +590,17 @@ pub async fn run(
                             match crate::update::apply(&m).await {
                                 Ok(Some(o)) => {
                                     // The new binary is already swapped on disk;
-                                    // drain in-flight jobs/chat to idle before
-                                    // restarting so we never kill running work.
+                                    // this process hands over to it once its
+                                    // own in-process work has ended.
                                     tracing::warn!(
-                                        "[update] applied {} → {} — draining before restart",
+                                        "[update] applied {} → {} — handing over to it once this process's own work ends",
                                         o.from,
                                         o.to
                                     );
                                     // From this instant `current_exe()` in this
                                     // process reads `<path> (deleted)`, and the
-                                    // restart that would end that waits on an
-                                    // idle window a working box never reaches.
+                                    // handover that ends that may wait on a
+                                    // chat turn for as long as it runs.
                                     // So every bound checkout is repointed at
                                     // the build just installed, now, rather
                                     // than at the next pane preparation.
@@ -701,43 +617,30 @@ pub async fn run(
                                         "after an update",
                                     );
                                     let cause = format!("update {} → {}", o.from, o.to);
+                                    let next = || drain::NextAttempt {
+                                        by: "the next update check".into(),
+                                        due_in: UPDATE_CHECK_INTERVAL
+                                            .saturating_sub(checked_at.elapsed()),
+                                    };
                                     let outcome = drain::drain_to_idle(
                                         &drain,
                                         "update",
                                         &cause,
                                         &inflight,
-                                        live_run_sessions,
                                         || close_parked_sessions(&runner),
-                                        || drain::NextAttempt {
-                                            by: "the next update check".into(),
-                                            due_in: UPDATE_CHECK_INTERVAL
-                                                .saturating_sub(checked_at.elapsed()),
-                                        },
+                                        next,
                                     )
                                     .await;
-                                    if let drain::Drained::NotNow(why) = &outcome {
-                                        tracing::warn!(
+                                    match outcome {
+                                        drain::Drained::NotNow(why) => tracing::warn!(
                                             "[update] {} stands on disk and this process keeps serving {} — {why}; the next update check tries again",
                                             o.to,
                                             o.from
-                                        );
-                                    }
-                                    if outcome == drain::Drained::Idle {
-                                        tracing::warn!(
-                                            "[update] idle — restarting to apply update"
-                                        );
-                                        // Exit 0 → systemd Restart=always relaunches THIS
-                                        // unit, which re-execs the freshly-swapped binary.
-                                        // Name-agnostic, so it works for multi-instance
-                                        // forge-runner-<id> units too — same mechanism as the
-                                        // credential-watch path below. The old hardcoded
-                                        // `systemctl --user restart forge-runner` only bounced
-                                        // the default unit, so any instance under a different
-                                        // unit name (forge-runner-aiNNN) downloaded the new
-                                        // binary but never re-execed it, re-applying the same
-                                        // update every cycle forever while staying on the old
-                                        // in-memory build.
-                                        std::process::exit(0);
+                                        ),
+                                        drain::Drained::GaveUp => {}
+                                        drain::Drained::Idle => {
+                                            hand_over(&drain, "update", &cause, next());
+                                        }
                                     }
                                 }
                                 Ok(None) => {}
@@ -774,8 +677,8 @@ pub async fn run(
             // full thirty seconds before its first look.
             tick.tick().await;
 
-            // What this loop last said about a drain it could not start, so a
-            // refusal it meets every thirty seconds is said once.
+            // What this loop last said about a handover it could not start, so
+            // a refusal it meets every thirty seconds is said once.
             let mut said: Option<String> = None;
             loop {
                 tokio::select! {
@@ -789,20 +692,20 @@ pub async fn run(
                     if current != startup_token {
                         if said.is_none() {
                             tracing::warn!(
-                                "[cred] device token changed (re-login detected) — draining in-flight work, then restarting to apply it"
+                                "[cred] device token changed (re-login detected) — handing over to a fresh image of this build once this process's own work ends, which reads the new token"
                             );
                         }
+                        let next = || drain::NextAttempt {
+                            by: "this loop's next handover".into(),
+                            due_in: std::time::Duration::from_secs(drain::DRAIN_REOPEN_SECS),
+                        };
                         match drain::drain_to_idle(
                             &drain,
                             "cred",
                             "a new device token",
                             &inflight,
-                            live_run_sessions,
                             || close_parked_sessions(&runner),
-                            || drain::NextAttempt {
-                                by: "this loop's next drain".into(),
-                                due_in: std::time::Duration::from_secs(drain::DRAIN_REOPEN_SECS),
-                            },
+                            next,
                         )
                         .await
                         {
@@ -827,11 +730,8 @@ pub async fn run(
                                 continue;
                             }
                         }
-                        tracing::warn!("[cred] restarting to pick up new credentials");
-                        // Exit 0 → systemd Restart=always relaunches THIS unit
-                        // (name-agnostic, so it works for multi-instance
-                        // forge-runner-<id> units too).
-                        std::process::exit(0);
+                        hand_over(&drain, "cred", "a new device token", next());
+                        said = Some("handover failed".into());
                     }
                 }
             }
@@ -1451,647 +1351,6 @@ mod tests {
             POOL_SUPERVISE_INTERVAL * 4 < CORE_RESULT_QUIET,
             "leave room for missed beats: three ticks may fail against an unreachable core and the job must still outlive the hop"
         );
-    }
-
-    use crate::runner::ledger::{Ledger, NewRun};
-
-    fn count_live_runs(
-        runs: &[crate::runner::ledger::Run],
-        this_boot: &str,
-        alive: impl Fn(u32) -> bool,
-        quiet: impl Fn(&crate::runner::ledger::Run) -> bool,
-    ) -> usize {
-        live_runs(runs, this_boot, alive, quiet).len()
-    }
-
-    /// Each live run is named by its id and the issues it was given, so the
-    /// drain's line says which work it waits on and not only how much.
-    #[test]
-    fn a_live_run_is_named_by_its_id_and_its_issues() {
-        let mut led = Ledger::open_in_memory().unwrap();
-        seeded_run(&mut led, "run-1", "boot-a", Some(4242));
-        let held = live_sessions_from(
-            led.unclosed_runs(),
-            "boot-a",
-            |_| true,
-            |id| {
-                led.issues(id)
-                    .unwrap()
-                    .into_iter()
-                    .map(|i| i.issue_key)
-                    .collect()
-            },
-        );
-        assert_eq!(held, ["run run-1 (ISS-run-1): its process 4242 is alive"]);
-    }
-
-    /// The Claude Code process a test records a subagent as running in.
-    const HOST: u32 = 7_700_001;
-
-    fn seeded_run(led: &mut Ledger, run_id: &str, boot: &str, pid: Option<u32>) {
-        led.create_run_group(NewRun {
-            run_id: run_id.into(),
-            project_id: "proj-1".into(),
-            master_session_id: "master-1".into(),
-            worktree_path: std::path::PathBuf::from(format!("/tmp/forge-drain-absent-{run_id}")),
-            boot_id: boot.into(),
-            issue_keys: vec![format!("ISS-{run_id}")],
-        })
-        .unwrap();
-        // A declared run is bound to its subagent the moment `SubagentStart` arrives, and a master
-        // may hold only ONE unbound row at a time (ISS-1050), so a helper that seeds several runs
-        // under one master has to bind each before seeding the next. Binding changes nothing any
-        // assertion in this module reads — `unclosed_runs` predicates on the three marks and the
-        // terminal-refusal stamp, never on `agent_id` — it only makes the setup a shape the
-        // ledger will still accept.
-        led.bind_agent(run_id, &format!("child-{run_id}")).unwrap();
-        if let Some(p) = pid {
-            led.attach_pid(run_id, p).unwrap();
-        }
-    }
-
-    /// The reply the drain cannot check is the one that used to read as safest:
-    /// a ledger that would not open answered nought, the drain read the box as
-    /// idle, and the restart went over every run in flight. The path that
-    /// reaches it is the first start after an upgrade, which is where the
-    /// ledger was unreadable to begin with (ISS-1201).
-    #[test]
-    fn a_ledger_that_will_not_answer_holds_the_restart_rather_than_clearing_it() {
-        let held = live_sessions_from(
-            Err(crate::error::Error::Other("ledger: no such column".into())),
-            "boot-a",
-            |_| true,
-            |_| Vec::new(),
-        );
-        assert_eq!(
-            held.len(),
-            1,
-            "a ledger nothing can read says nothing about what is running, and the drain's whole \
-             job is to decide whether a restart would kill work — nought is the answer that restarts"
-        );
-        assert!(
-            held[0].contains("run ledger") && held[0].contains("no such column"),
-            "the holder is named as what it is, so the drain's line says why it waits: {held:?}"
-        );
-    }
-
-    #[test]
-    fn a_ledger_that_answers_with_nothing_running_does_clear_the_restart() {
-        let led = Ledger::open_in_memory().unwrap();
-        assert_eq!(
-            live_sessions_from(led.unclosed_runs(), "boot-a", |_| true, |_| Vec::new()).len(),
-            0,
-            "an empty ledger is an idle box, and holding the restart for it would pin the box on a \
-             stale binary for ever"
-        );
-    }
-
-    #[test]
-    fn a_box_full_of_run_sessions_is_not_idle() {
-        let mut led = Ledger::open_in_memory().unwrap();
-        seeded_run(&mut led, "run-1", "boot-a", Some(4242));
-        seeded_run(&mut led, "run-2", "boot-a", Some(4243));
-        let runs = led.unclosed_runs().unwrap();
-        assert_eq!(
-            count_live_runs(&runs, "boot-a", |_| true, |r| reads_quiet(r, 0)),
-            2,
-            "a run session holds no `InflightGuard`, so the ledger is the only thing that can report the box is busy — reading zero here is what restarts through live work"
-        );
-    }
-
-    #[test]
-    fn a_park_does_not_hold_the_restart() {
-        let mut led = Ledger::open_in_memory().unwrap();
-        seeded_run(&mut led, "run-1", "boot-a", Some(4242));
-        led.begin_question("q-1", "run-1", 1, "q-1").unwrap();
-        led.declare_parked_human("run-1", Some("resume-1"), None)
-            .unwrap();
-        let runs = led.unclosed_runs().unwrap();
-        assert_eq!(
-            count_live_runs(&runs, "boot-a", |_| true, |r| reads_quiet(r, 0)),
-            0,
-            "a park releases its process and waits on a person; holding the restart for it pins the box on a stale binary indefinitely"
-        );
-    }
-
-    #[test]
-    fn a_row_from_a_previous_boot_holds_nothing() {
-        let mut led = Ledger::open_in_memory().unwrap();
-        seeded_run(&mut led, "run-1", "boot-old", Some(4242));
-        let runs = led.unclosed_runs().unwrap();
-        assert_eq!(
-            count_live_runs(&runs, "boot-new", |_| true, |r| reads_quiet(r, 0)),
-            0
-        );
-    }
-
-    #[test]
-    fn a_dead_pid_is_not_work() {
-        let mut led = Ledger::open_in_memory().unwrap();
-        seeded_run(&mut led, "run-1", "boot-a", Some(4242));
-        seeded_run(&mut led, "run-2", "boot-a", Some(4243));
-        let runs = led.unclosed_runs().unwrap();
-        assert_eq!(
-            count_live_runs(&runs, "boot-a", |pid| pid == 4243, |r| reads_quiet(r, 0)),
-            1,
-            "only the pid the process table still answers for is work in flight"
-        );
-    }
-
-    #[test]
-    fn a_subagent_run_with_no_pid_is_work_in_flight() {
-        let mut led = Ledger::open_in_memory().unwrap();
-        seeded_run(&mut led, "run-1", "boot-a", None);
-        let runs = led.unclosed_runs().unwrap();
-        assert_eq!(
-            count_live_runs(&runs, "boot-a", |_| true, |r| reads_quiet(r, 0)),
-            1,
-            "a subagent has no pid of its own, so a counter that requires one reads an occupied box as idle and restarts through it"
-        );
-    }
-
-    /// A subagent run bound to its child, with that child's transcript last
-    /// written at `written_ms` (`None`: no file at all) and its turn ended at
-    /// `stop_ms`.
-    fn a_stopped_subagent(
-        stop_ms: i64,
-        written_ms: Option<i64>,
-    ) -> (Ledger, crate::test_scratch::InScratch) {
-        a_stopped_subagent_writing(stop_ms, written_ms, "{}\n")
-    }
-
-    /// [`a_stopped_subagent`], its transcript holding `body`.
-    fn a_stopped_subagent_writing(
-        stop_ms: i64,
-        written_ms: Option<i64>,
-        body: &str,
-    ) -> (Ledger, crate::test_scratch::InScratch) {
-        let mut led = Ledger::open_in_memory().unwrap();
-        seeded_run(&mut led, "run-1", "boot-a", None);
-        let dir = crate::test_scratch::Scratch::new("drain-transcript").at("transcripts");
-        let transcript = dir.join("agent-child-run-1.jsonl");
-        if let Some(at) = written_ms {
-            std::fs::create_dir_all(&dir).unwrap();
-            std::fs::write(&transcript, body).unwrap();
-            std::fs::OpenOptions::new()
-                .write(true)
-                .open(&transcript)
-                .unwrap()
-                .set_modified(std::time::UNIX_EPOCH + std::time::Duration::from_millis(at as u64))
-                .unwrap();
-        }
-        let path = transcript.to_string_lossy().into_owned();
-        assert!(led.note_turn_end("run-1", stop_ms, Some(&path)).unwrap());
-        (led, dir)
-    }
-
-    const HOUR_MS: i64 = 60 * 60_000;
-    const NOW_MS: i64 = 1_800_000_000_000;
-
-    #[test]
-    fn a_subagent_that_ended_a_turn_still_holds_the_restart() {
-        let (led, dir) = a_stopped_subagent(NOW_MS - 60_000, Some(NOW_MS - 60_000));
-        let runs = led.unclosed_runs().unwrap();
-        assert_eq!(
-            count_live_runs(&runs, "boot-a", |_| true, |r| reads_quiet(r, NOW_MS)),
-            1,
-            "a turn-end is not a finish — a subagent ends one to wait on its own background work (ISS-1246)"
-        );
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn a_quiet_subagent_does_not_hold_the_restart() {
-        let (led, dir) = a_stopped_subagent(NOW_MS - HOUR_MS, Some(NOW_MS - HOUR_MS));
-        let runs = led.unclosed_runs().unwrap();
-        assert_eq!(
-            count_live_runs(&runs, "boot-a", |_| true, |r| reads_quiet(r, NOW_MS)),
-            0,
-            "an hour silent since its last turn-end: a restart touches neither it nor its tree, and a run nobody closes must not defer every restart for ever"
-        );
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn a_subagent_that_wrote_after_its_stop_holds_the_restart_however_long_ago() {
-        let (led, dir) = a_stopped_subagent(NOW_MS - 2 * HOUR_MS, Some(NOW_MS - HOUR_MS - 60_000));
-        let runs = led.unclosed_runs().unwrap();
-        assert_eq!(
-            count_live_runs(&runs, "boot-a", |_| true, |r| reads_quiet(r, NOW_MS)),
-            1,
-            "a write after the stop is a resumed turn whose own end has not been heard"
-        );
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    /// ISS-1312, the incident's own shape: the stop hooks' records landed
-    /// 213 ms after the stamp, and read as a resumed turn every finished
-    /// subagent held every restart until its master closed it.
-    #[test]
-    fn a_subagent_whose_last_write_is_its_own_stop_hooks_does_not_hold_the_restart() {
-        let stop = NOW_MS - 2 * HOUR_MS;
-        let (led, dir) =
-            a_stopped_subagent_writing(stop, Some(stop + 213), transcript_age::STOP_TAIL);
-        let runs = led.unclosed_runs().unwrap();
-        assert_eq!(
-            count_live_runs(&runs, "boot-a", |_| true, |r| reads_quiet(r, NOW_MS)),
-            0,
-            "the records its stop hooks left are the stop, not a turn after it"
-        );
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    #[test]
-    fn a_turn_resumed_after_the_stop_hooks_holds_the_restart_however_long_ago() {
-        let stop = NOW_MS - 10 * HOUR_MS;
-        let body = format!(
-            "{}{}",
-            transcript_age::STOP_TAIL,
-            transcript_age::RESUMED_TAIL
-        );
-        let (led, dir) = a_stopped_subagent_writing(stop, Some(stop + 60_000), &body);
-        let runs = led.unclosed_runs().unwrap();
-        assert_eq!(
-            count_live_runs(&runs, "boot-a", |_| true, |r| reads_quiet(r, NOW_MS)),
-            1,
-            "an entry after the stop's own records is a turn whose end has not been heard"
-        );
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    fn held_line(led: &Ledger) -> Vec<String> {
-        live_sessions_from(
-            led.unclosed_runs(),
-            "boot-a",
-            |_| true,
-            |_| vec!["ISS-7".to_string()],
-        )
-    }
-
-    /// Criterion 5: each run a drain names says what it is held on.
-    #[test]
-    fn each_run_the_drain_names_says_what_it_is_held_on() {
-        let now = agent_activity::now_ms();
-        let (led, dir) = a_stopped_subagent_writing(
-            now - 5 * 60_000,
-            Some(now - 5 * 60_000 + 213),
-            transcript_age::STOP_TAIL,
-        );
-        let held = held_line(&led);
-        assert_eq!(held.len(), 1);
-        assert!(
-            held[0].starts_with("run run-1 (ISS-7): its subagent ended a turn 4m ago")
-                || held[0].starts_with("run run-1 (ISS-7): its subagent ended a turn 5m ago"),
-            "{held:?}"
-        );
-        assert!(held[0].contains("inside the 60m"), "{held:?}");
-        let _ = std::fs::remove_dir_all(dir);
-
-        let body = format!(
-            "{}{}",
-            transcript_age::STOP_TAIL,
-            transcript_age::RESUMED_TAIL
-        );
-        let (led, dir) =
-            a_stopped_subagent_writing(now - 3 * HOUR_MS, Some(now - 3 * HOUR_MS + 60_000), &body);
-        let held = held_line(&led);
-        assert!(
-            held[0].contains("resumed turn")
-                && (held[0].contains("written 179m ago") || held[0].contains("written 180m ago")),
-            "{held:?}"
-        );
-        let _ = std::fs::remove_dir_all(dir);
-
-        let (led, dir) = a_stopped_subagent(now - 3 * HOUR_MS, None);
-        let held = held_line(&led);
-        assert!(
-            held[0].contains("cannot be read") && held[0].contains("agent-child-run-1.jsonl"),
-            "{held:?}"
-        );
-        let _ = std::fs::remove_dir_all(dir);
-
-        let mut led = Ledger::open_in_memory().unwrap();
-        seeded_run(&mut led, "run-1", "boot-a", None);
-        assert_eq!(
-            held_line(&led),
-            ["run run-1 (ISS-7): its subagent has not ended a turn since its run was declared 0m ago"],
-            "criterion 25: a first turn says how long it has run"
-        );
-    }
-
-    /// ISS-1312, criteria 16 and 29: 85be2c91's shape. Declared, bound, no
-    /// turn-end ever recorded, and the master pane it ran in replaced by a new
-    /// one: the subagent died with that pane and must not hold the restart.
-    #[test]
-    fn a_subagent_whose_master_pane_was_started_again_does_not_hold_the_restart() {
-        let now = agent_activity::now_ms();
-        let mut led = Ledger::open_in_memory().unwrap();
-        seeded_run(&mut led, "run-1", "boot-a", None);
-        assert_eq!(
-            held_line(&led).len(),
-            1,
-            "before the placement it is a first turn"
-        );
-        led.note_host("run-1", HOST, "4400").unwrap();
-        assert!(led
-            .note_host_ended(
-                "run-1",
-                now - 5 * 60_000,
-                crate::runner::ledger::HOST_PANE_STARTED
-            )
-            .unwrap());
-        assert!(
-            held_line(&led).is_empty(),
-            "a subagent cannot outlive the Claude Code process it ran in: {:?}",
-            held_line(&led)
-        );
-    }
-
-    /// Criterion 17, the same with the pane read gone by recovery.
-    #[test]
-    fn a_subagent_whose_master_pane_is_gone_does_not_hold_the_restart() {
-        let now = agent_activity::now_ms();
-        let (led, dir) = a_stopped_subagent_writing(
-            now - 3 * HOUR_MS,
-            Some(now - 3 * HOUR_MS + 60_000),
-            &format!(
-                "{}{}",
-                transcript_age::STOP_TAIL,
-                transcript_age::RESUMED_TAIL
-            ),
-        );
-        assert_eq!(held_line(&led).len(), 1, "a resumed turn holds on its own");
-        led.note_host("run-1", HOST, "4400").unwrap();
-        assert!(led
-            .note_host_ended("run-1", now - 60_000, crate::runner::ledger::HOST_PANE_GONE)
-            .unwrap());
-        assert!(held_line(&led).is_empty(), "{:?}", held_line(&led));
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    /// A declaration no subagent bound is its declaring pane's, and ends with it.
-    #[test]
-    fn a_declaration_whose_pane_was_started_again_does_not_hold_the_restart() {
-        let now = agent_activity::now_ms();
-        let mut led = Ledger::open_in_memory().unwrap();
-        led.create_run_group(NewRun {
-            run_id: "run-1".into(),
-            project_id: "proj-1".into(),
-            master_session_id: "master-1".into(),
-            worktree_path: std::path::PathBuf::from("/tmp/forge-drain-absent-unbound"),
-            boot_id: "boot-a".into(),
-            issue_keys: vec!["ISS-7".into()],
-        })
-        .unwrap();
-        assert_eq!(
-            held_line(&led),
-            ["run run-1 (ISS-7): declared, and no subagent or process is bound to it yet"]
-        );
-        led.note_host("run-1", HOST, "4400").unwrap();
-        assert!(led
-            .note_host_ended("run-1", now, crate::runner::ledger::HOST_PANE_STARTED)
-            .unwrap());
-        assert!(held_line(&led).is_empty(), "{:?}", held_line(&led));
-    }
-
-    /// Criterion 18: heard from after the pane ended, a subagent is read as
-    /// it would be with no end recorded, whichever of the three it was heard by.
-    #[test]
-    fn a_subagent_heard_from_after_its_pane_ended_is_read_as_before() {
-        let now = agent_activity::now_ms();
-        let ended = now - 30 * 60_000;
-        let started = crate::runner::ledger::HOST_PANE_STARTED;
-
-        // A turn-end after it: a turn ended 10m ago, inside the bound.
-        let (led, dir) = a_stopped_subagent_writing(
-            now - 10 * 60_000,
-            Some(now - 10 * 60_000 + 213),
-            transcript_age::STOP_TAIL,
-        );
-        led.note_host("run-1", HOST, "4400").unwrap();
-        led.note_host_ended("run-1", ended, started).unwrap();
-        let held = held_line(&led);
-        assert!(
-            held.len() == 1
-                && (held[0].contains("ended a turn 9m ago")
-                    || held[0].contains("ended a turn 10m ago")),
-            "{held:?}"
-        );
-        let _ = std::fs::remove_dir_all(dir);
-
-        // A transcript write after it, over a stop before it: a resumed turn.
-        let (led, dir) = a_stopped_subagent_writing(
-            now - 2 * HOUR_MS,
-            Some(now - 5 * 60_000),
-            &format!(
-                "{}{}",
-                transcript_age::STOP_TAIL,
-                transcript_age::RESUMED_TAIL
-            ),
-        );
-        led.note_host("run-1", HOST, "4400").unwrap();
-        led.note_host_ended("run-1", ended, started).unwrap();
-        let held = held_line(&led);
-        assert!(
-            held.len() == 1 && held[0].contains("resumed turn"),
-            "{held:?}"
-        );
-        let _ = std::fs::remove_dir_all(dir);
-
-        // A start after it: the subagent is running again, in its first turn.
-        let mut led = Ledger::open_in_memory().unwrap();
-        seeded_run(&mut led, "run-1", "boot-a", None);
-        led.note_host("run-1", HOST, "4400").unwrap();
-        led.note_host_ended("run-1", ended, started).unwrap();
-        assert!(held_line(&led).is_empty());
-        led.note_subagent_started("run-1", ended + 1, None).unwrap();
-        let held = held_line(&led);
-        assert!(
-            held.len() == 1 && held[0].contains("has not ended a turn"),
-            "{held:?}"
-        );
-
-        // Nothing but a write from before the end: still over.
-        let (led, dir) = a_stopped_subagent_writing(
-            now - 2 * HOUR_MS,
-            Some(ended - 60_000),
-            &format!(
-                "{}{}",
-                transcript_age::STOP_TAIL,
-                transcript_age::RESUMED_TAIL
-            ),
-        );
-        led.note_host("run-1", HOST, "4400").unwrap();
-        led.note_host_ended("run-1", ended, started).unwrap();
-        assert!(held_line(&led).is_empty(), "{:?}", held_line(&led));
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    /// ISS-1312 criterion 55: rows the box marked before it recorded a
-    /// subagent's process carry a pane's end, which is not the subagent's. On
-    /// such a row the mark ends nothing, and the run is held as its own
-    /// evidence reads.
-    #[test]
-    fn a_pane_mark_on_a_row_that_records_no_process_ends_nothing() {
-        let now = agent_activity::now_ms();
-        let mut led = Ledger::open_in_memory().unwrap();
-        seeded_run(&mut led, "run-1", "boot-a", None);
-        led.note_host("run-1", HOST, "4400").unwrap();
-        assert!(led
-            .note_host_ended("run-1", now, crate::runner::ledger::HOST_PANE_STARTED)
-            .unwrap());
-        assert!(
-            held_line(&led).is_empty(),
-            "the control: {:?}",
-            held_line(&led)
-        );
-        led.forget_host("run-1").unwrap();
-        let held = held_line(&led);
-        assert!(
-            held.len() == 1 && held[0].contains("has not ended a turn"),
-            "{held:?}"
-        );
-    }
-
-    #[test]
-    fn a_subagent_whose_transcript_cannot_be_read_holds_the_restart() {
-        let (led, dir) = a_stopped_subagent(NOW_MS - 10 * HOUR_MS, None);
-        let runs = led.unclosed_runs().unwrap();
-        assert_eq!(
-            count_live_runs(&runs, "boot-a", |_| true, |r| reads_quiet(r, NOW_MS)),
-            1,
-            "no transcript to read is no evidence, and never silence"
-        );
-        let _ = std::fs::remove_dir_all(dir);
-    }
-
-    /// The judge's repro at 3a7209b: a transcript whose time can be read and
-    /// whose content cannot. Nothing was read, so nothing says a turn resumed.
-    #[cfg(unix)]
-    #[test]
-    fn a_transcript_that_cannot_be_opened_is_named_as_that_and_not_as_a_resumed_turn() {
-        use std::os::unix::fs::PermissionsExt;
-        let now = agent_activity::now_ms();
-        let written = now - 3 * HOUR_MS;
-        let (led, dir) =
-            a_stopped_subagent_writing(written - 213, Some(written), transcript_age::STOP_TAIL);
-        let transcript = dir.join("agent-child-run-1.jsonl");
-        std::fs::set_permissions(&transcript, std::fs::Permissions::from_mode(0o000)).unwrap();
-        assert!(
-            std::fs::File::open(&transcript).is_err(),
-            "the plant did not take: this process opens a mode-000 file, as root does, so it cannot \
-             prove an unopenable transcript is named as one"
-        );
-        let held = held_line(&led);
-        std::fs::set_permissions(&transcript, std::fs::Permissions::from_mode(0o600)).unwrap();
-        let _ = std::fs::remove_dir_all(dir);
-        assert_eq!(held.len(), 1, "criterion 3: it is still held");
-        assert!(!held[0].contains("a resumed turn"), "{held:?}");
-        assert!(
-            held[0].contains("cannot be opened") && held[0].contains("agent-child-run-1.jsonl"),
-            "{held:?}"
-        );
-        assert!(held[0].contains("written 180m ago"), "{held:?}");
-    }
-
-    #[test]
-    fn a_resumed_hold_says_when_the_entry_after_the_stop_was_written() {
-        let now = agent_activity::now_ms();
-        let body = format!(
-            "{}{}",
-            transcript_age::STOP_TAIL,
-            transcript_age::RESUMED_TAIL
-        );
-        let (led, dir) =
-            a_stopped_subagent_writing(now - 3 * HOUR_MS, Some(now - 2 * HOUR_MS), &body);
-        let held = held_line(&led);
-        let _ = std::fs::remove_dir_all(dir);
-        assert!(
-            held[0].contains("resumed turn") && held[0].contains("written 120m ago"),
-            "{held:?}"
-        );
-    }
-
-    /// A background task finished after the subagent stopped, its
-    /// notification was appended, and no reply ever followed: ISS-488's bare,
-    /// and ISS-553/554's with the context Claude Code wrote beside it. Of 277
-    /// notifications in 1075 transcripts measured 2026-09-28 the slowest reply
-    /// came 29 s after it, and of 145,297 entries a reply answers the slowest
-    /// came 20 min after.
-    #[test]
-    fn a_notification_nobody_answered_for_the_quiet_bound_does_not_hold_the_restart() {
-        let stop = NOW_MS - 3 * 24 * HOUR_MS;
-        for (shape, tail) in [
-            ("ISS-488", transcript_age::NOTIFIED_TAIL),
-            ("ISS-553/554", transcript_age::NOTIFIED_WITH_CONTEXT_TAIL),
-        ] {
-            let body = format!("{}{tail}", transcript_age::STOP_TAIL);
-            let (led, dir) = a_stopped_subagent_writing(stop, Some(NOW_MS - HOUR_MS), &body);
-            let runs = led.unclosed_runs().unwrap();
-            let quiet = count_live_runs(&runs, "boot-a", |_| true, |r| reads_quiet(r, NOW_MS));
-            let (led_recent, dir_recent) =
-                a_stopped_subagent_writing(stop, Some(NOW_MS - HOUR_MS + 1), &body);
-            let runs = led_recent.unclosed_runs().unwrap();
-            let recent = count_live_runs(&runs, "boot-a", |_| true, |r| reads_quiet(r, NOW_MS));
-            let _ = std::fs::remove_dir_all(dir);
-            let _ = std::fs::remove_dir_all(dir_recent);
-            assert_eq!(
-                quiet, 0,
-                "{shape}: unanswered for the whole bound, no turn took it up"
-            );
-            assert_eq!(
-                recent, 1,
-                "{shape}: a millisecond inside the bound, a reply may still come"
-            );
-        }
-    }
-
-    #[test]
-    fn a_notification_still_inside_the_bound_is_held_and_says_so() {
-        let now = agent_activity::now_ms();
-        for tail in [
-            transcript_age::NOTIFIED_TAIL,
-            transcript_age::NOTIFIED_WITH_CONTEXT_TAIL,
-        ] {
-            let body = format!("{}{tail}", transcript_age::STOP_TAIL);
-            let (led, dir) = a_stopped_subagent_writing(
-                now - 3 * HOUR_MS,
-                Some(now - 5 * 60_000 - 30_000),
-                &body,
-            );
-            let held = held_line(&led);
-            let _ = std::fs::remove_dir_all(dir);
-            assert!(
-                held[0].contains("written 5m ago") && held[0].contains("no reply yet"),
-                "{held:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn a_subagent_its_master_closed_does_not_hold_the_restart() {
-        let mut led = Ledger::open_in_memory().unwrap();
-        seeded_run(&mut led, "run-1", "boot-a", None);
-        led.end_run("run-1", "master", "its report is in").unwrap();
-        let runs = led.unclosed_runs().unwrap();
-        assert_eq!(
-            count_live_runs(&runs, "boot-a", |_| true, |r| reads_quiet(r, NOW_MS)),
-            0,
-            "its master's close writes `exited`, and that is what says this run is over"
-        );
-    }
-
-    #[test]
-    fn a_run_with_a_pid_is_never_read_as_a_quiet_subagent() {
-        let (led, dir) = a_stopped_subagent(NOW_MS - 10 * HOUR_MS, Some(NOW_MS - 10 * HOUR_MS));
-        led.attach_pid("run-1", 4242).unwrap();
-        let runs = led.unclosed_runs().unwrap();
-        assert_eq!(
-            count_live_runs(&runs, "boot-a", |_| true, |r| reads_quiet(r, NOW_MS)),
-            1,
-            "a run pane has a process the drain can ask; the subagent reading is not its rule"
-        );
-        let _ = std::fs::remove_dir_all(dir);
     }
 
     /// Review finding 3: one check per interval, the first at once, however

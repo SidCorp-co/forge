@@ -216,7 +216,7 @@ pub async fn reconcile(
         };
         // A subagent runs in the Claude Code process recorded for it, and that
         // process read gone is its end, whatever the master's pane reads. It
-        // goes on the row for the drain, which reads the ledger and not this
+        // goes on the row, where the run's evidence is read, and not in this
         // registry. A pane read gone is not by itself that end: the
         // conversation can run as a background session outside the pane
         // (ISS-1312, run e67c08e0).
@@ -236,8 +236,8 @@ pub async fn reconcile(
             }
         }
         // The same pane read alive again says the read that marked it saw
-        // nothing end, and a mark left standing lets the drain restart over a
-        // live pane's run (ISS-1312). A mark its process's own end wrote stays.
+        // nothing end, and a mark left standing reads a live pane's subagent as
+        // ended (ISS-1312). A mark its process's own end wrote stays.
         if read == MasterPresence::Alive
             && run.host_ended_by.as_deref() == Some(HOST_PANE_GONE)
             && host_read != Some(HostRead::Gone)
@@ -2470,7 +2470,7 @@ mod tests {
 
     /// ISS-1312: the stop hooks append their own records after the box stamps
     /// the stop, so the transcript is always written after it. Those records
-    /// are the stop, and the run is said quiet by the reading the drain uses.
+    /// are the stop, and the run is said quiet by the reading recovery keeps it with.
     #[tokio::test]
     async fn a_subagent_whose_last_write_is_its_own_stop_hooks_is_said_quiet() {
         let scratch = Scratch::new("iss-1312");
@@ -2862,7 +2862,7 @@ mod tests {
         assert_eq!(
             run.host_ended_by.as_deref(),
             Some(HOST_PANE_GONE),
-            "criterion 17: the pane read gone goes on the row, where the drain reads it"
+            "criterion 17: the pane read gone goes on the row, where the run's evidence is read"
         );
         assert_eq!(
             kept(&led).as_deref(),
@@ -2894,28 +2894,31 @@ mod tests {
         }
     }
 
-    fn drain_names(led: &Ledger) -> Vec<String> {
-        crate::daemon::live_sessions_from(
-            led.unclosed_runs(),
-            "boot-a",
-            |_| true,
-            |_| vec!["ISS-1135".into()],
-        )
+    /// What run-1's subagent's own evidence says now.
+    fn evidence(led: &Ledger) -> subagent_end::Evidence {
+        subagent_end::of_run(&led.run("run-1").unwrap().unwrap(), now_ms())
+    }
+
+    /// Whether that evidence says the subagent's process has ended.
+    fn host_ended(led: &Ledger) -> bool {
+        matches!(evidence(led), subagent_end::Evidence::HostEnded { .. })
+    }
+
+    /// Whether that evidence says the subagent is in the first turn it was
+    /// declared for.
+    fn in_first_turn(led: &Ledger) -> bool {
+        matches!(evidence(led), subagent_end::Evidence::NoTurnEnd { .. })
     }
 
     /// ISS-1312 criteria 31 and 32, the fourth judge's N2: `pane_pid` answers
     /// `None` alike for a tmux that could not answer and a pane that is absent,
     /// and the first such read wrote a `pane-gone` mark that outlived it, so
-    /// the drain stopped holding a live pane's run.
+    /// a live pane's subagent read as ended.
     #[tokio::test]
-    async fn a_sweep_tmux_could_not_answer_records_no_end_and_the_drain_still_holds_the_run() {
+    async fn a_sweep_tmux_could_not_answer_records_no_end_and_its_subagent_is_still_at_work() {
         let scratch = Scratch::new("tmux-unanswered");
         let (mut led, wt, _transcript) = a_subagent_run(&scratch);
-        assert_eq!(
-            drain_names(&led).len(),
-            1,
-            "the control: a first turn holds"
-        );
+        assert!(in_first_turn(&led), "the control: a first turn");
         let beats = Beats::default();
 
         let r = sweep(&mut led, &TmuxUnanswered, &beats).await;
@@ -2927,11 +2930,10 @@ mod tests {
             "criterion 31: a read nobody answered is not an end"
         );
         assert_still_held(&led, &r, &wt, "a sweep that established nothing");
-        let held = drain_names(&led);
-        assert_eq!(held.len(), 1, "criterion 32: {held:?}");
         assert!(
-            held[0].contains("has not ended a turn"),
-            "held as criteria 1-18 read it: {held:?}"
+            in_first_turn(&led),
+            "criterion 32: read as criteria 1-18 read it: {:?}",
+            evidence(&led)
         );
     }
 
@@ -2960,18 +2962,16 @@ mod tests {
             &wt,
             "a live process under a pane nobody could ask about",
         );
-        let held = drain_names(&led);
-        assert_eq!(held.len(), 1, "criterion 32: {held:?}");
         assert!(
-            held[0].contains("has not ended a turn"),
-            "held as criteria 1-18 read it: {held:?}"
+            in_first_turn(&led),
+            "criterion 32: read as criteria 1-18 read it: {:?}",
+            evidence(&led)
         );
     }
 
     /// ISS-1312 criteria 31 and 32 as corrected: the process is read from
     /// `/proc` whatever tmux answers, so its end is recorded as the process's
-    /// and never as the pane's, and the drain lets that run go as criterion 70
-    /// does under a pane read alive.
+    /// and never as the pane's, as criterion 70 does under a pane read alive.
     #[tokio::test]
     async fn a_sweep_tmux_could_not_answer_records_a_gone_process_as_that_process_end() {
         let scratch = Scratch::new("tmux-unanswered-gone");
@@ -2992,8 +2992,9 @@ mod tests {
             "criterion 31: the end is the process's, not the pane nobody could ask about"
         );
         assert!(
-            drain_names(&led).is_empty(),
-            "criterion 32: not heard from since its process read gone, so not outstanding"
+            host_ended(&led),
+            "criterion 32: not heard from since its process read gone: {:?}",
+            evidence(&led)
         );
     }
 
@@ -3100,7 +3101,7 @@ mod tests {
 
     /// ISS-1312 criterion 33: a `pane-gone` mark is withdrawn once the same
     /// pane reads alive, where before it stood until the subagent was heard
-    /// from and the drain let a live pane's run go.
+    /// from and a live pane's subagent read as ended.
     #[tokio::test]
     async fn a_pane_read_alive_again_withdraws_the_gone_mark_an_earlier_sweep_wrote() {
         let scratch = Scratch::new("pane-back");
@@ -3110,13 +3111,12 @@ mod tests {
             .note_host_ended("run-1", now_ms() - MIN_MS, HOST_PANE_GONE)
             .unwrap());
         assert!(
-            drain_names(&led).is_empty(),
-            "the plant: a mark with its process recorded lets the drain go"
+            host_ended(&led),
+            "the plant: a mark with its process recorded is that subagent's end"
         );
         led.forget_host("run-1").unwrap();
-        assert_eq!(
-            drain_names(&led).len(),
-            1,
+        assert!(
+            in_first_turn(&led),
             "criterion 55: the same mark on a row that records no process ends nothing"
         );
 
@@ -3129,7 +3129,7 @@ mod tests {
             "criterion 33: the pane is there, so nothing ended with it"
         );
         assert_still_held(&led, &r, &wt, "a live master's first-turn run");
-        assert_eq!(drain_names(&led).len(), 1, "criterion 33: held again");
+        assert!(in_first_turn(&led), "criterion 33: at work again");
     }
 
     /// The boundary of criterion 33: the mark a placement wrote is not a read
@@ -4641,9 +4641,7 @@ mod tests {
             (None, NEW),
             "criterion 50: the placement records no end of a subagent whose process runs, and the resumed pane adopts it"
         );
-        let held = drain_names(&led);
-        assert_eq!(held.len(), 1, "criterion 52: {held:?}");
-        assert!(held[0].contains("has not ended a turn"), "{held:?}");
+        assert!(in_first_turn(&led), "criterion 52: {:?}", evidence(&led));
 
         // The pane that placement started exits at once, so the registry
         // reads it gone, and core has called the run's session over.
@@ -4666,7 +4664,7 @@ mod tests {
             ["core-sess-1".to_string()],
             "criterion 59: a master hosted outside its pane is read as alive, so its run is kept and beaten"
         );
-        assert_eq!(drain_names(&led).len(), 1, "criterion 52: still held");
+        assert!(in_first_turn(&led), "criterion 52: still at work");
     }
 
     /// Criteria 51 and 59: a pane this box reads gone, or a master it has no
@@ -4728,10 +4726,9 @@ mod tests {
                 "{label}: nothing is licensed on the pane alone: {r:?}"
             );
             assert!(wt.is_dir(), "{label}");
-            assert_eq!(
-                drain_names(&led).len(),
-                1,
-                "{label}: the drain still holds it"
+            assert!(
+                !host_ended(&led),
+                "{label}: its subagent is not read as ended"
             );
         }
     }
@@ -4760,28 +4757,23 @@ mod tests {
             led.run("run-1").unwrap().unwrap().host_ended_by.as_deref(),
             Some(HOST_PANE_GONE)
         );
-        assert!(drain_names(&led).is_empty());
+        assert!(host_ended(&led));
     }
 
     /// Criterion 70: the process read gone on a sweep whose pane reads alive,
-    /// as under a resumed successor, is recorded as its own end, and the drain
-    /// stops holding the run.
+    /// as under a resumed successor, is recorded as its own end.
     #[tokio::test]
     async fn a_process_read_gone_under_a_live_pane_is_its_subagent_s_end() {
         let scratch = Scratch::new("process-gone");
         let (mut led, wt, _transcript) = a_subagent_run(&scratch);
         record_host(&led);
-        assert_eq!(
-            drain_names(&led).len(),
-            1,
-            "the control: a first turn holds"
-        );
+        assert!(in_first_turn(&led), "the control: a first turn");
         let r = sweep_procs(&mut led, &master_alive(), &Beats::default(), &host_gone()).await;
         assert_still_held(&led, &r, &wt, "a live master decides what becomes of it");
         assert_eq!(
             led.run("run-1").unwrap().unwrap().host_ended_by.as_deref(),
             Some(HOST_PROCESS_GONE)
         );
-        assert!(drain_names(&led).is_empty(), "criterion 70");
+        assert!(host_ended(&led), "criterion 70");
     }
 }

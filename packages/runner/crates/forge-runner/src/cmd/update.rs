@@ -78,7 +78,7 @@ pub(crate) enum Applied {
 /// `--restart`, on both of its branches.
 ///
 /// Where the file on disk is already the latest, that state is not the rare
-/// one: it is exactly where a self-update applied and its drain deferred, so
+/// one: it is exactly where a self-update applied and its handover deferred, so
 /// the file is current and the daemon is still on the inode it started from.
 /// Returning at `up to date` sent the operator away with the box still serving
 /// the old build — this issue's own rule (a version claim is about the running
@@ -235,8 +235,9 @@ fn say_and_act(decision: Decision, still_the_same: impl Fn(u32) -> bool) {
             }
             restart_the_unit_running(pid, unverified, move || still_the_same(pid));
         }
-        // The daemon is already restarting itself and is waiting for the work
-        // it holds. Restarting the unit now would stop exactly that work.
+        // The daemon is already handing itself over and is waiting for the
+        // work it holds in-process. Restarting the unit now would cut exactly
+        // that work.
         Decision::Draining {
             pid,
             cause,
@@ -244,14 +245,14 @@ fn say_and_act(decision: Decision, still_the_same: impl Fn(u32) -> bool) {
             unverified,
         } => {
             println!(
-                "  the daemon on this box (pid {pid}) is draining for {cause} and turns itself over once it is idle — not restarting it{}",
+                "  the daemon on this box (pid {pid}) is handing over for {cause} and replaces itself with the build on disk once its in-process work ends — not restarting it{}",
                 hedge(unverified)
             );
             if outstanding.is_empty() {
                 println!("  it is waiting on nothing this command can see; `forge-runner status` says how long it has waited");
             } else {
                 println!(
-                    "  restarting it now would stop the {} it is waiting for:",
+                    "  restarting it now would cut the {} it is waiting for:",
                     if outstanding.len() == 1 {
                         "one piece of work".to_string()
                     } else {

@@ -189,8 +189,8 @@ pub(crate) enum Unplaced {
     Draining {
         status: String,
     },
-    /// This daemon is draining before a restart, so it admits no new work for
-    /// any project until it has restarted or the drain gives up (ISS-1223).
+    /// This daemon is inside a handover's closing window, so it admits no new
+    /// work for any project for the seconds that takes (ISS-1379).
     Restarting {
         cause: String,
     },
@@ -298,7 +298,7 @@ impl std::fmt::Display for Unplaced {
             ),
             Self::Restarting { cause } => write!(
                 f,
-                "this box is draining before a restart ({cause}), so it starts no work and places no master for any project until it has restarted or the drain gives up"
+                "this box is handing over to a new build ({cause}), so it starts no work and places no master for any project for the seconds that takes; the new build does"
             ),
             Self::NoRepoPath => write!(
                 f,
@@ -10148,16 +10148,6 @@ mod servers_refusal_walk_tests {
             Some(HOST_PANE_STARTED),
             "criterion 30: the pane this sweep started is the end of the subagent the pane before it ran"
         );
-        let drain = crate::daemon::live_sessions_from(
-            led.unclosed_runs(),
-            &boot,
-            |_| true,
-            |_| vec!["ISS-1314".into()],
-        );
-        assert!(
-            drain.is_empty(),
-            "criterion 16, through the sweep: {drain:?}"
-        );
     }
 
     /// ISS-1312 criterion 47: judge j5 planted `false` at `ensure_master`'s
@@ -12146,7 +12136,7 @@ mod drain_sweep_tests {
         );
 
         let drain = crate::daemon::drain::Drain::unrecorded();
-        let _attempt = drain.begin("update 0.1.0 → 0.1.1").unwrap();
+        let _attempt = drain.close_for_test("update 0.1.0 → 0.1.1");
         let (paths, masters) = one_sweep(&drain).await;
         assert!(
             paths.iter().any(|p| p == "/api/devices/me/runners"),
@@ -12160,7 +12150,7 @@ mod drain_sweep_tests {
         // Asserted on its fragments and never printed whole: the sentence can
         // carry a master's session id, which is not for a log.
         let why = masters.why_unplaced("proj-1");
-        for fragment in ["draining before a restart", "update 0.1.0 → 0.1.1"] {
+        for fragment in ["handing over to a new build", "update 0.1.0 → 0.1.1"] {
             assert!(
                 why.contains(fragment),
                 "the project records the drain as why no master was placed, and this fragment is missing: {fragment}"
