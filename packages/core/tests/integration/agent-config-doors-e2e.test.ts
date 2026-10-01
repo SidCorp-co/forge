@@ -18,11 +18,18 @@ let mods: {
   signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
   readAgentConfig: typeof import('../../src/projects/agent-config.js').readAgentConfig;
   patchAgentConfigKeys: typeof import('../../src/projects/agent-config.js').patchAgentConfigKeys;
-  buildSystemPrompt: typeof import('../../src/assistant/system-prompt.js').buildSystemPrompt;
   projects: typeof import('../../src/db/schema.js').projects;
 };
 let ownerId: string;
 let projectId: string;
+
+const FORGE = { marketplace: 'SidCorp-co/forge-plugin', name: 'forge' };
+const WEEKLY = {
+  enabled: true,
+  pinnedIssue: 'ISS-1',
+  judgeProviderId: 'p-1',
+  judgeModel: 'sonnet',
+};
 
 async function call(
   method: 'GET' | 'PATCH',
@@ -57,17 +64,15 @@ beforeAll(async () => {
   process.env.DATABASE_URL = harness.url;
   process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
   process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
-  const [jwt, agentConfig, systemPrompt, schema] = await Promise.all([
+  const [jwt, agentConfig, schema] = await Promise.all([
     import('../../src/auth/jwt.js'),
     import('../../src/projects/agent-config.js'),
-    import('../../src/assistant/system-prompt.js'),
     import('../../src/db/schema.js'),
   ]);
   mods = {
     signUserToken: jwt.signUserToken,
     readAgentConfig: agentConfig.readAgentConfig,
     patchAgentConfigKeys: agentConfig.patchAgentConfigKeys,
-    buildSystemPrompt: systemPrompt.buildSystemPrompt,
     projects: schema.projects,
   };
   server = await startTestServer();
@@ -84,55 +89,48 @@ beforeEach(async () => {
   const org = await seedOrg(harness.db, ownerId);
   const project = await createTestProject(harness.db, ownerId, {
     orgId: org.id,
-    agentConfig: { personaStyle: 'be terse' },
+    agentConfig: { plugins: [FORGE] },
   });
   projectId = project.id;
   await createTestProjectMember(harness.db, { userId: ownerId, projectId, role: 'admin' });
 });
 
 describe('the named doors write one key each', () => {
-  it('stores systemPrompt through its own field and leaves every sibling key alone', async () => {
-    const res = await call('PATCH', `/api/projects/${projectId}`, {
-      systemPrompt: 'answer in Vietnamese',
-    });
+  it('stores assistantWeekly through its own field and leaves every sibling key alone', async () => {
+    const res = await call('PATCH', `/api/projects/${projectId}`, { assistantWeekly: WEEKLY });
     expect(res.status).toBe(200);
-    expect(await storedConfig()).toEqual({
-      personaStyle: 'be terse',
-      systemPrompt: 'answer in Vietnamese',
-    });
-  });
-
-  it('stores categories through its own field and leaves every sibling key alone', async () => {
-    const res = await call('PATCH', `/api/projects/${projectId}`, { categories: ['bug', 'chore'] });
-    expect(res.status).toBe(200);
-    expect(await storedConfig()).toEqual({
-      personaStyle: 'be terse',
-      categories: ['bug', 'chore'],
-    });
+    expect(await storedConfig()).toEqual({ plugins: [FORGE], assistantWeekly: WEEKLY });
   });
 
   it('clears a key on null rather than storing a null value', async () => {
-    await call('PATCH', `/api/projects/${projectId}`, { systemPrompt: 'temporary' });
-    const res = await call('PATCH', `/api/projects/${projectId}`, { systemPrompt: null });
+    await call('PATCH', `/api/projects/${projectId}`, { assistantWeekly: WEEKLY });
+    const res = await call('PATCH', `/api/projects/${projectId}`, { assistantWeekly: null });
     expect(res.status).toBe(200);
-    const stored = await storedConfig();
-    expect('systemPrompt' in stored).toBe(false);
-    expect(stored.personaStyle).toBe('be terse');
+    expect(await storedConfig()).toEqual({ plugins: [FORGE] });
   });
 
-  it('serves a stored systemPrompt to the assistant prompt builder', async () => {
-    await call('PATCH', `/api/projects/${projectId}`, { systemPrompt: 'answer in Vietnamese' });
+  it.each([
+    ['personaStyle', 'be terse'],
+    ['systemPrompt', 'answer in Vietnamese'],
+    ['rocketChatAnswerMode', 'agent'],
+    ['categories', ['bug', 'chore']],
+    ['description', 'a project'],
+    ['kind', 'website'],
+  ])('refuses the deleted field %s by name and writes nothing', async (field, value) => {
+    const before = await storedConfig();
+    const res = await call('PATCH', `/api/projects/${projectId}`, {
+      name: 'A New Name',
+      [field as string]: value,
+    });
+    expect(res.status).toBe(400);
+    expect(res.text).toContain(`\`${field}\` is not a field of PATCH /api/projects/:id`);
+    expect(await storedConfig()).toEqual(before);
     const [row] = await harness.db
-      .select({ agentConfig: mods.projects.agentConfig, name: mods.projects.name })
+      .select({ name: mods.projects.name })
       .from(mods.projects)
       .where(eq(mods.projects.id, projectId))
       .limit(1);
-
-    const prompt = mods.buildSystemPrompt({
-      project: { name: row?.name ?? 'p', agentConfig: row?.agentConfig },
-    } as Parameters<typeof mods.buildSystemPrompt>[0]);
-    expect(prompt).toContain('answer in Vietnamese');
-    expect(prompt).toContain('be terse');
+    expect(row?.name).not.toBe('A New Name');
   });
 });
 
@@ -184,42 +182,34 @@ describe('the raw agentConfig record is refused by name', () => {
 describe('a wholesale write cannot lose a sibling key', () => {
   it('loses the sibling key when the write is the read-modify-write this replaced', async () => {
     const stale = await storedConfig();
-    await mods.patchAgentConfigKeys(projectId, { systemPrompt: 'set by the other request' });
+    await mods.patchAgentConfigKeys(projectId, { assistantWeekly: WEEKLY });
 
     await harness.db
       .update(mods.projects)
       .set({ agentConfig: { ...stale, plugins: [] } })
       .where(eq(mods.projects.id, projectId));
 
-    expect('systemPrompt' in (await storedConfig())).toBe(false);
+    expect('assistantWeekly' in (await storedConfig())).toBe(false);
   });
 
   it('keeps the sibling key when the write names only its own key', async () => {
-    const stale = await storedConfig();
-    await mods.patchAgentConfigKeys(projectId, { systemPrompt: 'set by the other request' });
-
-    void stale;
+    await mods.patchAgentConfigKeys(projectId, { assistantWeekly: WEEKLY });
     await mods.patchAgentConfigKeys(projectId, { plugins: [] });
 
-    expect(await storedConfig()).toEqual({
-      personaStyle: 'be terse',
-      systemPrompt: 'set by the other request',
-      plugins: [],
-    });
+    expect(await storedConfig()).toEqual({ assistantWeekly: WEEKLY, plugins: [] });
   });
 
   it('keeps both keys when two real doors are driven at once', async () => {
     const results = await Promise.all([
-      call('PATCH', `/api/projects/${projectId}`, { systemPrompt: 'from the settings form' }),
+      call('PATCH', `/api/projects/${projectId}`, { assistantWeekly: WEEKLY }),
       call('PATCH', `/api/projects/${projectId}/plugins`, {
-        plugins: [{ marketplace: 'SidCorp-co/forge-plugin', name: 'forge' }],
+        plugins: [FORGE, { ...FORGE, name: 'code-quality' }],
       }),
     ]);
     expect(results.map((r) => r.status)).toEqual([200, 200]);
     const stored = await storedConfig();
-    expect(stored.systemPrompt).toBe('from the settings form');
-    expect(stored.plugins).toHaveLength(1);
-    expect(stored.personaStyle).toBe('be terse');
+    expect(stored.assistantWeekly).toEqual(WEEKLY);
+    expect(stored.plugins).toHaveLength(2);
   });
 });
 
@@ -232,10 +222,7 @@ describe('a failed sibling field rolls the config write back', () => {
     expect(res.status).toBe(200);
   }
 
-  it.each([
-    ['systemPrompt', 'answer in Vietnamese'],
-    ['categories', ['bug']],
-  ])(
+  it.each([['assistantWeekly', WEEKLY]])(
     'leaves agent_config untouched when %s and a taken issuePrefix arrive together',
     async (field, value) => {
       await projectHolding('TAKEN');

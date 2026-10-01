@@ -15,7 +15,6 @@ export const pluginDesignationSchema = z
       .regex(/^[0-9a-f]{7,40}$/, 'pinnedRef must be a git commit SHA')
       .nullable()
       .optional(),
-    autoUpdate: z.boolean().optional(),
   })
   .strict();
 
@@ -30,10 +29,15 @@ export interface ResolvedPluginDesignation extends PluginDesignation {
   pinnedRefConflict?: string[];
 }
 
-export function readPluginDesignations(agentConfig: unknown): PluginDesignation[] {
+/** A stored list no write door would have accepted is refused by name, never read as no plugins. */
+export function readPluginDesignations(agentConfig: unknown, slug: string): PluginDesignation[] {
   const ac = (agentConfig as Record<string, unknown> | null) ?? {};
   const parsed = z.array(pluginDesignationSchema).safeParse(ac.plugins ?? []);
-  return parsed.success ? parsed.data : [];
+  if (parsed.success) return parsed.data;
+  const at = parsed.error.issues.map((i) => `plugins.${i.path.join('.')}: ${i.message}`).join('; ');
+  throw new Error(
+    `PLUGIN_DESIGNATIONS_INVALID: project ${slug} stores agentConfig.plugins that no write door accepts (${at}). Rewrite the list with PATCH /api/projects/:id/plugins.`,
+  );
 }
 
 /**
@@ -58,11 +62,9 @@ export function mergePluginDesignations(
 /**
  * Union the designations of every project a device serves, keyed by `marketplace::name`.
  *
- * Conflict rules, both biased toward the safer outcome because a device holds ONE marketplace
- * clone and ONE installed version:
- * - `autoUpdate` — false wins. One project asking to stay pinned outranks another asking to float.
- * - `pinnedRef`  — differing SHAs drop the pin and report the conflict, rather than silently
- *   picking one and reporting a state that is true for only some of the projects.
+ * A device holds ONE marketplace clone and ONE installed version, so differing `pinnedRef` SHAs
+ * drop the pin and report the conflict, rather than silently picking one and reporting a state
+ * that is true for only some of the projects.
  */
 export function unionPluginDesignations(
   perProject: Array<{ slug: string; designations: PluginDesignation[] }>,
@@ -78,13 +80,11 @@ export function unionPluginDesignations(
           marketplace: d.marketplace,
           name: d.name,
           pinnedRef: d.pinnedRef ?? null,
-          autoUpdate: d.autoUpdate ?? true,
           projects: [slug],
         });
         continue;
       }
       if (!existing.projects.includes(slug)) existing.projects.push(slug);
-      if (d.autoUpdate === false) existing.autoUpdate = false;
 
       const incoming = d.pinnedRef ?? null;
       if (incoming && existing.pinnedRef && incoming !== existing.pinnedRef) {

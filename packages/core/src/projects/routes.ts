@@ -11,7 +11,6 @@ import {
   labels,
   organizationMembers,
   organizations,
-  projectKinds,
   projectMembers,
   projects,
   runners,
@@ -31,11 +30,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { zValidator } from '../middleware/zod-validator.js';
 import { pluginDesignationsPatchSchema } from '../plugins/designation.js';
 import { type AgentConfigKeyPatch, patchAgentConfigKeys, readAgentConfig } from './agent-config.js';
-import {
-  assistantWeeklySchema,
-  PERSONA_STYLE_MAX,
-  SYSTEM_PROMPT_MAX,
-} from './agent-config-schema.js';
+import { assistantWeeklySchema } from './agent-config-schema.js';
 import { ENVIRONMENTS_MOVED_MESSAGE } from './environments.js';
 import { applyIssuePrefixPatch } from './issue-prefix-patch.js';
 import { projectOnboardRoutes } from './onboard-routes.js';
@@ -47,7 +42,7 @@ import {
   releaseChainPatchFields,
   withRetiredReleaseAxes,
 } from './release-chain.js';
-import { refuseRetiredProjectKeys } from './retired-project-keys.js';
+import { refuseRetiredProjectKeys, undeclaredFieldError } from './retired-project-keys.js';
 import {
   badRequest,
   flatten,
@@ -60,7 +55,7 @@ import { projectRunnerRoutes } from './runners-routes.js';
 import { createProject, generateApiKey, ProjectSlugTakenError } from './service.js';
 import { projectSettingsWriteRoutes } from './settings-write-routes.js';
 
-export const createProjectSchema = z.object({
+const createProjectFields = {
   slug: z
     .string()
     .trim()
@@ -68,34 +63,34 @@ export const createProjectSchema = z.object({
     .min(3)
     .max(64),
   name: z.string().trim().min(1).max(200),
-  description: z.string().trim().max(2000).nullable().optional(),
-  kind: z.enum(projectKinds).optional(),
   orgId: z.uuid().optional(),
+};
+
+export const createProjectSchema = z.strictObject(createProjectFields, {
+  error: undeclaredFieldError('POST /api/projects', Object.keys(createProjectFields)),
 });
 
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
 
+const updateProjectFields = {
+  name: z.string().trim().min(1).max(200).optional(),
+  repoPath: z.string().trim().max(500).nullable().optional(),
+  repoUrl: z.string().trim().max(500).nullable().optional(),
+  workspaceSetup: z.string().trim().max(8000).nullable().optional(),
+  baseBranch: z.string().trim().max(100).nullable().optional(),
+  ...releaseChainPatchFields,
+  issuePrefix: z.string().trim().max(16).nullable().optional(),
+  defaultDeviceId: z.uuid().nullable().optional(),
+  assistantWeekly: assistantWeeklySchema.nullable().optional(),
+  webhookSecret: z.string().min(16).max(128).nullable().optional(),
+  // Move the project to another org. Requires org owner/admin on BOTH the
+  // current org (route gate) and the target org (checked in the handler).
+  orgId: z.uuid().optional(),
+};
+
 export const updateProjectSchema = z
-  .object({
-    name: z.string().trim().min(1).max(200).optional(),
-    description: z.string().trim().max(2000).nullable().optional(),
-    kind: z.enum(projectKinds).optional(),
-    repoPath: z.string().trim().max(500).nullable().optional(),
-    repoUrl: z.string().trim().max(500).nullable().optional(),
-    workspaceSetup: z.string().trim().max(8000).nullable().optional(),
-    baseBranch: z.string().trim().max(100).nullable().optional(),
-    ...releaseChainPatchFields,
-    issuePrefix: z.string().trim().max(16).nullable().optional(),
-    defaultDeviceId: z.uuid().nullable().optional(),
-    assistantWeekly: assistantWeeklySchema.nullable().optional(),
-    personaStyle: z.string().trim().max(PERSONA_STYLE_MAX).nullable().optional(),
-    rocketChatAnswerMode: z.enum(['fast', 'agent']).nullable().optional(),
-    systemPrompt: z.string().trim().max(SYSTEM_PROMPT_MAX).nullable().optional(),
-    categories: z.array(z.string().trim().min(1).max(100)).max(50).nullable().optional(),
-    webhookSecret: z.string().min(16).max(128).nullable().optional(),
-    // Move the project to another org. Requires org owner/admin on BOTH the
-    // current org (route gate) and the target org (checked in the handler).
-    orgId: z.uuid().optional(),
+  .strictObject(updateProjectFields, {
+    error: undeclaredFieldError('PATCH /api/projects/:id', Object.keys(updateProjectFields)),
   })
   .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' });
 
@@ -118,7 +113,7 @@ projectRoutes.post(
     }
   }),
   async (c) => {
-    const { slug, name, description, kind, orgId: requestedOrgId } = c.req.valid('json');
+    const { slug, name, orgId: requestedOrgId } = c.req.valid('json');
     const userId = c.get('userId');
 
     // Resolve the target org: explicit orgId (caller must be an org member of
@@ -144,8 +139,6 @@ projectRoutes.post(
         name,
         orgId,
         createdBy: userId,
-        description,
-        kind,
       });
 
       return c.json(created, 201);
@@ -353,8 +346,6 @@ projectRoutes.patch(
       updates.orgId = patch.orgId;
     }
     if (patch.name !== undefined) updates.name = patch.name;
-    if (patch.description !== undefined) updates.description = patch.description;
-    if (patch.kind !== undefined) updates.kind = patch.kind;
     if (patch.repoPath !== undefined) updates.repoPath = patch.repoPath;
     if (patch.repoUrl !== undefined) updates.repoUrl = patch.repoUrl;
     if (patch.baseBranch !== undefined) updates.baseBranch = patch.baseBranch;
@@ -367,18 +358,6 @@ projectRoutes.patch(
     const agentConfigPatch: AgentConfigKeyPatch = {};
     if (patch.assistantWeekly !== undefined)
       agentConfigPatch.assistantWeekly = patch.assistantWeekly;
-    if (patch.personaStyle !== undefined) {
-      agentConfigPatch.personaStyle =
-        patch.personaStyle === null || patch.personaStyle.length === 0 ? null : patch.personaStyle;
-    }
-    if (patch.rocketChatAnswerMode !== undefined) {
-      agentConfigPatch.rocketChatAnswerMode = patch.rocketChatAnswerMode;
-    }
-    if (patch.systemPrompt !== undefined) {
-      agentConfigPatch.systemPrompt =
-        patch.systemPrompt === null || patch.systemPrompt.length === 0 ? null : patch.systemPrompt;
-    }
-    if (patch.categories !== undefined) agentConfigPatch.categories = patch.categories;
     if (patch.webhookSecret !== undefined) updates.webhookSecret = patch.webhookSecret;
 
     const [updated] = await db.transaction(async (tx) => {

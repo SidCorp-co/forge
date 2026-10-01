@@ -93,7 +93,6 @@ describe('PATCH /api/projects/:id/plugins (ISS-897)', () => {
     marketplace: 'SidCorp-co/forge-plugin',
     name: 'forge',
     pinnedRef: null,
-    autoUpdate: true,
   };
 
   function seed(agentConfig: Record<string, unknown>, orgRole: OrgRole = 'admin') {
@@ -109,8 +108,7 @@ describe('PATCH /api/projects/:id/plugins (ISS-897)', () => {
   it('replaces the list and names no sibling key of agentConfig', async () => {
     const token = await signUserToken('uuid-owner');
     seed({
-      pipelineConfig: { enabled: true },
-      personaStyle: 'be terse',
+      assistantWeekly: { enabled: false },
       plugins: [{ ...PLUGIN, name: 'old' }],
     });
 
@@ -123,7 +121,7 @@ describe('PATCH /api/projects/:id/plugins (ISS-897)', () => {
 
   it('deletes the key on null rather than writing a null value', async () => {
     const token = await signUserToken('uuid-owner');
-    seed({ personaStyle: 'be terse', plugins: [PLUGIN] });
+    seed({ assistantWeekly: { enabled: false }, plugins: [PLUGIN] });
 
     const res = await patch(token, { plugins: null });
 
@@ -144,6 +142,7 @@ describe('PATCH /api/projects/:id/plugins (ISS-897)', () => {
       { marketplace: '', name: 'forge', pinnedRef: null },
       { marketplace: 'a/b', name: 'Forge Plugin', pinnedRef: null },
       { marketplace: 'a/b', name: 'forge', pinnedRef: 'not-a-sha' },
+      { marketplace: 'a/b', name: 'forge', autoUpdate: true },
     ]) {
       const token = await signUserToken('uuid-owner');
       selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
