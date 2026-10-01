@@ -23,7 +23,7 @@ const NOT_DISCOVERY: Record<string, string> = {
   'admin/alert-queries.ts': 'starvation counts over queued jobs, no issue identity',
   'admin/metric-series.ts': 'bucketed lead-time sums and counts, no issue identity',
   'admin/pipeline-health-routes.ts': 'reads only `waiting`',
-  'agent-sessions/lifecycle-routes.ts': "titles of the session's own issue ids",
+  'agent-sessions/interactive-routes.ts': "titles of the session's own issue ids",
   'agent-sessions/routes.ts': 'the one issue a session names',
   'assistant/tools/issue-dedup.ts':
     'reads only `draft` and `open`, which an archived issue never is',
