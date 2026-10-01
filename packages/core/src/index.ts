@@ -59,6 +59,7 @@ import { registerDeviceStaleDetector } from './devices/stale-detector.js';
 import { domainTemplateRoutes } from './domain-templates/routes.js';
 import { seedDomainTemplates } from './domain-templates/seed.js';
 import { registerEagerSubscribers } from './eager-subscribers.js';
+import { registerContractMeasureWorker } from './ecosystem/contract/land.js';
 import { ecosystemApiRoutes } from './ecosystem/mount.js';
 import { feedbackReportRoutes } from './feedback/routes.js';
 import { guideRoutes } from './guides/routes.js';
@@ -458,6 +459,7 @@ if (isMain) {
   await registerRunSessionReaper();
   await registerRunnerStaleDetector();
   await registerGhostRunnerReaper();
+  await registerContractMeasureWorker();
   await registerRetentionSweeper();
   await registerPipelineSweeper();
   await registerReleaseUnstartedRecovery();

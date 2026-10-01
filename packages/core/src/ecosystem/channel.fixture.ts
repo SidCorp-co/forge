@@ -1,6 +1,8 @@
 import type { ChannelWorld, HoldWorld, MeasuredVersion } from './channel-rules.js';
 import type { ChannelDocument, ThreadHold } from './channel-schema.js';
-import { type Doc, example, exampleFiles, FP, SLUGS } from './ecosystem.fixture.js';
+import type { ContractFacts, VersionFacts } from './contract/citations.js';
+import { indexContract } from './contract/elements.js';
+import { type Doc, ELEMENTS, example, exampleFiles, FP, SLUGS } from './ecosystem.fixture.js';
 import { versionKey } from './interface-rules.js';
 import type { EcosystemDocument, InterfaceDocument } from './schema.js';
 import type { EdgeRow } from './store.js';
@@ -22,10 +24,53 @@ const MEASURED: Record<string, MeasuredVersion> = {
     classification: 'breaking',
     changes: [
       { element: 'POST /api/devices/me/run-sessions', level: 'breaking' },
-      { element: 'GET /api/issues/{id}', level: 'non-breaking' },
+      { element: 'GET /api/issues/{id}', level: 'info' },
     ],
   },
 };
+
+const RUN_SESSION_BODY = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    issueIds: { type: 'array', items: { type: 'string' } },
+    policyVersion: { type: 'string', pattern: '^[0-9a-f]{40}$' },
+  },
+  required: ['issueIds', 'policyVersion'],
+};
+
+const operation = (body?: object) => ({
+  ...(body ? { requestBody: { content: { 'application/json': { schema: body } } } } : {}),
+  responses: { default: { description: 'Undeclared.' } },
+});
+
+// cm:why the slice of forge-api 2026-10-01 the design examples cite, so the element and example rules run over every example rather than skip it
+export const FORGE_API_2026_10_01 = {
+  openapi: '3.1.0',
+  info: { title: 'forge-api', version: 'unversioned' },
+  paths: {
+    '/api/issues/{id}': { get: operation() },
+    '/api/issues/{id}/phase': { post: operation({ type: 'object' }) },
+    '/api/devices/me/run-sessions': { post: operation(RUN_SESSION_BODY) },
+  },
+};
+
+export function contractFacts(): ContractFacts {
+  const versions = new Map<string, VersionFacts>(
+    Object.entries(ELEMENTS).map(([key, es]) => [
+      key,
+      { elements: new Set(es), previous: key.endsWith('2026-10-01') ? '2026-09-20' : null },
+    ]),
+  );
+  return {
+    measured: new Map(Object.entries(MEASURED)),
+    versions,
+    latest: new Map([['forge/forge-api', '2026-10-01']]),
+    indexes: new Map([
+      ['forge/forge-api@2026-10-01', indexContract('openapi', FORGE_API_2026_10_01)],
+    ]),
+  };
+}
 
 const idOf = (slug: string) => {
   const hit = Object.entries(SLUGS).find(([, s]) => s === slug);
@@ -78,7 +123,7 @@ export function channelWorld(overrides: Partial<ChannelWorld> = {}): ChannelWorl
         return [versionKey(idOf(provider), contract), new Set(vs)];
       }),
     ),
-    measured: new Map(Object.entries(MEASURED)),
+    contracts: contractFacts(),
     documents: publishedByNumber(),
     holds: holdFiles().map((f) => example(f) as ThreadHold),
     ...overrides,

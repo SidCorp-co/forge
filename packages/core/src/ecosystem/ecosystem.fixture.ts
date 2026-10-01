@@ -57,6 +57,18 @@ const VERSIONS: Record<string, string[]> = {
   'epodsystem/theme-runtime': ['2.0.0'],
 };
 
+const FORGE_API = [
+  'GET /api/issues/{id}',
+  'POST /api/issues/{id}/phase',
+  'POST /api/devices/me/run-sessions',
+];
+
+// cm:why the forge-api elements the example consumer and channel documents cite, as a recorded version would list them; versions absent here are unindexed, as an opaque contract is
+export const ELEMENTS: Record<string, string[]> = {
+  'forge/forge-api@2026-09-20': FORGE_API,
+  'forge/forge-api@2026-10-01': FORGE_API,
+};
+
 const INTERFACES = [
   'forge.interface.json',
   'forge-plugin.interface.json',
@@ -106,6 +118,13 @@ export function worldFor(
     ),
     providers,
     versions,
+    elements: new Map(
+      Object.entries(ELEMENTS).map(([key, es]) => {
+        const [ref = '', version = ''] = key.split('@');
+        const [provider = '', contract = ''] = ref.split('/');
+        return [`${versionKey(idOf(provider), contract)}@${version}`, new Set(es)];
+      }),
+    ),
     consumersOfMine,
   };
 }

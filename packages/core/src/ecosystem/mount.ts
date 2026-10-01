@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { channelProjectRoutes } from './channel-routes.js';
+import { contractRoutes } from './contract/routes.js';
 import { ecosystemProjectRoutes } from './project-routes.js';
 import { ecosystemRoutes, membershipRoutes } from './routes.js';
 
@@ -7,5 +8,6 @@ export const ecosystemApiRoutes = new Hono();
 
 ecosystemApiRoutes.route('/projects', ecosystemProjectRoutes);
 ecosystemApiRoutes.route('/projects', channelProjectRoutes);
+ecosystemApiRoutes.route('/projects', contractRoutes);
 ecosystemApiRoutes.route('/ecosystems', ecosystemRoutes);
 ecosystemApiRoutes.route('/memberships', membershipRoutes);
