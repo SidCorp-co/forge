@@ -210,7 +210,6 @@ export async function readLandingEvidence(
   return { columns, shape: landingShapeOf(sourceType) };
 }
 
-/** `null` where the project declares no project document. */
 export async function readLandingShape(
   executor: ShapeExecutor,
   projectId: string,

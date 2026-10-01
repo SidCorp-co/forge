@@ -2525,11 +2525,9 @@
   (ISS-1313)
 
 ### Removed
-- **A project no longer has a description, a kind, issue categories, a bot personality, a
-  system-prompt addition or a Rocket.Chat answer mode.** Their settings are gone, a request still
-  sending one is refused by name, and the stored values are removed. The assistant answers in its
-  channel persona and the language you write in; Rocket.Chat no longer hands a whole question to a
-  runner, and escalates through the assistant as before.
+- **A project no longer has a description, kind, categories, bot personality, prompt addition or
+  Rocket.Chat answer mode.** Their settings are gone, stored values removed, and a request sending
+  one is refused by name. The assistant replies in your language.
 - **A designated plugin has no auto-update switch.** One with a pinned commit stays there; one
   without follows its marketplace, which is what the settings screen already said.
 - **The pipeline configuration is gone.** Model, permissions, QA and intake come from the policy
