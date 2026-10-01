@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { SCHEMA_BASE, unique, uuid } from '../project-config/schema.js';
-import { DOCUMENT_TYPES, type DocumentType } from './schema.js';
+import type { DocumentType } from './schema.js';
 
 export const DOCUMENT_SCHEMA_ID = `${SCHEMA_BASE}/document-v1.json`;
 export const HOLD_SCHEMA_ID = `${SCHEMA_BASE}/hold-v1.json`;
@@ -36,7 +36,6 @@ const element = () => z.string().min(1).max(200);
 const contractRef = () => z.string().regex(CONTRACT_REF);
 
 export const AUTHOR_VIAS = ['master', 'assistant', 'web', 'cli'] as const;
-export type AuthorVia = (typeof AUTHOR_VIAS)[number];
 
 export const authorSchema = z.discriminatedUnion('kind', [
   z.strictObject({
@@ -290,9 +289,6 @@ export const documentSchema = z
   });
 
 export type ChannelDocument = z.infer<typeof documentSchema>;
-export type ChangeNoticeBody = z.infer<typeof changeNoticeBody>;
-export type AcknowledgementBody = z.infer<typeof acknowledgementBody>;
-export type DecisionBody = z.infer<typeof decisionBody>;
 
 export const HOLD_ACTIONS = ['hold', 'release'] as const;
 export type HoldAction = (typeof HOLD_ACTIONS)[number];
@@ -319,6 +315,3 @@ export const holdSchema = z
   });
 
 export type ThreadHold = z.infer<typeof holdSchema>;
-
-export const isDocumentType = (t: unknown): t is DocumentType =>
-  (DOCUMENT_TYPES as readonly unknown[]).includes(t);
