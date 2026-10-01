@@ -24,9 +24,14 @@ import { hooks } from '../pipeline/hooks.js';
  * contract — failures are logged, never thrown, so the originating transition
  * still succeeds.
  *
+ * `outcome` replaces the record's title in the resolved notice; without it, `Resolved — <title>`.
+ *
  * @returns the number of rows cleared.
  */
-export async function resolveNotifications(resolutionKey: string): Promise<number> {
+export async function resolveNotifications(
+  resolutionKey: string,
+  outcome?: string,
+): Promise<number> {
   if (!resolutionKey) return 0;
   try {
     const cleared = await db.execute<{ id: string; state: string }>(sql`
@@ -44,7 +49,7 @@ export async function resolveNotifications(resolutionKey: string): Promise<numbe
     `);
 
     for (const row of cleared) {
-      await sendResolvedNotice(row.id);
+      await sendResolvedNotice(row.id, outcome);
     }
     return cleared.length;
   } catch (err) {
@@ -53,7 +58,10 @@ export async function resolveNotifications(resolutionKey: string): Promise<numbe
   }
 }
 
-export async function sendResolvedNotice(notificationId: string): Promise<number> {
+export async function sendResolvedNotice(
+  notificationId: string,
+  outcome?: string,
+): Promise<number> {
   const [record] = await db
     .select({
       type: notifications.type,
@@ -69,6 +77,7 @@ export async function sendResolvedNotice(notificationId: string): Promise<number
     .where(eq(notifications.id, notificationId))
     .limit(1);
   if (!record) return 0;
+  const title = `Resolved — ${outcome?.trim() || record.title}`;
 
   const told = await db
     .select({ userId: notificationDeliveries.userId })
@@ -92,7 +101,7 @@ export async function sendResolvedNotice(notificationId: string): Promise<number
         userId,
         channel: 'bell',
         resolvedNotice: true,
-        title: `Resolved — ${record.title}`,
+        title,
       })
       .returning({ id: notificationDeliveries.id });
     if (!delivery) continue;
@@ -105,7 +114,7 @@ export async function sendResolvedNotice(notificationId: string): Promise<number
       userId,
       projectId: record.projectId,
       type: record.type,
-      title: `Resolved — ${record.title}`,
+      title,
       body: null,
       severity: 'success',
       resolutionKey: record.resolutionKey,

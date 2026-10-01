@@ -44,6 +44,47 @@ async function slugsOf(ids: readonly string[]): Promise<Map<string, string>> {
   return new Map(rows.map((r) => [r.id, r.slug]));
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// cm:why a person is named as the bell names them everywhere else, their display name or else their address; an id no account carries is said as it was given
+async function nameOf(id: string | undefined): Promise<string> {
+  if (!id) return 'someone';
+  if (!UUID.test(id)) return id;
+  const [row] = await db
+    .select({ displayName: users.displayName, email: users.email })
+    .from(users)
+    .where(eq(users.id, id))
+    .limit(1);
+  return row?.displayName?.trim() || row?.email || id;
+}
+
+const NOTE_LINE_MAX = 160;
+
+function firstLine(text: string | undefined): string | null {
+  const line = text
+    ?.split(/\r?\n/)
+    .map((l) => l.trim())
+    .find((l) => l.length > 0);
+  if (!line) return null;
+  return line.length > NOTE_LINE_MAX ? `${line.slice(0, NOTE_LINE_MAX - 1)}…` : line;
+}
+
+async function releasedOutcome(h: ThreadHold): Promise<string> {
+  const why = firstLine(h.reason);
+  return `${h.thread} released by ${await nameOf(h.by.id)}${why ? `: ${why}` : ', with no reason given'}`;
+}
+
+// cm:why a decided gate is told by what decided it — approved and the number it went out as, or returned and what to change — because the pending title it resolves still says it waits
+async function gateOutcome(d: ChannelDocument): Promise<string> {
+  const who = await nameOf(d.gate?.decidedBy);
+  const number = d.number ?? 'the document';
+  if (d.state === 'published') {
+    return `${number} approved by ${who} and published as ${number}: ${d.subject}`;
+  }
+  const note = firstLine(d.gate?.note);
+  return `${number} returned by ${who}${note ? `: ${note}` : ''}`;
+}
+
 async function signal(what: string, work: () => Promise<unknown>): Promise<void> {
   try {
     await work();
@@ -95,7 +136,8 @@ export async function announcePublished(documentId: string, d: ChannelDocument):
 export async function announceHold(h: ThreadHold, parties: readonly string[]): Promise<void> {
   await signal('channel_thread_held', async () => {
     if (h.action === 'release') {
-      for (const side of parties) await resolveNotifications(holdKey(h, side));
+      const outcome = await releasedOutcome(h);
+      for (const side of parties) await resolveNotifications(holdKey(h, side), outcome);
       return;
     }
     const slugs = await slugsOf([h.side]);
@@ -137,6 +179,8 @@ export async function announceGatePending(documentId: string, d: ChannelDocument
 }
 
 export async function announceGateDecided(documentId: string, d: ChannelDocument): Promise<void> {
-  await signal('channel_gate_pending', () => resolveNotifications(gateKey(documentId)));
+  await signal('channel_gate_pending', async () =>
+    resolveNotifications(gateKey(documentId), await gateOutcome(d)),
+  );
   if (d.state === 'published') await announcePublished(documentId, d);
 }

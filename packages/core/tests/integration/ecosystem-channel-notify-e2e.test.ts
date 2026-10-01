@@ -23,6 +23,10 @@ const box = { forge: '', plugin: '' };
 beforeAll(async () => {
   w = await openChannelWorld();
   say = speaker(w);
+  // The platform admin has a display name; the plugin person has none and is named by address.
+  await w.harness.db.execute(
+    sql`UPDATE users SET display_name = 'Ada Platform' WHERE id = ${w.user.platform}`,
+  );
   for (const side of ['forge', 'plugin'] as const) {
     box[side] = (await createTestDevice(w.harness.db, w.user.platform)).id;
     await bindTestRunner(w.harness.db, { projectId: w.project[side], deviceId: box[side] });
@@ -64,6 +68,24 @@ async function bell(userId: string, type: string) {
     WHERE d.user_id = ${userId} AND n.type = ${type} AND d.resolved_notice = false
     ORDER BY n.created_at`);
   return [...rows];
+}
+
+// The resolved notice a person was sent, and the toast that carried it.
+async function resolvedNotices(userId: string, type: string) {
+  const rows = await w.harness.db.execute<{ title: string }>(sql`
+    SELECT d.title FROM notification_deliveries d
+    JOIN notification_delivery_members m ON m.delivery_id = d.id
+    JOIN notifications n ON n.id = m.notification_id
+    WHERE d.user_id = ${userId} AND n.type = ${type} AND d.resolved_notice = true
+    ORDER BY d.created_at`);
+  return rows.map((r) => r.title);
+}
+
+function toasts(type: string): string[] {
+  return publish.mock.calls
+    .map(([, envelope]) => envelope as { event: string; data: { type?: string; title?: string } })
+    .filter((e) => e.event === 'notification.created' && e.data.type === type)
+    .map((e) => e.data.title ?? '');
 }
 
 const room = (deviceId: string) => `device:${deviceId}`;
@@ -151,10 +173,22 @@ describe('the owner holds the thread, and the other master sees the hold and can
   });
 
   it('resolves the held notice on release, and the reply then crosses, waking forge', async () => {
-    ok(await say('plugin', 'POST', `${plugin()}/threads/FP-CN-1/release`, {}));
+    publish.mockClear();
+    ok(
+      await say('plugin', 'POST', `${plugin()}/threads/FP-CN-1/release`, {
+        reason: 'Read it with forge on the call',
+      }),
+    );
     expect(await bell(w.user.plugin, 'channel_thread_held')).toEqual([
       expect.objectContaining({ resolved_at: expect.stringMatching(/^\d{4}-/), state: 'resolved' }),
     ]);
+    // The resolved notice says who released the thread and why, not the hold's own title again.
+    const [releaser] = await w.harness.db.execute<{ email: string }>(
+      sql`SELECT email FROM users WHERE id = ${w.user.plugin}`,
+    );
+    const released = `Resolved — FP-CN-1 released by ${releaser?.email}: Read it with forge on the call`;
+    expect(await resolvedNotices(w.user.plugin, 'channel_thread_held')).toEqual([released]);
+    expect(toasts('channel_thread_held')).toContain(released);
     publish.mockClear();
     const ack = ok(await send('masterPlugin', plugin(), acknowledgement(w, 'FP-CN-1')));
     expect(ack.document.number).toBe('FP-ACK-1');
@@ -211,6 +245,34 @@ describe('a gated type tells the sending admins, and the answer clears it', () =
       room: room(box.plugin),
       data: { projectId: w.project.plugin, source: 'channel' },
     });
+    // The notice names the decision, the number it went out as and who took it.
+    const approved =
+      'Resolved — FP-RFI-1 approved by Ada Platform and published as FP-RFI-1: ' +
+      'Does the driver skill read the phase field it is sent?';
+    expect(await resolvedNotices(w.user.platform, 'channel_gate_pending')).toEqual([approved]);
+    expect(toasts('channel_gate_pending')).toContain(approved);
+  });
+
+  it('resolves the pending notice on return with the note’s first line and who returned it', async () => {
+    const res = ok(await send('masterForge', forge(), rfi(w)));
+    expect(res.document).toMatchObject({ number: 'FP-RFI-2', state: 'submitted' });
+    const page = ok(
+      await say('platform', 'GET', `/api/questions?projectId=${w.project.forge}&status=open`),
+    );
+    const asked = page.questions.find((q: Doc) => q.origin?.documentId === res.id).id;
+    publish.mockClear();
+    ok(
+      await say('platform', 'POST', `/api/questions/${asked}/answer`, {
+        round: 1,
+        optionId: 'return',
+        note: '  \nName the phase field by its contract element\nand say which release reads it.',
+      }),
+    );
+    const returned =
+      'Resolved — FP-RFI-2 returned by Ada Platform: Name the phase field by its contract element';
+    expect((await resolvedNotices(w.user.platform, 'channel_gate_pending')).at(-1)).toBe(returned);
+    expect(toasts('channel_gate_pending')).toContain(returned);
+    expect(await bell(w.user.plugin, 'channel_document_published')).toHaveLength(3);
   });
 
   it('refuses a note on a question that carries none somewhere, by name', async () => {
