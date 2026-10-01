@@ -668,7 +668,7 @@ describe('PATCH /api/projects/:id · the release keys moved to the project docum
       });
       expect(res.status).toBe(400);
       const text = await res.text();
-      expect(text).toContain(`does not take \`${key}\``);
+      expect(text).toContain(`\`${key}\` is not a field of PATCH /api/projects/:id`);
       expect(text).toContain('PUT /api/projects/:id/config');
       expect(updateSet).not.toHaveBeenCalled();
     },

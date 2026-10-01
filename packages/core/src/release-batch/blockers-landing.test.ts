@@ -18,15 +18,6 @@ vi.mock('../db/client.js', () => ({
   db: { select: () => ({ from: () => fromChain }), execute: async () => [] },
 }));
 
-vi.mock('../integrations/store.js', async (importActual) => ({
-  ...(await importActual<typeof import('../integrations/store.js')>()),
-  listActiveDeployBindingsForStage: async () => [
-    {
-      binding: { id: 'b-1', provider: 'coolify', config: {}, instructions: null, label: '' },
-      connection: { config: {} },
-    },
-  ],
-}));
 vi.mock('../runners/select.js', () => ({ onlineCapableDeviceIds: async () => [] }));
 vi.mock('./queries.js', async (importActual) => ({
   ...(await importActual<typeof import('./queries.js')>()),
@@ -114,8 +105,10 @@ describe('RELEASE_WORK_UNMERGED on a project whose work lands outside git', () =
       door: 'record',
     });
     expect(blockers.find((b) => b.code === 'RELEASE_WORK_UNMERGED')).toBeUndefined();
-    const unevaluated = blockers.find((b) => b.code === 'RELEASE_CHECK_UNEVALUATED');
-    expect(unevaluated?.details).toMatchObject({ check: 'merged' });
+    const unevaluated = blockers.find(
+      (b) => b.code === 'RELEASE_CHECK_UNEVALUATED' && b.details?.check === 'merged',
+    );
+    expect(unevaluated, JSON.stringify(blockers)).toBeDefined();
     expect(String(unevaluated?.details?.detail)).toContain('declares no project document');
   });
 });
