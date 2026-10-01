@@ -1,8 +1,8 @@
 import { db } from '../db/client.js';
 import { readerProjects } from './access.js';
-import { heldThreads, REPLIES } from './channel-rules.js';
+import { heldThreads, REPLIES, today } from './channel-rules.js';
 import type { ChannelDocument, ThreadHold } from './channel-schema.js';
-import { documentsWhere, holdsOn } from './channel-store.js';
+import { type DocumentRow, documentsWhere, holdsOn } from './channel-store.js';
 import { holdOf, serveAll } from './channel-world.js';
 import { readableEcosystem } from './membership-service.js';
 import type { DocumentType } from './schema.js';
@@ -42,7 +42,7 @@ export interface RegisterQuery {
 
 export type Listed = ChannelDocument & { thread: string | null };
 
-const owesReply = (d: ChannelDocument) =>
+export const owesReply = (d: ChannelDocument) =>
   REPLIES[d.type].length > 0 && !(d.type === 'change-notice' && d.body.binding === false);
 
 // cm:why awaiting, answered, overdue and the owner are derived on every read from the published documents and never stored, so a lapsed date reads overdue and nothing closes itself
@@ -99,6 +99,15 @@ export function rowsOf(
   });
 }
 
+export async function registerRowsOver(stored: readonly DocumentRow[]): Promise<RegisterRow[]> {
+  const served = await serveAll(db, stored);
+  const threadOf = new Map(stored.map((r) => [r.id, r.thread]));
+  const docs = served.map((s) => ({ ...s.document, thread: threadOf.get(s.id) ?? null }));
+  const threads = [...new Set(docs.flatMap((d) => (d.thread ? [d.thread] : [])))];
+  const held = heldThreads((await holdsOn(db, threads)).map(holdOf));
+  return rowsOf(docs, held, today());
+}
+
 const matches = (row: RegisterRow, status: RegisterStatus | undefined) => {
   if (!status) return true;
   if (status === 'open') return row.open;
@@ -118,13 +127,7 @@ export async function readRegister(
   const visible = await readerProjects(userId);
   const mine = query.fence ? new Set(query.fence.filter((p) => visible.has(p))) : visible;
   const stored = await documentsWhere(db, { ecosystem: ecosystemId, published: true });
-  const served = await serveAll(db, stored);
-  const threadOf = new Map(stored.map((r) => [r.id, r.thread]));
-  const docs = served.map((s) => ({ ...s.document, thread: threadOf.get(s.id) ?? null }));
-  const threads = [...new Set(docs.flatMap((d) => (d.thread ? [d.thread] : [])))];
-  const held = heldThreads((await holdsOn(db, threads)).map(holdOf));
-  const today = new Date().toISOString().slice(0, 10);
-  const listed = rowsOf(docs, held, today)
+  const listed = (await registerRowsOver(stored))
     .filter((r) => mine.has(r.from) || r.to.some((t) => mine.has(t)))
     .filter((r) => !query.party || r.from === query.party || r.to.includes(query.party))
     .filter((r) => !query.type || r.type === query.type)

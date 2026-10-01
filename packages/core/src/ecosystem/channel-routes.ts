@@ -5,6 +5,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { zValidator } from '../middleware/zod-validator.js';
 import { refused } from '../project-config/respond.js';
 import { uuid } from '../project-config/schema.js';
+import { refusedBy } from './access.js';
 import type { ChannelOutcome } from './channel-act.js';
 import { type ChannelNeed, channelRoleRefusal, writerOf } from './channel-author.js';
 import { supersede, withdraw } from './channel-ends.js';
@@ -12,7 +13,7 @@ import { holdOrRelease } from './channel-holds.js';
 import { inbox, outbox, readAs, standingOf, threadAs } from './channel-read.js';
 import { NUMBER_PATTERN } from './channel-schema.js';
 import { createDraft, editDraft, submit } from './channel-service.js';
-import { viewOf } from './channel-view.js';
+import { holdView, inboxView, outboxView, threadView, viewOf } from './channel-view.js';
 import type { ChannelRefusalCode } from './refusals.js';
 
 export const channelProjectRoutes = new Hono<{ Variables: AuthVars }>();
@@ -110,12 +111,7 @@ function answer(c: Context, outcome: ChannelOutcome) {
 
 async function mayAct(c: Context<{ Variables: AuthVars }>, projectId: string, need: ChannelNeed) {
   const refusal = await channelRoleRefusal(c.get('userId'), projectId, need);
-  if (refusal) {
-    throw new HTTPException(403, {
-      message: refusal.detail,
-      cause: { code: refusal.code, details: { refusals: [refusal] } },
-    });
-  }
+  if (refusal) throw refusedBy(refusal);
 }
 
 async function writer(c: Context<{ Variables: AuthVars }>, projectId: string) {
@@ -212,37 +208,20 @@ channelProjectRoutes.get('/:id/channel/inbox', projectParam, async (c) => {
   const { id } = c.req.valid('param');
   await mayAct(c, id, 'read');
   const entries = await inbox(id);
-  return c.json({
-    documents: entries.map((e) => ({
-      ...viewOf(e),
-      hold: e.hold,
-      owesReply: e.owesReply,
-      answered: e.answered,
-      overdue: e.overdue,
-    })),
-    returned: entries.length,
-  });
+  return c.json({ documents: inboxView(entries), returned: entries.length });
 });
 
 channelProjectRoutes.get('/:id/channel/outbox', projectParam, async (c) => {
   const { id } = c.req.valid('param');
   await mayAct(c, id, 'read');
   const views = await outbox(id);
-  return c.json({
-    documents: views.map((v) => ({ ...viewOf(v), hold: v.hold })),
-    returned: views.length,
-  });
+  return c.json({ documents: outboxView(views), returned: views.length });
 });
 
 channelProjectRoutes.get('/:id/channel/threads/:number', threadParam, async (c) => {
   const { id, number } = c.req.valid('param');
   await mayAct(c, id, 'read');
-  const t = await threadAs(id, number);
-  return c.json({
-    thread: t.thread,
-    documents: t.documents.map((v) => ({ ...viewOf(v), side: v.side })),
-    holds: t.holds,
-  });
+  return c.json(threadView(await threadAs(id, number)));
 });
 
 const holdHandler =
@@ -262,7 +241,7 @@ const holdHandler =
       reason,
     });
     if (!outcome.ok) return refused(c, outcome.refusals);
-    return c.json({ thread: number, held: outcome.held, hold: outcome.hold });
+    return c.json(holdView(number, outcome));
   };
 
 const hold = holdHandler('hold');

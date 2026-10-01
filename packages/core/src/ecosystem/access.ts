@@ -2,6 +2,7 @@ import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import type { OrgMemberRole } from '../db/schema.js';
 import { loadOrgRole, loadVisibleProjectIds, orgRoleAtLeast } from '../lib/authz.js';
+import type { EcosystemRefusal } from './refusals.js';
 import { activeMembersOf } from './store.js';
 
 export const notFound = (message: string) =>
@@ -9,6 +10,12 @@ export const notFound = (message: string) =>
 
 export const forbidden = (message: string) =>
   new HTTPException(403, { message, cause: { code: 'FORBIDDEN' } });
+
+export const refusedBy = (refusal: EcosystemRefusal) =>
+  new HTTPException(403, {
+    message: refusal.detail,
+    cause: { code: refusal.code, details: { refusals: [refusal] } },
+  });
 
 export async function stewardRole(
   stewardOrgId: string,

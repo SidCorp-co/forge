@@ -24,6 +24,7 @@ export const DOCUMENT_STATES = [
 export type DocumentState = (typeof DOCUMENT_STATES)[number];
 
 export const NUMBER_PATTERN = /^[A-Z][A-Z0-9]{1,5}-(CN|ACK|RFI|CR|DEC)-[1-9][0-9]{0,5}$/;
+export const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 export const THREAD_PATTERN = /^[A-Z][A-Z0-9]{1,5}-(CN|RFI|CR)-[1-9][0-9]*$/;
 const CONTRACT_REF = /^[a-z][a-z0-9-]{0,62}\/[a-z][a-z0-9-]{0,62}$/;
 

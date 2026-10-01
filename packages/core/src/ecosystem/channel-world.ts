@@ -1,5 +1,5 @@
 import type { Tx } from '../db/client.js';
-import type { ChannelWorld } from './channel-rules.js';
+import { type ChannelWorld, today } from './channel-rules.js';
 import {
   type ChannelDocument,
   documentSchema,
@@ -8,7 +8,6 @@ import {
   type ThreadHold,
 } from './channel-schema.js';
 import {
-  activeMembersOf,
   type DocumentRow,
   type EventRow,
   eventsOf,
@@ -22,6 +21,7 @@ import { versionKey } from './interface-rules.js';
 import { heldInterface } from './interface-service.js';
 import type { InterfaceDocument } from './schema.js';
 import {
+  activeMembersOf,
   edgesIn,
   projectsWhere,
   readEcosystem,
@@ -106,12 +106,13 @@ export async function loadWorld(
 ): Promise<ChannelWorld> {
   const ecoRow = await readEcosystem(tx, input.ecosystemId);
   if (!ecoRow) throw new Error(`channel: ecosystem ${input.ecosystemId} vanished under its lock`);
-  const [active, edges, versions, holds] = await Promise.all([
+  const [members, edges, versions, holds] = await Promise.all([
     activeMembersOf(tx, input.ecosystemId),
     edgesIn(tx, [input.ecosystemId]),
     recordedVersions(tx, [input.from]),
     holdsOn(tx, input.threads),
   ]);
+  const active = new Set(members);
   const live = edges.filter(
     (e) => active.has(e.consumerProjectId) && active.has(e.providerProjectId),
   );
@@ -141,7 +142,7 @@ export async function loadWorld(
     versionSets.set(key, (versionSets.get(key) ?? new Set()).add(v.version));
   }
   return {
-    today: new Date().toISOString().slice(0, 10),
+    today: today(),
     ecosystemId: input.ecosystemId,
     ecosystem: heldEcosystem(ecoRow).document,
     active,

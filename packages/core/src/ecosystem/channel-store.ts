@@ -4,7 +4,6 @@ import {
   channelDocumentEvents,
   channelDocuments,
   channelThreadHolds,
-  ecosystemMemberships,
 } from '../db/schema-ecosystem.js';
 import type { Author } from './channel-schema.js';
 import type { DocumentType } from './schema.js';
@@ -240,19 +239,6 @@ export async function holdsOn(tx: Tx, threads: readonly string[]): Promise<HoldR
 
 export async function insertHold(tx: Tx, row: Omit<HoldRow, 'at'> & { at: Date }) {
   await tx.insert(channelThreadHolds).values(row);
-}
-
-export async function activeMembersOf(tx: Tx, ecosystemId: string): Promise<Set<string>> {
-  const rows = await tx
-    .select({ projectId: ecosystemMemberships.projectId })
-    .from(ecosystemMemberships)
-    .where(
-      and(
-        eq(ecosystemMemberships.ecosystemId, ecosystemId),
-        eq(ecosystemMemberships.state, 'active'),
-      ),
-    );
-  return new Set(rows.map((r) => r.projectId));
 }
 
 export async function repliesFrom(
