@@ -5,9 +5,9 @@ import { usePathname } from "next/navigation";
 import { NavRail } from "@/design";
 import { OrgSwitcher } from "@/features/orgs/components/org-switcher";
 import { ProjectFlyout } from "@/features/projects/components/project-flyout";
-import { ForgeVersion } from "@/features/version";
 import { useWhatsNewStatus } from "@/features/whats-new/hooks";
 import { NavRailCompact } from "../nav-rail-compact";
+import { SidebarVersion } from "./sidebar-version";
 import {
   ECOSYSTEM_ITEMS,
   ECOSYSTEM_RAIL_KEYS,
@@ -33,8 +33,6 @@ export interface WorkspaceSidebarProps {
   railSlug: string | null;
   rail: ReturnType<typeof useRailProjectData>;
   badges: ProjectBadges;
-  chatOpen: boolean;
-  onToggleChat: () => void;
   onNavigate: (key: string) => void;
   onRoute: (href: string) => void;
   onSignOut: () => void;
@@ -69,14 +67,18 @@ export function WorkspaceSidebar(props: WorkspaceSidebarProps) {
   const flyout = useFlyoutHover();
   const workspaceItems = useMemo(() => workspaceNavItems(attentionCount), [attentionCount]);
   const footer = {
-    onDocs: () => onRoute("/docs"),
-    onWhatsNew: () => onRoute("/whats-new"),
-    whatsNewBadge: hasUnseen ? 1 : 0,
     onAccount: () => onRoute("/settings"),
     onSignOut: props.onSignOut,
-    onChat: props.onToggleChat,
-    chatOpen: props.chatOpen,
   };
+  const version = (compact: boolean) => (
+    <SidebarVersion
+      onWhatsNew={() => onRoute("/whats-new")}
+      onDocs={() => onRoute("/docs")}
+      unseen={hasUnseen}
+      activeKey={activeKey}
+      compact={compact}
+    />
+  );
 
   if (collapsed) {
     return (
@@ -96,7 +98,7 @@ export function WorkspaceSidebar(props: WorkspaceSidebarProps) {
         userInitials={props.userInitials}
         orgSwitcher={<OrgSwitcher variant="compact" />}
         onExpand={props.onToggleCollapsed}
-        version={<ForgeVersion className="text-9-5 leading-tight" />}
+        version={version(true)}
         search={props.search("compact")}
         bell={props.bell}
         {...footer}
@@ -123,7 +125,7 @@ export function WorkspaceSidebar(props: WorkspaceSidebarProps) {
         user={props.userInitials ? { initials: props.userInitials } : undefined}
         orgSwitcher={<OrgSwitcher variant="brand" />}
         onToggleCollapsed={props.onToggleCollapsed}
-        version={<ForgeVersion className="fg-caption truncate" />}
+        version={version(false)}
         brandSearch={props.search("icon")}
         bell={props.bell}
         {...footer}

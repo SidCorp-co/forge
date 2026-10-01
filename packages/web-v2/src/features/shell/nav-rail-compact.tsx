@@ -57,20 +57,14 @@ export interface NavRailCompactProps {
   /** Global org switcher (ISS-469) — rendered under the brand, above the
    *  project switcher. Presentational slot; the layout supplies the control. */
   orgSwitcher?: React.ReactNode;
-  /** Switch to the expanded (labeled, 280px) rail. */
+  /** Switch to the expanded (labeled, 280px) rail; the button sits beside the account menu. */
   onExpand?: () => void;
-  /** Footer: jump to the What's New feed. `whatsNewBadge` shows a "new" dot. */
-  onWhatsNew?: () => void;
-  whatsNewBadge?: number;
-  /** Footer: jump to the Docs hub. */
-  onDocs?: () => void;
   /** The product's own version, pinned to the footer. Presentational slot; the
    *  layout supplies the wired node, and only one rail is on screen at a time
    *  so it is never rendered twice (ISS-1119). */
   version?: React.ReactNode;
-  onChat?: () => void;
-  chatOpen?: boolean;
   search?: React.ReactNode;
+  /** The notifications bell, beside the logo. */
   bell?: React.ReactNode;
   ecosystemItems?: RailItem[];
 }
@@ -159,12 +153,7 @@ export function NavRailCompact({
   userInitials,
   orgSwitcher,
   onExpand,
-  onWhatsNew,
-  whatsNewBadge,
-  onDocs,
   version,
-  onChat,
-  chatOpen,
   search,
   bell,
   ecosystemItems,
@@ -204,25 +193,17 @@ export function NavRailCompact({
 
   return (
     <nav className="flex h-full w-[88px] flex-none flex-col items-center border-r border-line bg-surface pb-3 pt-[14px]">
-      {/* Brand — doubles as the expand handle. */}
-      <button
-        type="button"
-        onClick={onExpand}
-        aria-label={onExpand ? 'Expand sidebar' : 'Forge'}
-        className="group mb-4 inline-flex size-[30px] items-center justify-center rounded-md transition-colors hover:bg-hover"
-      >
+      <div data-testid="brand-row" className="mb-4 flex items-center gap-1.5">
         <img
           src={assetPath('/forge-mark-32.png')}
           width={30}
           height={30}
           alt="Forge"
-          className="size-[30px] rounded-md group-hover:opacity-0"
+          className="size-[30px] rounded-md"
           draggable={false}
         />
-        {onExpand && (
-          <Icon name="panelLeft" size={18} className="absolute hidden text-subtle group-hover:block" />
-        )}
-      </button>
+        {bell}
+      </div>
 
       {orgSwitcher && <div className="mb-3">{orgSwitcher}</div>}
 
@@ -417,71 +398,40 @@ export function NavRailCompact({
         )}
       </div>
 
-      {/* Footer — What's New + Docs, then the account menu, then the version. */}
-      <div className="mt-auto flex flex-col items-center gap-1.5">
-        {bell}
-        {onChat && (
-          <button
-            type="button"
-            onClick={onChat}
-            aria-label="Chat"
-            aria-pressed={chatOpen === true}
-            className={cn(
-              "inline-flex size-8 items-center justify-center rounded-md transition-colors hover:bg-hover hover:text-fg",
-              chatOpen ? "bg-accent-tint text-accent-text" : "text-subtle",
-            )}
-          >
-            <Icon name="chat" size={18} />
-          </button>
-        )}
-        {onWhatsNew && (
-          <button
-            type="button"
-            onClick={onWhatsNew}
-            aria-label={
-              whatsNewBadge && whatsNewBadge > 0 ? "What's New, new updates" : "What's New"
+      {/* cm:why the footer is the account menu with the expand handle beside it, then the version, which is the way to What's New and carries the Docs button (ISS-49) */}
+      <div className="mt-auto flex w-full flex-col items-center gap-1.5">
+        <div className="flex items-center gap-0.5">
+          <Menu
+            trigger={
+              // A real button (not a span) so the account menu is reachable by
+              // keyboard (ISS-308 D1).
+              <button
+                type="button"
+                aria-label="Account menu"
+                className="inline-flex size-7 items-center justify-center rounded-pill font-bold text-white focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+                style={{ background: 'var(--cobalt-500)', fontSize: "var(--text-11)" }}
+              >
+                {userInitials ?? 'SK'}
+              </button>
             }
-            className="relative inline-flex size-8 items-center justify-center rounded-md text-subtle transition-colors hover:bg-hover hover:text-fg"
-          >
-            <Icon name="star" size={18} />
-            {whatsNewBadge && whatsNewBadge > 0 ? (
-              <span
-                aria-hidden
-                className="absolute right-1.5 top-1.5 size-2 rounded-pill"
-                style={{ background: "var(--accent)", border: "1.5px solid var(--bg-surface)" }}
-              />
-            ) : null}
-          </button>
-        )}
-        {onDocs && (
-          <button
-            type="button"
-            onClick={onDocs}
-            aria-label="Docs"
-            className="inline-flex size-8 items-center justify-center rounded-md text-subtle transition-colors hover:bg-hover hover:text-fg"
-          >
-            <Icon name="book" size={18} />
-          </button>
-        )}
-        <Menu
-          trigger={
-            // A real button (not a span) so the account menu is reachable by
-            // keyboard (ISS-308 D1).
+            items={userMenu}
+            side="top"
+            align="left"
+            triggerClassName="rounded-pill p-1 hover:bg-hover transition-colors"
+          />
+          {onExpand && (
             <button
               type="button"
-              aria-label="Account menu"
-              className="inline-flex size-7 items-center justify-center rounded-pill font-bold text-white focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
-              style={{ background: 'var(--cobalt-500)', fontSize: "var(--text-11)" }}
+              onClick={onExpand}
+              aria-label="Expand sidebar"
+              title="Expand sidebar"
+              className="inline-flex size-8 items-center justify-center rounded-md text-subtle transition-colors hover:bg-hover hover:text-fg"
             >
-              {userInitials ?? 'SK'}
+              <Icon name="panelLeft" size={16} />
             </button>
-          }
-          items={userMenu}
-          side="top"
-          align="left"
-          triggerClassName="rounded-pill p-1 hover:bg-hover transition-colors"
-        />
-        {version && <div className="w-full px-0.5 text-center">{version}</div>}
+          )}
+        </div>
+        {version && <div className="w-full px-0.5">{version}</div>}
       </div>
     </nav>
   );

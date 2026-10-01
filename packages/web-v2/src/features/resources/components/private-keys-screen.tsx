@@ -194,13 +194,12 @@ export function PrivateKeysScreen({ orgId }: { orgId: string | null }) {
 	const body = (
 		<>
 			<div className="flex items-center justify-between gap-3">
-				<div>
-					<PageTitle className="fg-h2">Private keys</PageTitle>
-					<p className="fg-body-sm text-muted">
-						SSH deploy keys shared across every project in this organization — create one and
-						reuse it, instead of a key per project.
-					</p>
-				</div>
+				<PageTitle
+					className="fg-h2"
+					hint="SSH deploy keys shared across every project in this organization — create one and reuse it, instead of a key per project."
+				>
+					Private keys
+				</PageTitle>
 				<Button variant="primary" icon="plus" onClick={() => setCreateOpen(true)} disabled={!orgId}>
 					Create key
 				</Button>

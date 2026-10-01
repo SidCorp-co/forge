@@ -77,10 +77,9 @@ export function PipelineBoard({ scope, embedded = false, canWrite = true }: Pipe
       }
     >
       <header className={`mb-3 flex flex-none items-center gap-3${embedded ? " hidden" : ""}`}>
-        <PageTitle className="fg-h2">Pipeline</PageTitle>
-        <p className="fg-body-sm hidden text-muted sm:block">
-          One column per state an issue can be in. There is no order between them.
-        </p>
+        <PageTitle className="fg-h2" hint="One column per state an issue can be in. There is no order between them.">
+          Pipeline
+        </PageTitle>
         <div className="ml-auto flex items-center gap-3">
           <LiveDot state="live" />
           <Tooltip

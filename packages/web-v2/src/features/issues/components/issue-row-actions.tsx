@@ -5,9 +5,8 @@
 import {
   Avatar,
   Badge,
-  Card,
-  CardContent,
   Checkbox,
+  Icon,
   IconButton,
   Menu,
   type MenuItem,
@@ -23,7 +22,6 @@ import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 import {
   complexityLabel,
-  creatorLabelOf,
   initials,
   priorityLabel,
   statusLabel,
@@ -47,9 +45,7 @@ import {
   type IssueRow,
 } from "../types";
 import {
-  CostCell,
   DepBadges,
-  ModuleCell,
   type RowActions,
   type RowSelection,
   LastWriteCell,
@@ -169,14 +165,6 @@ function PriorityCell({ priority }: { priority: IssuePriority }) {
   );
 }
 
-/** Read-only complexity pill (was the cryptic "Cx" column). */
-function ComplexityCell({
-  complexity,
-}: { complexity: IssueRow["complexity"] }) {
-  if (!complexity) return <span className="fg-caption text-subtle">—</span>;
-  return <MonoTag>{complexityLabel(complexity)}</MonoTag>;
-}
-
 /**
  * Build the flat list of menu items for a row's overflow ⋯ action. The current
  * value of each field is skipped so every item is an actual change. Labels are
@@ -242,18 +230,15 @@ function RowMenu({
   row,
   actions,
   open,
-  side = "bottom",
 }: {
   row: IssueRow;
   actions: RowActions;
   open: () => void;
-  side?: "top" | "bottom";
 }) {
   const items = useRowMenuItems(row, actions, open);
   return (
     <Menu
       align="right"
-      side={side}
       items={items}
       trigger={
         <IconButton
@@ -268,17 +253,41 @@ function RowMenu({
   );
 }
 
+/** Who the row is with: the person it is assigned to, else the device a live agent run is on. */
+export interface RowAssignee {
+  label: string;
+  agent: boolean;
+}
+
+function AssigneeCell({ assignee }: { assignee: RowAssignee | null }) {
+  if (!assignee) return <span className="fg-caption text-subtle">—</span>;
+  return (
+    <span className="inline-flex min-w-0 items-center gap-2" title={assignee.label}>
+      {assignee.agent ? (
+        <span className="inline-flex size-[22px] flex-none items-center justify-center rounded-pill bg-accent-tint text-accent-text">
+          <Icon name="agent" size={13} />
+        </span>
+      ) : (
+        <Avatar initials={initials(assignee.label)} size={22} />
+      )}
+      <span className="fg-caption truncate text-muted">{assignee.label}</span>
+    </span>
+  );
+}
+
 export function IssueTableRow({
   row,
   slug,
   actions,
   selection,
+  assignee,
   now,
 }: {
   row: IssueRow;
   slug: string;
   actions: RowActions;
   selection?: RowSelection;
+  assignee: RowAssignee | null;
   /** One instant for the whole table, so the waiting figures on two rows are a
    *  comparison and not two independent readings of the clock. */
   now: number;
@@ -286,7 +295,15 @@ export function IssueTableRow({
   const { open, pending } = useOpenIssue(slug, row.id);
 
   return (
-    <TR className={`group ${pending ? "opacity-60" : ""}`} aria-busy={pending}>
+    <TR
+      className={`group cursor-pointer ${pending ? "opacity-60" : ""}`}
+      aria-busy={pending}
+      onClick={(e) => {
+        // cm:why a click on the row opens the issue, but not one that lands on a control inside it (a chip's menu, the checkbox, the row menu)
+        if ((e.target as HTMLElement).closest("button, a, input, [role=menu], [role=menuitem]")) return;
+        open();
+      }}
+    >
       {selection && (
         <TD className="w-9 pr-0">
           {/* biome-ignore lint/a11y/useKeyWithClickEvents: wrapper only blocks bubbling; the Checkbox button is the control. */}
@@ -316,133 +333,42 @@ export function IssueTableRow({
           {pending && <Spinner size={14} />}
         </span>
       </TD>
-      <TD className="max-w-[320px]">
-        <button
-          type="button"
-          onClick={open}
-          aria-label={`Open ${row.displayId}: ${row.title}`}
-          className="group/title block w-full cursor-pointer rounded-sm text-left focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
-        >
-          <span className="fg-body-sm block truncate text-fg group-hover/title:text-accent-text group-hover/title:underline">
-            {row.title}
+      <TD className="min-w-[280px] max-w-[560px]">
+        <div className="flex min-w-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={open}
+            aria-label={`Open ${row.displayId}: ${row.title}`}
+            className="group/title min-w-0 cursor-pointer rounded-sm text-left focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+          >
+            <span className="fg-body-sm block truncate text-fg group-hover/title:text-accent-text group-hover/title:underline">
+              {row.title}
+            </span>
+          </button>
+          <span className="flex flex-none items-center gap-1.5">
+            {row.category && <MonoTag>{row.category}</MonoTag>}
+            <WaitingOnPersonChip since={row.waitingOnPersonSince} now={now} />
+            <DepBadges deps={row.dependencies} slug={slug} />
           </span>
-        </button>
-        <div className="mt-1 flex flex-wrap items-center gap-1.5">
-          {row.category && <MonoTag>{row.category}</MonoTag>}
-          <WaitingOnPersonChip since={row.waitingOnPersonSince} now={now} />
-          <DepBadges deps={row.dependencies} slug={slug} />
         </div>
-      </TD>
-      <TD className="max-w-[160px]">
-        <ModuleCell modules={row.modules} />
       </TD>
       <TD>
         <StatusCell row={row} />
       </TD>
-      <TD>
-        <LastWriteCell written={sinceLastWrite(row, now)} />
-      </TD>
-      <TD>
+      <TD className="whitespace-nowrap">
         <PriorityCell priority={row.priority} />
       </TD>
-      <TD>
-        <ComplexityCell complexity={row.complexity} />
+      <TD className="max-w-[200px]">
+        <AssigneeCell assignee={assignee} />
       </TD>
-      <TD className="text-right">
-        <CostCell value={row.estimatedCost} />
+      <TD className="whitespace-nowrap">
+        <LastWriteCell written={sinceLastWrite(row, now)} />
       </TD>
-      <TD>
-        <div className="flex items-center gap-2">
-          <Avatar initials={initials(creatorLabelOf(row))} size={22} />
-          <span className="fg-caption truncate text-muted" title={creatorLabelOf(row)}>
-            {creatorLabelOf(row)}
-          </span>
-        </div>
-      </TD>
-      <TD className="text-right">
-        <div className="opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+      <TD className="w-px text-right">
+        <div className="opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 max-lg:opacity-100">
           <RowMenu row={row} actions={actions} open={open} />
         </div>
       </TD>
     </TR>
-  );
-}
-
-export function IssueMobileCard({
-  row,
-  slug,
-  actions,
-  selection,
-  now,
-}: {
-  row: IssueRow;
-  slug: string;
-  actions: RowActions;
-  selection?: RowSelection;
-  now: number;
-}) {
-  const { open, pending } = useOpenIssue(slug, row.id);
-
-  return (
-    <Card>
-      <CardContent className={pending ? "opacity-60" : ""} aria-busy={pending}>
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex min-w-0 items-start gap-2.5">
-            {selection && (
-              <span className="mt-0.5 inline-flex">
-                <Checkbox
-                  checked={selection.selected}
-                  onChange={selection.onToggle}
-                  disabled={actions.isPending}
-                  ariaLabel={`Select ${row.displayId}`}
-                />
-              </span>
-            )}
-            <button
-              type="button"
-              onClick={open}
-              aria-label={`Open ${row.displayId}: ${row.title}`}
-              className="group/title min-w-0 cursor-pointer rounded-sm text-left focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
-            >
-              <span className="inline-flex items-center gap-1.5">
-                <MonoTag hue="cobalt">{row.displayId}</MonoTag>
-                {pending && <Spinner size={14} />}
-              </span>
-              <span className="fg-body-sm mt-1.5 block truncate text-fg group-hover/title:text-accent-text group-hover/title:underline">
-                {row.title}
-              </span>
-            </button>
-          </div>
-          <RowMenu row={row} actions={actions} open={open} side="bottom" />
-        </div>
-
-        <div className="mt-2 flex flex-wrap items-center gap-1.5">
-          {row.category && <MonoTag>{row.category}</MonoTag>}
-          {row.modules && row.modules.length > 0 && <ModuleCell modules={row.modules} />}
-          <WaitingOnPersonChip since={row.waitingOnPersonSince} now={now} />
-          <DepBadges deps={row.dependencies} slug={slug} />
-        </div>
-
-        <div className="mt-3 flex items-center justify-between gap-2">
-          <StatusCell row={row} />
-          <LastWriteCell written={sinceLastWrite(row, now)} />
-        </div>
-
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <PriorityCell priority={row.priority} />
-          <ComplexityCell complexity={row.complexity} />
-          <span className="ml-auto">
-            <CostCell value={row.estimatedCost} />
-          </span>
-        </div>
-
-        <div className="mt-3 flex items-center gap-2">
-          <Avatar initials={initials(creatorLabelOf(row))} size={22} />
-          <span className="fg-caption truncate text-muted" title={creatorLabelOf(row)}>
-            {creatorLabelOf(row)}
-          </span>
-        </div>
-      </CardContent>
-    </Card>
   );
 }

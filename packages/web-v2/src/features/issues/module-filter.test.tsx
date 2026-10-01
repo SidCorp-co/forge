@@ -8,14 +8,11 @@
 //     is told those are the module's issues.
 //  2. Filtering to an empty module says so distinctly. The generic "Nothing here" reads as a
 //     broken list; "No issues tagged to X" reads as an empty module, which is what it is.
-//
-// Plus the module cell, whose whole data source is the `withModules=1` opt-in.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ModuleCell } from "./components/issue-table-row";
 import { IssuesListView } from "./components/issues-list-view";
 import { ToastProvider } from "@/providers/toast-provider";
 import type { IssueSearchOpts } from "./types";
@@ -112,47 +109,5 @@ describe("Issues list · module filter", () => {
   it("falls back to 'this module' when the id names no module the reader can see", () => {
     mountAt("?module=deleted-id");
     expect(screen.getByText("No issues tagged to this module.")).toBeInTheDocument();
-  });
-});
-
-describe("ModuleCell", () => {
-  it("renders the primary module", () => {
-    render(<ModuleCell modules={[{ labelId: "a", name: "core", color: "#1f6f4a", isPrimary: true }]} />);
-    expect(screen.getByText("core")).toBeInTheDocument();
-  });
-
-  it("renders the PRIMARY, not simply the first entry", () => {
-    render(
-      <ModuleCell
-        modules={[
-          { labelId: "b", name: "web", color: "#111111", isPrimary: false },
-          { labelId: "a", name: "core", color: "#1f6f4a", isPrimary: true },
-        ]}
-      />,
-    );
-    expect(screen.getByText("core")).toBeInTheDocument();
-    expect(screen.queryByText("web")).not.toBeInTheDocument();
-  });
-
-  it("counts the secondaries rather than listing them", () => {
-    render(
-      <ModuleCell
-        modules={[
-          { labelId: "a", name: "core", color: "#1f6f4a", isPrimary: true },
-          { labelId: "b", name: "web", color: "#111111", isPrimary: false },
-        ]}
-      />,
-    );
-    expect(screen.getByText("+1")).toBeInTheDocument();
-  });
-
-  it("shows an em dash when the issue has only secondaries and no primary", () => {
-    render(<ModuleCell modules={[{ labelId: "b", name: "web", color: "#111111", isPrimary: false }]} />);
-    expect(screen.getByText("—")).toBeInTheDocument();
-  });
-
-  it("shows an em dash when the caller never opted into withModules", () => {
-    render(<ModuleCell modules={undefined} />);
-    expect(screen.getByText("—")).toBeInTheDocument();
   });
 });

@@ -54,10 +54,8 @@ export const issuesApi = {
     params.set("offset", String((page - 1) * pageSize));
     params.set("sort", opts.sort ?? "createdAt:desc");
     params.set("withAgentSessions", "1");
-    params.set("withCost", "1");
     params.set("withFailureInfo", "1");
     params.set("withPipelineHealth", "1");
-    params.set("withModules", "1");
     params.set("withDependencies", "1");
     params.set("withBuckets", "1");
     if (opts.q) params.set("q", opts.q);

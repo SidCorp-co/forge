@@ -16,11 +16,11 @@ export function ForgeVersion({ className }: { className?: string }) {
 	const commit = version ? query.data?.sourceCommit : null;
 
 	return (
-		<p
+		<span
 			className={cn("text-muted", className)}
 			title={commit == null ? label : `${label} · ${commit.slice(0, 7)}`}
 		>
 			{label}
-		</p>
+		</span>
 	);
 }

@@ -208,13 +208,8 @@ export function PublicReader({ corpus, view }: { corpus: readonly PublicDoc[]; v
       <EmptyState title="This page is missing from the documentation it was resolved against" message={view.href} mascot={false} />
     );
   } else {
-    const crumbs =
-      doc.audience === "agent"
-        ? [DOORS[doc.audience].label, doc.title]
-        : [DOORS[doc.audience].label, doc.section, doc.title];
     content = (
       <DocsArticle
-        crumbs={crumbs}
         body={doc.body}
         docBasePath={doc.audience === "agent" ? undefined : doc.slug}
         docRoute={INDEX_PATH}

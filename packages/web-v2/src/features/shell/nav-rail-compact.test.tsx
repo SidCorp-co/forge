@@ -51,8 +51,6 @@ function renderRail() {
 			onAllProjects={() => {}}
 			onNewProject={() => {}}
 			onAccount={() => {}}
-			onWhatsNew={() => {}}
-			onDocs={() => {}}
 			onExpand={() => {}}
 			userInitials="FO"
 			version={<p data-testid="rail-version">Forge v0.3.0</p>}
@@ -91,11 +89,11 @@ describe("what the compact rail lets outgrow it", () => {
 		expect(tiers.contains(screen.getByTestId("rail-version"))).toBe(false);
 	});
 
-	it("keeps the account menu and the footer buttons out of it too", () => {
+	it("keeps the account menu and the expand button out of it too", () => {
 		renderRail();
 
 		const tiers = screen.getByTestId("rail-tiers");
-		for (const label of ["Account menu", "Docs", "What's New"]) {
+		for (const label of ["Account menu", "Expand sidebar"]) {
 			expect(tiers.contains(screen.getByLabelText(label))).toBe(false);
 		}
 	});

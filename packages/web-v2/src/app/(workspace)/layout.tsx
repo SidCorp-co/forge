@@ -7,7 +7,6 @@ import {
   CommandPalette,
   PinnedTabBar,
   type Command,
-  type Crumb,
 } from "@/design";
 import { useLocationSearch } from "@/lib/utils/use-location-search";
 import { useAuth } from "@/providers/auth-provider";
@@ -17,7 +16,7 @@ import { useProjects } from "@/features/projects/hooks";
 import { usePinnedProjects } from "@/features/projects/pins";
 import { ActiveOrgProvider } from "@/features/orgs/active-org";
 import { useAttention } from "@/features/attention/hooks";
-import { ForgeVersion } from "@/features/version";
+import { useWhatsNewStatus } from "@/features/whats-new/hooks";
 import { useUnblockCascadeToasts } from "@/features/issues/use-unblock-cascade";
 import { useOpenCount } from "@/features/notifications/hooks";
 import { NotificationsBell } from "@/features/notifications/components/notifications-bell";
@@ -34,7 +33,6 @@ import {
   activeSlug,
   buildActiveKey,
   buildBottomActiveKey,
-  buildCrumbs,
   bottomTabItems,
   buildWorkspaceCommands,
   resolveRailSlug,
@@ -48,7 +46,8 @@ import { useAwaitingApprovalCount } from "@/features/releases/versions-hooks";
 import { WorkspaceSidebar } from "@/features/shell/components/workspace-sidebar";
 import { SidebarSearch } from "@/features/shell/components/sidebar-search";
 import { SidebarBell } from "@/features/shell/components/sidebar-bell";
-import { PageCrumbs } from "@/features/shell/components/page-crumbs";
+import { ShellTopBar } from "@/features/shell/components/shell-top-bar";
+import { SidebarVersion } from "@/features/shell/components/sidebar-version";
 import { DrawerAccount } from "@/features/shell/components/drawer-account";
 
 export default function WorkspaceLayout({ children }: { children: React.ReactNode }) {
@@ -112,6 +111,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const pinnedViews = usePinnedViews();
   const { total: attentionCount } = useAttention();
   const { data: openCount } = useOpenCount();
+  const { hasUnseen: whatsNewUnseen } = useWhatsNewStatus();
 
   useEffect(() => {
     if (!isLoading && !user) router.replace("/login");
@@ -151,10 +151,6 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const activeKey = useMemo(
     () => buildActiveKey(pathname, slug, locationSearch),
     [pathname, slug, locationSearch],
-  );
-  const crumbs = useMemo<Crumb[]>(
-    () => buildCrumbs({ pathname, slug, activeKey, projectName: selectedProject?.name }),
-    [pathname, slug, activeKey, selectedProject],
   );
   const rail = useRailProjectData({ railSlug, railProject, activeOrgId });
 
@@ -230,8 +226,6 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
           railSlug={railSlug}
           rail={rail}
           badges={{ openIssues: rail.railConsole?.openIssues, awaitingApproval }}
-          chatOpen={dock.open}
-          onToggleChat={dock.toggle}
           onNavigate={navigate}
           onRoute={(href) => router.push(href)}
           onSignOut={logout}
@@ -255,18 +249,22 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
         onOpenProject={(s) => router.push(`/projects/${s}`)}
         onCreateProject={() => router.push("/projects?new=1")}
         onViewAllProjects={() => router.push("/projects")}
-        version={<ForgeVersion className="fg-caption" />}
-        search={<SidebarSearch onOpen={openPalette} />}
-        footer={
-          <>
-            <SidebarBell ref={drawerBellRef} count={bellCount} withLabel onToggle={() => toggleBell(drawerBellRef)} />
-            <DrawerAccount onAccount={() => router.push("/settings")} onSignOut={logout} />
-          </>
+        version={
+          <SidebarVersion
+            onWhatsNew={() => router.push("/whats-new")}
+            onDocs={() => router.push("/docs")}
+            unseen={whatsNewUnseen}
+            activeKey={activeKey}
+          />
         }
+        search={<SidebarSearch onOpen={openPalette} />}
+        bell={<SidebarBell ref={drawerBellRef} count={bellCount} onToggle={() => toggleBell(drawerBellRef)} />}
+        footer={<DrawerAccount onAccount={() => router.push("/settings")} onSignOut={logout} />}
       />
       <NotificationsBell open={notificationsOpen} onClose={closeNotifications} anchor={bellAnchor} />
 
       <div className="flex min-w-0 flex-1 flex-col">
+        <ShellTopBar chatOpen={dock.open} onToggleChat={dock.toggle} />
         <PinnedTabBar
           tabs={pinnedViews.views}
           activeHref={`${pathname}${locationSearch}`}
@@ -275,7 +273,6 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
         />
 
         <main className="min-h-0 flex-1 overflow-y-auto pb-[calc(56px+env(safe-area-inset-bottom))] md:pb-0">
-          <PageCrumbs crumbs={crumbs} onNavigate={(href) => router.push(href)} />
           <CurrentProjectProvider project={railProject}>{children}</CurrentProjectProvider>
         </main>
       </div>

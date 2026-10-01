@@ -1,4 +1,4 @@
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -7,7 +7,6 @@ import {
   PROJECT_MENU,
   buildActiveKey,
   buildBottomActiveKey,
-  buildCrumbs,
   isProjGroup,
   projectMenu,
   projectRailItems,
@@ -39,47 +38,6 @@ describe("the Activity sidebar's Ecosystem group", () => {
     expect(at("/projects/forge-dev/ecosystem/contracts/orders")).toBe("eco-contracts");
     expect(at("/projects/forge-dev/ecosystem/api")).toBe("eco-api");
     expect(at("/projects/forge-dev/issues")).toBe("proj-issues");
-  });
-
-  it("names the page in the breadcrumb", () => {
-    const crumbs = buildCrumbs({
-      pathname: "/projects/forge-dev/ecosystem/api",
-      slug: "forge-dev",
-      activeKey: "eco-api",
-      projectName: "Forge Dev",
-    });
-    expect(crumbs.at(-1)?.label).toBe("Project API");
-  });
-});
-
-describe("a project page's breadcrumb names the page", () => {
-  const crumbOf = (sub: string) => {
-    const pathname = `/projects/forge-dev${sub}`;
-    const activeKey = buildActiveKey(pathname, "forge-dev");
-    return buildCrumbs({ pathname, slug: "forge-dev", activeKey, projectName: "Forge Dev" }).at(-1)?.label;
-  };
-
-  it("reads Settings on the settings page", () => {
-    expect(crumbOf("/settings")).toBe("Settings");
-  });
-
-  it.each(
-    readdirSync(PROJECT_ROUTES).filter((d) => existsSync(join(PROJECT_ROUTES, d, "page.tsx"))),
-  )("names /%s as something other than the dashboard", (dir) => {
-    expect(crumbOf(`/${dir}`)).not.toBe("Dashboard");
-  });
-
-  it("names the Releases page under a version's own address", () => {
-    expect(crumbOf("/releases/r1")).toBe("Releases");
-  });
-
-  it("names the Automation pages by their own names", () => {
-    expect(crumbOf("/automation/schedules")).toBe("Schedules");
-    expect(crumbOf("/automation/improvements")).toBe("Improvements");
-  });
-
-  it("reads Dashboard on the project's own page", () => {
-    expect(crumbOf("")).toBe("Dashboard");
   });
 });
 

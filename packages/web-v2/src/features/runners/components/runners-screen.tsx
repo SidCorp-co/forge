@@ -272,12 +272,9 @@ export function RunnersScreen() {
   return (
     <PageContainer className="flex flex-col gap-5">
       <div className="flex items-center justify-between gap-3">
-        <div>
-          <PageTitle className="fg-h2">Runners &amp; devices</PageTitle>
-          <p className="fg-body-sm text-muted">
-            Paired devices that can run pipeline jobs. Status updates live.
-          </p>
-        </div>
+        <PageTitle className="fg-h2" hint="Paired devices that can run pipeline jobs. Status updates live.">
+          Runners &amp; devices
+        </PageTitle>
         <HelpButton
           summary="Each device is a machine running the forge-runner agent. Pair new devices with a browser-approved login, watch their online status live, turn a device off to park it, or revoke access when a device is retired."
           actions={[

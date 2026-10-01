@@ -294,10 +294,6 @@
       "lint/a11y/noStaticElementInteractions": 1,
       "lint/a11y/useKeyWithClickEvents": 2
     },
-    "packages/web-v2/src/design/primitives/breadcrumb.tsx": {
-      "lint/style/noNonNullAssertion": 1,
-      "lint/suspicious/noArrayIndexKey": 1
-    },
     "packages/web-v2/src/design/primitives/checkbox.tsx": {
       "lint/a11y/noLabelWithoutControl": 1,
       "lint/a11y/useSemanticElements": 1

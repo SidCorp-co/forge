@@ -54,12 +54,6 @@ export interface NavRailProps {
    *  remain the accessible fallback. */
   onSwitcherEnter?: () => void;
   onSwitcherLeave?: () => void;
-  /** Jump to the Docs page (pinned bottom-left). */
-  onDocs?: () => void;
-  /** Jump to the What's New feed (pinned bottom-left, above Docs). */
-  onWhatsNew?: () => void;
-  /** Unread count for the What's New row — `1` shows the "new" dot/pill, 0/undefined hides it. */
-  whatsNewBadge?: number;
   /** Footer user-menu actions. When set, the user chip becomes an actionable
    *  menu (Account / Settings, Sign out) instead of a dead element. */
   onAccount?: () => void;
@@ -68,14 +62,12 @@ export interface NavRailProps {
   user?: { initials: string };
   /** The organization picker, on the brand row beside the logo. Hidden while collapsed. */
   orgSwitcher?: React.ReactNode;
-  /** Opens or closes the chat dock; `chatOpen` lights its footer row. */
-  onChat?: () => void;
-  chatOpen?: boolean;
   /** The product's own version, pinned to the footer (ISS-1119). Hidden while
    *  collapsed — the compact rail carries it there instead. */
   version?: React.ReactNode;
   search?: React.ReactNode;
   brandSearch?: React.ReactNode;
+  /** The notifications bell, at the end of the brand row. */
   bell?: React.ReactNode;
   body?: React.ReactNode;
   /** Icon-only collapsed rail. */
@@ -303,16 +295,11 @@ export function NavRail({
   onProjectSwitch,
   onSwitcherEnter,
   onSwitcherLeave,
-  onDocs,
-  onWhatsNew,
-  whatsNewBadge,
   onAccount,
   onSignOut,
   project,
   user,
   orgSwitcher,
-  onChat,
-  chatOpen,
   version,
   search,
   brandSearch,
@@ -395,32 +382,10 @@ export function NavRail({
           <>
             {orgSwitcher}
             {brandSearch}
-            {onToggleCollapsed && (
-              <button
-                type="button"
-                onClick={onToggleCollapsed}
-                aria-label="Collapse sidebar"
-                className="inline-flex size-7 flex-none items-center justify-center rounded-md text-subtle transition-colors hover:bg-hover hover:text-fg"
-              >
-                <Icon name="panelLeft" size={16} />
-              </button>
-            )}
+            {bell}
           </>
         )}
       </div>
-
-      {collapsed && onToggleCollapsed && (
-        <Tooltip label="Expand sidebar" side="bottom">
-          <button
-            type="button"
-            onClick={onToggleCollapsed}
-            aria-label="Expand sidebar"
-            className="inline-flex w-full items-center justify-center rounded-md py-2 text-subtle transition-colors hover:bg-hover hover:text-fg"
-          >
-            <Icon name="chevronRight" size={16} />
-          </button>
-        </Tooltip>
-      )}
 
       {search}
 
@@ -500,35 +465,24 @@ export function NavRail({
         </>
       )}
 
-      {/* Footer block: What's New + Docs pinned bottom-left, then the user chip. */}
+      {/* cm:why the footer is the account control with the collapse handle beside it, then the version, which is the way to What's New and carries the Docs button (ISS-49) */}
       <div className="mt-auto flex flex-col gap-1 border-t border-line-subtle pt-3">
-        {bell}
-        {onChat && (
-          <NavRow
-            item={{ key: "chat", label: "Chat", icon: "chat" }}
-            active={chatOpen === true}
-            collapsed={collapsed}
-            onClick={onChat}
-          />
-        )}
-        {onWhatsNew && (
-          <NavRow
-            item={{ key: "whats-new", label: "What's New", icon: "star", badge: whatsNewBadge }}
-            active={activeKey === "whats-new"}
-            collapsed={collapsed}
-            onClick={onWhatsNew}
-          />
-        )}
-        {onDocs && (
-          <NavRow
-            item={{ key: "docs", label: "Docs", icon: "book" }}
-            active={activeKey === "docs"}
-            collapsed={collapsed}
-            onClick={onDocs}
-          />
-        )}
-        <div className={cn("flex items-center pt-1", collapsed ? "justify-center" : "")}>{userArea}</div>
-        {!collapsed && version && <div className="px-2.5 pt-1.5">{version}</div>}
+        <div className={cn("flex items-center gap-1", collapsed && "flex-col")}>
+          <div className="min-w-0 flex-1">{userArea}</div>
+          {onToggleCollapsed && (
+            <Tooltip label={collapsed ? "Expand sidebar" : "Collapse sidebar"} side="top">
+              <button
+                type="button"
+                onClick={onToggleCollapsed}
+                aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                className="inline-flex size-8 flex-none items-center justify-center rounded-md text-subtle transition-colors hover:bg-hover hover:text-fg max-md:size-11"
+              >
+                <Icon name={collapsed ? "chevronRight" : "panelLeft"} size={16} />
+              </button>
+            </Tooltip>
+          )}
+        </div>
+        {!collapsed && version && <div className="px-1.5 pt-1">{version}</div>}
       </div>
     </nav>
   );

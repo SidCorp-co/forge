@@ -97,22 +97,24 @@ describe("the column heading", () => {
     join(import.meta.dirname, "issues-list-view.tsx"),
     "utf8",
   );
-  const headings = [...view.matchAll(/<TH[^>]*>([^<]+)<\/TH>/gu)].map((m) => m[1].trim());
+  const columns = new Map(
+    [...view.matchAll(/\{ id: "(\w+)", header: "([^"]+)"/gu)].map((m) => [m[1], m[2]] as const),
+  );
 
-  it("is read from a file that actually has the table in it", () => {
-    expect(headings).toContain("Status");
-    expect(headings.length).toBeGreaterThan(5);
+  it("is read from a file that actually declares the table's columns", () => {
+    expect(columns.get("status")).toBe("Status");
+    expect(columns.size).toBeGreaterThan(4);
   });
 
   it("is no kernel status's word", () => {
     const words = new Set(ISSUE_STATUSES.map(statusLabel));
-    const beside = headings[headings.indexOf("Status") + 1];
-    expect(beside).toBeDefined();
-    expect(words.has(beside)).toBe(false);
+    const heading = columns.get("updatedAt");
+    expect(heading).toBeDefined();
+    expect(words.has(heading as string)).toBe(false);
   });
 
   it("names what the figure measures", () => {
-    expect(headings[headings.indexOf("Status") + 1]).toBe("Updated");
+    expect(columns.get("updatedAt")).toBe("Updated");
   });
 });
 
