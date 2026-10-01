@@ -58,7 +58,7 @@ const coolifyRollbackSchema = z
   .optional();
 
 const TARGETS_ON_CONNECTION =
-  "a Coolify connection carries no deploy target: the application a project deploys is its binding's (`PUT /api/projects/:id/bindings/:bindingId` with `target.applicationUuid`). Send this connection config without `targets`.";
+  "a Coolify connection carries no deploy target: the application a project deploys is its binding's (`PUT /api/projects/:id/bindings/:bindingId` with `target.applications`). Send this connection config without `targets`.";
 
 const coolifyBaseUrl = z.string().url().max(500);
 

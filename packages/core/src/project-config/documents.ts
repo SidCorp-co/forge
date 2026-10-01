@@ -2,6 +2,9 @@ import type { z } from 'zod';
 import type { ConfigRefusal, ConfigRefusalCode } from './rules.js';
 import { TOOL_PATTERN } from './schema.js';
 
+const BINDING_ROLLBACK_MOVED =
+  "rollback is not a binding's: how a release is undone is the project document's `rollback.strategy` (`PUT /api/projects/:id/config`).";
+
 export type ApiRefusalCode =
   | ConfigRefusalCode
   | 'SCHEMA_VIOLATION'
@@ -9,7 +12,11 @@ export type ApiRefusalCode =
   | 'TESTING_PROFILE_IN_USE'
   | 'BINDING_ID_MISMATCH'
   | 'BINDING_TARGET_UNSUPPORTED'
-  | 'BINDING_NOT_REPRESENTABLE';
+  | 'BINDING_NOT_REPRESENTABLE'
+  | 'BINDING_LABEL_UNSUPPORTED'
+  | 'BINDING_ROLLBACK_MOVED'
+  | 'AGENT_ACCESS_UNSUPPORTED'
+  | 'AGENT_ACCESS_NEEDS_ORG_ADMIN';
 
 export interface ApiRefusal extends Omit<ConfigRefusal, 'code'> {
   code: ApiRefusalCode;
@@ -26,11 +33,20 @@ export const isRecord = (v: unknown): v is Record<string, unknown> =>
 
 function issueRefusals(issue: z.core.$ZodIssue): ApiRefusal[] {
   if (issue.code === 'unrecognized_keys') {
-    return issue.keys.map((key) => ({
-      code: 'UNKNOWN_KEY',
-      path: pointer([...issue.path, key]),
-      detail: `"${key}" is not a key of this document; version 1 refuses keys it does not define.`,
-    }));
+    return issue.keys.map((key): ApiRefusal => {
+      if (key === 'rollback' && issue.path[0] === 'target') {
+        return {
+          code: 'BINDING_ROLLBACK_MOVED',
+          path: pointer([...issue.path, key]),
+          detail: BINDING_ROLLBACK_MOVED,
+        };
+      }
+      return {
+        code: 'UNKNOWN_KEY',
+        path: pointer([...issue.path, key]),
+        detail: `"${key}" is not a key of this document; version 1 refuses keys it does not define.`,
+      };
+    });
   }
   if (issue.code === 'invalid_format' && issue.pattern === String(TOOL_PATTERN)) {
     return [

@@ -15,7 +15,7 @@ export interface SeedProduction {
   projectId: string;
   ownerId: string;
   provider?: string;
-  /** The binding's own config: targets, releaseRunnerLabel, rollback. */
+  /** The binding's own config: targets and releaseRunnerLabel. */
   config?: Record<string, unknown>;
   connectionConfig?: Record<string, unknown>;
   /** Encrypted secrets for the connection, where the suite reaches the provider. */

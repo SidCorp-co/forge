@@ -11,6 +11,7 @@ export const github: ProviderModule = {
   agentPathKind: "core-mediated",
   mcpServerName: null,
   multiBinding: false,
+  bindingKeys: ["installationId", "owner", "repo"],
   target: (config) => {
     const owner = text(config, "owner");
     const repo = text(config, "repo");

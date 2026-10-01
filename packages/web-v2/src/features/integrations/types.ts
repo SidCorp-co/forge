@@ -32,7 +32,6 @@ export type {
   ConnectionResponse,
   ConnectionListResponse,
   BindingListResponse,
-  BindExistingConnectionRequest,
   ConnectionBindingsResponse,
   DeliveryRetryResponse,
     McpServerPreviewEntry,
@@ -140,7 +139,6 @@ export interface RocketchatRoom {
 }
 
 export type {
-  IntegrationBindingCreateInput as CreateIntegrationInput,
   IntegrationBindingUpdateInput as UpdateIntegrationInput,
   AgentAccess,
   AgentPathKind,

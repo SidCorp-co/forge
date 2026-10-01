@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { agentAccessValues } from '../db/release-axes.js';
 import type { IssueStatus } from '../db/schema.js';
 import { ISSUE_TERMINAL_STATUSES } from '../issues/status-sets.js';
 import { AUTONOMOUS_DRIVER_STATUSES } from '../pipeline/autonomous-mode.js';
@@ -236,20 +237,54 @@ export type TestingProfile = z.infer<typeof testingProfileSchema>;
 export const BINDING_ROLES = ['deploy', 'source', 'service'] as const;
 export type BindingRole = (typeof BINDING_ROLES)[number];
 
+const releaseRunnerLabel = () => z.string().min(1).max(60).optional();
+const bindingLabel = () =>
+  z
+    .string()
+    .min(1)
+    .max(60)
+    .regex(/^[a-z0-9][a-z0-9-]*$/)
+    .optional();
+const targetOf = <P extends string, S extends z.ZodRawShape>(provider: P, shape: S) =>
+  z.strictObject({
+    provider: z.literal(provider),
+    ...shape,
+    label: bindingLabel(),
+    releaseRunnerLabel: releaseRunnerLabel(),
+  });
+
+const coolifyApplication = z.strictObject({
+  id: z.string().min(1).max(64).optional(),
+  label: z.string().min(1).max(100),
+  resourceUuid: z.string().regex(/^[a-z0-9]{20,40}$/),
+  healthUrl: httpsUrl().optional(),
+});
+
 const BINDING_TARGETS = [
-  z.strictObject({
-    provider: z.literal('coolify'),
-    applicationUuid: z.string().regex(/^[a-z0-9]{20,40}$/),
+  targetOf('coolify', {
+    applications: z
+      .array(coolifyApplication)
+      .min(1)
+      .max(20)
+      .refine((apps) => new Set(apps.map((a) => a.label)).size === apps.length, {
+        message: 'two applications share a label; a label names one application in this binding',
+      }),
   }),
-  z.strictObject({
-    provider: z.literal('shopify'),
+  targetOf('shopify', {
     store: z.string().regex(/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/),
     themeRole: z.enum(['main', 'unpublished']).optional(),
   }),
-  z.strictObject({
-    provider: z.literal('epodsystem'),
-    store: z.string().min(1).max(100),
+  targetOf('epodsystem', {}),
+  targetOf('github', {
+    installationId: z.number().int().positive(),
+    owner: z.string().min(1).max(200),
+    repo: z.string().min(1).max(200),
   }),
+  targetOf('sentry', {}),
+  targetOf('postman', {}),
+  targetOf('rocketchat', { rids: z.array(z.string().min(1).max(200)).min(1).max(20).optional() }),
+  targetOf('google', { defaultSpreadsheetId: z.string().min(1).max(200).optional() }),
+  targetOf('agent', {}),
 ] as const;
 
 export const BINDING_TARGET_PROVIDERS: readonly string[] = BINDING_TARGETS.map(
@@ -271,6 +306,7 @@ export const bindingDocumentSchema = z.strictObject({
   id: uuid(),
   role: z.enum(BINDING_ROLES),
   connection: uuid(),
+  agentAccess: z.enum(agentAccessValues).optional(),
   target: z.discriminatedUnion('provider', BINDING_TARGETS, {
     error: (issue) =>
       issue.code === 'invalid_union'

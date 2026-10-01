@@ -7955,50 +7955,6 @@
             }
           }
         ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "agentAccess": {
-                    "enum": [
-                      "none",
-                      "all"
-                    ],
-                    "type": "string"
-                  },
-                  "config": {
-                    "additionalProperties": {},
-                    "propertyNames": {
-                      "type": "string"
-                    },
-                    "type": "object"
-                  },
-                  "projectId": {
-                    "minLength": 1,
-                    "type": "string"
-                  },
-                  "role": {
-                    "enum": [
-                      "deploy",
-                      "service"
-                    ],
-                    "type": "string"
-                  },
-                  "stages": {
-                    "not": {}
-                  }
-                },
-                "required": [
-                  "projectId",
-                  "role"
-                ],
-                "type": "object"
-              }
-            }
-          },
-          "required": true
-        },
         "responses": {
           "default": {
             "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
@@ -8008,9 +7964,7 @@
           "requireAuth",
           "assertEmailVerified"
         ],
-        "x-forge-validated": [
-          "json"
-        ]
+        "x-forge-validated": []
       }
     },
     "/api/integration-connections/{id}/test": {
@@ -20848,74 +20802,6 @@
             }
           }
         ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "properties": {
-                  "agentAccess": {
-                    "enum": [
-                      "none",
-                      "all"
-                    ],
-                    "type": "string"
-                  },
-                  "config": {
-                    "additionalProperties": {},
-                    "default": {},
-                    "propertyNames": {
-                      "type": "string"
-                    },
-                    "type": "object"
-                  },
-                  "label": {
-                    "maxLength": 60,
-                    "minLength": 1,
-                    "pattern": "^[a-z0-9][a-z0-9-]*$",
-                    "type": "string"
-                  },
-                  "orgId": {
-                    "format": "uuid",
-                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-                    "type": "string"
-                  },
-                  "provider": {
-                    "maxLength": 60,
-                    "minLength": 1,
-                    "type": "string"
-                  },
-                  "role": {
-                    "enum": [
-                      "deploy",
-                      "service"
-                    ],
-                    "type": "string"
-                  },
-                  "secrets": {
-                    "additionalProperties": {},
-                    "default": {},
-                    "propertyNames": {
-                      "type": "string"
-                    },
-                    "type": "object"
-                  },
-                  "stages": {
-                    "not": {}
-                  }
-                },
-                "required": [
-                  "provider",
-                  "role"
-                ],
-                "type": "object",
-                "x-forge-refinements": [
-                  "a refinement with no fixed message, whose rule this contract cannot state"
-                ]
-              }
-            }
-          },
-          "required": true
-        },
         "responses": {
           "default": {
             "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
@@ -20925,9 +20811,7 @@
           "requireAuth",
           "assertEmailVerified"
         ],
-        "x-forge-validated": [
-          "json"
-        ]
+        "x-forge-validated": []
       }
     },
     "/api/projects/{projectId}/integrations/coolify": {

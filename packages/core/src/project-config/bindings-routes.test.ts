@@ -1,12 +1,11 @@
 import { readFileSync } from 'node:fs';
-import { Hono, type MiddlewareHandler } from 'hono';
+import type { MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   bindingMem,
   COOLIFY_CONNECTION,
   ORG,
-  resetBindingMem,
   SHOPIFY_CONNECTION,
   seedBindingRow,
 } from './binding-store.fixture.js';
@@ -47,68 +46,22 @@ vi.mock('../middleware/auth.js', () => ({
   assertEmailVerified: (): MiddlewareHandler => async (_c, next) => next(),
 }));
 
-const { projectConfigRoutes } = await import('./routes.js');
+const effects = vi.hoisted(() => ({
+  refusals: vi.fn(async () => [] as { code: string; path: string; detail: string }[]),
+  inboundSecret: vi.fn(async () => 'whsec_minted'),
+  afterWrite: vi.fn(async () => ({}) as Record<string, unknown>),
+}));
+vi.mock('./bind-effects.js', () => ({ bindEffects: effects }));
 
-const BINDING = '8b3c4d5e-6f7a-4b2c-9d3e-4f5a6b7c8d9e';
-const SOURCE = '7a2b3c4d-5e6f-4a1b-8c2d-3e4f5a6b7c8d';
-
-function app() {
-  const a = new Hono();
-  a.route('/api/projects', projectConfigRoutes);
-  a.onError((err, c) => {
-    if (err instanceof HTTPException) {
-      const cause = err.cause as { code?: string } | undefined;
-      return c.json({ code: cause?.code ?? 'HTTP', message: err.message }, err.status);
-    }
-    throw err;
-  });
-  return a;
-}
-
-const call = (method: string, path: string, body?: unknown, who = ADMIN) =>
-  app().request(`/api/projects/${PROJECT}${path}`, {
-    method,
-    headers: { authorization: `Bearer user:${who}`, 'content-type': 'application/json' },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  });
-
-const coolifyDoc = (overrides: Record<string, unknown> = {}) => ({
-  $schema: 'https://forge.sidcorp.co/schemas/binding-v1.json',
-  version: 1,
-  id: BINDING,
-  role: 'deploy',
-  connection: COOLIFY_CONNECTION,
-  target: { provider: 'coolify', applicationUuid: 'y8w4c4kss8ogo8gc44ow44kc' },
-  ...overrides,
-});
-
-type Refused = {
-  error: { code: string; refusals: { code: string; path: string; detail: string }[] };
-};
-const refusalsOf = async (res: Response) => ((await res.json()) as Refused).error.refusals;
+const { BINDING, SOURCE, call, coolifyDoc, refusalsOf, resetBindingWorld } = await import(
+  './bindings-routes.fixture.js'
+);
 
 beforeEach(() => {
-  mem.project.clear();
-  mem.profiles.clear();
-  mem.roles.clear();
-  mem.roles.set(ADMIN, 'admin');
-  mem.roles.set(VIEWER, 'viewer');
-  resetBindingMem();
-  bindingMem.connections.set(COOLIFY_CONNECTION, {
-    id: COOLIFY_CONNECTION,
-    provider: 'coolify',
-    ownerType: 'org',
-    ownerId: ORG,
-    active: true,
-  });
-  bindingMem.connections.set(SHOPIFY_CONNECTION, {
-    id: SHOPIFY_CONNECTION,
-    provider: 'shopify',
-    ownerType: 'user',
-    ownerId: ADMIN,
-    active: true,
-  });
-  bindingMem.orgAdmins.add(ADMIN);
+  effects.refusals.mockClear();
+  effects.inboundSecret.mockClear();
+  effects.afterWrite.mockClear();
+  resetBindingWorld();
 });
 
 describe('binding documents', () => {
@@ -127,7 +80,7 @@ describe('binding documents', () => {
     const read = (await (await call('GET', `/bindings/${BINDING}`, undefined, VIEWER)).json()) as {
       document: unknown;
     };
-    expect(read.document).toEqual(coolifyDoc());
+    expect(read.document).toEqual({ ...coolifyDoc(), agentAccess: 'none' });
   });
 
   it('writes a source binding', async () => {
@@ -205,6 +158,8 @@ describe('binding documents', () => {
       provider: 'coolify',
       role: 'deploy',
       config: {},
+      label: '',
+      agentAccess: 'none',
       active: true,
       revision: 1,
     });
@@ -215,7 +170,7 @@ describe('binding documents', () => {
     expect((await refusalsOf(foreign))[0]).toMatchObject({ code: 'BINDING_ID_MISMATCH' });
   });
 
-  it('refuses an epodsystem target by name rather than guessing its row shape', async () => {
+  it('writes an epodsystem target by its label, the store being its connection', async () => {
     bindingMem.connections.set(COOLIFY_CONNECTION, {
       id: COOLIFY_CONNECTION,
       provider: 'epodsystem',
@@ -223,11 +178,14 @@ describe('binding documents', () => {
       ownerId: ORG,
       active: true,
     });
-    const doc = coolifyDoc({ target: { provider: 'epodsystem', store: 'shop' } });
+    const doc = coolifyDoc({ target: { provider: 'epodsystem', label: 'shop-eu' } });
     const res = await call('PUT', `/bindings/${BINDING}`, { baseRevision: null, document: doc });
-    expect(await refusalsOf(res)).toEqual([
-      expect.objectContaining({ code: 'BINDING_TARGET_UNSUPPORTED' }),
-    ]);
+    expect(res.status).toBe(200);
+    expect(bindingMem.rows.get(BINDING)).toMatchObject({
+      provider: 'epodsystem',
+      label: 'shop-eu',
+      config: {},
+    });
   });
 
   it('refuses a viewer write', async () => {
@@ -249,6 +207,8 @@ describe('binding documents', () => {
       provider: 'coolify',
       role: 'deploy',
       config: { targets: [] },
+      label: '',
+      agentAccess: 'none',
       active: true,
       revision: 3,
     });
@@ -287,7 +247,7 @@ describe('binding documents', () => {
 });
 
 describe('a target provider the binding document does not define', () => {
-  for (const provider of ['', 'github']) {
+  for (const provider of ['', 'gitlab']) {
     it(`refuses provider ${JSON.stringify(provider)} naming every provider it does define`, async () => {
       const doc = coolifyDoc({ target: { provider } });
       const res = await call('PUT', `/bindings/${BINDING}`, { baseRevision: null, document: doc });
@@ -296,7 +256,7 @@ describe('a target provider the binding document does not define', () => {
         {
           code: 'SCHEMA_VIOLATION',
           path: '/target/provider',
-          detail: `provider ${JSON.stringify(provider)} is not a binding target; target.provider is one of coolify, shopify, epodsystem, each with the fields binding-v1.json names for it.`,
+          detail: `provider ${JSON.stringify(provider)} is not a binding target; target.provider is one of coolify, shopify, epodsystem, github, sentry, postman, rocketchat, google, agent, each with the fields binding-v1.json names for it.`,
         },
       ]);
       expect(bindingMem.rows.size).toBe(0);
@@ -318,7 +278,8 @@ describe('a binding holding keys the document has no field for', () => {
   const held = {
     targets: [{ id: 'primary', label: 'primary', resourceUuid: 'abcdefghijklmnopqrstu' }],
     releaseRunnerLabel: 'release',
-    rollback: 'redeploy the previous image',
+    branch: 'main',
+    resourceName: 'shop',
   };
 
   beforeEach(() => {
@@ -329,6 +290,8 @@ describe('a binding holding keys the document has no field for', () => {
       provider: 'coolify',
       role: 'deploy',
       config: held,
+      label: '',
+      agentAccess: 'none',
       active: true,
       revision: 2,
     });
@@ -343,7 +306,7 @@ describe('a binding holding keys the document has no field for', () => {
     expect(body.unrepresentable).toEqual([
       expect.objectContaining({
         id: BINDING,
-        reason: expect.stringContaining('`releaseRunnerLabel`, `rollback`'),
+        reason: expect.stringContaining('`branch`, `resourceName`'),
       }),
     ]);
   });

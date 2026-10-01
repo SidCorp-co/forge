@@ -111,18 +111,19 @@ function project(over: {
 }
 
 function liveBinding(config: Record<string, unknown> = {}) {
+  const { rollback, ...bindingConfig } = config;
   productionPair.mockResolvedValue({
     binding: {
       id: PROD_BINDING,
       projectId: PROJECT_ID,
       active: true,
       provider: 'coolify',
-      config,
+      config: bindingConfig,
       instructions: null,
       label: '',
       role: 'deploy',
     },
-    connection: { active: true, config: {} },
+    connection: { active: true, config: rollback === undefined ? {} : { rollback } },
   });
 }
 

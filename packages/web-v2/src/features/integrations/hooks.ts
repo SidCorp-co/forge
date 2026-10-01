@@ -6,11 +6,17 @@ import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { integrationConnectionsApi, integrationsApi } from "./api";
+import {
+  type BindConnectionInput,
+  bindConnection,
+  bindingRefusalText,
+  type CreateIntegrationInput,
+  createIntegration,
+  type UpdateIntegrationInput,
+  updateIntegration,
+} from "./bind-actions";
 import type {
-  BindExistingConnectionRequest,
   ConnectionUpdateInput,
-  CreateIntegrationInput,
-  UpdateIntegrationInput,
 } from "./types";
 
 /** Integration status cards for a project. Keyed `['integrations','status',id]`. */
@@ -137,8 +143,7 @@ export function useCreateProviderIntegration(projectId: string | undefined) {
   const invalidate = useInvalidateIntegrations(projectId);
   const { toast } = useToast();
   return useMutation({
-    mutationFn: (body: CreateIntegrationInput) =>
-      integrationsApi.create(projectId as string, body),
+    mutationFn: (body: CreateIntegrationInput) => createIntegration(projectId as string, body),
     onSuccess: () => {
       invalidate();
       toast({ title: "Integration saved", tone: "success" });
@@ -146,7 +151,7 @@ export function useCreateProviderIntegration(projectId: string | undefined) {
     onError: (err) =>
       toast({
         title: "Couldn't save integration",
-        description: formatApiError(err),
+        description: bindingRefusalText(err),
         tone: "error",
       }),
   });
@@ -158,7 +163,7 @@ export function useUpdateProviderIntegration(projectId: string | undefined) {
   const { toast } = useToast();
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: UpdateIntegrationInput }) =>
-      integrationsApi.update(projectId as string, id, body),
+      updateIntegration(projectId as string, id, body),
     onSuccess: () => {
       invalidate();
       toast({ title: "Integration saved", tone: "success" });
@@ -166,7 +171,7 @@ export function useUpdateProviderIntegration(projectId: string | undefined) {
     onError: (err) =>
       toast({
         title: "Couldn't save integration",
-        description: formatApiError(err),
+        description: bindingRefusalText(err),
         tone: "error",
       }),
   });
@@ -394,35 +399,22 @@ export function useConnectionBindings(connectionId: string | null | undefined) {
   });
 }
 
-/**
- * Bind an existing connection to a project+env without re-entering the
- * credential. Returns the integration row + the one-time HMAC
- * `integrationSecret`. Invalidates both the connection cache (new binding) AND
- * the target project's integrations list/status (a new binding flips a card).
- */
-export function useBindExistingConnection() {
+export function useBindConnection(projectId: string | undefined) {
   const qc = useQueryClient();
+  const invalidate = useInvalidateIntegrations(projectId);
   const { toast } = useToast();
   return useMutation({
-    mutationFn: ({
-      id,
-      body,
-    }: { id: string; body: BindExistingConnectionRequest }) =>
-      integrationConnectionsApi.bindExisting(id, body),
-    onSuccess: (_data, vars) => {
+    mutationFn: (input: BindConnectionInput) => bindConnection(projectId as string, input),
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["integration-connections"] });
-      qc.invalidateQueries({
-        queryKey: ["integrations", "list", vars.body.projectId],
-      });
-      qc.invalidateQueries({
-        queryKey: ["integrations", "status", vars.body.projectId],
-      });
-      toast({ title: "Connection shared", tone: "success" });
+      qc.invalidateQueries({ queryKey: ["project", projectId, "bindings"] });
+      invalidate();
+      toast({ title: "Connection bound", tone: "success" });
     },
     onError: (err) =>
       toast({
-        title: "Couldn't share connection",
-        description: formatApiError(err),
+        title: "Couldn't bind the connection",
+        description: bindingRefusalText(err),
         tone: "error",
       }),
   });

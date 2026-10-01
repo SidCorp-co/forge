@@ -1,6 +1,6 @@
 import { apiClient } from "@/lib/api/client";
+import type { BindingDocument, BindingRead } from "./binding-document";
 import type {
-  BindExistingConnectionRequest,
   BindingListResponse,
   ConfirmProdDeployResult,
   ConnectionBindingsResponse,
@@ -10,7 +10,6 @@ import type {
   ConnectionUpdateInput,
   CoolifyApplication,
   CoolifyTargetIdentity,
-  CreateIntegrationInput,
   DeliveryRetryResponse,
   IntegrationDelivery,
   IntegrationSummary,
@@ -51,12 +50,18 @@ export const integrationsApi = {
     }),
 
 
-  create: (projectId: string, body: CreateIntegrationInput) =>
-    apiClient<{
-      integration: IntegrationSummary;
-      integrationSecret: string;
-      health?: IntegrationTestResult | null;
-    }>(`/projects/${projectId}/integrations`, { method: "POST", body: JSON.stringify(body) }),
+  bindingDocument: (projectId: string, bindingId: string) =>
+    apiClient<BindingRead>(`/projects/${projectId}/bindings/${bindingId}`),
+
+  putBindingDocument: (
+    projectId: string,
+    bindingId: string,
+    write: { baseRevision: number | null; document: BindingDocument },
+  ) =>
+    apiClient<BindingRead & { created: boolean; effects: Record<string, unknown> }>(
+      `/projects/${projectId}/bindings/${bindingId}`,
+      { method: "PUT", body: JSON.stringify(write) },
+    ),
 
   /** `PATCH .../integrations/:id` — update config/secrets/active. */
   update: (projectId: string, id: string, body: UpdateIntegrationInput) =>
@@ -173,11 +178,4 @@ export const integrationConnectionsApi = {
    *  "Projects using this connection" list. */
   bindings: (id: string) =>
     apiClient<ConnectionBindingsResponse>(`/integration-connections/${id}/bindings`),
-
-  bindExisting: (id: string, body: BindExistingConnectionRequest) =>
-    apiClient<{
-      integration: IntegrationSummary;
-      integrationSecret: string;
-      health?: IntegrationTestResult | null;
-    }>(`/integration-connections/${id}/bindings`, { method: "POST", body: JSON.stringify(body) }),
 };

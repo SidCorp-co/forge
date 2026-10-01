@@ -46,6 +46,10 @@ const EXEMPT = [
     why: 'answers 410 Gone and reads nothing (ISS-1048 retired the field)',
   },
   {
+    route: 'POST /api/projects/:projectId/integrations',
+    why: 'answers 410 BINDING_WRITE_MOVED and reads nothing (ISS-15: a binding is written as its binding-v1 document)',
+  },
+  {
     route: 'POST /api/body/preview',
     why: 'renders the body sent in the request and nothing else; it reads no stored row',
   },

@@ -22,6 +22,7 @@ import {
   type TestServer,
   truncateAll,
 } from '../helpers/index.js';
+import { seedBinding } from '../helpers/seed-binding.js';
 
 process.env.INTEGRATION_MASTER_KEY ??= 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=';
 
@@ -238,7 +239,7 @@ describe('a Rocket.Chat group room', () => {
       config: { serverUrl: SERVER },
       secrets: { authToken: 'tok', userId: 'bot' },
     });
-    await m.rcStore.createBinding({
+    await seedBinding({
       connectionId: connection.id,
       projectId,
       provider: 'rocketchat',

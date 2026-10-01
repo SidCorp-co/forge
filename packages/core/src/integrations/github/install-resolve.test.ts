@@ -21,7 +21,7 @@ vi.mock('./install-candidates.js', () => ({
 
 vi.mock('./app-auth.js', () => ({ buildAppJwt: (appId: string) => `jwt-for-${appId}` }));
 
-import { findBindingOwningInstallation } from './install-resolve.js';
+import { findConnectionOwningInstallation } from './install-resolve.js';
 
 function connection(id: string, secrets: Record<string, string> | null) {
   return { id, provider: 'github', secrets };
@@ -34,10 +34,10 @@ function bindingFor(id: string) {
   };
 }
 
-describe('findBindingOwningInstallation', () => {
+describe('findConnectionOwningInstallation', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('returns the binding of the App whose JWT GitHub accepts, not the first candidate', async () => {
+  it('returns the App whose JWT GitHub accepts, not the first candidate, with the project its binding names', async () => {
     listConnections.mockResolvedValue([
       connection('a', { appId: '1', privateKey: 'k1' }),
       connection('b', { appId: '2', privateKey: 'k2' }),
@@ -48,13 +48,14 @@ describe('findBindingOwningInstallation', () => {
       ok: init.headers.authorization === 'Bearer jwt-for-2',
     })) as unknown as typeof fetch;
 
-    const found = await findBindingOwningInstallation({
+    const found = await findConnectionOwningInstallation({
       userId: 'u1',
       installationId: 42,
       fetchImpl,
     });
 
-    expect(found?.binding.id).toBe('bind-b');
+    expect(found?.connection.id).toBe('b');
+    expect(found?.projectId).toBe('proj-b');
     expect(listBindings).toHaveBeenCalledTimes(1);
   });
 
@@ -64,7 +65,7 @@ describe('findBindingOwningInstallation', () => {
     const fetchImpl = vi.fn(async () => ({ ok: false })) as unknown as typeof fetch;
 
     expect(
-      await findBindingOwningInstallation({ userId: 'u1', installationId: 42, fetchImpl }),
+      await findConnectionOwningInstallation({ userId: 'u1', installationId: 42, fetchImpl }),
     ).toBeNull();
     expect(listBindings).not.toHaveBeenCalled();
   });
@@ -81,12 +82,24 @@ describe('findBindingOwningInstallation', () => {
       return { ok: true };
     }) as unknown as typeof fetch;
 
-    const found = await findBindingOwningInstallation({
+    const found = await findConnectionOwningInstallation({
       userId: 'u1',
       installationId: 42,
       fetchImpl,
     });
-    expect(found?.binding.id).toBe('bind-b');
+    expect(found?.connection.id).toBe('b');
+  });
+
+  it('answers the App with no project when no binding names it yet', async () => {
+    listConnections.mockResolvedValue([connection('a', { appId: '1', privateKey: 'k1' })]);
+    listBindings.mockResolvedValue([]);
+    const fetchImpl = vi.fn(async () => ({ ok: true })) as unknown as typeof fetch;
+    const found = await findConnectionOwningInstallation({
+      userId: 'u1',
+      installationId: 42,
+      fetchImpl,
+    });
+    expect(found).toMatchObject({ connection: { id: 'a' }, projectId: null });
   });
 
   it('skips a connection whose secrets never converted', async () => {
@@ -94,7 +107,7 @@ describe('findBindingOwningInstallation', () => {
     const fetchImpl = vi.fn() as unknown as typeof fetch;
 
     expect(
-      await findBindingOwningInstallation({ userId: 'u1', installationId: 42, fetchImpl }),
+      await findConnectionOwningInstallation({ userId: 'u1', installationId: 42, fetchImpl }),
     ).toBeNull();
     expect(fetchImpl).not.toHaveBeenCalled();
   });

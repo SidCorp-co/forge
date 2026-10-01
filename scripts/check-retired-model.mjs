@@ -91,6 +91,26 @@ export const RULES = [
     exts: ['.ts', '.tsx', '.mjs', '.js', '.rs'],
   },
   {
+    id: 'binding-write-doors',
+    // ISS-15 — the doors that wrote a binding beside the binding-v1 document, and their callers.
+    re: /\bcreateBinding\b|\bbindExisting\b|\bBindExistingConnection\w*|\bIntegrationBindingCreateInput\b|\.insert\(integrationBindings\)|\bINSERT INTO integration_bindings\b/g,
+    allow: [/^packages\/core\/src\/project-config\/binding-store\.ts$/, /^packages\/core\/tests\//],
+    why: 'ISS-15 deleted every binding write but one: a binding is a binding-v1 document, written by `PUT /api/projects/:projectId/bindings/:bindingId` through `project-config/bindings.ts:writeBinding`, whose `bind-effects.ts` mints the inbound secret, authorises `agentAccess` and runs `onBindingCreated`. A connection is created with `POST /api/integration-connections` and named in the document. Write the document; do not add a second door onto `integration_bindings`.',
+    exts: ['.ts', '.tsx', '.mjs', '.js'],
+  },
+  {
+    id: 'binding-row-updates',
+    // ISS-15 — the switch, the instructions and the inbound secret stay row updates; nothing else does.
+    re: /\.update\(integrationBindings\)|\bUPDATE integration_bindings\b/g,
+    allow: [
+      /^packages\/core\/src\/project-config\/binding-store\.ts$/,
+      /^packages\/core\/src\/integrations\/store\.ts$/,
+      /^packages\/core\/tests\//,
+    ],
+    why: "ISS-15: what a binding declares is changed only by a binding-v1 document (`project-config/binding-store.ts:casBinding`). `integrations/store.ts:updateBinding` keeps the binding's switch, instructions and inbound secret, and takes nothing else. Write the document instead of updating the row.",
+    exts: ['.ts', '.tsx', '.mjs', '.js'],
+  },
+  {
     id: 'tag-mr-strategy',
     re: /(['"`])tag-mr\1/g,
     why: "`tag-mr` was removed by ISS-1311 (ADR 0003): it had no behaviour, no document and no project that declared it, and the migration aborts on a row carrying it rather than rewriting it. A release crosses an edge by `merge-branch` or `cherry-pick`, declared as that entry's `from`.",
@@ -238,6 +258,7 @@ function main() {
       : stripComments(src).split('\n');
     for (const rule of RULES) {
       if (!(rule.exts ? rule.exts.includes(ext) : TS_EXT.has(ext))) continue;
+      if (rule.allow?.some((re) => re.test(rel))) continue;
       lines.forEach((line, i) => {
         rule.re.lastIndex = 0;
         if (!rule.re.test(line)) return;

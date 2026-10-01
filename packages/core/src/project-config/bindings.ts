@@ -1,4 +1,5 @@
 import type { BindingRole as RowRole } from '../db/release-axes.js';
+import { bindEffects } from './bind-effects.js';
 import { type BindingStore, drizzleBindingStore, type StoredBinding } from './binding-store.js';
 import { decodeTarget, encodeTarget } from './binding-target-codec.js';
 import { type ApiRefusal, parseVersionedDocument, staleBase } from './documents.js';
@@ -24,6 +25,7 @@ function toDocument(row: StoredBinding): BindingRead {
         id: row.id,
         role: row.role,
         connection: row.connectionId,
+        agentAccess: row.agentAccess,
         target: decoded.target,
       },
     },
@@ -74,6 +76,7 @@ async function connectionRefusals(
   projectId: string,
   userId: string,
   doc: BindingDocument,
+  heldConnection: string | null,
 ): Promise<ApiRefusal[]> {
   const connection = await store.readConnection(doc.connection);
   const notFound = (why: string): ApiRefusal[] => [
@@ -85,14 +88,15 @@ async function connectionRefusals(
   ];
   if (!connection) return notFound('does not exist');
   if (!connection.active) return notFound('is deactivated');
-  if (connection.ownerType === 'user' && connection.ownerId !== userId) {
+  const alreadyHeld = heldConnection === connection.id;
+  if (connection.ownerType === 'user' && connection.ownerId !== userId && !alreadyHeld) {
     return notFound("is another person's");
   }
   if (connection.ownerType === 'org') {
     const orgId = await store.projectOrgId(projectId);
     if (orgId !== connection.ownerId)
       return notFound("belongs to another organisation than this project's");
-    if (!(await store.isOrgAdmin(orgId, userId))) {
+    if (!alreadyHeld && !(await store.isOrgAdmin(orgId, userId))) {
       return notFound('is an organisation connection, and binding one takes an organisation admin');
     }
   }
@@ -109,7 +113,7 @@ async function connectionRefusals(
 }
 
 export type BindingWriteOutcome =
-  | { ok: true; held: HeldBinding; created: boolean }
+  | { ok: true; held: HeldBinding; created: boolean; effects: Record<string, unknown> }
   | { ok: false; refusals: ApiRefusal[] };
 
 export async function writeBinding(input: {
@@ -134,7 +138,7 @@ export async function writeBinding(input: {
     };
   }
   const held = current ? decodeTarget(current) : null;
-  if (held && !held.ok) {
+  if (held && !held.ok && held.wouldDrop) {
     return {
       ok: false,
       refusals: [
@@ -146,7 +150,7 @@ export async function writeBinding(input: {
       ],
     };
   }
-  const storedRevision = current?.revision ?? null;
+  const storedRevision = current?.active ? current.revision : null;
   if (storedRevision !== baseRevision) {
     return { ok: false, refusals: [staleBase(baseRevision, storedRevision)] };
   }
@@ -163,8 +167,19 @@ export async function writeBinding(input: {
     });
   }
   const encoded = encodeTarget(doc.target);
-  if (!encoded.ok) refusals.push(encoded.refusal);
-  refusals.push(...(await connectionRefusals(projectId, userId, doc)));
+  const agentAccess = doc.agentAccess ?? 'none';
+  refusals.push(
+    ...(await connectionRefusals(projectId, userId, doc, current?.connectionId ?? null)),
+  );
+  refusals.push(
+    ...(await bindEffects.refusals({
+      userId,
+      projectId,
+      provider: encoded.provider,
+      label: encoded.label,
+      agentAccess,
+    })),
+  );
   for (const ref of await referencedAs(projectId, bindingId)) {
     if (ref.role !== doc.role) {
       refusals.push({
@@ -174,7 +189,7 @@ export async function writeBinding(input: {
       });
     }
   }
-  if (refusals.length > 0 || !encoded.ok) return { ok: false, refusals };
+  if (refusals.length > 0) return { ok: false, refusals };
 
   const result = await store.casBinding({
     id: bindingId,
@@ -183,7 +198,10 @@ export async function writeBinding(input: {
     provider: encoded.provider,
     role: doc.role,
     config: encoded.config,
+    label: encoded.label,
+    agentAccess,
     baseRevision,
+    integrationSecret: () => bindEffects.inboundSecret(doc.connection),
   });
   if (!result.ok) {
     if (result.reason === 'stale') {
@@ -201,14 +219,26 @@ export async function writeBinding(input: {
           : {
               code: 'BINDING_IN_USE',
               path: '/role',
-              detail: `this project already has an active ${doc.target.provider} service binding; one service binding per provider.`,
+              detail: `this project already has an active ${doc.target.provider} service binding labelled "${encoded.label}"; a service binding is one per provider and label, so give this one its own \`target.label\`.`,
             },
       ],
     };
   }
+  const effects = result.changed
+    ? await bindEffects.afterWrite({
+        bindingId,
+        projectId,
+        connectionId: doc.connection,
+        provider: encoded.provider,
+        role: doc.role,
+        config: encoded.config,
+        created: result.created,
+      })
+    : {};
   return {
     ok: true,
-    held: { revision: result.stored.revision, document: doc },
+    held: { revision: result.stored.revision, document: { ...doc, agentAccess } },
     created: result.created,
+    effects,
   };
 }

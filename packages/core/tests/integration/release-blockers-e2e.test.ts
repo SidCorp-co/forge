@@ -114,10 +114,8 @@ async function seed(
   await seedProduction(harness.db, {
     projectId: project.id,
     ownerId: user.id,
-    config: over.bindingConfig ?? {
-      releaseRunnerLabel: LABEL,
-      rollback: { mode: 'coolify-image' },
-    },
+    config: over.bindingConfig ?? { releaseRunnerLabel: LABEL },
+    connectionConfig: { rollback: { mode: 'coolify-image' } },
     deploysFrom: 'production',
     probes: over.probes ?? 'source',
   });

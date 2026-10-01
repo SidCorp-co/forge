@@ -89,18 +89,19 @@ function project(over: { facts?: Record<string, unknown>; releasing?: boolean })
 }
 
 function pairOf(config: Record<string, unknown>) {
+  const { rollback, ...bindingConfig } = config;
   return {
     binding: {
       id: PROD_BINDING,
       projectId: PROJECT_ID,
       active: true,
       provider: 'coolify',
-      config,
+      config: bindingConfig,
       instructions: null,
       label: '',
       role: 'deploy',
     },
-    connection: { active: true, config: {} },
+    connection: { active: true, config: rollback === undefined ? {} : { rollback } },
   };
 }
 
