@@ -11347,6 +11347,27 @@
               "pattern": "^[a-z][a-z0-9-]{0,62}$",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "ref",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^secret:\\/\\/[a-z][a-z0-9-]{0,62}\\/[a-z][a-z0-9-]{0,62}$",
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "pattern": "^secret:\\/\\/[a-z][a-z0-9-]{0,62}\\/[a-z][a-z0-9-]{0,62}$",
+                    "type": "string"
+                  },
+                  "minItems": 1,
+                  "type": "array"
+                }
+              ]
+            }
           }
         ],
         "responses": {
@@ -11354,8 +11375,11 @@
             "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
           }
         },
+        "x-forge-auth": [],
+        "x-forge-query-closed": true,
         "x-forge-validated": [
-          "param"
+          "param",
+          "query"
         ]
       }
     },

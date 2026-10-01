@@ -57,18 +57,11 @@ async function jobCredential(c: Context): Promise<PatPrincipal> {
   return principal;
 }
 
-function refsOf(c: Context): string[] | null {
-  const refs = c.req.queries('ref');
-  if (!refs || refs.length === 0) return null;
-  const bad = refs.filter((r) => !SECRET_REF.test(r));
-  if (bad.length > 0) {
-    throw new HTTPException(400, {
-      message: `ref must be secret://<scope>/<name>, each part matching ^[a-z][a-z0-9-]{0,62}$; got ${bad.join(', ')}`,
-      cause: { code: 'SECRET_REF_SHAPE', details: { bad } },
-    });
-  }
-  return refs;
-}
+const refsQuery = z.strictObject({
+  ref: z
+    .union([z.string().regex(SECRET_REF), z.array(z.string().regex(SECRET_REF)).min(1)])
+    .optional(),
+});
 
 jobTestingSecretsRoutes.get(
   '/:id/testing-profiles/:profileId/secrets',
@@ -81,14 +74,24 @@ jobTestingSecretsRoutes.get(
       });
     }
   }),
+  zValidator('query', refsQuery, (r) => {
+    if (!r.success) {
+      throw new HTTPException(400, {
+        message:
+          'the only query is ref, repeated as needed, each secret://<scope>/<name> with both parts matching ^[a-z][a-z0-9-]{0,62}$',
+        cause: { code: 'SECRET_REF_SHAPE' },
+      });
+    }
+  }),
   async (c) => {
     const { id, profileId } = c.req.valid('param');
+    const { ref } = c.req.valid('query');
     const principal = await jobCredential(c);
     const outcome = await resolveTestingSecrets({
       principal,
       jobId: id,
       profileId,
-      refs: refsOf(c),
+      refs: ref === undefined ? null : [ref].flat(),
     });
     if (!outcome.ok) {
       const { status, code, message, details } = outcome.refusal;
