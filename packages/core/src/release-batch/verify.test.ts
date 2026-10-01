@@ -3,7 +3,7 @@
 // Every case below is a version of that.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { parseVerifyConfig, readLiveCommit, readLiveState, verifyDeployed } from './verify.js';
+import { readLiveCommit, readLiveState, verifyDeployed } from './verify.js';
 
 const fetchMock = vi.fn();
 
@@ -51,21 +51,6 @@ const ticking = () => {
   let t = 0;
   return () => (t += 600);
 };
-
-describe('parseVerifyConfig', () => {
-  it('reads nothing out of a project that declared nothing', () => {
-    expect(parseVerifyConfig(undefined)).toBeNull();
-    expect(parseVerifyConfig({})).toBeNull();
-    expect(parseVerifyConfig({ probes: [] })).toBeNull();
-    expect(parseVerifyConfig({ probes: [{ commitPath: 'commit' }] })).toBeNull();
-  });
-
-  it('defaults the poll budget rather than polling forever', () => {
-    const cfg = parseVerifyConfig({ probes: [{ url: 'https://x.test/h' }] });
-    expect(cfg?.timeoutSeconds).toBe(300);
-    expect(cfg?.stableReads).toBe(2);
-  });
-});
 
 describe('readLiveCommit', () => {
   it('refuses to answer when two probes disagree', async () => {

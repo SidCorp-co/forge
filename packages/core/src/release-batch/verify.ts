@@ -14,25 +14,6 @@ export interface VerifyConfig {
   stableReads?: number;
 }
 
-export function parseVerifyConfig(raw: unknown): VerifyConfig | null {
-  if (typeof raw !== 'object' || raw === null) return null;
-  const obj = raw as Record<string, unknown>;
-  if (!Array.isArray(obj.probes)) return null;
-  const probes = obj.probes
-    .filter((p): p is Record<string, unknown> => typeof p === 'object' && p !== null)
-    .map((p) => ({
-      url: typeof p.url === 'string' ? p.url : '',
-      commitPath: typeof p.commitPath === 'string' ? p.commitPath : undefined,
-    }))
-    .filter((p) => p.url.length > 0);
-  if (probes.length === 0) return null;
-  return {
-    probes,
-    timeoutSeconds: typeof obj.timeoutSeconds === 'number' ? obj.timeoutSeconds : 300,
-    stableReads: typeof obj.stableReads === 'number' ? obj.stableReads : 2,
-  };
-}
-
 function pluck(body: unknown, path: string | undefined): string | null {
   if (path === undefined) return typeof body === 'string' ? body.trim() : null;
   let cur: unknown = body;

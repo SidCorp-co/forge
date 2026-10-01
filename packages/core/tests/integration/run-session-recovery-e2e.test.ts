@@ -25,7 +25,7 @@ let mods: {
   runSessionIssues: typeof import('../../src/devices/run-session.js').runSessionIssues;
   listRunSessionsForDevice: typeof import('../../src/devices/run-session.js').listRunSessionsForDevice;
   reapDeadRunSessions: typeof import('../../src/devices/run-session-reaper.js').reapDeadRunSessions;
-  RUN_SESSION_TIMEOUT_MS: typeof import('../../src/devices/run-session-reaper.js').RUN_SESSION_TIMEOUT_MS;
+  SESSION_SILENCE_TIMEOUT_MS: typeof import('../../src/devices/session-silence.js').SESSION_SILENCE_TIMEOUT_MS;
 };
 
 beforeAll(async () => {
@@ -36,12 +36,13 @@ beforeAll(async () => {
   process.env.NODE_ENV ??= 'test';
   const runSession = await import('../../src/devices/run-session.js');
   const reaper = await import('../../src/devices/run-session-reaper.js');
+  const silence = await import('../../src/devices/session-silence.js');
   mods = {
     openRunSession: runSession.openRunSession,
     runSessionIssues: runSession.runSessionIssues,
     listRunSessionsForDevice: runSession.listRunSessionsForDevice,
     reapDeadRunSessions: reaper.reapDeadRunSessions,
-    RUN_SESSION_TIMEOUT_MS: reaper.RUN_SESSION_TIMEOUT_MS,
+    SESSION_SILENCE_TIMEOUT_MS: silence.SESSION_SILENCE_TIMEOUT_MS,
   };
 }, 60_000);
 
@@ -69,7 +70,7 @@ async function aBoxWithARun(issueKeys: string[]) {
 
 /** The box stops answering: nothing on it writes, so only its clock moves. */
 async function boxGoesDark(sessionId: string) {
-  const ago = new Date(Date.now() - mods.RUN_SESSION_TIMEOUT_MS - 60_000).toISOString();
+  const ago = new Date(Date.now() - mods.SESSION_SILENCE_TIMEOUT_MS - 60_000).toISOString();
   await harness.db.execute(sql`
     UPDATE agent_sessions SET last_heartbeat_at = ${ago}, updated_at = ${ago}
     WHERE id = ${sessionId}

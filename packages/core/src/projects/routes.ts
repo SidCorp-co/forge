@@ -346,7 +346,7 @@ projectRoutes.delete(
 // `archived_at` to the DB clock; unarchive clears it. Both are idempotent and
 // non-destructive — no project-owned data (issues, comments, runs, sessions)
 // is touched. Archived projects drop out of the default GET / list and stop
-// dispatching new auto-pipeline jobs (see orchestrator.loadPipelineConfig);
+// dispatching new auto-pipeline jobs (see orchestrator.loadProjectPolicy);
 // in-flight jobs are unaffected. The hard DELETE /:id route above is unchanged.
 
 const ARCHIVE_PROJECTION = {

@@ -15,11 +15,7 @@ import { logger } from '../logger.js';
 import { closeRunIfOneShot } from '../pipeline/runs.js';
 import { returnIssuesForRun } from './run-issue-return.js';
 import { RUN_ISSUES_METADATA_KEY, RUN_SESSION_KIND } from './run-session.js';
-import { SESSION_SILENCE_TIMEOUT_MS, SESSION_SILENCE_TIMEOUT_S } from './session-silence.js';
-
-/** @deprecated One clock now: {@link SESSION_SILENCE_TIMEOUT_MS}. Kept as the
- *  name the callers and tests of this module already use. */
-export const RUN_SESSION_TIMEOUT_MS = SESSION_SILENCE_TIMEOUT_MS;
+import { SESSION_SILENCE_TIMEOUT_S } from './session-silence.js';
 
 export interface ReapedRunSession {
   sessionId: string;
