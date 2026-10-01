@@ -147,7 +147,8 @@ const isWrite = (a: Action) => (WRITES as readonly string[]).includes(a);
 
 function recorded<W extends object>(outcome: RecordOutcome<W>): Answer {
   if (!outcome.ok) return refusedWith(outcome.refusals);
-  return { ...recordView(outcome.held), created: outcome.created };
+  const report = outcome.report ? { report: outcome.report } : {};
+  return { ...recordView(outcome.held), created: outcome.created, ...report };
 }
 
 async function sessionOf(projectId: string, id: string): Promise<boolean> {
@@ -287,7 +288,7 @@ async function run(ctx: McpContext, raw: Record<string, unknown>): Promise<Answe
 const DESCRIPTION = [
   "Read and write a project's ecosystem records: its interface, the links its own code holds to the contracts it consumes, its builder runs, and an ecosystem's bus.",
   'Reads: interface, links, link, builder_runs, builder_run, context (the contracts a run touching { paths } calls: per link with a call site under a path, its guide notes and the measured diff from its pinned version to the latest; recorded on { session } when named), bus (an ecosystem as this token may see it; each link carries impact: whether the latest version of its contract version passes or breaks it, naming the fields, call sites and outside-contract surface it breaks).',
-  "Writes take { baseRevision, document } as their REST route does: interface_write (an admin), link_create and link_update (link-v1, only by the consuming project's own agent), builder_run_create and builder_run_update (builder-run-v1).",
+  "Writes take { baseRevision, document } as their REST route does: interface_write (an admin), link_create and link_update (link-v1, only by the consuming project's own agent), builder_run_create and builder_run_update (builder-run-v1; a join or a push opens the run itself, so a master updates the open one, and a finished run's answer carries report.declaredWithoutCallSite).",
   "The writer is the token, never a field of the document. A refusal comes back as { code, path, detail } under the service's own code, nothing written.",
   'For the channel, use forge_channel.',
 ].join(' ');

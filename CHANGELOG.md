@@ -137,6 +137,11 @@
 
 ### Added
 
+- **Joining an ecosystem gives the joining project's master its first piece of work.** Accepting
+  an invitation opens a builder run that maps what the project's code uses, and a push to its
+  default branch opens the next. The master is woken for it with an empty backlog, records each
+  step, finding and link it writes, and a finished run names every declared consumption no code
+  calls. A second open run, or a write from anyone but the project's own agent, is refused by name.
 - **A project's master answers its ecosystem inbox.** A document owed a reply wakes the master
   even with no open issue. Masters and runs reach the channel, interface and links over MCP,
   authored by their own token.

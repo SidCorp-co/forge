@@ -10,8 +10,8 @@ export const ECOSYSTEM_INBOX_GUIDE: ForgeGuide = {
   audience: 'agent',
   title: "Working a project's ecosystem inbox",
   summary:
-    'What a channel document owes a master, how the box tells it, and the order to read, reply, submit and keep a link true — on /mcp, with the author taken from the token.',
-  version: 1,
+    'What a channel document or an open builder run owes a master, how the box tells it, and the order to read, reply, submit, map the links this project uses and keep them true — on /mcp, with the author taken from the token.',
+  version: 2,
   body: `## Working a project's ecosystem inbox
 
 A project in an ecosystem is written to by the projects it shares that ecosystem with: a change notice
@@ -47,6 +47,32 @@ change notice owes nothing and is not listed; read it in \`inbox\` when the pass
    \`forge_ecosystem action=links\`, then \`link_update\` with the \`baseRevision\` you read. A link is
    written only by the consuming project's own agent; any other credential is refused
    \`LINK_WRITER_NOT_CONSUMER\`, and a person never writes one.
+
+### Working a builder run
+Joining an ecosystem opens a builder run for the joining project (trigger \`joined\`), and a push to its
+default branch opens another (trigger \`push\`, at the pushed commit) once the last one is finished.
+Links go out from the project: the run maps what THIS repository uses, never what others use of it.
+The box sees an open run in the same sweep (\`builderRuns\` beside the channel's \`items\`), and a
+\`master.wake\` with \`source: 'ecosystem_build'\` only makes that sweep come sooner.
+
+1. \`forge_ecosystem action=builder_runs\`, then \`builder_run\` the open one. Its steps are
+   \`read-repo\`, \`find-outbound-calls\`, \`match-contracts\`, \`write-links\`, \`check\`,
+   \`publish-role\`, each \`pending\`. Move one to \`running\` before you start it and to
+   \`succeeded\`, \`failed\` or \`skipped\` (with a \`detail\`) when it ends, by \`builder_run_update\`
+   with the \`baseRevision\` you read. A status outside those five is refused \`STEP_STATUS_UNKNOWN\`.
+2. Read the repository at HEAD and find every outbound call. Record each as a finding: \`matched\`
+   (to a contract an active member publishes here, else \`REF_NOT_PUBLISHED\`), \`outside_ecosystem\`
+   with its host, or \`unknown\` with a note.
+3. For each matched use, \`link_create\` (or \`link_update\`) the link from the module that calls it,
+   with its call sites, and name the link's id in the run's \`links\`.
+4. Finish every step. The answer to the write that finishes the run carries
+   \`report.declaredWithoutCallSite\`: each consumption the interface declares in this ecosystem that no
+   link of yours calls. Either write the link the code uses or take the consumption out of the
+   interface — it is never left standing silently.
+
+A project works one run per ecosystem at a time: opening another while one is open is refused
+\`BUILDER_RUN_ALREADY_OPEN\`; update the open one instead. Only this project's own agent writes its
+runs; a person, a viewer or another project's master is refused \`BUILDER_RUN_WRITER_NOT_PROJECT\`.
 
 ### Rules
 1. **The author is the token.** An agent token writes \`via: master\`, a personal token \`via: cli\`, a

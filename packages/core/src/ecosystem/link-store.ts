@@ -189,3 +189,24 @@ export async function replaceBuilderRun(
   if (!row) throw new Error(`ecosystem: builder run ${input.id} moved under its own lock`);
   return row;
 }
+
+// cm:edge contract -> packages/core/src/ecosystem/link-rules.ts:isOpenRun — the same reading of "open", in SQL: a step still pending or running
+export async function openBuilderRunOf(
+  tx: Tx,
+  by: { projectId: string; ecosystemId: string; exceptId: string | null },
+): Promise<string | null> {
+  const [row] = await tx
+    .select({ id: ecosystemBuilderRuns.id })
+    .from(ecosystemBuilderRuns)
+    .where(
+      and(
+        eq(ecosystemBuilderRuns.projectId, by.projectId),
+        eq(ecosystemBuilderRuns.ecosystemId, by.ecosystemId),
+        sql`(${ecosystemBuilderRuns.document}->'steps' @> '[{"status":"pending"}]'::jsonb OR ${ecosystemBuilderRuns.document}->'steps' @> '[{"status":"running"}]'::jsonb)`,
+        ...(by.exceptId ? [sql`${ecosystemBuilderRuns.id} <> ${by.exceptId}`] : []),
+      ),
+    )
+    .orderBy(ecosystemBuilderRuns.createdAt)
+    .limit(1);
+  return row?.id ?? null;
+}

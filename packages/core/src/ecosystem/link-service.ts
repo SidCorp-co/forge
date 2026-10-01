@@ -12,6 +12,10 @@ import {
   checkBuilderRun,
   checkLink,
   contractKey,
+  type DeclaredWithoutCallSite,
+  declaredWithoutCallSite,
+  isOpenRun,
+  openedRun,
   type LinkWorld,
   linkIdentityRefusals,
   parseBuilderRun,
@@ -25,8 +29,10 @@ import {
   linkWriteSchema,
 } from './link-schema.js';
 import {
+  builderRunsOf,
   insertBuilderRun,
   insertLink,
+  openBuilderRunOf,
   linkHolding,
   linksWhere,
   readBuilderRun,
@@ -58,7 +64,7 @@ export interface Held<W> {
 }
 
 export type RecordOutcome<W> =
-  | { ok: true; held: Held<W>; created: boolean }
+  | { ok: true; held: Held<W>; created: boolean; report?: RunReport }
   | { ok: false; refusals: EcosystemRefusal[] };
 
 interface RecordKind<W> {
@@ -186,11 +192,16 @@ const LINK: RecordKind<LinkWrite> = {
   replace: replaceLink,
 };
 
-async function builderRunWorld(tx: Tx, doc: BuilderRunWrite): Promise<BuilderRunWorld> {
-  const [active, members, links] = await Promise.all([
+async function builderRunWorld(
+  tx: Tx,
+  doc: BuilderRunWrite,
+  selfId: string | null,
+): Promise<BuilderRunWorld> {
+  const [active, members, links, openRun] = await Promise.all([
     activeEcosystemIdsOf(tx, [doc.project]),
     activeMembersOf(tx, doc.ecosystem),
     linksWhere(tx, { consumerId: doc.project, ecosystemIds: [doc.ecosystem] }),
+    openBuilderRunOf(tx, { projectId: doc.project, ecosystemId: doc.ecosystem, exceptId: selfId }),
   ]);
   const published = new Set<string>();
   for (const [provider, stored] of await readInterfaces(tx, members)) {
@@ -202,6 +213,7 @@ async function builderRunWorld(tx: Tx, doc: BuilderRunWrite): Promise<BuilderRun
     projectActiveIn: new Set(active.map((a) => a.ecosystemId)),
     published,
     links: new Set(links.map((l) => l.id)),
+    openRun,
   };
 }
 
@@ -211,7 +223,7 @@ const BUILDER_RUN: RecordKind<BuilderRunWrite> = {
   parse: parseBuilderRun,
   stored: (row) => storedAs(builderRunWriteSchema, row.document, `builder run ${row.id}`),
   identity: builderRunIdentityRefusals,
-  check: async (tx, doc) => checkBuilderRun(doc, await builderRunWorld(tx, doc)),
+  check: async (tx, doc, selfId) => checkBuilderRun(doc, await builderRunWorld(tx, doc, selfId)),
   read: readBuilderRun,
   insert: insertBuilderRun,
   replace: replaceBuilderRun,
@@ -219,14 +231,99 @@ const BUILDER_RUN: RecordKind<BuilderRunWrite> = {
 
 export const createLink = (input: WriteInput) => createRecord(LINK, input);
 export const updateLink = (input: WriteInput & { id: string }) => updateRecord(LINK, input);
-export const createBuilderRun = (input: WriteInput) => createRecord(BUILDER_RUN, input);
-export const updateBuilderRun = (input: WriteInput & { id: string }) =>
-  updateRecord(BUILDER_RUN, input);
+export type RunReport = Awaited<ReturnType<typeof finishedRunReport>>;
+
+async function reported(
+  outcome: RecordOutcome<BuilderRunWrite>,
+): Promise<RecordOutcome<BuilderRunWrite>> {
+  if (!outcome.ok) return outcome;
+  return { ...outcome, report: await finishedRunReport(outcome.held.document) };
+}
+
+export const createBuilderRun = async (input: WriteInput) =>
+  reported(await createRecord(BUILDER_RUN, input));
+export const updateBuilderRun = async (input: WriteInput & { id: string }) =>
+  reported(await updateRecord(BUILDER_RUN, input));
 
 export const storedLink = LINK.stored;
 export const storedBuilderRun = BUILDER_RUN.stored;
 
-export function impactLink(row: StoredLink): ImpactLink & { provider: string; contractSlug: string } {
+/**
+ * Open the run a join or a push owes this project, inside the caller's transaction, or answer
+ * the run already open: a project works one run per ecosystem at a time, so a push landing
+ * while one is open is folded into it rather than stacked beside it.
+ */
+export async function openOwedRun(
+  tx: Tx,
+  input: {
+    ecosystemId: string;
+    projectId: string;
+    trigger: BuilderRunWrite['trigger'];
+    userId: string;
+  },
+): Promise<{ id: string; opened: boolean }> {
+  const { ecosystemId, projectId, trigger, userId } = input;
+  await lockKeys(tx, [`${BUILDER_RUN.what}:${projectId}`]);
+  const open = await openBuilderRunOf(tx, { projectId, ecosystemId, exceptId: null });
+  if (open) return { id: open, opened: false };
+  const doc = openedRun({ ecosystem: ecosystemId, project: projectId, trigger });
+  const row = await insertBuilderRun(tx, doc, userId);
+  return { id: row.id, opened: true };
+}
+
+/** What a finished run leaves unsaid by its own findings: each declared consumption no link it holds calls. */
+export async function finishedRunReport(
+  doc: BuilderRunWrite,
+): Promise<{ open: boolean; declaredWithoutCallSite: DeclaredWithoutCallSite[] }> {
+  if (isOpenRun(doc)) return { open: true, declaredWithoutCallSite: [] };
+  const stored = await readInterface(db, doc.project);
+  if (!stored) return { open: false, declaredWithoutCallSite: [] };
+  const consumes = heldInterface(stored, doc.project).document.consumes;
+  const links = await linksWhere(db, { consumerId: doc.project, ecosystemIds: [doc.ecosystem] });
+  const providers = await projectsWhere(db, { ids: links.map((l) => l.providerProjectId) });
+  const slugOf = new Map(providers.map((p) => [p.id, p.slug]));
+  const called = new Set(
+    links
+      .filter((l) => storedLink(l).callSites.length > 0)
+      .map((l) => `${slugOf.get(l.providerProjectId) ?? l.providerProjectId}/${l.contractSlug}`),
+  );
+  return {
+    open: false,
+    declaredWithoutCallSite: declaredWithoutCallSite({
+      ecosystem: doc.ecosystem,
+      consumes,
+      called,
+    }),
+  };
+}
+
+/** Every builder run this project still owes, oldest first: the work its box nudges its master for. */
+export async function openRunsOf(projectId: string): Promise<
+  {
+    id: string;
+    ecosystem: string;
+    trigger: BuilderRunWrite['trigger'];
+    steps: number;
+    done: number;
+  }[]
+> {
+  const rows = await builderRunsOf(db, projectId);
+  return rows
+    .map((row) => ({ row, doc: storedBuilderRun(row) }))
+    .filter(({ doc }) => isOpenRun(doc))
+    .reverse()
+    .map(({ row, doc }) => ({
+      id: row.id,
+      ecosystem: doc.ecosystem,
+      trigger: doc.trigger,
+      steps: doc.steps.length,
+      done: doc.steps.filter((s) => !['pending', 'running'].includes(s.status)).length,
+    }));
+}
+
+export function impactLink(
+  row: StoredLink,
+): ImpactLink & { provider: string; contractSlug: string } {
   const doc = storedLink(row);
   return {
     id: row.id,

@@ -3,7 +3,9 @@ import { assertProjectAccess } from '../lib/authz.js';
 import { pointer } from '../project-config/documents.js';
 import { assertStewardAdmin, forbidden, notFound, readerProjects, stewardRole } from './access.js';
 import { type HeldEcosystem, loadEcosystem, storedAs } from './ecosystem-service.js';
+import { wakeMastersForBuild } from '../ws/master-wake.js';
 import { loadGraph } from './graph.js';
+import { openOwedRun } from './link-service.js';
 import { type MembershipRow, type MembershipVerb, TRANSITIONS } from './membership-rules.js';
 import { visibleMembers } from './party.js';
 import type { EcosystemRefusal } from './refusals.js';
@@ -18,6 +20,9 @@ import {
   readInterface,
   readMembership,
 } from './store.js';
+
+// cm:why a join has no commit of its own to read against: the run is built from nothing, so its trigger names git's empty tree, and the master reads the repo at HEAD
+const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
 
 export type MembershipOutcome =
   | { ok: true; membership: MembershipRow }
@@ -110,7 +115,7 @@ export async function transition(input: {
     ],
   });
   if (row.state !== rule.from) return notAllowed(row.state);
-  return db.transaction(async (tx) => {
+  const outcome = await db.transaction(async (tx): Promise<MembershipOutcome> => {
     await lockKeys(tx, [
       `project:${row.projectId}`,
       `membership:${row.ecosystemId}:${row.projectId}`,
@@ -133,10 +138,22 @@ export async function transition(input: {
       }
     }
     const moved = await applyTransition(tx, { row, verb, to: rule.to, userId, reason });
-    if (moved) return { ok: true, membership: moved };
-    const now = await readMembership(tx, membershipId);
-    return notAllowed(now?.state ?? 'gone');
+    if (!moved) {
+      const now = await readMembership(tx, membershipId);
+      return notAllowed(now?.state ?? 'gone');
+    }
+    if (verb === 'accept') {
+      await openOwedRun(tx, {
+        ecosystemId: row.ecosystemId,
+        projectId: row.projectId,
+        trigger: { kind: 'joined', sha: EMPTY_TREE },
+        userId,
+      });
+    }
+    return { ok: true, membership: moved } as MembershipOutcome;
   });
+  if (outcome.ok && verb === 'accept') await wakeMastersForBuild(row.projectId);
+  return outcome;
 }
 
 export async function readableMembership(userId: string, membershipId: string) {

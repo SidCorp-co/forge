@@ -7,7 +7,7 @@
 //! master even with an empty backlog and even when its wake was coalesced or
 //! lost on a reconnect.
 
-use crate::transport::channel_inbox::UnansweredDocument;
+use crate::transport::channel_inbox::{UnansweredDocument, BUILDER_RUN_TYPE};
 
 /// What fired a `master.wake`, as core's `ws/master-wake.ts:MASTER_WAKE_SOURCES` names it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -18,6 +18,8 @@ pub enum WakeSource {
     Answer,
     /// The project's ecosystem channel moved: a document published to it, or a hold.
     Channel,
+    /// A builder run was opened for the project, by a join or a push (ISS-39).
+    EcosystemBuild,
     /// A frame naming no source.
     ///
     /// Priced amnesty: a core that predates ISS-38 stamps none on its issue and
@@ -36,8 +38,9 @@ impl WakeSource {
                 "issue" => Ok(WakeSource::Issue),
                 "answer" => Ok(WakeSource::Answer),
                 "channel" => Ok(WakeSource::Channel),
+                "ecosystem_build" => Ok(WakeSource::EcosystemBuild),
                 other => Err(format!(
-                    "source {other:?} is not one this runner reads (issue, answer, channel)"
+                    "source {other:?} is not one this runner reads (issue, answer, channel, ecosystem_build)"
                 )),
             },
             Some(other) => Err(format!("source {other} is not a string")),
@@ -49,6 +52,7 @@ impl WakeSource {
             WakeSource::Issue => "issue",
             WakeSource::Answer => "answer",
             WakeSource::Channel => "channel",
+            WakeSource::EcosystemBuild => "ecosystem_build",
             WakeSource::Unstated => "source unstated",
         }
     }
@@ -70,21 +74,34 @@ pub fn inbox_digest(inbox: &[UnansweredDocument]) -> u64 {
     h.finish()
 }
 
-/// The sentence a nudge carries when the channel owes something, empty when it owes nothing.
+/// The sentence a nudge carries when the channel or a builder run owes something, empty when nothing is owed.
 pub fn inbox_line(inbox: &[UnansweredDocument]) -> String {
-    if inbox.is_empty() {
-        return String::new();
-    }
-    let numbers: Vec<&str> = inbox
+    let (runs, docs): (Vec<&UnansweredDocument>, Vec<&UnansweredDocument>) = inbox
         .iter()
-        .map(|d| d.number.as_deref().unwrap_or(d.id.as_str()))
-        .collect();
-    format!(
-        " The ecosystem channel owes {} repl{} ({}): `forge_channel action=unanswered` lists them, and `forge_guide get ecosystem-inbox` is how to work them.",
-        inbox.len(),
-        if inbox.len() == 1 { "y" } else { "ies" },
-        numbers.join(", ")
-    )
+        .partition(|d| d.r#type.as_deref() == Some(BUILDER_RUN_TYPE));
+    let mut line = String::new();
+    if !docs.is_empty() {
+        let numbers: Vec<&str> = docs
+            .iter()
+            .map(|d| d.number.as_deref().unwrap_or(d.id.as_str()))
+            .collect();
+        line.push_str(&format!(
+            " The ecosystem channel owes {} repl{} ({}): `forge_channel action=unanswered` lists them, and `forge_guide get ecosystem-inbox` is how to work them.",
+            docs.len(),
+            if docs.len() == 1 { "y" } else { "ies" },
+            numbers.join(", ")
+        ));
+    }
+    if !runs.is_empty() {
+        let ids: Vec<&str> = runs.iter().map(|d| d.id.as_str()).collect();
+        line.push_str(&format!(
+            " {} ecosystem builder run{} open ({}): `forge_ecosystem action=builder_runs` lists them, and `forge_guide get ecosystem-inbox` is how to work one.",
+            runs.len(),
+            if runs.len() == 1 { " is" } else { "s are" },
+            ids.join(", ")
+        ));
+    }
+    line
 }
 
 #[cfg(test)]
@@ -107,6 +124,7 @@ mod tests {
             ("issue", WakeSource::Issue),
             ("answer", WakeSource::Answer),
             ("channel", WakeSource::Channel),
+            ("ecosystem_build", WakeSource::EcosystemBuild),
         ] {
             let got =
                 WakeSource::of_frame(&serde_json::json!({ "projectId": "p", "source": name }));
@@ -157,5 +175,25 @@ mod tests {
         assert!(line.contains("2 replies (FP-CR-1, FP-RFI-1)"), "{line}");
         assert!(line.contains("ecosystem-inbox"), "{line}");
         assert!(inbox_line(&[doc("d1", "FP-CR-1")]).contains("1 reply ("));
+    }
+
+    #[test]
+    fn an_open_builder_run_is_named_apart_from_the_documents() {
+        let run = UnansweredDocument {
+            id: "r1".into(),
+            number: None,
+            r#type: Some(BUILDER_RUN_TYPE.into()),
+            from: Some("e1".into()),
+            overdue: false,
+        };
+        let line = inbox_line(&[doc("d1", "FP-CR-1"), run.clone()]);
+        assert!(line.contains("owes 1 reply (FP-CR-1)"), "{line}");
+        assert!(
+            line.contains("1 ecosystem builder run is open (r1)"),
+            "{line}"
+        );
+        let alone = inbox_line(&[run]);
+        assert!(!alone.contains("channel owes"), "{alone}");
+        assert!(alone.contains("builder_runs"), "{alone}");
     }
 }
