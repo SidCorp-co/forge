@@ -14,7 +14,10 @@ function makeApp(rule: RateLimitRule, name: string) {
     if (uid) c.set('user', { id: uid });
     await next();
   });
-  app.use('/hit', rateLimit(rule, { name }));
+  app.use(
+    '/hit',
+    rateLimit(() => rule, { name }),
+  );
   app.get('/hit', (c) => c.json({ ok: true }));
   // Map HTTPException to 429 with body, preserving cause details + Retry-After.
   app.onError((err, c) => {
