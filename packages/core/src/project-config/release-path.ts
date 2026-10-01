@@ -1,5 +1,6 @@
 import type { DeploymentTrigger, EnvironmentDeclaration, ProjectDocument } from './schema.js';
 import { readProjectDocument } from './service.js';
+import { defaultBranchOf } from './source.js';
 
 export type Promotion = ProjectDocument['promotions'][number];
 
@@ -55,7 +56,7 @@ function crossingsTo(
 }
 
 export function releasePathOf(revision: number, document: ProjectDocument): ReleasePathRead {
-  const defaultBranch = document.source.type === 'git' ? document.source.git.defaultBranch : null;
+  const defaultBranch = defaultBranchOf(document);
   const production = productionOf(document);
   const target = production?.declaration.deploysFrom;
   if (!production || defaultBranch === null || target === undefined) {
@@ -85,6 +86,19 @@ export async function readReleasePath(projectId: string): Promise<ReleasePathRea
 /** The branch production deploys from where a promotion crosses into it; null where none does. */
 export function promotedBranch(path: ReleasePath): string | null {
   return path.crossings.at(-1)?.to ?? null;
+}
+
+/** The branch work lands on, and the branch production deploys from where a promotion crosses into it. */
+export async function readLandingBranches(
+  projectId: string,
+): Promise<{ defaultBranch: string | null; promoted: string | null }> {
+  const held = await readProjectDocument(projectId);
+  if (!held) return { defaultBranch: null, promoted: null };
+  const path = releasePathOf(held.revision, held.document);
+  return {
+    defaultBranch: defaultBranchOf(held.document),
+    promoted: path.ok ? promotedBranch(path.path) : null,
+  };
 }
 
 /** One cherry-picked crossing is enough: every commit below it gets a new sha further down. */

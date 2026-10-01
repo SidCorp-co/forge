@@ -105,13 +105,14 @@ export const memoryStore: ConfigStore = {
     }
     return out;
   },
-  async existingSecretRefs(projectId, refs) {
-    return new Set(
-      refs.filter((ref) => {
-        const [, scope, name] = /^secret:\/\/([^/]+)\/(.+)$/.exec(ref) ?? [];
-        return mem.secrets.has(`${projectId}|${scope}|${name}`);
-      }),
-    );
+  async secretValues(projectId, refs) {
+    const values = new Map<string, Buffer>();
+    for (const ref of refs) {
+      const [, scope, name] = /^secret:\/\/([^/]+)\/(.+)$/.exec(ref) ?? [];
+      const row = mem.secrets.get(`${projectId}|${scope}|${name}`);
+      if (row) values.set(ref, row.valueEnc);
+    }
+    return values;
   },
   async putSecret({ projectId, scope, name, valueEnc }) {
     const row = { scope, name, valueEnc, updatedAt: new Date('2026-10-01T00:00:00Z') };

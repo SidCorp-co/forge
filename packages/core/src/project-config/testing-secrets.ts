@@ -1,8 +1,7 @@
 import { SCRUB_MIN_SECRET_LENGTH } from '@forge/observability';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, type JobType, jobEvents, jobs } from '../db/schema.js';
-import { projectSecrets } from '../db/schema-project-config.js';
 import { decryptSecret, isVaultConfigured } from '../integrations/vault.js';
 import { resolvePipelineContext } from '../jobs/active-job-context.js';
 import {
@@ -11,10 +10,14 @@ import {
   type SecretResolveAudit,
 } from '../jobs/job-secret-scrub.js';
 import type { PatPrincipal } from '../middleware/require-pat.js';
-import { parseSecretRef, secretRefOf } from './documents.js';
 import { environmentsOf } from './release-path.js';
 import type { ProjectDocument } from './schema.js';
-import { credentialRefs, readProjectConfig, readTestingProfile } from './service.js';
+import {
+  credentialRefs,
+  readProjectConfig,
+  readSecretValues,
+  readTestingProfile,
+} from './service.js';
 
 // cm:why `drive` is here because an autonomous project's driver walks the judging phase in the
 // same job that builds; a job of any other type is not one that logs in to judge a deployment.
@@ -174,27 +177,7 @@ export async function resolveTestingSecrets(args: {
     );
   }
 
-  const parsed = wanted.map(parseSecretRef).filter((r) => r !== null);
-  const rows =
-    parsed.length === 0
-      ? []
-      : await db
-          .select({
-            scope: projectSecrets.scope,
-            name: projectSecrets.name,
-            enc: projectSecrets.valueEnc,
-          })
-          .from(projectSecrets)
-          .where(
-            and(
-              eq(projectSecrets.projectId, job.projectId),
-              inArray(
-                projectSecrets.scope,
-                parsed.map((p) => p.scope),
-              ),
-            ),
-          );
-  const stored = new Map(rows.map((r) => [secretRefOf(r.scope, r.name), r.enc]));
+  const stored = await readSecretValues(job.projectId, wanted);
   const missing = wanted.filter((r) => !stored.has(r));
   if (missing.length > 0) {
     return refuse(

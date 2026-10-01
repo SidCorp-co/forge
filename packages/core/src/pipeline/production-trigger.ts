@@ -1,4 +1,5 @@
 import { logger } from '../logger.js';
+import { productionOf } from '../project-config/release-path.js';
 import { readProjectDocument } from '../project-config/service.js';
 
 /** Whether the release sweep alone cuts releases here: production deploys `on-land`. */
@@ -6,13 +7,8 @@ import { readProjectDocument } from '../project-config/service.js';
 export async function productionDeploysOnLand(projectId: string): Promise<boolean> {
   try {
     const held = await readProjectDocument(projectId);
-    if (!held) return false;
-    return Object.values(held.document.environments).some(
-      (env) =>
-        env.tier === 'production' &&
-        'trigger' in env.deployment &&
-        env.deployment.trigger === 'on-land',
-    );
+    const deployment = held ? productionOf(held.document)?.declaration.deployment : undefined;
+    return !!deployment && 'trigger' in deployment && deployment.trigger === 'on-land';
   } catch (err) {
     logger.warn(
       { err, projectId },

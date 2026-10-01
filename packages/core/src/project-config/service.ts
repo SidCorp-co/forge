@@ -253,7 +253,7 @@ export async function writeTestingProfile(input: {
         });
       }
       const refs = credentialRefs(profile);
-      const present = await store.existingSecretRefs(
+      const present = await store.secretValues(
         projectId,
         refs.map((r) => r.ref),
       );
@@ -321,6 +321,10 @@ export async function putSecret(input: {
     valueEnc: encryptSecret(input.value),
   });
   return { ok: true, secret: { ...row, ref: secretRefOf(row.scope, row.name) } };
+}
+
+export async function readSecretValues(projectId: string, refs: readonly string[]) {
+  return store.secretValues(projectId, refs);
 }
 
 export async function listSecretNames(projectId: string) {

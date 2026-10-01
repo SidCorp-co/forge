@@ -72,7 +72,7 @@ export interface ConfigStore {
   listActiveBindings(projectId: string): Promise<BindingRow[]>;
   slugTakenBy(projectId: string, slug: string): Promise<string | null>;
   listSecretNames(projectId: string): Promise<SecretName[]>;
-  existingSecretRefs(projectId: string, refs: readonly string[]): Promise<Set<string>>;
+  secretValues(projectId: string, refs: readonly string[]): Promise<Map<string, Buffer>>;
   putSecret(input: {
     projectId: string;
     scope: string;
@@ -287,11 +287,15 @@ export const drizzleConfigStore: ConfigStore = {
       .orderBy(projectSecrets.scope, projectSecrets.name);
   },
 
-  async existingSecretRefs(projectId, refs) {
+  async secretValues(projectId, refs) {
     const wanted = refs.map(parseSecretRef).filter((r) => r !== null);
-    if (wanted.length === 0) return new Set();
+    if (wanted.length === 0) return new Map();
     const rows = await db
-      .select({ scope: projectSecrets.scope, name: projectSecrets.name })
+      .select({
+        scope: projectSecrets.scope,
+        name: projectSecrets.name,
+        valueEnc: projectSecrets.valueEnc,
+      })
       .from(projectSecrets)
       .where(
         and(
@@ -302,7 +306,7 @@ export const drizzleConfigStore: ConfigStore = {
           ),
         ),
       );
-    return new Set(rows.map((r) => secretRefOf(r.scope, r.name)));
+    return new Map(rows.map((r) => [secretRefOf(r.scope, r.name), r.valueEnc]));
   },
 
   async putSecret({ projectId, scope, name, valueEnc }) {

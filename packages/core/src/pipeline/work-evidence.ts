@@ -3,8 +3,7 @@ import { type Db, db } from '../db/client.js';
 import { issueDependencies, issueStepContexts, issues, jobs, projects } from '../db/schema.js';
 import { WORK_EVIDENCE_WAIVER_KIND } from '../issues/dependency-effects.js';
 import { logger } from '../logger.js';
-import { promotedBranch, readReleasePath } from '../project-config/release-path.js';
-import { readDeclaredSource } from '../project-config/source.js';
+import { readLandingBranches } from '../project-config/release-path.js';
 
 const IMPLEMENTATION_STEPS = ['code', 'fix', 'drive'] as const;
 
@@ -79,11 +78,9 @@ export async function collectWorkEvidence(
     (v): v is string => typeof v === 'string' && v.length > 0,
   );
   const projectRow = issueRows[0];
-  const path = projectRow ? await readReleasePath(projectRow.projectId) : null;
-  const excludedLive = path?.ok ? promotedBranch(path.path) : null;
-  const defaultBranch = projectRow
-    ? (await readDeclaredSource(projectRow.projectId)).defaultBranch
-    : null;
+  const { defaultBranch, promoted: excludedLive } = projectRow
+    ? await readLandingBranches(projectRow.projectId)
+    : { defaultBranch: null, promoted: null };
   const branch = named && named !== defaultBranch && named !== excludedLive ? named : null;
 
   return {
