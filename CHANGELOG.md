@@ -2525,6 +2525,11 @@
   (ISS-1313)
 
 ### Removed
+- **Where a release goes is the project document, and nothing else.** The release chain, the
+  testing tab's environments and test credentials, and each binding's preview/live stages are
+  gone; the project settings refuse them by name. Re-enter production, its branch and probes under
+  `PUT /api/projects/:id/config`, and testers' logins as a testing profile.
+
 - **The pipeline configuration is gone.** Model, permissions, QA and intake come from the policy
   alone; the old route, `forge_config` door and settings sections are removed. Re-enter the weekly
   assistant setting, which moved to the project.
