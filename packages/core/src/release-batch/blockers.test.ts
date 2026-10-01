@@ -87,7 +87,7 @@ const REFUSED_NAME = `environment \`beta\` (coolify ${PROD_BINDING})`;
 
 function projectRow(over: Record<string, unknown> = {}) {
   selectLimit.mockResolvedValue([
-    { id: PROJECT_ID, repoPath: '/srv/app', repoUrl: null, baseBranch: 'main', ...over },
+    { id: PROJECT_ID, repoPath: '/srv/app', baseBranch: 'main', ...over },
   ]);
 }
 

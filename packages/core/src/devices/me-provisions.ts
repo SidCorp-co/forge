@@ -7,6 +7,7 @@ import { isHttpsGitUrl, projectsWithGitHubAppCredential } from '../git/github-ap
 import { deviceGitCredentialRoutes } from '../git/github-credential-routes.js';
 import { logger } from '../logger.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
+import { readDeclaredSource, remoteOf } from '../project-config/source.js';
 import { recordProvisionReports } from './provision-reports.js';
 import {
   buildProvisionRow,
@@ -32,7 +33,6 @@ function queuedRows(deviceId: string) {
       slug: projects.slug,
       repoPath: runners.repoPath,
       branch: runners.branch,
-      repoUrl: projects.repoUrl,
       baseBranch: projects.baseBranch,
       sshSource: workspaceSshKeys.source,
       sshPublicKey: workspaceSshKeys.publicKey,
@@ -62,17 +62,23 @@ deviceProvisionRoutes.get('/me/provisions', requireDevice(), async (c) => {
   const holderUserId = rows.length > 0 ? await deviceHolderUserId(device.id) : null;
 
   const settled = await Promise.allSettled(
-    rows.map((r) =>
-      buildProvisionRow(
-        r,
+    rows.map(async (r) => {
+      const { repository } = await readDeclaredSource(r.projectId);
+      // cm:why the document names a repository, not a transport: an attached deploy key can only
+      // reach it over SSH, and every other credential (GitHub App, public) reaches it over HTTPS.
+      const repoUrl = repository
+        ? remoteOf(repository, r.sshPrivateKeyEnc ? 'ssh' : 'https')
+        : null;
+      return buildProvisionRow(
+        { ...r, repoUrl },
         {
           deviceId: device.id,
           holderUserId,
-          githubAppCredential: isHttpsGitUrl(r.repoUrl) && appProjects.has(r.projectId),
+          githubAppCredential: isHttpsGitUrl(repoUrl) && appProjects.has(r.projectId),
         },
         { issueCredential: issueWorkspaceCredential },
-      ),
-    ),
+      );
+    }),
   );
 
   const provisions: Provision[] = [];

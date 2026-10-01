@@ -111,6 +111,8 @@ vi.mock('../middleware/require-fresh-auth.js', () => ({
 }));
 
 const publishMock = vi.fn(() => 0);
+const declared = async () => ({ repository: null, setup: null });
+vi.mock('../project-config/source.js', () => ({ readDeclaredSource: declared }));
 vi.mock('../ws/server.js', () => ({
   roomManager: { publish: publishMock },
 }));
@@ -299,10 +301,9 @@ describe('GET /api/devices/me/runners (ISS-271)', () => {
     const lastCall = dbSelect.mock.calls.at(-1) as unknown[] | undefined;
     const projection = lastCall?.[0] as Record<string, unknown> | undefined;
     expect(projection).toBeDefined();
-    expect(Object.keys(projection ?? {})).toEqual(
-      expect.arrayContaining(['masterPolicy', 'workspaceSetup']),
-    );
-    expect(Object.keys(projection ?? {})).not.toContain('kind');
+    const keys = Object.keys(projection ?? {});
+    expect(keys).toContain('masterPolicy');
+    expect(keys.filter((k) => k === 'kind' || k === 'workspaceSetup')).toEqual([]);
   });
 });
 

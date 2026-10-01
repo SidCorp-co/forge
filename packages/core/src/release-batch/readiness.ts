@@ -1,9 +1,7 @@
-import { eq } from 'drizzle-orm';
-import { db } from '../db/client.js';
-import { projects } from '../db/schema.js';
 import { selectAllSlugsFromKnowledge } from '../knowledge/service.js';
 import type { Promotion } from '../project-config/release-path.js';
 import type { DeploymentTrigger } from '../project-config/schema.js';
+import { readDeclaredSource } from '../project-config/source.js';
 import { missingProjectKnowledge } from '../projects/autonomous-contract.js';
 import {
   collectReleaseBlockers,
@@ -22,7 +20,7 @@ type ReleaseChannelRead = NonNullable<
   Awaited<ReturnType<typeof collectReleaseBlockers>>['channels']
 >[number];
 interface ProjectRow {
-  repoUrl: string | null;
+  repository: string | null;
 }
 
 export interface ReleaseProduction {
@@ -60,8 +58,7 @@ export interface ReleaseReadiness {
   /**
    * Every reason a release would be refused RIGHT NOW, in the order the create
    * door refuses in — the declarations, and also the roster and the fleet, which
-   * `gaps` never looked at. Empty here means a create over this roster succeeds;
-   * that equivalence is the whole of ISS-1127.
+   * `gaps` never looked at. Empty here means a create over this roster succeeds (ISS-1127).
    */
   blockers: ReleaseBlocker[];
   /** What will change how the release runs without stopping it. */
@@ -78,14 +75,9 @@ export async function loadReleaseReadiness(projectId: string): Promise<ReleaseRe
   const channels = report.channels ?? [];
   const blockers = [...report.blockers];
 
-  const row = await guarded('project', blockers, async () => {
-    const [found] = await db
-      .select({ repoUrl: projects.repoUrl })
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .limit(1);
-    return found ?? null;
-  });
+  const row = await guarded('repository', blockers, async () => ({
+    repository: (await readDeclaredSource(projectId)).repository,
+  }));
   const held = await guarded('knowledge', blockers, () => selectAllSlugsFromKnowledge(projectId));
 
   const gaps = declarationGaps({ decl, channels: report.channels, row, held });
@@ -160,7 +152,7 @@ function declarationGaps(input: GapInput): ReleaseGapKey[] {
   // make (ISS-1127).
   if (row !== undefined && held !== undefined) {
     const declarations = {
-      repoUrl: row?.repoUrl ?? null,
+      repository: row?.repository ?? null,
       production: decl?.kind === 'gated' ? decl.production.name : null,
     };
     gaps.push(...missingProjectKnowledge(declarations, held).map((o) => o.slug));

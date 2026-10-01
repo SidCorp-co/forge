@@ -144,7 +144,7 @@ const UNDECLARED_PATCH_KEY = {
     if (issue.code !== 'unrecognized_keys') return undefined;
     const keys = issue.keys ?? [];
     const retired = retiredProjectFieldsMessage(keys);
-    return `forge_projects.update does not take ${keys.map((k) => `\`${k}\``).join(', ')}; its fields are name, baseBranch and workspaceSetup.${retired ? ` ${retired}` : ''} Whether a project's work lands in git (\`source.type\`), its environments, promotions, deployments and testing profiles are its project document: read it with forge_config (action \`get\`, field \`projectDocument\`) and write it with PUT /api/projects/:id/config.`;
+    return `forge_projects.update does not take ${keys.map((k) => `\`${k}\``).join(', ')}; its fields are name and baseBranch.${retired ? ` ${retired}` : ''} Whether a project's work lands in git (\`source.type\`), its environments, promotions, deployments and testing profiles are its project document: read it with forge_config (action \`get\`, field \`projectDocument\`) and write it with PUT /api/projects/:id/config.`;
   },
 };
 
@@ -156,7 +156,6 @@ const updateInputSchema = z
         {
           name: z.string().trim().min(1).max(200).optional(),
           baseBranch: z.string().trim().max(100).nullable().optional(),
-          workspaceSetup: z.string().trim().max(8000).nullable().optional(),
         },
         UNDECLARED_PATCH_KEY,
       )
@@ -167,7 +166,7 @@ const updateInputSchema = z
   .strict();
 
 /**
- * Update a project's settings (name/baseBranch/workspaceSetup) — the subset of `updateProjectSchema` that's safe to
+ * Update a project's settings (name/baseBranch) — the subset of `updateProjectSchema` that's safe to
  * expose to MCP. Sensitive fields (webhookSecret, apiKey, agentConfig) intentionally stay on the REST handler.
  *
  * Authorization is OWNER-ONLY, matching REST PATCH /api/projects/:id
@@ -182,7 +181,7 @@ export const forgeProjectsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
   reach: 'project',
   grant: 'projects:write',
   description:
-    "Update project settings (name, baseBranch, workspaceSetup). A checkout is not a project setting: it is the device binding's (`forge-runner bind <slug> --path <dir>`). Whether the project's work lands in git (`source.type`), its environments, promotions, deployments and testing profiles are NOT settings here: they are its project document, read with forge_config (action `get`, field `projectDocument`) and written with PUT /api/projects/:id/config, and a patch naming any other key is refused by name. Caller must be org owner/admin on the project's org (a merely-invited project admin cannot mutate settings — matches REST PATCH /api/projects/:id). PAT principals must additionally carry the `write` scope. `workspaceSetup` is prose describing how to bring this repo's workspace to a state a stage can build, test and commit in (install commands, hook setup, toolchain quirks) — the runner's setup agent reads it before every stage that lands in a broken workspace, so writing it once retires a per-job derivation. Record only a procedure you actually ran; null clears it. Sensitive fields (webhookSecret, apiKey, agentConfig) stay on REST.",
+    "Update project settings (name, baseBranch). A checkout is not a project setting: it is the device binding's (`forge-runner bind <slug> --path <dir>`). Whether the project's work lands in git (`source.type`), its environments, promotions, deployments and testing profiles are NOT settings here: they are its project document, read with forge_config (action `get`, field `projectDocument`) and written with PUT /api/projects/:id/config, and a patch naming any other key is refused by name. Caller must be org owner/admin on the project's org (a merely-invited project admin cannot mutate settings — matches REST PATCH /api/projects/:id). PAT principals must additionally carry the `write` scope. The repository and the workspace setup procedure are the project document's `source.git.repository` and `workspace.setup`: a patch naming `repoUrl` or `workspaceSetup` is refused by name. Sensitive fields (webhookSecret, apiKey, agentConfig) stay on REST.",
   inputSchema: zodToMcpSchema(updateInputSchema),
   handler: async (args) => {
     const input = updateInputSchema.parse(args);
@@ -216,9 +215,6 @@ export const forgeProjectsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
     const updates: Record<string, unknown> = {};
     if (input.patch.name !== undefined) updates.name = input.patch.name;
     if (input.patch.baseBranch !== undefined) updates.baseBranch = input.patch.baseBranch;
-    if (input.patch.workspaceSetup !== undefined) {
-      updates.workspaceSetup = input.patch.workspaceSetup;
-    }
 
     if (Object.keys(updates).length === 0) {
       const summary = await readProjectSummary(input.projectId);
@@ -238,7 +234,7 @@ export const forgeProjectsGetTool: ContextScopedMcpToolFactory = (ctx) => ({
   reach: 'project',
   grant: 'projects:read',
   description:
-    'Fetch project detail visible to the principal — id, slug, name, orgId, createdBy, role (effective: admin|member|viewer), workspaceSetup, baseBranch (where an ISS-* branch is cut from, NOT a release fact), createdAt. A checkout path is not a project fact: every device binding names its own. Where work lands, what each environment is and deploys from, its address and the testing profile its testers get in through are the project document — forge_config (action `get`, field `projectDocument`) — and what an environment runs now is GET /api/projects/:id/environments/:name/state. `workspaceSetup` is the project-declared setup procedure (install commands, hook setup, toolchain quirks) — follow it rather than guessing when a checkout will not build, and if it is null and you establish one, record it via forge_projects.update. Any effective project role can read. PAT principals must carry the `read` scope. Sensitive fields (agentConfig, webhookSecret, apiKey) stay on REST.',
+    'Fetch project detail visible to the principal — id, slug, name, orgId, createdBy, role (effective: admin|member|viewer), baseBranch (where an ISS-* branch is cut from, NOT a release fact), createdAt. A checkout path is not a project fact: every device binding names its own. Where work lands, what each environment is and deploys from, its address and the testing profile its testers get in through are the project document — forge_config (action `get`, field `projectDocument`) — and what an environment runs now is GET /api/projects/:id/environments/:name/state. The repository and the setup procedure a checkout follows when it will not build are `source.git.repository` and `workspace.setup` in that document. Any effective project role can read. PAT principals must carry the `read` scope. Sensitive fields (agentConfig, webhookSecret, apiKey) stay on REST.',
   inputSchema: zodToMcpSchema(getInputSchema),
   handler: async (args) => {
     const input = getInputSchema.parse(args);
@@ -276,7 +272,6 @@ export const forgeProjectsGetTool: ContextScopedMcpToolFactory = (ctx) => ({
         orgId: proj.orgId,
         createdBy: proj.createdBy,
         role,
-        workspaceSetup: proj.workspaceSetup,
         baseBranch: proj.baseBranch,
         createdAt: proj.createdAt,
       },

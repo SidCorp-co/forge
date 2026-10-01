@@ -69,8 +69,6 @@ export type CreateProjectInput = z.infer<typeof createProjectSchema>;
 
 const updateProjectFields = {
   name: z.string().trim().min(1).max(200).optional(),
-  repoUrl: z.string().trim().max(500).nullable().optional(),
-  workspaceSetup: z.string().trim().max(8000).nullable().optional(),
   baseBranch: z.string().trim().max(100).nullable().optional(),
   issuePrefix: z.string().trim().max(16).nullable().optional(),
   assistantWeekly: assistantWeeklySchema.nullable().optional(),
@@ -358,9 +356,7 @@ projectRoutes.patch(
       updates.orgId = patch.orgId;
     }
     if (patch.name !== undefined) updates.name = patch.name;
-    if (patch.repoUrl !== undefined) updates.repoUrl = patch.repoUrl;
     if (patch.baseBranch !== undefined) updates.baseBranch = patch.baseBranch;
-    if (patch.workspaceSetup !== undefined) updates.workspaceSetup = patch.workspaceSetup;
 
     const agentConfigPatch: AgentConfigKeyPatch = {};
     if (patch.assistantWeekly !== undefined)

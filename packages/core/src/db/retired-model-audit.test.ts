@@ -54,6 +54,16 @@ describe('the rules name the retired reader', () => {
     ['const { droppedNames } = resolved;', 'device-binding-keys'],
     ['let dropped_names: Vec<String> = Vec::new();', 'device-binding-keys'],
     ['const repo = resolveRepoPath(null, project.repoPath);', 'device-binding-keys'],
+    ['const url = projects.repoUrl;', 'legacy-project-columns'],
+    ['.select({ setup: projects.workspaceSetup })', 'legacy-project-columns'],
+    ['const k = projects.kind;', 'legacy-project-columns'],
+    ['const d = projects.description;', 'legacy-project-columns'],
+    ['sql`UPDATE projects SET repo_url = $1`', 'legacy-project-columns'],
+    ['sql`SELECT workspace_setup FROM projects`', 'legacy-project-columns'],
+    ['sql`UPDATE projects SET environments = $1 WHERE id = $2`', 'legacy-project-columns'],
+    ['sql`SELECT projects_release_chain_ok($1)`', 'legacy-project-columns'],
+    ['...axes.releaseProjectChecks,', 'legacy-project-columns'],
+    ['await syncRepoUrlFromGitHubBinding(args);', 'legacy-project-columns'],
   ])('%s → %s', (source, rule) => {
     expect(hits(source)).toContain(rule);
   });
@@ -73,6 +83,10 @@ describe('the rules leave live code alone', () => {
     'sql`SELECT r.repo_path FROM runners r`',
     'const p = session.repoPath;',
     'let repo_path = binding.repo_path.clone();',
+    'const r = await testSshConnection(repoUrl, key);',
+    'const { setup } = await readDeclaredSource(projectId);',
+    'const d = issue.description;',
+    'const k = label.kind;',
   ])('%s', (source) => {
     expect(hits(source)).toEqual([]);
   });

@@ -171,9 +171,8 @@ function buildSidDeskRepository(): void {
 }
 
 async function gitlabDesk(userId: string, withKey = true) {
-  const p = await project(userId, 'promote');
+  const p = await project(userId, 'promote', 'gitlab.com/thanhnguyen21/sid-desk');
   unbound.add(p.id);
-  await harness.db.execute(sql`UPDATE projects SET repo_url = ${GITLAB} WHERE id = ${p.id}`);
   if (!withKey) return p;
   const keyId = randomUUID();
   await harness.db.execute(sql`
@@ -187,10 +186,11 @@ async function gitlabDesk(userId: string, withKey = true) {
   return p;
 }
 
-async function project(userId: string, release: 'promote' | 'publish') {
+async function project(userId: string, release: 'promote' | 'publish', repository?: string) {
   const p = await createTestProject(harness.db, userId);
   await createTestProjectMember(harness.db, { userId, projectId: p.id, role: 'admin' });
   await seedProjectDocument(harness.db, p.id, userId, {
+    ...(repository ? { repository } : {}),
     defaultBranch: 'staging',
     promotions: release === 'promote' ? [{ from: 'staging', to: 'master', via: 'merge' }] : [],
     environments: {

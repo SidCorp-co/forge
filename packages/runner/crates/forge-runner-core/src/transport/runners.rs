@@ -25,7 +25,7 @@ pub struct MeRunner {
     pub repo_path: Option<String>,
     pub branch: Option<String>,
     pub status: String,
-    /// Prose from `projects.workspace_setup`: how to bring this repo's workspace
+    /// Prose from the project document's `workspace.setup`: how to bring this repo's workspace
     /// to a state a stage can build, test and commit in. `None` on an older core
     /// or an undeclared project — the setup agent then derives it from the repo,
     /// which is the expensive path this field exists to retire.

@@ -351,15 +351,9 @@ export const projects = pgTable(
     createdBy: uuid('created_by')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
-    description: text('description'),
-    kind: text('kind').notNull().default('standard'),
     /** Where an ISS-* branch is cut from and merges back to. NOT a release fact. */
     baseBranch: text('base_branch'),
-    releaseChain: jsonb('release_chain').notNull().default([]),
-    repoUrl: text('repo_url'),
-    workspaceSetup: text('workspace_setup'),
     agentConfig: jsonb('agent_config'),
-    environments: jsonb('environments'),
     webhookSecret: text('webhook_secret'),
     apiKey: text('api_key'),
     issuePrefix: text('issue_prefix'),
@@ -376,7 +370,6 @@ export const projects = pgTable(
       columns: [t.id, t.issuePrefix],
       foreignColumns: [issuePrefixAliases.projectId, issuePrefixAliases.prefix],
     }),
-    ...axes.releaseProjectChecks,
   }),
 );
 

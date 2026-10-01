@@ -26,6 +26,7 @@ import {
   createTestProject,
   createTestUser,
   seedOrg,
+  seedProjectDocument,
   setupTestDatabase,
   type TestDatabase,
   truncateAll,
@@ -384,5 +385,46 @@ describe('a device with one unprovisionable project still provisions the rest (I
     const row = await runnerRow(only.runnerId);
     expect(row?.provisionDetail).toContain('could not be decrypted');
     expect(row?.provisionDetail).toContain('the credential vault is not reachable');
+  });
+});
+
+describe('the remote a provision clones is derived from the project document (ISS-16)', () => {
+  async function attachKey(orgId: string, projectId: string) {
+    const { encryptSecret } = await import('../../src/integrations/vault.js');
+    const [key] = await harness.db
+      .insert(schema.workspaceSshKeys)
+      .values({
+        orgId,
+        name: `forge-${projectId.slice(0, 8)}`,
+        source: 'forge_generated',
+        publicKey: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5 forge-key',
+        privateKeyEnc: encryptSecret('-----BEGIN OPENSSH PRIVATE KEY-----\nk\n'),
+      })
+      .returning({ id: schema.workspaceSshKeys.id });
+    await harness.db
+      .insert(schema.projectGitCredentials)
+      .values({ projectId, sshKeyId: key?.id as string });
+  }
+
+  it('clones over SSH with a deploy key, over HTTPS without one, and names no remote with no document', async () => {
+    const { user, deviceToken, org, projects } = await seed(['keyed', 'keyless', 'undeclared']);
+    const [keyed, keyless, undeclared] = projects as [SeededProject, SeededProject, SeededProject];
+    await seedProjectDocument(harness.db, keyed.id, user.id, {
+      environments: {},
+      repository: 'gitlab.com/acme/keyed',
+    });
+    await seedProjectDocument(harness.db, keyless.id, user.id, {
+      environments: {},
+      repository: 'github.com/acme/keyless',
+    });
+    await attachKey(org.id, keyed.id);
+
+    const res = await get(deviceToken);
+    expect(res.status).toBe(200);
+    const served = (await res.json()) as Array<{ projectId: string; repoUrl: string | null }>;
+    const remoteOf = (id: string) => served.find((p) => p.projectId === id)?.repoUrl;
+    expect(remoteOf(keyed.id)).toBe('git@gitlab.com:acme/keyed.git');
+    expect(remoteOf(keyless.id)).toBe('https://github.com/acme/keyless.git');
+    expect(remoteOf(undeclared.id)).toBeNull();
   });
 });

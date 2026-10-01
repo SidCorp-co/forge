@@ -2537,6 +2537,9 @@
   (ISS-1313)
 
 ### Removed
+- **A project's repository and setup steps live only in its configuration.** A repo URL or
+  workspace setup sent to settings is refused by name. The old columns are dropped;
+  `scripts/export-legacy-project-config.mjs` prints them, read-only, before the release.
 - **A checkout is the device binding's alone.** Projects have no repo path or default device,
   and settings refuse both by name. Jobs and chat turns run in the box's bound folder; a binding
   naming none is refused.

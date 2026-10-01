@@ -13,8 +13,6 @@
  *
  *   3. The way back is a file that has been RUN. `db/migrate.ts` never reads `drizzle/rollback/`,
  *      so until this file existed nothing here had executed `0312_down.sql`.
- *
- * What the CHECK refuses once the migration has run is in `release-chain-constraints-e2e.test.ts`.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';

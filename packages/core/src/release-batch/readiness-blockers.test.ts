@@ -78,9 +78,7 @@ function project(over: { facts?: Record<string, unknown>; releasing?: boolean })
   // Every real project declares a repository — the pipeline cannot check one out otherwise — so
   // the fixture does too: the build/test obligations hang off that declaration, and a fixture
   // missing it would pass by owing nothing. The repo-less case is its own test.
-  selectLimit.mockResolvedValue([
-    { id: PROJECT_ID, repoPath: '/srv/app', repoUrl: null, baseBranch: 'main' },
-  ]);
+  selectLimit.mockResolvedValue([{ id: PROJECT_ID, repoPath: '/srv/app', baseBranch: 'main' }]);
   heldSlugs.mockResolvedValue(Object.keys(over.facts ?? CONTRACT_KNOWLEDGE));
   readDocument.mockResolvedValue({
     revision: 1,
@@ -170,8 +168,20 @@ describe('loadReleaseReadiness — a declaration that could not be read', () => 
       ['RELEASE_ROSTER_EMPTY', undefined],
       ['RELEASE_CHECK_UNEVALUATED', 'channels'],
       ['RELEASE_POOL_EMPTY', undefined],
-      ['RELEASE_CHECK_UNEVALUATED', 'project'],
     ]);
+  });
+
+  it('says the repository was not read, and owes nothing on it, where the document cannot be read', async () => {
+    project({ facts: {} });
+    readDocument.mockRejectedValue(new Error('project document unreadable'));
+
+    const out = await loadReleaseReadiness(PROJECT_ID);
+
+    expect(out?.blockers.map((b) => [b.code, b.details?.check])).toContainEqual([
+      'RELEASE_CHECK_UNEVALUATED',
+      'repository',
+    ]);
+    expect(out?.gaps).not.toContain('build-commands');
   });
 
   it('says it WAS read for every project whose declaration answered', async () => {

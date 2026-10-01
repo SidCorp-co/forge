@@ -287,6 +287,8 @@ export async function seedProjectDocument(
     defaultBranch?: string;
     /** `storefront` takes the store example's source, whose work lands outside git. */
     sourceType?: keyof typeof SOURCE_EXAMPLE;
+    repository?: string;
+    setup?: string;
   },
 ): Promise<ProjectDocument> {
   const example = JSON.parse(
@@ -303,12 +305,18 @@ export async function seedProjectDocument(
       ? readExample(SOURCE_EXAMPLE.storefront).source
       : {
           type: 'git',
-          git: { repository: 'github.com/acme/test-project', defaultBranch, branches },
+          git: {
+            repository: opts.repository ?? 'github.com/acme/test-project',
+            defaultBranch,
+            branches,
+          },
         };
   const document = projectDocumentSchema.parse({
     ...example,
     project: { id: projectId, slug: `test-${projectId.slice(0, 8)}`, name: 'Test Project' },
     source,
+    workspace:
+      opts.setup === undefined ? example.workspace : { ...example.workspace, setup: opts.setup },
     environments: opts.environments,
     promotions,
   });

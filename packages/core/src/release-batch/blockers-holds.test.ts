@@ -92,7 +92,7 @@ const ISSUE_B = '77777777-7777-4777-8777-777777777777';
 
 function projectRow(over: Record<string, unknown> = {}) {
   selectLimit.mockResolvedValue([
-    { id: PROJECT_ID, repoPath: '/srv/app', repoUrl: null, baseBranch: 'main', ...over },
+    { id: PROJECT_ID, repoPath: '/srv/app', baseBranch: 'main', ...over },
   ]);
   readDocument.mockResolvedValue({
     revision: 1,
