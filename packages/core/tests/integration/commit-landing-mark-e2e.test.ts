@@ -19,6 +19,7 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
+import { declareProductionDocument } from '../helpers/production.js';
 
 const SEQ = 1318;
 const OWN = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678';
@@ -246,12 +247,13 @@ describe('ISS-1318 — a base-branch landing marked by its commit (real Postgres
   });
 
   it('accepts a commit the live branch holds and the base does not (criterion 1)', async () => {
-    await harness.db.execute(sql`
-      UPDATE projects SET release_chain = ${JSON.stringify([
-        { branch: 'main' },
-        { branch: 'production', from: 'merge-branch' },
-      ])}::jsonb WHERE id = ${projectId}
-    `);
+    await declareProductionDocument(harness.db, {
+      projectId,
+      ownerId: userId,
+      bindingId: randomUUID(),
+      deploysFrom: 'production',
+      probes: 'none',
+    });
     const issue = await seed();
     const res = await mark(issue, ON_LIVE);
     expect(res.mark).toBe('observed');

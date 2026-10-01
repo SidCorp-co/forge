@@ -12,9 +12,9 @@
  * the only mark there was a git one.
  */
 
-import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
+import { seedProduction } from '../helpers/production.js';
 import {
   CONTROL_FOLDER_COMMIT,
   close,
@@ -132,21 +132,12 @@ describe('a project whose work lands outside git (kind website)', () => {
 
   it('lists an issue whose mark names no landing under RELEASE_WORK_UNMERGED at the record door', async () => {
     const w = await world('website');
-    // A one-entry chain and a live deploy binding are a release gate at all; with no probe the
+    // A production environment with a deploy binding is a release gate; with no probe the
     // release is recorded unverified (ISS-1321), so the only reason left is the roster's own.
-    await harness.db.execute(sql`
-      UPDATE projects SET base_branch = 'main', release_chain = '[{"branch":"main"}]'::jsonb
-      WHERE id = ${w.projectId}
-    `);
-    const connection = randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO integration_connections (id, owner_type, owner_id, provider, active)
-      VALUES (${connection}, 'user', ${w.userId}, 'coolify', true)
-    `);
-    await harness.db.execute(sql`
-      INSERT INTO integration_bindings (connection_id, project_id, provider, role, stages, active, config)
-      VALUES (${connection}, ${w.projectId}, 'coolify', 'deploy', ARRAY['live'], true, '{}'::jsonb)
-    `);
+    await harness.db.execute(
+      sql`UPDATE projects SET base_branch = 'main' WHERE id = ${w.projectId}`,
+    );
+    await seedProduction(harness.db, { projectId: w.projectId, ownerId: w.userId, probes: 'none' });
     const bare = await seedIssue(w, { mergedAt: true });
     const landed = await seedIssue(w, { landing: LANDING });
     const report = await harness.mods.collectReleaseBlockers(w.projectId, {

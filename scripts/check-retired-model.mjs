@@ -34,6 +34,7 @@ const ALLOW = [
   /^packages\/core\/src\/db\/schema\.ts$/,
   /^packages\/core\/src\/db\/release-axes\.ts$/,
   /^packages\/core\/tests\/integration\/environments-migration-e2e\.test\.ts$/,
+  /^packages\/core\/tests\/integration\/landing-deploy-key-removed-e2e\.test\.ts$/,
   // ISS-12 — each spells a deleted key to prove the door refuses it by name.
   /^packages\/core\/src\/projects\/routes\.test\.ts$/,
   /^packages\/core\/src\/issues\/metadata-schema\.test\.ts$/,
