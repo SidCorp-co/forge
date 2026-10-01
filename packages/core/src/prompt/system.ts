@@ -191,18 +191,19 @@ async function loadProjectBranches(projectId: string): Promise<{
   deploysFrom: string | null;
   orgId: string | null;
 } | null> {
+  let project: { baseBranch: string | null; orgId: string | null } | undefined;
   try {
-    const [project] = await db
+    [project] = await db
       .select({ baseBranch: projects.baseBranch, orgId: projects.orgId })
       .from(projects)
       .where(eq(projects.id, projectId))
       .limit(1);
-    if (!project) return null;
-    const read = await readReleasePath(projectId);
-    return { ...project, deploysFrom: read.ok ? promotedBranch(read.path) : null };
   } catch {
     return null;
   }
+  if (!project) return null;
+  const read = await readReleasePath(projectId);
+  return { ...project, deploysFrom: read.ok ? promotedBranch(read.path) : null };
 }
 
 export async function buildChatPreamble(

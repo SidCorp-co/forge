@@ -4,8 +4,14 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  PROD_BINDING,
+  production,
+  projectDoc,
+  sourceProbe,
+} from '../project-config/release-path.fixture.js';
+import type { ProjectDocument } from '../project-config/schema.js';
 
-const listBindings = vi.fn(async () => [] as unknown[]);
 const selectLimit = vi.fn(async () => [] as unknown[]);
 // The enumerator reads the roster with a query that ENDS at `where()`, and the
 // runner pool with `db.execute`, so the mock has to answer both.
@@ -30,9 +36,23 @@ vi.mock('../knowledge/service.js', () => ({
   selectAllSlugsFromKnowledge: (id: string) => heldSlugs(id),
 }));
 
+const readDocument = vi.fn(
+  async (): Promise<{ revision: number; document: ProjectDocument } | null> => null,
+);
+vi.mock('../project-config/service.js', () => ({
+  readProjectDocument: () => readDocument(),
+}));
+
+vi.mock('../project-config/environment-state-read.js', () => ({
+  readEnvironmentState: async () => {
+    throw new Error('readiness reads no environment state in these cases');
+  },
+}));
+
+const productionPair = vi.fn(async () => null as unknown);
 vi.mock('../integrations/store.js', async (importActual) => {
   const actual = await importActual<typeof import('../integrations/store.js')>();
-  return { ...actual, listActiveDeployBindingsForStage: () => listBindings() };
+  return { ...actual, findBindingWithConnectionById: () => productionPair() };
 });
 
 const { loadReleaseReadiness } = await import('./readiness.js');
@@ -50,60 +70,50 @@ const CONTRACT_KNOWLEDGE = {
   'test-commands': 'pnpm test',
 };
 
-function project(over: {
-  baseBranch?: string;
-  releaseChain?: { branch: string; from?: string }[];
-  facts?: Record<string, unknown>;
-  repoPath?: string | null;
-  environments?: unknown;
-}) {
-  const row = {
-    // Every real project declares a repository — the pipeline cannot check one out otherwise — so
-    // the fixture does too: the build/test obligations hang off that declaration, and a fixture
-    // missing it would pass by owing nothing. The repo-less case is its own test.
-    repoPath: over.repoPath === undefined ? '/srv/app' : over.repoPath,
-    repoUrl: null,
-    baseBranch: over.baseBranch ?? 'main',
-    releaseChain: over.releaseChain ?? [],
-    agentConfig: {},
-    // ISS-1069 — the default is a project that records no live address, because that is what 32 of
-    // 32 projects held when the column was added. The filled case is passed in by the tests about it.
-    environments: over.environments,
-  };
+const SOURCE_PROBED = production({
+  verification: { runtime: [sourceProbe('https://example.test/api/health', 'commit')] },
+});
+
+function project(over: { facts?: Record<string, unknown>; releasing?: boolean }) {
+  // Every real project declares a repository — the pipeline cannot check one out otherwise — so
+  // the fixture does too: the build/test obligations hang off that declaration, and a fixture
+  // missing it would pass by owing nothing. The repo-less case is its own test.
+  selectLimit.mockResolvedValue([
+    { id: PROJECT_ID, repoPath: '/srv/app', repoUrl: null, baseBranch: 'main' },
+  ]);
   heldSlugs.mockResolvedValue(Object.keys(over.facts ?? CONTRACT_KNOWLEDGE));
-  selectLimit.mockResolvedValue([row]);
+  readDocument.mockResolvedValue({
+    revision: 1,
+    document: projectDoc({ environments: over.releasing ? { beta: SOURCE_PROBED } : {} }),
+  });
 }
 
-const PROBES = { probes: [{ url: 'https://example.test/api/health', commitPath: 'commit' }] };
-
-// ISS-1069 — a project that has answered every declaration now also records where it is deployed,
-// so the "nothing left to report" fixtures below carry it. Without it they would assert an empty
-// gap set against a project still missing one, which is the shape of a test passing for the wrong
-// reason.
-const LIVE_DECLARED = {
-  live: { url: 'https://app.example.test', commitUrl: 'https://example.test/api/health' },
-};
+function pairOf(config: Record<string, unknown>) {
+  return {
+    binding: {
+      id: PROD_BINDING,
+      projectId: PROJECT_ID,
+      active: true,
+      provider: 'coolify',
+      config,
+      instructions: null,
+      label: '',
+      role: 'deploy',
+    },
+    connection: { active: true, config: {} },
+  };
+}
 
 function liveBinding(config: Record<string, unknown> = {}) {
-  listBindings.mockResolvedValue([
-    {
-      binding: {
-        id: 'b-1',
-        provider: 'coolify',
-        config,
-        instructions: null,
-        label: '',
-        role: 'deploy',
-        stages: ['live'],
-      },
-      connection: { config: {} },
-    },
-  ]);
+  productionPair.mockResolvedValue(pairOf(config));
 }
+
+const DECLARED = { releaseRunnerLabel: 'prod-box', rollback: { mode: 'coolify-image' } };
 
 beforeEach(() => {
   vi.clearAllMocks();
-  listBindings.mockResolvedValue([]);
+  readDocument.mockResolvedValue(null);
+  productionPair.mockResolvedValue(null);
   selectLimit.mockResolvedValue([]);
   selectRows.mockResolvedValue([]);
   execRows.mockResolvedValue([]);
@@ -113,17 +123,13 @@ beforeEach(() => {
 // reason that cannot be evaluated taking the whole answer with it.
 describe('loadReleaseReadiness — every reason at once (ISS-1127)', () => {
   const RELEASING = {
-    releaseChain: [{ branch: 'main' }, { branch: 'production', from: 'merge-branch' as const }],
+    releasing: true,
     facts: { ...CONTRACT_KNOWLEDGE, 'release-procedure': 'cut a tag, then deploy' },
   };
 
   it('names the roster and fleet refusals a create would make, not only the declarations', async () => {
-    project({ ...RELEASING, environments: LIVE_DECLARED });
-    liveBinding({
-      releaseRunnerLabel: 'prod-box',
-      verify: PROBES,
-      rollback: { mode: 'coolify-image' },
-    });
+    project(RELEASING);
+    liveBinding(DECLARED);
 
     const out = await loadReleaseReadiness(PROJECT_ID);
 
@@ -132,8 +138,8 @@ describe('loadReleaseReadiness — every reason at once (ISS-1127)', () => {
   });
 
   it('answers with the reason it could not evaluate BESIDE every reason it could', async () => {
-    project({ ...RELEASING, environments: LIVE_DECLARED });
-    listBindings.mockRejectedValue(new Error('binding store unreachable'));
+    project(RELEASING);
+    productionPair.mockRejectedValue(new Error('binding store unreachable'));
 
     const out = await loadReleaseReadiness(PROJECT_ID);
 
@@ -152,23 +158,24 @@ describe('loadReleaseReadiness — every reason at once (ISS-1127)', () => {
 // `declarationRead` stops fallback fields reading as a confirmed absence.
 describe('loadReleaseReadiness — a declaration that could not be read', () => {
   it('says the declaration was not read rather than answering as though it were', async () => {
-    project({ releaseChain: [{ branch: 'main' }] });
+    project({ releasing: true });
     selectLimit.mockRejectedValue(new Error('projects table unreadable'));
 
     const out = await loadReleaseReadiness(PROJECT_ID);
 
     expect(out?.declarationRead).toBe(false);
-    // The other way the declaration read fails, and it may drop no more than the one above.
+    // The channel is the production binding the declaration names, so it is unread with it.
     expect(out?.blockers.map((b) => [b.code, b.details?.check])).toEqual([
       ['RELEASE_CHECK_UNEVALUATED', 'declaration'],
       ['RELEASE_ROSTER_EMPTY', undefined],
+      ['RELEASE_CHECK_UNEVALUATED', 'channels'],
       ['RELEASE_POOL_EMPTY', undefined],
       ['RELEASE_CHECK_UNEVALUATED', 'project'],
     ]);
   });
 
   it('says it WAS read for every project whose declaration answered', async () => {
-    project({ releaseChain: [] });
+    project({});
 
     expect((await loadReleaseReadiness(PROJECT_ID))?.declarationRead).toBe(true);
   });
@@ -177,38 +184,32 @@ describe('loadReleaseReadiness — a declaration that could not be read', () => 
 // A gap is an absence somebody can act on, never a read nobody managed to make.
 describe('loadReleaseReadiness — a gap is never inferred from a read that failed', () => {
   const RELEASING = {
-    releaseChain: [{ branch: 'main' }, { branch: 'production', from: 'merge-branch' as const }],
+    releasing: true,
     facts: { ...CONTRACT_KNOWLEDGE, 'release-procedure': 'cut a tag, then deploy' },
   };
 
   it('reports no channel gap where the channels could not be read', async () => {
-    project({ ...RELEASING, environments: LIVE_DECLARED });
-    liveBinding({
-      releaseRunnerLabel: 'prod-box',
-      verify: PROBES,
-      rollback: { mode: 'coolify-image' },
-    });
-    const declared = await listBindings();
-    listBindings.mockReset();
-    listBindings.mockResolvedValueOnce(declared);
-    listBindings.mockRejectedValue(new Error('binding store unreachable'));
+    project(RELEASING);
+    liveBinding(DECLARED);
+    productionPair.mockReset();
+    productionPair.mockResolvedValueOnce(pairOf(DECLARED));
+    productionPair.mockRejectedValue(new Error('binding store unreachable'));
 
     const out = await loadReleaseReadiness(PROJECT_ID);
 
     expect(out?.channelsRead).toBe(false);
-    expect(out?.gaps).not.toContain('release-runner-ambiguous');
     expect(out?.gaps).not.toContain('verify-probes');
     expect(out?.gaps).not.toContain('rollback');
   });
 
   it('reports no knowledge gap where the project row could not be read', async () => {
-    project({ ...RELEASING, environments: LIVE_DECLARED });
+    project(RELEASING);
     selectLimit.mockRejectedValue(new Error('projects table unreadable'));
 
     const out = await loadReleaseReadiness(PROJECT_ID);
 
     expect(out?.gaps).not.toContain('build-commands');
-    expect(out?.gaps).not.toContain('live-commit-endpoint');
+    expect(out?.gaps).not.toContain('test-commands');
   });
 });
 
@@ -216,8 +217,8 @@ describe('loadReleaseReadiness — a gap is never inferred from a read that fail
 // eleven waiting issues had, and not the status move, which none of them had.
 describe('what readiness says about an empty roster', () => {
   it('names the status move rather than the merge', async () => {
-    project({ releaseChain: [{ branch: 'main' }] });
-    liveBinding({ verify: PROBES, releaseRunnerLabel: 'box', rollback: { mode: 'coolify-image' } });
+    project({ releasing: true });
+    liveBinding({ releaseRunnerLabel: 'box', rollback: { mode: 'coolify-image' } });
 
     const answer = await loadReleaseReadiness(PROJECT_ID);
     const empty = answer?.blockers.find((b) => b.code === 'RELEASE_ROSTER_EMPTY');

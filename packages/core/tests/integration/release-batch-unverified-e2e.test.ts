@@ -113,7 +113,7 @@ async function breakVerify(): Promise<void> {
 
 describe('a project with no verify probe releases unverified', () => {
   beforeEach(async () => {
-    await fx.declareProduction({ verify: null });
+    await fx.declareProduction({}, 'none');
   });
 
   it('opens the batch, claims the roster, and says the release is unverified', async () => {
@@ -254,7 +254,7 @@ describe('the unverified note, once per issue per release run', () => {
 
 describe('a recorded release whose not-verified note cannot be written', () => {
   it('closes none of the issues it could not note', async () => {
-    await fx.declareProduction({ verify: null });
+    await fx.declareProduction({}, 'none');
     const a = await fx.insertIssue();
     await harness.db.execute(sql`
       CREATE OR REPLACE FUNCTION refuse_unverified_note() RETURNS trigger AS $$
@@ -282,7 +282,7 @@ describe('a recorded release whose not-verified note cannot be written', () => {
 
 describe('a verify Forge cannot parse is still refused, by name', () => {
   beforeEach(async () => {
-    await fx.declareProduction({ verify: { probes: [] } });
+    await fx.declareProduction({}, 'artifact-only');
     // A project default that must NOT stand in for the refused declaration.
     await harness.db.execute(sql`
       UPDATE projects SET environments = ${JSON.stringify({
@@ -343,7 +343,7 @@ describe('a batch whose probes changed after it opened', () => {
   }, 40_000);
 
   it('reads, in the run state, the probes a later binding declared, as the close does', async () => {
-    await fx.declareProduction({ verify: null });
+    await fx.declareProduction({}, 'none');
     const a = await fx.insertIssue();
     const { runId } = await fx.claim([a]);
     // A second live binding, created after the first, declaring the probes the first does not.

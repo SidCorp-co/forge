@@ -151,6 +151,14 @@ export async function tryDispatchCoolifyRelease(args: {
   const map = await readDeployMap(projectId);
   const reachesLive = reachesProductionOf(map, allPairs);
   const envOf = (binding: { id: string }) => map.environments.get(binding.id)?.name ?? null;
+  const production = map.productionBinding
+    ? (map.environments.get(map.productionBinding)?.name ?? null)
+    : null;
+  const reachedBy = (binding: { id: string; config: unknown }): string[] => {
+    const own = envOf(binding);
+    const reached = production !== null && reachesLive(binding) ? [production] : [];
+    return [...new Set([...(own ? [own] : []), ...reached])];
+  };
   let pairs = allPairs.filter((p) => {
     const env = map.environments.get(p.binding.id);
     return env !== undefined && env.trigger !== 'provider';
@@ -167,7 +175,7 @@ export async function tryDispatchCoolifyRelease(args: {
     };
   }
 
-  const lock = takeEnvironmentLock ? deployLockIntent(projectId, pairs, envOf) : null;
+  const lock = takeEnvironmentLock ? deployLockIntent(projectId, pairs, reachedBy) : null;
   // Each placeholder records the rows its own binding needs (ISS-1279).
   const takenLocks: DeployLockHeld[] = lock
     ? await acquireDeployLocks({ projectId, runId, subject: lock.subject }, lock.environments)
@@ -195,7 +203,7 @@ export async function tryDispatchCoolifyRelease(args: {
             issueId,
             bindingId: binding.id,
             // THIS binding's, never the fan-out's: a sibling's would refuse its own press.
-            ...(lock ? { lock: deployLockIntent(projectId, [{ binding }], envOf) } : {}),
+            ...(lock ? { lock: deployLockIntent(projectId, [{ binding }], reachedBy) } : {}),
           });
           pendingHumanConfirm = true;
           continue;
@@ -211,7 +219,7 @@ export async function tryDispatchCoolifyRelease(args: {
         targetLabel: targetLabelOf(envOf(binding), binding),
         // One this fan-out WROTE, never one it attempted (ISS-1279).
         authorisedBySibling: witnessed > 0,
-        locks: locksOf(takenLocks, deployLockIntent(projectId, [{ binding }], envOf)),
+        locks: locksOf(takenLocks, deployLockIntent(projectId, [{ binding }], reachedBy)),
       });
       if (held) witnessed += 1;
       else reportUnwitnessedDeploy(runId, issueId, binding.id);
@@ -252,7 +260,7 @@ export async function tryDispatchCoolifyRelease(args: {
       runId,
       takenLocks,
       armed.flatMap(
-        ({ binding }) => deployLockIntent(projectId, [{ binding }], envOf).environments,
+        ({ binding }) => deployLockIntent(projectId, [{ binding }], reachedBy).environments,
       ),
     );
   }

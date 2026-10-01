@@ -1,7 +1,7 @@
 /**
  * The schema an owner-scoped connection config PATCH is held to. ISS-1275 — it read the CREATE
- * schema, against the patch BODY, and coolify splits its required `targets` to the binding tier,
- * so every config patch to a coolify connection was refused for a key that tier cannot hold.
+ * schema, against the patch BODY. ISS-8 — a coolify connection holds no `targets` at all, on
+ * either door: the binding's `target` is where a deploy goes.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -26,12 +26,24 @@ describe('the connection config PATCH schema', () => {
     ).toBe(true);
   });
 
-  // The defect itself, kept as a case rather than as prose: the create schema
-  // refuses the same body, and it is what the route read until this change.
-  it('is not the create schema, which refuses that same body', () => {
+  // ISS-8 — a connection carries no deploy target: the binding's `target` is the one home.
+  it.each([
+    ['create', createSchema],
+    ['patch', patchSchema],
+  ])('refuses `targets` on a coolify connection %s body by name', (_door, schema) => {
+    const answer = schema('coolify').safeParse({
+      baseUrl: 'https://coolify.example.com',
+      targets: [{ resourceUuid: 'app-1' }],
+    });
+
+    expect(answer.success).toBe(false);
+    expect(JSON.stringify(answer.error?.issues)).toContain('carries no deploy target');
+  });
+
+  it('takes the create body carrying the base url alone, as the patch does', () => {
     expect(
       createSchema('coolify').safeParse({ baseUrl: 'https://coolify.example.com' }).success,
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it('takes a coolify body whose only key is a null release runner label', () => {

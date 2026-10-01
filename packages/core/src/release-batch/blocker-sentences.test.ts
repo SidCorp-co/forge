@@ -124,7 +124,7 @@ describe('the release runner label', () => {
     const message = runnerPreferenceUnmetSentence('release');
 
     expect(message).toContain(
-      'clear `releaseRunnerLabel` from the live deploy binding under Settings \u2192 Integrations',
+      'clear `releaseRunnerLabel` from the production deploy binding under Settings \u2192 Integrations',
     );
     expect(message).toContain(
       'from the connection behind it under Integrations in the workspace rail',
@@ -301,17 +301,17 @@ describe('NO_RELEASE_GATE — what it means for the issues named', () => {
     expect(sentence).not.toMatch(/already closed|leave it empty/i);
   });
 
-  it('names the screens where releasing through Forge is set up, both halves of it', () => {
-    expect(sentence).toMatch(/release chain under Settings → Repository/);
-    expect(sentence).toMatch(/live deploy binding under Settings → Integrations/);
+  it('names where releasing through Forge is set up, both halves of it', () => {
+    expect(sentence).toMatch(/declare a production environment with a deploy binding/);
+    expect(sentence).toMatch(/project document, written with PUT \/api\/projects\/:id\/config/);
   });
 });
 
 // ISS-1346 judge finding 4 — mowment, bound through epodsystem, was told to deploy through Coolify.
 describe('what RELEASE_RUNTIME_UNROUTED tells a project nothing can read', () => {
   const route =
-    'declare `verify.probes` on the live deploy binding, naming an address of this project that ' +
-    'answers with the commit it is serving';
+    'declare a runtime probe identifying the source on the production environment, naming an ' +
+    'address of this project that answers with the commit it is serving';
   const held = [
     { issueId: 'u-51', displayId: 'ISS-51', criteria: [1, 2] },
     { issueId: 'u-52', displayId: 'ISS-52', criteria: [3] },

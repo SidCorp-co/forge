@@ -7,6 +7,8 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { deployedBy, production, projectDoc } from '../project-config/release-path.fixture.js';
+import type { ProjectDocument } from '../project-config/schema.js';
 
 vi.mock('../config/env.js', () => ({
   env: {
@@ -54,12 +56,12 @@ const acquireLocksMock = vi.fn(async (_request: unknown, environments: readonly 
   LOCKS.filter((l) => environments.includes(l.environment)),
 );
 const LOCKS = [
-  { environment: 'preview', acquiredAt: '2026-09-27T00:00:00.000Z' },
-  { environment: 'live', acquiredAt: '2026-09-27T00:00:00.000Z' },
+  { environment: 'staging', acquiredAt: '2026-09-27T00:00:00.000Z' },
+  { environment: 'beta', acquiredAt: '2026-09-27T00:00:00.000Z' },
 ];
 /** What a give-back with NOTHING queued may free: only the environments this dispatch took. */
-const PREVIEW_ONLY = LOCKS.slice(0, 1);
-const LIVE_ONLY = LOCKS.slice(1);
+const STAGING_ONLY = LOCKS.slice(0, 1);
+const BETA_ONLY = LOCKS.slice(1);
 const releaseLocksMock = vi.fn(async (..._a: unknown[]) => 0);
 vi.mock('./deploy-lock.js', async () => {
   const real = await vi.importActual<typeof import('./deploy-lock.js')>('./deploy-lock.js');
@@ -84,6 +86,13 @@ vi.mock('../integrations/deliveries.js', () => ({
 const listBindingsSpy = vi.fn();
 vi.mock('../integrations/store.js', () => ({
   listActiveDeployBindingsForProvider: (...a: unknown[]) => listBindingsSpy(...(a as [])),
+}));
+
+const readDocument = vi.fn(
+  async (): Promise<{ revision: number; document: ProjectDocument } | null> => null,
+);
+vi.mock('../project-config/service.js', () => ({
+  readProjectDocument: () => readDocument(),
 }));
 
 vi.mock('./runs.js', () => ({
@@ -121,23 +130,37 @@ const PROD_INT = 'b2222222-2222-4222-8222-222222222222';
 const SECOND_INT = 'c3333333-3333-4333-8333-333333333333';
 const SHARED_APP = 'y8w4c4kss8ogo8gc44ow44kc';
 
-const pairOf = (id: string, stages: string[], config: unknown = {}) => ({
+const pairOf = (id: string, config: unknown = {}) => ({
   binding: {
     id,
     projectId: PROJECT_ID,
     provider: 'coolify',
     role: 'deploy',
-    stages,
     config,
     active: true,
   },
   connection: { id, provider: 'coolify', config: {}, active: true },
 });
 
-const stagingPair = pairOf(STAGING_INT, ['preview']);
-const prodPair = pairOf(PROD_INT, ['live']);
-const sharedBox = (id: string, stages: string[]) =>
-  pairOf(id, stages, { targets: [{ label: 'App', resourceUuid: SHARED_APP }] });
+const stagingPair = pairOf(STAGING_INT);
+const prodPair = pairOf(PROD_INT);
+const secondPair = pairOf(SECOND_INT);
+const sharedBox = (id: string) =>
+  pairOf(id, { targets: [{ label: 'App', resourceUuid: SHARED_APP }] });
+
+/** `staging` and `qa` deploy on land through their own bindings; production `beta` on request. */
+function declare(productionTrigger: 'on-land' | 'on-request' = 'on-request') {
+  readDocument.mockResolvedValue({
+    revision: 1,
+    document: projectDoc({
+      environments: {
+        staging: { tier: 'staging', deployment: deployedBy(STAGING_INT, 'on-land') },
+        qa: { tier: 'staging', deployment: deployedBy(SECOND_INT, 'on-land') },
+        beta: production({ deployment: deployedBy(PROD_INT, productionTrigger) }),
+      },
+    }),
+  });
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -159,6 +182,7 @@ beforeEach(() => {
   abandonHoldSpy.mockReset();
   abandonHoldSpy.mockResolvedValue(undefined);
   heldNow = {};
+  declare();
 });
 
 describe('tryDispatchCoolifyRelease — the environment hold', () => {
@@ -167,7 +191,7 @@ describe('tryDispatchCoolifyRelease — the environment hold', () => {
     (acquireLocksMock.mock.calls[0]?.[0] as { subject: string } | undefined)?.subject;
 
   it('asks for nothing at all when the caller did not ask for the hold', async () => {
-    listBindingsSpy.mockResolvedValueOnce([stagingPair]);
+    listBindingsSpy.mockResolvedValue([stagingPair]);
 
     await tryDispatchCoolifyRelease({ projectId: PROJECT_ID, issueId: ISSUE_ID, runId: RUN_ID });
 
@@ -175,8 +199,8 @@ describe('tryDispatchCoolifyRelease — the environment hold', () => {
     expect(releaseLocksMock).not.toHaveBeenCalled();
   });
 
-  it('holds the stages of the bindings it is about to dispatch', async () => {
-    listBindingsSpy.mockResolvedValueOnce([stagingPair]);
+  it('holds the environments of the bindings it is about to dispatch', async () => {
+    listBindingsSpy.mockResolvedValue([stagingPair]);
     heldNow = { 'target:del-a': { status: 'pending' } };
 
     await tryDispatchCoolifyRelease({
@@ -186,7 +210,7 @@ describe('tryDispatchCoolifyRelease — the environment hold', () => {
       takeEnvironmentLock: true,
     });
 
-    expect(envsAsked()).toEqual(['preview']);
+    expect(envsAsked()).toEqual(['staging']);
     expect(acquireLocksMock.mock.calls[0]?.[0]).toMatchObject({
       projectId: PROJECT_ID,
       runId: RUN_ID,
@@ -195,13 +219,10 @@ describe('tryDispatchCoolifyRelease — the environment hold', () => {
     expect(releaseLocksMock).not.toHaveBeenCalled();
   });
 
-  it('holds `live` for a preview binding that deploys to a live binding’s application', async () => {
-    listBindingsSpy.mockResolvedValueOnce([
-      sharedBox(STAGING_INT, ['preview']),
-      sharedBox(PROD_INT, ['live']),
-    ]);
+  it('holds production for a staging binding that deploys to the production binding’s application', async () => {
+    declare('on-land');
+    listBindingsSpy.mockResolvedValue([sharedBox(STAGING_INT), sharedBox(PROD_INT)]);
     selectQueue.push([{ status: 'running' }]);
-    selectQueue.push([{ agentConfig: { pipelineConfig: { autoProdDeploy: true } } }]);
 
     await tryDispatchCoolifyRelease({
       projectId: PROJECT_ID,
@@ -211,11 +232,11 @@ describe('tryDispatchCoolifyRelease — the environment hold', () => {
       takeEnvironmentLock: true,
     });
 
-    expect(envsAsked()).toEqual(['live', 'preview']);
+    expect(envsAsked()).toEqual(['beta', 'staging']);
   });
 
   it('asks for no hold where there is no binding to dispatch', async () => {
-    listBindingsSpy.mockResolvedValueOnce([]);
+    listBindingsSpy.mockResolvedValue([]);
 
     const outcome = await tryDispatchCoolifyRelease({
       projectId: PROJECT_ID,
@@ -230,9 +251,8 @@ describe('tryDispatchCoolifyRelease — the environment hold', () => {
   });
 
   it('gives the hold back when every binding parks for a human', async () => {
-    listBindingsSpy.mockResolvedValueOnce([prodPair]);
+    listBindingsSpy.mockResolvedValue([prodPair]);
     selectQueue.push([{ status: 'running' }]);
-    selectQueue.push([]); // productionDeploysOnLand: the gate stays on
     selectQueue.push([]); // getProdGateStateForRun: unconfirmed
     selectQueue.push([{ metadata: {} }]); // markPendingHumanConfirm
 
@@ -246,19 +266,18 @@ describe('tryDispatchCoolifyRelease — the environment hold', () => {
     expect(outcome.pendingHumanConfirm).toBe(true);
     expect(enqueueSpy).not.toHaveBeenCalled();
     expect(acquireLocksMock).toHaveBeenCalledTimes(1);
-    expect(releaseLocksMock.mock.calls).toEqual([[RUN_ID, LIVE_ONLY]]);
+    expect(releaseLocksMock.mock.calls).toEqual([[RUN_ID, BETA_ONLY]]);
   });
 
   // A hold taken for a binding that then parks is an environment nobody is deploying to — and
   // the confirmation that resumes it asks for that same environment, so leaving it held refuses
   // the press in the name of the very run waiting to make it (ISS-1279).
   it('gives back the environment of a binding that parked, and keeps the one it dispatched', async () => {
-    listBindingsSpy.mockResolvedValueOnce([stagingPair, prodPair]);
+    listBindingsSpy.mockResolvedValue([stagingPair, prodPair]);
     selectQueue.push([{ status: 'running' }]);
-    selectQueue.push([]); // productionDeploysOnLand: the gate stays on
     selectQueue.push([]); // getProdGateStateForRun: unconfirmed
     selectQueue.push([{ metadata: {} }]); // markPendingHumanConfirm
-    heldNow = { 'target:del-a': { status: 'pending', locks: PREVIEW_ONLY } };
+    heldNow = { 'target:del-a': { status: 'pending', locks: STAGING_ONLY } };
 
     const outcome = await tryDispatchCoolifyRelease({
       projectId: PROJECT_ID,
@@ -268,17 +287,16 @@ describe('tryDispatchCoolifyRelease — the environment hold', () => {
     });
 
     expect(outcome.pendingHumanConfirm).toBe(true);
-    expect(envsAsked()).toEqual(['live', 'preview']);
-    expect(releaseLocksMock.mock.calls).toEqual([[RUN_ID, LIVE_ONLY]]);
+    expect(envsAsked()).toEqual(['beta', 'staging']);
+    expect(releaseLocksMock.mock.calls).toEqual([[RUN_ID, BETA_ONLY]]);
   });
 
   // The confirmation that resumes a parked binding deploys THAT binding. Recording the whole
   // fan-out's environments has it ask for a sibling's too, and the press is then refused in the
   // name of the run waiting to make it, for as long as the sibling is still building (ISS-1279).
   it('parks a binding against its own environments, not the whole fan-out\u2019s', async () => {
-    listBindingsSpy.mockResolvedValueOnce([stagingPair, prodPair]);
+    listBindingsSpy.mockResolvedValue([stagingPair, prodPair]);
     selectQueue.push([{ status: 'running' }]);
-    selectQueue.push([]); // productionDeploysOnLand: the gate stays on
     selectQueue.push([]); // getProdGateStateForRun: unconfirmed
     selectQueue.push([{ metadata: {} }]); // markPendingHumanConfirm
 
@@ -294,13 +312,12 @@ describe('tryDispatchCoolifyRelease — the environment hold', () => {
       .find((m) => m && '__forge_prod_deploy_gate' in m) as
       | Record<string, Record<string, { lock?: { environments: string[] } }>>
       | undefined;
-    expect(gates?.__forge_prod_deploy_gate?.[PROD_INT]?.lock?.environments).toEqual(['live']);
+    expect(gates?.__forge_prod_deploy_gate?.[PROD_INT]?.lock?.environments).toEqual(['beta']);
   });
 
   it('writes the gate state a parked binding is resumed from', async () => {
-    listBindingsSpy.mockResolvedValueOnce([prodPair]);
+    listBindingsSpy.mockResolvedValue([prodPair]);
     selectQueue.push([{ status: 'running' }]);
-    selectQueue.push([]);
     selectQueue.push([]);
     selectQueue.push([{ metadata: {} }]);
 
@@ -319,7 +336,7 @@ describe('tryDispatchCoolifyRelease — the environment hold', () => {
 // and kept for as long as something is — a throw partway through the fan-out is neither by itself.
 describe('tryDispatchCoolifyRelease — giving the hold back', () => {
   it('gives the hold back when the dispatch throws before anything is enqueued', async () => {
-    listBindingsSpy.mockResolvedValueOnce([stagingPair]);
+    listBindingsSpy.mockResolvedValue([stagingPair]);
     enqueueSpy.mockImplementation(() => {
       throw new Error('queue is down');
     });
@@ -333,14 +350,14 @@ describe('tryDispatchCoolifyRelease — giving the hold back', () => {
       }),
     ).rejects.toThrow('queue is down');
 
-    expect(releaseLocksMock.mock.calls).toEqual([[RUN_ID, PREVIEW_ONLY]]);
+    expect(releaseLocksMock.mock.calls).toEqual([[RUN_ID, STAGING_ONLY]]);
   });
 
   // A target that settles between two enqueues reads every hold registered so far as the whole
   // set, closes the run and frees the environment — and the binding not yet reached is then
   // dispatched behind both. Every hold is opened before the first enqueue so that window is shut.
   it('gives the hold back when the binding that was enqueued has already settled', async () => {
-    listBindingsSpy.mockResolvedValueOnce([stagingPair, pairOf(SECOND_INT, ['preview'])]);
+    listBindingsSpy.mockResolvedValue([stagingPair, secondPair]);
     enqueueSpy
       .mockImplementationOnce(() => undefined)
       .mockImplementationOnce(() => {
@@ -364,7 +381,7 @@ describe('tryDispatchCoolifyRelease — giving the hold back', () => {
   // builds what was queued anyway. Reading that emptiness as an idle environment frees the hold
   // under a live deploy — the one direction this row may never get wrong. The expiry ends it.
   it('frees nothing when the run refused every placeholder and the deploys went out anyway', async () => {
-    listBindingsSpy.mockResolvedValueOnce([stagingPair]);
+    listBindingsSpy.mockResolvedValue([stagingPair]);
     openHoldSpy.mockResolvedValue(false);
     heldNow = {};
 
@@ -386,7 +403,7 @@ describe('tryDispatchCoolifyRelease — giving the hold back', () => {
       return true;
     });
     enqueueSpy.mockImplementation(() => order.push('enqueue'));
-    listBindingsSpy.mockResolvedValueOnce([stagingPair, pairOf(SECOND_INT, ['preview'])]);
+    listBindingsSpy.mockResolvedValue([stagingPair, secondPair]);
 
     await tryDispatchCoolifyRelease({
       projectId: PROJECT_ID,
@@ -402,7 +419,7 @@ describe('tryDispatchCoolifyRelease — giving the hold back', () => {
   // placeholder, leaving the first binding's settlement reading a record with nothing pending in
   // it — and freeing the environment while the second binding is still building (ISS-1279).
   it('lets a binding of a live fan-out be recorded on the authority of its sibling', async () => {
-    listBindingsSpy.mockResolvedValueOnce([stagingPair, pairOf(SECOND_INT, ['preview'])]);
+    listBindingsSpy.mockResolvedValue([stagingPair, secondPair]);
 
     await tryDispatchCoolifyRelease({
       projectId: PROJECT_ID,
@@ -421,7 +438,7 @@ describe('tryDispatchCoolifyRelease — giving the hold back', () => {
   // the first, and claiming its authority for the second would record the very work ISS-922 says
   // a terminal run takes on none of — and then free the environment from half a record.
   it('claims no sibling authority from a placeholder the run refused', async () => {
-    listBindingsSpy.mockResolvedValueOnce([stagingPair, pairOf(SECOND_INT, ['preview'])]);
+    listBindingsSpy.mockResolvedValue([stagingPair, secondPair]);
     openHoldSpy.mockResolvedValue(false);
 
     await tryDispatchCoolifyRelease({
@@ -438,7 +455,7 @@ describe('tryDispatchCoolifyRelease — giving the hold back', () => {
   });
 
   it('gives the hold back when a dispatch hold cannot be opened at all', async () => {
-    listBindingsSpy.mockResolvedValueOnce([stagingPair]);
+    listBindingsSpy.mockResolvedValue([stagingPair]);
     openHoldSpy.mockImplementation(() => {
       throw new Error('metadata write failed');
     });
@@ -453,11 +470,11 @@ describe('tryDispatchCoolifyRelease — giving the hold back', () => {
     ).rejects.toThrow('metadata write failed');
 
     expect(enqueueSpy).not.toHaveBeenCalled();
-    expect(releaseLocksMock.mock.calls).toEqual([[RUN_ID, PREVIEW_ONLY]]);
+    expect(releaseLocksMock.mock.calls).toEqual([[RUN_ID, STAGING_ONLY]]);
   });
 
   it('keeps the hold when the dispatch throws after one binding is already on its way', async () => {
-    listBindingsSpy.mockResolvedValueOnce([stagingPair, pairOf(SECOND_INT, ['preview'])]);
+    listBindingsSpy.mockResolvedValue([stagingPair, secondPair]);
     heldNow = { 'target:del-a': { status: 'pending' } };
     enqueueSpy
       .mockImplementationOnce(() => undefined)
@@ -481,7 +498,7 @@ describe('tryDispatchCoolifyRelease — giving the hold back', () => {
   // A placeholder whose deploy was never queued is a hold nothing can settle: the run cannot
   // close, and the environment stays held to that hold's deadline with nothing deploying.
   it('forgets the placeholder of a binding it never managed to enqueue', async () => {
-    listBindingsSpy.mockResolvedValueOnce([stagingPair, pairOf(SECOND_INT, ['preview'])]);
+    listBindingsSpy.mockResolvedValue([stagingPair, secondPair]);
     enqueueSpy
       .mockImplementationOnce(() => undefined)
       .mockImplementationOnce(() => {
@@ -500,7 +517,3 @@ describe('tryDispatchCoolifyRelease — giving the hold back', () => {
     expect(abandonHoldSpy.mock.calls[0]?.[1]).toBe(kept[1]);
   });
 });
-
-// A release that parked for a human and is confirmed later is the same release
-// reaching the same box. A park the landing auto-subscriber opened carries no
-// hold and resumes exactly as it always has.

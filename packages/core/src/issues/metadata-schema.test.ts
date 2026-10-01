@@ -37,8 +37,12 @@ describe('branchConfigOverrideSchema', () => {
 
   it('accepts null fields (used to clear a single override)', () => {
     expect(
-      branchConfigOverrideSchema.safeParse({ baseBranch: null, liveBranch: null }).success,
+      branchConfigOverrideSchema.safeParse({ baseBranch: null, targetBranch: null }).success,
     ).toBe(true);
+  });
+
+  it('refuses a liveBranch override: the branch production deploys from is the project document', () => {
+    expect(branchConfigOverrideSchema.safeParse({ liveBranch: 'hotfix' }).success).toBe(false);
   });
 
   it('rejects unknown keys (strict)', () => {

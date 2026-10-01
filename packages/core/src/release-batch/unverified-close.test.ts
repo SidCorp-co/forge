@@ -20,10 +20,10 @@ describe('the note on an issue an unverified release closes', () => {
     expect(note).toContain(unverifiedMarker(RUN));
   });
 
-  it('gives an act open to a project with no probe: look at the live deployment, and reopen', () => {
+  it('gives an act open to a project with no probe: look at the production deployment, and reopen', () => {
     for (const commit of ['abc1234', null]) {
       const note = unverifiedCloseNote(RUN, commit);
-      expect(note).toMatch(/live deployment/i);
+      expect(note).toMatch(/production deployment/i);
       expect(note).toMatch(/reopen this issue/i);
     }
   });
@@ -32,6 +32,7 @@ describe('the note on an issue an unverified release closes', () => {
     const note = unverifiedCloseNote(RUN, null);
     expect(note).not.toMatch(/^Declare /m);
     expect(note).not.toMatch(/\. Declare /);
-    expect(note).toMatch(/if (your|the) live deployment can report/i);
+    expect(note).toMatch(/if it can report the commit it serves/i);
+    expect(note).toContain('`verification.runtime`');
   });
 });

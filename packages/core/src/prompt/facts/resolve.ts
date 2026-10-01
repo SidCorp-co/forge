@@ -241,19 +241,19 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
     repoPath = row?.repoPath ?? null;
     repoUrl = row?.repoUrl ?? null;
 
-    const held = await readProjectDocument(projectId);
-    document = held?.document ?? null;
-    if (held) {
-      const read = releasePathOf(held.revision, held.document);
-      deploysFrom = read.ok ? promotedBranch(read.path) : null;
-      production = read.ok ? (read.path.production?.name ?? null) : null;
-      const named = await listTestingProfiles(projectId);
-      profiles = new Map(named.map((p) => [p.profileId, p.document]));
-    }
     integrations = await loadActiveIntegrationRows(projectId, row?.orgId ?? null);
     modules = await loadProjectModules(projectId);
   } catch {
     // defaults → empty {{project:}} resolver
+  }
+  const held = await readProjectDocument(projectId);
+  document = held?.document ?? null;
+  if (held) {
+    const read = releasePathOf(held.revision, held.document);
+    deploysFrom = read.ok ? promotedBranch(read.path) : null;
+    production = read.ok ? (read.path.production?.name ?? null) : null;
+    const named = await listTestingProfiles(projectId);
+    profiles = new Map(named.map((p) => [p.profileId, p.document]));
   }
 
   try {

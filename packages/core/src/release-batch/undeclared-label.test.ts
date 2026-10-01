@@ -9,6 +9,13 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  PROD_BINDING,
+  production,
+  projectDoc,
+  sourceProbe,
+} from '../project-config/release-path.fixture.js';
+import type { ProjectDocument } from '../project-config/schema.js';
 
 const selectRows = vi.fn(async () => [] as unknown[]);
 const selectLimit = vi.fn(async () => [] as unknown[]);
@@ -25,10 +32,17 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
-const listBindings = vi.fn(async () => [] as unknown[]);
+const readDocument = vi.fn(
+  async (): Promise<{ revision: number; document: ProjectDocument } | null> => null,
+);
+vi.mock('../project-config/service.js', () => ({
+  readProjectDocument: () => readDocument(),
+}));
+
+const productionPair = vi.fn(async () => null as unknown);
 vi.mock('../integrations/store.js', async (importActual) => {
   const actual = await importActual<typeof import('../integrations/store.js')>();
-  return { ...actual, listActiveDeployBindingsForStage: () => listBindings() };
+  return { ...actual, findBindingWithConnectionById: () => productionPair() };
 });
 
 const onlineIds = vi.fn(async () => [] as string[]);
@@ -54,35 +68,35 @@ registerAllIntegrations();
 
 const PROJECT_ID = '66666666-6666-4666-8666-666666666666';
 const ISSUE_A = '77777777-7777-4777-8777-777777777777';
-const PROBES = { probes: [{ url: 'https://example.test/api/health', commitPath: 'commit' }] };
 
 /** Everything a release needs, and no `releaseRunnerLabel` on either side. */
 function unlabelled() {
   selectLimit.mockResolvedValue([
-    {
-      repoPath: '/srv/app',
-      repoUrl: null,
-      baseBranch: 'main',
-      releaseChain: [{ branch: 'main' }],
+    { id: PROJECT_ID, repoPath: '/srv/app', repoUrl: null, baseBranch: 'main' },
+  ]);
+  readDocument.mockResolvedValue({
+    revision: 1,
+    document: projectDoc({
       environments: {
-        live: { url: 'https://app.example.test', commitUrl: 'https://example.test/api/health' },
+        beta: production({
+          verification: { runtime: [sourceProbe('https://example.test/api/health', 'commit')] },
+        }),
       },
+    }),
+  });
+  productionPair.mockResolvedValue({
+    binding: {
+      id: PROD_BINDING,
+      projectId: PROJECT_ID,
+      active: true,
+      provider: 'coolify',
+      config: { rollback: { mode: 'coolify-image' } },
+      instructions: null,
+      label: '',
+      role: 'deploy',
     },
-  ]);
-  listBindings.mockResolvedValue([
-    {
-      binding: {
-        id: 'b-1',
-        provider: 'coolify',
-        config: { verify: PROBES, rollback: { mode: 'coolify-image' } },
-        instructions: null,
-        label: '',
-        role: 'deploy',
-        stages: ['live'],
-      },
-      connection: { config: {} },
-    },
-  ]);
+    connection: { active: true, config: {} },
+  });
   selectRows.mockResolvedValue([
     {
       id: ISSUE_A,

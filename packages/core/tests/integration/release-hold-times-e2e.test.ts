@@ -129,7 +129,7 @@ describe('any other time moving in a hold is a new reason, said once per hold (c
   }
 
   it('rewrites and comments a moved finish time, and returning to it posts nothing new', async () => {
-    await fx.declareProduction({ verify: null, baseUrl: coolify.url(), targets: [APP] });
+    await fx.declareProduction({ baseUrl: coolify.url(), targets: [APP] }, 'none');
     const bindings = (await harness.db.execute(sql`
       SELECT id FROM integration_bindings WHERE project_id = ${projectId}
     `)) as unknown as Array<{ id: string }>;

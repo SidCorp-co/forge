@@ -8,7 +8,7 @@ import {
   releaseDeployLocksForRun,
 } from './deploy-lock.js';
 
-/** The project-document environment each binding deploys, which is what one deploy holds. */
+/** The project-document environments each binding's deploy reaches, which is what it holds. */
 export interface DeployLockIntent {
   projectId: string;
   environments: string[];
@@ -17,19 +17,19 @@ export interface DeployLockIntent {
 
 type LockableBinding = { id: string; role: string };
 
-export function deployLockIntent(
+export function deployLockIntent<B extends LockableBinding>(
   projectId: string,
-  pairs: ReadonlyArray<{ binding: LockableBinding }>,
-  environmentOf: (binding: { id: string }) => string | null,
+  pairs: ReadonlyArray<{ binding: B }>,
+  environmentsOf: (binding: B) => readonly string[],
 ): DeployLockIntent {
   const environments = new Set<string>();
   for (const { binding } of pairs) {
-    const env = environmentOf(binding);
-    if (env !== null) environments.add(env);
+    for (const env of environmentsOf(binding)) environments.add(env);
   }
   const subject = pairs
     .map(
-      ({ binding }) => `${targetLabelOf(environmentOf(binding), binding)} (binding ${binding.id})`,
+      ({ binding }) =>
+        `${targetLabelOf(environmentsOf(binding)[0] ?? null, binding)} (binding ${binding.id})`,
     )
     .join(', ');
   return { projectId, environments: [...environments].sort(), subject };

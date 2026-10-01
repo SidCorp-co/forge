@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { sql } from 'drizzle-orm';
 import type { OrgMemberRole, ProjectMemberRole } from '../../src/db/schema.js';
 import { DEFAULT_POLICY } from '../../src/project-config/default-policy.js';
-import { projectDocumentSchema } from '../../src/project-config/schema.js';
+import { type ProjectDocument, projectDocumentSchema } from '../../src/project-config/schema.js';
 import { AGENT_NAMING_MIN_RUNNER } from '../../src/runners/device-cap.js';
 import type { TestDb } from './db.js';
 
@@ -149,8 +149,6 @@ export interface CreateTestProjectOverrides {
    * standing at a schema that has no `project_policies` table yet.
    */
   policy?: Record<string, unknown> | null;
-  /** Seed `projects.environments` — both sides of the deployment, as one document. */
-  environments?: Record<string, unknown>;
 }
 
 export async function createTestProject(
@@ -168,20 +166,10 @@ export async function createTestProject(
     createdBy,
   };
 
-  // `environments` is named only where a caller seeds it: the migration suites stand at a
-  // schema that has no such column yet, and naming it unconditionally fails their INSERT.
-  const environments =
-    overrides.environments === undefined
-      ? { columns: sql``, values: sql`` }
-      : {
-          columns: sql`, environments`,
-          values: sql`, ${JSON.stringify(overrides.environments)}::jsonb`,
-        };
-
   await db.execute(sql`
-    INSERT INTO projects (id, slug, name, org_id, created_by, agent_config${environments.columns})
+    INSERT INTO projects (id, slug, name, org_id, created_by, agent_config)
     VALUES (${project.id}, ${project.slug}, ${project.name}, ${project.orgId}, ${project.createdBy},
-            ${JSON.stringify(overrides.agentConfig ?? {})}::jsonb${environments.values})
+            ${JSON.stringify(overrides.agentConfig ?? {})}::jsonb)
   `);
   const policy = overrides.policy === undefined ? DEFAULT_POLICY : overrides.policy;
   if (policy !== null) {
@@ -280,10 +268,56 @@ export async function bindTestRunner(
   `);
 }
 
+type ProjectEnvironments = ProjectDocument['environments'];
+
 /**
- * A project document at revision 1 whose one environment is production and deploys by `trigger`,
- * which is what `pipeline/auto-prod-deploy.ts:productionDeploysOnLand` reads: `on-land` makes the
- * release sweep the only thing that cuts a release there.
+ * A project document for `projectId`, parsed by the real schema so a fixture it refuses fails
+ * here: work lands on `defaultBranch`, and `environments` and `promotions` are as given.
+ */
+export async function seedProjectDocument(
+  db: TestDb,
+  projectId: string,
+  updatedBy: string,
+  opts: {
+    environments: ProjectEnvironments;
+    promotions?: ProjectDocument['promotions'];
+    defaultBranch?: string;
+  },
+): Promise<ProjectDocument> {
+  const example = JSON.parse(
+    readFileSync(
+      new URL('../../src/project-config/fixtures/examples/forge-dev.project.json', import.meta.url),
+      'utf8',
+    ),
+  );
+  const defaultBranch = opts.defaultBranch ?? 'main';
+  const promotions = opts.promotions ?? [];
+  const branches = [...new Set([defaultBranch, ...promotions.flatMap((p) => [p.from, p.to])])];
+  const document = projectDocumentSchema.parse({
+    ...example,
+    project: { id: projectId, slug: `test-${projectId.slice(0, 8)}`, name: 'Test Project' },
+    source: {
+      type: 'git',
+      git: { repository: 'github.com/acme/test-project', defaultBranch, branches },
+    },
+    environments: opts.environments,
+    promotions,
+  });
+  await db.execute(sql`
+    INSERT INTO project_config_documents (project_id, revision, document, updated_by)
+    VALUES (${projectId}, 1, ${JSON.stringify(document)}::jsonb, ${updatedBy})
+    ON CONFLICT (project_id) DO UPDATE SET document = EXCLUDED.document,
+                                           revision = project_config_documents.revision + 1
+  `);
+  return document;
+}
+
+/**
+ * The production environment deploys by `trigger`, which is what
+ * `pipeline/production-trigger.ts:productionDeploysOnLand` reads: `on-land` makes the release sweep
+ * the only thing that cuts a release there. Where the project already holds a document its
+ * production environment is re-triggered in place; otherwise production deploys through a binding
+ * nothing holds.
  */
 export async function seedProductionDeployTrigger(
   db: TestDb,
@@ -291,15 +325,25 @@ export async function seedProductionDeployTrigger(
   updatedBy: string,
   trigger: 'on-land' | 'on-request' | 'provider' = 'on-land',
 ): Promise<void> {
-  const example = JSON.parse(
-    readFileSync(
-      new URL('../../src/project-config/fixtures/examples/forge-dev.project.json', import.meta.url),
-      'utf8',
-    ),
-  );
-  const document = projectDocumentSchema.parse({
-    ...example,
-    project: { id: projectId, slug: `test-${projectId.slice(0, 8)}`, name: 'Test Project' },
+  const [held] = (await db.execute(
+    sql`SELECT document FROM project_config_documents WHERE project_id = ${projectId}`,
+  )) as unknown as { document: ProjectDocument }[];
+  const current = held?.document;
+  const named = current
+    ? Object.entries(current.environments).find(([, e]) => e.tier === 'production')
+    : undefined;
+  if (current && named) {
+    const [name, env] = named;
+    const deployment =
+      'binding' in env.deployment ? { ...env.deployment, trigger } : env.deployment;
+    await seedProjectDocument(db, projectId, updatedBy, {
+      environments: { ...current.environments, [name]: { ...env, deployment } },
+      promotions: current.promotions,
+      ...(current.source.type === 'git' ? { defaultBranch: current.source.git.defaultBranch } : {}),
+    });
+    return;
+  }
+  await seedProjectDocument(db, projectId, updatedBy, {
     environments: {
       live: {
         tier: 'production',
@@ -308,10 +352,4 @@ export async function seedProductionDeployTrigger(
       },
     },
   });
-  await db.execute(sql`
-    INSERT INTO project_config_documents (project_id, revision, document, updated_by)
-    VALUES (${projectId}, 1, ${JSON.stringify(document)}::jsonb, ${updatedBy})
-    ON CONFLICT (project_id) DO UPDATE SET document = EXCLUDED.document,
-                                           revision = project_config_documents.revision + 1
-  `);
 }

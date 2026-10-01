@@ -102,7 +102,7 @@ export function alsoBlocking(err: unknown, thrown: ReleaseBlockerCode): ReleaseB
 
 const REMEDY: Record<ReleaseBlockerCode, string> = {
   NO_RELEASE_GATE:
-    'This project has no release step, so Forge has no release to start or record: here, closing an issue is what ships it. Close these issues to ship them. To release through Forge instead, declare an environment with `tier: "production"` and a deploy binding in the project document (`PUT /api/projects/:id/config`).',
+    'This project has no release step, so Forge has no release to start or record: here, closing an issue is what ships it. Close these issues to ship them. To release through Forge instead, declare a production environment with a deploy binding in the project document, written with PUT /api/projects/:id/config.',
   RELEASE_TARGET_UNDECLARED:
     'Nothing says where a release of this project lands: the project document is missing, or its production environment has no active deploy binding, or no promotion reaches the branch it deploys from. Correct the project document (`PUT /api/projects/:id/config`), or declare no production environment if Forge ships nothing here.',
   CLAIM_CONFLICT:

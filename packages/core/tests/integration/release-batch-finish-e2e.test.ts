@@ -17,7 +17,7 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createTestProject,
   createTestUser,
@@ -154,9 +154,7 @@ describe('release batch finish E2E', () => {
       const owner = await createTestUser(harness.db);
       ownerId = owner.id;
       projectId = (await createTestProject(harness.db, owner.id)).id;
-      await declareProduction({
-        verify: { probes: [{ url: 'http://127.0.0.1:9/never' }], timeoutSeconds: 0 },
-      });
+      await declareProduction();
       await seedReleaseRunner();
       const { ReleaseNotVerifiedError, finishReleaseBatch } = await import(
         '../../src/release-batch/service.js'
@@ -170,9 +168,20 @@ describe('release batch finish E2E', () => {
         [b, (await stored(b)).mergedAt],
       ]);
       expect(before.get(b)).toBeNull();
+      const servedBefore = fx.serving();
       const { runId } = await claim([a, b]);
+      fx.serve(servedBefore);
 
-      const err = await finishReleaseBatch(runId, actor()).catch((e: unknown) => e);
+      // cm:why project-v1 declares no probe window, so the clock moves past it instead of waiting.
+      const realNow = Date.now.bind(Date);
+      let reads = 0;
+      const clock = vi.spyOn(Date, 'now').mockImplementation(() => {
+        reads += 1;
+        return realNow() + (reads > 2 ? 3_600_000 : 0);
+      });
+      const err = await finishReleaseBatch(runId, actor())
+        .catch((e: unknown) => e)
+        .finally(() => clock.mockRestore());
 
       expect(err).toBeInstanceOf(ReleaseNotVerifiedError);
       expect(await runStatus(runId)).toBe('running');

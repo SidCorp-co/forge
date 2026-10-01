@@ -67,7 +67,7 @@ const WEB: Target = { id: 't-web', label: 'Web', resourceUuid: 'web-uuid' };
 
 /** A live Coolify binding declaring no probe, as anhome's and portal-lighthuman's are. */
 async function bindCoolify(targets: Target[] = [APP]): Promise<string> {
-  await fx.declareProduction({ verify: null, baseUrl: coolify.url(), targets });
+  await fx.declareProduction({ baseUrl: coolify.url(), targets }, 'none');
   const rows = (await harness.db.execute(sql`
     SELECT id FROM integration_bindings WHERE project_id = ${projectId}
   `)) as unknown as Array<{ id: string }>;

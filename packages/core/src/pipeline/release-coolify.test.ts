@@ -11,6 +11,8 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { deployedBy, production, projectDoc } from '../project-config/release-path.fixture.js';
+import type { EnvironmentDeclaration, ProjectDocument } from '../project-config/schema.js';
 
 vi.mock('../config/env.js', () => ({
   env: {
@@ -81,6 +83,13 @@ vi.mock('../logger.js', () => ({
   logger: { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
+const readDocument = vi.fn(
+  async (): Promise<{ revision: number; document: ProjectDocument } | null> => null,
+);
+vi.mock('../project-config/service.js', () => ({
+  readProjectDocument: () => readDocument(),
+}));
+
 const autoProd = vi.fn(async (_projectId: string) => false);
 vi.mock('./production-trigger.js', () => ({
   productionDeploysOnLand: (projectId: string) => autoProd(projectId),
@@ -102,7 +111,6 @@ const stagingPair = {
     projectId: PROJECT_ID,
     provider: 'coolify',
     role: 'deploy',
-    stages: ['preview'],
     config: {},
     active: true,
   },
@@ -114,12 +122,24 @@ const prodPair = {
     projectId: PROJECT_ID,
     provider: 'coolify',
     role: 'deploy',
-    stages: ['live'],
     config: {},
     active: true,
   },
   connection: { id: PROD_INT, provider: 'coolify', config: {}, active: true },
 };
+
+/** The project document naming `staging` and production `beta`, each through its own binding. */
+function declare(environments?: Record<string, EnvironmentDeclaration>) {
+  readDocument.mockResolvedValue({
+    revision: 1,
+    document: projectDoc({
+      environments: environments ?? {
+        staging: { tier: 'staging', deployment: deployedBy(STAGING_INT, 'on-land') },
+        beta: production({ binding: PROD_INT }),
+      },
+    }),
+  });
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -128,11 +148,12 @@ beforeEach(() => {
   findDeliverySpy.mockReset();
   listBindingsSpy.mockReset();
   listBindingsSpy.mockResolvedValue([]);
+  declare();
 });
 
 describe('tryDispatchCoolifyRelease — staging dispatch', () => {
   it('always enqueues a fresh dispatch with a per-attempt requestId (no dedup block)', async () => {
-    listBindingsSpy.mockResolvedValueOnce([stagingPair]); // active coolify bindings
+    listBindingsSpy.mockResolvedValue([stagingPair]); // active coolify bindings
 
     const outcome = await tryDispatchCoolifyRelease({
       projectId: PROJECT_ID,
@@ -151,9 +172,9 @@ describe('tryDispatchCoolifyRelease — staging dispatch', () => {
   });
 
   it('re-deploying the same run enqueues again with a distinct requestId', async () => {
-    listBindingsSpy.mockResolvedValueOnce([stagingPair]);
+    listBindingsSpy.mockResolvedValue([stagingPair]);
     await tryDispatchCoolifyRelease({ projectId: PROJECT_ID, issueId: ISSUE_ID, runId: RUN_ID });
-    listBindingsSpy.mockResolvedValueOnce([stagingPair]);
+    listBindingsSpy.mockResolvedValue([stagingPair]);
     await tryDispatchCoolifyRelease({ projectId: PROJECT_ID, issueId: ISSUE_ID, runId: RUN_ID });
 
     expect(enqueueSpy).toHaveBeenCalledTimes(2);
@@ -165,7 +186,7 @@ describe('tryDispatchCoolifyRelease — staging dispatch', () => {
 
 describe('dispatchCoolifyDeployDirect — run-less resource redeploy (ISS-312)', () => {
   it('staging: enqueues with runId:null + a synthetic direct: requestId', async () => {
-    listBindingsSpy.mockResolvedValueOnce([stagingPair]); // active coolify bindings
+    listBindingsSpy.mockResolvedValue([stagingPair]); // active coolify bindings
 
     const outcome = await dispatchCoolifyDeployDirect({
       projectId: PROJECT_ID,
@@ -189,7 +210,7 @@ describe('dispatchCoolifyDeployDirect — run-less resource redeploy (ISS-312)',
   });
 
   it('prod: returns pendingHumanConfirm and enqueues nothing', async () => {
-    listBindingsSpy.mockResolvedValueOnce([prodPair]);
+    listBindingsSpy.mockResolvedValue([prodPair]);
 
     const outcome = await dispatchCoolifyDeployDirect({
       projectId: PROJECT_ID,
@@ -204,7 +225,7 @@ describe('dispatchCoolifyDeployDirect — run-less resource redeploy (ISS-312)',
   });
 
   it('unknown/inactive integration: returns no-integration without enqueueing', async () => {
-    listBindingsSpy.mockResolvedValueOnce([stagingPair]); // active set does not include the requested id
+    listBindingsSpy.mockResolvedValue([stagingPair]); // active set does not include the requested id
 
     const outcome = await dispatchCoolifyDeployDirect({
       projectId: PROJECT_ID,
@@ -220,7 +241,7 @@ describe('dispatchCoolifyDeployDirect — run-less resource redeploy (ISS-312)',
 
 describe('tryDispatchCoolifyRelease — a run that cannot witness its deploy (ISS-922)', () => {
   it('reports at ERROR level when the run is already terminal, and still dispatches', async () => {
-    listBindingsSpy.mockResolvedValueOnce([stagingPair]);
+    listBindingsSpy.mockResolvedValue([stagingPair]);
     selectQueue.push([{ status: 'completed' }]);
 
     const outcome = await tryDispatchCoolifyRelease({
@@ -237,7 +258,7 @@ describe('tryDispatchCoolifyRelease — a run that cannot witness its deploy (IS
   });
 
   it('reports when the run closes in the window and REFUSES the hold, not just when it was terminal on entry', async () => {
-    listBindingsSpy.mockResolvedValueOnce([stagingPair]);
+    listBindingsSpy.mockResolvedValue([stagingPair]);
     selectQueue.push([{ status: 'running' }]);
     openHoldMock.mockResolvedValueOnce(false);
 
@@ -250,7 +271,7 @@ describe('tryDispatchCoolifyRelease — a run that cannot witness its deploy (IS
   });
 
   it('says nothing when the run is still open', async () => {
-    listBindingsSpy.mockResolvedValueOnce([stagingPair]);
+    listBindingsSpy.mockResolvedValue([stagingPair]);
     selectQueue.push([{ status: 'running' }]);
     openHoldMock.mockResolvedValueOnce(true);
 
@@ -262,7 +283,7 @@ describe('tryDispatchCoolifyRelease — a run that cannot witness its deploy (IS
 
 describe('tryDispatchCoolifyRelease — prod deploys on land', () => {
   it('auto-dispatches prod like staging when the production environment deploys on land', async () => {
-    listBindingsSpy.mockResolvedValueOnce([prodPair]);
+    listBindingsSpy.mockResolvedValue([prodPair]);
     selectQueue.push([{ status: 'running' }]);
     autoProd.mockResolvedValueOnce(true);
 
@@ -281,7 +302,7 @@ describe('tryDispatchCoolifyRelease — prod deploys on land', () => {
   });
 
   it('run-less prod also auto-dispatches when the production environment deploys on land', async () => {
-    listBindingsSpy.mockResolvedValueOnce([prodPair]);
+    listBindingsSpy.mockResolvedValue([prodPair]);
     autoProd.mockResolvedValueOnce(true);
 
     const outcome = await dispatchCoolifyDeployDirect({
@@ -300,7 +321,7 @@ describe('tryDispatchCoolifyRelease — prod deploys on land', () => {
 
 describe('tryDispatchCoolifyRelease — integrationId hard filter + allowLive', () => {
   it('integrationId filters to only that binding — prod is never touched', async () => {
-    listBindingsSpy.mockResolvedValueOnce([stagingPair, prodPair]);
+    listBindingsSpy.mockResolvedValue([stagingPair, prodPair]);
 
     const outcome = await tryDispatchCoolifyRelease({
       projectId: PROJECT_ID,
@@ -318,7 +339,7 @@ describe('tryDispatchCoolifyRelease — integrationId hard filter + allowLive', 
   });
 
   it('allowLive:false excludes prod bindings entirely — no enqueue, no gate', async () => {
-    listBindingsSpy.mockResolvedValueOnce([stagingPair, prodPair]);
+    listBindingsSpy.mockResolvedValue([stagingPair, prodPair]);
 
     const outcome = await tryDispatchCoolifyRelease({
       projectId: PROJECT_ID,
@@ -336,7 +357,7 @@ describe('tryDispatchCoolifyRelease — integrationId hard filter + allowLive', 
   });
 
   it('no new args (auto-subscriber shape): prod still auto-dispatches when it deploys on land — unchanged', async () => {
-    listBindingsSpy.mockResolvedValueOnce([prodPair]);
+    listBindingsSpy.mockResolvedValue([prodPair]);
     selectQueue.push([{ status: 'running' }]);
     autoProd.mockResolvedValueOnce(true);
 
@@ -373,7 +394,7 @@ describe('isIssueAtReleaseStage', () => {
 
 describe('tryDispatchCoolifyRelease — prod confirm gate', () => {
   it('returns pendingHumanConfirm and enqueues nothing when the gate is unconfirmed', async () => {
-    listBindingsSpy.mockResolvedValueOnce([prodPair]); // active coolify bindings
+    listBindingsSpy.mockResolvedValue([prodPair]); // active coolify bindings
     selectQueue.push([{ status: 'running' }]);
     selectQueue.push([]); // getProdGateStateForRun: this run carries no gate
     selectQueue.push([{ metadata: {} }]); // markPendingHumanConfirm: run metadata read
@@ -394,7 +415,7 @@ describe('tryDispatchCoolifyRelease — prod confirm gate', () => {
   // ISS-1152 — one human confirmation authorises one deploy, and a landing asks
   // for a deploy far more often than a release does.
   it('refuses a gate confirmed for a different run — one confirmation is one deploy', async () => {
-    listBindingsSpy.mockResolvedValueOnce([prodPair]);
+    listBindingsSpy.mockResolvedValue([prodPair]);
     selectQueue.push([{ status: 'running' }]);
     selectQueue.push([
       {
@@ -429,30 +450,26 @@ describe('tryDispatchCoolifyRelease — prod confirm gate', () => {
 // naming application `y8w4c4kss8ogo8gc44ow44kc`. The gate asked the binding's
 // stage label, so the one labelled `preview` dispatched to the production box
 // with no human in front of it.
-describe('one application behind two stages is still the production box', () => {
+describe('one application behind two environments is still the production box', () => {
   const APP = 'y8w4c4kss8ogo8gc44ow44kc';
-  const oneBox = (id: string, stages: string[]) => ({
+  const oneBox = (id: string) => ({
     binding: {
       id,
       projectId: PROJECT_ID,
       provider: 'coolify',
       role: 'deploy',
-      stages,
       config: { targets: [{ label: 'App', resourceUuid: APP }] },
       active: true,
     },
     connection: { id, provider: 'coolify', config: {}, active: true },
   });
 
-  it('parks the preview binding for a human when a live binding shares its application', async () => {
-    listBindingsSpy.mockResolvedValueOnce([
-      oneBox(STAGING_INT, ['preview']),
-      oneBox(PROD_INT, ['live']),
-    ]);
+  it('parks the staging binding for a human when the production binding shares its application', async () => {
+    listBindingsSpy.mockResolvedValue([oneBox(STAGING_INT), oneBox(PROD_INT)]);
     selectQueue.push([{ status: 'running' }]);
-    selectQueue.push([]); // getProdGateState: unconfirmed, preview binding
+    selectQueue.push([]); // getProdGateState: unconfirmed, staging binding
     selectQueue.push([{ metadata: {} }]);
-    selectQueue.push([]); // getProdGateState: unconfirmed, live binding
+    selectQueue.push([]); // getProdGateState: unconfirmed, production binding
     selectQueue.push([{ metadata: {} }]);
 
     const outcome = await tryDispatchCoolifyRelease({
@@ -466,17 +483,17 @@ describe('one application behind two stages is still the production box', () => 
     expect(outcome.dispatched).toBe(false);
   });
 
-  it('leaves a preview binding on its own application dispatching as before', async () => {
+  it('leaves a staging binding on its own application dispatching as before', async () => {
     const separate = {
-      ...oneBox(STAGING_INT, ['preview']),
+      ...oneBox(STAGING_INT),
       binding: {
-        ...oneBox(STAGING_INT, ['preview']).binding,
+        ...oneBox(STAGING_INT).binding,
         config: { targets: [{ label: 'App', resourceUuid: 'some-other-app' }] },
       },
     };
-    listBindingsSpy.mockResolvedValueOnce([separate, oneBox(PROD_INT, ['live'])]);
+    listBindingsSpy.mockResolvedValue([separate, oneBox(PROD_INT)]);
     selectQueue.push([{ status: 'running' }]);
-    selectQueue.push([]); // getProdGateState for the live binding
+    selectQueue.push([]); // getProdGateState for the production binding
     selectQueue.push([{ metadata: {} }]);
 
     const outcome = await tryDispatchCoolifyRelease({
@@ -486,5 +503,54 @@ describe('one application behind two stages is still the production box', () => 
     });
 
     expect(outcome.integrationIds).toEqual([STAGING_INT]);
+  });
+});
+
+describe('tryDispatchCoolifyRelease — only what an environment names is dispatched', () => {
+  it('dispatches no binding that no environment of the project document names', async () => {
+    declare({ beta: production({ binding: PROD_INT }) });
+    listBindingsSpy.mockResolvedValue([stagingPair]);
+
+    const outcome = await tryDispatchCoolifyRelease({
+      projectId: PROJECT_ID,
+      issueId: ISSUE_ID,
+      runId: RUN_ID,
+    });
+
+    expect(enqueueSpy).not.toHaveBeenCalled();
+    expect(outcome).toMatchObject({ dispatched: false, reason: 'no-integration' });
+  });
+
+  it('dispatches nothing where the project has declared no document at all', async () => {
+    readDocument.mockResolvedValue(null);
+    listBindingsSpy.mockResolvedValue([stagingPair, prodPair]);
+
+    const outcome = await tryDispatchCoolifyRelease({
+      projectId: PROJECT_ID,
+      issueId: ISSUE_ID,
+      runId: RUN_ID,
+    });
+
+    expect(enqueueSpy).not.toHaveBeenCalled();
+    expect(outcome.reason).toBe('no-integration');
+  });
+
+  it('skips an environment whose platform deploys it itself (`trigger: provider`)', async () => {
+    declare({
+      staging: { tier: 'staging', deployment: deployedBy(STAGING_INT, 'provider') },
+      beta: production({ binding: PROD_INT }),
+    });
+    listBindingsSpy.mockResolvedValue([stagingPair, prodPair]);
+    autoProd.mockResolvedValueOnce(true);
+
+    const outcome = await tryDispatchCoolifyRelease({
+      projectId: PROJECT_ID,
+      issueId: ISSUE_ID,
+      runId: RUN_ID,
+    });
+
+    expect(outcome.integrationIds).toEqual([PROD_INT]);
+    expect(enqueueSpy).toHaveBeenCalledTimes(1);
+    expect((enqueueSpy.mock.calls[0]?.[0] as { bindingId: string }).bindingId).toBe(PROD_INT);
   });
 });

@@ -1126,18 +1126,16 @@ describe('GET /api/projects/:id answers no release key the project document repl
   it('carries none of releaseChain, liveBranch, releaseModel, releaseStrategy or environments', async () => {
     const token = await signUserToken('uuid-user');
     projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
-    selectLimit
-      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([
-        {
-          id: 'p1',
-          slug: 'p-one',
-          name: 'P One',
-          orgId: ORG_ID,
-          createdBy: 'u',
-          baseBranch: 'main',
-        },
-      ]);
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]).mockResolvedValueOnce([
+      {
+        id: 'p1',
+        slug: 'p-one',
+        name: 'P One',
+        orgId: ORG_ID,
+        createdBy: 'u',
+        baseBranch: 'main',
+      },
+    ]);
     selectWhere
       .mockReturnValueOnce({ limit: selectLimit })
       .mockReturnValueOnce({ limit: selectLimit })

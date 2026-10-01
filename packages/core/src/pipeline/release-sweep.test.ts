@@ -94,7 +94,7 @@ const resolveReleaseGateMock = vi.fn(
   async (_projectId: string) => 'awaiting_release' as string | null,
 );
 class ReleaseTargetUndeclaredError extends Error {
-  releaseChain = [{ branch: 'production' }];
+  reason = 'production environment `beta` is deployed outside Forge';
 }
 vi.mock('../release-batch/gate.js', () => ({
   RELEASE_GATE_STATUS: 'awaiting_release',
@@ -240,14 +240,13 @@ describe('sweepAutomaticReleases — policy gate', () => {
   it('writes RELEASE_TARGET_UNDECLARED, in the words the card gives it, when there is nowhere to release onto', async () => {
     candidateRows = [candidateRow('proj-1', 'iss-1', '2026-09-22T00:00:00Z')];
     waitingIds = ['iss-1'];
-    resolveReleaseGateMock.mockRejectedValueOnce(
-      new ReleaseTargetUndeclaredError('RELEASE_TARGET_UNDECLARED: no live binding'),
-    );
+    resolveReleaseGateMock.mockRejectedValueOnce(new ReleaseTargetUndeclaredError());
 
     await sweepAutomaticReleases();
 
     expect(holds['iss-1']).toMatchObject({ code: 'RELEASE_TARGET_UNDECLARED', owes: 'human' });
-    expect(holds['iss-1']?.reason).toMatch(/^This project's release chain ends at `production`/);
+    const { reason } = new ReleaseTargetUndeclaredError();
+    expect(holds['iss-1']?.reason).toBe(`Nowhere is declared for a release to land: ${reason}.`);
     expect(cutWaitingReleaseMock).not.toHaveBeenCalled();
   });
 
