@@ -33,6 +33,7 @@ export interface NavRailProps {
   projectItems?: NavItem[];
   /** Grouped project nav. Preferred over `projectItems` when present. */
   projectClusters?: NavCluster[];
+  workspaceClusters?: NavCluster[];
   activeKey: string;
   onNavigate?: (key: string) => void;
   /** Opens the searchable project switcher (the command palette). */
@@ -201,6 +202,7 @@ export function NavRail({
   workspaceItems,
   projectItems,
   projectClusters,
+  workspaceClusters,
   activeKey,
   onNavigate,
   onProjectSwitch,
@@ -387,6 +389,18 @@ export function NavRail({
           {!collapsed && <Kicker className="px-2.5 pb-1">Workspace</Kicker>}
           {workspaceItems.map((it) => (
             <NavRow key={it.key} item={it} active={it.key === activeKey} collapsed={collapsed} onClick={() => onNavigate?.(it.key)} />
+          ))}
+          {workspaceClusters?.map((c) => (
+            <div key={c.key} className={collapsed ? "" : "pt-2"}>
+              <Cluster
+                cluster={c}
+                activeKey={activeKey}
+                collapsed={collapsed}
+                open={groupOpen?.[c.key] !== false}
+                onToggle={() => onToggleGroup?.(c.key)}
+                onNavigate={onNavigate}
+              />
+            </div>
           ))}
         </div>
       </div>

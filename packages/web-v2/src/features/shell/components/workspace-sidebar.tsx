@@ -130,13 +130,9 @@ export function WorkspaceSidebar(props: WorkspaceSidebarProps) {
       <NavRail
         workspaceItems={workspaceItems}
         project={rail.projectMark}
-        projectClusters={
-          rail.projectMark
-            ? [
-                { key: "project", kicker: "Project", items: PROJECT_ITEMS },
-                { key: "ecosystem", kicker: "Ecosystem", items: ECOSYSTEM_ITEMS, collapsible: true },
-              ]
-            : undefined
+        projectClusters={rail.projectMark ? [{ key: "project", kicker: "Project", items: PROJECT_ITEMS }] : undefined}
+        workspaceClusters={
+          rail.projectMark ? [{ key: "ecosystem", kicker: "Ecosystem", items: ECOSYSTEM_ITEMS, collapsible: true }] : undefined
         }
         groupOpen={props.groupOpen}
         onToggleGroup={props.onToggleGroup}

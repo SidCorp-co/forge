@@ -373,17 +373,6 @@ export function NavRailCompact({
               ))}
             </div>
 
-            {ecosystemItems && ecosystemItems.length > 0 && (
-              <>
-                <RailKicker label="Ecosystem" className="mt-2.5" />
-                <div className="mt-1 flex flex-col items-center gap-3px">
-                  {ecosystemItems.map((it) => (
-                    <RailButton key={it.key} item={it} active={it.key === activeKey} onClick={() => onNavigate(it.key)} />
-                  ))}
-                </div>
-              </>
-            )}
-
             <div className="my-[9px] h-px w-[34px] bg-[color:var(--border-subtle)]" />
           </>
         )}
@@ -416,6 +405,16 @@ export function NavRailCompact({
             <RailButton key={it.key} item={it} active={it.key === activeKey} onClick={() => onNavigate(it.key)} />
           ))}
         </div>
+        {activeProject && ecosystemItems && ecosystemItems.length > 0 && (
+          <>
+            <RailKicker label="Ecosystem" className="mt-2.5" />
+            <div className="mt-1 flex flex-col items-center gap-3px">
+              {ecosystemItems.map((it) => (
+                <RailButton key={it.key} item={it} active={it.key === activeKey} onClick={() => onNavigate(it.key)} />
+              ))}
+            </div>
+          </>
+        )}
       </div>
 
       {/* Footer — What's New + Docs, then the account menu, then the version. */}
