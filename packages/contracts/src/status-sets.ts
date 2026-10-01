@@ -5,16 +5,29 @@
 
 /* status-tuple: differs — the browser's copy of core's `jobs/status-sets.ts` LIVE_JOB_STATUSES,
    read by the pipeline activity feed; status-sets-parity.test.ts binds the two. */
-export const LIVE_JOB_STATUSES = ['queued', 'dispatched', 'running', 'held'] as const;
+export const LIVE_JOB_STATUSES = [
+  'queued',
+  'dispatched',
+  'running',
+  'held',
+] as const;
 
 /* status-tuple: differs — the browser's copy of core's `issues/status-sets.ts` NON_OPEN_STATUSES,
    read by the project dashboard's open-issue count; status-sets-parity.test.ts binds the two. */
-export const NON_OPEN_ISSUE_STATUSES = ['awaiting_release', 'closed', 'draft'] as const;
+export const NON_OPEN_ISSUE_STATUSES = [
+  'awaiting_release',
+  'closed',
+  'draft',
+] as const;
 
 /* status-tuple: differs — the browser's copy of core's `issues/transition-reason.ts`
    REASON_REQUIRED_STATUSES, read by the transition dialog so the browser asks for the reason the
    server would refuse the move without; status-sets-parity.test.ts binds the two. */
-export const REASON_REQUIRED_ISSUE_STATUSES = ['reopen', 'waiting', 'needs_info'] as const;
+export const REASON_REQUIRED_ISSUE_STATUSES = [
+  'reopen',
+  'waiting',
+  'needs_info',
+] as const;
 
 /* status-tuple: differs — the browser's copy of core's `db/session-vocabulary.ts`
    terminalAgentSessionStatuses, read by the agent run-state derivation;
@@ -51,6 +64,12 @@ export const BLOCKER_SETTLED_STATUSES = [
 /* status-tuple: differs — the browser's copy of core's `ecosystem/channel-register.ts`
    REGISTER_STATUSES, the register's filters in the words its rows use, so the page's filters and
    the query core accepts are one list; status-sets-parity.test.ts binds the two. */
-export const REGISTER_STATUSES = ['awaiting', 'overdue', 'held', 'answered', 'closed'] as const;
+export const REGISTER_STATUSES = [
+  'awaiting',
+  'overdue',
+  'held',
+  'answered',
+  'closed',
+] as const;
 
 export type MemoryReindexState = (typeof MEMORY_REINDEX_STATES)[number];

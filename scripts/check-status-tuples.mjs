@@ -156,7 +156,9 @@ export function sitesIn(rel, source, vocabularies, unattributed = []) {
       }
       return;
     }
-    const marker = marked.find((m) => m.endLine <= line && m.endLine > line - MARKER_REACH);
+    // The nearest marker above, not the first in reach: one marker can sit within reach of the
+    // next declaration too, and its excuse names a different peer.
+    const marker = marked.findLast((m) => m.endLine <= line && m.endLine > line - MARKER_REACH);
     sites.push({
       rel,
       line,

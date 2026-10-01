@@ -380,8 +380,7 @@ function askerOf(origin: QuestionOrigin | null): string | null {
   return origin?.kind === 'conversation' ? origin.askedByLabel : null;
 }
 
-/** Resolve an undeliverable alert raised for a web-decided question before such rounds stopped
- *  being owed to a room: the alert said something that was never true. */
+/** An alert an earlier drain raised for a web-decided question was never true; resolve it. */
 async function clearWebDecidedAlerts(): Promise<void> {
   const raised = await db
     .selectDistinct({ questionId: rocketchatQuestionDeliveries.questionId })

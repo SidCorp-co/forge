@@ -2,8 +2,7 @@ import { MEMORY_REINDEX_STATES, type MemoryReindexState } from "@forge/contracts
 
 /** Patch body accepted by `PATCH /api/projects/:id`.
  *  `orgId` moves the project to another org — requires org admin on BOTH the
- *  current and the destination org (403/404 otherwise). It takes no `name`: a project's name is
- *  its project document's `project.name`, and this patch refuses it by name. */
+ *  current and the destination org (403/404 otherwise). */
 export interface ProjectUpdateInput {
 	/** NOT where work lands, its environments or promotions: those are the project document,
 	 *  edited on the Configuration tab, and this patch refuses them by name. */
