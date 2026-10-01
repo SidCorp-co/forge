@@ -6,7 +6,7 @@ import { dirname, join, resolve } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { mergeTarget } from './lib/base-branch.mjs';
-import { baseRev } from './lib/baseline-ratchet.mjs';
+import { baseRevision } from './lib/baseline-ratchet.mjs';
 import { CORRECTION_SPAN, ENTRY_WORD_BUDGET, judge } from './lib/release-record.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -106,11 +106,9 @@ function main() {
     return 2;
   }
 
-  let rev;
-  try {
-    rev = baseRev(ROOT);
-  } catch (err) {
-    console.error(`release-record: could not run — no base revision can be taken: ${err.message}`);
+  const { rev, refusal } = baseRevision(ROOT);
+  if (refusal) {
+    console.error(`release-record: could not run — no base revision can be taken: ${refusal}`);
     return 2;
   }
   const verdict = judge({

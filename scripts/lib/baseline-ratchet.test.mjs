@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { baseRev, compareBaseline, pushedFrom } from './baseline-ratchet.mjs';
+import { baseRev, baseRevision, compareBaseline, pushedFrom } from './baseline-ratchet.mjs';
 
 describe('improves: down', () => {
   const at = (files) => ({ generatedAt: '2026-01-01', files });
@@ -270,10 +270,13 @@ describe('pushedFrom: a push is one change, judged from the tip it moved its bra
   });
 });
 
-describe('baseRev', () => {
+describe('baseRevision', () => {
   it('judges a push to its merge target from the tip the push moved it from', () => {
     const w = pushed();
-    expect(baseRev(w.root, w.event({ before: w.before }))).toBe(w.before);
+    expect(baseRevision(w.root, w.event({ before: w.before }))).toEqual({
+      rev: w.before,
+      refusal: null,
+    });
   });
 
   it('takes the merge-base where the change is a branch off its target', () => {
@@ -282,17 +285,19 @@ describe('baseRev', () => {
     writeFileSync(join(w.root, 'g.txt'), 'branch work');
     git(w.root, 'add', '-A');
     git(w.root, 'commit', '-q', '-m', 'branch work');
-    expect(baseRev(w.root, { GITHUB_BASE_REF: 'dev' })).toBe(w.first);
+    expect(baseRevision(w.root, { GITHUB_BASE_REF: 'dev' }).rev).toBe(w.first);
   });
 
   it('refuses, rather than judging HEAD~1, where no merge target can be derived', () => {
     const w = pushed();
-    expect(() => baseRev(w.root, {})).toThrow(/no merge target could be derived/);
+    const got = baseRevision(w.root, {});
+    expect(got.rev).toBeNull();
+    expect(got.refusal).toMatch(/no merge target could be derived/);
   });
 
   it('refuses, rather than judging HEAD~1, where the merge target names no ref here', () => {
     const w = pushed();
-    expect(() => baseRev(w.root, { GITHUB_BASE_REF: 'release/9' })).toThrow(
+    expect(baseRevision(w.root, { GITHUB_BASE_REF: 'release/9' }).refusal).toMatch(
       /`release\/9` .* resolves to no ref here/,
     );
   });
@@ -300,6 +305,21 @@ describe('baseRev', () => {
   it('refuses a merge target sharing no history with HEAD', () => {
     const w = pushed();
     git(w.root, 'update-ref', 'refs/remotes/origin/elsewhere', w.stranger);
-    expect(() => baseRev(w.root, { GITHUB_BASE_REF: 'elsewhere' })).toThrow(/no common ancestor/);
+    expect(baseRevision(w.root, { GITHUB_BASE_REF: 'elsewhere' }).refusal).toMatch(
+      /no common ancestor/,
+    );
+  });
+
+  it('carries a push whose base cannot be read as its refusal', () => {
+    const w = pushed();
+    const got = baseRevision(w.root, w.event({ before: w.stranger }));
+    expect(got.rev).toBeNull();
+    expect(got.refusal).toMatch(/not an ancestor of HEAD/);
+  });
+
+  it('is what baseRev returns the revision of, and null where it refuses', () => {
+    const w = pushed();
+    expect(baseRev(w.root, w.event({ before: w.before }))).toBe(w.before);
+    expect(baseRev(w.root, {})).toBeNull();
   });
 });

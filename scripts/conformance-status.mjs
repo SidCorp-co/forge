@@ -66,15 +66,7 @@ const PROBES = {
 };
 
 const IMPROVES = ['down', 'shrink', 'tighten'];
-/** The revision baselines are judged against, or why none can be taken; read once. */
-function takeBaseRev() {
-  try {
-    return { rev: baseRev(ROOT), refusal: null };
-  } catch (err) {
-    return { rev: null, refusal: err.message };
-  }
-}
-const { rev: BASE_REV, refusal: BASE_REFUSAL } = takeBaseRev();
+const BASE_REV = baseRev(ROOT);
 
 function declaredBaselines(decl) {
   return [decl.baseline, decl.alsoBaseline].filter((b) => b !== undefined);
@@ -150,6 +142,14 @@ function ciGates() {
     : null;
 }
 
+/** The branch the missing revision should have come from, named rather than assumed to be `main`. */
+function whereFrom() {
+  const target = mergeTarget(ROOT);
+  return target.branch
+    ? `nothing resolves for the merge target \`${target.branch}\``
+    : target.summary;
+}
+
 const { manifest, error } = readManifest();
 if (error) {
   console.error(`conformance-status: ${error}`);
@@ -162,19 +162,11 @@ const ratchetable = Object.values(declared)
   .filter((a) => a?.level === 2)
   .flatMap((a) => declaredBaselines(a))
   .filter((b) => b?.path && IMPROVES.includes(b.improves));
-if (ratchetable.length > 0 && BASE_REFUSAL !== null) {
-  console.error(
-    `conformance-status: ${ratchetable.length} axis/axes declare a baseline direction, and no\n` +
-      `revision to compare them against can be taken: ${BASE_REFUSAL}\n`,
-  );
-  process.exit(2);
-}
 if (ratchetable.length > 0 && BASE_REV === null) {
   console.error(
     `conformance-status: ${ratchetable.length} axis/axes declare a baseline direction, and there is\n` +
-      `no revision to compare against: HEAD has no parent here, and is the tip of the merge target\n` +
-      `\`${mergeTarget(ROOT).branch ?? 'none derived'}\`. That is a shallow or single-commit checkout, so the direction check\n` +
-      'would silently pass on nothing.\n' +
+      `no revision to compare against — ${whereFrom()} and no HEAD~1. That is a shallow or\n` +
+      'single-commit checkout, so the direction check would silently pass on nothing.\n' +
       'Fetch history (actions/checkout with fetch-depth: 0) and re-run.\n',
   );
   process.exit(2);

@@ -63,38 +63,50 @@ export function pushedFrom(root, env, head) {
  * Not that branch's tip directly: a commit pushed STRAIGHT to the base branch has the tip equal to
  * HEAD, and comparing a file to itself passes everything. `HEAD~1` is left only for a checkout
  * standing on its merge target's tip outside a push, whose last commit was judged when it landed.
- * A merge target that cannot be derived, or that names no ref here, throws the resolver's refusal:
- * `HEAD~1` there would judge one commit of a branch of many and say nothing.
+ * A merge target that cannot be derived or names no ref here, and a push whose base cannot be
+ * read, are a refusal: `HEAD~1` there would judge one commit of a branch of many and say nothing.
  *
- * @returns {string | null} null only where HEAD, or a parent of it, does not exist
+ * @returns {{ rev: string | null, refusal: string | null }} `rev` null, with no refusal, only where
+ *   HEAD or its parent does not exist
  */
-export function baseRev(root, env = process.env) {
+export function baseRevision(root, env = process.env) {
   let head;
   try {
     head = git(['rev-parse', 'HEAD'], root);
   } catch {
-    return null;
+    return { rev: null, refusal: null };
   }
   const target = baseRef(root, env);
-  if (target.refusal) throw new Error(target.refusal);
+  if (target.refusal) return { rev: null, refusal: target.refusal };
   let mb;
   try {
     mb = git(['merge-base', target.ref, 'HEAD'], root);
   } catch {
-    throw new Error(
-      `\`git merge-base ${target.ref} HEAD\` found no common ancestor, so this checkout holds no ` +
+    return {
+      rev: null,
+      refusal:
+        `\`git merge-base ${target.ref} HEAD\` found no common ancestor, so this checkout holds no ` +
         `revision where the change began. Fetch the history: \`git fetch origin ${target.branch}\`, ` +
         'or check out with `fetch-depth: 0`',
-    );
+    };
   }
-  if (mb !== head) return mb;
-  const pushed = pushedFrom(root, env, head);
-  if (pushed) return pushed;
+  if (mb !== head) return { rev: mb, refusal: null };
   try {
-    return git(['rev-parse', 'HEAD~1'], root);
-  } catch {
-    return null;
+    const pushed = pushedFrom(root, env, head);
+    if (pushed) return { rev: pushed, refusal: null };
+  } catch (err) {
+    return { rev: null, refusal: err.message };
   }
+  try {
+    return { rev: git(['rev-parse', 'HEAD~1'], root), refusal: null };
+  } catch {
+    return { rev: null, refusal: null };
+  }
+}
+
+/** `baseRevision`'s revision alone: null wherever none can be taken, refused or absent. */
+export function baseRev(root, env = process.env) {
+  return baseRevision(root, env).rev;
 }
 
 function readAt(root, rev, path) {
