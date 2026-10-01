@@ -38,6 +38,10 @@
       "types": "./src/status-sets.ts",
       "default": "./src/status-sets.ts"
     },
+    "./wireframe": {
+      "types": "./dist/wireframe.d.ts",
+      "default": "./dist/wireframe.js"
+    },
     "./ui-actions": {
       "types": "./dist/ui-actions.d.ts",
       "default": "./dist/ui-actions.js"

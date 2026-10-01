@@ -55,6 +55,13 @@ export const issueDetailApi = {
   listTasks: (id: string, projectId?: string) =>
     apiClient<TaskRow[]>(withProject(`/issues/${id}/tasks`, projectId)),
 
+  /** `POST /api/issues/:id/attachments` — one file onto the issue, by its uuid. */
+  uploadAttachment: (id: string, file: File) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    return apiMultipart<AttachmentRow>(`/issues/${id}/attachments`, fd);
+  },
+
   /** `GET /api/issues/:id/attachments` — rows with download `url`. */
   listAttachments: (id: string, projectId?: string) =>
     apiClient<AttachmentRow[]>(withProject(`/issues/${id}/attachments`, projectId)),

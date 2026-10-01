@@ -17,6 +17,7 @@
     "@codemirror/lang-markdown": "^6.5.2",
     "@codemirror/language": "^6.12.4",
     "@codemirror/state": "^6.7.6",
+    "@excalidraw/excalidraw": "0.18.1",
     "@forge/contracts": "workspace:*",
     "@forge/observability": "workspace:*",
     "@sentry/react": "^10.70.0",

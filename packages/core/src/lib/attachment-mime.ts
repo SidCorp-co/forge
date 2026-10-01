@@ -22,6 +22,7 @@ const ISSUE_MIMES = [
   'text/plain',
   'text/markdown',
   'text/csv',
+  'application/json',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'application/vnd.ms-excel',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -51,6 +52,7 @@ const EXT_MIME: Record<string, string> = {
   md: 'text/markdown',
   markdown: 'text/markdown',
   csv: 'text/csv',
+  json: 'application/json',
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   xls: 'application/vnd.ms-excel',
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -62,6 +64,7 @@ const TEXT_FORMATS = new Set([
   'text/csv',
   'text/html',
   'image/svg+xml',
+  'application/json',
 ]);
 
 function extensionOf(name: string): string {
