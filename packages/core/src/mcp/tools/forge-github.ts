@@ -99,6 +99,17 @@ function require$<K extends keyof Input>(
 
 export const forgeGithubTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_github',
+  grant: {
+    byAction: {
+      list: 'projects:read',
+      diff: 'projects:read',
+      'check-log': 'projects:read',
+      comment: 'projects:write',
+      'open-pull-request': 'projects:write',
+      'request-review': 'projects:write',
+      review: 'projects:write',
+    },
+  },
   description:
     "Read and write this project's repository as the Forge GitHub App. Actions: list | diff | " +
     'check-log | comment | open-pull-request | request-review | review. ' +

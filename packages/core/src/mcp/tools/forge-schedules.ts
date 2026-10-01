@@ -51,6 +51,18 @@ const inputSchema = z
 
 export const forgeSchedulesTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_schedules',
+  grant: {
+    byAction: {
+      list: 'schedules:read',
+      get: 'schedules:read',
+      runs: 'schedules:read',
+      create: 'schedules:write',
+      update: 'schedules:write',
+      delete: 'schedules:write',
+      run: 'schedules:write',
+      catalog: 'schedules:read',
+    },
+  },
   description:
     'Manage improvement schedules for a project. action=list/get/runs/create/update/delete/run/catalog. ' +
     'Requires device or PAT principal. Gate: list/get/runs/catalog → member; create/update/delete → admin; run → writer. ' +

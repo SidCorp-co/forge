@@ -90,6 +90,14 @@ function buildSignalKey(
 
 export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_feedback',
+  grant: {
+    byAction: {
+      submit: 'feedback:write',
+      list: 'feedback:read',
+      review: 'feedback:write',
+      get: 'feedback:read',
+    },
+  },
   description:
     'Submit, list, get, or review agent friction reports. ' +
     'action=submit: report friction, skill gaps, unclear steps, or learnings mid-run. ' +

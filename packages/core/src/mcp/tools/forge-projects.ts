@@ -51,6 +51,7 @@ type ListedProject = {
 
 export const forgeProjectsListTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_projects.list',
+  grant: 'projects:read',
   description:
     "List projects visible to the principal (explicit project membership of any role, plus org owner/admin implicit access). For PAT principals, results are additionally narrowed to the token's projectIds allowlist when set. Returns id, slug, name, orgId, role (effective: admin|member|viewer).",
   inputSchema: zodToMcpSchema(inputSchema),
@@ -91,6 +92,7 @@ const createInputSchema = z
 
 export const forgeProjectsCreateTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_projects.create',
+  grant: 'projects:write',
   description:
     "Create a new project in an org (orgId optional — defaults to the caller's personal org; the caller becomes a project admin). Accepts slug+name plus optional initial repoPath/baseBranch/releaseChain. PAT principals must carry the `write` scope and have a null `projectIds` allowlist (scoped PATs are refused). Returns id/slug/name/orgId/createdBy/apiKey/createdAt — the apiKey is needed for widget install and device pairing.",
   inputSchema: zodToMcpSchema(createInputSchema),
@@ -226,6 +228,7 @@ const updateInputSchema = z
  */
 export const forgeProjectsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_projects.update',
+  grant: 'projects:write',
   description:
     "Update project settings (name, repoPath, baseBranch, releaseChain). `releaseChain` is the ordered release path — `[]` ships nothing, `[{branch}]` deploys that branch, `[{branch: 'dev'}, {branch: 'main', from: 'merge-branch'}]` crosses then deploys — and it REPLACES the whole list rather than patching it. `releaseModel`, `liveBranch` and `releaseStrategy` were retired by ISS-1311 and a patch naming one is refused by name. The chain's first entry and `baseBranch` must name the same branch: send both together when either moves. Whether a project's work lands in git is its project document's `source.type` (`git`, `storefront`, `none`), written with `PUT /api/projects/:id/config` and never here. Caller must be org owner/admin on the project's org (a merely-invited project admin cannot mutate settings — matches REST PATCH /api/projects/:id). PAT principals must additionally carry the `write` scope. `workspaceSetup` is prose describing how to bring this repo's workspace to a state a stage can build, test and commit in (install commands, hook setup, toolchain quirks) — the runner's setup agent reads it before every stage that lands in a broken workspace, so writing it once retires a per-job derivation. Record only a procedure you actually ran; null clears it. Sensitive fields (webhookSecret, apiKey, agentConfig, defaultDeviceId) stay on REST; `environments` is otherwise read-only via forge_projects.get, with ONE scoped exception: `environmentsLimits` writes `environments.limits` and leaves every other key of the blob — the credentials included — exactly as it found them. `limits` answers ONE question: what does this environment NOT have? (which surfaces the test account cannot reach, which states this environment never contains, what must not be faked). The field it replaced invited anything and was filled on 4 of 32 projects. NEVER put a secret in it: it is readable by every project member and is injected into agent prompts as `{{project:test-notes}}`. null clears it. `previewDeployNotes` was retired by ISS-1069 and is refused by name.",
   inputSchema: zodToMcpSchema(updateInputSchema),
@@ -293,6 +296,7 @@ const getInputSchema = z.object({ projectId: z.uuid() }).strict();
 
 export const forgeProjectsGetTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_projects.get',
+  grant: 'projects:read',
   description:
     'Fetch project detail visible to the principal — id, slug, name, orgId, createdBy, role (effective: admin|member|viewer), repoPath, workspaceSetup, baseBranch (where an ISS-* branch is cut from, NOT a release fact), releaseChain (the ordered release path; `[]` ships nothing), plus releaseModel/liveBranch/releaseStrategy DERIVED from that chain for readers that have not moved to it, defaultDeviceId, environments.{preview,live,testCredentials,limits}, createdAt. `environments` carries BOTH sides of a deployment: `preview` is `{url, apiUrl, urls[]}` or null — null means this project has no preview side at all, which is normal for a one-box project and is not a gap to report or to work around — and `live` is `{url, apiUrl, commitUrl, commitPath}`, the address a release ships to. `workspaceSetup` is the project-declared setup procedure (install commands, hook setup, toolchain quirks) — follow it rather than guessing when a checkout will not build, and if it is null and you establish one, record it via forge_projects.update. READ environments.limits before planning any live verification: it answers what this environment does NOT have (what a test account cannot reach, states this environment never contains), and those limits decide whether an acceptance criterion is walkable AT ALL — check it while the work is still being scoped, not at the testing gate. If it is empty and you discover such a limit, record it with forge_projects.update `environmentsLimits`. Any effective project role can read. PAT principals must carry the `read` scope. Sensitive fields (agentConfig, webhookSecret, apiKey) stay on REST.',
   inputSchema: zodToMcpSchema(getInputSchema),

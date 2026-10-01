@@ -17,6 +17,7 @@ const inputSchema = z
 
 export const forgeCollaboratorsTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_collaborators',
+  grant: { byAction: { list: 'projects:read' } },
   description:
     'List the collaborators across your projects (projects you own or are a member of) with a membership matrix scoped to those projects. Read-only. Action: `list` (optional `search` matches email prefix; paginated). Each user includes `memberships: [{ projectId, projectSlug, role }]` limited to your visible projects. Never returns passwordHash or any auth secret.',
   inputSchema: zodToMcpSchema(inputSchema),

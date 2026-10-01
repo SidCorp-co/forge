@@ -166,6 +166,7 @@ function toSkillListRow(row: SkillCatalogRow): Record<string, unknown> {
 
 export const forgeSkillsListTool: ContextScopedMcpToolFactory = ({ principal }) => ({
   name: 'forge_skills.list',
+  grant: 'skills:read',
   description:
     'Catalog of skills visible to a project, deduped by name. Returns a lightweight projection per skill (catalog metadata + dedup hints); the heavy bodies (skillMd, prompt, files, tools, manifest, changelog, localGuide) are OMITTED to stay under the response token cap — fetch a skill body via forge_skills.get / forge_skills.effective. Each row has `scope`: `project` rows are USABLE (installable/dispatchable); `global` rows are adoptable TEMPLATES that do nothing at runtime until adopted (forge_skills.adopt) into the project. `shadowsGlobal`/`shadowedGlobalSkillId` are catalog hints (a same-name global exists), never a runtime fallback. `basedOnGlobalVersion` and `templateVersion` are adoption provenance — the template version this copy was taken from, and the one the template carries now. A gap between them means only that the template moved on; nothing recomputes, flags or reconciles it, so treat it as history, and re-adopt (forge_skills.adopt) only when a human asks for the newer template. `pinned: true` marks a deliberately divergent copy. Requires project membership.',
   inputSchema: zodToMcpSchema(listInputSchema),
@@ -179,6 +180,7 @@ export const forgeSkillsListTool: ContextScopedMcpToolFactory = ({ principal }) 
 
 export const forgeSkillsGetTool: ContextScopedMcpToolFactory = ({ principal }) => ({
   name: 'forge_skills.get',
+  grant: 'skills:read',
   description:
     'Fetch a single skill by id. Returns null when the skill is project-scoped to a different project (no cross-project leak).',
   inputSchema: zodToMcpSchema(getInputSchema),
@@ -192,6 +194,7 @@ export const forgeSkillsGetTool: ContextScopedMcpToolFactory = ({ principal }) =
 
 export const forgeSkillsRegisterTool: ContextScopedMcpToolFactory = ({ principal }) => ({
   name: 'forge_skills.register',
+  grant: 'skills:write',
   description:
     'Bind a PROJECT skill to a pipeline stage for this project (or clear with stage=null). Only project-scoped skills may be registered — a global template must be adopted (forge_skills.adopt) into the project first, else this rejects with SKILL_NOT_PROJECT_SCOPED. Requires project owner/admin.',
   inputSchema: zodToMcpSchema(registerInputSchema),
@@ -217,6 +220,7 @@ export const forgeSkillsRegisterTool: ContextScopedMcpToolFactory = ({ principal
 
 export const forgeSkillsListRegistrationsTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_skills.list_registrations',
+  grant: 'skills:read',
   description:
     "List the project's stage→skill bindings overlaid with `enabled` and `mode` from the project's policy: `enabled` is whether the policy declares that state, and `mode` is the policy's `intake.mode` (`auto`|`manual`) at the ENTRY status alone — it decides whether a human releases work before it starts — and `null` at every other stage. Stages with no registration are omitted — clients diff against `STAGE_NAMES` to find gaps. Returns `{ registrations: [{ stage, skillId, skillName, scope, mode, enabled, registeredBy, registeredAt }] }`.",
   inputSchema: zodToMcpSchema(listRegistrationsInputSchema),
@@ -230,6 +234,7 @@ export const forgeSkillsListRegistrationsTool: ContextScopedMcpToolFactory = (ct
 
 export const forgeSkillsCreateTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_skills.create',
+  grant: 'skills:write',
   description:
     'Create a project-scoped skill (folder-first: a SKILL.md body + optional supporting files[]). Use this to load a local skill into Forge as the source of truth. Returns the created skill row (with id, version, contentHash). Requires owner/admin on the project. Global skills cannot be created here.',
   inputSchema: zodToMcpSchema(createInputSchema),
@@ -258,6 +263,7 @@ export const forgeSkillsCreateTool: ContextScopedMcpToolFactory = (ctx) => ({
 
 export const forgeSkillsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_skills.update',
+  grant: 'skills:write',
   description:
     'Update a project-scoped skill (name/description/skillMd/target/files/localGuide/installOnly). Bumps version + recomputes contentHash when the body or files change. Set installOnly:true to force-sync a manual / user-invocable utility skill to runners WITHOUT binding it to a pipeline stage — it enters the device manifest (forge_skills.push delivers it) but the dispatcher never auto-runs it. Requires owner/admin. Global skills are immutable templates and cannot be updated; create a same-name project skill to shadow one for this project.',
   inputSchema: zodToMcpSchema(updateInputSchema),
@@ -285,6 +291,7 @@ export const forgeSkillsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
 
 export const forgeSkillsDeleteTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_skills.delete',
+  grant: 'skills:write',
   description:
     'Delete a project-scoped skill. Requires owner/admin. Global skills cannot be deleted here.',
   inputSchema: zodToMcpSchema(getInputSchema),
@@ -302,6 +309,7 @@ export const forgeSkillsDeleteTool: ContextScopedMcpToolFactory = (ctx) => ({
 
 export const forgeSkillsEffectiveTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_skills.effective',
+  grant: 'skills:read',
   description:
     "The project's CATALOG — deduped by name: project skills (scope='project', USABLE) plus global TEMPLATES (scope='global', adoptable, NOT usable). Each row carries skillMd, files, effectiveHash, scope, and shadowsGlobal/shadowedGlobalSkillId (catalog hints only). NOTE: this is NOT what a device installs — only the registered ∩ project subset is installed/dispatched (see forge_skills.sync_status). A global row here runs nowhere until adopted (forge_skills.adopt). Requires project membership.",
   inputSchema: zodToMcpSchema(effectiveInputSchema),
@@ -315,6 +323,7 @@ export const forgeSkillsEffectiveTool: ContextScopedMcpToolFactory = (ctx) => ({
 
 export const forgeSkillsAdoptTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_skills.adopt',
+  grant: 'skills:write',
   description:
     'Adopt a global skill TEMPLATE into this project: clones the global (skillId must be a global) into a new project-scoped skill of the same name, which the project then owns and can edit + register. This is the ONLY way a global enters a project at runtime (globals never install/dispatch directly). Rejects with ALREADY_SHADOWED if a same-name project skill already exists. Requires owner/admin on the project. Returns the created project skill.',
   inputSchema: zodToMcpSchema(adoptInputSchema),
@@ -355,6 +364,7 @@ export const forgeSkillsAdoptTool: ContextScopedMcpToolFactory = (ctx) => ({
 
 export const forgeSkillsSyncStatusTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_skills.sync_status',
+  grant: 'skills:read',
   description:
     'Per-device skill freshness for the project: for each device-bound runner and each registered skill, whether it is synced / outdated / missing (server effectiveHash vs the device-reported installedHash) plus syncedAt. Use after a push to verify a device picked up the new skills. Requires project membership.',
   inputSchema: zodToMcpSchema(effectiveInputSchema),
@@ -368,6 +378,7 @@ export const forgeSkillsSyncStatusTool: ContextScopedMcpToolFactory = (ctx) => (
 
 export const forgeSkillsPushTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_skills.push',
+  grant: 'skills:write',
   description:
     "Push (sync) the project's skills to its device-bound runners. Sends a `skill.sync` command over WebSocket to each targeted device room; the device pulls its effective manifest and reports installed hashes back — bodies are NOT sent in this call. Omit deviceId to signal every device-bound runner of the project, or pass one deviceId to target a single device. skillNames is an optional hint. Returns the deviceIds signalled (empty if the project has no device-bound runner). Requires owner/admin. This is the explicit operator-driven sync path; a background poller also runs on each device when `[skills] auto_pull` is enabled (on by default — see daemon/skill_pull.rs).",
   inputSchema: zodToMcpSchema(pushInputSchema),

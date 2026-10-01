@@ -6,20 +6,14 @@
  * `allowedActions` allowlist plus an optional arg `guard`.
  */
 
-import { type PatPermission, patGrantCovers } from '../../auth/pat-permissions.js';
+import { assertToolDeclaresGrant, toolGrantRefusal } from '../../mcp/tool-grant.js';
 import { type CallToolResult, toToolCallContent } from '../../mcp/tool-result.js';
-import type { ContextScopedMcpToolFactory, McpContext } from '../../mcp/tools/lib.js';
+import type { ContextScopedMcpToolFactory, McpContext, McpTool } from '../../mcp/tools/lib.js';
 import type { ChatTool } from '../providers/types.js';
 
 /** One entry in the chat tool allowlist. */
 export interface ChatToolSpec {
   factory: ContextScopedMcpToolFactory;
-  /**
-   * The permission the equivalent REST route needs, which the turn's grant must cover before the
-   * handler runs (ISS-17). `null` only for a tool that reads nothing a grant fences, or that
-   * reaches REST itself and meets that door's own check.
-   */
-  grant: PatPermission | null;
   /** Permitted `action` values; omit for single-action tools. */
   allowedActions?: string[];
   describe?: string;
@@ -96,6 +90,7 @@ export function buildToolset(ctx: McpContext, specs: ChatToolSpec[]): ChatToolse
     string,
     {
       spec: ChatToolSpec;
+      tool: McpTool;
       handler: (a: Record<string, unknown>) => Promise<unknown>;
       hasProjectId: boolean;
       declared: Record<string, unknown>;
@@ -104,6 +99,7 @@ export function buildToolset(ctx: McpContext, specs: ChatToolSpec[]): ChatToolse
 
   for (const spec of specs) {
     const tool = spec.factory(ctx);
+    assertToolDeclaresGrant(tool);
     const name = sanitizeName(tool.name);
     if (bySanitized.has(name)) continue;
     const props = (tool.inputSchema as { properties?: Record<string, unknown> }).properties;
@@ -112,6 +108,7 @@ export function buildToolset(ctx: McpContext, specs: ChatToolSpec[]): ChatToolse
     const parameters = willInject ? stripProperty(tool.inputSchema, 'projectId') : tool.inputSchema;
     bySanitized.set(name, {
       spec,
+      tool,
       handler: tool.handler,
       hasProjectId,
       declared: tool.inputSchema,
@@ -144,13 +141,14 @@ export function buildToolset(ctx: McpContext, specs: ChatToolSpec[]): ChatToolse
     }
 
     dropUndeclaredKeys(args, entry.declared);
-    const wanted = entry.spec.grant;
     const grant = ctx.grant !== undefined ? ctx.grant : ctx.principal.permissions;
-    if (wanted !== null && !patGrantCovers(grant, wanted)) {
-      return toolError(
-        `FORBIDDEN: ${name} needs '${wanted}', and the access token the person asking reached Forge with was not granted it (it holds: ${(grant ?? []).join(', ')}). Nothing was done; tell them so.`,
-      );
-    }
+    const refusal = toolGrantRefusal(
+      entry.tool,
+      args,
+      grant,
+      'the access token the person asking reached Forge with',
+    );
+    if (refusal) return toolError(`${refusal} Tell them so.`);
 
     if (entry.spec.allowedActions) {
       const action = args.action;

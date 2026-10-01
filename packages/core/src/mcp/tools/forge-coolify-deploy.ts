@@ -93,6 +93,20 @@ async function resolveProjectId(input: Input, ctx: McpContext): Promise<string> 
 
 export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_coolify_deploy',
+  grant: {
+    byAction: {
+      list: 'projects:read',
+      deploy: 'projects:write',
+      status: 'projects:read',
+      logs: 'projects:read',
+      'runtime-logs': 'projects:read',
+      cancel: 'projects:write',
+      'rollback-images': 'projects:read',
+      rollback: 'projects:write',
+      applications: 'projects:read',
+      targets: 'projects:read',
+    },
+  },
   description:
     'Coolify deploy controls for the pipeline skills. Actions: list | deploy | status | logs | ' +
     'runtime-logs | cancel | rollback-images | rollback | applications | targets. ' +
