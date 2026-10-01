@@ -24,7 +24,10 @@ function syncActive(row: StoredBinding) {
   }
 }
 
-export function seedBindingRow(row: StoredBinding) {
+export function seedBindingRow(
+  seed: Omit<StoredBinding, 'instructions'> & { instructions?: string | null },
+) {
+  const row: StoredBinding = { ...seed, instructions: seed.instructions ?? null };
   bindingMem.rows.set(row.id, row);
   syncActive(row);
 }
@@ -56,14 +59,10 @@ export const memoryBindingStore: BindingStore = {
   async casBinding({ baseRevision, integrationSecret, ...write }) {
     const current = bindingMem.rows.get(write.id);
     if (current && current.projectId !== write.projectId) return { ok: false, reason: 'foreign' };
-    const storedRevision = current?.active ? current.revision : null;
+    const storedRevision = current?.revision ?? null;
     if (storedRevision !== baseRevision) return { ok: false, reason: 'stale', storedRevision };
     if (!current) bindingMem.secrets.set(write.id, await integrationSecret());
-    const stored: StoredBinding = {
-      ...write,
-      active: true,
-      revision: (current?.revision ?? 0) + 1,
-    };
+    const stored: StoredBinding = { ...write, revision: (current?.revision ?? 0) + 1 };
     seedBindingRow(stored);
     return { ok: true, stored, created: !current, changed: true };
   },

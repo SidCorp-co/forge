@@ -80,6 +80,7 @@ describe("connecting a provider", () => {
 				role: "deploy",
 				connection: "c-new",
 				agentAccess: "none",
+				active: true,
 				target: { provider: "coolify", applications: [APP], releaseRunnerLabel: "release" },
 			}),
 		});
@@ -95,10 +96,11 @@ describe("connecting a provider", () => {
 		expect(api.removeConnection).toHaveBeenCalledWith("c-new");
 	});
 
-	it("writes a switched-off service slot back rather than colliding with it", async () => {
+	it("writes a switched-off service slot back on at its revision rather than colliding with it", async () => {
 		api.list.mockResolvedValue({
 			items: [summary({ provider: "github", role: "service", bindingActive: false })],
 		});
+		api.bindingDocument.mockResolvedValue({ declared: true, revision: 4, document: coolifyDoc({}) });
 		await bindConnection(PROJECT, {
 			connectionId: "c2",
 			provider: "github",
@@ -107,7 +109,9 @@ describe("connecting a provider", () => {
 		});
 		const [, id, write] = api.putBindingDocument.mock.calls[0];
 		expect(id).toBe(BINDING);
-		expect(write.baseRevision).toBeNull();
+		expect(write.baseRevision).toBe(4);
+		expect(write.document.active).toBe(true);
+		expect(write.document.connection).toBe("c2");
 		expect(write.document.target).toEqual({
 			provider: "github",
 			owner: "acme",
@@ -127,7 +131,7 @@ describe("editing a binding", () => {
 		await updateIntegration(PROJECT, BINDING, { config: { releaseRunnerLabel: null } });
 		expect(api.putBindingDocument).toHaveBeenCalledWith(PROJECT, BINDING, {
 			baseRevision: 3,
-			document: coolifyDoc({ applications: [APP] }),
+			document: { ...coolifyDoc({ applications: [APP] }), active: true },
 		});
 		expect(api.update).not.toHaveBeenCalled();
 	});
@@ -143,32 +147,53 @@ describe("editing a binding", () => {
 		expect(api.update).not.toHaveBeenCalled();
 	});
 
-	it("sends secrets, the switch and a connection-tier key to the integrations PATCH only", async () => {
+	it("sends secrets and a connection-tier key to the integrations PATCH only", async () => {
 		await updateIntegration(PROJECT, BINDING, {
 			config: { baseUrl: "https://coolify.y" },
 			secrets: { apiToken: "tok-87654321" },
-			active: false,
 		});
 		expect(api.putBindingDocument).not.toHaveBeenCalled();
 		expect(api.update).toHaveBeenCalledWith(PROJECT, BINDING, {
 			config: { baseUrl: "https://coolify.y" },
 			secrets: { apiToken: "tok-87654321" },
-			active: false,
 		});
 	});
 
-	it("switches a binding back on by writing its document from a null base", async () => {
-		api.list.mockResolvedValue({
-			items: [summary({ provider: "github", role: "service", bindingActive: false, bindingConfig: {} })],
+	it("switches a binding off and back on through its document at the revision it read", async () => {
+		api.bindingDocument.mockResolvedValue({
+			declared: true,
+			revision: 3,
+			document: { ...coolifyDoc({ applications: [APP] }), active: true },
 		});
-		await updateIntegration(PROJECT, BINDING, {
-			config: { owner: "acme", repo: "shop", installationId: 7 },
-			active: true,
+		await updateIntegration(PROJECT, BINDING, { active: false });
+		expect(api.putBindingDocument).toHaveBeenCalledWith(PROJECT, BINDING, {
+			baseRevision: 3,
+			document: { ...coolifyDoc({ applications: [APP] }), active: false },
 		});
-		expect(api.bindingDocument).not.toHaveBeenCalled();
-		const [, , write] = api.putBindingDocument.mock.calls[0];
-		expect(write.baseRevision).toBeNull();
-		expect(write.document.target).toMatchObject({ provider: "github", owner: "acme" });
+
+		api.bindingDocument.mockResolvedValue({
+			declared: true,
+			revision: 4,
+			document: { ...coolifyDoc({ applications: [APP] }), active: false },
+		});
+		await updateIntegration(PROJECT, BINDING, { active: true });
+		expect(api.putBindingDocument.mock.calls[1]?.[2]).toEqual({
+			baseRevision: 4,
+			document: { ...coolifyDoc({ applications: [APP] }), active: true },
+		});
+		expect(api.update).not.toHaveBeenCalled();
+	});
+
+	it("sets instructions through the document, and drops the key to clear them", async () => {
+		api.bindingDocument.mockResolvedValue({
+			declared: true,
+			revision: 3,
+			document: { ...coolifyDoc({ applications: [APP] }), instructions: "deploy at night" },
+		});
+		await updateIntegration(PROJECT, BINDING, { instructions: "deploy at noon" });
+		expect(api.putBindingDocument.mock.calls[0]?.[2].document.instructions).toBe("deploy at noon");
+		await updateIntegration(PROJECT, BINDING, { instructions: null });
+		expect(api.putBindingDocument.mock.calls[1]?.[2].document).not.toHaveProperty("instructions");
 		expect(api.update).not.toHaveBeenCalled();
 	});
 });

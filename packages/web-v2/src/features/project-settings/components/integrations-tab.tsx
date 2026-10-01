@@ -23,11 +23,14 @@ import { ProjectIntegrationsPanel } from "@/features/integrations/components/pro
 import { useBindConnection, useConnections, useIsOrgAdmin } from "@/features/integrations/hooks";
 import { providerLabel, providerModule } from "@/features/integrations/providers/registry";
 import { bindingRefusalText } from "@/features/integrations/bind-actions";
+import { coolify } from "@/features/integrations/providers/coolify";
+import { CoolifyTargetsField } from "@/features/integrations/providers/coolify/targets-field";
 import { providerCanDeploy } from "@forge/contracts/deploy-capability";
 import type {
   AgentAccess,
   BindingRole,
   ConnectionSummary,
+  CoolifyTargetInput,
 } from "@/features/integrations/types";
 
 // What the binding is FOR — DECLARED by the person, never derived from the
@@ -43,12 +46,32 @@ function connectionLabel(c: ConnectionSummary): string {
   return c.displayName ? `${c.displayName} · ${provider}` : provider;
 }
 
-function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
+const NO_APPLICATION: CoolifyTargetInput = { label: "", resourceUuid: "" };
+
+function applicationsRefusal(targets: CoolifyTargetInput[]): string | null {
+  const incomplete = targets.findIndex((t) => !t.label.trim() || !t.resourceUuid.trim());
+  if (incomplete === -1) return null;
+  return targets.length === 1 && !targets[0]?.label.trim() && !targets[0]?.resourceUuid.trim()
+    ? "Choose at least one Coolify application before sharing: a Coolify binding names the applications it deploys."
+    : `Application ${incomplete + 1} needs both a label and a Coolify application before sharing.`;
+}
+
+function applicationsOf(targets: CoolifyTargetInput[]): CoolifyTargetInput[] {
+  return targets.map(({ healthUrl, ...t }) => ({
+    ...t,
+    label: t.label.trim(),
+    resourceUuid: t.resourceUuid.trim(),
+    ...(healthUrl?.trim() ? { healthUrl: healthUrl.trim() } : {}),
+  }));
+}
+
+export function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
   const connectionsQ = useConnections();
   const bind = useBindConnection(projectId);
   const [connectionId, setConnectionId] = useState<string>("");
   const [role, setRole] = useState<BindingRole>("service");
   const [agentAccess, setAgentAccess] = useState<AgentAccess>(AGENT_ACCESS_CLOSED);
+  const [applications, setApplications] = useState<CoolifyTargetInput[]>([NO_APPLICATION]);
   const [formError, setFormError] = useState<string | null>(null);
 
   // Only active connections with a stored credential are eligible to share —
@@ -69,6 +92,7 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
   const selected = eligible.find((c) => c.id === connectionId);
   const provider = selected?.provider;
   const canDeploy = provider === undefined ? true : providerCanDeploy(provider);
+  const namesApplications = provider === coolify.provider;
   const providerName = provider ? providerLabel(provider) : "this provider";
   // No binding exists yet, so the risk class comes off the provider's own module. `none` renders no
   // control at all — that provider has no agent path for a grant to open.
@@ -88,14 +112,19 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
       );
       return;
     }
-    setFormError(null);
     if (!selected) return;
+    const missing = namesApplications ? applicationsRefusal(applications) : null;
+    if (missing) {
+      setFormError(missing);
+      return;
+    }
+    setFormError(null);
     bind.mutate(
       {
         connectionId,
         provider: selected.provider,
         role,
-        binding: {},
+        binding: namesApplications ? { targets: applicationsOf(applications) } : {},
         ...agentAccessBody(agentPathKind, agentAccess),
       },
       {
@@ -103,6 +132,7 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
           setConnectionId("");
           setRole("service");
           setAgentAccess(AGENT_ACCESS_CLOSED);
+          setApplications([NO_APPLICATION]);
         },
       },
     );
@@ -133,6 +163,7 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
                 value={connectionId}
                 onChange={(v) => {
                   setConnectionId(v);
+                  setApplications([NO_APPLICATION]);
                   setFormError(null);
                 }}
                 placeholder={connectionsQ.isLoading ? "Loading…" : "Select a connection…"}
@@ -159,6 +190,20 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
                 binding in <code>environments.&lt;name&gt;.deployment.binding</code> and write the
                 document on the Configuration tab.
               </p>
+            )}
+            {namesApplications && (
+              <CoolifyTargetsField
+                projectId={projectId}
+                integrationId={undefined}
+                baseUrl=""
+                apiToken=""
+                targets={applications}
+                onChange={(next) => {
+                  setApplications(next);
+                  setFormError(null);
+                }}
+                inherited={false}
+              />
             )}
             <AgentAccessChoice
               value={agentAccess}

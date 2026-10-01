@@ -324,9 +324,8 @@ describe('the Apps an install-completion may probe', () => {
  * The PATCH that threw it back on carried an org-admin bar, because `active`
  * was gated beside the connection-tier config and secrets although it writes
  * the binding. A project admin who is only an org member could therefore
- * disconnect and could not undo it. Since ISS-15 the repick is the binding's
- * document, written from a null base because a switched-off binding declares
- * nothing.
+ * disconnect and could not undo it. Since ISS-15 the switch is the binding
+ * document's `active`, written at the revision the switched-off row holds.
  */
 describe('putting back a binding this admin was allowed to disconnect', () => {
   let connectionId: string;
@@ -370,18 +369,26 @@ describe('putting back a binding this admin was allowed to disconnect', () => {
       body: JSON.stringify(body),
     });
 
+  const storedRevision = async () => {
+    const rows = (await harness.db.execute(
+      sql`SELECT revision FROM integration_bindings WHERE id = ${bindingId}`,
+    )) as unknown as Array<{ revision: number }>;
+    return rows[0]?.revision ?? null;
+  };
+
   const rebind = async (userId: string) =>
     app.request(`/api/projects/${projectId}/bindings/${bindingId}`, {
       method: 'PUT',
       headers: await asUser(userId),
       body: JSON.stringify({
-        baseRevision: null,
+        baseRevision: await storedRevision(),
         document: {
           $schema: 'https://forge.sidcorp.co/schemas/binding-v1.json',
           version: 1,
           id: bindingId,
           role: 'service',
           connection: connectionId,
+          active: true,
           target: {
             provider: 'github',
             owner: 'SidCorp-co',
@@ -434,7 +441,6 @@ describe('putting back a binding this admin was allowed to disconnect', () => {
     await createTestProjectMember(harness.db, { userId: plain.id, projectId, role: 'member' });
 
     expect((await disconnect(plain.id)).status).toBe(403);
-    expect((await repick(plain.id, { active: false })).status).toBe(403);
     expect((await rebind(plain.id)).status).toBe(403);
   });
 });

@@ -70,8 +70,8 @@ export interface BindingSummary {
    *  every existing reader ("is this live?") is unchanged; the two flags below
    *  say WHICH tier is off, which a single collapsed boolean cannot. */
   active: boolean;
-  /** Project tier — does THIS project opt in. The only tier a project admin's
-   *  binding PATCH can write. */
+  /** Project tier — does THIS project opt in. Written by the binding document's
+   *  `active` (and switched off by DELETE), which a project admin may do. */
   bindingActive: boolean;
   /** Credential tier — is the org-shared connection enabled at all. False here
    *  means no project can use it, and only an org owner/admin can flip it (via
@@ -289,8 +289,6 @@ export type GoogleSecretsInput = {
 export interface IntegrationBindingUpdateInput {
   config?: Record<string, unknown>;
   secrets?: Record<string, unknown>;
-  active?: boolean;
-  instructions?: string | null;
 }
 
 export interface ConnectionCreateInput {

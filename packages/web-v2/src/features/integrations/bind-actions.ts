@@ -50,6 +50,7 @@ export async function bindConnection(projectId: string, input: BindConnectionInp
 			!b.bindingActive,
 	);
 	const id = freed?.id ?? crypto.randomUUID();
+	const read = freed ? await integrationsApi.bindingDocument(projectId, id) : null;
 	const document: BindingDocument = {
 		$schema: BINDING_SCHEMA,
 		version: 1,
@@ -57,9 +58,13 @@ export async function bindConnection(projectId: string, input: BindConnectionInp
 		role: input.role,
 		connection: input.connectionId,
 		agentAccess: input.agentAccess ?? "none",
+		active: true,
 		target: targetOf(input.provider, input.binding, label),
 	};
-	return integrationsApi.putBindingDocument(projectId, id, { baseRevision: null, document });
+	return integrationsApi.putBindingDocument(projectId, id, {
+		baseRevision: read?.declared === true ? read.revision : null,
+		document,
+	});
 }
 
 export async function createIntegration(projectId: string, input: CreateIntegrationInput) {
@@ -85,46 +90,47 @@ export async function createIntegration(projectId: string, input: CreateIntegrat
 	}
 }
 
+function withInstructions(document: BindingDocument, instructions: string | null | undefined): BindingDocument {
+	if (instructions === undefined) return document;
+	const { instructions: _replaced, ...rest } = document;
+	return instructions ? { ...rest, instructions } : rest;
+}
+
 export async function updateIntegration(projectId: string, id: string, input: UpdateIntegrationInput) {
 	const { items } = await integrationsApi.list(projectId);
 	const summary = items.find((b) => b.id === id);
 	if (!summary) throw new Error(`binding ${id} is not one of this project's`);
 	const tiers = splitTiers(summary.provider, input.config ?? {});
-	const rebinds = Object.keys(tiers.binding).length > 0 || input.agentAccess !== undefined;
+	const rebinds =
+		Object.keys(tiers.binding).length > 0 ||
+		input.agentAccess !== undefined ||
+		input.active !== undefined ||
+		input.instructions !== undefined;
 
 	if (rebinds) {
-		const read = summary.bindingActive ? await integrationsApi.bindingDocument(projectId, id) : null;
-		const base: BindingDocument =
-			read?.declared === true
-				? read.document
-				: {
-						$schema: BINDING_SCHEMA,
-						version: 1,
-						id,
-						role: summary.role,
-						connection: summary.connectionId,
-						agentAccess: summary.agentAccess,
-						target: targetOf(summary.provider, summary.bindingConfig, summary.label),
-					};
+		const read = await integrationsApi.bindingDocument(projectId, id);
+		if (!read.declared) throw new Error(`binding ${id} has no binding document to edit`);
+		const base = read.document;
 		const merged = mergeBindingConfig(bindingConfigOf(base.target), tiers.binding);
 		await integrationsApi.putBindingDocument(projectId, id, {
-			baseRevision: read?.declared === true ? read.revision : null,
-			document: {
-				...base,
-				agentAccess: input.agentAccess ?? base.agentAccess ?? "none",
-				target: targetOf(summary.provider, merged, summary.label),
-			},
+			baseRevision: read.revision,
+			document: withInstructions(
+				{
+					...base,
+					agentAccess: input.agentAccess ?? base.agentAccess ?? "none",
+					active: input.active ?? base.active ?? true,
+					target: targetOf(summary.provider, merged, summary.label),
+				},
+				input.instructions,
+			),
 		});
 	}
 
 	const connectionConfig = Object.keys(tiers.connection).length > 0 ? tiers.connection : undefined;
-	const active = rebinds && input.active === true ? undefined : input.active;
-	if (connectionConfig || input.secrets || active !== undefined || input.instructions !== undefined) {
+	if (connectionConfig || input.secrets) {
 		return integrationsApi.update(projectId, id, {
 			...(connectionConfig ? { config: connectionConfig } : {}),
 			...(input.secrets ? { secrets: input.secrets } : {}),
-			...(active === undefined ? {} : { active }),
-			...(input.instructions === undefined ? {} : { instructions: input.instructions }),
 		});
 	}
 	return null;

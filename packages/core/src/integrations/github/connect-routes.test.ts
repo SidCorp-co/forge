@@ -107,7 +107,6 @@ const store = vi.hoisted(() => ({
   listActiveBindingsForProjectProvider: vi.fn(async () => [] as unknown[]),
   listBindingsForProject: vi.fn(async (_projectId: string) => [] as unknown[]),
   listConnectionsForPrincipalUser: vi.fn(async () => [] as unknown[]),
-  updateBinding: vi.fn(async () => ({})),
 }));
 vi.mock('../store.js', () => store);
 

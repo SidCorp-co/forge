@@ -91,7 +91,7 @@ export const RULES = [
   {
     id: 'binding-write-doors',
     // ISS-15 — the doors that wrote a binding beside the binding-v1 document, and their callers.
-    re: /\bcreateBinding\b|\bbindExisting\b|\bBindExistingConnection\w*|\bIntegrationBindingCreateInput\b/g,
+    re: /\bcreateBinding\b|\bupdateBinding\b|\bUpdateBindingPatch\b|\bbindExisting\b|\bBindExistingConnection\w*|\bIntegrationBindingCreateInput\b/g,
     why: 'ISS-15 deleted every binding write but one: a binding is a binding-v1 document, written by `PUT /api/projects/:projectId/bindings/:bindingId` through `project-config/bindings.ts:writeBinding`, whose `bind-effects.ts` mints the inbound secret, authorises `agentAccess` and runs `onBindingCreated`. A connection is created with `POST /api/integration-connections` and named in the document. A suite seeds a row with `tests/helpers/seed-binding.ts:seedBinding`.',
     exts: ['.ts', '.tsx', '.mjs', '.js'],
   },
@@ -105,14 +105,14 @@ export const RULES = [
   },
   {
     id: 'binding-row-updates',
-    // ISS-15 — the switch, the instructions and the inbound secret stay row updates; nothing else does.
+    // ISS-15 — DELETE's switch-off and the inbound-secret rotation stay row updates; nothing else does.
     re: /\.update\(integrationBindings\)|\bUPDATE integration_bindings\b/g,
     allow: [
       /^packages\/core\/src\/project-config\/binding-store\.ts$/,
       /^packages\/core\/src\/integrations\/store\.ts$/,
       /^packages\/core\/tests\//,
     ],
-    why: "ISS-15: what a binding declares is changed only by a binding-v1 document (`project-config/binding-store.ts:casBinding`). `integrations/store.ts:updateBinding` keeps the binding's switch, instructions and inbound secret, and takes nothing else. Write the document instead of updating the row.",
+    why: 'ISS-15: what a binding declares, `active` and `instructions` among it, is changed only by a binding-v1 document (`project-config/binding-store.ts:casBinding`). `integrations/store.ts` keeps `softDeleteBinding`, which DELETE /api/projects/:projectId/integrations/:id throws, and `setBindingInboundSecret`, which rotation writes, and nothing else. Write the document instead of updating the row.',
     exts: ['.ts', '.tsx', '.mjs', '.js'],
   },
   {
