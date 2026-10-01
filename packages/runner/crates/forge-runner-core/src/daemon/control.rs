@@ -201,34 +201,84 @@ pub async fn serve(
             "cannot resolve the control socket path",
         ));
     };
-    if path.exists() {
-        let _ = std::fs::remove_file(&path);
+    let listener = match crate::daemon::handover::inherited_listener(&path) {
+        crate::daemon::handover::Inherited::Taken(held) => {
+            let listener = UnixListener::from_std(held)?;
+            tracing::info!(
+                "[control] listening on {}, carried across the handover from the build before this one",
+                path.display()
+            );
+            listener
+        }
+        crate::daemon::handover::Inherited::Refused(why) => {
+            tracing::error!(
+                "[control] {} named a listener this process will not take: {why} — binding a fresh socket at {}",
+                crate::daemon::handover::LISTENER_ENV,
+                path.display()
+            );
+            bind_fresh(&path)?
+        }
+        crate::daemon::handover::Inherited::None => bind_fresh(&path)?,
+    };
+    {
+        use std::os::fd::AsRawFd;
+        ctl.drain
+            .socket()
+            .publish_listener(i64::from(listener.as_raw_fd()));
     }
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    let listener = UnixListener::bind(&path)?;
-    tracing::info!("[control] listening on {}", path.display());
+    let mut accepting = ctl.drain.socket().accepting();
 
     loop {
+        let open = *accepting.borrow_and_update();
+        if !open {
+            // Every accept before this read has its guard, and nothing is
+            // accepted until the next read finds it open: say so, so the
+            // handover's window may count what is in flight.
+            ctl.drain.socket().stand_still();
+        }
         tokio::select! {
-            accepted = listener.accept() => {
+            accepted = listener.accept(), if open => {
                 match accepted {
                     Ok((stream, _)) => {
                         let ctl = ctl.clone();
-                        tokio::spawn(async move { serve_one(ctl, stream).await });
+                        let serving = ctl.drain.socket().serving();
+                        tokio::spawn(async move {
+                            serve_one(ctl, stream).await;
+                            drop(serving);
+                        });
                     }
                     Err(e) => tracing::warn!("[control] accept: {e}"),
                 }
             }
+            _ = accepting.changed() => {}
             _ = cancel.changed() => {
                 if *cancel.borrow() { break; }
             }
         }
     }
+    ctl.drain.socket().withdraw_listener();
     let _ = std::fs::remove_file(&path);
     Ok(())
 }
+
+#[cfg(unix)]
+fn bind_fresh(path: &std::path::Path) -> std::io::Result<UnixListener> {
+    if path.exists() {
+        let _ = std::fs::remove_file(path);
+    }
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let listener = UnixListener::bind(path)?;
+    tracing::info!("[control] listening on {}", path.display());
+    Ok(listener)
+}
+
+/// How long a connection may take to send its one line. A hook writes it at
+/// once; a caller that does not would otherwise hold a handover's closing
+/// window for its whole bound.
+#[cfg(unix)]
+const REQUEST_READ_BOUND: std::time::Duration = std::time::Duration::from_secs(5);
 
 #[cfg(unix)]
 async fn serve_one(ctl: Arc<Control>, stream: UnixStream) {
@@ -241,8 +291,16 @@ async fn serve_one(ctl: Arc<Control>, stream: UnixStream) {
         .and_then(|p| u32::try_from(p).ok());
     let mut reader = BufReader::new(stream);
     let mut line = String::new();
-    if reader.read_line(&mut line).await.is_err() {
-        return;
+    match tokio::time::timeout(REQUEST_READ_BOUND, reader.read_line(&mut line)).await {
+        Ok(Ok(_)) => {}
+        Ok(Err(_)) => return,
+        Err(_) => {
+            tracing::warn!(
+                "[control] a connection sent no request within {}s and was closed",
+                REQUEST_READ_BOUND.as_secs()
+            );
+            return;
+        }
     }
     let reply = match serde_json::from_str::<Request>(&line) {
         Ok(req) => match caller_of(&ctl, req.token()) {
@@ -779,7 +837,7 @@ fn dispatch_gate_reply(
                             "[control] refusing a second hand-off of run {run} while draining: it was spent on {spent}"
                         );
                         return ClaimReply::refused(format!(
-                            "this box is draining before a restart ({cause}) and run {run}, declared before the drain, was already handed off to tool call {spent}; a second subagent against it would be work the drain never counted. Declare it again once the box has turned over, or once the drain gives up and admission reopens"
+                            "this box is handing over to a new build ({cause}) and run {run}, declared before the handover's closing window, was already handed off to tool call {spent}; a second subagent against it would be work nothing accounted for. Declare it again in a moment, and the new build will take it"
                         ));
                     }
                     memory.promised.insert(run.to_string(), tool_use.clone());
@@ -835,14 +893,14 @@ fn refused_while_draining(
     }
     let cause = ctl.drain.draining_for()?;
     tracing::warn!(
-        "[control] refusing a hand-off the gate could not decide ({why}): the box is draining for {cause}"
+        "[control] refusing a hand-off the gate could not decide ({why}): the box is handing over for {cause}"
     );
     let known = match declared {
         Some(_) => "and this master has declared no run for it",
         None => "and whether a run was declared for it cannot be read",
     };
     Some(ClaimReply::refused(format!(
-        "this box is draining before a restart ({cause}) and admits no hand-off it cannot account for: the dispatch gate could not check this one against a declaration ({why}), {known}. Hand it off again once the box has turned over, or once the drain gives up and admission reopens"
+        "this box is handing over to a new build ({cause}) and admits no hand-off it cannot account for in the seconds that takes: the dispatch gate could not check this one against a declaration ({why}), {known}. Hand it off again in a moment, and the new build will take it"
     )))
 }
 
@@ -1882,13 +1940,6 @@ mod tests {
                 "criterion 20"
             );
             assert_eq!(led.owe_resume_choices(NEW, "boot-a").unwrap(), 1);
-            let drain = crate::daemon::live_sessions_from(
-                led.unclosed_runs(),
-                "boot-a",
-                |_| true,
-                |_| vec!["ISS-1314".into()],
-            );
-            assert!(drain.is_empty(), "criterion 16: {drain:?}");
         }
         let refused = run_declare(&ctl, PROJECT, &["ISS-1400".into()], "/w/other", NEW, None);
         assert!(
@@ -2253,7 +2304,7 @@ mod tests {
             );
             let why = r.reason.clone().unwrap_or_default();
             assert!(
-                why.contains("draining before a restart") && why.contains("could not check"),
+                why.contains("handing over to a new build") && why.contains("could not check"),
                 "{door}: the refusal names the drain and why the gate could not decide: {why}"
             );
             assert!(
@@ -2266,7 +2317,7 @@ mod tests {
         let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
         let dir = ship_roles(&ctl, &["runner"]);
         *ctl.ledger.lock().unwrap() = None;
-        let _attempt = ctl.drain.begin("update 0.1.0 → 0.1.1").unwrap();
+        let _attempt = ctl.drain.close_for_test("update 0.1.0 → 0.1.1");
         let r = gate_on(&ctl, &asked(Some("toolu_1"), "runner"), "sess-a");
         refused_naming_the_drain(&r, "no registry");
         assert!(r.reason.unwrap_or_default().contains("cannot be read"));
@@ -2278,7 +2329,7 @@ mod tests {
 
         // Roles unreadable and nothing declared: Unknown with no run to count.
         let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
-        let _attempt = ctl.drain.begin("update 0.1.0 → 0.1.1").unwrap();
+        let _attempt = ctl.drain.close_for_test("update 0.1.0 → 0.1.1");
         let r = gate_on(&ctl, &asked(Some("toolu_2"), "runner"), "sess-a");
         refused_naming_the_drain(&r, "unknown verdict, nothing declared");
         assert!(r.reason.unwrap_or_default().contains("declared no run"));
@@ -2295,7 +2346,7 @@ mod tests {
         let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
         let declared = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a", None);
         assert!(declared.ok, "{:?}", declared.reason);
-        let _attempt = ctl.drain.begin("update 0.1.0 → 0.1.1").unwrap();
+        let _attempt = ctl.drain.close_for_test("update 0.1.0 → 0.1.1");
         let r = gate_on(&ctl, &asked(Some("toolu_1"), "runner"), "sess-a");
         assert!(
             allowed(&r),
@@ -2307,7 +2358,7 @@ mod tests {
         ship_roles(&ctl, &["runner"]);
         let declared = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a", None);
         assert!(declared.ok, "{:?}", declared.reason);
-        let _attempt = ctl.drain.begin("update 0.1.0 → 0.1.1").unwrap();
+        let _attempt = ctl.drain.close_for_test("update 0.1.0 → 0.1.1");
         let r = gate_on(&ctl, &asked(None, "runner"), "sess-a");
         assert!(
             allowed(&r),
@@ -2326,7 +2377,7 @@ mod tests {
         let declared = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a", None);
         assert!(declared.ok, "{:?}", declared.reason);
         let run = declared.job_id.unwrap();
-        let _attempt = ctl.drain.begin("update 0.1.0 → 0.1.1").unwrap();
+        let _attempt = ctl.drain.close_for_test("update 0.1.0 → 0.1.1");
 
         let first = gate_on(&ctl, &asked(Some("toolu_1"), "runner"), "sess-a");
         assert!(
@@ -2346,7 +2397,7 @@ mod tests {
         );
         let why = second.reason.unwrap_or_default();
         assert!(
-            why.contains("draining before a restart")
+            why.contains("handing over to a new build")
                 && why.contains(&run)
                 && why.contains("toolu_1"),
             "the refusal names the drain, the run and the call it was spent on: {why}"
@@ -2362,7 +2413,7 @@ mod tests {
         ship_roles(&ctl, &["runner"]);
         let declared = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a", None);
         assert!(declared.ok, "{:?}", declared.reason);
-        let _attempt = ctl.drain.begin("update 0.1.0 → 0.1.1").unwrap();
+        let _attempt = ctl.drain.close_for_test("update 0.1.0 → 0.1.1");
         let r = gate_on(&ctl, &asked(Some("toolu_1"), "runner"), "sess-a");
         assert!(allowed(&r), "{r:?}");
     }
@@ -2769,7 +2820,7 @@ mod tests {
         #[test]
         fn a_declaration_during_a_drain_is_refused_naming_it_and_writes_nothing() {
             let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
-            let _attempt = ctl.drain.begin("update 0.1.0 → 0.1.1").unwrap();
+            let _attempt = ctl.drain.close_for_test("update 0.1.0 → 0.1.1");
             let reply = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a", None);
             assert!(
                 !reply.ok,
@@ -2777,7 +2828,7 @@ mod tests {
             );
             let why = reply.reason.unwrap_or_default();
             assert!(
-                why.contains("draining before a restart") && why.contains("update 0.1.0 → 0.1.1"),
+                why.contains("handing over to a new build") && why.contains("update 0.1.0 → 0.1.1"),
                 "the refusal names the drain and its cause: {why}"
             );
             assert!(
@@ -2812,7 +2863,7 @@ mod tests {
                 assert!(std::time::Instant::now() < deadline, "the declaration waiting on the ledger holds no permit, so a drain would read the box idle without its row");
                 std::thread::sleep(std::time::Duration::from_millis(5));
             }
-            let _attempt = ctl.drain.begin("update 0.1.0 → 0.1.1").unwrap();
+            let _attempt = ctl.drain.close_for_test("update 0.1.0 → 0.1.1");
             std::thread::sleep(std::time::Duration::from_millis(50));
             assert_eq!(
                 ctl.drain.admitting(),
@@ -2833,15 +2884,17 @@ mod tests {
             );
         }
 
-        /// ISS-1223's reproduction, criteria 4 and 5. A master declares a run
-        /// every three minutes and each one runs ten, so at any moment three or
-        /// four are open. A drain begun among them has to turn over inside its
-        /// bound, and nothing may be declared once it has begun. Against the
-        /// drain as it was — one that only polled — the queue refilled faster
-        /// than it emptied, the drain gave up at two hours, and runs went on
-        /// being declared after its line (measured 2026-09-23 on sid-xeon-1).
+        /// ISS-1379, criteria 3, 4 and 34, over ISS-1223's reproduction. A
+        /// master declares a run every three minutes and each runs ten, so
+        /// three or four are open at any moment, and one declaration is never
+        /// bound at all. An update begun among them while a chat turn is in
+        /// flight admits what is declared while it waits — the first a minute
+        /// after it began — and hands over within a minute of that turn ending,
+        /// however many runs the ledger still holds. Before ISS-1379 the same
+        /// box refused every declaration from the moment the drain began, and
+        /// the unbound one held it the whole two hours.
         #[tokio::test(start_paused = true)]
-        async fn a_drain_among_a_declaring_master_turns_over_and_admits_nothing_after_it_began() {
+        async fn a_handover_among_a_declaring_master_admits_while_it_waits_and_runs_hold_nothing() {
             use crate::daemon::drain::{self, Drained, NextAttempt};
             use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
             use std::time::Duration;
@@ -2849,8 +2902,26 @@ mod tests {
 
             const EVERY: Duration = Duration::from_secs(3 * 60);
             const LASTS: Duration = Duration::from_secs(10 * 60);
+            const TURN: Duration = Duration::from_secs(15 * 60);
 
             let (ctl, _t, _dir) = declaring_control("sess-a", "proj-1");
+            // A master may hold one unbound declaration at a time, so the one
+            // nothing will ever bind is planted under the pane before it.
+            const UNBOUND: &str = "run-unbound";
+            ctl.ledger
+                .lock()
+                .unwrap()
+                .as_mut()
+                .unwrap()
+                .create_run_group(crate::runner::ledger::NewRun {
+                    run_id: UNBOUND.into(),
+                    project_id: "proj-1".into(),
+                    master_session_id: "sess-before".into(),
+                    worktree_path: std::path::PathBuf::from("/w/never"),
+                    boot_id: ctl.boot_id.clone(),
+                    issue_keys: vec!["ISS-900".into()],
+                })
+                .unwrap();
             let began = Arc::new(AtomicBool::new(false));
             let after = Arc::new(AtomicUsize::new(0));
             {
@@ -2896,30 +2967,56 @@ mod tests {
                 });
             }
             tokio::time::sleep(Duration::from_secs(30 * 60)).await;
-
-            let ledger = ctl.ledger.clone();
-            // The daemon's own reading of what holds a drain, over this ledger.
-            let live = move || -> Vec<String> {
-                let held = ledger.lock().unwrap();
-                crate::daemon::live_sessions_from(
-                    held.as_ref().unwrap().unclosed_runs(),
-                    "boot-a",
-                    |_| true,
-                    |_| Vec::new(),
-                )
+            let open_runs = || {
+                ctl.ledger
+                    .lock()
+                    .unwrap()
+                    .as_ref()
+                    .unwrap()
+                    .unclosed_runs()
+                    .unwrap()
+                    .len()
             };
-            assert!(
-                !live().is_empty(),
-                "the fleet is busy when the drain begins"
-            );
+            assert!(open_runs() >= 4, "the fleet is busy when the update lands");
+
+            let inflight = Arc::new(AtomicUsize::new(1));
+            let turn_ended = Arc::new(std::sync::Mutex::new(None::<Instant>));
+            {
+                let (inflight, turn_ended) = (inflight.clone(), turn_ended.clone());
+                tokio::spawn(async move {
+                    tokio::time::sleep(TURN).await;
+                    *turn_ended.lock().unwrap() = Some(Instant::now());
+                    inflight.fetch_sub(1, Ordering::AcqRel);
+                });
+            }
+            let first = {
+                let ctl = ctl.clone();
+                tokio::spawn(async move {
+                    tokio::time::sleep(Duration::from_secs(60)).await;
+                    let reply = run_declare(
+                        &ctl,
+                        "proj-1",
+                        &["ISS-1379".into()],
+                        "/w/first",
+                        "sess-a",
+                        None,
+                    );
+                    if let Some(id) = reply.job_id.as_deref() {
+                        let held = ctl.ledger.lock().unwrap();
+                        held.as_ref()
+                            .unwrap()
+                            .bind_agent(id, "child-first")
+                            .unwrap();
+                    }
+                    reply
+                })
+            };
             began.store(true, Ordering::Release);
-            let started = Instant::now();
             let out = drain::drain_to_idle(
                 &ctl.drain,
                 "update",
                 "update 0.1.0 → 0.1.1",
-                &Arc::new(AtomicUsize::new(0)),
-                live,
+                &inflight,
                 || std::future::ready(0),
                 || NextAttempt {
                     by: "the next update check".into(),
@@ -2927,16 +3024,52 @@ mod tests {
                 },
             )
             .await;
-            assert_eq!(
-                (out, after.load(Ordering::Acquire)),
-                (Drained::Idle, 0),
-                "the process turns over, and no run is declared once the drain has begun"
+            let handed_at = Instant::now();
+            assert_eq!(out, Drained::Idle);
+            let first = first.await.unwrap();
+            assert!(
+                first.ok,
+                "criterion 34: a declaration a minute into the handover is admitted: {:?}",
+                first.reason
             );
             assert!(
-                started.elapsed() <= Duration::from_secs(drain::DRAIN_TIMEOUT_SECS),
-                "inside the bound: {:?}",
-                started.elapsed()
+                after.load(Ordering::Acquire) >= 4,
+                "criterion 4: the master's own declarations go on being admitted while the handover waits"
             );
+            let ended = turn_ended.lock().unwrap().expect("the turn ended");
+            assert!(
+                handed_at.duration_since(ended) <= Duration::from_secs(60),
+                "criterion 1: handed over {:?} after the last in-process work ended",
+                handed_at.duration_since(ended)
+            );
+            assert!(
+                open_runs() >= 4,
+                "criterion 3: runs were still open, the unbound one among them, and held nothing"
+            );
+            let held = ctl.ledger.lock().unwrap();
+            assert!(
+                held.as_ref()
+                    .unwrap()
+                    .run(UNBOUND)
+                    .unwrap()
+                    .unwrap()
+                    .ended_by
+                    .is_none(),
+                "the unbound declaration is still open, and did not hold the handover"
+            );
+            drop(held);
+            let refused = run_declare(&ctl, "proj-1", &["ISS-2".into()], "/w/late", "sess-a", None);
+            assert!(
+                !refused.ok
+                    && refused
+                        .reason
+                        .as_deref()
+                        .unwrap_or("")
+                        .contains("handing over to a new build"),
+                "criterion 5: the closing window refuses by name until the image is replaced: {refused:?}"
+            );
+            // criterion 5: the window is bounded at ten seconds.
+            const { assert!(drain::HANDOVER_QUIET_SECS <= 10) };
         }
 
         #[test]

@@ -30,7 +30,8 @@ use crate::daemon::dispatch::resolve_repo;
 use crate::daemon::held_report;
 use crate::daemon::job_exit;
 use crate::daemon::job_unheard;
-use crate::daemon::master_exit::{self, Verdict};
+use crate::daemon::master_build::{self, Judged};
+use crate::daemon::master_exit::{self, Holding, Verdict};
 use crate::daemon::master_limit;
 use crate::daemon::pane_exit;
 use crate::daemon::pool_jobs::{self, JobPanes, Records};
@@ -162,6 +163,10 @@ struct Registry {
     /// Consecutive early exits of each project's pane for one reason, which
     /// decide only what the journal says (ISS-1343).
     exits: HashMap<String, pane_exit::Tally>,
+    /// What this box last said about each project's outdated pane, so the
+    /// account is given once per pane and reason rather than once a sweep
+    /// (ISS-1379).
+    outdated: HashMap<String, String>,
 }
 
 /// One pane this box placed: when, and where its output begins.
@@ -189,8 +194,8 @@ pub(crate) enum Unplaced {
     Draining {
         status: String,
     },
-    /// This daemon is draining before a restart, so it admits no new work for
-    /// any project until it has restarted or the drain gives up (ISS-1223).
+    /// This daemon is inside a handover's closing window, so it admits no new
+    /// work for any project for the seconds that takes (ISS-1379).
     Restarting {
         cause: String,
     },
@@ -298,7 +303,7 @@ impl std::fmt::Display for Unplaced {
             ),
             Self::Restarting { cause } => write!(
                 f,
-                "this box is draining before a restart ({cause}), so it starts no work and places no master for any project until it has restarted or the drain gives up"
+                "this box is handing over to a new build ({cause}), so it starts no work and places no master for any project for the seconds that takes; the new build does"
             ),
             Self::NoRepoPath => write!(
                 f,
@@ -854,6 +859,16 @@ impl Masters {
         }
     }
 
+    /// Whether what this sweep found about the project's outdated pane is news,
+    /// and remember it either way. `None` is a pane that is current or gone.
+    fn note_outdated(&self, project_id: &str, said: Option<String>) -> bool {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        match said {
+            Some(said) => reg.outdated.insert(project_id.to_string(), said.clone()) != Some(said),
+            None => reg.outdated.remove(project_id).is_some(),
+        }
+    }
+
     fn note_capability(&self, project_id: &str, said: &'static str) -> bool {
         let mut reg = self.0.lock().expect("masters poisoned");
         let changed = reg.said.get(project_id) != Some(&said);
@@ -1347,6 +1362,22 @@ async fn sweep(
             }
         };
 
+        // A pane an update left on the build it was placed under is judged
+        // before the placement below, so one that may be replaced is ended in
+        // time for this same sweep to place its successor (ISS-1379).
+        let outdated_left = outdated_resident(
+            client,
+            masters,
+            ledger,
+            tokens,
+            activity,
+            &pane_name,
+            &resolved,
+            &runner.project_id,
+            placement,
+        )
+        .await;
+
         let stored_conversation = ledger
             .as_ref()
             .and_then(|led| led.master_for_project(&runner.project_id).ok().flatten())
@@ -1430,6 +1461,9 @@ async fn sweep(
         let placed = started.load(std::sync::atomic::Ordering::Relaxed)
             && matches!(pane, PaneState::ColdStarted | PaneState::Resumed);
         if placed {
+            if let Some(led) = ledger.as_ref() {
+                note_placement(led, &runner.project_id, &pane_name, &resolved);
+            }
             if let (Some(led), Some((successor, _))) =
                 (ledger.as_mut(), masters.get(&runner.project_id))
             {
@@ -1574,6 +1608,12 @@ async fn sweep(
         }
 
         if standing_unknown {
+            continue;
+        }
+
+        // An outdated pane left running is not driven: the work it would take
+        // up waits for the successor placed once it holds nothing (ISS-1379).
+        if outdated_left && pane == PaneState::Adopted {
             continue;
         }
 
@@ -4101,6 +4141,256 @@ async fn retire_if_idle(
             .await;
             true
         }
+    }
+}
+
+/// Judge the project's resident pane against what this box would place now,
+/// and act on an outdated one: end it where it holds no run and no turn and
+/// there is work for a successor, which the placement after this call then
+/// starts resuming the same conversation; leave it running otherwise, and say
+/// once why (ISS-1379). Answers whether an outdated pane was left running, so
+/// the sweep does not nudge it.
+#[allow(clippy::too_many_arguments)]
+async fn outdated_resident(
+    client: &CoreClient,
+    masters: &Arc<Masters>,
+    ledger: &mut Option<Ledger>,
+    tokens: Option<&session_tokens::SessionTokens>,
+    activity: &agent_activity::Activities,
+    pane_name: &str,
+    resolved: &crate::daemon::dispatch::Resolved,
+    project_id: &str,
+    placement: Placement,
+) -> bool {
+    let slug = &resolved.slug;
+    if !terminal::alive(pane_name).await {
+        return false;
+    }
+    let Some(found) = ledger.as_ref().and_then(|led| {
+        judge_resident(
+            led, masters, activity, pane_name, resolved, project_id, placement,
+        )
+    }) else {
+        return false;
+    };
+    let Outdated { why, act, session } = found;
+    match act {
+        OutdatedAct::Replace => {
+            if let Err(e) = terminal::kill(pane_name).await {
+                if masters.note_outdated(project_id, Some(format!("unkillable: {why}"))) {
+                    tracing::error!(
+                        "[master] {slug}: {pane_name} is outdated ({why}) and holds no run and no turn, and tmux would not end it: {e}. It is left running and not nudged; `forge-runner master kill {slug}` ends it, and the next sweep places its successor"
+                    );
+                }
+                return true;
+            }
+            tracing::info!(
+                "[master] {slug}: {pane_name} is outdated ({why}) and holds no run and no turn, so it is ended and placed again this sweep, resuming its conversation under the build and plugins this box holds now"
+            );
+            match session.as_deref() {
+                Some(session) => {
+                    end_master(
+                        client,
+                        masters,
+                        tokens,
+                        project_id,
+                        session,
+                        "outdated: replaced by a pane under the build this box runs",
+                    )
+                    .await
+                }
+                None => {
+                    masters.forget(project_id);
+                }
+            }
+            masters.note_outdated(project_id, None);
+            false
+        }
+        OutdatedAct::Leave(reason) => {
+            if masters.note_outdated(project_id, Some(format!("{why} / {reason}"))) {
+                tracing::warn!(
+                    "[master] {slug}: {pane_name} is outdated ({why}) and is left running, not nudged: {reason}. It is replaced on the first sweep that finds it holding no run, at its prompt, with work for its successor; `forge-runner master kill {slug}` replaces it now, ending whatever it is doing"
+                );
+            }
+            true
+        }
+    }
+}
+
+/// A resident pane judged outdated: why, what to do about it, and the session
+/// it answers to.
+struct Outdated {
+    why: String,
+    act: OutdatedAct,
+    session: Option<String>,
+}
+
+/// The judgement [`outdated_resident`] acts on, read off the ledger without
+/// awaiting anything. `None` for a pane that is current or cannot be judged;
+/// the ledger's `outdated` column is written to match either way.
+fn judge_resident(
+    led: &Ledger,
+    masters: &Masters,
+    activity: &agent_activity::Activities,
+    pane_name: &str,
+    resolved: &crate::daemon::dispatch::Resolved,
+    project_id: &str,
+    placement: Placement,
+) -> Option<Outdated> {
+    let slug = &resolved.slug;
+    let row = match led.master_for_project(project_id) {
+        Ok(row) => row,
+        Err(e) => {
+            tracing::warn!(
+                "[master] {slug}: cannot read {pane_name}'s placement back from the ledger ({e}), so whether it is outdated is not judged this sweep"
+            );
+            return None;
+        }
+    };
+    let now = master_build::Standing::this_box(&resolved.repo_path);
+    let why = match master_build::judge(row.as_ref(), &now) {
+        Judged::Current => {
+            if row.as_ref().is_some_and(|r| r.outdated.is_some()) {
+                let _ = led.note_master_outdated(project_id, None);
+            }
+            masters.note_outdated(project_id, None);
+            return None;
+        }
+        Judged::Outdated(why) => why,
+    };
+    if row.as_ref().and_then(|r| r.outdated.as_deref()) != Some(why.as_str()) {
+        if let Err(e) = led.note_master_outdated(project_id, Some(&why)) {
+            tracing::warn!(
+                "[master] {slug}: {pane_name} is outdated ({why}) and the verdict could not be written for `forge-runner top`: {e}"
+            );
+        }
+    }
+    let holding = master_exit::holding(led, row.as_ref())
+        .unwrap_or_else(|e| Holding::Unknown(format!("the ledger could not be read ({e})")));
+    let session = masters
+        .get(project_id)
+        .map(|(session, _)| session)
+        .or_else(|| row.as_ref().and_then(|r| r.session_id.clone()));
+    let seen = session.as_deref().and_then(|s| activity.get(s));
+    let transcript = seen
+        .as_ref()
+        .and_then(|a| a.transcript.clone())
+        .map(std::path::PathBuf::from)
+        .or_else(|| {
+            row.as_ref()
+                .and_then(|r| r.conversation_id.as_deref())
+                .and_then(|c| conversation_transcript(&resolved.repo_path, c))
+        });
+    let turn = turn_of(seen.as_ref(), transcript.as_deref());
+    Some(Outdated {
+        why,
+        act: outdated_act(placement, &holding, &turn),
+        session,
+    })
+}
+
+/// Where a lead's turn stands, as far as this box can tell.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum TurnRead {
+    /// Affirmatively over: its hooks said so, or, unheard, its transcript did.
+    Ended,
+    /// Not over, and what says so.
+    InTurn(&'static str),
+    /// Nothing could be read.
+    Unknown,
+}
+
+/// A lead's turn, from its hooks where this daemon has heard them and from its
+/// transcript where it has not — every pane an update handed over is unheard
+/// until its next hook.
+pub(crate) fn turn_of(
+    seen: Option<&agent_activity::Activity>,
+    transcript: Option<&std::path::Path>,
+) -> TurnRead {
+    use agent_activity::Doing;
+    match seen.map(agent_activity::Activity::doing) {
+        Some(Doing::Idle) => TurnRead::Ended,
+        Some(Doing::Working) => TurnRead::InTurn("its hooks say a turn is running"),
+        Some(Doing::AwaitingPermission) => TurnRead::InTurn("it is stopped on a permission prompt"),
+        Some(Doing::AwaitingChildren) => {
+            TurnRead::InTurn("a subagent it started has not reported its end")
+        }
+        None => match transcript.and_then(crate::daemon::transcript_age::lead_turn_ended) {
+            Some(true) => TurnRead::Ended,
+            Some(false) => TurnRead::InTurn(
+                "this box has not heard its hooks since it started, and its transcript's newest entry is not a turn's end",
+            ),
+            None => TurnRead::Unknown,
+        },
+    }
+}
+
+/// What a sweep does about a pane judged outdated.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum OutdatedAct {
+    /// End it, and let this sweep's placement start its successor.
+    Replace,
+    /// Leave it running, for the reason named.
+    Leave(String),
+}
+
+/// Replace only a pane that holds nothing, has affirmatively ended its turn,
+/// and has work waiting for its successor. Each other case leaves it, named.
+pub(crate) fn outdated_act(
+    placement: Placement,
+    holding: &Holding,
+    turn: &TurnRead,
+) -> OutdatedAct {
+    if placement == Placement::AdoptOnly {
+        return OutdatedAct::Leave(
+            "its project has no admissible work, so a successor would have nothing to take up"
+                .into(),
+        );
+    }
+    match holding {
+        Holding::Nothing => {}
+        Holding::These(runs) => {
+            let names = runs
+                .iter()
+                .map(|r| format!("{} ({})", r.run_id, r.issues.join(", ")))
+                .collect::<Vec<_>>()
+                .join("; ");
+            return OutdatedAct::Leave(format!("it holds {} open run(s): {names}", runs.len()));
+        }
+        Holding::Unknown(why) => {
+            return OutdatedAct::Leave(format!("which runs it holds cannot be established: {why}"))
+        }
+    }
+    match turn {
+        TurnRead::Ended => OutdatedAct::Replace,
+        TurnRead::InTurn(what) => OutdatedAct::Leave((*what).to_string()),
+        TurnRead::Unknown => OutdatedAct::Leave(
+            "neither its hooks nor its transcript can say whether its turn is over".into(),
+        ),
+    }
+}
+
+/// Record that this sweep placed `pane_name` under this box's build and
+/// plugins, which is what a later build judges it outdated against.
+fn note_placement(
+    led: &Ledger,
+    project_id: &str,
+    pane_name: &str,
+    resolved: &crate::daemon::dispatch::Resolved,
+) {
+    let now = master_build::Standing::this_box(&resolved.repo_path);
+    let boot = crate::runner::inflight::boot_identity().unwrap_or_default();
+    if let Err(e) = led.note_master_placed(
+        project_id,
+        pane_name,
+        &boot,
+        &now.build,
+        now.plugins.as_deref(),
+    ) {
+        tracing::warn!(
+            "[master] {}: {pane_name} was placed and the build it was placed under could not be recorded ({e}); the next build will read it as outdated",
+            resolved.slug
+        );
     }
 }
 
@@ -10148,16 +10438,6 @@ mod servers_refusal_walk_tests {
             Some(HOST_PANE_STARTED),
             "criterion 30: the pane this sweep started is the end of the subagent the pane before it ran"
         );
-        let drain = crate::daemon::live_sessions_from(
-            led.unclosed_runs(),
-            &boot,
-            |_| true,
-            |_| vec!["ISS-1314".into()],
-        );
-        assert!(
-            drain.is_empty(),
-            "criterion 16, through the sweep: {drain:?}"
-        );
     }
 
     /// ISS-1312 criterion 47: judge j5 planted `false` at `ensure_master`'s
@@ -12146,7 +12426,7 @@ mod drain_sweep_tests {
         );
 
         let drain = crate::daemon::drain::Drain::unrecorded();
-        let _attempt = drain.begin("update 0.1.0 → 0.1.1").unwrap();
+        let _attempt = drain.close_for_test("update 0.1.0 → 0.1.1");
         let (paths, masters) = one_sweep(&drain).await;
         assert!(
             paths.iter().any(|p| p == "/api/devices/me/runners"),
@@ -12160,11 +12440,385 @@ mod drain_sweep_tests {
         // Asserted on its fragments and never printed whole: the sentence can
         // carry a master's session id, which is not for a log.
         let why = masters.why_unplaced("proj-1");
-        for fragment in ["draining before a restart", "update 0.1.0 → 0.1.1"] {
+        for fragment in ["handing over to a new build", "update 0.1.0 → 0.1.1"] {
             assert!(
                 why.contains(fragment),
                 "the project records the drain as why no master was placed, and this fragment is missing: {fragment}"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod outdated_tests {
+    use super::*;
+    use crate::runner::ledger::NewRun;
+    use crate::test_scratch::Scratch;
+
+    static THIS_SOURCE: std::sync::LazyLock<&str> =
+        std::sync::LazyLock::new(|| crate::test_scratch::lf(include_str!("master.rs")));
+
+    fn sweep_source() -> &'static str {
+        let production = THIS_SOURCE.split("#[cfg(test)]").next().unwrap();
+        production
+            .split("\nasync fn sweep(")
+            .nth(1)
+            .and_then(|r| r.split("\nasync fn ").next())
+            .expect("sweep must be findable")
+    }
+
+    fn at(needle: &str) -> usize {
+        sweep_source()
+            .find(needle)
+            .unwrap_or_else(|| panic!("the sweep no longer calls {needle}"))
+    }
+
+    fn resolved(repo: &std::path::Path) -> crate::daemon::dispatch::Resolved {
+        crate::daemon::dispatch::Resolved {
+            slug: "proj".into(),
+            repo_path: repo.to_path_buf(),
+            base_branch: None,
+            master_policy: None,
+        }
+    }
+
+    fn held(run: &str) -> Holding {
+        Holding::These(vec![master_exit::HeldRun {
+            run_id: run.into(),
+            master_session_id: "sess-old".into(),
+            issues: vec!["ISS-1".into()],
+        }])
+    }
+
+    #[test]
+    fn an_outdated_pane_holding_nothing_at_its_prompt_with_work_waiting_is_replaced() {
+        assert_eq!(
+            outdated_act(Placement::AdoptOrStart, &Holding::Nothing, &TurnRead::Ended),
+            OutdatedAct::Replace,
+            "criterion 27"
+        );
+    }
+
+    #[test]
+    fn an_outdated_pane_is_left_running_for_each_reason_and_names_it() {
+        let cases = [
+            (
+                outdated_act(Placement::AdoptOrStart, &held("run-7"), &TurnRead::Ended),
+                "run-7 (ISS-1)",
+                "criterion 29",
+            ),
+            (
+                outdated_act(
+                    Placement::AdoptOrStart,
+                    &Holding::Nothing,
+                    &TurnRead::InTurn("its hooks say a turn is running"),
+                ),
+                "turn is running",
+                "criterion 30",
+            ),
+            (
+                outdated_act(
+                    Placement::AdoptOrStart,
+                    &Holding::Nothing,
+                    &TurnRead::InTurn("it is stopped on a permission prompt"),
+                ),
+                "permission prompt",
+                "criterion 31",
+            ),
+            (
+                outdated_act(Placement::AdoptOnly, &Holding::Nothing, &TurnRead::Ended),
+                "no admissible work",
+                "criterion 32",
+            ),
+            (
+                outdated_act(
+                    Placement::AdoptOrStart,
+                    &Holding::Nothing,
+                    &TurnRead::Unknown,
+                ),
+                "can say whether its turn is over",
+                "criterion 33",
+            ),
+            (
+                outdated_act(
+                    Placement::AdoptOrStart,
+                    &Holding::Unknown("no session id".into()),
+                    &TurnRead::Ended,
+                ),
+                "no session id",
+                "an unknown holding is never read as none",
+            ),
+        ];
+        for (act, names, criterion) in cases {
+            match act {
+                OutdatedAct::Leave(why) => assert!(why.contains(names), "{criterion}: {why}"),
+                OutdatedAct::Replace => panic!("{criterion}: replaced"),
+            }
+        }
+    }
+
+    fn heard(events: &[agent_activity::Event]) -> agent_activity::Activity {
+        let activity = agent_activity::Activities::new();
+        let mut last = None;
+        for (n, event) in events.iter().enumerate() {
+            last = Some(activity.record(
+                "sess",
+                agent_activity::Report {
+                    event: *event,
+                    at: 1_000 + n as i64,
+                    subject: None,
+                    conversation: Some("conv"),
+                    transcript: None,
+                },
+            ));
+        }
+        last.expect("an event")
+    }
+
+    #[test]
+    fn a_heard_lead_is_judged_by_its_hooks() {
+        use agent_activity::Event;
+        let ended = heard(&[Event::PromptSubmitted, Event::Stopped]);
+        assert_eq!(turn_of(Some(&ended), None), TurnRead::Ended);
+        let running = heard(&[Event::Stopped, Event::PromptSubmitted]);
+        assert!(
+            matches!(turn_of(Some(&running), None), TurnRead::InTurn(_)),
+            "criterion 30"
+        );
+        let asking = heard(&[Event::PromptSubmitted, Event::PermissionRequested]);
+        assert_eq!(
+            turn_of(Some(&asking), None),
+            TurnRead::InTurn("it is stopped on a permission prompt"),
+            "criterion 31"
+        );
+    }
+
+    #[test]
+    fn an_unheard_lead_is_judged_by_its_transcript_and_unread_is_unknown() {
+        let dir = Scratch::new("outdated-unheard");
+        let ended = dir.join("ended.jsonl");
+        std::fs::write(
+            &ended,
+            "{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"ok\"}]}}\n{\"type\":\"system\",\"subtype\":\"turn_duration\"}\n{\"type\":\"last-prompt\"}\n",
+        )
+        .unwrap();
+        assert_eq!(turn_of(None, Some(&ended)), TurnRead::Ended);
+        let mid = dir.join("mid.jsonl");
+        std::fs::write(
+            &mid,
+            "{\"type\":\"system\",\"subtype\":\"turn_duration\"}\n{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"name\":\"Bash\"}]}}\n",
+        )
+        .unwrap();
+        let TurnRead::InTurn(why) = turn_of(None, Some(&mid)) else {
+            panic!(
+                "criterion 30: an unheard lead whose newest entry is not a turn's end is in a turn"
+            )
+        };
+        assert!(why.contains("not heard its hooks"), "{why}");
+        assert_eq!(
+            turn_of(None, Some(&dir.join("absent.jsonl"))),
+            TurnRead::Unknown,
+            "criterion 33"
+        );
+        assert_eq!(turn_of(None, None), TurnRead::Unknown, "criterion 33");
+    }
+
+    #[test]
+    fn the_journal_says_once_per_pane_and_reason() {
+        let masters = Masters::new();
+        assert!(masters.note_outdated("p", Some("old build / holds run-1".into())));
+        assert!(
+            !masters.note_outdated("p", Some("old build / holds run-1".into())),
+            "criterion 26: said once"
+        );
+        assert!(
+            masters.note_outdated("p", Some("old build / mid-turn".into())),
+            "criterion 34: a new reason is said"
+        );
+        assert!(masters.note_outdated("p", None));
+        assert!(!masters.note_outdated("p", None));
+    }
+
+    fn a_master_row(led: &Ledger, build: Option<&str>) {
+        led.note_master(
+            "p",
+            "forge-master-proj",
+            Some("conv-1"),
+            Some("sess-old"),
+            "boot-a",
+        )
+        .unwrap();
+        if let Some(build) = build {
+            led.note_master_placed("p", "forge-master-proj", "boot-a", build, None)
+                .unwrap();
+        }
+    }
+
+    #[test]
+    fn a_pane_the_previous_build_placed_is_left_while_it_holds_a_run_and_replaced_after() {
+        let dir = Scratch::new("outdated-judge");
+        let mut led = Ledger::open_in_memory().unwrap();
+        a_master_row(&led, Some("0.0.1 (old)"));
+        led.create_run_group(NewRun {
+            run_id: "run-1".into(),
+            project_id: "p".into(),
+            master_session_id: "sess-old".into(),
+            worktree_path: "/w/run-1".into(),
+            boot_id: "boot-a".into(),
+            issue_keys: vec!["ISS-1".into()],
+        })
+        .unwrap();
+        let masters = Masters::new();
+        let activity = agent_activity::Activities::new();
+        let found = judge_resident(
+            &led,
+            &masters,
+            &activity,
+            "forge-master-proj",
+            &resolved(&dir),
+            "p",
+            Placement::AdoptOrStart,
+        )
+        .expect("outdated");
+        assert!(found.why.contains("0.0.1 (old)"), "{}", found.why);
+        assert!(
+            found.why.contains(crate::update::VERSION_LINE),
+            "criterion 21: {}",
+            found.why
+        );
+        let OutdatedAct::Leave(reason) = &found.act else {
+            panic!("criterion 29: replaced while holding run-1")
+        };
+        assert!(reason.contains("run-1"), "{reason}");
+        assert_eq!(found.session.as_deref(), Some("sess-old"));
+        let row = led.master_for_project("p").unwrap().unwrap();
+        assert_eq!(
+            row.outdated.as_deref(),
+            Some(found.why.as_str()),
+            "criterion 36: the verdict is on the row top reads"
+        );
+
+        led.end_run("run-1", "master", "done").unwrap();
+        led.mark_session_terminal_observed("run-1").unwrap();
+        led.mark_checkout_returned_observed("run-1", crate::runner::ledger::CheckoutReturn::Gone)
+            .unwrap();
+        led.mark_lease_returned_observed("run-1", "ISS-1").unwrap();
+        let again = judge_resident(
+            &led,
+            &masters,
+            &activity,
+            "forge-master-proj",
+            &resolved(&dir),
+            "p",
+            Placement::AdoptOrStart,
+        )
+        .expect("still outdated");
+        assert!(
+            matches!(&again.act, OutdatedAct::Leave(r) if r.contains("can say whether its turn is over")),
+            "with its run closed only an unreadable turn holds it: {:?}",
+            again.act
+        );
+
+        activity.record(
+            "sess-old",
+            agent_activity::Report {
+                event: agent_activity::Event::Stopped,
+                at: 1_000,
+                subject: None,
+                conversation: Some("conv-1"),
+                transcript: None,
+            },
+        );
+        let last = judge_resident(
+            &led,
+            &masters,
+            &activity,
+            "forge-master-proj",
+            &resolved(&dir),
+            "p",
+            Placement::AdoptOrStart,
+        )
+        .expect("still outdated");
+        assert_eq!(
+            last.act,
+            OutdatedAct::Replace,
+            "criterion 42: once its last run is closed and its turn is over, it is replaced"
+        );
+    }
+
+    #[test]
+    fn a_pane_this_build_placed_is_current_and_clears_the_verdict() {
+        let dir = Scratch::new("outdated-current");
+        let led = Ledger::open_in_memory().unwrap();
+        a_master_row(&led, None);
+        led.note_master_outdated("p", Some("stale verdict"))
+            .unwrap();
+        led.note_master_placed(
+            "p",
+            "forge-master-proj",
+            "boot-a",
+            crate::update::VERSION_LINE,
+            None,
+        )
+        .unwrap();
+        let masters = Masters::new();
+        let found = judge_resident(
+            &led,
+            &masters,
+            &agent_activity::Activities::new(),
+            "forge-master-proj",
+            &resolved(&dir),
+            "p",
+            Placement::AdoptOrStart,
+        );
+        assert!(found.is_none(), "{:?}", found.map(|f| f.why));
+        assert_eq!(led.master_for_project("p").unwrap().unwrap().outdated, None);
+    }
+
+    #[test]
+    fn a_pane_whose_build_was_never_recorded_is_judged_outdated() {
+        let dir = Scratch::new("outdated-unrecorded");
+        let led = Ledger::open_in_memory().unwrap();
+        a_master_row(&led, None);
+        let found = judge_resident(
+            &led,
+            &Masters::new(),
+            &agent_activity::Activities::new(),
+            "forge-master-proj",
+            &resolved(&dir),
+            "p",
+            Placement::AdoptOrStart,
+        )
+        .expect("criterion 23");
+        assert!(found.why.contains("never recorded"), "{}", found.why);
+    }
+
+    #[test]
+    fn the_sweep_judges_before_it_places_and_never_nudges_a_pane_it_left() {
+        assert!(
+            at("take_pool_job(") < at("outdated_resident("),
+            "criterion 35: pool jobs are taken whatever the master's build"
+        );
+        assert!(
+            at("outdated_resident(") < at("ensure_master("),
+            "criterion 28: an ended pane's successor is placed by the same sweep"
+        );
+        assert!(
+            at("outdated_resident(") < at("let stored_conversation = ledger"),
+            "criterion 28: the conversation the successor resumes is read after the pane ends"
+        );
+        let skip = at("if outdated_left && pane == PaneState::Adopted {");
+        assert!(
+            skip < at("masters.claim_nudge("),
+            "criterion 25: an outdated pane left running is not nudged"
+        );
+        assert!(
+            sweep_source()[skip..at("masters.claim_nudge(")].contains("continue;"),
+            "criterion 25"
+        );
+        assert!(
+            at("note_placement(led, &runner.project_id") > at("ensure_master("),
+            "a placement records the build it was placed under"
+        );
     }
 }

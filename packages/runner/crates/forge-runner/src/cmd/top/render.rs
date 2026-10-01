@@ -176,7 +176,29 @@ fn master(s: &Snapshot, p: &Project, out: &mut Vec<String>) {
             None => format!("{I2}master   {pane} not running ← tmux list-sessions"),
         },
     });
+    outdated_master(s, p, out);
     ledger_master(s, p, out);
+}
+
+/// The daemon's verdict that this project's master runs a build or plugin set
+/// older than the box's, as it wrote it to the ledger (ISS-1379). This view
+/// cannot judge it itself: the binary it runs is not the daemon's.
+fn outdated_master(s: &Snapshot, p: &Project, out: &mut Vec<String>) {
+    let (Ok(view), Some(id)) = (&s.ledger, p.project_id.as_deref()) else {
+        return;
+    };
+    let Some(m) = view.masters.get(id) else {
+        return;
+    };
+    match &m.outdated {
+        ledger_ro::Outdated::No => {}
+        ledger_ro::Outdated::Yes(why) => out.push(format!(
+            "{I3}   OUTDATED: {why}; the daemon does not nudge it, and places it again once it holds no run and its turn is over ← masters.outdated"
+        )),
+        ledger_ro::Outdated::Unsayable => out.push(format!(
+            "{I3}   whether this master is outdated cannot be said here: the ledger has no `masters.outdated` column, which a daemon of the build that judges it adds ← masters"
+        )),
+    }
 }
 
 /// Why a project's master pane has no name this view can look for.
@@ -1544,6 +1566,7 @@ pub(super) mod tests {
                     boot_id: "boot-now".into(),
                     cold_started_at: NOW / 1000 - 7_200,
                     last_seen_at: NOW / 1000 - 60,
+                    outdated: ledger_ro::Outdated::No,
                 },
             )]
             .into(),
@@ -1701,5 +1724,48 @@ pub(super) mod tests {
             "             ← /c/pool-reads.json",
         ]);
         assert!(unsourced(&closed).is_empty());
+    }
+
+    /// Criteria 36, 38: the daemon's verdict on a master's build is drawn
+    /// under its master line, naming what it was placed under and what stands
+    /// now, and a ledger that cannot carry the verdict says so.
+    #[test]
+    fn an_outdated_master_is_drawn_outdated_with_both_builds() {
+        let mut s = a_fine_box(false);
+        let why = "placed under runner 0.9.1 (aaaa), and this box runs 0.9.2 (bbbb) now";
+        let set = |s: &mut Snapshot, o: ledger_ro::Outdated| {
+            if let Ok(v) = s.ledger.as_mut() {
+                for m in v.masters.values_mut() {
+                    m.outdated = o.clone();
+                }
+            }
+        };
+        set(&mut s, ledger_ro::Outdated::Yes(why.into()));
+        let lines = frame(&s, None);
+        let text = lines.join("\n");
+        let master = text
+            .find("master   forge-master-alpha running")
+            .expect("the master line");
+        let outdated = text
+            .find("OUTDATED: ")
+            .expect("criterion 36: OUTDATED is drawn");
+        assert!(master < outdated, "{text}");
+        assert!(
+            text[outdated..].starts_with(&format!("OUTDATED: {why}")),
+            "{text}"
+        );
+        assert_eq!(unsourced(&lines), Vec::<String>::new(), "{text}");
+
+        set(&mut s, ledger_ro::Outdated::Unsayable);
+        let text = frame(&s, None).join("\n");
+        assert!(
+            text.contains("whether this master is outdated cannot be said here"),
+            "criterion 38: {text}"
+        );
+        assert!(!text.contains("OUTDATED"), "{text}");
+
+        set(&mut s, ledger_ro::Outdated::No);
+        let text = frame(&s, None).join("\n");
+        assert!(!text.contains("OUTDATED") && !text.contains("whether this master is outdated"));
     }
 }

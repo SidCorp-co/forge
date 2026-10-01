@@ -14,7 +14,7 @@ use crate::daemon::{subagent_end, transcript_age};
 use crate::error::Result;
 use crate::runner::close_loop::{self, CloseState, LeaseKeeper, SessionReader};
 use crate::runner::ledger::{
-    Ledger, Liveness, Run, HOST_PANE_GONE, HOST_PANE_STARTED, HOST_PROCESS_GONE,
+    Incarnation, Ledger, Liveness, Run, HOST_PANE_GONE, HOST_PANE_STARTED, HOST_PROCESS_GONE,
 };
 use std::path::{Path, PathBuf};
 
@@ -201,6 +201,27 @@ pub async fn reconcile(
             }
             continue;
         }
+        if let Some(age_secs) = unbound_past_the_bound(&run, boot_id, now_ms() / 1000) {
+            let reason = unbound_reason(age_secs);
+            ledger.end_run(&run.run_id, ENDED_BY_BOX, &reason)?;
+            let keys = ledger
+                .issues(&run.run_id)?
+                .into_iter()
+                .map(|m| m.issue_key)
+                .collect::<Vec<_>>()
+                .join(", ");
+            tracing::warn!(
+                "[recovery] run {} ({}: {keys}) under master session {} ended: {reason}",
+                run.run_id,
+                run.project_id.as_deref().unwrap_or("no project"),
+                crate::runner::ledger::short_id(&run.master_session_id)
+            );
+            // Ended as a master's close ends it, so the close loop below takes
+            // it from here in this same sweep.
+            run.incarnation = Incarnation::Exited;
+            run.ended_by = Some(ENDED_BY_BOX.to_string());
+            run.ended_reason = Some(reason);
+        }
         let pid_refuted = match run.pid {
             Some(pid) => procs.is_gone(pid).await,
             None => false,
@@ -216,7 +237,7 @@ pub async fn reconcile(
         };
         // A subagent runs in the Claude Code process recorded for it, and that
         // process read gone is its end, whatever the master's pane reads. It
-        // goes on the row for the drain, which reads the ledger and not this
+        // goes on the row, where the run's evidence is read, and not in this
         // registry. A pane read gone is not by itself that end: the
         // conversation can run as a background session outside the pane
         // (ISS-1312, run e67c08e0).
@@ -236,8 +257,8 @@ pub async fn reconcile(
             }
         }
         // The same pane read alive again says the read that marked it saw
-        // nothing end, and a mark left standing lets the drain restart over a
-        // live pane's run (ISS-1312). A mark its process's own end wrote stays.
+        // nothing end, and a mark left standing reads a live pane's subagent as
+        // ended (ISS-1312). A mark its process's own end wrote stays.
         if read == MasterPresence::Alive
             && run.host_ended_by.as_deref() == Some(HOST_PANE_GONE)
             && host_read != Some(HostRead::Gone)
@@ -455,6 +476,43 @@ pub async fn reconcile(
         tracing::warn!("{line}");
     }
     Ok(out)
+}
+
+/// How long a declared run may stand bound to nothing before the box ends it
+/// (ISS-1379).
+///
+/// A declaration is the master saying a subagent is about to start; the
+/// subagent binds it with its first hook. One that is never bound holds its
+/// issues' leases and its master's one unbound slot — the dispatch gate
+/// refuses that master every further declaration while it stands — and before
+/// this rule nothing but that master's own close ever ended it. Measured over
+/// 781 bound runs on the fleet, declaration to first transcript entry took 51s
+/// at the median, 399s at p99 and 3,037s at the longest, so an hour is past
+/// every binding this box has seen.
+pub(crate) const UNBOUND_BEFORE_END_SECS: i64 = 60 * 60;
+
+/// Who a run ended by [`UNBOUND_BEFORE_END_SECS`] says ended it.
+pub(crate) const ENDED_BY_BOX: &str = "box";
+
+/// How old `run` is, where it is a declaration of this boot that nothing has
+/// bound for the whole bound. A run of another boot is not this rule's: its
+/// process could not have bound it here, and the boot rules already own it.
+fn unbound_past_the_bound(run: &Run, boot_id: &str, now_secs: i64) -> Option<i64> {
+    let age = now_secs - run.created_at;
+    (run.agent_id.is_none()
+        && run.pid.is_none()
+        && run.ended_by.is_none()
+        && run.boot_id == boot_id
+        && age >= UNBOUND_BEFORE_END_SECS)
+        .then_some(age)
+}
+
+fn unbound_reason(age_secs: i64) -> String {
+    format!(
+        "declared {}m ago and never bound to a subagent or a process, past the {}m within which a declared run binds, so the box ended it; its session and its leases go back by the close loop, and its issues can be declared again",
+        age_secs / 60,
+        UNBOUND_BEFORE_END_SECS / 60
+    )
 }
 
 /// End the runs no master on this box answers for once their marks close
@@ -2470,7 +2528,7 @@ mod tests {
 
     /// ISS-1312: the stop hooks append their own records after the box stamps
     /// the stop, so the transcript is always written after it. Those records
-    /// are the stop, and the run is said quiet by the reading the drain uses.
+    /// are the stop, and the run is said quiet by the reading recovery keeps it with.
     #[tokio::test]
     async fn a_subagent_whose_last_write_is_its_own_stop_hooks_is_said_quiet() {
         let scratch = Scratch::new("iss-1312");
@@ -2862,7 +2920,7 @@ mod tests {
         assert_eq!(
             run.host_ended_by.as_deref(),
             Some(HOST_PANE_GONE),
-            "criterion 17: the pane read gone goes on the row, where the drain reads it"
+            "criterion 17: the pane read gone goes on the row, where the run's evidence is read"
         );
         assert_eq!(
             kept(&led).as_deref(),
@@ -2894,28 +2952,31 @@ mod tests {
         }
     }
 
-    fn drain_names(led: &Ledger) -> Vec<String> {
-        crate::daemon::live_sessions_from(
-            led.unclosed_runs(),
-            "boot-a",
-            |_| true,
-            |_| vec!["ISS-1135".into()],
-        )
+    /// What run-1's subagent's own evidence says now.
+    fn evidence(led: &Ledger) -> subagent_end::Evidence {
+        subagent_end::of_run(&led.run("run-1").unwrap().unwrap(), now_ms())
+    }
+
+    /// Whether that evidence says the subagent's process has ended.
+    fn host_ended(led: &Ledger) -> bool {
+        matches!(evidence(led), subagent_end::Evidence::HostEnded { .. })
+    }
+
+    /// Whether that evidence says the subagent is in the first turn it was
+    /// declared for.
+    fn in_first_turn(led: &Ledger) -> bool {
+        matches!(evidence(led), subagent_end::Evidence::NoTurnEnd { .. })
     }
 
     /// ISS-1312 criteria 31 and 32, the fourth judge's N2: `pane_pid` answers
     /// `None` alike for a tmux that could not answer and a pane that is absent,
     /// and the first such read wrote a `pane-gone` mark that outlived it, so
-    /// the drain stopped holding a live pane's run.
+    /// a live pane's subagent read as ended.
     #[tokio::test]
-    async fn a_sweep_tmux_could_not_answer_records_no_end_and_the_drain_still_holds_the_run() {
+    async fn a_sweep_tmux_could_not_answer_records_no_end_and_its_subagent_is_still_at_work() {
         let scratch = Scratch::new("tmux-unanswered");
         let (mut led, wt, _transcript) = a_subagent_run(&scratch);
-        assert_eq!(
-            drain_names(&led).len(),
-            1,
-            "the control: a first turn holds"
-        );
+        assert!(in_first_turn(&led), "the control: a first turn");
         let beats = Beats::default();
 
         let r = sweep(&mut led, &TmuxUnanswered, &beats).await;
@@ -2927,11 +2988,10 @@ mod tests {
             "criterion 31: a read nobody answered is not an end"
         );
         assert_still_held(&led, &r, &wt, "a sweep that established nothing");
-        let held = drain_names(&led);
-        assert_eq!(held.len(), 1, "criterion 32: {held:?}");
         assert!(
-            held[0].contains("has not ended a turn"),
-            "held as criteria 1-18 read it: {held:?}"
+            in_first_turn(&led),
+            "criterion 32: read as criteria 1-18 read it: {:?}",
+            evidence(&led)
         );
     }
 
@@ -2960,18 +3020,16 @@ mod tests {
             &wt,
             "a live process under a pane nobody could ask about",
         );
-        let held = drain_names(&led);
-        assert_eq!(held.len(), 1, "criterion 32: {held:?}");
         assert!(
-            held[0].contains("has not ended a turn"),
-            "held as criteria 1-18 read it: {held:?}"
+            in_first_turn(&led),
+            "criterion 32: read as criteria 1-18 read it: {:?}",
+            evidence(&led)
         );
     }
 
     /// ISS-1312 criteria 31 and 32 as corrected: the process is read from
     /// `/proc` whatever tmux answers, so its end is recorded as the process's
-    /// and never as the pane's, and the drain lets that run go as criterion 70
-    /// does under a pane read alive.
+    /// and never as the pane's, as criterion 70 does under a pane read alive.
     #[tokio::test]
     async fn a_sweep_tmux_could_not_answer_records_a_gone_process_as_that_process_end() {
         let scratch = Scratch::new("tmux-unanswered-gone");
@@ -2992,8 +3050,9 @@ mod tests {
             "criterion 31: the end is the process's, not the pane nobody could ask about"
         );
         assert!(
-            drain_names(&led).is_empty(),
-            "criterion 32: not heard from since its process read gone, so not outstanding"
+            host_ended(&led),
+            "criterion 32: not heard from since its process read gone: {:?}",
+            evidence(&led)
         );
     }
 
@@ -3100,7 +3159,7 @@ mod tests {
 
     /// ISS-1312 criterion 33: a `pane-gone` mark is withdrawn once the same
     /// pane reads alive, where before it stood until the subagent was heard
-    /// from and the drain let a live pane's run go.
+    /// from and a live pane's subagent read as ended.
     #[tokio::test]
     async fn a_pane_read_alive_again_withdraws_the_gone_mark_an_earlier_sweep_wrote() {
         let scratch = Scratch::new("pane-back");
@@ -3110,13 +3169,12 @@ mod tests {
             .note_host_ended("run-1", now_ms() - MIN_MS, HOST_PANE_GONE)
             .unwrap());
         assert!(
-            drain_names(&led).is_empty(),
-            "the plant: a mark with its process recorded lets the drain go"
+            host_ended(&led),
+            "the plant: a mark with its process recorded is that subagent's end"
         );
         led.forget_host("run-1").unwrap();
-        assert_eq!(
-            drain_names(&led).len(),
-            1,
+        assert!(
+            in_first_turn(&led),
             "criterion 55: the same mark on a row that records no process ends nothing"
         );
 
@@ -3129,7 +3187,7 @@ mod tests {
             "criterion 33: the pane is there, so nothing ended with it"
         );
         assert_still_held(&led, &r, &wt, "a live master's first-turn run");
-        assert_eq!(drain_names(&led).len(), 1, "criterion 33: held again");
+        assert!(in_first_turn(&led), "criterion 33: at work again");
     }
 
     /// The boundary of criterion 33: the mark a placement wrote is not a read
@@ -4641,9 +4699,7 @@ mod tests {
             (None, NEW),
             "criterion 50: the placement records no end of a subagent whose process runs, and the resumed pane adopts it"
         );
-        let held = drain_names(&led);
-        assert_eq!(held.len(), 1, "criterion 52: {held:?}");
-        assert!(held[0].contains("has not ended a turn"), "{held:?}");
+        assert!(in_first_turn(&led), "criterion 52: {:?}", evidence(&led));
 
         // The pane that placement started exits at once, so the registry
         // reads it gone, and core has called the run's session over.
@@ -4666,7 +4722,7 @@ mod tests {
             ["core-sess-1".to_string()],
             "criterion 59: a master hosted outside its pane is read as alive, so its run is kept and beaten"
         );
-        assert_eq!(drain_names(&led).len(), 1, "criterion 52: still held");
+        assert!(in_first_turn(&led), "criterion 52: still at work");
     }
 
     /// Criteria 51 and 59: a pane this box reads gone, or a master it has no
@@ -4728,10 +4784,9 @@ mod tests {
                 "{label}: nothing is licensed on the pane alone: {r:?}"
             );
             assert!(wt.is_dir(), "{label}");
-            assert_eq!(
-                drain_names(&led).len(),
-                1,
-                "{label}: the drain still holds it"
+            assert!(
+                !host_ended(&led),
+                "{label}: its subagent is not read as ended"
             );
         }
     }
@@ -4760,28 +4815,164 @@ mod tests {
             led.run("run-1").unwrap().unwrap().host_ended_by.as_deref(),
             Some(HOST_PANE_GONE)
         );
-        assert!(drain_names(&led).is_empty());
+        assert!(host_ended(&led));
     }
 
     /// Criterion 70: the process read gone on a sweep whose pane reads alive,
-    /// as under a resumed successor, is recorded as its own end, and the drain
-    /// stops holding the run.
+    /// as under a resumed successor, is recorded as its own end.
     #[tokio::test]
     async fn a_process_read_gone_under_a_live_pane_is_its_subagent_s_end() {
         let scratch = Scratch::new("process-gone");
         let (mut led, wt, _transcript) = a_subagent_run(&scratch);
         record_host(&led);
-        assert_eq!(
-            drain_names(&led).len(),
-            1,
-            "the control: a first turn holds"
-        );
+        assert!(in_first_turn(&led), "the control: a first turn");
         let r = sweep_procs(&mut led, &master_alive(), &Beats::default(), &host_gone()).await;
         assert_still_held(&led, &r, &wt, "a live master decides what becomes of it");
         assert_eq!(
             led.run("run-1").unwrap().unwrap().host_ended_by.as_deref(),
             Some(HOST_PROCESS_GONE)
         );
-        assert!(drain_names(&led).is_empty(), "criterion 70");
+        assert!(host_ended(&led), "criterion 70");
+    }
+
+    /// A run declared `age_secs` ago under a master that is alive, and bound
+    /// to nothing unless the test binds it.
+    fn declared_ago(age_secs: i64, boot: &str) -> Ledger {
+        let led = seeded("run-1", "master-live", boot, &["ISS-1379"]);
+        led.backdate_declared("run-1", now_ms() / 1000 - age_secs)
+            .unwrap();
+        led
+    }
+
+    async fn sweep_under_live_master(led: &mut Ledger, leases: &Leases) -> Vec<Recovered> {
+        reconcile(
+            led,
+            "boot-a",
+            &Masters(HashSet::from(["master-live".to_string()])),
+            &nothing_refuted(),
+            Closing {
+                sessions: &Sessions,
+                leases,
+                roots: &Roots,
+            },
+            RunWatch {
+                beat: &Beats::default(),
+                idle: &NeverReports,
+            },
+        )
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_declaration_nothing_bound_for_an_hour_is_ended_by_the_box_naming_its_age() {
+        let mut led = declared_ago(61 * 60, "boot-a");
+        let leases = Leases(Mutex::new(HashSet::new()));
+        sweep_under_live_master(&mut led, &leases).await;
+        let run = led.run("run-1").unwrap().unwrap();
+        assert_eq!(run.ended_by.as_deref(), Some(ENDED_BY_BOX), "criterion 17");
+        let reason = run.ended_reason.unwrap_or_default();
+        assert!(
+            reason.contains("declared 61m ago"),
+            "criterion 17: {reason}"
+        );
+        assert!(
+            reason.contains("never bound to a subagent or a process"),
+            "criterion 17: {reason}"
+        );
+        assert!(
+            led.unbound_run_for_master("master-live", "boot-a")
+                .unwrap()
+                .is_none(),
+            "its master holds no unbound declaration any more, so it may declare again"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_declaration_the_box_ended_is_closed_by_the_close_loop_as_a_masters_close_is() {
+        let mut ended_by_box = declared_ago(61 * 60, "boot-a");
+        let box_leases = Leases(Mutex::new(HashSet::new()));
+        let mut ended_by_master = declared_ago(10 * 60, "boot-a");
+        ended_by_master
+            .end_run("run-1", "master", "its master closed it")
+            .unwrap();
+        let master_leases = Leases(Mutex::new(HashSet::new()));
+        let mut said = Vec::new();
+        for (led, leases) in [
+            (&mut ended_by_box, &box_leases),
+            (&mut ended_by_master, &master_leases),
+        ] {
+            let mut last = None;
+            for _ in 0..2 {
+                last = sweep_under_live_master(led, leases)
+                    .await
+                    .into_iter()
+                    .next()
+                    .map(|r| r.state);
+            }
+            said.push((
+                last.map(|s| (s.session_terminal, s.leases_returned, s.leases_total)),
+                leases.0.lock().unwrap().contains("ISS-1379"),
+            ));
+        }
+        assert!(said[0].1, "criterion 18: its lease went back: {said:?}");
+        assert_eq!(
+            said[0], said[1],
+            "criterion 18: the close loop takes a run the box ended exactly as it takes one its master closed"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_declaration_younger_than_the_bound_is_not_ended() {
+        let mut led = declared_ago(59 * 60, "boot-a");
+        let leases = Leases(Mutex::new(HashSet::new()));
+        sweep_under_live_master(&mut led, &leases).await;
+        let run = led.run("run-1").unwrap().unwrap();
+        assert!(
+            run.ended_by.is_none(),
+            "criterion 19: {:?}",
+            run.ended_reason
+        );
+        assert!(leases.0.lock().unwrap().is_empty(), "and its lease is held");
+    }
+
+    #[tokio::test]
+    async fn a_run_its_subagent_bound_is_not_ended_by_the_bound_however_old() {
+        let mut led = declared_ago(3 * 60 * 60, "boot-a");
+        assert!(led.bind_agent("run-1", "agent-1").unwrap());
+        let leases = Leases(Mutex::new(HashSet::new()));
+        sweep_under_live_master(&mut led, &leases).await;
+        let run = led.run("run-1").unwrap().unwrap();
+        assert!(
+            run.ended_by.is_none(),
+            "criterion 20: {:?}",
+            run.ended_reason
+        );
+    }
+
+    #[test]
+    fn the_bound_is_measured_from_the_declaration_on_this_boot_only() {
+        let led = declared_ago(2 * 60 * 60, "boot-before");
+        let run = led.run("run-1").unwrap().unwrap();
+        let now = now_ms() / 1000;
+        assert_eq!(
+            unbound_past_the_bound(&run, "boot-a", now),
+            None,
+            "a declaration of another boot is the boot rules', not this one's"
+        );
+        assert!(unbound_past_the_bound(&run, "boot-before", now).is_some());
+        let exactly = Run {
+            created_at: now - UNBOUND_BEFORE_END_SECS,
+            ..run.clone()
+        };
+        assert!(
+            unbound_past_the_bound(&exactly, "boot-before", now).is_some(),
+            "the bound is inclusive"
+        );
+        let short = Run {
+            created_at: now - UNBOUND_BEFORE_END_SECS + 1,
+            ..run
+        };
+        assert_eq!(unbound_past_the_bound(&short, "boot-before", now), None);
     }
 }

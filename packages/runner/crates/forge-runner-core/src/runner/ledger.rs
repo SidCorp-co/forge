@@ -323,6 +323,19 @@ pub struct MasterRow {
     pub boot_id: String,
     pub cold_started_at: i64,
     pub last_seen_at: i64,
+    /// The runner build that placed the pane, as `update::VERSION_LINE` reads.
+    /// `None` on a pane placed before a build recorded it, or one this box
+    /// adopted and never placed (ISS-1379).
+    pub placed_build: Option<String>,
+    /// The Claude Code plugins installed when the pane was placed, as
+    /// `master_build::plugin_set` writes them. `None` where they could not be
+    /// read then, which leaves the build alone to judge the pane.
+    pub placed_plugins: Option<String>,
+    pub placed_at: Option<i64>,
+    /// The daemon's last verdict that this pane is outdated, in its own words,
+    /// and `None` while it is current or has not been judged. Written for
+    /// `forge-runner top`, which cannot know what build the daemon runs.
+    pub outdated: Option<String>,
 }
 
 /// One episode of an owner's standing decision about a project's resident
@@ -517,6 +530,10 @@ const MASTER_COLUMNS: &[&str] = &[
     "boot_id",
     "cold_started_at",
     "last_seen_at",
+    "placed_build",
+    "placed_plugins",
+    "placed_at",
+    "outdated",
 ];
 
 #[cfg(test)]
@@ -668,6 +685,10 @@ const ADDED_COLUMNS: &[(&str, &str, &str)] = &[
     ("runs", "host_start", "TEXT"),
     ("runs", "refusal_wrote_ending", "INTEGER"),
     ("masters", "session_id", "TEXT"),
+    ("masters", "placed_build", "TEXT"),
+    ("masters", "placed_plugins", "TEXT"),
+    ("masters", "placed_at", "INTEGER"),
+    ("masters", "outdated", "TEXT"),
 ];
 
 /// The ledger, open on one box.
@@ -744,6 +765,10 @@ fn map_master(row: &rusqlite::Row<'_>) -> rusqlite::Result<MasterRow> {
         boot_id: row.get(4)?,
         cold_started_at: row.get(5)?,
         last_seen_at: row.get(6)?,
+        placed_build: row.get(7)?,
+        placed_plugins: row.get(8)?,
+        placed_at: row.get(9)?,
+        outdated: row.get(10)?,
     })
 }
 
@@ -1604,11 +1629,56 @@ impl Ledger {
         Ok(())
     }
 
+    /// Record that this box placed `pane_name` for `project_id` under `build`
+    /// with `plugins` installed, which is the pane's whole claim to being
+    /// current (ISS-1379). Written at placement, before the pane's own
+    /// `SessionStart` hook writes the rest of its row, so it creates the row
+    /// where there is none yet; a placement clears any outdated verdict.
+    pub fn note_master_placed(
+        &self,
+        project_id: &str,
+        pane_name: &str,
+        boot_id: &str,
+        build: &str,
+        plugins: Option<&str>,
+    ) -> Result<()> {
+        self.conn
+            .execute(
+                "INSERT INTO masters (project_id, pane_name, boot_id, cold_started_at, last_seen_at,
+                                      placed_build, placed_plugins, placed_at)
+                 VALUES (?1, ?2, ?3, ?6, ?6, ?4, ?5, ?6)
+                 ON CONFLICT(project_id) DO UPDATE SET
+                   pane_name      = excluded.pane_name,
+                   boot_id        = excluded.boot_id,
+                   last_seen_at   = excluded.last_seen_at,
+                   placed_build   = excluded.placed_build,
+                   placed_plugins = excluded.placed_plugins,
+                   placed_at      = excluded.placed_at,
+                   outdated       = NULL",
+                params![project_id, pane_name, boot_id, build, plugins, now()],
+            )
+            .map_err(sql_err)?;
+        Ok(())
+    }
+
+    /// Record the daemon's verdict on whether a project's resident pane is
+    /// outdated: why it is, or `None` for current.
+    pub fn note_master_outdated(&self, project_id: &str, why: Option<&str>) -> Result<()> {
+        self.conn
+            .execute(
+                "UPDATE masters SET outdated = ?2 WHERE project_id = ?1",
+                params![project_id, why],
+            )
+            .map_err(sql_err)?;
+        Ok(())
+    }
+
     /// What this box knows about one project's master pane.
     pub fn master_for_project(&self, project_id: &str) -> Result<Option<MasterRow>> {
         self.conn
             .query_row(
-                "SELECT project_id, pane_name, conversation_id, session_id, boot_id, cold_started_at, last_seen_at
+                "SELECT project_id, pane_name, conversation_id, session_id, boot_id, cold_started_at, last_seen_at,
+                        placed_build, placed_plugins, placed_at, outdated
                  FROM masters WHERE project_id = ?1",
                 params![project_id],
                 map_master,
@@ -1622,7 +1692,8 @@ impl Ledger {
     pub fn master_for_pane(&self, pane_name: &str) -> Result<Option<MasterRow>> {
         self.conn
             .query_row(
-                "SELECT project_id, pane_name, conversation_id, session_id, boot_id, cold_started_at, last_seen_at
+                "SELECT project_id, pane_name, conversation_id, session_id, boot_id, cold_started_at, last_seen_at,
+                        placed_build, placed_plugins, placed_at, outdated
                  FROM masters WHERE pane_name = ?1",
                 params![pane_name],
                 map_master,
@@ -1874,6 +1945,19 @@ impl Ledger {
             .execute(
                 "UPDATE runs SET host_pid = NULL, host_start = NULL WHERE run_id = ?1",
                 params![run_id],
+            )
+            .map_err(sql_err)?;
+        Ok(())
+    }
+
+    /// Stand a run's declaration at `at_secs`, so a test can put a run past a
+    /// bound measured from it without waiting that long.
+    #[cfg(test)]
+    pub fn backdate_declared(&self, run_id: &str, at_secs: i64) -> Result<()> {
+        self.conn
+            .execute(
+                "UPDATE runs SET created_at = ?2 WHERE run_id = ?1",
+                params![run_id, at_secs],
             )
             .map_err(sql_err)?;
         Ok(())

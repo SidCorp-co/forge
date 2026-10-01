@@ -5,7 +5,7 @@
 //! nothing about the daemon. After a self-update the two part: the daemon keeps
 //! the old inode, with no name left on the filesystem, until it restarts
 //! (ISS-1223). The daemon writes this record at start and at every change of
-//! its drain, and the commands read it back — checking that the process holding
+//! its handover, and the commands read it back — checking that the process holding
 //! the recorded pid is still the one that wrote it, since a pid names a process
 //! only until it is reused.
 
@@ -15,11 +15,21 @@ use serde::{Deserialize, Serialize};
 
 pub const FILE: &str = "serving.json";
 
-/// The drain the record carries, where one is under way or has given up.
+/// The handover the record carries, where one is under way or has given up.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", tag = "state")]
 pub enum DrainState {
-    /// Admission is closed while this box waits for its holders.
+    /// A new build is installed and this process waits for its in-process
+    /// work to end before handing over to it. Admission is open.
+    #[serde(rename_all = "camelCase")]
+    Waiting {
+        cause: String,
+        since_ms: i64,
+        bound_secs: u64,
+        outstanding: Vec<String>,
+    },
+    /// The closing window of a handover: admission is refused for the seconds
+    /// it takes the requests in flight to be answered.
     #[serde(rename_all = "camelCase")]
     Draining {
         cause: String,
@@ -27,7 +37,8 @@ pub enum DrainState {
         bound_secs: u64,
         outstanding: Vec<String>,
     },
-    /// The bound passed with work outstanding; admission is open again.
+    /// The bound passed with work outstanding, or the new build could not be
+    /// started; admission is open.
     #[serde(rename_all = "camelCase")]
     Deferred {
         cause: String,
@@ -632,13 +643,25 @@ const INDENT: &str = "           ";
 
 fn drain_lines(drain: &DrainState, now_ms: i64) -> Vec<String> {
     match drain {
+        DrainState::Waiting {
+            cause,
+            since_ms,
+            bound_secs,
+            outstanding,
+        } => vec![format!(
+            "{INDENT}handing over for {cause} once its in-process work ends: {} of at most {} waited, {} outstanding{}. Admission is open meanwhile, and the runs in the ledger hold nothing — they live in their panes",
+            ago(now_ms, *since_ms),
+            span_secs(*bound_secs),
+            outstanding.len(),
+            listed(outstanding)
+        )],
         DrainState::Draining {
             cause,
             since_ms,
             bound_secs,
             outstanding,
         } => vec![format!(
-            "{INDENT}draining for {cause} for {} of at most {}: {} outstanding{}. No run, pool job or master is admitted meanwhile",
+            "{INDENT}handing over for {cause}: admission closed {} ago, for at most {} while the requests in flight are answered, {} outstanding{}",
             ago(now_ms, *since_ms),
             span_secs(*bound_secs),
             outstanding.len(),
@@ -657,7 +680,7 @@ fn drain_lines(drain: &DrainState, now_ms: i64) -> Vec<String> {
                 format!("due {} ago", ago(now_ms, *next_attempt_at_ms))
             };
             vec![format!(
-                "{INDENT}the drain for {cause} gave up {} ago with {} outstanding{}; admission is open, and the next attempt is {next_attempt}, {due}",
+                "{INDENT}the handover for {cause} was deferred {} ago with {} outstanding{}; admission is open, and the next attempt is {next_attempt}, {due}",
                 ago(now_ms, *gave_up_at_ms),
                 outstanding.len(),
                 listed(outstanding)
@@ -758,8 +781,8 @@ pub enum Turnover {
     },
     /// A live daemon of this configuration already serves this one.
     Already { pid: u32, unverified: bool },
-    /// It is turning itself over already, and a restart now would stop the
-    /// very work it is waiting for.
+    /// It is handing itself over already, and a restart now would cut the
+    /// in-process work it is waiting on: a chat turn or a message into a pane.
     Draining {
         pid: u32,
         cause: String,
@@ -817,14 +840,19 @@ pub fn turnover(
         Liveness::Unverified => true,
         Liveness::Same => false,
     };
-    // A drain under way is the daemon restarting ITSELF, holding admission shut
-    // until the runs it waits on end. Restarting the unit here would stop
-    // exactly those runs — the one thing the drain exists to prevent — so the
-    // build comparison is not even reached. A drain that GAVE UP is the
-    // opposite case: nothing will turn the box over now but a restart.
-    if let Some(DrainState::Draining {
-        cause, outstanding, ..
-    }) = &record.drain
+    // A handover under way is the daemon replacing ITSELF once its in-process
+    // work ends. Restarting the unit here would cut exactly that work — a chat
+    // turn, a message into a pane — so the build comparison is not even
+    // reached. A handover that was DEFERRED is the opposite case: nothing will
+    // turn the box over now but a restart.
+    if let Some(
+        DrainState::Waiting {
+            cause, outstanding, ..
+        }
+        | DrainState::Draining {
+            cause, outstanding, ..
+        },
+    ) = &record.drain
     {
         return Turnover::Draining {
             pid: record.pid,
@@ -971,44 +999,63 @@ mod tests {
         assert!(out.contains("no restart is under way"), "{out}");
     }
 
-    /// Criterion 15, a drain under way.
+    /// ISS-1379 criterion 39: a handover waiting on in-process work says
+    /// admission is open and names what it waits on.
     #[test]
-    fn a_draining_daemon_names_its_cause_its_holders_and_the_closed_admission() {
-        let drain = DrainState::Draining {
+    fn a_waiting_handover_names_its_cause_its_holders_and_the_open_admission() {
+        let drain = DrainState::Waiting {
             cause: "update 0.17.8 → 0.17.9".into(),
             since_ms: NOW - 7 * 60_000,
             bound_secs: 7200,
-            outstanding: vec!["run r-1 (ISS-7)".into(), "run r-2 (ISS-8)".into()],
+            outstanding: vec![
+                "1 interactive turn(s) — a chat turn or a message into a master pane".into(),
+            ],
         };
         let out = joined(Ok(Some(rec("0.17.8", Some(drain)))), &live_same());
         assert!(
-            out.contains("draining for update 0.17.8 → 0.17.9 for 7m of at most 2h"),
+            out.contains("handing over for update 0.17.8 → 0.17.9 once its in-process work ends: 7m of at most 2h waited"),
             "{out}"
         );
         assert!(
-            out.contains("2 outstanding — run r-1 (ISS-7); run r-2 (ISS-8)"),
+            out.contains("1 outstanding — 1 interactive turn(s)"),
             "{out}"
         );
-        assert!(
-            out.contains("No run, pool job or master is admitted"),
-            "{out}"
-        );
+        assert!(out.contains("Admission is open meanwhile"), "{out}");
         assert!(!out.contains("no restart is under way"), "{out}");
     }
 
-    /// Criterion 15, a drain that gave up.
+    /// The closing window of a handover says admission is closed, and for
+    /// how long at most.
     #[test]
-    fn a_drain_that_gave_up_names_its_holders_and_when_it_tries_again() {
+    fn a_handover_in_its_closing_window_names_the_closed_admission() {
+        let drain = DrainState::Draining {
+            cause: "update 0.17.8 → 0.17.9".into(),
+            since_ms: NOW - 3_000,
+            bound_secs: 10,
+            outstanding: Vec::new(),
+        };
+        let out = joined(Ok(Some(rec("0.17.8", Some(drain)))), &live_same());
+        assert!(
+            out.contains(
+                "handing over for update 0.17.8 → 0.17.9: admission closed 3s ago, for at most 10s"
+            ),
+            "{out}"
+        );
+    }
+
+    /// A handover that was deferred names what held it and when it tries again.
+    #[test]
+    fn a_deferred_handover_names_its_holders_and_when_it_tries_again() {
         let drain = DrainState::Deferred {
             cause: "update 0.17.8 → 0.17.9".into(),
             gave_up_at_ms: NOW - 30 * 60_000,
-            outstanding: vec!["run r-1 (ISS-7)".into()],
+            outstanding: vec!["1 interactive turn(s)".into()],
             next_attempt: "the next update check".into(),
             next_attempt_at_ms: NOW + 3 * 3_600_000 + 30 * 60_000,
         };
         let out = joined(Ok(Some(rec("0.17.8", Some(drain)))), &live_same());
         assert!(
-            out.contains("gave up 30m ago with 1 outstanding — run r-1 (ISS-7)"),
+            out.contains("was deferred 30m ago with 1 outstanding — 1 interactive turn(s)"),
             "{out}"
         );
         assert!(out.contains("admission is open"), "{out}");
@@ -1561,34 +1608,45 @@ mod tests {
         assert!(matches!(nothing, Turnover::Unknown(w) if w.contains("no daemon record")));
     }
 
-    /// Review finding F2: a drain under way is the daemon restarting ITSELF,
-    /// waiting for the runs it holds. `update --restart` reaching for systemctl
-    /// there would stop exactly those runs — the one thing the drain exists to
-    /// prevent — so the build comparison is never reached. A drain that GAVE UP
-    /// is the opposite: nothing will turn the box over now but a restart.
+    /// Review finding F2, and ISS-1379 criterion 40: a handover under way —
+    /// waiting on its in-process work, or in its closing window — is the
+    /// daemon replacing ITSELF. `update --restart` reaching for systemctl there
+    /// would cut a chat turn or a message into a pane, so the build comparison
+    /// is never reached. A handover that was DEFERRED is the opposite: nothing
+    /// will turn the box over now but a restart.
     #[test]
-    fn a_restart_does_not_cut_into_a_drain_that_is_under_way() {
-        let draining = DrainState::Draining {
-            cause: "update 0.17.8 → 0.17.9".into(),
-            since_ms: NOW - 7 * 60_000,
-            bound_secs: 7200,
-            outstanding: vec!["run r-1 (ISS-7)".into(), "run r-2 (ISS-8)".into()],
-        };
-        assert_eq!(
-            turnover(
-                &Ok(Some(rec("0.17.8", Some(draining)))),
-                &live_same(),
-                "0.17.9",
-                "abc1234"
-            ),
-            Turnover::Draining {
-                pid: 4242,
+    fn a_restart_does_not_cut_into_a_handover_that_is_under_way() {
+        let holding = vec!["1 interactive turn(s)".to_string()];
+        for under_way in [
+            DrainState::Waiting {
                 cause: "update 0.17.8 → 0.17.9".into(),
-                outstanding: vec!["run r-1 (ISS-7)".into(), "run r-2 (ISS-8)".into()],
-                unverified: false,
+                since_ms: NOW - 7 * 60_000,
+                bound_secs: 7200,
+                outstanding: holding.clone(),
             },
-            "a restart here would kill the runs the drain is waiting for"
-        );
+            DrainState::Draining {
+                cause: "update 0.17.8 → 0.17.9".into(),
+                since_ms: NOW - 3_000,
+                bound_secs: 10,
+                outstanding: holding.clone(),
+            },
+        ] {
+            assert_eq!(
+                turnover(
+                    &Ok(Some(rec("0.17.8", Some(under_way.clone())))),
+                    &live_same(),
+                    "0.17.9",
+                    "abc1234"
+                ),
+                Turnover::Draining {
+                    pid: 4242,
+                    cause: "update 0.17.8 → 0.17.9".into(),
+                    outstanding: holding.clone(),
+                    unverified: false,
+                },
+                "a restart here would cut the work the handover waits for: {under_way:?}"
+            );
+        }
 
         let deferred = DrainState::Deferred {
             cause: "update 0.17.8 → 0.17.9".into(),
@@ -1607,7 +1665,7 @@ mod tests {
                 ),
                 Turnover::Owed { .. }
             ),
-            "a drain that gave up leaves the restart to a person"
+            "a handover that was deferred leaves the restart to a person"
         );
     }
 
