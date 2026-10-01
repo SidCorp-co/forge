@@ -2131,6 +2131,13 @@
       "breakpoints": true
     },
     {
+      "idx": 329,
+      "version": "7",
+      "when": 1811462400000,
+      "tag": "0329_a_checkout_is_the_device_bindings",
+      "breakpoints": true
+    },
+    {
       "idx": 330,
       "version": "7",
       "when": 1811548800000,

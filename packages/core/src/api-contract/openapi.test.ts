@@ -1,12 +1,19 @@
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { zValidator } from '../middleware/zod-validator.js';
-import { buildApiContract, UNDECLARED_RESPONSE } from './openapi.js';
+import { declareGate } from '../middleware/declared-gate.js';
+import { rawBody, zValidator } from '../middleware/zod-validator.js';
+import { buildApiContract, UNDECLARED_RESPONSE, UNNAMED_REFINEMENT } from './openapi.js';
 
 type Op = {
+  'x-forge-auth': string[];
+  'x-forge-input'?: string;
   parameters?: { in: string; name: string; required: boolean; schema: Record<string, unknown> }[];
-  requestBody?: { content: { 'application/json': { schema: Record<string, unknown> } } };
+  requestBody?: {
+    required: boolean;
+    description?: string;
+    content: Record<string, { schema: Record<string, unknown> }>;
+  };
   responses: { default: { description: string } };
   'x-forge-validated': string[];
   'x-forge-query-closed'?: boolean;
@@ -54,7 +61,7 @@ describe('the API contract read off a mounted app', () => {
       ['query', 'dryRun', false, undefined],
     ]);
     expect(op['x-forge-query-closed']).toBe(true);
-    expect(op.requestBody?.content['application/json'].schema.properties).toEqual({
+    expect(op.requestBody?.content['application/json']?.schema.properties).toEqual({
       name: { type: 'string', maxLength: 64 },
     });
   });
@@ -203,5 +210,145 @@ describe('a mounted route the generator cannot describe is refused by name, neve
     expect(refusals).toHaveLength(1);
     expect(operations).toBe(1);
     expect(Object.keys(paths)).toEqual(['/api/fine']);
+  });
+});
+
+describe('a route that reads input no validator declares is refused by name', () => {
+  it.each([
+    [
+      'a body read with c.req.json()',
+      (app: Hono) => app.post('/api/b', async (c) => c.json(await c.req.json())),
+      'POST /api/b: reads the request body with `c.req.json()` and declares no body',
+    ],
+    [
+      'a validated body read with no json validator mounted',
+      (app: Hono) => app.post('/api/v', (c) => c.json(c.req.valid('json' as never))),
+      "POST /api/v: reads `c.req.valid('json')` and holds no `json` validator",
+    ],
+    [
+      'a query read with c.req.query()',
+      (app: Hono) => app.get('/api/q', (c) => c.text(c.req.query('since') ?? '')),
+      'GET /api/q: reads the query with `c.req.query()` and holds no query validator',
+    ],
+    [
+      'a query read off the URL',
+      (app: Hono) =>
+        app.get('/api/u', (c) => c.text(new URL(c.req.url).searchParams.get('org') ?? '')),
+      'GET /api/u: reads the query with `new URL(c.req.url).searchParams`',
+    ],
+    [
+      'a multipart body with no rawBody() declaration',
+      (app: Hono) => app.post('/api/m', async (c) => c.json(await c.req.parseBody())),
+      'POST /api/m: reads the request body with `c.req.parseBody()` and declares no body',
+    ],
+    [
+      'a body read in middleware covering the route',
+      (app: Hono) => {
+        app.use('/api/w', async (c, next) => {
+          await c.req.json();
+          await next();
+        });
+        app.post('/api/w', (c) => c.text(''));
+      },
+      'POST /api/w: reads the request body with `c.req.json()` and declares no body',
+    ],
+  ])('%s', (_name, mount, refusal) => {
+    const app = new Hono();
+    mount(app);
+
+    const { refusals } = contract(app);
+
+    expect(refusals.some((r) => r.startsWith(refusal))).toBe(true);
+  });
+
+  it('admits the same reads once a validator or rawBody() declares them', () => {
+    const app = new Hono();
+    app.post(
+      '/api/b',
+      zValidator('json', z.object({ a: z.string() })),
+      zValidator('query', z.object({ since: z.string().optional() })),
+      (c) => c.json({ ...c.req.valid('json'), since: c.req.valid('query').since }),
+    );
+    app.post('/api/m', rawBody('multipart/form-data', 'one file under `file`'), async (c) =>
+      c.json(await c.req.parseBody()),
+    );
+
+    const { refusals, paths } = contract(app);
+
+    expect(refusals).toEqual([]);
+    expect(paths['/api/m']?.post?.requestBody).toEqual({
+      required: true,
+      description: 'one file under `file`',
+      content: { 'multipart/form-data': { schema: {} } },
+    });
+    expect(paths['/api/m']?.post?.['x-forge-validated']).toEqual([]);
+  });
+
+  it('lets a handler read a path parameter with no validator, the path being its declaration', () => {
+    const app = new Hono();
+    app.get('/api/x/:id', (c) => c.text(c.req.param('id')));
+
+    expect(contract(app).refusals).toEqual([]);
+  });
+
+  it('marks an operation that reads no input at all', () => {
+    const app = new Hono();
+    app.get('/api/none', (c) => c.json({}));
+    app.get('/api/one/:id', (c) => c.json({}));
+
+    expect(operation(app, '/api/none', 'get')['x-forge-input']).toBe('none');
+    expect(operation(app, '/api/one/{id}', 'get')['x-forge-input']).toBeUndefined();
+  });
+});
+
+describe('what the contract says beyond the shape', () => {
+  it('names each refinement by the message it refuses with', () => {
+    const app = new Hono();
+    app.post(
+      '/api/r',
+      zValidator(
+        'json',
+        z
+          .object({ a: z.string().refine((v) => v.length > 1, { message: 'a is too short' }) })
+          .superRefine(() => {}),
+      ),
+      (c) => c.json({}),
+    );
+
+    const schema = operation(app, '/api/r', 'post').requestBody?.content['application/json']
+      ?.schema as { properties: { a: Record<string, unknown> }; [k: string]: unknown };
+
+    expect(schema.properties.a['x-forge-refinements']).toEqual(['a is too short']);
+    expect(schema['x-forge-refinements']).toEqual([UNNAMED_REFINEMENT]);
+  });
+
+  it('lists the auth gates that run before the route answers, in order, and none registered after', () => {
+    const user = declareGate('requireAuth', async (_c: unknown, next: () => Promise<void>) => {
+      await next();
+    });
+    const verified = declareGate(
+      'assertEmailVerified',
+      async (_c: unknown, next: () => Promise<void>) => {
+        await next();
+      },
+    );
+    const sub = new Hono();
+    sub.use('*', user as never);
+    sub.get('/guarded', verified as never, (c) => c.json({}));
+    sub.get('/early', (c) => c.json({}));
+    const app = new Hono();
+    app.get('/api/s/open', (c) => c.json({}));
+    app.route('/api/s', sub);
+    app.use('/api/s/*', user as never);
+
+    const { document } = contract(app);
+
+    expect(operation(app, '/api/s/guarded', 'get')['x-forge-auth']).toEqual([
+      'requireAuth',
+      'assertEmailVerified',
+    ]);
+    expect(operation(app, '/api/s/early', 'get')['x-forge-auth']).toEqual(['requireAuth']);
+    expect(operation(app, '/api/s/open', 'get')['x-forge-auth']).toEqual([]);
+    expect(Object.keys(document['x-forge-auth-gates'] as object)).toContain('requireAuth');
   });
 });

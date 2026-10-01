@@ -4,9 +4,10 @@ import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import { users } from '../db/schema.js';
 import type { AuthVars } from './auth.js';
+import { declareGate } from './declared-gate.js';
 
 export function requireFreshAuth(minutes = 5): MiddlewareHandler<{ Variables: AuthVars }> {
-  return async (c, next) => {
+  return declareGate('requireFreshAuth', async (c, next) => {
     const userId = c.get('userId');
 
     const stale = () =>
@@ -27,5 +28,5 @@ export function requireFreshAuth(minutes = 5): MiddlewareHandler<{ Variables: Au
     if (ageMs > minutes * 60_000) throw stale();
 
     await next();
-  };
+  });
 }

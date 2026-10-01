@@ -81,20 +81,12 @@ export interface GrantedMcpApplication {
   produced: ProducedMcpServer[];
 }
 
-/**
- * Lay this project's granted integration entries over a resolved `mcpServers` map.
- *
- * Integrations win a name collision with a catalog server, which is the order the three resolvers
- * this replaced already had.
- */
-export async function applyGrantedMcpServers(
-  projectId: string,
-  current: Record<string, unknown> | null,
-): Promise<GrantedMcpApplication> {
+/** This project's granted integration entries, keyed by server name; `null` where none is granted. */
+export async function applyGrantedMcpServers(projectId: string): Promise<GrantedMcpApplication> {
   const produced: ProducedMcpServer[] = [];
   const entries = await resolveGrantedMcpEntries(projectId, produced);
-  if (produced.length === 0) return { map: current, produced };
-  return { map: { ...(current ?? {}), ...entries }, produced };
+  if (produced.length === 0) return { map: null, produced };
+  return { map: entries, produced };
 }
 
 export function declaredServerNames(

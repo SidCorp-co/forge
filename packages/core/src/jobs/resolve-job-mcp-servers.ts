@@ -7,10 +7,6 @@ export interface ResolvedJobMcpServers {
   mcpServers: McpServersMap;
   /** Server names present in the final map. */
   resolvedNames: string[];
-  // cm:hack ISS-5 until:S3d declares a project's MCP servers in the project document — the
-  // project-declared source went with the old pipeline config, so nothing is declared and nothing
-  // can drop; the field stays because the runner and the chat preamble read it.
-  droppedNames: string[];
   /** ISS-1191 — every name the granted-integration pass produced, each carrying
    *  the binding that produced it. Two bindings of one provider can land on a
    *  single name, so the name alone identifies neither. */
@@ -21,11 +17,10 @@ export interface ResolvedJobMcpServers {
 export async function resolveJobMcpServers(args: {
   projectId: string;
 }): Promise<ResolvedJobMcpServers> {
-  const granted = await applyGrantedMcpServers(args.projectId, null);
+  const granted = await applyGrantedMcpServers(args.projectId);
   return {
     mcpServers: granted.map,
     resolvedNames: Object.keys(granted.map ?? {}),
-    droppedNames: [],
     integrationServers: granted.produced,
   };
 }

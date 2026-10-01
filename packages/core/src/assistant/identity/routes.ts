@@ -9,12 +9,14 @@
  */
 
 import { and, desc, eq } from 'drizzle-orm';
-import { Hono } from 'hono';
+import { Hono, type MiddlewareHandler } from 'hono';
+import { z } from 'zod';
 import { db } from '../../db/client.js';
 import type { ConversationAdapter } from '../../db/schema-conversations.js';
 import { assistantSpeakerLinks } from '../../db/schema-speaker-links.js';
 import { assertProjectAccess } from '../../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
+import { zValidator } from '../../middleware/zod-validator.js';
 import { proposeCandidates, type SpeakerCandidate } from './candidates.js';
 import { lookupSpeakerProfile, type SpeakerProfile } from './directory.js';
 import {
@@ -23,23 +25,37 @@ import {
   sourceUnknownRefusal,
 } from './speaker-link.js';
 
-interface SpeakerBody {
-  source?: unknown;
-  externalId?: unknown;
-}
+const speakerBodySchema = z.object({
+  source: z.string().optional(),
+  externalId: z.string().optional(),
+});
+
+type SpeakerBody = z.infer<typeof speakerBodySchema>;
+
+const SPEAKER_BODY_REQUIRED: SpeakerRefusal = {
+  code: 'SPEAKER_SOURCE_UNKNOWN',
+  message:
+    'both "source" and "externalId" are required. "source" is the chat channel, "externalId" is that channel\'s own user id for the speaker — never their display name.',
+};
+
+const speakerBody = zValidator('json', speakerBodySchema, (result, c) => {
+  if (!result.success) {
+    return c.json({ error: SPEAKER_BODY_REQUIRED.message, code: SPEAKER_BODY_REQUIRED.code }, 400);
+  }
+});
+
+// cm:why project access is refused before the body is read, so a stranger learns nothing from a 400
+const projectAccess: MiddlewareHandler<{ Variables: AuthVars }> = async (c, next) => {
+  await assertProjectAccess(c.req.param('projectId') ?? '', c.get('userId'));
+  await next();
+};
 
 function readBody(
   raw: SpeakerBody,
 ): { source: ConversationAdapter; externalId: string } | SpeakerRefusal {
-  const source = typeof raw.source === 'string' ? raw.source.trim() : '';
-  const externalId = typeof raw.externalId === 'string' ? raw.externalId.trim() : '';
-  if (!source || !externalId) {
-    return {
-      code: 'SPEAKER_SOURCE_UNKNOWN',
-      message:
-        'both "source" and "externalId" are required. "source" is the chat channel, "externalId" is that channel\'s own user id for the speaker — never their display name.',
-    };
-  }
+  const source = raw.source?.trim() ?? '';
+  const externalId = raw.externalId?.trim() ?? '';
+  if (!source || !externalId) return SPEAKER_BODY_REQUIRED;
   if (!isConversationAdapter(source)) return sourceUnknownRefusal(source);
   return { source, externalId };
 }
@@ -95,85 +111,93 @@ speakerLinkProjectRoutes.use(
   assertEmailVerified(),
 );
 
-speakerLinkProjectRoutes.post('/projects/:projectId/speaker-links/proposals', async (c) => {
-  const userId = c.get('userId');
-  const projectId = c.req.param('projectId');
-  await assertProjectAccess(projectId, userId);
-  const body = readBody(await c.req.json<SpeakerBody>().catch(() => ({})));
-  if (isRefusal(body)) return c.json({ error: body.message, code: body.code }, 400);
-  const found = await profileAndCandidates(projectId, body.source, body.externalId);
-  if (isRefusal(found)) return c.json({ error: found.message, code: found.code }, 404);
-  return c.json(describe(found.profile, found.candidates, userId));
-});
+speakerLinkProjectRoutes.post(
+  '/projects/:projectId/speaker-links/proposals',
+  projectAccess,
+  speakerBody,
+  async (c) => {
+    const userId = c.get('userId');
+    const projectId = c.req.param('projectId');
+    const body = readBody(c.req.valid('json'));
+    if (isRefusal(body)) return c.json({ error: body.message, code: body.code }, 400);
+    const found = await profileAndCandidates(projectId, body.source, body.externalId);
+    if (isRefusal(found)) return c.json({ error: found.message, code: found.code }, 404);
+    return c.json(describe(found.profile, found.candidates, userId));
+  },
+);
 
-speakerLinkProjectRoutes.post('/projects/:projectId/speaker-links', async (c) => {
-  const userId = c.get('userId');
-  const projectId = c.req.param('projectId');
-  await assertProjectAccess(projectId, userId);
-  const body = readBody(await c.req.json<SpeakerBody>().catch(() => ({})));
-  if (isRefusal(body)) return c.json({ error: body.message, code: body.code }, 400);
-  const found = await profileAndCandidates(projectId, body.source, body.externalId);
-  if (isRefusal(found)) return c.json({ error: found.message, code: found.code }, 404);
-  const { profile, candidates } = found;
+speakerLinkProjectRoutes.post(
+  '/projects/:projectId/speaker-links',
+  projectAccess,
+  speakerBody,
+  async (c) => {
+    const userId = c.get('userId');
+    const projectId = c.req.param('projectId');
+    const body = readBody(c.req.valid('json'));
+    if (isRefusal(body)) return c.json({ error: body.message, code: body.code }, 400);
+    const found = await profileAndCandidates(projectId, body.source, body.externalId);
+    if (isRefusal(found)) return c.json({ error: found.message, code: found.code }, 404);
+    const { profile, candidates } = found;
 
-  const mine = candidates.filter((cand) => cand.userId === userId);
-  if (!mine.some((cand) => cand.confirmable)) {
-    const near = mine.find((cand) => cand.matchedOn === 'local-part');
-    if (near) {
+    const mine = candidates.filter((cand) => cand.userId === userId);
+    if (!mine.some((cand) => cand.confirmable)) {
+      const near = mine.find((cand) => cand.matchedOn === 'local-part');
+      if (near) {
+        return c.json(
+          {
+            code: 'SPEAKER_ADDRESS_DIFFERS',
+            error: `${profile.source} reports ${profile.email} for that speaker, and your Forge address is ${near.email}. The local parts match but the domains do not, which proposes a link and cannot confirm one. Make the two addresses the same, on either side, and confirm again.`,
+          },
+          403,
+        );
+      }
       return c.json(
         {
-          code: 'SPEAKER_ADDRESS_DIFFERS',
-          error: `${profile.source} reports ${profile.email} for that speaker, and your Forge address is ${near.email}. The local parts match but the domains do not, which proposes a link and cannot confirm one. Make the two addresses the same, on either side, and confirm again.`,
+          code: 'SPEAKER_NOT_THE_TARGET',
+          error: `${profile.source} reports ${profile.email} for that speaker, which is not your Forge address. A link is confirmed by the person being mapped, signed in themselves — never by an administrator on their behalf, because the authority checked afterwards is the mapped user's and not the confirmer's.`,
         },
         403,
       );
     }
-    return c.json(
-      {
-        code: 'SPEAKER_NOT_THE_TARGET',
-        error: `${profile.source} reports ${profile.email} for that speaker, which is not your Forge address. A link is confirmed by the person being mapped, signed in themselves — never by an administrator on their behalf, because the authority checked afterwards is the mapped user's and not the confirmer's.`,
-      },
-      403,
-    );
-  }
 
-  const [row] = await db
-    .insert(assistantSpeakerLinks)
-    .values({
-      source: profile.source,
-      externalNamespace: profile.namespace,
-      externalId: profile.externalId,
-      externalLabel: profile.username,
-      userId,
-      confirmedVia: 'channel_email_match',
-    })
-    .onConflictDoNothing()
-    .returning();
-  if (!row) {
-    const [held] = await db
-      .select({ userId: assistantSpeakerLinks.userId })
-      .from(assistantSpeakerLinks)
-      .where(
-        and(
-          eq(assistantSpeakerLinks.source, profile.source),
-          eq(assistantSpeakerLinks.externalNamespace, profile.namespace),
-          eq(assistantSpeakerLinks.externalId, profile.externalId),
-        ),
-      )
-      .limit(1);
-    return c.json(
-      {
-        code: 'SPEAKER_ALREADY_LINKED',
-        error:
-          held?.userId === userId
-            ? 'that speaker is already linked to you. Unlink it first if you mean to re-make the link.'
-            : 'that speaker is already linked to another Forge user. Whoever holds the link unlinks it before it can be re-made.',
-      },
-      409,
-    );
-  }
-  return c.json({ link: row }, 201);
-});
+    const [row] = await db
+      .insert(assistantSpeakerLinks)
+      .values({
+        source: profile.source,
+        externalNamespace: profile.namespace,
+        externalId: profile.externalId,
+        externalLabel: profile.username,
+        userId,
+        confirmedVia: 'channel_email_match',
+      })
+      .onConflictDoNothing()
+      .returning();
+    if (!row) {
+      const [held] = await db
+        .select({ userId: assistantSpeakerLinks.userId })
+        .from(assistantSpeakerLinks)
+        .where(
+          and(
+            eq(assistantSpeakerLinks.source, profile.source),
+            eq(assistantSpeakerLinks.externalNamespace, profile.namespace),
+            eq(assistantSpeakerLinks.externalId, profile.externalId),
+          ),
+        )
+        .limit(1);
+      return c.json(
+        {
+          code: 'SPEAKER_ALREADY_LINKED',
+          error:
+            held?.userId === userId
+              ? 'that speaker is already linked to you. Unlink it first if you mean to re-make the link.'
+              : 'that speaker is already linked to another Forge user. Whoever holds the link unlinks it before it can be re-made.',
+        },
+        409,
+      );
+    }
+    return c.json({ link: row }, 201);
+  },
+);
 
 export const speakerLinkMeRoutes = new Hono<{ Variables: AuthVars }>();
 speakerLinkMeRoutes.use('/me/speaker-links', requireAuth(), assertEmailVerified());

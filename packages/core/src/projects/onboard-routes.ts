@@ -11,6 +11,7 @@ import {
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { resolveSessionRepoPathForDevice } from '../lib/device-pool.js';
 import { logger } from '../logger.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
@@ -55,7 +56,7 @@ projectOnboardRoutes.post(
     assertProjectRole(access, 'admin', 'project admin required');
 
     const [project] = await db
-      .select({ id: projects.id, slug: projects.slug, repoPath: projects.repoPath })
+      .select({ id: projects.id, slug: projects.slug })
       .from(projects)
       .where(eq(projects.id, id))
       .limit(1);
@@ -101,7 +102,7 @@ projectOnboardRoutes.post(
       projectId: project.id,
       userId,
       title: 'Build Project Brain',
-      repoPath: project.repoPath,
+      repoPath: await resolveSessionRepoPathForDevice(project.id, client.deviceId),
       metadata: { source: 'onboard' },
     });
 

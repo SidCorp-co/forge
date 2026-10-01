@@ -1,6 +1,13 @@
 import { COMPOSED_HANDLER } from 'hono/utils/constants';
 import { z } from 'zod';
-import { type DeclaredInput, declaredInputs } from '../middleware/zod-validator.js';
+import { AUTH_GATES, type AuthGate, declaredGates } from '../middleware/declared-gate.js';
+import {
+  type DeclaredInput,
+  type DeclaredRawBody,
+  declaredInputs,
+  declaredRawBodies,
+} from '../middleware/zod-validator.js';
+import { type RequestRead, readsOf } from './request-reads.js';
 
 export type MountedRoute = { method: string; path: string; handler: unknown };
 
@@ -25,9 +32,22 @@ function unwrap(handler: unknown): unknown {
   return current;
 }
 
-function inputOf(handler: unknown): DeclaredInput | undefined {
+type Declaration =
+  | { kind: 'input'; input: DeclaredInput }
+  | { kind: 'raw'; body: DeclaredRawBody }
+  | { kind: 'gate'; gate: AuthGate }
+  | { kind: 'handler'; reads: RequestRead[] };
+
+function declarationOf(handler: unknown): Declaration {
   const inner = unwrap(handler);
-  return typeof inner === 'function' ? declaredInputs.get(inner) : undefined;
+  if (typeof inner !== 'function') return { kind: 'handler', reads: [] };
+  const input = declaredInputs.get(inner);
+  if (input !== undefined) return { kind: 'input', input };
+  const body = declaredRawBodies.get(inner);
+  if (body !== undefined) return { kind: 'raw', body };
+  const gate = declaredGates.get(inner);
+  if (gate !== undefined) return { kind: 'gate', gate };
+  return { kind: 'handler', reads: readsOf(Function.prototype.toString.call(inner)) };
 }
 
 function segmentsOf(path: string): string[] {
@@ -89,6 +109,35 @@ const UNREPRESENTABLE = new Set([
   'void',
 ]);
 
+export const UNNAMED_REFINEMENT =
+  'a refinement with no fixed message, whose rule this contract cannot state';
+
+type CheckDef = { check?: string; error?: unknown };
+
+// cm:why JSON Schema has no word for a predicate, so a refine() is named by the message it
+// refuses with: what a caller can see of the rule, without inventing the rule itself
+function refinementsOf(checks: unknown[] | undefined): string[] {
+  const out: string[] = [];
+  for (const check of checks ?? []) {
+    const def = (check as { _zod?: { def?: CheckDef } })._zod?.def;
+    if (def?.check !== 'custom') continue;
+    let message: unknown;
+    try {
+      message = typeof def.error === 'function' ? def.error({ code: 'custom' }) : undefined;
+    } catch {
+      message = undefined;
+    }
+    const text =
+      typeof message === 'string'
+        ? message
+        : typeof (message as { message?: unknown } | undefined)?.message === 'string'
+          ? (message as { message: string }).message
+          : UNNAMED_REFINEMENT;
+    if (!out.includes(text)) out.push(text);
+  }
+  return out;
+}
+
 // cm:why zod describes a coerced input by the type it coerces to (z.coerce.number() is
 // `number`), so a coerced date is the string form JSON and a URL can carry; every other type
 // z.toJSONSchema cannot represent is refused rather than widened to `{}`.
@@ -100,7 +149,9 @@ function jsonSchemaOf(input: DeclaredInput): JsonSchema | string {
     io: 'input',
     unrepresentable: 'any',
     override: (ctx) => {
-      const def = ctx.zodSchema._zod.def as { type: string; coerce?: boolean };
+      const def = ctx.zodSchema._zod.def as { type: string; coerce?: boolean; checks?: unknown[] };
+      const refinements = refinementsOf(def.checks);
+      if (refinements.length > 0) ctx.jsonSchema['x-forge-refinements'] = refinements;
       if (def.type === 'date' && def.coerce === true) {
         ctx.jsonSchema.type = 'string';
         ctx.jsonSchema.format = 'date-time';
@@ -173,11 +224,36 @@ function queryParameters(schema: JsonSchema, refusals: string[]) {
   }));
 }
 
-function describe(shape: PathShape, inputs: DeclaredInput[]): Described {
+function readRefusals(endpoint: Endpoint, validated: Set<string>): string[] {
+  const refusals: string[] = [];
+  const hasBody = validated.has('json') || endpoint.raws.length > 0;
+  for (const read of endpoint.reads) {
+    if (read.kind === 'validated' && !validated.has(read.part)) {
+      refusals.push(`reads \`${read.via}\` and holds no \`${read.part}\` validator`);
+    } else if (read.kind === 'body' && !hasBody) {
+      refusals.push(
+        `reads the request body with \`${read.via}\` and declares no body — hold zValidator('json', …), or rawBody(…) for a body that is not JSON`,
+      );
+    } else if (read.kind === 'query' && !validated.has('query')) {
+      refusals.push(
+        `reads the query with \`${read.via}\` and holds no query validator — hold zValidator('query', …) and read c.req.valid('query')`,
+      );
+    }
+  }
+  if (endpoint.raws.length > 1) refusals.push('two rawBody() declarations for one body');
+  if (endpoint.raws.length > 0 && validated.has('json')) {
+    refusals.push('a json validator and a rawBody() declaration for one body');
+  }
+  return [...new Set(refusals)];
+}
+
+function describe(shape: PathShape, endpoint: Endpoint): Described {
   const refusals: string[] = [];
   const schemas = new Map<InputTarget, JsonSchema>();
-  for (const input of inputs) {
+  const targets = new Set<string>();
+  for (const input of endpoint.inputs) {
     const target = input.target as string;
+    targets.add(target);
     if (!(INPUT_TARGETS as readonly string[]).includes(target)) {
       refusals.push(
         `a validator for \`${target}\`, a request part this generator does not describe`,
@@ -192,13 +268,16 @@ function describe(shape: PathShape, inputs: DeclaredInput[]): Described {
     if (typeof schema === 'string') refusals.push(`a \`${target}\` validator with ${schema}`);
     else schemas.set(target as InputTarget, schema);
   }
+  refusals.push(...readRefusals(endpoint, targets));
   const query = schemas.get('query');
   const parameters = [
     ...pathParameters(shape, schemas.get('param'), refusals),
     ...(query === undefined ? [] : queryParameters(query, refusals)),
   ];
   const json = schemas.get('json');
+  const raw = endpoint.raws[0];
   const operation: Operation = {
+    'x-forge-auth': endpoint.gates,
     'x-forge-validated': INPUT_TARGETS.filter((t) => schemas.has(t)),
     responses: { default: { description: UNDECLARED_RESPONSE } },
   };
@@ -208,38 +287,73 @@ function describe(shape: PathShape, inputs: DeclaredInput[]): Described {
   }
   if (json !== undefined) {
     operation.requestBody = { required: true, content: { 'application/json': { schema: json } } };
+  } else if (raw !== undefined) {
+    operation.requestBody = {
+      required: raw.required,
+      description: raw.description,
+      content: { [raw.contentType]: { schema: {} } },
+    };
+  }
+  if (operation.parameters === undefined && operation.requestBody === undefined) {
+    operation['x-forge-input'] = 'none';
   }
   return { operation, refusals };
 }
 
-type Endpoint = { method: string; path: string; inputs: DeclaredInput[] };
+type Endpoint = {
+  method: string;
+  path: string;
+  inputs: DeclaredInput[];
+  raws: DeclaredRawBody[];
+  gates: AuthGate[];
+  reads: RequestRead[];
+  last: number;
+};
 
+function declare(endpoint: Endpoint, declaration: Declaration): void {
+  if (declaration.kind === 'input') endpoint.inputs.push(declaration.input);
+  else if (declaration.kind === 'raw') endpoint.raws.push(declaration.body);
+  else if (declaration.kind === 'gate') {
+    if (!endpoint.gates.includes(declaration.gate)) endpoint.gates.push(declaration.gate);
+  } else endpoint.reads.push(...declaration.reads);
+}
+
+// cm:why Hono runs a route's handlers in registration order and stops at the one that answers,
+// so middleware registered after a route's last handler never guards or validates it
 function endpointsOf(routes: MountedRoute[], refusals: string[]): Endpoint[] {
   const byKey = new Map<string, Endpoint>();
-  const middleware: MountedRoute[] = [];
-  for (const route of routes) {
-    if (route.method === 'ALL') {
-      middleware.push(route);
-      continue;
-    }
+  routes.forEach((route, index) => {
+    if (route.method === 'ALL') return;
     const key = `${route.method} ${route.path}`;
-    const endpoint = byKey.get(key) ?? { method: route.method, path: route.path, inputs: [] };
+    const endpoint = byKey.get(key) ?? {
+      method: route.method,
+      path: route.path,
+      inputs: [],
+      raws: [],
+      gates: [],
+      reads: [],
+      last: index,
+    };
+    endpoint.last = index;
     byKey.set(key, endpoint);
-    const input = inputOf(route.handler);
-    if (input !== undefined) endpoint.inputs.push(input);
-  }
+  });
   const endpoints = [...byKey.values()];
-  for (const mw of middleware) {
-    const covered = endpoints.filter((e) => middlewareCovers(mw.path, e.path));
+  routes.forEach((route, index) => {
+    const declaration = declarationOf(route.handler);
+    if (route.method !== 'ALL') {
+      const endpoint = byKey.get(`${route.method} ${route.path}`);
+      if (endpoint !== undefined) declare(endpoint, declaration);
+      return;
+    }
+    const covered = endpoints.filter((e) => middlewareCovers(route.path, e.path));
     if (covered.length === 0) {
       refusals.push(
-        `ALL ${mw.path}: registered for every method and covering no route — an \`all()\` handler this generator cannot describe, or middleware guarding nothing`,
+        `ALL ${route.path}: registered for every method and covering no route — an \`all()\` handler this generator cannot describe, or middleware guarding nothing`,
       );
-      continue;
+      return;
     }
-    const input = inputOf(mw.handler);
-    if (input !== undefined) for (const e of covered) e.inputs.push(input);
-  }
+    for (const e of covered) if (index < e.last) declare(e, declaration);
+  });
   return endpoints;
 }
 
@@ -265,7 +379,7 @@ export function buildApiContract(routes: MountedRoute[], info: JsonSchema): ApiC
       refusals.push(`${name}: ${shape}`);
       continue;
     }
-    const described = describe(shape, endpoint.inputs);
+    const described = describe(shape, endpoint);
     for (const why of described.refusals) refusals.push(`${name}: ${why}`);
     const item = paths[shape.template] ?? {};
     const method = endpoint.method.toLowerCase();
@@ -279,5 +393,6 @@ export function buildApiContract(routes: MountedRoute[], info: JsonSchema): ApiC
     paths[shape.template] = item;
     operations += 1;
   }
-  return { document: { openapi: '3.1.0', info, paths }, operations, refusals };
+  const document = { openapi: '3.1.0', info, 'x-forge-auth-gates': AUTH_GATES, paths };
+  return { document, operations, refusals };
 }

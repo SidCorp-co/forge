@@ -1,5 +1,3 @@
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { devices, projects, runners } from '../db/schema.js';
@@ -9,8 +7,6 @@ import { getIntegration, listIntegrations } from './registry.js';
 import { notFound, toIso } from './route-helpers.js';
 import { effectiveConfig, listBindingsForProject } from './store.js';
 import type { IntegrationCapabilities, IntegrationProvider } from './types.js';
-
-const pExecFile = promisify(execFile);
 
 type CardStatus =
   | 'connected'
@@ -28,20 +24,6 @@ export interface StatusCard {
   lastSyncAt: string | null;
   configured: boolean;
   meta?: Record<string, unknown>;
-}
-
-/** Best-effort `git remote get-url origin` against a local checkout. */
-async function readGitRemote(repoPath: string): Promise<string | null> {
-  try {
-    const { stdout } = await pExecFile('git', ['-C', repoPath, 'remote', 'get-url', 'origin'], {
-      timeout: 3000,
-      windowsHide: true,
-    });
-    const url = stdout.trim();
-    return url || null;
-  } catch {
-    return null;
-  }
 }
 
 function healthToStatus(lastHealthStatus: string | null, active: boolean): CardStatus {
@@ -143,7 +125,7 @@ export function buildProviderCards(opts: {
 /** Build the full status-card set for a project (caller has already authz'd). */
 export async function buildIntegrationsStatusCards(projectId: string): Promise<StatusCard[]> {
   const [project] = await db
-    .select({ repoPath: projects.repoPath, baseBranch: projects.baseBranch })
+    .select({ repoUrl: projects.repoUrl, baseBranch: projects.baseBranch })
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1);
@@ -184,7 +166,7 @@ export async function buildIntegrationsStatusCards(projectId: string): Promise<S
   const cards: StatusCard[] = [];
 
   // --- GitHub (repo + per-device push-cred) ---
-  const remoteUrl = project.repoPath ? await readGitRemote(project.repoPath) : null;
+  const remoteUrl = project.repoUrl?.trim() ? project.repoUrl.trim() : null;
   const transport = classifyGitRemote(remoteUrl);
   const deviceCreds = runnerRows
     .filter((r) => r.deviceId)
@@ -196,10 +178,10 @@ export async function buildIntegrationsStatusCards(projectId: string): Promise<S
   cards.push({
     key: 'github',
     label: 'GitHub',
-    status: project.repoPath ? 'connected' : 'not_configured',
-    detail: remoteUrl ?? project.repoPath ?? 'no repo configured',
+    status: remoteUrl ? 'connected' : 'not_configured',
+    detail: remoteUrl ?? 'no repo configured',
     lastSyncAt: null,
-    configured: Boolean(project.repoPath),
+    configured: remoteUrl !== null,
     meta: { transport, remoteUrl, baseBranch: project.baseBranch, deviceCreds },
   });
 

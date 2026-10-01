@@ -63,7 +63,7 @@ export interface WebConversationRoom {
  * What the Forge UI contributes to a turn: who the assistant is, and what it may read.
  */
 export function webConversationTurn(args: {
-  project: { id: string; slug: string; name: string; repoPath: string | null };
+  project: { id: string; slug: string; name: string };
   handleName: string;
   askedBy: string | null;
   /** The window this turn answers, for the diversion that answers later. */
@@ -115,7 +115,7 @@ export function webConversationTurn(args: {
         conversationId: args.window.conversationId,
         windowId: args.window.windowId,
         deliveryKey: args.window.deliveryKey,
-        project: { id: args.project.id, slug: args.project.slug, repoPath: args.project.repoPath },
+        project: { id: args.project.id, slug: args.project.slug },
         handleName: args.handleName,
         question: args.window.question,
         askedByLabel: args.askedBy,
@@ -291,7 +291,7 @@ async function webWindowSubject(
   window: ConversationWindowRow,
   claim: WindowClaim,
 ): Promise<{
-  project: { id: string; slug: string; name: string; repoPath: string | null };
+  project: { id: string; slug: string; name: string };
   handle: ProjectHandle;
 } | null> {
   const [project] = await db
@@ -299,7 +299,6 @@ async function webWindowSubject(
       id: projects.id,
       slug: projects.slug,
       name: projects.name,
-      repoPath: projects.repoPath,
     })
     .from(projects)
     .where(eq(projects.id, window.projectId))

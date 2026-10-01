@@ -26,7 +26,6 @@ import {
   extractPayloadExtras,
   extractResolvedFlags,
   type PromptEnvelope,
-  redactMcpSecrets,
 } from './prompt-route.js';
 
 const badRequest = (details: unknown) =>
@@ -312,8 +311,6 @@ jobRoutes.get(
     const actualUsage = job.agentSessionId ? await loadActualUsage(job.agentSessionId) : null;
 
     const payload = (job.payload ?? {}) as Record<string, unknown>;
-    const mcpServersRaw = payload.mcpServers ?? null;
-    const mcpConfig = mcpServersRaw == null ? null : redactMcpSecrets(mcpServersRaw);
 
     const envelope: PromptEnvelope = {
       jobId: job.id,
@@ -323,7 +320,6 @@ jobRoutes.get(
       blocks: Array.isArray(job.promptBlocks) ? (job.promptBlocks as unknown[]) : [],
       estTokens: { input: job.promptInputTokenEst ?? null },
       actualUsage,
-      mcpConfig,
       model: job.modelUsed,
       payloadExtras: extractPayloadExtras(payload),
       resolvedFlags: extractResolvedFlags(payload, {

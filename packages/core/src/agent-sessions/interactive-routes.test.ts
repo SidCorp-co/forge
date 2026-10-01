@@ -42,22 +42,16 @@ vi.mock('../db/client.js', () => {
 const findAvailableDeviceForProject = vi.fn();
 const findChatCapableDeviceForProject = vi.fn();
 const resolveSessionRepoPathForDevice = vi.fn(
-  async (_projectId: string, _deviceId: string | null, projectRepoPath: string | null) =>
-    projectRepoPath ?? null,
+  async (_projectId: string, deviceId: string | null): Promise<string | null> =>
+    deviceId ? '/repo' : null,
 );
 vi.mock('../lib/device-pool.js', () => ({
   findAvailableDeviceForProject: (id: string, opts?: object) =>
     findAvailableDeviceForProject(id, opts),
   findChatCapableDeviceForProject: (projectId: string, deviceId: string) =>
     findChatCapableDeviceForProject(projectId, deviceId),
-  resolveRepoPath: (override: string | null | undefined, repo: string | null) =>
-    (override ?? repo ?? '').trim() || null,
-  resolveRunnerRepoPath: () => Promise.resolve(null),
-  resolveSessionRepoPathForDevice: (
-    projectId: string,
-    deviceId: string | null,
-    repo: string | null,
-  ) => resolveSessionRepoPathForDevice(projectId, deviceId, repo),
+  resolveSessionRepoPathForDevice: (projectId: string, deviceId: string | null) =>
+    resolveSessionRepoPathForDevice(projectId, deviceId),
 }));
 
 const buildChatPreamble = vi.fn(async (..._args: unknown[]) => '## Project Config\n\n---\n\n');
@@ -223,8 +217,6 @@ describe('POST /api/agent-sessions/start', () => {
         id: PROJECT_ID,
         slug: 'apiflow',
         ownerId: 'someone-else',
-        repoPath: '/repo',
-        defaultDeviceId: null,
       },
     ]);
     grantAccess(null);
@@ -248,8 +240,6 @@ describe('POST /api/agent-sessions/start', () => {
         id: PROJECT_ID,
         slug: 'apiflow',
         ownerId: USER_ID,
-        repoPath: '/repo',
-        defaultDeviceId: null,
       },
     ]);
     grantAccess('admin');
@@ -311,9 +301,7 @@ describe('POST /api/agent-sessions/start refuses before a row is created', () =>
   it('403 SESSION_VIEWER refuses a viewer before a row is created', async () => {
     const token = await signUserToken(USER_ID);
     mockAuthVerified();
-    selectLimit.mockResolvedValueOnce([
-      { id: PROJECT_ID, slug: 'apiflow', repoPath: '/repo', defaultDeviceId: null },
-    ]);
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, slug: 'apiflow' }]);
     grantAccess('viewer');
 
     const res = await buildApp().fetch(
@@ -331,9 +319,7 @@ describe('POST /api/agent-sessions/start refuses before a row is created', () =>
   it('409 RUNNER_OUTDATED when only a runner that cannot carry the token is free', async () => {
     const token = await signUserToken(USER_ID);
     mockAuthVerified();
-    selectLimit.mockResolvedValueOnce([
-      { id: PROJECT_ID, slug: 'apiflow', repoPath: '/repo', defaultDeviceId: null },
-    ]);
+    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, slug: 'apiflow' }]);
     grantAccess('member');
     findAvailableDeviceForProject.mockImplementation(async (_id: string, opts?: object) =>
       opts && 'requireCapability' in opts ? null : DEVICE_ID,
@@ -381,8 +367,6 @@ describe('POST /api/agent-sessions/start refuses before a row is created', () =>
         id: PROJECT_ID,
         slug: 'apiflow',
         ownerId: USER_ID,
-        repoPath: '/repo',
-        defaultDeviceId: null,
       },
     ]);
     grantAccess('admin');

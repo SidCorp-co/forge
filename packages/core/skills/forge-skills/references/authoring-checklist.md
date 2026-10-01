@@ -5,7 +5,7 @@ Run this over a skill before shipping it.
 ## Altitude (NT1)
 - [ ] Body says WHAT, not HOW — no hardcoded build/test/lint/dev commands (agent infers from the repo).
 - [ ] No restating of preamble content (status vocabulary, enums, "status LAST", handoff schema, worktree).
-- [ ] No hardcoded repoPath / base/production branch / test URLs — those come from config/bundle.
+- [ ] No hardcoded project config (SKILL.md rule 3).
 - [ ] **No secrets** anywhere in the body or references.
 
 ## Policy (the part that MUST be in the body)

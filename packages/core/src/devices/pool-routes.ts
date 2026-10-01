@@ -10,33 +10,63 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { runnerLimitReasons } from '../db/schema.js';
-import type { AnswerShape, QuestionBlockerKind, QuestionOption } from '../db/schema-questions.js';
+import {
+  answerShapes,
+  optionAuthorities,
+  optionBindings,
+  optionExecutors,
+  questionBlockerKinds,
+} from '../db/schema-questions.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import { utf16String } from '../lib/utf16-string.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { PARK_PROTECTIONS } from '../questions/protections.js';
 import { answerOf, registerWaiter, waiterFor } from '../questions/read.js';
-import { type AskAnswer, askQuestion, QuestionRefused } from '../questions/write.js';
+import { type AskAnswer, type AskInput, askQuestion, QuestionRefused } from '../questions/write.js';
 import { assertDeviceBoundToProject } from './device-project.js';
 import { badRequest, conflict, notFound, sessionParamsSchema } from './route-errors.js';
 
-type AskBody = {
-  id?: string;
-  projectId?: string;
-  issueId?: string;
-  agentSessionId?: string;
-  runId?: string;
-  prompt?: string;
-  blockerKind?: QuestionBlockerKind;
-  answerShape?: AnswerShape;
-  options?: QuestionOption[];
-  recommendedOptionId?: string;
-  needed?: string;
-  assumed?: Record<string, unknown>;
-  cost?: { claimsHeld?: number; workspacesPinned?: number; dependents?: number };
-  sensitive?: boolean;
-};
+const ASK_REQUIRED = 'id, projectId and prompt are required';
+const askRequired = z.string({ error: ASK_REQUIRED }).min(1, { error: ASK_REQUIRED });
+
+const askBodySchema = z.object({
+  id: askRequired,
+  projectId: askRequired,
+  issueId: z.string().optional(),
+  agentSessionId: z.string().optional(),
+  runId: z.string().optional(),
+  prompt: askRequired,
+  blockerKind: z.enum(questionBlockerKinds).optional(),
+  answerShape: z.enum(answerShapes).optional(),
+  options: z
+    .array(
+      z.object({
+        id: z.string(),
+        label: z.string(),
+        authority: z.enum(optionAuthorities),
+        bindsTo: z.enum(optionBindings),
+        executedBy: z.enum(optionExecutors),
+        fingerprint: z.string().optional(),
+      }),
+    )
+    .optional(),
+  recommendedOptionId: z.string().optional(),
+  needed: z.string().optional(),
+  assumed: z.record(z.string(), z.unknown()).optional(),
+  cost: z
+    .object({
+      claimsHeld: z.number().optional(),
+      workspacesPinned: z.number().optional(),
+      dependents: z.number().optional(),
+    })
+    .optional(),
+  sensitive: z.boolean().optional(),
+});
+
+type AskBody = z.infer<typeof askBodySchema>;
+
+const answerQuerySchema = z.object({ runId: z.string().optional() });
 
 import {
   type ResolvedLeaseKey,
@@ -326,51 +356,64 @@ function askAnswerOf(body: AskBody): AskAnswer {
   if (body.answerShape === 'free_text') return { shape: 'free_text', needed: body.needed ?? '' };
   return {
     shape: 'choice',
-    options: body.options ?? [],
+    options: (body.options ?? []).map(({ fingerprint, ...o }) =>
+      fingerprint === undefined ? o : { ...o, fingerprint },
+    ),
     recommendedOptionId: body.recommendedOptionId ?? '',
   };
 }
 
-devicePoolRoutes.post('/me/questions', requireDevice(), async (c) => {
-  const body = await c.req.json<AskBody>().catch(() => null);
-  if (!body?.id || !body.projectId || !body.prompt) {
-    throw badRequest('id, projectId and prompt are required');
-  }
-  await assertDeviceBoundToProject(c.get('device').id, body.projectId);
-  try {
-    const q = await askQuestion({
-      ...body,
-      id: body.id,
-      projectId: body.projectId,
-      prompt: body.prompt,
-      blockerKind: body.blockerKind ?? 'human',
-      answer: askAnswerOf(body),
-    });
-    if (body.runId) {
-      await registerWaiter({ questionId: q.id, deviceId: c.get('device').id, runId: body.runId });
-    }
-    return c.json({ questionId: q.id });
-  } catch (e) {
-    if (e instanceof QuestionRefused) {
-      throw new HTTPException(400, {
-        message: e.message,
-        cause: { code: e.code, details: e.message },
+devicePoolRoutes.post(
+  '/me/questions',
+  requireDevice(),
+  zValidator('json', askBodySchema, (r) => {
+    if (!r.success) throw badRequest(r.error.issues[0]?.message ?? z.flattenError(r.error));
+  }),
+  async (c) => {
+    const body = c.req.valid('json');
+    await assertDeviceBoundToProject(c.get('device').id, body.projectId);
+    try {
+      const q = await askQuestion({
+        ...(body as Omit<AskInput, 'answer' | 'blockerKind'>),
+        id: body.id,
+        projectId: body.projectId,
+        prompt: body.prompt,
+        blockerKind: body.blockerKind ?? 'human',
+        answer: askAnswerOf(body),
       });
+      if (body.runId) {
+        await registerWaiter({ questionId: q.id, deviceId: c.get('device').id, runId: body.runId });
+      }
+      return c.json({ questionId: q.id });
+    } catch (e) {
+      if (e instanceof QuestionRefused) {
+        throw new HTTPException(400, {
+          message: e.message,
+          cause: { code: e.code, details: e.message },
+        });
+      }
+      throw e;
     }
-    throw e;
-  }
-});
+  },
+);
 
-devicePoolRoutes.get('/me/questions/:questionId', requireDevice(), async (c) => {
-  const questionId = c.req.param('questionId');
-  const waiter = await waiterFor({
-    questionId,
-    deviceId: c.get('device').id,
-    runId: c.req.query('runId') ?? '',
-  });
-  if (!waiter) throw notFound('question');
-  return c.json({ answer: await answerOf(questionId) });
-});
+devicePoolRoutes.get(
+  '/me/questions/:questionId',
+  requireDevice(),
+  zValidator('query', answerQuerySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const questionId = c.req.param('questionId');
+    const waiter = await waiterFor({
+      questionId,
+      deviceId: c.get('device').id,
+      runId: c.req.valid('query').runId ?? '',
+    });
+    if (!waiter) throw notFound('question');
+    return c.json({ answer: await answerOf(questionId) });
+  },
+);
 
 const masterLimitSchema = z.object({
   reason: z.enum(runnerLimitReasons),

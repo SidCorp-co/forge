@@ -1,6 +1,6 @@
 {
-  "id": "4c792f0f-d645-417a-adb1-b51431aeb982",
-  "prevId": "0f53bc61-6079-4abb-8903-d4a504f4b7e2",
+  "id": "4bcfe4f7-af59-42df-aa9d-409cbddefc7f",
+  "prevId": "e313de9b-f802-4112-855d-0e6d2874999f",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -8942,12 +8942,6 @@
           "notNull": true,
           "default": "'standard'"
         },
-        "repo_path": {
-          "name": "repo_path",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "base_branch": {
           "name": "base_branch",
           "type": "text",
@@ -8970,12 +8964,6 @@
         "workspace_setup": {
           "name": "workspace_setup",
           "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "default_device_id": {
-          "name": "default_device_id",
-          "type": "uuid",
           "primaryKey": false,
           "notNull": false
         },
@@ -9070,21 +9058,6 @@
           "method": "btree",
           "with": {}
         },
-        "projects_default_device_id_idx": {
-          "name": "projects_default_device_id_idx",
-          "columns": [
-            {
-              "expression": "default_device_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "projects_archived_at_idx": {
           "name": "projects_archived_at_idx",
           "columns": [
@@ -9126,19 +9099,6 @@
             "id"
           ],
           "onDelete": "restrict",
-          "onUpdate": "no action"
-        },
-        "projects_default_device_id_devices_id_fk": {
-          "name": "projects_default_device_id_devices_id_fk",
-          "tableFrom": "projects",
-          "tableTo": "devices",
-          "columnsFrom": [
-            "default_device_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
           "onUpdate": "no action"
         },
         "projects_issue_prefix_fk": {

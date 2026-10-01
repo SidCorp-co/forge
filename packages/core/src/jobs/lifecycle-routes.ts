@@ -525,6 +525,9 @@ jobLifecycleUserRoutes.post(
   zValidator('param', jobIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
+  zValidator('json', cancelBodySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
   async (c) => {
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
@@ -533,17 +536,13 @@ jobLifecycleUserRoutes.post(
     const access = await loadProjectAccess(job.projectId, userId);
     if (!projectRoleAtLeast(access.role, 'member')) await assertPlatformAdmin(c);
 
-    // Optional `{ reason }` body; tolerate an empty/absent body (the cancel
-    // button sends none) by defaulting to {} before schema-validating.
-    const rawBody = await c.req.json().catch(() => ({}));
-    const parsedBody = cancelBodySchema.safeParse(rawBody ?? {});
-    if (!parsedBody.success) throw badRequest(z.flattenError(parsedBody.error));
+    const body = c.req.valid('json');
 
     try {
       const result = await cancelJob(id, {
         actorUserId: userId,
         actorAgency: restActor(c).agency,
-        reason: parsedBody.data.reason ?? 'manual cancel (REST)',
+        reason: body.reason ?? 'manual cancel (REST)',
         source: 'rest',
       });
       return c.json(result);
@@ -564,6 +563,9 @@ jobLifecycleUserRoutes.post(
   zValidator('param', jobIdParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
+  zValidator('json', cancelBodySchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
   async (c) => {
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
@@ -572,14 +574,12 @@ jobLifecycleUserRoutes.post(
     const access = await loadProjectAccess(job.projectId, userId);
     assertProjectRole(access, 'member', 'not a project member');
 
-    const rawBody = await c.req.json().catch(() => ({}));
-    const parsedBody = cancelBodySchema.safeParse(rawBody ?? {});
-    if (!parsedBody.success) throw badRequest(z.flattenError(parsedBody.error));
+    const body = c.req.valid('json');
 
     try {
       const result = await resumeHeldJob(id, {
         actorUserId: userId,
-        reason: parsedBody.data.reason ?? 'manual resume (REST)',
+        reason: body.reason ?? 'manual resume (REST)',
         source: 'rest',
       });
       return c.json(result);

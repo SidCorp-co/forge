@@ -247,12 +247,8 @@
           "why": "The `ConversationAdapter` union: which surface a conversation happened on. It mirrors the `conversations.source` column, not `integration_bindings.provider`, and it carries 'web' and 'widget' which are not integrations at all."
         },
         {
-          "glob": "packages/web-v2/src/features/projects/components/project-card.tsx",
-          "why": "`<Icon name=\"github\" />` is an icon in the design system's icon set, labelling `project.repoPath`. It names a glyph, not a provider \u2014 the card renders no integration binding and would render this mark for a repository hosted anywhere."
-        },
-        {
           "glob": "packages/core/src/integrations/status-service.ts",
-          "why": "The one hand-built card, keyed 'github', is derived from `projects.repoPath` and NOT from any integration binding \u2014 which is exactly why `githubIntegration` declares `presentation: null`, so the registry loop cannot emit a second card that collides with it. Every other card in this file comes from a declaration."
+          "why": "The one hand-built card, keyed 'github', is derived from `projects.repoUrl` and NOT from any integration binding \u2014 which is exactly why `githubIntegration` declares `presentation: null`, so the registry loop cannot emit a second card that collides with it. Every other card in this file comes from a declaration."
         },
         {
           "glob": "packages/core/src/mcp/tools/forge-storefront-target.ts",

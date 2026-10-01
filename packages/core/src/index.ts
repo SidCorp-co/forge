@@ -169,6 +169,7 @@ import { questionRoutes } from './questions/routes.js';
 import { startBoss, stopBoss } from './queue/boss.js';
 import { releaseBatchRoutes } from './release-batch/routes.js';
 import { registerReleaseUnstartedRecovery } from './release-batch/unstarted-recovery.js';
+import { mcpMessageBody, mcpNoBody, rootRoutes } from './root-routes.js';
 import { bootstrapRunnerAdapters } from './runners/bootstrap.js';
 import { registerGhostRunnerReaper } from './runners/ghost-reaper.js';
 import { runnerRoutes } from './runners/routes.js';
@@ -273,16 +274,13 @@ export async function runShutdown(
 registerEagerSubscribers(hooks);
 
 app.use('/mcp', mcpRequestClass(), requirePat());
-app.on(['POST', 'GET', 'DELETE'], '/mcp', mcpHandler);
+app.post('/mcp', mcpMessageBody, mcpHandler);
+app.on(['GET', 'DELETE'], '/mcp', mcpNoBody, mcpHandler);
 
 for (const at of ['/', '/api']) app.route(at, installRoutes);
 for (const at of ['/', '/api']) app.route(at, guideRoutes);
 
-app.get('/pair', (c) => {
-  const code = c.req.query('code');
-  const base = env.APP_BASE_URL.replace(/\/+$/, '');
-  return c.redirect(code ? `${base}/pair?code=${encodeURIComponent(code)}` : `${base}/pair`, 302);
-});
+app.route('/', rootRoutes);
 
 app.route('/api/auth', authRoutes);
 app.route('/api/auth', loginRoutes);

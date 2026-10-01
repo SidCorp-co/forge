@@ -28,7 +28,6 @@ use serde_json::Value;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
-use crate::config::Config;
 use crate::error::{Error, Result};
 use crate::runner::claude_code::{ClaudeCodeRunner, Resident};
 use crate::runner::{JobSpec, Runner, RunnerEvent, TurnCredential};
@@ -212,20 +211,15 @@ fn augment_prompt(prompt: &str, paths: &[PathBuf]) -> String {
     out
 }
 
-/// Resolve the working dir for a chat turn. Core already sends `repoPath` on the
-/// frame; fall back to the local config binding for the slug if it's absent.
-fn resolve_repo(cfg: &Config, repo_path: Option<&str>, slug: Option<&str>) -> Result<String> {
+/// The working dir for a chat turn: the checkout this device's binding names, which core sends
+/// on the frame and refuses the turn without. Nothing on this box stands in for it.
+fn resolve_repo(repo_path: Option<&str>, slug: Option<&str>) -> Result<String> {
     if let Some(p) = repo_path.map(str::trim).filter(|s| !s.is_empty()) {
         return Ok(p.to_string());
     }
-    if let Some(slug) = slug {
-        if let Some(b) = cfg.bindings.get(slug) {
-            return Ok(b.repo_path.to_string_lossy().to_string());
-        }
-    }
+    let slug = slug.unwrap_or("<no slug>");
     Err(Error::Other(format!(
-        "chat session has no repo path (slug {:?} not bound) — run `forge-runner bind <slug> --path <dir>`",
-        slug
+        "chat turn for {slug} refused: core sent no checkout, and the device binding for {slug} must name one — run `forge-runner bind {slug} --path <dir>`"
     )))
 }
 
@@ -233,7 +227,6 @@ fn resolve_repo(cfg: &Config, repo_path: Option<&str>, slug: Option<&str>) -> Re
 pub async fn handle_start(
     client: &CoreClient,
     runner: Arc<ClaudeCodeRunner>,
-    cfg: &Config,
     data: Value,
 ) -> Result<()> {
     let f: StartFrame =
@@ -242,7 +235,7 @@ pub async fn handle_start(
         .prompt
         .filter(|s| !s.is_empty())
         .ok_or_else(|| Error::Other("agent:start has no prompt".into()))?;
-    let repo_path = resolve_repo(cfg, f.repo_path.as_deref(), f.project_slug.as_deref())?;
+    let repo_path = resolve_repo(f.repo_path.as_deref(), f.project_slug.as_deref())?;
     let staged = stage_attachments(
         client,
         &f.session_id,
@@ -278,12 +271,11 @@ pub async fn handle_start(
 pub async fn handle_send(
     client: &CoreClient,
     runner: Arc<ClaudeCodeRunner>,
-    cfg: &Config,
     data: Value,
 ) -> Result<()> {
     let f: SendFrame =
         serde_json::from_value(data).map_err(|e| Error::Other(format!("bad agent:send: {e}")))?;
-    let repo_path = resolve_repo(cfg, f.repo_path.as_deref(), f.project_slug.as_deref())?;
+    let repo_path = resolve_repo(f.repo_path.as_deref(), f.project_slug.as_deref())?;
     let staged = stage_attachments(
         client,
         &f.session_id,
@@ -609,9 +601,7 @@ async fn patch_failed(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::Binding;
     use serde_json::json;
-    use std::path::PathBuf;
 
     fn turn_for_test() -> Turn {
         Turn {
@@ -815,24 +805,17 @@ mod tests {
 
     #[test]
     fn resolve_repo_prefers_frame_path() {
-        let cfg = Config::default();
-        let p = resolve_repo(&cfg, Some("/srv/app"), Some("app")).expect("frame path");
+        let p = resolve_repo(Some("/srv/app"), Some("app")).expect("frame path");
         assert_eq!(p, "/srv/app");
     }
 
     #[test]
-    fn resolve_repo_falls_back_to_binding() {
-        let mut cfg = Config::default();
-        cfg.bindings.insert(
-            "app".into(),
-            Binding {
-                repo_path: PathBuf::from("/local/app"),
-                branch: None,
-                project_id: Some("p-1".into()),
-            },
-        );
-        let p = resolve_repo(&cfg, None, Some("app")).expect("binding path");
-        assert_eq!(p, "/local/app");
-        assert!(resolve_repo(&cfg, Some("  "), Some("missing")).is_err());
+    fn a_frame_with_no_checkout_is_refused_by_name() {
+        let e = resolve_repo(None, Some("app"))
+            .expect_err("only the frame's binding path is a checkout")
+            .to_string();
+        assert!(e.contains("core sent no checkout"), "{e}");
+        assert!(e.contains("app"), "{e}");
+        assert!(resolve_repo(Some("  "), Some("app")).is_err());
     }
 }

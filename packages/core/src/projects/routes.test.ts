@@ -255,6 +255,24 @@ describe('POST /api/projects', () => {
     expect(transaction).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['repoPath', '/srv/app', "lives on that box's device binding"],
+    ['defaultDeviceId', '22222222-2222-4222-8222-222222222222', "no box is a project's default"],
+  ])(
+    '400 BAD_REQUEST naming the field %s the device binding replaced, and creates nothing',
+    async (field, value, owner) => {
+      const token = await signUserToken('uuid-owner');
+      selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+
+      const res = await post({ slug: 'my-proj', name: 'My Project', [field]: value }, token);
+      expect(res.status).toBe(400);
+      const text = await res.text();
+      expect(text).toContain(`\`${field}\` is not a project field`);
+      expect(text).toContain(owner);
+      expect(transaction).not.toHaveBeenCalled();
+    },
+  );
+
   it('500 PERSONAL_ORG_MISSING when the user has no personal org', async () => {
     const token = await signUserToken('uuid-owner');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
@@ -380,9 +398,7 @@ describe('GET /api/projects/:id', () => {
         name: 'P One',
         orgId: ORG_ID,
         createdBy: 'uuid-user',
-        repoPath: '/repo',
         baseBranch: 'main',
-        defaultDeviceId: null,
         agentConfig: null,
         webhookSecret: null,
         createdAt: new Date('2026-04-01T00:00:00Z'),
@@ -410,7 +426,6 @@ describe('GET /api/projects/:id', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       id: string;
-      repoPath: string;
       role: string;
       orgRole: string;
       members: unknown[];
@@ -419,7 +434,8 @@ describe('GET /api/projects/:id', () => {
     };
     expect(body.id).toBe('p1');
     expect(body).not.toHaveProperty('description');
-    expect(body.repoPath).toBe('/repo');
+    expect(body).not.toHaveProperty('repoPath');
+    expect(body).not.toHaveProperty('defaultDeviceId');
     expect(body.role).toBe('admin');
     expect(body.orgRole).toBe('owner');
     expect(body.members).toHaveLength(1);
@@ -439,9 +455,7 @@ describe('GET /api/projects/:id', () => {
         name: 'P One',
         orgId: ORG_ID,
         createdBy: 'uuid-user',
-        repoPath: null,
         baseBranch: null,
-        defaultDeviceId: null,
         agentConfig: null,
         webhookSecret: null,
         apiKey: fullKey,
@@ -550,36 +564,47 @@ describe('PATCH /api/projects/:id', () => {
     });
   });
 
-  it('200 updates new settings fields (repoPath, branches, defaultDeviceId)', async () => {
+  it('200 updates new settings fields (branches)', async () => {
     const token = await signUserToken('uuid-owner');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
     projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
     updateReturning.mockResolvedValueOnce([
-      patchedRow({
-        repoPath: '/home/user/repo',
-        baseBranch: 'staging',
-        defaultDeviceId: '22222222-2222-4222-8222-222222222222',
-        agentConfig: null,
-        webhookSecret: null,
-      }),
+      patchedRow({ baseBranch: 'staging', agentConfig: null, webhookSecret: null }),
     ]);
 
     const res = await req('/11111111-1111-4111-8111-111111111111', {
       method: 'PATCH',
-      body: JSON.stringify({
-        repoPath: '/home/user/repo',
-        baseBranch: 'staging',
-        defaultDeviceId: '22222222-2222-4222-8222-222222222222',
-      }),
+      body: JSON.stringify({ baseBranch: 'staging' }),
       token,
     });
     expect(res.status).toBe(200);
-    expect(updateSet).toHaveBeenCalledWith({
-      repoPath: '/home/user/repo',
-      baseBranch: 'staging',
-      defaultDeviceId: '22222222-2222-4222-8222-222222222222',
-    });
+    expect(updateSet).toHaveBeenCalledWith({ baseBranch: 'staging' });
   });
+
+  it.each([
+    ['repoPath', '/home/user/repo', "lives on that box's device binding"],
+    ['repoPath', null, "lives on that box's device binding"],
+    ['defaultDeviceId', '22222222-2222-4222-8222-222222222222', "no box is a project's default"],
+    ['defaultDeviceId', null, "no box is a project's default"],
+  ])(
+    '400 BAD_REQUEST naming the field %s (%s) the device binding replaced, and writes nothing',
+    async (field, value, owner) => {
+      const token = await signUserToken('uuid-owner');
+      selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+
+      const res = await req('/11111111-1111-4111-8111-111111111111', {
+        method: 'PATCH',
+        body: JSON.stringify({ name: 'kept', [field]: value }),
+        token,
+      });
+      expect(res.status).toBe(400);
+      const text = await res.text();
+      expect(text).toContain(`\`${field}\` is not a project field`);
+      expect(text).toContain(owner);
+      expect(updateSet).not.toHaveBeenCalled();
+      expect(dbExecute).not.toHaveBeenCalled();
+    },
+  );
 
   it.each([
     ['kind', 'website'],
@@ -603,41 +628,6 @@ describe('PATCH /api/projects/:id', () => {
     expect(text).toContain('refused rather than answered 200 and dropped');
     expect(updateSet).not.toHaveBeenCalled();
     expect(dbExecute).not.toHaveBeenCalled();
-  });
-
-  it('200 accepts null defaultDeviceId to clear the assignment', async () => {
-    const token = await signUserToken('uuid-owner');
-    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
-    updateReturning.mockResolvedValueOnce([
-      patchedRow({
-        repoPath: null,
-        baseBranch: null,
-        defaultDeviceId: null,
-        agentConfig: null,
-        webhookSecret: null,
-      }),
-    ]);
-
-    const res = await req('/11111111-1111-4111-8111-111111111111', {
-      method: 'PATCH',
-      body: JSON.stringify({ defaultDeviceId: null }),
-      token,
-    });
-    expect(res.status).toBe(200);
-    expect(updateSet).toHaveBeenCalledWith({ defaultDeviceId: null });
-  });
-
-  it('400 BAD_REQUEST when defaultDeviceId is not a uuid', async () => {
-    const token = await signUserToken('uuid-owner');
-    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-
-    const res = await req('/11111111-1111-4111-8111-111111111111', {
-      method: 'PATCH',
-      body: JSON.stringify({ defaultDeviceId: 'not-a-uuid' }),
-      token,
-    });
-    expect(res.status).toBe(400);
   });
 });
 
@@ -720,7 +710,7 @@ describe('PATCH /api/projects/:id · retired keys and the agentConfig doors', ()
     [
       'the shadow repoPath',
       { agentConfig: { repoPath: '/home/kieutrung/tools/forge/jarvis-agents' } },
-      'the `projects.repo_path` column',
+      "that box's device binding",
     ],
     [
       'the shadow baseBranch',
@@ -730,7 +720,7 @@ describe('PATCH /api/projects/:id · retired keys and the agentConfig doors', ()
     [
       'the shadow activeDeviceId',
       { agentConfig: { activeDeviceId: '85644100-e4f5-455a-9754-6af76c19e50a' } },
-      'the `projects.default_device_id` column',
+      "no box is a project's default",
     ],
     [
       'the dead runnerFallback',

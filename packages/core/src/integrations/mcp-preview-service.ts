@@ -7,9 +7,6 @@ import { toIso } from './route-helpers.js';
 import { type BindingWithConnection, effectiveConfig, listBindingsForProject } from './store.js';
 import type { IntegrationDeclaration, IntegrationProvider } from './types.js';
 
-/** Which of the two sources put a server in the set (mirrors the contracts type). */
-export type McpServerSource = 'integration' | 'project';
-
 export type McpServerPreviewReason =
   | 'ok'
   | 'not_configured'
@@ -21,10 +18,9 @@ export type McpServerPreviewReason =
 
 /** One MCP server entry in the preview (mirrors contracts type). */
 export interface McpServerPreviewEntry {
-  source: McpServerSource;
-  provider: IntegrationProvider | null;
+  provider: IntegrationProvider;
   serverName: string;
-  /** Binding id backing this entry — null for a project row and the synthetic not_configured one. */
+  /** Binding id backing this entry — null for the synthetic not_configured one. */
   bindingId: string | null;
   role: BindingRole | null;
   configured: boolean;
@@ -39,7 +35,6 @@ export interface McpServerPreviewEntry {
 
 export interface McpPreview {
   servers: McpServerPreviewEntry[];
-  droppedNames: string[];
 }
 
 function previewEntryFor(
@@ -53,7 +48,6 @@ function previewEntryFor(
 
 function notConfiguredRow(decl: IntegrationDeclaration): McpServerPreviewEntry {
   return {
-    source: 'integration',
     provider: decl.provider,
     serverName: mcpServerNameFor(decl, '') ?? decl.provider,
     bindingId: null,
@@ -62,28 +56,6 @@ function notConfiguredRow(decl: IntegrationDeclaration): McpServerPreviewEntry {
     active: false,
     willInject: false,
     reason: 'not_configured',
-    url: null,
-    headers: null,
-    lastHealthStatus: null,
-    lastHealthAt: null,
-  };
-}
-
-/**
- * A server in the set that no granted binding claims. Nothing is read off its spec: it may carry
- * `env` or `headers` (ISS-1191).
- */
-function projectRow(serverName: string): McpServerPreviewEntry {
-  return {
-    source: 'project',
-    provider: null,
-    serverName,
-    bindingId: null,
-    role: null,
-    configured: true,
-    active: true,
-    willInject: true,
-    reason: 'ok',
     url: null,
     headers: null,
     lastHealthStatus: null,
@@ -114,7 +86,6 @@ function reasonFor(args: {
 interface Delivered {
   /** Bindings the resolver actually built an entry for. */
   bindings: ReadonlySet<string>;
-  /** Names that survived into the final map, after the browser dedupe. */
   names: ReadonlySet<string>;
   /** Which binding holds each produced name; one another holds is shadowed, not unresolved. */
   heldBy: ReadonlyMap<string, string>;
@@ -153,7 +124,6 @@ async function integrationRows(
         (holder === undefined || holder === pair.binding.id);
       const entry = previewEntryFor(decl, pair);
       rows.push({
-        source: 'integration',
         provider,
         serverName,
         bindingId: pair.binding.id,
@@ -202,13 +172,12 @@ export async function buildMcpPreview(projectId: string): Promise<McpPreview> {
   };
 
   const servers = await integrationRows(projectId, pairs, delivered);
-  const takenByIntegration = new Set(
-    servers.filter((row) => row.willInject).map((row) => row.serverName),
-  );
-  for (const name of resolved.resolvedNames) {
-    if (takenByIntegration.has(name)) continue;
-    servers.push(projectRow(name));
+  const shown = new Set(servers.filter((row) => row.willInject).map((row) => row.serverName));
+  const unshown = resolved.resolvedNames.filter((name) => !shown.has(name));
+  if (unshown.length > 0) {
+    throw new Error(
+      `MCP_PREVIEW_UNCLAIMED: project ${projectId} resolves ${unshown.map((n) => `\`${n}\``).join(', ')} for its agents, but no granted binding in the preview claims ${unshown.length === 1 ? 'it' : 'them'}. Every server an agent receives comes from a granted integration binding, so the preview refuses to answer rather than show an agent's set it cannot account for.`,
+    );
   }
-
-  return { servers, droppedNames: resolved.droppedNames };
+  return { servers };
 }

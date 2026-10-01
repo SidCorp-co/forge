@@ -47,6 +47,13 @@ describe('the rules name the retired reader', () => {
     ['const envs = projects.environments;', 'release-path-keys'],
     ['const s = binding.stages;', 'release-path-keys'],
     ['const c = env.testCredentials;', 'release-path-keys'],
+    ['const p = projects.repoPath;', 'device-binding-keys'],
+    ['sql`SELECT projects.repo_path FROM projects`', 'device-binding-keys'],
+    ['const d = project.defaultDeviceId;', 'device-binding-keys'],
+    ['sql`... SET default_device_id = NULL`', 'device-binding-keys'],
+    ['const { droppedNames } = resolved;', 'device-binding-keys'],
+    ['let dropped_names: Vec<String> = Vec::new();', 'device-binding-keys'],
+    ['const repo = resolveRepoPath(null, project.repoPath);', 'device-binding-keys'],
   ])('%s → %s', (source, rule) => {
     expect(hits(source)).toContain(rule);
   });
@@ -62,6 +69,10 @@ describe('the rules leave live code alone', () => {
     'const set = await resolveReleaseChannels(projectId);',
     'const e = deploymentEnvironment;',
     'const x = environmentOf(binding);',
+    'const p = runner.repoPath;',
+    'sql`SELECT r.repo_path FROM runners r`',
+    'const p = session.repoPath;',
+    'let repo_path = binding.repo_path.clone();',
   ])('%s', (source) => {
     expect(hits(source)).toEqual([]);
   });

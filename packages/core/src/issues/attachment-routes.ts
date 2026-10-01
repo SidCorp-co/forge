@@ -9,7 +9,7 @@ import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import { restActor } from '../middleware/auth.js';
 import { type AnyAuthVars, requireAnyAuth } from '../middleware/require-any-auth.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { rawBody, zValidator } from '../middleware/zod-validator.js';
 import { safeRecordActivity } from '../pipeline/activity.js';
 import { getStorage, isEnoent } from '../storage/index.js';
 import { AttachmentError, persistIssueAttachment } from './attachment-service.js';
@@ -52,6 +52,10 @@ issueAttachmentRoutes.post(
   zValidator('param', issueIdParamSchema, (r) => {
     if (!r.success) throw badRequest('invalid id', 'BAD_REQUEST', z.flattenError(r.error));
   }),
+  rawBody(
+    'multipart/form-data',
+    'One file in the `file` field, attached to the issue; its name and media type come from the part.',
+  ),
   async (c) => {
     const { id: issueId } = c.req.valid('param');
     const userId = c.get('userId');

@@ -353,15 +353,11 @@ export const projects = pgTable(
       .references(() => users.id, { onDelete: 'restrict' }),
     description: text('description'),
     kind: text('kind').notNull().default('standard'),
-    repoPath: text('repo_path'),
     /** Where an ISS-* branch is cut from and merges back to. NOT a release fact. */
     baseBranch: text('base_branch'),
     releaseChain: jsonb('release_chain').notNull().default([]),
     repoUrl: text('repo_url'),
     workspaceSetup: text('workspace_setup'),
-    defaultDeviceId: uuid('default_device_id').references((): AnyPgColumn => devices.id, {
-      onDelete: 'set null',
-    }),
     agentConfig: jsonb('agent_config'),
     environments: jsonb('environments'),
     webhookSecret: text('webhook_secret'),
@@ -374,7 +370,6 @@ export const projects = pgTable(
     orgIdIdx: index('projects_org_id_idx').on(t.orgId),
     createdByIdx: index('projects_created_by_idx').on(t.createdBy),
     apiKeyUq: uniqueIndex('projects_api_key_uq').on(t.apiKey).where(sql`api_key IS NOT NULL`),
-    defaultDeviceIdx: index('projects_default_device_id_idx').on(t.defaultDeviceId),
     archivedAtIdx: index('projects_archived_at_idx').on(t.archivedAt),
     issuePrefixFk: foreignKey({
       name: 'projects_issue_prefix_fk',
@@ -410,10 +405,6 @@ export const projectsRelations = relations(projects, ({ one, many }) => ({
   organization: one(organizations, { fields: [projects.orgId], references: [organizations.id] }),
   creator: one(users, { fields: [projects.createdBy], references: [users.id] }),
   members: many(projectMembers),
-  defaultDevice: one(devices, {
-    fields: [projects.defaultDeviceId],
-    references: [devices.id],
-  }),
 }));
 
 export const projectMembersRelations = relations(projectMembers, ({ one }) => ({
@@ -908,9 +899,8 @@ export const runners = pgTable(
     labels: jsonb('labels').notNull().default([]),
     capabilities: jsonb('capabilities').notNull().default({}),
     config: jsonb('config').notNull().default({}),
-    // ISS-271 — per (device × project) repo checkout. Source of truth for the
-    // runner working dir, written by web (PATCH) or CLI (`forge-runner bind`).
-    // `projects.repoPath` is now only a default hint when binding a new device.
+    // ISS-271 — per (device × project) repo checkout: the only place a checkout is named, written
+    // by web (PATCH) or CLI (`forge-runner bind`).
     repoPath: text('repo_path'),
     branch: text('branch'),
     status: text('status', { enum: runnerStatuses }).notNull().default('offline'),

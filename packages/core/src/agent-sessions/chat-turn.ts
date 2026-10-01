@@ -240,8 +240,8 @@ export async function createChatSessionRow(args: CreateChatSessionArgs): Promise
 export interface DispatchChatTurnArgs {
   /** The current session row (may be an empty `idle` placeholder). */
   session: AgentSessionRow;
-  /** Loaded project — `slug` + `repoPath` feed the WS payload / cwd fallback. */
-  project: { id: string; slug: string; repoPath: string | null };
+  /** Loaded project — `slug` feeds the WS payload. */
+  project: { id: string; slug: string };
   /** Client resolved by {@link resolveChatDevice}; caller has already 409'd / skipped on a null remote device. */
   client: ChatClient;
   /** Raw user text / prompt (NOT pre-decorated — this fn prepends [Context: …]). */
@@ -276,6 +276,14 @@ export interface DispatchChatTurnArgs {
   credential?: string | undefined;
 }
 
+/** A remote turn runs in its device binding's checkout; a binding that names none is refused by name. */
+export function checkoutUnbound(projectId: string, deviceId: string | null): HTTPException {
+  return new HTTPException(409, {
+    message: `CHECKOUT_UNBOUND: device ${deviceId ?? '(none)'}'s binding to project ${projectId} names no checkout, so no turn runs there. The binding is the only place a checkout is named: set it with \`forge-runner bind <slug> --path <dir>\` on the box, or PATCH /api/projects/${projectId}/runners/:runnerId { repoPath }.`,
+    cause: { code: 'CHECKOUT_UNBOUND' },
+  });
+}
+
 export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<AgentSessionRow> {
   const { session, project, client } = args;
   const { deviceId, isLocal } = client;
@@ -295,8 +303,9 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   const deviceChanged = !!deviceId && (migrated || deviceId !== (session.deviceId ?? null));
   let repoPath = session.repoPath ?? null;
   if (!repoPath || deviceChanged) {
-    repoPath = await resolveSessionRepoPathForDevice(project.id, deviceId, project.repoPath);
+    repoPath = await resolveSessionRepoPathForDevice(project.id, deviceId);
   }
+  if (!isLocal && !repoPath) throw checkoutUnbound(project.id, deviceId);
 
   // ISS-499 — hydrate attachment refs (drops ids not belonging to this session)
   // BEFORE building the user message so they persist on the turn for re-render.
@@ -400,11 +409,7 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   }
 
   const target = deviceId as string;
-  const {
-    mcpServers: mcpServersOverride,
-    resolvedNames,
-    droppedNames,
-  } = await resolveSessionMcpServers(project.id);
+  const { mcpServers: mcpServersOverride } = await resolveSessionMcpServers(project.id);
   // `claudeSessionId`/`resumable` were already resolved above (before the
   // transaction, so the `pendingSkillName` marker could be persisted).
   if (!resumable) {
@@ -416,10 +421,7 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
     if (!args.preBuilt) {
       try {
         const forceLenses = args.forceLenses ?? readLensOverride(session.metadata);
-        const preamble = await buildChatPreamble(project.id, session.userId, forceLenses, {
-          resolved: resolvedNames,
-          dropped: droppedNames,
-        });
+        const preamble = await buildChatPreamble(project.id, session.userId, forceLenses);
         const history = buildRehydrationBlock(prevMessages);
         prompt = preamble + history + decoratedMessage;
       } catch {
