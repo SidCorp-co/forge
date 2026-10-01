@@ -18,3 +18,8 @@ This needs a person's decision, and that is why it is a line here rather than a 
 | A resolve read limited to a run's own job credential and to the profile its environment names | A secret value leaves the vault for every QA run. The audit row and the scrubber become the only protection. Whoever writes the route owns the leak surface. |
 | The runner resolves the reference on the box, from its own store | No value crosses core, but each box must be given the secrets out of band. An operator pays this per box. |
 | Leave it: testers log in by hand | Runs that walk an acceptance criterion behind a login cannot run unattended, and every such project pays this in `needs_info` turns. |
+
+## Honest costs
+
+- Until a person picks a row, no run can log in as a tester: an acceptance criterion behind a login is walked by hand or not at all.
+- The operator re-enters every tester login that sat in `testCredentials` as a project secret and a profile reference, since D8 migrates no data.

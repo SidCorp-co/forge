@@ -59,7 +59,7 @@ export const RULES = [
   {
     id: 'production-branch-column',
     re: /\bproduction_branch\b|\bproductionBranch\b/g,
-    why: '`production_branch` / `productionBranch` names a column that does not exist: the branch production deploys from is the project document\'s production environment `deploysFrom` (ISS-12).',
+    why: "`production_branch` / `productionBranch` names a column that does not exist: the branch production deploys from is the project document's production environment `deploysFrom` (ISS-12).",
   },
   {
     id: 'inline-environment-union',
@@ -77,7 +77,7 @@ export const RULES = [
     id: 'release-path-keys',
     // ISS-12 / design D8 — the keys the project document replaced, read or written anywhere.
     re: /\b(?:releaseChain|release_chain|liveBranch|releaseModel|releaseStrategy|autoProdDeploy|testCredentials|chainLiveBranch|retiredReleaseAxes|DeployStage|deployStages)\b|\bprojects\.environments\b|\bbinding\.stages\b/g,
-    why: 'ISS-12 deleted this key with every reader and writer: where a release goes, what an environment is and how it is tested are the project document (`PUT /api/projects/:id/config`, ADR 0004), and which environment a deploy binding serves is the document\'s `deployment.binding`. Read `project-config/release-path.ts`. The `projects` columns stand unread until ISS-16 drops them; that file is the one allowed to spell them.',
+    why: "ISS-12 deleted this key with every reader and writer: where a release goes, what an environment is and how it is tested are the project document (`PUT /api/projects/:id/config`, ADR 0004), and which environment a deploy binding serves is the document's `deployment.binding`. Read `project-config/release-path.ts`. The `projects` columns stand unread until ISS-16 drops them; that file is the one allowed to spell them.",
   },
   {
     id: 'tag-mr-strategy',

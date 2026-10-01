@@ -2533,10 +2533,9 @@
   one is refused by name. The assistant replies in your language.
 - **A designated plugin has no auto-update switch.** One with a pinned commit stays there; one
   without follows its marketplace, which is what the settings screen already said.
-- **Where a release goes is the project document, and nothing else.** The release chain, the
-  testing tab's environments and test credentials, and each binding's preview/live stages are
-  gone; the project settings refuse them by name. Re-enter production, its branch and probes under
-  `PUT /api/projects/:id/config`, and testers' logins as a testing profile.
+- **Where a release goes is the project document alone.** The release chain, test credentials and
+  binding stages are gone and refused by name. Re-enter production, its branch and probes in the
+  project document, and testers' logins as a testing profile.
 - **The pipeline configuration is gone.** Model, permissions, QA and intake come from the policy
   alone; the old route, `forge_config` door and settings sections are removed. Re-enter the weekly
   assistant setting, which moved to the project.
