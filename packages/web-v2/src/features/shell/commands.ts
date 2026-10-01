@@ -3,6 +3,7 @@
 // handlers/routes only (no fabricated endpoints).
 import type { Command, ToastView } from "@/design";
 import type { ProjectListItem } from "@/features/projects/types";
+import { type ShellMode, chatPath } from "./mode";
 import { PROJECT_ITEMS, SECONDARY_DESTINATIONS, WORKSPACE_ITEMS } from "./nav-model";
 import type { PinnedView } from "./pinned-views";
 import type { RecentEntry } from "./recents";
@@ -11,6 +12,8 @@ export interface WorkspaceCommandDeps {
   router: { push: (href: string) => void };
   /** Active project slug (null outside a project). */
   slug: string | null;
+  railSlug: string | null;
+  onSwitchMode: (to: ShellMode) => void;
   /** Active project's display name (falls back to `slug` in labels). */
   activeProjectName: string | null | undefined;
   /** Projects scoped to the active org (ISS-477/480). */
@@ -22,7 +25,7 @@ export interface WorkspaceCommandDeps {
 }
 
 export function buildWorkspaceCommands(deps: WorkspaceCommandDeps): Command[] {
-  const { router, slug, activeProjectName, scopedProjects, pinnedIds, pinnedViews, recents, toast } = deps;
+  const { router, slug, railSlug, activeProjectName, scopedProjects, pinnedIds, pinnedViews, recents, toast, onSwitchMode } = deps;
   const out: Command[] = [];
 
   // ISS-477 — ⌘K project results are scoped to the active org (reuses the
@@ -121,6 +124,27 @@ export function buildWorkspaceCommands(deps: WorkspaceCommandDeps): Command[] {
     });
   }
 
+  out.push({
+    label: "Go to Activity",
+    icon: "activity",
+    group: "navigate",
+    keywords: "mode switch activity",
+    onRun: () => onSwitchMode("activity"),
+  });
+  out.push({
+    label: "Go to Chat",
+    icon: "chat",
+    group: "navigate",
+    keywords: "mode switch chat conversations",
+    onRun: () => onSwitchMode("chat"),
+  });
+  out.push({
+    label: "New chat",
+    icon: "chat",
+    group: "actions",
+    keywords: "ask agent assistant conversation",
+    onRun: () => router.push(chatPath(railSlug)),
+  });
   out.push({
     label: "Create issue",
     icon: "plus",

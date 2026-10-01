@@ -50,25 +50,19 @@ import { ScopeNotice } from "./scope-notice";
 export function ConversationChat({
   projectId,
   conversationId,
-  onClose,
   onConversationActive,
-  onOpenHistory,
-  onNew,
-  emptyBody,
+  initialDraft,
+  headerActions,
+  scopeChip,
 }: {
   projectId: string;
   /** Omitted = a draft: no room exists until the first message opens one. */
   conversationId?: string | undefined;
-  /** When set, render a close control — the docked panel and the mobile overlay pass it. */
-  onClose?: () => void;
   /** Fires once a draft's first send has opened a real room, so the caller can follow it. */
   onConversationActive?: (id: string) => void;
-  /** When set, render the control that opens the conversation list. */
-  onOpenHistory?: () => void;
-  /** When set, render the control that drops back to a fresh draft. */
-  onNew?: () => void;
-  /** Rendered beneath the empty state of a room with no messages. */
-  emptyBody?: React.ReactNode;
+  initialDraft?: string;
+  headerActions?: React.ReactNode;
+  scopeChip?: React.ReactNode;
 }) {
   const [activeId, setActiveId] = useState<string | undefined>(conversationId);
   const [membersOpen, setMembersOpen] = useState(false);
@@ -223,15 +217,6 @@ export function ConversationChat({
             {roomQ.data ? conversationTitle(roomQ.data, messages[0]?.content) : "New conversation"}
           </PageTitle>
         </div>
-        {onOpenHistory && (
-          <IconButton
-            icon="clock"
-            size="sm"
-            aria-label="Conversation history"
-            onClick={onOpenHistory}
-          />
-        )}
-        {onNew && <IconButton icon="plus" size="sm" aria-label="New conversation" onClick={onNew} />}
         {roomQ.data && (
           <IconButton
             icon="users"
@@ -240,7 +225,7 @@ export function ConversationChat({
             onClick={() => setMembersOpen(true)}
           />
         )}
-        {onClose && <IconButton icon="x" size="sm" aria-label="Close conversation" onClick={onClose} />}
+        {headerActions}
       </div>
     </header>
   );
@@ -288,7 +273,6 @@ export function ConversationChat({
                   mascot
                 />
               </div>
-              {emptyBody}
             </div>
           ) : (
             <ConversationThread
@@ -328,14 +312,18 @@ export function ConversationChat({
           {...(progress && resolvedId
             ? { onStop: () => stop.mutate(resolvedId), stopping: stop.isPending }
             : {})}
+          {...(initialDraft ? { initialValue: initialDraft } : {})}
           footerControl={
-            <ConversationModeControl
-              value={pick}
-              onChange={setPick}
-              offer={agentOffer}
-              settled={settledMode}
-              disabled={busy}
-            />
+            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+              <ConversationModeControl
+                value={pick}
+                onChange={setPick}
+                offer={agentOffer}
+                settled={settledMode}
+                disabled={busy}
+              />
+              {scopeChip}
+            </div>
           }
         />
       ) : (
@@ -351,19 +339,6 @@ export function ConversationChat({
           onClose={() => setMembersOpen(false)}
         />
       )}
-    </div>
-  );
-}
-
-/** The "no room open yet" state, with a way into one. */
-export function NoConversationOpen({ onNew }: { onNew: () => void }) {
-  return (
-    <div className="grid h-full min-h-0 place-items-center px-4">
-      <EmptyState
-        title="No conversation open"
-        message="Pick one from the list, or start a new one."
-        action={{ label: "New conversation", onClick: onNew }}
-      />
     </div>
   );
 }

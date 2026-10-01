@@ -15,8 +15,9 @@ export function useProjectOrgScopeSync(opts: {
   slug: string | null;
   /** The resolved active project row (null until `projects` loads / no match). */
   activeProject: ProjectListItem | null;
+  exitTo: string;
 }): { activeOrgId: string | null; lastSlug: string | null } {
-  const { slug, activeProject } = opts;
+  const { slug, activeProject, exitTo } = opts;
   const router = useRouter();
 
   const { orgs, activeOrgId, setActiveOrg } = useActiveOrg();
@@ -62,8 +63,8 @@ export function useProjectOrgScopeSync(opts: {
     if (activeProject.orgId === activeOrgId) return; // switched INTO the project's org → stay (AC2)
     // Switched to an org that does not own the open project → exit project context.
     setLastSlug(null); // drop the org-agnostic persisted slug so it can't resurrect
-    router.push("/projects"); // org-scoped console; shows the empty state for 0-project orgs
-  }, [activeOrgId, slug, activeProject, router, setLastSlug]);
+    router.push(exitTo);
+  }, [activeOrgId, slug, activeProject, router, setLastSlug, exitTo]);
 
   return { activeOrgId, lastSlug };
 }

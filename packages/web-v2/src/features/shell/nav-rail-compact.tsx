@@ -68,6 +68,10 @@ export interface NavRailCompactProps {
    *  layout supplies the wired node, and only one rail is on screen at a time
    *  so it is never rendered twice (ISS-1119). */
   version?: React.ReactNode;
+  modeSwitch?: React.ReactNode;
+  search?: React.ReactNode;
+  bell?: React.ReactNode;
+  ecosystemItems?: RailItem[];
 }
 
 /** Tiny centered tier label for the compact rail (ISS-359). The faint hairline
@@ -158,6 +162,10 @@ export function NavRailCompact({
   whatsNewBadge,
   onDocs,
   version,
+  modeSwitch,
+  search,
+  bell,
+  ecosystemItems,
 }: NavRailCompactProps) {
   const [flyOpen, setFlyOpen] = useState(false);
   const [q, setQ] = useState('');
@@ -214,7 +222,11 @@ export function NavRailCompact({
         )}
       </button>
 
+      {modeSwitch && <div className="mb-3">{modeSwitch}</div>}
+
       {orgSwitcher && <div className="mb-3">{orgSwitcher}</div>}
+
+      {search && <div className="mb-2">{search}</div>}
 
       {projectItems && projectItems.length > 0 && activeProject && (
         <div ref={switcherRef} className="relative" onMouseEnter={show} onMouseLeave={hide}>
@@ -361,6 +373,17 @@ export function NavRailCompact({
               ))}
             </div>
 
+            {ecosystemItems && ecosystemItems.length > 0 && (
+              <>
+                <RailKicker label="Ecosystem" className="mt-2.5" />
+                <div className="mt-1 flex flex-col items-center gap-3px">
+                  {ecosystemItems.map((it) => (
+                    <RailButton key={it.key} item={it} active={it.key === activeKey} onClick={() => onNavigate(it.key)} />
+                  ))}
+                </div>
+              </>
+            )}
+
             <div className="my-[9px] h-px w-[34px] bg-[color:var(--border-subtle)]" />
           </>
         )}
@@ -397,6 +420,7 @@ export function NavRailCompact({
 
       {/* Footer — What's New + Docs, then the account menu, then the version. */}
       <div className="mt-auto flex flex-col items-center gap-1.5">
+        {bell}
         {onWhatsNew && (
           <button
             type="button"
@@ -406,7 +430,7 @@ export function NavRailCompact({
             }
             className="relative inline-flex size-8 items-center justify-center rounded-md text-subtle transition-colors hover:bg-hover hover:text-fg"
           >
-            <Icon name="bell" size={18} />
+            <Icon name="star" size={18} />
             {whatsNewBadge && whatsNewBadge > 0 ? (
               <span
                 aria-hidden

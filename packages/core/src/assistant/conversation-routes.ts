@@ -62,6 +62,7 @@ import { foreignAttachmentIds, imagesFromAttachments } from './conversation-imag
 import { conversationMemberRoutes } from './conversation-member-routes.js';
 import { withDisplayNames } from './conversation-people.js';
 import { ConversationModeSettledError, sendWebConversationMessage } from './conversation-send.js';
+import { conversationToolCallRoutes } from './conversation-tool-calls.js';
 
 const READ_WINDOW = 200;
 
@@ -152,6 +153,7 @@ conversationRoutes.use('*', requireAuth(), assertEmailVerified());
 
 conversationRoutes.route('/', conversationMemberRoutes);
 conversationRoutes.route('/', conversationAttachmentRoutes);
+conversationRoutes.route('/', conversationToolCallRoutes);
 
 /**
  * The one project a web turn runs under.

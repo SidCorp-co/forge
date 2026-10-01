@@ -60,6 +60,10 @@ export interface NavRailProps {
   /** The product's own version, pinned to the footer (ISS-1119). Hidden while
    *  collapsed — the compact rail carries it there instead. */
   version?: React.ReactNode;
+  modeSwitch?: React.ReactNode;
+  search?: React.ReactNode;
+  bell?: React.ReactNode;
+  body?: React.ReactNode;
   /** Icon-only collapsed rail. */
   collapsed?: boolean;
   onToggleCollapsed?: () => void;
@@ -210,6 +214,10 @@ export function NavRail({
   user,
   orgSwitcher,
   version,
+  modeSwitch,
+  search,
+  bell,
+  body,
   collapsed = false,
   onToggleCollapsed,
   groupOpen,
@@ -268,7 +276,7 @@ export function NavRail({
   return (
     <nav
       className={cn(
-        "flex h-full flex-none flex-col gap-5 border-r border-line bg-surface py-4 transition-[width] duration-150",
+        "flex h-full flex-none flex-col gap-3.5 border-r border-line bg-surface py-4 transition-[width] duration-150",
         collapsed ? "w-[60px] px-2" : "w-[232px] px-3",
       )}
     >
@@ -315,10 +323,14 @@ export function NavRail({
         </Tooltip>
       )}
 
-      {/* Global org switcher (ISS-469) — broadest scope, pinned above the
-          project switcher. Only in the expanded rail. */}
+      {modeSwitch}
+
       {!collapsed && orgSwitcher}
 
+      {search}
+
+      {body ?? (
+        <>
       {/* Project-first (ISS-358): the switcher is pinned directly under the
           brand, with the PROJECT cluster above the WORKSPACE cluster. */}
       {project && (
@@ -377,12 +389,15 @@ export function NavRail({
           ))}
         </div>
       </div>
+        </>
+      )}
 
       {/* Footer block: What's New + Docs pinned bottom-left, then the user chip. */}
       <div className="mt-auto flex flex-col gap-1 border-t border-line-subtle pt-3">
+        {bell}
         {onWhatsNew && (
           <NavRow
-            item={{ key: "whats-new", label: "What's New", icon: "bell", badge: whatsNewBadge }}
+            item={{ key: "whats-new", label: "What's New", icon: "star", badge: whatsNewBadge }}
             active={activeKey === "whats-new"}
             collapsed={collapsed}
             onClick={onWhatsNew}

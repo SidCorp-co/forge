@@ -37,6 +37,7 @@ import type { IssuePriority, IssueStatus } from "@/features/issues/types";
 import { drawerRunChip, formatDurationMs, formatUsd } from "../derive";
 import { useCancelRun, useIssueTasks, usePauseRun, useResumeRun, useRun } from "../hooks";
 import { ActivityTab } from "./activity-feed";
+import { AskAboutThis } from "@/features/conversations/components/ask-about-this";
 import type {
   PipelineIssueRow,
   PipelineRunStepSummary,
@@ -60,7 +61,7 @@ interface RunDetailProps {
 }
 
 const TABS = [
-  { value: "activity", label: "Activity" },
+  { value: "activity", label: "History" },
   { value: "timeline", label: "Timeline" },
   { value: "tasks", label: "Tasks" },
   { value: "cost", label: "Cost" },
@@ -225,6 +226,11 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
               does it stand" before offering controls (ISS-436). */}
           <div className="flex flex-col gap-2.5">
             <SectionTitle className="leading-tight">{title}</SectionTitle>
+            {slug && runId && (
+              <div>
+                <AskAboutThis slug={slug} kind="run" refId={runId} />
+              </div>
+            )}
             <div className="flex flex-wrap items-center gap-2.5">
               {issue && issue.priority !== "none" && (
                 <Badge tone={PRIORITY_TONE[issue.priority] ?? "neutral"}>

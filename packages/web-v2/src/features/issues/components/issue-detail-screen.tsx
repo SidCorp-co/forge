@@ -75,6 +75,7 @@ import {
 import { useIssuePark } from "../park";
 import type { IssueAgentSession, IssueStatus, TaskRow } from "../types";
 import { ActivityFeed } from "./activity-feed";
+import { AskAboutThis } from "@/features/conversations/components/ask-about-this";
 import { AwaitingReleaseBanner } from "./awaiting-release-banner";
 import { BlockerBanner } from "./blocker-banner";
 import { useGuardedTransition } from "./use-guarded-transition";
@@ -310,7 +311,7 @@ export function IssueDetailScreen({
     },
     {
       value: "activity",
-      label: "Activity",
+      label: "History",
       count: activityQ.data?.items.length,
     },
     { value: "tasks", label: "Tasks", count: tasksQ.data?.length },
@@ -318,11 +319,7 @@ export function IssueDetailScreen({
 
   return (
     <PageContainer className="min-h-dvh">
-      {/* Sticky action + state bar — keeps the id, live status, and the primary
-          actions reachable while scrolling a long issue (ISS-347). The shell's
-          TopBar now carries the breadcrumb trail (ISS-358/359), so the in-page
-          breadcrumb was removed to stop the doubled header that hid the detail
-          (ISS-360 regression). Full-bleed via negative gutters. */}
+      {/* cm:why the trail is the shell's PageCrumbs line above this page, so this sticky bar carries no breadcrumb of its own: a second one is the doubled header that hid the detail in ISS-360 */}
       <div ref={stickyHeader} className="sticky top-0 z-20 -mx-4 mb-5 flex flex-wrap items-start gap-3 border-b border-line-subtle bg-app/95 px-4 py-3 backdrop-blur sm:-mx-8 sm:px-8">
         <IconButton
           icon="arrowRight"
@@ -350,7 +347,7 @@ export function IssueDetailScreen({
             reader to choose Reopen at the top of the issue page, on whatever screen they read it. */}
         <div className="flex basis-full flex-wrap items-center gap-2 sm:flex-none sm:basis-auto">
           <HelpButton
-            summary="The full record for one issue: pipeline progress, description, acceptance criteria, the agent plan, and Comments / Activity / Tasks."
+            summary="The full record for one issue: pipeline progress, description, acceptance criteria, the agent plan, and Comments / History / Tasks."
             actions={[
               "Edit properties (status, priority, complexity) in the rail",
               "Start an open issue on a project that starts work by hand, or pause / reopen it, from the header",
@@ -409,6 +406,7 @@ export function IssueDetailScreen({
           >
             Open session
           </Button>
+          <AskAboutThis slug={slug} kind="issue" refId={issue.displayId} />
           <Menu
             align="right"
             items={moreItems}
@@ -555,7 +553,7 @@ export function IssueDetailScreen({
                   (activityQ.isLoading ? (
                     <TabLoading />
                   ) : activityQ.isError ? (
-                    <TabError query={activityQ} what="activity" />
+                    <TabError query={activityQ} what="history" />
                   ) : (
                     <ActivityFeed items={activityQ.data?.items ?? []} />
                   ))}

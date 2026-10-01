@@ -31,7 +31,7 @@ export const metadata: Metadata = {
 };
 
 // `viewport-fit=cover` lets the UI extend under notches/home indicators so our
-// `env(safe-area-inset-*)` padding (mobile drawer / topbar) actually applies.
+// `env(safe-area-inset-*)` padding (mobile drawer / bottom tabs) actually applies.
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,

@@ -23,7 +23,7 @@ import { type DeliveryNotification, useNotificationDelivery } from "../use-notif
 import { useOpenIndicator } from "../use-open-indicator";
 
 export interface NotificationsBellProps {
-  /** Dropdown visibility — toggled by the TopBar bell button in the layout. */
+  /** Dropdown visibility — toggled by the sidebar bell, or the bell in the mobile More drawer. */
   open: boolean;
   onClose: () => void;
   /** The bell button the dropdown is placed against. */

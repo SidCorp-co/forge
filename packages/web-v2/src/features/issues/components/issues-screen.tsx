@@ -36,7 +36,7 @@ export function IssuesScreen({ scope }: IssuesScreenProps) {
   const projectsQ = useProjects();
   const canWrite =
     projectsQ.data?.find((p) => p.id === scope.projectId)?.role !== "viewer";
-  // New-issue dialog — opened locally or by `?new=1`, which the top bar and ⌘K push onto this
+  // New-issue dialog — opened locally or by `?new=1`, which ⌘K pushes onto this
   // route. On this route Next keeps the screen mounted, so the query is followed, not read once.
   const [newOpen, setNewOpen] = useState(false);
   const searchParams = useSearchParams();

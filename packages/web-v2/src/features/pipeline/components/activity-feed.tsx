@@ -1,6 +1,6 @@
 "use client";
 
-// The run/job Activity Feed (ISS-885) — the Activity tab of RunDetail.
+// The run/job Activity Feed (ISS-885) — the History tab of RunDetail.
 //
 // Reads the run's `attempts[]` and renders the lifecycle record: Verb · Object ·
 // Outcome per line, failures first-class, silence and queueing rendered rather

@@ -153,3 +153,29 @@ describe("a turn somebody stopped", () => {
     expect(screen.getByTestId("thread-silence")).toHaveTextContent("nothing to add");
   });
 });
+
+describe("a correction core appended to a reply", () => {
+  const LINE = "Correction: the submit of FP-ACK-7 was refused (CHANNEL_NOT_A_PARTY); nothing was written.";
+
+  it("stands apart from the reply's prose, naming the refused write and its code", () => {
+    render(
+      <ConversationThread
+        messages={[
+          said({
+            id: "m2",
+            seq: 1,
+            role: "assistant",
+            authorUserId: null,
+            authorLabel: null,
+            content: `I sent FP-ACK-7 to the provider.\n\n${LINE}`,
+          }),
+        ]}
+        windows={[]}
+      />,
+    );
+    const line = screen.getByTestId("thread-correction");
+    expect(line).toHaveAttribute("role", "alert");
+    expect(line).toHaveTextContent("the submit of FP-ACK-7 was refused (CHANNEL_NOT_A_PARTY); nothing was written.");
+    expect(screen.getByText("I sent FP-ACK-7 to the provider.")).not.toHaveTextContent("Correction");
+  });
+});

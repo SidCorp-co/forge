@@ -12,9 +12,9 @@ import {
   SegmentedControl, Select, SessionRowSkeleton, Skeleton, SlideOver, Spinner,
   STAGES, Stat, StatusChip,
   StreamingText, Table, TBody, TD, TH, THead, TR, Tabs, Textarea, Toggle, Tooltip,
-  TopBar, HelpButton, PinnedTabBar, useAnimatedNumber, useElapsed,
+  HelpButton, PinnedTabBar, useAnimatedNumber, useElapsed,
   type Command, type NotificationItem, type PinnedTab,
-  type StageKey, type StatusKey, type TopBarDensity,
+  type StageKey, type StatusKey,
 } from "@/design";
 import {
   ForgeMascot, ProjectLoader, ColdBoot, AgentWorking, ReconnectingBanner,
@@ -101,7 +101,7 @@ const KANBAN_COLUMNS: { title: string; color: string }[] = [
 
 const NAV_ANCHORS = [
   "tokens", "type", "buttons", "status", "avatars", "tags", "forms", "cards",
-  "pipeline", "kanban", "navrail", "topbar", "shell", "overlays", "states",
+  "pipeline", "kanban", "navrail", "shell", "overlays", "states",
   "mascot", "skeletons", "progress", "feedback", "realtime",
   "formcontrols", "display", "disclosure", "data", "overlays2", "pageload",
 ];
@@ -337,7 +337,7 @@ function TabsDemo() {
     <div>
       <Tabs
         tabs={[
-          { value: "activity", label: "Activity" },
+          { value: "activity", label: "History" },
           { value: "tasks", label: "Tasks", count: 5 },
           { value: "comments", label: "Comments", count: 3 },
         ]}
@@ -370,12 +370,10 @@ function SlideOverDemo() {
 
 export default function KitPage() {
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [notesOpen, setNotesOpen] = useState(true);
   const [toggleOn, setToggleOn] = useState(true);
   const [view, setView] = useState<"cards" | "list">("cards");
   const [navActive, setNavActive] = useState("proj-issues");
-  // Shell demos: density toggle (TopBar) + pinned tabs.
-  const [kitDensity, setKitDensity] = useState<TopBarDensity>("comfortable");
+  // Shell demo: pinned tabs.
   const [kitTabs, setKitTabs] = useState<PinnedTab[]>([
     { id: "issues-active", label: "Issues · active", icon: "list", href: "/projects/forge-core/issues?filter=active" },
     { id: "pipeline", label: "Pipeline", icon: "pipeline", href: "/projects/forge-core/pipeline" },
@@ -635,19 +633,6 @@ export default function KitPage() {
             </div>
           </Section>
 
-          <Section id="topbar" title="Top bar" hint="Search / ⌘K, density toggle (Comfortable/Compact), notifications, primary action.">
-            <div className="overflow-hidden rounded-md border border-line">
-              <TopBar
-                title="Board"
-                notificationCount={2}
-                density={kitDensity}
-                onDensityChange={setKitDensity}
-                onCommandPalette={() => setPaletteOpen(true)}
-                onNotifications={() => setNotesOpen((v) => !v)}
-              />
-            </div>
-          </Section>
-
           <Section id="shell" title="Shell · help, pinned tabs" hint="HelpButton/HelpPopover (what the page does / actions / shortcuts) and the horizontal pinned-view tab bar (route + filter deep-links).">
             <div className="flex flex-col gap-5">
               <Row>
@@ -677,7 +662,7 @@ export default function KitPage() {
               <Button variant="secondary" icon="search" onClick={() => setPaletteOpen(true)}>
                 Open command palette
               </Button>
-              {notesOpen && <NotificationsMenu items={NOTES} />}
+              <NotificationsMenu items={NOTES} />
             </div>
           </Section>
 
