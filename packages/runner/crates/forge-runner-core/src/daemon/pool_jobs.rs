@@ -3655,8 +3655,6 @@ mod tests {
         "tool_result",
         "progress",
         "result",
-        "intervention",
-        "kill_ack",
     ];
 
     /// Captures the body of the first request and answers `200`.

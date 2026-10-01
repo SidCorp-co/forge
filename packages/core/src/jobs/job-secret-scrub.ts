@@ -61,7 +61,11 @@ async function currentValues(projectId: string, refs: ReadonlySet<string>): Prom
     );
   }
   const rows = await db
-    .select({ scope: projectSecrets.scope, name: projectSecrets.name, enc: projectSecrets.valueEnc })
+    .select({
+      scope: projectSecrets.scope,
+      name: projectSecrets.name,
+      enc: projectSecrets.valueEnc,
+    })
     .from(projectSecrets)
     .where(
       and(
@@ -94,6 +98,9 @@ export async function scrubJobOutput<T>(jobIds: readonly string[], data: T): Pro
 }
 
 export async function jobsOfSession(sessionId: string): Promise<string[]> {
-  const rows = await db.select({ id: jobs.id }).from(jobs).where(eq(jobs.agentSessionId, sessionId));
+  const rows = await db
+    .select({ id: jobs.id })
+    .from(jobs)
+    .where(eq(jobs.agentSessionId, sessionId));
   return rows.map((r) => r.id);
 }

@@ -7,7 +7,11 @@ const document = (testing: Record<string, string | undefined>) =>
     environments: Object.fromEntries(
       Object.entries(testing).map(([name, profile]) => [
         name,
-        { tier: 'staging', deployment: { mode: 'external' }, ...(profile ? { testing: profile } : {}) },
+        {
+          tier: 'staging',
+          deployment: { mode: 'external' },
+          ...(profile ? { testing: profile } : {}),
+        },
       ]),
     ),
   }) as unknown as ProjectDocument;

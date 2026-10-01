@@ -2,6 +2,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import type { RequestIdVars } from '../../src/middleware/request-id.js';
 import {
   createTestDevice,
   createTestProject,
@@ -13,7 +14,7 @@ import {
 } from '../helpers/index.js';
 
 let harness: TestDatabase;
-let app: Hono;
+let app: Hono<{ Variables: RequestIdVars }>;
 let mintPat: typeof import('../../src/auth/pat.js').mintPat;
 let signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
 let service: typeof import('../../src/project-config/service.js');
@@ -37,11 +38,12 @@ beforeAll(async () => {
   process.env.CORS_ORIGINS ??= 'http://localhost:3000';
   process.env.NODE_ENV ??= 'test';
 
-  const [routes, events, sessionEvents, errMod, pat, jwt, svc] = await Promise.all([
+  const [routes, events, sessionEvents, errMod, reqIdMod, pat, jwt, svc] = await Promise.all([
     import('../../src/jobs/testing-secrets-routes.js'),
     import('../../src/jobs/events-routes.js'),
     import('../../src/agent-sessions/events-routes.js'),
     import('../../src/middleware/error.js'),
+    import('../../src/middleware/request-id.js'),
     import('../../src/auth/pat.js'),
     import('../../src/auth/jwt.js'),
     import('../../src/project-config/service.js'),
@@ -49,7 +51,8 @@ beforeAll(async () => {
   mintPat = pat.mintPat;
   signUserToken = jwt.signUserToken;
   service = svc;
-  app = new Hono();
+  app = new Hono<{ Variables: RequestIdVars }>();
+  app.use('*', reqIdMod.requestId());
   app.route('/api/jobs', routes.jobTestingSecretsRoutes);
   app.route('/api/jobs', events.jobEventsRoutes);
   app.use('/api/agent-sessions/*', async (c, next) => {
@@ -115,7 +118,12 @@ async function seed(opts: { environments?: Record<string, ReturnType<typeof envi
   await seedProjectDocument(harness.db, project.id, owner.id, {
     environments: opts.environments ?? { staging: environment('qa') },
   });
-  await service.putSecret({ projectId: project.id, scope: 'qa', name: 'admin', value: ADMIN_PASSWORD });
+  await service.putSecret({
+    projectId: project.id,
+    scope: 'qa',
+    name: 'admin',
+    value: ADMIN_PASSWORD,
+  });
   await service.putSecret({ projectId: project.id, scope: 'qa', name: 'db', value: DB_PASSWORD });
   for (const id of ['qa', 'other']) {
     const written = await service.writeTestingProfile({
@@ -283,7 +291,10 @@ describe('GET /api/jobs/:id/testing-profiles/:profile/secrets', () => {
       headers: { Authorization: `Bearer ${job.credential}`, 'content-type': 'application/json' },
       body: JSON.stringify({
         events: [
-          { kind: 'stdout', data: { line: { type: 'assistant', text: line, deep: [[[{ v: line }]]] } } },
+          {
+            kind: 'stdout',
+            data: { line: { type: 'assistant', text: line, deep: [[[{ v: line }]]] } },
+          },
         ],
       }),
     });

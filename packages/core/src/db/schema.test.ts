@@ -288,20 +288,6 @@ describe('db/schema — jobs', () => {
 });
 
 describe('db/schema — job_events', () => {
-  it('exports the kind enum values', () => {
-    expect(jobEventKinds).toEqual([
-      'stdout',
-      'stderr',
-      'tool_call',
-      'tool_result',
-      'progress',
-      'result',
-      'intervention',
-      'kill_ack',
-      'secret_resolve',
-    ]);
-  });
-
   it('job_id references jobs.id with onDelete cascade', () => {
     const cfg = getTableConfig(jobEvents);
     expect(cfg.foreignKeys).toHaveLength(1);

@@ -24,10 +24,10 @@ const unauthenticated = (message: string, code = 'UNAUTHENTICATED') =>
 
 const sessionRefused = () =>
   new HTTPException(403, {
-  message:
-    'a browser or desktop session is a person signed in, and this route hands a testing secret only to the running job whose credential asks for it. A person reads a secret’s name at GET /api/projects/:id/secrets and its value nowhere.',
-  cause: { code: 'TESTING_SECRETS_SESSION_REFUSED' },
-});
+    message:
+      'a browser or desktop session is a person signed in, and this route hands a testing secret only to the running job whose credential asks for it. A person reads a secret’s name at GET /api/projects/:id/secrets and its value nowhere.',
+    cause: { code: 'TESTING_SECRETS_SESSION_REFUSED' },
+  });
 
 async function isSession(token: string): Promise<boolean> {
   try {
