@@ -70,6 +70,7 @@ import {
   type IssueSort,
 } from "../types";
 import { BulkActionBar } from "./bulk-action-bar";
+import { useIssueSelectionBridge } from "@/features/conversations/ui-actions/selection-bridge";
 import { FilterChips } from "./filter-chips";
 import { IssueTableRow, type RowAssignee } from "./issue-row-actions";
 import type { RowActions } from "./issue-table-row";
@@ -188,6 +189,7 @@ export function IssuesListView({
     ? (rawPriority as IssuePriority)
     : undefined;
   const createdBy = sp.get("createdBy") ?? "";
+  const assignee = sp.get("assignee") ?? "";
   const label = sp.get("label") ?? "";
   const moduleId = sp.get("module") ?? "";
   const statusParam = useMemo(() => statusesFromParam(sp.get("status")), [sp]);
@@ -278,6 +280,7 @@ export function IssuesListView({
     filter,
     priority,
     createdBy: createdBy || undefined,
+    assignee: assignee || undefined,
     label: label || undefined,
     module: moduleId || undefined,
     status: statusParam,
@@ -397,7 +400,7 @@ export function IssuesListView({
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset on any view change, not on `selected` itself.
   useEffect(() => {
     setSelected(new Set());
-  }, [q, filter, priority, createdBy, label, moduleId, sort, page]);
+  }, [q, filter, priority, createdBy, assignee, label, moduleId, sort, page]);
 
   const toggleRow = useCallback((id: string, next: boolean) => {
     setSelected((prev) => {
@@ -424,12 +427,14 @@ export function IssuesListView({
     () => rows.filter((r) => selected.has(r.id)),
     [rows, selected],
   );
+  useIssueSelectionBridge(rows, selectedRows, setSelected);
 
   const isFiltered =
     q !== "" ||
     filter !== DEFAULT_FILTER ||
     !!priority ||
     !!createdBy ||
+    !!assignee ||
     !!label ||
     !!moduleId ||
     statusParam !== undefined;
@@ -697,6 +702,8 @@ export function IssuesListView({
                         filter: "",
                         priority: "",
                         createdBy: "",
+                        assignee: "",
+                        status: "",
                         label: "",
                         module: "",
                         page: "",

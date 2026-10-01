@@ -38,6 +38,10 @@
       "types": "./src/status-sets.ts",
       "default": "./src/status-sets.ts"
     },
+    "./ui-actions": {
+      "types": "./dist/ui-actions.d.ts",
+      "default": "./dist/ui-actions.js"
+    },
     "./document-patch": {
       "types": "./dist/document-patch.d.ts",
       "default": "./dist/document-patch.js"

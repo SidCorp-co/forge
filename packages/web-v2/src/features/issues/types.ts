@@ -180,6 +180,8 @@ export interface IssueSearchOpts {
   priority?: IssuePriority;
   /** Member userId, or the literal "agent" (ISS-756). */
   createdBy?: string;
+  /** Member userId the issue is assigned to (ISS-47). */
+  assignee?: string;
   /** Label uuid — maps to `?label=<id>` on the search endpoint (ISS-586). */
   label?: string;
   /** Module label uuid — maps to `?module=<id>` (ISS-594). Distinct from

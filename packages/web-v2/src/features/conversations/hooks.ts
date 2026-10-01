@@ -1,5 +1,6 @@
 "use client";
 
+import type { UiSnapshot } from "@forge/contracts/ui-actions";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useSyncExternalStore } from "react";
 import { formatApiError } from "@/lib/api/error";
@@ -176,6 +177,7 @@ export function useSendMessage() {
       mode,
       clientToken,
       attachmentIds,
+      uiSnapshot,
     }: {
       conversationId: string;
       content: string;
@@ -185,7 +187,9 @@ export function useSendMessage() {
       clientToken?: string | undefined;
       /** Files already uploaded to this room, staged with this message (ISS-1146). */
       attachmentIds?: string[] | undefined;
-    }) => conversationsApi.send(conversationId, content, mode, clientToken, attachmentIds),
+      /** The page beside the chat, typed by the UI-action registry (ISS-47). */
+      uiSnapshot?: UiSnapshot | undefined;
+    }) => conversationsApi.send(conversationId, content, mode, clientToken, attachmentIds, uiSnapshot),
     onSuccess: async (result) => {
       await qc.cancelQueries({ queryKey: ["conversations", result.conversationId] });
       qc.setQueryData<ConversationDetail>(["conversations", result.conversationId], (prev) =>

@@ -292,6 +292,7 @@ export function ConversationThread({
   withdrawn = {},
   atBottom,
   onRetry,
+  afterEntry,
 }: {
   messages: ConversationMessage[];
   windows: ConversationWindow[];
@@ -308,6 +309,8 @@ export function ConversationThread({
    */
   atBottom?: boolean;
   onRetry?: (id: string) => void;
+  /** What follows a turn in the thread — the UI actions it took, as cards (ISS-47). */
+  afterEntry?: (entryId: string) => React.ReactNode;
 }) {
   const entries = threadEntries(messages, windows, outbox, agentTurns, progress);
   const newestAgentId = entries.reduce<string | undefined>((id, entry) => {
@@ -321,12 +324,14 @@ export function ConversationThread({
       {entries.map((entry) => {
         if (entry.kind === "said")
           return (
-            <Said
-              key={entry.key}
-              message={entry.message}
-              {...(withdrawn[entry.message.id] ? { withdrawn: withdrawn[entry.message.id] } : {})}
-              {...(newestAgentId ? { newestAgentId } : {})}
-            />
+            <div key={entry.key}>
+              <Said
+                message={entry.message}
+                {...(withdrawn[entry.message.id] ? { withdrawn: withdrawn[entry.message.id] } : {})}
+                {...(newestAgentId ? { newestAgentId } : {})}
+              />
+              {afterEntry?.(entry.message.id)}
+            </div>
           );
         if (entry.kind === "outbox")
           return <Unsent key={entry.key} item={entry.item} onRetry={onRetry} />;
@@ -340,14 +345,16 @@ export function ConversationThread({
         if (entry.kind === "agent-turn") return <AgentTurnEntry key={entry.key} turn={entry.turn} />;
         if (entry.kind === "progress")
           return (
+            <div key={entry.key}>
             <LiveTurn
-              key={entry.key}
               progress={entry.progress}
               {...(withdrawn[entry.progress.entry.id ?? ""]
                 ? { withdrawn: withdrawn[entry.progress.entry.id ?? ""] }
                 : {})}
               {...(newestAgentId ? { newestAgentId } : {})}
             />
+            {afterEntry?.(entry.progress.entry.id ?? "live")}
+            </div>
           );
         return (
           <div
