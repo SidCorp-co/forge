@@ -1,0 +1,344 @@
+// @vitest-environment jsdom
+//
+// ISS-24 — the ecosystem pages show every refusal by the code core named it with, read a failed
+// read as "could not be read" and never as empty, and keep overdue and held visible. Each case
+// plants the server's answer the rule is about; the screens are rendered against it.
+
+import * as matchers from "@testing-library/jest-dom/matchers";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "@/lib/api/client";
+import type { DocumentView, RegisterRow } from "./types";
+
+expect.extend(matchers);
+
+const ME = "11111111-1111-4111-8111-111111111111";
+const FORGE = "22222222-2222-4222-8222-222222222222";
+const PLUGIN = "33333333-3333-4333-8333-333333333333";
+const ECO = "44444444-4444-4444-8444-444444444444";
+
+vi.mock("next/link", () => ({
+  default: ({ href, children, ...rest }: { href: string; children: ReactNode }) => (
+    <a href={href} {...rest}>
+      {children}
+    </a>
+  ),
+}));
+vi.mock("@/providers/auth-provider", () => ({ useAuth: () => ({ user: { id: ME } }) }));
+vi.mock("@/features/projects/hooks", () => ({
+  useProjects: () => ({ data: [{ id: FORGE, slug: "forge" }] }),
+}));
+
+const api = vi.hoisted(() => ({
+  ecosystemsOf: vi.fn(),
+  register: vi.fn(),
+  outbox: vi.fn(),
+  document: vi.fn(),
+  thread: vi.fn(),
+  hold: vi.fn(),
+  submit: vi.fn(),
+  withdraw: vi.fn(),
+  supersede: vi.fn(),
+  apiPage: vi.fn(),
+}));
+const questions = vi.hoisted(() => ({ listOpenWithoutIssue: vi.fn(), answer: vi.fn() }));
+
+vi.mock("./api", async () => {
+  const actual = await vi.importActual<typeof import("./api")>("./api");
+  return { ...actual, ecosystemApi: api };
+});
+vi.mock("@/features/questions/api", () => ({ questionsApi: questions }));
+
+const { RegisterScreen } = await import("./components/register-screen");
+const { DocumentScreen } = await import("./components/document-screen");
+
+function wrap(ui: ReactNode) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
+}
+
+const hold = {
+  id: "h1",
+  thread: "FP-RFI-1",
+  action: "hold" as const,
+  by: { kind: "person" as const, id: "55555555-5555-4555-8555-555555555555", via: "assistant" as const },
+  side: PLUGIN,
+  at: "2026-10-01T10:00:00.000Z",
+  reason: "ask the owner first",
+};
+
+function row(over: Partial<RegisterRow>): RegisterRow {
+  return {
+    number: "FP-RFI-1",
+    type: "rfi",
+    subject: "Does the skill read the phase field?",
+    from: FORGE,
+    to: [PLUGIN],
+    inReplyTo: null,
+    thread: "FP-RFI-1",
+    state: "published",
+    authoredBy: { kind: "person", id: ME, via: "assistant" },
+    publishedAt: "2026-09-30T10:00:00.000Z",
+    dueBy: "2026-09-30",
+    recipients: [{ project: PLUGIN, status: "overdue", answeredBy: null }],
+    open: true,
+    overdue: true,
+    owner: [PLUGIN],
+    hold,
+    ...over,
+  };
+}
+
+function view(over: Partial<DocumentView> = {}): DocumentView {
+  return {
+    id: "d1",
+    document: {
+      id: "d1",
+      number: "FP-RFI-1",
+      ecosystem: ECO,
+      from: FORGE,
+      to: [PLUGIN],
+      type: "rfi",
+      subject: "Does the skill read the phase field?",
+      dueBy: "2026-09-30",
+      state: "published",
+      authoredBy: { kind: "person", id: ME, via: "assistant" },
+      gate: { mode: "publish" },
+      publishedAt: "2026-09-30T10:00:00.000Z",
+      body: { question: "Is it read?", reason: "We may make it optional." },
+    },
+    events: [
+      {
+        verb: "publish",
+        from: "submitted",
+        to: "published",
+        by: { kind: "person", id: ME, via: "assistant" },
+        at: "2026-09-30T10:00:00.000Z",
+      },
+    ],
+    side: "sender",
+    thread: "FP-RFI-1",
+    hold: null,
+    standing: {
+      open: true,
+      overdue: true,
+      owner: [PLUGIN],
+      recipients: [{ project: PLUGIN, status: "overdue", answeredBy: null }],
+    },
+    ...over,
+  };
+}
+
+beforeEach(() => {
+  api.ecosystemsOf.mockResolvedValue({
+    memberships: [
+      {
+        id: "m1",
+        document: { ecosystem: ECO, project: FORGE, state: "active" },
+        ecosystem: { id: ECO, slug: "fp", name: "Forge platform", channel: "FP" },
+      },
+    ],
+    returned: 1,
+  });
+  api.outbox.mockResolvedValue({ documents: [], returned: 0 });
+  api.apiPage.mockResolvedValue({ consumes: [], publishes: [] });
+  api.thread.mockResolvedValue({ thread: "FP-RFI-1", documents: [], holds: [hold] });
+});
+
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+});
+
+const registerScreen = (rawFilter: string | null, onFilter = vi.fn()) =>
+  wrap(
+    <RegisterScreen
+      projectId={FORGE}
+      slug="forge"
+      rawFilter={rawFilter}
+      rawEcosystem={null}
+      onFilter={onFilter}
+      onEcosystem={vi.fn()}
+    />,
+  );
+
+describe("the register keeps overdue and held in sight", () => {
+  it("offers the awaiting, overdue and held filters, and each one reaches core", async () => {
+    api.register.mockResolvedValue({ documents: [row({})], returned: 1, total: 1 });
+    const onFilter = vi.fn();
+    registerScreen("overdue", onFilter);
+    await screen.findByText("FP-RFI-1");
+    expect(api.register).toHaveBeenCalledWith(ECO, { filter: "overdue", party: FORGE });
+    for (const label of ["Awaiting", "Overdue", "Held"]) {
+      fireEvent.click(screen.getByRole("button", { name: label }));
+    }
+    expect(onFilter.mock.calls.map((c) => c[0])).toEqual(["awaiting", "overdue", "held"]);
+  });
+
+  it("marks an overdue row and a held row, with who held it and why", async () => {
+    api.register.mockResolvedValue({ documents: [row({})], returned: 1, total: 1 });
+    registerScreen(null);
+    const card = (await screen.findByText("FP-RFI-1")).closest("li") as HTMLElement;
+    expect(within(card).getByText("Overdue")).toBeInTheDocument();
+    expect(within(card).getByText("Held")).toBeInTheDocument();
+    expect(screen.getByText(/Held by person 55555555 through the assistant for project 33333333: “ask the owner first”/)).toBeInTheDocument();
+    expect(screen.getByText(/Written by you through the assistant/)).toBeInTheDocument();
+  });
+
+  it("names a filter the URL carries that is not one, rather than showing everything", async () => {
+    registerScreen("lost");
+    expect(await screen.findByText(/REGISTER_FILTER_UNKNOWN/)).toBeInTheDocument();
+    expect(api.register).not.toHaveBeenCalled();
+  });
+});
+
+describe("a read that failed is unread, never empty", () => {
+  it("says the register could not be read, and never that it holds nothing", async () => {
+    api.register.mockRejectedValue(new ApiError(503, "Service Unavailable", "UPSTREAM_DOWN"));
+    registerScreen(null);
+    expect(await screen.findByText(/The register could not be read/)).toBeInTheDocument();
+    expect(screen.getByText("UPSTREAM_DOWN")).toBeInTheDocument();
+    expect(screen.queryByText(/No documents that forge/)).not.toBeInTheDocument();
+  });
+
+  it("says the drafts could not be read when the outbox fails", async () => {
+    api.register.mockResolvedValue({ documents: [], returned: 0, total: 0 });
+    api.outbox.mockRejectedValue(new ApiError(500, "Internal Server Error"));
+    registerScreen(null);
+    expect(await screen.findByText(/This project's drafts could not be read/)).toBeInTheDocument();
+  });
+});
+
+const documentScreen = (v: DocumentView, role: "viewer" | "member" | "admin" = "member") => {
+  api.document.mockResolvedValue(v);
+  return wrap(<DocumentScreen projectId={FORGE} slug="forge" role={role} docRef="FP-RFI-1" />);
+};
+
+describe("a refused write is shown by the name core gave it", () => {
+  it("shows CHANNEL_WRITE_NOT_AUTHORISED when a hold is refused for a viewer’s role", async () => {
+    const refusal = {
+      code: "CHANNEL_WRITE_NOT_AUTHORISED",
+      path: "/from",
+      detail: "person is a viewer on project forge; writing takes member or above",
+    };
+    api.hold.mockRejectedValue(
+      new ApiError(403, refusal.detail, refusal.code, { refusals: [refusal] }),
+    );
+    documentScreen(view());
+    fireEvent.click(await screen.findByRole("button", { name: "Hold the conversation" }));
+    fireEvent.change(screen.getByLabelText("Hold the conversation: reason"), { target: { value: "wait" } });
+    fireEvent.click(screen.getByRole("button", { name: "Hold" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("CHANNEL_WRITE_NOT_AUTHORISED");
+    expect(alert).toHaveTextContent("writing takes member or above");
+    expect(api.hold).toHaveBeenCalledWith(FORGE, "FP-RFI-1", "hold", "wait");
+  });
+
+  it("shows HOLD_NOT_AUTHORISED from the document envelope a 422 carries", async () => {
+    api.hold.mockRejectedValue(
+      new ApiError(422, "Unprocessable Entity", undefined, undefined, {
+        error: {
+          code: "HOLD_NOT_AUTHORISED",
+          message: "refused",
+          refusals: [{ code: "HOLD_NOT_AUTHORISED", path: "/by", detail: "this side is not yours to hold" }],
+        },
+      }),
+    );
+    documentScreen(view());
+    fireEvent.click(await screen.findByRole("button", { name: "Hold the conversation" }));
+    fireEvent.change(screen.getByLabelText("Hold the conversation: reason"), { target: { value: "wait" } });
+    fireEvent.click(screen.getByRole("button", { name: "Hold" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("HOLD_NOT_AUTHORISED at /by");
+  });
+
+  it("offers a viewer no write, and says why", async () => {
+    documentScreen(view(), "viewer");
+    expect(await screen.findByText(/You are a viewer on forge/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Hold the conversation" })).not.toBeInTheDocument();
+  });
+});
+
+describe("the document page shows standing, holds and who wrote it", () => {
+  it("marks it overdue and held, and says it was written through the assistant", async () => {
+    documentScreen(view({ hold }));
+    await screen.findByText("Does the skill read the phase field?");
+    expect(screen.getAllByText("Overdue").length).toBeGreaterThan(0);
+    expect(screen.getByText("Held")).toBeInTheDocument();
+    expect(screen.getAllByText("via assistant").length).toBeGreaterThan(0);
+    expect(await screen.findByText(/Nobody has held|Held by person 55555555/)).toBeInTheDocument();
+  });
+
+  it("says the conversation could not be read when its thread fails", async () => {
+    api.thread.mockRejectedValue(new ApiError(404, "no conversation", "NOT_FOUND"));
+    documentScreen(view());
+    expect(await screen.findByText(/Conversation FP-RFI-1 could not be read/)).toBeInTheDocument();
+  });
+});
+
+describe("the approve gate is decided by answering its question", () => {
+  const submitted = () =>
+    view({
+      document: { ...view().document, state: "submitted", gate: { mode: "approve" }, publishedAt: undefined },
+      standing: null,
+    });
+  const gateQuestion = (locked: boolean) => ({
+    questions: [
+      {
+        id: "q1",
+        origin: { kind: "channel_gate", documentId: "d1", number: "FP-RFI-1" },
+        currentStep: { round: 2, prompt: "Publish FP-RFI-1?", answerShape: "choice", options: [], recommendedOptionId: "approve", askedAt: "" },
+        options: [
+          { id: "approve", label: "Approve and publish it", authority: "admin", bindsTo: "this_call", executedBy: "core", locked },
+          { id: "return", label: "Return it to the writer", authority: "admin", bindsTo: "this_call", executedBy: "core", locked },
+        ],
+      },
+    ],
+    nextCursor: null,
+  });
+
+  it("shows QUESTION_AUTHORITY_REQUIRED when core refuses the answer", async () => {
+    questions.listOpenWithoutIssue.mockResolvedValue(gateQuestion(false));
+    questions.answer.mockRejectedValue(
+      new ApiError(403, "option approve carries authority admin and this caller may not choose it", "QUESTION_AUTHORITY_REQUIRED"),
+    );
+    documentScreen(submitted(), "admin");
+    fireEvent.click(await screen.findByRole("button", { name: "Approve and publish it" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("QUESTION_AUTHORITY_REQUIRED");
+    expect(questions.answer.mock.calls[0]?.[0]).toEqual({ questionId: "q1", round: 2, optionId: "approve" });
+  });
+
+  it("returns it only with a note, and sends the note with the answer", async () => {
+    questions.listOpenWithoutIssue.mockResolvedValue(gateQuestion(false));
+    questions.answer.mockResolvedValue({});
+    documentScreen(submitted(), "admin");
+    const ret = await screen.findByRole("button", { name: "Return it to the writer" });
+    expect(ret).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Gate note"), { target: { value: "Name the field." } });
+    fireEvent.click(ret);
+    await waitFor(() =>
+      expect(questions.answer.mock.calls[0]?.[0]).toEqual({
+        questionId: "q1",
+        round: 2,
+        optionId: "return",
+        note: "Name the field.",
+      }),
+    );
+  });
+
+  it("tells a role that cannot decide it who does, and offers no choice", async () => {
+    questions.listOpenWithoutIssue.mockResolvedValue(gateQuestion(true));
+    documentScreen(submitted(), "member");
+    expect(await screen.findByText(/cannot decide this gate; an admin of forge/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Approve and publish it" })).not.toBeInTheDocument();
+  });
+
+  it("says the gate could not be read when its question list fails", async () => {
+    questions.listOpenWithoutIssue.mockRejectedValue(new ApiError(500, "boom"));
+    documentScreen(submitted(), "admin");
+    expect(await screen.findByText(/The approve gate could not be read/)).toBeInTheDocument();
+  });
+});

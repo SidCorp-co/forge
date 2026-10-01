@@ -41,6 +41,7 @@ export function useAttention() {
     const failedJobs = base?.failedJobs ?? [];
     const pendingSkillUpdates = base?.pendingSkillUpdates ?? [];
     const unseenDrafts = base?.unseenDrafts ?? [];
+    const channelGates = base?.channelGates ?? [];
     return {
       needsReview,
       awaitingInput,
@@ -49,6 +50,7 @@ export function useAttention() {
       pendingSkillUpdates,
       unseenDrafts,
       unseenDraftsTotal: base?.unseenDraftsTotal ?? 0,
+      channelGates,
       offlineRunners,
       total:
         needsReview.length +
@@ -57,6 +59,7 @@ export function useAttention() {
         failedJobs.length +
         pendingSkillUpdates.length +
         unseenDrafts.length +
+        channelGates.length +
         offlineRunners.length,
     };
   }, [attentionQ.data, offlineRunners]);

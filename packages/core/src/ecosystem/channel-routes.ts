@@ -9,7 +9,7 @@ import type { ChannelOutcome } from './channel-act.js';
 import { type ChannelNeed, channelRoleRefusal, writerOf } from './channel-author.js';
 import { supersede, withdraw } from './channel-ends.js';
 import { holdOrRelease } from './channel-holds.js';
-import { inbox, outbox, readAs, threadAs } from './channel-read.js';
+import { inbox, outbox, readAs, standingOf, threadAs } from './channel-read.js';
 import { NUMBER_PATTERN } from './channel-schema.js';
 import { createDraft, editDraft, submit } from './channel-service.js';
 import { viewOf } from './channel-view.js';
@@ -111,7 +111,10 @@ function answer(c: Context, outcome: ChannelOutcome) {
 async function mayAct(c: Context<{ Variables: AuthVars }>, projectId: string, need: ChannelNeed) {
   const refusal = await channelRoleRefusal(c.get('userId'), projectId, need);
   if (refusal) {
-    throw new HTTPException(403, { message: refusal.detail, cause: { code: 'FORBIDDEN' } });
+    throw new HTTPException(403, {
+      message: refusal.detail,
+      cause: { code: refusal.code, details: { refusals: [refusal] } },
+    });
   }
 }
 
@@ -188,7 +191,21 @@ channelProjectRoutes.get('/:id/channel/documents/:ref', refParam, async (c) => {
   const { id, ref } = c.req.valid('param');
   await mayAct(c, id, 'read');
   const view = await readAs(id, ref);
-  return c.json({ ...viewOf(view), side: view.side, hold: view.hold });
+  const standing = await standingOf(view);
+  return c.json({
+    ...viewOf(view),
+    side: view.side,
+    thread: view.thread,
+    hold: view.hold,
+    standing: standing
+      ? {
+          open: standing.open,
+          overdue: standing.overdue,
+          owner: standing.owner,
+          recipients: standing.recipients,
+        }
+      : null,
+  });
 });
 
 channelProjectRoutes.get('/:id/channel/inbox', projectParam, async (c) => {
