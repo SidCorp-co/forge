@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { questionsApi } from "@/features/questions/api";
+import { gateQuestionKey, projectQuestionsKey } from "@/features/questions/hooks";
 import { ecosystemApi } from "./api";
 import type { RegisterFilter } from "./routes";
 import type { ContractReading } from "./types";
@@ -50,7 +51,7 @@ export function useThread(projectId: string, number: string | null | undefined) 
 /** The open approve-gate question waiting on one of this project's documents, if any. */
 export function useGateQuestion(projectId: string, documentId: string, enabled: boolean) {
   return useQuery({
-    queryKey: [...KEY, "gate", projectId, documentId],
+    queryKey: gateQuestionKey(projectId, documentId),
     queryFn: async () => {
       let cursor: string | undefined;
       do {
@@ -94,21 +95,29 @@ export function useContract(projectId: string, contract: string, provider?: stri
   });
 }
 
-/** One write in the channel. Every success refreshes the whole module's reads. */
+/** One write in the channel. Every success refreshes the module's reads and the questions a write opens or settles. */
 export function useChannelWrite<A, R>(write: (args: A) => Promise<R>) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: write,
-    onSuccess: () => qc.invalidateQueries({ queryKey: KEY }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: KEY });
+      void qc.invalidateQueries({ queryKey: ["questions"] });
+    },
   });
 }
 
-export function useAnswerGate() {
+/**
+ * Answer a gate question. Its key sits under `projectQuestionsKey`, so this refreshes the gate and
+ * the Agents queue together. They stay two entries: that one is an infinite query, this a plain one.
+ */
+export function useAnswerGate(projectId: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: questionsApi.answer,
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: KEY });
+      void qc.invalidateQueries({ queryKey: projectQuestionsKey(projectId) });
       void qc.invalidateQueries({ queryKey: ["attention"] });
     },
   });

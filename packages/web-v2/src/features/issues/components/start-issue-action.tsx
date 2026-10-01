@@ -3,6 +3,7 @@
 import { Button } from "@/design";
 import type { V1Read } from "@/features/project-settings/config-types";
 import type { ProjectMember } from "@/features/projects/types";
+import { canWriteProject } from "@/features/projects/write-access";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { useRunPipelineStep } from "../hooks";
 import type { IssueStatus } from "../types";
@@ -16,8 +17,6 @@ export type StartReading =
   | { kind: "waits" }
   | { kind: "unread"; reason: string };
 
-/** The role `POST /api/issues/:id/run-pipeline-step` requires (core `START_ROLE`). */
-const START_ROLES: readonly NonNullable<Role>[] = ["member", "admin"];
 
 export function intakeIsManual(policy: V1Read | undefined): boolean {
   if (!policy?.declared) return false;
@@ -43,7 +42,7 @@ export function readStart(args: {
   if (!intakeIsManual(args.policy)) return { kind: "none" };
   const startedAt = startedAtOf(args.sessionContext);
   if (startedAt) return { kind: "started", startedAt };
-  return args.role && START_ROLES.includes(args.role) ? { kind: "start" } : { kind: "waits" };
+  return canWriteProject(args.role) ? { kind: "start" } : { kind: "waits" };
 }
 
 export function StartIssueAction({

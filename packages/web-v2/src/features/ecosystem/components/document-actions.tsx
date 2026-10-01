@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { Button, Input, Textarea } from "@/design";
 import type { ProjectListItem } from "@/features/projects/types";
+import { canWriteProject } from "@/features/projects/write-access";
 import { ecosystemApi } from "../api";
 import { useChannelWrite } from "../hooks";
 import { refusalsOf } from "@/lib/api/refusals";
@@ -12,9 +13,6 @@ import { type DocumentView, REPLY_TYPES } from "../types";
 import { ReadOnlyNotice, RefusalNotice } from "./notices";
 
 export type Role = ProjectListItem["role"];
-
-/** What core lets each role do on a side: any role reads, member or above writes and holds. */
-export const writes = (role: Role) => role === "member" || role === "admin";
 
 /** Whether the reader's side owes this document a reply it can write. */
 export function owesReply(view: DocumentView): boolean {
@@ -109,7 +107,7 @@ export function DocumentActions({
   role: Role;
 }) {
   const d = view.document;
-  if (!writes(role)) {
+  if (!canWriteProject(role)) {
     return <ReadOnlyNotice role={role} slug={slug} writes="drafts, replies and holds" />;
   }
   const sender = view.side === "sender";

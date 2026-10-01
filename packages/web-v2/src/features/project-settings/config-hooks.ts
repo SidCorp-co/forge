@@ -1,9 +1,12 @@
 "use client";
 
 import { useToast } from "@/providers/toast-provider";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { type QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { configApi } from "./config-api";
 import type { V1Write, V1Written } from "./config-types";
+
+export const releaseReadinessKey = (id: string | undefined) =>
+	["project", id, "release-readiness"] as const;
 
 const keys = {
 	project: (id: string | undefined) => ["project", id, "config"] as const,
@@ -13,7 +16,18 @@ const keys = {
 	secrets: (id: string | undefined) => ["project", id, "secrets"] as const,
 	effective: (id: string | undefined) => ["project", id, "config-effective"] as const,
 	environments: (id: string | undefined) => ["project", id, "environment-state"] as const,
+	readiness: (id: string | undefined) => releaseReadinessKey(id),
 };
+
+/** Every read a written document changes: its own list, and the reads composed from it. */
+function documentWrittenKeys(id: string | undefined, owner: readonly unknown[]) {
+	return [owner, keys.effective(id), keys.environments(id), keys.readiness(id)];
+}
+
+/** Refresh every panel that reads a binding, whichever surface wrote it. */
+export function invalidateBindingChange(qc: QueryClient, id: string | undefined): void {
+	for (const key of documentWrittenKeys(id, keys.bindings(id))) qc.invalidateQueries({ queryKey: key });
+}
 
 function useRead<T>(key: readonly unknown[], id: string | undefined, read: (id: string) => Promise<T>) {
 	return useQuery({
@@ -69,10 +83,7 @@ function useDocumentWrite(
 	return useMutation({
 		mutationFn: (write: V1Write) => send(id as string, write),
 		onSuccess: (saved) => {
-			for (const key of [owner, keys.effective(id), keys.environments(id)]) {
-				qc.invalidateQueries({ queryKey: key });
-			}
-			qc.invalidateQueries({ queryKey: ["project", id, "release-readiness"] });
+			for (const key of documentWrittenKeys(id, owner)) qc.invalidateQueries({ queryKey: key });
 			toast({ title: `${what} saved at revision ${saved.revision}`, tone: "success" });
 		},
 	});

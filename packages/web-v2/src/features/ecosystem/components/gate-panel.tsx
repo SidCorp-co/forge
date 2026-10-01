@@ -13,7 +13,7 @@ import { Loading, RefusalNotice, UnreadNotice } from "./notices";
  */
 export function GatePanel({ projectId, slug, documentId }: { projectId: string; slug: string; documentId: string }) {
   const reading = readingOf(useGateQuestion(projectId, documentId, true));
-  const answer = useAnswerGate();
+  const answer = useAnswerGate(projectId);
   const [note, setNote] = useState("");
   const [chosen, setChosen] = useState<string | null>(null);
 

@@ -9,6 +9,7 @@ import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { projectSettingsApi } from "./api";
+import { releaseReadinessKey } from "./config-hooks";
 import type {
 	LabelCreateInput,
 	LabelPatchInput,
@@ -102,7 +103,7 @@ export function useUpdatePlugins(id: string | undefined) {
 /** What this project still owes before its first issue runs. */
 export function useReleaseReadiness(id: string | undefined) {
 	return useQuery({
-		queryKey: ["project", id, "release-readiness"],
+		queryKey: releaseReadinessKey(id),
 		queryFn: () => projectSettingsApi.getReleaseReadiness(id as string),
 		enabled: Boolean(id),
 	});

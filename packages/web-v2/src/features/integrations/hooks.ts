@@ -1,6 +1,7 @@
 "use client";
 
 import { useOrgs } from "@/features/orgs/hooks";
+import { invalidateBindingChange } from "@/features/project-settings/config-hooks";
 import { useProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
@@ -45,6 +46,16 @@ function useInvalidateIntegrations(projectId: string | undefined) {
     qc.invalidateQueries({
       queryKey: ["integrations", "mcp-preview", projectId],
     });
+  };
+}
+
+/** After a binding write: the integration views, and every panel that reads the binding. */
+function useInvalidateBindingChange(projectId: string | undefined) {
+  const qc = useQueryClient();
+  const invalidateIntegrations = useInvalidateIntegrations(projectId);
+  return () => {
+    invalidateIntegrations();
+    invalidateBindingChange(qc, projectId);
   };
 }
 
@@ -140,7 +151,7 @@ export function useTestIntegration(projectId: string | undefined) {
 
 /** Create a Coolify/Epodsystem integration. Returns the one-time `integrationSecret`. */
 export function useCreateProviderIntegration(projectId: string | undefined) {
-  const invalidate = useInvalidateIntegrations(projectId);
+  const invalidate = useInvalidateBindingChange(projectId);
   const { toast } = useToast();
   return useMutation({
     mutationFn: (body: CreateIntegrationInput) => createIntegration(projectId as string, body),
@@ -159,7 +170,7 @@ export function useCreateProviderIntegration(projectId: string | undefined) {
 
 /** Patch a Coolify/Epodsystem integration (config/secrets/active). */
 export function useUpdateProviderIntegration(projectId: string | undefined) {
-  const invalidate = useInvalidateIntegrations(projectId);
+  const invalidate = useInvalidateBindingChange(projectId);
   const { toast } = useToast();
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: UpdateIntegrationInput }) =>
@@ -179,7 +190,7 @@ export function useUpdateProviderIntegration(projectId: string | undefined) {
 
 /** Delete a Coolify/Epodsystem integration (provider-neutral toast copy). */
 export function useDeleteProviderIntegration(projectId: string | undefined) {
-  const invalidate = useInvalidateIntegrations(projectId);
+  const invalidate = useInvalidateBindingChange(projectId);
   const { toast } = useToast();
   return useMutation({
     mutationFn: (id: string) => integrationsApi.remove(projectId as string, id),
@@ -401,13 +412,12 @@ export function useConnectionBindings(connectionId: string | null | undefined) {
 
 export function useBindConnection(projectId: string | undefined) {
   const qc = useQueryClient();
-  const invalidate = useInvalidateIntegrations(projectId);
+  const invalidate = useInvalidateBindingChange(projectId);
   const { toast } = useToast();
   return useMutation({
     mutationFn: (input: BindConnectionInput) => bindConnection(projectId as string, input),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["integration-connections"] });
-      qc.invalidateQueries({ queryKey: ["project", projectId, "bindings"] });
       invalidate();
       toast({ title: "Connection bound", tone: "success" });
     },

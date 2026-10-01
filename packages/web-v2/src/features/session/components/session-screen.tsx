@@ -15,6 +15,7 @@ import {
   useElapsed,
 } from "@/design";
 import { useProjects } from "@/features/projects/hooks";
+import { canWriteProject } from "@/features/projects/write-access";
 import { isJobDriven } from "@/features/sessions/types";
 import {
   deriveSessionDisplayStatus,
@@ -97,13 +98,10 @@ export function SessionScreen({
   const session = sessionQ.data;
   const issueId = session?.metadata?.issueId;
 
-  // Viewer = read-only: hide the composer (the server 403s sends regardless).
-  // The session row carries the projectId; until both load we stay writable —
-  // this is UX affordance only.
+  // A reader gets no composer (the server 403s sends regardless).
   const projectsQ = useProjects();
   const canWrite =
-    !session ||
-    projectsQ.data?.find((p) => p.id === session.projectId)?.role !== "viewer";
+    !!session && canWriteProject(projectsQ.data?.find((p) => p.id === session.projectId)?.role);
 
   // Track this session as recently-viewed (surfaces in the ⌘K Recent group).
   // Skip in embedded mode (ISS-664 plan Q3): a session glanced at inline from

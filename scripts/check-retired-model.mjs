@@ -40,6 +40,27 @@ const ALLOW = [
   /^packages\/core\/src\/db\/schema\.test\.ts$/,
 ];
 
+// One exact line, not a file: the rest of the file stays under every rule.
+export const ALLOW_LINES = [
+  {
+    file: 'packages/observability/src/index.ts',
+    rule: 'release-path-keys',
+    text: '"testCredentials",',
+    why: 'the scrubber filters a retired secret-bearing key for ever: old clients, logs and replays still send it, and dropping the key sends their credentials out unscrubbed.',
+  },
+  {
+    file: 'packages/web-v2/src/lib/sentry-scrub.test.ts',
+    rule: 'release-path-keys',
+    text: 'const RETIRED = "testCredentials";',
+    why: 'the plant that proves the scrubber still filters the retired key has to spell it once.',
+  },
+];
+
+export function lineAllowed(file, ruleId, line) {
+  const text = line.trim();
+  return ALLOW_LINES.some((a) => a.file === file && a.rule === ruleId && a.text === text);
+}
+
 const words = (...names) => `\\b(?:${names.join('|')})\\b`;
 const projectsColumn = (...names) => `\\bprojects\\.(?:${names.join('|')})\\b`;
 const anyOf = (...alternatives) => new RegExp(alternatives.join('|'), 'g');
@@ -143,7 +164,8 @@ export const RULES = [
         'bindExisting',
         'IntegrationBindingCreateInput',
       ),
-      /\bBindExistingConnection\w*/.source,
+      // No leading boundary: the retired hook was `useBindExistingConnection`.
+      /\w*BindExistingConnection\w*/.source,
     ),
     why: 'ISS-15 deleted every binding write but one: a binding is a binding-v1 document, written by `PUT /api/projects/:projectId/bindings/:bindingId` through `project-config/bindings.ts:writeBinding`, whose `bind-effects.ts` mints the inbound secret, authorises `agentAccess` and runs `onBindingCreated`. A connection is created with `POST /api/integration-connections` and named in the document. A suite seeds a row with `tests/helpers/seed-binding.ts:seedBinding`.',
   },
@@ -323,6 +345,34 @@ export function stripComments(src) {
   return out;
 }
 
+/** Every finding in `src`, read as the repository file `rel`, with every allowance applied. */
+export function scanSource(rel, src) {
+  if (ALLOW.some((re) => re.test(rel))) return [];
+  const ext = extname(rel);
+  const rust = ext === '.rs';
+  const lines = rust
+    ? src.split('\n').map((line) => (/^\s*\/\//.test(line) ? '' : line))
+    : stripComments(src).split('\n');
+  const findings = [];
+  for (const rule of RULES) {
+    if (!(rule.exts ? rule.exts.includes(ext) : TS_EXT.has(ext))) continue;
+    if (rule.allow?.some((re) => re.test(rel))) continue;
+    lines.forEach((line, i) => {
+      rule.re.lastIndex = 0;
+      if (!rule.re.test(line)) return;
+      if (lineAllowed(rel, rule.id, line)) return;
+      findings.push({
+        file: rel,
+        line: i + 1,
+        rule: rule.id,
+        text: line.trim().slice(0, 160),
+        why: rule.why,
+      });
+    });
+  }
+  return findings;
+}
+
 function main() {
   let files;
   try {
@@ -339,33 +389,13 @@ function main() {
   const findings = [];
   for (const file of files) {
     const rel = relative(ROOT, file);
-    if (ALLOW.some((re) => re.test(rel))) continue;
     let src;
     try {
       src = readFileSync(file, 'utf8');
     } catch {
       continue;
     }
-    const ext = extname(file);
-    const rust = ext === '.rs';
-    const lines = rust
-      ? src.split('\n').map((line) => (/^\s*\/\//.test(line) ? '' : line))
-      : stripComments(src).split('\n');
-    for (const rule of RULES) {
-      if (!(rule.exts ? rule.exts.includes(ext) : TS_EXT.has(ext))) continue;
-      if (rule.allow?.some((re) => re.test(rel))) continue;
-      lines.forEach((line, i) => {
-        rule.re.lastIndex = 0;
-        if (!rule.re.test(line)) return;
-        findings.push({
-          file: rel,
-          line: i + 1,
-          rule: rule.id,
-          text: line.trim().slice(0, 160),
-          why: rule.why,
-        });
-      });
-    }
+    findings.push(...scanSource(rel, src));
   }
 
   if (JSON_OUT) {

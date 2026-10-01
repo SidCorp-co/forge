@@ -57,8 +57,9 @@ vi.mock("next/link", () => ({
   ),
 }));
 
+let role: string | null = "admin";
 vi.mock("@/features/projects/hooks", () => ({
-  useProjects: () => ({ data: [{ id: "p1", role: "admin" }] }),
+  useProjects: () => ({ data: [{ id: "p1", role }] }),
 }));
 
 vi.mock("./conversation-members", () => ({ ConversationMembers: () => null }));
@@ -88,6 +89,7 @@ beforeEach(() => {
   room = detail();
   progress = null;
   sendPending = false;
+  role = "admin";
 });
 
 function fileOf(name: string, type: string): File {
@@ -206,5 +208,20 @@ describe("stopping an answer", () => {
     open();
     fireEvent.click(screen.getByLabelText("Stop answering"));
     expect(stop).toHaveBeenCalledWith("c1");
+  });
+});
+
+// Org access without project membership reads the room; only a member or an admin sends.
+describe("the composer follows the project role", () => {
+  it.each([null, "viewer"])("offers a %s role no composer", (r) => {
+    role = r;
+    open();
+    expect(screen.queryByTestId("chat-composer")).toBeNull();
+  });
+
+  it.each(["member", "admin"])("offers a %s the composer", (r) => {
+    role = r;
+    open();
+    expect(screen.getByTestId("chat-composer")).toBeInTheDocument();
   });
 });

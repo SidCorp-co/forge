@@ -19,6 +19,7 @@ import {
   ProjectLoader,
 } from "@/design";
 import { useProjects } from "@/features/projects/hooks";
+import { canWriteProject } from "@/features/projects/write-access";
 import { CONVERSATION_ATTACHMENTS } from "@/features/chat/attachments";
 import { ChatComposer, ReadOnlyComposerNote } from "@/features/chat/components/chat-composer";
 import {
@@ -71,7 +72,7 @@ export function ConversationChat({
   const resolvedId = conversationId ?? activeId;
 
   const projectsQ = useProjects();
-  const canWrite = projectsQ.data?.find((p) => p.id === projectId)?.role !== "viewer";
+  const canWrite = canWriteProject(projectsQ.data?.find((p) => p.id === projectId)?.role);
 
   const roomQ = useConversation(resolvedId);
   const accepted = useAcceptedMessages(resolvedId);
