@@ -3,7 +3,7 @@
 //! Core owns the resolution — catalog shorthand expanded, integration sentinels
 //! turned into specs with freshly rendered credentials — because the box holds
 //! none of the keys that takes. What arrives here is what `claude` can be handed
-//! verbatim, plus the names that were declared and could NOT be supplied.
+//! verbatim.
 
 use serde::Deserialize;
 use serde_json::Value;
@@ -21,15 +21,12 @@ pub struct ProjectMcpServers {
     /// The names in `mcp_servers`, as core resolved them.
     #[serde(default)]
     pub resolved_names: Vec<String>,
-    #[serde(default)]
-    pub dropped_names: Vec<String>,
 }
 
 impl ProjectMcpServers {
-    /// Nothing to write and nothing to say — the shape a project that declares
-    /// no servers has.
+    /// Nothing to write — the shape a project that declares no servers has.
     pub fn is_empty(&self) -> bool {
-        self.mcp_servers.is_empty() && self.dropped_names.is_empty()
+        self.mcp_servers.is_empty()
     }
 }
 
@@ -194,7 +191,7 @@ mod tests {
     async fn a_success_is_the_declaration() {
         let url = fake_core::serve_always(
             "200 OK",
-            r#"{"mcpServers":{"playwright":{"type":"stdio"}},"resolvedNames":["playwright"],"droppedNames":[]}"#,
+            r#"{"mcpServers":{"playwright":{"type":"stdio"}},"resolvedNames":["playwright"]}"#,
         )
         .await;
         let found = fetch(&client(url), "p1").await.expect("a 200 is read");
@@ -212,7 +209,6 @@ mod tests {
     fn a_response_missing_every_field_is_the_empty_shape() {
         let parsed: ProjectMcpServers = serde_json::from_str("{}").unwrap();
         assert!(parsed.is_empty());
-        assert!(parsed.dropped_names.is_empty());
         assert!(parsed.resolved_names.is_empty());
     }
 
@@ -220,21 +216,11 @@ mod tests {
     fn the_camel_case_wire_names_decode_into_the_snake_case_fields() {
         let parsed: ProjectMcpServers = serde_json::from_str(
             r#"{"mcpServers":{"playwright":{"type":"stdio","command":"npx"}},
-                "resolvedNames":["playwright"],"droppedNames":["epodsystem"]}"#,
+                "resolvedNames":["playwright"]}"#,
         )
         .unwrap();
         assert_eq!(parsed.mcp_servers["playwright"]["command"], "npx");
         assert_eq!(parsed.resolved_names, vec!["playwright".to_string()]);
-        assert_eq!(parsed.dropped_names, vec!["epodsystem".to_string()]);
-        assert!(!parsed.is_empty());
-    }
-
-    /// A project that declares a sentinel nothing can supply has no servers to
-    /// write and something to say, so it is NOT the empty shape.
-    #[test]
-    fn a_project_whose_only_declaration_dropped_is_not_empty() {
-        let parsed: ProjectMcpServers =
-            serde_json::from_str(r#"{"mcpServers":{},"droppedNames":["epodsystem"]}"#).unwrap();
         assert!(!parsed.is_empty());
     }
 }

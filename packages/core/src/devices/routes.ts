@@ -120,43 +120,45 @@ devicePublicRoutes.post(
 export const deviceOwnerRoutes = new Hono<{ Variables: AuthVars }>();
 deviceOwnerRoutes.use('*', requireAuth(), assertEmailVerified());
 
-deviceOwnerRoutes.get('/me/devices', async (c) => {
-  const userId = c.get('userId');
-  // ISS-477 — optional org scope, NARROWING this owner-scoped list: the filter
-  // sits on top of `devices.ownerId`, so the answer is always a subset of the
-  // caller's own, and an unassigned box has no runner row and so falls under no
-  // org scope at all. The organisation's devices are a different population,
-  // served by `/api/orgs/:orgId/devices` in `devices/org-routes.ts` (ISS-1162).
-  const orgIdParam = c.req.query('orgId');
-  let orgId: string | undefined;
-  if (orgIdParam !== undefined) {
-    const parsed = z.uuid().safeParse(orgIdParam);
-    if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
-    orgId = parsed.data;
-    await assertOrgAccess(orgId, userId, 'member');
-  }
+const ownerDevicesQuery = z.object({ orgId: z.uuid().optional() });
 
-  const rows = orgId
-    ? await db
-        .selectDistinct(DEVICE_LIST_COLUMNS)
-        .from(devices)
-        .innerJoin(runners, eq(runners.deviceId, devices.id))
-        .innerJoin(projects, eq(projects.id, runners.projectId))
-        .where(and(eq(devices.ownerId, userId), eq(projects.orgId, orgId)))
-        .orderBy(desc(devices.pairedAt))
-    : await db
-        .select(DEVICE_LIST_COLUMNS)
-        .from(devices)
-        .where(eq(devices.ownerId, userId))
-        .orderBy(desc(devices.pairedAt));
-  // ISS-392, widened by ISS-1165 — each box is compared against the published
-  // release AND the runner head on the default branch. The second is what catches
-  // a release that was never cut, where every box reports the number the last one
-  // carried and nothing reads as behind.
-  const annotated = withDeviceGate(await annotateDeviceBuilds(rows));
-  // Literally true, not defaulted: the WHERE above filters on `devices.ownerId`.
-  return c.json(annotated.map((d) => ({ ...d, ownedByMe: true })));
-});
+deviceOwnerRoutes.get(
+  '/me/devices',
+  zValidator('query', ownerDevicesQuery, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const userId = c.get('userId');
+    // ISS-477 — optional org scope, NARROWING this owner-scoped list: the filter
+    // sits on top of `devices.ownerId`, so the answer is always a subset of the
+    // caller's own, and an unassigned box has no runner row and so falls under no
+    // org scope at all. The organisation's devices are a different population,
+    // served by `/api/orgs/:orgId/devices` in `devices/org-routes.ts` (ISS-1162).
+    const { orgId } = c.req.valid('query');
+    if (orgId !== undefined) await assertOrgAccess(orgId, userId, 'member');
+
+    const rows = orgId
+      ? await db
+          .selectDistinct(DEVICE_LIST_COLUMNS)
+          .from(devices)
+          .innerJoin(runners, eq(runners.deviceId, devices.id))
+          .innerJoin(projects, eq(projects.id, runners.projectId))
+          .where(and(eq(devices.ownerId, userId), eq(projects.orgId, orgId)))
+          .orderBy(desc(devices.pairedAt))
+      : await db
+          .select(DEVICE_LIST_COLUMNS)
+          .from(devices)
+          .where(eq(devices.ownerId, userId))
+          .orderBy(desc(devices.pairedAt));
+    // ISS-392, widened by ISS-1165 — each box is compared against the published
+    // release AND the runner head on the default branch. The second is what catches
+    // a release that was never cut, where every box reports the number the last one
+    // carried and nothing reads as behind.
+    const annotated = withDeviceGate(await annotateDeviceBuilds(rows));
+    // Literally true, not defaulted: the WHERE above filters on `devices.ownerId`.
+    return c.json(annotated.map((d) => ({ ...d, ownedByMe: true })));
+  },
+);
 
 const deviceIdParamSchema = z.object({ id: z.uuid() });
 
@@ -283,8 +285,7 @@ deviceOwnerRoutes.delete(
 // Mirrors the device-token `GET /me/runners` (above) but authed by the user
 // JWT and param-scoped to a device the caller owns, so Settings → Devices →
 // [device] can list assigned projects with each runner's repo path/branch and
-// online/offline status. `projectDefaultRepoPath`/`baseBranch` give the UI a
-// sensible prefill when a runner has no per-device path set yet.
+// online/offline status.
 deviceOwnerRoutes.get(
   '/devices/:id/runners',
   zValidator('param', deviceIdParamSchema, (r) => {
@@ -314,7 +315,6 @@ deviceOwnerRoutes.get(
         branch: runners.branch,
         status: runners.status,
         lastSeenAt: runners.lastSeenAt,
-        projectDefaultRepoPath: projects.repoPath,
         baseBranch: projects.baseBranch,
         provisionStatus: runners.provisionStatus,
         provisionDetail: runners.provisionDetail,

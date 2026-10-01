@@ -1216,23 +1216,21 @@ pub async fn run(
                         }
                     }
                     "agent:start" => {
-                        let (client, runner, cfg) =
-                            (client.clone(), runner.clone(), cfg.clone());
+                        let (client, runner) = (client.clone(), runner.clone());
                         let guard = InflightGuard::enter(&inflight);
                         tokio::spawn(async move {
                             let _guard = guard; // released when the chat turn finishes (drain gate)
-                            if let Err(e) = chat::handle_start(&client, runner, &cfg, frame.data).await {
+                            if let Err(e) = chat::handle_start(&client, runner, frame.data).await {
                                 tracing::error!("[chat] start: {e}");
                             }
                         });
                     }
                     "agent:send" => {
-                        let (client, runner, cfg) =
-                            (client.clone(), runner.clone(), cfg.clone());
+                        let (client, runner) = (client.clone(), runner.clone());
                         let guard = InflightGuard::enter(&inflight);
                         tokio::spawn(async move {
                             let _guard = guard; // released when the chat turn finishes (drain gate)
-                            if let Err(e) = chat::handle_send(&client, runner, &cfg, frame.data).await {
+                            if let Err(e) = chat::handle_send(&client, runner, frame.data).await {
                                 tracing::error!("[chat] send: {e}");
                             }
                         });

@@ -8,7 +8,7 @@ import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import { type AuthVars, assertEmailVerified, requireUserOrDevice } from '../middleware/auth.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { rawBody, zValidator } from '../middleware/zod-validator.js';
 import { getStorage, isEnoent } from '../storage/index.js';
 import {
   loadSessionAttachment,
@@ -91,6 +91,10 @@ agentSessionAttachmentRoutes.post(
   zValidator('param', sessionIdParamSchema, (r) => {
     if (!r.success) throw badRequest('invalid sessionId', 'BAD_REQUEST', z.flattenError(r.error));
   }),
+  rawBody(
+    'multipart/form-data',
+    'One file in the `file` field, attached to the chat of the agent session; its name and media type come from the part.',
+  ),
   async (c) => {
     const { sessionId } = c.req.valid('param');
     await authorizeSession(c, sessionId);

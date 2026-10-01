@@ -10,7 +10,8 @@ const JSON_OUT = process.argv.includes('--json');
 
 const SKIP =
   /(^|[/\\])(node_modules|\.next|dist|target|coverage|\.git|\.turbo|\.worktrees)([/\\]|$)/;
-const EXT = new Set(['.ts', '.tsx', '.mjs', '.js']);
+const EXT = new Set(['.ts', '.tsx', '.mjs', '.js', '.rs']);
+const TS_EXT = new Set(['.ts', '.tsx', '.mjs', '.js']);
 
 const ALLOW = [
   // Every drizzle migration and its snapshots describe the schema as it was at that point.
@@ -41,6 +42,8 @@ const ALLOW = [
   /^packages\/core\/src\/project-config\/(?:routes|schema|schema-plants)\.test\.ts$/,
   /^packages\/core\/tests\/integration\/release-chain-migration-e2e\.test\.ts$/,
   /^packages\/core\/tests\/integration\/release-chain-constraints-e2e\.test\.ts$/,
+  /^packages\/core\/src\/projects\/retired-project-keys\.ts$/,
+  /^packages\/core\/src\/db\/schema\.test\.ts$/,
 ];
 
 export const RULES = [
@@ -78,6 +81,14 @@ export const RULES = [
     // ISS-12 / design D8 — the keys the project document replaced, read or written anywhere.
     re: /\b(?:releaseChain|release_chain|liveBranch|releaseModel|releaseStrategy|autoProdDeploy|testCredentials|chainLiveBranch|retiredReleaseAxes|DeployStage|deployStages)\b|\bprojects\.environments\b|\bbinding\.stages\b/g,
     why: "ISS-12 deleted this key with every reader and writer: where a release goes, what an environment is and how it is tested are the project document (`PUT /api/projects/:id/config`, ADR 0004), and which environment a deploy binding serves is the document's `deployment.binding`. Read `project-config/release-path.ts`. The `projects` columns stand unread until ISS-16 drops them; that file is the one allowed to spell them.",
+  },
+  {
+    id: 'device-binding-keys',
+    // ISS-14 / design D8 — the project checkout and default device the device binding replaced,
+    // the project-declared MCP servers the granted bindings replaced, and their helpers.
+    re: /\bprojects\.(?:repoPath|repo_path)\b|\bdefaultDeviceId\b|\bdefault_device_id\b|\bdroppedNames\b|\bdropped_names\b|\bprojectDefaultRepoPath\b|\bresolveRepoPath\b|\bloadRepoPath\b|\bMcpServerSource\b|\bfallback_cwd\b/g,
+    why: "ISS-14 deleted this with every reader and writer: a checkout is a path on one box, named by that device binding (`runners.repo_path`, `forge-runner bind <slug> --path <dir>`), and no box is a project's default. A job reads its cwd from `jobs/prepare-claimed-job.ts:resolveRunnerForDevice`, a turn from `lib/device-pool.ts:resolveSessionRepoPathForDevice`, and a binding that names none is refused CHECKOUT_UNBOUND. An agent's MCP servers are its project's granted integration bindings alone (`jobs/resolve-job-mcp-servers.ts`), so nothing is declared that could be dropped.",
+    exts: ['.ts', '.tsx', '.mjs', '.js', '.rs'],
   },
   {
     id: 'tag-mr-strategy',
@@ -220,9 +231,13 @@ function main() {
     } catch {
       continue;
     }
-    const code = stripComments(src);
-    const lines = code.split('\n');
+    const ext = extname(file);
+    const rust = ext === '.rs';
+    const lines = rust
+      ? src.split('\n').map((line) => (/^\s*\/\//.test(line) ? '' : line))
+      : stripComments(src).split('\n');
     for (const rule of RULES) {
+      if (!(rule.exts ? rule.exts.includes(ext) : TS_EXT.has(ext))) continue;
       lines.forEach((line, i) => {
         rule.re.lastIndex = 0;
         if (!rule.re.test(line)) return;

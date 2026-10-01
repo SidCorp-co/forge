@@ -42,22 +42,16 @@ vi.mock('../db/client.js', () => {
 const findAvailableDeviceForProject = vi.fn();
 const findChatCapableDeviceForProject = vi.fn();
 const resolveSessionRepoPathForDevice = vi.fn(
-  async (_projectId: string, _deviceId: string | null, projectRepoPath: string | null) =>
-    projectRepoPath ?? null,
+  async (_projectId: string, deviceId: string | null): Promise<string | null> =>
+    deviceId ? '/repo' : null,
 );
 vi.mock('../lib/device-pool.js', () => ({
   findAvailableDeviceForProject: (id: string, opts?: object) =>
     findAvailableDeviceForProject(id, opts),
   findChatCapableDeviceForProject: (projectId: string, deviceId: string) =>
     findChatCapableDeviceForProject(projectId, deviceId),
-  resolveRepoPath: (override: string | null | undefined, repo: string | null) =>
-    (override ?? repo ?? '').trim() || null,
-  resolveRunnerRepoPath: () => Promise.resolve(null),
-  resolveSessionRepoPathForDevice: (
-    projectId: string,
-    deviceId: string | null,
-    repo: string | null,
-  ) => resolveSessionRepoPathForDevice(projectId, deviceId, repo),
+  resolveSessionRepoPathForDevice: (projectId: string, deviceId: string | null) =>
+    resolveSessionRepoPathForDevice(projectId, deviceId),
 }));
 
 const buildChatPreamble = vi.fn(async (..._args: unknown[]) => '## Project Config\n\n---\n\n');
@@ -385,7 +379,6 @@ describe('POST /api/agent-sessions/:id/runner', () => {
     ]);
     grantAccess('admin');
     findChatCapableDeviceForProject.mockResolvedValueOnce(OTHER_DEVICE_ID);
-    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, repoPath: '/repo' }]);
     resolveSessionRepoPathForDevice.mockResolvedValueOnce('/repo/on/new-device');
     updateReturning.mockResolvedValueOnce([
       {
@@ -439,7 +432,6 @@ describe('POST /api/agent-sessions/:id/runner', () => {
     ]);
     grantAccess('admin');
     findChatCapableDeviceForProject.mockResolvedValueOnce(null);
-    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, repoPath: '/repo' }]);
 
     const app = buildApp();
     const res = await app.fetch(
@@ -454,7 +446,7 @@ describe('POST /api/agent-sessions/:id/runner', () => {
     expect(updateSet).not.toHaveBeenCalled();
   });
 
-  it('409 NO_REPO_PATH when the picked device has no runner binding and the project has no default repoPath (ISS-755 fix)', async () => {
+  it("409 CHECKOUT_UNBOUND when the picked device's binding names no checkout (ISS-755, ISS-14)", async () => {
     const token = await signUserToken(USER_ID);
     mockAuthVerified();
     selectLimit.mockResolvedValueOnce([
@@ -471,7 +463,6 @@ describe('POST /api/agent-sessions/:id/runner', () => {
     ]);
     grantAccess('admin');
     findChatCapableDeviceForProject.mockResolvedValueOnce(OTHER_DEVICE_ID);
-    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, repoPath: null }]);
     resolveSessionRepoPathForDevice.mockResolvedValueOnce(null);
 
     const app = buildApp();
@@ -483,7 +474,11 @@ describe('POST /api/agent-sessions/:id/runner', () => {
       }),
     );
     expect(res.status).toBe(409);
-    expect(((await res.json()) as { code?: string }).code).toBe('NO_REPO_PATH');
+    const refused = (await res.json()) as { code?: string; message?: string };
+    expect(refused.code).toBe('CHECKOUT_UNBOUND');
+    expect(refused.message).toContain(
+      `device ${OTHER_DEVICE_ID}'s binding to project ${PROJECT_ID}`,
+    );
     expect(updateSet).not.toHaveBeenCalled();
   });
 
@@ -533,7 +528,6 @@ describe('POST /api/agent-sessions/:id/runner', () => {
       },
     ]);
     grantAccess('admin');
-    selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID, repoPath: '/repo' }]);
     updateReturning.mockResolvedValueOnce([
       {
         id: SESSION_ID,
@@ -662,8 +656,6 @@ describe('GET /api/agent-sessions/desktop/status', () => {
         id: PROJECT_ID,
         slug: 'apiflow',
         ownerId: USER_ID,
-        repoPath: '/repo',
-        defaultDeviceId: null,
       },
     ]);
     projectAccessMock.mockResolvedValueOnce({ role: 'member' });
@@ -686,8 +678,6 @@ describe('GET /api/agent-sessions/desktop/status', () => {
         id: PROJECT_ID,
         slug: 'apiflow',
         ownerId: USER_ID,
-        repoPath: null,
-        defaultDeviceId: null,
       },
     ]);
     projectAccessMock.mockResolvedValueOnce({ role: 'member' });
@@ -710,8 +700,6 @@ describe('GET /api/agent-sessions/desktop/status', () => {
         id: PROJECT_ID,
         slug: 'apiflow',
         ownerId: 'someone-else',
-        repoPath: null,
-        defaultDeviceId: null,
       },
     ]);
     projectAccessMock.mockResolvedValueOnce({ role: null }); // not a member

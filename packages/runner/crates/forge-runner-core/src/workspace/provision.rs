@@ -23,6 +23,7 @@ use crate::config::Config;
 use crate::error::Result;
 use crate::mcp;
 use crate::transport::provision::{self, Provision};
+use crate::transport::runners;
 use crate::transport::CoreClient;
 use crate::workspace::orientation;
 use crate::workspace::skill_sync;
@@ -245,6 +246,24 @@ async fn finish_workspace(client: &CoreClient, _cfg: &Config, p: &Provision, rep
     }
     trust::pre_trust_logged(repo_path, &p.slug);
     record_binding(p, repo_path);
+    if let Some(path) = binding_to_report(p, repo_path) {
+        if let Err(e) = runners::patch_runner(client, &p.runner_id, Some(&path), None).await {
+            tracing::warn!(
+                "[provision] {}: the device binding was not told its checkout {path}: {e}",
+                p.slug
+            );
+            let said = format!(
+                "the device binding names no checkout: this box provisioned {path} but could not \
+                 record it on the binding ({e}), so core refuses this project's jobs here \
+                 (checkout_unbound) until `forge-runner bind {} --path {path}` succeeds",
+                p.slug
+            );
+            ready_detail = Some(match ready_detail {
+                Some(d) => format!("{d}; {said}"),
+                None => said,
+            });
+        }
+    }
     let skill = install_master_skill(
         &p.slug,
         repo_path,
@@ -329,6 +348,14 @@ fn record_binding(p: &Provision, repo_path: &Path) {
         ),
         Err(e) => tracing::warn!("[provision] {}: binding not saved: {e}", p.slug),
     }
+}
+
+/// The checkout this box chose for a binding that named none, which the binding must now hold:
+/// a job takes its checkout from the device binding alone, so a path known only to this box's
+/// `config.toml` is a path no job can be given.
+fn binding_to_report(p: &Provision, repo_path: &Path) -> Option<String> {
+    let named = p.repo_path.as_deref().is_some_and(|s| !s.trim().is_empty());
+    (!named).then(|| repo_path.to_string_lossy().into_owned())
 }
 
 /// Server `repoPath` wins; else fall back to `projects_root/<slug>`.
@@ -651,6 +678,33 @@ mod tests {
             PathBuf::from("/srv/moved/butlocs")
         );
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_checkout_chosen_under_projects_root_is_reported_to_the_binding() {
+        let cfg = Config {
+            projects_root: Some(PathBuf::from("/srv/projects")),
+            ..Default::default()
+        };
+        let p = provision(None);
+        let chosen = resolve_path(&cfg, &p).unwrap();
+        assert_eq!(
+            binding_to_report(&p, &chosen).as_deref(),
+            Some("/srv/projects/butlocs")
+        );
+        assert_eq!(
+            binding_to_report(&provision(Some("  ")), &chosen).as_deref(),
+            Some("/srv/projects/butlocs")
+        );
+    }
+
+    #[test]
+    fn a_checkout_the_binding_already_names_is_not_reported_again() {
+        let p = provision(Some("/srv/checkouts/butlocs"));
+        assert_eq!(
+            binding_to_report(&p, Path::new("/srv/checkouts/butlocs")),
+            None
+        );
     }
 
     fn provision(repo_path: Option<&str>) -> crate::transport::provision::Provision {

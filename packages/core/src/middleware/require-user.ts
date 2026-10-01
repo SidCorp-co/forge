@@ -7,6 +7,7 @@ import { AUTH_COOKIE_NAME } from '../auth/cookie.js';
 import { verifyUserToken } from '../auth/jwt.js';
 import { db } from '../db/client.js';
 import { users } from '../db/schema.js';
+import { declareGate } from './declared-gate.js';
 
 export type AuthedUser = {
   id: string;
@@ -32,7 +33,7 @@ function extractToken(c: Context): string | null {
 }
 
 export const requireUser = (): MiddlewareHandler<{ Variables: UserVars }> => {
-  return async (c, next) => {
+  return declareGate('requireUser', async (c, next) => {
     const token = extractToken(c);
     if (!token) throw unauth('UNAUTHENTICATED', 'authentication required');
 
@@ -60,5 +61,5 @@ export const requireUser = (): MiddlewareHandler<{ Variables: UserVars }> => {
 
     c.set('user', row);
     await next();
-  };
+  });
 };

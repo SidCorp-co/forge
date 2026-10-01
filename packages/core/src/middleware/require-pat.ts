@@ -9,6 +9,7 @@ import type { ActorAgency } from '../issues/actor-agency.js';
 import { userRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { parseBearerHeader } from './bearer.js';
+import { declareGate } from './declared-gate.js';
 import { getClientIp } from './rate-limit.js';
 
 export type PatPrincipal = {
@@ -233,7 +234,7 @@ const placeholderRefusal = (token: string) =>
   'with `forge_pat_`), keeping `Bearer ` in front of it.';
 
 export const requirePat = (): MiddlewareHandler<{ Variables: PrincipalVars }> => {
-  return async (c, next) => {
+  return declareGate('requirePat', async (c, next) => {
     const parsed = parseBearerHeader(c);
     if (parsed.kind === 'absent') throw unauth('authentication required');
     if (parsed.kind === 'malformed')
@@ -249,5 +250,5 @@ export const requirePat = (): MiddlewareHandler<{ Variables: PrincipalVars }> =>
     c.set('patTokenId', principal.tokenId);
     c.set('principal', principal);
     await next();
-  };
+  });
 };

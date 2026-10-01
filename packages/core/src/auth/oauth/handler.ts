@@ -9,6 +9,7 @@ import { and, eq } from 'drizzle-orm';
 import type { Context } from 'hono';
 import { getCookie } from 'hono/cookie';
 import { HTTPException } from 'hono/http-exception';
+import { z } from 'zod';
 import { env } from '../../config/env.js';
 import { db } from '../../db/client.js';
 import { oauthAccounts, users } from '../../db/schema.js';
@@ -55,6 +56,31 @@ function oauthErrorRedirect(c: Context, code: string): Response {
   return c.redirect(`${base}/login?oauth_error=${encodeURIComponent(code)}`, 302);
 }
 
+export const startQuery = z.object({ redirect: z.string().optional() });
+
+export type StartQuery = z.infer<typeof startQuery>;
+
+export const refuseStartQuery = (result: { success: boolean }) => {
+  if (!result.success) {
+    throw new HTTPException(400, {
+      message: 'redirect takes one same-origin path',
+      cause: { code: 'BAD_REQUEST' },
+    });
+  }
+};
+
+export const callbackQuery = z.object({
+  code: z.string().optional(),
+  state: z.string().optional(),
+  error: z.string().optional(),
+});
+
+export type CallbackQuery = z.infer<typeof callbackQuery>;
+
+export const refuseCallbackQuery = (result: { success: boolean }, c: Context) => {
+  if (!result.success) return oauthErrorRedirect(c, 'provider_error');
+};
+
 export interface StartOptions {
   /** `login` (default) or `reauth`. Persisted on the state cookie. */
   mode?: 'login' | 'reauth';
@@ -62,7 +88,12 @@ export interface StartOptions {
   uid?: string;
 }
 
-export async function handleStart(c: Context, providerId: ProviderId, options: StartOptions = {}) {
+export async function handleStart(
+  c: Context,
+  providerId: ProviderId,
+  query: StartQuery,
+  options: StartOptions = {},
+) {
   const cfg = getProvider(providerId);
   if (!cfg) {
     throw new HTTPException(404, {
@@ -75,7 +106,7 @@ export async function handleStart(c: Context, providerId: ProviderId, options: S
   const nonce = generateNonce();
   const verifier = generatePkceVerifier();
   const challenge = await pkceChallenge(verifier);
-  const target = safeRedirect(c.req.query('redirect'));
+  const target = safeRedirect(query.redirect);
 
   const cookieJwt = await signState({
     p: providerId,
@@ -167,7 +198,7 @@ async function findOrCreateUser(
   return { userId: created.id };
 }
 
-export async function handleCallback(c: Context, providerId: ProviderId) {
+export async function handleCallback(c: Context, providerId: ProviderId, query: CallbackQuery) {
   const cfg = getProvider(providerId);
   if (!cfg) {
     throw new HTTPException(404, {
@@ -175,9 +206,7 @@ export async function handleCallback(c: Context, providerId: ProviderId) {
       cause: { code: 'PROVIDER_NOT_ENABLED' },
     });
   }
-  const code = c.req.query('code');
-  const state = c.req.query('state');
-  const error = c.req.query('error');
+  const { code, state, error } = query;
   // so the web banner can give a useful message. Operator-misconfiguration
   // paths (PROVIDER_NOT_ENABLED above) keep their HTTP error since the user
   // can't fix them by retrying.

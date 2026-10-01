@@ -31,7 +31,7 @@ const DEVICE_LIMITED = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
 beforeEach(() => {
   execute.mockReset();
   limit.mockReset();
-  limit.mockResolvedValue([{ defaultDeviceId: null }]);
+  limit.mockResolvedValue([]);
 });
 
 describe('findAvailableDeviceForProject', () => {
@@ -54,11 +54,10 @@ describe('findAvailableDeviceForProject', () => {
     await expect(findAvailableDeviceForProject(PROJECT)).resolves.toBe(DEVICE_LIMITED);
   });
 
-  it('falls back to the project defaultDeviceId when no runner row matches', async () => {
+  it('answers no device when no runner row matches, with no second read for a project default', async () => {
     execute.mockResolvedValueOnce([]);
-    limit.mockResolvedValueOnce([{ defaultDeviceId: DEVICE_HEALTHY }]);
-    limit.mockResolvedValueOnce([{ id: DEVICE_HEALTHY }]);
-    await expect(findAvailableDeviceForProject(PROJECT)).resolves.toBe(DEVICE_HEALTHY);
+    await expect(findAvailableDeviceForProject(PROJECT)).resolves.toBeNull();
+    expect(limit).not.toHaveBeenCalled();
   });
 
   it('excludes already-tried devices via excludeDeviceIds', async () => {

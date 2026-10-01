@@ -57,12 +57,15 @@ vi.mock('../cookie.js', () => ({
 }));
 
 const { signState, STATE_COOKIE_NAME } = await import('./state.js');
-const { handleCallback } = await import('./handler.js');
+const { callbackQuery, handleCallback, refuseCallbackQuery } = await import('./handler.js');
+const { zValidator } = await import('../../middleware/zod-validator.js');
 
 function buildApp() {
   const app = new Hono();
-  app.get('/api/auth/oauth/:provider/callback', (c) =>
-    handleCallback(c, c.req.param('provider') as 'github'),
+  app.get(
+    '/api/auth/oauth/:provider/callback',
+    zValidator('query', callbackQuery, refuseCallbackQuery),
+    (c) => handleCallback(c, c.req.param('provider') as 'github', c.req.valid('query')),
   );
   return app;
 }

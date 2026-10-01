@@ -151,12 +151,28 @@ describe('the project PATCH that sets a prefix', () => {
     expect(await activePrefixOf(a.id)).toBe('FD');
   });
 
-  it('leaves the prefix unset when a later field in the same patch fails', async () => {
+  it('leaves the prefix unset when a later write in the same patch fails', async () => {
     const a = await project();
-    const out = await patch(a.id, { issuePrefix: 'FD', defaultDeviceId: randomUUID() });
-    expect(out.status).toBeGreaterThanOrEqual(400);
-    expect(await activePrefixOf(a.id)).toBeNull();
-    expect(await heldIssuePrefixes(a.id)).toEqual([]);
+    await harness.db.execute(sql`
+      CREATE FUNCTION iss14_refuse_name() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        IF NEW.name = 'refused-by-trigger' THEN RAISE EXCEPTION 'iss14: the row write fails'; END IF;
+        RETURN NEW;
+      END $$
+    `);
+    await harness.db.execute(sql`
+      CREATE TRIGGER iss14_refuse_name BEFORE UPDATE ON projects
+      FOR EACH ROW EXECUTE FUNCTION iss14_refuse_name()
+    `);
+    try {
+      const out = await patch(a.id, { issuePrefix: 'FD', name: 'refused-by-trigger' });
+      expect(out.status).toBeGreaterThanOrEqual(500);
+      expect(await activePrefixOf(a.id)).toBeNull();
+      expect(await heldIssuePrefixes(a.id)).toEqual([]);
+    } finally {
+      await harness.db.execute(sql`DROP TRIGGER iss14_refuse_name ON projects`);
+      await harness.db.execute(sql`DROP FUNCTION iss14_refuse_name()`);
+    }
   });
 
   it('names the holder to a caller who can see it', async () => {

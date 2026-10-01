@@ -343,7 +343,6 @@ describe('GET /api/devices/:id/runners (ISS-273)', () => {
             branch: 'dev',
             status: 'online',
             lastSeenAt: new Date('2026-05-30T00:00:00Z'),
-            projectDefaultRepoPath: '/srv/my-app',
             baseBranch: 'main',
           },
         ]),

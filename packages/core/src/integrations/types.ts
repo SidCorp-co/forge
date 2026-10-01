@@ -314,7 +314,7 @@ export interface IntegrationAdapterMethods<
    * What this provider does once a binding of it is created on a project, and what the response
    * should carry about it.
    *
-   * GitHub is the only one: binding a repository syncs `projects.repoPath`, and the caller is told
+   * GitHub is the only one: binding a repository syncs `projects.repoUrl`, and the caller is told
    * whether that changed. Declared so the generic bind door does not carry `provider === 'github'`,
    * which is a branch that keeps working for github and quietly does nothing for anyone else.
    */

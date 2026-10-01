@@ -23,7 +23,7 @@ import { writeBackScheduleLastStatus } from '../schedules/service.js';
 import { deviceRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { broadcastSession } from './broadcast.js';
-import { noClaudeClient } from './chat-turn.js';
+import { checkoutUnbound, noClaudeClient } from './chat-turn.js';
 import { abortBodySchema, desktopStatusSchema, setRunnerBodySchema } from './lifecycle-schemas.js';
 import {
   badRequest,
@@ -39,8 +39,6 @@ export async function loadProjectBySlug(slug: string) {
     .select({
       id: projects.id,
       slug: projects.slug,
-      repoPath: projects.repoPath,
-      defaultDeviceId: projects.defaultDeviceId,
     })
     .from(projects)
     .where(eq(projects.slug, slug))
@@ -187,13 +185,6 @@ agentSessionLifecycleRoutes.post(
 
     if (input.deviceId === pinned) return c.json(session);
 
-    const [project] = await db
-      .select({ id: projects.id, repoPath: projects.repoPath })
-      .from(projects)
-      .where(eq(projects.id, session.projectId))
-      .limit(1);
-    if (!project) throw notFound('project not found');
-
     let picked: string | null = null;
     if (input.deviceId) {
       picked = await findChatCapableDeviceForProject(session.projectId, input.deviceId);
@@ -204,15 +195,9 @@ agentSessionLifecycleRoutes.post(
     nextMeta.deviceId = picked ?? undefined;
 
     const repoPath = picked
-      ? await resolveSessionRepoPathForDevice(session.projectId, picked, project.repoPath)
+      ? await resolveSessionRepoPathForDevice(session.projectId, picked)
       : null;
-    if (picked && !repoPath) {
-      throw new HTTPException(409, {
-        message:
-          'This runner has no project folder configured (no runner binding and no project default). Set a repo path for it, or pick a different runner, then try again.',
-        cause: { code: 'NO_REPO_PATH' },
-      });
-    }
+    if (picked && !repoPath) throw checkoutUnbound(session.projectId, picked);
 
     const [updated] = await db
       .update(agentSessions)

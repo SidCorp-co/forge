@@ -212,7 +212,11 @@ jobs:
       # or that the generator cannot describe. It imports the whole core app under tsx, so it
       # needs node_modules and the prebuilt workspace deps, and lives in this always-on job
       # because a contract can move from packages/core, packages/contracts or the lockfile.
+      # FORGE_API_CONTRACTS_DIR keeps that one generation, stamped with this tree, so the
+      # conformance-status step below reads it rather than importing the app a second time.
       - run: node scripts/check-api-contracts.mjs
+        env:
+          FORGE_API_CONTRACTS_DIR: ${{ runner.temp }}/forge-api-contracts
       # PAT surface (ISS-28): every route the running app serves under a project-reach permission
       # must reach the PAT fence through functions the type checker resolves, one route at a
       # time. It reads `app.routes` under tsx and runs the TypeScript compiler, so it needs
@@ -223,6 +227,8 @@ jobs:
       # for it. Every gate this repo lost was lost by staying documented while
       # it stopped blocking; this is the check that notices.
       - run: node scripts/conformance-status.mjs
+        env:
+          FORGE_API_CONTRACTS_DIR: ${{ runner.temp }}/forge-api-contracts
       # Conformance audit: the only check whose SUBJECT is the setup itself.
       # `status` asks whether each axis does what it claims; this asks whether
       # the setup around them still has the shape the manifest's `profile`

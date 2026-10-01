@@ -41,13 +41,13 @@ export const AGENT_CONFIG_DOORS: Record<AgentConfigKey, string> = {
  */
 export const RETIRED_AGENT_CONFIG_KEYS: Record<string, string> = {
   repoPath:
-    'agentConfig.repoPath decides nothing — the checkout a project names is the `projects.repo_path` column, which is what `forge_config` serves and what every reader in this tree reads. Two of the copies stored in this jsonb disagreed with their column. Set it with the `repoPath` field on `PATCH /api/projects/:id`, and remove repoPath from agentConfig.',
+    "agentConfig.repoPath decides nothing — a checkout is a path on one box, so it lives on that box's device binding (`forge-runner bind <slug> --path <dir>`, or PATCH /api/projects/:id/runners/:runnerId { repoPath }). Remove repoPath from agentConfig.",
   baseBranch:
     'agentConfig.baseBranch decides nothing — the branch work is cut from is the `projects.base_branch` column, read by `branches/resolve.ts:resolveIssueBranches`. It is not a release fact: where a release goes is the production environment of the project document. One copy stored in this jsonb said `main` against a column of `release/stg`. Set it with the `baseBranch` field on `PATCH /api/projects/:id`, and remove baseBranch from agentConfig.',
   productionBranch:
     "agentConfig.productionBranch names a column that does not exist: the branch production deploys from is the project document's production environment `deploysFrom`, and how a change reaches it is that document's `promotions` (`PUT /api/projects/:id/config`). Remove productionBranch from agentConfig.",
   activeDeviceId:
-    'agentConfig.activeDeviceId decides nothing — the device a project defaults to is the `projects.default_device_id` column, and no dispatcher has ever read this key. Set it with the `defaultDeviceId` field on `PATCH /api/projects/:id`, and remove activeDeviceId from agentConfig.',
+    "agentConfig.activeDeviceId decides nothing — no box is a project's default: work goes to a device bound to the project whose binding names a checkout. Remove activeDeviceId from agentConfig.",
   runnerFallback:
     'agentConfig.runnerFallback decides nothing — ISS-232 Phase 3 replaced the type-chain fallback with a deterministic primary-then-standby pick, and no selector has read this key since. Remove runnerFallback from agentConfig.',
 };

@@ -65,7 +65,7 @@ describe('applyGrantedMcpServers — one claim per server name (ISS-1191)', () =
       provider === 'epodsystem' ? [first, second] : [],
     );
 
-    const out = await applyGrantedMcpServers(PROJECT, null);
+    const out = await applyGrantedMcpServers(PROJECT);
 
     expect(out.produced).toEqual([{ name: 'epodsystem_north_shop', bindingId: 'b-first' }]);
     expect(Object.keys(out.map ?? {})).toEqual(['epodsystem_north_shop']);
@@ -78,7 +78,7 @@ describe('applyGrantedMcpServers — one claim per server name (ISS-1191)', () =
       provider === 'epodsystem' ? [north, south] : [],
     );
 
-    const out = await applyGrantedMcpServers(PROJECT, null);
+    const out = await applyGrantedMcpServers(PROJECT);
 
     expect(out.produced).toEqual([
       { name: 'epodsystem_north_shop', bindingId: 'b-north' },
@@ -86,7 +86,7 @@ describe('applyGrantedMcpServers — one claim per server name (ISS-1191)', () =
     ]);
   });
 
-  it('produces nothing, and keeps the map it was given, for a credential that will not decrypt', async () => {
+  it('produces nothing and no map for a credential that will not decrypt', async () => {
     listAgentGrantedBindings.mockImplementation(async (_p: string, provider: string) =>
       provider === 'epodsystem' ? [epodPair('b-first', 'north-shop')] : [],
     );
@@ -94,9 +94,9 @@ describe('applyGrantedMcpServers — one claim per server name (ISS-1191)', () =
       throw new Error('bad key');
     });
 
-    const out = await applyGrantedMcpServers(PROJECT, { playwright: {} });
+    const out = await applyGrantedMcpServers(PROJECT);
 
     expect(out.produced).toEqual([]);
-    expect(out.map).toEqual({ playwright: {} });
+    expect(out.map).toBeNull();
   });
 });

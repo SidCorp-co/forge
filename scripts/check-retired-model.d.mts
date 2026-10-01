@@ -2,6 +2,7 @@ export interface RetiredModelRule {
   id: string;
   re: RegExp;
   why: string;
+  exts?: string[];
 }
 
 export declare const RULES: RetiredModelRule[];
