@@ -115,10 +115,7 @@ export async function recordRefusedRun(args: {
     actor: { type: 'system' },
     source: 'schedule',
   });
-  await db
-    .update(schedules)
-    .set({ lastSessionId: session.id })
-    .where(eq(schedules.id, scheduleId));
+  await db.update(schedules).set({ lastSessionId: session.id }).where(eq(schedules.id, scheduleId));
 }
 
 /** A run whose frame never reached its box is failed, never left `idle` for the sweeper to guess at. */

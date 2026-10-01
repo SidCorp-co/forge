@@ -371,7 +371,9 @@ describe('a schedule whose owner may no longer be acted as is refused by name', 
   });
 
   it('a box that carries a first turn’s token is enough: a schedule sends no follow-up', async () => {
-    await harness.db.execute(sql`UPDATE devices SET capabilities = '{"turnCredential": true}'::jsonb`);
+    await harness.db.execute(
+      sql`UPDATE devices SET capabilities = '{"turnCredential": true}'::jsonb`,
+    );
     const owner = await person(null);
     const scheduleId = await scheduleOwnedBy(owner, 'member');
     await tick(scheduleId);
@@ -402,7 +404,7 @@ describe('failover carries the owner to the next box', () => {
     return { scheduleId, sessionId };
   }
 
-  it("re-dispatches under a fresh token for the owner, tied to the new box", async () => {
+  it('re-dispatches under a fresh token for the owner, tied to the new box', async () => {
     const owner = await person('member');
     const { sessionId } = await failedOnFirstBox(owner);
     const second = await boxPairedBy(adminId, { turnCredential: true });
@@ -425,7 +427,11 @@ describe('failover carries the owner to the next box', () => {
     const result = await m.failover.redispatchScheduleSessionOnFailover(sessionId, {
       failureClass: 'usage/session limit',
     });
-    expect(result).toMatchObject({ ok: false, status: 'authority-refused', code: 'SESSION_NO_ROLE' });
+    expect(result).toMatchObject({
+      ok: false,
+      status: 'authority-refused',
+      code: 'SESSION_NO_ROLE',
+    });
     expect(second.socket.frames).toHaveLength(0);
     expect((await sessionRow(sessionId)).failureDetail).toBe(
       'usage/session limit → no failover (SESSION_NO_ROLE: the run may no longer act as the person it ran as)',
@@ -437,7 +443,11 @@ describe('failover carries the owner to the next box', () => {
     const { sessionId } = await failedOnFirstBox(owner);
     const second = await boxPairedBy(adminId, {});
     const result = await m.failover.redispatchScheduleSessionOnFailover(sessionId);
-    expect(result).toMatchObject({ ok: false, status: 'authority-refused', code: 'RUNNER_OUTDATED' });
+    expect(result).toMatchObject({
+      ok: false,
+      status: 'authority-refused',
+      code: 'RUNNER_OUTDATED',
+    });
     expect(second.socket.frames).toHaveLength(0);
   });
 });

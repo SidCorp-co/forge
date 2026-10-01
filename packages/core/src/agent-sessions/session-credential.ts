@@ -45,10 +45,9 @@ export interface SessionAuthority {
 }
 
 /**
- * The highest role a token handed to a box held at `holderRole` may carry. A viewer's box is
- * handed read-only tokens, and a member's token cut to read reaches what a viewer reads; nothing
- * cuts an admin's token to a lower role, so an asker above the ceiling is refused rather than
- * handed to a box whose holder could read the token and act above their own role.
+ * The highest role a token on a box held at `holderRole` may carry: a viewer's box gets read-only
+ * tokens, and a member's cut to read reaches what a viewer reads. Nothing cuts an admin's token
+ * lower, and a box's holder can read what it is handed, so an asker above this is refused.
  */
 function holderCeiling(holderRole: ProjectMemberRole): ProjectMemberRole {
   return holderRole === 'viewer' ? 'member' : holderRole;

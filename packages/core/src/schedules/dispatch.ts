@@ -6,7 +6,7 @@ import {
 } from '../agent-sessions/interactive-credential.js';
 import { db } from '../db/client.js';
 import type { ScheduleMode } from '../db/schema.js';
-import { agentSessions, projects, scheduleRuns, schedules } from '../db/schema.js';
+import { type agentSessions, projects, scheduleRuns, schedules } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { emitNotification } from '../notifications/emit.js';
 import { hooks } from '../pipeline/hooks.js';

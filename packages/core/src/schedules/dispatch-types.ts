@@ -17,7 +17,6 @@ export interface ScheduleRowForDispatch {
   /** `'script'` runs a sandboxed script with no agent session at all (ISS-618). */
   kind?: ScheduleKind | null;
   script?: string | null;
-  /** Who a cron firing of a prompt-kind schedule acts as; null once that account is gone. */
   ownerId: string | null;
 }
 
