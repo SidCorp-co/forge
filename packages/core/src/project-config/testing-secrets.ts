@@ -1,7 +1,7 @@
 import { SCRUB_MIN_SECRET_LENGTH } from '@forge/observability';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type JobType, jobEvents, jobs } from '../db/schema.js';
+import { issues, type JobType, jobEvents, jobs } from '../db/schema.js';
 import { projectSecrets } from '../db/schema-project-config.js';
 import { decryptSecret, isVaultConfigured } from '../integrations/vault.js';
 import { resolvePipelineContext } from '../jobs/active-job-context.js';
@@ -13,6 +13,7 @@ import {
 import type { PatPrincipal } from '../middleware/require-pat.js';
 import { parseSecretRef, secretRefOf } from './documents.js';
 import { environmentsOf } from './release-path.js';
+import type { ProjectDocument } from './schema.js';
 import { credentialRefs, readProjectConfig, readTestingProfile } from './service.js';
 
 // cm:why `drive` is here because an autonomous project's driver walks the judging phase in the
@@ -32,8 +33,10 @@ export type TestingSecretsRefusalCode =
   | 'TESTING_SECRETS_FOREIGN_JOB'
   | 'TESTING_SECRETS_JOB_NOT_JUDGING'
   | 'TESTING_SECRETS_NO_PROJECT_DOCUMENT'
-  | 'TESTING_SECRETS_NO_TESTING_ENVIRONMENT'
+  | 'TESTING_SECRETS_NOT_LANDED'
+  | 'TESTING_SECRETS_NO_ENVIRONMENT_FOR_TARGET'
   | 'TESTING_SECRETS_ENVIRONMENT_AMBIGUOUS'
+  | 'TESTING_SECRETS_NO_TESTING_PROFILE'
   | 'TESTING_PROFILE_NOT_NAMED'
   | 'TESTING_PROFILE_NOT_DECLARED'
   | 'SECRET_NOT_NAMED'
@@ -56,16 +59,16 @@ export interface ResolvedTestingSecrets {
   secrets: { ref: string; value: string }[];
 }
 
-export type TestingSecretsOutcome =
-  | { ok: true; resolved: ResolvedTestingSecrets }
-  | { ok: false; refusal: TestingSecretsRefusal };
+type Refused = { ok: false; refusal: TestingSecretsRefusal };
+
+export type TestingSecretsOutcome = { ok: true; resolved: ResolvedTestingSecrets } | Refused;
 
 const refuse = (
   status: TestingSecretsRefusal['status'],
   code: TestingSecretsRefusalCode,
   message: string,
   details?: Record<string, unknown>,
-): TestingSecretsOutcome => ({
+): Refused => ({
   ok: false,
   refusal: { status, code, message, ...(details ? { details } : {}) },
 });
@@ -110,7 +113,7 @@ export async function resolveTestingSecrets(args: {
   }
 
   const [job] = await db
-    .select({ projectId: jobs.projectId, type: jobs.type })
+    .select({ projectId: jobs.projectId, type: jobs.type, issueId: jobs.issueId })
     .from(jobs)
     .where(eq(jobs.id, jobId))
     .limit(1);
@@ -133,32 +136,14 @@ export async function resolveTestingSecrets(args: {
       `project ${job.projectId} declares no project document, so no environment names a testing profile.`,
     );
   }
-  const testing = environmentsOf(project.document).filter((e) => e.declaration.testing);
-  const [only, ...others] = testing;
-  if (!only) {
-    return refuse(
-      404,
-      'TESTING_SECRETS_NO_TESTING_ENVIRONMENT',
-      'no environment of this project names a testing profile (`environments.<name>.testing`).',
-    );
-  }
-  // cm:guard no row records which environment a job judges; with two candidates the route would be
-  // guessing, and a guess hands out the other environment's logins.
-  if (others.length > 0) {
-    const named = testing.map((e) => `${e.name} → ${e.declaration.testing}`);
-    return refuse(
-      409,
-      'TESTING_SECRETS_ENVIRONMENT_AMBIGUOUS',
-      `${testing.length} environments name a testing profile (${named.join(', ')}) and nothing on job ${jobId} records which one it judges, so the route will not pick one.`,
-      { environments: testing.map((e) => e.name) },
-    );
-  }
-  const environment = only.name;
-  if (only.declaration.testing !== profileId) {
+  const judged = await judgedEnvironment(job.issueId, project.document, jobId);
+  if (!judged.ok) return judged;
+  const { environment, testing } = judged;
+  if (testing !== profileId) {
     return refuse(
       403,
       'TESTING_PROFILE_NOT_NAMED',
-      `environment \`${environment}\`, which job ${jobId} judges, names testing profile \`${only.declaration.testing}\`, not \`${profileId}\`.`,
+      `environment \`${environment}\`, which job ${jobId} judges, names testing profile \`${testing}\`, not \`${profileId}\`.`,
     );
   }
 
@@ -254,6 +239,66 @@ export async function resolveTestingSecrets(args: {
     secrets.map((s) => s.value),
   );
   return { ok: true, resolved: { jobId, environment, profileId, secrets } };
+}
+
+// cm:why the environment a job judges is the one deploying the branch its issue's work landed on —
+// the target the merge mark recorded — so no deployment is read and no dispatcher writes a field.
+async function judgedEnvironment(
+  issueId: string | null,
+  document: ProjectDocument,
+  jobId: string,
+): Promise<Refused | { ok: true; environment: string; testing: string }> {
+  const [issue] = issueId
+    ? await db
+        .select({ mergedAt: issues.mergedAt, target: issues.mergedTarget })
+        .from(issues)
+        .where(eq(issues.id, issueId))
+        .limit(1)
+    : [];
+  if (!issue) {
+    return refuse(
+      409,
+      'TESTING_SECRETS_NOT_LANDED',
+      `job ${jobId} works no issue, so no landed work names the environment it judges.`,
+    );
+  }
+  if (!issue.target) {
+    const why = issue.mergedAt
+      ? 'its merge mark names no target branch'
+      : 'its work has not landed (no merge mark)';
+    return refuse(
+      409,
+      'TESTING_SECRETS_NOT_LANDED',
+      `issue ${issueId}: ${why}, so no environment deploying it can be named. Mark it merged with its target first.`,
+    );
+  }
+  const target = issue.target;
+  const deploying = environmentsOf(document).filter((e) => e.declaration.deploysFrom === target);
+  const [only, ...others] = deploying;
+  if (!only) {
+    return refuse(
+      409,
+      'TESTING_SECRETS_NO_ENVIRONMENT_FOR_TARGET',
+      `issue ${issueId} landed on \`${target}\`, and no environment of this project deploys from it.`,
+      { target },
+    );
+  }
+  if (others.length > 0) {
+    return refuse(
+      409,
+      'TESTING_SECRETS_ENVIRONMENT_AMBIGUOUS',
+      `${deploying.length} environments deploy from \`${target}\` (${deploying.map((e) => e.name).join(', ')}), so the one issue ${issueId} is judged on cannot be named.`,
+      { target, environments: deploying.map((e) => e.name) },
+    );
+  }
+  if (!only.declaration.testing) {
+    return refuse(
+      404,
+      'TESTING_SECRETS_NO_TESTING_PROFILE',
+      `environment \`${only.name}\`, which deploys \`${target}\`, names no testing profile (\`environments.${only.name}.testing\`).`,
+    );
+  }
+  return { ok: true, environment: only.name, testing: only.declaration.testing };
 }
 
 // cm:flow testing-secrets/audit after:resolve — the row commits before any value leaves, and it is

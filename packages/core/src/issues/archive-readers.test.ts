@@ -101,6 +101,7 @@ const NOT_DISCOVERY: Record<string, string> = {
   'notifications/notify-transitions.ts': 'by issue id',
   'jobs/loop-monitor-axis.ts':
     'one count of the claims the job axis cannot reach; an archived issue a live claim holds is still outside that axis, so hiding it would understate the blind spot',
+  'project-config/testing-secrets.ts': 'the landed target of the one issue a job works, by id',
   'pipeline/analytics-routes.ts':
     'run timings carrying an issue id and no content; the issue page reads its own through here',
   'pipeline/answer-resume.ts': 'reads only the question status',

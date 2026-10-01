@@ -1031,6 +1031,7 @@ export const issues = pgTable(
     mergedAt: timestamp('merged_at', { withTimezone: true }),
     mergedCommitSha: text('merged_commit_sha'),
     mergedLanding: text('merged_landing'),
+    mergedTarget: text('merged_target'),
     // ISS-42 C2 — t-shirt sizing (xs/s/m/l/xl) for scoping. NULL = unsized.
     complexity: text('complexity', { enum: issueComplexities }),
     reopenCount: integer('reopen_count').notNull().default(0),

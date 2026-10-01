@@ -1,5 +1,5 @@
 {
-  "id": "b84c7981-1bf6-4e6b-bee6-a490cf15c123",
+  "id": "4c792f0f-d645-417a-adb1-b51431aeb982",
   "prevId": "0f53bc61-6079-4abb-8903-d4a504f4b7e2",
   "version": "7",
   "dialect": "postgresql",
@@ -4483,6 +4483,12 @@
         },
         "merged_landing": {
           "name": "merged_landing",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "merged_target": {
+          "name": "merged_target",
           "type": "text",
           "primaryKey": false,
           "notNull": false

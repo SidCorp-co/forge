@@ -71,12 +71,18 @@ beforeEach(async () => {
   await truncateAll(harness.db);
 });
 
-async function seedJob(projectId: string, ownerId: string, type = 'test') {
+async function seedJob(
+  projectId: string,
+  ownerId: string,
+  type = 'test',
+  landedOn: string | null = 'main',
+) {
   const device = await createTestDevice(harness.db, ownerId);
   const issueId = randomUUID();
   await harness.db.execute(sql`
-    INSERT INTO issues (id, project_id, title, status, created_by_id)
-    VALUES (${issueId}, ${projectId}, 'testing-secrets probe', 'developed', ${ownerId})
+    INSERT INTO issues (id, project_id, title, status, created_by_id, merged_at, merged_target)
+    VALUES (${issueId}, ${projectId}, 'testing-secrets probe', 'developed', ${ownerId},
+            ${landedOn ? sql`now()` : null}, ${landedOn})
   `);
   const runId = randomUUID();
   await harness.db.execute(sql`
@@ -104,14 +110,20 @@ async function seedJob(projectId: string, ownerId: string, type = 'test') {
   return { jobId, sessionId, deviceId: device.id, credential: plaintext };
 }
 
-const environment = (testing?: string) => ({
+const environment = (testing?: string, deploysFrom = 'main') => ({
   tier: 'staging' as const,
+  deploysFrom,
   deployment: { mode: 'external' as const },
   url: 'https://staging.example.com',
   ...(testing ? { testing } : {}),
 });
 
-async function seed(opts: { environments?: Record<string, ReturnType<typeof environment>> } = {}) {
+async function seed(
+  opts: {
+    environments?: Record<string, ReturnType<typeof environment>>;
+    landedOn?: string | null;
+  } = {},
+) {
   const owner = await createTestUser(harness.db);
   await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${owner.id}`);
   const project = await createTestProject(harness.db, owner.id);
@@ -125,7 +137,7 @@ async function seed(opts: { environments?: Record<string, ReturnType<typeof envi
     value: ADMIN_PASSWORD,
   });
   await service.putSecret({ projectId: project.id, scope: 'qa', name: 'db', value: DB_PASSWORD });
-  for (const id of ['qa', 'other']) {
+  for (const id of ['qa', 'other', 'dev', 'beta']) {
     const written = await service.writeTestingProfile({
       projectId: project.id,
       profileId: id,
@@ -142,7 +154,12 @@ async function seed(opts: { environments?: Record<string, ReturnType<typeof envi
     });
     expect(written.ok).toBe(true);
   }
-  const job = await seedJob(project.id, owner.id);
+  const job = await seedJob(
+    project.id,
+    owner.id,
+    'test',
+    opts.landedOn === undefined ? 'main' : opts.landedOn,
+  );
   return { owner, project, job };
 }
 
@@ -273,15 +290,6 @@ describe('GET /api/jobs/:id/testing-profiles/:profile/secrets', () => {
     expect(await codeOf(res)).toBe('TESTING_SECRETS_JOB_NOT_JUDGING');
   });
 
-  it('refuses to pick between two environments that each name a profile', async () => {
-    const { job } = await seed({
-      environments: { staging: environment('qa'), preview: environment('other') },
-    });
-    const res = await resolve(job.credential, job.jobId, 'qa');
-    expect(res.status).toBe(409);
-    expect(await codeOf(res)).toBe('TESTING_SECRETS_ENVIRONMENT_AMBIGUOUS');
-  });
-
   it('scrubs a resolved value out of the job output it posts', async () => {
     const { job } = await seed();
     expect((await resolve(job.credential, job.jobId, 'qa')).status).toBe(200);
@@ -343,5 +351,49 @@ describe('GET /api/jobs/:id/testing-profiles/:profile/secrets', () => {
       body: JSON.stringify({ events: [{ kind: 'secret_resolve', data: { refs: [] } }] }),
     });
     expect(posted.status).toBe(400);
+  });
+});
+
+describe('the environment a job judges is the one deploying its landed branch', () => {
+  const forgeDev = { dev: environment('dev', 'dev'), beta: environment('beta', 'main') };
+
+  it('judges dev for an issue that landed on dev, and hands out its profile only', async () => {
+    const { job } = await seed({ environments: forgeDev, landedOn: 'dev' });
+    const res = await resolve(job.credential, 'self', 'dev');
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { environment: string }).environment).toBe('dev');
+    const other = await resolve(job.credential, 'self', 'beta');
+    expect(other.status).toBe(403);
+    expect(await codeOf(other)).toBe('TESTING_PROFILE_NOT_NAMED');
+  });
+
+  it('judges beta for an issue that landed on main', async () => {
+    const { job } = await seed({ environments: forgeDev, landedOn: 'main' });
+    const res = await resolve(job.credential, 'self', 'beta');
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { environment: string }).environment).toBe('beta');
+  });
+
+  it('refuses an issue whose work has not landed', async () => {
+    const { job } = await seed({ environments: forgeDev, landedOn: null });
+    const res = await resolve(job.credential, 'self', 'dev');
+    expect(res.status).toBe(409);
+    expect(await codeOf(res)).toBe('TESTING_SECRETS_NOT_LANDED');
+  });
+
+  it('refuses a landing no environment deploys from', async () => {
+    const { job } = await seed({ environments: forgeDev, landedOn: 'release' });
+    const res = await resolve(job.credential, 'self', 'dev');
+    expect(res.status).toBe(409);
+    expect(await codeOf(res)).toBe('TESTING_SECRETS_NO_ENVIRONMENT_FOR_TARGET');
+  });
+
+  it('refuses to pick between two environments that deploy the landed branch', async () => {
+    const { job } = await seed({
+      environments: { staging: environment('qa'), preview: environment('other') },
+    });
+    const res = await resolve(job.credential, job.jobId, 'qa');
+    expect(res.status).toBe(409);
+    expect(await codeOf(res)).toBe('TESTING_SECRETS_ENVIRONMENT_AMBIGUOUS');
   });
 });

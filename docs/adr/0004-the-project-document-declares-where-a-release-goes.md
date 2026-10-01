@@ -53,8 +53,9 @@ There is no data migration (design D8). An operator re-enters by hand what the o
   environment names. That profile holds `secret://` references. The one route that hands out the
   value behind one is `GET /api/jobs/self/testing-profiles/<profile>/secrets`
   (`packages/core/src/project-config/testing-secrets.ts:resolveTestingSecrets`): it answers only a
-  running job's own credential, only for the profile its environment names, audits each read and
-  scrubs each value from that job's output.
+  running job's own credential, only for the profile named by the environment whose `deploysFrom`
+  is the target its issue's merge mark recorded, audits each read and scrubs each value from that
+  job's output.
 - **forge-plugin reads the deleted fields.** It reads `releaseModel`, `liveBranch`,
   `releaseStrategy` and `environments` from `forge_projects.get` and `forge_config`, and `stages`
   from `forge_coolify_deploy list`. Those readers break until that repository moves to the

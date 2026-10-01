@@ -31,7 +31,7 @@ export function renderTestCreds(
   if (lines.length === 0) return undefined;
   const route = `GET /api/jobs/${SELF_JOB}/testing-profiles/<profile>/secrets`;
   lines.push(
-    `- To log in, a ${JUDGING_JOB_TYPES.join(', ')} job reads the values behind its environment's references with \`${route}\` (optionally \`?ref=secret://<scope>/<name>\`, repeated), sending its own credential (\`Authorization: Bearer $FORGE_PAT\`). It answers only the job that credential runs, and only while exactly one environment names a testing profile; every other caller and every other profile is refused by name. Each read is audited, and each value is scrubbed from this job's output. Never write a credential into a comment, a commit or a prompt.`,
+    `- To log in, a ${JUDGING_JOB_TYPES.join(', ')} job reads the values behind its environment's references with \`${route}\` (optionally \`?ref=secret://<scope>/<name>\`, repeated), sending its own credential (\`Authorization: Bearer $FORGE_PAT\`). It answers only the job that credential runs, and only for the profile of the environment deploying the branch its issue's merge mark landed on; every other caller and every other profile is refused by name. Each read is audited, and each value is scrubbed from this job's output. Never write a credential into a comment, a commit or a prompt.`,
   );
   return lines.join('\n');
 }
